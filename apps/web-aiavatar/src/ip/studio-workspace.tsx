@@ -224,7 +224,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     setMode("storyboard");
   }, [projectId, setNodes, setConnections]);
 
-  const watch = useCallback(async (run: IpRun, targetId?: string) => {
+  // A terminal run found during initial recovery is old state, not a new completion event.
+  const watch = useCallback(async (run: IpRun, targetId?: string, restored = false) => {
     const token = epoch.current;
     const watchKey = `${token}:${run.id}`;
     if (watching.current.has(watchKey)) return;
@@ -238,8 +239,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if (current.status !== "running") {
           setRefreshErrors(old=>{const next={...old};delete next[current.id];return next;});
           if (targetId && nodesRef.current.some(n=>n.id===targetId&&n.metadata?.studio?.runId===current.id) && current.status === "done" && current.kind === "studio-storyboard" && current.output.script) materializeStoryboard(targetId, current.output.script);
-          if (current.status === "done"&&current.output.billing) message.success(`已消耗 ${current.output.billing.credits} 积分`);
-          reportStudioRunFailures(current);
+          if (!restored && current.status === "done"&&current.output.billing) message.success(`已消耗 ${current.output.billing.credits} 积分`);
+          if (!restored) reportStudioRunFailures(current);
           void saveStudioDocument(projectId).catch(e => message.error(e));
           return;
         }
@@ -272,7 +273,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         if (node.metadata?.status !== "loading") {
           // Restore authoritative terminal semantics in older documents without replaying media or edited script results.
           if (match && match.status !== "running" && (studio?.runId === match.id || node.metadata?.runId === match.id)) {
-            reportStudioRunFailures(match);
             patch(node.id, current => current.metadata?.studio?.runId === match.id || current.metadata?.runId === match.id
               ? { ...current, metadata: { ...current.metadata, studio: { ...current.metadata.studio!, task: {
                 status: match.status, stage: match.stage, pct: match.pct, errorCode: match.errorCode, errorMessage: match.errorMessage, logId: match.logId || match.output.logId, queue: null,
@@ -280,7 +280,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           }
           continue;
         }
-        if (match) void watch(match, node.id);
+        if (match) void watch(match, node.id, match.status !== "running");
       }
     }).catch(e => message.error(e));
     return () => { cancelled = true; };
@@ -1021,7 +1021,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {!!clips.length&&<div className="studio-packaging-editor"><Checkbox checked={packagingEnabled} onChange={e=>changeWorkDraft({packagingEnabled:e.target.checked})}>添加品牌文字与字幕</Checkbox>{packagingEnabled&&<><div className="studio-settings-grid"><label>品牌<Input aria-label="成片品牌" value={brand} onChange={e=>changeWorkDraft({brand:e.target.value})} maxLength={60}/></label><label>作品标题<Input aria-label="成片标题文字" value={workTitle} onChange={e=>changeWorkDraft({title:e.target.value})} maxLength={120}/></label></div><label>结尾提示<Input aria-label="成片结尾提示" value={cta} onChange={e=>changeWorkDraft({cta:e.target.value})} maxLength={100}/></label><label>字幕（秒）<Input.TextArea aria-label="成片字幕时间与文字" value={captionText} onChange={e=>changeWorkDraft({captionText:e.target.value})} rows={4} placeholder={"0-3: 你要显示的字幕\n3-5: 下一条字幕"}/></label><p>字幕按你确认的时间烧录，当前不自动转写音轨。</p></>}</div>}
         {!!clips.length && <div className="studio-assembly-actions"><Button loading={workSaving} onClick={()=>void saveWork()}>保存成片配置</Button><Button type="primary" loading={busy} disabled={workSaving||workVoiceMissing} onClick={() => void assemble()}>合成作品</Button><span>{capabilities?.mock?"合成已选片段；测试响应不产生模型费用":"合成已选片段，不额外收取模型积分"}</span></div>}
         {work.map(node => <article key={node.id} className="studio-work-result"><h3>{node.title}</h3>{node.metadata?.status==="loading"?<p>合成中，可返回画布继续编辑</p>:node.metadata?.content?<><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
-          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}><Download size={15}/>下载作品</Button></>:<>{node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`}/> : <p>作品待合成</p>}</>}</article>)}
+          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}><Download size={15}/>下载作品</Button></>:<>{node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`} autoReport={false}/> : <p>作品待合成</p>}</>}</article>)}
       </>}
     </section>}
     {mode!=="storyboard"&&directorPanel}
@@ -1057,7 +1057,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <Modal title="比较并采用版本" open={!!takePicker} onCancel={()=>setTakePicker(undefined)} footer={null} width={720} getContainer={containers}>
       <div className="studio-take-grid">{(()=>{const node=nodes.find(n=>n.id===takePicker);const adopted=node?.type===CanvasNodeType.Image?node.metadata?.primaryImageId:node?.metadata?.primaryVideoId;return (node?.type===CanvasNodeType.Image?node.metadata?.images:node?.metadata?.videos)?.map((take,index)=><article className="studio-take" key={take.id}>
         <div className="studio-take-heading"><strong>版本 {index+1}</strong><span>{take.id===adopted?"已采用":take.status==="loading"?'queue' in take&&take.queue?`排队第 ${take.queue.position} 位`:"生成中":take.status==="error"?"生成失败":"可采用"}</span></div>
-        {take.status==="success"&&take.storageKey?(node?.type===CanvasNodeType.Image?<SignedImage src={take.content} storageKey={take.storageKey} alt={`版本 ${index+1}`}/>:<SignedVideo src={take.content} storageKey={take.storageKey} controls preload="metadata"/>):<p className="studio-take-placeholder" role="status">{take.status==="error"?<StudioErrorNotice error={{code: take.errorCode || "STUDIO_VIDEO_FAILED",message: take.errorDetails || "本条生成失败，其他候选可继续采用。",logId: take.errorLogId,taskId: take.id}} once={`take:${take.id}`}/>:'queue' in take&&take.queue?studioQueueNotice(take.queue):"正在生成，完成后可预览并采用。"}</p>}
+        {take.status==="success"&&take.storageKey?(node?.type===CanvasNodeType.Image?<SignedImage src={take.content} storageKey={take.storageKey} alt={`版本 ${index+1}`}/>:<SignedVideo src={take.content} storageKey={take.storageKey} controls preload="metadata"/>):<p className="studio-take-placeholder" role="status">{take.status==="error"?<StudioErrorNotice error={{code: take.errorCode || "STUDIO_VIDEO_FAILED",message: take.errorDetails || "本条生成失败，其他候选可继续采用。",logId: take.errorLogId,taskId: take.id}} once={`take:${take.id}`} autoReport={false}/>:'queue' in take&&take.queue?studioQueueNotice(take.queue):"正在生成，完成后可预览并采用。"}</p>}
         <Button disabled={take.status!=="success"||!take.storageKey||take.id===adopted} onClick={()=>{if(node)chooseTake(node.id,take.id);void saveStudioDocument(projectId).catch(e=>message.error(e));}}>{take.id===adopted?"已采用此版本":`采用版本 ${index+1}`}</Button></article>);})()}</div>
 
     </Modal>

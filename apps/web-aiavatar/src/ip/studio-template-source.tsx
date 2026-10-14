@@ -57,7 +57,7 @@ export function StudioTemplateSource({projectId}:{projectId:string}) {
           {studioTaskQueued(s.run)&&<p>{studioQueueNotice(s.run?.queue)}</p>}
           {s.outputRole==='sheet'&&<p>这是一张人物设定图，可整张作为角色参考。拍摄新画面时指定所需视角；图生视频先生成单独的镜头画面。</p>}
           {s.url&&(isVideo(s)?<SignedVideo src={s.url} storageKey={s.storageKey} controls preload="metadata" aria-label={`${s.title}结果`} style={{width:'100%',maxHeight:280}}/>:<SignedImage src={s.url} storageKey={s.storageKey} alt={`${s.title}结果`} style={{width:120,height:150,objectFit:'contain',borderRadius:8}}/>)}
-          {s.run?.errorMessage&&<p><StudioErrorNotice error={studioRunError(s.run)} once={`run:${s.run.id}`}/></p>}
+          {s.run?.errorMessage&&<p><StudioErrorNotice error={studioRunError(s.run)} once={`run:${s.run.id}`} autoReport={false}/></p>}
           {s.status==='stale'&&<p>原产物保留；只重做此步骤，不会自动重跑其他步骤。</p>}
           <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
             <Button disabled={busy||s.cost===undefined||!canExecute(s)} onClick={()=>void prepare(s)}>{s.run?'只重做此步骤':'生成此步骤'}{s.cost!==undefined?` · ${s.cost} 积分`:''}</Button>

@@ -72,7 +72,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         <div className="studio-flow-placeholder"><button type="button" className="studio-flow-media-action nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button></div>}
     </div>
     {meta?.status === 'loading' && !mediaGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
-    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label="生成失败 · 查看错误"/></div>)}
+    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label="生成失败 · 查看错误" autoReport={false}/></div>)}
   </article>;
 }
 const nodeTypes = { studio: StudioFlowCard };

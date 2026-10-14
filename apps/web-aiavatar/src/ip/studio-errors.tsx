@@ -88,7 +88,7 @@ function ErrorDetails({ error }: { error: StudioError }) {
 export function StudioNotifications() {
   const [api, holder] = notification.useNotification({ placement: 'topRight', top: 64, stack: false });
   useEffect(() => {
-    const show = (error: StudioError) => api.error({ key: `studio-error:${keyOf(error)}`, title: '操作未完成', description: <ErrorDetails key={studioErrorText(error)} error={error}/>, duration: 0, placement: 'topRight', className: 'studio-error-notification', role: 'alert' });
+    const show = (error: StudioError) => api.error({ key: `studio-error:${keyOf(error)}`, title: '操作未完成', description: <ErrorDetails key={studioErrorText(error)} error={error}/>, duration: 10, showProgress: true, pauseOnHover: true, placement: 'topRight', className: 'studio-error-notification', role: 'alert' });
     return subscribeStudioErrors(show);
   }, [api]);
   return <ConfigProvider theme={{ components: { Notification: { width: 'min(440px, calc(100vw - 48px))' } }, token: { colorPrimary: '#192229', borderRadius: 13, fontFamily: 'var(--ip-font-sans, sans-serif)' } }}>{holder}</ConfigProvider>;
@@ -112,11 +112,11 @@ export function useStudioErrorState(initial = ''): [string, (value: unknown | ((
   return [error, update];
 }
 
-/** Failed state stays discoverable; full diagnostics only appear in the global layer. */
-export function StudioErrorNotice({ error, once, label = '查看错误详情' }: { error: ErrorInput; once?: string; label?: string }) {
+/** Historical failures keep a details button; only live failures should open a notification on mount. */
+export function StudioErrorNotice({ error, once, label = '查看错误详情', autoReport = true }: { error: ErrorInput; once?: string; label?: string; autoReport?: boolean }) {
   const normalized = normalizeStudioError(error);
   const identity = once || keyOf(normalized);
-  useEffect(() => { if (error) reportStudioError(error, { once: identity }); }, [identity, error && normalized.code, error && normalized.message, error && normalized.logId]);
+  useEffect(() => { if (error && autoReport) reportStudioError(error, { once: identity }); }, [autoReport, identity, error && normalized.code, error && normalized.message, error && normalized.logId]);
   if (!error) return null;
   if (normalized.code === "IP_RUN_CANCELLED") return <span role="status">已停止</span>;
   return <button type="button" className="studio-error-link nodrag nopan" onClick={event => { event.stopPropagation(); reportStudioError(error); }}>{label}</button>;

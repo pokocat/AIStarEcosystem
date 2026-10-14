@@ -252,7 +252,7 @@ export function StudioAssistant({projectId,conversations,setConversations,nodes,
         {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
 
         <p className="studio-assistant-send-hint">对话存入历史，采用后才修改画布</p>
-        {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)}/></p>}
+        {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)} autoReport={!!missingIds.length || !!contextError}/></p>}
       </div>}>
     <div className="studio-assistant">
       <div className="studio-assistant-toolbar"><span>{modeNames[mode]}</span><div><Button icon={<Plus size={15}/>} disabled={busy||reading} onClick={()=>selectConversation()}>新对话</Button><Button aria-label="创作设置与历史" aria-expanded={toolsOpen} icon={<SlidersHorizontal size={16}/>} onClick={()=>setToolsOpen(v=>!v)}/></div></div>

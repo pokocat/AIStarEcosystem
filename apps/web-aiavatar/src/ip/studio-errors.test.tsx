@@ -2,7 +2,7 @@
 import { render, fireEvent, screen, cleanup, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client/client';
-import { StudioNotifications, StudioErrorNotice, normalizeStudioError, studioErrorText, reportStudioError } from './studio-errors';
+import { StudioNotifications, StudioErrorNotice, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures } from './studio-errors';
 const api = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('antd', () => ({ notification: { useNotification: () => [api, null] }, ConfigProvider: ({children}: any) => children, Button: ({icon, children, ...props}: any) => <button {...props}>{children}</button>, App: { useApp: () => ({message: {}}) } }));
 beforeEach(() => api.error.mockReset());
@@ -13,7 +13,7 @@ it('keeps structured code, safe message and the real lookup ID while supporting 
   expect(normalizeStudioError('历史失败 · 追查号 IPR-old').logId).toBeUndefined();
   expect(studioErrorText(error)).toContain('logId：ABCDEF234567');
 });
-it('shows persistent top-right notifications, deduplicates rerenders and enriches restored failures', async () => {
+it('shows countdown notifications, deduplicates rerenders and enriches live failures', async () => {
   render(<StudioNotifications/>);
   const view = render(<StudioErrorNotice error={{code: 'UPSTREAM_400', message: '图片未生成', taskId: 'r'}} once="run:r"/>);
   await waitFor(() => expect(api.error).toHaveBeenCalledTimes(1));
@@ -21,9 +21,20 @@ it('shows persistent top-right notifications, deduplicates rerenders and enriche
   expect(api.error).toHaveBeenCalledTimes(1);
   view.rerender(<StudioErrorNotice error={{code: 'UPSTREAM_400', message: '图片未生成', taskId: 'r', logId: 'ABCDEF234567'}} once="run:r"/>);
   await waitFor(() => expect(api.error).toHaveBeenCalledTimes(2));
-  expect(api.error.mock.lastCall![0]).toMatchObject({placement: 'topRight', duration: 0, key: 'studio-error:r'});
+  expect(api.error.mock.lastCall![0]).toMatchObject({placement: 'topRight', duration: 10, showProgress: true, pauseOnHover: true, key: 'studio-error:r'});
   fireEvent.click(screen.getByRole('button', {name: '查看错误详情'}));
   expect(api.error).toHaveBeenCalledTimes(3);
+});
+it('keeps restored task failures inspectable without replaying notifications after refresh', async () => {
+  render(<StudioNotifications/>);
+  const oldFailure = {code: 'INTERNAL_ERROR', message: '服务器处理请求失败，请稍后重试', taskId: 'old-run', logId: 'UP8XZNEU59WP'};
+  render(<StudioErrorNotice error={oldFailure} once="run:old-run" autoReport={false}/>);
+  expect(api.error).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', {name: '查看错误详情'}));
+  expect(api.error).toHaveBeenCalledTimes(1);
+  expect(api.error.mock.lastCall![0].key).toBe('studio-error:old-run');
+  reportStudioRunFailures({id: 'new-run', status: 'failed', errorCode: 'INTERNAL_ERROR', errorMessage: '新任务失败', output: {}} as any);
+  await waitFor(() => expect(api.error).toHaveBeenCalledTimes(2));
 });
 it('copies all diagnostic fields through the visible notification action', async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
