@@ -52,8 +52,9 @@
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
 | [`docs/ip-studio-plan.md`](ip-studio-plan.md) | **AI IP 工作台设计真源**（前端 v0.190 起并入 `apps/web-aiavatar`） | 个人照片 + 内置工作流 → 稳定产出同一人物同一风格的 AI IP 形象组，发布为 AiAvatar 资产（`DapAvatar` + `DapLook`）。决策：共用 aiavatar 开通；⚠️ §0 里「新桌面子应用」与「React Flow 画布」两条**均已被后续版本推翻** —— v0.157 改为整体 vendor infinite-canvas，v0.190 并回 web-aiavatar、全部复用 dap 生成链；§2 节点/运行契约、§3 五层一致性锁定、§4 服务端、§9 并行分工与文件所有权；v0.201 完整生成记录 / 版本恢复 / 云端画布素材（last-reviewed 2026-10-07） |
-| [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 本地完整实现，未发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
-| [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **本地完整实施，未发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
+| [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
+| [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **已生产发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
+| [企业积分生产发布](ip-studio-enterprise-production-release.md) | **f068b51d · 已开启** | 三服务发布、V56–V58、线上页面与存量钱包/账本/开通核对、备份及回退边界（last-reviewed 2026-10-15） |
 | [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
 | [企业积分完整交付验收](ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |

@@ -1,6 +1,6 @@
 # Studio 企业积分管理：开发任务
 
-> 2026-10-15 · 对应 [方案 v0.4](ip-studio-team-accounts-plan.md) · 本地完整实施，执行/验收状态以 TODO 和完整验收为准。
+> 2026-10-15 · 对应 [方案 v0.4](ip-studio-team-accounts-plan.md) · 已生产发布，部署与验收见 [发布记录](ip-studio-enterprise-production-release.md)，任务执行状态以 TODO 为准。
 > 已确认：企业分配积分仍归企业、可回收；产品开通沿用现有逻辑，不做企业席位。本文描述交付与验收，[TODO](../TODO.md) 统一记录执行状态。
 
 ## 1. 开发顺序

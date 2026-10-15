@@ -1040,7 +1040,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 - E05：`points/allocate|reclaim/preview` → `points/allocate|reclaim`，批次查询 `points/batches/{batchId}`、流水分页 `points/transfers`。1–100人、确认指纹、正文幂等、整批原子，保留来源、不回收冻结。
 - E06：产品侧 `wallet`、`member-balances`、`recharges`；平台 `/api/admin/finance/enterprise-recharges` 列表、`/{orderId}/confirm|reject|refund-preview|refund`。核准固定企业根钱包；原单有冻结先等结算，退款按原单可用额和原比例人民币登记，不自动打款。
 - V57：企业现金凭据唯一、充值申请/核准/退款快照、原单积分来源及冻结分配。原个人订单与余额不改，旧收银台/核准/退款入口拒绝企业单；人工单不走在线支付超时关单。
-- Studio `/enterprise` 和后台充值订单的企业页接真接口，沿用原组件；前端入口须构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`。成员管理、模型/在途策略、付款选择与消费报表接入真接口；默认关闭，仅隔离环境验收。平台财务 controller 不随新企业入口开关关闭。
+- Studio `/enterprise` 和后台充值订单的企业页接真接口，沿用原组件；前端入口须构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`。成员管理、模型/在途策略、付款选择与消费报表接入真接口；代码默认关闭；2026-10-15 生产已显式开启，迁移及资金核对见 [发布记录](../../docs/ip-studio-enterprise-production-release.md)。平台财务 controller 不随新企业入口开关关闭。
 - 验收：`EnterpriseFoundationTest`（H2或独立MySQL）、`EnterpriseMigrationTest`、`EnterpriseFeatureGateTest`，加旧钱包/财务权限回归。MySQL 测试使用一次性独立库，绝不能指向开发业务库或生产库。
 
 - V58：`aep_enterprise_billing_authorizations` 固定每笔实际任务的付款、成员版本、最终模型/冻结金额、撤销与终态；`aep_enterprise_lifecycle_operations` 保存正文幂等回执。`credit_lot_holds.released_amount` 标出本次释放的原充值来源，避免误回收重入后的新分配。
