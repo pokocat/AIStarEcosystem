@@ -22,6 +22,7 @@ import {
   type RechargeOrderStatus,
 } from "@/types/recharge-order";
 import type { StatusTone } from "@/constants/status";
+import { EnterpriseRechargeOrders } from "./enterprise-orders";
 
 type Filter = RechargeOrderStatus | "all";
 
@@ -98,6 +99,17 @@ function fmtTime(iso?: string): string {
 }
 
 export default function AdminRechargeOrdersPage() {
+  const [scope, setScope] = React.useState<"personal" | "enterprise">("personal");
+  return <div className="space-y-4">
+    <nav className="flex gap-2" aria-label="充值账户类型">
+      <Button variant={scope === "personal" ? "default" : "outline"} aria-pressed={scope === "personal"} onClick={() => setScope("personal")}>个人订单</Button>
+      <Button variant={scope === "enterprise" ? "default" : "outline"} aria-pressed={scope === "enterprise"} onClick={() => setScope("enterprise")}>企业订单</Button>
+    </nav>
+    {scope === "enterprise" ? <EnterpriseRechargeOrders /> : <PersonalRechargeOrdersPage />}
+  </div>;
+}
+
+function PersonalRechargeOrdersPage() {
   const toast = useToast();
   const confirm = useConfirm();
 

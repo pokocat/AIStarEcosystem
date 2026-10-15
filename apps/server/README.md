@@ -1029,3 +1029,25 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 ### Studio 错误追查（2026-10-13）
 
 同步错误响应增加可选 error.logId；原 message 后缀保持兼容。异步 Studio 失败由 StudioRunErrorLog 关联现有 ErrorLog，把 ID 保存在 IpRun.output.logId 并投影 IpRunDto.logId；保存部分产物，取消不记录为故障。视频原 Job 失败信息保存真实追查号，videoCandidates 返回 errorCode/logId。ErrorLogService.recordTask 用独立事务和明确 owner/task 上下文，记录失败不得回滚任务或积分结算。无数据库迁移，历史任务不补造故障记录。
+
+## 企业主子账号（2026-10-15，本地实施，未生产发布）
+
+- 设计：[精简方案](../../docs/ip-studio-team-accounts-plan.md)、[任务拆分](../../docs/ip-studio-enterprise-development-tasks.md)。类型真源 `packages/types/src/enterprise.ts`，业务代码 `aep/enterprise`。
+- 基础 API：`/api/v1/ip-studio/enterprises` 的创建/当前企业、成员分页、邀请/接受/撤销、角色能力、模型策略、主账号移交和审计。默认 `AEP_ENTERPRISE_ENABLED=false`，显式开启才注册 controller；仍要求现有 aiavatar 开通和手机号验证。
+- V56 数据模型：`aep_enterprises`、`aep_enterprise_members`、`aep_enterprise_current`（userId主键）、`aep_enterprise_invitations`、`aep_enterprise_policies`、`aep_enterprise_ownership_transfers`、`aep_enterprise_audit`、`aep_enterprise_points_batches/transfers`。划拨行为由 E05 实现。
+- `aep_wallets` 新增 accountType/accountKey/enterpriseId/memberUserId，企业账户 userId 为空。旧个人钱包 ID、余额不变，accountKey 回填 personal:userId；历史账本不重写。冻结和账本补充 actor/enterprise/membership/authorization，任务和订单补充付款关联。
+- CreditService 新钱包 ID 核心与个人包装共用扣桶/冻结逻辑；终态按 hold.walletId 取钱包；企业资金锁顺序为 enterprise→按ID排序的企业wallet→hold→任务，个人仍wallet→hold；跨账户/金额/授权的引用重用409。内部划拨枚举为积分面，收入统计排除 TRANSFER_IN。
+- E05：`points/allocate|reclaim/preview` → `points/allocate|reclaim`，批次查询 `points/batches/{batchId}`、流水分页 `points/transfers`。1–100人、确认指纹、正文幂等、整批原子，保留来源、不回收冻结。
+- E06：产品侧 `wallet`、`member-balances`、`recharges`；平台 `/api/admin/finance/enterprise-recharges` 列表、`/{orderId}/confirm|reject|refund-preview|refund`。核准固定企业根钱包；原单有冻结先等结算，退款按原单可用额和原比例人民币登记，不自动打款。
+- V57：企业现金凭据唯一、充值申请/核准/退款快照、原单积分来源及冻结分配。原个人订单与余额不改，旧收银台/核准/退款入口拒绝企业单；人工单不走在线支付超时关单。
+- Studio `/enterprise` 和后台充值订单的企业页接真接口，沿用原组件；前端入口须构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`。成员管理、模型/在途策略、付款选择与消费报表接入真接口；默认关闭，仅隔离环境验收。平台财务 controller 不随新企业入口开关关闭。
+- 验收：`EnterpriseFoundationTest`（H2或独立MySQL）、`EnterpriseMigrationTest`、`EnterpriseFeatureGateTest`，加旧钱包/财务权限回归。MySQL 测试使用一次性独立库，绝不能指向开发业务库或生产库。
+
+- V58：`aep_enterprise_billing_authorizations` 固定每笔实际任务的付款、成员版本、最终模型/冻结金额、撤销与终态；`aep_enterprise_lifecycle_operations` 保存正文幂等回执。`credit_lot_holds.released_amount` 标出本次释放的原充值来源，避免误回收重入后的新分配。
+- 生成：所有 Studio 入口支持可选 `billing`，个人省略兼容；企业在 `reserve` 同事务保存授权/冻结/任务，派发前重验策略，afterCommit 派发。视频上层不二次冻结。原生run/generate/generate-video企业付款必须带clientRequestId；项目锁+持久绑定使重试读取同一任务，不二次冻结。worker 成功/失败与原账户结算同事务。
+- 生命周期：`POST /enterprises/{id}/lifecycle/preview` → `POST /lifecycle`，action 为 suspend/resume/remove/leave/close。确认指纹覆盖关系、余额与在途；停用/退出回收可用，已受理任务的晚退款回原企业。停用成员仍可查询本人余额、退出，不能发新企业任务。
+- 报表：用户 `GET /enterprises/{id}/my-balance|usage`；管理者查询全企业，普通/停用成员仅本人。平台 `/api/admin/finance/enterprises` 服务端分页检索，并有 `/{id}/wallet|member-balances|points/transfers|usage`。不返回私有文档/提示词。
+- 受理恢复：图片/视频保存原供应商路由/请求与任务号，轮询故障保留冻结；仅 SUPER_ADMIN/OPERATOR（不含纯 FINANCE_ADMIN）GET `/api/admin/material-video-jobs/{id}` 或 `/api/admin/ip-studio/runs/{id}` 核对，reconcile 可带原任务号和证据，只查询原任务。不提供无证据强制退积分或重新提交。
+- 完整结果见 [交付验收](../../docs/ip-studio-enterprise-complete-validation.md)；产品场景见 [端到端用例](../../docs/ip-studio-enterprise-scenario-acceptance.md)；发布与回退边界见 [发布准备](../../docs/ip-studio-enterprise-release-readiness.md)。
+
+受理未知而供应商明确证明原请求未受理时，运营可提交核对依据并显式确认：图片 `POST /api/admin/ip-studio/runs/{id}/release-unknown`，视频 reconcile 的 `confirmedNotAccepted=true`。仅无原供应商ID、原冻结/授权仍有效且符合未知状态时允许；审计、原任务失败、仅剩余原冻结释放/归集及授权结束同事务。已有原ID必须继续查询，不允许单凭“查不到状态”释放，也不退已成功产物的费用。

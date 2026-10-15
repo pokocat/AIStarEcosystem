@@ -34,6 +34,8 @@ export const LEDGER_TYPE_LABEL: Record<LedgerEntryType, string> = {
   unfreeze: "冻结退回",
   adjust: "平台调整",
   refund_cash: "退款回收",
+  transfer_in: "积分转入",
+  transfer_out: "积分转出",
 };
 
 /** 冻结结算那条「扣除」在类型列的叫法（见文件头：不绑定成败）。 */

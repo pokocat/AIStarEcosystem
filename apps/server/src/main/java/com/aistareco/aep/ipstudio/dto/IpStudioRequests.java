@@ -26,7 +26,11 @@ public final class IpStudioRequests {
      * @param doc 可选：运行前顺手保存最新文档，避免「先 PUT 再 POST」的竞态
      *            （客户端刚拖完线就点运行，防抖 PUT 还没落地）
      */
-    public record IpRunNodeRequest(JsonNode doc) {}
+    public record IpRunNodeRequest(JsonNode doc, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId, Long maxCost) {
+        public IpRunNodeRequest(JsonNode doc,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {this(doc,billing,clientRequestId,null);}
+        public IpRunNodeRequest(JsonNode doc,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(doc,billing,null,null);}
+        public IpRunNodeRequest(JsonNode doc) {this(doc,null,null,null);}
+    }
 
     public record IpPublishRequest(String avatarName, String masterNodeId, List<String> lookNodeIds) {}
 }

@@ -17,6 +17,11 @@ public interface WalletRepository extends JpaRepository<Wallet, String>,
 
     Optional<Wallet> findByUserId(String userId);
 
+    Optional<Wallet> findByAccountKey(String accountKey);
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select w from Wallet w where w.id=:id")
+    Optional<Wallet> findByIdForUpdate(@Param("id") String id);
+
     boolean existsByUserId(String userId);
 
     /**

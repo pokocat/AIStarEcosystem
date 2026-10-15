@@ -21,6 +21,9 @@ import java.util.*;
 
 @Service
 public class StudioLipSyncService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     @org.springframework.beans.factory.annotation.Autowired private StudioLipSyncResult results;
     @org.springframework.beans.factory.annotation.Autowired private StudioPointPricing pricing;
     private final IpProjectService projects;private final IpRunRepository runs;private final AiModelInvocationService models;
@@ -66,9 +69,12 @@ public class StudioLipSyncService {
         if(request==null)throw bad("请选择人物视频和驱动配音");
         required(request.clientRequestId(),64);required(request.nodeId(),64);
         if(request.maxCost()==null||request.maxCost()<0)throw bad("请先确认口型同步费用");
-        String fingerprint=hash(write(request));
+        ObjectNode canonical=mapper.valueToTree(request);
+        if(request.billing()==null)canonical.remove("billing");
+        String fingerprint=hash(write(canonical));
         var prior=runs.findByProjectIdAndClientRequestId(projectId,request.clientRequestId()).orElse(null);
         if(prior!=null) {
+            StudioRunBilling.requireSamePayer(prior,request.billing());
             if(!"studio-lip-sync".equals(prior.getKind())||!fingerprint.equals(prior.getInputFingerprint()))
                 throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一口型请求的素材已改变，请重新提交");
             return projects.toRunDto(prior);
@@ -80,10 +86,11 @@ public class StudioLipSyncService {
         input.putObject("_exec").put("endpointId",endpoint.getId()).put("baseUrl",endpoint.getBaseUrl().replaceAll("/$",""))
                 .put("holdTotal",price.cost()).put("billableSeconds",price.billableSeconds()).put("audioDurationSec",price.audioDurationSec()).put("creditCostPerSecond",p.rate());
         if(p.snapshot()!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(p.snapshot()));
-        if(price.cost()>0)credits.hold(user,price.cost(),IpRunService.REF_TYPE,id,"Studio 口型同步");
+        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),price.cost(),"Studio 口型同步");
+        if(enterpriseBilling==null&&price.cost()>0)credits.hold(user,price.cost(),IpRunService.REF_TYPE,id,"Studio 口型同步");
         var run=IpRun.builder().id(id).projectId(projectId).ownerUserId(user).nodeId(request.nodeId()).kind("studio-lip-sync")
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).status(IpRun.STATUS_RUNNING).stage("queued").cost(price.cost()).pct(0)
-                .inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();runs.save(run);
+                .inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();StudioRunBilling.apply(run,billing);runs.save(run);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){@Override public void afterCommit(){try{worker.execute(id);}catch(RuntimeException e){/* Scheduler resumes the durable run. */}}});
         return projects.toRunDto(run);
     }

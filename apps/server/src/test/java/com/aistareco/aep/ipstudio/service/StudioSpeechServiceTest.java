@@ -22,7 +22,7 @@ class StudioSpeechServiceTest {
     @BeforeEach void setup() {
         service=new StudioSpeechService(projects,runs,models,client,worker,credits,new ObjectMapper());
         var endpoint=AiModelEndpoint.builder().id("tts").model("qwen3-tts").baseUrl("https://api.jusuanhub.com/v1").enabled(true).build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_AUDIO,"tts")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_AUDIO,"tts","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
         when(client.voices(endpoint)).thenReturn(List.of(new SpeechVoice("Vivian","Vivian","zh-CN","preset")));
         when(runs.findByProjectIdAndClientRequestId("p","key")).thenAnswer(i->Optional.ofNullable(saved.get()));
         when(runs.save(any())).thenAnswer(i->{saved.set(i.getArgument(0));return saved.get();});
@@ -76,6 +76,43 @@ class StudioSpeechServiceTest {
         service.submit("owner","p",approved); // replay does not consult a new price
         assertEquals("STUDIO_SPEECH_PRICE_NOT_CONFIGURED",assertThrows(BusinessException.class,()->service.submit("owner","p",new SpeechRequest("other","node","tts","欢迎。","Vivian",null,8L))).getCode());
         verify(credits,times(1)).hold(anyString(),anyLong(),anyString(),anyString(),anyString());
+    }
+
+    @Test void enterprisePayerIsDurableAndReplayCannotSwitchToPersonal() {
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
+        var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString()))
+                .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership-v1","authorization"));
+        var enterprise=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,8L,null,null,selected);
+        service.submit("owner","p",enterprise);
+        assertEquals("member-wallet",saved.get().getBillingWalletId());assertEquals("membership-v1",saved.get().getMembershipId());
+        reset(models,client);service.submit("owner","p",enterprise);
+        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
+        verifyNoInteractions(credits,models,client);
+        assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",request)).getCode());
+    }
+    @Test void insufficientEnterpriseFundsOrDisallowedModelNeverFallsBackToPersonal() {
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
+        var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        var enterprise=new SpeechRequest("key","node","tts","欢迎。","Vivian",null,8L,null,null,selected);
+        for(String code:List.of("INSUFFICIENT_CREDITS","ENTERPRISE_MODEL_NOT_ALLOWED")) {
+            when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(8L),anyString()))
+                    .thenThrow(new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,code,"rejected"));
+            assertEquals(code,assertThrows(BusinessException.class,()->service.submit("owner","p",enterprise)).getCode());
+        }
+        verifyNoInteractions(credits,worker);verify(runs,never()).save(any());
+    }
+    @Test void zeroCostSupplierStillCreatesEnterpriseAuthorization() {
+        candidate.setCreditCostOverride(0L);
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
+        var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("tts"),eq(0L),anyString()))
+                .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership","authorization"));
+        service.submit("owner","p",new SpeechRequest("key","node","tts","欢迎。","Vivian",null,0L,null,null,selected));
+        assertEquals("authorization",saved.get().getBillingAuthorizationId());assertEquals(0,saved.get().getCost());verifyNoInteractions(credits);
     }
 
 }

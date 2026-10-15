@@ -7,12 +7,15 @@ import java.time.Instant;
 
 public record WalletDto(
         String id,
-        String userId,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS) String userId,
         /** v0.58：账号登录名 / 昵称（admin 结算中心钱包快照用；用户自查接口不填，wire 上省略）。 */
         String username,
         String displayName,
         /** v0.86：账号手机号（admin 财务工作台辨识用户身份；同上 owner 为 null 时省略）。 */
         String phone,
+        String accountType,
+        String enterpriseId,
+        String memberUserId,
         long totalBalance,
         long licenseBalance,
         long rechargeBalance,
@@ -32,6 +35,7 @@ public record WalletDto(
                 owner != null ? owner.getUsername() : null,
                 owner != null ? owner.getDisplayName() : null,
                 owner != null ? owner.getPhone() : null,
+                w.getAccountType(), w.getEnterpriseId(), w.getMemberUserId(),
                 w.getTotalBalance(), w.getLicenseBalance(),
                 w.getRechargeBalance(), w.getGiftBalance(),
                 w.getPendingBalance(),

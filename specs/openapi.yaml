@@ -99,41 +99,45 @@ components:
       type: object
       required: [clientRequestId, nodeId, operation, prompt]
       properties:
-        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
-        nodeId: { type: string, minLength: 1, maxLength: 64 }
-        operation: { type: string, enum: [text, script, storyboard, image, video, assemble, assistant] }
-        prompt: { type: string, maxLength: 16000 }
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        nodeId: {type: string, minLength: 1, maxLength: 64}
+        operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant ]}
+        prompt: {type: string, maxLength: 16000}
         textEdit:
           type: object
           nullable: true
-          description: '仅用于 text；prompt 是修改意图，content 是当前完整正文快照，可为空。返回 output.textRevision {summary,content}，更新原文本节点，沿用端点队列、价格上限与幂等键。'
+          description: 仅用于 text；prompt 是修改意图，content 是当前完整正文快照，可为空。返回 output.textRevision {summary,content}，更新原文本节点，沿用端点队列、价格上限与幂等键。
           required: [content]
           properties:
-            content: { type: string, maxLength: 48000 }
+            content: {type: string, maxLength: 48000}
         scriptEdit:
           type: object
           nullable: true
-          description: '仅用于 assistant 的全屏剧本编辑改稿；沿用原端点队列、价格上限与幂等键。返回 output.scriptRevision {summary,markdown}，不产生生成计划。'
+          description: 仅用于 assistant 的全屏剧本编辑改稿；沿用原端点队列、价格上限与幂等键。返回 output.scriptRevision {summary,markdown}，不产生生成计划。
           required: [markdown]
           properties:
-            markdown: { type: string, minLength: 1, maxLength: 48000 }
-        references: { type: array, maxItems: 32, items: { $ref: '#/components/schemas/StudioReference' } }
-        model: { type: string, nullable: true }
-        size: { type: string, nullable: true }
-        count: { type: integer, enum: [1, 2, 4], nullable: true, description: '图片张数或视频条数，默认 1。视频作为一个幂等批次提交。' }
-        durationSec: { type: integer, nullable: true }
-        aspectRatio: { type: string, nullable: true }
-        maxCost: { type: integer, minimum: 0, nullable: true, description: 'Approved total ceiling for the whole batch, never a caller-defined price. An increase rejects before freeze.' }
-        episodeNo: { type: integer, minimum: 1, maximum: 50, nullable: true }
-        settings: { $ref: '#/components/schemas/StudioScriptSettings' }
-        packaging: { $ref: '#/components/schemas/StudioPackaging' }
-        video: { $ref: '#/components/schemas/StudioVideoSettings' }
-        mode: { type: string, enum: [general, original, adapt, director], nullable: true }
-        contextNodeIds: { type: array, maxItems: 16, items: { type: string } }
-        readVisuals:
-          type: boolean
-          nullable: true
-          description: '仅用于assistant。true需要匹配模型的supportsVision声明；读取所选图片和60秒内视频的四帧，最多16张画面，不含音轨。缺省按历史纯文字路径；运行快照只存本人素材key，不存URL或图像字节。读取失败释放原冻结，不降级为无图成功。'
+            markdown: {type: string, minLength: 1, maxLength: 48000}
+        references:
+          type: array
+          maxItems: 32
+          items: {$ref: '#/components/schemas/StudioReference'}
+        model: {type: string, nullable: true}
+        size: {type: string, nullable: true}
+        count: {type: integer, enum: [1, 2, 4], nullable: true, description: 图片张数或视频条数，默认 1。视频作为一个幂等批次提交。}
+        durationSec: {type: integer, nullable: true}
+        aspectRatio: {type: string, nullable: true}
+        maxCost: {type: integer, minimum: 0, nullable: true, description: 'Approved total ceiling for the whole batch, never a caller-defined
+            price. An increase rejects before freeze.'}
+        episodeNo: {type: integer, minimum: 1, maximum: 50, nullable: true}
+        settings: {$ref: '#/components/schemas/StudioScriptSettings'}
+        packaging: {$ref: '#/components/schemas/StudioPackaging'}
+        video: {$ref: '#/components/schemas/StudioVideoSettings'}
+        mode: {type: string, enum: [general, original, adapt, director], nullable: true}
+        contextNodeIds:
+          type: array
+          maxItems: 16
+          items: {type: string}
+        readVisuals: {type: boolean, nullable: true, description: 仅用于assistant。true需要匹配模型的supportsVision声明；读取所选图片和60秒内视频的四帧，最多16张画面，不含音轨。缺省按历史纯文字路径；运行快照只存本人素材key，不存URL或图像字节。读取失败释放原冻结，不降级为无图成功。}
         history:
           type: array
           maxItems: 16
@@ -141,8 +145,9 @@ components:
             type: object
             required: [role, content]
             properties:
-              role: { type: string, enum: [user, assistant] }
-              content: { type: string, maxLength: 4000 }
+              role: {type: string, enum: [user, assistant]}
+              content: {type: string, maxLength: 4000}
+        billing: {$ref: '#/components/schemas/EnterpriseBillingSelection'}
     StudioLipSyncInput:
       type: object
       required: [model, videoStorageKey, audioStorageKey]
@@ -152,13 +157,15 @@ components:
         audioStorageKey: { type: string, description: '本人 WAV 配音；最多60秒、25MiB，不得长于人物视频' }
     StudioLipSyncRequest:
       allOf:
-        - { $ref: '#/components/schemas/StudioLipSyncInput' }
-        - type: object
-          required: [clientRequestId, nodeId, maxCost]
-          properties:
-            clientRequestId: { type: string, maxLength: 64 }
-            nodeId: { type: string, maxLength: 64 }
-            maxCost: { type: integer, minimum: 0 }
+      - {$ref: '#/components/schemas/StudioLipSyncInput'}
+      - type: object
+        required: [clientRequestId, nodeId, maxCost]
+        properties:
+          clientRequestId: {type: string, maxLength: 64}
+          nodeId: {type: string, maxLength: 64}
+          maxCost: {type: integer, minimum: 0}
+      properties:
+        billing: {$ref: '#/components/schemas/EnterpriseBillingSelection'}
     StudioLipSyncQuote:
       type: object
       properties:
@@ -183,15 +190,16 @@ components:
       type: object
       required: [clientRequestId, nodeId, model, text, speaker, maxCost]
       properties:
-        clientRequestId: { type: string, maxLength: 64 }
-        nodeId: { type: string, maxLength: 64 }
-        model: { type: string, description: 'DAP_AUDIO 白名单 endpointId' }
-        text: { type: string, maxLength: 600 }
-        speaker: { type: string, description: '当前官方音色 displayName，不是本人训练音色 id' }
-        instruct: { type: string, maxLength: 160 }
-        maxCost: { type: integer, minimum: 0 }
-        avatarId: { type: string, nullable: true }
-        voiceId: { type: string, nullable: true, description: '精确 DapVoice 版本；须属于 avatarId，speaker/instruct 必须匹配。省略表示临时预设，不改变人物默认。' }
+        clientRequestId: {type: string, maxLength: 64}
+        nodeId: {type: string, maxLength: 64}
+        model: {type: string, description: DAP_AUDIO 白名单 endpointId}
+        text: {type: string, maxLength: 600}
+        speaker: {type: string, description: 当前官方音色 displayName，不是本人训练音色 id}
+        instruct: {type: string, maxLength: 160}
+        maxCost: {type: integer, minimum: 0}
+        avatarId: {type: string, nullable: true}
+        voiceId: {type: string, nullable: true, description: 精确 DapVoice 版本；须属于 avatarId，speaker/instruct 必须匹配。省略表示临时预设，不改变人物默认。}
+        billing: {$ref: '#/components/schemas/EnterpriseBillingSelection'}
     StudioVoiceProfile:
       type: object
       required: [voiceId, avatarId, name, version, speaker, sourceRunId]
@@ -505,7 +513,7 @@ components:
             supportsSubjectReference: { type: boolean, nullable: true }
             maxDurationSec: { type: integer, nullable: true }
             minDurationSec: { type: integer, nullable: true, description: '视频时长下限（协议硬边界；null=未知）。ip-studio /models 的 video 项会填；前端据此夹时长滑杆' }
-        creditCost: { type: integer, description: 积分单价（override ?? 带货线默认价） }
+        creditCost: { type: integer, description: '积分单价（override ?? 带货线默认价）' }
         billingUnit: { type: string, enum: [per_call, per_second], description: per_second 时实付 = creditCost × duration_sec }
         effectiveMinDurationSec: { type: integer, nullable: true, description: 有效时长下限（协议硬边界；null=无已知下限） }
         effectiveMaxDurationSec: { type: integer, nullable: true, description: 有效时长上限（协议 ∩ capability；null=无已知上限） }
@@ -1867,10 +1875,13 @@ components:
                  giftBalance, pendingBalance, createdAt, updatedAt]
       properties:
         id:               { type: string }
-        userId:           { type: string }
+        userId:           { type: string, nullable: true }
         username:         { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
         displayName:      { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
         phone:            { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
+        accountType: { type: string, enum: [personal, enterprise, enterprise_member] }
+        enterpriseId: { type: string, nullable: true }
+        memberUserId: { type: string, nullable: true }
         totalBalance:     { type: integer }
         licenseBalance:   { type: integer, description: license 核销累计入账 }
         rechargeBalance:  { type: integer, description: 充值累计入账 }
@@ -1883,30 +1894,75 @@ components:
       type: string
       description: |
         不可变流水分类。所有钱包余额变更必须走 ledger，禁止直接 UPDATE 余额列。
-        v0.33+: 完整覆盖 server LedgerEntry.LedgerEntryType 10 种类型；
+        覆盖 server LedgerEntry.LedgerEntryType，包含资金面退款与企业内部划拨；
         freeze/unfreeze 是 hold/release 生命周期事件，spend 是 commitHold 真扣。
-      enum: [license_grant, recharge, refund, income, gift, spend, withdraw, freeze, unfreeze, adjust]
+      enum: [license_grant, recharge, refund, income, gift, spend, withdraw, freeze, unfreeze, adjust, refund_cash, transfer_in, transfer_out]
 
     LedgerEntry:
       type: object
       description: 不可变流水条目。新增即追加、不可改、不可删。
-      required: [id, walletId, userId, type, amount, balanceAfter, description, createdAt]
+      required:
+      - id
+      - walletId
+      - userId
+      - type
+      - amount
+      - balanceAfter
+      - description
+      - createdAt
       properties:
-        id:            { type: string }
-        walletId:      { type: string }
-        userId:        { type: string }
-        username:      { type: string, nullable: true, description: 'v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）' }
-        displayName:   { type: string, nullable: true, description: 'v0.58：账号昵称（同上）' }
-        phone:         { type: string, nullable: true, description: 'v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）' }
-        type:          { $ref: '#/components/schemas/LedgerEntryType' }
-        amount:        { type: integer, description: 正数=入账，负数=出账 }
-        balanceAfter:  { type: integer, description: 入账后总余额（冗余便于审计） }
-        description:   { type: string }
-        referenceId:   { type: string, nullable: true, description: 关联业务实体 id }
-        referenceType: { type: string, nullable: true, description: '"song_revenue" / "nft_sale" / "license_key" 等' }
-        createdAt:     { type: string, format: date-time }
-
-    # ── v0.4：充值套餐 / 充值请求/响应（小程序"我的"页 + 充值页消费） ──
+        id:
+          type: string
+        walletId:
+          type: string
+        userId:
+          type: string
+          nullable: true
+        username:
+          type: string
+          nullable: true
+          description: v0.58：账号登录名（admin 结算中心视图回填；用户自查接口省略）
+        displayName:
+          type: string
+          nullable: true
+          description: v0.58：账号昵称（同上）
+        phone:
+          type: string
+          nullable: true
+          description: v0.86：账号手机号（admin 财务工作台辨识用户身份；用户自查省略）
+        type:
+          $ref: '#/components/schemas/LedgerEntryType'
+        amount:
+          type: integer
+          description: 正数=入账，负数=出账
+        balanceAfter:
+          type: integer
+          description: 入账后总余额（冗余便于审计）
+        description:
+          type: string
+        referenceId:
+          type: string
+          nullable: true
+          description: 关联业务实体 id
+        referenceType:
+          type: string
+          nullable: true
+          description: '"song_revenue" / "nft_sale" / "license_key" 等'
+        createdAt:
+          type: string
+          format: date-time
+        enterpriseId:
+          type: string
+          nullable: true
+        actorUserId:
+          type: string
+          nullable: true
+        membershipId:
+          type: string
+          nullable: true
+        billingAuthorizationId:
+          type: string
+          nullable: true
     RechargePackage:
       type: object
       required: [id, credits, priceCents, tag, recommended]
@@ -2153,7 +2209,7 @@ components:
         clientRequestId: { type: string, description: 幂等键，同值重复提交返回同一任务且不重复扣费 }
         artistId:        { type: string, description: 可选；不传则作品直接归属当前账号 }
         prompt:          { type: string }
-        lyrics:          { type: string, description: 支持 [verse]/[chorus] 结构标签；优先级高于 prompt }
+        lyrics:          { type: string, description: '支持 [verse]/[chorus] 结构标签；优先级高于 prompt' }
         genre:           { type: string }
         mood:            { type: string }
         timbre:          { type: string }
@@ -3514,7 +3570,7 @@ components:
         id: { type: string, example: IPR-7b21de40 }
         projectId: { type: string }
         nodeId: { type: string }
-        kind: { type: string, enum: [identity, generate, studio-text, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt] }
+        kind: { type: string, enum: [identity, generate, studio-text, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt ] }
         status: { type: string, enum: [running, done, failed] }
         stage: { type: string, nullable: true, description: 'queued / prompt.compile / identity.extract / image.generate.N / storage.persist / done / failed' }
         pct: { type: integer }
@@ -3732,10 +3788,11 @@ components:
       type: object
       required: [clientRequestId, maxCost]
       properties:
-        clientRequestId: { type: string, maxLength: 64 }
-        maxCost: { type: integer, minimum: 0 }
-        replaceRunId: { type: string }
-        prompt: { type: string, maxLength: 16000, description: 本次实例图片指令覆盖；不修改发布配方和引用 }
+        clientRequestId: {type: string, maxLength: 64}
+        maxCost: {type: integer, minimum: 0}
+        replaceRunId: {type: string}
+        prompt: {type: string, maxLength: 16000, description: 本次实例图片指令覆盖；不修改发布配方和引用}
+        billing: {$ref: '#/components/schemas/EnterpriseBillingSelection'}
     StudioTemplateAcceptRequest:
       type: object
       required: [runId, storageKey, accepted]
@@ -4392,6 +4449,535 @@ components:
         title: { type: string, minLength: 1, maxLength: 40, description: 去首尾空白后 1–40 个字 }
         description: { type: string, nullable: true, maxLength: 200 }
         official: { type: boolean, description: 发布为官方模板（全员可见）；只有运营账号能传 true（服务端查库判定） }
+
+    EnterpriseCapabilities:
+      type: object
+      required: [pointsManage, billingRead, rechargeRequest]
+      properties:
+        pointsManage: {type: boolean}
+        billingRead: {type: boolean}
+        rechargeRequest: {type: boolean}
+    Enterprise:
+      type: object
+      required: [id, name, ownerUserId, status, version, createdAt, updatedAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        name: {type: string, minLength: 1, maxLength: 128}
+        ownerUserId: {type: string, minLength: 1, maxLength: 64}
+        status: {type: string, enum: [active, closing, closed]}
+        version: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+        updatedAt: {type: string, format: date-time}
+    EnterpriseMember:
+      type: object
+      required: [id, enterpriseId, userId, displayName, role, status, capabilities, version, joinedAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        userId: {type: string, minLength: 1, maxLength: 64}
+        displayName: {type: string}
+        role: {type: string, enum: [owner, manager, member]}
+        status: {type: string, enum: [active, suspended, removed]}
+        capabilities: {$ref: '#/components/schemas/EnterpriseCapabilities'}
+        version: {type: integer, minimum: 0}
+        joinedAt: {type: string, format: date-time}
+    EnterpriseContext:
+      type: object
+      required: [enterprise, member, permissions]
+      properties:
+        enterprise: {$ref: '#/components/schemas/Enterprise'}
+        member: {$ref: '#/components/schemas/EnterpriseMember'}
+        permissions:
+          type: array
+          items: {type: string}
+    EnterpriseCreateRequest:
+      type: object
+      required: [name, clientRequestId]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 128}
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+    EnterpriseInvitationRequest:
+      type: object
+      required: [clientRequestId]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+    EnterpriseInvitation:
+      type: object
+      required: [id, enterpriseId, status, expiresAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        status: {type: string, enum: [pending, accepted, revoked, expired]}
+        expiresAt: {type: string, format: date-time}
+    EnterpriseInvitationCreated:
+      type: object
+      required: [invitation]
+      properties:
+        invitation: {$ref: '#/components/schemas/EnterpriseInvitation'}
+        token: {type: string, description: 仅初次创建返回；重试不再次暴露，不能记录到日志}
+    EnterpriseInvitationAcceptRequest:
+      type: object
+      required: [token]
+      properties:
+        token: {type: string, minLength: 1, maxLength: 256}
+    EnterpriseMemberUpdateRequest:
+      type: object
+      required: [role, capabilities, version]
+      properties:
+        role: {type: string, enum: [manager, member]}
+        capabilities: {$ref: '#/components/schemas/EnterpriseCapabilities'}
+        version: {type: integer, minimum: 0}
+    EnterprisePolicy:
+      type: object
+      required: [enterpriseId, allowedEndpointIds, maxActiveJobs, version]
+      properties:
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        allowedEndpointIds:
+          type: array
+          items: {type: string, minLength: 1, maxLength: 64}
+          maxItems: 100
+          uniqueItems: true
+        maxActiveJobs: {type: integer, minimum: 1, maximum: 100}
+        version: {type: integer, minimum: 0}
+    EnterprisePolicyUpdateRequest:
+      type: object
+      required: [allowedEndpointIds, maxActiveJobs, version]
+      properties:
+        allowedEndpointIds:
+          type: array
+          items: {type: string, minLength: 1, maxLength: 64}
+          maxItems: 100
+          uniqueItems: true
+        maxActiveJobs: {type: integer, minimum: 1, maximum: 100}
+        version: {type: integer, minimum: 0}
+    EnterpriseOwnershipRequest:
+      type: object
+      required: [targetMemberId, clientRequestId]
+      properties:
+        targetMemberId: {type: string, minLength: 1, maxLength: 64}
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+    EnterpriseOwnershipTransfer:
+      type: object
+      required: [id, enterpriseId, fromUserId, toUserId, status, expiresAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        fromUserId: {type: string, minLength: 1, maxLength: 64}
+        toUserId: {type: string, minLength: 1, maxLength: 64}
+        status: {type: string, enum: [pending, accepted, expired]}
+        expiresAt: {type: string, format: date-time}
+    EnterpriseAudit:
+      type: object
+      required: [id, enterpriseId, actorUserId, action, targetId, summary, createdAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        actorUserId: {type: string, minLength: 1, maxLength: 64}
+        action: {type: string}
+        targetId: {type: string, minLength: 1, maxLength: 64}
+        summary: {type: string}
+        createdAt: {type: string, format: date-time}
+    EnterpriseWallet:
+      type: object
+      required: [id, accountType, enterpriseId, memberUserId, totalBalance, licenseBalance, rechargeBalance, giftBalance, pendingBalance]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        accountType: {type: string, enum: [enterprise, enterprise_member]}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        memberUserId: {type: string, nullable: true}
+        totalBalance: {type: integer, minimum: 0}
+        licenseBalance: {type: integer, minimum: 0}
+        rechargeBalance: {type: integer, minimum: 0}
+        giftBalance: {type: integer, minimum: 0}
+        pendingBalance: {type: integer, minimum: 0}
+      x-implementation-status: planned
+    EnterprisePointsRequest:
+      type: object
+      required: [clientRequestId, confirmationFingerprint, items]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        confirmationFingerprint: {type: string, minLength: 64, maxLength: 64}
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/EnterprisePointsItem'}
+    EnterprisePointsTransfer:
+      type: object
+      required: [id, batchId, enterpriseId, memberId, direction, amount, status, createdAt, fromWalletId, toWalletId, outLedgerId, inLedgerId,
+        fromGift, fromLicense, fromRecharge]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        batchId: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        memberId: {type: string, minLength: 1, maxLength: 64}
+        direction: {type: string, enum: [allocate, reclaim]}
+        amount: {type: integer, minimum: 1}
+        status: {type: string, enum: [done]}
+        createdAt: {type: string, format: date-time}
+        fromWalletId: {type: string, minLength: 1, maxLength: 64}
+        toWalletId: {type: string, minLength: 1, maxLength: 64}
+        outLedgerId: {type: string, minLength: 1, maxLength: 64}
+        inLedgerId: {type: string, minLength: 1, maxLength: 64}
+        fromGift: {type: integer, minimum: 0, maximum: 9007199254740991}
+        fromLicense: {type: integer, minimum: 0, maximum: 9007199254740991}
+        fromRecharge: {type: integer, minimum: 0, maximum: 9007199254740991}
+        memberName: {type: string}
+    EnterprisePointsBatch:
+      type: object
+      required: [id, enterpriseId, direction, totalAmount, transfers, createdAt]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        direction: {type: string, enum: [allocate, reclaim]}
+        totalAmount: {type: integer, minimum: 1}
+        transfers:
+          type: array
+          items: {$ref: '#/components/schemas/EnterprisePointsTransfer'}
+        createdAt: {type: string, format: date-time}
+    EnterpriseRechargeRequest:
+      type: object
+      required: [clientRequestId, note]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        requestedPriceCents: {type: integer, minimum: 0, maximum: 9007199254740991}
+        note: {type: string, maxLength: 512}
+    EnterpriseRechargeConfirmRequest:
+      type: object
+      required: [clientRequestId, priceCents, credits, receiptReference, note]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        priceCents: {type: integer, minimum: 1, maximum: 9007199254740991}
+        credits: {type: integer, minimum: 1, maximum: 9007199254740991}
+        receiptReference: {type: string, minLength: 1, maxLength: 256}
+        note: {type: string, maxLength: 512}
+    EnterpriseRechargeOrder:
+      type: object
+      required: [id, enterpriseId, enterpriseName, initiatorUserId, initiatorName, targetWalletId, priceCents, credits, status, createdAt,
+        refundedCredits, refundedPriceCents]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        enterpriseName: {type: string}
+        initiatorUserId: {type: string, minLength: 1, maxLength: 64}
+        initiatorName: {type: string}
+        targetWalletId: {type: string, minLength: 1, maxLength: 64}
+        priceCents: {type: integer, minimum: 0, maximum: 9007199254740991}
+        credits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        status: {type: string, enum: [pending, paid, rejected, refunded]}
+        createdAt: {type: string, format: date-time}
+        paidAt: {type: string, format: date-time}
+        reviewedAt: {type: string, format: date-time}
+        reviewerName: {type: string}
+        receiptReference: {type: string}
+        note: {type: string}
+        refundedCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        refundedPriceCents: {type: integer, minimum: 0, maximum: 9007199254740991}
+        refundReceiptReference: {type: string}
+    EnterpriseBillingSelection:
+      description: 显式个人/企业付款；旧请求省略时使用个人。企业账户由服务端解析，重试固定原选择。
+      oneOf:
+      - type: object
+        required: [mode]
+        properties:
+          mode: {type: string, enum: [personal]}
+      - type: object
+        required: [mode, enterpriseId]
+        properties:
+          mode: {type: string, enum: [enterprise]}
+          enterpriseId: {type: string, minLength: 1, maxLength: 64}
+      x-implementation-status: implemented
+    EnterpriseUsage:
+      type: object
+      required: [id, enterpriseId, actorUserId, actorName, billingWalletId, referenceType, referenceId, status, modelName, cost, pendingCredits,
+        createdAt]
+      properties:
+        id: {type: string}
+        enterpriseId: {type: string}
+        actorUserId: {type: string}
+        actorName: {type: string}
+        billingWalletId: {type: string}
+        referenceType: {type: string}
+        referenceId: {type: string}
+        status: {type: string}
+        modelName: {type: string}
+        cost: {type: integer, minimum: 0}
+        pendingCredits: {type: integer, minimum: 0}
+        createdAt: {type: string, format: date-time}
+    EnterpriseError:
+      type: object
+      required: [code, message]
+      properties:
+        code: {type: string}
+        message: {type: string}
+    EnterpriseRefundRequest:
+      type: object
+      required: [clientRequestId, previewToken, reason, receiptReference]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        previewToken: {type: string}
+        reason: {type: string, minLength: 1, maxLength: 512}
+        receiptReference: {type: string, minLength: 1, maxLength: 256}
+    EnterpriseMemberStateRequest:
+      type: object
+      required: [version]
+      properties:
+        version: {type: integer, minimum: 0}
+      x-implementation-status: planned
+    EnterpriseCloseRequest:
+      type: object
+      required: [clientRequestId]
+      properties:
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+      x-implementation-status: planned
+    EnterprisePointsItem:
+      type: object
+      required: [memberId, amount]
+      properties:
+        memberId: {type: string, minLength: 1, maxLength: 64}
+        amount: {type: integer, minimum: 1, maximum: 9007199254740991, nullable: true, description: 仅回收可为 null，表示当时全部可用积分。}
+    EnterprisePointsPreviewRequest:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {$ref: '#/components/schemas/EnterprisePointsItem'}
+    EnterprisePointsPreviewItem:
+      type: object
+      required: [memberId, amount, availableBefore, availableAfter, pendingBalance]
+      properties:
+        memberId: {type: string, minLength: 1, maxLength: 64}
+        amount: {type: integer, minimum: 0, maximum: 9007199254740991}
+        availableBefore: {type: integer, minimum: 0, maximum: 9007199254740991}
+        availableAfter: {type: integer, minimum: 0, maximum: 9007199254740991}
+        pendingBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+    EnterprisePointsPreview:
+      type: object
+      required: [enterpriseId, direction, memberCount, totalAmount, rootAvailableBefore, rootAvailableAfter, confirmationFingerprint, items]
+      properties:
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        direction: {type: string, enum: [allocate, reclaim]}
+        memberCount: {type: integer, minimum: 0, maximum: 100}
+        totalAmount: {type: integer, minimum: 0, maximum: 9007199254740991}
+        rootAvailableBefore: {type: integer, minimum: 0, maximum: 9007199254740991}
+        rootAvailableAfter: {type: integer, minimum: 0, maximum: 9007199254740991}
+        confirmationFingerprint: {type: string}
+        items:
+          type: array
+          items: {$ref: '#/components/schemas/EnterprisePointsPreviewItem'}
+    EnterpriseWalletSummary:
+      type: object
+      required: [enterpriseId, enterpriseName, unallocated, allocated, pending, spent, totalBalance]
+      properties:
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        enterpriseName: {type: string}
+        unallocated: {type: integer, minimum: 0, maximum: 9007199254740991}
+        allocated: {type: integer, minimum: 0, maximum: 9007199254740991}
+        pending: {type: integer, minimum: 0, maximum: 9007199254740991}
+        spent: {type: integer, minimum: 0, maximum: 9007199254740991}
+        totalBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+    EnterpriseMemberBalance:
+      type: object
+      required: [memberId, userId, displayName, role, status, walletId, totalBalance, pendingBalance, rechargeBalance, giftBalance, licenseBalance]
+      properties:
+        memberId: {type: string, minLength: 1, maxLength: 64}
+        userId: {type: string, minLength: 1, maxLength: 64}
+        displayName: {type: string}
+        role: {type: string, enum: [owner, manager, member]}
+        status: {type: string, enum: [active, suspended, removed]}
+        walletId: {type: string, minLength: 1, maxLength: 64}
+        totalBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+        pendingBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+        rechargeBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+        giftBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+        licenseBalance: {type: integer, minimum: 0, maximum: 9007199254740991}
+    EnterpriseRefundPreview:
+      type: object
+      required: [orderId, enterpriseId, originalCredits, originalPriceCents, reclaimableCredits, refundPriceCents, memberRecallCredits,
+        pendingCredits, spentCredits, previewToken]
+      properties:
+        orderId: {type: string, minLength: 1, maxLength: 64}
+        enterpriseId: {type: string, minLength: 1, maxLength: 64}
+        originalCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        originalPriceCents: {type: integer, minimum: 0, maximum: 9007199254740991}
+        reclaimableCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        refundPriceCents: {type: integer, minimum: 0, maximum: 9007199254740991}
+        memberRecallCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        pendingCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        spentCredits: {type: integer, minimum: 0, maximum: 9007199254740991}
+        previewToken: {type: string}
+    EnterpriseBillingReplaySelection:
+      type: object
+      required: [found]
+      properties:
+        found: {type: boolean}
+        billing: {$ref: '#/components/schemas/EnterpriseBillingSelection', nullable: true}
+    EnterpriseLifecyclePreviewRequest:
+      type: object
+      required: [action]
+      properties:
+        action: {type: string, enum: [suspend, resume, remove, leave, close]}
+        memberId: {type: string}
+    EnterpriseLifecycleRequest:
+      type: object
+      required: [action, clientRequestId, confirmationFingerprint]
+      properties:
+        action: {type: string, enum: [suspend, resume, remove, leave, close]}
+        memberId: {type: string}
+        clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        confirmationFingerprint: {type: string}
+    EnterpriseLifecyclePreview:
+      type: object
+      required: [action, availableCredits, pendingCredits, activeJobs, cancellableJobs, acceptedJobs, canProceed, blockers, confirmationFingerprint]
+      properties:
+        action: {type: string, enum: [suspend, resume, remove, leave, close]}
+        memberId: {type: string}
+        availableCredits: {type: integer, minimum: 0}
+        pendingCredits: {type: integer, minimum: 0}
+        activeJobs: {type: integer, minimum: 0}
+        cancellableJobs: {type: integer, minimum: 0}
+        acceptedJobs: {type: integer, minimum: 0}
+        canProceed: {type: boolean}
+        blockers:
+          type: array
+          items: {type: string}
+        confirmationFingerprint: {type: string}
+    EnterpriseLifecycleResult:
+      type: object
+      required: [action, enterpriseId, reclaimedCredits, cancelledJobs, status]
+      properties:
+        action: {type: string, enum: [suspend, resume, remove, leave, close]}
+        enterpriseId: {type: string}
+        memberId: {type: string}
+        reclaimedCredits: {type: integer, minimum: 0}
+        cancelledJobs: {type: integer, minimum: 0}
+        status: {type: string}
+    StudioImageRecoveryRequest:
+      type: object
+      required: [externalTaskId, evidence]
+      properties:
+        imageIndex: {type: integer, minimum: 0, maximum: 15, default: 0}
+        externalTaskId: {type: string, pattern: '^[a-zA-Z0-9_-]{1,128}$'}
+        evidence: {type: string, minLength: 8, maxLength: 2000}
+    MaterialVideoReconcileRequest:
+      type: object
+      required: [evidence]
+      properties:
+        externalTaskId: {type: string, pattern: '^[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}$'}
+        evidence: {type: string, minLength: 8, maxLength: 2000}
+        confirmedNotAccepted: {type: boolean, description: 必须核对供应商原请求并确认未受理；仅未知且无原任务号可用。此时externalTaskId须空。}
+    StudioImageRecoveryView:
+      type: object
+      properties:
+        id: {type: string}
+        ownerUserId: {type: string}
+        projectId: {type: string}
+        status: {type: string}
+        stage: {type: string}
+        endpointId: {type: string}
+        errorCode: {type: string}
+        errorMessage: {type: string}
+        cost: {type: integer, minimum: 0}
+        holdTotal: {type: integer, minimum: 0}
+        images:
+          type: array
+          items:
+            type: object
+            properties:
+              imageIndex: {type: integer, minimum: 0}
+              submitAttempted: {type: boolean}
+              externalTaskId: {type: string}
+              mirrored: {type: boolean}
+              requestFingerprint: {type: string}
+    StudioImageUnknownReleaseRequest:
+      type: object
+      required: [evidence, confirmedNoUpstreamTask]
+      properties:
+        imageIndex: {type: integer, minimum: 0, maximum: 15, default: 0}
+        evidence: {type: string, minLength: 8, maxLength: 2000}
+        confirmedNoUpstreamTask: {type: boolean, enum: [true]}
+    IpRunNodeRequest:
+      type: object
+      properties:
+        doc:
+          $ref: '#/components/schemas/IpProjectDoc'
+        billing:
+          $ref: '#/components/schemas/EnterpriseBillingSelection'
+        clientRequestId:
+          type: string
+          maxLength: 64
+          minLength: 1
+          description: 企业付款必填；原请求重放固定原付款账户和正文；旧个人请求可省略
+        maxCost:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 本次确认的最高总积分；价格超出时409，先重新确认
+
+    IpGenerateRequest:
+      type: object
+      required:
+      - nodeId
+      - prompt
+      properties:
+        nodeId:
+          type: string
+        prompt:
+          type: string
+        refKeys:
+          type: array
+          items:
+            type: string
+        count:
+          type: integer
+          minimum: 1
+        size:
+          type: string
+        model:
+          type: string
+        billing:
+          $ref: '#/components/schemas/EnterpriseBillingSelection'
+        clientRequestId:
+          type: string
+          maxLength: 64
+          minLength: 1
+          description: 企业付款必填；原请求重放固定原付款账户和正文；旧个人请求可省略
+        maxCost:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 本次确认的最高总积分；价格超出时409，先重新确认
+
+    IpVideoRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+        refKey:
+          type: string
+        durationSec:
+          type: integer
+        aspectRatio:
+          type: string
+        model:
+          type: string
+        video:
+          $ref: '#/components/schemas/StudioVideoSettings'
+        billing:
+          $ref: '#/components/schemas/EnterpriseBillingSelection'
+        clientRequestId:
+          type: string
+          maxLength: 64
+          minLength: 1
+          description: 企业付款必填；原请求重放固定原付款账户和正文；旧个人请求可省略
+        maxCost:
+          type: integer
+          format: int64
+          minimum: 0
+          description: 本次确认的最高总积分；价格超出时409，先重新确认
 
 paths:
   /service/model-management/v1/command:
@@ -8562,14 +9148,44 @@ paths:
       responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
 
   /admin/material-video-jobs/{id}/reconcile:
-    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
     post:
-      tags: [admin-ai-models]
-      operationId: adminReconcileMaterialVideoJob
-      summary: 对账恢复已由上游成功、但本地误判失败的视频任务
-      responses: { '200': { description: 已查询既有 Job、镜像产物并幂等结算积分；不会重新提交生成 } }
-
-  # ── AI 应用绑定（v0.41 新增；用途 → 端点，一用途一端点，无兜底） ──────────
+      tags:
+      - admin-ai-models
+      summary: 查询原视频任务或补录原供应商任务号
+      description: SUPER_ADMIN/OPERATOR；FINANCE_ADMIN不可操作。读取原凭据并记录人工依据，补录原任务号后只查询原供应商任务，不重新生成或重冻。仅受理未知且无原任务号时，供应商明确证明未受理，可提交
+        confirmedNotAccepted=true 与 evidence；同事务记录审计、失败终态并仅释放原剩余冻结，旧成员退款仍归原企业。已有任务号必须继续查询。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: 当前原任务；补录后异步恢复，需刷新查询终态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+        '400':
+          description: 原任务号或核对依据无效
+        '403':
+          description: 没有平台运营权限
+        '404':
+          description: 原任务不存在
+        '409':
+          description: 任务号已固定、原冻结已释放、原提交凭据缺失或当前状态不允许补录
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MaterialVideoReconcileRequest'
   /admin/ai-app-bindings:
     get: { tags: [admin-ai-models], operationId: adminListAiAppBindings, responses: { '200': { description: 全部用途（含未绑定）及其绑定端点 } } }
   /admin/ai-app-bindings/{purpose}:
@@ -11647,30 +12263,52 @@ paths:
         '200': { description: 'ApiResponse<void>' }
         '404': { description: IP_ASSET_NOT_FOUND }
   /v1/ip-studio/projects/{id}/nodes/{nodeId}/run:
-    parameters: [{ in: path, name: id, required: true, schema: { type: string } }, { in: path, name: nodeId, required: true, schema: { type: string } }]
+    parameters:
+    - in: path
+      name: id
+      required: true
+      schema:
+        type: string
+    - in: path
+      name: nodeId
+      required: true
+      schema:
+        type: string
     post:
-      tags: [ipstudio]
+      tags:
+      - ipstudio
       operationId: ipStudioRunNode
-      description: >-
-        运行一个 identity 或 generate 节点，立即返回 running 的 IpRun，前端轮询 /v1/ip-studio/runs/{id}。
-        body.doc 可选：运行前顺手保存最新文档，避免「先 PUT 再 POST」的竞态。
-        顺序是硬约束（§8.0）：输入编译 → preflight（引擎 + 提示词）→ hold（单价 × count）→ 派发 worker，
-        preflight 一定在 hold 之前，未配置就 503 且不冻结一分钱、不落 run 行。
-        generate 的参考图按 master（上游主形象节点选中图）→ source（原照片）→ reference… 装配，
-        超上限按此顺序砍尾并在 inputs.refs 如实回报 applied=false / reason=over_max_refs。
-        doc 里的 assetKey / selectedRunId 一律按不可信处理：key 必须是本人上传（ipstudio_source/<uid>/）
-        或本人生成（ipstudio_gen/<uid>/）的，selectedRunId 必须属于本人本项目，否则 400 / 404 且不冻结。
-        运行期落在 IpRun.errorCode 上的还有：IP_REF_UNREADABLE（master / source 参考图读不到 ——
-        宁可失败退款也不降级成没有身份锚的文生图）、DAP_MODEL_BAD_OUTPUT（上游回的字节不是可解码图片，
-        不入库不扣款）、IP_RUN_QUEUE_FULL（线程池排满、派发失败，已释放冻结）。
-      requestBody: { content: { application/json: { schema: { type: object, properties: { doc: { $ref: '#/components/schemas/IpProjectDoc' } } } } } }
+      description: 运行一个 identity 或 generate 节点，立即返回 running 的 IpRun，前端轮询 /v1/ip-studio/runs/{id}。 body.doc 可选：运行前顺手保存最新文档，避免「先
+        PUT 再 POST」的竞态。 顺序是硬约束（§8.0）：输入编译 → preflight（引擎 + 提示词）→ hold（单价 × count）→ 派发 worker， preflight 一定在 hold 之前，未配置就 503
+        且不冻结一分钱、不落 run 行。 generate 的参考图按 master（上游主形象节点选中图）→ source（原照片）→ reference… 装配， 超上限按此顺序砍尾并在 inputs.refs 如实回报 applied=false
+        / reason=over_max_refs。 doc 里的 assetKey / selectedRunId 一律按不可信处理：key 必须是本人上传（ipstudio_source/<uid>/） 或本人生成（ipstudio_gen/<uid>/）的，selectedRunId
+        必须属于本人本项目，否则 400 / 404 且不冻结。 运行期落在 IpRun.errorCode 上的还有：IP_REF_UNREADABLE（master / source 参考图读不到 —— 宁可失败退款也不降级成没有身份锚的文生图）、DAP_MODEL_BAD_OUTPUT（上游回的字节不是可解码图片，
+        不入库不扣款）、IP_RUN_QUEUE_FULL（线程池排满、派发失败，已释放冻结）。 付款选择、最终模型和成员在途限制在服务端复核；企业付款必须提供 clientRequestId，同键不同正文或付款方返回409，不自动切个人。
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IpRunNodeRequest'
       responses:
-        '200': { description: running, content: { application/json: { schema: { $ref: '#/components/schemas/IpRun' } } } }
-        '400': { description: 'IP_NODE_NOT_RUNNABLE —— 非 identity/generate 节点；IP_NODE_INPUT_MISSING —— details.missing 列出缺的上游类型 / 字段（identity / identity.promptEn / style / style.promptEn / look / source）；IP_ASSET_KEY_INVALID —— doc 里的 assetKey 不是本人上传 / 生成的 key（前缀必须是 ipstudio_source/<uid>/ 或 ipstudio_gen/<uid>/，且不含 .. / 反斜杠 / 绝对路径）' }
-        '402': { description: '积分不足（CreditService 既有）—— run 行不落库' }
-        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND / IP_RUN_NOT_FOUND —— 主形象节点 selectedRunId 指向的运行不属于本人本项目（绝不静默当「没选主图」继续出图）' }
-        '409': { description: 'IP_RUN_ALREADY_RUNNING —— 同节点已有 running run' }
-        '503': { description: 'DAP_ENGINE_NOT_CONFIGURED（含引擎不支持看图时的人设通道未绑定）/ PROMPT_NOT_CONFIGURED —— 均不冻结、不产假产物' }
+        '200':
+          description: running
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IpRun'
+        '400':
+          description: IP_NODE_NOT_RUNNABLE —— 非 identity/generate 节点；IP_NODE_INPUT_MISSING —— details.missing 列出缺的上游类型 / 字段（identity
+            / identity.promptEn / style / style.promptEn / look / source）；IP_ASSET_KEY_INVALID —— doc 里的 assetKey 不是本人上传 / 生成的
+            key（前缀必须是 ipstudio_source/<uid>/ 或 ipstudio_gen/<uid>/，且不含 .. / 反斜杠 / 绝对路径）
+        '402':
+          description: 积分不足（CreditService 既有）—— run 行不落库
+        '404':
+          description: IP_PROJECT_NOT_FOUND / IP_NODE_NOT_FOUND / IP_RUN_NOT_FOUND —— 主形象节点 selectedRunId 指向的运行不属于本人本项目（绝不静默当「没选主图」继续出图）
+        '409':
+          description: IP_RUN_ALREADY_RUNNING —— 同节点已有 running run
+        '503':
+          description: DAP_ENGINE_NOT_CONFIGURED（含引擎不支持看图时的人设通道未绑定）/ PROMPT_NOT_CONFIGURED —— 均不冻结、不产假产物
   /v1/ip-studio/models:
     get:
       tags: [ip-studio]
@@ -11728,27 +12366,48 @@ paths:
       responses: { '200': { description: 'projectId；登录且开通后复制文字到本人新画布，同owner/请求键幂等，0生成0积分，参考需重新选择' } }
   /v1/ip-studio/projects/{projectId}/generate:
     post:
-      tags: [ip-studio]
+      tags:
+      - ip-studio
       summary: 画布出图
-      description: >
-        **参考图由画布点名**（用户框了哪几张、蒙版编辑只针对当前这张，服务端从文档回溯猜不出来）；
-        服务端保留它该管的：key 归属闸、提示词模板（`dap.ip_canvas_image`）、模型白名单、
-        计价与冻结结算、派发。preflight 一定在 hold 之前（§8.0）——
-        引擎或提示词未配置 → 503，不建任务不冻结。
+      description: "**参考图由画布点名**（用户框了哪几张、蒙版编辑只针对当前这张，服务端从文档回溯猜不出来）； 服务端保留它该管的：key 归属闸、提示词模板（`dap.ip_canvas_image`）、模型白名单、 计价与冻结结算、派发。preflight\
+        \ 一定在 hold 之前（§8.0）—— 引擎或提示词未配置 → 503，不建任务不冻结。\n 付款选择、最终模型和成员在途限制在服务端复核；企业付款必须提供 clientRequestId，同键不同正文或付款方返回409，不自动切个人。"
       responses:
-        "200": { description: 运行记录（status=running，前端轮询 /runs/{id}） }
-
+        '200':
+          description: 运行记录（status=running，前端轮询 /runs/{id}）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IpGenerateRequest'
+    parameters:
+    - in: path
+      name: projectId
+      required: true
+      schema:
+        type: string
   /v1/ip-studio/projects/{projectId}/generate-video:
     post:
-      tags: [ip-studio]
+      tags:
+      - ip-studio
       summary: 画布出视频
-      description: >
-        走通用视频链（`MaterialVideoJobService`，分区 `ipstudio`），**不是** dap 的数字人衍生视频 ——
-        那条要求先有 `avatarId`（必须发布之后），而画布上人往往还没发布就想让一张图动起来。
-        首帧图的 key 同样过归属闸。计费 / 时长校验 / 端点白名单 / 未配置即失败快由视频链承担。
+      description: "走通用视频链（`MaterialVideoJobService`，分区 `ipstudio`），**不是** dap 的数字人衍生视频 —— 那条要求先有 `avatarId`（必须发布之后），而画布上人往往还没发布就想让一张图动起来。\
+        \ 首帧图的 key 同样过归属闸。计费 / 时长校验 / 端点白名单 / 未配置即失败快由视频链承担。\n 付款选择、最终模型和成员在途限制在服务端复核；企业付款必须提供 clientRequestId，同键不同正文或付款方返回409，不自动切个人。"
       responses:
-        "200": { description: 视频任务卡（status=rendering，前端轮询 /v1/ip-studio/videos/{jobId}） }
-
+        '200':
+          description: 视频任务卡（status=rendering，前端轮询 /v1/ip-studio/videos/{jobId}）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IpVideoRequest'
+    parameters:
+    - in: path
+      name: projectId
+      required: true
+      schema:
+        type: string
   /v1/ip-studio/projects/{id}/publish-as-demo:
     post:
       tags: [ip-studio]
@@ -12126,12 +12785,33 @@ paths:
 
   /v1/ip-studio/library/objects/{id}/generate:
     post:
-      tags: [ip-studio]
+      tags:
+      - ip-studio
       summary: Personal library post library/objects/{id}/generate
-      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
-      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
-
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                billing:
+                  $ref: '#/components/schemas/EnterpriseBillingSelection'
+      responses:
+        '200':
+          description: ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24
+        '400':
+          description: IP_LIBRARY_INVALID or invalid ownership/input
+        '404':
+          description: IP_LIBRARY_NOT_FOUND
+        '409':
+          description: IP_LIBRARY_CHANGED or changed original request
   /v1/ip-studio/library/materials:
     get:
       tags: [ip-studio]
@@ -12175,12 +12855,33 @@ paths:
 
   /v1/ip-studio/projects/{id}/library/extract:
     post:
-      tags: [ip-studio]
+      tags:
+      - ip-studio
       summary: Personal library post projects/{id}/library/extract
-      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
-      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
-
+      parameters:
+      - in: path
+        name: id
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                billing:
+                  $ref: '#/components/schemas/EnterpriseBillingSelection'
+      responses:
+        '200':
+          description: ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24
+        '400':
+          description: IP_LIBRARY_INVALID or invalid ownership/input
+        '404':
+          description: IP_LIBRARY_NOT_FOUND
+        '409':
+          description: IP_LIBRARY_CHANGED or changed original request
   /v1/ip-studio/projects/{id}/library/save-extraction:
     post:
       tags: [ip-studio]
@@ -12188,3 +12889,1425 @@ paths:
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
       responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+
+  /v1/ip-studio/enterprises:
+    post:
+      tags: [Enterprise]
+      summary: 创建企业（同用户 clientRequestId 幂等）
+      x-implementation-status: foundation
+      description: 权限：已开通且未加入企业。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseCreateRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+    get:
+      tags: [Enterprise]
+      summary: 查询本人当前企业
+      x-implementation-status: foundation
+      description: 权限：本人。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}:
+    get:
+      tags: [Enterprise]
+      summary: 企业上下文与权限
+      x-implementation-status: foundation
+      description: 权限：enterprise.read。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/members:
+    get:
+      tags: [Enterprise]
+      summary: 企业成员分页
+      x-implementation-status: foundation
+      description: 权限：member.manage。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseMember'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/members/{memberId}:
+    patch:
+      tags: [Enterprise]
+      summary: 修改角色/能力（版本校验，禁止操作自己）
+      x-implementation-status: foundation
+      description: 权限：member.role.manage。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: memberId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseMemberUpdateRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseMember'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/invitations:
+    post:
+      tags: [Enterprise]
+      summary: 创建三天有效的一次性邀请（请求键幂等）
+      x-implementation-status: foundation
+      description: 权限：member.invite。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseInvitationRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseInvitationCreated'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+    get:
+      tags: [Enterprise]
+      summary: 邀请分页
+      x-implementation-status: implemented
+      description: member.invite；不返回原邀请密钥。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseInvitation'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /v1/ip-studio/enterprises/{id}/invitations/{invitationId}:
+    delete:
+      tags: [Enterprise]
+      summary: 撤销本人企业的邀请
+      x-implementation-status: foundation
+      description: 权限：member.invite。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: invitationId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseInvitation'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprise-invitations/accept:
+    post:
+      tags: [Enterprise]
+      summary: 接受邀请（令牌重放仅原接受者幂等）
+      x-implementation-status: foundation
+      description: 权限：本人已开通 aiavatar。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseInvitationAcceptRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/policy:
+    get:
+      tags: [Enterprise]
+      summary: 查询模型及在途策略
+      x-implementation-status: foundation
+      description: 权限：enterprise.read。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePolicy'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+    put:
+      tags: [Enterprise]
+      summary: 修改模型及在途策略（版本校验）
+      x-implementation-status: foundation
+      description: 权限：policy.manage。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePolicyUpdateRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePolicy'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/ownership-transfers:
+    post:
+      tags: [Enterprise]
+      summary: 发起24小时有效的主账号移交
+      x-implementation-status: foundation
+      description: 权限：ownership.transfer。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseOwnershipRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseOwnershipTransfer'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+    get:
+      tags: [Enterprise]
+      summary: 待确认主账号移交
+      x-implementation-status: implemented
+      description: owner 查看全部；成员仅接收给本人的移交。过期/原owner版本失效投影 expired。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseOwnershipTransfer'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /v1/ip-studio/enterprises/{id}/ownership-transfers/{transferId}/accept:
+    post:
+      tags: [Enterprise]
+      summary: 接收者确认移交（接受幂等）
+      x-implementation-status: foundation
+      description: 权限：指定接收者。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: transferId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseContext'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/audit:
+    get:
+      tags: [Enterprise]
+      summary: 管理操作审计分页
+      x-implementation-status: foundation
+      description: 权限：member.manage。仅本人当前企业范围；产品开通与手机号要求沿用现有逻辑。受 aep.enterprise.enabled 开关控制，默认关闭。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseAudit'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/wallet:
+    get:
+      tags: [Enterprise]
+      summary: 企业钱包
+      x-implementation-status: implemented
+      description: 权限：points.manage 或 billing.read。仅当前企业，普通成员改查本人 member-balances。总余额含冻结。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseWalletSummary'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/points/allocate:
+    post:
+      tags: [Enterprise]
+      summary: 单人/批量分配（整批原子，clientRequestId+正文幂等）
+      x-implementation-status: implemented
+      description: 权限：points.manage。当前企业范围；产品开通与手机号要求沿用现有逻辑。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsBatch'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/points/reclaim:
+    post:
+      tags: [Enterprise]
+      summary: 单人/批量回收（不回收冻结）
+      x-implementation-status: implemented
+      description: 权限：points.manage。当前企业范围；产品开通与手机号要求沿用现有逻辑。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsBatch'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/points/transfers:
+    get:
+      tags: [Enterprise]
+      summary: 划拨流水
+      x-implementation-status: implemented
+      description: points.manage 或 billing.read 可看企业；普通成员仅本人关系的流水。服务端分页。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterprisePointsTransfer'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/recharges:
+    post:
+      tags: [Enterprise]
+      summary: 创建人工充值申请（请求键幂等）
+      x-implementation-status: implemented
+      description: 权限：billing.request。当前企业范围；产品开通与手机号要求沿用现有逻辑。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseRechargeRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+    get:
+      tags: [Enterprise]
+      summary: 充值记录分页
+      x-implementation-status: implemented
+      description: 权限：billing.read；普通申请人仅本人申请记录（如服务提供该权限）。金额、积分在财务确认后固定。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/usage:
+    get:
+      tags: [Enterprise]
+      summary: 企业付款消费记录
+      x-implementation-status: implemented
+      description: usage.read/points.manage 读全企业，成员或停用成员只读本人；不返回私人作品与提示词。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseUsage'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/finance/enterprise-recharges/{orderId}/confirm:
+    post:
+      tags: [Enterprise]
+      summary: 财务核准充值（同订单重复确认不得重复入账）
+      x-implementation-status: implemented
+      description: 权限：FINANCE_ADMIN/SUPER_ADMIN。当前企业范围；产品开通与手机号要求沿用现有逻辑。
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseRechargeConfirmRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /admin/finance/enterprise-recharges/{orderId}/refund:
+    post:
+      tags: [Enterprise]
+      summary: 财务退款（原订单/凭据/目标，幂等）
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN。按原充值来源归集可用额并记录人工退款凭据，不调用现金打款；冻结和已消费不可退；原单有冻结积分时须等待结算后再退款。预览变化须重新确认。
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseRefundRequest'}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/member-balances:
+    get:
+      tags: [Enterprise]
+      summary: 企业成员余额分页
+      x-implementation-status: implemented
+      description: 积分管理或财务读取可见企业成员，普通成员仅本人。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseMemberBalance'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+  /admin/finance/enterprise-recharges:
+    get:
+      tags: [Enterprise]
+      summary: 企业充值订单分页
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；与个人订单列表分离。
+      parameters:
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      - name: enterpriseId
+        in: query
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: status
+        in: query
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+  /v1/ip-studio/enterprises/{id}/points/batches/{batchId}:
+    get:
+      tags: [Enterprise]
+      summary: 查询划拨批次及双方账本
+      x-implementation-status: implemented
+      description: points.manage。仅当前企业批次。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      - name: batchId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsBatch'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+  /v1/ip-studio/enterprises/{id}/points/reclaim/preview:
+    post:
+      tags: [Enterprise]
+      summary: 预览积分分配/回收
+      x-implementation-status: implemented
+      description: points.manage。返回逐项、总额和确认指纹；预览不划拨积分。最多100位不重复成员，提交时锁定复核。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsPreview'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsPreviewRequest'}
+  /admin/finance/enterprise-recharges/{orderId}/refund-preview:
+    get:
+      tags: [Enterprise]
+      summary: 核对原订单可退积分与人民币金额
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN。只读预览，归集原单可用积分；不预留资金、不退现金。
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseRefundPreview'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+  /v1/ip-studio/enterprises/{id}/points/allocate/preview:
+    post:
+      tags: [Enterprise]
+      summary: 预览积分分配/回收
+      x-implementation-status: implemented
+      description: points.manage。返回逐项、总额和确认指纹；预览不划拨积分。最多100位不重复成员，提交时锁定复核。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterprisePointsPreview'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 权限不足}
+        '404': {description: 对象不存在或功能未开放}
+        '409': {description: 幂等正文冲突、凭据重复或预览已变化}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterprisePointsPreviewRequest'}
+  /admin/finance/enterprise-recharges/{orderId}/reject:
+    post:
+      tags: [Enterprise]
+      summary: 财务驳回企业充值申请
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN。仅待确认申请可驳回，记录原因与审计，不变动任何积分。
+      parameters:
+      - name: orderId
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [reason]
+              properties:
+                reason: {type: string, minLength: 1, maxLength: 512}
+      responses:
+        '200':
+          description: 成功，分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseRechargeOrder'}
+        '400': {description: 输入/角色/策略无效}
+        '401': {description: 未登录}
+        '403': {description: 无产品开通/手机号未绑定/无企业权限}
+        '404': {description: 资源不在当前企业或功能未开放}
+        '409': {description: 幂等正文冲突、重复收款凭据或预览已失效；须重新预览并确认，不能自动重试提交}
+  /v1/ip-studio/enterprises/{id}/my-balance:
+    get:
+      tags: [Enterprise]
+      summary: 本人企业余额
+      x-implementation-status: implemented
+      description: 当前成员含停用状态，仅本人。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseMemberBalance'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /v1/ip-studio/enterprises/{id}/lifecycle/preview:
+    post:
+      tags: [Enterprise]
+      summary: 预览停用、恢复、移除、退出或关闭
+      x-implementation-status: implemented
+      description: member.manage 只操作允许的目标；本人非owner可退出；owner可关闭。返回回收额、在途数与阻断原因，不改资金。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseLifecyclePreview'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseLifecyclePreviewRequest'}
+  /v1/ip-studio/enterprises/{id}/lifecycle:
+    post:
+      tags: [Enterprise]
+      summary: 确认成员/企业生命周期变更
+      x-implementation-status: implemented
+      description: 提交复核预览指纹；同请求键/正文幂等。先撤销新提交、取消未派发、回收可用；已受理按原授权结算，旧退款归原企业。关闭须空余额/在途/待充值申请。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseLifecycleResult'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseLifecycleRequest'}
+  /admin/finance/enterprises/{id}/wallet:
+    get:
+      tags: [Enterprise]
+      summary: 企业资金汇总
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；查询保持可用以支持新业务开关关闭后的对账。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseWalletSummary'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/finance/enterprises/{id}/member-balances:
+    get:
+      tags: [Enterprise]
+      summary: 成员企业余额
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；查询保持可用以支持新业务开关关闭后的对账。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseMemberBalance'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/finance/enterprises/{id}/points/transfers:
+    get:
+      tags: [Enterprise]
+      summary: 企业划拨流水
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；查询保持可用以支持新业务开关关闭后的对账。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterprisePointsTransfer'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/finance/enterprises/{id}/usage:
+    get:
+      tags: [Enterprise]
+      summary: 企业最终消费及冻结
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；查询保持可用以支持新业务开关关闭后的对账。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/EnterpriseUsage'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/finance/enterprises:
+    get:
+      tags: [Enterprise]
+      summary: 检索企业
+      x-implementation-status: implemented
+      description: FINANCE_ADMIN/SUPER_ADMIN；企业名称/ID服务端搜索，包含关闭的企业。
+      parameters:
+      - name: search
+        in: query
+        schema: {type: string}
+      - name: page
+        in: query
+        schema: {type: integer, minimum: 0, default: 0}
+      - name: limit
+        in: query
+        schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data, pagination]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items: {$ref: '#/components/schemas/Enterprise'}
+                  pagination: {$ref: '#/components/schemas/PaginationMeta'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /v1/ip-studio/projects/{id}/billing-selection:
+    get:
+      tags: [Enterprise]
+      summary: 恢复原请求付款选择
+      x-implementation-status: implemented
+      description: 校验私人资源owner。found=false新请求；found=true按原请求返回personal/enterprise；历史省略billing返回null。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: clientRequestId
+        in: query
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseBillingReplaySelection'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /v1/ip-studio/library/objects/{id}/billing-selection:
+    get:
+      tags: [Enterprise]
+      summary: 恢复原请求付款选择
+      x-implementation-status: implemented
+      description: 校验私人资源owner。found=false新请求；found=true按原请求返回personal/enterprise；历史省略billing返回null。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      - name: clientRequestId
+        in: query
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 成功；分页直接 PageEnvelope，其余 ApiResponse
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseBillingReplaySelection'}
+        '400': {description: 输入无效}
+        '401': {description: 未登录}
+        '403': {description: 无开通、手机号未验证或权限不足}
+        '404': {description: 对象不存在或企业入口关闭}
+        '409': {description: 请求正文冲突、预览已变化或在途/余额阻止操作}
+  /admin/ip-studio/runs/{id}:
+    get:
+      tags: [admin-ai-models]
+      summary: 读取图片任务原受理凭据
+      description: SUPER_ADMIN/OPERATOR。读取原凭据并记录人工依据，仅查询原供应商任务；不创建新生成，不重冻或强制释放积分。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 当前原任务；补录后异步恢复，需刷新查询终态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/StudioImageRecoveryView'}
+        '400': {description: 原任务号或核对依据无效}
+        '403': {description: 没有平台运营权限}
+        '404': {description: 原任务不存在}
+        '409': {description: 任务号已固定、原冻结已释放、原提交凭据缺失或当前状态不允许补录}
+  /admin/ip-studio/runs/{id}/reconcile:
+    post:
+      tags: [admin-ai-models]
+      summary: 按原凭据补录图片供应商任务号
+      description: SUPER_ADMIN/OPERATOR。读取原凭据并记录人工依据，仅查询原供应商任务；不创建新生成，不重冻或强制释放积分。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 当前原任务；补录后异步恢复，需刷新查询终态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/StudioImageRecoveryView'}
+        '400': {description: 原任务号或核对依据无效}
+        '403': {description: 没有平台运营权限}
+        '404': {description: 原任务不存在}
+        '409': {description: 任务号已固定、原冻结已释放、原提交凭据缺失或当前状态不允许补录}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StudioImageRecoveryRequest'}
+  /admin/material-video-jobs/{id}:
+    get:
+      tags: [admin-ai-models]
+      summary: 读取原视频任务
+      description: SUPER_ADMIN/OPERATOR。读取原凭据并记录人工依据，仅查询原供应商任务；不创建新生成，不重冻或强制释放积分。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 当前原任务；补录后异步恢复，需刷新查询终态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data: {type: object}
+        '400': {description: 原任务号或核对依据无效}
+        '403': {description: 没有平台运营权限}
+        '404': {description: 原任务不存在}
+        '409': {description: 任务号已固定、原冻结已释放、原提交凭据缺失或当前状态不允许补录}
+  /admin/ip-studio/runs/{id}/release-unknown:
+    post:
+      tags: [admin-ai-models]
+      summary: 按供应商未受理凭据解除未知图片任务
+      description: SUPER_ADMIN/OPERATOR。仅原受理未知、无供应商ID、无已镜像当前候选且无活动查询租约；必须明确确认供应商原请求未受理并保存依据。原授权/冻结一致性复核，同事务保留已成功候选费用、失败原任务、仅释放剩余原冻结并审计。不允许单凭无法查询就退款。重复原确认幂等。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string}
+      responses:
+        '200':
+          description: 当前原任务；补录后异步恢复，需刷新查询终态
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/StudioImageRecoveryView'}
+        '400': {description: 原任务号或核对依据无效}
+        '403': {description: 没有平台运营权限}
+        '404': {description: 原任务不存在}
+        '409': {description: 任务号已固定、原冻结已释放、原提交凭据缺失或当前状态不允许补录}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/StudioImageUnknownReleaseRequest'}

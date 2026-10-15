@@ -136,3 +136,8 @@ DataInitializer 默认 seed 两个账号：
 - **v0.66**：新增导航组「短剧专区」→ `/drama/config`（web-drama 个性化配置：扣费确认阈值 + 大纲/分场分镜/拆镜/选角/首帧单价；真值存 `aep_platform_configs` `drama.credit.*`，分镜视频单价沿用「引擎价格」`material.video-generate`）。
 - **v0.71**：短剧专区新增 `/drama/prompts`「提示词设置」。短剧各 AI 动作（大纲 `drama.outline` / 整集分场分镜 `drama.epscript` / 单场拆镜 `drama.split_scene` / 选角 `drama.cast` + 短视频脚本 `drama.script_draft`）的 system + user 提示词与调参在此维护。复用「Prompt 管理」同一后端 `/api/admin/prompts`（SUPER_ADMIN/OPERATOR），按 `drama.*` 过滤；每个 prompt 给友好名 / 用途 / 可用占位符提示 / 试运行，并对 `temperature`（创意发散度）/ `max_tokens`（单次最长输出）/ `jsonMode`（强制 JSON）三个专业参数加人性化说明 + 推荐默认占位（留空即用，无需每次设）。改完保存 1 分钟内全节点生效。
 - **v0.72**：`/drama/prompts` 增加 4 个图像/视频出片 key（`kind:"media"`）——`drama.frame_image` / `drama.clip_video`（工作台分镜出图/出片）+ `drama.short_frame_image` / `drama.short_clip_video`（短视频工坊）。media 类是给图像/视频模型的单条 prompt：编辑时隐藏 System 与 temperature/max_tokens/jsonMode（不适用），只露提示词模板 + 可用占位符（`{{visual}}`/`{{size}}`/`{{move}}`/`{{styleSuffix}}` 等）+ 试运行；并提示比例/版数/首帧参考由前端按镜头传入、单价在「个性化配置」调。
+
+
+### 企业积分财务与任务核对（2026-10-15）
+
+财务「充值订单 → 企业订单」支持人工收款/退款及企业资金、成员余额、划拨和消费查询；沿用 FINANCE_ADMIN/SUPER_ADMIN。平台「AI模型 → 请求日志」提供图片/视频原任务核对，仅 SUPER_ADMIN/OPERATOR，纯财务不可操作。补原供应商号后只查询原任务；明确未受理须依据和二次确认后释放原剩余冻结。详见 [企业界面验收](../../docs/ip-studio-enterprise-ui-validation.md)。

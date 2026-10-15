@@ -22,9 +22,14 @@ import java.util.List;
  */
 @Service
 public class IpRunReaper {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+
+    @org.springframework.beans.factory.annotation.Autowired private IpRunWorker imageWorker;
 
     private static final Logger log = LoggerFactory.getLogger(IpRunReaper.class);
 
@@ -62,11 +67,12 @@ public class IpRunReaper {
             if(queue!=null && (queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,run.getId()) ||
                     queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW,run.getId()))) continue;
             // Audio jobs have durable native checkpoints and resume their original provider Job.
-            if(StudioSpeechWorker.manages(run.getKind())) continue;
+            if(StudioSpeechWorker.manages(run.getKind()) || IpRunWorker.hasNativeSubmission(run)) continue;
             if(run.getKind()!=null && run.getKind().startsWith("studio-") && studioWorker!=null) {
                 if(studioWorker.expire(run.getId(),cutoff)) n++;
                 continue;
             }
+            if(imageWorker!=null) {if(imageWorker.expire(run.getId(),cutoff))n++;continue;}
             try {
                 credits.releaseHold(IpRunService.REF_TYPE, run.getId(), "IP 运行超时 · 释放冻结");
             } catch (Exception e) {
@@ -81,6 +87,7 @@ public class IpRunReaper {
             run.setFinishedAt(Instant.now());
             run.setHeartbeatAt(Instant.now());
             runRepo.save(run);
+            if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());
             n++;
             log.warn("[ipstudio] 运行超时判失败 run={} project={} node={}",
                     run.getId(), run.getProjectId(), run.getNodeId());

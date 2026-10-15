@@ -56,6 +56,10 @@ public class IpRun {
 
     @Column(nullable = false, length = 64)
     private String ownerUserId;
+    @Column(length=64) private String billingWalletId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     /** 画布节点 id（客户端生成，服务端不解释其格式）。 */
     @Column(nullable = false, length = 64)

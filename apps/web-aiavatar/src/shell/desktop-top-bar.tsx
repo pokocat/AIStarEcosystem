@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { IdCard, LogOut, Search, Shield, Smartphone, UserRound, Compass } from "lucide-react";
+import { IdCard, LogOut, Search, Shield, Smartphone, UserRound, Compass, Building2 } from "lucide-react";
 import { auth, USE_MOCK, useIdentity } from "@/proto/api";
 import { setLayout } from "./layout-mode";
 import { useStudioHash } from "./account-workspace";
@@ -57,6 +57,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
         <details ref={menuRef} className="ip-account-menu"><summary aria-label={name + "，打开账号菜单"} title={name}><span>{name.charAt(0)}</span></summary><div onClick={closeMenu}>
           <strong>{name}</strong>
           <Link href="/me"><UserRound size={16} />我的账号</Link>
+          {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><Building2 size={16} />企业积分</Link>}
           <Link href="/licenses"><Shield size={16} />授权管理</Link>
           <Link href="/cards"><IdCard size={16} />名片</Link>
           <Link href="/discover"><Compass size={16} />发现</Link>

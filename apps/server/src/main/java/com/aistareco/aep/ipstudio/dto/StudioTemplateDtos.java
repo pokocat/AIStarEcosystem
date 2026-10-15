@@ -34,7 +34,8 @@ public final class StudioTemplateDtos {
         public ExecutionStep(String id,String title,String nodeId,String outputRole,String status,boolean requiresAdoption,Long cost,IpRunDto run,String storageKey,String url,boolean accepted,AdoptResult adoption){this(id,title,nodeId,outputRole,status,requiresAdoption,cost,run,storageKey,url,accepted,adoption,"image");}
     }
     public record Execution(String versionId,int version,List<ExecutionStep> steps,boolean complete) {}
-    public record ExecuteRequest(String clientRequestId,Long maxCost,String replaceRunId,String prompt) {
+    public record ExecuteRequest(String clientRequestId,Long maxCost,String replaceRunId,String prompt,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        public ExecuteRequest(String clientRequestId,Long maxCost,String replaceRunId,String prompt){this(clientRequestId,maxCost,replaceRunId,prompt,null);}
         public ExecuteRequest(String clientRequestId,Long maxCost,String replaceRunId){this(clientRequestId,maxCost,replaceRunId,null);}
     }
     public record AcceptRequest(String runId,String storageKey,boolean accepted) {}

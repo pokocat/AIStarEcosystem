@@ -300,9 +300,12 @@ public class MaterialVideoModelClient {
                 : (endpoint.getModel() != null && !endpoint.getModel().isBlank()
                 ? endpoint.getModel() : props.getDefaultModel());
         AiVideoRequestSpec acceptedSpec = AiVideoRequestSpec.read(requestSpecSnapshotJson);
+        // Empty (rather than null) records an explicitly legacy submission; later endpoint config is irrelevant.
+        AiModelEndpoint protocolEndpoint=requestSpecSnapshotJson!=null&&requestSpecSnapshotJson.isBlank()
+                ? AiModelEndpoint.builder().name(providerUsed).baseUrl(baseUrlSnapshot).model(model).build():endpoint;
         return new SubmitResult(taskId, null,
                 providerUsed != null && !providerUsed.isBlank() ? providerUsed : endpoint.getName(),
-                model, acceptedSpec == null ? protocolFor(endpoint, model) : acceptedSpec.adapter(),
+                model, acceptedSpec == null ? protocolFor(protocolEndpoint, model) : acceptedSpec.adapter(),
                 endpoint.getId(), appCode, baseUrlSnapshot, requestSpecSnapshotJson);
     }
 
@@ -321,6 +324,12 @@ public class MaterialVideoModelClient {
      */
     public SubmitResult submit(String prompt, int durationSec, String aspectRatio, String ownerUserId,
                                String appCode, String endpointId, VideoGenSpec spec) {
+        return submit(prompt,durationSec,aspectRatio,ownerUserId,appCode,endpointId,spec,null);
+    }
+
+    /** Persist the exact resolved route immediately before the create HTTP request, including uncertain replies. */
+    public SubmitResult submit(String prompt,int durationSec,String aspectRatio,String ownerUserId,
+            String appCode,String endpointId,VideoGenSpec spec,java.util.function.Consumer<SubmitResult> beforeSubmit) {
         VideoGenSpec genSpec = spec == null ? VideoGenSpec.EMPTY : spec;
         AiModelEndpoint p = requireEndpoint(endpointId, appCode);
         String apiKey = requireKey(p);
@@ -393,6 +402,8 @@ public class MaterialVideoModelClient {
                 .client(http)
                 .build();
         HttpResponse<String> resp;
+        String requestSpecSnapshot=p.getVideoRequestSpecJson()==null?"":p.getVideoRequestSpecJson();
+        if(beforeSubmit!=null)beforeSubmit.accept(new SubmitResult(null,null,p.getName(),model,protocol,p.getId(),appCode,p.getBaseUrl(),requestSpecSnapshot));
         try {
             resp = upstreamHttp.sendJson(req, ctx);
         } catch (UpstreamCallException ex) {
@@ -405,6 +416,10 @@ public class MaterialVideoModelClient {
                     p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
             // 4xx 是「我们请求哪儿不对」，厂商原话直出给用户；5xx 是厂商自己的问题，只给状态码。
             var mappedError = VideoProviderErrorMapper.submit(resp.statusCode(), resp.body());
+            // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
+            // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
+            if(resp.statusCode()>=500 && mappedError.isEmpty())
+                throw new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode());
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                     mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
                     mappedError.map(VideoProviderErrorMapper.MappedError::message)
@@ -441,7 +456,7 @@ public class MaterialVideoModelClient {
                     elapsedMs(startNanos), null, null);
             // 无论调用方是否显式选端点，都冻结实际 endpoint id；轮询/受保护资产读取不可随默认绑定漂移。
             return new SubmitResult(taskId, videoId, p.getName(), model, protocol, p.getId(), appCode,
-                    p.getBaseUrl(), p.getVideoRequestSpecJson());
+                    p.getBaseUrl(), requestSpecSnapshot);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -456,7 +471,10 @@ public class MaterialVideoModelClient {
     /** A create request may be accepted without a readable reply. It must keep its capacity reservation. */
     public static class SubmissionUnknown extends BusinessException {
         public SubmissionUnknown(String detail) {
-            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","视频受理结果尚未确认，请联系运营核对，请勿重新生成",null,detail);
+            this(detail,null);
+        }
+        public SubmissionUnknown(String detail,Integer status) {
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","视频受理结果尚未确认"+(status==null?"":"（HTTP "+status+"）")+"，请联系运营核对，请勿重新生成",null,detail);
         }
     }
 
@@ -628,6 +646,11 @@ public class MaterialVideoModelClient {
 
     private AiModelEndpoint requireEndpoint(String endpointId) {
         return requireEndpoint(endpointId, "celebrity");
+    }
+
+    /** Resolve once before billing so queued enterprise jobs retain their exact approved model. */
+    public String resolvedEndpointId(String endpointId,String appCode) {
+        return requireEndpoint(endpointId,appCode).getId();
     }
 
     private AiModelEndpoint requireEndpoint(String endpointId, String appCode) {

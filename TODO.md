@@ -12,6 +12,22 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-15 · 主子账号与算力管理（本地完整实施与验收，未发布）
+
+- [x] **评审并工程化主子账号方案**：方案、功能、本地产品场景验收与发布准备已完成。见 [v0.4 精简方案](docs/ip-studio-team-accounts-plan.md) 和 [开发任务清单](docs/ip-studio-enterprise-development-tasks.md)。用户已确认分配积分仍归企业、可以回收，产品开通沿用现有逻辑、不做企业席位；采用单企业归属、固定 RBAC、人工充值与批量分配/回收，不做月配额或多团队。任务进度以以下条目为准，默认关闭，未生产发布；完整结果见 [交付验收](docs/ip-studio-enterprise-complete-validation.md)。
+- [x] ~~E01 契约与规则~~ **企业方案 v0.4 完成，2026-10-15（本地未发布）**：类型/API调用层、28项schema和基础/计划路径、权限/幂等业务规则；现有开通逻辑保留。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E02 数据迁移~~ **企业方案 v0.4 完成，2026-10-15（本地未发布）**：V56企业与账户结构、当前归属唯一约束、个人钱包元数据回填；H2/MySQL历史金额与账本保留验证。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E03 企业 RBAC~~ **企业方案 v0.4 完成，2026-10-15（本地未发布）**：13个基础操作覆盖邀请/撤销/角色/策略/双方移交/审计；唯一归属和竞争移交并发验证。停用/退出资金处理仍属E08。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E04 钱包核心兼容~~ **企业方案 v0.4 完成，2026-10-15（本地未发布）**：按walletId共用核心、原userId包装、wallet→hold锁序、引用核对、划拨类型及统计排除、个人和财务回归。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E05 分配/回收~~ **2026-10-15 本地完成**：1–100人原子划拨、预览重验、正文幂等、原来源/桶保留，H2/MySQL各17项通过；真实页面完成2人分配回收。见 [第二批验收](docs/ip-studio-enterprise-points-validation.md)。
+- [x] ~~E06 财务充值与退款~~ **2026-10-15 本地完成**：V57原充值来源、固定企业钱包、凭据去重、人工核准/退款和汇总；H2/MySQL各15项通过、迁移两库通过；浏览器充值→分配/回收→人工退款通过。见 [第二批验收](docs/ip-studio-enterprise-points-validation.md)。
+- [x] **E07 生成准入**：全部 Studio/原生入口显式付款、最终模型/在途准入、原任务授权与冻结、原生视频重试绑定完成；旧个人兼容。见 [入口映射](docs/ip-studio-enterprise-generation-entry-map.md)。
+- [x] **E08 结算与生命周期**：V58持久授权/回执、同事务部分结算与原任务恢复、停用/退出/重入旧退款归原企业；MySQL生命周期17/17。见 [完整验收](docs/ip-studio-enterprise-complete-validation.md)。
+- [x] **E09 企业/成员前端**：完整成员/邀请/授权/策略/移交、生命周期预览、两份余额、每次付款与记录；企业专项36项，桌面/390px实页验收。见 [界面验收](docs/ip-studio-enterprise-ui-validation.md)。
+- [x] **E10 财务前端**：企业搜索、资金/成员/划拨/消费查询及人工财务闭环完成，后台交互13项；原任务恢复仅平台运营，财务403。见 [界面验收](docs/ip-studio-enterprise-ui-validation.md)。
+- [x] **E11 集成验收**：18个产品场景按真实JPA/MySQL、本地HTTP/TLS与浏览器分别验证，迁移/个人兼容通过；三条未知任务实际核对并释放46，最终企业992/冻结0/消费8。见 [完整验收](docs/ip-studio-enterprise-complete-validation.md)。
+- [x] **E12 发布准备**：默认关闭/指定企业试点、原任务对账与兼容回退准备完成；真实关闭后端企业开关仍可个人生成（1992→1984），企业992不变，平台财务对账保留。生产发布尚未执行，按后续授权核验实际SHA/配置/迁移及业务闭环。见 [发布准备](docs/ip-studio-enterprise-release-readiness.md)。
+
 ### 2026-10-08 · 统一 Studio 首版（v0.202 后续）
 
 - [ ] M5 专属声音克隆：当前 Qwen3 TTS 只开放官方固定音色。未发现现有 Account API Key 可调用的克隆写接口，不能将预设声音冒充克隆。
@@ -43,6 +59,9 @@
 - [ ] `DapAccountService.account` 的 `planLabel=PRO` 为旧固定值；后续会员权益展示需按真实产品开通/权益建模，本轮不改后台政策。
 
 ## 已定位问题与后续限制
+
+- [ ] **存量 clip DTO/TS 镜像漂移**（2026-10-15 附加检查发现）：`ClipDtos.java` 的 TemplateDto.sourceProjectId/createdBy、JobDto.segments、AvatarDto.demoVideoUrl/demoAudioUrl、VoiceDto.demoAudioUrl 未在 `packages/types/src/clip.ts` 对应接口声明，导致全局 `pnpm check:wire-mirror` 报4组字段不一致。此项与企业开发分开处理；新增 enterprise 的15组镜像检查已通过。
+- [ ] **存量 OpenAPI 重复键**（2026-10-15 严格语法检查发现）：`AsyncJobStarted` schema 与 `/me/wallet/withdraw` path 在原 HEAD 中均重复声明；普通解析和现有API检查通过，但重复键检查失败。与本批企业实现分开整理，新增企业契约无重复键。
 
 按原产品与巡检主题保留定位、触发条件和已知边界。历史线上状态需在处理时重新核对；涉及本地数据库的条目不代表生产故障。
 

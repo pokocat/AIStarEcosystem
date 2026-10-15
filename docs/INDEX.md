@@ -52,6 +52,12 @@
 | [`docs/payment-billing-audit-2026-07.md`](payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本（全栈审计） | 充值·支付网关·账本·业务扣费·对账·退款·风控 全面审计报告 + 落地方案台账：33 项 Findings（2 P0 / 8 P1）+ 决策台账 D1-D8 + T1-T17 分波次 Task 卡（带 file:line + 验收断言）；供后续执行 agent 作工作输入（last-reviewed 2026-07-04） |
 | [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md) | AiAvatar 平台（产品定位规划） | [fable5] 从「数字人生产工具」到「AI 数字资产平台」的定位跃迁方案：五方向（资产宇宙 / 权利层确权授权分成 / 市场流通 / Asset-as-a-Service 调用层 / 组合打包）+ P0-P3 路线图 + 现状事实速查；仅方案未改造，供后续执行 agent 作工作输入（last-reviewed 2026-07-09） |
 | [`docs/ip-studio-plan.md`](ip-studio-plan.md) | **AI IP 工作台设计真源**（前端 v0.190 起并入 `apps/web-aiavatar`） | 个人照片 + 内置工作流 → 稳定产出同一人物同一风格的 AI IP 形象组，发布为 AiAvatar 资产（`DapAvatar` + `DapLook`）。决策：共用 aiavatar 开通；⚠️ §0 里「新桌面子应用」与「React Flow 画布」两条**均已被后续版本推翻** —— v0.157 改为整体 vendor infinite-canvas，v0.190 并回 web-aiavatar、全部复用 dap 生成链；§2 节点/运行契约、§3 五层一致性锁定、§4 服务端、§9 并行分工与文件所有权；v0.201 完整生成记录 / 版本恢复 / 云端画布素材（last-reviewed 2026-10-07） |
+| [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 本地完整实现，未发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
+| [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **本地完整实施，未发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
+| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
+| [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
+| [企业积分完整交付验收](ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |
+| [企业积分第二批验收](ip-studio-enterprise-points-validation.md) | **E05–E06 测试与边界** | 划拨、人工财务、原充值来源、H2/MySQL及真实浏览器交易验收（last-reviewed 2026-10-15） |
 | [`docs/ip-ecosystem-integration.md`](ip-ecosystem-integration.md) | **IP 工作台 / 数字资产 / 数字名片 整合方案** | 一条链：造形象 → 登记资产 → 对外发布。§2 打通只靠 `dapDisplayRef` + `DapAssetUsage` 两样现成东西、§3 内置工作流模板「IP 打造」（`ip-launch-female` / `ip-launch-male`，装扮 3 + 表情 3；短动作要发布后到 dap 里跑，画布跑不了）、§4 用户动线、§5 需新增项、§6 三条红线（last-reviewed 2026-09-07） |
 | [`docs/digital-business-card-plan.md`](digital-business-card-plan.md) | **AI 数字名片（`apps/web-aiavatar` 下 `/card` 域）方案真源** | 见客户递一条链接就把人说清楚。一期只做门面（扫码即看 / 形象三档 / 存通讯录），交换与名片夹挂二期。§3 不发新产品码（`/api/v1/**` 兜底到 aiavatar）、§5 形象走 `dapDisplayRef` 引用不拷贝、§6 与 dap / IP 工作台的职责边界、§8 视频层叠三方案与交付清单、§9 需新增项（last-reviewed 2026-09-07） |
 | [`docs/ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) | **IP 工作台通用化提案（v0.153 已落地）** | 形象卡五字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图无增益；改为「一个提示词框 + 内置模板库」，五层一致性锁定与计费纪律不动，零迁移（老画布读取回落）。文末有落地记录（last-reviewed 2026-09-07） |
@@ -67,6 +73,7 @@
 | [Studio 视频特效库](ip-studio-video-effects.md) | 产品 / 实施 | 共用官方描述、本人收藏/最近/个人发布、模型筛选、点选与替换；v0.213 本地，原生供应商效果及完整社区未接 |
 | [`docs/ip-studio-character-library.md`](ip-studio-character-library.md) | **Studio IP 人物库与小云雀对标** | 人物成组浏览、主图/设定图/视角/声音、免费归类、精确版本引用和浏览器验收；V45，本地未发布（last-reviewed 2026-10-08） |
 | [个人资产库与快速编辑方案](ip-studio-personal-asset-library-plan.md) | **实际产品方案，已生产发布** | 贴合现有 `/assets`、画布、人物详情及剧本素材面板；提取/快速完善不进一级导航；自动归集与跨画布引用（last-reviewed 2026-10-11） |
+| [个人资产库可交互原型](../prototypes/asset-library/README.md) | **停止迭代，不作为正式产品设计依据** | 独立本地演示，未接生产；用户改为评审实际产品方案；[演示边界](prototypes/asset-library-validation.md)（2026-10-11） |
 | [`docs/prompts/ip-character-sheet.md`](prompts/ip-character-sheet.md) | **人物设定图一次出图提示词** | 用户附图版式拆解、可换人物的提示词与整图参考出单独镜头；反推词，不称作者原词（last-reviewed 2026-10-08） |
 | [`docs/ip-studio-unified-canvas-validation.md`](ip-studio-unified-canvas-validation.md) | **统一 Studio 真实 Agnes 与确定性验证记录** | 样例与真实证据分开；三镜/双集/商品包装媒体、平台积分、恢复与下载、测试/构建/手机检查，以及声音和生产未验收边界（last-reviewed 2026-10-09） |
 | [`docs/aiavatar-asset-hub-redesign.md`](aiavatar-asset-hub-redesign.md) | AiAvatar 平台（**中枢重构真源**） | 数字资产升格为生态资产中枢的产品 + 前端重构设计：四动词模型（注册/引用/回流/授权）+ 档案卡 + 两条铁律（不阻塞下游 / 联邦不集中）+ 新 IA 五路由 + /studio 双轨迁移 + P1-P4 分期；P1（真路由读界面）已落地（last-reviewed 2026-08-29） |
@@ -223,3 +230,9 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · v0.230 桌面外壳、旧深链兼容与验收边界；last-reviewed: 2026-10-10。
 
 - [个人资产库闭环验收](ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地与生产验收通过，含 V52 和发布制品记录；last-reviewed: 2026-10-11。
+
+
+- [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
+- [企业产品场景端到端验收](ip-studio-enterprise-scenario-acceptance.md)
+- [企业发布准备与回退](ip-studio-enterprise-release-readiness.md)
+- [企业完整界面验收](ip-studio-enterprise-ui-validation.md)

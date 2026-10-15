@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // wallet.ts — 个人钱包与点数流水。
-// Wallet 1:1 → AepUser；与后端 aep_wallets / aep_ledger_entries 对齐。
+// 个人 Wallet 1:1 → AepUser；企业账户独立归属 Enterprise；与后端 aep_wallets / aep_ledger_entries 对齐。
 // 见 product_spec.md §1.3 / §1.4 / §3.4。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -10,18 +10,21 @@ import type { ID, ISODateTime } from "./_shared";
 
 export interface Wallet {
   id: ID;
-  userId: ID;
+  userId: ID | null;
   /** v0.58：账号登录名（admin 结算中心视图由 server 回填） */
   username?: string;
   /** v0.58：账号昵称（同上） */
   displayName?: string;
   /** v0.86：账号手机号（admin 财务工作台辨识用户身份） */
   phone?: string;
+  accountType?: "personal" | "enterprise" | "enterprise_member";
+  enterpriseId?: string | null;
+  memberUserId?: string | null;
   totalBalance: number;        // = licenseBalance + rechargeBalance + giftBalance
   licenseBalance: number;      // License 核销累计入账
   rechargeBalance: number;     // 充值累计入账
   giftBalance: number;         // 平台赠送 / 活动奖励
-  pendingBalance: number;      // 结算中（业务收益等待入账）
+  pendingBalance: number;      // 冻结中的积分，不计入可用余额
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -39,12 +42,18 @@ export type LedgerEntryType =
   | "freeze"               // 冻结
   | "unfreeze"             // 解冻
   | "adjust"               // 管理员手动调账
+  | "transfer_in"
+  | "transfer_out"
   | "refund_cash";         // v2 §4.2 资金面真实现金退款（D17 回收未消费积分）
 
 export interface LedgerEntry {
   id: ID;
   walletId: ID;
-  userId: ID;
+  userId: ID | null;
+  enterpriseId?: ID;
+  actorUserId?: ID;
+  membershipId?: ID;
+  billingAuthorizationId?: ID;
   /** v0.58：账号登录名（admin 结算中心视图由 server 回填） */
   username?: string;
   /** v0.58：账号昵称（同上） */

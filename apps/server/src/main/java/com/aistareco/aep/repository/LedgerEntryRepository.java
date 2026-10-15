@@ -30,7 +30,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * Sum of all positive credits ever issued (license grants + recharges + gifts + income + refunds + adjusts).
      * Used by admin stats dashboards.
      */
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.amount > 0")
+    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN")
     long sumTotalCreditsIssued();
 
     /**
@@ -38,7 +38,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * 避免数据库方言差异（H2 / MySQL / PostgreSQL 日期函数不一致）。
      */
     @Query("SELECT e FROM LedgerEntry e " +
-            "WHERE e.userId = :userId AND e.amount > 0 AND e.createdAt >= :since " +
+            "WHERE e.userId = :userId AND e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
             "ORDER BY e.createdAt ASC")
     List<LedgerEntry> findPositiveSince(@Param("userId") String userId,
                                          @Param("since") Instant since);
@@ -49,7 +49,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      */
     @Query("SELECT e.entryType, COALESCE(SUM(e.amount), 0) " +
             "FROM LedgerEntry e " +
-            "WHERE e.userId = :userId AND e.amount > 0 " +
+            "WHERE e.userId = :userId AND e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
             "GROUP BY e.entryType")
     List<Object[]> aggregateIncomeByType(@Param("userId") String userId);
 
@@ -58,7 +58,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * 用于 admin 财务图表。
      */
     @Query("SELECT e FROM LedgerEntry e " +
-            "WHERE e.amount > 0 AND e.createdAt >= :since " +
+            "WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
             "ORDER BY e.createdAt ASC")
     List<LedgerEntry> findAllPositiveSince(@Param("since") Instant since);
 
@@ -67,7 +67,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      */
     @Query("SELECT e.entryType, COALESCE(SUM(e.amount), 0) " +
             "FROM LedgerEntry e " +
-            "WHERE e.amount > 0 " +
+            "WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
             "GROUP BY e.entryType")
     List<Object[]> aggregateIncomeByTypeAll();
 

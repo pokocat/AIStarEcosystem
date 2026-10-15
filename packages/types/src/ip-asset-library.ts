@@ -12,5 +12,5 @@ export interface LibraryCandidate { key: string; kind: LibraryObjectKind; name: 
 export interface LibraryExtraction { sourceHash: string; title: string; items: LibraryCandidate[]; run?: IpRun;warnings?:string[] }
 export interface LibraryPage<T> { items: T[]; page: number; total: number; hasMore: boolean }
 export interface LibraryObjectEdit { name?: string; description?: string; prompt?: string; folderId?: string | null; referenceKey?: string | null; mainVersionId?: string; updatedAt?: string }
-export interface LibraryGenerateRequest { clientRequestId: string; model?: string; aspectRatio: string; maxCost: number }
+export interface LibraryGenerateRequest { clientRequestId: string; model?: string; aspectRatio: string; maxCost: number; billing?: import("./enterprise").EnterpriseBillingSelection }
 export type LibraryMaterial = IpSavedAsset;

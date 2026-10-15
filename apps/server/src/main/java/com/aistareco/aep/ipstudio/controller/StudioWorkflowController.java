@@ -50,6 +50,11 @@ public class StudioWorkflowController {
     public ApiResponse<IpAsset> classifyLook(Principal principal,@PathVariable String avatarId,@PathVariable String lookId,@RequestBody AssetRoleRequest request) {
         return ApiResponse.of(ipLibrary.classify(principal.getName(),avatarId,lookId,request==null?null:request.assetRole()));
     }
+    @GetMapping("/projects/{id}/billing-selection")
+    public ApiResponse<com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection> billingSelection(
+            Principal principal,@PathVariable String id,@RequestParam String clientRequestId) {
+        return ApiResponse.of(workflow.billingSelection(principal.getName(),id,clientRequestId));
+    }
     @PostMapping("/projects/{id}/studio-runs")
     public ApiResponse<IpRunDto> submit(Principal principal, @PathVariable String id, @RequestBody RunRequest request) {
         return ApiResponse.of(workflow.submit(principal.getName(), id, request));

@@ -21,6 +21,9 @@ import java.util.*;
 
 @Service
 public class StudioSpeechService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     @org.springframework.beans.factory.annotation.Autowired private StudioVoiceService profiles;
     @org.springframework.beans.factory.annotation.Autowired private StudioPointPricing pricing;
     private final IpProjectService projects; private final IpRunRepository runs;
@@ -53,9 +56,11 @@ public class StudioSpeechService {
         // Keep old accepted requests byte-compatible when the new optional bindings are absent.
         if(request.avatarId()==null)canonical.remove("avatarId");
         if(request.voiceId()==null)canonical.remove("voiceId");
+        if(request.billing()==null)canonical.remove("billing");
         String fingerprint=hash(write(canonical));
         var prior=runs.findByProjectIdAndClientRequestId(projectId,request.clientRequestId()).orElse(null);
         if(prior!=null) {
+            StudioRunBilling.requireSamePayer(prior,request.billing());
             if(!"studio-audio".equals(prior.getKind()) || !fingerprint.equals(prior.getInputFingerprint()))
                 throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一配音请求的内容已改变，请重新提交");
             return projects.toRunDto(prior);
@@ -83,10 +88,12 @@ public class StudioSpeechService {
         input.putObject("_exec").put("endpointId",resolved.endpoint().getId()).put("baseUrl",resolved.endpoint().getBaseUrl().replaceAll("/$",""))
                 .put("requestBody",write(body)).put("holdTotal",price);
         if(rate!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(rate));
-        if(price>0)credits.hold(user,price,IpRunService.REF_TYPE,id,"Studio 配音");
+        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,resolved.endpoint().getId(),price,"Studio 配音");
+        if(enterpriseBilling==null&&price>0)credits.hold(user,price,IpRunService.REF_TYPE,id,"Studio 配音");
         var run=IpRun.builder().id(id).projectId(projectId).ownerUserId(user).nodeId(request.nodeId()).kind("studio-audio")
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).status(IpRun.STATUS_RUNNING).stage("queued")
                 .cost(price).pct(0).inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
+        StudioRunBilling.apply(run,billing);
         runs.save(run);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization(){
             @Override public void afterCommit(){try{worker.execute(id);}catch(RuntimeException e){/* Durable scheduler resumes this same request. */}}

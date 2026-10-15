@@ -1,3 +1,4 @@
+import { withStudioBilling } from "./studio-billing";
 import { apiFetch } from '@ai-star-eco/api-client';
 import type { StudioTemplateVersion, StudioTemplatePublishRequest, StudioTemplateUseRequest, StudioTemplatePlan, StudioTemplateInstance, StudioTemplateExecution, StudioTemplateExecuteRequest, StudioTemplateAcceptRequest, StudioAdoptRequest, IpRun, StudioTemplatePackage, StudioTemplatePackageRequest, StudioTemplateMetrics } from '@ai-star-eco/types';
 
@@ -8,7 +9,7 @@ export const instantiateTemplate=(request:StudioTemplateUseRequest)=>apiFetch<St
 export const readTemplateInstance=(projectId:string)=>apiFetch<StudioTemplateInstance>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-instance`);
 export const templateAvailability=(templateId:string,enabled:boolean)=>apiFetch<void>(`/v1/ip-studio/templates/${encodeURIComponent(templateId)}/availability`,{method: "PUT",body:{enabled}});
 export const readTemplateExecution=(projectId:string)=>apiFetch<StudioTemplateExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-execution`);
-export const executeTemplateStep=(projectId:string,stepId:string,request:StudioTemplateExecuteRequest)=>apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-steps/${encodeURIComponent(stepId)}/runs`,{method: "POST",body:request});
+export const executeTemplateStep=async(projectId:string,stepId:string,request:StudioTemplateExecuteRequest)=>apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-steps/${encodeURIComponent(stepId)}/runs`,{method: "POST",body:await withStudioBilling(projectId,request,{operation:"template"})});
 export const acceptTemplateStep=(projectId:string,stepId:string,request:StudioTemplateAcceptRequest)=>apiFetch<StudioTemplateExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-steps/${encodeURIComponent(stepId)}/accept`,{method: "POST",body:request});
 export const archiveTemplateStep=(projectId:string,stepId:string,request:StudioAdoptRequest)=>apiFetch<StudioTemplateExecution>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-steps/${encodeURIComponent(stepId)}/archive`,{method: "POST",body:request});
 export const listTemplatePackages=(projectId:string)=>apiFetch<StudioTemplatePackage[]>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/template-packages`);

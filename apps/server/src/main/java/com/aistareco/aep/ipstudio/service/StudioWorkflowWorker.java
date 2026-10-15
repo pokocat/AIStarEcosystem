@@ -21,6 +21,9 @@ import java.util.*;
 
 @Service
 public class StudioWorkflowWorker {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
     @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService queue;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
@@ -40,6 +43,10 @@ public class StudioWorkflowWorker {
         this.credits=credits;this.mapper=mapper;this.transactions=new TransactionTemplate(manager);
         this.transactions.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         this.assets=assets;
+    }
+    private java.util.Optional<IpRun> billingLockedRun(String id) {
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,id);
+        return runs.lockById(id);
     }
     @Async("ipRunExecutor") public void execute(String id) {runBlocking(id);}
     public void runBlocking(String id) {
@@ -75,6 +82,7 @@ public class StudioWorkflowWorker {
                             if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","创作模型的图片读取能力已停用");
                             userContent=new StudioVisualContext(storage).parts(user,visual);
                         }
+                        if(enterpriseBilling!=null) enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
                         var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",input.path("_exec").path("maxTokens").asInt(8192)));
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
@@ -143,7 +151,7 @@ public class StudioWorkflowWorker {
         finally {if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     private void queued(String id) {
-        transactions.executeWithoutResult(tx->{var run=runs.lockById(id).orElseThrow();
+        transactions.executeWithoutResult(tx->{var run=billingLockedRun(id).orElseThrow();
             if(IpRun.STATUS_RUNNING.equals(run.getStatus())&&run.getStartedAt()==null) {
                 run.setStage("endpoint.queued");run.setPct(0);run.setHeartbeatAt(Instant.now());runs.save(run);
             }});
@@ -163,7 +171,7 @@ public class StudioWorkflowWorker {
     public void reject(String id,Exception error) {log.warn("[studio] dispatch rejected id={}",id,error);finish(id,null,error);}
     private boolean claim(String id) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
-            IpRun run=runs.lockById(id).orElse(null);
+            IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getStartedAt()!=null)return false;
             if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
             run.setStartedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);return true;
@@ -171,7 +179,7 @@ public class StudioWorkflowWorker {
     }
     public boolean expire(String id,Instant cutoff) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
-            IpRun run=runs.lockById(id).orElse(null);
+            IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getHeartbeatAt()==null || !run.getHeartbeatAt().isBefore(cutoff)) return false;
             terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已释放，可重新生成"));
             return true;
@@ -179,7 +187,7 @@ public class StudioWorkflowWorker {
     }
     private boolean progress(String id,int pct,String stage) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
-            IpRun run=runs.lockById(id).orElse(null);
+            IpRun run=billingLockedRun(id).orElse(null);
             if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return false;
             if(run.isCancelRequested()) {terminal(run,null,new IllegalStateException("cancelled"));return false;}
             run.setStartedAt(run.getStartedAt()==null?Instant.now():run.getStartedAt());run.setPct(pct);run.setStage(stage);run.setHeartbeatAt(Instant.now());runs.save(run);return true;
@@ -187,7 +195,7 @@ public class StudioWorkflowWorker {
     }
     private void finish(String id,ObjectNode output,Exception error) {
         transactions.executeWithoutResult(tx->{
-            IpRun run=runs.lockById(id).orElse(null);
+            IpRun run=billingLockedRun(id).orElse(null);
             if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
             terminal(run,output,error);
         });
@@ -220,5 +228,6 @@ public class StudioWorkflowWorker {
         }
         if (error != null && errorLog != null) errorLog.attach(run, error);
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);
+        if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());
     }
 }

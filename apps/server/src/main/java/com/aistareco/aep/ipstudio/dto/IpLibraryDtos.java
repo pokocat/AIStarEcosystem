@@ -14,8 +14,12 @@ public final class IpLibraryDtos {
     public record LibraryExtraction(String sourceHash,String title,List<LibraryCandidate> items,IpRunDto run) {}
     public record LibraryPage<T>(List<T> items,int page,long total,boolean hasMore) {}
     public record LibraryObjectEdit(String name,String description,String prompt,String folderId,String referenceKey,String mainVersionId,String updatedAt) {}
-    public record LibraryGenerateRequest(String clientRequestId,String model,String aspectRatio,Long maxCost) {}
-    public record ExtractRequest(String nodeId,boolean analyze,Integer episodeNo,String clientRequestId,String model,Long maxCost) {}
+    public record LibraryGenerateRequest(String clientRequestId,String model,String aspectRatio,Long maxCost,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        public LibraryGenerateRequest(String clientRequestId,String model,String aspectRatio,Long maxCost){this(clientRequestId,model,aspectRatio,maxCost,null);}
+    }
+    public record ExtractRequest(String nodeId,boolean analyze,Integer episodeNo,String clientRequestId,String model,Long maxCost,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        public ExtractRequest(String nodeId,boolean analyze,Integer episodeNo,String clientRequestId,String model,Long maxCost){this(nodeId,analyze,episodeNo,clientRequestId,model,maxCost,null);}
+    }
     public record SaveExtractRequest(String nodeId,String sourceHash,String folderId,List<LibraryCandidate> items) {}
     public record UploadVersionRequest(String storageKey,boolean main) {}
 }

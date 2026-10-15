@@ -67,6 +67,7 @@ public class StudioTemplateExecutionService {
         }
         // Existing native service supplies the exact owner lock, idempotency, hold and afterCommit worker.
         var request=new RunRequest(req.clientRequestId(),instance.plan().steps().stream().filter(s->s.id().equals(stepId)).findFirst().orElseThrow().nodeId(),step.operation(),prompt,video==null?refs:List.of(),model,step.size(),step.durationSec(),step.aspectRatio(),1,null,null,null,null,null,req.maxCost(),null,video);
+        if(req.billing()!=null) {ObjectNode body=mapper.valueToTree(request);body.set("billing",mapper.valueToTree(req.billing()));request=mapper.convertValue(body,RunRequest.class);}
         var accepted=workflow.submit(owner,projectId,request);
         var pointer=mapper.createObjectNode().put("runId",accepted.id()).put("accepted",false).put("prompt",prompt);
         pointer.set("references",mapper.valueToTree(refs));execution.set(stepId,pointer);
@@ -162,7 +163,7 @@ public class StudioTemplateExecutionService {
     private ObjectNode snapshot(IpProject project) {if(project.getTemplateInstanceJson()==null)throw bad("STUDIO_TEMPLATE_INSTANCE_NOT_FOUND","请先套用模板");return (ObjectNode)projects.parseOrEmptyObject(project.getTemplateInstanceJson());}
     private Map<String,Value> values(ObjectNode snapshot) {return mapper.convertValue(snapshot.path("inputs"),new TypeReference<Map<String,Value>>(){});}
     private void save(IpProject project,ObjectNode snapshot) {project.setTemplateInstanceJson(snapshot.toString());projects.save(project);}
-    private ObjectNode canonical(JsonNode request) {var out=mapper.createObjectNode();for(String name:List.of("clientRequestId","maxCost","replaceRunId","prompt"))if(request.hasNonNull(name))out.set(name,request.path(name));return out;}
+    private ObjectNode canonical(JsonNode request) {var out=mapper.createObjectNode();for(String name:List.of("clientRequestId","maxCost","replaceRunId","prompt","billing"))if(request.hasNonNull(name))out.set(name,request.path(name));return out;}
     private static BusinessException bad(String code,String message){return BusinessException.badRequest(code,message);}
     private static BusinessException conflict(String code,String message){return new BusinessException(HttpStatus.CONFLICT,code,message);}
 }

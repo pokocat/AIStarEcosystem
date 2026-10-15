@@ -60,6 +60,29 @@ class AiGenerationQueueDispatcherTest {
         dispatcher.dispatch();verify(videoWorker).recoverQueuedGeneration("video");
         verify(videoWorker,never()).generateAsync(any());
     }
+    @Test void closedVideosWithoutSupplierIdReleaseOrphanedRunningTickets() {
+        var failed=ticket(AiGenerationQueueService.VIDEO,"closed","running");
+        var success=ticket(AiGenerationQueueService.VIDEO,"done","running");
+        when(queue.openEntries()).thenReturn(List.of(failed,success));
+        when(videos.findById("closed")).thenReturn(Optional.of(MaterialVideoJob.builder().status("failed")
+                .errorCode("VIDEO_CONFIRMED_NOT_ACCEPTED").build()));
+        when(videos.findById("done")).thenReturn(Optional.of(MaterialVideoJob.builder().status("succeeded").externalTaskId(" ").build()));
+        dispatcher.dispatch();
+        verify(queue).finish(AiGenerationQueueService.VIDEO,"closed");verify(queue).finish(AiGenerationQueueService.VIDEO,"done");
+        verify(queue,never()).claimDispatch(any(),anyBoolean());verifyNoInteractions(videoWorker);
+    }
+    @Test void legacyFailedVideoWithOriginalSupplierIdStillRecoversOriginalTask() {
+        var entry=ticket(AiGenerationQueueService.VIDEO,"legacy","running");when(queue.openEntries()).thenReturn(List.of(entry));
+        when(videos.findById("legacy")).thenReturn(Optional.of(MaterialVideoJob.builder().status("failed").externalTaskId("original").build()));
+        when(queue.claimDispatch(entry,true)).thenReturn(true);dispatcher.dispatch();
+        verify(videoWorker).recoverQueuedGeneration("legacy");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).finish(any(),any());
+    }
+    @Test void uncertainSubmissionWithoutSupplierIdStillKeepsCapacityForEvidence() {
+        var entry=ticket(AiGenerationQueueService.VIDEO,"uncertain","running");when(queue.openEntries()).thenReturn(List.of(entry));
+        when(videos.findById("uncertain")).thenReturn(Optional.of(MaterialVideoJob.builder().status("submitting").errorCode("VIDEO_SUBMISSION_UNKNOWN").build()));
+        when(queue.claimDispatch(entry,true)).thenReturn(true);dispatcher.dispatch();
+        verify(videoWorker).recoverQueuedGeneration("uncertain");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).finish(any(),any());
+    }
     private AiGenerationQueueEntry ticket(String type,String id,String state) {
         var ticket=new AiGenerationQueueEntry();ticket.setId(1L);ticket.setTaskType(type);ticket.setTaskId(id);
         ticket.setEndpointId("e");ticket.setState(state);ticket.setDispatchAfter(Instant.now());return ticket;

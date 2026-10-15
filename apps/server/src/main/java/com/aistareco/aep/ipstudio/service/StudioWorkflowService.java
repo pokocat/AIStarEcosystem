@@ -29,6 +29,9 @@ import java.util.*;
 /** Studio is an orchestration surface; IpRun and existing assets remain authoritative. */
 @Service
 public class StudioWorkflowService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract");
     private final IpProjectService projects;
     private final IpRunRepository runs;
@@ -50,6 +53,7 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.aistareco.aep.service.AiChatTokenPricing tokenPricing;
 
+
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
             IpRunService imageRuns, CreditService credits, DapAssetService assets, DapAvatarService avatars,
@@ -60,6 +64,15 @@ public class StudioWorkflowService {
         this.ipAssets=ipAssets;
         this.prompts=prompts;
     }
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection billingSelection(String user,String projectId,String clientRequestId) {
+        projects.required(user,projectId);
+        var run=runs.findByProjectIdAndClientRequestId(projectId,clientRequestId).orElse(null);
+        if(run==null)return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(false,null);
+        var selection=StudioRunBilling.selection(run,mapper);
+        return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(true,selection);
+    }
+
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
 
     public Capabilities capabilities() {
@@ -83,6 +96,14 @@ public class StudioWorkflowService {
         if (request == null || !OPERATIONS.contains(request.operation())) throw bad("STUDIO_OPERATION_INVALID", "请选择创作方式");
         requireText(request.clientRequestId(), 64, "请求编号");
         requireText(request.nodeId(), 64, "创作对象");
+        String fingerprint=hash(write(canonicalRequest(mapper.valueToTree(request),mapper.valueToTree(request))));
+        IpRun prior=runs.findByProjectIdAndClientRequestId(projectId,request.clientRequestId()).orElse(null);
+        if(prior!=null) {
+            StudioRunBilling.requireSamePayer(prior,request.billing());
+            if(!fingerprint.equals(prior.getInputFingerprint()) && !fingerprint.equals(hash(write(canonicalRequest(
+                    projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            return projects.toRunDto(prior);
+        }
         boolean configuredImage = "image".equals(request.operation()) && !fixtures.enabled() && scenePolicies != null
                 && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint());
         // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
@@ -109,13 +130,6 @@ public class StudioWorkflowService {
             if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","配音只能用于成片合成");
             projects.requireOwnedAssetKey(userId,request.packaging().voiceoverStorageKey());
         }
-        String fingerprint=hash(write(canonicalRequest(mapper.valueToTree(request),mapper.valueToTree(request))));
-        IpRun prior=runs.findByProjectIdAndClientRequestId(projectId,request.clientRequestId()).orElse(null);
-        if(prior!=null) {
-            if(!fingerprint.equals(prior.getInputFingerprint()) && !fingerprint.equals(hash(write(canonicalRequest(
-                    projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
-            return projects.toRunDto(prior);
-        }
         if ("text".equals(request.operation())) {
             var node=IpDocs.node(projects.readDoc(project),request.nodeId());
             if (node==null || !"text".equals(node.path("type").asText()) || node.path("metadata").path("studio").hasNonNull("script")
@@ -125,7 +139,7 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "image".equals(request.operation())) {
             // Reuse model whitelist, quote, hold and worker from the established image pipeline.
             IpRunDto dto=imageRuns.generate(userId,projectId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt(),
-                    references.stream().map(Reference::storageKey).toList(),request.count()==null?1:request.count(),imageSize(request),request.model(),request.maxCost()));
+                    references.stream().map(Reference::storageKey).toList(),request.count()==null?1:request.count(),imageSize(request),request.model(),request.maxCost(),request.billing(),request.clientRequestId()));
             IpRun run=runs.findById(dto.id()).orElseThrow();
             ObjectNode imageInputs=(ObjectNode)projects.parseOrEmptyObject(run.getInputJson());
             imageInputs.set("studioRequest",mapper.valueToTree(request));run.setInputJson(write(imageInputs));
@@ -136,13 +150,14 @@ public class StudioWorkflowService {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
             var jobs=imageRuns.generateVideoBatch(userId,projectId,new IpRunService.IpVideoRequest(request.prompt(),
-                    references.isEmpty()?null:references.get(0).storageKey(),request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video()),request.count()==null?1:request.count());
+                    references.isEmpty()?null:references.get(0).storageKey(),request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video(),request.billing()),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             var ids=inputs.putObject("_exec").putArray("nativeVideoJobIds");
             jobs.forEach(job->ids.add(job.path("id").asText()));
             // This row is an immutable binding. Native video status, result and settlement are read-only projections.
             IpRun binding=IpRun.builder().id("IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20))
                     .projectId(projectId).ownerUserId(userId).nodeId(request.nodeId()).kind("studio-video")
+                    .enterpriseId(request.billing()!=null&&"enterprise".equals(request.billing().mode())?request.billing().enterpriseId():null)
                     .status(IpRun.STATUS_DONE).stage("video.bound").cost(0).clientRequestId(request.clientRequestId())
                     .inputFingerprint(fingerprint).inputJson(write(inputs)).outputJson("{}")
                     .createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
@@ -225,11 +240,14 @@ public class StudioWorkflowService {
             if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
             execution.put("maxTokens",budget);
         }
-        if(cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作");
+        var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,
+                execution.path("endpointId").asText(null),cost,"Studio 创作");
+        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作");
         IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())
                 .kind("studio-"+request.operation()).status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).inputJson(write(inputs))
                 .outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
+        StudioRunBilling.apply(run,billing);
         runs.save(run);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit() {

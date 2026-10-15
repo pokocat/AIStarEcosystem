@@ -1,3 +1,5 @@
+import { legacyImageBillingDetails, withStudioBilling } from "./studio-billing";
+import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 // 画布 → 本仓服务端的调用层（薄封装）。
 //
 // 所有请求都走 @ai-star-eco/api-client 的 apiFetch：它带 JWT、带 X-App-Code
@@ -87,6 +89,9 @@ export const setCurrentProjectId = (id: string | null) => { openProjectId = id; 
 export const currentProjectId = () => openProjectId;
 
 export type IpGenerateRequest = {
+  billing?: EnterpriseBillingSelection;
+  clientRequestId?: string;
+  maxCost?: number;
   nodeId?: string;
   prompt: string;
   refKeys?: string[];
@@ -98,14 +103,20 @@ export type IpGenerateRequest = {
 /** 画布出图：参考图由画布点名，服务端管归属闸、提示词模板、模型白名单、计价与结算。 */
 export const generate = async (projectId: string, req: IpGenerateRequest) => {
   if((await studioCapabilities()).mock) return submitStudioRun(projectId,{clientRequestId:crypto.randomUUID(),nodeId:req.nodeId || crypto.randomUUID(),operation:"image",
-    prompt:req.prompt,references:(req.refKeys||[]).map(storageKey=>({storageKey,role:"frame"})),count:req.count,size:req.size,model:req.model});
+    prompt:req.prompt,references:(req.refKeys||[]).map(storageKey=>({storageKey,role:"frame"})),count:req.count,size:req.size,model:req.model,maxCost:0});
+  const choices = process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" ? (await fetchModels()).image : [];
+  const chosen = choices.find(model => model.endpointId === req.model) || choices.find(model => model.isDefault) || choices[0];
+  const expectedCost = req.maxCost ?? (chosen ? chosen.creditCost * (req.count || 1) : undefined);
+  if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && expectedCost !== undefined) req.maxCost = expectedCost;
   return apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate`, {
     method: "POST",
-    body: req,
+    body: await withStudioBilling(projectId, req, { operation: "image", expectedCost, model: chosen?.endpointId }),
   });
 };
 
 export type IpVideoRequest = {
+  billing?: EnterpriseBillingSelection;
+  clientRequestId?: string;
   prompt: string;
   refKey?: string;
   durationSec?: number;
@@ -122,9 +133,13 @@ export const generateVideo = async (projectId: string, req: IpVideoRequest):Prom
       references:req.refKey?[{storageKey:req.refKey,role:"frame"}]:[],durationSec:req.durationSec,aspectRatio:req.aspectRatio,model:req.model,video:req.video,maxCost:req.maxCost});
     return studioVideoCard(run);
   }
+  const choices = process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && req.maxCost === undefined ? (await fetchModels()).video : [];
+  const chosen = choices.find(model => model.endpointId === req.model) || choices.find(model => model.isDefault) || choices[0];
+  const expectedCost = req.maxCost ?? (chosen ? chosen.creditCost * (chosen.billingUnit === "per_second" ? req.durationSec || 5 : 1) : undefined);
+  if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && expectedCost !== undefined) req.maxCost = expectedCost;
   return apiFetch<IpVideoJob>(
     `/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate-video`,
-    { method: "POST", body: req },
+    { method: "POST", body: await withStudioBilling(projectId, req, { operation: "video", expectedCost, model: chosen?.endpointId }) },
   );
 };
 const studioVideoCard = (run:IpRun):IpVideoJob => ({run,id:run.id,status:run.status,video_url:run.output.url,video_key:run.output.storageKey,error_message:run.errorMessage});
@@ -150,11 +165,13 @@ export const readVideoJob = async (jobId: string):Promise<IpVideoJob> => jobId.s
   apiFetch<IpVideoJob>(`/v1/ip-studio/videos/${encodeURIComponent(jobId)}`);
 
 /** 跑一个节点。服务端整存整取地收下最新画布，再按这个节点编译、扣费、派发。 */
-export const runNode = (projectId: string, nodeId: string, doc: unknown) =>
-  apiFetch<IpRun>(
+export const runNode = async (projectId: string, nodeId: string, doc: unknown) => {
+  const details = await legacyImageBillingDetails(doc, nodeId);
+  return apiFetch<IpRun>(
     `/v1/ip-studio/projects/${encodeURIComponent(projectId)}/nodes/${encodeURIComponent(nodeId)}/run`,
-    { method: "POST", body: { doc } },
+    { method: "POST", body: await withStudioBilling(projectId, { doc, ...(details.expectedCost === undefined ? {} : { maxCost: details.expectedCost }) }, { operation: "image", ...details }) },
   );
+};
 
 export const readRun = (runId: string) =>
   apiFetch<IpRun>(`/v1/ip-studio/runs/${encodeURIComponent(runId)}`);

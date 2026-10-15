@@ -361,7 +361,7 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
-    @DisplayName("创建 4xx 但回的是网关 HTML：不外泄；5xx：只给状态码")
+    @DisplayName("创建 4xx 但回的是网关 HTML：不外泄；未明确拒绝的 5xx 保留未知受理并只给状态码")
     void createRejectionDoesNotLeakHtml() {
         useJusuan();
         createStatus = 404;
@@ -376,11 +376,13 @@ class MaterialVideoModelClientWireTest {
         createBody = "{\"message\":\"overloaded\"}";
         BusinessException unavailable = assertThrows(BusinessException.class, () -> client.submit("一只猫", 5, "9:16", "u1",
                 "celebrity", null, VideoGenSpec.EMPTY));
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN",unavailable.getCode());
         assertTrue(unavailable.getMessage().contains("503"), unavailable.getMessage());
+        assertFalse(unavailable.getMessage().contains("overloaded"));
     }
 
     @Test
-    @DisplayName("供应商队列拒绝映射为稳定的平台错误码，其他 503 仍用通用错误码")
+    @DisplayName("有明确错误码的供应商队列拒绝保持确定失败，不当作平台排队或未知受理")
     void createProviderQueueFullHasMappedCode() {
         useJusuan();
         createStatus = 503;

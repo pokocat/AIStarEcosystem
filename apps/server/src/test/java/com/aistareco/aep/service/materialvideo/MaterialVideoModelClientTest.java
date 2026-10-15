@@ -511,6 +511,18 @@ class MaterialVideoModelClientTest {
     }
 
     @Test
+    void recordedLegacySubmissionIgnoresLaterProtocolConfigurationAndDefaultChanges() {
+        var invocation=mock(AiModelInvocationService.class);
+        var endpoint=AiModelEndpoint.builder().id("original").name("now seedance")
+                .baseUrl("https://changed.example").model("changed-model").videoRequestSpecJson("{}").build();
+        when(invocation.storedEndpoint("original")).thenReturn(Optional.of(endpoint));
+        var client=new MaterialVideoModelClient(invocation,new MaterialVideoProperties(),null,null,null);
+        var resumed=client.resumeExistingTask("supplier-original","original","Original supplier","original-model","studio","https://accepted.example","");
+        assertEquals("generic",resumed.protocol());assertEquals("original-model",resumed.modelUsed());
+        assertEquals("https://accepted.example/async-result/supplier-original",client.pollUri(endpoint,resumed).toString());
+    }
+
+    @Test
     @DisplayName("按文件名给出正确的 Content-Type —— 传错类型上游会拒")
     void picksContentTypeByExtension() {
         assertEquals("image/jpeg", MaterialVideoModelClient.contentTypeOf("a.JPG"));

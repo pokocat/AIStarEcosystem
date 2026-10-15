@@ -119,4 +119,20 @@ class StudioSpeechLifecycleTest {
             assertEquals("asset_video",value.path("input_video_asset_id").asText());assertEquals("asset_audio",value.path("input_audio_asset_id").asText());
         }
     }
+    @Test void zeroCostAuthorizationCompletesWithDurableTerminalStateExactlyOnce() {
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"enterpriseBilling",billing);
+        run.setCost(0);run.setEnterpriseId("company");run.setOutputJson("{\"storageKey\":\"owned/audio.wav\"}");
+        worker.step("r");worker.step("r");assertEquals("done",run.getStatus());
+        verify(billing,times(1)).complete("ip-run","r");verifyNoInteractions(credits,client);
+    }
+    @Test void revokedEnterpriseAuthorizationCancelsBeforePaidSubmission() {
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"enterpriseBilling",billing);
+        doThrow(new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,"ENTERPRISE_BILLING_REVOKED","suspended"))
+                .when(billing).requireDispatchAllowed("ip-run","r","tts");
+        worker.step("r");assertEquals("failed",run.getStatus());assertEquals("ENTERPRISE_BILLING_REVOKED",run.getErrorCode());
+        verifyNoInteractions(client);verify(credits).releaseHold(eq("ip-run"),eq("r"),anyString());verify(billing).complete("ip-run","r");
+    }
+
 }

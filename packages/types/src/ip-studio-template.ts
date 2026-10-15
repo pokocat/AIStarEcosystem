@@ -1,3 +1,4 @@
+import type { EnterpriseBillingSelection } from "./enterprise";
 import type { IpProject, IpProjectDoc, IpRun } from './ip-studio';
 import type { StudioReference } from './ip-studio-workflow';
 
@@ -116,6 +117,7 @@ export interface StudioTemplateExecution {
   complete: boolean;
 }
 export interface StudioTemplateExecuteRequest {
+  billing?: EnterpriseBillingSelection;
   clientRequestId: string;
   maxCost: number;
   /** Explicit compare-and-set replacement; accepted/running jobs are never resubmitted. */

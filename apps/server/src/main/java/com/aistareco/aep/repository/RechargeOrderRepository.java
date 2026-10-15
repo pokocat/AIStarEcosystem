@@ -5,12 +5,23 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.Lock;
+import jakarta.persistence.LockModeType;
 
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
 public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, String> {
+    Optional<RechargeOrder> findByEnterpriseIdAndEnterpriseRequestId(String enterpriseId,String enterpriseRequestId);
+    Page<RechargeOrder> findByEnterpriseIdOrderByCreatedAtDesc(String enterpriseId,Pageable pageable);
+    Page<RechargeOrder> findByEnterpriseIdAndUserIdOrderByCreatedAtDesc(String enterpriseId,String userId,Pageable pageable);
+    @Query("select o from RechargeOrder o where o.enterpriseId is not null and (:enterpriseId is null or o.enterpriseId=:enterpriseId) and (:status is null or o.status=:status) order by o.createdAt desc")
+    Page<RechargeOrder> pageEnterprise(@Param("enterpriseId")String enterpriseId,@Param("status")RechargeOrder.Status status,Pageable pageable);
+    @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select o from RechargeOrder o where o.id=:id")
+    Optional<RechargeOrder> lockById(@Param("id")String id);
 
     /** 用户自己的充值订单（最新在前）。 */
     List<RechargeOrder> findByUserIdOrderByCreatedAtDesc(String userId);
@@ -26,6 +37,7 @@ public interface RechargeOrderRepository extends JpaRepository<RechargeOrder, St
 
     /** 用户待确认订单数（下单防刷的软上限判断）。 */
     long countByUserIdAndStatus(String userId, RechargeOrder.Status status);
+    long countByUserIdAndEnterpriseIdIsNullAndStatus(String userId, RechargeOrder.Status status);
 
     /** 支付回调按网关订单号查单（幂等 + 对账）。 */
     Optional<RechargeOrder> findByPayOrderId(String payOrderId);

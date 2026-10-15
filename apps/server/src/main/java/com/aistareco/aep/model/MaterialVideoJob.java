@@ -38,6 +38,10 @@ public class MaterialVideoJob {
     /** 归属人（AepUser.id）；仅本人可见 / 可查。 */
     @Column(name = "owner_user_id", length = 64)
     private String ownerUserId;
+    @Column(length=64) private String billingWalletId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     /**
      * 所属子产品（celebrity | drama）—— 本表被带货线与短剧线共用，必须按子产品分区，

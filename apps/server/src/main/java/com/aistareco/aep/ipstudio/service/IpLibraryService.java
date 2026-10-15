@@ -82,6 +82,7 @@ public class IpLibraryService {
         var input=om.createObjectNode().put("clientRequestId",text(request.clientRequestId(),64,"请求编号")).put("nodeId",request.nodeId()).put("operation","asset-extract")
             .put("prompt","从当前已保存剧本提取人物、场景和道具，只依据原文。").put("maxCost",request.maxCost()==null?-1:request.maxCost());
         if(request.model()!=null)input.put("model",request.model());input.putObject("scriptEdit").put("markdown",bounded(scoped,48000));
+        if(request.billing()!=null)input.set("billing",om.valueToTree(request.billing()));
         var run=workflow.submit(user,project,convert(input,RunRequest.class));
         return new LibraryExtraction(hash(source),title,List.of(),run);
     }
@@ -114,6 +115,19 @@ public class IpLibraryService {
     }
     public String canvasFolder(String user,String project){projects.required(user,project);String id=records.findByIdAndOwnerUserIdAndDeletedAtIsNull("ILP-"+hash(user+"\0"+project).substring(0,24),user).map(r->json(r).path("folderId").asText(null)).orElse(null);return id!=null&&records.findByIdAndOwnerUserIdAndDeletedAtIsNull(id,user).isPresent()?id:null;}
     @Transactional public void setCanvasFolder(String user,String project,String folder){projects.required(user,project);lock(user);checkFolder(user,folder);var pref=newRecord(user,"preference","ILP-"+hash(user+"\0"+project).substring(0,24));persist(pref,om.createObjectNode().put("projectId",project).put("folderId",folder));}
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection billingSelection(String user,String id,String clientRequestId) {
+        var row=required(user,id,"object");var data=json(row);
+        String pending=data.path("pendingRunId").asText();
+        var run=pending.isBlank()?null:runs.findByIdAndOwnerUserId(pending,user).filter(r->id.equals(r.getNodeId())&&clientRequestId.equals(r.getClientRequestId())).orElse(null);
+        if(run==null) {
+            String project=data.path("generationProjectId").asText(null);
+            if(project!=null)run=runs.findByProjectIdAndClientRequestId(project,clientRequestId).filter(r->user.equals(r.getOwnerUserId())&&id.equals(r.getNodeId())).orElse(null);
+        }
+        if(run==null)return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(false,null);
+        return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(true,StudioRunBilling.selection(run,om));
+    }
+
     @Transactional public IpRunDto generate(String user,String id,LibraryGenerateRequest request) {
         var row=required(user,id,"object");var data=json(row);
         String project=data.path("generationProjectId").asText(null);
@@ -127,12 +141,13 @@ public class IpLibraryService {
         String previous=data.path("pendingRunId").asText();
         if(!previous.isBlank()) {
             var prior=runs.findByIdAndOwnerUserId(previous,user).orElse(null);
-            if(prior!=null){var dto=projects.toRunDto(prior);if(requestId.equals(prior.getClientRequestId()))return dto;if("running".equals(dto.status()))throw conflict("这个资产正在生成，请确认原任务");}
+            if(prior!=null){var dto=projects.toRunDto(prior);if(requestId.equals(prior.getClientRequestId()))StudioRunBilling.requireSamePayer(prior,request.billing());else if("running".equals(dto.status()))throw conflict("这个资产正在生成，请确认原任务");}
         }
         var input=om.createObjectNode().put("clientRequestId",requestId).put("nodeId",id).put("operation","image").put("prompt",prompt)
                 .put("count",1).put("aspectRatio",request.aspectRatio()).put("maxCost",request.maxCost()==null?-1:request.maxCost());
         if(request.model()!=null)input.put("model",request.model());
-        String ref=data.path("referenceKey").asText();if(!ref.isBlank())input.putArray("references").addObject().put("storageKey",ref).put("role","source");
+        String ref=data.path("referenceKey").asText();if(!ref.isBlank())input.putArray("references").addObject().put("storageKey",ref).put("role","frame");
+        if(request.billing()!=null)input.set("billing",om.valueToTree(request.billing()));
         var run=workflow.submit(user,project,convert(input,RunRequest.class));
         data.put("pendingRunId",run.id()).put("generationProjectId",project);persist(row,data);return run;
     }

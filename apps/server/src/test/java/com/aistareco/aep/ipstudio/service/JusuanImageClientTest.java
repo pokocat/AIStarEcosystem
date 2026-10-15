@@ -249,4 +249,35 @@ class JusuanImageClientTest {
                 ()->client.generate("ep","portrait","1024x1024",List.of(),"private-run","owner",stage->{})).getCode());
         verifyNoInteractions(http);
     }
+    @Test void durableAcceptedJobResumesOriginalIdAndBodyAfterPollOutageWithoutReposting() throws Exception {
+        var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
+        var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var requests=new ArrayList<HttpRequest>();var count=new java.util.concurrent.atomic.AtomicInteger();
+        when(upstream.sendJson(any(),any())).thenAnswer(inv->{requests.add(inv.getArgument(0));return switch(count.incrementAndGet()) {
+            case 1 -> json("{\"id\":\"original-job\"}");
+            case 2 -> throw new UpstreamCallException(false,new java.io.IOException("poll unavailable"));
+            default -> json("{\"status\":\"succeeded\",\"outputs\":[{\"assetId\":\"original-asset\"}]}");
+        };});
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,state::set));
+        assertEquals("STUDIO_IMAGE_RECOVERING",pending.code());assertEquals("original-job",state.get().path("jobId").asText());
+        String originalBody=state.get().path("requestBody").asText();ep.setBaseUrl("https://new-config.example/v1");ep.setModel("new-model");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.empty());
+        byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
+        var downloaded=mock(HttpResponse.class);when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","changed caller prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,state.get(),state::set));
+        assertEquals(originalBody,state.get().path("requestBody").asText());assertEquals(1,requests.stream().filter(r->r.method().equals("POST")).count());
+        assertEquals("/v1/jobs/original-job",requests.get(2).uri().getPath());assertEquals("api.jusuanhub.com",requests.get(2).uri().getHost());assertEquals("model=ernie-Image",requests.get(2).uri().getQuery());
+    }
+    @Test void unknownSubmitReplyKeepsOriginalReceiptAndCannotPostAgain() {
+        var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
+        var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        when(upstream.sendJson(any(),any())).thenThrow(new UpstreamCallException(true,new java.io.IOException("submit reply lost")));
+        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,state::set)).code());
+        assertTrue(state.get().path("submitAttempted").asBoolean());assertFalse(state.get().has("jobId"));
+        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,state.get(),state::set));
+        verify(upstream,times(1)).sendJson(any(),any());verifyNoInteractions(http);
+    }
+
 }

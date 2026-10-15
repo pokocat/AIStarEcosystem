@@ -50,6 +50,9 @@ public class DevShadowPayController {
         if (!principal.getName().equals(order.userId())) {
             throw new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在");
         }
+        if (!"SHADOW".equals(order.wayCode()) || order.payOrderId() == null || !order.payOrderId().startsWith("shadow_")) {
+            throw new BusinessException(HttpStatus.CONFLICT,"SHADOW_ORDER_REQUIRED","仅影子支付订单可模拟确认");
+        }
         String result = (req.result() == null || req.result().isBlank()) ? "success" : req.result().trim();
         log.info("[pay][shadow] confirm orderId={} userId={} result={}", req.orderId(), principal.getName(), result);
         return switch (result) {

@@ -692,4 +692,18 @@ class IpRunServiceTest {
         var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
         assertEquals("jusuan",body.getValue().path("items").path(0).path("variant_config").path("endpoint_id").asText());
     }
+    @Test void enterpriseImageUsesFinalPinnedEndpointAndNeverFallsBackToPersonal() {
+        seedProject(IpStudioFixtures.chainDoc(null,0));
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"enterpriseBilling",billing);
+        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("actual-default").enabled(true).build();
+        when(aiModels.resolveDefaultEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"studio")).thenReturn(java.util.Optional.of(endpoint));
+        var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        when(billing.reserve(eq(USER),eq(selected),eq("ip-run"),anyString(),eq("actual-default"),eq(8L),anyString()))
+                .thenThrow(new BusinessException(HttpStatus.FORBIDDEN,"ENTERPRISE_MODEL_NOT_ALLOWED","blocked"));
+        var req=new IpRunService.IpGenerateRequest("adhoc","test",List.of(),1,"768x1024",null,8L,selected,"native-key");
+        assertEquals("ENTERPRISE_MODEL_NOT_ALLOWED",assertThrows(BusinessException.class,()->svc.generate(USER,PID,req)).getCode());
+        org.mockito.Mockito.verifyNoInteractions(credits,worker,accounts);assertTrue(runs.rows.isEmpty());
+    }
+
 }

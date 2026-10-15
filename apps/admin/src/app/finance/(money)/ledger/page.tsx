@@ -25,6 +25,7 @@ const TXN_TYPE_LABEL: Record<string, string> = {
   spend: "消费",
   recharge: "充值",
   license_grant: "秘钥入账",
+  transfer: "积分划拨",
 };
 
 /** 账号单元格：昵称 + 登录名 + 手机号 + 用户 ID，server 未回填（老数据）时退回 userId。 */
@@ -33,12 +34,19 @@ function AccountCell({
   username,
   displayName,
   phone,
+  enterpriseId,
+  walletId,
+  accountType,
 }: {
   userId?: string;
   username?: string;
   displayName?: string;
   phone?: string;
+  enterpriseId?: string | null;
+  walletId?: string;
+  accountType?: string;
 }) {
+  if (enterpriseId) return <div className="min-w-0 text-xs text-muted-foreground"><div className="text-sm font-medium text-foreground">{accountType === "enterprise_member" ? "企业成员账户" : accountType === "enterprise" ? "企业待分配账户" : "企业账户"}</div><div className="break-all">企业 {enterpriseId}</div><div className="break-all">账户 {walletId}</div></div>;
   if (!username && !displayName && !phone) {
     return <span className="text-sm text-muted-foreground">{userId ?? "—"}</span>;
   }
@@ -56,13 +64,13 @@ function AccountCell({
 
 /** 导出 CSV（UTF-8 BOM，Excel 中文不乱码）。金额 / 余额导出原始整数，时间 ISO 到秒。 */
 function exportLedgerCsv(ledger: LedgerEntry[]) {
-  const header = ["单号", "账号登录名", "账号昵称", "账号手机号", "用户ID", "类型", "说明", "金额(credits)", "余额(credits)", "时间"];
+  const header = ["单号", "账号登录名", "账号昵称", "账号手机号", "用户ID", "类型", "说明", "金额(credits)", "余额(credits)", "时间", "钱包ID", "企业ID", "操作者ID", "成员关系ID", "关联业务类型", "关联业务ID"];
   const escape = (v: unknown) => {
     const s = v == null ? "" : String(v);
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
   const rows = ledger.map((e) =>
-    [e.id, e.username ?? "", e.displayName ?? "", e.phone ?? "", e.userId, e.type, e.description, e.amount, e.balanceAfter, e.createdAt]
+    [e.id, e.username ?? "", e.displayName ?? "", e.phone ?? "", e.userId, e.type, e.description, e.amount, e.balanceAfter, e.createdAt, e.walletId, e.enterpriseId, e.actorUserId, e.membershipId, e.referenceType, e.referenceId]
       .map(escape)
       .join(",")
   );
@@ -119,9 +127,9 @@ export default function LedgerPage() {
 
   const totalBalance = wallets.reduce((s, w) => s + w.totalBalance, 0);
   const totalPending = wallets.reduce((s, w) => s + w.pendingBalance, 0);
-  // 真实资金口径：冻结（freeze）/ 解冻（unfreeze）只是桶间移动，不计入入账 / 出账
-  const inflow = ledger.filter((e) => e.amount > 0 && e.type !== "unfreeze").reduce((s, e) => s + e.amount, 0);
-  const outflow = -ledger.filter((e) => e.amount < 0 && e.type !== "freeze").reduce((s, e) => s + e.amount, 0);
+  // 冻结/释放和企业内部划拨不增加发行或消费，避免同一笔企业积分重复统计。
+  const inflow = ledger.filter((e) => e.amount > 0 && e.type !== "unfreeze" && e.type !== "transfer_in").reduce((s, e) => s + e.amount, 0);
+  const outflow = -ledger.filter((e) => e.amount < 0 && e.type !== "freeze" && e.type !== "transfer_out").reduce((s, e) => s + e.amount, 0);
 
   return (
     <div className="admin-page">
@@ -225,7 +233,7 @@ export default function LedgerPage() {
                   {!loading && wallets.map((w) => (
                     <TableRow key={w.id}>
                       <TableCell>
-                        <AccountCell userId={w.userId} username={w.username} displayName={w.displayName} phone={w.phone} />
+                        <AccountCell userId={w.userId ?? undefined} username={w.username} displayName={w.displayName} phone={w.phone} enterpriseId={w.enterpriseId} walletId={w.id} accountType={w.accountType} />
                       </TableCell>
                       <TableCell className="text-right tabular-nums font-medium">{formatCredits(w.totalBalance)}</TableCell>
                       <TableCell className="text-right tabular-nums text-sm">{formatCredits(w.licenseBalance)}</TableCell>
@@ -277,7 +285,7 @@ export default function LedgerPage() {
                     <TableRow key={e.id}>
                       <TableCell className="text-xs text-muted-foreground tabular-nums">#{e.id.slice(0, 8).toUpperCase()}</TableCell>
                       <TableCell>
-                        <AccountCell userId={e.userId} username={e.username} displayName={e.displayName} phone={e.phone} />
+                        <AccountCell userId={e.userId ?? undefined} username={e.username} displayName={e.displayName} phone={e.phone} enterpriseId={e.enterpriseId} walletId={e.walletId} />
                       </TableCell>
                       <TableCell><StatusBadge meta={LEDGER_ENTRY_TYPE[e.type]} /></TableCell>
                       <TableCell className="text-sm">{e.description}</TableCell>

@@ -68,54 +68,85 @@ public class JusuanImageClient {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
-        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").orElseThrow(()->failure("图片模型已停用")).endpoint();
-        validate(endpoint,prompt,keys.size(),size,snapshot);
+        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null);
+    }
+    /** A provider request may have been accepted even when its HTTP reply is lost. Never re-POST that checkpoint. */
+    public static final class Pending extends RuntimeException {
+        private final boolean known;
+        public Pending(boolean known,Throwable cause){super(known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成",cause);this.known=known;}
+        public String code(){return known?"STUDIO_IMAGE_RECOVERING":"STUDIO_IMAGE_SUBMISSION_UNKNOWN";}
+    }
+    public static final class ProviderRejected extends BusinessException {
+        ProviderRejected(String message){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
+    }
+    /** Callback checkpoints are committed before submission and as soon as the original job ID is known. */
+    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
+                           Consumer<String> progress,AiImageRequestSpec snapshot,JsonNode previous,Consumer<ObjectNode> checkpoint) {
+        boolean durable=checkpoint!=null;
+        ObjectNode state=previous!=null&&previous.isObject()?previous.deepCopy():mapper.createObjectNode();
+        boolean attempted=state.path("submitAttempted").asBoolean();
+        var configured=attempted?models.storedEndpoint(endpointId):models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").map(r->r.endpoint());
+        var stored=configured.orElseThrow(()->failure("图片模型已停用"));
+        var endpoint=attempted?AiModelEndpoint.builder().id(stored.getId()).name(stored.getName())
+                .baseUrl(state.path("baseUrl").asText(stored.getBaseUrl())).model(state.path("model").asText(stored.getModel()))
+                .upstreamApiKeyEncrypted(stored.getUpstreamApiKeyEncrypted()).imageRequestSpecJson(snapshot!=null?snapshot.json():state.path("imageRequestSpec").asText(stored.getImageRequestSpecJson())).enabled(true).build():stored;
+        if(!attempted)validate(endpoint,prompt,keys.size(),size,snapshot);
         if(!supports(endpoint))throw failure("图片模型未配置可用的请求协议");
         var spec=snapshot==null?requiredSpec(endpoint):snapshot;
         var wire=spec.wire();
         boolean urlInput=wire!=null && "url".equals(wire.inputMode());
         String resultMode=configured(wire==null?null:wire.resultMode(),"async-asset");
-        List<String> references=new ArrayList<>();
-        for(int i=0;i<keys.size();i++)references.add(urlInput
-                ?referenceUrl(wire,keys.get(i))
-                :upload(endpoint,wire,keys.get(i),requestId+"-ref-"+i,owner));
-        ObjectNode body=requestBody(endpoint,spec,size,prompt,references,requestId);
-        String submitPath=fillPath(configured(wire==null?null:wire.submitPath(),"/images/generations"),"",endpoint.getModel());
-        JsonNode accepted=json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true);
-        if(resultMode.startsWith("sync-")) {
-            byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
-            recordSuccess(endpoint,owner,requestId,null,body);
-            return bytes;
+        ObjectNode body;
+        String id=state.path("jobId").asText("");
+        if(attempted) {
+            if(id.isBlank())throw new Pending(false,null);
+            try{body=(ObjectNode)mapper.readTree(state.path("requestBody").asText("{}"));}catch(Exception e){throw new Pending(true,e);}
+        } else {
+            List<String> references=new ArrayList<>();
+            for(int i=0;i<keys.size();i++)references.add(urlInput?referenceUrl(wire,keys.get(i)):upload(endpoint,wire,keys.get(i),requestId+"-ref-"+i,owner));
+            body=requestBody(endpoint,spec,size,prompt,references,requestId);
+            String submitPath=fillPath(configured(wire==null?null:wire.submitPath(),"/images/generations"),"",endpoint.getModel());
+            state.put("submitAttempted",true).put("baseUrl",endpoint.getBaseUrl()).put("model",endpoint.getModel()).put("requestBody",body.toString()).put("imageRequestSpec",spec.json());
+            if(durable)checkpoint.accept(state.deepCopy());
+            JsonNode accepted;
+            try{accepted=json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true);}
+            catch(ProviderRejected error){throw error;}
+            catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+            if(resultMode.startsWith("sync-")) {
+                try {
+                    byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
+                    recordSuccess(endpoint,owner,requestId,null,body);return bytes;
+                } catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+            }
+            id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
+            try{requireId(id);}catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+            state.put("jobId",id);if(durable)checkpoint.accept(state.deepCopy());
+            org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] accepted request={} endpoint={} job={}",requestId,endpointId,id);
         }
-        String id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer())
-                :accepted.path("id").asText(accepted.path("jobId").asText());requireId(id);
-        org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] accepted request={} endpoint={} job={}",requestId,endpointId,id);
         progress.accept("image.provider.queued");
-        for(int poll=0;poll<setting(wire==null?null:wire.maxPollAttempts(),900);poll++) {
-            String pollPath=fillPath(configured(wire==null?null:wire.pollPathTemplate(),"/jobs/{id}"),id,endpoint.getModel());
-            String pollMethod=configured(wire==null?null:wire.pollMethod(),"GET");
-            String pollBody=null;
-            if("POST".equals(pollMethod) && wire!=null && wire.pollTemplate()!=null) {
-                Map<String,Object> variables=Map.of("id",id,"model",endpoint.getModel()==null?"":endpoint.getModel(),"requestId",requestId);
-                pollBody=mapper.valueToTree(renderTemplate(wire.pollTemplate(),variables)).toString();
-            }
-            JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
-            String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
-            if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw failure("图片任务失败，请检查提示词和参考图后重试");
-            if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
-                byte[] bytes;
-                if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
-                else {
-                    String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);
-                    requireId(asset);bytes=download(endpoint,wire,asset);
+        try {
+            for(int poll=0;poll<setting(wire==null?null:wire.maxPollAttempts(),900);poll++) {
+                String pollPath=fillPath(configured(wire==null?null:wire.pollPathTemplate(),"/jobs/{id}"),id,endpoint.getModel());
+                String pollMethod=configured(wire==null?null:wire.pollMethod(),"GET"),pollBody=null;
+                if("POST".equals(pollMethod) && wire!=null && wire.pollTemplate()!=null) {
+                    Map<String,Object> variables=Map.of("id",id,"model",endpoint.getModel()==null?"":endpoint.getModel(),"requestId",requestId);
+                    pollBody=mapper.valueToTree(renderTemplate(wire.pollTemplate(),variables)).toString();
                 }
-                recordSuccess(endpoint,owner,requestId,id,body);
-                return bytes;
+                JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
+                String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
+                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw new ProviderRejected("图片任务失败，请检查提示词和参考图后重试");
+                if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
+                    byte[] bytes;
+                    if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
+                    else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
+                    recordSuccess(endpoint,owner,requestId,id,body);return bytes;
+                }
+                progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
+                if(poll+1<setting(wire==null?null:wire.maxPollAttempts(),900))pause.accept(setting(wire==null?null:wire.pollIntervalMillis(),2000));
             }
-            progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
-            if(poll+1<setting(wire==null?null:wire.maxPollAttempts(),900))pause.accept(setting(wire==null?null:wire.pollIntervalMillis(),2000));
-        }
-        throw failure("图片任务等待超时，请稍后查询任务结果");
+            throw failure("图片任务等待超时，请稍后查询任务结果");
+        } catch(ProviderRejected error){throw error;}
+        catch(RuntimeException error){if(durable)throw new Pending(true,error);throw error;}
     }
     private ObjectNode requestBody(AiModelEndpoint endpoint,AiImageRequestSpec spec,String size,String prompt,
                                    List<String> references,String requestId) {
@@ -270,7 +301,10 @@ public class JusuanImageClient {
             }
             request.POST(body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
         }
-        return checked(upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit)));
+        var response=upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit));
+        if(submit && response.statusCode()>=400 && response.statusCode()<500)
+            throw new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）");
+        return checked(response);
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
         String queryName=wire==null?"model":configured(wire.modelQueryParam(),"model");

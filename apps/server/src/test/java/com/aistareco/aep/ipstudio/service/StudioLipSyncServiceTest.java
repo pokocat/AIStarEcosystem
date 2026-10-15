@@ -24,7 +24,7 @@ class StudioLipSyncServiceTest {
     @BeforeEach void setup() throws Exception {
         service=new StudioLipSyncService(projects,runs,models,media,storage,worker,credits,new ObjectMapper());
         var endpoint=AiModelEndpoint.builder().id("lips").model("x-dub").baseUrl("https://api.jusuanhub.com/v1").billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,"lips")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_LIP_SYNC,"lips","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
         when(projects.requireOwnedAssetKey(eq("owner"),anyString())).thenAnswer(i->i.getArgument(1));
         when(storage.openForRead(anyString())).thenAnswer(i->Path.of((String)i.getArgument(0)));
         when(media.inspect(any(),any())).thenReturn(new StudioLipSyncMedia.Inputs(3.52,5.07));
@@ -63,6 +63,19 @@ class StudioLipSyncServiceTest {
         assertEquals(6,q.cost());assertEquals(4,q.billableSeconds());
         service.submit("owner","p",new LipSyncRequest("original","node","lips",request.videoStorageKey(),request.audioStorageKey(),6L));
         assertTrue(saved.get().getInputJson().contains("pointPricing"));assertEquals(6,saved.get().getCost());
+    }
+
+    @Test void lipSyncBindsExactEnterprisePayerAndRejectsChangedPayerBeforePreflight() {
+        var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
+        var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("lips"),eq(40L),anyString()))
+                .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership","authorization"));
+        var enterprise=new LipSyncRequest("original","node","lips",request.videoStorageKey(),request.audioStorageKey(),40L,selected);
+        service.submit("owner","p",enterprise);assertEquals("company",saved.get().getEnterpriseId());
+        reset(models,media,storage);service.submit("owner","p",enterprise);verifyNoInteractions(models,media,storage,credits);
+        assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",request)).getCode());
+        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
     }
 
 }

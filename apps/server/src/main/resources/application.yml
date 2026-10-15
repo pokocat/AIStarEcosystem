@@ -56,6 +56,10 @@ logging:
     file:    "%d{yyyy-MM-dd HH:mm:ss.SSS} ${LOG_LEVEL_PATTERN:-%5p} ${PID:- } --- [%X{traceId:-}] [%t] %-40.40logger{39} : %m%n${LOG_EXCEPTION_CONVERSION_WORD:-%wEx}"
 
 aep:
+  enterprise:
+    enabled: ${AEP_ENTERPRISE_ENABLED:false}
+    # Optional controlled rollout: comma-separated enterprise IDs; empty means all once enabled.
+    allowed-ids: ${AEP_ENTERPRISE_ALLOWED_IDS:}
   # 军师「快出片」服务间接口。默认全部 fail-closed；本地 mock 也必须显式开启。
   clip:
     service-token: ${AEP_CLIP_SERVICE_TOKEN:}

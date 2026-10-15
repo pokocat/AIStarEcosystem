@@ -47,8 +47,12 @@ public class CreditHold {
     @Column(name = "wallet_id", length = 64, nullable = false)
     private String walletId;
 
-    @Column(name = "user_id", length = 64, nullable = false)
+    @Column(name = "user_id", length = 64)
     private String userId;
+    @Column(length=64) private String actorUserId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     /** 业务来源（与 LedgerEntry.referenceType 同语义）。例：mixcut_job / celebrity_generation / publish_job_upload。 */
     @Column(name = "reference_type", length = 64, nullable = false)

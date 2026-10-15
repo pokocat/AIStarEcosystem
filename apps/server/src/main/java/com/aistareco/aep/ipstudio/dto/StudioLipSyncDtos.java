@@ -10,5 +10,9 @@ public final class StudioLipSyncDtos {
     public record LipSyncInput(String model, String videoStorageKey, String audioStorageKey) {}
     public record LipSyncQuote(long cost, long billableSeconds, double audioDurationSec, double videoDurationSec) {}
     public record LipSyncRequest(String clientRequestId, String nodeId, String model,
-                                 String videoStorageKey, String audioStorageKey, Long maxCost) {}
+                                 String videoStorageKey, String audioStorageKey, Long maxCost, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        public LipSyncRequest(String clientRequestId,String nodeId,String model,String videoStorageKey,String audioStorageKey,Long maxCost) {
+            this(clientRequestId,nodeId,model,videoStorageKey,audioStorageKey,maxCost,null);
+        }
+    }
 }

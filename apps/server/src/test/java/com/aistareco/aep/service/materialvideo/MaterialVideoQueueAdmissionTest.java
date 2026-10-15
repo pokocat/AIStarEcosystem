@@ -28,7 +28,8 @@ class MaterialVideoQueueAdmissionTest {
         when(queue.endpointFor(any(),any())).thenReturn("e");
         when(queue.acquire(AiGenerationQueueService.VIDEO,"job","e",false)).thenReturn(AiGenerationQueueService.Admission.READY);
         @SuppressWarnings("unchecked") ObjectProvider<CdnUploader> provider=mock(ObjectProvider.class);
-        worker=new MaterialVideoWorker(jobs,client,new MaterialVideoProperties(),credits,mock(StorageQuotaService.class),provider,mock(MaterialVideoCover.class));
+        var props=new MaterialVideoProperties();props.setPollIntervalSeconds(1);
+        worker=new MaterialVideoWorker(jobs,client,props,credits,mock(StorageQuotaService.class),provider,mock(MaterialVideoCover.class));
         ReflectionTestUtils.setField(worker,"queue",queue);
     }
     @Test void waitingNeverCallsProviderOrSettlesCredits(){
@@ -37,20 +38,32 @@ class MaterialVideoQueueAdmissionTest {
         verifyNoInteractions(client,credits);verify(queue,never()).finish(any(),any());verify(jobs,never()).claimQueued(any(),any());
     }
     @Test void definiteRejectionReleasesCapacity(){
-        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any())).thenThrow(com.aistareco.common.BusinessException.badRequest("VIDEO_NOT_CONFIGURED","disabled"));
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(com.aistareco.common.BusinessException.badRequest("VIDEO_NOT_CONFIGURED","disabled"));
         worker.generateAsync("job");verify(queue).finish(AiGenerationQueueService.VIDEO,"job");
     }
     @Test void unknownSubmissionKeepsCapacityAndCannotBeResubmitted(){
-        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any())).thenThrow(new MaterialVideoModelClient.SubmissionUnknown("timeout"));
+        when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(new MaterialVideoModelClient.SubmissionUnknown("timeout"));
         worker.generateAsync("job");verify(queue,never()).finish(any(),any());
-        worker.recoverQueuedGeneration("job");verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any());
+        assertEquals("submitting",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
+        verify(credits,never()).releaseHold(any(),any(),any());
+        worker.recoverQueuedGeneration("job");verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
     }
     @Test void originalJobRecoveryNeverSubmitsAnotherGeneration(){
         job.setStatus("failed");job.setExternalTaskId("original");
         var submitted=new MaterialVideoModelClient.SubmitResult("original",null,"provider","model","generic","e");
         when(client.resumeExistingTask(any(),any(),any(),any(),any(),any(),any())).thenReturn(submitted);
         when(client.poll(submitted)).thenReturn(new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"rejected",null,null));
-        worker.recoverQueuedGeneration("job");verify(client,never()).submit(any(),anyInt(),any(),any(),any(),any(),any());
+        worker.recoverQueuedGeneration("job");verify(client,never()).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
         verify(queue).finish(AiGenerationQueueService.VIDEO,"job");verifyNoInteractions(credits);
+    }
+    @Test void recoverySettlementFailureKeepsItsCapacityUntilLocalTerminalCommits(){
+        job.setStatus("generating");job.setExternalTaskId("original");
+        var submitted=new MaterialVideoModelClient.SubmitResult("original",null,"provider","model","generic","e");
+        when(client.resumeExistingTask(any(),any(),any(),any(),any(),any(),any())).thenReturn(submitted);
+        when(client.poll(submitted)).thenReturn(new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"rejected",null,null));
+        doThrow(new IllegalStateException("settlement transaction failed")).when(credits).releaseHold(any(),any(),any());
+        worker.recoverQueuedGeneration("job");
+        assertEquals("generating",job.getStatus());verify(queue,never()).finish(any(),any());
+        verify(client,never()).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
     }
 }

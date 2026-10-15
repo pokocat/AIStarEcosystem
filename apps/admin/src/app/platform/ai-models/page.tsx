@@ -1,4 +1,5 @@
 "use client";
+import { GenerationTaskReconciliation } from "./material-video-reconciliation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 平台 · AI 模型与用量
@@ -1527,6 +1528,7 @@ export default function AdminAiModelsPage() {
 
         {/* ── Tab 4：请求日志 ── */}
         <TabsContent value="records" className="space-y-6">
+          <GenerationTaskReconciliation />
           <Card>
             <CardHeader className="flex-col items-start gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-1.5 text-base">

@@ -1,6 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Isolated local acceptance can coexist with another task's dev server.
+  distDir: process.env.AEP_NEXT_DIST_DIR || ".next",
   // Local preview surfaces can use the loopback IP as their request origin.
   // Allow both loopback hosts so Next's development resource guard does not block page scripts.
   allowedDevOrigins: ["localhost", "127.0.0.1"],

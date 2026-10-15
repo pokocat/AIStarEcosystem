@@ -38,6 +38,25 @@ class StudioCreativeSettingsTest {
         var body=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(old);
         ((com.fasterxml.jackson.databind.node.ObjectNode)body.path("settings")).putArray("fusionGenres").add("都市").add("科幻").add("喜剧").add("悬疑");
         assertThrows(BusinessException.class,()->service.submit("u","p",mapper.treeToValue(body,RunRequest.class)));
-        verifyNoInteractions(runs,fixtures);
+        verifyNoInteractions(fixtures);verify(runs,never()).save(any());
     }
+    @Test void compatibilityReplayCannotSwitchLegacyPersonalRequestToEnterprise() throws Exception {
+        when(projects.requiredForUpdate("u","p")).thenReturn(new IpProject());
+        when(projects.parseOrEmptyObject(old)).thenReturn(mapper.readTree(old));
+        when(runs.findByProjectIdAndClientRequestId("p","original-key")).thenReturn(Optional.of(IpRun.builder().inputFingerprint("old-format").inputJson(old).build()));
+        var body=(com.fasterxml.jackson.databind.node.ObjectNode)mapper.readTree(old);
+        body.putObject("billing").put("mode","enterprise").put("enterpriseId","company");
+        assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("u","p",mapper.treeToValue(body,RunRequest.class))).getCode());
+        verifyNoInteractions(fixtures);verify(runs,never()).save(any());
+    }
+
+    @Test void payerLookupPreservesNewPersonalChoiceAndLegacyOmission() {
+        when(runs.findByProjectIdAndClientRequestId("p","key")).thenReturn(Optional.of(IpRun.builder().inputJson("{\"studioRequest\":{\"billing\":{\"mode\":\"personal\"}}}").build()));
+        var explicit=service.billingSelection("u","p","key");assertTrue(explicit.found());assertEquals("personal",explicit.billing().mode());
+        when(runs.findByProjectIdAndClientRequestId("p","key")).thenReturn(Optional.of(IpRun.builder().inputJson("{}").build()));
+        var legacy=service.billingSelection("u","p","key");assertTrue(legacy.found());assertNull(legacy.billing());
+        when(runs.findByProjectIdAndClientRequestId("p","key")).thenReturn(Optional.empty());assertFalse(service.billingSelection("u","p","key").found());
+        verify(projects,times(3)).required("u","p");
+    }
+
 }

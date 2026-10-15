@@ -1,3 +1,4 @@
+import { withStudioBilling } from "./studio-billing";
 import type { StudioVoiceCatalog,StudioVoiceProfile,StudioAdoptVoiceRequest,StudioBindVoiceRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { apiFetch } from "@ai-star-eco/api-client";
 import type { IpProject, IpRun, StudioMediaImportResult } from "@ai-star-eco/types";
@@ -18,16 +19,16 @@ export const importStudioMedia = (projectId: string, file: File, mediaType: Stud
 
 export const studioLipSyncCatalog = () => apiFetch<StudioLipSyncCatalog>("/v1/ip-studio/studio/lip-sync-catalog");
 export const quoteStudioLipSync = (projectId:string,input:StudioLipSyncInput) => apiFetch<StudioLipSyncQuote>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/lip-sync-quote`,{method:"POST",body:input});
-export const submitStudioLipSync = (projectId:string,request:StudioLipSyncRequest) => apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/lip-sync-runs`,{method:"POST",body:request});
+export const submitStudioLipSync = async (projectId:string,request:StudioLipSyncRequest) => apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/lip-sync-runs`,{method:"POST",body:await withStudioBilling(projectId,request,{operation:"lip-sync"})});
 export const extractStudioLipSync = (projectId:string,runId:string) => apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/lip-sync-runs/${encodeURIComponent(runId)}/extract`,{method:"POST"});
 
 export const studioSpeechCatalog = () => apiFetch<StudioSpeechCatalog>("/v1/ip-studio/studio/speech-catalog");
-export const submitStudioSpeech = (projectId: string, request: StudioSpeechRequest) =>
-  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/speech-runs`, { method: "POST", body: request });
+export const submitStudioSpeech = async (projectId: string, request: StudioSpeechRequest) =>
+  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/speech-runs`, { method: "POST", body: await withStudioBilling(projectId, request, { operation: "speech" }) });
 
 export const studioCapabilities = () => apiFetch<StudioCapabilities>("/v1/ip-studio/studio/capabilities");
-export const submitStudioRun = (projectId: string, request: StudioRunRequest) =>
-  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`, { method: "POST", body: request });
+export const submitStudioRun = async (projectId: string, request: StudioRunRequest) =>
+  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`, { method: "POST", body: await withStudioBilling(projectId, request) });
 export const adoptStudioImage = (projectId: string, request: StudioAdoptRequest) =>
   apiFetch<StudioAdoptResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/adopt`, { method: "POST", body: request });
 export const readStudioProject = (projectId: string) => apiFetch<IpProject>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}`);

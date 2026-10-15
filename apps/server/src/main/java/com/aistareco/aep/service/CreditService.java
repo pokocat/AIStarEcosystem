@@ -47,6 +47,16 @@ public class CreditService {
     private final CreditHoldRepository holdRepo;
     private final AepUserRepository userRepo;
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager enterpriseEntityManager;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseCreditLotService enterpriseCreditLots;
+    @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+    @org.springframework.beans.factory.annotation.Autowired @org.springframework.context.annotation.Lazy
+    private com.aistareco.aep.enterprise.service.EnterpriseFundRecoveryService enterpriseRecovery;
+
     public CreditService(WalletRepository walletRepo,
                           LedgerEntryRepository ledgerRepo,
                           CreditHoldRepository holdRepo,
@@ -61,7 +71,7 @@ public class CreditService {
     public Page<WalletDto> listWallets(Pageable pageable) {
         Page<Wallet> page = walletRepo.findAll(pageable);
         Map<String, AepUser> users = usersByIds(page.map(Wallet::getUserId).toList());
-        return page.map(w -> WalletDto.from(w, users.get(w.getUserId())));
+        return page.map(w -> WalletDto.from(w, w.getUserId()==null?null:users.get(w.getUserId())));
     }
 
     public WalletDto findWalletByUserId(String userId) {
@@ -158,7 +168,21 @@ public class CreditService {
         }
         // v2 §5: 悲观行锁，串行化并发写余额，防 lost update。
         Wallet wallet = getOrCreateWalletForUpdate(userId);
+        return debitWalletLocked(wallet, amount, entryType, referenceType, referenceId, description);
+    }
 
+    @Transactional
+    public LedgerEntryDto debitWallet(String walletId, long amount, LedgerEntry.LedgerEntryType entryType,
+                                      String referenceType, String referenceId, String description) {
+        if (amount <= 0 || entryType != LedgerEntry.LedgerEntryType.SPEND)
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "内部扣减必须为正数消费");
+        Wallet wallet=requiredWalletForUpdate(walletId);
+        if(!"personal".equals(wallet.getAccountType())) throw new ResponseStatusException(HttpStatus.FORBIDDEN,"企业消费必须通过冻结付款授权");
+        return debitWalletLocked(wallet, amount, entryType, referenceType, referenceId, description);
+    }
+
+    private LedgerEntryDto debitWalletLocked(Wallet wallet, long amount, LedgerEntry.LedgerEntryType entryType,
+                                            String referenceType, String referenceId, String description) {
         if (wallet.getTotalBalance() < amount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
                     "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
@@ -182,7 +206,8 @@ public class CreditService {
         LedgerEntry entry = LedgerEntry.builder()
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
-                .userId(userId)
+                .userId(wallet.getUserId())
+                .enterpriseId(wallet.getEnterpriseId())
                 .entryType(entryType)
                 .amount(-amount)
                 .balanceAfter(newBalance)
@@ -266,8 +291,20 @@ public class CreditService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "缺少入账类型");
         }
         // v2 §5: 悲观行锁取钱包，串行化并发写余额（入账 vs 消费），防 lost update。
-        Wallet wallet = getOrCreateWalletForUpdate(userId);
+        return creditWalletLocked(getOrCreateWalletForUpdate(userId), amount, entryType, referenceType, referenceId, description);
+    }
 
+    @Transactional
+    public LedgerEntryDto creditWallet(String walletId, long amount, LedgerEntry.LedgerEntryType entryType,
+                                       String referenceType, String referenceId, String description) {
+        if (amount <= 0 || entryType == null) throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "入账金额和类型无效");
+        return creditWalletLocked(requiredWalletForUpdate(walletId), amount, entryType, referenceType, referenceId, description);
+    }
+
+    private LedgerEntryDto creditWalletLocked(Wallet wallet, long amount, LedgerEntry.LedgerEntryType entryType,
+                                              String referenceType, String referenceId, String description) {
+        // Compute before mutation so overflow cannot leave a partially changed entity.
+        long newBalance = Math.addExact(wallet.getTotalBalance(), amount);
         switch (entryType) {
             // RECHARGE 是唯一进现金背书 recharge 桶的入账类型（守 refundCashReclaim 的 clamp 不变量）。
             case RECHARGE -> wallet.setRechargeBalance(wallet.getRechargeBalance() + amount);
@@ -281,7 +318,6 @@ public class CreditService {
                     "creditAccount 不支持的入账类型：" + entryType);
         }
 
-        long newBalance = wallet.getTotalBalance() + amount;
         wallet.setTotalBalance(newBalance);
         wallet.setUpdatedAt(Instant.now());
         walletRepo.save(wallet);
@@ -289,7 +325,8 @@ public class CreditService {
         LedgerEntry entry = LedgerEntry.builder()
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
-                .userId(userId)
+                .userId(wallet.getUserId())
+                .enterpriseId(wallet.getEnterpriseId())
                 .entryType(entryType)
                 .amount(amount)
                 .balanceAfter(newBalance)
@@ -379,11 +416,39 @@ public class CreditService {
         // 例如双击/客户端重试）如果先查后锁，两次调用都可能读到"未存在"，各自往下走到钱包扣款，
         // 第二次落 CreditHold 时撞 (referenceType, referenceId) 唯一约束报 500，而不是幂等返回。
         // 钱包行锁把同一 userId 的并发 hold 调用串行化——后到者拿到锁时，先到者已提交，此时再查一定能读到。
-        Wallet wallet = getOrCreateWalletForUpdate(userId);
+        return holdWalletLocked(getOrCreateWalletForUpdate(userId), amount, referenceType, referenceId,
+                description, userId, null, null);
+    }
 
+    @Transactional
+    public CreditHold holdWallet(String walletId, long amount, String referenceType, String referenceId,
+                                  String description, String actorUserId, String membershipId, String authorizationId) {
+        if (amount <= 0 || referenceType == null || referenceType.isBlank() || referenceId == null || referenceId.isBlank())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "冻结参数无效");
+        walletRepo.findById(walletId).ifPresent(w->lockEnterpriseMoney(w.getEnterpriseId()));
+        Wallet wallet=requiredWalletForUpdate(walletId);
+        if ("enterprise".equals(wallet.getAccountType()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "企业主账户不能直接生成消费");
+        if ("personal".equals(wallet.getAccountType()) && !java.util.Objects.equals(wallet.getUserId(),actorUserId))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"个人钱包操作人不匹配");
+        if (wallet.getEnterpriseId()!=null && (actorUserId==null || !actorUserId.equals(wallet.getMemberUserId())
+                || membershipId==null || authorizationId==null))
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "企业冻结缺少成员及付款授权");
+        return holdWalletLocked(wallet,amount,referenceType,referenceId,description,actorUserId,membershipId,authorizationId);
+    }
+
+    private CreditHold holdWalletLocked(Wallet wallet, long amount, String referenceType, String referenceId,
+                                         String description, String actorUserId, String membershipId, String authorizationId) {
+        // Lock order for money operations: wallet -> hold. New references are serialized by wallet.
         // 幂等：已存在 ACTIVE / 终态 hold → 直接返回，不再扣
-        CreditHold existing = holdRepo.findByReferenceTypeAndReferenceId(referenceType, referenceId).orElse(null);
+        CreditHold existing = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId).orElse(null);
+        refreshLocked(existing);
         if (existing != null) {
+            if (!java.util.Objects.equals(existing.getWalletId(),wallet.getId()) || existing.getAmount()!=amount
+                    || !java.util.Objects.equals(existing.getActorUserId()==null?existing.getUserId():existing.getActorUserId(),actorUserId)
+                    || !java.util.Objects.equals(existing.getMembershipId(),membershipId)
+                    || !java.util.Objects.equals(existing.getBillingAuthorizationId(),authorizationId))
+                throw new ResponseStatusException(HttpStatus.CONFLICT,"冻结引用的账户、金额或付款授权不一致");
             log.info("[credit] hold idempotent hit ref={}:{} status={} amount={}",
                     referenceType, referenceId, existing.getStatus(), existing.getAmount());
             return existing;
@@ -420,7 +485,9 @@ public class CreditService {
         LedgerEntry entry = LedgerEntry.builder()
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
-                .userId(userId)
+                .userId(wallet.getUserId())
+                .actorUserId(actorUserId).enterpriseId(wallet.getEnterpriseId())
+                .membershipId(membershipId).billingAuthorizationId(authorizationId)
                 .entryType(LedgerEntry.LedgerEntryType.FREEZE)
                 .amount(-amount)
                 .balanceAfter(wallet.getTotalBalance())
@@ -434,7 +501,9 @@ public class CreditService {
         CreditHold hold = CreditHold.builder()
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
-                .userId(userId)
+                .userId(wallet.getUserId())
+                .actorUserId(actorUserId).enterpriseId(wallet.getEnterpriseId())
+                .membershipId(membershipId).billingAuthorizationId(authorizationId)
                 .referenceType(referenceType)
                 .referenceId(referenceId)
                 .amount(amount)
@@ -448,8 +517,9 @@ public class CreditService {
                 .updatedAt(now)
                 .build();
         holdRepo.save(hold);
+        if(wallet.getEnterpriseId()!=null && fromRecharge>0) enterpriseCreditLots.reserve(wallet,hold);
         log.info("[credit] hold ok user={} ref={}:{} amount={} gift={} license={} recharge={}",
-                userId, referenceType, referenceId, amount, fromGift, fromLicense, fromRecharge);
+                wallet.getUserId(), referenceType, referenceId, amount, fromGift, fromLicense, fromRecharge);
         return hold;
     }
 
@@ -471,9 +541,11 @@ public class CreditService {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "commit 金额必须为正数");
         }
+        lockReferencedWallet(referenceType, referenceId);
         CreditHold hold = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "未找到对应的 hold: " + referenceType + ":" + referenceId));
+        refreshLocked(hold);
         if (hold.getStatus() != CreditHold.Status.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "hold 已是终态 (" + hold.getStatus() + ")，无法 commit");
@@ -483,13 +555,9 @@ public class CreditService {
                     "commit 金额 " + amount + " 超过剩余 hold " + hold.getRemainingAmount());
         }
 
-        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
+        Wallet wallet = requiredWalletForUpdate(hold.getWalletId());
         if (wallet.getPendingBalance() < amount) {
-            // pending 被外力打破 — 极端情况，记录但不阻拦
-            log.warn("[credit] commit pending<amount user={} pending={} commit={}",
-                    wallet.getUserId(), wallet.getPendingBalance(), amount);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"钱包冻结余额与任务不一致，请核对");
         }
         Instant now = Instant.now();
         wallet.setPendingBalance(Math.max(0, wallet.getPendingBalance() - amount));
@@ -500,6 +568,8 @@ public class CreditService {
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
                 .userId(hold.getUserId())
+                .actorUserId(hold.getActorUserId()).enterpriseId(hold.getEnterpriseId())
+                .membershipId(hold.getMembershipId()).billingAuthorizationId(hold.getBillingAuthorizationId())
                 .entryType(LedgerEntry.LedgerEntryType.SPEND)
                 .amount(-amount)
                 .balanceAfter(wallet.getTotalBalance())
@@ -510,6 +580,7 @@ public class CreditService {
                 .build();
         ledgerRepo.save(entry);
 
+        if(hold.getEnterpriseId()!=null) enterpriseCreditLots.commit(hold,hold.getRemainingAmount()-amount);
         hold.setRemainingAmount(hold.getRemainingAmount() - amount);
         hold.setUpdatedAt(now);
         if (hold.getRemainingAmount() == 0) {
@@ -517,6 +588,8 @@ public class CreditService {
             hold.setCompletedAt(now);
         }
         holdRepo.save(hold);
+        if(hold.getEnterpriseId()!=null && hold.getRemainingAmount()==0 && enterpriseBilling!=null)
+            enterpriseBilling.complete(referenceType,referenceId);
         log.info("[credit] commit ok ref={}:{} amount={} remaining={} status={}",
                 referenceType, referenceId, amount, hold.getRemainingAmount(), hold.getStatus());
         return LedgerEntryDto.from(entry);
@@ -533,7 +606,9 @@ public class CreditService {
      */
     @Transactional
     public LedgerEntryDto releaseHold(String referenceType, String referenceId, String description) {
+        lockReferencedWallet(referenceType, referenceId);
         CreditHold hold = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId).orElse(null);
+        refreshLocked(hold);
         if (hold == null) {
             log.info("[credit] release no-op ref={}:{} (hold not found)", referenceType, referenceId);
             return null;
@@ -549,12 +624,11 @@ public class CreditService {
             hold.setCompletedAt(now);
             hold.setUpdatedAt(now);
             holdRepo.save(hold);
+            if(hold.getEnterpriseId()!=null && enterpriseBilling!=null)enterpriseBilling.complete(referenceType,referenceId);
             return null;
         }
 
-        Wallet wallet = walletRepo.findByUserIdForUpdate(hold.getUserId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR,
-                        "hold 关联 wallet 不存在 (user " + hold.getUserId() + ")"));
+        Wallet wallet = requiredWalletForUpdate(hold.getWalletId());
 
         // 按 hold 时桶分布的比例退回。已 commit 一部分时，按剩余比例算每桶退多少。
         long originalAmount = hold.getAmount();
@@ -563,10 +637,17 @@ public class CreditService {
             backGift = hold.getFromGift();
             backLicense = hold.getFromLicense();
             backRecharge = hold.getFromRecharge();
+        } else if (hold.getEnterpriseId()!=null) {
+            // Cumulative bucket boundaries keep each enterprise source monotonic under partial settlement.
+            var rem=java.math.BigInteger.valueOf(remaining);var original=java.math.BigInteger.valueOf(originalAmount);
+            backGift=rem.multiply(java.math.BigInteger.valueOf(hold.getFromGift())).divide(original).longValueExact();
+            long giftAndLicense=rem.multiply(java.math.BigInteger.valueOf(hold.getFromGift()+hold.getFromLicense())).divide(original).longValueExact();
+            backLicense=giftAndLicense-backGift;
+            backRecharge=com.aistareco.aep.enterprise.service.EnterpriseCreditLotService.remainingRecharge(hold,remaining);
         } else {
             // 按比例。最后一项用 remaining - 前两项保证总和恰好等于 remaining（避免 round 误差）。
-            backGift = remaining * hold.getFromGift() / originalAmount;
-            backLicense = remaining * hold.getFromLicense() / originalAmount;
+            backGift = java.math.BigInteger.valueOf(remaining).multiply(java.math.BigInteger.valueOf(hold.getFromGift())).divide(java.math.BigInteger.valueOf(originalAmount)).longValueExact();
+            backLicense = java.math.BigInteger.valueOf(remaining).multiply(java.math.BigInteger.valueOf(hold.getFromLicense())).divide(java.math.BigInteger.valueOf(originalAmount)).longValueExact();
             backRecharge = remaining - backGift - backLicense;
         }
 
@@ -574,7 +655,8 @@ public class CreditService {
         wallet.setLicenseBalance(wallet.getLicenseBalance() + backLicense);
         wallet.setRechargeBalance(wallet.getRechargeBalance() + backRecharge);
         wallet.setTotalBalance(wallet.getTotalBalance() + remaining);
-        wallet.setPendingBalance(Math.max(0, wallet.getPendingBalance() - remaining));
+        if(wallet.getPendingBalance()<remaining) throw new ResponseStatusException(HttpStatus.CONFLICT,"钱包冻结余额与任务不一致，请核对");
+        wallet.setPendingBalance(wallet.getPendingBalance() - remaining);
         wallet.setUpdatedAt(now);
         walletRepo.save(wallet);
 
@@ -582,6 +664,8 @@ public class CreditService {
                 .id(UUID.randomUUID().toString())
                 .walletId(wallet.getId())
                 .userId(hold.getUserId())
+                .actorUserId(hold.getActorUserId()).enterpriseId(hold.getEnterpriseId())
+                .membershipId(hold.getMembershipId()).billingAuthorizationId(hold.getBillingAuthorizationId())
                 .entryType(LedgerEntry.LedgerEntryType.UNFREEZE)
                 .amount(remaining)
                 .balanceAfter(wallet.getTotalBalance())
@@ -592,14 +676,161 @@ public class CreditService {
                 .build();
         ledgerRepo.save(entry);
 
+        if(hold.getEnterpriseId()!=null) enterpriseCreditLots.release(hold);
         hold.setRemainingAmount(0);
         hold.setStatus(CreditHold.Status.RELEASED);
         hold.setCompletedAt(now);
         hold.setUpdatedAt(now);
         holdRepo.save(hold);
+        if(hold.getEnterpriseId()!=null) {
+            if(enterpriseRecovery!=null)enterpriseRecovery.afterRelease(hold,remaining,backGift,backLicense,backRecharge);
+            if(enterpriseBilling!=null)enterpriseBilling.complete(referenceType,referenceId);
+        }
         log.info("[credit] release ok ref={}:{} remaining={} backGift={} backLicense={} backRecharge={}",
                 referenceType, referenceId, remaining, backGift, backLicense, backRecharge);
         return LedgerEntryDto.from(entry);
+    }
+
+    /** Internal account creation: serialized by EnterpriseService's enterprise/user locks. */
+    @Transactional
+    public Wallet openEnterpriseWallet(String enterpriseId, String memberUserId) {
+        if(enterpriseId==null || enterpriseId.isBlank()) throw new IllegalArgumentException("企业不能为空");
+        String type=memberUserId==null?"enterprise":"enterprise_member";
+        String key=type+":"+enterpriseId+(memberUserId==null?"":":"+memberUserId);
+        return walletRepo.findByAccountKey(key).orElseGet(()->walletRepo.saveAndFlush(Wallet.builder()
+                .id(UUID.randomUUID().toString()).accountType(type).accountKey(key).enterpriseId(enterpriseId)
+                .memberUserId(memberUserId).createdAt(Instant.now()).updatedAt(Instant.now()).build()));
+    }
+
+    /** Internal enterprise-only transfer. Caller owns RBAC, enterprise lock and the batch record. */
+    public record EnterpriseCreditTransfer(String outLedgerId, String inLedgerId,
+                                          long fromGift, long fromLicense, long fromRecharge) {}
+
+    @Transactional
+    public EnterpriseCreditTransfer transferEnterpriseCredits(String enterpriseId, String fromWalletId,
+            String toWalletId, long amount, String actorUserId, String membershipId, String transferId, String description) {
+        return transferEnterpriseCreditsLocked(enterpriseId,fromWalletId,toWalletId,amount,actorUserId,membershipId,transferId,description,false,null,null,null);
+    }
+
+    /** Refund collection moves only cash-backed available credits; gift/license are never substituted. */
+    @Transactional
+    public EnterpriseCreditTransfer transferEnterpriseRechargeCredits(String enterpriseId, String fromWalletId,
+            String toWalletId, long amount, String actorUserId, String membershipId, String transferId, String description) {
+        return transferEnterpriseCreditsLocked(enterpriseId,fromWalletId,toWalletId,amount,actorUserId,membershipId,transferId,description,true,null,null,null);
+    }
+
+    @Transactional
+    public EnterpriseCreditTransfer transferEnterpriseRechargeCredits(String enterpriseId, String fromWalletId,
+            String toWalletId, long amount, String actorUserId, String membershipId, String transferId, String description,
+            String sourceOrderId) {
+        return transferEnterpriseCreditsLocked(enterpriseId,fromWalletId,toWalletId,amount,actorUserId,membershipId,transferId,description,true,sourceOrderId,null,null);
+    }
+    /** Recover only this old hold's released buckets and original recharge lots, preserving a new membership's allocation. */
+    @Transactional
+    public EnterpriseCreditTransfer transferEnterpriseReleasedCredits(CreditHold source,String toWalletId,long gift,long license,long recharge,
+            String actor,String transferId,String description) {
+        return transferEnterpriseCreditsLocked(source.getEnterpriseId(),source.getWalletId(),toWalletId,Math.addExact(Math.addExact(gift,license),recharge),
+                actor,source.getMembershipId(),transferId,description,false,null,new long[]{gift,license,recharge},source);
+    }
+
+    private EnterpriseCreditTransfer transferEnterpriseCreditsLocked(String enterpriseId, String fromWalletId,
+            String toWalletId, long amount, String actorUserId, String membershipId, String transferId,
+            String description, boolean rechargeOnly,String sourceOrderId,long[] exactBuckets,CreditHold sourceHold) {
+        if (enterpriseId==null || enterpriseId.isBlank() || amount<=0 || fromWalletId==null || toWalletId==null
+                || fromWalletId.equals(toWalletId) || transferId==null || transferId.isBlank())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"企业积分划拨参数无效");
+        lockEnterpriseMoney(enterpriseId);
+        // Match hold/settlement locks. Batch callers first lock the complete sorted set, never root-first.
+        var locked=new java.util.HashMap<String,Wallet>();
+        for(String walletId:java.util.stream.Stream.of(fromWalletId,toWalletId).sorted().toList()) {
+            Wallet wallet=requiredWalletForUpdate(walletId);
+            locked.put(walletId,wallet);
+        }
+        Wallet from=locked.get(fromWalletId),to=locked.get(toWalletId);
+        boolean outward="enterprise".equals(from.getAccountType()) && "enterprise_member".equals(to.getAccountType());
+        boolean inward="enterprise_member".equals(from.getAccountType()) && "enterprise".equals(to.getAccountType());
+        if (!enterpriseId.equals(from.getEnterpriseId()) || !enterpriseId.equals(to.getEnterpriseId())
+                || (!outward&&!inward) || (rechargeOnly&&!inward))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"只允许同企业主账户与成员企业账户间划拨");
+        if (ledgerRepo.existsByReferenceTypeAndReferenceId("enterprise_transfer",transferId))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"积分划拨已执行");
+        if ((rechargeOnly?from.getRechargeBalance():from.getTotalBalance())<amount)
+            throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,"可用企业积分不足，冻结积分不可回收");
+        long fromGift=exactBuckets!=null?exactBuckets[0]:rechargeOnly?0:Math.min(from.getGiftBalance(),amount);
+        long fromLicense=exactBuckets!=null?exactBuckets[1]:rechargeOnly?0:Math.min(from.getLicenseBalance(),amount-fromGift);
+        long fromRecharge=exactBuckets!=null?exactBuckets[2]:amount-fromGift-fromLicense;
+        if(fromGift<0||fromLicense<0||fromRecharge<0||from.getGiftBalance()<fromGift||from.getLicenseBalance()<fromLicense||from.getRechargeBalance()<fromRecharge)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"原任务退回的积分来源与账户不一致");
+        long toTotal=Math.addExact(to.getTotalBalance(),amount);
+        long toGift=Math.addExact(to.getGiftBalance(),fromGift);
+        long toLicense=Math.addExact(to.getLicenseBalance(),fromLicense);
+        long toRecharge=Math.addExact(to.getRechargeBalance(),fromRecharge);
+        from.setGiftBalance(from.getGiftBalance()-fromGift);from.setLicenseBalance(from.getLicenseBalance()-fromLicense);
+        from.setRechargeBalance(from.getRechargeBalance()-fromRecharge);from.setTotalBalance(from.getTotalBalance()-amount);
+        to.setGiftBalance(toGift);to.setLicenseBalance(toLicense);to.setRechargeBalance(toRecharge);to.setTotalBalance(toTotal);
+        Instant now=Instant.now();from.setUpdatedAt(now);to.setUpdatedAt(now);
+        walletRepo.saveAndFlush(from);walletRepo.saveAndFlush(to);
+        if(fromRecharge>0) {if(sourceHold!=null)enterpriseCreditLots.moveReleased(from,to,sourceHold);else enterpriseCreditLots.move(from,to,fromRecharge,sourceOrderId);}
+        LedgerEntry out=enterpriseTransferLedger(from,-amount,LedgerEntry.LedgerEntryType.TRANSFER_OUT,
+                actorUserId,membershipId,transferId,description,now);
+        LedgerEntry in=enterpriseTransferLedger(to,amount,LedgerEntry.LedgerEntryType.TRANSFER_IN,
+                actorUserId,membershipId,transferId,description,now);
+        return new EnterpriseCreditTransfer(out.getId(),in.getId(),fromGift,fromLicense,fromRecharge);
+    }
+
+    private LedgerEntry enterpriseTransferLedger(Wallet wallet,long amount,LedgerEntry.LedgerEntryType type,
+            String actor,String membershipId,String transferId,String description,Instant now) {
+        return ledgerRepo.saveAndFlush(LedgerEntry.builder().id(UUID.randomUUID().toString()).walletId(wallet.getId())
+                .userId(null).enterpriseId(wallet.getEnterpriseId()).actorUserId(actor).membershipId(membershipId)
+                .entryType(type).amount(amount).balanceAfter(wallet.getTotalBalance()).description(description)
+                .referenceType("enterprise_transfer").referenceId(transferId).createdAt(now).build());
+    }
+
+    /** Exact enterprise cash refund debit; unlike legacy personal refunds no silent clamp is permitted. */
+    @Transactional
+    public LedgerEntryDto refundCashReclaimWallet(String walletId,long requestedCredits,String cashArtifactId,String description) {
+        if(requestedCredits<=0 || cashArtifactId==null || cashArtifactId.isBlank())
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"退款回收参数无效");
+        Wallet wallet=requiredWalletForUpdate(walletId);
+        if(!"enterprise".equals(wallet.getAccountType()))
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,"企业现金退款仅能扣回企业主账户");
+        if(wallet.getRechargeBalance()<requestedCredits)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"可退充值积分不足，不能回收已消费或冻结积分");
+        if(ledgerRepo.existsByReferenceTypeAndReferenceId("refund_cash",cashArtifactId))
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"退款积分已回收");
+        wallet.setRechargeBalance(wallet.getRechargeBalance()-requestedCredits);
+        wallet.setTotalBalance(wallet.getTotalBalance()-requestedCredits);wallet.setUpdatedAt(Instant.now());walletRepo.saveAndFlush(wallet);
+        return LedgerEntryDto.from(ledgerRepo.saveAndFlush(LedgerEntry.builder().id(UUID.randomUUID().toString())
+                .walletId(wallet.getId()).enterpriseId(wallet.getEnterpriseId()).entryType(LedgerEntry.LedgerEntryType.REFUND_CASH)
+                .amount(-requestedCredits).balanceAfter(wallet.getTotalBalance()).description(description)
+                .referenceType("refund_cash").referenceId(cashArtifactId).createdAt(Instant.now()).build()));
+    }
+
+    private Wallet requiredWalletForUpdate(String walletId) {
+        Wallet wallet=walletRepo.findByIdForUpdate(walletId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"钱包不存在"));
+        refreshLocked(wallet);
+        return wallet;
+    }
+
+    /** A locking SELECT does not overwrite an already-managed entity in Hibernate's first-level cache. */
+    private void refreshLocked(Object entity) {
+        if(entity!=null && enterpriseEntityManager!=null)
+            enterpriseEntityManager.refresh(entity,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+    }
+
+    private void lockReferencedWallet(String referenceType,String referenceId) {
+        holdRepo.findByReferenceTypeAndReferenceId(referenceType,referenceId)
+                .ifPresent(h->{if(h.getEnterpriseId()!=null)lockEnterpriseMoney(h.getEnterpriseId());requiredWalletForUpdate(h.getWalletId());});
+    }
+    /** Enterprise serializes authorization, lifecycle, transfers and settlement before any wallet/hold row. */
+    private void lockEnterpriseMoney(String enterpriseId) {
+        if(enterpriseId==null||enterpriseEntityManager==null)return;
+        var e=enterpriseEntityManager.find(com.aistareco.aep.enterprise.model.Enterprise.class,enterpriseId,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(e==null)throw new ResponseStatusException(HttpStatus.CONFLICT,"原企业记录不存在，不能结算");
+        enterpriseEntityManager.refresh(e,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        var rows=enterpriseEntityManager.createQuery("select w from Wallet w where w.enterpriseId=:enterprise order by w.id",Wallet.class)
+                .setParameter("enterprise",enterpriseId).setLockMode(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE).getResultList();
+        rows.forEach(this::refreshLocked);
     }
 
     /** 查询 hold 当前状态（业务侧判断是否需 commit / release 用）。 */
@@ -628,7 +859,7 @@ public class CreditService {
      * 钱包不存在时新建（新行在本事务内即受保护，其它事务同 userId 插入会撞唯一约束）。
      */
     private Wallet getOrCreateWalletForUpdate(String userId) {
-        return walletRepo.findByUserIdForUpdate(userId).orElseGet(() -> walletRepo.save(Wallet.builder()
+        return walletRepo.findByUserIdForUpdate(userId).map(wallet->{refreshLocked(wallet);return wallet;}).orElseGet(() -> walletRepo.save(Wallet.builder()
                 .id(UUID.randomUUID().toString())
                 .userId(userId)
                 .totalBalance(0L)
@@ -655,7 +886,7 @@ public class CreditService {
             page = ledgerRepo.findAll(pageable);
         }
         Map<String, AepUser> users = usersByIds(page.map(LedgerEntry::getUserId).toList());
-        return page.map(e -> LedgerEntryDto.from(e, users.get(e.getUserId())));
+        return page.map(e -> LedgerEntryDto.from(e, e.getUserId()==null?null:users.get(e.getUserId())));
     }
 
     /** 按 id 批量取用户（去重 + 过滤 null），DTO enrich 用。 */

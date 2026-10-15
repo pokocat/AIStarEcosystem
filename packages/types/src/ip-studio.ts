@@ -196,7 +196,7 @@ export interface IpUpdateProjectRequest {
    */
   baseDocVersion?: string;
 }
-export interface IpRunNodeRequest { doc?: IpProjectDoc }   // 运行前顺手保存最新文档（可选，避免「先 PUT 再 POST」竟态）
+export interface IpRunNodeRequest { doc?: IpProjectDoc; billing?: import("./enterprise").EnterpriseBillingSelection; clientRequestId?: string; maxCost?: number }   // 运行前保存最新文档；旧请求默认个人。
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }
 export interface IpPublishResult { avatarId: string; lookIds: string[] }
 export interface IpUploadResult { key: string; url: string; width?: number; height?: number; fileName: string }

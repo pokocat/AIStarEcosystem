@@ -80,6 +80,7 @@ public final class IpStudioFixtures {
             when(repo.existsById(anyString())).thenAnswer(inv -> rows.containsKey(inv.getArgument(0, String.class)));
             when(repo.findById(anyString())).thenAnswer(inv ->
                     Optional.ofNullable(rows.get(inv.getArgument(0, String.class))));
+            when(repo.lockById(anyString())).thenAnswer(inv -> Optional.ofNullable(rows.get(inv.getArgument(0,String.class))));
             when(repo.findByIdAndOwnerUserId(anyString(), anyString())).thenAnswer(inv -> {
                 IpRun r = rows.get(inv.getArgument(0, String.class));
                 boolean ok = r != null && inv.getArgument(1, String.class).equals(r.getOwnerUserId());

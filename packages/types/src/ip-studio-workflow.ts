@@ -1,3 +1,4 @@
+import type { EnterpriseBillingSelection } from "./enterprise";
 import type { VideoStudioMode, VideoStudioReferenceInput } from "./video-studio";
 /** Unified Studio operations. IpRun remains the single execution record. */
 export interface StudioVideoSettings {
@@ -39,6 +40,7 @@ export interface StudioReference {
   role: "character" | "scene" | "product" | "frame" | "clip";
 }
 export interface StudioRunRequest {
+  billing?: EnterpriseBillingSelection;
   clientRequestId: string;
   nodeId: string;
   operation: StudioOperation;
@@ -209,6 +211,7 @@ export interface StudioNodeMetadata {
 
 /** Preset speech is distinct from a trained personal voice or lip-sync driver. */
 export interface StudioSpeechRequest {
+  billing?: EnterpriseBillingSelection;
   clientRequestId: string; nodeId: string; model: string; text: string; speaker: string;
   instruct?: string; maxCost: number; avatarId?: string; voiceId?: string;
 }
@@ -219,7 +222,7 @@ export interface StudioSpeechCatalog {
 }
 
 export interface StudioLipSyncInput { model:string;videoStorageKey:string;audioStorageKey:string }
-export interface StudioLipSyncRequest extends StudioLipSyncInput { clientRequestId:string;nodeId:string;maxCost:number }
+export interface StudioLipSyncRequest extends StudioLipSyncInput { billing?:EnterpriseBillingSelection; clientRequestId:string;nodeId:string;maxCost:number }
 export interface StudioLipSyncCatalog { models:{endpointId:string;name:string;isDefault:boolean;creditCostPerSecond:number|null}[];maxAudioSeconds:number }
 export interface StudioLipSyncQuote { cost:number;billableSeconds:number;audioDurationSec:number;videoDurationSec:number }
 

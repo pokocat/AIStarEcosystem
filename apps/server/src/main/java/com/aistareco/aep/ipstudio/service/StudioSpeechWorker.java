@@ -20,6 +20,9 @@ import java.time.Instant;
 /** Audio and lip-sync share one leased IpRun lifecycle. Accepted jobs only poll after restart. */
 @Service
 public class StudioSpeechWorker {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
     @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
     @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService queue;
     private static final Logger log=LoggerFactory.getLogger(StudioSpeechWorker.class);
@@ -33,13 +36,17 @@ public class StudioSpeechWorker {
         this.runs=runs;this.endpoints=endpoints;this.client=client;this.storage=storage;this.credits=credits;this.usage=usage;this.mapper=mapper;
         tx=new TransactionTemplate(manager);tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
+    private java.util.Optional<IpRun> billingLockedRun(String id) {
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,id);
+        return runs.lockById(id);
+    }
     @Async public void execute(String id){step(id);}
     @Scheduled(fixedDelay=15_000,initialDelay=15_000)
     public void resume(){for(String kind:java.util.List.of("studio-audio","studio-lip-sync"))for(var run:runs.findByKindAndStatus(kind,IpRun.STATUS_RUNNING))step(run.getId());}
     public static boolean manages(String kind){return "studio-audio".equals(kind)||"studio-lip-sync".equals(kind);}
     public void step(String id) {
         IpRun run=tx.execute(status->{
-            var r=runs.lockById(id).orElse(null);
+            var r=billingLockedRun(id).orElse(null);
             if(r==null||!manages(r.getKind())||!IpRun.STATUS_RUNNING.equals(r.getStatus()))return null;
             ObjectNode input=read(r.getInputJson());var exec=(ObjectNode)input.path("_exec");
             if(exec.path("leaseUntil").asLong()>System.currentTimeMillis())return null;
@@ -83,6 +90,7 @@ public class StudioSpeechWorker {
                 if(attempts>=3 || attempts>0&&System.currentTimeMillis()-first>120_000) {
                     update(id,e->e.put("leaseUntil",0),prefix+".submission_unknown",5,lip?"STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN":"STUDIO_SPEECH_SUBMISSION_UNKNOWN",label+"受理结果尚未确认，请联系运营核对原请求；请勿重新生成");return;
                 }
+                if(enterpriseBilling!=null && attempts==0)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
                 exec.put("submitAttempts",attempts+1).put("firstSubmitAt",first);
                 update(id,e->{e.put("submitAttempts",attempts+1).put("firstSubmitAt",first);},prefix+".submitting",10,null,null);
                 var job=lip?lips.submit(endpoint,base,exec.path("requestBody").asText(),id,run.getOwnerUserId()):client.submit(endpoint,base,exec.path("requestBody").asText(),id,run.getOwnerUserId());
@@ -111,13 +119,18 @@ public class StudioSpeechWorker {
                         .put("speaker",input.path("speaker").asText()).put("text",input.path("text").asText());
             }
             // Checkpoint the mirrored artifact before settling; a settlement retry reuses the same file.
-            tx.executeWithoutResult(s->{var r=runs.lockById(id).orElseThrow();r.setOutputJson(write(output));runs.save(r);});
+            tx.executeWithoutResult(s->{var r=billingLockedRun(id).orElseThrow();r.setOutputJson(write(output));runs.save(r);});
             if(finish(id,output,null,null)) {
                 try {long seconds=lip?exec.path("billableSeconds").asLong():(long)Math.ceil(duration);usage.recordMeteredObservedWithAttribution(endpoint.getId(),endpoint.getName(),lip?"x-dub":"qwen3-tts",lip?"DAP_LIP_SYNC":"DAP_AUDIO",null,null,null,
                         AiModelBillingMode.PER_SECOND,seconds,seconds,true,run.getOwnerUserId(),null,"aiavatar",id,exec.path("jobId").asText(),null,null,null,exec.path("requestBody").asText(),null,null);}
                 catch(Exception error){log.warn("[speech] usage recording failed run={}",id,error);}
             }
         } catch(JusuanSpeechClient.Rejected error) {finish(id,null,error.getCode(),error.getMessage());}
+        catch(BusinessException error) {
+            if("ENTERPRISE_BILLING_REVOKED".equals(error.getCode()) || "ENTERPRISE_MODEL_NOT_ALLOWED".equals(error.getCode()))
+                finish(id,null,error.getCode(),error.getMessage());
+            else throw error;
+        }
         catch(Exception error) {
             log.warn("[speech] awaiting original task run={} reason={}",id,error.getClass().getSimpleName());
             update(id,e->e.put("leaseUntil",0),prefix+".recovering",run.getPct(),lip?"STUDIO_LIP_SYNC_RECOVERING":"STUDIO_SPEECH_RECOVERING","正在恢复原"+label+"任务，无需重新生成");
@@ -126,12 +139,12 @@ public class StudioSpeechWorker {
         }
     }
     private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message) {
-        tx.executeWithoutResult(s->{var r=runs.lockById(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return;
+        tx.executeWithoutResult(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return;
             ObjectNode input=read(r.getInputJson());update.accept((ObjectNode)input.path("_exec"));r.setInputJson(write(input));
             r.setStage(stage);r.setPct(pct);r.setErrorCode(code);r.setErrorMessage(message);r.setHeartbeatAt(Instant.now());runs.save(r);});
     }
     private boolean finish(String id,ObjectNode output,String code,String message) {
-        return Boolean.TRUE.equals(tx.execute(s->{var r=runs.lockById(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return false;terminal(r,output,code,message);return true;}));
+        return Boolean.TRUE.equals(tx.execute(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return false;terminal(r,output,code,message);return true;}));
     }
     private void terminal(IpRun run,ObjectNode output,String code,String message) {
         if(output!=null) {
@@ -159,6 +172,7 @@ public class StudioSpeechWorker {
             if (errorLog != null) errorLog.attach(run, null);
         }
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);
+        if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());
         if(queue!=null)org.springframework.transaction.support.TransactionSynchronizationManager.registerSynchronization(
             new org.springframework.transaction.support.TransactionSynchronization(){
                 @Override public void afterCommit(){queue.finish(AiGenerationQueueService.SPEECH,run.getId());}

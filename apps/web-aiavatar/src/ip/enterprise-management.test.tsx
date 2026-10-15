@@ -1,0 +1,80 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { webcrypto } from "node:crypto";
+import { EnterpriseManagement } from "./enterprise-management";
+import type { EnterpriseContext } from "@ai-star-eco/types/enterprise";
+const api = vi.hoisted(() => ({ members: vi.fn(), invitations: vi.fn(), ownershipTransfers: vi.fn(), invite: vi.fn(), revoke: vi.fn(), updateMember: vi.fn(), requestOwnership: vi.fn(), acceptOwnership: vi.fn(), policy: vi.fn(), updatePolicy: vi.fn(), previewLifecycle: vi.fn(), lifecycle: vi.fn() }));
+vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
+vi.mock("@/canvas-bridge/api", () => ({ fetchModels: vi.fn().mockResolvedValue({ image: [{ endpointId: "image-id", name: "人像图片" }], video: [] }) }));
+vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: vi.fn().mockResolvedValue({ textModels: [{ endpointId: "text-id", name: "创作文本" }] }), studioSpeechCatalog: vi.fn().mockResolvedValue({ models: [] }), studioLipSyncCatalog: vi.fn().mockResolvedValue({ models: [] }) }));
+vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ message: error.message || String(error) }) }));
+vi.mock("antd", () => ({
+  Alert: ({ title, description, action }: any) => <div role="alert">{title}{description}{action}</div>,
+  Button: ({ children, loading, type, danger, ...props }: any) => <button {...props} disabled={loading || props.disabled}>{children}</button>,
+  Checkbox: ({ children, ...props }: any) => <label><input {...props} type="checkbox"/>{children}</label>,
+  Empty: ({ description }: any) => <p>{description}</p>,
+  Input: { TextArea: ({ autoSize, ...props }: any) => <textarea {...props}/> },
+  InputNumber: ({ onChange, precision, ...props }: any) => <input {...props} type="number" value={props.value ?? ""} onChange={event => onChange(Number(event.target.value))}/>,
+  Select: ({ options, onChange, value, mode, optionFilterProp, ...props }: any) => <select {...props} value={value} multiple={mode === "multiple"} onChange={event => onChange(mode === "multiple" ? [...event.target.selectedOptions].map(option => option.value) : event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
+  Modal: ({ open, title, children, footer, onOk, onCancel, okText, okButtonProps, confirmLoading }: any) => open ? <section role="dialog" aria-label={title}><h2>{title}</h2>{children}{footer || <><button onClick={onCancel}>取消</button><button disabled={confirmLoading || okButtonProps?.disabled} onClick={onOk}>{okText}</button></>}</section> : null,
+  Pagination: () => null, Skeleton: () => <p>读取中</p>, Tag: ({ children }: any) => <span>{children}</span>,
+  Table: ({ dataSource, columns }: any) => <table><tbody>{dataSource.map((row: any) => <tr key={row.id}>{columns.map((column: any, index: number) => <td key={index}>{column.render ? column.render(row[column.dataIndex], row) : row[column.dataIndex]}</td>)}</tr>)}</tbody></table>,
+}));
+const owner = { enterprise: { id: "team", name: "创作公司", status: "active" }, member: { id: "self", userId: "owner", role: "owner", status: "active" }, permissions: ["enterprise.read", "member.invite", "member.manage", "policy.manage"] } as EnterpriseContext;
+const member = { id: "member", userId: "user", displayName: "张三", role: "member", status: "active", capabilities: { pointsManage: false, billingRead: false, rechargeRequest: false }, version: 3 };
+const page = (data: unknown[]) => ({ data, pagination: { total: data.length } });
+beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("crypto", webcrypto); api.members.mockResolvedValue(page([member])); api.invitations.mockResolvedValue(page([])); api.ownershipTransfers.mockResolvedValue(page([])); api.previewLifecycle.mockResolvedValue({ availableCredits: 50, pendingCredits: 20, activeJobs: 2, cancellableJobs: 1, acceptedJobs: 1, canProceed: true, blockers: [], confirmationFingerprint: "preview" }); api.lifecycle.mockResolvedValue({ reclaimedCredits: 50 }); api.policy.mockResolvedValue({ allowedEndpointIds: ["image-id"], maxActiveJobs: 3, version: 2 }); });
+afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+test("suspend previews exact available and pending consequences before explicit confirmation", async () => {
+  render(<EnterpriseManagement context={owner} section="team" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "停用" }));
+  const dialog = await screen.findByRole("dialog", { name: "停用成员" });
+  expect(api.previewLifecycle).toHaveBeenCalledWith("team", { action: "suspend", memberId: "member" }); expect(api.lifecycle).not.toHaveBeenCalled();
+  expect(within(dialog).getByText("50")).toBeDefined(); expect(within(dialog).getByText("20")).toBeDefined();
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认停用成员" }));
+  await waitFor(() => expect(api.lifecycle).toHaveBeenCalledWith("team", expect.objectContaining({ action: "suspend", memberId: "member", confirmationFingerprint: "preview" })));
+});
+
+test("lifecycle failure retains preview and original idempotency key for retry", async () => {
+  api.lifecycle.mockRejectedValueOnce(new Error("网络中断")).mockResolvedValueOnce({});
+  render(<EnterpriseManagement context={owner} section="team" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "移除" })); const dialog = await screen.findByRole("dialog", { name: "移除成员" });
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认移除成员" }));
+  await waitFor(() => expect(api.lifecycle).toHaveBeenCalledTimes(1)); await screen.findAllByText(/网络中断/);
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认移除成员" }));
+  await waitFor(() => expect(api.lifecycle).toHaveBeenCalledTimes(2)); expect(api.lifecycle.mock.calls[0][1].clientRequestId).toBe(api.lifecycle.mock.calls[1][1].clientRequestId);
+});
+
+test("ordinary member cannot invoke administrator controls and can accept incoming owner transfer", async () => {
+  api.ownershipTransfers.mockResolvedValue(page([{ id: "transfer", status: "pending", toUserId: "user", expiresAt: "2099-01-01T00:00:00Z" }]));
+  const context = { ...owner, member: { ...owner.member, id: "member", userId: "user", role: "member" }, permissions: ["enterprise.read"] } as EnterpriseContext;
+  render(<EnterpriseManagement context={context} section="lifecycle" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "接受主账号移交" }));
+  await waitFor(() => expect(api.acceptOwnership).toHaveBeenCalledWith("team", "transfer"));
+  expect(screen.queryByRole("button", { name: "创建邀请" })).toBeNull(); expect(api.members).not.toHaveBeenCalled();
+});
+
+test("model policy selects human model names and sends endpoint ids with version", async () => {
+  render(<EnterpriseManagement context={owner} section="policy" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  expect(await screen.findByRole("option", { name: "图片 · 人像图片" })).toBeDefined(); expect(screen.getByRole("option", { name: "文本 · 创作文本" })).toBeDefined();
+  fireEvent.change(screen.getByLabelText("每位成员最多在途任务数"), { target: { value: "5" } }); fireEvent.click(screen.getByRole("button", { name: "保存生成设置" }));
+  await waitFor(() => expect(api.updatePolicy).toHaveBeenCalledWith("team", { allowedEndpointIds: ["image-id"], maxActiveJobs: 5, version: 2 }));
+});
+
+test("close with unresolved funds shows blockers and cannot submit", async () => {
+  api.previewLifecycle.mockResolvedValue({ availableCredits: 100, pendingCredits: 20, activeJobs: 1, cancellableJobs: 0, acceptedJobs: 1, canProceed: false, blockers: ["请先处理剩余企业积分"], confirmationFingerprint: "blocked" });
+  render(<EnterpriseManagement context={owner} section="lifecycle" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "核对关闭企业条件" })); const dialog = await screen.findByRole("dialog", { name: "关闭企业" });
+  expect(within(dialog).getByText(/请先处理剩余企业积分/)).toBeDefined(); expect(within(dialog).getByRole("button", { name: "确认关闭企业" }).hasAttribute("disabled")).toBe(true); expect(api.lifecycle).not.toHaveBeenCalled();
+});
+
+test("one-time invitation stays visible until explicitly closed without remounting parent", async () => {
+  api.invite.mockResolvedValue({ invitation: { id: "invite" }, token: "one-time-invite-token" }); const changed = vi.fn().mockResolvedValue(undefined);
+  render(<EnterpriseManagement context={owner} section="team" onChanged={changed}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "创建邀请" }));
+  const dialog = await screen.findByRole("dialog", { name: "邀请口令" });
+  expect((within(dialog).getByLabelText("邀请口令") as HTMLTextAreaElement).value).toBe("one-time-invite-token"); expect(changed).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "已妥善交给受邀人" })); expect(screen.queryByRole("dialog", { name: "邀请口令" })).toBeNull();
+});

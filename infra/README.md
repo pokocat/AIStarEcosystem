@@ -803,3 +803,9 @@ ssh <ECS_HOST> 'systemctl restart aistareco-sau-service'
 ## 后端固定 SDK 构建（2026-10-10）
 
 CI 与发布构建在 Maven 编译前执行 `infra/scripts/prepare-platform-sdk.sh`。`infra/vendor/platform-sdk/` 镜像固定 release 的薄 SDK JAR/POM，校验 SHA256 后安装；不保存凭据或平台业务源码。新 runner 不需要跨私有仓读取权限，详情见该目录 README。
+
+## 企业功能发布开关（2026-10-15）
+
+`AEP_ENTERPRISE_ENABLED=false` 为默认值；映射 `aep.enterprise.enabled`。仅在受控环境显式开启时注册企业关系、邀请、RBAC、策略和移交 API，仍受登录/手机号/产品开通保护。E01–E12 已含关系、划拨、人工财务、全部Studio付款与结算、生命周期和对账；已分配积分仍归企业，不增加席位开通。`NEXT_PUBLIC_ENTERPRISE_ENABLED=0` 默认隐藏 Studio 入口，启用须在构建期传1（build-release.sh 会记录），仅改运行期env无效。平台财务已有订单处理保持注册，不随后端入口开关关闭。后续存在在途资金时，关闭新入口不得停用结算、退款和对账；不能回退到不认识企业账户/nullable userId 的版本。环境文件修改按既有流程重建运行实例，授权企业功能上线时同时开启前台构建期开关与后端非机密功能开关；其他环境项和凭据保留。
+
+企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。

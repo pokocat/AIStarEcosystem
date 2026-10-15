@@ -38,7 +38,10 @@ public class AiGenerationQueueDispatcher {
             }
             if(AiGenerationQueueService.VIDEO.equals(type)) {
                 var job=videos.findById(id).orElse(null);
-                if(job==null || (waiting && !"queued".equals(job.getStatus()))) {queue.finish(type,id);continue;}
+                // Retry cleanup if the terminal transaction committed but its afterCommit queue finish failed.
+                boolean terminalWithoutSupplier=job!=null && ("failed".equals(job.getStatus())||"succeeded".equals(job.getStatus()))
+                        && (job.getExternalTaskId()==null||job.getExternalTaskId().isBlank());
+                if(job==null || terminalWithoutSupplier || (waiting && !"queued".equals(job.getStatus()))) {queue.finish(type,id);continue;}
                 if(!waiting) {
                     if(queue.claimDispatch(entry,true))videoWorker.getObject().recoverQueuedGeneration(id);
                     continue;
@@ -47,7 +50,11 @@ public class AiGenerationQueueDispatcher {
                 var run=runs.findById(id).orElse(null);
                 if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) {queue.finish(type,id);continue;}
                 // Waiting is not execution time. Reaper and hold sweeper recognize the durable ticket.
-                if(!waiting)continue;
+                if(!waiting) {
+                    if(AiGenerationQueueService.IMAGE.equals(type) && images.getObject().canResumeNative(run) && queue.claimDispatch(entry,true))
+                        images.getObject().recoverNative(id);
+                    continue;
+                }
             }
             if(queue.claimDispatch(entry,false))switch(type) {
                 case AiGenerationQueueService.IMAGE -> images.getObject().execute(id);
@@ -64,7 +71,7 @@ public class AiGenerationQueueDispatcher {
             switch(run.getKind()) {
                 case "generate" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE;}
                 case "identity" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
-                case "studio-script","studio-storyboard","studio-assistant" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
+                case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-asset-extract" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
                 case "studio-audio" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_AUDIO;}
                 case "studio-lip-sync" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC;}
                 default -> {continue;}
