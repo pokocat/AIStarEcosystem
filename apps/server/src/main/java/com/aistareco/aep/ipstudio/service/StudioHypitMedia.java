@@ -55,7 +55,14 @@ public class StudioHypitMedia {
     }
     static ProcessBuilder configureMediaRuntime(ProcessBuilder process) {
         String directory=System.getenv("AEP_STUDIO_RECREATION_MEDIA_BIN");
-        if(directory!=null&&!directory.isBlank())process.environment().put("PATH",directory+java.io.File.pathSeparator+process.environment().getOrDefault("PATH","/usr/local/bin:/usr/bin:/bin"));
+        if(directory!=null&&!directory.isBlank()) {
+            process.environment().put("PATH",directory+java.io.File.pathSeparator+process.environment().getOrDefault("PATH","/usr/local/bin:/usr/bin:/bin"));
+            // Java executable lookup can use the parent PATH; select our media binary explicitly.
+            var command=new java.util.ArrayList<>(process.command());
+            if(!command.isEmpty()&&java.util.Set.of("ffmpeg","ffprobe").contains(command.get(0))) {
+                command.set(0,Path.of(directory,command.get(0)).toString());process.command(command);
+            }
+        }
         return process;
     }
 }
