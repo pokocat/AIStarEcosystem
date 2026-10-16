@@ -191,7 +191,7 @@ public class StudioWorkflowWorker {
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
-        var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),
+        var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
             (system,parts,tokens,json)->{
                 if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
                 var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("max_tokens",tokens);params.put("temperature",.3);
