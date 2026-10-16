@@ -93,7 +93,7 @@ public final class StudioFilmStudy {
         var image=storage.store(Files.readAllBytes(cover),IpProjectService.CATEGORY_GEN,owner,"jpg","image/jpeg");segment.put("coverStorageKey",image.key());
     }
     private static void process(List<String> command) throws Exception {
-        Process process=new ProcessBuilder(command).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+        Process process=StudioHypitMedia.configureMediaRuntime(new ProcessBuilder(command)).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
         try {if(!process.waitFor(120,TimeUnit.SECONDS)||process.exitValue()!=0)throw new IllegalStateException("Clip processing failed");}finally{if(process.isAlive())process.destroyForcibly();}
     }
     static String stripFence(String value) {String text=value==null?"":value.trim();if(text.startsWith("```")){int first=text.indexOf('\n');if(first>=0)text=text.substring(first+1);if(text.endsWith("```"))text=text.substring(0,text.length()-3);}return text.trim();}

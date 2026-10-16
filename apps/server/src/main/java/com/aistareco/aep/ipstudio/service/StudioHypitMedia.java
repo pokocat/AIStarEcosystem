@@ -27,9 +27,13 @@ public class StudioHypitMedia {
                 if(!process.waitFor(15,TimeUnit.SECONDS)){process.destroyForcibly();throw new IllegalStateException("Node timeout");}
                 JsonNode info=JSON.readTree(Files.readString(version));
                 if(process.exitValue()!=0||!REVISION.equals(info.path("revision").asText())||!"hypit-media".equals(info.path("engine").asText()))throw new IllegalStateException("Unexpected adapter");
+                var media=configureMediaRuntime(new ProcessBuilder("ffmpeg","-v","error","-f","lavfi","-i","color=s=16x16:d=0.04","-vf","scale=16:16:force_divisible_by=2","-fps_mode","passthrough","-frames:v","1","-f","null","-"))
+                        .redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
+                if(!media.waitFor(15,TimeUnit.SECONDS)){media.destroyForcibly();throw new IllegalStateException("FFmpeg timeout");}
+                if(media.exitValue()!=0)throw new IllegalStateException("FFmpeg runtime unsupported");
                 ready=true;
             }finally{Files.deleteIfExists(version);}
-        } catch(Exception e){throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_HYPIT_UNAVAILABLE","视频处理工具不可用，请配置Node.js 22以上及Hypit媒体适配器");}
+        } catch(Exception e){throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_HYPIT_UNAVAILABLE","视频处理工具不可用，请配置Node.js 22以上、FFmpeg 5.1以上及Hypit媒体适配器");}
     }
     JsonNode read(Path source,Path directory,double duration) throws Exception {
         requireReady();var process=builder(script.toString(),source.toAbsolutePath().toString(),directory.toAbsolutePath().toString(),Double.toString(duration)).redirectOutput(ProcessBuilder.Redirect.DISCARD).start();
@@ -47,6 +51,11 @@ public class StudioHypitMedia {
     private ProcessBuilder builder(String... arguments) {
         var command=new java.util.ArrayList<String>();command.add(node);command.addAll(java.util.List.of(arguments));var process=new ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD);
         String path=System.getenv("PATH"),temp=System.getenv("TMPDIR");process.environment().clear();if(path!=null)process.environment().put("PATH",path);if(temp!=null)process.environment().put("TMPDIR",temp);
+        return configureMediaRuntime(process);
+    }
+    static ProcessBuilder configureMediaRuntime(ProcessBuilder process) {
+        String directory=System.getenv("AEP_STUDIO_RECREATION_MEDIA_BIN");
+        if(directory!=null&&!directory.isBlank())process.environment().put("PATH",directory+java.io.File.pathSeparator+process.environment().getOrDefault("PATH","/usr/local/bin:/usr/bin:/bin"));
         return process;
     }
 }
