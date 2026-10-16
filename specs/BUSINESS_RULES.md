@@ -1383,3 +1383,13 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 ### Studio 视频拉片（recreation / segments）
 
 视频节点「素材拆解 → 拉片」提交既有Studio任务，`operation=recreation, mode=segments`。来源仍要求本人项目及本人视频key，60秒/128MiB限制；已有全片Markdown可作为背景上下文，不重新收费解析全文。工程约束时间范围连续有限、最多8段、覆盖片尾，真实裁切成可播放MP4；模型正文不作语义或章节齐全校验。逐段保存媒体key/Markdown/状态，失败保留已完成产物；显式继续仅复用同本人同项目同目标节点同原片的旧任务快照，不能信任客户端提供的裁切key。URL仅出wire签名，画布文档保留key和原片范围。整次拉片一笔冻结，累计实际Token一次结算，失败沿用释放；不改账本规则。
+
+### 原应用 Prompt 条件保存与调用明细分页（2026-10-13）
+
+ops 签名管理通道新增 `promptSaveVersioned` / `promptRollbackVersioned`，必须提供非负 `expectedVersion`；仍委托原 PromptService。SQL 条件更新 `WHERE prompt_key=? AND version=?` 是并发判定，当前模板、递增版本、历史快照及通道审计同事务提交；版本不匹配返回 409，不保存部分内容或历史。新建模板同时依赖原唯一键，竞争方返回冲突。缓存仅在事务提交后失效。旧 admin 保存与恢复也携带编辑时版本；原 HTTP 接口新增可选 query 参数，兼容既有客户端。
+
+新增 `usageRecordsPage` 白名单只读命令，复用原用量记录和服务；按时间、应用、模型、端点、用途、用户、租户、结果及搜索条件在数据库过滤后分页 / 计数。历史空应用编码按原用途归属规则解析。返回 `items/total/page/size/asOf`；单页最多 200 条，总记录无 500 条截断。排序为时间倒序再 ID 倒序，`asOf` 固定查询上界；不返回请求/响应正文，不触发重放、生成或扣费。旧 `usageRecords` 返回形状及窗口保留兼容。
+
+## 端点保存前检测与目录发现（2026-10-13）
+
+平台新增窄白名单 `endpointProbe`，复用原端点服务的 discoverModels；使用当前 providerType/baseUrl/apiKey，仅 GET 模型目录，不落库、不生成、不触发计费。编辑时只允许同供应商地址复用已存密钥；更换主机或端口须重新提供密钥。拒绝非 HTTPS、含 URL 凭据 / 查询串以及私网 / 回环 / 链路本地地址；目录格式异常不能视为成功，单次请求不重试。返回经脱敏的鉴权 / 地址 / 限流提示、目录与耗时；运营端不显示供应商原文。目录去重并过滤退役项；获取成功与实际生成可用性是不同事实。

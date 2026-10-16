@@ -22,7 +22,7 @@ public class ModelOperationsService {
         this.endpoints = endpoints; this.usage = usage; this.mapper = mapper;
     }
     public static boolean handles(String action) {
-        return Set.of("endpointTest", "endpointFetchModels", "endpointProbe", "usageRecords").contains(action);
+        return Set.of("endpointTest", "endpointFetchModels", "endpointProbe", "usageRecords", "usageRecordsPage").contains(action);
     }
     public Object execute(JsonNode command) {
         String action = command.path("action").asText();
@@ -65,6 +65,27 @@ public class ModelOperationsService {
             result.remove("error");
             if (!result.path("ok").asBoolean()) result.put("error", safeProbeReason(result));
             return result;
+        }
+        if ("usageRecordsPage".equals(action)) {
+            fields(command, Set.of("action", "days", "page", "size", "asOf", "appCode", "userId", "tenantId", "purpose", "providerId", "model", "success", "q"));
+            if (command.has("success") && !command.get("success").isBoolean()) throw invalid();
+            int page = 0;
+            if (command.has("page")) {
+                if (!command.get("page").isIntegralNumber() || !command.get("page").canConvertToInt() || command.get("page").intValue() < 0) throw invalid();
+                page = command.get("page").intValue();
+            }
+            java.time.Instant asOf = null;
+            if (command.has("asOf")) {
+                try { asOf = java.time.Instant.parse(text(command, "asOf", 64)); }
+                catch (Exception badDate) { throw invalid(); }
+            }
+            var result = usage.recordsPage(integer(command,"days",30,365), page, integer(command,"size",20,200), asOf,
+                    text(command,"appCode",100), text(command,"userId",160), text(command,"tenantId",160),
+                    text(command,"purpose",100), text(command,"providerId",160), text(command,"model",200),
+                    command.has("success") ? command.get("success").booleanValue() : null, text(command,"q",200));
+            ObjectNode safe = mapper.valueToTree(result);
+            safe.path("items").forEach(row -> ((ObjectNode) row).remove(Set.of("requestBodyJson", "responseBodyJson")));
+            return safe;
         }
         if ("usageRecords".equals(action)) {
             fields(command, Set.of("action", "days", "size", "appCode", "userId", "tenantId", "purpose", "providerId", "success", "q"));

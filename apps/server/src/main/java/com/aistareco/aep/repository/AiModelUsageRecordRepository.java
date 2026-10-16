@@ -3,6 +3,7 @@ package com.aistareco.aep.repository;
 import com.aistareco.aep.model.AiModelUsageRecord;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -11,7 +12,7 @@ import java.time.Instant;
 import java.util.List;
 
 @Repository
-public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String> {
+public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String>, JpaSpecificationExecutor<AiModelUsageRecord> {
 
     // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total,
     // [4]=prompt, [5]=completion, [6]=billableUnits, [7]=billableSeconds, [8]=costMicros。

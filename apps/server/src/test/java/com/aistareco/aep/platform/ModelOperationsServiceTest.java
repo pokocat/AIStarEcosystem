@@ -72,4 +72,15 @@ class ModelOperationsServiceTest {
   when(usage.records(30,"studio",null,null,null,null,false,null,500)).thenReturn(List.of(record));var result=mapper.valueToTree(service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"appCode\":\"studio\",\"success\":false}"))).get(0);assertEquals("r",result.path("id").asText());assertFalse(result.has("requestBodyJson"));assertFalse(result.has("responseBodyJson"));
  }
  @Test void malformedFiltersCannotTriggerProviderOrQuery(){assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"size\":501}")));assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointTest\",\"id\":\"e\",\"url\":\"https://arbitrary.example\"}")));assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"UNKNOWN\",\"baseUrl\":\"https://vendor.example\"}")));verifyNoInteractions(endpoints,usage);}
+ @Test void paginatedCommandRejectsMalformedPagingBeforeQuery() {
+  for(String json : List.of("{\"action\":\"usageRecordsPage\",\"page\":-1}", "{\"action\":\"usageRecordsPage\",\"size\":201}", "{\"action\":\"usageRecordsPage\",\"asOf\":\"bad\"}"))
+   assertThrows(BusinessException.class,()->service.execute(mapper.readTree(json)));
+  verifyNoInteractions(endpoints,usage);
+ }
+
+ @Test void malformedDraftProbeCannotSendArbitraryHeaders() {
+  assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"OPENAI\",\"baseUrl\":\"https://a.example/v1\",\"headers\":{}}")));
+  verifyNoInteractions(endpoints, usage);
+ }
+
 }

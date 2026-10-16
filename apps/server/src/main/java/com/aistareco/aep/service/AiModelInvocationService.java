@@ -581,16 +581,21 @@ public class AiModelInvocationService {
         JsonNode list = parsed.at(spec.items());
         if (!list.isArray()) throw new IllegalArgumentException("模型目录列表路径未找到数组");
         List<AiModelEntryDto> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         for (JsonNode item : list) {
             JsonNode id = item.at(spec.id());
-            if (!id.isValueNode() || id.isNull() || id.asText().isBlank()) continue;
+            if (!id.isTextual() || id.asText().isBlank()) continue;
+            String modelId=id.asText().trim();
+            if(modelId.length()>200||!seen.add(modelId))continue;
             JsonNode status = spec.status() == null ? null : item.at(spec.status());
             if (status != null && ("Shutdown".equalsIgnoreCase(status.asText())
                     || "Retiring".equalsIgnoreCase(status.asText()))) continue;
             JsonNode name = spec.label() == null ? null : item.at(spec.label());
             String label = name != null && name.isValueNode() && !name.isNull()
                     ? name.asText() : id.asText();
-            out.add(new AiModelEntryDto(id.asText(), label, null, null));
+            if(label.length()>200)label=label.substring(0,200);
+            out.add(new AiModelEntryDto(modelId, label, null, null));
+            if(out.size()>1000)throw new IllegalArgumentException("模型目录超过支持范围");
         }
         return out;
     }
