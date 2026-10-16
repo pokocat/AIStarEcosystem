@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 视频解析与拉片 · 2026-10-16 · 已生产发布
+
+视频节点「素材拆解 → 解析 / 拉片」生成全片 Markdown，或真实裁切视频、逐段解析并在画布增量落地。节点进度、刷新恢复、失败继续和文字编辑/导出复用原链。独立 FFmpeg 与受理前媒体探针避免旧共享运行时导致收费后失败；无新迁移。后端 `35b2fcc0`、前端 `84c2f2d6` 已发布；生产选帧与裁切通过，完整模型/编辑实操本地通过，生产浏览器全链复验受访问限制未完成，详见[发布记录](studio-film-study-production-release.md)。
+
 ### 企业主子账号与积分管理 · 2026-10-15 · 已生产发布
 
 企业与自然人身份分离，固定主账号/管理员/成员权限；V56–V58 增加企业钱包、划拨/原充值来源、付款授权及生命周期回执。企业分配积分仍归企业，可回收；产品开通沿用现有逻辑，不做席位。人工财务充值/退款、全部Studio付款准入与结算、成员停用/退出旧退款归集、完整前后台及原任务核对已本地验收。代码 `f068b51d` 已发布 server/web-aiavatar/admin 并开启企业功能，V56–V58 成功、存量资金与开通逐条未变；见 [生产发布记录](ip-studio-enterprise-production-release.md)、[完整验收](ip-studio-enterprise-complete-validation.md) 与 [发布准备](ip-studio-enterprise-release-readiness.md)。

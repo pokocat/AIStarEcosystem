@@ -239,3 +239,5 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - [企业产品场景端到端验收](ip-studio-enterprise-scenario-acceptance.md)
 - [企业发布准备与回退](ip-studio-enterprise-release-readiness.md)
 - [企业完整界面验收](ip-studio-enterprise-ui-validation.md)
+
+- [视频解析与拉片生产发布](studio-film-study-production-release.md)：版本、独立媒体运行时、验收范围与备份。
