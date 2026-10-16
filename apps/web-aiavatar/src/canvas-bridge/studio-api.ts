@@ -1,3 +1,4 @@
+import { prepareStudioImageUpload } from './studio-image-file';
 import { withStudioBilling } from "./studio-billing";
 import type { StudioVoiceCatalog,StudioVoiceProfile,StudioAdoptVoiceRequest,StudioBindVoiceRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { apiFetch } from "@ai-star-eco/api-client";
@@ -12,8 +13,9 @@ export const importStudioStory = (projectId: string, file: File) => {
   return apiFetch<StudioStoryImportResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/story-import`, { method: "POST", body });
 };
 
-export const importStudioMedia = (projectId: string, file: File, mediaType: StudioMediaImportResult['mediaType']) => {
-  const body = new FormData(); body.append('file', file); body.append('mediaType', mediaType);
+export const importStudioMedia = async (projectId: string, file: File, mediaType: StudioMediaImportResult['mediaType']) => {
+  const prepared = mediaType === 'image' ? await prepareStudioImageUpload(file) : file;
+  const body = new FormData(); body.append('file', prepared); body.append('mediaType', mediaType);
   return apiFetch<StudioMediaImportResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/media-import`, { method: "POST", body });
 };
 

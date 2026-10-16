@@ -6,10 +6,7 @@ import { markStudioDescendants } from './studio-script';
 
 export const STUDIO_IMAGE_UPLOAD_ACCEPT = '.jpg,.jpeg,.png';
 
-export function validateStudioImageUpload(file: File) {
-  if (!/\.(jpe?g|png)$/i.test(file.name)) throw new Error('请选择 JPG 或 PNG 图片');
-  if (file.size > 8 * 1024 * 1024) throw new Error('图片不能超过 8 MB，请压缩后重试');
-}
+export { validateStudioImageUpload } from './studio-image-file';
 
 /** Fill the existing slot so template bindings, its layout and reference edges retain their identity. */
 export function replaceStudioImage(nodes: CanvasNodeData[], connections: CanvasConnection[], nodeId: string,

@@ -13,8 +13,8 @@ test('imports are positioned after earlier attachments instead of stacking',()=>
 });
 test('oversized media and unsupported files never call upload',async()=>{
   const media=vi.fn(),story=vi.fn();
-  const huge={name:'大图.png',size:9*1024*1024} as File;
-  await expect(readAssistantAttachment(huge,[],story,media)).rejects.toThrow('8 MB');
+  const huge={name:'大图.png',size:51*1024*1024} as File;
+  await expect(readAssistantAttachment(huge,[],story,media)).rejects.toThrow('50 MB');
   await expect(readAssistantAttachment({name:'文件.exe',size:1} as File,[],story,media)).rejects.toThrow('不支持');
   expect(media).not.toHaveBeenCalled();expect(story).not.toHaveBeenCalled();
 });

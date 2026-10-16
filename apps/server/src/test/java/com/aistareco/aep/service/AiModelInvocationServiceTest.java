@@ -359,6 +359,19 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void unavailableModelReportsAnActionableErrorWithoutEchoingVendorDetails() throws Exception {
+        StubServer bad = stub(404, "{\"error\":{\"message\":\"private credential content\"}}");
+        var ep = endpoint("retired", bad.baseUrl(), AiModelProviderType.OPENAI, "old-model", "sk-private", true);
+        var ex = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.GENERAL, ep)
+                .invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")), null));
+        assertEquals("AI_CALL_FAILED", ex.getCode());
+        assertTrue(ex.getMessage().contains("404"));
+        assertTrue(ex.getMessage().contains("更新模型配置"));
+        assertFalse(ex.getMessage().contains("private"));
+        assertEquals(1, bad.requests.size());
+    }
+
+    @Test
     void anthropicAndAzureThrow501() {
         // 仅 ANTHROPIC / AZURE_OPENAI 走独立 wire，未实现 → doChat 抛 501（不发 HTTP）。
         for (AiModelProviderType type : List.of(AiModelProviderType.ANTHROPIC, AiModelProviderType.AZURE_OPENAI)) {

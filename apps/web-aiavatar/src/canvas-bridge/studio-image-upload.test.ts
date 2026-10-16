@@ -43,6 +43,6 @@ describe('upload into a workflow image slot', () => {
   it('rejects unsupported or oversized files before making an upload request', () => {
     expect(() => validateStudioImageUpload({ name: 'product.jpg', size: 8 * 1024 * 1024 } as File)).not.toThrow();
     expect(() => validateStudioImageUpload({ name: 'product.webp', size: 10 } as File)).toThrow('JPG 或 PNG');
-    expect(() => validateStudioImageUpload({ name: 'product.png', size: 8 * 1024 * 1024 + 1 } as File)).toThrow('8 MB');
+    expect(() => validateStudioImageUpload({ name: 'product.png', size: 50 * 1024 * 1024 + 1 } as File)).toThrow('50 MB');
   });
 });

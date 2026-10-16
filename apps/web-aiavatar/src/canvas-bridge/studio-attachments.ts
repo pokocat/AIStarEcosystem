@@ -1,3 +1,4 @@
+import { validateStudioImageUpload } from './studio-image-file';
 import { nanoid } from 'nanoid';
 import type { IpSavedAsset, StudioMediaImportResult } from '@ai-star-eco/types';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
@@ -39,7 +40,8 @@ export async function readAssistantAttachment(file: File, nodes: CanvasNodeData[
   if (/\.(txt|md|markdown|pdf|doc|docx)$/i.test(file.name)) return readAssistantStory(file, nodes, story);
   const type = /\.(jpg|jpeg|png)$/i.test(file.name) ? 'image' : /\.mp4$/i.test(file.name) ? 'video' : /\.(mp3|wav|m4a)$/i.test(file.name) ? 'audio' : undefined;
   if (!type) throw new Error('不支持这个文件格式，请选择图片、MP4、音频或故事文件');
-  if (file.size > (type === 'image' ? 8 : type === 'video' ? 128 : 25) * 1024 * 1024) throw new Error('图片最多 8 MB，视频 128 MB，音频 25 MB，请压缩后重试');
+  if (type === 'image') validateStudioImageUpload(file);
+  else if (file.size > (type === 'video' ? 128 : 25) * 1024 * 1024) throw new Error('视频最多 128 MB，音频最多 25 MB，请压缩后重试');
   const result = await media(file, type);
   const node = attachmentNode(type === 'image' ? { kind: 'image', dataUrl: result.url, storageKey: result.key, title: result.fileName } :
     { kind: type, url: result.url, storageKey: result.key, title: result.fileName, width: result.width, height: result.height, mimeType: result.mimeType }, nodes);
