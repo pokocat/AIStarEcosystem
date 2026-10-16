@@ -580,7 +580,7 @@ public class IpProjectService {
         String type=switch(run.getKind()) {
             case "generate","identity","studio-image" -> com.aistareco.aep.service.AiGenerationQueueService.IMAGE;
             case "studio-audio","studio-lip-sync" -> com.aistareco.aep.service.AiGenerationQueueService.SPEECH;
-            case "studio-text","studio-script","studio-storyboard","studio-assistant" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
+            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
             default -> null;
         };
         return type==null?null:generationQueue.position(type,run.getId());
@@ -653,6 +653,15 @@ public class IpProjectService {
         }
         String comparisonKey=output.path("comparisonStorageKey").asText(null);
         if(comparisonKey!=null&&!comparisonKey.isBlank())((ObjectNode)output).put("comparisonUrl",storage.signedUrl(comparisonKey));
+        // Analysis reference images are persisted by key; URLs are signed only on the wire.
+        for(JsonNode ref:output.path("recreation").path("references"))if(ref instanceof ObjectNode row) {
+            String key=row.path("storageKey").asText(null);if(key!=null&&!key.isBlank())row.put("url",storage.signedUrl(key));
+        }
+        for(JsonNode segment:output.path("filmStudy").path("segments"))if(segment instanceof ObjectNode row) {
+            for(String field:List.of("storageKey","coverStorageKey")) {
+                String key=row.path(field).asText(null);if(key!=null&&!key.isBlank())row.put(field.equals("storageKey")?"url":"coverUrl",storage.signedUrl(key));
+            }
+        }
         JsonNode arr = output.path("candidates");
         if (!arr.isArray()) return output;
         for (JsonNode c : arr) {

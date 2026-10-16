@@ -232,6 +232,8 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 - [个人资产库闭环验收](ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地与生产验收通过，含 V52 和发布制品记录；last-reviewed: 2026-10-11。
 
+- [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：视频入口、报告契约、分段裁切、逐段Markdown及恐龙视频验收。last-reviewed: 2026-10-15。
+- [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
 
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 - [企业产品场景端到端验收](ip-studio-enterprise-scenario-acceptance.md)

@@ -84,14 +84,15 @@ public final class StudioVisualContext {
         }finally{Files.deleteIfExists(output);}
     }
     private static Map<String,Object> text(String text){return Map.of("type","text","text",text==null?"":text);}
-    private static Map<String,Object> image(byte[] bytes) throws Exception {
+    static Map<String,Object> image(byte[] bytes) throws Exception { return image(bytes,768); }
+    static Map<String,Object> image(byte[] bytes,int maxSide) throws Exception {
         // Probe dimensions before decoding, bounding allocation even for small compressed files.
         BufferedImage source;
         try(var input=ImageIO.createImageInputStream(new java.io.ByteArrayInputStream(bytes))){
             var readers=ImageIO.getImageReaders(input);if(!readers.hasNext())throw new IllegalArgumentException("Unknown image");
             var reader=readers.next();try{reader.setInput(input);long pixels=(long)reader.getWidth(0)*reader.getHeight(0);if(pixels<=0||pixels>24_000_000)throw bad("STUDIO_VISUAL_LIMIT","图片最多 2400 万像素，请缩小后重试");source=reader.read(0);}finally{reader.dispose();}
         }
-        double ratio=Math.min(1,768.0/Math.max(source.getWidth(),source.getHeight()));
+        double ratio=Math.min(1,(double)maxSide/Math.max(source.getWidth(),source.getHeight()));
         BufferedImage out=new BufferedImage(Math.max(1,(int)(source.getWidth()*ratio)),Math.max(1,(int)(source.getHeight()*ratio)),BufferedImage.TYPE_INT_RGB);
         var graphics=out.createGraphics();try{graphics.setColor(Color.WHITE);graphics.fillRect(0,0,out.getWidth(),out.getHeight());graphics.drawImage(source,0,0,out.getWidth(),out.getHeight(),null);}finally{graphics.dispose();}
         ByteArrayOutputStream encoded=new ByteArrayOutputStream();ImageIO.write(out,"jpg",encoded);

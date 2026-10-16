@@ -13,6 +13,7 @@ import com.aistareco.aep.service.CreditService;
 import com.aistareco.aep.service.PromptService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
@@ -32,7 +33,7 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
 
-    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract");
+    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation");
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -53,6 +54,9 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.aistareco.aep.service.AiChatTokenPricing tokenPricing;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.storage.FileStorageService recreationStorage;
+    @org.springframework.beans.factory.annotation.Autowired private StudioHypitMedia hypitMedia;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -76,7 +80,7 @@ public class StudioWorkflowService {
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
 
     public Capabilities capabilities() {
-        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant"),
+        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant","recreation"),
                 fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
                 fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"));
     }
@@ -164,21 +168,30 @@ public class StudioWorkflowService {
             runs.save(binding);
             return projects.toRunDto(binding);
         }
-        boolean text=List.of("text","script","storyboard","assistant","asset-extract").contains(request.operation());
+        boolean text=List.of("text","script","storyboard","assistant","asset-extract","recreation").contains(request.operation());
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
         long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
-        String promptKey=List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
+        String promptKey="recreation".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_RECREATION:List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
         if(!fixtures.enabled() && text) {
             if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
             if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
             resolved=prompts.resolve(promptKey);
             if("code".equals(resolved.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","尚未配置创作提示词");
-            if(Boolean.TRUE.equals(request.readVisuals())&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
+            if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation()))&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
+        ObjectNode recreationSource=null;
+        if("recreation".equals(request.operation())) {
+            if(fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","复刻创作需要读取真实视频，请关闭测试响应");
+            var target=IpDocs.node(projects.readDoc(project),request.nodeId());
+            if(target==null||!"text".equals(target.path("type").asText())||!"recreation".equals(target.path("metadata").path("studio").path("kind").asText()))
+                throw bad("STUDIO_RECREATION_TARGET_INVALID","请先保存拆解报告再开始分析");
+            hypitMedia.requireReady();
+            recreationSource=StudioRecreation.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId,recreationStorage);
+        }
         var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
         if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
         long cost=chatRate==null?(fixtures.enabled()||!text?0:textPrice):chatRate.maxCost();
@@ -210,6 +223,23 @@ public class StudioWorkflowService {
             execution.set("visualContext",StudioVisualContext.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId));
             execution.put("visualContextVersion",1);
         }
+        if(recreationSource!=null) {
+            execution.set("recreationSource",recreationSource);
+            if("segments".equals(request.mode())) {
+                JsonNode doc=projects.readDoc(project), target=IpDocs.node(doc,request.nodeId());
+                for(JsonNode node:doc.path("nodes")) {
+                    var info=node.path("metadata").path("studio").path("recreation");
+                    if(info.has("report")&&recreationSource.path("storageKey").asText().equals(info.path("sourceStorageKey").asText())) {
+                        execution.put("fullFilmContext",node.path("metadata").path("content").asText().substring(0,Math.min(16000,node.path("metadata").path("content").asText().length())));break;
+                    }
+                }
+                String resume=target.path("metadata").path("studio").path("recreation").path("resumeRunId").asText();
+                if(!resume.isBlank())projects.ownedRun(userId,projectId,resume).ifPresent(previous->{
+                    JsonNode old=projects.parseOrEmptyObject(previous.getOutputJson()).path("filmStudy");
+                    if(previous.getNodeId().equals(request.nodeId())&&old.path("source").path("storageKey").asText().equals(execution.path("recreationSource").path("storageKey").asText()))execution.set("resumeFilmStudy",old.deepCopy());
+                });
+            }
+        }
         if(resolved!=null) {
             String systemPrompt=resolved.system();
             if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
@@ -230,7 +260,7 @@ public class StudioWorkflowService {
             if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
             if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
             execution.put("userPrompt",creativePrompt);
-            execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
+            execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())?Math.max(8192,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
         }
         if(chatRate!=null) {
@@ -238,6 +268,7 @@ public class StudioWorkflowService {
             execution.put("billingUnit","per_token");
             int budget=Math.min(execution.path("maxTokens").asInt(8192),chatRate.maxOutputTokens());
             if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
+            if("recreation".equals(request.operation())&&budget<4096)throw bad("STUDIO_RECREATION_TOKEN_BUDGET","全片拆解需要至少4096输出Token预算，请调整模型配置");
             execution.put("maxTokens",budget);
         }
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,
@@ -258,6 +289,9 @@ public class StudioWorkflowService {
     }
 
     private void validateCreativeRequest(RunRequest request) {
+        if("recreation".equals(request.operation()) && (request.scriptEdit()!=null||request.textEdit()!=null||Boolean.TRUE.equals(request.readVisuals())||request.settings()!=null||request.episodeNo()!=null||request.history()!=null||request.references()!=null&&!request.references().isEmpty()||request.mode()!=null&&!"segments".equals(request.mode())||request.packaging()!=null))
+            throw bad("STUDIO_INPUT_INVALID","复刻创作只接受所选参考视频和分析要求");
+        if("segments".equals(request.mode())&&!"recreation".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","分段模式只能用于视频拉片");
         if("asset-extract".equals(request.operation())) {
             if(request.scriptEdit()==null||request.scriptEdit().markdown()==null||request.scriptEdit().markdown().isBlank()||request.scriptEdit().markdown().length()>48000)
                 throw bad("STUDIO_INPUT_INVALID","请提供已保存的剧本文字，最多 48000 字");
@@ -266,7 +300,7 @@ public class StudioWorkflowService {
         if(request.maxCost()!=null && request.maxCost()<0) throw bad("STUDIO_INPUT_INVALID","费用上限不能为负");
         if(Boolean.TRUE.equals(request.readVisuals())&&!"assistant".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手");
         if(request.episodeNo()!=null && (request.episodeNo()<1 || request.episodeNo()>50)) throw bad("STUDIO_EPISODE_INVALID","请选择有效分集");
-        if(request.mode()!=null && !Set.of("general","original","adapt","director").contains(request.mode())) throw bad("STUDIO_MODE_INVALID","请选择创作模式");
+        if(request.mode()!=null && !Set.of("general","original","adapt","director","segments").contains(request.mode())) throw bad("STUDIO_MODE_INVALID","请选择创作模式");
         if(request.contextNodeIds()!=null && (request.contextNodeIds().size()>16 || request.contextNodeIds().stream().anyMatch(Objects::isNull))) throw bad("STUDIO_CONTEXT_LIMIT","最多引用 16 个画布对象");
         if(request.history()!=null) {
             if(request.history().size()>16) throw bad("STUDIO_HISTORY_LIMIT","对话过长，请开始新对话");

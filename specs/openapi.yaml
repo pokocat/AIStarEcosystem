@@ -101,7 +101,7 @@ components:
       properties:
         clientRequestId: {type: string, minLength: 1, maxLength: 64}
         nodeId: {type: string, minLength: 1, maxLength: 64}
-        operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant ]}
+        operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant, recreation]}
         prompt: {type: string, maxLength: 16000}
         textEdit:
           type: object
@@ -132,7 +132,7 @@ components:
         settings: {$ref: '#/components/schemas/StudioScriptSettings'}
         packaging: {$ref: '#/components/schemas/StudioPackaging'}
         video: {$ref: '#/components/schemas/StudioVideoSettings'}
-        mode: {type: string, enum: [general, original, adapt, director], nullable: true}
+        mode: {type: string, enum: [general, original, adapt, director, segments], nullable: true, description: segments仅用于recreation视频拉片。}
         contextNodeIds:
           type: array
           maxItems: 16
@@ -357,6 +357,139 @@ components:
               dependsOn: { type: array, maxItems: 12, items: { type: string }, description: 仅引用本方案中更早的步骤 ID，采用后由客户端解析为真实节点。 }
               referenceNodeIds: { type: array, items: { type: string } }
               unresolvedReferences: { type: array, maxItems: 16, items: { type: string }, description: 模型使用的未知名称，需要用户明确补选，服务端不猜测映射。 }
+    StudioRecreationEvidence:
+      type: object
+      required: [observed, rule, evidenceFrames]
+      properties:
+        observed: { type: string, minLength: 1, maxLength: 6000, description: 可见画面事实 }
+        rule: { type: string, minLength: 1, maxLength: 6000, description: 可迁移的创作规律或建议 }
+        evidenceFrames: { type: array, minItems: 0, maxItems: 16, items: { type: integer, minimum: 1 }, description: '1起的有效帧编号；无法确认定位时为空，正文保留并注明不确定性。时间是近似定位，不是切点。' }
+    StudioRecreationSource:
+      type: object
+      required: [nodeId, title, storageKey, durationSec, frameTimes, audioAnalyzed]
+      properties:
+        nodeId: { type: string }
+        title: { type: string }
+        storageKey: { type: string }
+        durationSec: { type: number }
+        frameTimes: { type: array, items: { type: number } }
+        audioAnalyzed: { type: boolean, enum: [false] }
+        samplingStrategy: { type: string }
+        mediaEngineRevision: { type: string }
+        visualChanges:
+          type: array
+          items:
+            type: object
+            properties:
+              timeSec: { type: number }
+              kind: { type: string, enum: [visual, lighting] }
+    StudioFilmStudy:
+      type: object
+      description: recreation + mode=segments的增量和最终输出；工程持有真实原片时间范围与裁切媒体，模型仅生成Markdown，不做语义验收。失败保留已完成段，继续时只重试未完成段。
+      required: [source, strategy, segments]
+      properties:
+        source: { $ref: '#/components/schemas/StudioRecreationSource' }
+        strategy: { type: string, enum: [model, visual-changes] }
+        segments:
+          type: array
+          maxItems: 8
+          items:
+            type: object
+            required: [no, title, startSec, endSec, status]
+            properties:
+              no: { type: integer, minimum: 1 }
+              title: { type: string }
+              startSec: { type: number, minimum: 0 }
+              endSec: { type: number, minimum: 0 }
+              durationSec: { type: number }
+              storageKey: { type: string }
+              url: { type: string, readOnly: true }
+              coverStorageKey: { type: string }
+              coverUrl: { type: string, readOnly: true }
+              width: { type: integer }
+              height: { type: integer }
+              markdown: { type: string }
+              status: { type: string, enum: [pending, done] }
+              error: { type: string }
+    StudioRecreationReport:
+      type: object
+      description: '全片视觉创作拆解。参考文件/标题/补充文字不作系统指令或画面证据；无音轨，不得断言声音、准确切点、生死或亲属关系。保留事实与解读边界，不保证传播效果，不声称作者原始提示词。'
+      required: [title, creativePremise, visualGenes, motifs, retain, skeleton, techniques, uncertainties, recreationPrompt, source]
+      properties:
+        title: { type: string }
+        creativePremise: { type: string }
+        references:
+          type: array
+          maxItems: 4
+          description: 服务端提取的可复用风格参考图；不是全部分析帧。
+          items:
+            type: object
+            required: [storageKey, frame, timeSec, width, height]
+            properties:
+              storageKey: { type: string }
+              url: { type: string, readOnly: true, description: 读取时重签，持久化只保存key }
+              frame: { type: integer, minimum: 1 }
+              timeSec: { type: number, minimum: 0 }
+              width: { type: integer, minimum: 1 }
+              height: { type: integer, minimum: 1 }
+        visualGenes:
+          type: array
+          minItems: 6
+          maxItems: 6
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/StudioRecreationEvidence' }
+              - type: object
+                required: [dimension]
+                properties:
+                  dimension: { type: string, enum: [媒介与美术风格, 色彩体系, 光线体系, 材质与后期, 构图体系, 摄影机体系] }
+        motifs: { type: array, minItems: 1, maxItems: 12, items: { type: string } }
+        retain: { type: array, minItems: 1, maxItems: 12, items: { type: string } }
+        skeleton:
+          type: array
+          minItems: 3
+          maxItems: 3
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/StudioRecreationEvidence' }
+              - type: object
+                required: [dimension]
+                properties:
+                  dimension: { type: string, enum: [镜头语言与时空关系, 影像与声音, 叙事与动作] }
+        techniques:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items:
+            allOf:
+              - { $ref: '#/components/schemas/StudioRecreationEvidence' }
+              - type: object
+                required: [name, effect]
+                properties:
+                  name: { type: string }
+                  effect: { type: string, description: 有画面依据的创作解读 }
+        uncertainties: { type: array, minItems: 1, maxItems: 12, items: { type: string } }
+        recreationPrompt: { type: string, description: 根据画面反推的可编辑创作建议词 }
+        source:
+          type: object
+          required: [nodeId, title, storageKey, durationSec, frameTimes, audioAnalyzed]
+          properties:
+            nodeId: { type: string }
+            title: { type: string }
+            storageKey: { type: string, description: 服务端核验的本人视频快照，不接受模型提供的值 }
+            durationSec: { type: number, maximum: 60 }
+            frameTimes: { type: array, minItems: 1, maxItems: 64, items: { type: number, minimum: 0 } }
+            samplingStrategy: { type: string, enum: [visual-change-v1, visual-change-v2, hypit-media-v1] }
+            mediaEngineRevision: { type: string }
+            visualChanges:
+              type: array
+              items:
+                type: object
+                required: [timeSec, kind]
+                properties:
+                  timeSec: { type: number, minimum: 0 }
+                  kind: { type: string, enum: [visual, lighting] }
+            audioAnalyzed: { type: boolean, enum: [false] }
     StudioCapabilities:
       type: object
       required: [mock, operations, imageCost, textCost, videoCost]
@@ -3570,7 +3703,7 @@ components:
         id: { type: string, example: IPR-7b21de40 }
         projectId: { type: string }
         nodeId: { type: string }
-        kind: { type: string, enum: [identity, generate, studio-text, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt ] }
+        kind: { type: string, enum: [identity, generate, studio-text, studio-script, studio-storyboard, studio-image, studio-video, studio-assemble, studio-adopt, studio-recreation] }
         status: { type: string, enum: [running, done, failed] }
         stage: { type: string, nullable: true, description: 'queued / prompt.compile / identity.extract / image.generate.N / storage.persist / done / failed' }
         pct: { type: integer }
@@ -3605,6 +3738,8 @@ components:
           type: object
           properties:
             mock: { type: boolean, description: '本地 fixture 返回标识；生产禁用' }
+            recreation: { $ref: '#/components/schemas/StudioRecreationReport' }
+            filmStudy: { $ref: '#/components/schemas/StudioFilmStudy' }
             script: { $ref: '#/components/schemas/StudioScript' }
             plan: { $ref: '#/components/schemas/StudioPlan' }
             textRevision:

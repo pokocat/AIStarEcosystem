@@ -1,0 +1,13 @@
+{
+  "repository": "https://github.com/hypit-ai/hypit",
+  "revision": "dc2b7a8f31b1ef1443a79ca448548d69e3ceb6a0",
+  "path": "packages/media-local/src",
+  "files": [
+    "files.ts",
+    "file-frames.ts",
+    "frame-grid.ts",
+    "process.ts",
+    "process-env.ts"
+  ],
+  "modifications": "none"
+}

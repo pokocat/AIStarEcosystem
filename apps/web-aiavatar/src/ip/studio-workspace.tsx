@@ -1,5 +1,7 @@
 "use client";
+import {filmStudyConnections} from '@/canvas-bridge/studio-film-study';
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
+import { StudioRecreation } from "./studio-recreation";
 import { StudioTaskList } from "./studio-task-list";
 import { studioTaskPresentation } from '@/canvas-bridge/studio-task-title';
 import { StudioFloatingPanel } from "./studio-floating-panel";
@@ -67,7 +69,7 @@ type Props = { projectId: string; nodes: CanvasNodeData[]; connections:CanvasCon
   onFocusNode: (id: string) => void; onClosePanel: () => void; onRestorePanel: (id:string) => void; activeComposerId?:string; referencePicking?:boolean;
   textEditingNodeId?:string; renderTextEditor?:(actions:ReactNode)=>ReactNode };
 const containers = () => document.querySelector<HTMLElement>(".ip-surface") || document.body;
-const labels = { text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
+const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
 const legacyBatchCounts=[1,2,4];
 
 export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking, textEditingNodeId, renderTextEditor }: Props) {
@@ -79,6 +81,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [capabilityError, setCapabilityError] = useStudioErrorState();
   const [mode, setMode] = useState<"canvas" | "storyboard" | "work">("canvas");
   const [director, setDirector] = useState(false);
+  const [recreationMode,setRecreationMode]=useState<"segments"|undefined>();
+  const [recreationOpen,setRecreationOpen]=useState(false),[recreationId,setRecreationId]=useState<string>();
   const [storyboardNodeId,setStoryboardNodeId]=useState<string>();
   const [storyboardChanging,setStoryboardChanging]=useState(false);
   const [storyboardTextExpanded,setStoryboardTextExpanded]=useState(false);
@@ -234,7 +238,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     try {
       while (alive.current && epoch.current === token) {
         current=terminalRuns.current.get(current.id)||current;
-        if(targetId)setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,targetId!,current));
+        if(targetId){setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,targetId!,current));if(current.output.filmStudy)setConnections(edges=>filmStudyConnections(edges,targetId!,current));}
         setRuns(list => [current, ...list.filter(r => r.id !== current.id)]);
         if (current.status !== "running") {
           setRefreshErrors(old=>{const next={...old};delete next[current.id];return next;});
@@ -461,7 +465,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       panelSession.current++;setScriptPreviewId(undefined);
       if(["tasks","assistant","batch"].includes(action)){setTaskList(action==="tasks");setAssistantOpen(action==="assistant");setBatchOpen(action==="batch");}
       setDirector(false);setPickingReferences(false);setEditorId(undefined);setTemplateLibraryOpen(false);setSpeechOpen(false);
-      if(action==="tasks"){setTaskList(true);onClosePanel();}
+      if(action==="recreation"||action==="film-study"){
+        setRecreationMode(action==="film-study"?"segments":node?.metadata?.studio?.recreation?.mode);
+        const pending=node?.metadata?.studio?.kind==='recreation'&&studioGenerationPending(node)?node:node?.type===CanvasNodeType.Video?nodesRef.current.find(n=>studioGenerationPending(n)&&(n.metadata?.studio?.recreation?.mode==='segments')===(action==='film-study')&&n.metadata?.studio?.recreation?.sourceNodeId===node.id&&n.metadata.studio.recreation.sourceStorageKey===node.metadata?.storageKey):undefined;
+        if(pending){setRecreationOpen(false);onFocusNode(pending.id);}else{setRecreationId(nodeId);setRecreationOpen(true);}onClosePanel();
+      }
+      else if(action==="tasks"){setTaskList(true);onClosePanel();}
       else if(action==="ip-library") openIpLibrary(nodeId?{kind:"node",nodeId}:{kind:"canvas"});
       else if(action==="assistant") {setAssistantNodeId(nodeId);setAssistantOpen(true);onClosePanel();}
       else if(action==="batch") {setBatchNodeId(nodeId);setBatchOpen(true);onClosePanel();}
@@ -696,6 +705,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     else if(start==="speech")openSpeech(source);
     else if(start==="lip")openLipSync(selected);
     else if(start==="library")openIpLibrary();
+    else if(start==="recreation"){setRecreationMode(undefined);setRecreationId(undefined);setRecreationOpen(true);onClosePanel();}
   },[projectId,openDirector,openSpeech,openIpLibrary,onClosePanel]);
   const finishIpImport=(nodeId:string)=>{
     setAssetPicker(false);if(libraryTarget.kind!=="director")setMode("canvas");
@@ -891,7 +901,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         <button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button><button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button></>}
       {selected.type===CanvasNodeType.Text&&!selected.metadata?.studio?.script&&!selected.metadata?.studio?.libraryReference&&<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>}
       {selected.type===CanvasNodeType.Image&&selected.metadata?.storageKey&&(selected.metadata?.studio?.adoption||selected.metadata?.studio?.references?.some(r=>r.avatarId)) && <button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>}
-      {selected.type===CanvasNodeType.Video && <>{!!selected.metadata?.storageKey&&<button type="button" disabled={!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>}
+      {selectedStudio?.recreation?.report&&<button type="button" onClick={()=>dispatchStudioCommand('film-study',selected.id)}><Clapperboard size={15}/>继续拉片</button>}
+      {selectedStudio?.kind==='recreation'&&<button type="button" onClick={()=>dispatchStudioCommand('recreation',selected.id)}><FileText size={15}/>打开文档</button>}
+      {selected.type===CanvasNodeType.Video && <>{!!selected.metadata?.storageKey&&<Dropdown trigger={["click"]} menu={{items:[{key:"analyze",label:"解析",icon:<FileText size={15}/>,onClick:()=>dispatchStudioCommand("recreation",selected.id)},{key:"film-study",label:"拉片",icon:<Clapperboard size={15}/>,onClick:()=>dispatchStudioCommand("film-study",selected.id)}]}}><button type="button"><FileText size={15}/>素材拆解<ChevronDown size={13}/></button></Dropdown>}{!!selected.metadata?.storageKey&&<button type="button" disabled={!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>}
         {selected.metadata?.studio?.kind!=="work" && <button data-studio-command="video" type="button" disabled={selected.metadata?.status==="loading"} onClick={()=>openDirector("video",selected)}>{selected.metadata?.storageKey?"重新生成视频":"生成视频"}</button>}</>}
       {selected.metadata?.studio?.lipSyncRequest&&selected.metadata.storageKey&&!selected.metadata.studio.lipSyncNormalized&&<button type="button" disabled={busy} onClick={()=>void (async()=>{
         if(busy||!selected.metadata?.studio?.runId)return;setBusy(true);const token=epoch.current;
@@ -920,6 +932,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     billing={directorOrigin?.metadata?.studio?.textEditor?.turns.at(-1)?.billing}
     summary={directorOrigin?.metadata?.studio?.textEditor?.turns.at(-1)?.content} onSubmit={()=>void submit()} onClose={()=>void closeDirector()}/>
     : <StudioFloatingPanel title={labels[operation]} anchorId={originId} embedded={mode==="storyboard"} open={director&&(mode==="storyboard"||selectedNodeIds.size<=1)&&!(assetPicker&&libraryTarget.kind==="director")} onClose={() => void closeDirector()} closable={!directorSaving&&!busy} className="studio-node-composer" footer={<>{(operation==="video"||operation==="image"&&capabilities?.imageModelMode!=="fixed") && !capabilities?.mock && <label>模型<Select aria-label="生成模型" value={chosenModel?.endpointId} onChange={changeGenerationModel} options={candidates.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置模型"/></label>}<div className="studio-creator-footer">{(!["text","script","storyboard"].includes(operation)||pasteScript&&operation==="script"||capabilities?.mock||quote==null)&&<p className="studio-quote">{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":["text","script","storyboard"].includes(operation)?(quote==null?"模型计费未配置":""):quote==null?"模型未配置，暂不可生成":`${quote} 积分${operation==="video"?` · ${videoCount} 条，每条 ${videoUnitQuote} 积分`:""}`}</p>}{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?"原任务正在生成，请等待结果。":busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" icon={pasteScript&&operation==="script"?undefined:<StudioAiIcon/>} title={pasteScript&&operation==="script"?undefined:"AI 处理，会消耗积分"} loading={busy||directorSaving} disabled={!(pasteScript&&operation==="script")&&quote==null||(!prompt.trim()&&!(operation==="video"&&nativeVideo&&nativeModeSpec?.promptRequired===false))||!capabilities||removedVideoMention||!!legacyVideoError||imageRatioUnsupported||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||promptTooLong||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
+      {operation==='video'&&directorOrigin?.metadata?.storageKey&&<div className="studio-recreation-launch"><Button disabled={busy||directorSaving} onClick={()=>void closeDirector().then(closed=>{if(closed)dispatchStudioCommand('recreation',directorOrigin.id);})}><FileText size={15}/>解析视频</Button><span>生成全片拆解和参考画面</span></div>}
       <div className="studio-composer-references">{referenceComposer&&<><Button aria-pressed={pickingReferences} onClick={()=>{setMode(pickingReferences&&storyboardNodeId?"storyboard":"canvas");setPickingReferences(value=>!value);}}>{pickingReferences?"完成参考选择":"参考"}</Button><Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button></>}
         {operation==="image"&&directorOrigin?.type===CanvasNodeType.Image&&<Button icon={<Upload size={16}/>} disabled={busy||!!directorPending} onClick={()=>dispatchStudioCommand('upload-image',originId)}>{directorOrigin.metadata?.storageKey?'替换图片':'上传图片'}</Button>}
         {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()||n.type===CanvasNodeType.Text&&n.metadata?.studio?.templateInput).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
@@ -972,6 +985,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         <div className="studio-utility-tools" role="group" aria-label="任务与更多工具">
         <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(true)} aria-label="查看创作任务" aria-pressed={taskList}><ListChecks size={16}/>创作任务{runs.some(run=>run.status==='running')&&<span className="studio-tasks-active" aria-label="有进行中的任务"/>}</button>
         <Dropdown trigger={["click"]} getPopupContainer={containers} menu={{items:[
+          {key:"recreation",label:"解析视频",onClick:()=>dispatchStudioCommand("recreation",selected?.type===CanvasNodeType.Video?selected.id:undefined)},
           {key:"commerce",label:"商品视频模板",onClick:()=>openTemplates("commerce")},
           {key:"digital",label:"数字人视频模板",onClick:()=>openTemplates("digital")},
           {key:"speech",label:"配音",onClick:()=>openSpeech(selected)},
@@ -982,6 +996,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={17}/>AI 创作</button>
       </div>
     </div>
+    {recreationOpen&&<StudioRecreation key={`${projectId}:${recreationId||'new'}`} projectId={projectId} initialNodeId={recreationId} nodes={nodes} capabilities={capabilities} setNodes={setNodes} setConnections={setConnections}
+      mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
     {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
     {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>

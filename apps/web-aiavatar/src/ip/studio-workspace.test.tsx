@@ -795,3 +795,12 @@ test('queued text edits keep the body, show queue position and prohibit duplicat
 });
 
 beforeEach(() => { mountStudioErrorNotifications(api.error); });
+
+test('a completed video exposes recreation from its own composer and opens the selected source without calling a model',async()=>{
+ render(<Host/>);openVideo();
+ const videoPanel=await screen.findByRole('dialog',{name:'生成视频'});
+ fireEvent.click(within(videoPanel).getByRole('button',{name:'解析视频'}));
+ const reportPanel=await screen.findByRole('dialog',{name:'解析视频'});
+ expect(within(reportPanel).queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(within(reportPanel).queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(within(reportPanel).getByLabelText('当前参考视频').textContent).toContain('old adopted');
+ expect(api.save).toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();
+});

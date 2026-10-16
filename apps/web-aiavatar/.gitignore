@@ -8,3 +8,5 @@ next-env.d.ts
 .env
 # Isolated enterprise acceptance development output
 /.next-enterprise-e2e
+
+/.next-recreation-e2e

@@ -1,3 +1,5 @@
+import { materializeFilmStudy } from './studio-film-study';
+import { materializeRecreation } from './studio-recreation-document';
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
 import type { StudioNodeMetadata, StudioOperation, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
@@ -6,8 +8,8 @@ import { markStudioDescendants, mergeStudioRewrite, studioNodeEpisode } from "./
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
   const type = operation === "image" ? CanvasNodeType.Image : ["video", "assemble"].includes(operation) ? CanvasNodeType.Video : CanvasNodeType.Text;
-  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话" }[operation];
-  const studio: StudioNodeMetadata = { kind: operation === "text" ? "text" : operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
+  const title = operation==="video"&&origin?.metadata?.studio?.shot?`${origin.title} · 视频`:{ text: "文本", script: "新剧本", storyboard: "分镜草案", image: "形象图片", video: "视频片段", assemble: "合成作品", assistant: "导演对话", recreation: "全片创作拆解" }[operation];
+  const studio: StudioNodeMetadata = { kind: operation === "recreation" ? "recreation" : operation === "text" ? "text" : operation === "assistant" ? "assistant" : operation === "assemble" ? "work" : ["image", "video"].includes(operation) ? "shot" : "script", includeInWork: operation === "video", episodeNo:["image","video"].includes(operation)?studioNodeEpisode(origin):undefined,order:operation==="video"?origin?.metadata?.studio?.order:undefined };
   return { id: nanoid(), type, title, width: type === CanvasNodeType.Text ? 480 : 320, height: type === CanvasNodeType.Text ? 300 : 400,
     position: { x: origin ? origin.position.x + origin.width + 90 : 100, y: origin?.position.y ?? 120 },
     metadata: { status: "idle", studio } };
@@ -61,6 +63,13 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       const take=adopted||first!;metadata.storageKey=take.storageKey;metadata.content=take.content;metadata.primaryVideoId=take.id;
     }
   }
+  if(run.output.filmStudy && !alreadyApplied) {
+    const study=run.output.filmStudy;
+    metadata.studio.kind='recreation';
+    metadata.studio.recreation={...metadata.studio.recreation,mode:'segments',sourceNodeId:study.source.nodeId,sourceStorageKey:study.source.storageKey,sourceTitle:study.source.title,
+      study:{...study,segments:study.segments.map(({url,coverUrl,...segment})=>segment)}};
+    metadata.content=run.output.text||'视频拉片';
+  }
   if (run.status === "running") return { ...node, metadata: { ...metadata, status: "loading" } };
   if(run.kind==="studio-video")metadata.videoTaskId=undefined;
   metadata.status = run.status === "failed" ? "error" : "success";
@@ -78,6 +87,12 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       // A different tab/editor may have changed the body during the accepted request.
       metadata.studio.textEditor.proposal={...run.output.textRevision,runId:run.id};
     }
+  }
+  if(run.output.recreation && run.status==='done' && !alreadyApplied) {
+    const report=run.output.recreation;
+    metadata.studio.kind='recreation';
+    metadata.studio.recreation={sourceNodeId:report.source.nodeId,sourceStorageKey:report.source.storageKey,sourceTitle:report.source.title,report:{...report,references:report.references?.map(({url,...ref})=>ref)}};
+    metadata.content=run.output.text||report.creativePremise;
   }
   if(run.output.plan && metadata.studio.conversation && !alreadyApplied) {
     metadata.studio.conversation={...metadata.studio.conversation,plan:run.output.plan,
@@ -130,7 +145,7 @@ export function applyStudioRunToDocument(nodes: CanvasNodeData[], connections: C
   const updated = applyStudioRun(node, run);
   const changedMedia = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && node.metadata?.storageKey !== updated.metadata?.storageKey;
   const current = changedMedia ? markStudioDescendants(nodes, nodeId, connections) : nodes;
-  return current.map(n => n.id === nodeId ? updated : n);
+  return materializeFilmStudy(materializeRecreation(current.map(n => n.id === nodeId ? updated : n),nodeId,run),nodeId,run);
 }
 
 export function selectStudioTake(node: CanvasNodeData, id: string): CanvasNodeData {

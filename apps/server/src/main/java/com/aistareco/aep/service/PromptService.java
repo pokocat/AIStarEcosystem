@@ -140,6 +140,7 @@ public class PromptService {
     /** 画布出图（v0.157）：用户自己写提示词，服务端只加一致性从句与负面词。 */
     public static final String KEY_DAP_IP_CANVAS_IMAGE = "dap.ip_canvas_image";
     public static final String KEY_DAP_IP_STUDIO_SCRIPT = "dap.ip_studio_script";
+    public static final String KEY_DAP_IP_STUDIO_RECREATION = "dap.ip_studio_recreation";
     public static final String KEY_DAP_IP_STUDIO_ASSISTANT = "dap.ip_studio_assistant";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
@@ -164,7 +165,7 @@ public class PromptService {
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,
                     KEY_DAP_SCENE_IMAGE, KEY_DAP_SCENE_VARIANT, KEY_DAP_PRODUCT_IMAGE,
                     KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE,
-                    KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE, KEY_DAP_IP_STUDIO_SCRIPT, KEY_DAP_IP_STUDIO_ASSISTANT);
+                    KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE, KEY_DAP_IP_STUDIO_SCRIPT, KEY_DAP_IP_STUDIO_ASSISTANT, KEY_DAP_IP_STUDIO_RECREATION);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =

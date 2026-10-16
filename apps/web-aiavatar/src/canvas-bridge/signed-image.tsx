@@ -15,6 +15,7 @@ export function SignedImage({ storageKey, src, ...props }: React.ImgHTMLAttribut
     try { const next = await refreshImageUrl(storageKey); if (current === epoch.current) { setUrl(next); setFailed(false); } }
     catch (error) { if (current === epoch.current) { setFailed(true); reportStudioError(error, { once: `media:${storageKey}`, fallback: '图片重新加载失败，请重试' }); } }
   };
+  React.useEffect(() => { if (!src && storageKey) void renew(); }, [src, storageKey]);
   if (failed) return <div className={props.className} style={{ ...props.style, display: "grid", placeItems: "center", minHeight: 80 }} role="status"><button type="button" className="nodrag nopan" style={{ pointerEvents: "auto", fontSize: 12 }} onClick={(e) => { e.preventDefault(); e.stopPropagation(); void renew(); }}>图片加载失败 · 重新加载</button></div>;
   return <img {...props} src={url} onError={() => { if (renewed.current) { setFailed(true); reportStudioError({code:'MEDIA_LOAD_FAILED',message:'图片未能加载，请重新选择素材'}, {once:`media:${storageKey || src}`}); return; } renewed.current = true; void renew(); }} />;
 }

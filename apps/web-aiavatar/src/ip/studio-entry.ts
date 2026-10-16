@@ -5,6 +5,7 @@ import { IpStudioApi } from './api';
 export const studioEntries = {
   assistant: { title: '全能创作', description: '从一个想法开始，和助手一起梳理创作' },
   image: { title: '图片创作', description: 'IP 形象、设定图、场景与参考改图' },
+  recreation: { title: '解析视频', description: '生成全片拆解文档和风格参考画面' },
   video: { title: '视频创作', description: '描述画面，或从一张首帧开始' },
   script: { title: '剧本创编', description: '原创、改编与分集剧本' },
   director: { title: '导演执导', description: '讨论镜头语言、节奏与分镜方案' },

@@ -4,6 +4,7 @@ import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
 export function studioNodeCommand(node: CanvasNodeData, expanded = false): string | undefined {
   const studio = node.metadata?.studio;
   if (node.type === CanvasNodeType.Group) return;
+  if (studio?.kind === 'recreation') return 'recreation';
   if (studio?.kind === 'assistant' || studio?.conversation) return 'assistant';
   if (studio?.kind === 'batch' || studio?.batch) return 'batch';
   if (studio?.kind === 'work' || studio?.workDraft) return 'work';

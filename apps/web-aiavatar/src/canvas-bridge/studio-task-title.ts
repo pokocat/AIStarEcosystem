@@ -7,7 +7,7 @@ type TaskInputs = IpRun['inputs'] & Partial<StudioRunRequest> & {
   appliedCanvasContext?: { id: string; title: string; type: string }[];
 };
 const operations: Record<string, string> = {
-  text: '修改正文', script: '创作剧本', storyboard: '拆分镜头', image: '生成图片',
+  recreation: '解析视频 · 全片拆解', text: '修改正文', script: '创作剧本', storyboard: '拆分镜头', image: '生成图片',
   video: '生成视频', assemble: '合成作品', audio: '生成配音', 'lip-sync': '口型同步',
   'asset-extract': '提取资产', adopt: '保存 IP 形象', identity: '生成角色设定', generate: '生成图片',
 };
@@ -38,7 +38,7 @@ export function studioTaskPresentation(run: IpRun, nodes: CanvasNodeData[]): { t
       : /剧本/.test(detail) && context.length ? '修改剧本' : 'AI 创作';
     return { title: context.length ? `${action} · ${names(context.map(titleOf))}` : `${action} · ${detail.slice(0, 36) || '新创作'}`, detail };
   }
-  const action = operations[operation] || '创作任务';
+  const action = operation==='recreation'&&request.mode==='segments'?'视频拉片':operations[operation] || '创作任务';
   const suffix = operation === 'video' && request.durationSec ? ` · ${request.durationSec} 秒` : '';
   return { title: `${action} · ${titleOf(run.nodeId)}${suffix}`, detail };
 }

@@ -96,6 +96,8 @@ export interface IpRunOutput {
   mock?: boolean;
   script?: import("./ip-studio-workflow").StudioScript;
   plan?: import("./ip-studio-workflow").StudioPlan;
+  recreation?: import("./ip-studio-workflow").StudioRecreationReport;
+  filmStudy?: import("./ip-studio-workflow").StudioFilmStudy;
   scriptRevision?: { markdown: string; summary: string };
   textRevision?: { content: string; summary: string };
   shots?: import("./ip-studio-workflow").StudioShot[];

@@ -24,7 +24,7 @@ const quickTemplates = [
 ] as const;
 const quickEntries = [["image", ImagePlus], ["video", Video], ["script", BookOpen], ["blank", Plus]] as const;
 const moreTools = [
-  ["director", Clapperboard], ["work", Film], ["speech", Mic], ["lip", UserRound], ["library", Layers],
+  ["recreation", Film], ["director", Clapperboard], ["work", Film], ["speech", Mic], ["lip", UserRound], ["library", Layers],
 ] as const;
 const PAGE_SIZE = 24;
 

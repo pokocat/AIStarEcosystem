@@ -9,7 +9,7 @@ export interface StudioVideoSettings {
   lastFrameKey?: string;
   references?: VideoStudioReferenceInput[];
 }
-export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant";
+export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
 /** Free document text extraction; the imported canvas node owns the resulting text. */
@@ -53,7 +53,7 @@ export interface StudioRunRequest {
   aspectRatio?: string;
   settings?: StudioScriptSettings;
   episodeNo?: number;
-  mode?: StudioAssistantMode;
+  mode?: StudioAssistantMode | "segments";
   contextNodeIds?: string[];
   /** Read selected images and four sampled video frames; never an audio-understanding promise. */
   readVisuals?: boolean;
@@ -157,7 +157,9 @@ export interface StudioNodeMetadata {
     episodeNo?: number; rewriteScope?: StudioNodeMetadata['rewriteScope'];
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
-  kind: "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
+  sourceRange?: {startSec:number;endSec:number;storageKey:string};
+  recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
+  kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
   speechRequest?: StudioSpeechRequest;
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
@@ -258,3 +260,26 @@ export interface StudioVoiceCatalog {
 }
 export interface StudioAdoptVoiceRequest {runId:string;avatarId:string;name:string;expectedVoiceId?:string}
 export interface StudioBindVoiceRequest {voiceId:string;expectedVoiceId?:string}
+
+/** Evidence indexes are 1-based indexes into source.frameTimes; times are approximate samples. */
+export interface StudioRecreationEvidence { observed: string; rule: string; evidenceFrames: number[] }
+export interface StudioRecreationReport {
+  title: string;
+  creativePremise: string;
+  references?: { storageKey:string;url?:string;frame:number;timeSec:number;width:number;height:number }[];
+  visualGenes: (StudioRecreationEvidence & { dimension: string })[];
+  motifs: string[];
+  retain: string[];
+  skeleton: (StudioRecreationEvidence & { dimension: string })[];
+  techniques: (StudioRecreationEvidence & { name: string; effect: string })[];
+  uncertainties: string[];
+  recreationPrompt: string;
+  source: { nodeId: string; title: string; storageKey: string; durationSec: number; frameTimes: number[]; audioAnalyzed: false; samplingStrategy?: "visual-change-v1" | "visual-change-v2" | "hypit-media-v1"; mediaEngineRevision?: string; visualChanges?: { timeSec:number; kind:"visual"|"lighting" }[] };
+}
+
+/** Engineering-owned time ranges and media, with model-authored Markdown. */
+export interface StudioFilmStudy {
+ source: StudioRecreationReport['source'];
+ strategy: "model" | "visual-changes";
+ segments: {no:number;title:string;startSec:number;endSec:number;durationSec?:number;storageKey?:string;url?:string;coverStorageKey?:string;coverUrl?:string;width?:number;height?:number;markdown?:string;status:"pending"|"done";error?:string}[];
+}

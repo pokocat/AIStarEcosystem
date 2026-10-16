@@ -11,6 +11,10 @@ importers:
       miniprogram-ci:
         specifier: ^2.1.31
         version: 2.1.31(@swc/helpers@0.5.15)(eslint@8.57.1)
+    devDependencies:
+      esbuild:
+        specifier: 0.27.7
+        version: 0.27.7
 
   apps/admin:
     dependencies:

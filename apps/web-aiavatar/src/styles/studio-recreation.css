@@ -1,0 +1,66 @@
+/* Recreation report shares Studio's screen-space panel and existing document tokens. */
+.ip-surface .studio-recreation label { display:grid;gap:8px;margin:16px 0;min-width:0; }
+.ip-surface .studio-recreation .ant-select { width:100%;min-width:0; }
+.ip-surface .studio-recreation-preview { margin:16px 0;min-width:0; }
+.ip-surface .studio-recreation-preview video { display:block;width:100%;max-height:260px;object-fit:contain;background:var(--ink);border-radius:8px; }
+.ip-surface .studio-recreation-preview small { display:block;margin-top:8px;overflow-wrap:anywhere; }
+.ip-surface .studio-recreation-boundary { color:var(--ink-2);font-size:12px;line-height:1.7; }
+.ip-surface .studio-recreation-report { min-width:0;overflow-wrap:anywhere;line-height:1.8; }
+.ip-surface .studio-recreation-report h2 { display:flex;align-items:center;gap:10px;font-size:22px; }
+.ip-surface .studio-recreation-report h3 { margin:0 0 14px;font-size:17px; }
+.ip-surface .studio-recreation-report h4 { margin:0 0 8px;font-size:14px; }
+.ip-surface .studio-recreation-report section { padding:22px 0;border-top:1px solid var(--line); }
+.ip-surface .studio-recreation-report blockquote { margin:0;padding:14px 18px;border-left:1px solid var(--line-3);background:var(--surface-2); }
+.ip-surface .studio-recreation-row { margin:0 0 20px; }
+.ip-surface .studio-recreation-row:last-child { margin-bottom:0; }
+.ip-surface .studio-recreation-row p { margin:6px 0; }
+.ip-surface .studio-recreation-rule { color:var(--ink-2); }
+.ip-surface .studio-recreation-evidence { display:flex;gap:8px;flex-wrap:wrap;margin-top:10px; }
+.ip-surface .studio-recreation-evidence button { border:1px solid var(--line-3);background:transparent;border-radius:5px;padding:6px 10px;min-height:36px;color:inherit;cursor:pointer;font-size:12px; }
+.ip-surface .studio-recreation-report ul { padding-left:22px; }
+.ip-surface .studio-recreation-report li+li { margin-top:8px; }
+.ip-surface .studio-recreation-prompt { white-space:pre-wrap; }
+.ip-surface .studio-recreation-launch { display:flex;align-items:center;gap:12px;padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--line);min-width:0;flex-wrap:wrap; }
+.ip-surface .studio-recreation-launch span { font-size:12px;color:var(--ink-2);overflow-wrap:anywhere; }
+.ip-surface .studio-recreation-source { display:grid;gap:7px;margin:16px 0;min-width:0; }
+.ip-surface .studio-recreation-source span { color:var(--ink-2);font-size:12px; }
+.ip-surface .studio-recreation-source strong { overflow-wrap:anywhere;font-size:14px;font-weight:600; }
+
+.ip-surface .studio-recreation.is-setup .studio-floating-body { padding:16px 18px; }
+.ip-surface .studio-recreation.is-setup .studio-floating-footer { padding:12px 18px;gap:12px;align-items:center; }
+.ip-surface .studio-recreation.is-setup .studio-floating-footer>span { flex:1;min-width:0;color:var(--ink-2);font-size:12px; }
+.ip-surface .studio-recreation.is-setup label { gap:8px;margin:16px 0 0;font-size:13px; }
+.ip-surface .studio-recreation-intro { margin:0;color:var(--ink-2);font-size:12px; }
+.ip-surface .studio-recreation.is-setup .studio-recreation-source { margin:12px 0 0;gap:4px; }
+.ip-surface .studio-recreation.is-setup .studio-recreation-source span { display:none; }
+.ip-surface .studio-recreation-source-preview { margin-top:8px;font-size:12px; }
+.ip-surface .studio-recreation-source-preview summary { cursor:pointer;color:var(--ink-2);width:fit-content; }
+.ip-surface .studio-recreation-source-preview .studio-recreation-preview { margin:8px 0 0; }
+.ip-surface .studio-recreation-source-preview video { max-height:144px; }
+.ip-surface .studio-recreation-settings { margin-top:16px;border-top:1px solid var(--line);padding-top:12px;font-size:12px; }
+.ip-surface .studio-recreation-settings summary { display:flex;justify-content:space-between;gap:12px;cursor:pointer;color:var(--ink-2); }
+.ip-surface .studio-recreation-settings summary span { max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.ip-surface .studio-recreation :is(summary,button):focus-visible { outline:2px solid var(--primary);outline-offset:3px; }
+.ip-surface .studio-recreation button:not(:disabled):active { transform:translateY(1px); }
+.ip-surface .studio-recreation-report .studio-recreation-evidence button:hover { background:var(--surface-2); }
+.ip-surface .studio-recreation-node { padding:18px;min-width:0;line-height:1.6;color:var(--ink); }
+.ip-surface .studio-recreation-node-heading { display:flex;align-items:center;gap:8px;font-size:15px; }
+.ip-surface .studio-recreation-node p { margin:12px 0;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;font-size:13px; }
+.ip-surface .studio-recreation-node button { border:1px solid var(--line-3);border-radius:8px;padding:7px 12px;background:var(--surface);color:var(--ink);cursor:pointer; }
+.ip-surface .studio-recreation-node button:hover { background:var(--surface-2); }
+.ip-surface .studio-recreation-node button:focus-visible { outline:2px solid var(--primary);outline-offset:3px; }
+.ip-surface .studio-recreation-node-progress { display:grid;gap:12px;margin-top:24px; }
+.ip-surface .studio-recreation-node-progress span { font-size:14px; }
+.ip-surface .studio-recreation-node-progress progress { width:100%;height:5px;accent-color:var(--primary); }
+.ip-surface .studio-recreation-node-progress small { color:var(--ink-2);font-size:12px; }
+.ip-surface .studio-recreation .studio-floating-footer { flex-wrap:wrap; }
+.ip-surface .studio-recreation .studio-floating-footer>span { flex:1 1 140px;min-width:0; }
+
+.ip-surface .studio-recreation-options { margin-top:14px;font-size:12px;color:var(--ink-2); }
+.ip-surface .studio-recreation-options>summary { cursor:pointer;padding:6px 0; }
+.ip-surface .studio-flow-business .studio-recreation-document { height:100%;overflow:auto; }
+.ip-surface .studio-flow-business .studio-recreation-document .studio-document-navigation,.ip-surface .studio-flow-business .studio-recreation-document .studio-document-navigation-toggle { display:none; }
+.ip-surface .studio-flow-business .studio-recreation-document .studio-document-reading-layout { display:block; }
+.ip-surface .studio-flow-business .studio-recreation-document .studio-rich-editor { height:auto;pointer-events:none; }
+.ip-surface .studio-flow-business .studio-recreation-document .studio-rich-scroll { height:auto;overflow:visible;padding:18px; }
+.ip-surface .studio-flow-business .studio-recreation-document .tiptap { font-size:13px;line-height:1.7; }

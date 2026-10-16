@@ -2,11 +2,20 @@
 import { BookOpen, Clapperboard, FileText, Play, UserRound } from "lucide-react";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
-import { studioTaskQueued } from '@/canvas-bridge/studio-task-status';
+import { StudioScriptRichEditor } from './studio-script-rich-editor';
+import { studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 
 /** Only business summaries are inside scaled nodes; editors remain on the screen layer. */
 export function StudioNodeContent({ node, readOnly=false }: { node: CanvasNodeData; readOnly?:boolean }) {
   const studio = node.metadata?.studio;
+  if(studio?.kind==='recreation') {
+    const task=studio.task,pending=node.metadata?.status==='loading',failed=node.metadata?.status==='error';
+    const label=pending?studio.runId?studioTaskLabel(task).replace('生成','拆解'):node.metadata?.errorDetails?'提交结果待确认':'正在提交分析…':node.metadata?.status==='error'?'拆解失败':'全片创作拆解';
+    if((studio.recreation?.report||studio.recreation?.document||studio.recreation?.study)&&!pending&&!failed)return <div className="studio-recreation-document"><StudioScriptRichEditor markdown={node.metadata?.content||''} readOnly toolbarHidden ariaLabel={studio.recreation?.mode==='segments'?node.title:'全片创作拆解'}/></div>;
+    return <div className="studio-recreation-node"><div className="studio-recreation-node-heading"><FileText size={20}/><strong>{studio.recreation?.mode==='segments'?'视频拉片':'全片创作拆解'}</strong></div>
+      {pending?<div className="studio-recreation-node-progress" role="status" aria-live="polite"><span>{label}</span>{task&&<progress aria-label="创作拆解进度" max={100} value={task.pct}/>}<small>{studio.recreation?.study?`已完成 ${studio.recreation.study.segments.filter(s=>s.status==='done').length} / ${studio.recreation.study.segments.length} 个片段，可继续编辑画布。`:'完成后在这里查看报告，可继续编辑画布。'}</small>{!studio.runId&&node.metadata?.errorDetails&&<button type="button" disabled={readOnly} onClick={()=>dispatchStudioCommand('tasks',node.id)}>查看原任务</button>}</div>:<><p role={failed?'alert':undefined}>{failed?node.metadata?.errorDetails||'拆解未完成，请查看原因后重试':studio.recreation?.report?.creativePremise||'从原片中提炼创意、视觉风格与叙事手法'}</p><button type="button" disabled={readOnly} onPointerDown={e=>e.stopPropagation()} onClick={()=>dispatchStudioCommand('recreation',node.id)}>{failed?'查看并重试':'查看拆解报告'}</button></>}
+    </div>;
+  }
   // Extraction receipts and text asset references do not turn ordinary text into a generated script.
   if(node.type==="text"&&!studio?.script&&!studio?.workDraft&&(!studio?.kind||studio.kind==="text"))return <div className="studio-flow-text">{node.metadata?.content||"双击编辑文字"}</div>;
   if(studio?.workDraft)return <div className="studio-node-summary"><Play size={24}/><strong>{studio.workDraft.title||node.title}</strong><p>{node.metadata?.content}</p>

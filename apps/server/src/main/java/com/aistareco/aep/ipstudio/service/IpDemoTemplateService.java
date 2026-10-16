@@ -330,7 +330,7 @@ public class IpDemoTemplateService {
     private static void stripStudioExecution(ObjectNode metadata) {
         JsonNode studio=metadata.path("studio");if(!(studio instanceof ObjectNode source))return;
         // Keep only reusable authored structure. Request/reference/adoption/chat/batch records are owner-bound.
-        if(Set.of("assistant","batch").contains(source.path("kind").asText())) {metadata.remove("studio");return;}
+        if(Set.of("assistant","batch","recreation").contains(source.path("kind").asText())) {metadata.remove("studio");return;}
         ObjectNode clean=source.objectNode();
         for(String field:List.of("kind","settings","episodeNo","script","shot","parentNodeId","assetRole","order",
                 "libraryCharacterId","libraryCharacterName","libraryAssetRole"))
