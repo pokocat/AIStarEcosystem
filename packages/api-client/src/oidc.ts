@@ -13,6 +13,7 @@
 //   sessionStorage aistareco.oidc.pending   ← {verifier, state, returnPath}，只活一次跳转
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isImpersonating } from "./impersonation-session";
 import { idClientId, idIssuer, isIdMode, USE_MOCK } from "./config";
 import {
   clearAuthTokens,
@@ -397,6 +398,7 @@ function storeTokens(token: TokenResponse) {
 /** 产品内的短信注册/登录：复用 ID 的 SMS grant 与标准令牌存储。 */
 export async function loginWithIdSms(phone: string, code: string, invitationCode?: string): Promise<void> {
   if (!isIdMode() || !idIssuer()) throw new OidcError("ID_DISABLED", "当前暂不支持短信注册。");
+  if (isImpersonating()) throw new OidcError("IDENTITY_IMPERSONATION_UNSUPPORTED", "请先退出运营查看，再注册或登录本人账号。");
   const token = await postToken({
     grant_type: "urn:aibuzz:params:oauth:grant-type:sms",
     client_id: idClientId(), phone, code, scope: SCOPE,

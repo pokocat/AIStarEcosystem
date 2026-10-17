@@ -349,3 +349,12 @@ describe("产品内短信注册", () => {
     expect(localStorageShim.getItem(AUTH_TOKEN_KEY)).toBe("old-access");
   });
 });
+
+it("运营查看状态不发送短信或兑换注册令牌", async () => {
+  sessionStorageShim.setItem("aistareco.impersonation", JSON.stringify({ token: "imp_" + "a".repeat(43), targetName: "test", product: "aiavatar", expiresAt: "2099-01-01T00:00:00Z" }));
+  const fetcher = vi.spyOn(globalThis, "fetch");
+  await expect(loginWithIdSms("13900000001", "654321", "abcdefghijklmnopqrstuvwx")).rejects.toMatchObject({ code: "IDENTITY_IMPERSONATION_UNSUPPORTED" });
+  const { sendInvitationSms } = await import("./api/invitation");
+  await expect(sendInvitationSms("13900000001")).rejects.toMatchObject({ code: "IDENTITY_IMPERSONATION_UNSUPPORTED" });
+  expect(fetcher).not.toHaveBeenCalled();
+});

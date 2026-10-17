@@ -1,3 +1,4 @@
+import { isImpersonating } from "../impersonation-session";
 import { idIssuer } from "../config";
 import type { InvitationOverview } from "@ai-star-eco/types/invitation";
 import { idApiFetch } from "../_client";
@@ -36,5 +37,6 @@ export function getInvitationPreview(code: string, signal?: AbortSignal): Promis
 }
 
 export function sendInvitationSms(phone: string): Promise<{ sent: boolean }> {
+  if (isImpersonating()) return Promise.reject(new InvitationPublicError("IDENTITY_IMPERSONATION_UNSUPPORTED", "请先退出运营查看，再注册或登录本人账号。"));
   return publicIdentityRequest("/api/auth/sms/send-code", { phone });
 }

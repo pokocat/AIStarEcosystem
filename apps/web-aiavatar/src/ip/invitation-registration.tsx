@@ -10,6 +10,7 @@ const scenes = [
   { key: "script", label: "讲述故事", sub: "剧本与分镜", title: "让一个想法，长成一个世界。", description: "故事设定、剧本与分镜，让灵感有处可去。", alt: "故事与剧本创作的视觉示意" },
 ];
 const errors: Record<string, string> = {
+  IDENTITY_IMPERSONATION_UNSUPPORTED: "请先退出运营查看，再注册或登录本人账号。",
   SMS_CODE_INVALID: "验证码不正确，请检查后重试。", SMS_CODE_EXPIRED: "验证码已过期，请重新获取。",
   SMS_CODE_LOCKED: "验证码尝试次数过多，请稍后重新获取。", SMS_RATE_LIMITED: "验证码发送过于频繁，请稍后再试。",
   PHONE_INVALID: "请输入正确的 11 位手机号。", INVITATION_INVALID: "这份邀请已失效，请重新读取后继续注册。",
