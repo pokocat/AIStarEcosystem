@@ -1066,3 +1066,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 ## Studio 拉片原声提取（2026-10-17，已发布f8d8cf1b）
 
 `StudioSourceAudio`在全片解析/分段拉片时用原媒体运行时提取完整混合音轨，生成48kHz双声道16bit PCM WAV；无音轨返回`absent`，不创建占位、不做ASR或人声/BGM分离。`output.sourceAudio`先检查点保存，后续模型失败保留；分段继续只复用本人原任务同源结果，key持久化、出wire签URL。前端落为普通音频节点，可选入原成片合成`packaging.voiceoverStorageKey`替换音轨，无新增供应商调用、积分项、表或路径。既有Studio原生视频全能参考链可按模型合同传入音频，首尾帧等不支持的模式仍拒绝，原声按原样复用可走生成后合成。契约见`specs/openapi.yaml`，技术和验收见[分享第7节](../../docs/studio-film-study-technical-sharing-20261017.md#7-按产品边界收简拉片只提取原声)。
+
+## Studio 视频上传兼容修复（2026-10-17）
+
+`StudioMediaImportService` 不再因 MP4 内部编码直接拒收：可读的非H.264/非AAC素材用 ffmpeg 自动规范为H.264/AAC；仅音轨不兼容时保留画面码流。最多2编码线程、150秒超时，重新校验音轨和时长后才存储、计配额，异常清理输入/输出临时文件。免费导入，无模型调用。`StudioMediaImportServiceTest` 覆盖原逻辑/转码/失败，`StudioVideoCompatibilityTest` 可通过 `-Dstudio.video.demo=本地视频路径` 验真实HEVC+MP3、MPEG4+MP3、H264+MP3三类素材。

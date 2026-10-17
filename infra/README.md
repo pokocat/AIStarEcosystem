@@ -809,3 +809,7 @@ CI 与发布构建在 Maven 编译前执行 `infra/scripts/prepare-platform-sdk.
 `AEP_ENTERPRISE_ENABLED=false` 为默认值；映射 `aep.enterprise.enabled`。仅在受控环境显式开启时注册企业关系、邀请、RBAC、策略和移交 API，仍受登录/手机号/产品开通保护。E01–E12 已含关系、划拨、人工财务、全部Studio付款与结算、生命周期和对账；已分配积分仍归企业，不增加席位开通。`NEXT_PUBLIC_ENTERPRISE_ENABLED=0` 默认隐藏 Studio 入口，启用须在构建期传1（build-release.sh 会记录），仅改运行期env无效。平台财务已有订单处理保持注册，不随后端入口开关关闭。后续存在在途资金时，关闭新入口不得停用结算、退款和对账；不能回退到不认识企业账户/nullable userId 的版本。环境文件修改按既有流程重建运行实例，授权企业功能上线时同时开启前台构建期开关与后端非机密功能开关；其他环境项和凭据保留。
 
 企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。
+
+### Studio 媒体上传代理（2026-10-17）
+
+web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`、`proxyTimeout=180000`，匹配媒体导入128MiB和自动编码兼容处理；后端转码超时150秒。生产 nginx `/api` 直转server仍采用现有200m/180s配置，无需更改环境变量。

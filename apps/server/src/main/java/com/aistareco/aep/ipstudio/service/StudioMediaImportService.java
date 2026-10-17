@@ -12,6 +12,8 @@ import javax.imageio.stream.ImageInputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
 
 /** Free canvas imports. Content is validated before storage/quota writes; no model or credit calls. */
@@ -53,7 +55,7 @@ public class StudioMediaImportService {
                     throw invalid("图片最长边不能超过 8000 像素，总像素不能超过 2400 万");
             } catch (BusinessException e) { throw e; } catch (Exception e) { throw invalid("图片内容无法读取，请换一张图片"); }
         } else {
-            Path tmp = null;
+            Path tmp = null, compatible = null;
             try {
                 tmp = Files.createTempFile("studio-import-", "." + format.ext()); Files.write(tmp, bytes);
                 var probe = ffmpeg.probeMedia(tmp.toFile());
@@ -63,14 +65,42 @@ public class StudioMediaImportService {
                 double maxSeconds = "video".equals(type) ? 60 : 600;
                 if (probe.durationSec() > maxSeconds) throw invalid("视频最多 60 秒，音频最多 10 分钟，请先剪短");
                 if ("video".equals(type)) {
-                    if (!"h264".equals(probe.videoCodec()) || probe.hasAudio() && !"aac".equals(probe.audioCodec()))
-                        throw invalid("视频请使用 H.264 画面、AAC 音轨的 MP4 文件");
                     width = probe.width(); height = probe.height();
                     if (width < 1 || height < 1 || (long)width * height > 24_000_000) throw invalid("视频尺寸无法读取或过大");
+                    // Studio owns compatibility: a valid MP4 must not require the user to know its codecs.
+                    if (!"h264".equals(probe.videoCodec()) || probe.hasAudio() && !"aac".equals(probe.audioCodec())) {
+                        compatible = Files.createTempFile("studio-compatible-", ".mp4");
+                        var args = new ArrayList<>(List.of("-v", "error", "-nostdin", "-y", "-threads", "2",
+                                "-i", tmp.toString(), "-map", "0:v:0", "-map", "0:a:0?"));
+                        if ("h264".equals(probe.videoCodec())) args.addAll(List.of("-c:v", "copy"));
+                        else args.addAll(List.of("-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2", "-c:v", "libx264",
+                                "-threads", "2", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p"));
+                        args.addAll(List.of("-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", compatible.toString()));
+                        try { ffmpeg.runFfmpeg(args, 150_000); }
+                        catch (RuntimeException error) {
+                            throw BusinessException.wrapped(org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY,
+                                    "STUDIO_VIDEO_TRANSCODE_FAILED", "视频兼容处理失败，请重试上传", error.toString());
+                        }
+                        var normalized = ffmpeg.probeMedia(compatible.toFile());
+                        if (!normalized.readable() || !normalized.hasVideo() || !"h264".equals(normalized.videoCodec())
+                                || normalized.hasAudio() && !"aac".equals(normalized.audioCodec())
+                                || probe.hasAudio() != normalized.hasAudio()
+                                || !Double.isFinite(normalized.durationSec()) || normalized.durationSec() <= 0
+                                || Math.abs(normalized.durationSec() - probe.durationSec()) > .5
+                                || normalized.width() < 1 || normalized.height() < 1
+                                || (long)normalized.width() * normalized.height() > 24_000_000
+                                || Files.size(compatible) < 1 || Files.size(compatible) > max)
+                            throw invalid("视频兼容处理未完成，请重试上传");
+                        bytes = Files.readAllBytes(compatible);
+                        probe = normalized; width = probe.width(); height = probe.height();
+                    }
                 }
                 duration = probe.durationSec();
             } catch (BusinessException e) { throw e; } catch (Exception e) { throw invalid("音视频无法读取，请重新选择"); }
-            finally { if (tmp != null) try { Files.deleteIfExists(tmp); } catch (Exception ignored) {} }
+            finally {
+                if (tmp != null) try { Files.deleteIfExists(tmp); } catch (Exception ignored) {}
+                if (compatible != null) try { Files.deleteIfExists(compatible); } catch (Exception ignored) {}
+            }
         }
         quota.checkQuota("aiavatar", user, bytes.length);
         // Existing owned source namespace; signed URLs are returned only on the wire.

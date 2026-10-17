@@ -34,15 +34,34 @@ class StudioMediaImportServiceTest {
     @Test void declaredImageContainingVideoIsRejectedWithoutStoring() {
         assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"image"));verifyNoInteractions(storage,quota,ffmpeg);
     }
-    @Test void videoRequiresReadableStreamsDurationAndBrowserCodecAndDeletesTempFiles() {
+    @Test void videoRequiresReadableStreamsDurationAndDeletesTempFiles() {
         var paths=new java.util.ArrayList<File>();
         when(ffmpeg.probeMedia(any())).thenAnswer(i->{File f=i.getArgument(0);assertTrue(f.exists());paths.add(f);return probe(61,"h264","aac");});
-        assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"video"));
-        doReturn(probe(4,"hevc","aac")).when(ffmpeg).probeMedia(any());
         assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"video"));
         doReturn(probe(4,"h264","aac")).when(ffmpeg).probeMedia(any());
         var result=service.upload("u",file(mp4()),"video");assertEquals("video/mp4",result.mimeType());assertEquals(4,result.durationSec());
         paths.forEach(f->assertFalse(f.exists()));verify(storage,times(1)).store(any(),anyString(),anyString(),eq("mp4"),eq("video/mp4"));
+    }
+    @Test void convertsUnsupportedCodecsAndStoresOnlyVerifiedCompatibleBytes() throws Exception {
+        var paths=new java.util.ArrayList<java.nio.file.Path>();
+        when(ffmpeg.probeMedia(any())).thenReturn(probe(4,"hevc","mp3"),probe(4,"h264","aac"));
+        when(ffmpeg.runFfmpeg(anyList(),eq(150_000L))).thenAnswer(i->{
+            java.util.List<String> args=i.getArgument(0);assertTrue(args.contains("libx264"));
+            var output=java.nio.file.Path.of(args.get(args.size()-1));paths.add(output);
+            java.nio.file.Files.write(output,new byte[]{1,2,3,4,5});return "";
+        });
+        var result=service.upload("u",file(mp4()),"video");assertEquals(5,result.bytes());assertEquals("video/mp4",result.mimeType());
+        verify(storage).store(eq(new byte[]{1,2,3,4,5}),anyString(),eq("u"),eq("mp4"),eq("video/mp4"));
+        paths.forEach(p->assertFalse(java.nio.file.Files.exists(p)));
+    }
+    @Test void audioOnlyIncompatibilityCopiesVideoAndConversionFailureNeverStores() {
+        when(ffmpeg.probeMedia(any())).thenReturn(probe(4,"h264","mp3"));
+        when(ffmpeg.runFfmpeg(anyList(),eq(150_000L))).thenAnswer(i->{
+            java.util.List<String> args=i.getArgument(0);assertTrue(args.contains("copy"));assertFalse(args.contains("libx264"));
+            throw new RuntimeException("encoder failed");
+        });
+        var error=assertThrows(BusinessException.class,()->service.upload("u",file(mp4()),"video"));
+        assertEquals("STUDIO_VIDEO_TRANSCODE_FAILED",error.getCode());verifyNoInteractions(storage,quota);
     }
     @Test void audioRejectsVideoDisguisedAsM4aAndAcceptsPureAudio() {
         when(ffmpeg.probeMedia(any())).thenReturn(probe(5,"h264","aac"));

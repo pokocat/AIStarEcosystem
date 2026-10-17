@@ -8,6 +8,9 @@ const nextConfig = {
   allowedDevOrigins: ["localhost", "127.0.0.1"],
   output: "standalone",
   poweredByHeader: false,
+  // Media imports accept 128 MiB plus multipart headers, and may normalize codecs before returning.
+  // Next's 10 MiB / 30s proxy defaults otherwise reject valid uploads in rewrite-based deployments.
+  experimental: { proxyClientMaxBodySize: '130mb', proxyTimeout: 180_000 },
   // v0.149：统一账号中心接入 —— 复用共享包的 OIDC/PKCE 与开通门（源码需 Next 编译）。
   // 注意本 app 的屏幕层仍是自带的 src/proto/*，只借用 auth 相关能力。
   transpilePackages: [

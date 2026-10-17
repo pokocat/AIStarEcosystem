@@ -12267,7 +12267,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioMediaImport
-      description: '本人项目附件导入免费。JPG/PNG 8MiB/24Mpx/8000px；H.264/AAC MP4 128MiB/60秒；MP3/WAV/M4A 25MiB/600秒且不能含画面。按实际字节、ImageIO头/ffprobe校验，再计aiavatar存储用量；key沿用ipstudio_source本人空间；返回短期签名URL，画布持久化只存key。音频助手只读文字设定，不代表语音理解。'
+      description: '本人项目附件导入免费。JPG/PNG 8MiB/24Mpx/8000px；MP4 128MiB/60秒（可读的非H.264画面或非AAC音轨自动兼容为H.264/AAC，音轨存在性与时长须保持，失败不存储）；MP3/WAV/M4A 25MiB/600秒且不能含画面。按实际字节、ImageIO头/ffprobe校验，再计aiavatar存储用量；key沿用ipstudio_source本人空间；返回短期签名URL，画布持久化只存key。音频助手只读文字设定，不代表语音理解。'
       requestBody:
         required: true
         content:

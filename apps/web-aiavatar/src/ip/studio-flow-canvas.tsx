@@ -34,6 +34,7 @@ import { StudioConnectionCreateMenu, type PendingStudioConnection } from './stud
 import { replaceStudioImage, STUDIO_IMAGE_UPLOAD_ACCEPT, validateStudioImageUpload } from '@/canvas-bridge/studio-image-upload';
 import { placeNodeInViewport } from '@/canvas-bridge/viewport-placement';
 import { StudioNodeTitle } from './studio-node-title';
+import { replaceStudioVideo, STUDIO_VIDEO_UPLOAD_ACCEPT, validateStudioVideoUpload } from '@/canvas-bridge/studio-video-upload';
 import { StudioMediaGenerationState } from './studio-media-generation-state';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
@@ -56,6 +57,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const imageLocked = data.uploading || studioGenerationPending(node);
   const mediaGenerating = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && meta?.status === 'loading';
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
+  const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
@@ -65,10 +67,11 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
       {studioText ? <div className="nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : mediaGenerating ?
         <>{meta?.content && (node.type===CanvasNodeType.Video ? <SignedVideo src={meta.content} storageKey={meta.storageKey} preload="metadata"/> : <SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title}/>)}<StudioMediaGenerationState media={node.type===CanvasNodeType.Video?'video':'image'} task={meta?.studio?.task} confirmed={!!(meta?.studio?.runId||meta?.runId||meta?.videoTaskId||meta?.images?.some(t=>t.runId))}/></> : node.type === CanvasNodeType.Image && (meta?.content||meta?.storageKey) ?
         <><SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && meta?.content ?
-        <SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/> : node.type === CanvasNodeType.Audio && meta?.content ?
+        <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && meta?.content ?
         <div className="studio-flow-audio"><Music2 size={28}/><SignedAudio className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
         <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
         node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
+        node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传处理中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最长 60 秒 · 最大 128 MB</small></div> :
         <div className="studio-flow-placeholder"><button type="button" className="studio-flow-media-action nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button></div>}
     </div>
     {meta?.status === 'loading' && !mediaGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
@@ -107,6 +110,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const initialized = useNodesInitialized();
   const [reading, setReading] = useState(false), [historyRevision, refreshHistory] = useState(0);
   const [uploadingImageId, setUploadingImageId] = useState<string>();
+  const videoUploadInput = useRef<HTMLInputElement>(null), videoUploadTarget = useRef<string | undefined>(undefined), videoUploadBusy = useRef(false);
   const imageUploadInput = useRef<HTMLInputElement>(null), imageUploadTarget = useRef<string | undefined>(undefined);
   const history = useRef<{ past: Snapshot[]; future: Snapshot[] }>({ past: [], future: [] });
   const clipboard = useRef<Snapshot | undefined>(undefined);
@@ -235,7 +239,13 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     const command = (e: Event) => {
       const detail = (e as CustomEvent<{ action: string; nodeId?: string }>).detail;
       setContext(undefined); setRenameId(undefined);
-      if (detail.action === 'upload-image') {
+      if (detail.action === 'upload-video') {
+        const node = current().nodes.find(n => n.id === detail.nodeId);
+        if (reading || videoUploadBusy.current) { message.info('素材正在上传，请完成后再添加'); return; }
+        if (!node || node.type !== CanvasNodeType.Video) return;
+        if (node.metadata?.status === 'loading' || studioGenerationPending(node)) { message.info('当前节点正在生成，请等待任务完成后再替换视频'); return; }
+        videoUploadTarget.current = node.id; videoUploadInput.current?.click();
+      } else if (detail.action === 'upload-image') {
         const node = current().nodes.find(n => n.id === detail.nodeId);
         if (reading) { message.info('素材正在上传，请完成后再添加'); return; }
         if (!node || node.type !== CanvasNodeType.Image) return;
@@ -280,6 +290,21 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       message.error(inserted ? `图片已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : reason);
     } finally { setReading(false); setUploadingImageId(undefined); }
   };
+  const uploadVideoIntoNode = async (file: File) => {
+    const nodeId = videoUploadTarget.current;
+    if (!nodeId || reading || videoUploadBusy.current) return;
+    let inserted = false;
+    try {
+      validateStudioVideoUpload(file); videoUploadBusy.current = true; setReading(true); setUploadingImageId(nodeId);
+      const video = await importStudioMedia(projectId, file, 'video');
+      const nodes = replaceStudioVideo(current().nodes, current().connections, nodeId, video);
+      checkpoint(); setNodes(nodes); inserted = true; dispatchStudioCommand('video-uploaded', nodeId);
+      await saveStudioDocument(projectId); focusNode(nodeId); message.success('视频已添加，可开始解析或拉片');
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : '视频上传失败，请重试';
+      message.error(inserted ? `视频已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : reason);
+    } finally { videoUploadBusy.current = false; setReading(false); setUploadingImageId(undefined); }
+  };
   const importFiles = async (files: File[]) => {
     if (reading) return; setReading(true); checkpoint(); let last: string | undefined;
     try { for (const file of files) {
@@ -308,6 +333,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     { key: 'edit', label: target.type === CanvasNodeType.Group ? '编辑分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) { checkpoint(); setRenameId(target.id); } else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
     ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'recreation',label:'素材拆解',children:[{key:'analyze',label:'解析',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]}]:[]),
     { key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } },
+    ...(target.type === CanvasNodeType.Video ? [{ key: 'upload-video', label: target.metadata?.storageKey ? '替换视频' : '上传视频', onClick: () => dispatchStudioCommand('upload-video', target.id) }] : []),
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
     ...(target.type === 'image' && target.metadata?.storageKey ? ['crop', 'mask', 'split-image'].map(action => ({ key: action, label: { crop: '裁剪图片', mask: '局部重绘', 'split-image': '拆分图片' }[action], onClick: () => dispatchStudioCommand(action, target.id) })) : []),
     { key: 'copy', label: '复制节点', onClick: () => paste(true) },
@@ -370,6 +396,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           await saveStudioDocument(projectId); if (last) focusNode(last);
         }}/>
       </nav>
+      <input ref={videoUploadInput} type="file" hidden accept={STUDIO_VIDEO_UPLOAD_ACCEPT} aria-label="上传节点视频" onChange={e => { const file=e.target.files?.[0]; e.target.value=''; if(file)void uploadVideoIntoNode(file); }}/>
       <input ref={imageUploadInput} type="file" hidden accept={STUDIO_IMAGE_UPLOAD_ACCEPT} aria-label="上传节点图片" onChange={e => { const file=e.target.files?.[0]; e.target.value=''; if(file)void uploadImageIntoNode(file); }}/>
       <div className="studio-flow-controls" aria-label="视图控制"><button title="撤销" aria-label="撤销" disabled={!history.current.past.length} onClick={() => travel('past')}><Undo2 size={17}/></button><button title="重做" aria-label="重做" disabled={!history.current.future.length} onClick={() => travel('future')}><Redo2 size={17}/></button><hr/>
         <button title="缩小画布" aria-label="缩小画布" onClick={() => void flow.zoomOut()}><ZoomOut size={17}/></button><span>{Math.round(zoom * 100)}%</span><button title="放大画布" aria-label="放大画布" onClick={() => void flow.zoomIn()}><ZoomIn size={17}/></button>
