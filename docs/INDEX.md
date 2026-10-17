@@ -16,12 +16,12 @@
 
 - [资产库独立设计原型](../prototypes/asset-library/README.md)：[设计方向](prototypes/asset-library-direction.md)、[设计检查](prototypes/asset-library-design-check.md)与[原型验证](prototypes/asset-library-validation.md)；静态原型，与业务代码分离（last-reviewed: 2026-10-17）。
 
-- [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收；准备中（last-reviewed: 2026-10-17）。
+- [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收及浏览器限制；已发布（last-reviewed: 2026-10-17）。
 
-- [全仓表单聚焦样式检查](form-control-focus-audit.md)：输入、下拉、文本域及组合控件的焦点归属修复、74 项组件回归与真实页面验证；本地未发布（last-reviewed: 2026-10-17）。
+- [全仓表单聚焦样式检查](form-control-focus-audit.md)：输入、下拉、文本域及组合控件的焦点归属修复、74 项组件回归与真实本地页面验证；代码已生产发布（last-reviewed: 2026-10-17）。
 
 - [导航与内容组织定稿](studio-information-architecture.md)、[设计图片](studio-v3-design-review.md)、[UI规格](studio-commerce-ui-design.md)、[开发任务](studio-commerce-development-tasks.md)、[现状审计](studio-commerce-current-page-audit.md)：设计与剩余任务（last-reviewed: 2026-10-16）。
-- [本地实施与验收](studio-workspace-refactor-validation.md)：七项导航、独立项目、模板画布、IP资产合并、存量账号/记录复用及【待建设】边界；未发布（last-reviewed: 2026-10-16）。
+- [实施与验收](studio-workspace-refactor-validation.md)：七项导航、独立项目、模板画布、IP资产合并、存量账号/记录复用及【待建设】边界；代码已发布（last-reviewed: 2026-10-17）。
 
 ## 1. 产品 / 业务规格（"产品要什么"）
 

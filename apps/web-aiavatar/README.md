@@ -983,11 +983,11 @@ IP 工作台、画布编辑器、个人资产、模板与发布操作的失败�
 生产代码 `f068b51d`，前后端入口均已开启；见 [生产发布记录](../../docs/ip-studio-enterprise-production-release.md)。设计与本地验收见 [前端规划](../../docs/ip-studio-enterprise-ui-plan.md)、[界面验收](../../docs/ip-studio-enterprise-ui-validation.md)、[产品场景](../../docs/ip-studio-enterprise-scenario-acceptance.md)。
 
 
-## 2026-10-16 · 六项工作台导航与发行界面重构（本地，未发布）
+## 2026-10-17 · 七项工作台导航、独立项目与发行界面（已生产发布）
 
-- 六项主导航；新增场景工坊 `/scenes`，剧情带货与爆款复刻从普通模板进入原画布，短剧/音乐标【待建设】。
+- 七项主导航，项目位于首页之后，独立页恢复大预览卡片；创作页十项入口平铺，模板单行展示。新增场景工坊 `/scenes`，剧情带货与爆款复刻从普通模板进入原画布，短剧/音乐标【待建设】。
 - 资产默认我的 IP，原 `/ips` 参数兼容；四类完整详情与原素材、声音、授权形象功能保留。`/assets?tab=objects|materials|voices|authorized` 可直接进入对应分类。
 - 灵感沿用 `/templates`，官方/我的模板与精选案例分别浏览。
 - 发行复用存量账号、扫码绑定和发布批次/任务读取；新增发布草稿与画布作品投递等未打通能力明确标【待建设】，无新增发布任务写接口。
 - 保留设备选择 `html[data-layout]`；手机用横向创作导航补充场景、灵感、发行，不增加六个底部 Tab。场景摄影为AI生成的入口示意，通过 Next Image 优化，不作真实客户作品。
-- 实施与验收范围：[`studio-workspace-refactor-validation.md`](../../docs/studio-workspace-refactor-validation.md)。后端需与前端一起发布，才能获得新场景模板与发行共享路由；本轮未部署。
+- 实施与验收范围：[`studio-workspace-refactor-validation.md`](../../docs/studio-workspace-refactor-validation.md)。后端与前端已一起发布 `81778bef`，版本、健康检查与浏览器验收限制见[生产发布记录](../../docs/studio-workspace-production-release-20261017.md)。
