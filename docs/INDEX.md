@@ -251,6 +251,8 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 - [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：视频入口、报告契约、分段裁切、逐段Markdown及恐龙视频验收。last-reviewed: 2026-10-15。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
+- [视频拉片技术分享：媒体工程、模型理解、成本与音频补全](studio-film-study-technical-sharing-20261017.md)：程序／LLM分工、资源与积分、模型候选；拉片仅提取原声，字幕等后续放在音频节点，含本地实施与验收边界。last-reviewed: 2026-10-17。
+- [Studio原声提取发布](studio-source-audio-release-20261017.md)：本次提交与制品、用户视频的已有媒体结果、直接发布及未追加业务验收边界。last-reviewed: 2026-10-17。
 
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
 - [企业产品场景端到端验收](ip-studio-enterprise-scenario-acceptance.md)

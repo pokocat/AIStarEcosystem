@@ -158,7 +158,7 @@ export interface StudioNodeMetadata {
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
-  recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
+  recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
   speechRequest?: StudioSpeechRequest;
   voiceProfile?: StudioVoiceProfile;
@@ -278,6 +278,18 @@ export interface StudioRecreationReport {
 }
 
 /** Engineering-owned time ranges and media, with model-authored Markdown. */
+export interface StudioSourceAudio {
+ sourceNodeId:string;
+ sourceStorageKey:string;
+ sourceTitle:string;
+ status:"ready"|"absent";
+ storageKey?:string;
+ url?:string;
+ mimeType?:string;
+ durationSec?:number;
+ bytes?:number;
+}
+
 export interface StudioFilmStudy {
  source: StudioRecreationReport['source'];
  strategy: "model" | "visual-changes";

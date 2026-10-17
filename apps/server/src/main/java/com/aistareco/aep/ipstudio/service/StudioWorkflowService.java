@@ -236,7 +236,11 @@ public class StudioWorkflowService {
                 String resume=target.path("metadata").path("studio").path("recreation").path("resumeRunId").asText();
                 if(!resume.isBlank())projects.ownedRun(userId,projectId,resume).ifPresent(previous->{
                     JsonNode old=projects.parseOrEmptyObject(previous.getOutputJson()).path("filmStudy");
-                    if(previous.getNodeId().equals(request.nodeId())&&old.path("source").path("storageKey").asText().equals(execution.path("recreationSource").path("storageKey").asText()))execution.set("resumeFilmStudy",old.deepCopy());
+                    JsonNode previousOutput=projects.parseOrEmptyObject(previous.getOutputJson());
+                    if(previous.getNodeId().equals(request.nodeId())) {
+                        if(old.path("source").path("storageKey").asText().equals(execution.path("recreationSource").path("storageKey").asText()))execution.set("resumeFilmStudy",old.deepCopy());
+                        if(previousOutput.path("sourceAudio").path("sourceStorageKey").asText().equals(execution.path("recreationSource").path("storageKey").asText()))execution.set("resumeSourceAudio",previousOutput.path("sourceAudio").deepCopy());
+                    }
                 });
             }
         }

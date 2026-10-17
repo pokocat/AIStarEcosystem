@@ -25,6 +25,11 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-17 · 拉片原声与音频节点后续
+
+- [x] ~~拉片提取完整原声~~ **2026-10-17 本地实现，未发布**：`StudioSourceAudio.extract`为解析/拉片提取本人WAV，`output.sourceAudio`持久检查点与签名，普通音频节点稳定落地、跨同源任务复用；可用现有成片配音选择替换音轨，无ASR或新增模型调用。验收见[技术分享第7节](docs/studio-film-study-technical-sharing-20261017.md#7-按产品边界收简拉片只提取原声)。
+- [ ] **音频节点高阶工具（后续独立能力）**：字幕提取/ASR、编辑与SRT/VTT导出、音频翻译、人声/背景音分离留在音频节点显式触发，不纳入拉片必经流程。当前`audioAnalyzed=false`不变，供应商与报价尚未确认；既有原生视频全能参考链可传音频，具体开放以模型合同为准；音频节点高级操作仍未接入。
+
 ### 2026-10-15 · 主子账号与算力管理（已生产发布）
 
 - [x] **评审并工程化主子账号方案**：方案、功能、本地产品场景验收与发布准备已完成。见 [v0.4 精简方案](docs/ip-studio-team-accounts-plan.md) 和 [开发任务清单](docs/ip-studio-enterprise-development-tasks.md)。用户已确认分配积分仍归企业、可以回收，产品开通沿用现有逻辑、不做企业席位；采用单企业归属、固定 RBAC、人工充值与批量分配/回收，不做月配额或多团队。任务进度以以下条目为准；2026-10-15 已部署 `f068b51d` 并开启企业功能，见 [生产发布记录](docs/ip-studio-enterprise-production-release.md)；本地完整场景结果见 [交付验收](docs/ip-studio-enterprise-complete-validation.md)。

@@ -383,6 +383,20 @@ components:
             properties:
               timeSec: { type: number }
               kind: { type: string, enum: [visual, lighting] }
+    StudioSourceAudio:
+      type: object
+      description: 程序从原片提取的完整混合音轨，无ASR或人声/BGM分离；仅出wire签名URL。
+      required: [sourceNodeId, sourceStorageKey, sourceTitle, status]
+      properties:
+        sourceNodeId: {type: string}
+        sourceStorageKey: {type: string}
+        sourceTitle: {type: string}
+        status: {type: string, enum: [ready, absent]}
+        storageKey: {type: string, description: ready时的本人WAV音频key}
+        url: {type: string, description: 短期签名地址，不落库}
+        mimeType: {type: string, enum: [audio/wav]}
+        durationSec: {type: number}
+        bytes: {type: integer, format: int64}
     StudioFilmStudy:
       type: object
       description: recreation + mode=segments的增量和最终输出；工程持有真实原片时间范围与裁切媒体，模型仅生成Markdown，不做语义验收。失败保留已完成段，继续时只重试未完成段。
@@ -3740,6 +3754,7 @@ components:
             mock: { type: boolean, description: '本地 fixture 返回标识；生产禁用' }
             recreation: { $ref: '#/components/schemas/StudioRecreationReport' }
             filmStudy: { $ref: '#/components/schemas/StudioFilmStudy' }
+            sourceAudio: { $ref: '#/components/schemas/StudioSourceAudio' }
             script: { $ref: '#/components/schemas/StudioScript' }
             plan: { $ref: '#/components/schemas/StudioPlan' }
             textRevision:

@@ -105,7 +105,7 @@ export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilitie
    {error&&<StudioErrorNotice error={error}/>}
    {target?.metadata?.status==='error'&&target.metadata.errorDetails&&<p role="alert">{target.metadata.errorDetails}</p>}
    <>
-     <p className="studio-recreation-intro">{segments?'将视频分段，每段生成可播放视频和镜头拆解文档，直接放到画布。':'生成全片创作拆解和参考画面，直接放到画布。'}</p>
+     <p className="studio-recreation-intro">{segments?'将视频分段，每段生成视频和镜头拆解，原声另存为音频节点。':'生成全片创作拆解和参考画面，原声另存为音频节点。'}</p>
      {sourceBound?<div className="studio-recreation-source" aria-label="当前参考视频"><span>参考视频</span><strong>{source?.title||target?.metadata?.studio?.recreation?.sourceTitle||'原参考视频不可用'}</strong></div>:<label>参考视频<Select aria-label="复刻参考视频" disabled={busy||pending||importing||!!targetId} value={sourceId} placeholder="选择画布中的视频" onChange={setSourceId} options={nodes.filter(n=>n.type===CanvasNodeType.Video&&n.metadata?.storageKey).map(n=>({value:n.id,label:n.title}))}/></label>}
      {!sourceBound&&!targetId&&<><input ref={upload} type="file" accept="video/mp4,.mp4" hidden onChange={e=>{const file=e.target.files?.[0];e.target.value='';if(file)void importVideo(file);}}/><Button disabled={busy||pending} loading={importing} icon={<Upload size={15}/>} onClick={()=>upload.current?.click()}>上传参考视频</Button></>}
      {imported.current&&<Button onClick={()=>void save().then(()=>{imported.current=undefined;setError('');}).catch(setError)}>重试保存视频</Button>}
@@ -114,7 +114,7 @@ export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilitie
      <details className="studio-recreation-options"><summary>补充要求与分析设置</summary><label>分析重点（选填）<Input.TextArea aria-label="复刻分析重点" value={focus} disabled={busy||pending} onChange={e=>setFocus(e.target.value)} maxLength={2000} autoSize={{minRows:2,maxRows:3}} placeholder="例如：重点分析氛围、动作推进和结尾反转"/></label>
      <details className="studio-recreation-settings"><summary>分析设置<span>{selected?.name||'尚未配置'}</span></summary><label>分析模型<Select aria-label="复刻分析模型" value={selected?.endpointId} disabled={busy||pending||fixed} onChange={setModel} options={options.filter(m=>fixed||m.supportsVision).map(m=>({value:m.endpointId,label:m.name,disabled:!m.supportsVision}))}/></label>
      {!allowed&&<p role="status">{capabilities?.mock?'解析需要真实视频分析，请关闭测试响应。':'尚无可用的视频画面分析模型，请检查模型能力及积分售价配置。'}</p>}
-     <p className="studio-recreation-boundary">支持 60 秒、128 MB 内的 MP4。优先读取明显画面变化前后的画面，并在较长片段中补帧；时间点为近似定位；本次不分析音轨。</p></details></details>
+     <p className="studio-recreation-boundary">支持 60 秒、128 MB 内的 MP4。优先读取明显画面变化前后的画面，并在较长片段中补帧；时间点为近似定位。有音轨时自动提取原声，不转写字幕。</p></details></details>
    </>
  </StudioFloatingPanel>;
 }

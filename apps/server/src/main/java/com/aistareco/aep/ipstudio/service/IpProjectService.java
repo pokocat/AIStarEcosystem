@@ -654,6 +654,9 @@ public class IpProjectService {
         String comparisonKey=output.path("comparisonStorageKey").asText(null);
         if(comparisonKey!=null&&!comparisonKey.isBlank())((ObjectNode)output).put("comparisonUrl",storage.signedUrl(comparisonKey));
         // Analysis reference images are persisted by key; URLs are signed only on the wire.
+        JsonNode audio=output.path("sourceAudio");
+        if(audio instanceof ObjectNode row && "ready".equals(row.path("status").asText())&&!row.path("storageKey").asText().isBlank())
+            row.put("url",storage.signedUrl(row.path("storageKey").asText()));
         for(JsonNode ref:output.path("recreation").path("references"))if(ref instanceof ObjectNode row) {
             String key=row.path("storageKey").asText(null);if(key!=null&&!key.isBlank())row.put("url",storage.signedUrl(key));
         }
