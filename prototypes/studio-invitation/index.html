@@ -15,13 +15,23 @@
 <section class="hero" aria-labelledby="hero-title">
   <div class="hero-copy">
     <h1 id="hero-title">让灵感成形<br>让 IP 出圈<span class="period">。</span></h1>
-    <p class="intro">从一个角色、一张图，到一段有声的故事。<br>在 IP Studio，让想法拥有形象、声音与作品。</p>
+    <p class="intro">创造你的角色、影像与故事。</p>
     <section class="invitation" aria-label="朋友的邀请">
-      <div class="inviter" id="inviter"><span class="avatar" aria-hidden="true">皎</span><p><strong id="inviter-name">皎洁月轮363</strong><span>邀请你一起开始创作</span></p></div>
+      <div class="inviter" id="inviter"><span class="avatar" aria-hidden="true">皎</span><p><strong id="inviter-name">皎洁月轮363</strong><span>邀请你加入 Studio</span></p></div>
       <p class="state-message" id="state-message" role="status" hidden></p>
-      <button class="primary" id="accept" type="button"><span>接受邀请，开始创作</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button>
-      <p class="return-note" id="return-note">注册或登录后，回到 IP Studio。</p>
-      <button class="login-link" id="existing" type="button">已有账号，直接登录 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></button>
+      <form id="registration-form" novalidate>
+        <div class="registration-fields" id="registration-fields">
+          <label class="field-label" for="phone">手机号</label>
+          <div class="phone-field"><span class="country-code">+86</span><input id="phone" name="phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="请输入手机号" maxlength="11" required aria-describedby="form-error"></div>
+          <label class="field-label" for="verification-code">验证码</label>
+          <div class="code-field"><input id="verification-code" name="code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="请输入验证码" maxlength="6" required aria-describedby="form-error"><button id="send-code" type="button">获取验证码</button></div>
+          <p class="form-error" id="form-error" role="alert" hidden></p>
+          <p class="form-status" id="form-status" role="status" hidden></p>
+          <button class="primary register-submit" id="register" type="submit"><span>注册并进入 Studio</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg></button>
+          <p class="registration-note" id="registration-note">未注册自动注册，已有账号直接登录。</p>
+        </div>
+        <button class="primary" id="retry-invitation" type="button" hidden>重新读取邀请</button>
+      </form>
     </section>
   </div>
   <div class="showcase" aria-label="探索 Studio 创作方向">
@@ -47,14 +57,11 @@
 </section>
 <section class="questions" aria-label="关于这次邀请">
   <h2>关于这次邀请</h2>
-  <div><details><summary>接受邀请后，会发生什么？<svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path class="vertical" d="M12 6v12"/></svg></summary><p>完成账号验证后回到 IP Studio。新账号会记录这次邀请；各项创作能力仍按账号开通情况和具体使用规则提供。</p></details><details><summary>已经有账号，还能接受吗？<svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path class="vertical" d="M12 6v12"/></svg></summary><p>你可以正常登录并进入 Studio。已有账号不会新增或改变注册邀请关系。</p></details></div>
+  <div><details><summary>注册后，会发生什么？<svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path class="vertical" d="M12 6v12"/></svg></summary><p>验证手机号后直接进入 IP Studio。新账号会记录这次邀请；各项创作能力仍按账号开通情况和具体使用规则提供。</p></details><details><summary>已有账号可以登录吗？<svg class="summary-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/><path class="vertical" d="M12 6v12"/></svg></summary><p>使用同一表单验证手机号即可登录，原有邀请关系保持不变。</p></details></div>
 </section>
 </main>
 <footer class="footer"><span>IP Studio <small>· 声量引擎旗下</small></span><p>让灵感成形，让 IP 出圈。</p></footer>
 <div class="preview-tools"><span>设计预览</span><label class="sr-only" for="preview-state">切换邀请状态</label><select id="preview-state"><option value="normal">正常邀请</option><option value="existing">已有账号</option><option value="expired">邀请失效</option><option value="error">读取失败</option></select></div>
-<dialog id="flow-dialog" aria-labelledby="dialog-title">
-  <form method="dialog"><button class="close" aria-label="关闭原型说明"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button><img class="dialog-logo" src="assets/logo.png" alt="" width="48" height="48"><h2 id="dialog-title">回到 Studio，继续创作。</h2><p id="dialog-copy">正式接入后，这里会前往统一账号中心完成注册或登录，再自动回到 IP Studio。</p><div class="flow"><span>接受朋友邀请</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg><span>完成账号验证</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15m-6-6 6 6-6 6"/></svg><strong>返回 Studio</strong></div><p class="prototype-note">这是交互设计稿，不会发送短信或创建账号。</p><button class="primary" value="close">继续查看设计</button></form>
-</dialog>
 <script src="app.js"></script>
 </body>
 </html>

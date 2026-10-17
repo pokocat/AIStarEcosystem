@@ -18,19 +18,54 @@ function selectScene(tab){
  document.querySelector('#showcase-panel').setAttribute('aria-labelledby',tab.id);
 }
 tabs.forEach((tab,index)=>{tab.addEventListener('click',()=>selectScene(tab));tab.addEventListener('keydown',event=>{let next;if(event.key==='ArrowRight')next=(index+1)%tabs.length;if(event.key==='ArrowLeft')next=(index-1+tabs.length)%tabs.length;if(event.key==='Home')next=0;if(event.key==='End')next=tabs.length-1;if(next!==undefined){event.preventDefault();tabs[next].focus();selectScene(tabs[next])}})});
-const dialog=document.querySelector('#flow-dialog'),accept=document.querySelector('#accept'),existing=document.querySelector('#existing'),stateInput=document.querySelector('#preview-state');
-function showFlow(existingAccount=false){
- document.querySelector('#dialog-copy').textContent=existingAccount?'正式接入后，这里会完成已有账号登录，再自动回到 IP Studio；不会新增或改写邀请关系。':'正式接入后，这里会前往统一账号中心完成注册或登录，再自动回到 IP Studio。';
- dialog.showModal();
+const form=document.querySelector('#registration-form');
+const phone=document.querySelector('#phone'),codeInput=document.querySelector('#verification-code');
+const sendCode=document.querySelector('#send-code'),submit=document.querySelector('#register');
+const stateInput=document.querySelector('#preview-state');
+const error=document.querySelector('#form-error'),status=document.querySelector('#form-status');
+let resendTimer,codeIssued=false;
+function feedback(text,isError=false){
+ const target=isError?error:status,other=isError?status:error;
+ other.hidden=true;other.textContent='';target.textContent=text;target.hidden=!text;
 }
-accept.addEventListener('click',()=>{if(stateInput.value==='error'){setState('normal');return}if(stateInput.value==='expired'){document.querySelector('#possibilities').scrollIntoView({behavior:'smooth'});return}showFlow(stateInput.value==='existing')});
-existing.addEventListener('click',()=>showFlow(true));
-dialog.addEventListener('click',event=>{if(event.target===dialog)dialog.close()});
+function validPhone(){
+ if(/^1[3-9]\d{9}$/.test(phone.value.trim())){phone.removeAttribute('aria-invalid');return true}
+ phone.setAttribute('aria-invalid','true');feedback('请输入正确的 11 位手机号。',true);phone.focus();return false;
+}
+sendCode.addEventListener('click',()=>{
+ if(sendCode.disabled||!validPhone())return;
+ codeIssued=true;sendCode.disabled=true;
+ feedback('设计演示：验证码 123456，不会发送短信。');
+ let remaining=60;sendCode.textContent=remaining+' 秒后重试';
+ resendTimer=setInterval(()=>{remaining--;sendCode.textContent=remaining+' 秒后重试';if(remaining<=0){clearInterval(resendTimer);sendCode.disabled=false;sendCode.textContent='重新获取'}},1000);
+ codeInput.focus();
+});
+phone.addEventListener('input',()=>{
+ codeIssued=false;clearInterval(resendTimer);sendCode.disabled=false;sendCode.textContent='获取验证码';
+ phone.removeAttribute('aria-invalid');feedback('');
+});
+codeInput.addEventListener('input',()=>{codeInput.removeAttribute('aria-invalid');error.hidden=true});
+form.addEventListener('submit',event=>{
+ event.preventDefault();if(submit.disabled||!validPhone())return;
+ if(!codeIssued){feedback('请先获取验证码。',true);sendCode.focus();return}
+ if(codeInput.value.trim()!=='123456'){codeInput.setAttribute('aria-invalid','true');feedback('请输入演示验证码 123456。',true);codeInput.focus();return}
+ codeInput.removeAttribute('aria-invalid');submit.disabled=true;submit.querySelector('span').textContent='演示已完成';
+ feedback('演示完成。正式接入后将直接进入 Studio。');
+ clearInterval(resendTimer);sendCode.disabled=true;
+});
 function setState(state){
  if(!['normal','existing','expired','error'].includes(state))state='normal';
- stateInput.value=state;const message=document.querySelector('#state-message');
- const config={normal:{text:'',label:'接受邀请，开始创作',inviter:true},existing:{text:'你已有账号，可以直接进入 Studio。原有邀请关系保持不变。',label:'进入 IP Studio',inviter:true},expired:{text:'这次邀请暂不可用。你仍然可以了解 Studio，或联系朋友重新获取邀请链接。',label:'了解 IP Studio',inviter:false},error:{text:'暂时无法读取朋友的邀请。请重试，或稍后重新打开链接。',label:'重新读取邀请',inviter:false}}[state]||{};
- message.textContent=config.text;message.hidden=!config.text;document.querySelector('#inviter').hidden=!config.inviter;
- accept.querySelector('span').textContent=config.label;document.querySelector('#return-note').hidden=state==='expired'||state==='error';existing.hidden=state==='existing';
+ stateInput.value=state;form.reset();clearInterval(resendTimer);codeIssued=false;
+ submit.disabled=false;submit.querySelector('span').textContent=state==='existing'?'登录并进入 Studio':'注册并进入 Studio';
+ sendCode.disabled=false;sendCode.textContent='获取验证码';feedback('');
+ phone.removeAttribute('aria-invalid');codeInput.removeAttribute('aria-invalid');
+ const message=document.querySelector('#state-message');
+ message.textContent=state==='expired'?'邀请已失效，仍可正常注册。':state==='error'?'暂时无法读取邀请，请重试。':'';
+ message.hidden=!message.textContent;
+ document.querySelector('#inviter').hidden=state==='expired'||state==='error';
+ document.querySelector('#registration-fields').hidden=state==='error';
+ document.querySelector('#retry-invitation').hidden=state!=='error';
 }
-stateInput.addEventListener('change',()=>setState(stateInput.value));setState(new URLSearchParams(location.search).get('state')||'normal');
+document.querySelector('#retry-invitation').addEventListener('click',()=>setState('normal'));
+stateInput.addEventListener('change',()=>setState(stateInput.value));
+setState(new URLSearchParams(location.search).get('state')||'normal');

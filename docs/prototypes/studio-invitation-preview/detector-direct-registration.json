@@ -1,0 +1,32 @@
+[
+  {
+    "antipattern": "cramped-padding",
+    "name": "Cramped padding",
+    "description": "Text is too close to the edge of its container. Two shapes: (1) an element with its own text where the padding is too low for the font size, and (2) a wrapper with text-bearing children and near-zero padding against a visible boundary (border, outline, or non-transparent background) — children land flush against the boundary line. Add at least 8px (ideally 12–16px) of padding inside bordered, outlined, or colored containers.",
+    "severity": "warning",
+    "category": "quality",
+    "file": "/Users/donis/dev/AIStarEcosystem/prototypes/studio-invitation/index.html",
+    "line": 0,
+    "snippet": "<div> \"showcase-art\": children flush against bg on top/bottom (no inset)"
+  },
+  {
+    "antipattern": "cramped-padding",
+    "name": "Cramped padding",
+    "description": "Text is too close to the edge of its container. Two shapes: (1) an element with its own text where the padding is too low for the font size, and (2) a wrapper with text-bearing children and near-zero padding against a visible boundary (border, outline, or non-transparent background) — children land flush against the boundary line. Add at least 8px (ideally 12–16px) of padding inside bordered, outlined, or colored containers.",
+    "severity": "warning",
+    "category": "quality",
+    "file": "/Users/donis/dev/AIStarEcosystem/prototypes/studio-invitation/index.html",
+    "line": 0,
+    "snippet": "<details>: children flush against border-top on top (no inset)"
+  },
+  {
+    "antipattern": "flat-type-hierarchy",
+    "name": "Flat type hierarchy",
+    "description": "Dominant heading and body roles are separated by less than 1.25× at every step, leaving the size hierarchy flat. Add at least one stronger size step.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/Users/donis/dev/AIStarEcosystem/prototypes/studio-invitation/index.html",
+    "line": 0,
+    "snippet": "Role sizes: body 13px, h1 15px, h3 16px (largest adjacent step 1.15:1; target 1.25:1)"
+  }
+]

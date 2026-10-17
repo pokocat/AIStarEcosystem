@@ -6,7 +6,7 @@
 
 ## 最新调整：Studio 品牌邀请页（设计稿）
 
-用户指出直接进入 ID 通用邀请页脱离 Studio。正式分享入口拟改为 Studio `/invite/{code}`，先展示产品品牌、邀请人、创作示意与接受邀请；仅账号验证交给 ID，完成后返回 Studio。邀请关系仍是 ID 唯一真值，不因来自不同应用而另建关系。此调整先交付[独立可交互原型](../prototypes/studio-invitation/README.md)与[设计说明](prototypes/studio-invitation-design.md)，不把设计稿当成已接入功能；下文描述首版现状。
+用户指出直接进入 ID 通用邀请页脱离 Studio。正式分享入口拟改为 Studio `/invite/{code}`，先展示产品品牌、邀请人与创作示意，邀请区直接输入手机号、验证码并注册；取消“接受邀请”和中间弹窗。短信校验、建号与绑定仍归 ID，成功后进入 Studio。邀请关系仍是 ID 唯一真值，不因来自不同应用而另建关系。此调整先交付[独立可交互原型](../prototypes/studio-invitation/README.md)与[设计说明](prototypes/studio-invitation-design.md)，不把设计稿当成已接入功能；下文描述首版现状。
 
 ## 1. 页面与入口
 
