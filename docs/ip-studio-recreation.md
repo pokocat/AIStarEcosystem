@@ -125,3 +125,9 @@
 ## 视频上传入口与编码兼容（2026-10-17）
 
 空“参考视频”节点可直接点“上传视频”，上传完从“素材拆解”选择“解析/拉片”。已有视频可原位替换，节点及连线不变；旧结果保留并标记上游已改变。MP4画面或音轨编码不兼容由服务器自动处理，不再提示用户自行改成H.264/AAC。上传不调用模型、不扣积分；仍限60秒/128MiB。
+
+### 上传修复发布记录
+
+2026-10-17 已发布 `02a0e7db50b38b0e52a645bf73ca8d024137163f`，release `20261017-video-upload-02a0e7db`，仅 server + web-aiavatar。后端JAR SHA256 `43aafd95dde2a9d7f0b8987734c417e2f2b7ba2c5f7e4431fecadefa63250322`，前端BUILD_ID `d2TuJEt0s1tuvZu8koALE`，线上文件核对一致、两服务active，工作台入口/login/projects及API、nginx与部署verify全部通过；环境和模型配置未改。回滚备份 `/opt/ai-star-eco/backups/studio-video-upload-20261017T150819Z`。
+
+验证：前端90个不同用例（含组件文件选择→media-import→同节点保存/失败重试集成），后端11例（含用户视频派生的HEVC+MP3、MPEG4+MP3、H264+MP3真实ffmpeg转换）通过；全仓/后台类型、后端离线编译、API契约、生产构建通过。并行检查期间工作台测试出现5秒超时，单worker/20秒界限复核70例全部通过。Impeccable机械检查无新增发现。线上核对上传入口已进入发布JS、Next实际代理配置136314880字节/180000ms；浏览器自动化连接不可用，本轮未完成生产账号下实际上传验收，未提交付费解析或模型请求。证据 `.studio-e2e/video-upload-hotfix/`（忽略目录）。
