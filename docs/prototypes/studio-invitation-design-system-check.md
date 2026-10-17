@@ -44,7 +44,7 @@
 
 2026-10-17 v2：用户要求取消中间点击，已以直接手机号／验证码表单替换确认模块；品牌、图片、字体与全局系统保持。独立复核已查看更新后的四张截图，结论 ship、无必改项。此增量不新增全局设计规则。
 
-## 2026-10-17 · 实施对照（Studio 待发布）
+## 2026-10-17 · 实施对照（发布前核对记录）
 
 以上章节及[邀请页设计说明](studio-invitation-design.md)中“尚未接入短信、注册”“仅作本地演示”、固定演示验证码，以及“未读取用户设备偏好”的描述，均为独立 HTML 原型阶段的历史记录，不代表当前应用实现。原型仍保留演示行为；实际入口为 `apps/web-aiavatar/src/app/invite/[code]/page.tsx` 与 `src/ip/invitation-registration.tsx`，两者须分别验收。
 
@@ -53,10 +53,14 @@
 | 视觉作用域 | 独立 HTML 使用 `:root` 局部变量 | `src/styles/invitation-registration.css` 将页面令牌和选择器限定在 `.studio-invite`；沿用暖灰、白面、深墨、中文衬线与既有字体加载，不新增全局视觉规则 |
 | 邀请读取 | 本地状态工具与示例数据 | `InvitationApi.getInvitationPreview` 直连 ID `GET /api/auth/invitations/{code}`；读取失败隐藏表单并重试，明确失效后才允许普通注册 |
 | 短信 | 固定 `123456`，本地倒计时 | `InvitationApi.sendInvitationSms` 直连 ID `POST /api/auth/sms/send-code`；成功后显示已发送与 60 秒重试倒计时，错误保留表单并显示原因 |
-| 注册与登录 | 本地提交反馈，不认证 | `loginWithIdSms` 向 ID `/oauth2/token` 提交 `urn:aibuzz:params:oauth:grant-type:sms`；有效邀请随 `invite_code` 传递，使用现有令牌存储，成功后进入 `/dashboard`。账号、短信核验和邀请绑定仍归 ID，已有账号关系不改写，注册不自动开通产品 |
+| 注册与登录 | 本地提交反馈，不认证 | `loginWithIdSms` 向 ID `/oauth2/token` 提交 `urn:aibuzz:params:oauth:grant-type:sms`；有效邀请随 `invite_code` 传递，使用现有令牌存储，成功后进入 `/dashboard`。账号、短信核验和邀请绑定仍归 ID，已有账号关系不改写，邀请逻辑不新增开通操作，产品侧执行既有策略 |
 | 设备形态 | 原型按视口自行设置属性 | 应用根布局沿用 `LAYOUT_BOOT_SCRIPT` 与 `src/shell/layout-mode.ts`；页面 CSS 读取既有 `html[data-layout]`，复用用户显式选择优先、未选择时默认 960px 的规则，不另建邀请页设备判定 |
 | 图片 | 原型 PNG | 应用使用 `/invitation/{image,video,script}.webp`；来源和 `cwebp -q 88` 转换校验见 [SOURCES.md](../../prototypes/studio-invitation/assets/SOURCES.md) |
 
-本次已核对上述应用代码、`packages/api-client/src/api/invitation.ts`、`packages/api-client/src/oidc.ts` 及既有布局入口，并查看实现截图：[桌面 1280×720](studio-invitation-live-preview/desktop.png)、[手机 390×844](studio-invitation-live-preview/mobile.png)。两张截图中的邀请表单、示意图与品牌材料延续原型；手机先显示邀请与主操作，图片在其后。截图是应用本地渲染证据，不能证明真实短信已送达或生产新账号注册完成。
+本次已核对上述应用代码、`packages/api-client/src/api/invitation.ts`、`packages/api-client/src/oidc.ts` 及既有布局入口，并查看实现截图：[桌面 1280×720](studio-invitation-live-preview/desktop.png)、[手机 391×844](studio-invitation-live-preview/mobile.png)。两张截图中的邀请表单、示意图与品牌材料延续原型；手机先显示邀请与主操作，图片在其后。截图是应用本地渲染证据，不能证明真实短信已送达或生产新账号注册完成。
 
 本轮视觉复核已通过；此记录补齐普通扩展的实施差异，不修改 `PRODUCT.md`、`DESIGN.md`、全局令牌或其他页面。ID `ba79d5a` 已部署，Studio 本轮版本仍待发布；使用真实生产短信完成全新账号注册、关系绑定及进入 Studio 的闭环仍待人工验收，不能据代码接通或视觉通过宣称已完成。
+
+## 2026-10-17 · 生产交付补记
+
+上述“待发布/待人工验收”是核对时状态。现已完成 Studio 与 ID 配套发布、用户亲自输入真实短信验证码注册、进入 Studio、双方邀请视图及生成/复制链接核对，见[当前生产验收](../unified-account-referral-production-release-20261017.md)及[生产截图](studio-invitation-live-preview/production-inviter.png)。没有改变视觉系统。现网产品侧既有 GRANT_ALL 策略独立执行，邀请本身不增加开通、积分或奖励操作。
