@@ -1,6 +1,7 @@
 /** One account navigation for the modern overview and the existing task screens. */
 export const ACCOUNT_PAGES = [
   { key: "me", href: "/me", label: "账号总览", icon: "user" },
+  { key: "invitations", href: "/invitations", label: "邀请朋友", icon: "invitation" },
   { key: "tasks", href: "/studio#/tasks", label: "任务中心", icon: "tasks" },
   { key: "membership", href: "/studio#/membership", label: "会员与积分", icon: "credits" },
   { key: "storage", href: "/studio#/storage", label: "存储用量", icon: "storage" },

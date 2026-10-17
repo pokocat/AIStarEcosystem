@@ -278,7 +278,7 @@
 
 ### 2026-09-04 · 统一账号中心（服务在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)，设计真源 `docs/unified-identity-plan.md`）
 
-- [ ] **统一账号注册邀请关系 · 实施候选，2026-10-17**：按用户最新要求收简为[跨应用方案 v0.3](docs/unified-account-referral-plan.md)，仅文档、未实现/部署。在账号中心增加邀请码与一张邀请关系表，真实注册时同事务记录，支持直接关系查询；合并保留原始记录，不做投影、事件流或重算。[前端设计](docs/unified-account-referral-frontend.md)覆盖中心邀请页、落地页及注册提示，未实现。不得放入 Studio 业务层，不覆盖军师/公社业务推荐。[Astra 记录](docs/unified-account-referral-astra-review-20261017.md)仅为 v0.2 历史评审。
+- [x] **统一账号注册邀请关系 · 本地完成，2026-10-17**：ID V12、首建事务记录、本体定义与查询权限；Studio `/invitations` 提供真实邀请视图、链接生成/复制/预览及分页刷新，桌面/手机账号入口已接通。共用 ID 真值，分佣奖励后续实现。账号原全量543项、此次ID专项15项，前端778项及共享SDK77项通过，见[验收记录](docs/unified-account-referral-validation-20261017.md)。未提交、未部署；真实微信及生产验收留待发布。
 
 - [ ] **identity · 无 `typ` 的历史后台令牌过渡兼容需按期删除**（v0.149）：`JwtAuthenticationFilter.LEGACY_ADMIN_ROLES` 让 v0.149 之前签的后台令牌（`role` 是 `SUPER_ADMIN`/`OPERATOR`/`FINANCE_ADMIN`、无 `typ`）继续拿后台权限，每次打 WARN。JWT TTL 7 天，**上线满 7 天后**删掉该字段与它的两处分支，否则「消费者令牌不得提权」这条闸只是半开。
 

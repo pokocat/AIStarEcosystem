@@ -4,7 +4,7 @@
 > **范围**：aibuzz.cn 生态全部面向用户的产品：本仓 5 个 web app + 带货小程序、军师 ai-pilot（H5 / PC / 小程序）、主理人公社 ai-society（会员小程序）、以及后续任何新产品。
 > **落点**：独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（Spring Boot 3.3.5 / Java 17 / Spring Authorization Server / Flyway / H2 dev · MySQL prod），生产域名 `id.aibuzz.cn`，本地 port **8090**；建议 clone 到本仓同级的 `../aibuzz-id`。初版代码曾在本仓 `apps/id-server` 孵化，2026-09-04 抽离，本仓只保留消费方接入（§12）。
 > **相关**：军师侧早期思路见 `ai-pilot/docs/ECOSYSTEM_ACCOUNT_DESIGN.md`（2026-07，单库共用 User 的方案，已被本文取代）。
-> **新增提案（2026-10-17，未实现）**：[统一账号邀请关系方案 v0.3](unified-account-referral-plan.md)按用户要求仅在账号中心增加邀请码、记录原始注册邀请关系与查询，不做关系投影或事件设施；会员/商业/活动归因仍留业务域。[Astra 记录](unified-account-referral-astra-review-20261017.md)针对此前 v0.2 完整方案。尚未变更本文运行契约，§6 的产品侧归因约定待实施时细分更新。
+> **账号注册邀请（2026-10-17，本地实现，未发布）**：[统一账号邀请关系方案 v0.5](unified-account-referral-plan.md)将跨应用的原始注册邀请纳入账号中心，一张关系表加本体定义/映射；会员/商业/活动归因仍留业务域。§6 的边界已同步，运行契约见账号仓 README §25。[验收记录](unified-account-referral-validation-20261017.md)区分本地完成与待发布；[Astra 记录](unified-account-referral-astra-review-20261017.md)仅针对此前 v0.2 完整方案。
 
 ---
 
@@ -222,7 +222,7 @@ ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token �
 3. 解析 / 建号（§5），发 access + refresh；`session_key` 留在账号中心不下发。
 4. 小程序本地存两枚令牌，请求本产品接口带 `Authorization: Bearer`；401 用 refresh 换新。
 5. 需要手机号的动作由产品判断 `phone_verified`，引导调 `/api/me/phone/wechat-bind` 或短信绑定。
-6. 邀请码 / 渠道码等归因参数不进账号中心，登录后由小程序自己带给产品后端。
+6. 产品会员推荐、渠道/活动归因参数仍由小程序带给产品后端；跨应用的账号注册邀请在账号中心按新建 UID 同事务记录。短信/微信 grant 可选 `invite_code`，已有账号不补绑、不改邀请人。契约见账号仓 README §25（2026-10-17 本地实现，未发布）。
 
 三个小程序改动量：军师最小（换地址、`x-user-id` 改 Bearer、本地 User 加 uid）；公社换地址、归因留本地；本仓带货小程序改动最大（补 wx.login，删短信注册页，激活码改成登录后「开通带货」一步）。
 

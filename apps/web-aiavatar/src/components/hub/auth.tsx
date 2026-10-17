@@ -10,7 +10,7 @@ import { auth, AuthApi, ID_MODE, onAuthExpired, USE_MOCK } from "@/proto/api";
 
 export type AuthState = "checking" | "ok" | "redirecting" | "no-platform";
 
-export function useRequireAuth(enabled = true): AuthState {
+export function useRequireAuth(enabled = true, requireEnrollment = true): AuthState {
   const router = useRouter();
   const pathname = usePathname();
   const [state, setState] = useState<AuthState>(USE_MOCK ? "ok" : "checking");
@@ -52,7 +52,7 @@ export function useRequireAuth(enabled = true): AuthState {
   // v0.149：权益真值改为后端 enrollments（statue=active）；老后端不返回该字段时
   // 回落历史的 platforms 判定。拉取失败宽松放行（与老 SPA 一致）。
   useEffect(() => {
-    if (USE_MOCK || !enabled || state !== "ok") return;
+    if (USE_MOCK || !enabled || !requireEnrollment || state !== "ok") return;
     let cancelled = false;
     AuthApi.me()
       .then((me: { platforms?: string[]; enrollments?: { product: string; status: string }[] } | null) => {
@@ -71,7 +71,7 @@ export function useRequireAuth(enabled = true): AuthState {
     return () => {
       cancelled = true;
     };
-  }, [enabled, state]);
+  }, [enabled, requireEnrollment, state]);
 
   if (!enabled) return USE_MOCK ? "ok" : "checking";
   return state;

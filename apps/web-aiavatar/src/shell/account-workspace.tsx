@@ -2,11 +2,12 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight, ClipboardList, Coins, HardDrive, Image, Settings, Trash2, UserRound } from "lucide-react";
+import { isIdMode } from "@ai-star-eco/api-client";
+import { ArrowLeft, ArrowRight, ClipboardList, Coins, HardDrive, Image, Settings, Trash2, UserRound, UserPlus } from "lucide-react";
 import { ACCOUNT_PAGES, accountPageKey, STUDIO_NAVIGATION_EVENT } from "./account-navigation";
 import { useLayoutMode } from "./layout-mode";
 
-const icons = { user: UserRound, tasks: ClipboardList, credits: Coins, storage: HardDrive, materials: Image, trash: Trash2, settings: Settings };
+const icons = { user: UserRound, invitation: UserPlus, tasks: ClipboardList, credits: Coins, storage: HardDrive, materials: Image, trash: Trash2, settings: Settings };
 
 export function useStudioHash() {
   const [hash, setHash] = useState("");
@@ -19,15 +20,15 @@ export function useStudioHash() {
   return hash;
 }
 
-export function AccountWorkspace({ children, tool = false }: { children: ReactNode; tool?: boolean }) {
+export function AccountWorkspace({ children, tool = false, activePage }: { children: ReactNode; tool?: boolean; activePage?: string }) {
   const hash = useStudioHash();
   const layout = useLayoutMode();
-  const active = tool ? accountPageKey(hash) : "me";
+  const active = activePage ?? (tool ? accountPageKey(hash) : "me");
   return <div className={`account-workspace${layout === "desktop" ? " ip-brand-surface" : ""}${tool ? " account-workspace--tool" : ""}`}>
     <aside className="account-navigation">
       <Link href="/projects" className="account-return"><ArrowLeft size={16} />返回项目</Link>
       <nav aria-label="账号中心">
-        {ACCOUNT_PAGES.map(page => { const Icon = icons[page.icon]; return <a key={page.key} href={page.href} aria-current={active === page.key ? "page" : undefined}>
+        {ACCOUNT_PAGES.filter(page => page.key !== "invitations" || isIdMode()).map(page => { const Icon = icons[page.icon]; return <a key={page.key} href={page.href} aria-current={active === page.key ? "page" : undefined}>
           <Icon size={18} /><span>{page.label}</span>
         </a>; })}
       </nav>
@@ -47,6 +48,7 @@ export function AccountOverview({ name, phone, demo }: { name: string; phone?: s
     <section className="account-overview-section" aria-labelledby="account-management-title">
       <h2 id="account-management-title">账号管理</h2>
       <div className="account-action-list">
+        {isIdMode() && <Link href="/invitations"><span><strong>邀请朋友</strong><small>管理邀请链接，查看邀请记录</small></span><ArrowRight size={16} aria-hidden="true"/></Link>}
         {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><span><strong>企业积分</strong><small>管理企业余额、积分分配与充值记录</small></span><ArrowRight size={16} aria-hidden="true"/></Link>}
         {[{ href: "/studio#/membership", title: "会员与积分", text: "查看权益、积分余额与充值套餐" }, { href: "/studio#/storage", title: "存储用量", text: "查看各类资产的空间占用" }, { href: "/studio#/tasks", title: "任务中心", text: "查看资产生成任务的进度与历史" }].map(item => <Link href={item.href} key={item.href}><span><strong>{item.title}</strong><small>{item.text}</small></span><ArrowRight size={16} aria-hidden="true"/></Link>)}
       </div>

@@ -1,7 +1,7 @@
 # 统一账号邀请关系方案
 
-> 版本：v0.3 简化版 · 2026-10-17
-> 状态：仅方案，未实现、未部署。
+> 版本：v0.5 实施版 · 2026-10-17
+> 状态：账号中心后端、注册页及 Studio 邀请管理视图已本地实现并测试，未提交、未部署。见 [验收记录](unified-account-referral-validation-20261017.md)。
 > 本版按用户最新要求收简：只记录邀请关系。
 
 ## 1. 要做什么
@@ -79,13 +79,13 @@
 
 ## 6. 落点与范围
 
-代码、数据和接口归 `aibuzz-id`。Studio 等应用最多放一个跳转到账号中心的入口，不保存或决定关系。
+关系数据、注册绑定、链接码生成和查询权限归 `aibuzz-id`。Studio 提供应用内邀请视图与链接管理，直接调用 ID 本人 API；应用可以承载操作与配置界面，但不保存或决定邀请关系。本期链接操作为生成、复制和预览，规则与权限仍由 ID 校验。
 
 本期不增加邀请事件流、异步任务、投影表、快照版本、图算法或独立服务，也不修改现有产品 outbox。军师、公社已有的业务推荐、企业邀请和积分逻辑保持原有职责，不把本表当作它们的新真源。
 
 以后确实需要奖励、活动归因或复杂统计时，再增加对应能力。现在只稳定保存 UID 与时间。
 
-这是对原“归因留在产品侧”约定的小范围调整：跨应用的账号注册邀请放在账号中心，产品业务归因仍留产品侧。实施时同步账号仓 README/AGENTS 与注册接入说明，本次不变更运行契约。
+这是对原“归因留在产品侧”约定的小范围调整：跨应用的账号注册邀请放在账号中心，产品业务归因仍留产品侧。账号仓 README §25、AGENTS、接入指南与部署说明已同步；对外运行是否可用仍取决于后续发布。
 
 ## 7. 最小验收
 
@@ -96,13 +96,13 @@
 - 无效邀请码、自邀和未授权查询有明确结果。
 - 账号合并后原始记录仍可查询，不发生自动改挂或关系重算。
 
-本次只检查文档；以上是实现后的验收要求，尚未运行。
+以上已通过本地注册/权限测试及页面验收；真实 MySQL 迁移、并发与回滚已验证。真实微信网关及生产验收留待发布执行，见验收记录。
 
 ## 8. 上一版评审的适用范围
 
 [Astra 独立评审](unified-account-referral-astra-review-20261017.md)针对 v0.2 完整方案，保留作为历史参考，并非对本简化版的重新评审。真实首建事务、已有账号不误绑、隐私和业务隔离的提醒仍适用；关系投影、私有事件流、全图重建不再纳入本期。
 
-实施位置参考：[账号模型](../../aibuzz-id/src/main/java/com/aibuzz/id/model/IdUser.java)、[短信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/user/IdUserService.java)、[微信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/wechat/WechatIdentityResolver.java)、[账号合并](../../aibuzz-id/src/main/java/com/aibuzz/id/phone/PhoneBindingService.java)。邀请码字段和邀请表仍为设计建议，尚未实现。
+实施位置：[账号模型](../../aibuzz-id/src/main/java/com/aibuzz/id/model/IdUser.java)、[短信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/user/IdUserService.java)、[微信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/wechat/WechatIdentityResolver.java)、[邀请服务](../../aibuzz-id/src/main/java/com/aibuzz/id/referral/ReferralService.java)。邀请码字段和邀请表由账号仓独立的 V12 迁移添加，不修改本仓后端数据库。
 
 ## 9. 复核：以后能否用本体查看整体邀请链
 
@@ -136,10 +136,10 @@ flowchart LR
 
 普通数据库查询也能先画邀请链；本体有价值的阶段是需要把账号、注册邀请、企业成员等不同概念放在同一张图上解释时。届时仍须把各类关系分开命名，不能把它们都叫“上下级”。公社已有 [本体到数据表的映射](../../ai-society/ontology/MAPPING.md) 可参考，但其中会员推荐、三级路径和成长值属于产品业务，不迁入全局账号模型。
 
-推荐路线：现在仍按一张关系表记录；后期先提供只读关系图，再按实际跨域查询需要增加本体映射。没有要求现在引入图数据库、推理引擎或新的同步链路。
+按用户后续选择，本期已同时落地 [账号本体定义](../../aibuzz-id/ontology/account.ttl)与[表映射](../../aibuzz-id/ontology/MAPPING.md)：现在用本体语义定义关系，仍在一张关系表中存事实。没有单独的 RDF 实例存储或运行时推理；将来关系图直接查询同一真值，不增加同步链路。
 
 参考：[W3C RDF 图模型](https://www.w3.org/TR/rdf11-concepts/#data-model)定义以主语、关系、宾语表示事实；[OWL 2 Primer](https://www.w3.org/TR/owl2-primer/)说明本体中的关系与推理语义。这里采用其建模思路，不要求第一期运行 RDF/OWL 系统。
 
 ## 10. 前端页面
 
-具体页面、文字线框和异常反馈见 [统一账号邀请前端设计](unified-account-referral-frontend.md)。主体只有账号中心的“我的邀请”和公开邀请落地页，现有注册流程保留邀请提示；Studio 只提供跳转入口。未来整体关系图作为受权只读展示，不增加关系写入真源。本次仍仅文档，未实现页面。
+具体页面、文字线框和异常反馈见 [统一账号邀请前端设计](unified-account-referral-frontend.md)。账号中心的“我的邀请”、公开落地页及注册提示已本地实现；公众号扫码在建号前补充一次邀请确认。Studio 的“我的账号”进入应用内 `/invitations`，提供真实邀请人/直属记录、链接生成/复制/预览及分页刷新。未来整体关系图作为受权只读展示，不增加关系写入真源。

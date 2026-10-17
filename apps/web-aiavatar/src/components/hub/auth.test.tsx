@@ -29,6 +29,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+test("账号级页面只检查登录，不依赖产品开通或产品后端", async () => {
+  session.isAuthed.mockReturnValue(true);
+  const { result } = renderHook(() => useRequireAuth(true, false));
+  await waitFor(() => expect(result.current).toBe("ok"));
+  expect(session.me).not.toHaveBeenCalled();
+});
+
 test.each(["rejected", "unavailable"])("%s login navigation goes to a retryable login page with the full return path", async mode => {
   if (mode === "rejected") session.startIdLogin.mockRejectedValue(new Error("CRYPTO_UNAVAILABLE"));
   else session.startIdLogin.mockResolvedValue(false);

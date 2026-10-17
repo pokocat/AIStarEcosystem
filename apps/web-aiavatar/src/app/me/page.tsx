@@ -77,6 +77,7 @@ export default function MePage() {
 
       <div style={{ margin: "12px 16px 0" }}>
         <Card pad={0}>
+          {ID_MODE && <ListRow href="/invitations" title="邀请朋友" sub="管理邀请链接 · 查看邀请记录" divider />}
           <ListRow href={studioHref("#/membership")} title="会员与算力" divider />
           {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <ListRow href="/enterprise" title="企业积分" sub="企业余额 · 积分分配 · 充值记录" divider />}
           <ListRow href={studioHref("#/storage")} title="存储用量" divider />
