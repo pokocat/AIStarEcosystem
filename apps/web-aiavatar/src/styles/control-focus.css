@@ -39,8 +39,16 @@ html[data-layout="desktop"] .ip-surface .studio-text-node-composer:has(textarea:
   outline: none;
 }
 
-/* Contenteditable prompt chips sit in a rounded wrapper rather than a native
-   textarea. Match that shape when the fallback outline is visible. */
-.ip-surface [contenteditable="true"].outline-none:focus-visible {
-  border-radius: inherit;
+/* Prompt chips share a rounded focus surface. Outlining the inner editable
+   reintroduces a square box and overriding its radius erases the drawer border. */
+.ip-surface .canvas-prompt-chip-field {
+  border-radius: 8px;
+}
+.ip-surface .canvas-prompt-chip-field:has(> .canvas-prompt-chip-editor:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.ip-surface .canvas-prompt-chip-editor:focus,
+.ip-surface .canvas-prompt-chip-editor:focus-visible {
+  outline: none;
 }

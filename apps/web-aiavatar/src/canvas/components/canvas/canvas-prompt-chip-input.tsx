@@ -44,6 +44,8 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, o
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
+    // 本仓：IME preedit is visible before value is committed; hide the hint without rebuilding the editor DOM.
+    const [composing, setComposing] = useState(false);
     const savedCaretRef = useRef<Range | null>(null);
     // 本仓 v0.212: async catalogue refresh can rebuild an unfocused editor while its picker is open.
     // Keep serialized offsets, so inserting an effect retains the original caret/selection across that rebuild.
@@ -219,12 +221,12 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, o
         emit(serializeEditor(editor));
     };
 
-    const showPlaceholder = !value.trim();
+    const showPlaceholder = !composing && !value.trim();
 
     return (
-        <div className="relative w-full">
+        <div className="canvas-prompt-chip-field relative w-full">
             {showPlaceholder && placeholder ? (
-                <div className="pointer-events-none absolute left-3 top-2 text-sm leading-5" /* 本仓：host placeholder token meets reading contrast on the paper surface. */
+                <div aria-hidden="true" className="pointer-events-none absolute left-3 top-2 text-sm leading-5" /* 本仓：host placeholder token meets reading contrast on the paper surface. */
                 style={{ color: `var(--ink-2, ${theme.node.placeholder})` }}>
                     {placeholder}
                 </div>
@@ -236,7 +238,8 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, o
                 role="textbox"
                 aria-multiline="true"
                 aria-label={ariaLabel}
-                className={`${className || ""} overflow-y-auto whitespace-pre-wrap break-words outline-none`}
+                aria-placeholder={placeholder}
+                className={`canvas-prompt-chip-editor ${className || ""} overflow-y-auto whitespace-pre-wrap break-words outline-none`}
                 style={{ ...style, cursor: "text" }}
                 onInput={() => {
                     if (!composingRef.current) syncFromEditor();
@@ -273,9 +276,11 @@ export function CanvasPromptChipInput({ value, references, onChange, onSubmit, o
                 }}
                 onCompositionStart={() => {
                     composingRef.current = true;
+                    setComposing(true);
                 }}
                 onCompositionEnd={() => {
                     composingRef.current = false;
+                    setComposing(false);
                     syncFromEditor();
                 }}
                 onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {

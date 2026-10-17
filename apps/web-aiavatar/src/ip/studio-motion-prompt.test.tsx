@@ -13,7 +13,7 @@ vi.mock('antd',()=>({
 const reference={id:'ref',label:'@图1',title:'人物',kind:'image',active:true} as const;
 const push=studioCameraMotions[0],pull=studioCameraMotions[1];
 let latest='';
-function Host({initial='',references=[]}:any){const [value,setValue]=useState(initial);latest=value;return <StudioMotionPrompt ariaLabel="创作要求" value={value} references={references} onChange={setValue}/>;}
+function Host({initial='',references=[],placeholder}:any){const [value,setValue]=useState(initial);latest=value;return <StudioMotionPrompt ariaLabel="创作要求" value={value} references={references} onChange={setValue} placeholder={placeholder}/>;}
 function caret(node:Node,offset:number,end=offset){const range=document.createRange();range.setStart(node,offset);range.setEnd(node,end);const selection=window.getSelection()!;selection.removeAllRanges();selection.addRange(range);}
 function select(motion=push){fireEvent.click(screen.getByRole('button',{name:'插入运镜指令'}));fireEvent.click(screen.getByRole('button',{name:new RegExp(`^${motion.label}`)}));}
 beforeEach(()=>{vi.stubGlobal('requestAnimationFrame',(callback:Function)=>{callback();return 1;});});
@@ -60,4 +60,27 @@ test('Escape reaches the containing panel only after the reference picker is dis
   fireEvent.keyDown(editor,{key:'Escape'});expect(escape).not.toHaveBeenCalled();expect(screen.queryByRole('button',{name:/^@图1\s*人物$/})).toBeNull();
   fireEvent.keyDown(editor,{key:'Escape'});expect(escape).toHaveBeenCalledOnce();
  }finally{document.removeEventListener('keydown',escape);delete (Range.prototype as Partial<Range>).getBoundingClientRect;delete (HTMLElement.prototype as Partial<HTMLElement>).scrollIntoView;}
+});
+
+// IME preedit must hide the visual hint before the controlled value is committed.
+test('Chinese composition hides the placeholder without publishing incomplete text',()=>{
+ render(<Host placeholder="描述画面或动作，输入 @ 引用素材"/>);
+ const editor=screen.getByRole('textbox',{name:'创作要求'});editor.focus();
+ expect(screen.getByText('描述画面或动作，输入 @ 引用素材')).toBeDefined();
+ fireEvent.compositionStart(editor);
+ editor.textContent='ca';fireEvent.input(editor,{isComposing:true});
+ expect(screen.queryByText('描述画面或动作，输入 @ 引用素材')).toBeNull();
+ expect(latest).toBe('');
+ editor.textContent='擦';fireEvent.compositionEnd(editor,{data:'擦'});
+ expect(latest).toBe('擦');expect(editor.textContent).toBe('擦');
+ expect(screen.queryByText('描述画面或动作，输入 @ 引用素材')).toBeNull();
+});
+test('cancelled composition restores the placeholder and composition Enter never submits',()=>{
+ const submit=vi.fn();
+ render(<StudioMotionPrompt ariaLabel="创作要求" references={[]} value="" onChange={()=>{}} onSubmit={submit} placeholder="请输入画面"/>);
+ const editor=screen.getByRole('textbox',{name:'创作要求'});editor.focus();
+ fireEvent.compositionStart(editor);fireEvent.keyDown(editor,{key:'Enter',isComposing:true,keyCode:229});
+ expect(screen.queryByText('请输入画面')).toBeNull();expect(submit).not.toHaveBeenCalled();
+ editor.textContent='';fireEvent.compositionEnd(editor,{data:''});
+ expect(screen.getByText('请输入画面')).toBeDefined();
 });
