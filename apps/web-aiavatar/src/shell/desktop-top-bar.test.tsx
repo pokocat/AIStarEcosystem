@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 const state = vi.hoisted(() => ({ pathname: "/me", hash: "" }));
@@ -49,4 +49,18 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   state[field] = field === "pathname" ? "/assets" : "#/membership";
   view.rerender(<DesktopTopBar />);
   expect(menu.open).toBe(false);
+});
+
+test("Projects follows Home and owns its active navigation state", () => {
+  state.pathname = "/projects";
+  const view = render(<DesktopTopBar/>);
+  const nav = within(screen.getByRole("navigation", {name:"主导航"}));
+  const links = nav.getAllByRole("link");
+  expect(links.map(link => link.getAttribute("href")).slice(0,4)).toEqual(["/dashboard","/projects","/create","/scenes"]);
+  expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"画布·自由创作"}).hasAttribute("aria-current")).toBe(false);
+  state.pathname = "/projects/demos";
+  view.rerender(<DesktopTopBar/>);
+  expect(nav.getByRole("link", {name:"灵感"}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"项目",exact:true}).hasAttribute("aria-current")).toBe(false);
 });

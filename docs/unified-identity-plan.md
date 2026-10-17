@@ -4,6 +4,7 @@
 > **范围**：aibuzz.cn 生态全部面向用户的产品：本仓 5 个 web app + 带货小程序、军师 ai-pilot（H5 / PC / 小程序）、主理人公社 ai-society（会员小程序）、以及后续任何新产品。
 > **落点**：独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（Spring Boot 3.3.5 / Java 17 / Spring Authorization Server / Flyway / H2 dev · MySQL prod），生产域名 `id.aibuzz.cn`，本地 port **8090**；建议 clone 到本仓同级的 `../aibuzz-id`。初版代码曾在本仓 `apps/id-server` 孵化，2026-09-04 抽离，本仓只保留消费方接入（§12）。
 > **相关**：军师侧早期思路见 `ai-pilot/docs/ECOSYSTEM_ACCOUNT_DESIGN.md`（2026-07，单库共用 User 的方案，已被本文取代）。
+> **新增提案（2026-10-17，未实现）**：[统一账号邀请关系方案 v0.3](unified-account-referral-plan.md)按用户要求仅在账号中心增加邀请码、记录原始注册邀请关系与查询，不做关系投影或事件设施；会员/商业/活动归因仍留业务域。[Astra 记录](unified-account-referral-astra-review-20261017.md)针对此前 v0.2 完整方案。尚未变更本文运行契约，§6 的产品侧归因约定待实施时细分更新。
 
 ---
 

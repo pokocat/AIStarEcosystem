@@ -1,5 +1,18 @@
 # 待办与已知问题
 
+## Studio 工作台重构与发行（2026-10-16）
+
+- [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 本地完成，未发布**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/form-control-focus-audit.md`。
+- [x] ~~项目、IP 与发行筛选的原生菜单风格割裂~~ **2026-10-17 本地完成，未发布**：八处共用 `StudioSelect`，菜单在字段下方展开；21 项测试、类型检查及桌面/375px 手机浏览器验证见同一检查记录。
+
+- [x] ~~七项导航、独立项目、场景工坊、IP 并入资产与灵感整理~~ **2026-10-16 本地完成，未发布**：原画布路径保留，剧情带货/爆款复刻引用普通模板，IP完整详情、旧入口参数兼容；验收见 `docs/studio-workspace-refactor-validation.md`。
+- [x] ~~发行复用存量账号与发布记录~~ **2026-10-16 本地完成，未发布**：`StudioDistribution` 读本人账号/批次/任务，接原扫码绑定、验证与解绑；仅精确共享账号域和发布 GET 路由，未进行真实平台扫码发布。
+- [ ] **画布商品选品与剧本融合【待建设】**：`StudioSceneWorkshop` 已可创建剧情带货模板；商品库/抖音链接选择、商品事实进入剧本编辑器改稿请求及局部采纳，按 C01-C06 后续完成，不新增业务项目域。
+- [ ] **画布成片投递和发布草稿【待建设】**：`StudioDistribution` 仅显示状态；需要验证本人精确输出来源、可持久化非执行草稿与显式发布受理，不能用现有 PublishJob.createBatch 冒充草稿。
+- [ ] **短剧/音乐模板接入与音乐发行【待建设】**：`studio-scenes.ts` 未绑定可用模板，入口禁用；音频渠道另行适配。
+- [ ] **发行任务验证与调度操作【待建设】**：原发布任务读接口已复用；此入口的待验证处理、重试/取消和批量定时写操作仍未开放，不扩现有发布写权限。
+
+
 本文件是未完成问题与候选计划的真源。完成或澄清后，按 [AGENTS.md 的维护纪律](AGENTS.md#todomd-维护纪律strict) 勾选、注明日期和证据；定期整理时保留到历史记录。
 
 2026-10-13 整理：已完成记录、合并前的重复条目与排障教训见 [历史记录](docs/archive/todo-2026-10-13.md)。历史候选保留原分期，不代表已承诺排期；本次只更正有证据的过时状态，其余问题没有逐项重新验收。
@@ -264,6 +277,8 @@
 - [ ] **dev-login 返回体 `user.enrollments=[]`，共享 `AuthProvider` 据此把 `hasPlatformAccess` 判成 false → 登录后闪一屏「未开通」门禁，等 `/api/me` 回来才恢复**（web-star / web-ipstudio 同样受影响，`DevAuthController` 或 `AuthProvider.loginAs` 二选一修：要么 dev-login 也带 enrollments，要么 `loginAs` 后立即拉 `/me` 再判）。ipstudio 真联调 2026-09-06 复现。
 
 ### 2026-09-04 · 统一账号中心（服务在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)，设计真源 `docs/unified-identity-plan.md`）
+
+- [ ] **统一账号注册邀请关系 · 实施候选，2026-10-17**：按用户最新要求收简为[跨应用方案 v0.3](docs/unified-account-referral-plan.md)，仅文档、未实现/部署。在账号中心增加邀请码与一张邀请关系表，真实注册时同事务记录，支持直接关系查询；合并保留原始记录，不做投影、事件流或重算。[前端设计](docs/unified-account-referral-frontend.md)覆盖中心邀请页、落地页及注册提示，未实现。不得放入 Studio 业务层，不覆盖军师/公社业务推荐。[Astra 记录](docs/unified-account-referral-astra-review-20261017.md)仅为 v0.2 历史评审。
 
 - [ ] **identity · 无 `typ` 的历史后台令牌过渡兼容需按期删除**（v0.149）：`JwtAuthenticationFilter.LEGACY_ADMIN_ROLES` 让 v0.149 之前签的后台令牌（`role` 是 `SUPER_ADMIN`/`OPERATOR`/`FINANCE_ADMIN`、无 `typ`）继续拿后台权限，每次打 WARN。JWT TTL 7 天，**上线满 7 天后**删掉该字段与它的两处分支，否则「消费者令牌不得提权」这条闸只是半开。
 

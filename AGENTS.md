@@ -1017,3 +1017,8 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 ### 企业主子账号 · 2026-10-15（已生产发布）
 
 `aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知、零价均计入在途。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/ip-studio-enterprise-development-tasks.md`、`docs/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
+
+
+### Studio 七项导航与存量发行界面（2026-10-17，待本轮发布）
+
+主导航：`首页 / 项目 / 画布·自由创作 / 场景·专项创作 / 灵感 / 资产 / 发行`。项目为独立大预览画廊，创作页平铺十项能力入口。`/scenes` 前两项引用 `StudioScenePresets` 补缺的普通模板，不新建场景项目；旧 `/ips` 参数兼容到资产默认我的 IP。发行仅共享本人账号域和发布任务 GET；任务写权限不扩大，草稿、画布直发与未接通能力标【待建设】。页面/功能边界及本地验收见 `docs/studio-workspace-refactor-validation.md`。

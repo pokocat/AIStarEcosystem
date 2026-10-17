@@ -1051,3 +1051,12 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 - 完整结果见 [交付验收](../../docs/ip-studio-enterprise-complete-validation.md)；产品场景见 [端到端用例](../../docs/ip-studio-enterprise-scenario-acceptance.md)；发布与回退边界见 [发布准备](../../docs/ip-studio-enterprise-release-readiness.md)。
 
 受理未知而供应商明确证明原请求未受理时，运营可提交核对依据并显式确认：图片 `POST /api/admin/ip-studio/runs/{id}/release-unknown`，视频 reconcile 的 `confirmedNotAccepted=true`。仅无原供应商ID、原冻结/授权仍有效且符合未知状态时允许；审计、原任务失败、仅剩余原冻结释放/归集及授权结束同事务。已有原ID必须继续查询，不允许单凭“查不到状态”释放，也不退已成功产物的费用。
+
+
+## Studio 场景模板与发行共享（2026-10-16，本地）
+
+`StudioScenePresets` 在应用就绪时只补缺失的剧情带货、爆款复刻普通画布模板，不覆盖或重新启用已有模板。仅保存四个通用节点及引用连线，复用原模板解析与个人副本创建，无新表、API路径、执行计划或账本行为。
+
+`ProductRouteTable` 将原本人社交账号域 `/api/me/social-accounts/**` 共享给 celebrity / aiavatar；`GET /api/me/publish-jobs` 及子路径共享读取。均须匹配 `X-App-Code` 与该产品 ACTIVE enrollment，owner 检查不变。发布任务 POST（包括创建/开始/取消/重试）继续仅 celebrity。前端没有把 QUEUED 任务当草稿，不在本轮新增画布成片发布。
+
+边界与验收见 `docs/studio-workspace-refactor-validation.md`；无迁移改动。

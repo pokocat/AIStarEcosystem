@@ -133,7 +133,7 @@ function DemosPageInner() {
       <div className="ip-surface max-w-6xl mx-auto px-6 py-16 text-center">
         <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>这一页只有平台运营能看。</p>
         <Link href="/projects" className="inline-block mt-4 text-[13px]" style={{ color: "var(--primary)" }}>
-          ← 回到自由画布
+          ← 回到项目
         </Link>
       </div>
     );
@@ -151,7 +151,7 @@ function DemosPageInner() {
             className="inline-flex items-center gap-1.5 text-[12px] mb-2"
             style={{ color: "var(--ink-3)" }}
           >
-            <ArrowLeft className="w-3.5 h-3.5" /> 自由画布
+            <ArrowLeft className="w-3.5 h-3.5" /> 项目
           </Link>
           <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>官方内容管理</h1>
           <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--ink-2)" }}>

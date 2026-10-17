@@ -14,6 +14,8 @@ test('home primary action links to the creation tab without creating a workspace
   render(<StudioHome ready/>);
   const link=screen.getByRole('link',{name:'开始创作'});
   expect(link.getAttribute('href')).toBe('/create');
+  expect(screen.getByRole('link',{name:'我的画布'}).getAttribute('href')).toBe('/projects');
+  expect(screen.getByRole('link',{name:'全部画布'}).getAttribute('href')).toBe('/projects');
   link.addEventListener('click',e=>e.preventDefault());fireEvent.click(link);
   expect(api.createProject).not.toHaveBeenCalled();expect(api.updateProject).not.toHaveBeenCalled();
 });

@@ -57,7 +57,7 @@ test('failed preview cannot create a project; reload is a read request', async (
   vi.mocked(readTemplateVersion).mockRejectedValueOnce(new Error('读取失败'));
   render(<StudioTemplateUse template={template} onClose={() => {}} onCreated={() => {}}/>);
   await screen.findByText('读取失败'); expect((screen.getByRole('button', { name: '存为个人副本' }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: '重新加载' })); await screen.findByLabelText('只读模板画布');
+  fireEvent.click(await screen.findByRole('button', { name: '重新加载' })); await screen.findByLabelText('只读模板画布');
   expect(IpStudioApi.createProject).not.toHaveBeenCalled();
 });
 test('legacy official templates also preview without creating a draft', async () => {

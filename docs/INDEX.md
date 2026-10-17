@@ -12,6 +12,17 @@
 
 ---
 
+## Studio 工作台界面重构
+
+- [资产库独立设计原型](../prototypes/asset-library/README.md)：[设计方向](prototypes/asset-library-direction.md)、[设计检查](prototypes/asset-library-design-check.md)与[原型验证](prototypes/asset-library-validation.md)；静态原型，与业务代码分离（last-reviewed: 2026-10-17）。
+
+- [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收；准备中（last-reviewed: 2026-10-17）。
+
+- [全仓表单聚焦样式检查](form-control-focus-audit.md)：输入、下拉、文本域及组合控件的焦点归属修复、74 项组件回归与真实页面验证；本地未发布（last-reviewed: 2026-10-17）。
+
+- [导航与内容组织定稿](studio-information-architecture.md)、[设计图片](studio-v3-design-review.md)、[UI规格](studio-commerce-ui-design.md)、[开发任务](studio-commerce-development-tasks.md)、[现状审计](studio-commerce-current-page-audit.md)：设计与剩余任务（last-reviewed: 2026-10-16）。
+- [本地实施与验收](studio-workspace-refactor-validation.md)：七项导航、独立项目、模板画布、IP资产合并、存量账号/记录复用及【待建设】边界；未发布（last-reviewed: 2026-10-16）。
+
 ## 1. 产品 / 业务规格（"产品要什么"）
 
 ### 1.1 跨子产品规格（仓库根）
@@ -23,6 +34,9 @@
 | [`docs/ADMIN_PRODUCT_SPEC.md`](ADMIN_PRODUCT_SPEC.md) | **运营后台规划** —— 全配置化终态（ConfigItem / 灰度 / AB 桶 / 17 个字典上移） | 大目标稿；当前 admin 是其 P0 子集 |
 | [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [`docs/unified-identity-plan.md`](unified-identity-plan.md) | **统一账号中心（id.aibuzz.cn）** —— 全生态（本仓 5 web app + 小程序 / 军师 / 公社）统一身份：OIDC + RS256、手机号 + unionid 身份键、五层模型（身份 / 建档 / 开通 / 角色 / 资源）、小程序自定义 grant、合并规则、§8.0 门禁、P0–P5 分期；服务落在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（含其 `deploy/`），本仓只留消费方接入 | P1 服务 + P2 本仓接入完成，**已于 2026-09-05 上线**（last-reviewed 2026-09-06，v0.149） |
+| [统一账号邀请关系方案](unified-account-referral-plan.md) | 账号中心邀请码、一张原始邀请关系表、注册时记录与直接查询；§9 复核后期本体/整体链路视图，不增加当前数据结构 | v0.3 简化版；与 Studio 解耦，合并不重算，未实现、未部署（last-reviewed 2026-10-17） |
+| [统一账号邀请 · 前端设计](unified-account-referral-frontend.md) | 中心入口、我的邀请、邀请落地页与注册提示；文字线框、手机适配、失败状态及后期只读关系图边界 | v0.1 设计稿；未制作原型或实现页面（last-reviewed 2026-10-17） |
+| [统一账号邀请链 · Astra 独立评审](unified-account-referral-astra-review-20261017.md) | `gpt-6-astra` 对 v0.2 完整方案的独立核对及风险记录 | 历史参考，未重新评审 v0.3；投影与事件设施不再属本期（last-reviewed 2026-10-17） |
 | [统一认证手机号与后台搜索发布验收](identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
 | [统一认证跨应用 SOP 复核](unified-identity-sop-audit-20261010.md) | 全生态在用客户端、资料/后台/竞态/事件消费复核；各仓修复与既有缺口 | 本轮本地完成、未发布；ClassVibe 生产停服及两项既有脚本门禁失败，Slides/Quickreel 完整接入未通过 |
 

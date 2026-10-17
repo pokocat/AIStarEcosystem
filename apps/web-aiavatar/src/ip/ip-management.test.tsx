@@ -72,6 +72,7 @@ describe("IP management user flows", () => {
   });
   it("passes the selected historical look/version into a free canvas without generating", async () => {
     await openPerson();
+    fireEvent.click(screen.getByRole("tab", { name: "形象版本" }));
     fireEvent.click(screen.getByRole("button", { name: "侧面参考" }));
     fireEvent.click(screen.getByRole("button", { name: "生成形象" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/IPP-free?start=image"));

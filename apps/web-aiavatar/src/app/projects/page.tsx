@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
+import { StudioProjects } from "@/ip/studio-projects";
 
-// Personal canvases now live in Creation. Canvas detail URLs remain unchanged.
-export default function ProjectsPage() { redirect("/create"); }
+export default function ProjectsPage() { return <StudioProjects/>; }

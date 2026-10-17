@@ -322,7 +322,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'templates',label:'套用画布模板',onClick:()=>dispatchStudioCommand('templates')},
   ];
   return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div className="studio-flow-shell" data-history={historyRevision}>
-    <header className="studio-flow-header"><a href="/create" aria-label="返回创作"><ArrowLeft size={18}/></a>
+    <header className="studio-flow-header"><a href="/projects" aria-label="返回项目"><ArrowLeft size={18}/></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
       <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`}/></div>

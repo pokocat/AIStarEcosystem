@@ -168,8 +168,11 @@ public final class ProductRouteTable {
             any("/api/me/celebrity/**", CELEBRITY),
             any("/api/me/mixcut/**", CELEBRITY),
             any("/api/me/products/**", CELEBRITY),
+            // Studio reuses the owner's existing distribution data. Job creation remains celebrity-only.
+            get("/api/me/publish-jobs", CELEBRITY, AIAVATAR),
+            get("/api/me/publish-jobs/**", CELEBRITY, AIAVATAR),
+            any("/api/me/social-accounts/**", CELEBRITY, AIAVATAR),
             any("/api/me/publish-jobs/**", CELEBRITY),
-            any("/api/me/social-accounts/**", CELEBRITY),
             any("/api/me/drama/**", DRAMA),
             any("/api/me/distribution/**", DRAMA),
             any("/api/me/songs/**", MUSIC),

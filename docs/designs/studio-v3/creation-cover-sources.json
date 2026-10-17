@@ -1,0 +1,60 @@
+{
+  "kind": "AI-generated capability illustrations, not customer works or UI screenshots",
+  "generation": "built-in image_gen",
+  "images": [
+    {
+      "id": "image",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-e9c57f9d-6f2a-4609-a354-40074f7ee424.png",
+      "destination": "apps/web-aiavatar/public/studio/create/image.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. An expressive high-end 3D illustrated small orange astronaut character with a round helmet and a little cream ceramic moon, on a soft periwinkle-blue studio background. Three-quarter portrait, beautiful tactile ceramic and fabric details, sophisticated playful character concept art. The final polished image is the whole composition."
+    },
+    {
+      "id": "video",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-ed83a835-c995-4938-82fe-fd883c042d89.png",
+      "destination": "apps/web-aiavatar/public/studio/create/video.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A cinematic still of a young East Asian woman wearing an ivory coat and a flowing burnt-orange scarf on a coastal boardwalk at golden hour, looking back while the scarf and ocean spray are visibly in motion. Wide scene, warm natural light, movie color grading and subtle motion blur at the edges, crisp subject."
+    },
+    {
+      "id": "script",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-45d68974-a315-41b9-b0cb-1c624644a03e.png",
+      "destination": "apps/web-aiavatar/public/studio/create/script.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. An evocative overhead tabletop still life: an open screenwriter's notebook with completely blank cream pages, a fountain pen, and three small printed film still photographs arranged beside it: a rainy window, two people meeting in a cafe, a person leaving with an umbrella. An inviting story-in-progress, warm amber and ink-blue palette, no visible writing or text."
+    },
+    {
+      "id": "recreation",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-3184c110-3bff-4899-af59-5070311787b8.png",
+      "destination": "apps/web-aiavatar/public/studio/create/recreation.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A precise visual study of a film sequence arranged as three large adjacent film still panels in one image: the same woman in a rust red coat at a rainy neon-blue city street, a wide establishing shot, a medium tracking shot, a close-up reaction. Subtle small framing corner marks and a film perforation motif indicate video shot analysis. Strong cinematic teal and red color grading, no text or fake app interface."
+    },
+    {
+      "id": "director",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-621b12f7-6ceb-4d9d-b484-00256a64ed48.png",
+      "destination": "apps/web-aiavatar/public/studio/create/director.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. Behind-the-scenes cinematic composition: a professional cinema camera and a plain unmarked clapperboard in the foreground, an East Asian actress in a deep navy outfit framed on a beautifully lit small film set in the background. Amber key light and dusky blue shadows, clear storytelling and intentional camera framing. No branding or writing on the clapperboard."
+    },
+    {
+      "id": "work",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-415e7c09-ad0e-4c29-a15e-aff7093bcd13.png",
+      "destination": "apps/web-aiavatar/public/studio/create/work.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A premium editorial illustration of film editing: three small cinematic still frames from a sunset road trip arranged left to right above several beautifully aligned terracotta and muted sage audio strips, a slim dark vertical playhead connecting them. The stills show a car on the coast, a closeup of a hand at the window, a distant sunset. Tactile physical collage on warm ivory paper, not a screenshot, no text, no numerical markings."
+    },
+    {
+      "id": "speech",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-cb026791-437a-42dc-a587-300164ce0119.png",
+      "destination": "apps/web-aiavatar/public/studio/create/speech.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A warm intimate professional recording booth: a beautiful large-diaphragm silver microphone and round black pop filter, soft burnt amber acoustic wall behind, a person wearing studio headphones gently out of focus in the right background. Clear focus on voice recording, cinematic warm light, realistic close-up photography."
+    },
+    {
+      "id": "lip",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-1d911d63-686f-4ccc-a797-3966c44d853f.png",
+      "destination": "apps/web-aiavatar/public/studio/create/lip.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A clean cinematic close-up portrait of a fictional East Asian digital presenter speaking naturally, lips slightly parted, gentle expression, mint-gray seamless studio background. Three subtle small waveform-like sculptural ribbons near the lower right edge indicate speech-driven expression, sophisticated realistic lighting, no headset, no sci-fi glow, no text."
+    },
+    {
+      "id": "library",
+      "source": "/Users/donis/.codex/generated_images/01a14067-6aac-7543-bc21-abe2bb863193/exec-8493a2ce-dbc4-4af8-95c2-f745e5d26344.png",
+      "destination": "apps/web-aiavatar/public/studio/create/library.png",
+      "prompt": "Use case: ads-marketing. Asset type: a horizontal 3:2 visual thumbnail for one capability card in an existing light AI creator workbench. Make a polished editorial/cinematic image that is immediately readable at 240 pixels wide. No UI screenshot, no words, no letters, no numbers, no logos, no watermark. Frame the subject generously for a 16:9 crop. Realistic materials, restrained lighting, distinct color character. It is an illustrative capability preview, not an actual customer result. A curated character contact sheet as one cohesive editorial image: four portraits of the exact same charming fictional East Asian female character with a short dark bob, shown in different outfits and viewpoints in a neat 2 by 2 arrangement on pale lavender and warm cream backgrounds. One frontal casual look, one side view, one navy suit look, one orange jacket look. Consistent face across all four portraits, realistic cinematic style, no typography, no app interface."
+    }
+  ]
+}

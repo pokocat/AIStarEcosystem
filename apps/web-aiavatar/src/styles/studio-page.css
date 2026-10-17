@@ -22,6 +22,9 @@
 .studio-page-toolbar { display: flex; align-items: center; gap: 10px; margin: 0; }
 .studio-page-search { display: flex; align-items: center; flex: 1; gap: 8px; min-width: 0; height: 40px; padding: 0 12px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-muted); }
 .studio-page-search:focus-within { border-color: var(--ip-ink); }
+/* Keep the shared brand focus outline on the whole search field, not its inner input. */
+.studio-page-search:has(input:focus-visible) { outline: 2px solid var(--ip-ink); outline-offset: -2px; }
+.ip-brand-surface .studio-page-search input:focus-visible { outline: none; }
 .studio-page-search input { width: 100%; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; font-size: 13px; color: var(--ip-ink); }
 .studio-page-search input::-webkit-search-cancel-button { display: none; }
 .studio-page-search button { display: grid; place-items: center; flex-shrink: 0; padding: 3px; border: 0; background: transparent; color: var(--ip-muted); }
@@ -101,3 +104,48 @@ html[data-layout="mobile"] .studio-page .hub-tabbar { --primary: var(--ip-ink); 
 html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab .fab-visual { background: var(--ip-ink); }
 html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab :is(.fab-art,.fab-veil) { display: none; }
 html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab { color: white; box-shadow: none !important; }
+
+/* Creation contains the composer and one template row; saved canvases live in Projects. */
+.studio-create-page .studio-page-heading { margin-bottom: 22px; }
+.studio-create-page .studio-gallery-panel-heading { margin-bottom: 12px; }
+.studio-create-page .studio-gallery-panel-heading h2 { font-family: var(--ip-ui); font-size: 16px; }
+.studio-create-page .studio-gallery-empty,.studio-create-page .studio-gallery-state { min-height: 110px; padding: 16px; gap: 6px; }
+.studio-create-page .studio-gallery-panel.studio-creation-section { margin-top: 0; padding-top: 0; }
+.studio-create-page .studio-creation-brief { margin-bottom: 14px; }
+.studio-create-page .studio-creation-modes { margin-bottom: 10px; }
+.studio-create-page .studio-creation-brief textarea { padding: 10px 12px; line-height: 1.6; }
+.studio-create-page .studio-creation-brief > div:last-child { margin-top: 8px; }
+.studio-create-tools { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 14px; }
+.studio-create-tool { display: block; min-width: 0; overflow: hidden; padding: 0; text-align: left; color: var(--ip-ink); background: var(--ip-paper); border: 1px solid var(--ip-line); border-radius: 9px; transition: border-color 180ms ease; }
+.studio-create-tool:not(:disabled):hover { border-color: #9faab0; }
+.studio-create-tool:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
+.studio-create-tool-visual { position: relative; aspect-ratio: 16/8.5; overflow: hidden; background: var(--ip-soft); }
+.studio-create-tool-visual > img { display: block; width: 100%; height: 100%; object-fit: cover; transition: transform 220ms ease; }
+.studio-create-tool:not(:disabled):hover .studio-create-tool-visual > img { transform: scale(1.035); }
+.studio-create-tool-copy { display: grid; grid-template-columns: minmax(0,1fr) 15px; align-items: center; gap: 6px 8px; padding: 12px 13px; }
+.studio-create-tool-copy strong { font-size: 14px; line-height: 1.5; font-weight: 700; }
+.studio-create-tool-copy > svg { color: var(--ip-muted); }
+.studio-create-tool-copy p { grid-column: 1/-1; min-height: 36px; font-size: 12px; line-height: 1.5; color: var(--ip-muted); }
+.studio-tool-blank-preview { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-content: center; gap: 14px 18px; padding: 16px; background: radial-gradient(circle,#c8ced0 1px,transparent 1px) 0 0/12px 12px,var(--ip-soft); }
+.studio-tool-blank-preview::before,.studio-tool-blank-preview::after { content: ""; position: absolute; background: #bcc5ca; }
+.studio-tool-blank-preview::before { left: 25%; right: 25%; top: 50%; height: 1px; }
+.studio-tool-blank-preview::after { top: 30%; bottom: 30%; left: 50%; width: 1px; }
+.studio-tool-blank-preview > span { position: relative; z-index: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 7px 4px; color: #66757d; background: var(--ip-paper); border: 1px solid #cfd6d9; border-radius: 5px; font-size: 11px; }
+.studio-create-page .studio-creation-templates { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--ip-line); scroll-margin-top: calc(var(--desktop-bar-h,84px) + 18px); }
+.studio-create-page .studio-template-grid { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 12px; }
+.studio-create-page .studio-template-open { display: flex; align-items: center; gap: 10px; padding: 10px; }
+.studio-create-page .studio-template-open .studio-gallery-preview { flex-shrink: 0; width: 64px; height: 58px; aspect-ratio: auto; border-radius: 5px; }
+.studio-create-page .studio-template-copy { flex: 1; min-width: 0; padding: 0; }
+.studio-create-page .studio-template-copy h3 { font-family: var(--ip-ui); font-size: 13px; }
+.studio-create-page .studio-template-copy > p,.studio-create-page .studio-gallery-preview-label { display: none; }
+.studio-create-page .studio-template-meta { gap: 6px; margin-top: 6px; }
+.studio-create-page .studio-template-meta > span { padding: 0; background: transparent; }
+html[data-layout="mobile"] .studio-create-page .studio-gallery-panel-heading h2 { font-size: 16px; }
+html[data-layout="mobile"] .studio-create-page .studio-gallery-panel.studio-creation-section { padding-top: 0; }
+html[data-layout="mobile"] .studio-create-tools { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
+html[data-layout="mobile"] .studio-create-tool-copy { padding: 10px; }
+html[data-layout="mobile"] .studio-create-tool-copy strong { font-size: 13px; }
+html[data-layout="mobile"] .studio-create-tool-copy p { min-height: 34px; font-size: 11px; }
+html[data-layout="mobile"] .studio-tool-blank-preview { padding: 10px; gap: 8px; }
+html[data-layout="mobile"] .studio-create-page .studio-template-grid { grid-template-columns: repeat(4,minmax(210px,1fr)); overflow-x: auto; padding-bottom: 6px; gap: 10px; }
+@media (prefers-reduced-motion: reduce) { .studio-create-tool,.studio-create-tool-visual > img { transition: none; } }

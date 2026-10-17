@@ -24,12 +24,13 @@ const objectLabels = { character: '角色', scene: '场景', prop: '道具' };
 const mediaLabels = { image: '图片', video: '视频', audio: '音频', text: '文本' };
 type SupplementaryTab = { key: string; label: string; icon: ReactNode; count?: number; children: ReactNode };
 
-export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementaryTabs?: SupplementaryTab[] }) {
+export function PersonalAssetLibrary({ supplementaryTabs = [], hideTabs = false, initialTab = "objects" }: { supplementaryTabs?: SupplementaryTab[]; hideTabs?: boolean; initialTab?: string }) {
   const { message, modal } = useStudioApp();
   const router = useRouter();
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [folder, setFolder] = useState('all');
-  const [tab, setTab] = useState('objects');
+  const [tab, setTab] = useState(initialTab);
+  useEffect(() => { if (hideTabs) { setTab(initialTab); setPage(0); setSelected([]); } }, [hideTabs, initialTab]);
   const [query, setQuery] = useState('');
   const [status, setStatus] = useState('all');
   const [kind, setKind] = useState('all');
@@ -159,11 +160,11 @@ export function PersonalAssetLibrary({ supplementaryTabs = [] }: { supplementary
 
   const navLabel = (label: string, icon: ReactNode, count?: number) => <span className="library-category-label">{icon}<span>{label}</span><small>{count ?? '—'}</small></span>;
   return <section id="personal-assets" className="personal-library library-redesign" aria-label="个人资产库">
-    <Tabs className="library-categories" activeKey={tab} onChange={v => { setTab(v); setPage(0); setSelected([]); }} items={[
+    {hideTabs ? libraryContent : <Tabs className="library-categories" activeKey={tab} onChange={v => { setTab(v); setPage(0); setSelected([]); }} items={[
       { key: 'objects', label: navLabel('剧本资产', <UserRound size={17}/>, counts.objects), children: tab === 'objects' ? libraryContent : null },
       { key: 'materials', label: navLabel('生成与上传', <Images size={17}/>, counts.materials), children: tab === 'materials' ? libraryContent : null },
       ...supplementaryTabs.map(t => ({ key: t.key, label: navLabel(t.label, t.icon, t.count), children: t.children })),
-    ]}/>
+    ]}/>}
     {editing && <LibraryAssetEditor assets={editing} folders={folders} onClose={() => { setEditing(undefined); refresh(); }} onChange={refresh}/>}
     <Modal open={!!preview} title={preview?.title} footer={null} width={960} getContainer={studioOverlayContainer} className="library-preview-modal" onCancel={() => setPreview(undefined)} destroyOnHidden>
       {preview && <div className="library-full-preview">{preview.kind === 'image' ? <SignedImage storageKey={preview.data.storageKey} src={preview.data.dataUrl} alt={preview.title}/> : preview.kind === 'video' ? <SignedVideo storageKey={preview.data.storageKey} src={preview.data.url} controls preload="metadata"/> : preview.kind === 'audio' ? <SignedAudio storageKey={preview.data.storageKey} src={preview.data.url} controls/> : <pre>{preview.data.content}</pre>}{typeof preview.metadata?.prompt === 'string' && <details><summary>生成指令</summary><p>{preview.metadata.prompt}</p></details>}</div>}

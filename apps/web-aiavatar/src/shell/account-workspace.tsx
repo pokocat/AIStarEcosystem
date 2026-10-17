@@ -25,7 +25,7 @@ export function AccountWorkspace({ children, tool = false }: { children: ReactNo
   const active = tool ? accountPageKey(hash) : "me";
   return <div className={`account-workspace${layout === "desktop" ? " ip-brand-surface" : ""}${tool ? " account-workspace--tool" : ""}`}>
     <aside className="account-navigation">
-      <Link href="/projects" className="account-return"><ArrowLeft size={16} />返回自由画布</Link>
+      <Link href="/projects" className="account-return"><ArrowLeft size={16} />返回项目</Link>
       <nav aria-label="账号中心">
         {ACCOUNT_PAGES.map(page => { const Icon = icons[page.icon]; return <a key={page.key} href={page.href} aria-current={active === page.key ? "page" : undefined}>
           <Icon size={18} /><span>{page.label}</span>
@@ -38,7 +38,7 @@ export function AccountWorkspace({ children, tool = false }: { children: ReactNo
 
 export function AccountOverview({ name, phone, demo }: { name: string; phone?: string; demo?: boolean }) {
   return <AccountWorkspace>
-    <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">回到自由画布<ArrowRight size={16}/></Link></header>
+    <header className="account-overview-header"><div><h1>我的账号</h1><p>管理账号、积分和创作资源</p></div><Link href="/projects" className="account-create-link">回到项目<ArrowRight size={16}/></Link></header>
     <section className="account-profile" aria-label="账号信息">
       <span className="account-avatar" aria-hidden="true">{Array.from(name.trim())[0] || "我"}</span>
       <div><h2 title={name}>{name}</h2><p>{phone || "手机号与登录方式可在账号与安全中管理"}{demo && <span className="account-demo">演示数据</span>}</p></div>

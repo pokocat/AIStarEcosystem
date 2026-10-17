@@ -1,5 +1,7 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
+本地界面调整（2026-10-16，未发布）：`/create` 只承载新创作与一行推荐模板，个人画布管理独立为 `/projects`「项目」页。「项目」已加入一级导航，紧跟首页；项目页「新建创作」返回。创作能力已平铺为十项图像卡片，首页画布目录和画布编辑器返回也指向项目。当前规格见 `PRODUCT.md`，验证见 `docs/studio-workspace-refactor-validation.md`（仓库根目录）。
+
 > 移动端 H5 / 微信小程序形态的「数字资产平台」。**六类资产**共用一套登记语言 ——
 > `DH-` 人物 / `IP-` 品牌 / `SC-` 场景 / `PD-` 产品 / `VO-` 声音 / `ST-` 风格；
 > IP 是容器，合成工作台把 人物 × 场景 × 产品 变成成片；
@@ -979,3 +981,13 @@ IP 工作台、画布编辑器、个人资产、模板与发布操作的失败�
 每个新的 Studio 生成请求明确选择个人或当前企业付款，展示余额和预计冻结额；重试按服务端原请求恢复付款，余额不足不自动混扣或切换。停用或退出后，已受理任务继续按原账户结算，未用额回原企业。前端构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`、后端 `AEP_ENTERPRISE_ENABLED=true` 才开放；`AEP_ENTERPRISE_ALLOWED_IDS` 可限制新企业付款试点，关闭入口不影响旧任务结算。
 
 生产代码 `f068b51d`，前后端入口均已开启；见 [生产发布记录](../../docs/ip-studio-enterprise-production-release.md)。设计与本地验收见 [前端规划](../../docs/ip-studio-enterprise-ui-plan.md)、[界面验收](../../docs/ip-studio-enterprise-ui-validation.md)、[产品场景](../../docs/ip-studio-enterprise-scenario-acceptance.md)。
+
+
+## 2026-10-16 · 六项工作台导航与发行界面重构（本地，未发布）
+
+- 六项主导航；新增场景工坊 `/scenes`，剧情带货与爆款复刻从普通模板进入原画布，短剧/音乐标【待建设】。
+- 资产默认我的 IP，原 `/ips` 参数兼容；四类完整详情与原素材、声音、授权形象功能保留。`/assets?tab=objects|materials|voices|authorized` 可直接进入对应分类。
+- 灵感沿用 `/templates`，官方/我的模板与精选案例分别浏览。
+- 发行复用存量账号、扫码绑定和发布批次/任务读取；新增发布草稿与画布作品投递等未打通能力明确标【待建设】，无新增发布任务写接口。
+- 保留设备选择 `html[data-layout]`；手机用横向创作导航补充场景、灵感、发行，不增加六个底部 Tab。场景摄影为AI生成的入口示意，通过 Next Image 优化，不作真实客户作品。
+- 实施与验收范围：[`studio-workspace-refactor-validation.md`](../../docs/studio-workspace-refactor-validation.md)。后端需与前端一起发布，才能获得新场景模板与发行共享路由；本轮未部署。

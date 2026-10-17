@@ -8,14 +8,7 @@ import { auth, USE_MOCK, useIdentity } from "@/proto/api";
 import { setLayout } from "./layout-mode";
 import { useStudioHash } from "./account-workspace";
 import { WalletBadge } from "./wallet-badge";
-
-const navigation = [
-  { href: "/dashboard", label: "首页" },
-  { href: "/create", label: "创作" },
-  { href: "/ips", label: "IP 管理" },
-  { href: "/templates", label: "模板管理" },
-  { href: "/assets", label: "资产库" },
-];
+import { studioNavigation, studioNavigationCurrent } from "./studio-navigation";
 
 /** The canvas keeps its native tools; this shared product navigation uses the approved light shell. */
 export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) {
@@ -47,12 +40,12 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
   const name = identity?.displayName || "我的账号";
   return <header className={"desktop-top-bar ip-surface ip-brand-surface" + (publicMode ? " ip-public-top-bar" : "")}>
     <Link href={authed ? "/dashboard" : "/"} className="ip-brand-logo" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={38} height={38} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link>
-    <nav className="ip-top-navigation" aria-label="主导航">{navigation.map(n => {
-      const current = n.href === "/dashboard" ? pathname === "/" || pathname === "/dashboard" : n.href === "/create" ? pathname === "/create" || (pathname.startsWith("/projects") && !pathname.startsWith("/projects/demos")) : n.href === "/templates" ? pathname.startsWith("/templates") || pathname.startsWith("/projects/demos") : pathname.startsWith(n.href);
+    <nav className="ip-top-navigation" aria-label="主导航">{studioNavigation.map(n => {
+      const current = studioNavigationCurrent(n.href, pathname);
       return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}>{n.label}</Link>;
     })}</nav>
     <div className="ip-top-account">
-      <Link href="/ips?focus=search" className="ip-top-icon" aria-label="搜索 IP" title="搜索 IP"><Search size={21} aria-hidden="true" /></Link>
+      <Link href="/assets?tab=ips&focus=search" className="ip-top-icon" aria-label="搜索 IP" title="搜索 IP"><Search size={21} aria-hidden="true" /></Link>
       {authed ? <><WalletBadge account={identity?.uid ?? null} location={pathname + hash} />
         <details ref={menuRef} className="ip-account-menu"><summary aria-label={name + "，打开账号菜单"} title={name}><span>{name.charAt(0)}</span></summary><div onClick={closeMenu}>
           <strong>{name}</strong>

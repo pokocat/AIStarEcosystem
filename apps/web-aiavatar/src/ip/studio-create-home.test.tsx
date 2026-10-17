@@ -4,6 +4,9 @@ import { mountStudioErrorNotifications } from './testing/studio-notification-har
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
+import { setupRadixSelectDom } from './testing/radix-select-dom';
+
+setupRadixSelectDom();
 
 const mocks = vi.hoisted(() => ({ projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), update: vi.fn(), availability: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }), usePathname: () => "/create" }));
@@ -14,6 +17,7 @@ vi.mock("./api", () => ({ IpStudioApi: { listProjects: mocks.projects, listTempl
 vi.mock("@/canvas-bridge/template-api", () => ({ templateAvailability: mocks.availability }));
 vi.mock("./studio-template-use", () => ({ StudioTemplateUse: ({ template, onClose }: any) => <div role="dialog"><p>{template.name} · 只读预览</p><button onClick={onClose}>返回</button></div> }));
 vi.mock("antd", () => ({ Modal: ({ open, children, title }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null }));
+import { StudioProjects } from "./studio-projects";
 import { StudioCreateHome } from "./studio-create-home";
 import { StudioTemplateMarket } from "./studio-template-market";
 
@@ -31,7 +35,7 @@ afterEach(cleanup);
 
 describe("Creation catalogue", () => {
   it("loads minimaps only for the visible page, searches, filters and pages real canvases", async () => {
-    render(<StudioCreateHome />);
+    render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(24));
     expect(document.querySelector('img[src="/should-not-render.png"]')).toBeNull();
@@ -41,20 +45,26 @@ describe("Creation catalogue", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索我的画布" }), { target: { value: "测试画布 0" } });
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
     expect(screen.queryByRole("link", { name: "打开画布 测试画布 26" })).toBeNull();
-    fireEvent.click(within(screen.getByRole("group", { name: "画布状态" })).getByRole("button", { name: /草稿/ }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "画布状态" }), { key: "ArrowDown" });
+    fireEvent.click(await screen.findByRole("option", { name: "草稿" }));
     expect(screen.getByText("没有找到符合条件的画布")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
   });
   it("opens a workflow template read-only without creating a canvas", async () => {
     render(<StudioCreateHome />);
+    expect(screen.queryByRole("group", { name: "创作工作区" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "创作想法" })).toBeTruthy();
+    expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
+    expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
+    expect(mocks.projects).not.toHaveBeenCalled();
     fireEvent.click(await screen.findByRole("button", { name: "预览模板 IP 商品视频" }));
     expect(screen.getByRole("dialog").textContent).toContain("只读预览");
     fireEvent.click(screen.getByRole("button", { name: "返回" }));
-    fireEvent.click(screen.getByRole("button", { name: "IP 商品视频", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: "预览模板 IP 商品视频", exact: true }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(mocks.create).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: "查看更多模板" }).getAttribute("href")).toBe("/templates");
+    expect(screen.getByRole("link", { name: "更多模板" }).getAttribute("href")).toBe("/templates");
   });
   it("guards rapid blank-canvas creation and navigates into the existing canvas route", async () => {
     let resolve!: (p: any) => void;
@@ -66,16 +76,17 @@ describe("Creation catalogue", () => {
     resolve({ id: "P-new", doc });
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new"));
   });
-  it("keeps personal canvases available when the template catalogue fails", async () => {
-    mocks.templates.mockRejectedValue(new Error("模板服务不可用"));
-    render(<StudioCreateHome />);
+  it("keeps saved canvases in Projects without loading the template catalogue", async () => {
+    render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    expect((await screen.findByRole("alert")).textContent).toContain("模板服务不可用");
-    expect(screen.getByRole("button", {name: "重新加载"})).toBeDefined();
+    expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "新建创作" }).getAttribute("href")).toBe("/create");
+    expect(mocks.templates).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "创作想法" })).toBeNull();
   });
   it("keeps a failed delete reviewable and removes the card only after a successful retry", async () => {
     mocks.remove.mockRejectedValueOnce(new Error("删除未成功"));
-    render(<StudioCreateHome />);
+    render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     const card = screen.getByRole("link", { name: "打开画布 测试画布 0" }).closest("article")!;
     fireEvent.click(within(card).getByText("删除画布"));
@@ -89,7 +100,7 @@ describe("Creation catalogue", () => {
 });
 
 describe("Template market", () => {
-  it("keeps published personal templates manageable and community templates explicitly unfinished", async () => {
+  it("keeps personal templates manageable and separates curated examples from the personal catalogue", async () => {
     render(<StudioTemplateMarket />);
     await screen.findByRole("button", { name: "预览模板 IP 商品视频" });
     fireEvent.click(screen.getByRole("button", { name: /我的模板/ }));
@@ -98,13 +109,14 @@ describe("Template market", () => {
     await waitFor(() => expect(mocks.availability).toHaveBeenCalledWith("personal", true));
     await screen.findByRole("button", { name: "停用模板" });
     expect(screen.getByRole("button", { name: "预览模板 个人工作流" }).hasAttribute("disabled")).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: /用户发布模板/ }));
-    expect(screen.getByRole("heading", { name: "用户模板市场，正在建设" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /精选案例/ }));
+    expect(screen.getByRole("heading", { name: "精选案例" })).toBeTruthy();
     expect(mocks.create).not.toHaveBeenCalled();
   });
   it("retains official example previews and separates template search from the personal canvas catalogue", async () => {
     mocks.examples.mockResolvedValue([{ ...official, id: "example", name: "精选故事" }]);
     render(<StudioTemplateMarket />);
+    fireEvent.click(screen.getByRole("button", { name: /精选案例/ }));
     await screen.findByRole("button", { name: "预览模板 精选故事" });
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索模板" }), { target: { value: "精选故事" } });
     expect(screen.queryByRole("button", { name: "预览模板 IP 商品视频" })).toBeNull();

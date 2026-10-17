@@ -644,7 +644,7 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 .ip-surface .studio-assistant-panel .studio-assistant-composer { gap:12px; width:100%; padding:12px; border:1px solid var(--line-2); border-radius:13px; background:var(--surface-2); box-sizing:border-box; container:studio-assistant-input / inline-size; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input { border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink); box-shadow:none; padding:10px 12px; resize:none; font-size:14px; line-height:1.6; caret-color:var(--ink); }
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input::placeholder { color:var(--ink-2); opacity:1; }
-.ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input:focus { border-color:var(--ink-2); outline:2px solid var(--line-2); outline-offset:2px; }
+.ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input:focus { border-color:var(--ink-2); outline:2px solid var(--line-2); outline-offset:-2px; }
 .ip-surface .studio-assistant-panel .studio-assistant-references { flex-wrap:wrap; overflow:auto; max-height:84px; }
 .ip-surface .studio-assistant-panel .studio-assistant-reference { max-width:100%; background:var(--surface); border:1px solid var(--line); }
 .ip-surface .studio-assistant-panel .studio-assistant-reference span { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
