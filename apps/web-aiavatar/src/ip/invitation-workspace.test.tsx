@@ -29,7 +29,7 @@ test("进入页面只读取，明确生成后展示 ID 返回的链接和可预�
   expect(state.generate).not.toHaveBeenCalled();
   fireEvent.click(generate);
   const input = await screen.findByLabelText("邀请链接") as HTMLInputElement;
-  expect(input.value).toBe("https://id.example.com/i/accepted-code");
+  expect(input.value).toBe(`${window.location.origin}/invite/accepted-code`);
   expect(screen.getByRole("link", { name: "预览邀请页" }).getAttribute("href")).toBe(input.value);
   fireEvent.click(screen.getByRole("button", { name: "复制链接" }));
   await screen.findByText("邀请链接已复制，可以发给朋友了。");

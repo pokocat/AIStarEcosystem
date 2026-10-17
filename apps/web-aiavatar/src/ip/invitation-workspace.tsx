@@ -79,7 +79,7 @@ export function InvitationWorkspace() {
     finally { actionLock.current = false; setBusy(null); }
   };
 
-  const url = data?.inviteCode ? `${idIssuer()}/i/${encodeURIComponent(data.inviteCode)}` : "";
+  const url = data?.inviteCode ? `${typeof window === "undefined" ? "" : window.location.origin}/invite/${encodeURIComponent(data.inviteCode)}` : "";
   const copy = async () => {
     if (!url || actionLock.current) return;
     actionLock.current = true; setBusy("copy"); setActionError(""); setNotice("");
