@@ -103,6 +103,15 @@ class IpProjectServiceTest {
         run.setStatus("failed");assertNull(svc.toRunDto(run).queue());
     }
 
+    @Test void extractedSourceAudioIsSignedOnReadWithoutPersistingItsUrl() {
+        org.mockito.Mockito.when(storage.signedUrl("soundtrack.wav")).thenReturn("fresh-audio-url");
+        String persisted="{\"sourceAudio\":{\"status\":\"ready\",\"sourceNodeId\":\"video\",\"sourceStorageKey\":\"source.mp4\",\"sourceTitle\":\"原片\",\"storageKey\":\"soundtrack.wav\",\"durationSec\":17.067,\"mimeType\":\"audio/wav\"}}";
+        var run=IpRun.builder().id("audio-run").ownerUserId(USER).kind("studio-recreation").status("running").inputJson("{}").outputJson(persisted).build();
+        var dto=svc.toRunDto(run);
+        assertEquals("fresh-audio-url",dto.output().path("sourceAudio").path("url").asText());
+        assertEquals(persisted,run.getOutputJson());
+    }
+
     @Test void videoBatchHasIndependentQueuePositionsAndOnlyAllWaitingHasParentQueue() {
         var queue=org.mockito.Mockito.mock(com.aistareco.aep.service.AiGenerationQueueService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"generationQueue",queue);

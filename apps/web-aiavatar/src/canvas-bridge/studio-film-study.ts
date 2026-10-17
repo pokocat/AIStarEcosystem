@@ -1,4 +1,5 @@
 import {placeStudioNode} from './flow-document';
+import {existingSourceAudio} from './studio-recreation-audio';
 import type {IpRun} from '@ai-star-eco/types';
 import {CanvasNodeType,type CanvasNodeData,type CanvasConnection} from '@/canvas/types/canvas';
 
@@ -22,11 +23,17 @@ export function materializeFilmStudy(nodes:CanvasNodeData[],nodeId:string,run:Ip
  const present=new Set(nodes.map(n=>n.id));
  return [...nodes.map(n=>n.id!==nodeId?n:{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,recreation:{...saved!,materializedSegmentNos:[...done]}}}}),...created.filter(n=>!present.has(n.id))];
 }
-export function filmStudyConnections(connections:CanvasConnection[],nodeId:string,run:IpRun):CanvasConnection[] {
- const study=run.output.filmStudy;if(!study)return connections;const additions:CanvasConnection[]=[];
- for(const segment of study.segments)if(segment.status==='done'&&segment.storageKey&&segment.markdown) {
+export function filmStudyConnections(connections:CanvasConnection[],nodeId:string,run:IpRun,nodes?:CanvasNodeData[]):CanvasConnection[] {
+ const study=run.output.filmStudy;const additions:CanvasConnection[]=[];
+ const audio=run.output.sourceAudio;
+ if(audio?.status==='ready'&&audio.storageKey&&(study||run.output.recreation||nodes?.find(n=>n.id===nodeId)?.metadata?.studio?.recreation?.mode==='segments')) {
+  const existing=nodes&&existingSourceAudio(nodes,audio),root=nodes?.find(n=>n.id===nodeId);
+  if(existing||root?.metadata?.studio?.recreation?.materializedAudioSourceKey!==audio.sourceStorageKey)
+   additions.push({id:`${nodeId}-source-audio-link`,fromNodeId:audio.sourceNodeId,toNodeId:existing?.id||`${nodeId}-source-audio`});
+ }
+ if(study)for(const segment of study.segments)if(segment.status==='done'&&segment.storageKey&&segment.markdown) {
   const id=`${nodeId}-segment-${segment.no}`;
   additions.push({id:`${id}-source`,fromNodeId:study.source.nodeId,toNodeId:`${id}-video`},{id:`${id}-analysis`,fromNodeId:`${id}-video`,toNodeId:`${id}-document`});
  }
- const present=new Set(connections.map(c=>c.id));return [...connections,...additions.filter(c=>!present.has(c.id))];
+ const present=new Set(connections.map(c=>c.id));return [...connections,...additions.filter(c=>!present.has(c.id)&&!connections.some(edge=>edge.fromNodeId===c.fromNodeId&&edge.toNodeId===c.toNodeId))];
 }

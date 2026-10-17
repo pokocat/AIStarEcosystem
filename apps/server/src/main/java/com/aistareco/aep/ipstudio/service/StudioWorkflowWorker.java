@@ -68,6 +68,12 @@ public class StudioWorkflowWorker {
             boolean mock=input.path("mock").asBoolean();
             ObjectNode output=mapper.createObjectNode(); output.put("mock",mock);
             String operation=input.path("operation").asText();
+            if("recreation".equals(operation)&&!mock) {
+                if(!progress(id,12,"recreation.audio"))return;
+                var audio=StudioSourceAudio.extract(input.path("_exec").path("recreationSource"),input.path("_exec").path("resumeSourceAudio"),storage,run.getOwnerUserId());
+                output.set("sourceAudio",audio);
+                if(!checkpointSourceAudio(id,audio))return;
+            }
             if("recreation".equals(operation)&&"segments".equals(input.path("mode").asText())) {
                 filmStudy(id,run,input,output);return;
             }
@@ -199,17 +205,28 @@ public class StudioWorkflowWorker {
                 String focus=input.path("prompt").asText("").strip();
                 var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)),Map.of("role","user","content",parts)),params);
                 used[0]=consumeUsage(reply,used[0],rate);return reply.content();
-            },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial));
+            },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")));
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
     }
-    private boolean checkpointFilmStudy(String id,int pct,String stage,ObjectNode study) {
+    private boolean checkpointSourceAudio(String id,ObjectNode audio) {
+        return Boolean.TRUE.equals(transactions.execute(tx->{
+            var run=billingLockedRun(id).orElse(null);if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
+            if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
+            try {
+                var partial=mapper.createObjectNode();partial.set("sourceAudio",audio);
+                run.setOutputJson(mapper.writeValueAsString(partial));run.setHeartbeatAt(Instant.now());runs.save(run);return true;
+            }catch(Exception e){throw new IllegalStateException(e);}
+        }));
+    }
+    private boolean checkpointFilmStudy(String id,int pct,String stage,ObjectNode study,JsonNode audio) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             var run=billingLockedRun(id).orElse(null);if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
             if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
             var partial=mapper.createObjectNode();partial.set("filmStudy",study.deepCopy());partial.put("text",StudioFilmStudy.summary(study));
+            if(audio.isObject())partial.set("sourceAudio",audio);
             try{run.setOutputJson(mapper.writeValueAsString(partial));}catch(Exception e){throw new IllegalStateException(e);}
             run.setPct(pct);run.setStage(stage);run.setHeartbeatAt(Instant.now());runs.save(run);return true;
         }));

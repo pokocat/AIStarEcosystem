@@ -24,3 +24,41 @@ test('segment groups avoid existing full-film documents and retain one column',(
  const nodes=applyStudioRunToDocument([node,occupied],[],node.id,final),first=nodes.find(n=>n.id==='analysis-segment-1')!,second=nodes.find(n=>n.id==='analysis-segment-2')!;
  expect(first.position.x).toBeGreaterThanOrEqual(occupied.position.x+occupied.width);expect(second.position.x).toBe(first.position.x);
 });
+
+test('original soundtrack lands once, keeps user changes and remains selectable as an ordinary audio asset',()=>{
+ const withAudio=structuredClone(run);withAudio.output.sourceAudio={status:'ready',sourceNodeId:'v',sourceStorageKey:'original',sourceTitle:'恐龙',storageKey:'original.wav',url:'signed-audio',mimeType:'audio/wav',durationSec:3};
+ const nodes=applyStudioRunToDocument([node],[],node.id,withAudio),audio=nodes.find(n=>n.type===CanvasNodeType.Audio)!;
+ expect(audio.title).toBe('恐龙 · 原声音频');expect(audio.metadata).toMatchObject({status:'success',storageKey:'original.wav',content:'signed-audio',mimeType:'audio/wav',studio:{sourceRange:{storageKey:'original'}}});
+ const edited=nodes.map(n=>n.id===audio.id?{...n,title:'保留这个名字'}:n);
+ expect(applyStudioRunToDocument(edited,[],node.id,withAudio).find(n=>n.id===audio.id)?.title).toBe('保留这个名字');
+ expect(applyStudioRunToDocument(edited,[],node.id,withAudio).filter(n=>n.type===CanvasNodeType.Audio)).toHaveLength(1);
+ const edges=filmStudyConnections([],node.id,withAudio,nodes);expect(edges).toContainEqual({id:'analysis-source-audio-link',fromNodeId:'v',toNodeId:audio.id});
+ const deleted=nodes.filter(n=>n.id!==audio.id);
+ expect(applyStudioRunToDocument(deleted,[],node.id,withAudio).some(n=>n.id===audio.id)).toBe(false);
+ expect(filmStudyConnections([],node.id,withAudio,deleted).some(c=>c.toNodeId===audio.id)).toBe(false);
+});
+
+test('another analysis of the same source reuses the soundtrack node and absent audio creates none',()=>{
+ const withAudio=structuredClone(run);withAudio.output.sourceAudio={status:'ready',sourceNodeId:'v',sourceStorageKey:'original',sourceTitle:'恐龙',storageKey:'original.wav',durationSec:3};
+ const first=applyStudioRunToDocument([node],[],node.id,withAudio);
+ const another={...node,id:'other'},second={...withAudio,nodeId:'other',id:'another-run'};
+ const nodes=applyStudioRunToDocument([...first,another],[],another.id,second);
+ expect(nodes.filter(n=>n.type===CanvasNodeType.Audio)).toHaveLength(1);
+ const existing=nodes.find(n=>n.type===CanvasNodeType.Audio)!;
+ expect(filmStudyConnections([],another.id,second,nodes).find(c=>c.fromNodeId==='v'&&c.toNodeId===existing.id)).toBeTruthy();
+ const absent=structuredClone(run);absent.output.sourceAudio={status:'absent',sourceNodeId:'v',sourceStorageKey:'original',sourceTitle:'无声视频'};
+ expect(applyStudioRunToDocument([node],[],node.id,absent).some(n=>n.type===CanvasNodeType.Audio)).toBe(false);
+});
+
+test('full-film output places audio below reference images inside the analysis group',()=>{
+ const full=structuredClone(run);full.status='done';delete full.output.filmStudy;
+ full.output.recreation={title:'全片',creativePremise:'内容',visualGenes:[],motifs:[],retain:[],skeleton:[],techniques:[],uncertainties:[],recreationPrompt:'提示',source:run.output.filmStudy!.source,
+  references:Array.from({length:4},(_,i)=>({storageKey:`ref-${i}`,frame:i+1,timeSec:i,width:320,height:180}))};
+ full.output.sourceAudio={status:'ready',sourceNodeId:'v',sourceStorageKey:'original',sourceTitle:'恐龙',storageKey:'original.wav',durationSec:3};
+ const root=structuredClone(node);delete root.metadata!.studio!.recreation!.mode;
+ const nodes=applyStudioRunToDocument([root],[],root.id,full),audio=nodes.find(n=>n.type===CanvasNodeType.Audio)!,group=nodes.find(n=>n.type===CanvasNodeType.Group)!;
+ expect(audio.metadata?.groupId).toBe(group.id);expect(audio.position.y).toBeGreaterThan(nodes.find(n=>n.id==='analysis-reference-4')!.position.y+200);
+ expect(audio.position.x+audio.width).toBeLessThanOrEqual(group.position.x+group.width);
+ expect(audio.position.y+audio.height).toBeLessThanOrEqual(group.position.y+group.height);
+ expect(applyStudioRunToDocument(nodes,[],root.id,full).filter(n=>n.type===CanvasNodeType.Audio)).toHaveLength(1);
+});

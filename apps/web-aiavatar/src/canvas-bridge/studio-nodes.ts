@@ -1,4 +1,5 @@
 import { materializeFilmStudy } from './studio-film-study';
+import { materializeRecreationAudio } from './studio-recreation-audio';
 import { materializeRecreation } from './studio-recreation-document';
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
@@ -145,7 +146,7 @@ export function applyStudioRunToDocument(nodes: CanvasNodeData[], connections: C
   const updated = applyStudioRun(node, run);
   const changedMedia = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && node.metadata?.storageKey !== updated.metadata?.storageKey;
   const current = changedMedia ? markStudioDescendants(nodes, nodeId, connections) : nodes;
-  return materializeFilmStudy(materializeRecreation(current.map(n => n.id === nodeId ? updated : n),nodeId,run),nodeId,run);
+  return materializeRecreationAudio(materializeFilmStudy(materializeRecreation(current.map(n => n.id === nodeId ? updated : n),nodeId,run),nodeId,run),nodeId,run);
 }
 
 export function selectStudioTake(node: CanvasNodeData, id: string): CanvasNodeData {

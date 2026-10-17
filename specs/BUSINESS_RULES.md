@@ -1384,6 +1384,8 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 
 视频节点「素材拆解 → 拉片」提交既有Studio任务，`operation=recreation, mode=segments`。来源仍要求本人项目及本人视频key，60秒/128MiB限制；已有全片Markdown可作为背景上下文，不重新收费解析全文。工程约束时间范围连续有限、最多8段、覆盖片尾，真实裁切成可播放MP4；模型正文不作语义或章节齐全校验。逐段保存媒体key/Markdown/状态，失败保留已完成产物；显式继续仅复用同本人同项目同目标节点同原片的旧任务快照，不能信任客户端提供的裁切key。URL仅出wire签名，画布文档保留key和原片范围。整次拉片一笔冻结，累计实际Token一次结算，失败沿用释放；不改账本规则。
 
+2026-10-17 本地增量：解析／拉片自动用FFmpeg提取第一条完整混合音轨，返回`output.sourceAudio`：`ready`带本人WAV key、真实时长、字节和来源；`absent`表示没有音轨，不创建静音占位。静音音轨仍可提取，不能称为无人声检测。提取不调用模型、不新增积分项；提取失败明确报`STUDIO_AUDIO_EXTRACTION_FAILED`，不伪造完成。结果先checkpoint，后续模型失败保留；分段继续只复用同本人/项目/目标节点/原片的服务端快照。音频key持久化、URL读取时签名，前端复用普通音频节点，同原片在全片解析与拉片之间复用已存在节点，轮询不覆盖编辑/恢复用户已删产物。音频可选入现有成片合成的`packaging.voiceoverStorageKey`替换音轨；Studio原生视频全能参考链已支持audio，能否传入取决于所选模型合同的音频格式/时长/数量和视觉参考限制；首尾帧等不支持的模式仍拒绝音频。生成参考不保证原样保留，原声复用可选生成后合成。ASR、字幕导出、音频翻译与人声/BGM分离作为音频节点后续独立能力，不能随拉片自动调用。
+
 ### 原应用 Prompt 条件保存与调用明细分页（2026-10-13）
 
 ops 签名管理通道新增 `promptSaveVersioned` / `promptRollbackVersioned`，必须提供非负 `expectedVersion`；仍委托原 PromptService。SQL 条件更新 `WHERE prompt_key=? AND version=?` 是并发判定，当前模板、递增版本、历史快照及通道审计同事务提交；版本不匹配返回 409，不保存部分内容或历史。新建模板同时依赖原唯一键，竞争方返回冲突。缓存仅在事务提交后失效。旧 admin 保存与恢复也携带编辑时版本；原 HTTP 接口新增可选 query 参数，兼容既有客户端。
