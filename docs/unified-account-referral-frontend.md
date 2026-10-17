@@ -1,8 +1,12 @@
 # 统一账号邀请 · 前端设计
 
-> 2026-10-17 · v0.3 实施稿。Studio 内邀请管理与账号中心注册页已本地实现并验收，未提交、未部署。
+> 2026-10-17 · v0.4 设计增量。首版管理视图与 ID 页已发布；Studio 品牌邀请入口当前先设计，尚未接入生产，完整线上验收待完成。
 > 配套 [邀请关系方案 v0.5](unified-account-referral-plan.md)。第一期只记录邀请，不增加奖励、等级或复杂关系图。
 > 设计方法参考 `app-ui-ux-best-practices`，按现有产品的交互细化模式执行；中心页面沿用账号仓 [DESIGN.md](../../aibuzz-id/DESIGN.md)，Studio 管理页沿用 Studio 账号导航与品牌令牌，不另建主题。
+
+## 最新调整：Studio 品牌邀请页（设计稿）
+
+用户指出直接进入 ID 通用邀请页脱离 Studio。正式分享入口拟改为 Studio `/invite/{code}`，先展示产品品牌、邀请人、创作示意与接受邀请；仅账号验证交给 ID，完成后返回 Studio。邀请关系仍是 ID 唯一真值，不因来自不同应用而另建关系。此调整先交付[独立可交互原型](../prototypes/studio-invitation/README.md)与[设计说明](prototypes/studio-invitation-design.md)，不把设计稿当成已接入功能；下文描述首版现状。
 
 ## 1. 页面与入口
 

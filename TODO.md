@@ -2,6 +2,8 @@
 
 ## Studio 工作台重构与发行（2026-10-16）
 
+- [x] ~~Studio 静态配图体积过大~~ **2026-10-17 本地完成，未发布**：13 张卡片转 960×640 WebP，首页两张大图转本地 WebP、首图按视口加载，logo 缩至 256px；16 张合计 33.58 MB → 1.02 MB，验收见 `docs/studio-workspace-refactor-validation.md`「配图压缩」。
+
 - [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 已生产发布（81778bef）**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/form-control-focus-audit.md`。
 - [x] ~~项目、IP 与发行筛选的原生菜单风格割裂~~ **2026-10-17 已生产发布（81778bef）**：八处共用 `StudioSelect`，菜单在字段下方展开；21 项测试、类型检查及桌面/375px 手机浏览器验证见同一检查记录。
 
@@ -278,7 +280,7 @@
 
 ### 2026-09-04 · 统一账号中心（服务在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)，设计真源 `docs/unified-identity-plan.md`）
 
-- [x] **统一账号注册邀请关系 · 本地完成，2026-10-17**：ID V12、首建事务记录、本体定义与查询权限；Studio `/invitations` 提供真实邀请视图、链接生成/复制/预览及分页刷新，桌面/手机账号入口已接通。共用 ID 真值，分佣奖励后续实现。账号原全量543项、此次ID专项15项，前端778项及共享SDK77项通过，见[验收记录](docs/unified-account-referral-validation-20261017.md)。未提交、未部署；真实微信及生产验收留待发布。
+- [x] **统一账号注册邀请关系 · 首版已发布，2026-10-17**：ID V12、首建事务记录、本体定义与查询权限；Studio `/invitations` 提供真实邀请视图、链接生成/复制/预览及分页刷新，桌面/手机账号入口已接通。共用 ID 真值，分佣奖励后续实现。账号原全量543项、此次ID专项15项，前端778项及共享SDK77项通过，见[验收记录](docs/unified-account-referral-validation-20261017.md)。首版已发布；Studio 品牌邀请页当前先设计，首次注册线上闭环与真微信验收尚待完成，见[发布记录](docs/unified-account-referral-production-release-20261017.md)。
 
 - [ ] **identity · 无 `typ` 的历史后台令牌过渡兼容需按期删除**（v0.149）：`JwtAuthenticationFilter.LEGACY_ADMIN_ROLES` 让 v0.149 之前签的后台令牌（`role` 是 `SUPER_ADMIN`/`OPERATOR`/`FINANCE_ADMIN`、无 `typ`）继续拿后台权限，每次打 WARN。JWT TTL 7 天，**上线满 7 天后**删掉该字段与它的两处分支，否则「消费者令牌不得提权」这条闸只是半开。
 

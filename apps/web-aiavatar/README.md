@@ -39,7 +39,7 @@ pnpm build:turbo                   # Turbopack 构建（可选）
 
 ### Studio 统一登录（2026-10-10）
 
-2026-10-17 本地新增（未发布）：统一账号模式下，“我的账号 → 邀请朋友”进入 Studio `/invitations`，可生成/复制/预览链接、查看邀请人和直接受邀记录、分页与刷新。前端通过共享 `InvitationApi` / `idApiFetch` 使用本人令牌直连配置的 ID issuer，复用刷新且不带产品请求头或 Cookie；ID 返回 `canInvite`，操作仍由 ID 校验。该账号级页面只要求登录，不要求开通 AiAvatar；Studio 后端不新增邀请 API 或表。中心和 Studio 须配套发布，详见 [邀请验收](../../docs/unified-account-referral-validation-20261017.md)。
+2026-10-17 首版已发布（品牌邀请入口待调整）：统一账号模式下，“我的账号 → 邀请朋友”进入 Studio `/invitations`，可生成/复制/预览链接、查看邀请人和直接受邀记录、分页与刷新。前端通过共享 `InvitationApi` / `idApiFetch` 使用本人令牌直连配置的 ID issuer，复用刷新且不带产品请求头或 Cookie；ID 返回 `canInvite`，操作仍由 ID 校验。该账号级页面只要求登录，不要求开通 AiAvatar；Studio 后端不新增邀请 API 或表。中心和 Studio 已配套发布；首次注册线上闭环待完成，见[发布与待完成项](../../docs/unified-account-referral-production-release-20261017.md)。
 
 Studio 与数字资产共用 AiAvatar 的 OIDC 授权码 + PKCE、`/auth/callback` 和 `aiavatar` 开通记录。
 首页登录、画布列表、画布直达链接都走统一账号中心；登录后回到原站内路径（保留查询参数与 hash）。

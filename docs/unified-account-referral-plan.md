@@ -1,7 +1,7 @@
 # 统一账号邀请关系方案
 
 > 版本：v0.5 实施版 · 2026-10-17
-> 状态：账号中心后端、注册页及 Studio 邀请管理视图已本地实现并测试，未提交、未部署。见 [验收记录](unified-account-referral-validation-20261017.md)。
+> 状态：ID 与 Studio 首版已发布；邀请落地页的 Studio 品牌与回跳体验待修正，完整线上验收未完成。当前先审阅 [品牌邀请页设计](prototypes/studio-invitation-design.md)，详见 [首版发布记录](unified-account-referral-production-release-20261017.md)。
 > 本版按用户最新要求收简：只记录邀请关系。
 
 ## 1. 要做什么

@@ -1,6 +1,6 @@
 # 统一账号注册邀请 · 本地实施与验收
 
-> 2026-10-17。两仓本地实现与测试完成，尚未提交、部署或进行生产验收。本文末尾“Studio 应用内视图增量”是最新范围，替代早期仅跳转入口的边界。方案见 [v0.5](unified-account-referral-plan.md)，页面见 [前端设计](unified-account-referral-frontend.md)。
+> 本文保留 2026-10-17 发布前的本地验证事实；后续两仓首版已发布，但完整线上验收未完成，最新状态见[首版发布记录](unified-account-referral-production-release-20261017.md)。本文末尾“Studio 应用内视图增量”是最新范围，替代早期仅跳转入口的边界。方案见 [v0.5](unified-account-referral-plan.md)，页面见 [前端设计](unified-account-referral-frontend.md)。
 
 ## 实施范围
 

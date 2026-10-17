@@ -1,0 +1,43 @@
+# Studio 邀请页：既有设计系统核对
+
+2026-10-17 · ordinary extension documenter 记录。范围仅为独立交互设计稿，不代表生产发布或线上注册闭环验收。
+
+## 对照证据与结论
+
+视觉真源为 [Studio DESIGN.md](../../apps/web-aiavatar/DESIGN.md)；产品语境核对 [PRODUCT.md](../../apps/web-aiavatar/PRODUCT.md) 中当前品牌、统一认证、邀请与设备形态约束。页面目标及方向以 [邀请页设计说明](studio-invitation-design.md) 为准。
+
+核对了原型 [HTML](../../prototypes/studio-invitation/index.html)、[CSS](../../prototypes/studio-invitation/style.css)、[交互脚本](../../prototypes/studio-invitation/app.js)，并与既有 `src/styles/ip-brand.css` 的令牌、按钮、字体和焦点语言比对。已查看以下截图：
+
+- [桌面首屏](studio-invitation-preview/desktop.jpg)与[桌面全页](studio-invitation-preview/desktop-full.jpg)，视口 1280×720。
+- [手机首屏](studio-invitation-preview/mobile.jpg)与[手机全页](studio-invitation-preview/mobile-full.jpg)，视口 390×844。
+
+结论：原型是既有 Studio 公开首页语言的局部扩展。品牌识别、摄影与中文衬线承担产品表达，邀请人和主操作承担来访上下文；手机将邀请与操作放在大图之前，主动作在首屏内。没有产生需要升级为全局规则的新视觉系统，因此保留既有 `DESIGN.md`、设计 sidecar、`PRODUCT.md` 与全局样式。
+
+## 继承与局部适配
+
+| 维度 | 继承证据 | 原型局部处理 |
+|---|---|---|
+| 材料与颜色 | 暖灰底 `#f0efec`、白面 `#ffffff`、深墨 `#192229`、浅灰 `#f6f6f5`；主操作 hover `#323e45` | 次文字用 `#626c76`，主要分隔用 `#d9dcde`，相较系统 `#65707e` / `#e8eaec` 更清楚；仅记为原型值，不回写系统 |
+| 字体 | Noto Serif SC / Songti SC 承载标题；Manrope / Noto Sans SC / 系统无衬线承载正文和操作 | 页面大标题用 600 字重、桌面流式字号与手机 43px；不替换系统的 display 规格 |
+| 按钮与反馈 | 深墨主按钮、白字、小圆角、底色 hover、深墨实线焦点；沿用同一缓动曲线 | 邀请 CTA 高 56px，手机 52px；焦点外偏移 5px，相较系统 3px 是本页适配 |
+| 表面与图像 | 平面白面、细边线、圆角裁切，无常驻容器投影；蓝灰侧脸 logo 与暖色摄影 | 双栏展示区、三种创作方向及 FAQ 属于邀请页组成，不扩展为工作页模板 |
+| 设备形态 | CSS 与 JS 同读 `html[data-layout]`，默认 960px | 独立原型仅按视口设置属性；没有生产版的用户显式设备偏好读取，接入时须复用现有 layout-mode |
+
+原型的 `:root` 变量只服务于独立 HTML，不是可复制到应用全局的令牌定义。正式接入应沿用 `.ip-brand-surface` 的作用域与既有字体加载；不将此页字号、容器宽度或辅助灰色升格为通用规范。
+
+## 页面交互与状态
+
+- 人物／影像／故事切换会同步图片、替代文本、标题和说明，保留 `tablist` / `tab` / `tabpanel` 关系、选中状态与方向键、Home、End 键支持。展示的是静态创作示意，没有视频播放行为。
+- 主 CTA 与已有账号入口打开原型说明弹窗；原生 dialog 提供关闭按钮、Esc 与点击遮罩关闭。弹窗说明认证后返回 Studio，不触发认证。
+- 预览工具及 `?state=` 展示正常邀请、已有账号、邀请失效、读取失败四种状态。已有账号保持原关系；失效状态隐藏邀请人并引导了解产品；失败状态展示重试文案，点击只模拟恢复正常状态。
+- FAQ 使用原生 details；展开图标已是内联 SVG，展开时隐藏竖线。焦点可见，减少动态偏好关闭过渡和滚动动画。
+
+这些状态与交互仅记录本页行为，不新增通用业务组件、全局状态色或加载规范。截图证明布局与可读性；本记录对脚本进行静态核对，不将其表述为完整的认证或无障碍验收。
+
+## 素材与复用边界
+
+素材均来自既有 Studio 品牌与功能示意，来源及用途见 [SOURCES.md](../../prototypes/studio-invitation/assets/SOURCES.md)。图片明确标为「AI 创作示意」，不冒充邀请人作品或效果保证；邀请人头像使用名称首字。复用范围为此品牌邀请入口的结构、文案层次、创作方向切换和状态设计，不能据此增加积分、奖励、开通或创作效果承诺。
+
+尚未接入邀请码解析、ID 本人 API、短信、注册、登录、OIDC/PKCE、邀请绑定与应用回跳；没有创建账号、调用生产 API 或改变产品开通、积分。未来接入仍由 ID 保存关系，已有账号不新增或改写注册邀请关系，注册不代表产品开通。
+
+本次未发现需要为邀请页修改既有系统文档的新增规则；所列原型值差异及设备偏好边界均留作接入记录，没有借此修订既有文档或处理其他页面的漂移。
