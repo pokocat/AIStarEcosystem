@@ -7,6 +7,7 @@ import {
   buildAuthorizeUrl,
   classifyTokenFailure,
   completeAuthCallback,
+  loginWithIdSms,
   computeCodeChallenge,
   generateCodeVerifier,
   generateState,
@@ -320,5 +321,31 @@ describe("refreshAccessToken 的失败分类（P1-8）", () => {
     await expect(refreshAccessToken()).rejects.toMatchObject({ code: "TRANSIENT" });
     await expect(refreshAccessToken()).resolves.toBe(true);
     expect(localStorageShim.getItem(AUTH_TOKEN_KEY)).toBe("AT2");
+  });
+});
+
+describe("产品内短信注册", () => {
+  it("直连 ID，带邀请码及 phone scope，整组替换旧身份令牌", async () => {
+    localStorageShim.setItem(AUTH_TOKEN_KEY, "old-access");
+    localStorageShim.setItem(AUTH_REFRESH_TOKEN_KEY, "old-refresh");
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ access_token: "new-access", refresh_token: "new-refresh", id_token: "new-id", expires_in: 600 }), { status: 200 }));
+    await loginWithIdSms("13900000001", "654321", "abcdefghijklmnopqrstuvwx");
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("https://id.example.com/oauth2/token");
+    expect(init?.credentials).toBe("omit");
+    const form = new URLSearchParams(init?.body as string);
+    expect(form.get("grant_type")).toBe("urn:aibuzz:params:oauth:grant-type:sms");
+    expect(form.get("invite_code")).toBe("abcdefghijklmnopqrstuvwx");
+    expect(form.get("scope")).toBe("openid profile phone offline_access");
+    expect(form.get("client_id")).toBe("web-test");
+    expect(localStorageShim.getItem(AUTH_TOKEN_KEY)).toBe("new-access");
+    expect(localStorageShim.getItem(AUTH_REFRESH_TOKEN_KEY)).toBe("new-refresh");
+  });
+  it("错误验证码不覆盖原身份，普通注册不夹带旧邀请码", async () => {
+    localStorageShim.setItem(AUTH_TOKEN_KEY, "old-access");
+    const fetcher = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ error: "SMS_CODE_INVALID" }), { status: 400 }));
+    await expect(loginWithIdSms("13900000001", "000000")).rejects.toMatchObject({ code: "SMS_CODE_INVALID" });
+    expect(new URLSearchParams(fetcher.mock.calls[0][1]?.body as string).has("invite_code")).toBe(false);
+    expect(localStorageShim.getItem(AUTH_TOKEN_KEY)).toBe("old-access");
   });
 });

@@ -52,6 +52,7 @@ export { authMode, idIssuer, idClientId, isIdMode, type AuthMode } from "./confi
 // 统一账号中心 OIDC + PKCE 流程
 export {
   beginLogin,
+  loginWithIdSms,
   completeAuthCallback,
   refreshAccessToken,
   logout as idLogout,

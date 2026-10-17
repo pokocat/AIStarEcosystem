@@ -394,6 +394,19 @@ function storeTokens(token: TokenResponse) {
   );
 }
 
+/** 产品内的短信注册/登录：复用 ID 的 SMS grant 与标准令牌存储。 */
+export async function loginWithIdSms(phone: string, code: string, invitationCode?: string): Promise<void> {
+  if (!isIdMode() || !idIssuer()) throw new OidcError("ID_DISABLED", "当前暂不支持短信注册。");
+  const token = await postToken({
+    grant_type: "urn:aibuzz:params:oauth:grant-type:sms",
+    client_id: idClientId(), phone, code, scope: SCOPE,
+    ...(invitationCode ? { invite_code: invitationCode } : {}),
+  });
+  // 换账号成功后才替换整组令牌，不能沿用上个账号的 refresh/id_token。
+  clearAuthTokens();
+  storeTokens(token);
+}
+
 /**
  * 回调页调用：校验 state → 拿 code 换令牌 → 落地存储 → 返回登录前的站内路径。
  * 失败抛 `OidcError`（message 已是可直接展示的中文）。

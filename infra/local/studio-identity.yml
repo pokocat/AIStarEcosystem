@@ -23,6 +23,7 @@ id:
       grants:
         - authorization_code
         - refresh_token
+        - urn:aibuzz:params:oauth:grant-type:sms
       redirect-uris:
         - http://localhost:3013/auth/callback
         - http://127.0.0.1:3013/auth/callback
