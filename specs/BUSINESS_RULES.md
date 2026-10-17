@@ -1333,6 +1333,8 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 
 ## 企业主子账号（2026-10-15，本地实现，默认关闭）
 
+- 2026-10-17 付款交互：未加入企业直接用个人积分；仅企业成员展示付款选择，并可明确保存默认，下次不再询问。设置页可恢复每次询问或更改默认；偏好按当前浏览器的用户与企业隔离，不跨企业套用。余额不足不自动切换或混扣，原受理任务付款不随偏好变化。
+
 - 企业主体为 Enterprise；owner 唯一，manager/member 属于成员关系，不复用平台后台角色。一个本地 userId 只有一条当前企业归属；停用保留归属，退出释放当前归属；原任务与退款仍属于原企业。
 - `/api/v1/ip-studio/enterprises/**` 与邀请接受归 aiavatar，沿用 ProductRouteTable 的 `/api/v1/**` 映射、EnrollmentGuard 和 PhoneVerificationGuard；加入企业不创建产品开通或赠额。`aep.enterprise.enabled` 默认 false，关闭时企业 controller 不注册。
 - 创建企业以“创建者 + clientRequestId”幂等；创建者与当前 owner 分开保存，移交不破坏原创建请求。企业和成员账户均从零开始，不更改个人钱包。

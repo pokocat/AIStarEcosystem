@@ -3,12 +3,14 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import { Children, cloneElement } from "react";
 import { ApiError } from "@ai-star-eco/api-client";
-import { StudioBillingDialog } from "./studio-billing-dialog";
-const api = vi.hoisted(() => ({ mine: vi.fn(), myBalance: vi.fn(), policy: vi.fn(), balance: vi.fn() }));
+import { StudioBillingDialog, chooseStudioBilling } from "./studio-billing-dialog";
+const api = vi.hoisted(() => ({ account: vi.fn(), mine: vi.fn(), myBalance: vi.fn(), policy: vi.fn(), balance: vi.fn() }));
+vi.mock("@/canvas-bridge/studio-billing-preference", async importOriginal => ({ ...await importOriginal<object>(), loadStudioBillingAccount: api.account }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/proto/api", () => ({ WalletApi: { balance: api.balance } }));
 vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: Error) => ({ message: error.message }) }));
 vi.mock("antd", () => ({
+  Checkbox: ({ children, checked, onChange }: any) => <label><input type="checkbox" checked={checked} onChange={onChange}/>{children}</label>,
   ConfigProvider: ({ children }: any) => children,
   Modal: ({ title, children, onOk, onCancel, okButtonProps, okText, cancelText }: any) => <section role="dialog" aria-label={title}>{children}<button onClick={onCancel}>{cancelText}</button><button onClick={onOk} disabled={okButtonProps.disabled}>{okText}</button></section>,
   Alert: ({ title, description, action }: any) => <div role="alert">{title}{description}{action}</div>,
@@ -16,7 +18,7 @@ vi.mock("antd", () => ({
   Skeleton: () => <span>正在核对</span>,
   Radio: Object.assign(({ value, disabled, children, checked, onChange }: any) => <label><input type="radio" value={value} disabled={disabled} checked={checked} onChange={onChange}/>{children}</label>, { Group: ({ children, value, onChange, ...props }: any) => <fieldset {...props}>{Children.map(children, (child: any) => cloneElement(child, { checked: child.props.value === value, onChange: () => onChange({ target: { value: child.props.value } }) }))}</fieldset> }),
 }));
-beforeEach(() => { vi.resetAllMocks(); api.balance.mockResolvedValue({ totalBalance: 500 }); api.mine.mockResolvedValue([{ enterprise: { id: "team", name: "创作公司", status: "active" }, member: { status: "active" } }]); api.myBalance.mockResolvedValue({ totalBalance: 20, pendingBalance: 5 }); api.policy.mockResolvedValue({ allowedEndpointIds: ["model"], maxActiveJobs: 3 }); });
+beforeEach(() => { vi.resetAllMocks(); localStorage.clear(); api.account.mockResolvedValue({ userId: "user", context: { enterprise: { id: "team", name: "创作公司", status: "active" }, member: { status: "active" } } }); api.balance.mockResolvedValue({ totalBalance: 500 }); api.mine.mockResolvedValue([{ enterprise: { id: "team", name: "创作公司", status: "active" }, member: { status: "active" } }]); api.myBalance.mockResolvedValue({ totalBalance: 20, pendingBalance: 5 }); api.policy.mockResolvedValue({ allowedEndpointIds: ["model"], maxActiveJobs: 3 }); });
 afterEach(cleanup);
 test("new choices start on personal funds even when enterprise is available", async () => {
   const confirm = vi.fn(); render(<StudioBillingDialog details={{ operation: "image", expectedCost: 8, model: "model" }} onConfirm={confirm} onCancel={vi.fn()}/>);
@@ -50,4 +52,34 @@ test("enterprise service network failures continue to block every new payment ch
   api.mine.mockRejectedValue(new Error("网络暂时中断"));
   const confirm = vi.fn(); render(<StudioBillingDialog details={{ operation: "image", expectedCost: 8 }} onConfirm={confirm} onCancel={vi.fn()}/>);
   await screen.findByText(/网络暂时中断/); expect(screen.getByRole("button", { name: "确认账户并生成" }).hasAttribute("disabled")).toBe(true); expect(confirm).not.toHaveBeenCalled();
+});
+
+test("accounts without an enterprise generate with personal funds without a chooser", async () => {
+  api.account.mockResolvedValue({ userId: "user" });
+  expect(await chooseStudioBilling({ expectedCost: 21 })).toEqual({ mode: "personal" });
+  expect(screen.queryByRole("dialog")).toBeNull(); expect(api.balance).not.toHaveBeenCalled();
+});
+test("saving a chosen enterprise skips future questions and is isolated by account and enterprise", async () => {
+  const { readStudioBillingPreference } = await import("@/canvas-bridge/studio-billing-preference");
+  const account = await api.account(); const confirm = vi.fn();
+  render(<StudioBillingDialog account={account} details={{ operation: "image", expectedCost: 8, model: "model" }} onConfirm={confirm} onCancel={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole("radio", { name: /创作公司/ }));
+  fireEvent.click(screen.getByRole("checkbox", { name: "保存为默认，下次不再询问" }));
+  fireEvent.click(screen.getByRole("button", { name: "确认账户并生成" }));
+  expect(confirm).toHaveBeenCalledWith({ mode: "enterprise", enterpriseId: "team" }); cleanup();
+  // Defaults do not silently switch payer even if the next job exceeds the available funds.
+  expect(await chooseStudioBilling({ expectedCost: 1000 })).toEqual({ mode: "enterprise", enterpriseId: "team" });
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(readStudioBillingPreference({ ...account, userId: "other" })).toBeUndefined();
+  expect(readStudioBillingPreference({ ...account, context: { ...account.context, enterprise: { ...account.context.enterprise, id: "other-team" } } })).toBeUndefined();
+});
+test("settings can change a default to personal or restore asking each time", async () => {
+  const { StudioBillingSettings } = await import("./studio-billing-settings");
+  const { readStudioBillingPreference } = await import("@/canvas-bridge/studio-billing-preference");
+  render(<StudioBillingSettings />);
+  const select = await screen.findByRole("combobox", { name: "生成付款账户" });
+  fireEvent.change(select, { target: { value: "personal" } });
+  expect(await chooseStudioBilling({ expectedCost: 8 })).toEqual({ mode: "personal" });
+  fireEvent.change(select, { target: { value: "ask" } });
+  expect(readStudioBillingPreference(await api.account())).toBeUndefined();
 });

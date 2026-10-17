@@ -6,6 +6,7 @@ import { DATA, LicenseApi, AccountApi, WalletApi, AvatarApi, VoiceApi, AuthApi, 
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
+import { StudioBillingSettings } from "@/ip/studio-billing-settings";
 import { useHubData } from "@/components/hub/data";
 
 // ============================================================
@@ -60,6 +61,8 @@ function MSettings({ ctx }) {
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
         hMM(Row, { icon: Icons.scan, label: '生成默认加水印', sub: '导出成片带平台标识', toggle: true, on: watermark, onClick: () => setWatermark(v => !v) }),
         hMM(Row, { icon: Icons.archive, label: '定稿后自动归档', sub: '完成创建即存入名录', toggle: true, on: autoArchive, onClick: () => setAutoArchive(v => !v), last: true })),
+
+      process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === '1' && hMM(StudioBillingSettings),
 
       hMM(GroupTitle, null, '隐私与合规'),
       hMM('div', { className: 'm-card', style: { marginBottom: 18 } },
