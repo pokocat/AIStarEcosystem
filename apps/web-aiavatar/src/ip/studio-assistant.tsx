@@ -8,7 +8,7 @@
 // (missing nodes only, never over the user's own text). Conversations from the
 // old four-mode assistant stay readable (with their adoption bindings) under 「之前的对话」.
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { ApiError } from "@ai-star-eco/api-client";
+import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button, Select } from "antd";
 import { ArrowUp, FileText, Image, SlidersHorizontal, Video, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
@@ -60,6 +60,13 @@ type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[
 const MAX_REFERENCES = 64;
 const ATTACHMENT_NOTE = "可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。";
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/** 402 while an execution runs: this turn would not fit the stage budget. Say by how much; the draft stays. */
+function budgetExceededError(error: unknown) {
+  if (!(error instanceof ApiError) || error.code !== "STUDIO_PLAN_BUDGET_EXCEEDED") return undefined;
+  const shortfall = Number((error.details as { shortfall?: unknown } | undefined)?.shortfall);
+  const text = Number.isFinite(shortfall) && shortfall > 0 ? `本阶段预算还差 ${formatCredits(shortfall)} 积分，提高上限后再发` : "本阶段预算不够了，提高上限后再发";
+  return Object.assign(new Error(text), { code: error.code, logId: error.logId });
+}
 
 export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep }: Props) {
   const { message } = useStudioApp();
@@ -185,7 +192,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         setText(current => current.trim() ? current : input.text);
         setPinnedIds(current => current.length ? current : input.pinnedNodeIds);
         setAttachmentIds(current => current.length ? current : input.attachmentNodeIds);
-        setComposerError(outcome.error);
+        setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
       } else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
     } finally { if (same(project)) setSending(false); }
   };

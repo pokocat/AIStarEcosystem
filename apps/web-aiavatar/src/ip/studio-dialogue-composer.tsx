@@ -84,7 +84,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
         <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets}/>
       </div>
       <div className="studio-dialogue-send">
-        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止这一轮，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}>停止</Button>}
+        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}>停止</Button>}
         <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title={sendDisabledReason || '发送（⌘ / Ctrl + Enter）；回复按实际用量扣积分'} className="studio-assistant-primary" type="primary"
           loading={sending} disabled={!!sendDisabledReason} onClick={onSend}><span className="studio-assistant-send-label">发送<kbd className="studio-assistant-send-shortcut" aria-hidden="true">{shortcut}</kbd></span></Button>
       </div>

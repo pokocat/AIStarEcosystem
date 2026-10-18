@@ -4,7 +4,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { StudioDialogueMessage } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
+import { dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
 import { StudioDialogueMessageView, type DialogueMessageHandlers } from './studio-dialogue-message';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
@@ -60,7 +60,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     <ParentThread store={store} nodes={nodes} handlers={handlers} readThread={readThread}/>
     {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueLabel={messageQueueLabel(store, m)}
-      suggestions={m.id === last?.id && store.activeTurnId !== m.turnId ? store.suggestions[m.id] : undefined}
+      suggestions={m.id === last?.id && store.activeTurnId !== m.turnId ? messageSuggestions(store, m) : undefined}
       handlers={isPlaceholderMessage(m.id) ? { ...handlers, onBranch: undefined } : handlers}/> : item && <article key={item.clientMessageId} className="studio-dialogue-message is-user" data-status={item.state} aria-label="你的消息">
       <small className="studio-dialogue-author">你</small>
       <p className="studio-dialogue-text">{item.text}</p>

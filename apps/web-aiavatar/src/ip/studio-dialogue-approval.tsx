@@ -12,7 +12,7 @@ import { formatDateTime } from '@/lib/datetime';
 import type { DialogueApprovalBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
-const STATUS_LABEL = { pending: '等你确认', approved: '已确认', expired: '已过期', superseded: '已更新' } as const;
+const STATUS_LABEL = { pending: '等你确认', approved: '已确认', expired: '已过期', superseded: '已被新方案替代' } as const;
 export const approvalStatus = (block: DialogueApprovalBlock, now = Date.now()): DialogueApprovalBlock['status'] =>
   block.status === 'pending' && block.expiresAt && Date.parse(block.expiresAt) <= now ? 'expired' : block.status;
 
@@ -62,14 +62,14 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
   return <section className="studio-dialogue-approval" data-status={status} aria-label={analysis ? '确认分析' : '确认制作'}>
     <header><ShieldCheck size={16} aria-hidden="true"/><h4>{analysis ? '分析之前请确认' : '制作之前请确认'}</h4><span>{STATUS_LABEL[status]}</span></header>
     {!!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-    {actionable ? <p className="studio-dialogue-approval-quote">当前报价 {formatCredits(block.quotedCost)} 积分{block.autoFixCap > 0 ? `，重做额度最多 ${formatCredits(block.autoFixCap)} 积分` : ''}，总上限 {formatCredits(block.budgetCap)} 积分。</p>
+    {actionable ? <p className="studio-dialogue-approval-quote">当前报价 {formatCredits(block.quotedCost)} 积分{block.autoFixCap > 0 ? `，重做额度最多 ${formatCredits(block.autoFixCap)} 积分` : ''}，总上限 {formatCredits(block.budgetCap)} 积分{block.dialogueReserve ? `（含一轮对话预留 ${formatCredits(block.dialogueReserve)} 积分）` : ''}。</p>
       : <p className="studio-dialogue-approval-quote">报价 {formatCredits(block.quotedCost)} 积分。</p>}
     {actionable && <div className="studio-dialogue-caps">
       <label><span>总上限（积分）</span><input type="number" inputMode="numeric" min={block.quotedCost} step={1} value={budgetCap} disabled={busy} onChange={e => setBudgetCap(e.target.value)}/></label>
       <label><span>其中重做额度</span><input type="number" inputMode="numeric" min={0} step={1} value={autoFixCap} disabled={busy} onChange={e => setAutoFixCap(e.target.value)}/></label>
     </div>}
     {actionable && <p className="studio-dialogue-note">改上限只是草稿，点「{label}」才生效。超出上限不会再提交新任务。</p>}
-    {actionable && !!shortfall && shortfall > 0 && <p className="studio-dialogue-warning" role="status">本阶段预算还差 {formatCredits(shortfall)} 积分，可以充值或降低上限。</p>}
+    {actionable && !!shortfall && shortfall > 0 && <p className="studio-dialogue-warning" role="status">本阶段预算还差 {formatCredits(shortfall)} 积分，确认新的上限后继续。</p>}
     {actionable && block.expiresAt && <p className="studio-dialogue-note">请在 {formatDateTime(block.expiresAt)} 前确认，过期后需要重新报价。</p>}
     {confirmed && <p className="studio-dialogue-note" role="status">{confirmed}</p>}
     {approvedWhen && <p className="studio-dialogue-note">{approvedWhen}</p>}

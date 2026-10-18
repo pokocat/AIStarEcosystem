@@ -151,6 +151,8 @@ test('stop goes through the priority control, not a new message', async () => {
   fireEvent.click(sendButton());
   await waitFor(() => expect(screen.getByRole('button', { name: '停止' })).toBeDefined());
   api.control.mockResolvedValueOnce({ ...emptyState, latestSeq: 0 });
+  // Stop covers the bound production too; nothing says it only ends this reply.
+  expect(screen.getByRole('button', { name: '停止' }).getAttribute('title')).toContain('进行中的制作');
   fireEvent.click(screen.getByRole('button', { name: '停止' }));
   await waitFor(() => expect(api.control).toHaveBeenCalledOnce());
   expect(api.control.mock.calls[0]).toEqual(['p', 'th', { controlId: expect.any(String), action: 'stop' }]);
@@ -458,4 +460,79 @@ test('first open on this browser replays execution commands from the start: miss
   emit(upsert(23, `${E}-a-facts`, '服务端的新事实'));
   await waitFor(() => expect(screen.getByLabelText('修改建议')).toBeDefined());
   expect(canvas.find(n => n.id === `${E}-a-facts`)!.metadata?.content).toBe('我手改过的事实');
+});
+
+// ── Server follow-ups: stage budget on send, dialogue share, saved follow-ups, card details, synthetic turns ──
+test('a message that would not fit the stage budget says by how much and keeps the draft', async () => {
+  await ready();
+  api.post.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_PLAN_BUDGET_EXCEEDED', message: '预算不够，还差 30 积分。可以追加预算或缩小计划后再继续',
+    details: { stage: 'production', spent: 100, inFlight: 10, quotedCost: 20, approvedCap: 100, shortfall: 30 } }, 402));
+  fireEvent.change(composer(), { target: { value: '第 2 段换成横屏' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(screen.getAllByRole('alert').map(e => e.textContent).join(' ')).toContain('本阶段预算还差 30 积分，提高上限后再发'));
+  expect(composer().value).toBe('第 2 段换成横屏');
+  expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+});
+
+test('a message queued during an execution without a turn waits as queued and does not look like a reply', async () => {
+  await ready();
+  api.post.mockResolvedValueOnce({ messageId: 'u7', queueState: 'queued' });
+  fireEvent.change(composer(), { target: { value: '第 2 段换成横屏' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(screen.getByText('排队中，下一步应用')).toBeDefined());
+  expect(screen.queryByRole('button', { name: '停止' })).toBeNull();
+  expect(screen.queryByText('正在准备回复')).toBeNull();
+});
+
+test('the progress strip breaks out the dialogue share of the stage budget', async () => {
+  const execution = { ...doneExecution, status: 'running' as const, budgets: [{ stage: 'production' as const, approvedCap: 260, autoFixCap: 20, spent: 43, inFlight: 20, remaining: 197, dialogueSpent: 3, dialogueInFlight: 20 }] };
+  api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, activeExecutionId: E }, execution });
+  await ready();
+  const strip = screen.getByLabelText('制作进度');
+  expect(within(strip).getByText(/已用 43 \/ 260 积分/)).toBeDefined();
+  expect(within(strip).getByText('其中对话 3 积分，对话进行中占用 20 积分')).toBeDefined();
+  emit(ev('budget.update', { executionId: E, stage: 'production', approvedCap: 260, spent: 45, inFlight: 0, remaining: 215, source: 'actual', dialogueSpent: 5, dialogueInFlight: 0 }, { executionId: E }));
+  expect(within(screen.getByLabelText('制作进度')).getByText('其中对话 5 积分')).toBeDefined();
+});
+
+test('follow-ups saved on the completion summary show after a reload, and once when turn.done repeats them', async () => {
+  const summary: StudioDialogueMessage = { id: 'm-sum', threadId: 'th', seq: 4, turnId: 'EXS-1', role: 'assistant', text: '两段都做好了，一共用了 82 积分。', blocks: [], status: 'done', createdAt: at, suggestions: ['改成横屏', '保存成模板'] };
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [summary] });
+  await ready();
+  const group = () => screen.getByRole('group', { name: '接下来可以' });
+  expect(within(group()).getAllByRole('button').map(b => b.textContent)).toEqual(['改成横屏', '保存成模板']);
+  seq = 4;
+  emit(ev('turn.done', { reason: 'completed', messageId: 'm-sum', suggestions: ['改成横屏', '保存成模板'] }, { turnId: 'EXS-1' }));
+  expect(screen.getAllByRole('group', { name: '接下来可以' })).toHaveLength(1);
+  expect(within(group()).getAllByRole('button')).toHaveLength(2);
+  fireEvent.click(within(group()).getByRole('button', { name: /保存成模板/ }));
+  expect(composer().value).toBe('保存成模板');
+});
+
+test('a card shows its own shortfall and dialogue reserve; a replaced card says so and cannot start anything', async () => {
+  const raise = { ...approvalBlock, approvalId: 'a3', budgetCap: 150, quotedCost: 50, autoFixCap: 0, shortfall: 30, dialogueReserve: 20 };
+  const replaced = { ...approvalBlock, approvalId: 'a1', planFingerprint: 'f1', status: 'superseded' as const, supersededAt: at };
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [{ ...planMessage([replaced]), id: 'm1', seq: 2 }, planMessage([planBlock, raise])] });
+  await ready();
+  const [old, current] = screen.getAllByLabelText('确认制作');
+  expect(within(old).getByText('已被新方案替代')).toBeDefined();
+  expect(within(old).queryByRole('button', { name: '开始制作' })).toBeNull();
+  expect(within(current).getByText('当前报价 50 积分，总上限 150 积分（含一轮对话预留 20 积分）。')).toBeDefined();
+  expect(within(current).getByText('本阶段预算还差 30 积分，确认新的上限后继续。')).toBeDefined();
+});
+
+test('confirming a card, then the server closing its synthetic turn, leaves nothing running in the timeline', async () => {
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([planBlock, approvalBlock])] });
+  api.createExecution.mockResolvedValue({ ...doneExecution, status: 'running', budgets: [{ stage: 'production', approvedCap: 122, autoFixCap: 40, spent: 0, inFlight: 0, remaining: 122 }] });
+  await ready();
+  fireEvent.click(within(screen.getByLabelText('确认制作')).getByRole('button', { name: '开始制作' }));
+  await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
+  seq = 3;
+  emit(ev('approval.required', { messageId: 'm2', block: { ...approvalBlock, status: 'approved', executionId: E, approvedBudgetCap: 122, approvedAutoFixCap: 40, approvedAt: at } }, { turnId: 'APR-1', executionId: E }),
+    ev('turn.done', { reason: 'completed', messageId: 'm2', settling: false }, { turnId: 'APR-1', executionId: E }));
+  await waitFor(() => expect(within(screen.getByLabelText('确认制作')).getByText('已确认 · 总上限 122 积分 · 重做上限 40 积分')).toBeDefined());
+  // The production strip keeps its own 停止; the composer's (a reply in progress) is gone.
+  expect(screen.getAllByRole('button', { name: '停止' }).filter(b => !b.closest('[aria-label="制作进度"]'))).toHaveLength(0);
+  expect(screen.queryByText('正在准备回复')).toBeNull();
+  expect(screen.getAllByLabelText('Studio 的回复')).toHaveLength(1);
 });

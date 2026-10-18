@@ -16,6 +16,11 @@ export function checkSummary(check: StudioCheckResultData) {
   return parts.length ? parts.join('，') : '没有检查项';
 }
 
+/** The dialogue's share of the stage budget; already counted in the line above, shown only as a breakdown. */
+export function dialogueShare(budget: Partial<StudioPlanExecutionBudget>) {
+  return `其中对话 ${formatCredits(budget.dialogueSpent || 0)} 积分${budget.dialogueInFlight ? `，对话进行中占用 ${formatCredits(budget.dialogueInFlight)} 积分` : ''}`;
+}
+
 export function StudioDialogueExecution({ execution, budget, checks, notice, onControl }: {
   execution: StudioPlanExecution; budget?: Partial<StudioPlanExecutionBudget>; checks: StudioCheckResultData[]; notice?: string;
   onControl: (action: 'pause' | 'resume' | 'cancel') => Promise<void>;
@@ -40,6 +45,7 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
       已用 {formatCredits(budget.spent || 0)} / {formatCredits(budget.approvedCap)} 积分{budget.inFlight ? `，进行中的任务占用 ${formatCredits(budget.inFlight)} 积分` : ''}
       {budget.shortfall ? <b>，还差 {formatCredits(budget.shortfall)} 积分</b> : null}
     </p>}
+    {budget && (!!budget.dialogueSpent || !!budget.dialogueInFlight) && <p className="studio-dialogue-note">{dialogueShare(budget)}</p>}
     {execution.needsUserReason && waiting && <p className="studio-dialogue-note">{execution.needsUserReason}</p>}
     {!!checks.length && <ul className="studio-dialogue-execution-checks" aria-label="检查结果">{checks.map(c => <li key={c.runId}>检查：{checkSummary(c)}</li>)}</ul>}
     {notice && <p className="studio-dialogue-warning" role="status">{notice}</p>}

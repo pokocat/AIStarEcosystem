@@ -303,7 +303,13 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
     } },
     { run: () => { setStep(p, "m1", "skipped", undefined, "演示模式不合成成片"); updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() })); } },
     ...say(t, messageId, "c3", "两段都做好了，一共用了 82 积分。第 1 段有一项检查无法判断：这一段没有字幕，看不出台词是否完整。演示模式不合成成片。"),
-    { run: () => { emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["给第 1 段加字幕再检查", "第 2 段换成横屏", "保存成模板"] }); p.stage = "done"; } },
+    { run: () => {
+      const suggestions = ["给第 1 段加字幕再检查", "第 2 段换成横屏", "保存成模板"];
+      emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
+      // Like the server's completion summary: the follow-ups stay on the message across reloads.
+      patchViewMessage(t, messageId, m => ({ ...m, suggestions }));
+      p.stage = "done";
+    } },
   ]);
 }
 

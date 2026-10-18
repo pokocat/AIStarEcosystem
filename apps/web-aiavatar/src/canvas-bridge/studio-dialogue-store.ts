@@ -256,9 +256,11 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
     }
     case 'budget.update': {
       const d = event.data as StudioBudgetUpdateData;
+      // dialogueSpent / dialogueInFlight are the dialogue's share already inside spent / inFlight, never added again.
+      const live = { approvedCap: d.approvedCap, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall, dialogueSpent: d.dialogueSpent, dialogueInFlight: d.dialogueInFlight };
       const execution = s.execution?.id === d.executionId ? { ...s.execution, budgets: s.execution.budgets.some(b => b.stage === d.stage)
-        ? s.execution.budgets.map(b => b.stage === d.stage ? { ...b, approvedCap: d.approvedCap, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall } : b)
-        : [...s.execution.budgets, { stage: d.stage, approvedCap: d.approvedCap, autoFixCap: 0, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall }] } : s.execution;
+        ? s.execution.budgets.map(b => b.stage === d.stage ? { ...b, ...live } : b)
+        : [...s.execution.budgets, { stage: d.stage, autoFixCap: 0, ...live }] } : s.execution;
       return { ...s, execution, budgets: { ...s.budgets, [`${d.executionId}:${d.stage}`]: d } };
     }
     case 'turn.done': {
@@ -437,6 +439,15 @@ export function executionBudget(store: DialogueStore) {
   const live = store.budgets[`${execution.id}:${execution.stage}`];
   const saved = execution.budgets.find(b => b.stage === execution.stage);
   return live ? { ...saved, ...live, autoFixCap: saved?.autoFixCap ?? 0 } : saved;
+}
+
+/**
+ * Follow-ups under a message: the turn.done ones and those saved on the message (an execution's completion summary keeps
+ * them across reloads). The same suggestion from both sources shows once; at most three.
+ */
+export function messageSuggestions(store: DialogueStore, message: StudioDialogueMessage): string[] | undefined {
+  const list = [...new Set([...(store.suggestions[message.id] || []), ...(message.suggestions || [])].map(s => s.trim()).filter(Boolean))].slice(0, 3);
+  return list.length ? list : undefined;
 }
 
 export function messageQueueLabel(store: DialogueStore, message: StudioDialogueMessage) {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
 import {
-  approvedCaps, approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, persistableCanvasCursor, planForApproval,
+  approvedCaps, approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, messageSuggestions, persistableCanvasCursor, planForApproval,
   type DialogueApprovalBlock, type DialogueStore,
 } from './studio-dialogue-store';
 
@@ -250,5 +250,61 @@ describe('outbox and snapshots', () => {
     expect(dialogueCursor(s)).toBe(1);
     // Events of the old thread no longer apply.
     expect(fold(s, delta(7, '串线')).messages).toHaveLength(1);
+  });
+});
+
+// ── Server follow-ups after the acceptance fixes (D06 / D07 / D01 / D10 events) ──
+describe('execution messages, dialogue budget share and queued steering', () => {
+  const card = (id: string, status: DialogueApprovalBlock['status'], extra: Partial<DialogueApprovalBlock> = {}): DialogueApprovalBlock =>
+    ({ type: 'approval', approvalId: id, stage: 'production', planFingerprint: 'f2', scope: ['第 1 段'], quotedCost: 80, budgetCap: 120, autoFixCap: 0, status, ...extra });
+  const withCard = (block: DialogueApprovalBlock) => loaded({ latestSeq: 6, messages: [userMessage, { ...userMessage, id: 'm-card', role: 'assistant', seq: 6, turnId: 't-old', text: '请确认', blocks: [block], clientMessageId: undefined }] });
+
+  test('a confirmation outside a running turn closes its own synthetic turn: nothing is left looking like a reply in progress', () => {
+    const s = fold(withCard(card('a1', 'pending')),
+      ev(7, 'approval.required', { messageId: 'm-card', block: card('a1', 'approved', { executionId: 'e1', approvedBudgetCap: 100, approvedAutoFixCap: 0 }) }, { turnId: 'APR-1', executionId: 'e1' }),
+      ev(8, 'turn.done', { reason: 'completed', messageId: 'm-card', settling: false }, { turnId: 'APR-1', executionId: 'e1' }));
+    expect(s.activeTurnId).toBeUndefined();
+    expect(s.messages.map(m => [m.id, m.status])).toEqual([['u1', 'done'], ['m-card', 'done']]);
+    expect(s.messages[1].blocks[0]).toMatchObject({ status: 'approved', approvedBudgetCap: 100 });
+  });
+
+  test('a raise-the-cap card posted by the executor: replaces the old card, arrives as a finished message with its follow-ups', () => {
+    const s = fold(withCard(card('a1', 'pending')),
+      ev(7, 'approval.required', { messageId: 'm-card', block: card('a1', 'superseded', { supersededAt: '2026-10-18T01:02:00Z' }) }, { turnId: 'EXS-1', executionId: 'e1' }),
+      ev(8, 'message.delta', { messageId: 'm-raise', partId: 'p1', delta: '本阶段预算还差 30 积分。' }, { turnId: 'EXS-1', executionId: 'e1' }),
+      ev(9, 'approval.required', { messageId: 'm-raise', block: card('a2', 'pending', { budgetCap: 150, shortfall: 30, dialogueReserve: 20 }), shortfall: 30 }, { turnId: 'EXS-1', executionId: 'e1' }),
+      ev(10, 'turn.done', { reason: 'completed', messageId: 'm-raise', settling: false, suggestions: ['提高到 150 积分', '先停下'] }, { turnId: 'EXS-1', executionId: 'e1' }));
+    expect(s.activeTurnId).toBeUndefined();
+    const raise = s.messages.find(m => m.id === 'm-raise')!;
+    expect(raise).toMatchObject({ status: 'done', text: '本阶段预算还差 30 积分。' });
+    expect(s.messages.flatMap(m => m.blocks).map(b => b.type === 'approval' && [b.approvalId, b.status])).toEqual([['a1', 'superseded'], ['a2', 'pending']]);
+    expect(s.shortfalls.a2).toBe(30);
+    expect(messageSuggestions(s, raise)).toEqual(['提高到 150 积分', '先停下']);
+  });
+
+  test('follow-ups saved on the message and those from turn.done show once, at most three', () => {
+    const summary = { ...userMessage, id: 'm-sum', role: 'assistant' as const, seq: 6, text: '做完了', clientMessageId: undefined, suggestions: ['改成横屏', '保存成模板'] };
+    const reloaded = loaded({ latestSeq: 6, messages: [userMessage, summary] });
+    expect(messageSuggestions(reloaded, reloaded.messages[1])).toEqual(['改成横屏', '保存成模板']);
+    const live = fold(reloaded, ev(7, 'turn.done', { reason: 'completed', messageId: 'm-sum', suggestions: ['保存成模板', '只改第 3 段', '改成横屏'] }));
+    expect(messageSuggestions(live, live.messages.find(m => m.id === 'm-sum')!)).toEqual(['保存成模板', '只改第 3 段', '改成横屏']);
+    expect(messageSuggestions(live, userMessage)).toBeUndefined();
+  });
+
+  test('the dialogue share of a stage budget is kept as a breakdown, never added to spent again', () => {
+    const execution = { id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production' as const, planRunId: 'pr', planRevision: 2, planFingerprint: 'f', status: 'running' as const, steps: [],
+      budgets: [{ stage: 'production' as const, approvedCap: 120, autoFixCap: 40, spent: 40, inFlight: 0, remaining: 80, dialogueSpent: 1 }], startedAt: thread.createdAt, deadlineAt: thread.createdAt, updatedAt: thread.createdAt };
+    const s = fold(loaded({ execution }), ev(6, 'budget.update', { executionId: 'e1', stage: 'production', approvedCap: 120, spent: 43, inFlight: 20, remaining: 57, source: 'actual', dialogueSpent: 3, dialogueInFlight: 20 }, { executionId: 'e1' }));
+    expect(executionBudget(s)).toMatchObject({ spent: 43, inFlight: 20, dialogueSpent: 3, dialogueInFlight: 20, autoFixCap: 40 });
+    expect(s.execution!.budgets[0]).toMatchObject({ spent: 43, inFlight: 20, dialogueSpent: 3, dialogueInFlight: 20, autoFixCap: 40 });
+  });
+
+  test('a message queued while an execution runs may come back without a turn: it waits as queued, nothing becomes active', () => {
+    let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c5', text: '第 2 段换成横屏', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
+    s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c5', result: { messageId: 'u5', queueState: 'queued' } });
+    const queued = s.messages.find(m => m.id === 'u5')!;
+    expect(queued).toMatchObject({ status: 'queued', turnId: undefined });
+    expect(s.activeTurnId).toBeUndefined();
+    expect(messageQueueLabel(s, queued)).toBe('排队中，下一步应用');
   });
 });
