@@ -18,6 +18,7 @@ import "../styles/ip-brand.css";
 import "../styles/ip-create.css";
 import "../styles/assets-library.css";
 import "../styles/studio-page.css";
+import "../styles/studio-demo-admin.css";
 import "../styles/project-cards.css";
 import "../styles/studio-workspace-navigation.css";
 import "../styles/enterprise.css";
