@@ -83,8 +83,8 @@ class DramaBrainstormServiceTest {
     }
 
     private void aiReturns(String content) {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(content, "stop", 1L, "ep", "fake-model"));
     }
 
@@ -137,12 +137,12 @@ class DramaBrainstormServiceTest {
 
     @Test
     void chatThrowsWhenAiNotConfigured() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         String id = createReturningId(null, "u1");
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.chat(id, node("{\"text\":\"做个复仇爽剧\"}"), "u1"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
@@ -175,7 +175,7 @@ class DramaBrainstormServiceTest {
 
     @Test
     void outlineRequiresAUserMessage() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         String id = createReturningId(null, "u1");
         // body messages 只有 ai 开场白 → 还没聊
         BusinessException ex = assertThrows(BusinessException.class,

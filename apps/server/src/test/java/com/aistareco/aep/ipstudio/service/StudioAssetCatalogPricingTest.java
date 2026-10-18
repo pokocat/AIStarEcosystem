@@ -22,7 +22,7 @@ class StudioAssetCatalogPricingTest {
         var endpoint=AiModelEndpoint.builder().id("lip").enabled(true).model("x-dub")
                 .baseUrl("https://api.jusuanhub.com/v1").billingMode(AiModelBillingMode.PER_SECOND).build();
         var candidate=AiAppEndpointCandidate.builder().enabled(true).build();
-        when(models.listCandidates(AiModelPurpose.DAP_LIP_SYNC)).thenReturn(
+        when(models.listCandidates(AiModelPurpose.DAP_LIP_SYNC, "studio")).thenReturn(
                 List.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
         when(pricing.enabled()).thenReturn(true);
         when(pricing.find("lip")).thenReturn(new StudioPointPricing.Rate(null,null,null,BigDecimal.ZERO,null,null,null));

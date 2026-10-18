@@ -283,10 +283,10 @@ class DramaRenderServiceImageTest {
         AiAppEndpointCandidate videoCand = AiAppEndpointCandidate.builder().maxDurationSec(10).build();
         AiModelInvocationService.ResolvedEndpoint video = new AiModelInvocationService.ResolvedEndpoint(h3, videoCand, true);
         AiAppEndpointCandidate imageCand = AiAppEndpointCandidate.builder().maxRefImages(3).build();
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(video));
-        when(invocation.listCandidates(AiModelPurpose.IMAGE_GENERATION))
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "drama")).thenReturn(List.of(video));
+        when(invocation.listCandidates(AiModelPurpose.IMAGE_GENERATION, "drama"))
                 .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(ernie, imageCand, true)));
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-h3"))).thenReturn(Optional.of(video));
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-h3"), eq("drama"))).thenReturn(Optional.of(video));
 
         var models = svc.listRenderModels();
         var cap = models.video().get(0).capability();
@@ -304,9 +304,9 @@ class DramaRenderServiceImageTest {
                 .baseUrl("https://api.jusuanhub.com").model("minimax-h3").build();
         AiModelInvocationService.ResolvedEndpoint video = new AiModelInvocationService.ResolvedEndpoint(h3,
                 AiAppEndpointCandidate.builder().build(), true);
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(video));
-        when(invocation.listCandidates(AiModelPurpose.IMAGE_GENERATION)).thenReturn(List.of());
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-h3")))
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "drama")).thenReturn(List.of(video));
+        when(invocation.listCandidates(AiModelPurpose.IMAGE_GENERATION, "drama")).thenReturn(List.of());
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-h3"), eq("drama")))
                 .thenThrow(new IllegalStateException("db down"));
         var models = svc.listRenderModels();
         assertEquals(1, models.video().size());

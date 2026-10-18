@@ -418,7 +418,7 @@ public class DramaCanvasRunService {
                     : invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "drama")
                             .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_NOT_CONFIGURED",
                                     "生成视频还没接入视频模型：请在管理后台为「视频生成」用途绑定一个模型端点后再试。"));
-            MaterialVideoModelClient.DurationBounds bounds = videoModels.effectiveDurationBounds(endpointId, re.endpoint());
+            MaterialVideoModelClient.DurationBounds bounds = videoModels.effectiveDurationBounds(endpointId, re.endpoint(), "drama");
             int maxSec = bounds.maxSec() != null ? bounds.maxSec() : DEFAULT_MAX_SEGMENT_SEC;
             if (durationSec > maxSec) {
                 throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_SEGMENT_TOO_LONG",

@@ -768,7 +768,7 @@ public class DramaRenderService {
             }
         }
         // 协议级失败快（H3=5..15 秒）+ API Key 有效性检查，必须发生在 hold 积分之前。
-        videoJobs.validateRequest(explicit ? endpointId : null, durationSec);
+        videoJobs.validateRequest(explicit ? endpointId : null, durationSec, "drama");
         // 首尾帧能力：候选显式 supportsFirstLastFrame 最高优先；未配置（null，含 seeder 回填存量候选）
         // → C-1 协议关键字静态判定兜底（seedance/generic 支持、agnes 仅首帧），不一律 false（回归修正口径）。
         boolean flf = capFirstLastFrame != null ? capFirstLastFrame : supportsFirstLastFrame(chosenVideoEp);
@@ -943,7 +943,7 @@ public class DramaRenderService {
         if (videoModels == null) return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate());
         try {
             MaterialVideoModelClient.DurationBounds b =
-                    videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint());
+                    videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint(), "drama");
             return com.aistareco.aep.dto.EndpointCapabilityDto.from(r.candidate(), b.minSec(), b.maxSec(),
                     videoModels.videoGeometry(r.endpoint()));
         } catch (RuntimeException e) {

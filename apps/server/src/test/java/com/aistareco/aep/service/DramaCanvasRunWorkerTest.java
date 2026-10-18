@@ -116,7 +116,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void textRun_badShape_failsWithAiCallFailed_andRefunds() {
         textRun("dcr_t1", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
                 .thenReturn(reply("{\"segments\":\"不是数组\"}"));
         worker.runBlocking("dcr_t1");
 
@@ -127,13 +127,13 @@ class DramaCanvasRunWorkerTest {
         assertNotNull(r.getFinishedAt());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_t1"), anyString());
         verify(credits, never()).commitHold(any(), any(), anyLong(), any());
-        verify(invocation, times(2)).invokeChat(any(), any(), any()); // 不合格先重试一次，两次都不行才判失败
+        verify(invocation, times(2)).invokeChat(any(), any(), any(), eq("drama")); // 不合格先重试一次，两次都不行才判失败
     }
 
     @Test
     void textRun_ok_commitsUnitAndStoresResult() throws Exception {
         textRun("dcr_t2", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any())).thenReturn(reply(
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"))).thenReturn(reply(
                 "{\"segments\":[{\"text\":\"（4 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":4}],\"notes\":[]}"));
         worker.runBlocking("dcr_t2");
 
@@ -151,14 +151,14 @@ class DramaCanvasRunWorkerTest {
         meta.putArray("chunks").add(OM.createObjectNode().put("fromNo", 1).put("toNo", 1))
                 .add(OM.createObjectNode().put("fromNo", 2).put("toNo", 2));
         textRun("dcr_t3", "script", meta, "第一批", "第二批 " + DramaCanvasPromptBuilder.CARRY);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
                 .thenReturn(reply("{\"episodes\":[{\"title\":\"甲\",\"hook\":\"h\",\"summary\":\"梗概甲\"}]}"))
                 .thenReturn(reply("{\"episodes\":[{\"title\":\"乙\",\"hook\":\"h\",\"summary\":\"梗概乙\"}]}"));
         worker.runBlocking("dcr_t3");
 
         @SuppressWarnings({"unchecked", "rawtypes"})
         ArgumentCaptor<List<Map<String, String>>> msgs = ArgumentCaptor.forClass((Class) List.class);
-        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any());
+        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any(), eq("drama"));
         String second = msgs.getAllValues().get(1).get(1).get("content");
         assertTrue(second.contains("第 1 集《甲》：梗概甲"), second);
         assertFalse(second.contains(DramaCanvasPromptBuilder.CARRY));
@@ -170,7 +170,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void upstreamError_isWrittenIntoTheRun_notJustThrown() {
         textRun("dcr_t4", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(any(), any(), any())).thenThrow(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
+        when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenThrow(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                 "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
                 "endpoint=e purpose=p model=m status=400 body={\"error\":{\"message\":\"max_tokens too large\"}}"));
         worker.runBlocking("dcr_t4");
@@ -179,7 +179,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("AI_CALL_FAILED", r.getErrorCode());
         assertTrue(r.getErrorMessage().contains("max_tokens too large"), "4xx 把上游原话告诉用户：" + r.getErrorMessage());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_t4"), anyString());
-        verify(invocation, times(1)).invokeChat(any(), any(), any()); // 400 是请求本身不对：不重试
+        verify(invocation, times(1)).invokeChat(any(), any(), any(), eq("drama")); // 400 是请求本身不对：不重试
         assertTrue(slept.isEmpty());
     }
 
@@ -209,7 +209,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void badOutputOnce_isAskedAgainWithSameMessages_thenSucceeds_chargedOnce() {
         textRun("dcr_r1", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
                 .thenReturn(reply("好的，下面是分镜：segments 写不出来"))
                 .thenReturn(reply(GOOD_STORYBOARD));
         worker.runBlocking("dcr_r1");
@@ -218,7 +218,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("succeeded", r.getStatus());
         @SuppressWarnings({"unchecked", "rawtypes"})
         ArgumentCaptor<List<Map<String, String>>> msgs = ArgumentCaptor.forClass((Class) List.class);
-        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any());
+        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any(), eq("drama"));
         assertEquals(msgs.getAllValues().get(0), msgs.getAllValues().get(1), "重试用同样的消息");
         verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r1", 4L, "画布 · 测试");
         assertTrue(slept.isEmpty(), "输出不合格不是上游临时错误，不退避");
@@ -229,13 +229,13 @@ class DramaCanvasRunWorkerTest {
         // 补括号能把被 max_tokens 截断的输出补成合法对象（少了后半截），形状校验看不出来；finish=length 一律当不合格
         textRun("dcr_r9", "storyboard", storyboardMeta(), "切片段");
         String cut = "{\"segments\":[{\"text\":\"（5 秒）@[林微](look:lk1) 蹲着。\",\"durationSec\":5}";
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(cut, "length", 10L, "ep", "m"))
                 .thenReturn(reply(GOOD_STORYBOARD));
         worker.runBlocking("dcr_r9");
 
         assertEquals("succeeded", store.get("dcr_r9").getStatus());
-        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any());
+        verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"));
         verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试");
     }
 
@@ -249,7 +249,7 @@ class DramaCanvasRunWorkerTest {
         lg.addAppender(app);
         try {
             textRun("dcr_r2", "storyboard", storyboardMeta(), "切片段");
-            when(invocation.invokeChat(any(), any(), any()))
+            when(invocation.invokeChat(any(), any(), any(), eq("drama")))
                     .thenReturn(reply("第一次\n不是 JSON"))
                     .thenReturn(reply("{\"segments\":\"不是数组\"}\n第二次的尾巴 sk-abcdef1234567890"));
             worker.runBlocking("dcr_r2");
@@ -280,7 +280,7 @@ class DramaCanvasRunWorkerTest {
                 + "{\"name\":\"人物乙\",\"role\":\"support\",\"bio\":\"女儿\",\"looks\":["
                 + "{\"name\":\"基础造型\",\"prompt\":\"基本信息：女，8 岁\",\"episodes\":[2]}]}],"
                 + "\"scenes\":[{\"name\":\"旧街\",\"prompt\":\"老街，傍晚\",\"episodes\":[1]}],\"notes\":[\"n1\"]}";
-        when(invocation.invokeChat(any(), any(), any())).thenReturn(reply(broken));
+        when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenReturn(reply(broken));
         worker.runBlocking("dcr_r3");
 
         DramaCanvasRun r = store.get("dcr_r3");
@@ -288,7 +288,7 @@ class DramaCanvasRunWorkerTest {
         JsonNode ex = OM.readTree(r.getResultJson()).path("extract");
         assertEquals(2, ex.path("characters").size());
         assertEquals(1, ex.path("scenes").size());
-        verify(invocation, times(1)).invokeChat(any(), any(), any());
+        verify(invocation, times(1)).invokeChat(any(), any(), any(), eq("drama"));
     }
 
     @Test
@@ -299,7 +299,7 @@ class DramaCanvasRunWorkerTest {
             slept.add(ms);
             permitsWhileWaiting.add(worker.textGate.availablePermits());
         };
-        when(invocation.invokeChat(any(), any(), any()))
+        when(invocation.invokeChat(any(), any(), any(), eq("drama")))
                 .thenThrow(upstream(429, CONCURRENCY_429))
                 .thenReturn(reply(GOOD_STORYBOARD));
         worker.runBlocking("dcr_r4");
@@ -315,7 +315,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void upstream429_allRetriesUsed_failsWithBusyCopyNotEnglish_refunds() {
         textRun("dcr_r5", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(any(), any(), any())).thenThrow(upstream(429, CONCURRENCY_429));
+        when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenThrow(upstream(429, CONCURRENCY_429));
         worker.runBlocking("dcr_r5");
 
         DramaCanvasRun r = store.get("dcr_r5");
@@ -323,7 +323,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("AI_CALL_FAILED", r.getErrorCode());
         assertEquals(DramaCanvasRunWorker.TEXT_BUSY_MESSAGE, r.getErrorMessage());
         assertEquals(List.of(5_000L, 15_000L, 30_000L), slept);
-        verify(invocation, times(4)).invokeChat(any(), any(), any());
+        verify(invocation, times(4)).invokeChat(any(), any(), any(), eq("drama"));
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r5"), anyString());
         assertEquals(2, worker.textGate.availablePermits());
     }
@@ -331,7 +331,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void networkErrorsAndUpstream5xx_areRetried() {
         textRun("dcr_r6", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(any(), any(), any()))
+        when(invocation.invokeChat(any(), any(), any(), eq("drama")))
                 .thenThrow(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_TIMEOUT", "AI 生成超时",
                         "endpoint=e purpose=p model=m err=java.net.http.HttpTimeoutException"))
                 .thenThrow(new IllegalStateException("connection reset"))
@@ -366,7 +366,7 @@ class DramaCanvasRunWorkerTest {
         AiModelInvocationService inv2 = mock(AiModelInvocationService.class);
         java.util.concurrent.atomic.AtomicInteger inFlight = new java.util.concurrent.atomic.AtomicInteger();
         java.util.concurrent.atomic.AtomicInteger peak = new java.util.concurrent.atomic.AtomicInteger();
-        when(inv2.invokeChat(any(), any(), any())).thenAnswer(i -> {
+        when(inv2.invokeChat(any(), any(), any(), eq("drama"))).thenAnswer(i -> {
             peak.accumulateAndGet(inFlight.incrementAndGet(), Math::max);
             Thread.sleep(60);
             inFlight.decrementAndGet();
@@ -684,7 +684,7 @@ class DramaCanvasRunWorkerTest {
         r.setUpdatedAt(OffsetDateTime.now().minusMinutes(20));
         DramaCanvasRun seenBySweeper = copy(r); // 回收器读到的是 running + 旧心跳
         r.setStatus(DramaCanvasRun.STATUS_QUEUED); // worker 这边还能认领
-        when(invocation.invokeChat(any(), any(), any())).thenReturn(reply(OK_STORYBOARD));
+        when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenReturn(reply(OK_STORYBOARD));
         worker.runBlocking("dcr_r1");                       // worker 先成功（写结果 + 结算）
         assertFalse(worker.expireStale(seenBySweeper, true)); // 回收器拿旧值收尾 → 影响 0 行
 
@@ -696,7 +696,7 @@ class DramaCanvasRunWorkerTest {
     @Test
     void race_sweeperExpiresWhileWorkerIsGenerating_workerDoesNotCharge_refundedOnce() {
         textRun("dcr_r2", "storyboard", storyboardMeta(), "切片段");
-        when(invocation.invokeChat(any(), any(), any())).thenAnswer(inv -> {
+        when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenAnswer(inv -> {
             // 模型还在算的时候，回收器用它此刻读到的值收了尾（判失败 + 退款）
             assertTrue(worker.expireStale(copy(store.get("dcr_r2")), true));
             return reply(OK_STORYBOARD);

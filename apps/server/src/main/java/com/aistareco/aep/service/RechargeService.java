@@ -417,7 +417,8 @@ public class RechargeService {
                 || targetSnapshot.getCredits() <= 0 || targetSnapshot.getPriceCents() <= 0)) {
             throw new BusinessException(HttpStatus.CONFLICT, "ENTERPRISE_FINANCE_CONFIRM_REQUIRED", "企业充值须由平台财务登记收款后核准");
         }
-        Instant now = Instant.now();
+        // 截到微秒：库里只存到微秒，内存里的实体若带纳秒，首次返回与幂等重放（从库读）会对不上（Linux 时钟到纳秒）
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         int claimed = orderRepo.markPaid(orderId, now);
         if (claimed == 0) {
             // 已被结算（重复回调 / 并发）或订单不存在 → 幂等 no-op

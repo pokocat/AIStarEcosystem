@@ -51,8 +51,8 @@ class DramaShortPromptServiceTest {
     }
 
     private void aiReturns(String content, String finishReason) {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(content, finishReason, 1L, "ep", "fake-model"));
     }
 
@@ -70,7 +70,7 @@ class DramaShortPromptServiceTest {
     void promptRequired() {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.parse(node("{}"), USER));
         assertEquals("DRAMA_PROMPT_REQUIRED", e.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
@@ -78,7 +78,7 @@ class DramaShortPromptServiceTest {
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.parse(node("{\"prompt\":\"太短了\"}"), USER));
         assertEquals("DRAMA_PROMPT_TOO_SHORT", e.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
@@ -88,14 +88,14 @@ class DramaShortPromptServiceTest {
         var body = om.createObjectNode().put("prompt", huge);
         BusinessException e = assertThrows(BusinessException.class, () -> svc.parse(body, USER));
         assertEquals("DRAMA_PROMPT_TOO_LONG", e.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     // ── §8.0：未配置 / 调用失败一律显式报错，不产假分镜 ─────────────────────────
 
     @Test
     void missingEndpointGives503() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER));
         assertEquals("AI_NOT_CONFIGURED", e.getCode());
@@ -103,13 +103,13 @@ class DramaShortPromptServiceTest {
 
     @Test
     void codeOriginPromptGives503() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         when(promptService.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt(
                 "sys", "{{input}}", new PromptParamsDto(null, null, null), "code"));
         BusinessException e = assertThrows(BusinessException.class,
                 () -> svc.parse(OM.createObjectNode().put("prompt", PROMPT), USER));
         assertEquals("PROMPT_NOT_CONFIGURED", e.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
@@ -147,7 +147,7 @@ class DramaShortPromptServiceTest {
         assertEquals("DRAMA_PROMPT_RATE_LIMITED", e.getCode());
         // 超限只拒绝，不产假结果；模型调用次数停在上限。
         verify(invocation, times(DramaShortPromptService.RATE_LIMIT_MAX))
-                .invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap());
+                .invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama"));
         // 别的账号不受影响。
         svc.parse(OM.createObjectNode().put("prompt", PROMPT), "u_other");
     }
@@ -240,7 +240,7 @@ class DramaShortPromptServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Map<String, String>>> captor = ArgumentCaptor.forClass(List.class);
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), captor.capture(), anyMap());
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), captor.capture(), anyMap(), eq("drama"));
         String system = captor.getValue().get(0).get("content");
         assertFalse(system.contains("{{"), "system 段不应残留占位符：" + system);
         assertTrue(system.contains(String.valueOf(DramaShortPromptService.MAX_SHOTS)));
@@ -254,7 +254,7 @@ class DramaShortPromptServiceTest {
         svc.parse(OM.createObjectNode().put("prompt", PROMPT).put("instruction", "压到 20 秒内"), USER);
         @SuppressWarnings("unchecked")
         ArgumentCaptor<List<Map<String, String>>> captor = ArgumentCaptor.forClass(List.class);
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), captor.capture(), anyMap());
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), captor.capture(), anyMap(), eq("drama"));
         List<Map<String, String>> messages = captor.getValue();
         String userMessage = messages.get(messages.size() - 1).get("content");
         assertTrue(userMessage.contains("压到 20 秒内"), "调整要求必须进 prompt：" + userMessage);

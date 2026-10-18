@@ -50,7 +50,7 @@ class DapImageProviderWireTest {
             var endpoint=AiModelEndpoint.builder().id("wire-test").name("image")
                     .baseUrl("http://127.0.0.1:"+server.getAddress().getPort()+"/v1").model(model)
                     .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
-            when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE)).thenReturn(Optional.of(endpoint));
+            when(models.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE, "aiavatar")).thenReturn(Optional.of(endpoint));
             var client=new DapMultimodalClient(new DapProperties(),models,usage,new UpstreamModelHttp(usage),mock(AiAppEndpointCandidateRepository.class));
             assertArrayEquals(new byte[]{'x'},client.generateImage("original character","768x1024",List.of("data:image/png;base64,eA==")));
             return received.get();

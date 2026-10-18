@@ -281,7 +281,7 @@ public class IpStudioController {
     private com.aistareco.aep.dto.EndpointCapabilityDto capabilityWithDuration(
             com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint r) {
         try {
-            var b = videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint());
+            var b = videoModels.effectiveDurationBounds(r.endpoint().getId(), r.endpoint(), "studio");
             // 已保存视频规格按端点的画布清单返回；旧聚算协议仍只有 768p + 横/竖两档。
             return com.aistareco.aep.dto.EndpointCapabilityDto.from(
                     r.candidate(), b.minSec(), b.maxSec(), videoModels.videoGeometry(r.endpoint()));

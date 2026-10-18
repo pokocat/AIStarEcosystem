@@ -23,6 +23,8 @@ const result = [];
         let data = [];
         if (path === '/api/admin/auth/me') data = { id: 'admin-fixture', username: 'admin-fixture', displayName: '测试管理员', role: 'super_admin', status: 'active', accountSource: 'admin' };
         else if (path === '/api/admin/users') data = [{ id: 'target-fixture', username: 'target-fixture', displayName: '附身测试用户', status: 'active', kind: 'personal', createdAt: '2026-09-17T00:00:00Z' }];
+        // 超管在账号页还会看到测试账号面板；它读的是 {accounts,total,page}，回 [] 会让整页渲染崩掉。
+        else if (path === '/api/admin/test-accounts') data = { accounts: [], total: 0, page: 0 };
         else if (path.endsWith('/impersonate')) {
           assert.equal(path, '/api/admin/aep-users/target-fixture/impersonate');
           assert.equal(route.request().headers().authorization, 'Bearer synthetic-admin-token');
@@ -36,7 +38,9 @@ const result = [];
       });
       await page.goto(base + '/admin/platform/accounts');
       await page.getByRole('button', { name: '附身登录', exact: true }).click();
-      await page.getByRole('combobox', { name: '选择产品' }).selectOption('drama');
+      // 「选择产品」已统一为 SelectField（Radix 下拉，不是原生 <select>）：按用户的方式点开再选。
+      await page.getByRole('combobox', { name: '选择产品' }).click();
+      await page.getByRole('option', { name: '短剧工坊', exact: true }).click();
       fs.mkdirSync('test-results', { recursive: true });
       await page.screenshot({ path: 'test-results/admin-impersonation.png', fullPage: true });
       const popupPromise = page.waitForEvent('popup');

@@ -106,7 +106,7 @@ public class EnterpriseRechargeService {
         reason=text(reason,512,"驳回原因");
         if(order.getStatus()==RechargeOrder.Status.REJECTED)return Order.from(order);
         if(order.getStatus()!=RechargeOrder.Status.PENDING)throw conflict("仅待确认申请可驳回");
-        order.setStatus(RechargeOrder.Status.REJECTED);order.setReviewerId(actor);order.setReviewNote(reason);order.setReviewedAt(Instant.now());order.setUpdatedAt(Instant.now());
+        Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);order.setStatus(RechargeOrder.Status.REJECTED);order.setReviewerId(actor);order.setReviewNote(reason);order.setReviewedAt(now);order.setUpdatedAt(now);
         orders.saveAndFlush(order);audit(actor,order.getEnterpriseId(),"recharge.reject",orderId,reason);return Order.from(order);
     }
     @Transactional
