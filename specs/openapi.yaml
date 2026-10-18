@@ -512,6 +512,7 @@ components:
         skillKey: { type: string, nullable: true }
         billing: { type: object, nullable: true }
         maxCost: { type: integer, nullable: true, description: 本轮父对话 run 自身模型调用的费用上限；不是制作预算。 }
+        model: { type: string, nullable: true, description: 可选文本端点（账号允许选择时）；不代表付款授权。 }
     StudioPostMessageResult:
       type: object
       required: [messageId, queueState]

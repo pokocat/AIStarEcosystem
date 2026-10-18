@@ -1,278 +1,386 @@
 "use client";
-import { StudioErrorNotice, studioNodeError, studioRunError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
-import { StudioFloatingPanel } from "./studio-floating-panel";
-import { useEffect, useRef, useState, type ComponentRef, type Dispatch, type SetStateAction } from "react";
-import { gsap } from 'gsap';
-import { useGSAP } from '@gsap/react';
-import { App, Button, Input, Select } from "antd";
+// 「全能创作」: one continuous conversation per canvas (docs/ip-studio-conversational-video-recreation-plan.md §对话形态).
+// No modes, no history picker, no 「新对话」. The server streams real reply text, work records,
+// plans and confirmation cards into one timeline; the composer stays editable throughout and
+// new messages are queued as steering. Canvas commands from the server are projected into
+// the document idempotently and saved through the ordinary save chain. Conversations from the
+// old four-mode assistant stay readable (with their adoption bindings) under 「之前的对话」.
+import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError } from "@ai-star-eco/api-client";
+import { Button, Select } from "antd";
+import { ArrowUp, FileText, Image, SlidersHorizontal, Video, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
-import type { StudioAssistantMode, StudioCapabilities, StudioPlan, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import type { IpSavedAsset } from "@ai-star-eco/types";
+import type { StudioAssistantMode, StudioCapabilities, StudioPlan, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
-import { applyStudioRun, makeStudioNode } from "@/canvas-bridge/studio-nodes";
+import { USE_MOCK } from "@/ip/api/_client";
+import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
-import { importStudioStory, importStudioMedia, submitStudioRun } from "@/canvas-bridge/studio-api";
+import { importStudioMedia, importStudioStory, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
-import { ASSISTANT_CONTEXT_LIMIT, assistantContextIds, assistantContextNodes, assistantMentionQuery, insertAssistantMention } from "@/canvas-bridge/studio-assistant-context";
-import type { IpSavedAsset } from '@ai-star-eco/types';
-import { attachmentNode, savedAssetPayload, readAssistantAttachment } from '@/canvas-bridge/studio-attachments';
-import { LibraryReferencePicker } from './library-reference-picker';
-import { StudioAttachmentPicker } from './studio-attachment-picker';
-import { StudioConversationShare } from './studio-conversation-share';
-import { AtSign, Scan, X, SlidersHorizontal, Plus, ArrowUp, FileText, Image, Video, Workflow } from 'lucide-react';
-import { StudioAssistantPlan } from './studio-assistant-plan';
-import { assistantStepReferences, assistantUnresolvedReferences, assistantEditableFields, assistantFieldValue, assistantReplacementNode, type AssistantReplacement } from '@/canvas-bridge/studio-assistant-plan';
-import { placeStudioNode } from '@/canvas-bridge/flow-document';
-import { markStudioDescendants } from '@/canvas-bridge/studio-script';
+import { assistantContextNodes } from "@/canvas-bridge/studio-assistant-context";
+import { attachmentNode, readAssistantAttachment, savedAssetPayload } from "@/canvas-bridge/studio-attachments";
+import { assistantEditableFields, assistantFieldValue, assistantReplacementNode, assistantStepReferences, assistantUnresolvedReferences, type AssistantReplacement } from "@/canvas-bridge/studio-assistant-plan";
+import { placeStudioNode } from "@/canvas-bridge/flow-document";
+import { markStudioDescendants } from "@/canvas-bridge/studio-script";
+import { dialogueSections, executionActive, executionBudget, lastAssistantMessage, planForApproval, type DialogueAdoptionBlock, type DialogueApprovalBlock } from "@/canvas-bridge/studio-dialogue-store";
+import { STUDIO_CHECK_COMMAND, checkSubject, checkedStep, projectCanvasOps, projectStudioExecution, proposalFieldValue, type StudioCheckCommand } from "@/canvas-bridge/studio-plan-execution";
+import { loadStudioSkills, studioSkillNotes } from "@/canvas-bridge/studio-skills";
+import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from "./studio-errors";
+import { StudioFloatingPanel } from "./studio-floating-panel";
+import { useStudioDialogueSession } from "./studio-dialogue-session";
+import { StudioDialogueComposer, type DialogueComposerHandle } from "./studio-dialogue-composer";
+import { StudioDialogueTimeline } from "./studio-dialogue-timeline";
+import { StudioDialogueExecution } from "./studio-dialogue-execution";
+import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy";
+import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 
-type Props={projectId:string;conversations:CanvasNodeData[];setConversations:Dispatch<SetStateAction<CanvasNodeData[]>>;nodes:CanvasNodeData[];setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
-  capabilities?:StudioCapabilities;open:boolean;initialNodeId?:string;initialPrompt?:string;initialMode?:StudioAssistantMode;onClose:()=>void;selectedIds:string[];onUseStep:(step:StudioPlan["steps"][number])=>string|void};
-const modeNames={general:"全能创作",original:"原创剧本",adapt:"故事改编",director:"导演执导"};
-type AssistantDraft={prompt:string;contextIds:string[];model?:string;mode:StudioAssistantMode;readVisuals:boolean};
-// These business errors occur before a run is accepted. Unknown transport/server
-// errors keep the original request key; a timeout must never create another paid run.
-const preflightErrors=new Set(['AI_TOKEN_PRICE_NOT_CONFIGURED','AI_TOKEN_PRICE_INVALID','STUDIO_INPUT_INVALID','STUDIO_MODE_INVALID','STUDIO_CONTEXT_NOT_FOUND','STUDIO_CONTEXT_LIMIT','STUDIO_HISTORY_LIMIT','STUDIO_HISTORY_INVALID','STUDIO_PRICE_CHANGED','ENDPOINT_NOT_ALLOWED','PROMPT_NOT_CONFIGURED','STUDIO_VISION_UNAVAILABLE','STUDIO_VISUAL_MISSING','STUDIO_VISUAL_LIMIT','IP_ASSET_KEY_INVALID']);
-export function StudioAssistant({projectId,conversations,setConversations,nodes,setNodes,setConnections,capabilities,open,initialNodeId,initialPrompt,initialMode,onClose,selectedIds,onUseStep}:Props) {
-  const {message}=useStudioApp();const [mode,setMode]=useState<StudioAssistantMode>("general"),[prompt,setPrompt]=useState(""),[conversationId,setConversationId]=useState<string>(),[contextIds,setContextIds]=useState<string[]>([]),[model,setModel]=useState<string>(),[busy,setBusy]=useState(false);
-  const [toolsOpen,setToolsOpen]=useState(false);
-  const [libraryQuery,setLibraryQuery]=useState<string>();
-  const libraryMention=useRef<ReturnType<typeof assistantMentionQuery>>(undefined);
-  const [caret,setCaret]=useState(0),[mentionOpen,setMentionOpen]=useState(false),[mentionIndex,setMentionIndex]=useState(0),[reading,setReading]=useState(false),[contextError,setContextError]=useStudioErrorState();
-  const [readVisuals,setReadVisuals]=useState(true),[attachmentsUnsaved,setAttachmentsUnsaved]=useState(false);
-  // UI drafts belong to their conversation, independent of accepted run requests.
-  const drafts=useRef(new Map<string,AssistantDraft>());
-  const rememberDraft=(project=projectId)=>drafts.current.set(`${project}:${conversationId||'new'}`,{prompt,contextIds:[...contextIds],model,mode,readVisuals});
-  const restoreDraft=(draft:AssistantDraft)=>{setPrompt(draft.prompt);setContextIds(draft.contextIds);setModel(draft.model);setMode(draft.mode);setReadVisuals(draft.readVisuals);};
-  const composer=useRef<ComponentRef<typeof Input.TextArea>>(null);
-  const [sendShortcut,setSendShortcut]=useState('Ctrl Enter');
-  useEffect(()=>{if(/Mac|iPhone|iPad|iPod/.test(navigator.platform))setSendShortcut('⌘ Enter');},[]);
-  const composerFrame=useRef<HTMLDivElement>(null);
-  const {contextSafe}=useGSAP({scope:composerFrame});
-  const live=useRef({nodes,conversations,projectId});live.current={nodes,conversations,projectId};const mounted=useRef(true);
-  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
-  useEffect(()=>{setConversationId(undefined);setContextIds([]);setPrompt("");setBusy(false);setReading(false);setAttachmentsUnsaved(false);},[projectId]);
-  const resumed=useRef<{projectId:string;initialNodeId?:string}|undefined>(undefined);
-  useEffect(()=>{if(open){
-    if(resumed.current?.projectId===projectId&&resumed.current?.initialNodeId===initialNodeId)return;
-    if(resumed.current)rememberDraft(resumed.current.projectId);
-    resumed.current={projectId,initialNodeId};
-    const node=[...live.current.nodes,...live.current.conversations].find(n=>n.id===initialNodeId),c=node?.metadata?.studio?.conversation;
-    setConversationId(c?node!.id:undefined);setContextError('');setMentionOpen(false);
-    const draft=drafts.current.get(`${projectId}:${c?node!.id:'new'}`);
-    if(draft){restoreDraft(draft);return;}
-    if(c)setMode(c.mode);
-    else if(initialMode)setMode(initialMode);
-    // New conversations only inherit referenceable selection. Saved references
-    // keep missing IDs so an actually deleted source still requires recovery.
-    const selection=assistantContextNodes(live.current.nodes).filter(n=>selectedIds.includes(n.id)).map(n=>n.id);
-    // A copied conversation has no source bindings; its entry marker only opens the assistant.
-    setContextIds(assistantContextIds(node?.metadata?.studio?.request?.contextNodeIds||(c?[]:node?.metadata?.studioStart==='assistant'?[node.id]:selection)));
-    if(c)setModel(node?.metadata?.studio?.request?.model);
-    setReadVisuals(c?node?.metadata?.studio?.request?.readVisuals===true:true);
-    if(node?.metadata?.status==='error'&&c)setPrompt(node.metadata.studio?.request?.prompt||'');
-    else setPrompt(!c?.turns.length?initialPrompt||node?.metadata?.prompt||'':'');
-  }},[open,initialNodeId,projectId]);
-  const current=conversations.find(n=>n.id===conversationId),conversation=current?.metadata?.studio?.conversation;
-  const textModels=capabilities?.textModels||[];
-  const selectedModel=textModels.find(m=>m.endpointId===((capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId));
-  const canReadVisuals=!capabilities?.mock&&selectedModel?.supportsVision===true;
-  const readingVisuals=readVisuals&&canReadVisuals;
-  const contextNodes=assistantContextNodes(nodes),missingIds=contextIds.filter(id=>!contextNodes.some(n=>n.id===id));
-  const locked=busy||reading||current?.metadata?.status==='loading';
-  const useSuggestion=contextSafe((question:string)=>{
-    if(locked)return;
-    const value=question.trim();
-    const next=prompt.includes(value)?prompt:prompt.trim()?`${prompt}${prompt.endsWith('\n')?'':'\n'}${value}`:value;
-    setPrompt(next);setCaret(next.length);setMentionOpen(false);
-    composer.current?.focus({cursor:'end'});
-    if(composerFrame.current&&typeof window.matchMedia==='function'&&!window.matchMedia('(prefers-reduced-motion: reduce)').matches){
-      gsap.fromTo(composerFrame.current,{backgroundColor:'#e8eaec'},{backgroundColor:'#f6f6f5',duration:.35,ease:'expo.out',clearProps:'backgroundColor',overwrite:'auto'});
+type Props = {
+  projectId: string; conversations: CanvasNodeData[]; setConversations: Dispatch<SetStateAction<CanvasNodeData[]>>;
+  nodes: CanvasNodeData[]; setNodes: Dispatch<SetStateAction<CanvasNodeData[]>>; setConnections: Dispatch<SetStateAction<CanvasConnection[]>>;
+  /** Current edges; lets server-produced connections be de-duplicated against what is on the canvas. */
+  connections?: CanvasConnection[];
+  /** The saved document fingerprint, when the host knows it; node.upsert with an expected version is skipped unless it matches. */
+  docVersion?: string;
+  capabilities?: StudioCapabilities; open: boolean; initialNodeId?: string; initialPrompt?: string;
+  /** Kept for callers; the dialogue routes intent itself and has no modes. */
+  initialMode?: StudioAssistantMode;
+  onClose: () => void; selectedIds: string[]; onUseStep: (step: StudioPlan["steps"][number]) => string | void;
+};
+type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[] };
+/** Contract limit for pinnedNodeIds / attachmentNodeIds (specs/openapi.yaml StudioPostMessageRequest). */
+const MAX_REFERENCES = 64;
+const ATTACHMENT_NOTE = "可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。";
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, onClose, selectedIds, onUseStep }: Props) {
+  const { message } = useStudioApp();
+  const session = useStudioDialogueSession({ projectId, open });
+  const { store } = session;
+  const [text, setText] = useState(""), [pinnedIds, setPinnedIds] = useState<string[]>([]), [attachmentIds, setAttachmentIds] = useState<string[]>([]);
+  const [model, setModel] = useState<string>();
+  const [settingsOpen, setSettingsOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false);
+  const [reading, setReading] = useState(false), [attachmentsUnsaved, setAttachmentsUnsaved] = useState(false);
+  const [sending, setSending] = useState(false), [stopping, setStopping] = useState(false), [recovering, setRecovering] = useState<string>();
+  const [composerError, setComposerError] = useStudioErrorState();
+  const [canvasNotice, setCanvasNotice] = useState("");
+  const [skills, setSkills] = useState<StudioSkillSummary[]>([]);
+  const composer = useRef<DialogueComposerHandle>(null);
+  const live = useRef({ nodes, conversations, projectId, connections: connections || [] });
+  live.current = { nodes, conversations, projectId, connections: connections || [] };
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const same = (project: string) => mounted.current && live.current.projectId === project;
+
+  // ── Drafts: each canvas keeps its own unsent text and references ──────────
+  const drafts = useRef(new Map<string, ComposerDraft>());
+  const draft = useRef<ComposerDraft>({ text, pinnedIds, attachmentIds });
+  draft.current = { text, pinnedIds, attachmentIds };
+  const opened = useRef<{ projectId: string; initialNodeId?: string } | undefined>(undefined);
+  useEffect(() => { setText(""); setPinnedIds([]); setAttachmentIds([]); setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); }, [projectId]);
+  useEffect(() => {
+    if (!open) return;
+    if (opened.current?.projectId === projectId && opened.current.initialNodeId === initialNodeId) return;
+    if (opened.current) drafts.current.set(opened.current.projectId, draft.current);
+    opened.current = { projectId, initialNodeId };
+    const saved = drafts.current.get(projectId);
+    const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
+    if (entry && live.current.conversations.some(c => c.id === entry.id)) {
+      setLegacyOpen(true);
+      requestAnimationFrame(() => [...document.querySelectorAll<HTMLElement>("[data-node-id]")].find(el => el.dataset.nodeId === entry.id)?.scrollIntoView?.({ block: "start" }));
     }
-  });
-  const query=mentionOpen?assistantMentionQuery(prompt,caret):undefined;
-  const suggestions=query?contextNodes.filter(n=>n.title.toLocaleLowerCase().includes(query.query.toLocaleLowerCase())).slice(0,12):[];
-  const chooseMention=(node:CanvasNodeData)=>{
-    if(contextIds.length>=ASSISTANT_CONTEXT_LIMIT&&!contextIds.includes(node.id)){setContextError('最多引用 16 个画布对象，请先移除一项');return;}
-    const value=query?insertAssistantMention(prompt,query,node.title):prompt;
-    setPrompt(value);setContextIds(ids=>assistantContextIds([...ids,node.id]));setMentionOpen(false);setContextError('');composer.current?.focus();
+    if (saved) { setText(saved.text); setPinnedIds(saved.pinnedIds); setAttachmentIds(saved.attachmentIds); return; }
+    const referenceable = assistantContextNodes(live.current.nodes);
+    // A selection or the homepage brief becomes visible, removable pins; nothing is pinned silently.
+    const pins = entry?.metadata?.studioStart === "assistant" && referenceable.some(n => n.id === entry.id) ? [entry.id] : referenceable.filter(n => selectedIds.includes(n.id)).map(n => n.id);
+    setPinnedIds(pins.slice(0, MAX_REFERENCES));
+    setText(initialPrompt || (entry?.metadata?.studioStart === "assistant" ? entry.metadata?.prompt || "" : ""));
+  }, [open, projectId, initialNodeId]);
+  useEffect(() => { if (open && !skills.length) loadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined); }, [open]);
+
+  // ── Model ceiling (the reply's own cost; production budgets are approved separately) ──
+  const textModels = capabilities?.textModels || [];
+  const selectable = capabilities?.textModelMode === "selectable" && textModels.length > 1;
+  const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
+  const demo = USE_MOCK || !!capabilities?.mock;
+  const maxCost = demo ? 0 : selectedModel?.tokenPricing ? Math.ceil(selectedModel.tokenPricing.maxCost) : undefined;
+  const costHint = demo ? "演示模式，回复和制作都不扣积分" : maxCost !== undefined ? `每轮回复最多 ${maxCost} 积分，按实际用量结算；制作另行报价，确认后才开始` : "回复按实际用量结算；制作另行报价，确认后才开始";
+
+  // ── References ─────────────────────────────────────────────────────────
+  const contextNodes = assistantContextNodes(nodes);
+  const missing = [...pinnedIds, ...attachmentIds].filter(id => !contextNodes.some(n => n.id === id));
+  const pin = (node: CanvasNodeData) => {
+    if (pinnedIds.includes(node.id)) return true;
+    if (pinnedIds.length >= MAX_REFERENCES) { setComposerError(`一次最多指定 ${MAX_REFERENCES} 个画布对象`); return false; }
+    setPinnedIds(ids => [...ids, node.id]); setComposerError(""); return true;
   };
-  const selectConversation=(id?:string)=>{
-    rememberDraft();
-    const node=conversations.find(n=>n.id===id),saved=node?.metadata?.studio;
-    const draft=drafts.current.get(`${projectId}:${id||'new'}`);
-    if(draft){setConversationId(id);restoreDraft(draft);setMentionOpen(false);setContextError('');return;}
-    setConversationId(id);setPrompt(node?.metadata?.status==='error'?saved?.request?.prompt||'':'');setMentionOpen(false);setContextError('');
-    setContextIds(assistantContextIds(saved?.request?.contextNodeIds||[]));setModel(saved?.request?.model);
-    setReadVisuals(saved?saved.request?.readVisuals===true:true);
-    if(saved?.conversation)setMode(saved.conversation.mode);
-  };
-  const importLock=useRef(false);
-  const saveAttachments=async(project:string)=>{
+
+  // ── Attachments: import into the canvas, save, then they can be sent ──────
+  const importLock = useRef(false);
+  const saveAttachments = async (project: string) => {
     setAttachmentsUnsaved(true);
     await saveStudioDocument(project);
-    if(mounted.current&&live.current.projectId===project)setAttachmentsUnsaved(false);
+    if (same(project)) setAttachmentsUnsaved(false);
   };
-  const addAttachments=async(source:File[]|IpSavedAsset[])=>{
-    if(importLock.current||locked)return;
-    const project=projectId;importLock.current=true;setReading(true);setContextError('');
-    let staged=[...live.current.nodes],ids=[...contextIds],added=0;
-    const failures:string[]=[];
-    try{
-      for(const item of source){
-        if(!mounted.current||live.current.projectId!==project)return;
-        try{
-          let node:CanvasNodeData;
-          if(item instanceof File){
-            if(ids.length>=ASSISTANT_CONTEXT_LIMIT)throw new Error('最多引用 16 个对象，请先移除一项');
-            node=await readAssistantAttachment(item,staged,file=>importStudioStory(project,file),(file,type)=>importStudioMedia(project,file,type));
-          }else{
-            node=attachmentNode(savedAssetPayload(item),staged);
-            if(!ids.includes(node.id)&&ids.length>=ASSISTANT_CONTEXT_LIMIT)throw new Error('最多引用 16 个对象，请先移除一项');
-          }
-          if(!mounted.current||live.current.projectId!==project)return;
-          if(!staged.some(n=>n.id===node.id)){staged=[...staged,node];setNodes(list=>[...list,node]);}
-          if(!ids.includes(node.id)){ids=[...ids,node.id];setContextIds(ids);}
-          added++;
-        }catch(e){failures.push(`${item instanceof File?item.name:item.title}：${e instanceof Error?e.message:'导入失败，请重试'}`);}
-      }
-      if(added){await saveAttachments(project);if(mounted.current&&live.current.projectId===project)message.success(`已添加并引用 ${added} 项，可编辑后发送`);}
-      if(failures.length)throw new Error(failures.join('；'));
-    }catch(e){if(mounted.current&&live.current.projectId===project){setContextError(e);throw e;}}
-    finally{importLock.current=false;if(mounted.current&&live.current.projectId===project)setReading(false);}
-  };
-  const retryAttachmentSave=async()=>{const project=projectId;setReading(true);try{await saveAttachments(project);setContextError('');message.success('附件已保存，可继续创作');}catch(e){setContextError(e);}finally{if(mounted.current&&live.current.projectId===project)setReading(false);}};
-  const patch=(id:string,update:(node:CanvasNodeData)=>CanvasNodeData)=>setConversations(list=>list.map(n=>n.id===id?update(n):n));
-  const send=async(recover=false)=>{
-    if(busy||reading||attachmentsUnsaved||!capabilities||!recover&&(!prompt.trim()||missingIds.length||current?.metadata?.status==='loading'))return;
-    setBusy(true);const project=projectId;
-    let target=current,request:StudioRunRequest|undefined,posted=false,accepted=false;
+  const addAttachments = async (source: File[] | IpSavedAsset[]) => {
+    if (importLock.current) return;
+    const project = projectId;
+    importLock.current = true; setReading(true); setComposerError("");
+    let staged = [...live.current.nodes], ids = [...draft.current.attachmentIds], added = 0;
+    const failures: string[] = [];
     try {
-      if(recover)request=target?.metadata?.studio?.request;
-      else {
-        target=target||makeStudioNode("assistant");
-        const turns=[...(conversation?.turns||[]),{role:"user" as const,content:prompt.trim()}].slice(-15);
-        request={clientRequestId:nanoid(),nodeId:target.id,operation:"assistant",prompt:prompt.trim(),mode,contextNodeIds:contextIds,
-          history:(conversation?.turns||[]).slice(-14).map(t=>({role:t.role,content:t.content})),model:(capabilities?.textModelMode!=="fixed"&&textModels.some(m=>m.endpointId===model)?model:undefined)||textModels.find(m=>m.isDefault)?.endpointId||textModels[0]?.endpointId,maxCost:capabilities.mock?0:selectedModel?.tokenPricing?.maxCost,readVisuals:readingVisuals};
-        const next={...target,title:modeNames[mode],metadata:{...target.metadata,status:"loading" as const,errorDetails:undefined,studio:{kind:"assistant" as const,request,assistantPreviousConversation:conversation||{mode,turns:[]},assistantEditSnapshots:Object.fromEntries(live.current.nodes.filter(n=>contextIds.includes(n.id)).map(n=>[n.id,Object.fromEntries(assistantEditableFields(n).map(field=>[field,assistantFieldValue(n,field)]))])),conversation:{...conversation,mode,turns}}}};
-        if(current)patch(next.id,()=>next);else setConversations(list=>[...list,next]);
-        drafts.current.delete(`${projectId}:${conversationId||'new'}`);
-        setConversationId(next.id);target=next;setPrompt("");
+      for (const item of source) {
+        if (!same(project)) return;
+        try {
+          if (ids.length >= MAX_REFERENCES) throw new Error(`一次最多添加 ${MAX_REFERENCES} 个附件`);
+          const node = item instanceof File
+            ? await readAssistantAttachment(item, staged, file => importStudioStory(project, file), (file, type) => importStudioMedia(project, file, type))
+            : attachmentNode(savedAssetPayload(item), staged);
+          if (!same(project)) return;
+          if (!staged.some(n => n.id === node.id)) { staged = [...staged, node]; setNodes(list => [...list, node]); }
+          if (!ids.includes(node.id)) { ids = [...ids, node.id]; setAttachmentIds(ids); }
+          added++;
+        } catch (e) { failures.push(`${item instanceof File ? item.name : item.title}：${e instanceof Error ? e.message : "导入失败，请重试"}`); }
       }
-      if(!target||!request)throw new Error("没有可恢复的对话");
+      if (added) { await saveAttachments(project); if (same(project)) message.success(`已添加 ${added} 个附件，可以继续写再发送`); }
+      if (failures.length) throw new Error(failures.join("；"));
+    } catch (e) { if (same(project)) { setComposerError(e); throw e; } }
+    finally { importLock.current = false; if (same(project)) setReading(false); }
+  };
+  const retryAttachmentSave = async () => {
+    const project = projectId;
+    setReading(true);
+    try { await saveAttachments(project); setComposerError(""); message.success("附件已保存，可以发送了"); }
+    catch (e) { setComposerError(e); }
+    finally { if (same(project)) setReading(false); }
+  };
+
+  // ── Send / stop ────────────────────────────────────────────────────────
+  const sendDisabledReason = !text.trim() ? "先写下你想做的" : session.status !== "ready" ? "对话还在加载，请稍等" : reading ? "附件还在导入" :
+    attachmentsUnsaved ? "附件还没保存好，保存后才能发送" : missing.length ? "有引用已从画布删除，请先移除" : "";
+  const send = async () => {
+    if (sendDisabledReason || sending) return;
+    const project = projectId;
+    const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}) };
+    setSending(true); setComposerError("");
+    try {
+      // Pinned and attached nodes must exist in the saved document before the server reads them.
       await saveStudioDocument(project);
-      if(!mounted.current||live.current.projectId!==project)return;
-      setContextError('');
-      posted=true;
-      let run=await submitStudioRun(project,request);
-      accepted=true;
-      while(mounted.current&&live.current.projectId===project) {
-        patch(target.id,n=>{const next=applyStudioRun(n,run);return run.status==='running'?next:{...next,metadata:{...next.metadata,studio:{...next.metadata!.studio!,assistantPreviousConversation:undefined}}};});
-        if(run.status!=="running") {await saveStudioDocument(project);if(run.status==="failed")throw Object.assign(new Error(run.errorMessage||"对话未完成"),studioRunError(run));return;}
-        await new Promise(resolve=>setTimeout(resolve,1200));
-        try{run=await readRun(run.id);}catch{await new Promise(resolve=>setTimeout(resolve,2000));}
+    } catch (e) { if (same(project)) { setComposerError(e); setSending(false); } return; }
+    if (!same(project)) return;
+    setText(""); setPinnedIds([]); setAttachmentIds([]); drafts.current.delete(project);
+    try {
+      const outcome = await session.send(input);
+      if (!same(project)) return;
+      if (outcome.state === "rejected") {
+        // Definitely not accepted: give the draft back for editing.
+        setText(current => current.trim() ? current : input.text);
+        setPinnedIds(current => current.length ? current : input.pinnedNodeIds);
+        setAttachmentIds(current => current.length ? current : input.attachmentNodeIds);
+        setComposerError(outcome.error);
+      } else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
+    } finally { if (same(project)) setSending(false); }
+  };
+  const stop = async () => {
+    if (stopping) return;
+    setStopping(true);
+    try { await session.stop(); } catch (e) { message.error(e); } finally { if (mounted.current) setStopping(false); }
+  };
+  const compose = useCallback((value: string) => composer.current?.compose(value), []);
+
+  // ── Canvas projection of server commands ─────────────────────────────────
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scheduleSave = useCallback(() => {
+    const project = projectId;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { if (same(project)) void saveStudioDocument(project).catch(e => message.error(e)); }, 300);
+  }, [projectId, message]);
+  useEffect(() => () => clearTimeout(saveTimer.current), []);
+  useEffect(() => {
+    const ops = store.canvasOps;
+    if (!ops.length) return;
+    const doc = { nodes: live.current.nodes, connections: live.current.connections };
+    const result = projectCanvasOps(doc, ops, { docVersion });
+    if (result.changed) {
+      setNodes(list => projectCanvasOps({ nodes: list, connections: live.current.connections }, ops, { docVersion }).doc.nodes);
+      setConnections(list => projectCanvasOps({ nodes: result.doc.nodes, connections: list }, ops, { docVersion }).doc.connections);
+      scheduleSave();
+    }
+    setCanvasNotice(result.conflicts ? "画布已变化，稍后重试" : "");
+    const fallback = lastAssistantMessage(store)?.id;
+    for (const p of result.proposals) {
+      const messageId = store.turnMessages[p.turnId] || fallback;
+      if (messageId) session.dispatch({ type: "adoption.add", messageId, block: { type: "adoption", nodeId: p.nodeId, field: p.field, content: p.content, snapshot: p.snapshot, status: "proposed" } });
+    }
+    session.dispatch({ type: "canvas.ack", seq: ops[ops.length - 1].seq });
+  }, [store.canvasOps]);
+  useEffect(() => {
+    const execution = store.execution;
+    if (!execution || projectStudioExecution(live.current.nodes, execution) === live.current.nodes) return;
+    setNodes(list => projectStudioExecution(list, execution));
+    scheduleSave();
+  }, [store.execution]);
+
+  // ── 「就用这版」/「重做这一段」 from check nodes ─────────────────────────
+  useEffect(() => {
+    const listener = (event: Event) => {
+      const { action, nodeId } = (event as CustomEvent<StudioCheckCommand>).detail;
+      const node = live.current.nodes.find(n => n.id === nodeId), check = node?.metadata?.studio?.check;
+      if (!node || !check) return;
+      const subject = checkSubject(live.current.nodes, node);
+      if (action === "redo") {
+        if (!subject) { message.error("找不到这一段的视频，请在画布上选中它再重新生成"); return; }
+        dispatchStudioCommand(subject.type === "image" ? "image" : "video", subject.id);
+        return;
       }
-    } catch(e){if(mounted.current&&live.current.projectId===project){
-      const error=e instanceof Error?e.message:'对话未完成，请确认原任务';
-      const rejected=!accepted&&(!recover&&!posted||e instanceof ApiError&&preflightErrors.has(e.code));
-      if(rejected&&target&&request){
-        const draft=request;
-        // Restoring from request.history would drop the oldest two visible turns.
-        // Save this full snapshot in the doc so recovery after a reload is identical.
-        const previous=target.metadata?.studio?.assistantPreviousConversation||(!recover?conversation:undefined)||{mode:target.metadata!.studio!.conversation!.mode,turns:draft.history||[]};
-        patch(target.id,n=>({...n,metadata:{...n.metadata,status:'error',...studioErrorMetadata(e),errorDetails:error,studio:{...n.metadata!.studio!,conversation:previous,assistantPreviousConversation:undefined}}}));
-        setPrompt(draft.prompt||'');setContextError(e);
-        try{await saveStudioDocument(project);}catch{if(mounted.current&&live.current.projectId===project)setContextError(`${error}。恢复的草稿尚未保存，请重试保存后再发送`);}
-      }else if(!accepted)setContextError('提交结果尚未确认，请用“确认原对话任务”获取结果，避免重复提交');
-      message.error(e);
-    }}
-    finally {if(mounted.current&&live.current.projectId===project)setBusy(false);}
-  };
-  const editStep=(step:StudioPlan["steps"][number])=>current&&patch(current.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,conversation:{...n.metadata!.studio!.conversation!,plan:{...n.metadata!.studio!.conversation!.plan!,steps:n.metadata!.studio!.conversation!.plan!.steps.map(s=>s.id===step.id?step:s)}}}}}));
-  const applyStep=async(step:StudioPlan["steps"][number],replacement?:AssistantReplacement)=>{
-    if(!current||!conversation?.plan)return;
-    const source=live.current.conversations.find(n=>n.id===current.id);
-    const latest=source?.metadata?.studio?.conversation?.plan;
-    const saved=latest?.steps.find(s=>s.id===step.id);
-    if(!saved||!latest)throw new Error('方案已更新，请重新打开结果');
-    const refs=assistantStepReferences(saved,latest,live.current.nodes);
-    if(refs.waiting.length)throw new Error('请先完成前置内容，再继续这一步');
-    const resolved={...saved,referenceNodeIds:refs.ids,unresolvedReferences:assistantUnresolvedReferences(saved,latest)};
-    const existing=live.current.nodes.find(n=>n.id===saved.resultNodeId);
-    // Retry saving the same adopted node; never duplicate a result after a transport failure.
-    if(existing){editStep({...saved,unresolvedReferences:resolved.unresolvedReferences});await saveStudioDocument(projectId);if(step.operation!=='text'&&!saved.editTarget)onUseStep(resolved);return;}
-    let resultId:string|void;
-    const value=step.operation==='text'?saved.content:saved.prompt;
-    if(replacement) {
-      const target=live.current.nodes.find(n=>n.id===replacement.id),field=replacement.field||'content';
-      if(!target||!contextIds.includes(target.id)||!assistantEditableFields(target).includes(field))throw new Error('目标节点已不可编辑，请重新选择');
-      if(assistantFieldValue(target,field)!==replacement.content)throw new Error('节点内容已有修改，请重新发送并核对修改稿');
-      if(!value?.trim())throw new Error('请先填写修改后的内容');
-      const node=assistantReplacementNode(target,field,value);
-      resultId=target.id;
-      setNodes(list=>markStudioDescendants(list,target.id).map(n=>n.id===target.id?node:n));
-      resolved.editTarget={nodeId:target.id,field};
-    } else if(step.operation==='text') {
-      if(!saved.content?.trim())throw new Error('请先填写文字内容');
-      const node={...makeStudioNode('text',live.current.nodes.find(n=>refs.ids.includes(n.id))),title:saved.title,metadata:{content:saved.content,status:'success' as const,studio:{kind:'text' as const}}};
-      resultId=node.id;
-      setNodes(list=>[...list,placeStudioNode(node,list)]);
-      setConnections(list=>[...list,...refs.ids.filter(id=>id!==node.id).map(id=>({id:nanoid(),fromNodeId:id,toNodeId:node.id}))]);
-    } else resultId=onUseStep(resolved);
-    if(resultId)editStep({...saved,editTarget:replacement?resolved.editTarget:undefined,unresolvedReferences:resolved.unresolvedReferences,resultNodeId:resultId});
+      void (async () => {
+        const executionId = node.metadata?.studio?.execution?.executionId || subject?.metadata?.studio?.execution?.executionId;
+        if (!executionId) throw new Error("这一段不属于正在进行的制作，无法记下采用");
+        const execution = await session.ensureExecution(executionId);
+        const stepId = checkedStep(execution, check.targetRunId)?.id || subject?.metadata?.studio?.execution?.stepId;
+        if (!stepId) throw new Error("找不到这一段对应的制作步骤，请刷新后重试");
+        await session.acceptStep(executionId, stepId, check.targetRunId);
+        message.success("已记下就用这一版，检查结论保持不变");
+      })().catch(e => message.error(e));
+    };
+    window.addEventListener(STUDIO_CHECK_COMMAND, listener);
+    return () => window.removeEventListener(STUDIO_CHECK_COMMAND, listener);
+  }, [session.ensureExecution, session.acceptStep, message]);
+
+  // ── Message actions ──────────────────────────────────────────────────────
+  const adopt = async (block: DialogueAdoptionBlock) => {
+    const target = live.current.nodes.find(n => n.id === block.nodeId);
+    if (!target) throw new Error("原节点已从画布删除");
+    if (!assistantEditableFields(target).includes(block.field)) throw new Error("这个节点正在生成或不能编辑，请稍后再采用");
+    const current = proposalFieldValue(target, block.field);
+    if (current === block.content) return;
+    if (current !== block.snapshot) throw new Error("这段内容在回复之后被改过，没有覆盖。可以让我按最新内容重写");
+    const node = assistantReplacementNode(target, block.field, block.content);
+    setNodes(list => markStudioDescendants(list, target.id).map(n => n.id === target.id ? node : n));
     await saveStudioDocument(projectId);
-    if(replacement)message.success(replacement.field==='prompt'?'已更新节点提示词':'已更新节点内容');else if(step.operation==='text')message.success('文字已放入画布');
+    message.success(block.field === "prompt" ? "已更新节点提示词" : "已更新节点内容");
   };
-  const starterPrompts=contextIds.length>1?[
-    ['整理所选内容','整理这些节点的内容，生成一份可直接使用的文字摘要。',FileText],
-    ['统一视觉风格','基于所选素材，设计一张风格统一的新图片。',Image],
-    ['规划场景视频','基于所选素材，规划一条场景视频，保留人物和场景特征。',Video],
-    ['串成创作流程','根据这些节点，规划接下来需要的文字、图片和视频节点及引用关系。',Workflow],
-  ] as const:[
-    [contextIds.length?'修改节点内容':'写一段文字',contextIds.length?'修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。':'生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。',FileText],
-    [contextIds.length?'优化节点提示词':'创作一张图片',contextIds.length?'优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。':'设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。',Image],
-    ['制作一段视频',contextIds.length?'以所选素材为参考，设计一段五秒的场景视频。':'设计一段五秒的场景视频，给出画面和运镜方案。',Video],
-    ['搭建创作流程','帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。',Workflow],
+  const approve = async (block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string) => {
+    // The execution reads canvas references from the saved document.
+    await saveStudioDocument(projectId);
+    try { await session.approve(block, caps, messageId); }
+    catch (e) {
+      if (e instanceof ApiError && e.code === "STUDIO_PLAN_STALE") throw Object.assign(new Error("方案已经更新，请看最新的报价再确认"), { code: e.code, logId: e.logId });
+      throw e;
+    }
+  };
+  const handlers: DialogueMessageHandlers = {
+    onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt,
+    planReady: block => !!planForApproval(store, block), onBranch: session.branch,
+  };
+
+  // ── Old four-mode conversations (read-only history with adoption) ──────────
+  const legacyGroups: LegacyGroup[] = useMemo(() => {
+    const server = dialogueSections(store).legacy;
+    const ids = [...new Set([...conversations.map(c => c.id), ...server.map(m => m.legacyNodeId!)])];
+    return ids.map(id => ({ id, node: conversations.find(c => c.id === id), messages: server.filter(m => m.legacyNodeId === id) }));
+  }, [store.messages, conversations]);
+  const patchConversation = (id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setConversations(list => list.map(n => n.id === id ? update(n) : n));
+  const editLegacyStep = (id: string, step: StudioPlan["steps"][number]) => patchConversation(id, n => ({ ...n, metadata: { ...n.metadata, studio: { ...n.metadata!.studio!,
+    conversation: { ...n.metadata!.studio!.conversation!, plan: { ...n.metadata!.studio!.conversation!.plan!, steps: n.metadata!.studio!.conversation!.plan!.steps.map(s => s.id === step.id ? step : s) } } } } }));
+  const applyLegacyStep = async (id: string, step: StudioPlan["steps"][number], replacement?: AssistantReplacement) => {
+    const source = live.current.conversations.find(n => n.id === id);
+    const latest = source?.metadata?.studio?.conversation?.plan, contextIds = source?.metadata?.studio?.request?.contextNodeIds || [];
+    const saved = latest?.steps.find(s => s.id === step.id);
+    if (!saved || !latest) throw new Error("方案已更新，请重新打开结果");
+    const refs = assistantStepReferences(saved, latest, live.current.nodes);
+    if (refs.waiting.length) throw new Error("请先完成前置内容，再继续这一步");
+    const resolved = { ...saved, referenceNodeIds: refs.ids, unresolvedReferences: assistantUnresolvedReferences(saved, latest) };
+    const existing = live.current.nodes.find(n => n.id === saved.resultNodeId);
+    // Retry saving the same adopted node; never duplicate a result after a transport failure.
+    if (existing) { editLegacyStep(id, { ...saved, unresolvedReferences: resolved.unresolvedReferences }); await saveStudioDocument(projectId); if (step.operation !== "text" && !saved.editTarget) onUseStep(resolved); return; }
+    let resultId: string | void;
+    const value = step.operation === "text" ? saved.content : saved.prompt;
+    if (replacement) {
+      const target = live.current.nodes.find(n => n.id === replacement.id), field = replacement.field || "content";
+      if (!target || !contextIds.includes(target.id) || !assistantEditableFields(target).includes(field)) throw new Error("目标节点已不可编辑，请重新选择");
+      if (assistantFieldValue(target, field) !== replacement.content) throw new Error("节点内容已有修改，请重新发送并核对修改稿");
+      if (!value?.trim()) throw new Error("请先填写修改后的内容");
+      const node = assistantReplacementNode(target, field, value);
+      resultId = target.id;
+      setNodes(list => markStudioDescendants(list, target.id).map(n => n.id === target.id ? node : n));
+      resolved.editTarget = { nodeId: target.id, field };
+    } else if (step.operation === "text") {
+      if (!saved.content?.trim()) throw new Error("请先填写文字内容");
+      const node = { ...makeStudioNode("text", live.current.nodes.find(n => refs.ids.includes(n.id))), title: saved.title, metadata: { content: saved.content, status: "success" as const, studio: { kind: "text" as const } } };
+      resultId = node.id;
+      setNodes(list => [...list, placeStudioNode(node, list)]);
+      setConnections(list => [...list, ...refs.ids.filter(ref => ref !== node.id).map(ref => ({ id: nanoid(), fromNodeId: ref, toNodeId: node.id }))]);
+    } else resultId = onUseStep(resolved);
+    if (resultId) editLegacyStep(id, { ...saved, editTarget: replacement ? resolved.editTarget : undefined, unresolvedReferences: resolved.unresolvedReferences, resultNodeId: resultId });
+    await saveStudioDocument(projectId);
+    if (replacement) message.success(replacement.field === "prompt" ? "已更新节点提示词" : "已更新节点内容"); else if (step.operation === "text") message.success("文字已放入画布");
+  };
+  /** Re-reads the exact accepted request of an old conversation; never a new paid submission. */
+  const recoverLegacy = async (id: string) => {
+    const project = projectId, request = live.current.conversations.find(n => n.id === id)?.metadata?.studio?.request;
+    if (!request || recovering) return;
+    setRecovering(id);
+    try {
+      await saveStudioDocument(project);
+      let run = await submitStudioRun(project, request);
+      while (same(project)) {
+        patchConversation(id, n => { const next = applyStudioRun(n, run); return run.status === "running" ? next : { ...next, metadata: { ...next.metadata, studio: { ...next.metadata!.studio!, assistantPreviousConversation: undefined } } }; });
+        if (run.status !== "running") { await saveStudioDocument(project); if (run.status === "failed") throw Object.assign(new Error(run.errorMessage || "对话未完成"), studioRunError(run)); return; }
+        await sleep(1200);
+        try { run = await readRun(run.id); } catch { await sleep(2000); }
+      }
+    } catch (e) { if (same(project)) message.error(e); }
+    finally { if (same(project)) setRecovering(undefined); }
+  };
+
+  // ── Render ───────────────────────────────────────────────────────────────
+  const { current } = dialogueSections(store);
+  const empty = !current.length && !store.outbox.length;
+  const execution = store.execution && (executionActive(store.execution) || store.execution.threadId === store.thread?.id) ? store.execution : undefined;
+  const checks = Object.values(store.checks);
+  const streamNote = session.stream === "reconnecting" ? "连接中断，正在重连" : session.stream === "polling" ? "实时更新暂时不可用，每隔几秒刷新一次" : "";
+  const starters = pinnedIds.length > 1 ? [
+    ["整理所选内容", "整理这些节点的内容，生成一份可直接使用的文字摘要。", FileText],
+    ["统一视觉风格", "基于所选素材，设计一张风格统一的新图片。", Image],
+    ["规划场景视频", "基于所选素材，规划一条场景视频，保留人物和场景特征。", Video],
+    ["串成创作流程", "根据这些节点，规划接下来需要的文字、图片和视频节点及引用关系。", Workflow],
+  ] as const : [
+    [pinnedIds.length ? "修改节点内容" : "写一段文字", pinnedIds.length ? "修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。" : "生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。", FileText],
+    [pinnedIds.length ? "优化节点提示词" : "创作一张图片", pinnedIds.length ? "优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。" : "设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。", Image],
+    ["复刻一条短视频", "参考画布上的这条视频，换成我的商品和人物重新做一版，保留原片的节奏和反转。", Video],
+    ["搭建创作流程", "帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。", Workflow],
   ] as const;
-  return <StudioFloatingPanel title="Studio 创作助手" className="studio-assistant-panel" open={open} onClose={()=>{rememberDraft();onClose();}} width={448} utility dockable footer={
-      <div ref={composerFrame} className="studio-assistant-composer">
-        <div className="studio-assistant-references" aria-label="本次引用">{contextIds.map(id=>{const n=contextNodes.find(n=>n.id===id);return <div key={id} className="studio-assistant-reference"><span>{n?.title||'已删除的画布对象'}{n&&<small> · {readingVisuals&&n.type==='image'?'图片':readingVisuals&&n.type==='video'?'视频 4 帧':n.type==='text'?'文字':'文字设定'}</small>}</span><button type="button" disabled={locked} aria-label={`移除引用 ${n?.title||id}`} onClick={()=>setContextIds(ids=>ids.filter(value=>value!==id))}><X size={14}/></button></div>;})}</div>
-        <Input.TextArea ref={composer} aria-label="给创作助手的消息" aria-describedby={toolsOpen?"studio-assistant-context-note":undefined} aria-autocomplete="list" aria-controls={query?'studio-assistant-mentions':undefined} aria-activedescendant={query&&suggestions.length?`studio-assistant-mention-${suggestions[mentionIndex%suggestions.length].id}`:undefined} placeholder="想创作什么？输入 @ 引用画布内容" value={prompt} disabled={locked} onChange={e=>{const value=e.target.value;setPrompt(value);setCaret(e.target.selectionStart);setMentionOpen(mentionOpen||(value.match(/@/g)?.length||0)>(prompt.match(/@/g)?.length||0));setMentionIndex(0);}} onSelect={e=>setCaret(e.currentTarget.selectionStart)} onKeyDown={e=>{
-          if(e.nativeEvent.isComposing)return;
-          if((e.metaKey||e.ctrlKey)&&e.key==='Enter'&&!query){e.preventDefault();void send();return;}
-          if(query&&e.key==='Escape'){e.preventDefault();e.stopPropagation();setMentionOpen(false);}
-          else if(query&&suggestions.length&&['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();setMentionIndex(i=>(i+(e.key==='ArrowDown'?1:-1)+suggestions.length)%suggestions.length);}
-          else if(query&&suggestions.length&&e.key==='Enter'){e.preventDefault();chooseMention(suggestions[mentionIndex%suggestions.length]);}
-        }} autoSize={{minRows:2,maxRows:5}} maxLength={4000}/>
-        {query&&<div id="studio-assistant-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">{suggestions.length?suggestions.map((node,index)=><button key={node.id} id={`studio-assistant-mention-${node.id}`} type="button" role="option" aria-selected={index===mentionIndex%suggestions.length} onMouseDown={e=>e.preventDefault()} onClick={()=>chooseMention(node)}><span>{node.title}</span><small>{node.type==='text'?'文字':'素材设定'}</small></button>):<p>当前画布没有匹配节点</p>}<button type="button" onMouseDown={e=>e.preventDefault()} onClick={()=>{libraryMention.current=query;setLibraryQuery(query.query);setMentionOpen(false);}}>从个人资产库选择</button></div>}
-        <div className="studio-assistant-composer-toolbar">
-          <div className="studio-assistant-context-actions"><Button icon={<AtSign size={16}/>} disabled={locked} onClick={()=>{const value=prompt+(prompt&&!/\s$/.test(prompt)?' ':'')+'@';setPrompt(value);setCaret(value.length);setMentionOpen(true);setMentionIndex(0);composer.current?.focus();}}>引用节点</Button><StudioAttachmentPicker projectId={projectId} locked={locked} reading={reading} onFiles={files=>void addAttachments(files).catch(()=>{})} onAssets={addAttachments}/></div>
-          <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title="发送（⌘ / Ctrl + Enter）；处理会消耗积分" className="studio-assistant-primary" type="primary" loading={busy} disabled={!prompt.trim()||!capabilities||!capabilities.mock&&!selectedModel?.tokenPricing||locked||attachmentsUnsaved||!!missingIds.length} onClick={()=>void send()}><span className="studio-assistant-send-label">发送<kbd className="studio-assistant-send-shortcut" aria-hidden="true">{sendShortcut}</kbd></span></Button>
-        </div>
-        <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>setLibraryQuery(undefined)} onAssets={async assets=>{await addAttachments(assets);const mention=libraryMention.current;if(mention)setPrompt(value=>insertAssistantMention(value,mention,assets.map(a=>a.title).join("、")));libraryMention.current=undefined;}}/>
-        {attachmentsUnsaved&&<Button disabled={locked} onClick={()=>void retryAttachmentSave()}>重试保存附件</Button>}
-
-        <p className="studio-assistant-send-hint">对话存入历史，采用后才修改画布</p>
-        {(contextError||missingIds.length>0||current?.metadata?.status==='error'&&current.metadata.errorDetails)&&<p className="studio-assistant-error"><StudioErrorNotice error={missingIds.length?'部分引用已从画布删除，请移除后重新选择':contextError || (current ? studioNodeError(current) : undefined)} autoReport={!!missingIds.length || !!contextError}/></p>}
-      </div>}>
-    <div className="studio-assistant">
-      <div className="studio-assistant-toolbar"><span>{modeNames[mode]}</span><div><Button icon={<Plus size={15}/>} disabled={busy||reading} onClick={()=>selectConversation()}>新对话</Button><Button aria-label="创作设置与历史" aria-expanded={toolsOpen} icon={<SlidersHorizontal size={16}/>} onClick={()=>setToolsOpen(v=>!v)}/></div></div>
-      {toolsOpen&&<section className="studio-assistant-tools" aria-label="创作设置">
-        <div className="studio-mode-tabs" role="group" aria-label="助手模式">{(Object.keys(modeNames) as StudioAssistantMode[]).map(value=><button key={value} type="button" disabled={locked} aria-pressed={mode===value} onClick={()=>{rememberDraft();setMode(value);setConversationId(undefined);}}>{modeNames[value]}</button>)}</div>
-        <div className="studio-assistant-history"><Select aria-label="对话历史" value={conversationId} disabled={busy||reading} allowClear placeholder="对话历史" onChange={selectConversation} options={conversations.map(n=>({value:n.id,label:`${n.title} · ${n.metadata?.studio?.conversation?.turns.find(t=>t.role==='user')?.content.slice(0,24)||'新对话'}`}))}/><StudioConversationShare key={`${projectId}-${conversationId||'new'}`} projectId={projectId} nodeId={conversationId} disabled={locked||attachmentsUnsaved||conversation?.turns.at(-1)?.role!=='assistant'}/></div>
-    {capabilities?.textModelMode!=="fixed"&&!!textModels.length&&<Select aria-label="助手模型" disabled={locked} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m=>({value:m.endpointId,label:m.name}))}/>}
-<Button icon={<Scan size={16}/>} disabled={locked||!contextNodes.length} onClick={()=>{const ids=contextNodes.slice(0,16).map(n=>n.id);setContextIds(ids);setContextError(contextNodes.length>16?'已引用前 16 个对象，可移除或用 @ 换选其他节点':'');}}>感知画布</Button>        <details className="studio-helper-note"><summary>附件与读取说明</summary><p id="studio-assistant-context-note">可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。</p></details>
-        <label className="studio-helper-note"><input type="checkbox" checked={readingVisuals} disabled={locked||!canReadVisuals} onChange={e=>setReadVisuals(e.target.checked)}/> 读取图片与视频画面</label>
-        <p className="studio-helper-note">{readingVisuals?'读取所选图片；60 秒内视频取 4 帧，不含音轨。最多 16 张画面，每段视频占 4 张。音频只读取文字设定。':canReadVisuals?'本次仅读取文字和设定，勾选后可读取所选图片与视频采样帧。':'当前模型仅读取文字和设定。切换到支持看图的模型后可读取画面。'}</p>
-
+  return <StudioFloatingPanel title="Studio 创作助手" className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }} width={448} utility dockable footer={<>
+      <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
+        onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
+        onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
+        sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} costHint={costHint}/>
+      {(composerError || missing.length > 0) && <p className="studio-assistant-error" role="alert"><span>{missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError}</span> <StudioErrorNotice error={missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError} autoReport={false} label="查看详情"/></p>}
+    </>}>
+    <div className="studio-assistant studio-dialogue">
+      <div className="studio-assistant-toolbar"><span>全能创作{demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}</span>
+        <div>{streamNote && <small className="studio-dialogue-stream" role="status">{streamNote}</small>}
+          <Button aria-label="对话设置" aria-expanded={settingsOpen} icon={<SlidersHorizontal size={16}/>} onClick={() => setSettingsOpen(v => !v)}/></div></div>
+      {settingsOpen && <section className="studio-assistant-tools studio-dialogue-settings" aria-label="对话设置">
+        {selectable && <label className="studio-dialogue-setting"><span>回复用的模型</span><Select aria-label="助手模型" value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></label>}
+        {studioSkillNotes(skills).map(note => <p key={note} className="studio-helper-note">{note}</p>)}
+        <p className="studio-helper-note">整张画布都会作为参考，需要时我会读取图片和视频画面，读取过程记在工作记录里。用 @ 指定的内容一定会读。</p>
+        <details className="studio-helper-note"><summary>附件说明</summary><p>{ATTACHMENT_NOTE}</p></details>
       </section>}
-      {!conversation?.turns.length&&<div className="studio-assistant-welcome"><p className="studio-assistant-eyebrow">从一个想法开始</p><h3 className="w-full max-w-full">说出想法，<br/>一起完成创作。</h3><p>{contextIds.length?`已引用 ${contextIds.length} 个节点。可以修改节点内容和提示词，也可以衍生新的内容。`:'写文字、做图片、制作视频，或搭建一整套创作流程。'}</p><div className="studio-assistant-starters">{starterPrompts.map(([title,value,Icon])=><button key={title} type="button" disabled={locked} onClick={()=>{setPrompt(value);composer.current?.focus();}}><Icon size={18}/><span>{title}</span><ArrowUp size={14}/></button>)}</div></div>}
-      <div className="studio-conversation" role="log" aria-label="创作对话记录" aria-live="polite">{conversation?.turns.map((turn,i)=><div className={`studio-turn studio-turn-${turn.role}`} key={i}><small>{turn.role==="user"?"你":"Studio"}</small><p>{turn.content}</p>{turn.billing&&<small>已消耗 {turn.billing.credits} 积分</small>}</div>)}</div>
-      {conversation?.plan&&current?.metadata?.status!=='loading'&&<>
-        <StudioAssistantPlan key={`${current?.id}-${current?.metadata?.studio?.runId||'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={contextIds} selectedIds={selectedIds} snapshots={current?.metadata?.studio?.assistantEditSnapshots} locked={!!locked} onEdit={editStep} onApply={applyStep}/>
-        {!!conversation.plan.questions.length&&<section className="studio-assistant-questions" aria-label="还需要你的想法"><h4>还需要你的想法</h4><p>点击带入输入框，补充后发送</p><div>{conversation.plan.questions.map((q,i)=><button type="button" key={i} disabled={locked} onClick={()=>useSuggestion(q)}><span>{q}</span><ArrowUp size={16} aria-hidden="true"/></button>)}</div></section>}
-        {!!conversation.plan.notes?.length&&<details className="studio-helper-note"><summary>补充建议</summary>{conversation.plan.notes.map((note,i)=><p key={i}>{note}</p>)}</details>}
-      </>}
-      {current?.metadata?.status==='loading'&&<div className="studio-assistant-pending" role="status"><p>{busy?'正在整理你的想法…':'对话任务尚未完成'}</p>{!busy&&<Button onClick={()=>void send(true)}>确认原对话任务</Button>}</div>}
+      {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution}/>}
+      {!execution && canvasNotice && <p className="studio-dialogue-warning" role="status">{canvasNotice}</p>}
+      {session.status === "loading" && <p className="studio-dialogue-note" role="status">正在读取这张画布的对话</p>}
+      {session.status === "error" && <div className="studio-assistant-pending" role="alert"><p>对话没有读取成功。</p><StudioErrorNotice error={session.loadError} autoReport={false}/><Button onClick={() => void session.reload()}>重新读取</Button></div>}
+      {empty && session.status !== "error" && <div className="studio-assistant-welcome"><p className="studio-assistant-eyebrow">从一个想法开始</p><h3 className="w-full max-w-full">说出想法，<br/>一起完成创作。</h3>
+        <p>{pinnedIds.length ? `已指定 ${pinnedIds.length} 个节点。可以修改内容和提示词，也可以做新的内容。` : "写文字、做图片、复刻视频，或搭建一整套创作流程。中途想改，直接说。"}</p>
+        <div className="studio-assistant-starters">{starters.map(([title, value, Icon]) => <button key={title} type="button" onClick={() => { setText(value); composer.current?.focus(); }}><Icon size={18}/><span>{title}</span><ArrowUp size={14}/></button>)}</div></div>}
+      {!!legacyGroups.length && <details className="studio-dialogue-legacy" open={legacyOpen} onToggle={e => setLegacyOpen(e.currentTarget.open)}>
+        <summary>之前的对话（{legacyGroups.length} 段）</summary>
+        {legacyGroups.map(group => <StudioDialogueLegacy key={group.id} group={group} projectId={projectId} nodes={nodes} selectedIds={selectedIds} recovering={recovering === group.id}
+          onEditStep={editLegacyStep} onApplyStep={applyLegacyStep} onRecover={id => void recoverLegacy(id)} onCompose={compose}/>)}
+      </details>}
+      <StudioDialogueTimeline store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}/>
     </div>
   </StudioFloatingPanel>;
 }

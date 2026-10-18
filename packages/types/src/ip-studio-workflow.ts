@@ -381,7 +381,9 @@ export interface StudioDialogueThread {
   lastSeq: number; activeTurnId?: string; activeExecutionId?: string; createdAt: string; updatedAt: string;
 }
 export interface StudioDialogueState { thread: StudioDialogueThread; messages: StudioDialogueMessage[]; nextCursor?: string; latestSeq: number; execution?: StudioPlanExecution }
-export interface StudioPostMessageRequest { clientMessageId: string; text: string; pinnedNodeIds?: string[]; attachmentNodeIds?: string[]; expectedPlanRevision?: number; skillKey?: string; billing?: EnterpriseBillingSelection; maxCost?: number }
+export interface StudioPostMessageRequest { clientMessageId: string; text: string; pinnedNodeIds?: string[]; attachmentNodeIds?: string[]; expectedPlanRevision?: number; skillKey?: string; billing?: EnterpriseBillingSelection; maxCost?: number;
+  /** Text endpoint for this turn when the account may choose; omitted = scene default. Never a payment authority. */
+  model?: string }
 export interface StudioPostMessageResult { messageId: string; turnId?: string; runId?: string; queueState: "accepted" | "queued" | "applied" }
 export interface StudioDialogueControlRequest { controlId: string; action: "stop" | "pause" | "resume"; executionId?: string }
 export interface StudioBranchRequest { clientRequestId: string; fromMessageId: string }
@@ -389,7 +391,7 @@ export interface StudioBranchRequest { clientRequestId: string; fromMessageId: s
 export type StudioDialogueEventType = "message.delta" | "tool.started" | "tool.progress" | "tool.finished" | "plan.proposed" | "approval.required" | "node.upsert" | "check.result" | "budget.update" | "turn.done";
 export interface StudioDialogueEvent<T = unknown> { eventId: string; seq: number; threadId: string; turnId: string; runId?: string; executionId?: string; createdAt: string; type: StudioDialogueEventType; data: T }
 export interface StudioMessageDeltaData { messageId: string; partId: string; delta: string }
-export interface StudioToolEventData { toolCallId: string; toolName: string; title?: string; safeInputSummary?: string; childRunId?: string; status?: "running" | "done" | "failed"; progress?: string;
+export interface StudioToolEventData { toolCallId: string; toolName: string; /** Assistant message the work-record card belongs to. */ messageId?: string; title?: string; safeInputSummary?: string; childRunId?: string; status?: "running" | "done" | "failed"; progress?: string;
   result?: { summary: string; nodeIds?: string[]; storageKeys?: string[] }; creditsActual?: number; settling?: boolean; durationMs?: number; errorCode?: string; errorMessage?: string }
 export interface StudioPlanProposedData { messageId: string; block: Extract<StudioMessageBlock, { type: "plan" }> }
 export interface StudioApprovalRequiredData { messageId: string; block: Extract<StudioMessageBlock, { type: "approval" }>; shortfall?: number }

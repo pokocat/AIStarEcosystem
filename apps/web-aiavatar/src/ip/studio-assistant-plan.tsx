@@ -2,7 +2,9 @@
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { useEffect, useRef, useState } from 'react';
 import { Button, Input, Select } from 'antd';
-import { ArrowUpRight, Check, ChevronLeft, ChevronRight, FileText, Image, Video, Clapperboard } from 'lucide-react';
+import { ArrowUpRight, Check, ChevronLeft, ChevronRight, ClipboardList, FileText, Image, Video, Clapperboard } from 'lucide-react';
+import { formatCredits } from '@ai-star-eco/api-client';
+import type { DialoguePlanBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { gsap } from 'gsap';
 import type { StudioPlan, StudioPlanStep } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -81,5 +83,47 @@ export function StudioAssistantPlan({plan,nodes,contextIds,selectedIds,snapshots
       <small className="studio-assistant-result-note">{target||appliedEdit?'采用后写回原节点，保留素材和连线，不启动生成、不另扣积分。':step.operation==='text'?'采用文字无需再次生成，不另扣积分。':'先创建节点并确认参数，生成时再扣积分。'}</small>
       {error&&<p className="studio-assistant-error"><StudioErrorNotice error={error}/></p>}
     </div>
+  </section>;
+}
+
+// ── 「制作计划」 card for the threaded dialogue ─────────────────────────────
+// A typed plan block from the server: stage, the approaches it considered (recommended first),
+// the steps compiled for the chosen approach and the server's quotes. Choosing another
+// approach only prepares a message; a new approach always needs a new quote from the server.
+const operationLabels: Record<StudioPlanStep['operation'], string> = { text: '文字', script: '剧本', storyboard: '分镜', image: '图片', video: '视频', recreation: '拉片', check: '检查', assemble: '合成' };
+export function studioPlanApproaches(plan: StudioPlan) {
+  const list = plan.approaches || [];
+  const chosen = plan.confirmedApproachId || plan.recommendedApproachId;
+  return [...list].sort((a, b) => Number(b.id === chosen) - Number(a.id === chosen));
+}
+export function StudioPlanCard({ block, onChooseApproach }: { block: DialoguePlanBlock; onChooseApproach?: (title: string) => void }) {
+  const plan = block.plan;
+  const approaches = studioPlanApproaches(plan);
+  const stage = plan.stage === 'analysis' ? '分析' : plan.stage === 'production' ? '制作' : undefined;
+  const quoted = plan.steps.filter(s => s.quotedCost !== undefined);
+  const list = (label: string, items: string[]) => items.length ? <p className="studio-dialogue-plan-list"><b>{label}</b><span>{items.join('；')}</span></p> : null;
+  return <section className="studio-dialogue-plan" aria-label="制作计划">
+    <header><ClipboardList size={16} aria-hidden="true"/><h4>制作计划</h4>{stage && <span>{stage}</span>}{!!block.revision && <small>第 {block.revision} 版</small>}</header>
+    {!!plan.summary && <p className="studio-dialogue-plan-summary">{plan.summary}</p>}
+    {!!approaches.length && <div className="studio-dialogue-approaches">{approaches.map(a => {
+      const recommended = a.id === plan.recommendedApproachId, confirmed = a.id === plan.confirmedApproachId;
+      return <article key={a.id} aria-label={`做法：${a.title}`} data-recommended={recommended || undefined}>
+        <header><strong title={a.title}>{a.title}</strong>{confirmed ? <span>已选定</span> : recommended ? <span>推荐</span> : null}</header>
+        {!!a.summary && <p>{a.summary}</p>}
+        {!!a.rationale && <p className="studio-dialogue-note">{a.rationale}</p>}
+        {list('保留', a.preserve)}{list('改变', a.change)}{list('取舍', a.tradeoffs)}
+        {onChooseApproach && !confirmed && !recommended && <button type="button" className="studio-dialogue-link" onClick={() => onChooseApproach(a.title)}>改用这个做法</button>}
+      </article>;
+    })}</div>}
+    {!!plan.steps.length && <details className="studio-dialogue-plan-steps" open={plan.steps.length <= 6}>
+      <summary>共 {plan.steps.length} 项{plan.budget ? ` · 预计 ${formatCredits(plan.budget.estimated)} 积分` : quoted.length ? ` · 预计 ${formatCredits(quoted.reduce((sum, s) => sum + (s.quotedCost || 0), 0))} 积分` : ''}</summary>
+      <ol>{plan.steps.map(s => <li key={s.id}><span title={s.title}>{s.title}</span><small>{operationLabels[s.operation] || '其他'}</small><em>{s.quotedCost === undefined ? '待报价' : `${formatCredits(s.quotedCost)} 积分`}</em></li>)}</ol>
+    </details>}
+    {plan.budget && <dl className="studio-dialogue-plan-budget">
+      <dt>预计</dt><dd>{formatCredits(plan.budget.estimated)} 积分</dd>
+      <dt>重做额度</dt><dd>{formatCredits(plan.budget.autoFixCap)} 积分</dd>
+      {plan.budget.approvedCap !== undefined && <><dt>已确认上限</dt><dd>{formatCredits(plan.budget.approvedCap)} 积分</dd></>}
+    </dl>}
+    {!!plan.notes?.length && <details className="studio-helper-note"><summary>补充说明</summary>{plan.notes.map((note, i) => <p key={i}>{note}</p>)}</details>}
   </section>;
 }

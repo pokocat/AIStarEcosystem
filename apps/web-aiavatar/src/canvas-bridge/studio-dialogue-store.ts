@@ -1,0 +1,371 @@
+// Pure thread state for the Studio dialogue (docs/ip-studio-conversational-video-recreation-plan.md §对话事件协议).
+//
+// The server owns messages, blocks, runs and executions. This reducer only folds the
+// event stream and thread snapshots into what the panel renders:
+// - message.delta appends real streamed text by partId; seq is thread-monotonic, so any
+//   event at or below the applied seq is a replay and never appends twice.
+// - tool / plan / approval / turn events upsert typed blocks by their stable ids.
+// - node.upsert / check.result are queued as canvas operations with their own cursor, so
+//   a reconnect from an older seq can replay canvas commands without duplicating text.
+import type {
+  StudioApprovalRequiredData, StudioBudgetUpdateData, StudioCheckResultData, StudioDialogueEvent, StudioDialogueMessage,
+  StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioMessageDeltaData, StudioNodeUpsertData,
+  StudioPlanExecution, StudioPlanProposedData, StudioPostMessageResult, StudioToolEventData, StudioTurnDoneData,
+} from '@ai-star-eco/types/ip-studio-workflow';
+
+export type DialogueToolBlock = Extract<StudioMessageBlock, { type: 'tool_call' }>;
+export type DialogueApprovalBlock = Extract<StudioMessageBlock, { type: 'approval' }>;
+export type DialoguePlanBlock = Extract<StudioMessageBlock, { type: 'plan' }>;
+export type DialogueQuestionBlock = Extract<StudioMessageBlock, { type: 'question' }>;
+export type DialogueAdoptionBlock = Extract<StudioMessageBlock, { type: 'adoption' }>;
+export type DialogueQueueState = StudioPostMessageResult['queueState'];
+
+/** A user message that has not been accepted yet. Accepted messages become ordinary thread messages. */
+export interface DialogueOutboxItem {
+  clientMessageId: string; text: string; pinnedNodeIds: string[]; attachmentNodeIds: string[]; maxCost?: number;
+  createdAt: string; state: 'sending' | 'failed'; error?: string;
+  /** The applied seq when the user pressed send; the accepted message sorts right after it, before any reply. */
+  afterSeq?: number;
+}
+export type DialogueCanvasOp =
+  | { seq: number; kind: 'node'; turnId: string; executionId?: string; data: StudioNodeUpsertData }
+  | { seq: number; kind: 'check'; turnId: string; executionId?: string; data: StudioCheckResultData };
+/** Arrival order of streamed text parts and blocks inside one live message. */
+export interface DialogueLayout { order: string[]; parts: Record<string, string> }
+
+export interface DialogueStore {
+  thread?: StudioDialogueThread;
+  messages: StudioDialogueMessage[];
+  /** Highest seq folded into message state (or the snapshot cursor). */
+  latestSeq: number;
+  /** Highest seq whose canvas operation was queued; may trail latestSeq to replay canvas commands. */
+  canvasSeq: number;
+  /** Highest canvas seq actually projected onto the canvas (persisted per viewer). */
+  canvasAckSeq: number;
+  nextCursor?: string;
+  hasOlder: boolean;
+  layouts: Record<string, DialogueLayout>;
+  turnMessages: Record<string, string>;
+  activeTurnId?: string;
+  doneTurns: string[];
+  execution?: StudioPlanExecution;
+  /** Bumped by execution-related events so the session can refresh the execution projection. */
+  executionTouchedSeq: number;
+  budgets: Record<string, StudioBudgetUpdateData>;
+  checks: Record<string, StudioCheckResultData>;
+  suggestions: Record<string, string[]>;
+  shortfalls: Record<string, number>;
+  queueStates: Record<string, DialogueQueueState>;
+  localMessageIds: string[];
+  outbox: DialogueOutboxItem[];
+  canvasOps: DialogueCanvasOp[];
+}
+
+export type DialogueAction =
+  | { type: 'reset' }
+  | { type: 'snapshot'; state: StudioDialogueState; mode: 'replace' | 'merge'; canvasAckSeq?: number }
+  | { type: 'event'; event: StudioDialogueEvent }
+  | { type: 'outbox.add'; item: DialogueOutboxItem }
+  | { type: 'outbox.sent'; clientMessageId: string; result: StudioPostMessageResult; createdAt?: string }
+  | { type: 'outbox.failed'; clientMessageId: string; error: string }
+  | { type: 'outbox.retry'; clientMessageId: string }
+  | { type: 'outbox.remove'; clientMessageId: string }
+  | { type: 'execution'; execution: StudioPlanExecution }
+  | { type: 'approval.local'; approvalId: string; status: DialogueApprovalBlock['status']; executionId?: string }
+  | { type: 'adoption.add'; messageId: string; block: DialogueAdoptionBlock }
+  | { type: 'canvas.ack'; seq: number }
+  | { type: 'older'; messages: StudioDialogueMessage[]; limit: number };
+
+export const emptyDialogueStore = (): DialogueStore => ({
+  messages: [], latestSeq: 0, canvasSeq: 0, canvasAckSeq: 0, hasOlder: false, layouts: {}, turnMessages: {}, doneTurns: [],
+  executionTouchedSeq: 0, budgets: {}, checks: {}, suggestions: {}, shortfalls: {}, queueStates: {}, localMessageIds: [], outbox: [], canvasOps: [],
+});
+
+const PLACEHOLDER = 'pending-turn:';
+export const isPlaceholderMessage = (id: string) => id.startsWith(PLACEHOLDER);
+const sortMessages = (list: StudioDialogueMessage[]) => [...list].sort((a, b) => a.seq - b.seq || a.createdAt.localeCompare(b.createdAt));
+export const blockKey = (block: StudioMessageBlock): string =>
+  block.type === 'tool_call' ? `tool:${block.toolCallId}` : block.type === 'approval' ? `approval:${block.approvalId}` :
+    block.type === 'plan' ? 'plan' : block.type === 'question' ? `question:${block.questionId}` : `adoption:${block.nodeId}:${block.field}:${textHash(block.content)}`;
+/** Small stable hash so two proposals for the same field keep separate places in a message. */
+function textHash(text: string) {
+  let h = 5381;
+  for (let i = 0; i < text.length; i++) h = (h * 33 + text.charCodeAt(i)) | 0;
+  return (h >>> 0).toString(36);
+}
+export const layoutText = (layout: DialogueLayout) => layout.order.filter(k => k.startsWith('t:')).map(k => layout.parts[k.slice(2)] || '').join('');
+
+function replaceMessage(store: DialogueStore, id: string, update: (m: StudioDialogueMessage) => StudioDialogueMessage): DialogueStore {
+  return { ...store, messages: store.messages.map(m => m.id === id ? update(m) : m) };
+}
+
+/** Seed a layout from a message's existing text, so live parts continue after a snapshot. */
+function layoutFor(store: DialogueStore, message: StudioDialogueMessage): DialogueLayout {
+  const existing = store.layouts[message.id];
+  if (existing) return existing;
+  const order = message.text ? ['t:__base'] : [];
+  return { order: [...order, ...message.blocks.map(b => `b:${blockKey(b)}`)], parts: message.text ? { __base: message.text } : {} };
+}
+
+/** The assistant message an event belongs to. Tool events carry no messageId; they attach to the turn's message. */
+function ensureAssistantMessage(store: DialogueStore, event: StudioDialogueEvent, messageId?: string): [DialogueStore, string] {
+  const turnId = event.turnId;
+  if (messageId) {
+    if (store.messages.some(m => m.id === messageId)) return [{ ...store, turnMessages: { ...store.turnMessages, [turnId]: messageId } }, messageId];
+    const placeholder = store.turnMessages[turnId];
+    if (placeholder && isPlaceholderMessage(placeholder) && store.messages.some(m => m.id === placeholder)) {
+      const layouts = { ...store.layouts };
+      if (layouts[placeholder]) { layouts[messageId] = layouts[placeholder]; delete layouts[placeholder]; }
+      return [{ ...replaceMessage(store, placeholder, m => ({ ...m, id: messageId })), layouts, turnMessages: { ...store.turnMessages, [turnId]: messageId } }, messageId];
+    }
+  } else {
+    const known = store.turnMessages[turnId];
+    if (known && store.messages.some(m => m.id === known)) return [store, known];
+  }
+  const id = messageId || `${PLACEHOLDER}${turnId}`;
+  const message: StudioDialogueMessage = { id, threadId: event.threadId, seq: event.seq, turnId, runId: event.runId, role: 'assistant', text: '', blocks: [], status: 'streaming', createdAt: event.createdAt };
+  return [{ ...store, messages: sortMessages([...store.messages, message]), turnMessages: { ...store.turnMessages, [turnId]: id }, layouts: { ...store.layouts, [id]: { order: [], parts: {} } } }, id];
+}
+
+function upsertBlock(store: DialogueStore, messageId: string, block: StudioMessageBlock, matches: (b: StudioMessageBlock) => boolean = b => blockKey(b) === blockKey(block)): DialogueStore {
+  const message = store.messages.find(m => m.id === messageId);
+  if (!message) return store;
+  const exists = message.blocks.some(matches);
+  const layout = layoutFor(store, message), key = `b:${blockKey(block)}`;
+  const next = replaceMessage(store, messageId, m => ({ ...m, blocks: exists ? m.blocks.map(b => matches(b) ? block : b) : [...m.blocks, block] }));
+  return { ...next, layouts: { ...next.layouts, [messageId]: layout.order.includes(key) ? layout : { ...layout, order: [...layout.order, key] } } };
+}
+
+function findBlock<T extends StudioMessageBlock>(store: DialogueStore, test: (b: StudioMessageBlock) => b is T): { messageId: string; block: T } | undefined {
+  for (const m of store.messages) for (const b of m.blocks) if (test(b)) return { messageId: m.id, block: b };
+  return undefined;
+}
+
+const isTool = (id: string) => (b: StudioMessageBlock): b is DialogueToolBlock => b.type === 'tool_call' && b.toolCallId === id;
+const isApproval = (id: string) => (b: StudioMessageBlock): b is DialogueApprovalBlock => b.type === 'approval' && b.approvalId === id;
+
+function applyTool(store: DialogueStore, event: StudioDialogueEvent<StudioToolEventData>): DialogueStore {
+  const d = event.data;
+  const found = findBlock(store, isTool(d.toolCallId));
+  let s = store, messageId = found?.messageId;
+  if (!messageId) [s, messageId] = ensureAssistantMessage(s, event);
+  const previous: DialogueToolBlock = found?.block || { type: 'tool_call', toolCallId: d.toolCallId, toolName: d.toolName, title: d.title || '', safeInputSummary: d.safeInputSummary || '', status: 'running', startedAt: event.createdAt };
+  let block: DialogueToolBlock = { ...previous, toolName: d.toolName || previous.toolName, title: d.title || previous.title, safeInputSummary: d.safeInputSummary ?? previous.safeInputSummary,
+    childRunId: d.childRunId ?? previous.childRunId, progress: d.progress ?? previous.progress };
+  if (event.type === 'tool.started') block = { ...block, status: 'running', startedAt: found ? previous.startedAt : event.createdAt };
+  if (event.type === 'tool.progress' && d.status) block = { ...block, status: d.status };
+  if (event.type === 'tool.finished') {
+    const status = d.status && d.status !== 'running' ? d.status : d.errorCode || d.errorMessage ? 'failed' : 'done';
+    const elapsed = Date.parse(event.createdAt) - Date.parse(block.startedAt);
+    block = { ...block, status, finishedAt: event.createdAt, durationMs: d.durationMs ?? (Number.isFinite(elapsed) && elapsed >= 0 ? elapsed : undefined),
+      result: d.result ?? block.result, creditsActual: d.creditsActual ?? block.creditsActual, settling: d.settling ?? (d.creditsActual === undefined ? true : false),
+      errorCode: d.errorCode, errorMessage: d.errorMessage };
+  }
+  return upsertBlock(s, messageId, block);
+}
+
+function applyDelta(store: DialogueStore, event: StudioDialogueEvent<StudioMessageDeltaData>): DialogueStore {
+  const d = event.data;
+  const [s, id] = ensureAssistantMessage(store, event, d.messageId);
+  const message = s.messages.find(m => m.id === id)!;
+  const layout = layoutFor(s, message), key = `t:${d.partId}`;
+  const next: DialogueLayout = { order: layout.order.includes(key) ? layout.order : [...layout.order, key], parts: { ...layout.parts, [d.partId]: (layout.parts[d.partId] || '') + d.delta } };
+  const updated = replaceMessage(s, id, m => ({ ...m, text: layoutText(next), status: m.status === 'done' || m.status === 'failed' ? m.status : 'streaming' }));
+  return { ...updated, layouts: { ...updated.layouts, [id]: next } };
+}
+
+function supersedeApprovals(store: DialogueStore, keep: string): DialogueStore {
+  return { ...store, messages: store.messages.map(m => m.blocks.some(b => b.type === 'approval' && b.approvalId !== keep && b.status === 'pending')
+    ? { ...m, blocks: m.blocks.map(b => b.type === 'approval' && b.approvalId !== keep && b.status === 'pending' ? { ...b, status: 'superseded' as const } : b) } : m) };
+}
+
+function turnDoneStatus(reason: StudioTurnDoneData['reason']): StudioDialogueMessage['status'] {
+  return reason === 'failed' ? 'failed' : reason === 'interrupted' ? 'interrupted' : 'done';
+}
+
+const ACTIVATING = new Set(['message.delta', 'tool.started', 'tool.progress', 'tool.finished', 'plan.proposed', 'approval.required']);
+
+function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueStore {
+  if (store.thread && event.threadId !== store.thread.id) return store;
+  let s = store;
+  if ((event.type === 'node.upsert' || event.type === 'check.result') && event.seq > s.canvasSeq) {
+    const op: DialogueCanvasOp = event.type === 'node.upsert'
+      ? { seq: event.seq, kind: 'node', turnId: event.turnId, executionId: event.executionId, data: event.data as StudioNodeUpsertData }
+      : { seq: event.seq, kind: 'check', turnId: event.turnId, executionId: event.executionId, data: event.data as StudioCheckResultData };
+    s = { ...s, canvasSeq: event.seq, canvasOps: [...s.canvasOps, op] };
+  }
+  if (event.type === 'check.result') {
+    const d = event.data as StudioCheckResultData;
+    s = { ...s, checks: { ...s.checks, [d.runId]: d } };
+  }
+  if (event.seq <= s.latestSeq) return s;
+  s = { ...s, latestSeq: event.seq };
+  if (event.executionId && ['budget.update', 'node.upsert', 'check.result', 'tool.finished'].includes(event.type)) s = { ...s, executionTouchedSeq: event.seq };
+  if (ACTIVATING.has(event.type) && !s.doneTurns.includes(event.turnId)) s = { ...s, activeTurnId: event.turnId };
+  switch (event.type) {
+    case 'message.delta': return applyDelta(s, event as StudioDialogueEvent<StudioMessageDeltaData>);
+    case 'tool.started': case 'tool.progress': case 'tool.finished': return applyTool(s, event as StudioDialogueEvent<StudioToolEventData>);
+    case 'plan.proposed': {
+      const d = event.data as StudioPlanProposedData;
+      const [next, id] = ensureAssistantMessage(s, event, d.messageId);
+      return upsertBlock(next, id, d.block, b => b.type === 'plan');
+    }
+    case 'approval.required': {
+      const d = event.data as StudioApprovalRequiredData;
+      const found = findBlock(s, isApproval(d.block.approvalId));
+      let next = s, id = found?.messageId;
+      if (!id) [next, id] = ensureAssistantMessage(next, event, d.messageId);
+      next = upsertBlock(next, id, d.block);
+      if (d.block.status === 'pending') next = supersedeApprovals(next, d.block.approvalId);
+      return d.shortfall === undefined ? next : { ...next, shortfalls: { ...next.shortfalls, [d.block.approvalId]: d.shortfall } };
+    }
+    case 'budget.update': {
+      const d = event.data as StudioBudgetUpdateData;
+      const execution = s.execution?.id === d.executionId ? { ...s.execution, budgets: s.execution.budgets.some(b => b.stage === d.stage)
+        ? s.execution.budgets.map(b => b.stage === d.stage ? { ...b, approvedCap: d.approvedCap, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall } : b)
+        : [...s.execution.budgets, { stage: d.stage, approvedCap: d.approvedCap, autoFixCap: 0, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall }] } : s.execution;
+      return { ...s, execution, budgets: { ...s.budgets, [`${d.executionId}:${d.stage}`]: d } };
+    }
+    case 'turn.done': {
+      const d = event.data as StudioTurnDoneData;
+      const [next, id] = ensureAssistantMessage(s, event, d.messageId);
+      const updated = replaceMessage(next, id, m => ({ ...m, status: turnDoneStatus(d.reason), billing: d.billing ?? m.billing, settling: d.settling ?? m.settling }));
+      return { ...updated, doneTurns: [...updated.doneTurns.filter(t => t !== event.turnId), event.turnId].slice(-200),
+        activeTurnId: updated.activeTurnId === event.turnId ? undefined : updated.activeTurnId,
+        suggestions: d.suggestions?.length ? { ...updated.suggestions, [id]: d.suggestions.slice(0, 3) } : updated.suggestions };
+    }
+    default: return s;
+  }
+}
+
+function applySnapshot(store: DialogueStore, action: Extract<DialogueAction, { type: 'snapshot' }>): DialogueStore {
+  const state = action.state;
+  const sameThread = store.thread?.id === state.thread.id;
+  const replace = action.mode === 'replace' || !sameThread;
+  if (!replace && state.latestSeq < store.latestSeq) {
+    // An older poll must not roll streamed text back; it may still carry a newer execution.
+    return { ...store, thread: { ...state.thread, lastSeq: Math.max(state.thread.lastSeq, store.thread?.lastSeq || 0) }, execution: newerExecution(store.execution, state.execution) };
+  }
+  const incoming = new Map(state.messages.map(m => [m.id, m]));
+  const confirmedClientIds = new Set(state.messages.map(m => m.clientMessageId).filter(Boolean));
+  const kept = (sameThread ? store.messages : []).filter(m => !incoming.has(m.id) &&
+    !(m.clientMessageId && confirmedClientIds.has(m.clientMessageId)) &&
+    !(isPlaceholderMessage(m.id) && state.messages.some(x => x.turnId === m.turnId)) &&
+    (!replace || store.localMessageIds.includes(m.id) || isPlaceholderMessage(m.id)));
+  const messages = sortMessages([...kept, ...state.messages]);
+  const layouts: Record<string, DialogueLayout> = {};
+  if (sameThread) for (const [id, layout] of Object.entries(store.layouts)) {
+    const fresh = incoming.get(id);
+    // Keep the live arrangement only when the saved text is exactly what was streamed.
+    if (!fresh ? messages.some(m => m.id === id) : layoutText(layout) === fresh.text) layouts[id] = layout;
+  }
+  const turnMessages: Record<string, string> = {};
+  for (const m of messages) if (m.role === 'assistant' && m.turnId) turnMessages[m.turnId] = m.id;
+  const doneTurns = sameThread ? store.doneTurns : [];
+  // Only reached when the snapshot is at least as new as what was streamed, so its view of the active turn wins.
+  const active = state.thread.activeTurnId && !doneTurns.includes(state.thread.activeTurnId) ? state.thread.activeTurnId : undefined;
+  const latestSeq = replace ? state.latestSeq : Math.max(store.latestSeq, state.latestSeq);
+  // A new thread starts its canvas cursor at the viewer's last projected seq (or the snapshot).
+  // An expired cursor on the same thread jumps to the snapshot: replaying from it would only 410 again.
+  const canvasAckSeq = !sameThread ? action.canvasAckSeq ?? state.latestSeq : replace ? Math.max(store.canvasAckSeq, state.latestSeq) : store.canvasAckSeq;
+  const canvasSeq = !sameThread ? canvasAckSeq : replace ? Math.max(store.canvasSeq, state.latestSeq) : store.canvasSeq;
+  return {
+    // Seqs are per thread: a branch starts from a clean slate, including its canvas cursor.
+    ...(sameThread ? store : emptyDialogueStore()),
+    thread: state.thread, messages, layouts, turnMessages, doneTurns, activeTurnId: active,
+    latestSeq, canvasSeq, canvasAckSeq,
+    nextCursor: state.nextCursor, hasOlder: sameThread && !replace ? store.hasOlder || !!state.nextCursor : !!state.nextCursor,
+    execution: replace ? state.execution : newerExecution(store.execution, state.execution),
+    outbox: (sameThread ? store.outbox : []).filter(o => !confirmedClientIds.has(o.clientMessageId)),
+    localMessageIds: (sameThread ? store.localMessageIds : []).filter(id => messages.some(m => m.id === id) && !incoming.has(id)),
+  };
+}
+
+function newerExecution(current: StudioPlanExecution | undefined, incoming: StudioPlanExecution | undefined) {
+  if (!incoming) return current;
+  if (!current || current.id !== incoming.id) return incoming;
+  return incoming.updatedAt >= current.updatedAt ? incoming : current;
+}
+
+export function dialogueReducer(store: DialogueStore, action: DialogueAction): DialogueStore {
+  switch (action.type) {
+    case 'reset': return emptyDialogueStore();
+    case 'snapshot': return applySnapshot(store, action);
+    case 'event': return applyEvent(store, action.event);
+    case 'outbox.add': return store.outbox.some(o => o.clientMessageId === action.item.clientMessageId) ? store : { ...store, outbox: [...store.outbox, { ...action.item, afterSeq: action.item.afterSeq ?? store.latestSeq }] };
+    case 'outbox.failed': return { ...store, outbox: store.outbox.map(o => o.clientMessageId === action.clientMessageId ? { ...o, state: 'failed', error: action.error } : o) };
+    case 'outbox.retry': return { ...store, outbox: store.outbox.map(o => o.clientMessageId === action.clientMessageId ? { ...o, state: 'sending', error: undefined } : o) };
+    case 'outbox.remove': return { ...store, outbox: store.outbox.filter(o => o.clientMessageId !== action.clientMessageId) };
+    case 'outbox.sent': {
+      const item = store.outbox.find(o => o.clientMessageId === action.clientMessageId);
+      const outbox = store.outbox.filter(o => o.clientMessageId !== action.clientMessageId);
+      const { result } = action;
+      const queueStates = { ...store.queueStates, [result.messageId]: result.queueState };
+      const activeTurnId = result.turnId && !store.doneTurns.includes(result.turnId) && result.queueState === 'accepted' ? result.turnId : store.activeTurnId;
+      if (!item || store.messages.some(m => m.id === result.messageId)) return { ...store, outbox, queueStates, activeTurnId };
+      // The reply may stream in before the POST returns; the message still belongs where it was sent.
+      const message: StudioDialogueMessage = { id: result.messageId, threadId: store.thread?.id || '', seq: (item.afterSeq ?? store.latestSeq) + .5, turnId: result.turnId, runId: result.runId, role: 'user',
+        text: item.text, blocks: [], pinnedNodeIds: item.pinnedNodeIds, attachmentNodeIds: item.attachmentNodeIds, clientMessageId: item.clientMessageId,
+        status: result.queueState === 'queued' ? 'queued' : result.queueState === 'applied' ? 'applied' : 'done', createdAt: action.createdAt || item.createdAt };
+      return { ...store, outbox, queueStates, activeTurnId, messages: sortMessages([...store.messages, message]), localMessageIds: [...store.localMessageIds, message.id] };
+    }
+    case 'execution': return { ...store, execution: newerExecution(store.execution, action.execution) };
+    case 'approval.local': {
+      const found = findBlock(store, isApproval(action.approvalId));
+      if (!found) return store;
+      return replaceMessage(store, found.messageId, m => ({ ...m, blocks: m.blocks.map(b => b.type === 'approval' && b.approvalId === action.approvalId
+        ? { ...b, status: action.status, executionId: action.executionId ?? b.executionId } : b) }));
+    }
+    case 'adoption.add': {
+      const message = store.messages.find(m => m.id === action.messageId);
+      if (!message || message.blocks.some(b => b.type === 'adoption' && b.nodeId === action.block.nodeId && b.field === action.block.field && b.content === action.block.content)) return store;
+      return upsertBlock(store, action.messageId, action.block, () => false);
+    }
+    case 'canvas.ack': return { ...store, canvasOps: store.canvasOps.filter(op => op.seq > action.seq), canvasAckSeq: Math.max(store.canvasAckSeq, action.seq) };
+    case 'older': {
+      const ids = new Set(store.messages.map(m => m.id));
+      const fresh = action.messages.filter(m => !ids.has(m.id));
+      return { ...store, messages: sortMessages([...fresh, ...store.messages]), hasOlder: action.messages.length >= action.limit };
+    }
+  }
+}
+
+// ── Selectors ──────────────────────────────────────────────────────────────
+
+/** The cursor for (re)subscribing: the older of message and canvas progress, so replays reach both. */
+export const dialogueCursor = (store: DialogueStore) => Math.min(store.latestSeq, store.canvasSeq);
+
+export function dialogueSections(store: DialogueStore) {
+  const legacy = store.messages.filter(m => !!m.legacyNodeId);
+  const current = store.messages.filter(m => !m.legacyNodeId);
+  return { legacy, current };
+}
+
+export function lastAssistantMessage(store: DialogueStore) {
+  return [...store.messages].reverse().find(m => m.role === 'assistant' && !m.legacyNodeId);
+}
+
+/** The plan revision an approval card was quoted for; a newer revision never borrows an older approval. */
+export function planForApproval(store: DialogueStore, approval: DialogueApprovalBlock): DialoguePlanBlock | undefined {
+  let found: DialoguePlanBlock | undefined;
+  for (const m of store.messages) for (const b of m.blocks)
+    if (b.type === 'plan' && b.fingerprint === approval.planFingerprint && (!found || b.revision > found.revision)) found = b;
+  return found;
+}
+
+export const executionActive = (execution?: StudioPlanExecution) => !!execution && ['running', 'paused', 'needs_user'].includes(execution.status);
+
+export function executionBudget(store: DialogueStore) {
+  const execution = store.execution;
+  if (!execution) return undefined;
+  const live = store.budgets[`${execution.id}:${execution.stage}`];
+  const saved = execution.budgets.find(b => b.stage === execution.stage);
+  return live ? { ...saved, ...live, autoFixCap: saved?.autoFixCap ?? 0 } : saved;
+}
+
+export function messageQueueLabel(store: DialogueStore, message: StudioDialogueMessage) {
+  if (message.role !== 'user') return undefined;
+  const local = store.queueStates[message.id];
+  const state = message.status === 'queued' ? 'queued' : message.status === 'applied' ? 'applied' : local;
+  return state === 'queued' ? '排队中，下一步应用' : state === 'applied' ? '已应用' : state === 'accepted' ? '已收到' : undefined;
+}
