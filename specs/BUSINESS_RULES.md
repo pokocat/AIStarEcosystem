@@ -1338,7 +1338,9 @@ operation=text/script/storyboard/assistant/asset-extract 的新任务全部使�
 - 企业主体为 Enterprise；owner 唯一，manager/member 属于成员关系，不复用平台后台角色。一个本地 userId 只有一条当前企业归属；停用保留归属，退出释放当前归属；原任务与退款仍属于原企业。
 - `/api/v1/ip-studio/enterprises/**` 与邀请接受归 aiavatar，沿用 ProductRouteTable 的 `/api/v1/**` 映射、EnrollmentGuard 和 PhoneVerificationGuard；加入企业不创建产品开通或赠额。`aep.enterprise.enabled` 默认 false，关闭时企业 controller 不注册。
 - 创建企业以“创建者 + clientRequestId”幂等；创建者与当前 owner 分开保存，移交不破坏原创建请求。企业和成员账户均从零开始，不更改个人钱包。
-- 邀请默认三天有效，一次性接受、可撤销，仅保存 SHA-256 哈希。原始令牌只在初次创建返回；同请求重试不重发令牌，需撤销后新建。相同接受者可幂等重试，他人重放拒绝；接受时复核邀请者权限和接受者当前归属。
+- 企业邀请是可群发、多人使用的链接，默认 90 天，可选 365 天，可随时撤销；仅保存 SHA-256 哈希，原始令牌只在初次创建返回。同一请求固定有效期，重试不重发令牌。加入不消耗链接；已在同企业的有效成员重复加入幂等，在其他企业或停用成员不能通过链接切换/恢复。接受时复核邀请者权限、企业状态、有效期和当前归属。
+- 分享页 `/enterprise/invite#token=...` 的令牌只在 fragment/内存；公开只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅返回企业 ID、名称和有效期，响应 no-store，预览不要求登录/开通且不写成员。短信注册登录使用既有 ID grant，不把企业令牌当注册推荐码；登录后调用原接受接口，手机号和产品开通要求不变。未开通时保留邀请，开通后继续加入。
+- V59 清空旧企业邀请记录并删除 accepted_by 单次接受字段，直接切换群发模型；不修改企业成员、账号、钱包、账本和产品开通。无旧单次邀请兼容分支。
 - 角色修改仅 owner，禁止修改自己；manager 只能管理普通成员，积分管理和财务读取须另获授权。成员查询、审计列表按企业后端分页，不返回完整手机号或个人资源。
 - 主账号移交需当前 owner 发起、指定有效成员在24小时内接受；锁企业行复核旧 owner，只能成功一次，原 owner 降为 manager，钱包主体不变。模型策略默认空允许集、在途上限1，修改需 owner 且携带版本。
 - 钱包类型为 personal / enterprise / enterprise_member。个人 userId 唯一；企业账户的 userId 为空，memberUserId 单独存储，accountKey 唯一。企业成员积分仍归企业，不进入个人 gift/recharge 余额。

@@ -77,6 +77,8 @@ public final class ProductRouteTable {
      * 所以它只能精确匹配，不能当前缀。
      */
     public static final Set<String> WHITELIST_EXACT = Set.of(
+            // Read-only bearer preview. Accepting membership still requires existing enrollment.
+            "/api/v1/ip-studio/enterprise-invitations/preview",
             // Dedicated signed machine capability; the controller validates its own narrow grant.
             "/api/service/model-management/v1/command",
             "/api/service/user-management/v1/command",

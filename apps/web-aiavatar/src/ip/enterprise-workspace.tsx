@@ -50,7 +50,7 @@ function EnterpriseWorkspaceEnabled() {
   const [draft, setDraft] = useState<TransferDraft>();
   const [stale, setStale] = useState(false);
   const [rechargeOpen, setRechargeOpen] = useState(false), [note, setNote] = useState("");
-  const [name, setName] = useState(""), [inviteToken, setInviteToken] = useState("");
+  const [name, setName] = useState("");
   const mutationLock = useRef(false), loadVersion = useRef(0), alive = useRef(true);
   const rechargeKey = useRef<string | undefined>(undefined), createKey = useRef<string | undefined>(undefined);
   const permissions = context?.permissions || [];
@@ -154,7 +154,7 @@ function EnterpriseWorkspaceEnabled() {
       {error ? <Alert type="error" showIcon title="暂时无法读取企业数据" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : loading || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
         <Empty description="你还没有加入企业" />
         <p>创建企业后，平台财务可向企业充值，再由主账号分配给成员。每个人仍需按现有规则开通数字资产产品。</p>
-        <div className="enterprise-onboarding"><div><h2>创建企业</h2><label htmlFor="enterprise-name">企业名称</label><Input id="enterprise-name" value={name} maxLength={100} onChange={e => { setName(e.target.value); createKey.current = undefined; }} placeholder="输入企业名称" disabled={busy} /><Button type="primary" loading={busy} disabled={!name.trim()} onClick={() => void mutate(async () => { createKey.current ||= requestId(); await EnterpriseApi.create({ name: name.trim(), clientRequestId: createKey.current }); createKey.current = undefined; await load(); })}>创建企业</Button></div><div><h2>接受邀请</h2><label htmlFor="enterprise-token">邀请口令</label><Input.Password id="enterprise-token" value={inviteToken} onChange={e => setInviteToken(e.target.value)} placeholder="粘贴主账号提供的口令" disabled={busy} autoComplete="off" /><Button loading={busy} disabled={!inviteToken.trim()} onClick={() => void mutate(async () => { await EnterpriseApi.accept({ token: inviteToken.trim() }); setInviteToken(""); await load(); })}>加入企业</Button></div></div>
+        <div className="enterprise-onboarding"><div><h2>创建企业</h2><label htmlFor="enterprise-name">企业名称</label><Input id="enterprise-name" value={name} maxLength={100} onChange={e => { setName(e.target.value); createKey.current = undefined; }} placeholder="输入企业名称" disabled={busy} /><Button type="primary" loading={busy} disabled={!name.trim()} onClick={() => void mutate(async () => { createKey.current ||= requestId(); await EnterpriseApi.create({ name: name.trim(), clientRequestId: createKey.current }); createKey.current = undefined; await load(); })}>创建企业</Button></div><div><h2>通过邀请加入企业</h2><p>打开管理员分享的企业邀请链接，验证手机号或确认当前账号后加入。一个账号同时只能属于一家企业。</p></div></div>
         {actionError && <Alert type="error" title={actionError} showIcon />}
       </section> : <>
         <section className="enterprise-own-balances" aria-label="我的两份积分"><div><span>我的个人积分</span><strong>{personalBalance === undefined ? "读取中" : number(personalBalance)}</strong><small>个人充值与消费，企业无权回收</small></div><div><span>我的企业积分</span><strong>{myBalance ? number(myBalance.totalBalance) : "暂未读取"}</strong><small>{context.member.status === "suspended" ? "已停用，仍可选择个人积分创作" : `由 ${context.enterprise.name} 分配，可由企业回收`}</small></div></section>

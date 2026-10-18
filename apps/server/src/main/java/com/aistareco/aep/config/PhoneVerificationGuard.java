@@ -88,6 +88,11 @@ public class PhoneVerificationGuard extends OncePerRequestFilter {
             return;
         }
         String path = EnrollmentGuard.pathOf(request);
+        // This POST only reads a bearer invitation; it does not accept it or change any identity.
+        if ("POST".equals(request.getMethod()) && "/api/v1/ip-studio/enterprise-invitations/preview".equals(path)) {
+            chain.doFilter(request, response);
+            return;
+        }
         if (isExempt(path)) {
             chain.doFilter(request, response);
             return;

@@ -23,6 +23,10 @@ public class EnterpriseController {
     @GetMapping("/enterprises/{id}/invitations") public PageEnvelope<Invitation> invitations(Principal p,@PathVariable String id,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int limit){return PageEnvelope.from(service.invitations(p.getName(),id,page,limit));}
     @DeleteMapping("/enterprises/{id}/invitations/{invitationId}") public ApiResponse<Invitation> revoke(Principal p,@PathVariable String id,@PathVariable String invitationId){return ApiResponse.of(service.revoke(p.getName(),id,invitationId));}
     @PostMapping("/enterprise-invitations/accept") public ApiResponse<Context> accept(Principal p,@RequestBody AcceptRequest r){return ApiResponse.of(service.accept(p.getName(),r));}
+    @PostMapping("/enterprise-invitations/preview") public org.springframework.http.ResponseEntity<ApiResponse<InvitationPreview>> preview(@RequestBody AcceptRequest r){
+        return org.springframework.http.ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(ApiResponse.of(service.previewInvitation(r)));
+    }
     @PatchMapping("/enterprises/{id}/members/{memberId}") public ApiResponse<Member> update(Principal p,@PathVariable String id,@PathVariable String memberId,@RequestBody MemberUpdate r){return ApiResponse.of(service.updateMember(p.getName(),id,memberId,r));}
     @GetMapping("/enterprises/{id}/policy") public ApiResponse<Policy> policy(Principal p,@PathVariable String id){return ApiResponse.of(service.policy(p.getName(),id));}
     @PutMapping("/enterprises/{id}/policy") public ApiResponse<Policy> policy(Principal p,@PathVariable String id,@RequestBody PolicyUpdate r){return ApiResponse.of(service.updatePolicy(p.getName(),id,r));}

@@ -1,4 +1,5 @@
-import { apiFetch, apiFetchPaginated } from "../_client";
+import { apiFetch, apiFetchPaginated, ApiError, API_BASE_URL } from "../_client";
+import type { EnterpriseInvitationPreview } from "@ai-star-eco/types/enterprise";
 import type { EnterpriseContext, EnterpriseCreateRequest, EnterpriseInvitationCreated, EnterpriseInvitationRequest, EnterpriseInvitationAcceptRequest, EnterpriseMember, EnterpriseMemberUpdateRequest, EnterprisePolicy, EnterprisePolicyUpdateRequest, EnterpriseOwnershipRequest, EnterpriseOwnershipTransfer, EnterpriseAudit, EnterpriseInvitation } from "@ai-star-eco/types/enterprise";
 import type { PaginatedResponse } from "@ai-star-eco/types/_shared";
 import type { EnterpriseWalletSummary, EnterpriseMemberBalance, EnterprisePointsDirection, EnterprisePointsPreviewRequest, EnterprisePointsRequest, EnterprisePointsPreview, EnterprisePointsBatch, EnterprisePointsTransfer, EnterpriseRechargeOrder, EnterpriseRechargeRequest } from "@ai-star-eco/types/enterprise";
@@ -9,6 +10,16 @@ export function create(body: EnterpriseCreateRequest): Promise<EnterpriseContext
 export function context(id: string): Promise<EnterpriseContext> { return apiFetch(`${BASE}/${encodeURIComponent(id)}`); }
 export function invite(id: string, body: EnterpriseInvitationRequest): Promise<EnterpriseInvitationCreated> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/invitations`, { method: "POST", body }); }
 export function accept(body: EnterpriseInvitationAcceptRequest): Promise<EnterpriseContext> { return apiFetch("/v1/ip-studio/enterprise-invitations/accept", { method: "POST", body }); }
+/** Anonymous and read-only: do not refresh/login or forward a stored token to preview an invitation. */
+export async function previewInvitation(token: string, signal?: AbortSignal): Promise<EnterpriseInvitationPreview> {
+  const response = await fetch(`${API_BASE_URL.replace(/\/$/, "")}/v1/ip-studio/enterprise-invitations/preview`, {
+    method: "POST", credentials: "omit", cache: "no-store", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000),
+  });
+  const result = await response.json();
+  if (!response.ok || result.success !== true) throw new ApiError(result.error || { code: "UNAVAILABLE", message: "暂时无法读取企业邀请，请稍后重试。" }, response.status);
+  return result.data;
+}
 export function updateMember(id: string, memberId: string, body: EnterpriseMemberUpdateRequest): Promise<EnterpriseMember> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/members/${encodeURIComponent(memberId)}`, { method: "PATCH", body }); }
 export function policy(id: string): Promise<EnterprisePolicy> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/policy`); }
 export function updatePolicy(id: string, body: EnterprisePolicyUpdateRequest): Promise<EnterprisePolicy> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/policy`, { method: "PUT", body }); }

@@ -85,14 +85,32 @@ public class EnterpriseService {
     public EnterpriseDtos.InvitationCreated invite(String actor,String enterpriseId,EnterpriseDtos.InvitationRequest request) {
         var e=lock(enterpriseId);access.require(actor,enterpriseId,"member.invite");
         String key=text(request==null?null:request.clientRequestId(),64);
+        int validDays=request.validDays()==null?90:request.validDays();
+        if(validDays!=90 && validDays!=365)throw bad("请选择 90 天或 1 年有效期");
         var old=invitations.findByEnterpriseIdAndCreatedByAndClientRequestId(enterpriseId,actor,key);
-        if(old.isPresent())return new EnterpriseDtos.InvitationCreated(dto(old.get()),null);
+        if(old.isPresent()) {
+            if(Duration.between(old.get().getCreatedAt(),old.get().getExpiresAt()).toDays()!=validDays)throw conflict("ENTERPRISE_REQUEST_CONFLICT","同一请求不能修改邀请有效期");
+            return new EnterpriseDtos.InvitationCreated(dto(old.get()),null);
+        }
         byte[] bytes=new byte[32];random.nextBytes(bytes);String token=Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         var invite=new EnterpriseInvitation();invite.setId(id());invite.setEnterpriseId(e.getId());invite.setCreatedBy(actor);
         invite.setClientRequestId(key);invite.setTokenHash(hash(token));invite.setStatus("pending");
-        invite.setCreatedAt(Instant.now());invite.setExpiresAt(invite.getCreatedAt().plus(Duration.ofDays(3)));invitations.save(invite);
+        invite.setCreatedAt(Instant.now());invite.setExpiresAt(invite.getCreatedAt().plus(Duration.ofDays(validDays)));invitations.save(invite);
         audit(actor,enterpriseId,"member.invite",invite.getId(),"创建成员邀请");
         return new EnterpriseDtos.InvitationCreated(dto(invite),token);
+    }
+    /** Read-only POST keeps the bearer token out of request paths, query logs and referrers. */
+    @Transactional(readOnly=true)
+    public EnterpriseDtos.InvitationPreview previewInvitation(EnterpriseDtos.AcceptRequest request) {
+        String token=text(request==null?null:request.token(),256);
+        var invite=invitations.findByTokenHash(hash(token)).orElseThrow(()->invalidInvite());
+        var e=enterprises.findById(invite.getEnterpriseId()).filter(x->"active".equals(x.getStatus()))
+                .orElseThrow(()->invalidInvite());
+        if(!"pending".equals(invite.getStatus()) || !invite.getExpiresAt().isAfter(Instant.now()))throw invalidInvite();
+        // A removed/suspended inviter cannot keep enrolling new members through an old link.
+        try { access.require(invite.getCreatedBy(),e.getId(),"member.invite"); }
+        catch(BusinessException failure) { throw invalidInvite(); }
+        return new EnterpriseDtos.InvitationPreview(e.getId(),e.getName(),invite.getExpiresAt());
     }
     @Transactional
     public EnterpriseDtos.Context accept(String actor,EnterpriseDtos.AcceptRequest request) {
@@ -103,11 +121,14 @@ public class EnterpriseService {
         // Reload after the enterprise lock: a different user may have accepted or revoked this link.
         var invite=invitations.findByTokenHash(hash).orElseThrow(()->invalidInvite());
         entityManager.refresh(invite,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
-        if("accepted".equals(invite.getStatus()) && actor.equals(invite.getAcceptedBy()))return context(actor,e.getId());
         if(!"pending".equals(invite.getStatus()) || !invite.getExpiresAt().isAfter(Instant.now()))throw invalidInvite();
         access.require(invite.getCreatedBy(),e.getId(),"member.invite");
-        if(current.findCurrentForUpdate(actor).isPresent())throw conflict("ENTERPRISE_ALREADY_JOINED","请先退出当前企业");
-        join(e,actor);invite.setStatus("accepted");invite.setAcceptedBy(actor);invitations.save(invite);
+        var relation=current.findCurrentForUpdate(actor);
+        if(relation.isPresent()) {
+            if(e.getId().equals(relation.get().getEnterpriseId())) { access.member(actor,e.getId()); return context(actor,e.getId()); }
+            throw conflict("ENTERPRISE_ALREADY_JOINED","你已加入其他企业，请先退出后再接受邀请");
+        }
+        join(e,actor);
         audit(actor,e.getId(),"member.accept",invite.getId(),"接受企业邀请");
         return context(actor,e.getId());
     }
@@ -115,7 +136,7 @@ public class EnterpriseService {
     public EnterpriseDtos.Invitation revoke(String actor,String enterpriseId,String inviteId) {
         lock(enterpriseId);access.require(actor,enterpriseId,"member.invite");
         var invite=invitations.findById(inviteId).filter(i->enterpriseId.equals(i.getEnterpriseId())).orElseThrow(()->invalidInvite());
-        if(!"pending".equals(invite.getStatus()) && !"revoked".equals(invite.getStatus()))throw conflict("ENTERPRISE_INVITATION_USED","邀请已被使用");
+        if(!"pending".equals(invite.getStatus()) && !"revoked".equals(invite.getStatus()))throw invalidInvite();
         invite.setStatus("revoked");invitations.save(invite);audit(actor,enterpriseId,"member.invite.revoke",inviteId,"撤销邀请");return dto(invite);
     }
     @Transactional

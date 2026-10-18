@@ -5,6 +5,8 @@
 
 **Single sources of truth**
 
+企业群发邀请（2026-10-17，本地未发布）：`EnterpriseService` 新建邀请默认 90 天、可选 365 天，可多人接受、可撤销；匿名只读 POST preview 只回企业名称/ID/有效期，accept 仍要求原产品开通及手机号。`/enterprise/invite#token=...` 注册/登录后加入，不传企业令牌到 ID 推荐关系。V59 只清理旧企业邀请和 accepted_by，不动成员/钱包/作品；旧单次逻辑不兼容。见 `docs/ip-studio-enterprise-invitation-validation.md`。
+
 | 维度 | 真值文件 | 备注 |
 |---|---|---|
 | 项目结构 / 工作流 | 本文件（**AGENTS.md**） | 给 agent 看的执行约束 |

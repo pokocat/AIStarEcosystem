@@ -22,7 +22,7 @@ import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
 import { useLayoutMode } from "./layout-mode";
 
-const BARE_PREFIXES = ["/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback"];
+const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback"];
 /** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
 const BARE_EXACT = ["/"];
 

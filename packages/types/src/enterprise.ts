@@ -15,11 +15,15 @@ export interface EnterpriseMember {
 }
 export interface EnterpriseContext { enterprise: Enterprise; member: EnterpriseMember; permissions: EnterprisePermission[]; }
 export interface EnterpriseCreateRequest { name: string; clientRequestId: string; }
-export interface EnterpriseInvitationRequest { clientRequestId: string; }
-export interface EnterpriseInvitation { id: string; enterpriseId: string; status: "pending" | "accepted" | "revoked" | "expired"; expiresAt: string; }
+export interface EnterpriseInvitationRequest { clientRequestId: string; validDays?: 90 | 365; }
+export interface EnterpriseInvitation { id: string; enterpriseId: string; status: "pending" | "revoked" | "expired"; expiresAt: string; }
 /** Token appears only on initial creation. Never persist it in localStorage or logs. */
 export interface EnterpriseInvitationCreated { invitation: EnterpriseInvitation; token?: string; }
 export interface EnterpriseInvitationAcceptRequest { token: string; }
+/** Public bearer-invitation preview. Contains no member identity, balance or private assets. */
+export interface EnterpriseInvitationPreview {
+  enterpriseId: string; enterpriseName: string; expiresAt: string;
+}
 export interface EnterpriseMemberUpdateRequest { role: "manager" | "member"; capabilities: EnterpriseCapabilities; version: number; }
 export interface EnterprisePolicy { enterpriseId: string; allowedEndpointIds: string[]; maxActiveJobs: number; version: number; }
 export interface EnterprisePolicyUpdateRequest { allowedEndpointIds: string[]; maxActiveJobs: number; version: number; }
