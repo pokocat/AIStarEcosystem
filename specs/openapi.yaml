@@ -12690,7 +12690,8 @@ paths:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
         '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
-        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED / STUDIO_SKILL_NOT_FOUND' }
+        '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED / AI_TOOLS_NOT_SUPPORTED（端点声明不支持工具且无 JSON 协议回落时）' }
   /v1/ip-studio/projects/{id}/conversations/{threadId}/events:
     parameters:
       - { in: path, name: id, required: true, schema: { type: string } }
@@ -12715,6 +12716,8 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueControlRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioDialogueState>' }
+        '404': { description: 'STUDIO_THREAD_NOT_FOUND' }
+        '409': { description: 'STUDIO_EXECUTION_NOT_ACTIVE（pause/resume 指向的执行不再活跃）' }
   /v1/ip-studio/projects/{id}/conversations/{threadId}/branches:
     parameters:
       - { in: path, name: id, required: true, schema: { type: string } }
@@ -12737,7 +12740,7 @@ paths:
         '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }
         '400': { description: 'STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_INPUT_INVALID' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（带 stage, spent, inFlight, quotedCost, approvedCap, shortfall）' }
-        '404': { description: 'STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND / STUDIO_MESSAGE_NOT_FOUND / STUDIO_APPROVAL_NOT_FOUND（confirmationMessageId 不是本线程助手消息上的确认卡）' }
         '409': { description: 'STUDIO_PLAN_STALE / STUDIO_PLAN_EXECUTION_BUSY / STUDIO_REQUEST_CHANGED' }
   /v1/ip-studio/projects/{id}/plan-executions/{eid}:
     parameters:

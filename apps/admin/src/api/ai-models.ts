@@ -75,6 +75,10 @@ export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   chatSupportsTemperature?: boolean;
   chatSupportsTopP?: boolean;
   chatSupportsResponseFormat?: boolean;
+  /** 原生工具调用（tools / tool_calls）；未声明按不支持处理。 */
+  chatSupportsTools?: boolean;
+  /** 供应商真流式（stream + include_usage）；未声明按不支持处理。 */
+  chatSupportsStreaming?: boolean;
   chatMaxOutputTokens?: number | null;
   imageRequestSpec?: AiImageRequestSpec | null;
   rpmLimit?: number;
@@ -118,6 +122,10 @@ export interface AdminAiModelEndpointUpsert extends AiModelConcurrencyConfig {
   chatSupportsTemperature?: boolean;
   chatSupportsTopP?: boolean;
   chatSupportsResponseFormat?: boolean;
+  /** 原生工具调用（tools / tool_calls）；未声明按不支持处理。 */
+  chatSupportsTools?: boolean;
+  /** 供应商真流式（stream + include_usage）；未声明按不支持处理。 */
+  chatSupportsStreaming?: boolean;
   /** 0 清空上限；省略保持不变。 */
   chatMaxOutputTokens?: number | null;
   imageRequestSpec?: AiImageRequestSpec | null;

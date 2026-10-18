@@ -138,6 +138,8 @@ interface FormState {
   chatSupportsTemperature: boolean;
   chatSupportsTopP: boolean;
   chatSupportsResponseFormat: boolean;
+  chatSupportsTools: boolean;
+  chatSupportsStreaming: boolean;
   chatMaxOutputTokens: string;
   imageRequestSpecJson: string;
   rpmLimit: string;
@@ -172,6 +174,8 @@ const EMPTY_FORM: FormState = {
   chatSupportsTemperature: true,
   chatSupportsTopP: true,
   chatSupportsResponseFormat: true,
+  chatSupportsTools: false,
+  chatSupportsStreaming: false,
   chatMaxOutputTokens: "",
   imageRequestSpecJson: "",
   rpmLimit: "",
@@ -371,6 +375,8 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     chatSupportsTemperature: p.chatSupportsTemperature !== false,
     chatSupportsTopP: p.chatSupportsTopP !== false,
     chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
+    chatSupportsTools: p.chatSupportsTools === true,
+    chatSupportsStreaming: p.chatSupportsStreaming === true,
     chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
     imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
@@ -428,6 +434,8 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     chatSupportsTemperature: p.chatSupportsTemperature !== false,
     chatSupportsTopP: p.chatSupportsTopP !== false,
     chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
+    chatSupportsTools: p.chatSupportsTools === true,
+    chatSupportsStreaming: p.chatSupportsStreaming === true,
     chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
     imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
@@ -699,6 +707,8 @@ export default function AdminAiModelsPage() {
         chatSupportsTemperature: editing.chatSupportsTemperature,
         chatSupportsTopP: editing.chatSupportsTopP,
         chatSupportsResponseFormat: editing.chatSupportsResponseFormat,
+        chatSupportsTools: editing.chatSupportsTools,
+        chatSupportsStreaming: editing.chatSupportsStreaming,
         chatMaxOutputTokens: chatMaxOutputTokens ?? 0,
         ...(imageRequestSpec ? { imageRequestSpec } : {}),
         ...(!imageRequestSpec && editing.id ? { clearImageRequestSpec: true } : {}),
@@ -1064,6 +1074,11 @@ export default function AdminAiModelsPage() {
                         <label className="flex items-center gap-2 text-sm"><Switch checked={editing.chatSupportsTopP} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsTopP: v })} />top_p</label>
                         <label className="flex items-center gap-2 text-sm"><Switch checked={editing.chatSupportsResponseFormat} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsResponseFormat: v })} />response_format</label>
                       </div>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <label className="flex items-center gap-2 text-sm" title="开启后对话直接用 tools / tool_calls 调用工具；关闭时改用文字动作格式，效果相同"><Switch checked={editing.chatSupportsTools} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsTools: v })} />原生工具调用</label>
+                        <label className="flex items-center gap-2 text-sm" title="开启后回复边生成边显示（stream + stream_options.include_usage）；关闭时等完整回复后一次显示"><Switch checked={editing.chatSupportsStreaming} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsStreaming: v })} />流式输出</label>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">工具调用与流式输出只在确认供应商支持后开启；流式需要供应商在流末尾返回用量，否则无法按实际用量结算。未开启时按不支持处理。</p>
                       <div className="mt-3 max-w-xs">
                         <Field label="单次输出 Token 上限" hint="调用方请求超过此值时自动收敛；留空表示不限。">
                           <Input type="number" min="1" step="1" value={editing.chatMaxOutputTokens}

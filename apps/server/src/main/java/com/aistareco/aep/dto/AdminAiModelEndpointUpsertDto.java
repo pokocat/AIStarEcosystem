@@ -22,6 +22,8 @@ public record AdminAiModelEndpointUpsertDto(
         Boolean chatSupportsTopP,
         Boolean chatSupportsResponseFormat,
         Integer chatMaxOutputTokens,
+        Boolean chatSupportsTools,      // null = 不改；true/false 显式声明（未声明的端点按不支持处理）
+        Boolean chatSupportsStreaming,  // 同上：只有显式 true 才走供应商真流式
         com.aistareco.aep.model.AiImageRequestSpec imageRequestSpec,
         Boolean clearImageRequestSpec,
         com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,

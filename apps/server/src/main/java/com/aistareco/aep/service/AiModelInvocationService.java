@@ -220,6 +220,252 @@ public class AiModelInvocationService {
         }
     }
 
+    // ── 对话轮次：原生工具调用 + 供应商真流式（docs/ip-studio-conversational-video-recreation-plan.md §一轮为有界agent循环） ──
+
+    /** One native function call returned by the model ({@code arguments} is the raw JSON text the model produced). */
+    public record ChatToolCall(String id, String name, String arguments) {}
+
+    /**
+     * Result of one dialogue model call. Usage is whatever the vendor reported (null when it reported none — the caller
+     * must then refuse to settle, never estimate). {@code streamed} is true only when the text arrived as real vendor
+     * deltas; {@code cancelled} when the caller stopped the stream.
+     */
+    public record ChatTurnResult(String content, String finishReason, Long promptTokens, Long completionTokens,
+                                 List<ChatToolCall> toolCalls, boolean streamed, boolean cancelled, String modelUsed) {}
+
+    /** Receives real vendor text deltas in arrival order. {@link #cancelled()} is polled to stop a running stream. */
+    public interface ChatStreamListener {
+        void onTextDelta(String delta);
+        default boolean cancelled() { return false; }
+    }
+
+    /**
+     * Dialogue variant of {@link #invokeChatOnEndpoint}: optional native tools and optional real streaming, both gated
+     * by the endpoint's explicit capability flags (null = not supported; never guessed from the model name).
+     *
+     * <ul>
+     *   <li>{@code tools} non-empty requires {@code chatSupportsTools == TRUE}; otherwise 400 {@code AI_TOOLS_NOT_SUPPORTED}
+     *       (the caller uses the JSON action protocol instead).</li>
+     *   <li>Streams only when {@code listener != null} and {@code chatSupportsStreaming == TRUE}, with
+     *       {@code stream_options.include_usage}. Otherwise one non-streaming call; the caller shows the full text once.</li>
+     *   <li>Vendor reasoning deltas ({@code reasoning_content}) are never forwarded: internal reasoning is not user text.</li>
+     * </ul>
+     * Same guard, observation, error codes and usage records as the plain call. Existing callers are unaffected.
+     */
+    public ChatTurnResult invokeChatTurnOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
+                                                   List<? extends Map<String, ?>> messages, Map<String, Object> options,
+                                                   List<Map<String, Object>> tools, ChatStreamListener listener) {
+        if (endpoint == null || !endpoint.isEnabled()) {
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED", "指定的 AI 模型端点不可用");
+        }
+        if (tools != null && !tools.isEmpty() && !Boolean.TRUE.equals(endpoint.getChatSupportsTools())) {
+            throw BusinessException.badRequest("AI_TOOLS_NOT_SUPPORTED", "这个模型端点未声明支持工具调用");
+        }
+        try {
+            return doChatTurn(endpoint, purpose, messages, options, tools,
+                    listener != null && Boolean.TRUE.equals(endpoint.getChatSupportsStreaming()) ? listener : null);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[ai-chat] turn exception purpose={} endpointId={} endpoint={} err={}",
+                    purpose == null ? null : purpose.wire(), endpoint.getId(), endpoint.getName(), e.toString());
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "AI_PROVIDER_ERROR",
+                    "调用端点失败: " + endpoint.getName() + " - " + e.getMessage());
+        }
+    }
+
+    private ChatTurnResult doChatTurn(AiModelEndpoint e, AiModelPurpose purpose, List<? extends Map<String, ?>> messages,
+                                      Map<String, Object> options, List<Map<String, Object>> tools,
+                                      ChatStreamListener streamListener) throws Exception {
+        AiModelProviderType type = e.getProviderType();
+        if (!isOpenAiCompatible(type)) {
+            throw new BusinessException(HttpStatus.NOT_IMPLEMENTED, "PROVIDER_NOT_SUPPORTED",
+                    "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
+        }
+        String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
+        String model = chatModel(e, options);
+        Map<String, Object> body = chatBody(e, model, messages, options);
+        if (tools != null && !tools.isEmpty()) body.put("tools", tools);
+        boolean stream = streamListener != null;
+        if (stream) {
+            body.put("stream", true);
+            body.put("stream_options", Map.of("include_usage", true));
+        }
+        URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
+        long startNanos = System.nanoTime();
+        String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
+        String requestJson = OM.writeValueAsString(body);
+        var observedMessages = observedChatMessages(messages);
+        Map<String, Object> observedBody = new LinkedHashMap<>(body);
+        observedBody.put("messages", observedMessages);
+        String observedJson = OM.writeValueAsString(observedBody);
+        try {
+            guard.checkBeforeCall(e, guard.estimateChatTokens(messages, body));
+        } catch (BusinessException ex) {
+            usage.recordObserved(e.getId(), e.getName(), model, purpose != null ? purpose.wire() : null, null, null, null, false,
+                    requestId, null, elapsedMs(startNanos), ex.getCode(), ex.getMessage(), observedJson, null, null);
+            throw ex;
+        }
+        log.info("[ai-chat] turn start requestId={} purpose={} endpointId={} endpoint={} model={} messages={} maxTokens={} tools={} stream={}",
+                requestId, purpose == null ? null : purpose.wire(), e.getId(), e.getName(), model,
+                messages == null ? 0 : messages.size(), body.get("max_tokens"), tools == null ? 0 : tools.size(), stream);
+        if (ioLog.isInfoEnabled()) {
+            try {
+                ioLog.info("[ai-chat-io] REQUEST requestId={} purpose={} endpoint={} model={} stream={} messages={}",
+                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, stream, OM.writeValueAsString(observedMessages));
+            } catch (Exception ignore) { /* observation never blocks the call */ }
+        }
+        Duration timeout = chatTimeout(options);
+        HttpRequest req = HttpRequest.newBuilder(uri)
+                .timeout(timeout)
+                .header("Authorization", "Bearer " + apiKey)
+                .header("Content-Type", "application/json")
+                .header("Accept", stream ? "text/event-stream" : "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(requestJson))
+                .build();
+        ModelCallCtx ctx = ModelCallCtx.builder(purpose).endpoint(e.getId(), e.getName()).model(model).requestId(requestId)
+                .requestBodyJson(observedJson).client(HTTP).build();
+        String internal = "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire()) + " model=" + model;
+        ChatTurnResult result;
+        String rawForUsage;
+        if (!stream) {
+            HttpResponse<String> resp;
+            try {
+                resp = upstreamHttp.sendJson(req, ctx);
+            } catch (UpstreamCallException ex) {
+                throw networkFailure(ex, internal);
+            }
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) throw callFailed(resp.statusCode(), resp.body(), internal);
+            try {
+                result = parseCompletion(OM.readTree(resp.body()), model);
+            } catch (Exception parseEx) {
+                upstreamHttp.recordBadOutput(ctx, resp.body(), "AI_BAD_OUTPUT", elapsedMs(startNanos));
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回无法解析，请稍后重试",
+                        internal + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+            }
+            rawForUsage = resp.body();
+        } else {
+            var acc = new StreamAccumulator(streamListener);
+            UpstreamModelHttp.StreamResult outcome;
+            try {
+                outcome = upstreamHttp.sendStream(req, ctx, acc::line, streamListener::cancelled,
+                        Duration.ofSeconds(90), timeout.plusSeconds(60));
+            } catch (UpstreamCallException ex) {
+                throw networkFailure(ex, internal);
+            }
+            if (outcome.status() < 200 || outcome.status() >= 300) throw callFailed(outcome.status(), outcome.errorBody(), internal);
+            if (acc.error != null) {
+                upstreamHttp.recordBadOutput(ctx, acc.error, "AI_CALL_FAILED", elapsedMs(startNanos));
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
+                        internal + " streamError=" + snippet(acc.error));
+            }
+            if (!outcome.cancelled() && !acc.done && acc.finishReason == null) {
+                upstreamHttp.recordBadOutput(ctx, acc.content.toString(), "AI_STREAM_INCOMPLETE", elapsedMs(startNanos));
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_STREAM_INCOMPLETE", "模型回复中途断开，本次未扣积分",
+                        internal + " received=" + acc.content.length());
+            }
+            result = acc.result(model, outcome.cancelled());
+            rawForUsage = null;
+        }
+        if (ioLog.isInfoEnabled()) {
+            ioLog.info("[ai-chat-io] RESPONSE requestId={} purpose={} model={} finish={} stream={} cancelled={} toolCalls={} content={}",
+                    requestId, purpose == null ? null : purpose.wire(), model, result.finishReason(), result.streamed(), result.cancelled(),
+                    result.toolCalls().size(), result.content());
+        }
+        Long total = result.promptTokens() != null && result.completionTokens() != null ? result.promptTokens() + result.completionTokens() : null;
+        usage.recordObserved(e.getId(), e.getName(), model, purpose != null ? purpose.wire() : null,
+                result.promptTokens(), result.completionTokens(), total, !result.cancelled(), requestId, null, elapsedMs(startNanos),
+                result.cancelled() ? "CANCELLED" : null, null, observedJson, rawForUsage, null);
+        log.info("[ai-chat] turn ok requestId={} endpointId={} model={} finish={} stream={} cancelled={} promptTokens={} completionTokens={} toolCalls={} contentLength={} durationMs={}",
+                requestId, e.getId(), model, result.finishReason(), result.streamed(), result.cancelled(), result.promptTokens(),
+                result.completionTokens(), result.toolCalls().size(), result.content().length(), elapsedMs(startNanos));
+        return result;
+    }
+
+    private static BusinessException networkFailure(UpstreamCallException ex, String internal) {
+        String code = ex.isTimeout() ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_ERROR";
+        String message = ex.isTimeout() ? "AI 生成超时，请稍后重试或换一个模型端点" : "AI 生成失败，请稍后重试";
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, code, message, internal + " err=" + ex.getCause());
+    }
+
+    private static BusinessException callFailed(int status, String body, String internal) {
+        return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+                status == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试",
+                internal + " status=" + status + " body=" + snippet(body));
+    }
+
+    /** Non-streaming chat completion with optional {@code message.tool_calls}. */
+    static ChatTurnResult parseCompletion(JsonNode parsed, String model) {
+        if (!parsed.isObject()) throw new IllegalArgumentException("completion is not an object");
+        JsonNode choice = parsed.path("choices").path(0);
+        JsonNode message = choice.path("message");
+        String content = message.path("content").isTextual() ? message.path("content").asText() : "";
+        List<ChatToolCall> calls = new ArrayList<>();
+        for (JsonNode call : message.path("tool_calls")) {
+            JsonNode fn = call.path("function");
+            if (!fn.path("name").isTextual()) continue;
+            String args = fn.path("arguments").isTextual() ? fn.path("arguments").asText() : fn.path("arguments").toString();
+            calls.add(new ChatToolCall(call.path("id").asText(null), fn.path("name").asText(), args));
+        }
+        JsonNode u = parsed.path("usage");
+        Long prompt = u.path("prompt_tokens").isNumber() ? u.path("prompt_tokens").asLong() : null;
+        Long completion = u.path("completion_tokens").isNumber() ? u.path("completion_tokens").asLong() : null;
+        String finish = choice.path("finish_reason").isTextual() ? choice.path("finish_reason").asText() : null;
+        return new ChatTurnResult(content, finish, prompt, completion, List.copyOf(calls), false, false, model);
+    }
+
+    /** Folds OpenAI-compatible SSE chunks into text + tool calls + usage, forwarding only real text deltas. */
+    static final class StreamAccumulator {
+        private final ChatStreamListener listener;
+        final StringBuilder content = new StringBuilder();
+        final Map<Integer, String[]> calls = new TreeMap<>(); // index -> {id, name, arguments}
+        String finishReason;
+        Long promptTokens, completionTokens;
+        boolean done;
+        String error;
+
+        StreamAccumulator(ChatStreamListener listener) { this.listener = listener; }
+
+        boolean line(String raw) throws Exception {
+            String line = raw.strip();
+            if (line.isEmpty() || line.startsWith(":") || line.startsWith("event:") || line.startsWith("id:")) return true;
+            if (!line.startsWith("data:")) return true;
+            String data = line.substring(5).strip();
+            if ("[DONE]".equals(data)) { done = true; return false; }
+            JsonNode chunk = OM.readTree(data);
+            if (chunk.has("error")) { error = data; return false; }
+            JsonNode u = chunk.path("usage");
+            if (u.isObject()) {
+                if (u.path("prompt_tokens").isNumber()) promptTokens = u.path("prompt_tokens").asLong();
+                if (u.path("completion_tokens").isNumber()) completionTokens = u.path("completion_tokens").asLong();
+            }
+            for (JsonNode choice : chunk.path("choices")) {
+                JsonNode delta = choice.path("delta");
+                if (delta.path("content").isTextual()) {
+                    String text = delta.path("content").asText();
+                    if (!text.isEmpty()) { content.append(text); listener.onTextDelta(text); }
+                }
+                for (JsonNode call : delta.path("tool_calls")) {
+                    int index = call.path("index").asInt(calls.size());
+                    String[] slot = calls.computeIfAbsent(index, k -> new String[]{null, null, ""});
+                    if (call.path("id").isTextual()) slot[0] = call.path("id").asText();
+                    JsonNode fn = call.path("function");
+                    if (fn.path("name").isTextual()) slot[1] = (slot[1] == null ? "" : slot[1]) + fn.path("name").asText();
+                    if (fn.path("arguments").isTextual()) slot[2] = slot[2] + fn.path("arguments").asText();
+                }
+                if (choice.path("finish_reason").isTextual()) finishReason = choice.path("finish_reason").asText();
+            }
+            return true;
+        }
+
+        ChatTurnResult result(String model, boolean cancelled) {
+            List<ChatToolCall> out = new ArrayList<>();
+            for (String[] slot : calls.values()) if (slot[1] != null && !slot[1].isBlank()) out.add(new ChatToolCall(slot[0], slot[1], slot[2]));
+            return new ChatTurnResult(content.toString(), cancelled ? "cancelled" : finishReason, promptTokens, completionTokens,
+                    List.copyOf(out), true, cancelled, model);
+        }
+    }
+
     /** 测试已配置的模型目录（GET）；未配置路径时沿用 baseUrl/models。 */
     public Map<String, Object> testConnection(String endpointId) {
         AiModelEndpoint e = endpointRepo.findById(endpointId)
@@ -380,35 +626,8 @@ public class AiModelInvocationService {
                     "providerType=" + type.wire() + " 暂未实现（ANTHROPIC / AZURE_OPENAI 需独立适配；其余走 OpenAI 兼容）");
         }
         String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
-        String model = resolveModel(e, options);
-        if (hasExplicitChatCapabilities(e) && e.getModel() != null && !e.getModel().isBlank()
-                && !e.getModel().equals(model)) {
-            throw BusinessException.badRequest("MODEL_MISMATCH_FOR_ENDPOINT", "该端点的聊天参数能力仅适用于配置的固定模型");
-        }
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", model);
-        body.put("messages", messages);
-        if (options != null) {
-            if (options.get("temperature") != null && supports(e.getChatSupportsTemperature())) {
-                body.put("temperature", options.get("temperature"));
-            }
-            if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
-            if (options.get("top_p") != null && supports(e.getChatSupportsTopP())) body.put("top_p", options.get("top_p"));
-            if (options.get("response_format") != null && supports(e.getChatSupportsResponseFormat())) {
-                body.put("response_format", options.get("response_format"));
-            }
-        }
-        if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
-                && supports(e.getChatSupportsTemperature())) {
-            body.put("temperature", e.getDefaultTemperature());
-        }
-        if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
-            body.put("max_tokens", e.getDefaultMaxTokens());
-        }
-        if (!body.containsKey("top_p") && e.getDefaultTopP() != null && supports(e.getChatSupportsTopP())) {
-            body.put("top_p", e.getDefaultTopP());
-        }
-        clampOutputBudget(e.getChatMaxOutputTokens(), body);
+        String model = chatModel(e, options);
+        Map<String, Object> body = chatBody(e, model, messages, options);
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
@@ -540,6 +759,46 @@ public class AiModelInvocationService {
                 content == null ? 0 : content.length(),
                 elapsedMs(startNanos));
         return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens);
+    }
+
+    /** Model for a chat call on this endpoint; explicit wire capabilities apply only to the configured fixed model. */
+    private static String chatModel(AiModelEndpoint e, Map<String, Object> options) {
+        String model = resolveModel(e, options);
+        if (hasExplicitChatCapabilities(e) && e.getModel() != null && !e.getModel().isBlank()
+                && !e.getModel().equals(model)) {
+            throw BusinessException.badRequest("MODEL_MISMATCH_FOR_ENDPOINT", "该端点的聊天参数能力仅适用于配置的固定模型");
+        }
+        return model;
+    }
+
+    /** OpenAI chat body shared by the plain and the turn (tools / streaming) variants: one place applies endpoint capabilities. */
+    private static Map<String, Object> chatBody(AiModelEndpoint e, String model, List<? extends Map<String, ?>> messages,
+                                                Map<String, Object> options) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", model);
+        body.put("messages", messages);
+        if (options != null) {
+            if (options.get("temperature") != null && supports(e.getChatSupportsTemperature())) {
+                body.put("temperature", options.get("temperature"));
+            }
+            if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
+            if (options.get("top_p") != null && supports(e.getChatSupportsTopP())) body.put("top_p", options.get("top_p"));
+            if (options.get("response_format") != null && supports(e.getChatSupportsResponseFormat())) {
+                body.put("response_format", options.get("response_format"));
+            }
+        }
+        if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
+                && supports(e.getChatSupportsTemperature())) {
+            body.put("temperature", e.getDefaultTemperature());
+        }
+        if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
+            body.put("max_tokens", e.getDefaultMaxTokens());
+        }
+        if (!body.containsKey("top_p") && e.getDefaultTopP() != null && supports(e.getChatSupportsTopP())) {
+            body.put("top_p", e.getDefaultTopP());
+        }
+        clampOutputBudget(e.getChatMaxOutputTokens(), body);
+        return body;
     }
 
     private static Long asLong(Object o) {

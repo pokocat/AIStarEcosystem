@@ -81,6 +81,21 @@ public class AiModelEndpoint {
     @Column(name = "chat_max_output_tokens")
     private Integer chatMaxOutputTokens;
 
+    /**
+     * Native OpenAI-compatible function calling ({@code tools} / {@code tool_calls}). Explicit admin declaration only:
+     * null = unknown = not supported (never inferred from the model name). Unsupported endpoints use the validated
+     * JSON action protocol instead (V60).
+     */
+    @Column(name = "chat_supports_tools")
+    private Boolean chatSupportsTools;
+
+    /**
+     * Real vendor streaming ({@code stream:true} + {@code stream_options.include_usage}). null = unknown = not supported:
+     * such endpoints are called non-streaming and the reply is shown once it arrives, never replayed as fake deltas (V60).
+     */
+    @Column(name = "chat_supports_streaming")
+    private Boolean chatSupportsStreaming;
+
     /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
     @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
     private String imageRequestSpecJson;
