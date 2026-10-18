@@ -5,7 +5,7 @@
 
 **Single sources of truth**
 
-企业群发邀请（2026-10-17，本地未发布）：`EnterpriseService` 新建邀请默认 90 天、可选 365 天，可多人接受、可撤销；匿名只读 POST preview 只回企业名称/ID/有效期，accept 仍要求原产品开通及手机号。`/enterprise/invite#token=...` 注册/登录后加入，不传企业令牌到 ID 推荐关系。V59 只清理旧企业邀请和 accepted_by，不动成员/钱包/作品；旧单次逻辑不兼容。见 `docs/ip-studio-enterprise-invitation-validation.md`。
+企业群发邀请（2026-10-17，已生产发布）：`EnterpriseService` 新建邀请默认 90 天、可选 365 天，可多人接受、可撤销；匿名只读 POST preview 只回企业名称/ID/有效期，accept 仍要求原产品开通及手机号。`/enterprise/invite#token=...` 注册/登录后加入，不传企业令牌到 ID 推荐关系。V59 只清理旧企业邀请和 accepted_by，不动成员/钱包/作品；旧单次逻辑不兼容。见 `docs/ip-studio-enterprise-invitation-production-release-20261017.md`。后台 `/admin/platform/accounts` 的测试账号仅 SUPER_ADMIN 可管理；ID 独立 TEST_ 身份无手机号，通过两分钟一次性入口和正常 OIDC 进入 Studio。仅已验签的明确测试身份免真实手机要求，开通/RBAC/积分不变；线上已用两个独立身份验收同链接入企，未重测真实短信。约束见 `docs/test-accounts-plan.md`。
 
 | 维度 | 真值文件 | 备注 |
 |---|---|---|

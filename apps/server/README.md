@@ -1032,7 +1032,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 ## 企业主子账号（2026-10-15，本地实施，未生产发布）
 
-2026-10-17 增量（本地，未发布）：企业邀请改为群发链接，默认 90 天、可选 365 天、可多人接受并可撤销。匿名只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅回企业名称/ID/有效期；接受仍检查登录、手机号和 aiavatar 开通。V59 清空旧邀请并删除 `accepted_by`，不迁移单次使用逻辑，不改成员或资金。页面 `/enterprise/invite#token=...` 在短信注册/登录后接受邀请，企业令牌不进入账号中心的推荐关系。验收见 [群发邀请记录](../../docs/ip-studio-enterprise-invitation-validation.md)。
+2026-10-17 增量（已生产发布）：企业邀请改为群发链接，默认 90 天、可选 365 天、可多人接受并可撤销。匿名只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅回企业名称/ID/有效期；接受仍检查登录、手机号和 aiavatar 开通。V59 清空旧邀请并删除 `accepted_by`，不迁移单次使用逻辑，不改成员或资金。页面 `/enterprise/invite#token=...` 在短信注册/登录后接受邀请，企业令牌不进入账号中心的推荐关系。验收见 [生产记录](../../docs/ip-studio-enterprise-invitation-production-release-20261017.md)。超级管理员的 `/api/admin/test-accounts` 代理账号中心创建/生成入口/停用并审计；仅已验签 TEST_ 身份可免真实手机要求，不放宽普通游客、产品开通、RBAC 或计费。
 
 - 设计：[精简方案](../../docs/ip-studio-team-accounts-plan.md)、[任务拆分](../../docs/ip-studio-enterprise-development-tasks.md)。类型真源 `packages/types/src/enterprise.ts`，业务代码 `aep/enterprise`。
 - 基础 API：`/api/v1/ip-studio/enterprises` 的创建/当前企业、成员分页、邀请/接受/撤销、角色能力、模型策略、主账号移交和审计。默认 `AEP_ENTERPRISE_ENABLED=false`，显式开启才注册 controller；仍要求现有 aiavatar 开通和手机号验证。

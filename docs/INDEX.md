@@ -74,7 +74,9 @@
 | [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **已生产发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
 | [企业积分生产发布](ip-studio-enterprise-production-release.md) | **f068b51d · 已开启** | 三服务发布、V56–V58、线上页面与存量钱包/账本/开通核对、备份及回退边界（last-reviewed 2026-10-15） |
 | [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
-| [企业群发邀请实现与验收](ip-studio-enterprise-invitation-validation.md) | **本地增量，未发布** | 90 天/一年可多人分享链接、品牌短信注册加入、V59 旧邀请清理与权限边界（last-reviewed 2026-10-17） |
+| [企业群发邀请实现与验收](ip-studio-enterprise-invitation-validation.md) | **已生产发布** | 90 天/一年可多人分享链接、品牌短信注册加入、V59 旧邀请清理与权限边界（last-reviewed 2026-10-17） |
+| [企业邀请与测试账号生产验收](ip-studio-enterprise-invitation-production-release-20261017.md) | **d8195896 · 已上线** | 同链接双成员入企、后台测试账号创建/入口/停用、V59、制品与清理；无需真实短信（last-reviewed 2026-10-17） |
+| [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
 | [企业积分完整交付验收](ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |
 | [企业积分第二批验收](ip-studio-enterprise-points-validation.md) | **E05–E06 测试与边界** | 划拨、人工财务、原充值来源、H2/MySQL及真实浏览器交易验收（last-reviewed 2026-10-15） |

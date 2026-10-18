@@ -29,8 +29,8 @@
 
 ### 2026-10-17 · 企业群发邀请
 
-- [x] **群发分享与注册加入闭环（本地完成）**：90 天/一年、多人可用链接；`/enterprise/invite` 品牌页短信注册/登录后加入，原产品开通不变。V59 清理旧单次邀请；MySQL/前端自动化及同链接两人实际注册加入通过，见 [记录](docs/ip-studio-enterprise-invitation-validation.md)。未生产发布。
-- [ ] **企业群发邀请正式发布与线上验收**：server V59 与 web-aiavatar 一起发布，旧邀请失效；检查真实注册/登录→企业归属和多人使用，不能将本地固定码验收记作生产短信证明。
+- [x] **群发分享与注册加入闭环**：90 天/一年、多人可用链接、企业宣传片新头图；本地短信流程与 MySQL 通过，已生产发布。见 [本地记录](docs/ip-studio-enterprise-invitation-validation.md)。
+- [x] **企业邀请及后台测试账号发布、线上验收**：ID `0dc48cb9` + 产品 `d8195896`（server V59、Studio、admin）；同一链接两位独立测试身份正常 OIDC 后加入企业，后台创建/复制/停用通过；临时企业已关闭、邀请撤销、4 个验收身份停用，账本 810 条未变。按用户要求无需短信；真实短信首次注册本次未重测，见 [生产记录](docs/ip-studio-enterprise-invitation-production-release-20261017.md)。
 
 ### 2026-10-17 · 拉片原声与音频节点后续
 
