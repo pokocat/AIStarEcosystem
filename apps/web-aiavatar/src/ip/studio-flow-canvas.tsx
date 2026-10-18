@@ -59,7 +59,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
-  return <article className={`studio-flow-card${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
+  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     {port('target')}{port('source')}
     <header className="studio-flow-drag"><Icon size={15}/>{title}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>

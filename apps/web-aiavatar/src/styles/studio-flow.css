@@ -29,6 +29,19 @@ html[data-layout="desktop"] .studio-canvas-credit .desktop-credit-retry:hover { 
 html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .studio-flow-stage { position:absolute; inset:60px 0 0; }
 .studio-flow-card { display:flex; flex-direction:column; height:100%; background:var(--surface); border:1px solid var(--line-2); border-radius:12px; }
+/* Warm video work surface, distinct from the cool canvas and white title bar.
+   Keep these aliases on the card so tools and other node types retain their palette. */
+.studio-flow-video-card {
+  --surface-2:#faf7f0;
+  --surface-3:#f0ebe1;
+  --ink:#292824;
+  --ink-2:#686258;
+  --ink-3:#71695e;
+  --line:#e8e2d7;
+  --line-2:#d8d0c2;
+  --primary:#514b41;
+  --primary-soft:#eee8dd;
+}
 .studio-flow-card.is-selected { border:2px solid var(--primary); }
 .studio-flow-group { height:100%; border:1px dashed var(--ink-3); border-radius:12px; background:var(--primary-soft); }
 .studio-flow-group.is-selected { border-color:var(--primary); }
