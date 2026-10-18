@@ -17,7 +17,8 @@ import Link from "next/link";
 import {
   AlertCircle, ArrowLeft, Eye, EyeOff, Loader2, Pencil, RefreshCw, Trash2,
 } from "lucide-react";
-import { Modal } from "antd";
+import { ConfigProvider, Modal } from "antd";
+import { StudioPage } from "@/ip/studio-page";
 import type { IpDemoAdmin } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { useIdentity, isSuperAdminRole, isOperatorRole } from "@/proto/api";
@@ -129,77 +130,28 @@ function DemosPageInner() {
   if (authState !== "ok") return null;
 
   if (!isOperator) {
-    return (
-      <div className="ip-surface max-w-6xl mx-auto px-6 py-16 text-center">
-        <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>这一页只有平台运营能看。</p>
-        <Link href="/projects" className="inline-block mt-4 text-[13px]" style={{ color: "var(--primary)" }}>
-          ← 回到项目
-        </Link>
-      </div>
-    );
+    return <StudioPage title="官方内容管理" description="管理发布到灵感与创作入口的官方内容。" className="studio-demo-admin">
+      <div className="studio-demo-state"><p>这一页只有平台运营能看。</p><Link className="ip-brand-secondary" href="/projects">回到项目</Link></div>
+    </StudioPage>;
   }
 
   const templates = rows.filter((r) => r.kind === "template");
   const examples = rows.filter((r) => r.kind !== "template");
 
   return (
-    <div ref={surfaceRef} className="ip-surface max-w-6xl mx-auto px-6 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1.5 text-[12px] mb-2"
-            style={{ color: "var(--ink-3)" }}
-          >
-            <ArrowLeft className="w-3.5 h-3.5" /> 项目
-          </Link>
-          <h1 className="asset-name text-[24px]" style={{ color: "var(--ink)" }}>官方内容管理</h1>
-          <p className="text-[12px] mt-1 leading-relaxed" style={{ color: "var(--ink-2)" }}>
-            画布顶栏「存为官方内容」发出去的都在这里。
-            <b>模板</b>进「新建画布」那一排，只给节点和提示词；
-            <b>示例</b>进画布列表，素材成图一起给。
-            下线随时能撤回；删除会把素材副本一起清掉，删了找不回来。
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void load()}
-          disabled={loading}
-          className="shrink-0 inline-flex items-center gap-1.5 h-8 px-3 rounded-[9px] text-[12.5px] disabled:opacity-60"
-          style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
-        >
-          {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
-          刷新
-        </button>
-      </div>
-
-      {loadError && (
-        <div
-          className="ledger-card p-4 mb-6 flex items-start gap-2.5"
-          style={{ borderColor: "var(--err, #b4483c)" }}
-        >
-          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "var(--err, #b4483c)" }} />
-          <div className="min-w-0">
-            <p className="text-[13px]" style={{ color: "var(--ink)" }}>{loadError}</p>
-            <button type="button" onClick={() => void load()} className="mt-1.5 text-[12.5px]" style={{ color: "var(--primary)" }}>
-              重试
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!loading && !loadError && rows.length === 0 && (
-        <div className="ledger-card p-8 text-center">
-          <p className="text-[13.5px]" style={{ color: "var(--ink-2)" }}>还没发过官方内容。</p>
-          <p className="text-[12px] mt-1.5" style={{ color: "var(--ink-3)" }}>
-            在一张做好的画布里点顶栏「存为官方内容」，就会出现在这里。
-          </p>
-        </div>
-      )}
-
-      <Group title="工作流模板" hint="进「新建画布」那一排。只有节点和提示词，素材不跟着走。" rows={templates}
+    <StudioPage title="官方内容管理" description="管理工作流模板与官方示例的展示信息、排序和上线状态。" className="studio-demo-admin" contentRef={surfaceRef} actions={<>
+      <Link className="ip-brand-secondary" href="/templates"><ArrowLeft size={16} aria-hidden="true"/>返回灵感</Link>
+      <button type="button" className="ip-brand-secondary" onClick={() => void load()} disabled={loading}>
+        {loading ? <Loader2 size={16} className="animate-spin" aria-hidden="true"/> : <RefreshCw size={16} aria-hidden="true"/>}刷新
+      </button>
+    </>}>
+      <p className="studio-demo-note">下线后用户将看不到这条内容，随时可以重新上线。删除会清理素材副本，无法恢复；已复制到用户画布的内容不受影响。</p>
+      {loading && <div className="studio-demo-state" role="status"><Loader2 size={20} className="animate-spin" aria-hidden="true"/><p>正在加载官方内容…</p></div>}
+      {loadError && <div className="studio-demo-state is-error" role="alert"><AlertCircle size={20} aria-hidden="true"/><p>{loadError}</p><button type="button" className="ip-brand-secondary" onClick={() => void load()}>重试</button></div>}
+      {!loading && !loadError && rows.length === 0 && <div className="studio-demo-state"><p>还没发过官方内容。</p><p>在画布顶栏选择「存为官方内容」，发布后就会出现在这里。</p></div>}
+      <Group title="工作流模板" hint="用于新建创作，只复制节点和提示词，不包含素材。" rows={templates}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
-      <Group title="官方示例" hint="进画布列表。素材成图都在，用户点开是复制一份到自己那儿。" rows={examples}
+      <Group title="官方示例" hint="包含素材成图，用户使用时会复制到自己的画布。" rows={examples}
         {...{ busy, canDelete, toggle, setEditing, setDraft, setPendingDelete }} />
 
       {/* 编辑：只改展示信息。种类不给改 —— 模板与实例的区别是文档里有没有素材，
@@ -215,12 +167,12 @@ function DemosPageInner() {
         okButtonProps={{ disabled: !draft.name.trim() }}
         getContainer={() => surfaceRef.current ?? document.body}
       >
-        <div className="grid gap-3 pt-1">
+        <div className="studio-demo-form">
           <Field label="名字">
             <input
               value={draft.name}
               onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
-              style={FIELD}
+              className="studio-demo-field"
               placeholder="别人看到的名字"
             />
           </Field>
@@ -228,7 +180,7 @@ function DemosPageInner() {
             <input
               value={draft.summary}
               onChange={(e) => setDraft((d) => ({ ...d, summary: e.target.value }))}
-              style={FIELD}
+              className="studio-demo-field"
               placeholder="选填。写清楚这套工作流能做出什么"
             />
           </Field>
@@ -237,7 +189,7 @@ function DemosPageInner() {
               type="number"
               value={draft.sortOrder}
               onChange={(e) => setDraft((d) => ({ ...d, sortOrder: Number(e.target.value) || 0 }))}
-              style={FIELD}
+              className="studio-demo-field"
             />
           </Field>
         </div>
@@ -253,7 +205,7 @@ function DemosPageInner() {
         okButtonProps={{ danger: true, loading: busy === pendingDelete?.id }}
         getContainer={() => surfaceRef.current ?? document.body}
       >
-        <p style={{ color: "var(--ink-2)", fontSize: 13.5, lineHeight: 1.7 }}>
+        <p className="studio-demo-delete-note">
           这条内容和它那份素材副本（{pendingDelete?.assetCount ?? 0} 个）会一起删掉，<b>不可恢复</b>。
           <br />
           已经拿它建过画布的用户不受影响 —— 那些是各自复制的一份。
@@ -261,7 +213,7 @@ function DemosPageInner() {
           只是想让别人看不到的话，<b>下线</b>就够了，随时能再打开。
         </p>
       </Modal>
-    </div>
+    </StudioPage>
   );
 }
 
@@ -280,72 +232,29 @@ function Group({
 }) {
   if (rows.length === 0) return null;
   return (
-    <section className="mb-8">
-      <div className="flex items-baseline gap-3 mb-3">
-        <h2 className="asset-name text-[18px]" style={{ color: "var(--ink)" }}>{title}</h2>
-        <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>{hint}</span>
-      </div>
-      <div className="grid gap-2.5">
+    <section className="studio-demo-group" aria-label={title}>
+      <header className="studio-demo-group-heading"><h2>{title}<span>{rows.length}</span></h2><p>{hint}</p></header>
+      <ul className="studio-demo-list">
         {rows.map((row) => (
-          <div
-            key={row.id}
-            className="ledger-card p-3 flex items-center gap-3"
-            style={{ opacity: row.enabled ? 1 : 0.55 }}
-          >
-            {row.coverUrl ? (
+          <li key={row.id} className="studio-demo-row" data-enabled={row.enabled}>
+            <div className="studio-demo-cover">{row.coverUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={row.coverUrl} alt="" loading="lazy"
-                className="w-[56px] h-[42px] object-cover rounded-[7px] shrink-0"
-                style={{ background: "var(--surface-2)" }} />
-            ) : (
-              <div className="w-[56px] h-[42px] rounded-[7px] shrink-0 grid place-items-center text-[10px]"
-                style={{ background: "var(--surface-2)", color: "var(--ink-4, var(--ink-3))" }}>
-                无封面
-              </div>
-            )}
-
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
-                <h3 className="asset-name text-[15px] truncate" style={{ color: "var(--ink)" }} title={row.name}>
-                  {row.name}
-                </h3>
-                {!row.enabled && (
-                  <span className="shrink-0 inline-flex items-center px-1.5 h-[17px] rounded-full text-[10px] font-bold"
-                    style={{ background: "var(--surface-3, #eef0f5)", color: "var(--ink-3)" }}>
-                    已下线
-                  </span>
-                )}
-              </div>
-              <p className="text-[11.5px] mt-0.5 truncate" style={{ color: "var(--ink-3)" }}
-                title={row.summary || undefined}>
-                {row.summary || "（没写说明）"}
-              </p>
-              {/* 概览数字：判断「这条是不是空的 / 是不是那条重复的」，不用点进去看 */}
-              <p className="text-[11px] mt-1 font-mono" style={{ color: "var(--ink-3)" }}>
-                {row.id} · {row.nodeCount} 个节点 · {row.assetCount} 个素材 · 排序 {row.sortOrder} · {formatDateTime(row.updatedAt ?? row.createdAt)}
-              </p>
+              <img src={row.coverUrl} alt="" loading="lazy" />
+            ) : <span>无封面</span>}</div>
+            <div className="studio-demo-info">
+              <div className="studio-demo-title"><h3 title={row.name}>{row.name}</h3><span className="studio-demo-status" data-enabled={row.enabled}>{row.enabled ? "已上线" : "已下线"}</span></div>
+              <p className="studio-demo-summary" title={row.summary || undefined}>{row.summary || "（没写说明）"}</p>
+              <div className="studio-demo-meta"><span>{row.nodeCount} 个节点</span><span>{row.assetCount} 个素材</span><span>排序 {row.sortOrder}</span><time>{formatDateTime(row.updatedAt ?? row.createdAt)}</time></div>
+              <p className="studio-demo-id" title={row.id}>{row.id}</p>
             </div>
-
-            <div className="flex items-center gap-1.5 shrink-0">
-              <IconBtn label="编辑" onClick={() => { setDraft({ name: row.name, summary: row.summary, sortOrder: row.sortOrder }); setEditing(row); }}>
-                <Pencil className="w-3.5 h-3.5" />
-              </IconBtn>
-              <IconBtn
-                label={row.enabled ? "下线" : "重新上线"}
-                busy={busy === row.id}
-                onClick={() => void toggle(row)}
-              >
-                {row.enabled ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </IconBtn>
-              {canDelete && (
-                <IconBtn label="删除（连素材，不可恢复）" danger onClick={() => setPendingDelete(row)}>
-                  <Trash2 className="w-3.5 h-3.5" />
-                </IconBtn>
-              )}
+            <div className="studio-demo-actions" role="group" aria-label={`${row.name}的操作`}>
+              <IconBtn label="编辑" onClick={() => { setDraft({ name: row.name, summary: row.summary, sortOrder: row.sortOrder }); setEditing(row); }}><Pencil size={16} /></IconBtn>
+              <IconBtn label={row.enabled ? "下线" : "重新上线"} busy={busy === row.id} onClick={() => void toggle(row)}>{row.enabled ? <EyeOff size={16} /> : <Eye size={16} />}</IconBtn>
+              {canDelete && <IconBtn label="删除（连素材，不可恢复）" danger onClick={() => setPendingDelete(row)}><Trash2 size={16} /></IconBtn>}
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 }
@@ -366,42 +275,22 @@ function IconBtn({
       disabled={busy}
       title={label}
       aria-label={label}
-      className="grid place-items-center w-7 h-7 rounded-[7px] transition disabled:opacity-50"
-      style={{
-        background: "var(--surface-2)",
-        color: danger ? "var(--err, #b4483c)" : "var(--ink-2)",
-      }}
+      className="studio-demo-action"
+      data-danger={danger || undefined}
     >
-      {busy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : children}
+      {busy ? <Loader2 size={16} className="animate-spin" /> : children}
     </button>
   );
 }
 
-/** 与画布顶栏那个「存为官方内容」弹窗同一套（ip/canvas-host.tsx 的 DEMO_FIELD）——
- *  同一件事的两个界面，输入框长得一样。 */
-const FIELD: React.CSSProperties = {
-  width: "100%", boxSizing: "border-box", padding: "9px 11px",
-  border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)",
-  background: "var(--surface)", color: "var(--ink)",
-  fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
-};
-
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <label className="grid gap-1">
-      <span className="text-[12px] font-semibold" style={{ color: "var(--ink-2)" }}>
-        {label}
-        {hint && <span className="ml-2 font-normal" style={{ color: "var(--ink-3)" }}>{hint}</span>}
-      </span>
-      {children}
-    </label>
-  );
+  return <label className="studio-demo-form-field"><span>{label}</span>{children}{hint && <small>{hint}</small>}</label>;
 }
 
 export default function DemosAdminPage() {
   return (
-    <ToastProvider>
+    <ConfigProvider theme={{ token: { colorPrimary: "#192229", borderRadius: 8, fontFamily: "var(--ip-ui, sans-serif)" } }}><ToastProvider>
       <DemosPageInner />
-    </ToastProvider>
+    </ToastProvider></ConfigProvider>
   );
 }
