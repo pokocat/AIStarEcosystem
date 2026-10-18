@@ -16,7 +16,7 @@ export function StudioGroupDescription({ title, description, onChange }: { title
     </button>
     <Modal title={`${onChange ? '编辑' : '查看'}分组说明 · ${title}`} open={open} getContainer={studioOverlayContainer} width={560}
       onCancel={() => setOpen(false)} footer={<>{onChange && <Button onClick={() => setOpen(false)}>取消</Button>}<Button type="primary" onClick={() => { if (onChange) onChange(draft); setOpen(false); }}>{onChange ? '保存说明' : '关闭'}</Button></>}>
-      {onChange ? <label className="studio-group-description-editor">分组说明<Input.TextArea aria-label="分组说明" value={draft} onChange={e => setDraft(e.target.value)} maxLength={2000} showCount autoSize={{ minRows: 6, maxRows: 14 }} placeholder="说明这组流程的用途、素材要求和操作步骤"/></label>
+      {onChange ? <label className="studio-group-description-editor">分组说明<Input.TextArea aria-label="分组说明" value={draft} onChange={e => setDraft(e.target.value)} maxLength={2000} showCount rows={8} placeholder="说明这组流程的用途、素材要求和操作步骤"/></label>
         : <p className="studio-group-description-reader">{description}</p>}
     </Modal>
   </>;
