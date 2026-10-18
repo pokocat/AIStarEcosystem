@@ -105,22 +105,14 @@ class IpProjectServiceTest {
         assertNull(project.getCoverKey()); assertTrue(svc.detail(USER, PID).coverUrl().contains(first));
     }
 
-    @Test void videoCoverUsesOnlyTheAdoptedVideoAndResignsItsPoster() {
-        var doc = new IpStudioFixtures.Doc();
-        String key = "media/material-videos/mvj_cover/video.mp4", poster = "media/material-videos/mvj_cover/cover.jpg";
-        var meta = doc.node("video", "video").put("storageKey", key).put("primaryVideoId", "IPR-cover:1");
-        var project = IpStudioFixtures.project(PID, USER, doc);
-        projects.repo.save(project);
-        runs.repo.save(IpRun.builder().id("IPR-cover").projectId(PID).ownerUserId(USER).kind("studio-video").status("done")
-            .inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"mvj_cover\"]}}").outputJson("{}").createdAt(Instant.now()).build());
-        var job = com.aistareco.aep.model.MaterialVideoJob.builder().id("mvj_cover").ownerUserId(USER).app("ipstudio")
-            .status("succeeded").videoUrl("stored-video").thumbnailUrl("stored-poster").build();
-        org.mockito.Mockito.when(videoJobs.findById("mvj_cover")).thenReturn(java.util.Optional.of(job));
-        org.mockito.Mockito.when(storage.keyOfStoredUrl("stored-video")).thenReturn(key);
-        org.mockito.Mockito.when(storage.keyOfStoredUrl("stored-poster")).thenReturn(poster);
-        assertTrue(svc.detail(USER, PID).coverUrl().contains(poster + "?sig="));
-        meta.put("storageKey", "a-different-selected-video"); project.setDocJson(doc.root.toString());
-        assertNull(svc.detail(USER, PID).coverUrl());
+    @Test void automaticCoverUsesSelectedImageAndHasNoVideoOnlyFallback() {
+        var doc=new IpStudioFixtures.Doc();
+        String first=IpStudioFixtures.sourceKey(USER,"first.png"),selected=IpStudioFixtures.sourceKey(USER,"selected.png");
+        doc.node("image","image").put("storageKey",first).put("primaryImageId","selected").putArray("images").addObject().put("id","selected").put("storageKey",selected);
+        var project=IpStudioFixtures.project(PID,USER,doc);projects.repo.save(project);
+        assertTrue(svc.detail(USER,PID).coverUrl().contains(selected));
+        var video=new IpStudioFixtures.Doc();video.node("video","video").put("storageKey",IpStudioFixtures.sourceKey(USER,"video.mp4"));project.setDocJson(video.root.toString());
+        assertNull(svc.detail(USER,PID).coverUrl());
     }
 
     @Test void fixedCoverRejectsOtherOwnersAbsentImagesAndVideoKeys() {

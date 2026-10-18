@@ -39,6 +39,10 @@ public class IpTemplateResolver {
     private final IpDemoTemplateRepository demoRepo;
     private final FileStorageService storage;
     private final ObjectMapper om;
+    private com.aistareco.aep.service.PlatformConfigService coverConfigs;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public void setCoverConfigs(com.aistareco.aep.service.PlatformConfigService configs) {this.coverConfigs=configs;}
 
     public IpTemplateResolver(IpCatalogService catalog, IpDemoTemplateRepository demoRepo,
                               FileStorageService storage, ObjectMapper om) {
@@ -65,7 +69,7 @@ public class IpTemplateResolver {
             if(visible(d,userId))out.add(toDto(d,userId));
         }
         if(userId!=null)for(var d:demoRepo.findAll())if(!d.isEnabled() && "personal".equals(d.getVisibility()) && userId.equals(d.getCreatedBy()) && "template".equals(d.getKind()))out.add(toDto(d,userId));
-        out.addAll(catalog.templates());
+        out.addAll(catalog.templates().stream().map(this::withBuiltinCover).toList());
         return out;
     }
 
@@ -97,7 +101,7 @@ public class IpTemplateResolver {
         for (IpDemoTemplate d : demoRepo.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()) {
             if (want.equals(d.getId()) && visible(d,userId)) return Optional.of(toDto(d,userId));
         }
-        return catalog.template(want);
+        return catalog.template(want).map(this::withBuiltinCover);
     }
 
     /** A published template opens as ordinary client-owned canvas nodes, without execution locks. */
@@ -114,12 +118,20 @@ public class IpTemplateResolver {
     private IpTemplateDto toDto(IpDemoTemplate d) {
         return toDto(d,null);
     }
+    private IpTemplateDto withBuiltinCover(IpTemplateDto template) {
+        String key=CanvasCoverService.builtinCoverKey(coverConfigs,template.id());
+        String cover=key==null?template.coverUrl():signOrEmpty(key);
+        if(cover==null || cover.isBlank())cover=signOrEmpty(CanvasCoverService.firstImageKey(template.doc(),k->true));
+        return new IpTemplateDto(template.id(),template.name(),template.summary(),cover,
+                template.stylePresetId(),template.lookCount(),template.estimatedCredits(),template.doc(),
+                template.versionId(),template.version(),"official",false,true);
+    }
     private IpTemplateDto toDto(IpDemoTemplate d,String userId) {
         return new IpTemplateDto(
                 d.getId(),
                 d.getName(),
                 d.getSummary() == null ? "" : d.getSummary(),
-                d.getCoverKey() == null ? "" : signOrEmpty(d.getCoverKey()),
+                signOrEmpty(d.getCoverKey() == null ? CanvasCoverService.firstImageKey(docOf(d), key -> true) : d.getCoverKey()),
                 null, 0, 0,
                 docOf(d),d.getCurrentVersionId(),versionNumber(d),d.getVisibility(),userId!=null && userId.equals(d.getCreatedBy()),d.isEnabled());
     }
@@ -146,6 +158,7 @@ public class IpTemplateResolver {
 
     /** 封面签不出来只是少一张缩略图，不该让整个目录挂掉。 */
     private String signOrEmpty(String key) {
+        if (key == null) return "";
         try {
             String url = storage.signedUrl(key);
             return url == null ? "" : url;
