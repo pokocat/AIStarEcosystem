@@ -101,8 +101,37 @@ components:
       properties:
         clientRequestId: {type: string, minLength: 1, maxLength: 64}
         nodeId: {type: string, minLength: 1, maxLength: 64}
-        operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant, recreation]}
+        operation: {type: string, enum: [text, script, storyboard, image, video, assemble, assistant, recreation, check]}
         prompt: {type: string, maxLength: 16000}
+        recreation:
+          type: object
+          nullable: true
+          description: 仅 recreation(mode=segments)：段长上限；model 表示读所选视频模型合同的最长秒数（H3 为 15）。显式秒数不能超过模型上限；无法同时满足段数/时长/覆盖 → 400 STUDIO_SEGMENT_TOO_LONG。
+          required: [maxSegmentSec, videoModel]
+          properties:
+            maxSegmentSec: {oneOf: [{type: integer, minimum: 1}, {type: string, enum: [model]}]}
+            videoModel: {type: string}
+        check:
+          type: object
+          nullable: true
+          description: 仅 check：对目标 run 的成片抽帧（服务端生成 visualContext）按技能清单三态判定，写 output.check；按 Token 计价。
+          required: [targetRunId, checkIds]
+          properties:
+            targetRunId: {type: string}
+            targetStorageKey: {type: string, nullable: true}
+            checkIds: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
+        skillKey: {type: string, nullable: true, description: 技能规划绑定；只选择方法与校验范围，不代表付款或执行授权。}
+        skillVersion: {type: integer, nullable: true}
+        stage: {type: string, enum: [analysis, production], nullable: true}
+        executionId: {type: string, nullable: true}
+        dialogue:
+          type: object
+          nullable: true
+          description: 新对话入口的父 run 绑定（线程 + 用户消息）；旧 assistant 请求不带。
+          required: [threadId, messageId]
+          properties:
+            threadId: {type: string}
+            messageId: {type: string}
         textEdit:
           type: object
           nullable: true
@@ -338,25 +367,268 @@ components:
     StudioPlan:
       type: object
       required: [summary, steps, questions]
+      description: 旧建议流程保留 summary/steps/questions；技能计划增加阶段、方案、预算、修订与指纹（docs/ip-studio-conversational-video-recreation-plan.md §两阶段计划契约）。模型不得填写 quotedCost / approvedCap / confirmedApproachId / resultNodeId。
       properties:
         summary: { type: string }
         questions: { type: array, items: { type: string } }
         notes: { type: array, maxItems: 12, items: { type: string }, description: 不支持的动作保留为只读建议，不能直接执行。 }
+        skillKey: { type: string, nullable: true }
+        skillVersion: { type: integer, nullable: true }
+        stage: { type: string, enum: [analysis, production], nullable: true }
+        revision: { type: integer, nullable: true }
+        fingerprint: { type: string, nullable: true }
+        approaches:
+          type: array
+          nullable: true
+          items:
+            type: object
+            required: [id, title, summary, rationale, preserve, change, tradeoffs, requiredCapabilities]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              summary: { type: string }
+              rationale: { type: string }
+              preserve: { type: array, items: { type: string } }
+              change: { type: array, items: { type: string } }
+              tradeoffs: { type: array, items: { type: string } }
+              requiredCapabilities: { type: array, items: { type: string } }
+        recommendedApproachId: { type: string, nullable: true }
+        confirmedApproachId: { type: string, nullable: true, description: 服务端按用户确认绑定。 }
+        budget:
+          type: object
+          nullable: true
+          required: [estimated, autoFixCap]
+          properties:
+            estimated: { type: integer }
+            autoFixCap: { type: integer }
+            approvedCap: { type: integer, nullable: true }
         steps:
           type: array
-          maxItems: 12
+          maxItems: 28
+          description: 旧建议流程最多 12 步；技能计划上限由 limits.maxSegments × 3 + 4 推出（8 段 → 28）。
           items:
             type: object
             required: [id, operation, title, prompt, referenceNodeIds]
             properties:
               id: { type: string }
-              operation: { type: string, enum: [text, script, storyboard, image, video] }
+              operation: { type: string, enum: [text, script, storyboard, image, video, recreation, check, assemble] }
+              strategy: { type: object, nullable: true, properties: { approachId: { type: string }, method: { type: string }, reason: { type: string } } }
+              execution: { type: string, enum: [auto, confirm], nullable: true }
+              quotedCost: { type: integer, nullable: true, description: 服务端报价。 }
+              settings: { type: object, nullable: true, description: 按 operation 区分的类型化设置（StudioSkillStepSettings），服务端拒绝未校验的任意 JSON。 }
               title: { type: string }
               prompt: { type: string, maxLength: 16000 }
               content: { type: string, maxLength: 16000, description: text 步骤必填的完整文字初稿，采用时不再次调用模型。 }
               dependsOn: { type: array, maxItems: 12, items: { type: string }, description: 仅引用本方案中更早的步骤 ID，采用后由客户端解析为真实节点。 }
               referenceNodeIds: { type: array, items: { type: string } }
               unresolvedReferences: { type: array, maxItems: 16, items: { type: string }, description: 模型使用的未知名称，需要用户明确补选，服务端不猜测映射。 }
+    StudioSkillSummary:
+      type: object
+      required: [key, name, version, status, planning, summary, methodExamples, operations, limits, checks, autoFixChecks, requiredCapabilities]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [active, draft, withdrawn] }
+        planning: { type: string, enum: [dynamic] }
+        summary: { type: string }
+        methodExamples: { type: array, items: { type: string } }
+        operations: { type: object, properties: { analysis: { type: array, items: { type: string } }, production: { type: array, items: { type: string } } } }
+        limits: { type: object, properties: { maxSourceSec: { type: integer }, maxSegments: { type: integer }, maxSegmentSec: { oneOf: [{ type: integer }, { type: string, enum: [model] }] }, maxSteps: { type: integer }, maxAutoFixPerSegment: { type: integer } } }
+        checks: { type: array, items: { type: string } }
+        autoFixChecks: { type: array, items: { type: string } }
+        requiredCapabilities: { type: array, items: { type: string } }
+    StudioCheckResult:
+      type: object
+      required: [status, targetRunId, items]
+      properties:
+        status: { type: string, enum: [pass, fail, unknown] }
+        targetRunId: { type: string }
+        targetStorageKey: { type: string, nullable: true }
+        sampledTimesSec: { type: array, items: { type: number } }
+        items:
+          type: array
+          items:
+            type: object
+            required: [id, status, evidence, reason]
+            properties:
+              id: { type: string }
+              status: { type: string, enum: [pass, fail, unknown] }
+              evidence: { type: array, items: { type: object, required: [kind, observation], properties: { kind: { type: string, enum: [frame, media, text] }, timeSec: { type: number, nullable: true }, observation: { type: string } } } }
+              reason: { type: string }
+              suggestion: { type: string, nullable: true }
+    StudioDialogueMessage:
+      type: object
+      required: [id, threadId, seq, role, text, blocks, status, createdAt]
+      properties:
+        id: { type: string }
+        threadId: { type: string }
+        seq: { type: integer }
+        turnId: { type: string, nullable: true }
+        runId: { type: string, nullable: true }
+        role: { type: string, enum: [user, assistant, system] }
+        text: { type: string }
+        blocks: { type: array, items: { type: object, required: [type], properties: { type: { type: string, enum: [plan, approval, tool_call, question, adoption] } }, additionalProperties: true } }
+        pinnedNodeIds: { type: array, items: { type: string } }
+        attachmentNodeIds: { type: array, items: { type: string } }
+        clientMessageId: { type: string, nullable: true }
+        billing: { type: object, nullable: true }
+        settling: { type: boolean, nullable: true }
+        status: { type: string, enum: [queued, applied, streaming, done, failed, interrupted] }
+        createdAt: { type: string, format: date-time }
+        legacyNodeId: { type: string, nullable: true }
+    StudioDialogueThread:
+      type: object
+      required: [id, projectId, lastSeq, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        parentThreadId: { type: string, nullable: true }
+        branchFromMessageId: { type: string, nullable: true }
+        title: { type: string, nullable: true }
+        lastSeq: { type: integer }
+        activeTurnId: { type: string, nullable: true }
+        activeExecutionId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    StudioDialogueState:
+      type: object
+      required: [thread, messages, latestSeq]
+      properties:
+        thread: { $ref: '#/components/schemas/StudioDialogueThread' }
+        messages: { type: array, items: { $ref: '#/components/schemas/StudioDialogueMessage' } }
+        nextCursor: { type: string, nullable: true }
+        latestSeq: { type: integer }
+        execution: { $ref: '#/components/schemas/StudioPlanExecution' }
+    StudioPostMessageRequest:
+      type: object
+      required: [clientMessageId, text]
+      properties:
+        clientMessageId: { type: string, minLength: 1, maxLength: 64 }
+        text: { type: string, maxLength: 4000 }
+        pinnedNodeIds: { type: array, maxItems: 64, items: { type: string } }
+        attachmentNodeIds: { type: array, maxItems: 64, items: { type: string } }
+        expectedPlanRevision: { type: integer, nullable: true }
+        skillKey: { type: string, nullable: true }
+        billing: { type: object, nullable: true }
+        maxCost: { type: integer, nullable: true, description: 本轮父对话 run 自身模型调用的费用上限；不是制作预算。 }
+    StudioPostMessageResult:
+      type: object
+      required: [messageId, queueState]
+      properties:
+        messageId: { type: string }
+        turnId: { type: string, nullable: true }
+        runId: { type: string, nullable: true }
+        queueState: { type: string, enum: [accepted, queued, applied] }
+    StudioDialogueControlRequest:
+      type: object
+      required: [controlId, action]
+      properties:
+        controlId: { type: string, minLength: 1, maxLength: 64 }
+        action: { type: string, enum: [stop, pause, resume] }
+        executionId: { type: string, nullable: true }
+    StudioBranchRequest:
+      type: object
+      required: [clientRequestId, fromMessageId]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
+        fromMessageId: { type: string }
+    StudioDialogueEvent:
+      type: object
+      required: [eventId, seq, threadId, turnId, createdAt, type, data]
+      description: SSE 事件（data 为按 type 区分的类型化数据）。类型见 packages/types/src/ip-studio-workflow.ts StudioDialogueEventType。
+      properties:
+        eventId: { type: string }
+        seq: { type: integer }
+        threadId: { type: string }
+        turnId: { type: string }
+        runId: { type: string, nullable: true }
+        executionId: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        type: { type: string, enum: [message.delta, tool.started, tool.progress, tool.finished, plan.proposed, approval.required, node.upsert, check.result, budget.update, turn.done] }
+        data: { type: object, additionalProperties: true }
+    StudioPlanExecution:
+      type: object
+      required: [id, projectId, skillKey, skillVersion, stage, planRunId, planRevision, planFingerprint, status, steps, budgets, startedAt, deadlineAt, updatedAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        threadId: { type: string, nullable: true }
+        skillKey: { type: string }
+        skillVersion: { type: integer }
+        stage: { type: string, enum: [analysis, production] }
+        planRunId: { type: string }
+        planRevision: { type: integer }
+        planFingerprint: { type: string }
+        status: { type: string, enum: [running, paused, needs_user, done, partial, failed, canceled] }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [id, title, operation, stage, dependsOn, status, runIds, attempt, quotedCost]
+            properties:
+              id: { type: string }
+              title: { type: string }
+              operation: { type: string, enum: [text, script, storyboard, image, video, recreation, check, assemble] }
+              stage: { type: string, enum: [analysis, production] }
+              dependsOn: { type: array, items: { type: string } }
+              status: { type: string, enum: [pending, submitted, running, done, failed, skipped, needs_user] }
+              runIds: { type: array, items: { type: string } }
+              attempt: { type: integer }
+              quotedCost: { type: integer }
+              maxCost: { type: integer, nullable: true }
+              acceptedRunId: { type: string, nullable: true }
+              acceptedCandidateIndex: { type: integer, nullable: true }
+              nodeId: { type: string, nullable: true }
+              reason: { type: string, nullable: true }
+        budgets:
+          type: array
+          items:
+            type: object
+            required: [stage, approvedCap, autoFixCap, spent, inFlight, remaining]
+            properties:
+              stage: { type: string, enum: [analysis, production] }
+              approvedCap: { type: integer }
+              autoFixCap: { type: integer }
+              spent: { type: integer }
+              inFlight: { type: integer }
+              remaining: { type: integer }
+              shortfall: { type: integer, nullable: true }
+        billing: { type: object, nullable: true }
+        needsUserReason: { type: string, nullable: true }
+        startedAt: { type: string, format: date-time }
+        deadlineAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+    StudioPlanExecutionCreateRequest:
+      type: object
+      required: [clientRequestId, stage, planRunId, planFingerprint, budgetCap, autoFixCap]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
+        stage: { type: string, enum: [analysis, production] }
+        planRunId: { type: string }
+        planFingerprint: { type: string }
+        approachId: { type: string, nullable: true }
+        budgetCap: { type: integer, minimum: 0 }
+        autoFixCap: { type: integer, minimum: 0 }
+        billing: { type: object, nullable: true }
+        executionId: { type: string, nullable: true, description: 确认制作阶段时带已有执行，避免第二份活跃执行。 }
+        expectedRevision: { type: integer, nullable: true }
+        approvalId: { type: string, nullable: true }
+        confirmationMessageId: { type: string, nullable: true, description: 用户的确认消息；服务端绑定真实用户确认与计划指纹。 }
+    StudioPlanExecutionControlRequest:
+      type: object
+      required: [clientRequestId]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
+        expectedStatus: { type: string, enum: [running, paused, needs_user, done, partial, failed, canceled], nullable: true }
+    StudioPlanExecutionAcceptRequest:
+      type: object
+      required: [clientRequestId, runId]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64 }
+        runId: { type: string }
+        candidateIndex: { type: integer, nullable: true }
     StudioRecreationEvidence:
       type: object
       required: [observed, rule, evidenceFrames]
@@ -12379,6 +12651,145 @@ paths:
         '404': { description: 'IP_PROJECT_NOT_FOUND / 资产非本人或已删除' }
         '409': { description: 'STUDIO_REQUEST_CHANGED / STUDIO_PRICE_CHANGED（价格超过批准上限，冻结前拒绝）' }
         '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / STUDIO_FIXTURE_UNAVAILABLE / 视频与图像链既有 preflight 错误；不建任务不冻结' }
+  /v1/ip-studio/studio/skills:
+    get:
+      tags: [ipstudio]
+      operationId: studioSkills
+      description: 当前可用技能（首期读仓内 resources/studio/skills/*.md）：标识、版本、动态规划方式、方法示例、阶段操作白名单、上限、检查项与能力要求。
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillSummary[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSkillSummary' } } } } }
+  /v1/ip-studio/projects/{id}/conversation:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: studioConversation
+      description: 返回本画布的主线程（或用户上次所在分支）、最近消息分页入口与恢复游标；首次访问惰性创建主线程并兼容导入旧四模式对话节点。不创建生成任务、不计费。
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}/messages:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    get:
+      tags: [ipstudio]
+      operationId: studioConversationMessages
+      description: 分页回看原始消息与稳定结构块（beforeSeq / limit），用于长历史与断线快照恢复。
+      parameters:
+        - { in: query, name: beforeSeq, schema: { type: integer } }
+        - { in: query, name: limit, schema: { type: integer, default: 50, maximum: 200 } }
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueMessage[]>' }
+    post:
+      tags: [ipstudio]
+      operationId: studioPostMessage
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙 → 加入有序转向队列，不因忙碌拒绝。返回 message / turn / run 身份与 queueState。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）' }
+        '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
+        '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED / STUDIO_SKILL_NOT_FOUND' }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}/events:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    get:
+      tags: [ipstudio]
+      operationId: studioConversationEvents
+      description: 已认证 SSE（text/event-stream）；每条 event 带 id=seq，支持 Last-Event-ID 或 afterSeq 续播；游标过期返回 410 并要求用快照重建。断线不取消任务；心跳不计为进展。
+      parameters:
+        - { in: query, name: afterSeq, schema: { type: integer } }
+      responses:
+        '200': { description: 'text/event-stream of StudioDialogueEvent', content: { text/event-stream: { schema: { $ref: '#/components/schemas/StudioDialogueEvent' } } } }
+        '410': { description: 'STUDIO_EVENT_CURSOR_EXPIRED：请重新拉取线程快照' }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}/control:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioConversationControl
+      description: 优先控制：stop 立即阻断本线程/执行的新增提交并取消可取消的排队任务（已交厂商的继续查询结算）；pause/resume 转发给绑定的执行。controlId 幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueControlRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>' }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}/branches:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioConversationBranch
+      description: 从指定消息显式分叉出新线程；保留来源映射，新分支不继承执行授权与付款批准。同 clientRequestId 幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioBranchRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>' }
+  /v1/ip-studio/projects/{id}/plan-executions:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioCreatePlanExecution
+      description: 创建分析执行，或在同一执行上确认制作阶段（带 executionId / approachId / expectedRevision / approvalId / confirmationMessageId）。服务端核对计划指纹、技能在架、引用归属、总报价 ≤ 上限、付款绑定；落 ip_plan_execution 后 afterCommit 派发执行器。同项目只许一份活跃执行。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionCreateRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }
+        '400': { description: 'STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_INPUT_INVALID' }
+        '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（带 stage, spent, inFlight, quotedCost, approvedCap, shortfall）' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND' }
+        '409': { description: 'STUDIO_PLAN_STALE / STUDIO_PLAN_EXECUTION_BUSY / STUDIO_REQUEST_CHANGED' }
+  /v1/ip-studio/projects/{id}/plan-executions/{eid}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: eid, required: true, schema: { type: string } }
+    get:
+      tags: [ipstudio]
+      operationId: studioPlanExecution
+      description: 编排状态、各阶段预算（spent / inFlight / remaining）、每步原任务绑定、needs_user 原因与输出映射。费用与任务状态是原生 run 的只读投影。
+      responses:
+        '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }
+        '404': { description: STUDIO_PLAN_EXECUTION_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/plan-executions/{eid}/pause:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: eid, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioPausePlanExecution
+      description: 暂停新增提交（含改词、检查、下一段）；已有 run 继续刷新与结算。幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionControlRequest' } } } }
+      responses: { '200': { description: 'ApiResponse<StudioPlanExecution>' }, '409': { description: STUDIO_PLAN_STALE } }
+  /v1/ip-studio/projects/{id}/plan-executions/{eid}/resume:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: eid, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioResumePlanExecution
+      description: 幂等唤醒同一执行；核对原阶段授权、计划指纹、付款绑定、输入与价格后走统一推进入口（租约）。预算或来源变化 → 停在 needs_user 并返回对应错误。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionControlRequest' } } } }
+      responses: { '200': { description: 'ApiResponse<StudioPlanExecution>' }, '402': { description: STUDIO_PLAN_BUDGET_EXCEEDED }, '409': { description: STUDIO_PLAN_STALE } }
+  /v1/ip-studio/projects/{id}/plan-executions/{eid}/cancel:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: eid, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioCancelPlanExecution
+      description: 取消后续执行；对支持取消且尚未派发的任务调用既有 cancel，已交厂商的按原链查询结算。幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionControlRequest' } } } }
+      responses: { '200': { description: 'ApiResponse<StudioPlanExecution>' } }
+  /v1/ip-studio/projects/{id}/plan-executions/{eid}/steps/{sid}/accept:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: eid, required: true, schema: { type: string } }
+      - { in: path, name: sid, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioAcceptPlanExecutionStep
+      description: 用户明确采用该步骤的指定成功 run / 候选（「就用这版」）。保存用户判断，不把 AI 的 fail / unknown 改成 pass；只接受当前步骤所属的成功产物。幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionAcceptRequest' } } } }
+      responses: { '200': { description: 'ApiResponse<StudioPlanExecution>' }, '400': { description: STUDIO_INPUT_INVALID }, '409': { description: STUDIO_PLAN_STALE } }
   /v1/ip-studio/projects/{id}/adopt:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     post:
