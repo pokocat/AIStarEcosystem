@@ -123,6 +123,20 @@ public class AiModelInvocationService {
                         .map(ep -> new ResolvedEndpoint(ep, c, isDefaultEndpoint(purpose, ep.getId()))));
     }
 
+    /**
+     * 受理与 worker 共用的端点规则（2026-10-18 D08）：受理时「不指定模型」走用途默认绑定，不要求 candidate；
+     * 于是 worker 拿着受理时落下的 endpointId 回查时，同样接受「它仍是该用途当前默认绑定」的端点，
+     * 否则才要求启用的 candidate。两边判定一致：受理过的任务不会在 worker 里因缺 candidate 被拒。
+     * 默认绑定已改、candidate 也没有 → empty（调用方按 ENDPOINT_NOT_ALLOWED 失败并退款，§8.0 不静默换端点）。
+     */
+    public Optional<ResolvedEndpoint> resolveAcceptedEndpoint(AiModelPurpose purpose, String endpointId, String appCode) {
+        if (endpointId == null || endpointId.isBlank()) return resolveEndpoint(purpose, null, appCode);
+        Optional<ResolvedEndpoint> candidate = resolveEndpoint(purpose, endpointId, appCode);
+        if (candidate.isPresent()) return candidate;
+        return resolveDefaultEndpoint(purpose, appCode).filter(ep -> ep.getId().equals(endpointId))
+                .map(ep -> new ResolvedEndpoint(ep, candidateRepo.findByPurposeAndEndpointId(purpose, ep.getId()).orElse(null), true));
+    }
+
     /** D-11：列出某用途全部候选（含 capability + 默认标记），给 /render/models 与 admin。端点已删的孤儿候选跳过。 */
     public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose) {
         return listCandidates(purpose, null);

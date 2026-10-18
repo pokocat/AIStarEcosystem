@@ -2,11 +2,12 @@ package com.aistareco.aep.ipstudio.execution;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 
 /**
- * Shape of {@code ip_plan_execution.steps_json}: {@code {skill, canvasContextIds[], steps[], children[], needsUserReason?}}. Each step
+ * Shape of {@code ip_plan_execution.steps_json}: {@code {skill, canvasContextIds[], steps[], children[], dialogueRuns[], steeringSeen[], summaryPosted?, needsUserReason?}}. Each step
  * keeps its confirmed definition (identical to the fingerprinted plan run), orchestration status, native run ids,
  * attempt, request identity, quote/ceiling and the user's adoption pointer. Never prices, holds or outputs.
  */
@@ -56,6 +57,22 @@ final class PlanState {
     static ObjectNode child(JsonNode state,String clientRequestId) {
         for(JsonNode child:state.path("children"))if(clientRequestId.equals(child.path("clientRequestId").asText()))return (ObjectNode)child;
         return null;
+    }
+    /** A parent dialogue turn attributed to this execution's stage budget (D06), by run id. */
+    static ObjectNode dialogueRun(JsonNode state,String runId) {
+        for(JsonNode run:state.path("dialogueRuns"))if(runId.equals(run.path("runId").asText()))return (ObjectNode)run;
+        return null;
+    }
+    /** Steering the executor (or a newer explicit user decision) already handled (D03); bounded to the latest 200. */
+    static boolean steeringSeen(JsonNode state,String steeringId) {
+        for(JsonNode id:state.path("steeringSeen"))if(steeringId.equals(id.asText()))return true;
+        return false;
+    }
+    static void markSteeringSeen(ObjectNode state,String steeringId) {
+        if(steeringSeen(state,steeringId))return;
+        ArrayNode seen=state.withArray("steeringSeen");
+        seen.add(steeringId);
+        while(seen.size()>200)seen.remove(0);
     }
     static List<String> stageTitles(JsonNode state,String stage) {
         List<String> out=new ArrayList<>();

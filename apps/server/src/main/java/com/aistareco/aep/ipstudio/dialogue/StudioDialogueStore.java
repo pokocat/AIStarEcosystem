@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -13,6 +14,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -122,6 +124,75 @@ public class StudioDialogueStore implements StudioDialogueEvents {
 
     public void saveBlocks(IpDialogueMessage message, ArrayNode blocks) {
         message.setBlocksJson(json(blocks)); message.setUpdatedAt(Instant.now()); messages.save(message);
+    }
+
+    // ── Plan revisions and approval cards (D01: a new revision makes older pending cards superseded) ────────────────
+
+    /** How far back plan blocks and approval cards are looked up; older pending cards fail the current-plan check anyway. */
+    static final int CARD_SCAN = 400;
+
+    /** A plan block on the thread and the message that holds it. */
+    public record PlanRef(ObjectNode block, String messageId, long messageSeq) {
+        public String fingerprint() { return block.path("fingerprint").asText(); }
+        public int revision() { return block.path("revision").asInt(); }
+        public String planRunId() { return block.path("planRunId").asText(null); }
+    }
+
+    /** The thread's current plan: the newest dialogue plan block (imported legacy plans are history, never confirmable). */
+    public Optional<PlanRef> currentPlan(String threadId) {
+        for (var m : messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, CARD_SCAN))) {
+            if (m.getLegacyNodeId() != null) continue;
+            ArrayNode blocks = blocks(m);
+            for (int i = blocks.size() - 1; i >= 0; i--)
+                if ("plan".equals(blocks.get(i).path("type").asText()) && blocks.get(i) instanceof ObjectNode o) return Optional.of(new PlanRef(o, m.getId(), m.getSeq()));
+        }
+        return Optional.empty();
+    }
+
+    /** A card and the message that holds it. */
+    public record CardRef(ObjectNode block, IpDialogueMessage message) {}
+
+    /** Approval cards on the recent messages, newest message first. */
+    public List<CardRef> recentCards(String threadId) {
+        List<CardRef> out = new ArrayList<>();
+        for (var m : messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, CARD_SCAN))) {
+            if (!"assistant".equals(m.getRole())) continue;
+            for (JsonNode b : blocks(m)) if ("approval".equals(b.path("type").asText()) && b instanceof ObjectNode o) out.add(new CardRef(o, m));
+        }
+        return out;
+    }
+
+    /** Pending and not past its expiry: a card the user could still approve (subject to the current-plan check). */
+    public static boolean openCard(JsonNode block, Instant now) {
+        if (!"pending".equals(block.path("status").asText("pending"))) return false;
+        String expires = block.path("expiresAt").asText(null);
+        try { return expires == null || !Instant.parse(expires).isBefore(now); } catch (RuntimeException e) { return true; }
+    }
+
+    /**
+     * Inside a {@link #write} mutation (thread row locked): every pending approval card on the recent messages except
+     * {@code keepApprovalId} becomes {@code superseded}. Called when a new plan revision or a new card appears, so an old
+     * card can never start an old plan. Returns the card-update events (approval.required carrying the updated block).
+     */
+    public List<Pending> supersedePendingApprovals(IpDialogueThread locked, String keepApprovalId, String turnId, String runId, String executionId) {
+        List<Pending> out = new ArrayList<>();
+        Instant now = Instant.now();
+        for (var m : messages.findByThreadIdOrderBySeqDesc(locked.getId(), PageRequest.of(0, CARD_SCAN))) {
+            if (!"assistant".equals(m.getRole())) continue;
+            ArrayNode blocks = blocks(m);
+            boolean changed = false;
+            for (JsonNode b : blocks) {
+                if (!"approval".equals(b.path("type").asText()) || !(b instanceof ObjectNode o)) continue;
+                if (!"pending".equals(o.path("status").asText("pending")) || o.path("approvalId").asText().equals(keepApprovalId)) continue;
+                o.put("status", "superseded").put("supersededAt", now.toString());
+                changed = true;
+                var data = mapper.createObjectNode().put("messageId", m.getId());
+                data.set("block", o.deepCopy());
+                out.add(new Pending(turnId, runId, executionId, StudioDialogueEventTypes.APPROVAL_REQUIRED, data));
+            }
+            if (changed) saveBlocks(m, blocks);
+        }
+        return out;
     }
 
     /** First block of {@code type} whose {@code idField} equals {@code id}, or null. */

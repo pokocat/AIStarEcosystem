@@ -2,6 +2,8 @@ package com.aistareco.aep.ipstudio.execution;
 
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
 import com.aistareco.aep.enterprise.service.EnterpriseBillingService;
+import com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals;
+import com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval;
 import com.aistareco.aep.ipstudio.dto.StudioPlanDtos.*;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
@@ -44,11 +46,12 @@ public class StudioPlanExecutionService {
     /** Enterprise payer check at confirmation; the native runs re-check the authorization at every hold. */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private com.aistareco.aep.enterprise.service.EnterpriseAccessService enterpriseAccess;
-    /** The dialogue's approval cards; absent in deployments without the dialogue store (then the reference is recorded only). */
+    /** The dialogue's approval cards: the only confirmation source (D02). Without it nothing can be confirmed (503). */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
-    private StudioDialogueConfirmations confirmations;
+    private ObjectProvider<StudioDialogueApprovals> approvals;
+    /** Steering sent while the execution ran; a fresh confirmation or resume supersedes it (D03). */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
-    private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals> approvals;
+    private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> steering;
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueService> dialogue;
     public StudioPlanExecutionService(IpPlanExecutionRepository executions,IpProjectService projects,StudioSkillRules skills,
@@ -57,13 +60,58 @@ public class StudioPlanExecutionService {
     }
 
     // ── Create / confirm stage ───────────────────────────────────────────────────────────────────────────────────
+    /** Button path: {@code confirmationMessageId} is the assistant message holding the clicked card. */
     @Transactional
     public PlanExecution create(String userId,String projectId,PlanExecutionCreateRequest req) {
+        return create(userId,projectId,req,false);
+    }
+
+    /**
+     * Natural-language path (D04), reached only through the dialogue's {@code confirm_approval} tool: the user approved a
+     * pending card in words. Builds the same request the card button sends (plan, revision, approach, payer from the
+     * card; caps from the user's words, never above the card unless the user said the higher number) and confirms it
+     * through the same checks, with the user's own message as the confirmation source.
+     */
+    @Transactional
+    public PlanExecution confirmNatural(String userId,String projectId,NaturalApproval approval) {
+        if(approval==null||approval.clientRequestId()==null||!REQUEST_ID.matcher(approval.clientRequestId()).matches())
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+        projects.requiredForUpdate(userId,projectId);
+        // A repeated tool call with the same approval is a replay: the card is already approved, the result is the same.
+        var replay=executions.findByOwnerUserIdAndClientRequestId(userId,approval.clientRequestId()).filter(x->projectId.equals(x.getProjectId())).orElse(null);
+        if(replay==null)for(var x:executions.findByProjectIdAndStatusIn(projectId,ACTIVE)) {
+            JsonNode b=PlanState.parse(mapper,x.getBudgetJson());
+            for(String st:StudioSkillRules.STAGES)if(userId.equals(x.getOwnerUserId())&&approval.clientRequestId().equals(b.path(st).path("clientRequestId").asText()))replay=x;
+        }
+        if(replay!=null)return toDto(replay);
+        var card=cards().requireApprovalByMessage(userId,projectId,approval.userMessageId(),approval.approvalId());
+        JsonNode block=card.block();
+        long cap=approval.budgetCap()==null?block.path("budgetCap").asLong():approval.budgetCap();
+        long autoFix=approval.autoFixCap()==null?block.path("autoFixCap").asLong(0):approval.autoFixCap();
+        StudioNaturalApprovals.require(card.approvingText(),block,cap,autoFix);
+        String stage=card.stage();
+        BillingSelection billing=block.hasNonNull("billingSelection")?mapper.convertValue(block.path("billingSelection"),BillingSelection.class):null;
+        var active=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(x->userId.equals(x.getOwnerUserId())).findFirst().orElse(null);
+        String executionId=null,approachId=null;
+        if("production".equals(stage)) {
+            if(active==null)throw stale("还没有进行中的分析，不能直接确认制作方案");
+            executionId=active.getId();
+            var loaded=loadPlan(userId,projectId,card.cardPlanRunId(),card.planFingerprint(),"production");
+            approachId=loaded.plan().path("confirmedApproachId").asText(loaded.plan().path("recommendedApproachId").asText(null));
+        } else if(active!=null&&card.planFingerprint().equals(active.getPlanFingerprint())&&stage.equals(active.getStage())) {
+            executionId=active.getId(); // a raise of the running stage's cap
+        }
+        var req=new PlanExecutionCreateRequest(approval.clientRequestId(),stage,card.cardPlanRunId(),card.planFingerprint(),approachId,cap,autoFix,
+                billing,executionId,card.cardPlanRevision(),approval.approvalId(),approval.userMessageId());
+        return create(userId,projectId,req,true);
+    }
+
+    private PlanExecution create(String userId,String projectId,PlanExecutionCreateRequest req,boolean byMessage) {
         validate(req);
         String fingerprint=StudioPlanExecutionIds.sha256(canonical(mapper.valueToTree(req)).toString());
         BillingSelection billing=EnterpriseBillingService.normalize(req.billing());
         projects.requiredForUpdate(userId,projectId); // serializes "one active execution per project"
-        if(req.executionId()!=null)return confirmStage(userId,projectId,req,fingerprint,billing);
+        if(req.executionId()!=null)return confirmStage(userId,projectId,req,fingerprint,billing,byMessage);
         var prior=executions.findByOwnerUserIdAndClientRequestId(userId,req.clientRequestId()).orElse(null);
         if(prior!=null) {
             String stored=PlanState.parse(mapper,prior.getBudgetJson()).path(req.stage()).path("requestFingerprint").asText("");
@@ -76,8 +124,8 @@ public class StudioPlanExecutionService {
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),"analysis");
         skills.requireActive(loaded.rules().key());
-        Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded));
-        String confirmedThread=confirmation==null?null:confirmation.threadId();
+        Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
+        String confirmedThread=confirmation.threadId();
         if(req.approachId()!=null&&!approachIds(loaded.plan()).contains(req.approachId()))throw stale("所选方案不在这份计划里，请刷新后再确认");
         long quoted=requireWithinBudget(loaded,req.budgetCap(),"analysis");
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
@@ -90,21 +138,21 @@ public class StudioPlanExecutionService {
         ArrayNode steps=state.putArray("steps");
         appendSteps(steps,loaded,"analysis");
         ObjectNode budget=mapper.createObjectNode();
-        budget.set("analysis",stageBudget(req,fingerprint,loaded,quoted,now));
+        budget.set("analysis",stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now));
         String threadId=confirmedThread!=null?confirmedThread:loaded.threadId();
         var row=IpPlanExecution.builder().id(id).projectId(projectId).ownerUserId(userId).threadId(threadId)
                 .skillKey(loaded.rules().key()).skillVersion(loaded.rules().version()).stage("analysis")
-                .planRunId(loaded.planRunId()).planRevision(loaded.revision()).planFingerprint(req.planFingerprint())
+                .planRunId(loaded.planRunId()).planRevision(confirmation.card().cardPlanRevision()).planFingerprint(req.planFingerprint())
                 .status(IpPlanExecution.RUNNING).stepsJson(write(state)).budgetJson(write(budget)).billingJson(write(billingSnapshot(userId,billing,now)))
                 .clientRequestId(req.clientRequestId()).startedAt(now).deadlineAt(now.plus(StudioPlanExecutor.WINDOW))
                 .createdAt(now).updatedAt(now).build();
         executions.saveAndFlush(row);
-        markApprovedAfterCommit(userId,projectId,confirmation,id,"analysis");
+        markApproved(userId,projectId,confirmation,id,"analysis",req,now);
         wakeAfterCommit(id);
         return toDto(row);
     }
 
-    private PlanExecution confirmStage(String userId,String projectId,PlanExecutionCreateRequest req,String fingerprint,BillingSelection billing) {
+    private PlanExecution confirmStage(String userId,String projectId,PlanExecutionCreateRequest req,String fingerprint,BillingSelection billing,boolean byMessage) {
         var e=lockOwned(userId,projectId,req.executionId());
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
         JsonNode entry=budget.path(req.stage());
@@ -126,48 +174,46 @@ public class StudioPlanExecutionService {
             ObjectNode current=(ObjectNode)budget.path(req.stage());
             long committed=current.path("spent").asLong()+current.path("inFlight").asLong();
             if(req.budgetCap()<committed)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","上限不能低于已花费和在途的 "+committed+" 积分");
-            if(req.confirmationMessageId()==null||req.confirmationMessageId().isBlank())throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请在对话里确认新的预算后再继续");
-            Confirmation raise=confirm(userId,projectId,req,billing,null);
+            Confirmation raise=confirm(userId,projectId,req,billing,null,byMessage);
+            if(raise.threadId()!=null&&e.getThreadId()!=null&&!raise.threadId().equals(e.getThreadId()))throw stale("这条确认来自另一段对话");
             current.put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("clientRequestId",req.clientRequestId())
                     .put("requestFingerprint",fingerprint).put("confirmedAt",now.toString()).remove("shortfall");
-            if(req.confirmationMessageId()!=null)current.put("confirmationMessageId",req.confirmationMessageId());
-            if(req.approvalId()!=null)current.put("approvalId",req.approvalId());
-            e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
+            current.put("confirmationMessageId",req.confirmationMessageId()).put("approvalId",req.approvalId());
+            markSteeringSeen(e,state);
+            e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
             executions.save(e);
-            markApprovedAfterCommit(userId,projectId,raise,e.getId(),e.getStage());
+            markApproved(userId,projectId,raise,e.getId(),e.getStage(),req,now);
             wakeAfterCommit(e.getId());
             return toDto(e);
         }
         if(!"production".equals(req.stage())||!"analysis".equals(e.getStage()))throw stale("阶段顺序不对：先完成分析，再确认制作");
         for(JsonNode step:PlanState.stageSteps(state,"analysis"))
             if(!Set.of("done","skipped").contains(step.path("status").asText()))throw stale("分析还没有完成，完成后再确认制作方案");
-        if(req.confirmationMessageId()==null||req.confirmationMessageId().isBlank())
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请在对话里确认制作方案后再开始制作");
+        if(req.expectedRevision()==null)throw stale("请看最新的计划后再确认");
         var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),"production");
         if(!loaded.rules().key().equals(e.getSkillKey()))throw stale("制作计划与这次分析使用的制作方法不一致");
         skills.requireActive(loaded.rules().key());
         String recommended=loaded.plan().path("recommendedApproachId").asText("");
         if(req.approachId()==null||!req.approachId().equals(recommended))
             throw stale("确认的方案与当前计划不一致，请按所选方案重新生成计划后再确认");
-        if(req.expectedRevision()==null||req.expectedRevision()!=loaded.revision())
-            throw stale("计划已经更新，请看最新的计划后再确认");
-        Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded));
-        String confirmedThread=confirmation==null?null:confirmation.threadId();
+        Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
+        String confirmedThread=confirmation.threadId();
         if(confirmedThread!=null&&e.getThreadId()!=null&&!confirmedThread.equals(e.getThreadId()))throw stale("这条确认来自另一段对话");
         long quoted=requireWithinBudget(loaded,req.budgetCap(),"production");
         appendSteps((ArrayNode)state.withArray("steps"),loaded,"production");
         state.remove("needsUserReason");
-        ObjectNode production=stageBudget(req,fingerprint,loaded,quoted,now);
+        markSteeringSeen(e,state);
+        ObjectNode production=stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now);
         production.put("approachId",req.approachId());
         budget.set("production",production);
-        e.setStage("production");e.setPlanRunId(loaded.planRunId());e.setPlanRevision(loaded.revision());
+        e.setStage("production");e.setPlanRunId(loaded.planRunId());e.setPlanRevision(confirmation.card().cardPlanRevision());
         if(e.getThreadId()==null)e.setThreadId(confirmedThread!=null?confirmedThread:loaded.threadId());
         e.setPlanFingerprint(req.planFingerprint());e.setStatus(IpPlanExecution.RUNNING);
         // Each confirmed stage gets its own 90-minute autonomous window; time waiting for the user does not count.
         e.setDeadlineAt(now.plus(StudioPlanExecutor.WINDOW));e.setSpent(0);e.setInFlight(e.getInFlight());
         e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
         executions.save(e);
-        markApprovedAfterCommit(userId,projectId,confirmation,e.getId(),"production");
+        markApproved(userId,projectId,confirmation,e.getId(),"production",req,now);
         wakeAfterCommit(e.getId());
         return toDto(e);
     }
@@ -248,6 +294,7 @@ public class StudioPlanExecutionService {
                     }
                 }
                 requireNextStepBudget(e,next,budget);
+                markSteeringSeen(e,next); // the explicit continue supersedes messages sent before it
                 state=next;
                 e.setStatus(IpPlanExecution.RUNNING);state.remove("needsUserReason");
                 if(e.getDeadlineAt()==null||now.isAfter(e.getDeadlineAt()))e.setDeadlineAt(now.plus(StudioPlanExecutor.WINDOW));
@@ -291,40 +338,65 @@ public class StudioPlanExecutionService {
     }
 
     // ── Helpers ─────────────────────────────────────────────────────────────────────────────────────────────────
-    record Confirmation(String threadId,String messageId,String approvalId) {}
+    record Confirmation(StudioDialogueApprovals.Card card) {
+        String threadId(){return card.threadId();}
+    }
+
+    private StudioDialogueApprovals cards() {
+        var cards=approvals==null?null:approvals.getIfAvailable();
+        if(cards==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_EXECUTION_UNAVAILABLE","对话确认服务暂不可用，请稍后再试");
+        return cards;
+    }
 
     /**
-     * Bind the user's confirmation to exactly this plan: the approval card the dialogue showed (validated by the dialogue's
-     * {@code requireApproval}), or, without an approvalId, the card for this fingerprint that an approving user message
-     * answered. Fingerprint, stage, quote and payer must match the card. Without a dialogue store the message id is only
-     * recorded (stageBudget.confirmationMessageId).
+     * Bind the user's confirmation to exactly this plan (D01 / D02): the approval card the dialogue showed, located by the
+     * clicked card's message (button) or by the user's approving message (words). The card must be pending and quote the
+     * thread's current plan revision; the request must name that same plan, revision, stage, quote and payer. There is no
+     * path without a card.
      */
-    private Confirmation confirm(String userId,String projectId,PlanExecutionCreateRequest req,BillingSelection billing,Long quoted) {
-        if(req.confirmationMessageId()==null)return null;
-        var cards=approvals==null?null:approvals.getIfAvailable();
-        JsonNode card=null;
-        if(cards!=null&&req.approvalId()!=null)card=cards.requireApproval(userId,projectId,req.confirmationMessageId(),req.approvalId());
-        else if(confirmations!=null&&confirmations.available())
-            card=confirmations.requireConfirmation(userId,projectId,req.confirmationMessageId(),req.stage(),req.planFingerprint(),req.approvalId(),billing);
-        if(card==null)return null;
-        if(!req.planFingerprint().equals(card.path("planFingerprint").asText()))throw stale("这张确认卡对应的不是当前这份方案，请看最新的方案后再确认");
-        if(!req.stage().equals(card.path("stage").asText()))throw stale("这张确认卡属于另一个阶段");
-        if(quoted!=null&&card.hasNonNull("quotedCost")&&card.path("quotedCost").asLong()!=quoted)throw stale("报价已经变化，请看最新的报价后再确认");
-        if(card.hasNonNull("billingSelection")) {
-            var shown=EnterpriseBillingService.normalize(mapper.convertValue(card.path("billingSelection"),BillingSelection.class));
+    private Confirmation confirm(String userId,String projectId,PlanExecutionCreateRequest req,BillingSelection billing,Long quoted,boolean byMessage) {
+        var cards=cards();
+        var card=byMessage?cards.requireApprovalByMessage(userId,projectId,req.confirmationMessageId(),req.approvalId())
+                :cards.requireApproval(userId,projectId,req.confirmationMessageId(),req.approvalId());
+        if(!card.planFingerprint().equals(card.currentPlanFingerprint()))throw stale("方案已经更新到新的一版，请看最新的方案后再确认");
+        if(!req.planFingerprint().equals(card.planFingerprint()))throw stale("这张确认卡对应的不是当前这份方案，请看最新的方案后再确认");
+        if(card.cardPlanRunId()!=null&&!card.cardPlanRunId().equals(req.planRunId()))throw stale("这张确认卡对应的是另一份计划，请刷新后再确认");
+        if(req.expectedRevision()!=null&&req.expectedRevision()!=card.currentPlanRevision())throw stale("计划已经更新，请看最新的计划后再确认");
+        if(!req.stage().equals(card.stage()))throw stale("这张确认卡属于另一个阶段");
+        JsonNode block=card.block();
+        if(quoted!=null&&block.hasNonNull("quotedCost")&&block.path("quotedCost").asLong()!=quoted)throw stale("报价已经变化，请看最新的报价后再确认");
+        if(block.hasNonNull("billingSelection")) {
+            var shown=EnterpriseBillingService.normalize(mapper.convertValue(block.path("billingSelection"),BillingSelection.class));
             if(!shown.equals(billing))throw new BusinessException(HttpStatus.CONFLICT,"BILLING_SELECTION_CONFLICT","付款账户与确认卡上的不一致，请重新确认");
         }
-        return new Confirmation(card.path("threadId").asText(null),card.path("messageId").asText(req.confirmationMessageId()),card.path("approvalId").asText(req.approvalId()));
+        return new Confirmation(card);
     }
     private static long quotedTotal(LoadedPlan loaded) {
         long total=0;for(JsonNode step:loaded.plan().path("steps"))total=Math.addExact(total,step.path("quotedCost").asLong());return total;
     }
 
-    /** After commit: the card becomes approved and the thread is bound to the execution (paid tools, stop/pause forwarding). */
-    private void markApprovedAfterCommit(String userId,String projectId,Confirmation confirmation,String executionId,String stage) {
-        var cards=approvals==null?null:approvals.getIfAvailable();
-        if(confirmation==null||cards==null||confirmation.approvalId()==null)return;
-        afterCommit(()->cards.markApproved(userId,projectId,confirmation.messageId(),confirmation.approvalId(),executionId,stage),"approval binding");
+    /**
+     * In this transaction (thread row still locked by the card lookup): the card becomes approved with the authorization
+     * snapshot the user actually gave (D10) and the thread is bound to the execution (paid tools, stop/pause forwarding).
+     */
+    private void markApproved(String userId,String projectId,Confirmation confirmation,String executionId,String stage,PlanExecutionCreateRequest req,Instant now) {
+        cards().markApproved(userId,projectId,confirmation.card(),new StudioDialogueApprovals.Approved(executionId,stage,req.budgetCap(),req.autoFixCap(),
+                req.confirmationMessageId(),confirmation.card().cardPlanRevision(),now));
+    }
+
+    /**
+     * D03: steering bound to this execution that the user's newer explicit decision (a stage confirmation, a raise, a
+     * resume) supersedes; the executor will not block on it again. Messages still queued get their reply turn after commit.
+     */
+    private void markSteeringSeen(IpPlanExecution e,ObjectNode state) {
+        var source=steering==null?null:steering.getIfAvailable();
+        if(source==null||e.getThreadId()==null)return;
+        boolean queued=false;
+        for(var note:source.notes(e.getThreadId(),e.getId())) {
+            PlanState.markSteeringSeen(state,note.id());
+            queued|="queued".equals(note.status());
+        }
+        if(queued){String thread=e.getThreadId();afterCommit(()->source.openTurn(thread),"steering reply");}
     }
     /** After commit: a terminal execution no longer occupies its thread. */
     void unbindThreadAfterCommit(String threadId) {
@@ -427,10 +499,10 @@ public class StudioPlanExecutionService {
         }
     }
 
-    private ObjectNode stageBudget(PlanExecutionCreateRequest req,String fingerprint,LoadedPlan loaded,long quoted,Instant now) {
+    private ObjectNode stageBudget(PlanExecutionCreateRequest req,String fingerprint,LoadedPlan loaded,int revision,long quoted,Instant now) {
         var out=mapper.createObjectNode().put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("quoted",quoted)
                 .put("spent",0).put("inFlight",0).put("planRunId",loaded.planRunId()).put("planFingerprint",req.planFingerprint())
-                .put("planRevision",loaded.revision()).put("clientRequestId",req.clientRequestId())
+                .put("planRevision",revision).put("clientRequestId",req.clientRequestId())
                 .put("requestFingerprint",fingerprint).put("confirmedAt",now.toString());
         if(req.approvalId()!=null)out.put("approvalId",req.approvalId());
         if(req.confirmationMessageId()!=null)out.put("confirmationMessageId",req.confirmationMessageId());
@@ -457,6 +529,9 @@ public class StudioPlanExecutionService {
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请确认本阶段的预算上限");
         for(String value:Arrays.asList(req.executionId(),req.approachId(),req.approvalId(),req.confirmationMessageId()))
             if(value!=null&&(value.isBlank()||value.length()>64))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","确认信息不完整");
+        // D02: every stage confirmation and every raise needs the card the user confirmed; there is no implicit path.
+        if(req.approvalId()==null||req.confirmationMessageId()==null)
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请在对话里的确认卡上确认方案和预算后再开始");
     }
 
     private IpPlanExecution lockOwned(String userId,String projectId,String executionId) {
@@ -513,7 +588,8 @@ public class StudioPlanExecutionService {
             if(!b.isObject())continue;
             long cap=b.path("approvedCap").asLong(),spent=b.path("spent").asLong(),inFlight=b.path("inFlight").asLong();
             budgets.add(new PlanExecutionBudget(stage,cap,b.path("autoFixCap").asLong(),spent,inFlight,Math.max(0,cap-spent-inFlight),
-                    b.hasNonNull("shortfall")?b.path("shortfall").asLong():null));
+                    b.hasNonNull("shortfall")?b.path("shortfall").asLong():null,
+                    b.hasNonNull("dialogueSpent")?b.path("dialogueSpent").asLong():null,b.hasNonNull("dialogueInFlight")?b.path("dialogueInFlight").asLong():null));
         }
         JsonNode billing=PlanState.parse(mapper,e.getBillingJson());
         var selection=new BillingSelection(billing.path("mode").asText("personal"),billing.path("enterpriseId").asText(null));

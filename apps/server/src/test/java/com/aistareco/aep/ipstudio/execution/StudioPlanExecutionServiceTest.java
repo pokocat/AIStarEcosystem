@@ -1,6 +1,7 @@
 package com.aistareco.aep.ipstudio.execution;
 
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
+import com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
 import com.aistareco.aep.ipstudio.dto.StudioPlanDtos.*;
 import com.aistareco.aep.ipstudio.model.IpProject;
@@ -29,6 +30,46 @@ class StudioPlanExecutionServiceTest {
     final Map<String,IpPlanExecution> rows=new LinkedHashMap<>();
     final Map<String,IpRun> runs=new HashMap<>();
     IpProjectService projects;StudioPlanOutputs outputs;StudioPlanExecutor executor;StudioPlanExecutionService service;StudioSkillRules.Rules rules;
+    FakeCards cards;
+
+    /**
+     * The dialogue's card store as the execution service sees it: cards by (message, approvalId), the thread's current
+     * plan, and the snapshots written on approval. Lookups mirror the real 404 / 409 contract.
+     */
+    static final class FakeCards implements StudioDialogueApprovals {
+        final ObjectMapper om=new ObjectMapper();
+        final Map<String,ObjectNode> cards=new LinkedHashMap<>();
+        final Map<String,String> userTexts=new HashMap<>();
+        final List<Approved> approved=new ArrayList<>();
+        final List<String> approvedCards=new ArrayList<>();
+        String currentFingerprint,currentRunId;int currentRevision=3;
+        ObjectNode put(String messageId,String approvalId,String stage,String fingerprint,long quoted,long cap) {
+            var block=om.createObjectNode().put("type","approval").put("approvalId",approvalId).put("stage",stage).put("planFingerprint",fingerprint)
+                    .put("quotedCost",quoted).put("budgetCap",cap).put("autoFixCap",0).put("status","pending");
+            block.putObject("billingSelection").put("mode","personal");
+            cards.put(messageId+"|"+approvalId,block);
+            return block;
+        }
+        Card card(String messageId,ObjectNode block,String approvingId) {
+            if(!"pending".equals(block.path("status").asText()))throw StudioPlanExecutionService.stale("这张确认卡已过期或被新方案替代");
+            return new Card(block.deepCopy(),"thread-1",messageId,approvingId,approvingId==null?null:userTexts.get(approvingId),
+                    currentRunId,currentRevision,currentFingerprint,currentRevision);
+        }
+        @Override public Card requireApproval(String userId,String projectId,String messageId,String approvalId) {
+            var block=cards.get(messageId+"|"+approvalId);
+            if(block==null)throw BusinessException.notFound("STUDIO_APPROVAL_NOT_FOUND","找不到这张确认卡");
+            return card(messageId,block,null);
+        }
+        @Override public Card requireApprovalByMessage(String userId,String projectId,String userMessageId,String approvalId) {
+            if(!userTexts.containsKey(userMessageId))throw BusinessException.notFound("STUDIO_MESSAGE_NOT_FOUND","找不到这条确认消息");
+            for(var e:cards.entrySet())if(e.getKey().endsWith("|"+approvalId))return card(e.getKey().substring(0,e.getKey().indexOf('|')),e.getValue(),userMessageId);
+            throw BusinessException.notFound("STUDIO_APPROVAL_NOT_FOUND","找不到这张确认卡");
+        }
+        @Override public void markApproved(String userId,String projectId,Card card,Approved snapshot) {
+            approved.add(snapshot);approvedCards.add(card.cardMessageId()+"|"+card.block().path("approvalId").asText());
+            cards.get(card.cardMessageId()+"|"+card.block().path("approvalId").asText()).put("status","approved");
+        }
+    }
 
     @BeforeEach void setUp() throws Exception {
         var executions=mock(IpPlanExecutionRepository.class);
@@ -54,9 +95,21 @@ class StudioPlanExecutionServiceTest {
         @SuppressWarnings("unchecked") ObjectProvider<StudioPlanExecutor> executors=mock(ObjectProvider.class);when(executors.getIfAvailable()).thenReturn(executor);
         @SuppressWarnings("unchecked") ObjectProvider<StudioPlanSource> sources=mock(ObjectProvider.class);when(sources.orderedStream()).thenAnswer(i->Stream.empty());
         service=new StudioPlanExecutionService(executions,projects,skills,outputs,executors,sources,om);
+        cards=new FakeCards();
+        @SuppressWarnings("unchecked") ObjectProvider<StudioDialogueApprovals> provider=mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(cards);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"approvals",provider);
     }
 
     /** A native planning run with a normalized, quoted, fingerprinted plan. */
+    /** A plan run that is also the thread's current plan, with its pending card on assistant message {@code msg-<runId>}. */
+    String currentPlan(String id,String stage,String raw,long... quotes) throws Exception {
+        String fp=planRun(id,stage,raw,quotes);
+        cards.currentFingerprint=fp;cards.currentRunId=id;
+        long total=0;for(long q:quotes)total+=q;
+        cards.put("msg-"+id,"APV-"+id,stage,fp,total,total);
+        return fp;
+    }
     String planRun(String id,String stage,String raw,long... quotes) throws Exception {
         var plan=StudioPlanValidator.validateSkillPlan(om.readTree(raw),rules,stage,List.of("src","product"));
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",3);
@@ -75,11 +128,11 @@ class StudioPlanExecutionServiceTest {
             +"\"steps\":[{\"id\":\"v1\",\"operation\":\"video\",\"title\":\"第一段\",\"prompt\":\"开播\",\"settings\":{\"video\":{\"mode\":\"omni\",\"resolutionTier\":\"768p\"},\"durationSec\":12,\"aspectRatio\":\"9:16\",\"count\":1,"
             +"\"referenceBindings\":[{\"nodeId\":\"product\",\"role\":\"product\",\"order\":0}]}},{\"id\":\"c1\",\"operation\":\"check\",\"title\":\"检查\",\"settings\":{\"targetStepId\":\"v1\",\"checkIds\":[\"subject-replaced\"]}}],\"questions\":[]}";
     PlanExecutionCreateRequest analysisRequest(String fingerprint,long cap) {
-        return new PlanExecutionCreateRequest("create-1","analysis","IPR-a",fingerprint,null,cap,0L,null,null,null,"APV-1","msg-1");
+        return new PlanExecutionCreateRequest("create-1","analysis","IPR-a",fingerprint,null,cap,0L,null,null,null,"APV-IPR-a","msg-IPR-a");
     }
 
     @Test void analysisExecutionIsCreatedOnceWithAnImmutablePayerAndWokenAfterCommit() throws Exception {
-        String fp=planRun("IPR-a","analysis",ANALYSIS,20,10);
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         assertEquals("running",created.status());assertEquals("analysis",created.stage());assertEquals("thread-1",created.threadId());
         assertEquals(2,created.steps().size());assertEquals("pending",created.steps().get(0).status());
@@ -88,28 +141,30 @@ class StudioPlanExecutionServiceTest {
         verify(executor).wake(created.id());
         assertEquals(created.id(),service.create("u","p",analysisRequest(fp,30)).id(),"same request replays");
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.create("u","p",analysisRequest(fp,31))).getCode());
-        var other=new PlanExecutionCreateRequest("create-2","analysis","IPR-a",fp,null,30L,0L,null,null,null,null,null);
+        cards.put("msg-again","APV-again","analysis",fp,30,30);
+        var other=new PlanExecutionCreateRequest("create-2","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-again","msg-again");
         assertEquals("STUDIO_PLAN_EXECUTION_BUSY",assertThrows(BusinessException.class,()->service.create("u","p",other)).getCode());
     }
 
     @Test void quotesAboveTheCapAndStalePlansAreRefusedBeforeAnything() throws Exception {
-        String fp=planRun("IPR-a","analysis",ANALYSIS,20,10);
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var over=assertThrows(BusinessException.class,()->service.create("u","p",analysisRequest(fp,29)));
         assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",over.getCode());assertEquals(402,over.getStatus().value());
         var details=(JsonNode)over.getDetails();
         assertEquals(1,details.path("shortfall").asLong());assertEquals(30,details.path("quotedCost").asLong());assertEquals(29,details.path("approvedCap").asLong());
         assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",analysisRequest("forged",30))).getCode());
-        var foreign=new PlanExecutionCreateRequest("create-3","analysis","IPR-not-mine",fp,null,30L,0L,null,null,null,null,null);
+        var foreign=new PlanExecutionCreateRequest("create-3","analysis","IPR-not-mine",fp,null,30L,0L,null,null,null,"APV-IPR-a","msg-IPR-a");
         assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",foreign)).getCode());
-        var production=new PlanExecutionCreateRequest("create-4","production","IPR-a",fp,null,30L,0L,null,null,null,null,null);
+        var production=new PlanExecutionCreateRequest("create-4","production","IPR-a",fp,null,30L,0L,null,null,null,"APV-IPR-a","msg-IPR-a");
         assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->service.create("u","p",production)).getCode(),"production is confirmed on the analysis execution");
-        assertTrue(rows.isEmpty());verifyNoInteractions(executor);
+        assertTrue(rows.isEmpty());verifyNoInteractions(executor);assertTrue(cards.approved.isEmpty());
     }
 
     @Test void productionIsConfirmedOnTheSameExecutionOnlyForTheConfirmedApproachAndRevision() throws Exception {
-        String fp=planRun("IPR-a","analysis",ANALYSIS,20,10);
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
-        String pf=planRun("IPR-b","production",PRODUCTION,40,5);
+        String pf=currentPlan("IPR-b","production",PRODUCTION,40,5);
+        cards.put("msg-2","APV-2","production",pf,45,45);
         java.util.function.Function<String[],PlanExecutionCreateRequest> confirm=a->new PlanExecutionCreateRequest(a[0],"production","IPR-b",pf,a[1],45L,0L,
                 a[2]==null?null:new BillingSelection(a[2],"ent-1"),created.id(),Integer.valueOf(a[3]),"APV-2",a[4]);
         assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",confirm.apply(new String[]{"c-1","rewrite",null,"3","msg-2"}))).getCode(),"analysis not finished");
@@ -127,28 +182,16 @@ class StudioPlanExecutionServiceTest {
     }
 
     @Test void aDialoguePlanIsConfirmedThroughItsApprovalCardAndBindsTheThread() throws Exception {
-        String fp=planRun("IPR-a","analysis",ANALYSIS,20,10);
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var run=runs.get("IPR-a");run.setKind("studio-dialogue");
-        var cards=mock(com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals.class);
-        var card=om.createObjectNode().put("type","approval").put("approvalId","APV-1").put("stage","analysis").put("planFingerprint",fp)
-                .put("quotedCost",30).put("budgetCap",30).put("threadId","thread-1").put("messageId","msg-1");
-        card.putObject("billingSelection").put("mode","personal");
-        when(cards.requireApproval("u","p","msg-1","APV-1")).thenReturn(card);
-        @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueApprovals> provider=mock(ObjectProvider.class);
-        when(provider.getIfAvailable()).thenReturn(cards);
-        org.springframework.test.util.ReflectionTestUtils.setField(service,"approvals",provider);
-        var stale=card.deepCopy().put("planFingerprint","an-older-plan");
-        when(cards.requireApproval("u","p","msg-old","APV-1")).thenReturn(stale);
-        var old=new PlanExecutionCreateRequest("create-old","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-1","msg-old");
-        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",old)).getCode(),"an old card never approves a new revision");
-        var repriced=card.deepCopy().put("quotedCost",25).put("messageId","msg-cheap");
-        when(cards.requireApproval("u","p","msg-cheap","APV-1")).thenReturn(repriced);
-        var cheap=new PlanExecutionCreateRequest("create-cheap","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-1","msg-cheap");
+        var repriced=cards.put("msg-cheap","APV-cheap","analysis",fp,25,30);
+        var cheap=new PlanExecutionCreateRequest("create-cheap","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-cheap","msg-cheap");
         assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",cheap)).getCode(),"the card must show the current quote");
-        verify(cards,never()).markApproved(any(),any(),any(),any(),any(),any());
+        assertEquals(25,repriced.path("quotedCost").asLong());
+        assertTrue(cards.approved.isEmpty());
         var created=service.create("u","p",analysisRequest(fp,30));
         assertEquals("thread-1",created.threadId());
-        verify(cards).markApproved("u","p","msg-1","APV-1",created.id(),"analysis");
+        assertEquals(List.of("msg-IPR-a|APV-IPR-a"),cards.approvedCards);
         var dialogue=mock(com.aistareco.aep.ipstudio.dialogue.StudioDialogueService.class);
         @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueService> dialogues=mock(ObjectProvider.class);
         when(dialogues.getIfAvailable()).thenReturn(dialogue);
@@ -157,8 +200,101 @@ class StudioPlanExecutionServiceTest {
         verify(dialogue).bindExecution("thread-1",null,null);
     }
 
+    /** D01: after a newer plan revision exists, the older card (its own plan and fingerprint intact) starts nothing. */
+    @Test void anOldCardCannotStartItsOldPlanOnceANewerRevisionExists() throws Exception {
+        String old=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        String newer=planRun("IPR-new","analysis",ANALYSIS.replace("看结构","看结构，改成商品乙"),20,10);
+        assertNotEquals(old,newer);
+        cards.currentFingerprint=newer;cards.currentRunId="IPR-new";cards.currentRevision=4; // the thread moved on; the old card still says pending
+        var stale=assertThrows(BusinessException.class,()->service.create("u","p",analysisRequest(old,30)));
+        assertEquals("STUDIO_PLAN_STALE",stale.getCode());assertEquals(409,stale.getStatus().value());
+        assertTrue(rows.isEmpty(),"no execution");assertTrue(cards.approved.isEmpty(),"the old card is not approved");verifyNoInteractions(executor);
+        cards.put("msg-new","APV-new","analysis",newer,30,30);
+        var wrongRevision=new PlanExecutionCreateRequest("create-rev","analysis","IPR-new",newer,null,30L,0L,null,null,3,"APV-new","msg-new");
+        assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->service.create("u","p",wrongRevision)).getCode());
+        var current=new PlanExecutionCreateRequest("create-new","analysis","IPR-new",newer,null,30L,0L,null,null,4,"APV-new","msg-new");
+        assertEquals("running",service.create("u","p",current).status(),"the current revision's card works");
+    }
+
+    /** D02: a stage confirmation without the card the user confirmed is refused, never silently allowed. */
+    @Test void aConfirmationWithoutItsCardIsRefusedAndNothingStarts() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var noCard=new PlanExecutionCreateRequest("create-x","analysis","IPR-a",fp,null,30L,0L,null,null,null,null,null);
+        var noMessage=new PlanExecutionCreateRequest("create-y","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-IPR-a",null);
+        var noApproval=new PlanExecutionCreateRequest("create-z","analysis","IPR-a",fp,null,30L,0L,null,null,null,null,"msg-IPR-a");
+        for(var req:List.of(noCard,noMessage,noApproval)) {
+            var e=assertThrows(BusinessException.class,()->service.create("u","p",req));
+            assertEquals("STUDIO_INPUT_INVALID",e.getCode());assertEquals(400,e.getStatus().value());
+        }
+        @SuppressWarnings("unchecked") ObjectProvider<StudioDialogueApprovals> none=mock(ObjectProvider.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"approvals",none);
+        assertEquals("STUDIO_EXECUTION_UNAVAILABLE",assertThrows(BusinessException.class,()->service.create("u","p",analysisRequest(fp,30))).getCode(),
+                "no card store: nothing can be confirmed");
+        assertTrue(rows.isEmpty());verifyNoInteractions(executor);
+    }
+
+    /** D09: a forged / non-card confirmation message is 404, a non-current card 409; never 400. */
+    @Test void aForgedConfirmationMessageIsNotFound() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var forged=new PlanExecutionCreateRequest("create-f","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-IPR-a","IDM-user-message");
+        var e=assertThrows(BusinessException.class,()->service.create("u","p",forged));
+        assertEquals("STUDIO_APPROVAL_NOT_FOUND",e.getCode());assertEquals(404,e.getStatus().value());
+    }
+
+    /** D10: the card keeps what the user approved (cap 280 of a proposed 1000), the revision and the confirmation source. */
+    @Test void theCardRecordsTheApprovedSnapshotNotTheProposal() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        cards.cards.get("msg-IPR-a|APV-IPR-a").put("budgetCap",1000);
+        var created=service.create("u","p",new PlanExecutionCreateRequest("create-s","analysis","IPR-a",fp,null,280L,5L,null,null,null,"APV-IPR-a","msg-IPR-a"));
+        assertEquals(1,cards.approved.size());
+        var snapshot=cards.approved.get(0);
+        assertEquals(280,snapshot.budgetCap());assertEquals(5,snapshot.autoFixCap());assertEquals(created.id(),snapshot.executionId());
+        assertEquals("analysis",snapshot.stage());assertEquals(3,snapshot.planRevision());assertEquals("msg-IPR-a",snapshot.approvedByMessageId());
+        assertNotNull(snapshot.at());
+        assertEquals(280,created.budgets().get(0).approvedCap());assertEquals(3,created.planRevision());
+    }
+
+    /** D04: an approval in words goes through the same confirmation, bound to the user's own message. */
+    @Test void anApprovalInWordsUsesTheCardPathAndOnlyTheNumbersTheUserSaid() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        cards.cards.get("msg-IPR-a|APV-IPR-a").put("budgetCap",200);
+        cards.userTexts.put("IDM-ask","这个方案要多少钱？");
+        var asked=assertThrows(BusinessException.class,()->service.confirmNatural("u","p",
+                new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-a","IDM-ask",null,null,"nl-1")));
+        assertEquals("STUDIO_APPROVAL_AMBIGUOUS",asked.getCode(),"a question never approves");
+        cards.userTexts.put("IDM-ok","就按这个分析开始，我确认");
+        var above=assertThrows(BusinessException.class,()->service.confirmNatural("u","p",
+                new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-a","IDM-ok",500L,null,"nl-2")));
+        assertEquals("STUDIO_INPUT_INVALID",above.getCode(),"a cap above the card needs the user's own number");
+        assertTrue(rows.isEmpty());
+        cards.userTexts.put("IDM-raise","可以，上限 280 积分，开始吧");
+        var created=service.confirmNatural("u","p",new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-a","IDM-raise",280L,null,"nl-3"));
+        assertEquals("running",created.status());assertEquals(280,created.budgets().get(0).approvedCap());
+        assertEquals("IDM-raise",cards.approved.get(0).approvedByMessageId(),"the user's message is the confirmation source");
+        var budget=om.readTree(rows.get(created.id()).getBudgetJson()).path("analysis");
+        assertEquals("IDM-raise",budget.path("confirmationMessageId").asText());assertEquals("APV-IPR-a",budget.path("approvalId").asText());
+        assertEquals(created.id(),service.confirmNatural("u","p",new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-a","IDM-raise",280L,null,"nl-3")).id(),
+                "the same approval replays");
+        verify(executor).wake(created.id());
+    }
+
+    /** D03: a stage confirmation or an explicit continue supersedes steering sent before it; queued ones still get a reply. */
+    @Test void resumeMarksEarlierSteeringHandledAndOpensItsReply() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var steering=mock(com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.class);
+        when(steering.notes("thread-1",created.id())).thenReturn(List.of(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-1","IDM-1","第二步不要做","queued",Instant.now())));
+        @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> provider=mock(ObjectProvider.class);
+        when(provider.getIfAvailable()).thenReturn(steering);
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"steering",provider);
+        rows.get(created.id()).setStatus("needs_user");
+        service.resume("u","p",created.id(),new PlanExecutionControlRequest("r-1",null));
+        assertEquals("[\"IDS-1\"]",om.readTree(rows.get(created.id()).getStepsJson()).path("steeringSeen").toString());
+        verify(steering).openTurn("thread-1");
+    }
+
     @Test void resumeChecksTheNextStepBudgetAndAcceptNeverRewritesTheVerdict() throws Exception {
-        String fp=planRun("IPR-a","analysis",ANALYSIS,20,10);
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         var row=rows.get(created.id());
         var state=(ObjectNode)om.readTree(row.getStepsJson());((ObjectNode)state.path("steps").get(0)).put("status","needs_user").put("reason","预算不够");
@@ -167,7 +303,8 @@ class StudioPlanExecutionServiceTest {
         var refused=assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("r-1",null)));
         assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",refused.getCode());assertEquals(5,((JsonNode)refused.getDetails()).path("shortfall").asLong());
         assertEquals("needs_user",rows.get(created.id()).getStatus(),"refused resume changes nothing");
-        var raised=new PlanExecutionCreateRequest("raise-1","analysis","IPR-a",fp,null,40L,0L,null,created.id(),null,null,"msg-3");
+        cards.put("msg-3","APV-raise","analysis",fp,10,40);
+        var raised=new PlanExecutionCreateRequest("raise-1","analysis","IPR-a",fp,null,40L,0L,null,created.id(),null,"APV-raise","msg-3");
         assertEquals(40,service.create("u","p",raised).budgets().get(0).approvedCap());
         var resumed=service.resume("u","p",created.id(),new PlanExecutionControlRequest("r-2",null));
         assertEquals("running",resumed.status());assertEquals("pending",resumed.steps().get(0).status());

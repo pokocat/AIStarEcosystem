@@ -43,7 +43,7 @@ class StudioWorkflowWorkerSkillTest {
         var run=IpRun.builder().id("r").projectId("p").ownerUserId("u").kind(kind).status("running").cost(21).inputJson(input.toString()).build();
         when(runs.findById("r")).thenReturn(Optional.of(run));when(runs.lockById("r")).thenReturn(Optional.of(run));
         var endpoint=AiModelEndpoint.builder().id("vision").enabled(true).model("m").modelsJson("[{\"id\":\"m\",\"supportsVision\":true}]").build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"vision","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"vision","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"vision","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(models.invokeChatOnEndpoint(eq(endpoint),eq(AiModelPurpose.DAP_PERSONA),anyList(),anyMap())).thenReturn(new AiModelInvocationService.AiModelResponse(reply,"stop",2000L,"m","m",1000L,1000L));
         var worker=new StudioWorkflowWorker(runs,mock(StudioFixtureProvider.class),storage,models,mock(DramaAssembleService.class),credits,json,tx,mock(DapAssetService.class));
         return new Harness(worker,run,credits,models);

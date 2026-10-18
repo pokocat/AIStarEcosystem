@@ -89,7 +89,7 @@ public class StudioWorkflowWorker {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
-                        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用"));
+                        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
                         int finalTokens=input.path("_exec").path("maxTokens").asInt(8192);
@@ -212,7 +212,7 @@ public class StudioWorkflowWorker {
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
-        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow();
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
         if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VISION_UNAVAILABLE","所选模型不能读取画面");
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);

@@ -18,7 +18,9 @@ public final class StudioDialogueDtos {
 
     public record Message(String id, String threadId, long seq, String turnId, String runId, String role, String text,
                           JsonNode blocks, List<String> pinnedNodeIds, List<String> attachmentNodeIds, String clientMessageId,
-                          JsonNode billing, Boolean settling, String status, String createdAt, String legacyNodeId) {}
+                          JsonNode billing, Boolean settling, String status, String createdAt, String legacyNodeId,
+                          /** Follow-ups offered under an assistant message (execution summaries keep them across reloads). */
+                          List<String> suggestions) {}
 
     /** {@code execution} is the executor's StudioPlanExecution projection when a plan execution is bound. */
     public record State(DialogueThread thread, List<Message> messages, String nextCursor, long latestSeq, Object execution) {}

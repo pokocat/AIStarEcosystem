@@ -12,7 +12,7 @@ import java.util.Optional;
  * authorization and wakes the shared advance entry. All three must be idempotent on {@code controlId}.
  */
 public interface StudioExecutionControl {
-    /** Minimal view of an active execution bound to a thread. */
+    /** Minimal view of an active execution bound to a thread; {@code status} is null when only the thread pointer is known. */
     record ExecutionView(String id, String stage, String status) {}
 
     void stop(String userId, String projectId, String executionId, String controlId);
@@ -26,4 +26,13 @@ public interface StudioExecutionControl {
      * pointer set through {@link StudioDialogueService#bindExecution}. The executor may override it instead of binding.
      */
     default Optional<ExecutionView> active(String userId, String projectId, String threadId) { return Optional.empty(); }
+
+    /** Wake the shared advance entry (e.g. steering arrived, a bound dialogue turn settled). Best-effort; the scan recovers. */
+    default void wake(String executionId) { }
+
+    /**
+     * One plain-language line about the bound execution for the dialogue prompt (stage, status, why it waits, budget), or
+     * null. Facts only from the execution record; the model must not infer progress from anything else.
+     */
+    default String promptSummary(String userId, String projectId, String executionId) { return null; }
 }

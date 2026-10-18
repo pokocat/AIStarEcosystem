@@ -28,7 +28,10 @@ public class IpDialogueMessage {
     @Lob @Column(columnDefinition = "LONGTEXT") private String pinnedNodeIdsJson;
     @Lob @Column(columnDefinition = "LONGTEXT") private String attachmentNodeIdsJson;
     @Column(length = 64) private String clientMessageId;
-    /** User messages: the request's billing selection and turn cost ceiling, reused if a queued message opens a follow-up turn. */
+    /**
+     * User messages: the request's billing selection and turn cost ceiling, reused if a queued message opens a follow-up
+     * turn. Assistant messages posted by the plan executor: {@code {"suggestions":[...]}} (the follow-ups shown under it).
+     */
     @Lob @Column(columnDefinition = "LONGTEXT") private String requestJson;
     /** Assistant messages: the turn's real settled token billing (StudioTokenBilling). */
     @Lob @Column(columnDefinition = "LONGTEXT") private String billingJson;

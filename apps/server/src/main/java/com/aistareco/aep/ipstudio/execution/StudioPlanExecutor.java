@@ -63,6 +63,12 @@ public class StudioPlanExecutor {
     /** A terminal execution releases its dialogue thread binding (paid tools and controls stop routing to it). */
     @org.springframework.beans.factory.annotation.Autowired(required=false)
     private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueService> dialogue;
+    /** D03: user messages sent while this execution ran; read before every submission. */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> steering;
+    /** D07 / cards: messages the executor posts on its thread (summary, budget raise, compiled production plan). */
+    @org.springframework.beans.factory.annotation.Autowired(required=false)
+    private ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionMessages> messages;
 
     public StudioPlanExecutor(IpPlanExecutionRepository executions,IpRunRepository runRepository,StudioPlanOutputs outputs,
             StudioWorkflowService workflow,IpRunService runs,IpProjectService projects,StudioPlanQuoter quoter,ObjectMapper mapper,
@@ -99,8 +105,13 @@ public class StudioPlanExecutor {
         try {
             for(int round=0;round<MAX_ROUNDS;round++) {
                 List<Event> pending=new ArrayList<>();
-                Decision decision=tx.execute(status->decide(executionId,owner,version,pending));
+                List<Runnable> after=new ArrayList<>();
+                Decision decision=tx.execute(status->decide(executionId,owner,version,pending,after));
                 publish(executionId,pending);
+                // Messages, the reply turn for steering and the thread unbinding, only after the state they describe committed.
+                for(Runnable action:after) {
+                    try {action.run();} catch(RuntimeException e) {log.warn("[plan-exec] follow-up failed execution={} reason={}",executionId,e.toString());}
+                }
                 if(decision!=null&&decision.unbindThread()!=null)unbind(decision.unbindThread());
                 if(decision==null||decision.submission()==null)break;
                 if(!submit(executionId,owner,version,decision.submission()))break;
@@ -118,7 +129,7 @@ public class StudioPlanExecutor {
     }
     record Event(String type,ObjectNode data) {}
 
-    private Decision decide(String id,String owner,long version,List<Event> out) {
+    private Decision decide(String id,String owner,long version,List<Event> out,List<Runnable> after) {
         var e=executions.lockById(id).orElse(null);
         if(e==null||!owner.equals(e.getLeaseOwner())||e.getLeaseVersion()!=version)return new Decision(null);
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
@@ -127,21 +138,59 @@ public class StudioPlanExecutor {
         Instant now=Instant.now();
         Submission next=null;
         String before=e.getStatus();
+        // D03: the safe boundary. A message the user sent while this ran comes before any further submission.
+        steer(e,state,after);
         switch(e.getStatus()) {
             case IpPlanExecution.CANCELED -> cancelOutstanding(e,state);
             case IpPlanExecution.RUNNING -> {
                 if(e.getDeadlineAt()!=null&&now.isAfter(e.getDeadlineAt())) {
                     e.setStatus(IpPlanExecution.PARTIAL);e.setFinishedAt(now);
                     state.put("needsUserReason","连续制作超过 90 分钟，已停在这里："+progressSummary(state,e.getStage())+"。已受理的任务会继续结算。");
-                } else next=advanceRunning(e,state,budget,out);
+                } else next=advanceRunning(e,state,budget,out,after);
             }
-            case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,out);
+            case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,out,after);
             default -> {}
+        }
+        // D07: one completion summary per execution, posted once it reaches done / partial / failed / canceled.
+        if(Set.of(IpPlanExecution.DONE,IpPlanExecution.PARTIAL,IpPlanExecution.FAILED,IpPlanExecution.CANCELED).contains(e.getStatus())
+                &&!state.path("summaryPosted").asBoolean(false)&&e.getThreadId()!=null) {
+            var summary=StudioExecutionSummary.build(e,state,budget,(stepRun)->outputs.run(e.getOwnerUserId(),e.getProjectId(),stepRun).orElse(null));
+            state.put("summaryPosted",true);
+            String thread=e.getThreadId(),executionId=e.getId();
+            after.add(()->postMessage(thread,executionId,"exec-summary-"+executionId,summary.text(),List.of(),summary.suggestions()));
         }
         save(e,state,budget);
         boolean ended=!before.equals(e.getStatus())&&Set.of(IpPlanExecution.DONE,IpPlanExecution.PARTIAL,IpPlanExecution.FAILED).contains(e.getStatus());
         return new Decision(next,ended?e.getThreadId():null);
     }
+
+    /**
+     * D03: steering bound to this execution that nothing has handled yet. A running execution stops before its next
+     * submission (needs_user: 「收到新指令，等待重新确认」; accepted tasks keep their snapshot), and the dialogue opens the
+     * turn that reads the message, so a change request is answered with a revised plan / new approval instead of the
+     * old steps continuing. Idempotent: each steering row is handled once.
+     */
+    private void steer(IpPlanExecution e,ObjectNode state,List<Runnable> after) {
+        var source=steering==null?null:steering.getIfAvailable();
+        if(source==null||e.getThreadId()==null||!IpPlanExecution.active(e.getStatus()))return;
+        String latest=null;
+        for(var note:source.notes(e.getThreadId(),e.getId())) {
+            if("rejected".equals(note.status())||PlanState.steeringSeen(state,note.id()))continue;
+            PlanState.markSteeringSeen(state,note.id());
+            latest=note.text();
+        }
+        if(latest==null)return;
+        if(IpPlanExecution.RUNNING.equals(e.getStatus()))
+            needsUser(e,state,"收到新指令，等待重新确认：「"+excerpt(latest,60)+"」。已经提交的任务会照原样完成，后面的步骤先不提交。");
+        String thread=e.getThreadId();
+        after.add(()->source.openTurn(thread));
+    }
+    private void postMessage(String threadId,String executionId,String key,String text,List<ObjectNode> blocks,List<String> suggestions) {
+        var target=messages==null?null:messages.getIfAvailable();
+        if(target==null)return;
+        target.postExecutionMessage(threadId,executionId,key,text,blocks,suggestions);
+    }
+    private static String excerpt(String text,int max){if(text==null)return "";String t=text.strip();return t.length()<=max?t:t.substring(0,max)+"…";}
     private void unbind(String threadId) {
         var target=dialogue==null?null:dialogue.getIfAvailable();
         if(target==null)return;
@@ -151,7 +200,8 @@ public class StudioPlanExecutor {
 
     /** Refresh every step from its native runs, then the per-stage spent / in-flight summaries. */
     private void refresh(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out) {
-        Map<String,Long> spent=new HashMap<>(),inFlight=new HashMap<>();
+        Map<String,Long> spent=new HashMap<>(),inFlight=new HashMap<>(),dialogueSpent=new HashMap<>(),dialogueInFlight=new HashMap<>();
+        Set<String> counted=new HashSet<>(); // a charge is counted once, whichever list references it
         for(JsonNode raw:state.path("steps")) {
             ObjectNode step=(ObjectNode)raw;
             String stage=step.path("stage").asText();
@@ -168,8 +218,10 @@ public class StudioPlanExecutor {
             for(int i=0;i<ids.size();i++) {
                 var dto=outputs.run(e.getOwnerUserId(),e.getProjectId(),ids.get(i).asText()).orElse(null);
                 if(dto==null)continue;
-                if("running".equals(dto.status()))inFlight.merge(stage,ceiling,Long::sum);
-                else spent.merge(stage,dto.cost(),Long::sum);
+                if(counted.add(dto.id())) {
+                    if("running".equals(dto.status()))inFlight.merge(stage,ceiling,Long::sum);
+                    else spent.merge(stage,dto.cost(),Long::sum);
+                }
                 if(i==ids.size()-1)latest=dto;
             }
             if(latest==null)continue;
@@ -210,16 +262,26 @@ public class StudioPlanExecutor {
                 }
             }
             var dto=outputs.run(e.getOwnerUserId(),e.getProjectId(),child.path("runId").asText()).orElse(null);
-            if(dto==null)continue;
+            if(dto==null||!counted.add(dto.id()))continue;
             if("running".equals(dto.status()))inFlight.merge(stage,ceiling,Long::sum);
             else {spent.merge(stage,dto.cost(),Long::sum);child.put("status",dto.status());}
+        }
+        // D06: parent dialogue turns attributed to a stage: ceiling in flight while running, real credits once settled.
+        for(JsonNode raw:state.path("dialogueRuns")) {
+            ObjectNode turn=(ObjectNode)raw;
+            String stage=turn.path("stage").asText();long ceiling=turn.path("maxCost").asLong();
+            var dto=outputs.run(e.getOwnerUserId(),e.getProjectId(),turn.path("runId").asText()).orElse(null);
+            if(dto==null||!counted.add(dto.id()))continue;
+            if("running".equals(dto.status())){inFlight.merge(stage,ceiling,Long::sum);dialogueInFlight.merge(stage,ceiling,Long::sum);}
+            else {spent.merge(stage,dto.cost(),Long::sum);dialogueSpent.merge(stage,dto.cost(),Long::sum);turn.put("status",dto.status()).put("cost",dto.cost());}
         }
         for(String stage:StudioSkillRules.STAGES) {
             JsonNode existing=budget.path(stage);
             if(!existing.isObject())continue;
-            long s=spent.getOrDefault(stage,0L),f=inFlight.getOrDefault(stage,0L);
-            if(existing.path("spent").asLong(-1)!=s||existing.path("inFlight").asLong(-1)!=f) {
-                ((ObjectNode)existing).put("spent",s).put("inFlight",f);
+            long s=spent.getOrDefault(stage,0L),f=inFlight.getOrDefault(stage,0L),ds=dialogueSpent.getOrDefault(stage,0L),df=dialogueInFlight.getOrDefault(stage,0L);
+            if(existing.path("spent").asLong(-1)!=s||existing.path("inFlight").asLong(-1)!=f
+                    ||existing.path("dialogueSpent").asLong(0)!=ds||existing.path("dialogueInFlight").asLong(0)!=df) {
+                ((ObjectNode)existing).put("spent",s).put("inFlight",f).put("dialogueSpent",ds).put("dialogueInFlight",df);
                 out.add(budgetEvent(e,stage,(ObjectNode)existing,null,"actual"));
             }
         }
@@ -239,7 +301,7 @@ public class StudioPlanExecutor {
     }
 
     /** Running: stop on failures / unresolved checks, then submit the next ready step if the stage budget allows. */
-    private Submission advanceRunning(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out) {
+    private Submission advanceRunning(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out,List<Runnable> after) {
         String stage=e.getStage();
         for(JsonNode step:PlanState.stageSteps(state,stage)) {
             if("failed".equals(step.path("status").asText())) {
@@ -258,7 +320,7 @@ public class StudioPlanExecutor {
             if("pending".equals(status)&&PlanState.dependenciesDone(state,raw)){ready=(ObjectNode)raw;break;}
         }
         if(ready==null) {
-            completeIfResolved(e,state,out);
+            completeIfResolved(e,state,out,after);
             return null;
         }
         boolean resubmit="submitted".equals(ready.path("status").asText());
@@ -274,7 +336,7 @@ public class StudioPlanExecutor {
             ready.put("status","needs_user").put("reason","本阶段预算还差 "+shortfall+" 积分");
             stageBudget.put("shortfall",shortfall);
             out.add(budgetEvent(e,stage,stageBudget,shortfall,"quote"));
-            out.add(approvalEvent(e,state,stage,remainingQuote(state,stage),cap+shortfall,shortfall));
+            raiseCard(e,state,stage,stageBudget,remainingQuote(state,stage),cap+shortfall,shortfall,ready.path("title").asText(),after);
             return needsUser(e,state,"预算不够：本阶段已花 "+spent+" 积分、在途 "+inFlight+" 积分，下一步「"+ready.path("title").asText()+"」需要 "+quoted+" 积分，超出已批准的 "+cap+" 积分 "+shortfall+" 积分。可以追加预算或缩小计划。");
         }
         stageBudget.remove("shortfall");
@@ -298,7 +360,7 @@ public class StudioPlanExecutor {
     }
 
     /** Stage end: analysis waits for the production confirmation; production is done once every check is resolved. */
-    private void completeIfResolved(IpPlanExecution e,ObjectNode state,List<Event> out) {
+    private void completeIfResolved(IpPlanExecution e,ObjectNode state,List<Event> out,List<Runnable> after) {
         String stage=e.getStage();
         boolean finished=true,unresolved=false;
         for(JsonNode step:PlanState.stageSteps(state,stage)) {
@@ -313,7 +375,7 @@ public class StudioPlanExecutor {
             state.put("needsUserReason","分析已完成，请确认制作方案和预算后开始制作。");
             if(!announced) {
                 state.put("analysisAnnounced",true);
-                productionPlan(e,state).ifPresent(plan->out.add(approvalEvent(e,plan,"production")));
+                productionPlan(e,state).ifPresent(plan->productionCard(e,plan,after));
             }
         } else if(unresolved) {
             e.setStatus(IpPlanExecution.NEEDS_USER);
@@ -524,29 +586,55 @@ public class StudioPlanExecutor {
     private Event budgetEvent(IpPlanExecution e,String stage,ObjectNode stageBudget,Long shortfall,String source) {
         long cap=stageBudget.path("approvedCap").asLong(),spent=stageBudget.path("spent").asLong(),inFlight=stageBudget.path("inFlight").asLong();
         var data=mapper.createObjectNode().put("executionId",e.getId()).put("stage",stage).put("approvedCap",cap).put("spent",spent)
-                .put("inFlight",inFlight).put("remaining",Math.max(0,cap-spent-inFlight)).put("source",source);
+                .put("inFlight",inFlight).put("remaining",Math.max(0,cap-spent-inFlight)).put("source",source)
+                // the parent-dialogue share of spent / inFlight (already included in the totals, never added twice)
+                .put("dialogueSpent",stageBudget.path("dialogueSpent").asLong(0)).put("dialogueInFlight",stageBudget.path("dialogueInFlight").asLong(0));
         if(shortfall!=null)data.put("shortfall",shortfall);
         return new Event("budget.update",data);
     }
-    private Event approvalEvent(IpPlanExecution e,ObjectNode state,String stage,long quoted,long budgetCap,long shortfall) {
-        var block=approvalBlock(e,stage,e.getPlanRunId(),e.getPlanFingerprint(),PlanState.stageTitles(state,stage),quoted,budgetCap);
-        var data=mapper.createObjectNode().put("messageId",e.getPlanRunId());data.set("block",block);data.put("shortfall",shortfall);
-        return new Event("approval.required",data);
+    /**
+     * A budget shortfall becomes a real card on the thread (a persisted assistant message), so it can be confirmed by the
+     * button or in words like any other card. Its id includes the proposed cap: every shortfall is its own card.
+     */
+    private void raiseCard(IpPlanExecution e,ObjectNode state,String stage,ObjectNode stageBudget,long quoted,long budgetCap,long shortfall,String nextTitle,List<Runnable> after) {
+        if(e.getThreadId()==null)return;
+        String approvalId=StudioPlanExecutionIds.approvalId(e.getId(),stage,e.getPlanRunId(),e.getPlanFingerprint()+"|raise|"+budgetCap);
+        var block=approvalBlock(e,stage,approvalId,e.getPlanFingerprint(),PlanState.stageTitles(state,stage),quoted,budgetCap,stageBudget.path("autoFixCap").asLong(0));
+        block.put("shortfall",shortfall);
+        String text="预算不够了：下一步「"+nextTitle+"」需要的积分超出了本"+stageLabel(stage)+"已批准的上限，还差 "+shortfall+" 积分。"
+                +"确认把上限提高到 "+budgetCap+" 积分后，我接着做；也可以缩小范围或结束这次制作。";
+        String thread=e.getThreadId(),executionId=e.getId();
+        after.add(()->postMessage(thread,executionId,"exec-card-"+approvalId,text,List.of(block),null));
     }
-    private Event approvalEvent(IpPlanExecution e,ProductionPlan plan,String stage) {
-        var block=approvalBlock(e,stage,plan.runId(),plan.plan().path("fingerprint").asText(),titles(plan.plan()),plan.plan().path("budget").path("estimated").asLong(),
-                plan.plan().path("budget").path("estimated").asLong());
-        var data=mapper.createObjectNode().put("messageId",plan.runId());data.set("block",block);
-        return new Event("approval.required",data);
+
+    /**
+     * The production plan an analysis compiled (a native plan-compile run): posted as the thread's newest plan revision
+     * with its card, so it can be confirmed (D02 needs a real card; D01 makes it the current revision).
+     */
+    private void productionCard(IpPlanExecution e,ProductionPlan plan,List<Runnable> after) {
+        if(e.getThreadId()==null)return;
+        String fingerprint=plan.plan().path("fingerprint").asText();
+        long estimated=plan.plan().path("budget").path("estimated").asLong(),autoFix=plan.plan().path("budget").path("autoFixCap").asLong(0);
+        var target=messages==null?null:messages.getIfAvailable();
+        long reserve=target==null?0:Math.max(0,target.dialogueReserve(e.getOwnerUserId()));
+        String approvalId=StudioPlanExecutionIds.approvalId(e.getId(),"production",plan.runId(),fingerprint);
+        var planBlock=mapper.createObjectNode().put("type","plan").put("planRunId",plan.runId()).put("fingerprint",fingerprint);
+        planBlock.set("plan",plan.plan().deepCopy());
+        var card=approvalBlock(e,"production",approvalId,fingerprint,titles(plan.plan()),estimated,estimated+autoFix+reserve,autoFix);
+        if(reserve>0)card.put("dialogueReserve",reserve);
+        String text="分析做完了。我按分析结果整理了制作方案，共 "+plan.plan().path("steps").size()+" 步，当前报价 "+estimated+" 积分。确认方案和预算后开始制作。";
+        String thread=e.getThreadId(),executionId=e.getId();
+        after.add(()->postMessage(thread,executionId,"exec-card-"+approvalId,text,List.of(planBlock,card),null));
     }
-    private ObjectNode approvalBlock(IpPlanExecution e,String stage,String planRunId,String fingerprint,List<String> scope,long quoted,long budgetCap) {
-        var block=mapper.createObjectNode().put("type","approval").put("approvalId",StudioPlanExecutionIds.approvalId(e.getId(),stage,planRunId,fingerprint))
-                .put("stage",stage).put("planFingerprint",fingerprint);
-        var items=block.putArray("scope");scope.forEach(items::add);
-        block.put("quotedCost",quoted).put("budgetCap",budgetCap).put("autoFixCap",0).put("status","pending").put("executionId",e.getId());
+    private ObjectNode approvalBlock(IpPlanExecution e,String stage,String approvalId,String fingerprint,List<String> scope,long quoted,long budgetCap,long autoFixCap) {
+        var block=mapper.createObjectNode().put("type","approval").put("approvalId",approvalId).put("stage",stage).put("planFingerprint",fingerprint);
+        var items=block.putArray("scope");scope.stream().limit(8).forEach(items::add);
+        block.put("quotedCost",quoted).put("budgetCap",budgetCap).put("autoFixCap",Math.min(autoFixCap,budgetCap)).put("status","pending").put("executionId",e.getId());
         block.set("billingSelection",mapper.valueToTree(billing(e)));
+        block.put("expiresAt",Instant.now().plus(Duration.ofHours(24)).toString());
         return block;
     }
+    private static String stageLabel(String stage){return "production".equals(stage)?"制作阶段":"分析阶段";}
     private static List<String> titles(JsonNode plan){List<String> out=new ArrayList<>();plan.path("steps").forEach(s->out.add(s.path("title").asText()));return out;}
 
     record ProductionPlan(String runId,JsonNode plan) {}

@@ -385,6 +385,8 @@ export interface StudioDialogueMessage {
   billing?: StudioTokenBilling; settling?: boolean; status: StudioDialogueMessageStatus; createdAt: string;
   /** Set when imported from the legacy four-mode conversation nodes. */
   legacyNodeId?: string;
+  /** Follow-ups offered under an assistant message (an execution's completion summary keeps them across reloads). */
+  suggestions?: string[];
 }
 export interface StudioDialogueThread {
   id: string; projectId: string; parentThreadId?: string; branchFromMessageId?: string; title?: string;

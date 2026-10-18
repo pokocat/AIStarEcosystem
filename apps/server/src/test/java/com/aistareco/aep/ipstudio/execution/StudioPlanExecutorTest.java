@@ -37,6 +37,10 @@ class StudioPlanExecutorTest {
     IpPlanExecutionRepository executions;IpRunRepository runRepository;IpProjectService projects;StudioWorkflowService workflow;IpRunService runs;
     StudioPlanExecutor executor;com.aistareco.aep.ipstudio.dialogue.StudioDialogueService dialogue;
     java.util.function.Function<RunRequest,String> onSubmit;
+    /** Messages the executor posted on its thread: key → [text, blocks, suggestions]. */
+    final Map<String,Object[]> posted=new LinkedHashMap<>();
+    final List<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note> notes=new ArrayList<>();
+    final List<String> openedTurns=new ArrayList<>();
 
     @BeforeEach void setUp() {
         executions=mock(IpPlanExecutionRepository.class);runRepository=mock(IpRunRepository.class);projects=mock(IpProjectService.class);
@@ -78,6 +82,18 @@ class StudioPlanExecutorTest {
         @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueService> dialogues=mock(ObjectProvider.class);
         when(dialogues.getIfAvailable()).thenReturn(dialogue);
         org.springframework.test.util.ReflectionTestUtils.setField(executor,"dialogue",dialogues);
+        com.aistareco.aep.ipstudio.dialogue.StudioExecutionMessages poster=(thread,execution,key,text,blocks,suggestions)->{
+            posted.putIfAbsent(key,new Object[]{text,blocks,suggestions});return "IDM-"+key;};
+        @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionMessages> posters=mock(ObjectProvider.class);
+        when(posters.getIfAvailable()).thenReturn(poster);
+        org.springframework.test.util.ReflectionTestUtils.setField(executor,"messages",posters);
+        var steering=new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering() {
+            @Override public List<Note> notes(String threadId,String executionId){return List.copyOf(notes);}
+            @Override public void openTurn(String threadId){openedTurns.add(threadId);}
+        };
+        @SuppressWarnings("unchecked") ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering> steerings=mock(ObjectProvider.class);
+        when(steerings.getIfAvailable()).thenReturn(steering);
+        org.springframework.test.util.ReflectionTestUtils.setField(executor,"steering",steerings);
     }
 
     IpRunDto dto(String id,String status,long cost,JsonNode output) {
@@ -147,8 +163,19 @@ class StudioPlanExecutorTest {
         assertEquals(1,budget().path("shortfall").asLong());
         int index=published.lastIndexOf("budget.update");assertTrue(index>=0);
         assertEquals(1,publishedData.get(index).path("shortfall").asLong());
-        assertTrue(published.contains("approval.required"));
+        // The raise is a real card on the thread (approvable by the button or in words), not an event-only card.
+        assertEquals(1,posted.size());
+        var entry=posted.entrySet().iterator().next();
+        assertTrue(entry.getKey().startsWith("exec-card-"));
+        @SuppressWarnings("unchecked") var blocks=(List<ObjectNode>)entry.getValue()[1];
+        var card=blocks.get(0);
+        assertEquals("approval",card.path("type").asText());assertEquals("pending",card.path("status").asText());
+        assertEquals(45,card.path("budgetCap").asLong());assertEquals(1,card.path("shortfall").asLong());assertEquals("f",card.path("planFingerprint").asText());
+        assertEquals("PEX-1",card.path("executionId").asText());
+        assertTrue(((String)entry.getValue()[0]).contains("还差 1 积分"));
         assertTrue(state().path("needsUserReason").asText().contains("1 积分"));
+        executor.advance("PEX-1");
+        assertEquals(1,posted.size(),"one card per shortfall");
     }
 
     @Test void inFlightRunsOccupyTheirApprovedCeiling() throws Exception {
@@ -247,5 +274,102 @@ class StudioPlanExecutorTest {
         assertEquals("片段 v1 · 检查",check.path("node").path("title").asText());
         assertEquals("PEX-1-p-v1",check.path("connection").path("fromNodeId").asText(),"connected from the inspected video");
         assertEquals("IPR-PEX-1-p-c1",check.path("node").path("metadata").path("studio").path("execution").path("runId").asText());
+    }
+
+    // ── D03: steering at the safe boundary ──────────────────────────────────────────────────────────────────
+    @Test void aMessageSentWhileRunningStopsTheNextSubmissionAndOpensItsReplyOnce() throws Exception {
+        execution("running",1000,videoStep("v1",40),videoStep("v2",40,"v1"));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size());
+        notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-1","IDM-1","第二步不要执行，只保留第一步","queued",Instant.now()));
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",40,videoOutput("v1.mp4")));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size(),"the old second step is not submitted after the change request");
+        assertEquals("needs_user",row.getStatus());
+        assertTrue(state().path("needsUserReason").asText().startsWith("收到新指令，等待重新确认"));
+        assertEquals("done",step("v1").path("status").asText(),"the accepted task keeps its snapshot and result");
+        assertEquals(List.of("t"),openedTurns,"the dialogue answers the message");
+        executor.advance("PEX-1");executor.advance("PEX-1");
+        assertEquals(List.of("t"),openedTurns,"each steering message is handled once");
+        assertEquals("[\"IDS-1\"]",state().path("steeringSeen").toString());
+        row.setStatus("running"); // the user's explicit continue (resume) after reading the reply
+        executor.advance("PEX-1");
+        assertEquals(2,submitted.size(),"an explicit continue resumes the plan");
+    }
+
+    @Test void rejectedSteeringIsIgnored() throws Exception {
+        execution("running",1000,videoStep("v1",40));
+        notes.add(new com.aistareco.aep.ipstudio.dialogue.StudioExecutionSteering.Note("IDS-9","IDM-9","算了","rejected",Instant.now()));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size());assertTrue(openedTurns.isEmpty());
+    }
+
+    // ── D06: parent dialogue turns count in their stage ─────────────────────────────────────────────────────
+    @Test void dialogueTurnsCountInTheStageBudgetOnceWithTheParentShareVisible() throws Exception {
+        execution("running",60,videoStep("v1",40));
+        var state=(ObjectNode)state();
+        var turns=state.putArray("dialogueRuns");
+        turns.addObject().put("runId","IPR-turn").put("stage","production").put("maxCost",28).put("status","running");
+        turns.addObject().put("runId","IPR-turn").put("stage","production").put("maxCost",28).put("status","running"); // a duplicated registration
+        row.setStepsJson(state.toString());
+        dtos.put("IPR-turn",dto("IPR-turn","running",28,null));
+        executor.advance("PEX-1");
+        assertTrue(submitted.isEmpty(),"0 + 28 (the running turn) + 40 > 60");
+        assertEquals("needs_user",row.getStatus());
+        assertEquals(28,budget().path("inFlight").asLong(),"one run id, counted once");
+        assertEquals(28,budget().path("dialogueInFlight").asLong());
+        assertEquals(8,budget().path("shortfall").asLong());
+        dtos.put("IPR-turn",dto("IPR-turn","done",2,null));
+        var resumed=(ObjectNode)state();((ObjectNode)resumed.path("steps").get(0)).put("status","pending"); // what resume does
+        row.setStepsJson(resumed.toString());row.setStatus("running");
+        published.clear();publishedData.clear();
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size(),"2 settled + 40 ≤ 60");
+        assertEquals(2,budget().path("spent").asLong());assertEquals(2,budget().path("dialogueSpent").asLong());assertEquals(0,budget().path("dialogueInFlight").asLong());
+        var update=publishedData.get(published.indexOf("budget.update"));
+        assertEquals(2,update.path("spent").asLong());assertEquals(2,update.path("dialogueSpent").asLong(),"the parent share is visible, already inside spent");
+    }
+
+    // ── D07: completion summary ─────────────────────────────────────────────────────────────────────────────
+    @Test void aFinishedExecutionPostsOneSummaryWithRealCostsChecksAndSuggestions() throws Exception {
+        execution("running",1000,videoStep("v1",40),checkStep("c1","v1",5));
+        executor.advance("PEX-1");
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",38,videoOutput("v1.mp4")));
+        executor.advance("PEX-1");
+        dtos.put("IPR-PEX-1-p-c1",dto("IPR-PEX-1-p-c1","done",3,om.readTree("{\"check\":{\"status\":\"unknown\",\"items\":[{\"id\":\"subject-replaced\",\"status\":\"unknown\",\"reason\":\"四帧看不清商品标签\"}]}}")));
+        executor.advance("PEX-1");
+        assertEquals("needs_user",row.getStatus(),"an unknown check waits for the user");
+        assertTrue(posted.isEmpty(),"no summary before a terminal state");
+        var state=(ObjectNode)state();((ObjectNode)state.path("steps").get(1)).put("acknowledged",true);row.setStepsJson(state.toString());
+        executor.advance("PEX-1");
+        assertEquals("done",row.getStatus());
+        var summary=posted.get("exec-summary-PEX-1");
+        assertNotNull(summary);
+        String text=(String)summary[0];
+        assertTrue(text.startsWith("这次制作完成了。"),text);
+        assertTrue(text.contains("实际花费：制作 41 积分"),text);
+        assertTrue(text.contains("「片段 v1」"),text);
+        assertTrue(text.contains("AI 判断无法判断，四帧看不清商品标签"),text);
+        assertFalse(text.contains("——"));
+        @SuppressWarnings("unchecked") var suggestions=(List<String>)summary[2];
+        assertTrue(suggestions.size()>=2&&suggestions.size()<=3,suggestions.toString());
+        assertEquals("重做第 1 段「片段 v1」",suggestions.get(0),"derived from the check that did not pass");
+        assertTrue(suggestions.contains("把做好的片段合成一条成片"),suggestions.toString());
+        executor.advance("PEX-1");
+        assertEquals(1,posted.size(),"one summary per execution");
+    }
+
+    @Test void aCanceledExecutionAlsoGetsItsSummary() throws Exception {
+        execution("running",1000,videoStep("v1",40),videoStep("v2",40,"v1"));
+        executor.advance("PEX-1");
+        row.setStatus("canceled");
+        executor.advance("PEX-1");executor.advance("PEX-1");
+        var summary=posted.get("exec-summary-PEX-1");
+        assertNotNull(summary);
+        String text=(String)summary[0];
+        assertTrue(text.startsWith("这次制作已经停止。"),text);
+        assertTrue(text.contains("还有任务在结算（最多 40 积分）"),text);
+        assertTrue(text.contains("没做完的步骤"),text);
+        assertEquals(1,posted.keySet().stream().filter(k->k.startsWith("exec-summary")).count());
     }
 }

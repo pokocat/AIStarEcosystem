@@ -19,7 +19,7 @@ public class RequestApprovalTool implements StudioDialogueTool {
     static final Duration EXPIRES = Duration.ofHours(24);
     public String name() { return "request_approval"; }
     public String title() { return "请你确认"; }
-    public String description() { return "请用户确认最新一版方案的范围与预算（报价来自服务端）。可给出用户提过的总上限 budgetCap（不低于报价）。之后本轮结束，等待用户确认；不要替用户同意。"; }
+    public String description() { return "请用户确认最新一版方案的范围与预算（报价来自服务端）。可给出用户提过的总上限 budgetCap（不低于报价）；省略时总上限 = 报价 + 重做额度 + 一轮对话的预留。之后本轮结束，等待用户确认；不要替用户同意。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "scope");
         DialogueTools.prop(s, "scope", "array", "要用户确认的范围，用用户看得懂的话，最多 8 条").putObject("items").put("type", "string");
@@ -43,13 +43,17 @@ public class RequestApprovalTool implements StudioDialogueTool {
             return ToolRun.failed("STUDIO_PRICE_UNAVAILABLE", "方案还没有服务端报价，暂不能确认", DialogueTools.fail("方案没有服务端报价，不能发起确认；请如实告诉用户报价服务暂不可用"));
         long quoted = plan.path("budget").path("estimated").asLong();
         long autoFix = plan.path("budget").path("autoFixCap").asLong(0);
-        long cap = args.has("budgetCap") ? args.path("budgetCap").asLong() : quoted + autoFix;
+        // D06: turns during the stage count against its cap, so the default leaves room for one turn's ceiling.
+        long reserve = ctx.rate == null ? 0 : ctx.rate.maxCost();
+        boolean named = args.has("budgetCap");
+        long cap = named ? args.path("budgetCap").asLong() : quoted + autoFix + reserve;
         if (cap < quoted) return ToolRun.failed("STUDIO_PLAN_BUDGET_EXCEEDED", "上限低于当前报价",
                 DialogueTools.fail("用户给的上限 " + cap + " 低于服务端报价 " + quoted + "，差 " + (quoted - cap) + " 积分。请说明差额和可以缩小的范围。"));
         ObjectNode block = DialogueTools.OM.createObjectNode().put("type", "approval").put("approvalId", "APV-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
                 .put("stage", plan.path("stage").asText(ctx.stage())).put("planFingerprint", latest.path("fingerprint").asText());
         block.set("scope", args.path("scope").deepCopy());
-        block.put("quotedCost", quoted).put("budgetCap", cap).put("autoFixCap", autoFix);
+        block.put("quotedCost", quoted).put("budgetCap", cap).put("autoFixCap", Math.min(autoFix, cap));
+        if (!named && reserve > 0) block.put("dialogueReserve", reserve);
         if (ctx.billing != null) block.set("billingSelection", DialogueTools.OM.valueToTree(ctx.billing));
         block.put("status", "pending");
         if (ctx.executionId != null) block.put("executionId", ctx.executionId);

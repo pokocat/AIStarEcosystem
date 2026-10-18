@@ -477,6 +477,7 @@ components:
         status: { type: string, enum: [queued, applied, streaming, done, failed, interrupted] }
         createdAt: { type: string, format: date-time }
         legacyNodeId: { type: string, nullable: true }
+        suggestions: { type: array, nullable: true, items: { type: string }, description: 助手消息下的后续建议（后台制作结束时的总结消息会持久保存，刷新后仍在） }
     StudioDialogueThread:
       type: object
       required: [id, projectId, lastSeq, createdAt, updatedAt]
@@ -595,6 +596,8 @@ components:
               inFlight: { type: integer }
               remaining: { type: integer }
               shortfall: { type: integer, nullable: true }
+              dialogueSpent: { type: integer, nullable: true, description: 本阶段已计入的父对话 run 实际费用（已含在 spent 内，不要重复相加） }
+              dialogueInFlight: { type: integer, nullable: true, description: 本阶段进行中的父对话 run 费用上限（已含在 inFlight 内） }
         billing: { type: object, nullable: true }
         needsUserReason: { type: string, nullable: true }
         startedAt: { type: string, format: date-time }
@@ -615,8 +618,8 @@ components:
         billing: { type: object, nullable: true }
         executionId: { type: string, nullable: true, description: 确认制作阶段时带已有执行，避免第二份活跃执行。 }
         expectedRevision: { type: integer, nullable: true }
-        approvalId: { type: string, nullable: true }
-        confirmationMessageId: { type: string, nullable: true, description: 用户的确认消息；服务端绑定真实用户确认与计划指纹。 }
+        approvalId: { type: string, nullable: true, description: 必填（缺失 400 STUDIO_INPUT_INVALID）：用户确认的那张确认卡。 }
+        confirmationMessageId: { type: string, nullable: true, description: 必填（缺失 400 STUDIO_INPUT_INVALID）：放着这张确认卡的助手消息；服务端核对卡片属于本人本画布线程、仍待确认、对应线程当前最新的计划修订。用文字确认（「就按这个开始」）只能由对话里的 confirm_approval 工具在服务端完成，不经这个接口。 }
     StudioPlanExecutionControlRequest:
       type: object
       required: [clientRequestId]
@@ -12685,11 +12688,12 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPostMessage
-      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙 → 加入有序转向队列，不因忙碌拒绝。返回 message / turn / run 身份与 queueState。
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
         '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）' }
+        '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（线程绑定的后台制作本阶段预算放不下这一轮对话；带 stage, spent, inFlight, quotedCost=本轮上限, approvedCap, shortfall）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
         '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND' }
         '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED / AI_TOOLS_NOT_SUPPORTED（端点声明不支持工具且无 JSON 协议回落时）' }
@@ -12735,14 +12739,15 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioCreatePlanExecution
-      description: 创建分析执行，或在同一执行上确认制作阶段（带 executionId / approachId / expectedRevision / approvalId / confirmationMessageId）。服务端核对计划指纹、技能在架、引用归属、总报价 ≤ 上限、付款绑定；落 ip_plan_execution 后 afterCommit 派发执行器。同项目只许一份活跃执行。
+      description: 创建分析执行，或在同一执行上确认制作阶段 / 提高本阶段上限（带 executionId / approachId / expectedRevision）。approvalId + confirmationMessageId 必填：确认来源只能是对话里的确认卡，且卡片必须对应线程当前最新的计划修订（出现新修订或新卡时，旧的待确认卡变为 superseded）。服务端核对计划指纹、技能在架、引用归属、总报价 ≤ 上限、付款绑定；落 ip_plan_execution，并在同一事务里把卡片标为 approved（写入 approvedBudgetCap / approvedAutoFixCap / approvedPlanRevision / approvedAt / approvedByMessageId / executionId），afterCommit 派发执行器。同项目只许一份活跃执行。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionCreateRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }
         '400': { description: 'STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_INPUT_INVALID' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（带 stage, spent, inFlight, quotedCost, approvedCap, shortfall）' }
-        '404': { description: 'STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND / STUDIO_MESSAGE_NOT_FOUND / STUDIO_APPROVAL_NOT_FOUND（confirmationMessageId 不是本线程助手消息上的确认卡）' }
-        '409': { description: 'STUDIO_PLAN_STALE / STUDIO_PLAN_EXECUTION_BUSY / STUDIO_REQUEST_CHANGED' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND / STUDIO_APPROVAL_NOT_FOUND（confirmationMessageId 不存在、不属于本人本画布，或这条消息上没有这张确认卡，例如传了用户消息）' }
+        '409': { description: 'STUDIO_PLAN_STALE（确认卡已确认过、已过期、已被新方案替代，或不对应线程当前最新的计划修订 / 指纹 / 报价）/ STUDIO_PLAN_EXECUTION_BUSY / STUDIO_REQUEST_CHANGED / BILLING_SELECTION_CONFLICT' }
+        '503': { description: 'STUDIO_EXECUTION_UNAVAILABLE（对话确认服务不可用，不能确认）' }
   /v1/ip-studio/projects/{id}/plan-executions/{eid}:
     parameters:
       - { in: path, name: id, required: true, schema: { type: string } }

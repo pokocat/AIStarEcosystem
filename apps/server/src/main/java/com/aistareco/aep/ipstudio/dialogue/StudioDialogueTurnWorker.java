@@ -71,6 +71,7 @@ public class StudioDialogueTurnWorker {
 
     @Autowired(required = false) private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
     @Autowired(required = false) private StudioRunErrorLog errorLog;
+    @Autowired(required = false) private StudioExecutionControl executionControl;
 
     private final IpRunRepository runs;
     private final IpProjectService projects;
@@ -131,7 +132,12 @@ public class StudioDialogueTurnWorker {
             if (turn != null) turn.sink.close();
             signals.remove(runId);
         }
-        String threadId = parse(run.getInputJson()).path("dialogue").path("threadId").asText(null);
+        JsonNode settledInput = parse(run.getInputJson());
+        String threadId = settledInput.path("dialogue").path("threadId").asText(null);
+        // D06: a turn counted in an execution stage changes that stage's spent / in-flight; refresh the budgets now.
+        String attributed = settledInput.path("_exec").path("attributedExecutionId").asText(null);
+        if (attributed != null && executionControl != null) try { executionControl.wake(attributed); }
+        catch (RuntimeException e) { log.info("[dialogue] execution wake deferred to the scheduler execution={} reason={}", attributed, e.toString()); }
         if (threadId != null) try { service.getObject().afterTurn(threadId); }
         catch (RuntimeException e) { log.warn("[dialogue] follow-up turn not started thread={}", threadId, e); }
     }
@@ -333,8 +339,9 @@ public class StudioDialogueTurnWorker {
             this.budget = mock || rate == null ? DialogueLoop.TurnBudget.unmetered(perCall, clock)
                     : new DialogueLoop.TurnBudget(DialogueLoop.MAX_MODEL_CALLS, rate.maxInputTokens(), rate.maxOutputTokens(), perCall, DialogueLoop.MAX_DURATION, clock);
             if (mock) this.endpoint = null;
-            else this.endpoint = models.resolveEndpoint(AiModelPurpose.DAP_PERSONA, exec.path("endpointId").asText(null), "studio")
-                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED", "对话模型已停用，请联系管理员")).endpoint();
+            // D08: the rule acceptance used (default binding, or an enabled candidate), so an accepted turn is runnable.
+            else this.endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, exec.path("endpointId").asText(null), "studio")
+                    .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED", "对话模型已停用或不再是默认模型，请联系管理员")).endpoint();
             StudioSkill skill = exec.hasNonNull("skill") ? StudioSkill.fromSnapshot(exec.path("skill")) : null;
             String stage = exec.path("stage").asText(null);
             BillingSelection billing = input.hasNonNull("billing") ? mapper.treeToValue(input.path("billing"), BillingSelection.class) : null;
@@ -361,7 +368,7 @@ public class StudioDialogueTurnWorker {
             long firstSeq = inputs.stream().mapToLong(IpDialogueMessage::getSeq).min().orElse(Long.MAX_VALUE);
             Map<String, String> vars = new LinkedHashMap<>();
             vars.put("skill", skillText(skill));
-            vars.put("stage", stageText(skill, stage));
+            vars.put("stage", stageText(skill, stage) + executionText());
             vars.put("tools", tools.describe(mapper));
             vars.put("context", DialogueCanvasDigest.build(doc(), pinned, attachments));
             vars.put("history", history(thread, firstSeq));
@@ -426,6 +433,18 @@ public class StudioDialogueTurnWorker {
             if (skill == null || stage == null) return "未开始（还没有选定制作方法）";
             return ("production".equals(stage) ? "制作阶段" : "分析阶段") + "；本阶段可用的收费操作：" + String.join("、", skill.stageOperations(stage))
                     + "（收费步骤需要用户确认方案和预算后才执行）";
+        }
+
+        /** The bound execution as recorded (status, why it waits, budget), so the model never guesses background progress. */
+        String executionText() {
+            if (executionId == null || executionControl == null) return "";
+            try {
+                String line = executionControl.promptSummary(userId, projectId, executionId);
+                return line == null || line.isBlank() ? "" : "\n后台制作：" + line;
+            } catch (RuntimeException e) {
+                log.info("[dialogue] execution summary unavailable run={} execution={} reason={}", runId, executionId, e.toString());
+                return "";
+            }
         }
 
         String inputText(List<IpDialogueMessage> inputs) {
@@ -629,6 +648,8 @@ public class StudioDialogueTurnWorker {
             @Override public ObjectNode appendPlan(ObjectNode plan, String fingerprint) {
                 ObjectNode[] holder = new ObjectNode[1];
                 store.write(threadId, t -> {
+                    // D01: cards for earlier revisions can no longer start anything; the UI gets the updated cards.
+                    List<StudioDialogueStore.Pending> out = new ArrayList<>(store.supersedePendingApprovals(t, null, turnId, runId, executionId));
                     int revision = t.getPlanRevision() + 1;
                     t.setPlanRevision(revision);
                     plan.put("revision", revision).put("fingerprint", fingerprint);
@@ -639,7 +660,8 @@ public class StudioDialogueTurnWorker {
                     blocks.add(block);
                     store.saveBlocks(message, blocks);
                     holder[0] = block;
-                    return List.of(pending(StudioDialogueEventTypes.PLAN_PROPOSED, new PlanProposedData(assistantId, block)));
+                    out.add(pending(StudioDialogueEventTypes.PLAN_PROPOSED, new PlanProposedData(assistantId, block)));
+                    return out;
                 });
                 latestPlan = plan;
                 plans.add(plan);
@@ -647,11 +669,16 @@ public class StudioDialogueTurnWorker {
             }
             @Override public void appendBlock(ObjectNode block, String eventType, JsonNode eventData) {
                 store.write(threadId, t -> {
+                    List<StudioDialogueStore.Pending> out = new ArrayList<>();
+                    // A new card replaces any other pending card: only one card can be approved at a time.
+                    if ("approval".equals(block.path("type").asText()) && "pending".equals(block.path("status").asText()))
+                        out.addAll(store.supersedePendingApprovals(t, block.path("approvalId").asText(), turnId, runId, executionId));
                     var message = store.message(assistantId);
                     ArrayNode blocks = store.blocks(message);
                     blocks.add(block);
                     store.saveBlocks(message, blocks);
-                    return eventType == null ? List.of() : List.of(new StudioDialogueStore.Pending(turnId, runId, executionId, eventType, eventData));
+                    if (eventType != null) out.add(new StudioDialogueStore.Pending(turnId, runId, executionId, eventType, eventData));
+                    return out;
                 });
             }
             @Override public Optional<ObjectNode> latestPlanBlock() {

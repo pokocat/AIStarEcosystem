@@ -55,16 +55,19 @@ import java.util.regex.Pattern;
  * Every call checks owner, project and thread.
  */
 @Service
-public class StudioDialogueService implements StudioDialogueApprovals {
+public class StudioDialogueService implements StudioDialogueApprovals, StudioExecutionSteering, StudioExecutionMessages {
     private static final Logger log = LoggerFactory.getLogger(StudioDialogueService.class);
     static final String DEFAULT_TITLE = "全能创作";
     private static final Pattern CLIENT_ID = Pattern.compile("[A-Za-z0-9_.:-]{1,64}");
     static final int PAGE_DEFAULT = 50, PAGE_MAX = 200, TEXT_MAX = 4000, NODE_REFS_MAX = 64;
+    private static final Set<String> ACTIVE_EXECUTION = Set.of("running", "paused", "needs_user");
 
     @Autowired(required = false) private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
     @Autowired(required = false) private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     @Autowired(required = false) private AiChatTokenPricing tokenPricing;
     @Autowired(required = false) private StudioExecutionControl executionControl;
+    /** D06: a turn on a thread bound to an active execution is attributed to its stage budget through the gate. */
+    @Autowired(required = false) private org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates;
 
     /** Execution bound to this thread: the stored pointer, else the canvas's active execution created from this thread. */
     Optional<StudioExecutionControl.ExecutionView> execution(String userId, String projectId, IpDialogueThread thread) {
@@ -193,6 +196,11 @@ public class StudioDialogueService implements StudioDialogueApprovals {
         }
         Instant now = Instant.now();
         boolean busy = thread.getActiveTurnId() != null;
+        // D03: while the bound execution is running (even with no active turn) a new message is steering for it: the
+        // executor reads it at its next safe boundary, submits nothing more, and opens the turn that answers it.
+        var bound = execution(userId, projectId, thread).orElse(null);
+        String steeredExecution = bound != null && "running".equals(bound.status()) ? bound.id() : null;
+        boolean queue = busy || steeredExecution != null;
         ObjectNode settings = mapper.createObjectNode();
         if (request.billing() != null) settings.set("billing", mapper.valueToTree(request.billing()));
         if (request.maxCost() != null) settings.put("maxCost", request.maxCost());
@@ -202,16 +210,18 @@ public class StudioDialogueService implements StudioDialogueApprovals {
         IpDialogueMessage message = IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(threadId)
                 .seq(StudioDialogueStore.nextMessageSeq(thread)).role("user").text(request.text()).blocksJson("[]")
                 .pinnedNodeIdsJson(json(pinned)).attachmentNodeIdsJson(json(attachments)).clientMessageId(request.clientMessageId())
-                .requestJson(settings.toString()).status(busy ? IpDialogueMessage.QUEUED : IpDialogueMessage.DONE).createdAt(now).updatedAt(now).build();
+                .requestJson(settings.toString()).status(queue ? IpDialogueMessage.QUEUED : IpDialogueMessage.DONE).createdAt(now).updatedAt(now).build();
         messages.save(message);
         thread.setLastOpenedAt(now);
-        if (busy) {
+        if (queue) {
+            // executionId is set only while the execution runs: those are the rows the executor must see before it
+            // submits anything else. A message to a paused / waiting execution is ordinary conversation.
             steering.save(IpDialogueSteering.builder().id("IDS-" + StudioDialogueStore.uuid20()).threadId(threadId).messageId(message.getId())
-                    .turnId(thread.getActiveTurnId()).executionId(thread.getActiveExecutionId()).status(IpDialogueSteering.QUEUED).createdAt(now).build());
-            message.setTurnId(thread.getActiveTurnId()); message.setRunId(thread.getActiveRunId());
-            messages.save(message);
+                    .turnId(thread.getActiveTurnId()).executionId(steeredExecution).status(IpDialogueSteering.QUEUED).createdAt(now).build());
+            if (busy) { message.setTurnId(thread.getActiveTurnId()); message.setRunId(thread.getActiveRunId()); messages.save(message); }
             thread.setUpdatedAt(now);
             threads.save(thread);
+            if (steeredExecution != null) wakeAfterCommit(steeredExecution);
             return new PostMessageResult(message.getId(), thread.getActiveTurnId(), thread.getActiveRunId(), "queued");
         }
         var started = startTurn(userId, thread, List.of(message), request.billing(), request.maxCost(), request.skillKey(), request.model());
@@ -236,7 +246,7 @@ public class StudioDialogueService implements StudioDialogueApprovals {
         } else if (thread.getSkillKey() != null) {
             skill = catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
         }
-        var bound = execution(userId, thread.getProjectId(), thread).orElse(null);
+        var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
         String stage = bound != null && bound.stage() != null ? bound.stage()
                 : thread.getStage() != null ? thread.getStage() : skill == null ? null : StudioSkill.ANALYSIS;
         AiModelEndpoint endpoint = null;
@@ -252,9 +262,12 @@ public class StudioDialogueService implements StudioDialogueApprovals {
                 endpoint = scenePolicies.resolve("studio", "script", model, pricing.ipIdentity()).resolved().endpoint();
             } else {
                 boolean chosen = model != null;
-                endpoint = models.resolveEndpoint(AiModelPurpose.DAP_PERSONA, model, "studio")
+                // D08: one rule with the worker (AiModelInvocationService#resolveAcceptedEndpoint): the default binding needs
+                // no candidate; any other chosen model must be an enabled candidate, refused here before anything is frozen.
+                endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, model, "studio")
                         .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, chosen ? "ENDPOINT_NOT_ALLOWED" : "AI_NOT_CONFIGURED",
-                                chosen ? "所选文本模型不可用" : "还没有配置可用的对话模型，请联系管理员")).endpoint();
+                                chosen ? "所选文本模型不可用：它不是对话用途的默认模型，也没有在后台「AI 模型」里启用为对话用途的候选模型"
+                                        : "还没有配置可用的对话模型：请在后台「AI 模型」里为对话用途绑定默认模型")).endpoint();
             }
             prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
             if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
@@ -292,6 +305,13 @@ public class StudioDialogueService implements StudioDialogueApprovals {
             exec.set("tokenPricing", mapper.valueToTree(rate));
             exec.putObject("prompt").put("key", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE).put("system", prompt.system()).put("user", prompt.userTemplate());
             input.put("promptKey", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
+        }
+        // D06: a turn on a thread bound to an active execution belongs to that stage: the same pre-submit check
+        // (spent + inFlight + this turn's ceiling ≤ approved cap) runs before anything is frozen; 402 when it does not fit.
+        var gate = gates == null ? null : gates.getIfAvailable();
+        if (bound != null && gate != null && cost > 0) {
+            String attributedStage = gate.attributeTurn(userId, thread.getProjectId(), bound.id(), runId, cost);
+            if (attributedStage != null) exec.put("attributedExecutionId", bound.id()).put("attributedStage", attributedStage);
         }
         var account = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId, billing, IpRunService.REF_TYPE, runId,
                 endpoint == null ? null : endpoint.getId(), cost, "Studio 对话");
@@ -414,7 +434,11 @@ public class StudioDialogueService implements StudioDialogueApprovals {
                 try { runService.cancel(userId, child); }
                 catch (BusinessException e) { log.info("[dialogue] child run keeps its accepted vendor job run={} code={}", child, e.getCode()); }
             }
-            if (executionId != null && executionControl != null) executionControl.stop(userId, projectId, executionId, request.controlId());
+            // A priority stop never fails because the bound execution already ended (or ended meanwhile).
+            if (executionId != null && executionControl != null) {
+                try { executionControl.stop(userId, projectId, executionId, request.controlId()); }
+                catch (BusinessException e) { log.info("[dialogue] stop: execution not stoppable execution={} code={}", executionId, e.getCode()); }
+            }
             return snapshot(userId, threadId);
         }
         if (executionId == null) throw BusinessException.badRequest("STUDIO_EXECUTION_NOT_ACTIVE", "当前没有进行中的制作");
@@ -465,7 +489,8 @@ public class StudioDialogueService implements StudioDialogueApprovals {
                 if (IpDialogueMessage.QUEUED.equals(m.getStatus())) continue;
                 ArrayNode blocks = store.blocks(m);
                 for (JsonNode b : blocks) if (b instanceof ObjectNode o && "approval".equals(b.path("type").asText())) {
-                    o.put("status", "superseded"); o.remove("executionId"); o.remove("approvedMessageId");
+                    o.put("status", "superseded");
+                    o.remove(List.of("executionId", "approvedMessageId", "approvedByMessageId", "approvedBudgetCap", "approvedAutoFixCap", "approvedAt", "approvedPlanRevision"));
                 }
                 String status = IpDialogueMessage.STREAMING.equals(m.getStatus()) ? IpDialogueMessage.INTERRUPTED : m.getStatus();
                 messages.save(IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(id).seq(++seq).role(m.getRole())
@@ -483,41 +508,179 @@ public class StudioDialogueService implements StudioDialogueApprovals {
     // ── Approval cards (validated for the plan executor) ────────────────────────────────────────────────────────
 
     @Override
-    public JsonNode requireApproval(String userId, String projectId, String messageId, String approvalId) {
-        var message = messages.findById(messageId == null ? "" : messageId)
-                .orElseThrow(() -> BusinessException.badRequest("STUDIO_APPROVAL_NOT_FOUND", "找不到这张确认卡，请刷新对话后再确认"));
-        IpDialogueThread thread = threads.findById(message.getThreadId())
-                .filter(t -> userId.equals(t.getOwnerUserId()) && projectId.equals(t.getProjectId()))
-                .orElseThrow(() -> BusinessException.badRequest("STUDIO_APPROVAL_NOT_FOUND", "找不到这张确认卡，请刷新对话后再确认"));
-        if (!"assistant".equals(message.getRole()))
-            throw BusinessException.badRequest("STUDIO_APPROVAL_NOT_FOUND", "确认需要来自对话里的确认卡");
+    public Card requireApproval(String userId, String projectId, String messageId, String approvalId) {
+        var message = messages.findById(messageId == null ? "" : messageId).orElseThrow(StudioDialogueService::cardNotFound);
+        IpDialogueThread thread = lockOwnedThread(userId, projectId, message.getThreadId());
+        // D09: a message that does not hold the card (a user message, a forged id) is "no such card", not a bad request.
+        if (!"assistant".equals(message.getRole())) throw cardNotFound();
         ObjectNode block = StudioDialogueStore.findBlock(store.blocks(message), "approval", "approvalId", approvalId == null ? "" : approvalId);
-        if (block == null) throw BusinessException.badRequest("STUDIO_APPROVAL_NOT_FOUND", "这条消息里没有这张确认卡");
-        String status = block.path("status").asText();
-        String expires = block.path("expiresAt").asText(null);
-        if ("superseded".equals(status) || "expired".equals(status)
-                || "pending".equals(status) && expires != null && Instant.parse(expires).isBefore(Instant.now()))
-            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PLAN_STALE", "这张确认卡已过期，请按最新方案重新确认");
-        ObjectNode out = block.deepCopy();
-        out.put("threadId", thread.getId()).put("messageId", message.getId());
+        if (block == null) throw cardNotFound();
+        return validated(thread, message, block, null, null);
+    }
+
+    @Override
+    public Card requireApprovalByMessage(String userId, String projectId, String userMessageId, String approvalId) {
+        var approving = messages.findById(userMessageId == null ? "" : userMessageId)
+                .orElseThrow(() -> BusinessException.notFound("STUDIO_MESSAGE_NOT_FOUND", "找不到这条确认消息"));
+        IpDialogueThread thread = lockOwnedThread(userId, projectId, approving.getThreadId());
+        if (!"user".equals(approving.getRole())) throw BusinessException.notFound("STUDIO_MESSAGE_NOT_FOUND", "确认需要是你自己发的消息");
+        Instant now = Instant.now();
+        StudioDialogueStore.CardRef target = null;
+        int open = 0;
+        for (var card : store.recentCards(thread.getId())) {
+            if (StudioDialogueStore.openCard(card.block(), now)) open++;
+            if (target == null && card.block().path("approvalId").asText().equals(approvalId)) target = card;
+        }
+        if (target == null) throw cardNotFound();
+        if (target.message().getSeq() >= approving.getSeq())
+            throw StudioDialogueService.stale("这条消息发在确认卡出现之前，不能当作对这张卡的确认");
+        if (open > 1) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_APPROVAL_AMBIGUOUS", "现在有不止一张待确认的方案，请说明确认的是哪一张，或直接点卡片上的按钮");
+        return validated(thread, target.message(), target.block(), approving.getId(), approving.getText());
+    }
+
+    /** Pending, unexpired, and for the thread's newest plan revision (D01) — under the thread lock the caller now holds. */
+    private Card validated(IpDialogueThread thread, IpDialogueMessage message, ObjectNode block, String approvingMessageId, String approvingText) {
+        String status = block.path("status").asText("pending");
+        if ("approved".equals(status)) throw stale("这张确认卡已经确认过了；要调整预算，请在对话里说明新的上限");
+        if (!StudioDialogueStore.openCard(block, Instant.now())) throw stale("这张确认卡已过期或被新方案替代，请按最新方案重新确认");
+        var current = store.currentPlan(thread.getId()).orElse(null);
+        String fingerprint = block.path("planFingerprint").asText();
+        if (current == null || !fingerprint.equals(current.fingerprint()))
+            throw stale("方案已经更新到新的一版，这张确认卡对应的是旧方案，请看最新的方案后再确认");
+        return new Card(block.deepCopy(), thread.getId(), message.getId(), approvingMessageId, approvingText, current.planRunId(), current.revision(),
+                current.fingerprint(), current.revision());
+    }
+
+    @Override
+    public void markApproved(String userId, String projectId, Card card, Approved approved) {
+        IpDialogueThread thread = lockOwnedThread(userId, projectId, card.threadId());
+        var message = store.message(card.cardMessageId());
+        ArrayNode blocks = store.blocks(message);
+        ObjectNode block = StudioDialogueStore.findBlock(blocks, "approval", "approvalId", card.block().path("approvalId").asText());
+        if (block == null) return;
+        // D10: the immutable authorization snapshot — what the user approved, not what the card proposed.
+        block.put("status", "approved").put("executionId", approved.executionId())
+                .put("approvedBudgetCap", approved.budgetCap()).put("approvedAutoFixCap", approved.autoFixCap())
+                .put("approvedPlanRevision", approved.planRevision()).put("approvedAt", approved.at().toString());
+        if (approved.approvedByMessageId() != null) block.put("approvedByMessageId", approved.approvedByMessageId());
+        store.saveBlocks(message, blocks);
+        thread.setActiveExecutionId(approved.executionId());
+        if (approved.stage() != null) thread.setStage(approved.stage());
+        // Inside a running turn (natural-language approval) the update belongs to that turn; otherwise a synthetic turn
+        // that closes itself, so the timeline never thinks a reply is still running.
+        String turnId = thread.getActiveTurnId() != null ? thread.getActiveTurnId() : "APR-" + StudioDialogueStore.uuid20();
+        var data = mapper.createObjectNode().put("messageId", message.getId());
+        data.set("block", block.deepCopy());
+        List<StudioDialogueStore.Pending> pending = new ArrayList<>();
+        pending.add(new StudioDialogueStore.Pending(turnId, null, approved.executionId(), StudioDialogueEventTypes.APPROVAL_REQUIRED, data));
+        if (thread.getActiveTurnId() == null)
+            pending.add(new StudioDialogueStore.Pending(turnId, null, approved.executionId(), StudioDialogueEventTypes.TURN_DONE,
+                    mapper.valueToTree(new TurnDoneData("completed", message.getId(), null, false, null))));
+        var written = store.appendLocked(thread, pending);
+        afterCommit(() -> store.broadcast(written));
+    }
+
+    /** Owner + project check with the thread row lock when a transaction is active (the confirmation's), else a read. */
+    private IpDialogueThread lockOwnedThread(String userId, String projectId, String threadId) {
+        var found = TransactionSynchronizationManager.isActualTransactionActive() ? threads.lockById(threadId == null ? "" : threadId) : threads.findById(threadId == null ? "" : threadId);
+        return found.filter(t -> userId.equals(t.getOwnerUserId()) && projectId.equals(t.getProjectId())).orElseThrow(StudioDialogueService::cardNotFound);
+    }
+
+    private static BusinessException cardNotFound() {
+        return BusinessException.notFound("STUDIO_APPROVAL_NOT_FOUND", "找不到这张确认卡，请刷新对话后再确认");
+    }
+    private static BusinessException stale(String message) { return new BusinessException(HttpStatus.CONFLICT, "STUDIO_PLAN_STALE", message); }
+
+    private static void afterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive())
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() {
+                    try { action.run(); } catch (RuntimeException e) { log.warn("[dialogue] after-commit publish failed: {}", e.toString()); }
+                }
+            });
+        else action.run();
+    }
+
+    private void wakeAfterCommit(String executionId) {
+        afterCommit(() -> { if (executionControl != null) executionControl.wake(executionId); });
+    }
+
+    // ── Execution steering (D03) and execution-authored messages (D07) ─────────────────────────────────────────
+
+    @Override
+    public long dialogueReserve(String userId) {
+        if (fixtures.enabled() || tokenPricing == null) return 0;
+        try {
+            AiModelEndpoint endpoint = scenePolicies != null
+                    ? scenePolicies.resolve("studio", "script", null, pricing.ipIdentity()).resolved().endpoint()
+                    : models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, null, "studio").map(AiModelInvocationService.ResolvedEndpoint::endpoint).orElse(null);
+            var rate = endpoint == null ? null : tokenPricing.find(endpoint.getId());
+            return rate == null ? 0 : rate.maxCost();
+        } catch (RuntimeException e) {
+            log.info("[dialogue] dialogue reserve unknown: {}", e.toString());
+            return 0;
+        }
+    }
+
+    @Override
+    public List<Note> notes(String threadId, String executionId) {
+        if (threadId == null || executionId == null) return List.of();
+        List<Note> out = new ArrayList<>();
+        for (var row : steering.findByThreadIdAndExecutionIdOrderByCreatedAtAscIdAsc(threadId, executionId)) {
+            String text = messages.findById(row.getMessageId()).map(IpDialogueMessage::getText).orElse("");
+            out.add(new Note(row.getId(), row.getMessageId(), text, row.getStatus(), row.getCreatedAt()));
+        }
         return out;
     }
 
     @Override
-    public void markApproved(String userId, String projectId, String messageId, String approvalId, String executionId, String stage) {
-        JsonNode card = requireApproval(userId, projectId, messageId, approvalId);
-        String threadId = card.path("threadId").asText();
+    public void openTurn(String threadId) { afterTurn(threadId); }
+
+    @Override
+    public String postExecutionMessage(String threadId, String executionId, String key, String text, List<ObjectNode> blocks, List<String> suggestions) {
+        if (key == null || key.isBlank() || key.length() > 64) throw new IllegalArgumentException("message key must be 1..64 chars");
+        String[] id = new String[1];
         store.write(threadId, t -> {
-            var message = store.message(messageId);
-            ArrayNode blocks = store.blocks(message);
-            ObjectNode block = StudioDialogueStore.findBlock(blocks, "approval", "approvalId", approvalId);
-            if (block == null) return List.of();
-            block.put("status", "approved");
-            if (executionId != null) block.put("executionId", executionId);
-            store.saveBlocks(message, blocks);
-            if (executionId != null) { t.setActiveExecutionId(executionId); if (stage != null) t.setStage(stage); }
-            return List.of();
+            var prior = messages.findByThreadIdAndClientMessageId(threadId, key).orElse(null);
+            if (prior != null) { id[0] = prior.getId(); return List.of(); }
+            String turnId = "EXS-" + StudioDialogueStore.uuid20(), messageId = "IDM-" + StudioDialogueStore.uuid20();
+            List<StudioDialogueStore.Pending> out = new ArrayList<>();
+            List<ObjectNode> list = blocks == null ? List.of() : blocks;
+            boolean replaces = list.stream().anyMatch(b -> "plan".equals(b.path("type").asText())
+                    || "approval".equals(b.path("type").asText()) && "pending".equals(b.path("status").asText()));
+            if (replaces) out.addAll(store.supersedePendingApprovals(t, null, turnId, null, executionId));
+            ArrayNode saved = mapper.createArrayNode();
+            for (ObjectNode block : list) {
+                ObjectNode copy = block.deepCopy();
+                if ("plan".equals(copy.path("type").asText())) {
+                    int revision = t.getPlanRevision() + 1;
+                    t.setPlanRevision(revision);
+                    copy.put("revision", revision);
+                    if (copy.path("plan") instanceof ObjectNode plan) plan.put("revision", revision);
+                }
+                saved.add(copy);
+            }
+            Instant now = Instant.now();
+            messages.save(IpDialogueMessage.builder().id(messageId).threadId(threadId).seq(StudioDialogueStore.nextMessageSeq(t)).turnId(turnId)
+                    .role("assistant").text(text == null ? "" : text).blocksJson(saved.toString()).clientMessageId(key)
+                    .requestJson(suggestions == null || suggestions.isEmpty() ? null : mapper.createObjectNode().set("suggestions", mapper.valueToTree(suggestions)).toString())
+                    .status(IpDialogueMessage.DONE).createdAt(now).updatedAt(now).build());
+            if (text != null && !text.isEmpty())
+                out.add(new StudioDialogueStore.Pending(turnId, null, executionId, StudioDialogueEventTypes.MESSAGE_DELTA,
+                        mapper.valueToTree(new MessageDeltaData(messageId, "p1", text))));
+            for (JsonNode block : saved) {
+                String type = block.path("type").asText();
+                if ("plan".equals(type)) out.add(new StudioDialogueStore.Pending(turnId, null, executionId, StudioDialogueEventTypes.PLAN_PROPOSED,
+                        mapper.valueToTree(new PlanProposedData(messageId, block))));
+                else if ("approval".equals(type)) out.add(new StudioDialogueStore.Pending(turnId, null, executionId, StudioDialogueEventTypes.APPROVAL_REQUIRED,
+                        mapper.valueToTree(new ApprovalRequiredData(messageId, block, block.hasNonNull("shortfall") ? block.path("shortfall").asLong() : null))));
+            }
+            out.add(new StudioDialogueStore.Pending(turnId, null, executionId, StudioDialogueEventTypes.TURN_DONE,
+                    mapper.valueToTree(new TurnDoneData("completed", messageId, null, false, suggestions == null || suggestions.isEmpty() ? null : suggestions))));
+            id[0] = messageId;
+            return out;
         });
+        return id[0];
     }
 
     // ── Reconcile / legacy import ───────────────────────────────────────────────────────────────────────────────
@@ -630,7 +793,16 @@ public class StudioDialogueService implements StudioDialogueApprovals {
         List<String> pinned = ids(m.getPinnedNodeIdsJson()), attachments = ids(m.getAttachmentNodeIdsJson());
         return new Message(m.getId(), m.getThreadId(), m.getSeq(), m.getTurnId(), m.getRunId(), m.getRole(), m.getText() == null ? "" : m.getText(),
                 blocks, pinned.isEmpty() ? null : pinned, attachments.isEmpty() ? null : attachments, m.getClientMessageId(),
-                billing == null || billing.isEmpty() ? null : billing, m.isSettling() ? Boolean.TRUE : null, m.getStatus(), iso(m.getCreatedAt()), m.getLegacyNodeId());
+                billing == null || billing.isEmpty() ? null : billing, m.isSettling() ? Boolean.TRUE : null, m.getStatus(), iso(m.getCreatedAt()), m.getLegacyNodeId(),
+                suggestions(m));
+    }
+
+    /** Assistant messages may carry follow-ups in requestJson ({@code {"suggestions":[...]}}); user messages carry settings there. */
+    private List<String> suggestions(IpDialogueMessage m) {
+        if (!"assistant".equals(m.getRole()) || m.getRequestJson() == null) return null;
+        List<String> out = new ArrayList<>();
+        parse(m.getRequestJson()).path("suggestions").forEach(v -> { if (v.isTextual()) out.add(v.asText()); });
+        return out.isEmpty() ? null : out;
     }
 
     private void validate(PostMessageRequest r) {

@@ -42,7 +42,9 @@ public final class StudioPlanDtos {
     public record PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
                                     List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
                                     Integer acceptedCandidateIndex,String nodeId,String reason) {}
-    public record PlanExecutionBudget(String stage,long approvedCap,long autoFixCap,long spent,long inFlight,long remaining,Long shortfall) {}
+    /** {@code dialogueSpent / dialogueInFlight}: the parent-dialogue share already included in spent / inFlight (D06). */
+    public record PlanExecutionBudget(String stage,long approvedCap,long autoFixCap,long spent,long inFlight,long remaining,Long shortfall,
+                                      Long dialogueSpent,Long dialogueInFlight) {}
     public record PlanExecution(String id,String projectId,String threadId,String skillKey,int skillVersion,String stage,String planRunId,
                                 int planRevision,String planFingerprint,String status,List<PlanExecutionStep> steps,
                                 List<PlanExecutionBudget> budgets,BillingSelection billing,String needsUserReason,
