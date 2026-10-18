@@ -19,8 +19,6 @@ public class EnterpriseInvitation {
     private String tokenHash;
     @Column(nullable=false,length=16)
     private String status;
-    @Column(length=64)
-    private String acceptedBy;
     @Column(nullable=false)
     private Instant expiresAt;
     @Column(nullable=false)

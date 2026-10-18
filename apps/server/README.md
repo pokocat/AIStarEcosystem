@@ -1032,6 +1032,8 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 ## 企业主子账号（2026-10-15，本地实施，未生产发布）
 
+2026-10-17 增量（本地，未发布）：企业邀请改为群发链接，默认 90 天、可选 365 天、可多人接受并可撤销。匿名只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅回企业名称/ID/有效期；接受仍检查登录、手机号和 aiavatar 开通。V59 清空旧邀请并删除 `accepted_by`，不迁移单次使用逻辑，不改成员或资金。页面 `/enterprise/invite#token=...` 在短信注册/登录后接受邀请，企业令牌不进入账号中心的推荐关系。验收见 [群发邀请记录](../../docs/ip-studio-enterprise-invitation-validation.md)。
+
 - 设计：[精简方案](../../docs/ip-studio-team-accounts-plan.md)、[任务拆分](../../docs/ip-studio-enterprise-development-tasks.md)。类型真源 `packages/types/src/enterprise.ts`，业务代码 `aep/enterprise`。
 - 基础 API：`/api/v1/ip-studio/enterprises` 的创建/当前企业、成员分页、邀请/接受/撤销、角色能力、模型策略、主账号移交和审计。默认 `AEP_ENTERPRISE_ENABLED=false`，显式开启才注册 controller；仍要求现有 aiavatar 开通和手机号验证。
 - V56 数据模型：`aep_enterprises`、`aep_enterprise_members`、`aep_enterprise_current`（userId主键）、`aep_enterprise_invitations`、`aep_enterprise_policies`、`aep_enterprise_ownership_transfers`、`aep_enterprise_audit`、`aep_enterprise_points_batches/transfers`。划拨行为由 E05 实现。

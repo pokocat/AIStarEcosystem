@@ -70,11 +70,13 @@ test("close with unresolved funds shows blockers and cannot submit", async () =>
   expect(within(dialog).getByText(/请先处理剩余企业积分/)).toBeDefined(); expect(within(dialog).getByRole("button", { name: "确认关闭企业" }).hasAttribute("disabled")).toBe(true); expect(api.lifecycle).not.toHaveBeenCalled();
 });
 
-test("one-time invitation stays visible until explicitly closed without remounting parent", async () => {
-  api.invite.mockResolvedValue({ invitation: { id: "invite" }, token: "one-time-invite-token" }); const changed = vi.fn().mockResolvedValue(undefined);
+test("group invitation creates a shareable 90-day link and stays visible until explicitly closed", async () => {
+  const token = "a".repeat(43);
+  api.invite.mockResolvedValue({ invitation: { id: "invite", expiresAt: "2027-01-15T08:00:00Z" }, token }); const changed = vi.fn().mockResolvedValue(undefined);
   render(<EnterpriseManagement context={owner} section="team" onChanged={changed}/>);
-  fireEvent.click(await screen.findByRole("button", { name: "创建邀请" }));
-  const dialog = await screen.findByRole("dialog", { name: "邀请口令" });
-  expect((within(dialog).getByLabelText("邀请口令") as HTMLTextAreaElement).value).toBe("one-time-invite-token"); expect(changed).not.toHaveBeenCalled();
-  fireEvent.click(within(dialog).getByRole("button", { name: "已妥善交给受邀人" })); expect(screen.queryByRole("dialog", { name: "邀请口令" })).toBeNull();
+  fireEvent.click(await screen.findByRole("button", { name: "创建分享链接" }));
+  const dialog = await screen.findByRole("dialog", { name: "分享企业邀请" });
+  expect(api.invite).toHaveBeenCalledWith("team", { clientRequestId: expect.any(String), validDays: 90 });
+  expect((within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement).value).toContain(`/enterprise/invite#token=${token}`); expect(changed).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "完成" })); expect(screen.queryByRole("dialog", { name: "分享企业邀请" })).toBeNull();
 });

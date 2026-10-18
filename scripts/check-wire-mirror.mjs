@@ -72,6 +72,7 @@ const MIRRORS = [
       Context: "EnterpriseContext", CreateRequest: "EnterpriseCreateRequest",
       InvitationRequest: "EnterpriseInvitationRequest", Invitation: "EnterpriseInvitation",
       InvitationCreated: "EnterpriseInvitationCreated", AcceptRequest: "EnterpriseInvitationAcceptRequest",
+      InvitationPreview: "EnterpriseInvitationPreview",
       MemberUpdate: "EnterpriseMemberUpdateRequest", Policy: "EnterprisePolicy", PolicyUpdate: "EnterprisePolicyUpdateRequest",
       OwnershipRequest: "EnterpriseOwnershipRequest", OwnershipTransfer: "EnterpriseOwnershipTransfer", Audit: "EnterpriseAudit",
     },

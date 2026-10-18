@@ -73,17 +73,50 @@ class EnterpriseFoundationTest {
         var root=wallets.findByAccountKey("enterprise:"+a.enterprise().id()).orElseThrow();assertNull(root.getUserId());assertEquals(0,root.getTotalBalance());
         assertTrue(enrollment.isActive(owner,"aiavatar"));assertFalse(enrollment.isActive(owner,"music"));
     }
-    @Test void invitationsAreSingleUseHashedAndRevocable() {
+    @Test void groupInvitationsAreReusableHashedLongLivedAndRevocable() {
         String owner=person(true),a=person(true),b=person(true);var e=company(owner);var key=UUID.randomUUID().toString();
         var invite=service.invite(owner,e.enterprise().id(),new InvitationRequest(key));
         assertNotEquals(invite.token(),invitations.findById(invite.invitation().id()).orElseThrow().getTokenHash());
         assertNull(service.invite(owner,e.enterprise().id(),new InvitationRequest(key)).token());
         var joined=service.accept(a,new AcceptRequest(invite.token()));assertEquals("member",joined.member().role());
         assertEquals(joined.member().id(),service.accept(a,new AcceptRequest(invite.token())).member().id());
-        assertThrows(BusinessException.class,()->service.accept(b,new AcceptRequest(invite.token())));
+        assertEquals(e.enterprise().id(),service.accept(b,new AcceptRequest(invite.token())).enterprise().id());
+        assertEquals("pending",invitations.findById(invite.invitation().id()).orElseThrow().getStatus());
+        assertTrue(invite.invitation().expiresAt().isAfter(Instant.now().plus(java.time.Duration.ofDays(89))));
         var revoked=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
         service.revoke(owner,e.enterprise().id(),revoked.invitation().id());
         assertThrows(BusinessException.class,()->service.accept(b,new AcceptRequest(revoked.token())));
+    }
+    @Test void groupInvitationsSupportOneYearAndBindDurationToIdempotencyKey() {
+        String owner=person(true);var e=company(owner);String key=UUID.randomUUID().toString();
+        var i=service.invite(owner,e.enterprise().id(),new InvitationRequest(key,365));
+        assertTrue(i.invitation().expiresAt().isAfter(Instant.now().plus(java.time.Duration.ofDays(364))));
+        assertNull(service.invite(owner,e.enterprise().id(),new InvitationRequest(key,365)).token());
+        assertThrows(BusinessException.class,()->service.invite(owner,e.enterprise().id(),new InvitationRequest(key,90)));
+        assertThrows(BusinessException.class,()->service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString(),0)));
+    }
+    @Test void invitationPreviewIsAnonymousReadOnlyAndContainsNoMemberOrWalletData() throws Exception {
+        String owner=person(true);var e=company(owner);var i=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
+        long before=members.count();String body=new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(new AcceptRequest(i.token()));
+        mvc.perform(post("/api/v1/ip-studio/enterprise-invitations/preview").contentType("application/json").content(body))
+                .andExpect(status().isOk()).andExpect(header().string("Cache-Control","no-store"))
+                .andExpect(jsonPath("$.data.enterpriseName").value(e.enterprise().name()))
+                .andExpect(jsonPath("$.data.ownerUserId").doesNotExist()).andExpect(jsonPath("$.data.token").doesNotExist())
+                .andExpect(jsonPath("$.data.balance").doesNotExist());
+        assertEquals(before,members.count());assertEquals("pending",invitations.findById(i.invitation().id()).orElseThrow().getStatus());
+        mvc.perform(post("/api/v1/ip-studio/enterprise-invitations/accept").contentType("application/json").content(body)).andExpect(status().isUnauthorized());
+        service.revoke(owner,e.enterprise().id(),i.invitation().id());
+        mvc.perform(post("/api/v1/ip-studio/enterprise-invitations/preview").contentType("application/json").content(body))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("ENTERPRISE_INVITATION_INVALID"));
+    }
+    @Test void invalidExpiredAndUnauthorizedInviterCannotBePreviewed() {
+        String owner=person(true);var e=company(owner);var i=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
+        assertThrows(BusinessException.class,()->service.previewInvitation(new AcceptRequest("unknown-token")));
+        var row=invitations.findById(i.invitation().id()).orElseThrow();row.setExpiresAt(Instant.EPOCH);invitations.saveAndFlush(row);
+        assertThrows(BusinessException.class,()->service.previewInvitation(new AcceptRequest(i.token())));
+        var next=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
+        enrollment.upsert(owner,"aiavatar",EnrollmentStatus.REVOKED,EnrollmentSource.ADMIN,null);
+        assertThrows(BusinessException.class,()->service.previewInvitation(new AcceptRequest(next.token())));
     }
     @Test void enrollmentRemainsRequiredAndInvitationDoesNotGrantAccess() {
         String owner=person(true),unopened=person(false);var e=company(owner);
@@ -131,10 +164,10 @@ class EnterpriseFoundationTest {
         List<Boolean> result=race(()->{service.accept(target,new AcceptRequest(ia.token()));return true;},()->{service.accept(target,new AcceptRequest(ib.token()));return true;});
         assertEquals(1,result.stream().filter(Boolean::booleanValue).count());assertTrue(current.existsById(target));
     }
-    @Test void concurrentUsersCannotReuseOneInvitation() throws Exception {
+    @Test void concurrentUsersCanJoinThroughTheSameGroupInvitation() throws Exception {
         String owner=person(true),a=person(true),b=person(true);var e=company(owner);
         var i=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
-        assertEquals(1,race(()->{service.accept(a,new AcceptRequest(i.token()));return true;},()->{service.accept(b,new AcceptRequest(i.token()));return true;}).stream().filter(Boolean::booleanValue).count());
+        assertEquals(2,race(()->{service.accept(a,new AcceptRequest(i.token()));return true;},()->{service.accept(b,new AcceptRequest(i.token()));return true;}).stream().filter(Boolean::booleanValue).count());
     }
     @Test void enterpriseHoldUsesWalletIdentityAndPreservesBuckets() {
         String owner=person(true);var e=company(owner);var w=wallets.findByAccountKey("enterprise_member:"+e.enterprise().id()+":"+owner).orElseThrow();

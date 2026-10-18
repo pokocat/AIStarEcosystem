@@ -140,6 +140,16 @@ class PhoneVerificationGuardTest {
         assertEquals(403, run("POST", "/api/authorize-anything", new MockFilterChain()).getStatus());
     }
 
+    @Test
+    void enterpriseInvitationPreviewIsReadOnlyButAcceptStillRequiresPhoneVerification() throws Exception {
+        loginAsGuest();
+        MockFilterChain chain = new MockFilterChain();
+        assertEquals(200, run("POST", "/api/v1/ip-studio/enterprise-invitations/preview", chain).getStatus());
+        assertPassedThrough(chain);
+        assertEquals(403, run("POST", "/api/v1/ip-studio/enterprise-invitations/accept", new MockFilterChain()).getStatus());
+        assertEquals(403, run("PATCH", "/api/v1/ip-studio/enterprise-invitations/preview", new MockFilterChain()).getStatus());
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private void loginAsGuest() {
