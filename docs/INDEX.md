@@ -16,6 +16,7 @@
 
 - [资产库独立设计原型](../prototypes/asset-library/README.md)：[设计方向](prototypes/asset-library-direction.md)、[设计检查](prototypes/asset-library-design-check.md)与[原型验证](prototypes/asset-library-validation.md)；静态原型，与业务代码分离（last-reviewed: 2026-10-17）。
 
+- [项目卡片生产发布](studio-project-cards-release-20261017.md)：真实内容预览、固定／自动封面、上线制品及真实浏览器验收；已发布（last-reviewed: 2026-10-17）。
 - [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收及浏览器限制；已发布（last-reviewed: 2026-10-17）。
 
 - [全仓表单聚焦样式检查](form-control-focus-audit.md)：输入、下拉、文本域及组合控件的焦点归属修复、74 项组件回归与真实本地页面验证；代码已生产发布（last-reviewed: 2026-10-17）。
