@@ -267,3 +267,4 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 - [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
 - [统一画布封面生产发布](studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
+- [画布分组说明与复刻模板精简](studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
