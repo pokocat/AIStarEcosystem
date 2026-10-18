@@ -20,7 +20,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 素材运营「文本三件」接真 LLM 的薄层流水线（MATERIAL_OPS_AI_TEXT_PLAN §3/§5/§7）。
+ * 素材运营「文本三件」接真 LLM 的薄层流水线（docs/archive/material-ops-ai-text-plan.md §3/§5/§7）。
  *
  * 单轮「prompt 进 → 结构化 JSON 出」，无 agent / 多步 / 记忆：
  *   ① 校验配置：无该用途的启用 provider / prompt 未配置 → 抛 BusinessException（明确提示去哪配）

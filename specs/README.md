@@ -6,8 +6,8 @@
 
 | 文件 | 行数 | 角色 |
 |---|---|---|
-| **[`openapi.yaml`](openapi.yaml)** | ~4700 | 数据形状 + 接口形态：186 paths（按 tag 分组）、50+ JSON schema |
-| **[`BUSINESS_RULES.md`](BUSINESS_RULES.md)** | ~480 | 业务约束：字段校验、计算公式、错误码、状态机时序 |
+| **[`openapi.yaml`](openapi.yaml)** | ~10900 | 数据形状 + 接口形态：约 650 paths（按 tag 分组）、50+ JSON schema |
+| **[`BUSINESS_RULES.md`](BUSINESS_RULES.md)** | ~1200 | 业务约束：字段校验、计算公式、错误码、状态机时序 |
 
 **两者分工**：openapi 描述「**长什么样**」，BUSINESS_RULES 描述「**应该怎么用**」。openapi 不能表达的（如 "ledger 必须经过 CreditService"、"授权状态机 UNAUTHORIZED → PENDING → AUTHORIZED → EXPIRED 的转换时机"），全部沉淀到 BUSINESS_RULES。
 

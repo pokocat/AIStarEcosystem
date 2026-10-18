@@ -27,7 +27,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
- * 素材运营「文本三件」接真 LLM 测试（MATERIAL_OPS_AI_TEXT_PLAN §10）。
+ * 素材运营「文本三件」接真 LLM 测试（docs/archive/material-ops-ai-text-plan.md §10）。
  * 用 @MockBean 桩掉 AiModelInvocationService（不连真 provider），覆盖：
  *   - 正常 JSON → 结构化结果
  *   - 脏输出 → 自修复重试 → 通过

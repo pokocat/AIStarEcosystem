@@ -202,7 +202,7 @@ AEP_CDN_SIGNED_URL_TTL_SECONDS=3600
 # Local shadow payment gateway. Real channels (alipay/wechat) fail-fast at boot without creds (§8.0);
 # shadow lets you run the full checkout → 收银台 → settle/refund flow with no external gateway.
 AEP_PAYMENT_DRIVER=shadow
-# To test the real Alipay SANDBOX locally (推荐,直连方案 · 见 docs/ALIPAY_SANDBOX.md):
+# To test the real Alipay SANDBOX locally (推荐,直连方案 · 见 docs/runbooks/alipay-sandbox.md):
 # set AEP_PAYMENT_DRIVER=alipay and fill the 3 sandbox creds (private/public keys are single-line base64).
 # Local without public callback works via reconcile (scheduled query); no tunnel required.
 # AEP_PAYMENT_DRIVER=alipay
@@ -301,7 +301,7 @@ normalize_payment_env_after_overlay() {
   # （§8.0：生产渠道未配置就拒启，不偷偷退回 shadow）。未显式指定时回落 shadow，可端到端联调
   # 「下单 → 收银台 → 入账 / 退款」而无需真实网关。
   # 想本地联调真支付宝沙箱：在 server.local.env 或 apps/server/.env 里显式设 AEP_PAYMENT_DRIVER=alipay
-  # + 填 AEP_PAYMENT_ALIPAY_{APP_ID,MERCHANT_PRIVATE_KEY,PUBLIC_KEY}（见 docs/ALIPAY_SANDBOX.md）。
+  # + 填 AEP_PAYMENT_ALIPAY_{APP_ID,MERCHANT_PRIVATE_KEY,PUBLIC_KEY}（见 docs/runbooks/alipay-sandbox.md）。
   [[ -n "$(env_value AEP_PAYMENT_DRIVER)" ]] && return 0
   export AEP_PAYMENT_DRIVER=shadow
   warn "AEP_PAYMENT_DRIVER 未设置 → 本地默认 shadow（真实渠道无凭证会 fail-fast）"

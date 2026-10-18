@@ -93,7 +93,7 @@ public final class IpStudioDtos {
 
     /**
      * 内置提示词模板。每条是**一段完整的提示词**，不是字段结构 ——
-     * 套用后整段落进输入框，用户随便改。见 docs/ip-studio-generalize-proposal.md。
+     * 套用后整段落进输入框，用户随便改。见 docs/archive/ip-studio-generalize-proposal.md。
      *
      * <p>{@code gender} 取 {@code female|male|any}，且只决定**服装品类与体态基准**：
      * 表情组与短动作组一律 {@code any}，男女共用同一套。

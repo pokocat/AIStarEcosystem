@@ -13,7 +13,7 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Prompt 模板默认值 seeder（MATERIAL_OPS_AI_TEXT_PLAN §6.4）。
+ * Prompt 模板默认值 seeder（docs/archive/material-ops-ai-text-plan.md §6.4）。
  *
  * 策略：
  *  - 每次启动：对每个已知 key「缺行才插」（resources/prompts/material/&lt;key&gt;.md）—— 不覆盖已存在的行。

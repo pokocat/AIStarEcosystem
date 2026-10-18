@@ -6,7 +6,7 @@
 
 ## C-3 更新（2026-07-10，v0.102）：参考图装配下沉服务端
 
-> 一致性引擎 L1（真源 [`[Fabel5]drama-consistency-engine-design.md`](./%5BFabel5%5Ddrama-consistency-engine-design.md) §5）。**本文下方 v0.97/v0.98 关于前端 `shotRefImages` / `sceneRefUrlFor` / `prevFrameInScene` / `nextFrameInScene` 在 `epscript.tsx` 里拼 `ref_images` 的描述已过时**——那套参考图优先级链已整体移到服务端。
+> 一致性引擎 L1（真源 [`drama-consistency-engine-design.md`](./drama-consistency-engine-design.md) §5）。**本文下方 v0.97/v0.98 关于前端 `shotRefImages` / `sceneRefUrlFor` / `prevFrameInScene` / `nextFrameInScene` 在 `epscript.tsx` 里拼 `ref_images` 的描述已过时**——那套参考图优先级链已整体移到服务端。
 
 - **前端不再拼 `ref_images`**：render 只传镜头坐标 `shot_ref{project_id,episode_no,scene_id,shot_id,chain_consistency}`；新服务 `DramaReferenceAssembler` 按 `payloadJson` + `drama_character`/`drama_scene` 实体（C-2）自装配角色参考（@cast→文本名→全员，front 优先）+ 场景参考（显式 sceneRefId→名称兜底）+ 同场上一镜真实末帧（文档优先 + `MaterialVideoJob.lastFrameCdnKey` 权威回退）+ 同场下一镜首帧（clip 尾帧）。
 - **按端点 capability 裁剪 + 回报**：D-11 candidate 的 `maxRefImages`（全 null→保守默认 1）裁剪，优先级保 identity（character>scene>prev，末位先砍），`applied_refs.items[].role` 为精确槽位；本地 `/cdn` 标 `local_unfetchable`（如实回报，§8.0）。
@@ -242,7 +242,7 @@
 - **P2** ✅：`MaterialVideoModelClient` `PROTOCOL_SEEDANCE`（content 数组首/尾帧 + `return_last_frame`）+ GENERIC 补首/尾帧；`MaterialVideoJob.lastFrameUrl` → 任务卡 → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（端点 `/shot/decompose` + 计费 `drama.credit.decompose` + 角色名校验）。
 - **运维前置**：要用 seedance 首尾帧，需在 admin「AI 模型与 Key」把「视频生成」绑到一个名称/baseUrl/model 含 `seedance` 的端点（自动走 SEEDANCE 协议）；否则按原 AGNES/GENERIC 协议工作（首帧仍生效）。
 - **后续可选**：VLM best-of-N 一致性自检（生成多版首帧自动选最一致）。
-- **末帧 CDN 镜像** ✅ **已落地（一致性引擎 C-1，2026-07-10）**：`MaterialVideoJob.lastFrameCdnKey`（§4.7.4 真值列）+ worker 成功分支下载镜像上游末帧到 CDN（失败 = best-effort，仅 WARN、保留上游 URL、不 markFailed）+ `toCard` 出 wire `signKey` 派生（fallback 旧 `lastFrameUrl`）；同批 `/render/{frame,clip}` 返回体加 `applied_refs` 参考生效回报（前端「参考 N/M 生效」chip）。实现级设计见 [`[Fabel5]drama-consistency-engine-design.md`](./%5BFabel5%5Ddrama-consistency-engine-design.md) §2。
+- **末帧 CDN 镜像** ✅ **已落地（一致性引擎 C-1，2026-07-10）**：`MaterialVideoJob.lastFrameCdnKey`（§4.7.4 真值列）+ worker 成功分支下载镜像上游末帧到 CDN（失败 = best-effort，仅 WARN、保留上游 URL、不 markFailed）+ `toCard` 出 wire `signKey` 派生（fallback 旧 `lastFrameUrl`）；同批 `/render/{frame,clip}` 返回体加 `applied_refs` 参考生效回报（前端「参考 N/M 生效」chip）。实现级设计见 [`drama-consistency-engine-design.md`](./drama-consistency-engine-design.md) §2。
 
 ## v0.98 补丁 · 分集剧情模型简化为「标题 + 内容」（2026-07-01）
 

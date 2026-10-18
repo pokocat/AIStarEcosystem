@@ -554,7 +554,7 @@ SUPER_ADMIN / OPERATOR）转发账号中心的 `GET /api/admin/clients`。新组
 
 ### v0.153（2026-09-07）— 三产品整合
 
-**三产品整合：AI IP 工作台 · 数字资产 · 数字名片**（真源 [`docs/ip-ecosystem-integration.md`](docs/ip-ecosystem-integration.md)）。一条链：造形象 → 登记资产 → 对外发布。① **数字名片**新域 `card`（表 `card_profile`，**V28**；核过线上 `flyway_schema_history` 最大值=27）：公开页 `GET /api/v1/card/p/{slug}` 是整个 `/api/v1` 里**唯一匿名可读**的路径，要生效必须三件事同时成立 —— `AepSecurityConfig` 的 permitAll 排在 `/api/v1/**` authenticated **之前**、`ProductRouteTable.PUBLIC_GETS` 有条目、controller 不读 principal；未发布 / 已软删 / 不存在**一律同一个** 404 `CARD_NOT_FOUND`（错误码分叉就能枚举出哪些短链被占了）。写路径 `/mine`、CRUD、`publish|unpublish`、`by-avatar/{avatarId}`。形象走 `dapDisplayRef` 引用而非拷贝，发布顺手写一条 `DapAssetUsage(usedByType=card)`（best-effort 旁路，失败只 WARN）。**落库前必须剥掉派生出来的 `xxxUrl`**（有 `xxxKey` 兄弟的那些）—— 编辑器 GET 到的文档带着现签的 TTL URL，原样 PUT 回来就把签名写进了 `payload_json`（§4.7.4）；没有 key 兄弟的 URL 是用户自己填的外链，不能误删。web：公开页 `/card/p/[slug]` + 「我的名片」`/cards`；建卡与编辑表单仍缺。② **ipstudio 形象卡通用化**（提案 [`docs/ip-studio-generalize-proposal.md`](docs/ip-studio-generalize-proposal.md) 已采纳）：五个固定字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图零增益 → 改为**一个自由 `prompt` + 内置模板 chip**，**零迁移**（老画布读取回落，`IpRunService.lookText()` 与 `lookClauses()` 都按老顺序拼）。新 `GET /v1/ip-studio/prompt-presets`（装扮 9 · 按性别分 / 表情 6 / 短动作 3 · 均不分性别）。⚠️ **`lookText()` 只管校验，真正拼给模型的提示词在 `lookClauses()`** —— 这两处曾一度不同步，导致新写的自由提示词能过校验、却完全进不了模型提示词（能点运行、不报错、出的图跟你写的毫无关系）；Codex 评审逮到，已加 `freePromptActuallyReachesTheModelPrompt` 回归钉死。③ 新内置工作流 `ip-launch-female` / `ip-launch-male`（各 3 装扮 + 3 表情，130 积分）；**短动作视频画布跑不了** —— `IpRunService` 只认 `identity`/`generate`，而 `createDerivative` 要求先有 `avatarId`，只能发布之后到 dap 里跑，所以三条短动作只作为内置提示词模板给出，没有假装能在画布里排。④ dap 资产详情「被用在哪」并入名片行。⑤ **名片 API 必须走 `apiFetch`**：手写 fetch 会漏掉 `X-App-Code`，`EnrollmentGuard` 直接 403 `APP_CODE_REQUIRED`；路径还必须写成字面量，`check:api-contract` 是静态扫描，拼接出来的路径它读不懂。门禁：`AEP_CDN_DRIVER=local ./mvnw -o test` 全绿（card 15 / ipstudio 97）+ web-ipstudio vitest 41 + `typecheck:all` + web-aiavatar/web-ipstudio build + `check:api-contract` 全绿。**Codex 只读评审一轮，4 条问题（2 严重 / 1 中 / 1 低）全部修完并各补回归。**
+**三产品整合：AI IP 工作台 · 数字资产 · 数字名片**（真源 [`docs/ip-ecosystem-integration.md`](ip-ecosystem-integration.md)）。一条链：造形象 → 登记资产 → 对外发布。① **数字名片**新域 `card`（表 `card_profile`，**V28**；核过线上 `flyway_schema_history` 最大值=27）：公开页 `GET /api/v1/card/p/{slug}` 是整个 `/api/v1` 里**唯一匿名可读**的路径，要生效必须三件事同时成立 —— `AepSecurityConfig` 的 permitAll 排在 `/api/v1/**` authenticated **之前**、`ProductRouteTable.PUBLIC_GETS` 有条目、controller 不读 principal；未发布 / 已软删 / 不存在**一律同一个** 404 `CARD_NOT_FOUND`（错误码分叉就能枚举出哪些短链被占了）。写路径 `/mine`、CRUD、`publish|unpublish`、`by-avatar/{avatarId}`。形象走 `dapDisplayRef` 引用而非拷贝，发布顺手写一条 `DapAssetUsage(usedByType=card)`（best-effort 旁路，失败只 WARN）。**落库前必须剥掉派生出来的 `xxxUrl`**（有 `xxxKey` 兄弟的那些）—— 编辑器 GET 到的文档带着现签的 TTL URL，原样 PUT 回来就把签名写进了 `payload_json`（§4.7.4）；没有 key 兄弟的 URL 是用户自己填的外链，不能误删。web：公开页 `/card/p/[slug]` + 「我的名片」`/cards`；建卡与编辑表单仍缺。② **ipstudio 形象卡通用化**（提案 [`docs/archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md) 已采纳）：五个固定字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图零增益 → 改为**一个自由 `prompt` + 内置模板 chip**，**零迁移**（老画布读取回落，`IpRunService.lookText()` 与 `lookClauses()` 都按老顺序拼）。新 `GET /v1/ip-studio/prompt-presets`（装扮 9 · 按性别分 / 表情 6 / 短动作 3 · 均不分性别）。⚠️ **`lookText()` 只管校验，真正拼给模型的提示词在 `lookClauses()`** —— 这两处曾一度不同步，导致新写的自由提示词能过校验、却完全进不了模型提示词（能点运行、不报错、出的图跟你写的毫无关系）；Codex 评审逮到，已加 `freePromptActuallyReachesTheModelPrompt` 回归钉死。③ 新内置工作流 `ip-launch-female` / `ip-launch-male`（各 3 装扮 + 3 表情，130 积分）；**短动作视频画布跑不了** —— `IpRunService` 只认 `identity`/`generate`，而 `createDerivative` 要求先有 `avatarId`，只能发布之后到 dap 里跑，所以三条短动作只作为内置提示词模板给出，没有假装能在画布里排。④ dap 资产详情「被用在哪」并入名片行。⑤ **名片 API 必须走 `apiFetch`**：手写 fetch 会漏掉 `X-App-Code`，`EnrollmentGuard` 直接 403 `APP_CODE_REQUIRED`；路径还必须写成字面量，`check:api-contract` 是静态扫描，拼接出来的路径它读不懂。门禁：`AEP_CDN_DRIVER=local ./mvnw -o test` 全绿（card 15 / ipstudio 97）+ web-ipstudio vitest 41 + `typecheck:all` + web-aiavatar/web-ipstudio build + `check:api-contract` 全绿。**Codex 只读评审一轮，4 条问题（2 严重 / 1 中 / 1 低）全部修完并各补回归。**
 
 ### v0.150（2026-09-05）— clip 配音预览与段级出片状态（真源 /Users/donis/dev/ai-quickr…
 
@@ -574,7 +574,7 @@ AiAvatar 从「数字人平台」扩展为「**数字资产平台**」（真源 
 
 ### v0.98（2026-06-30）— 短剧工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（真源 [docs/drama-sto…
 
-短剧工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（真源 [`docs/drama-storyboard-consistency.md`](docs/drama-storyboard-consistency.md)）：项目 6 阶段 → **5 阶段**（删独立「视频工厂」，逐镜出片全在剧集脚本分镜表内）。**Epic-1** 抽 `use-shot-render` 共享渲染引擎。**Epic-2** 脚本分镜表升级为强渲染面：`FormShot` 补 cast/camId/首尾帧/拆镜字段并 round-trip（修 sfx/bgm/fx 回读丢字段）；首帧格加 4 版挑选 + AI 拆镜 + 首帧▷末帧双联 + hover 预演（P3 aha）+ 镜间一致性承接开关。**Epic-3** 删 factory 阶段/抽屉/源码（`stages-config` 去 factory，成片合成前移为剧集第 2 步）。**P1** epscript 不再 lock、脚本始终可编辑（CTA 改「保存·去成片合成」）。**P5** 删左下 AI 浮窗（`ai-chat-panel`），改分镜表行级 Wand2 就地改写本镜（新端点 `POST /me/drama/projects/{id}/shot/rewrite` + `drama.shot_rewrite` + `drama.credit.shot-rewrite`；整篇重写仍在顶部）。**P6** 短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成（去写死）。**P4** 假模型下拉随工厂删除已消失（§8.0 不再有假选项）；真·多模型（一用途多候选端点 + 按模型计费，改共享 `AiAppBinding`）拆独立 PR（TODO D-11）。门禁：server compile（Central 镜像）+ web-drama typecheck/build（30 路由）+ contract 全绿；openapi 加 `/shot/decompose`、`/shot/rewrite`、clip 加 `last_frame_url`。
+短剧工作台收敛为「剧集脚本分镜表 = 唯一逐镜工作面」（真源 [`docs/drama-storyboard-consistency.md`](drama-storyboard-consistency.md)）：项目 6 阶段 → **5 阶段**（删独立「视频工厂」，逐镜出片全在剧集脚本分镜表内）。**Epic-1** 抽 `use-shot-render` 共享渲染引擎。**Epic-2** 脚本分镜表升级为强渲染面：`FormShot` 补 cast/camId/首尾帧/拆镜字段并 round-trip（修 sfx/bgm/fx 回读丢字段）；首帧格加 4 版挑选 + AI 拆镜 + 首帧▷末帧双联 + hover 预演（P3 aha）+ 镜间一致性承接开关。**Epic-3** 删 factory 阶段/抽屉/源码（`stages-config` 去 factory，成片合成前移为剧集第 2 步）。**P1** epscript 不再 lock、脚本始终可编辑（CTA 改「保存·去成片合成」）。**P5** 删左下 AI 浮窗（`ai-chat-panel`），改分镜表行级 Wand2 就地改写本镜（新端点 `POST /me/drama/projects/{id}/shot/rewrite` + `drama.shot_rewrite` + `drama.credit.shot-rewrite`；整篇重写仍在顶部）。**P6** 短视频面包屑按 pathname 派生 + beat 改 AI 逐镜生成（去写死）。**P4** 假模型下拉随工厂删除已消失（§8.0 不再有假选项）；真·多模型（一用途多候选端点 + 按模型计费，改共享 `AiAppBinding`）拆独立 PR（TODO D-11）。门禁：server compile（Central 镜像）+ web-drama typecheck/build（30 路由）+ contract 全绿；openapi 加 `/shot/decompose`、`/shot/rewrite`、clip 加 `last_frame_url`。
 
 ### v0.86（2026-06-27）— admin 财务工作台辨识用户身份
 
@@ -616,7 +616,7 @@ admin 财务工作台辨识用户身份：充值订单 + 结算中心（钱包·
 
 ### v0.152（2026-09-06）— IP Studio 宣传首页与画布视觉重构
 
-`apps/web-ipstudio` 建立独立视觉真源 [`design.md`](../apps/web-ipstudio/design.md)：低饱和群青负责品牌、选中与进行中状态，麦黄负责主动作与商业化强调，纸白与墨色构成内容底色；运行时色值统一收口到 `src/styles/tokens.css`，Tailwind 调色板通过 `@theme inline` 引用，不再复制第二套 hex。
+`apps/web-ipstudio` 建立独立视觉真源 [`design.md`](../apps/web-aiavatar/DESIGN-desktop.md)：低饱和群青负责品牌、选中与进行中状态，麦黄负责主动作与商业化强调，纸白与墨色构成内容底色；运行时色值统一收口到 `src/styles/tokens.css`，Tailwind 调色板通过 `@theme inline` 引用，不再复制第二套 hex。
 
 公开 landing 重构为宣传导向：保留「一个你，不止一种想象。」主 slogan，增加同一 IP 的多造型、多表情展示，以及个人商务名片、AI 短剧、带货视频、品牌合作等未来应用方向与商业化展望；未来场景明确标注分阶段推出，不把视频、音频能力写成已上线功能。角色与场景图使用 4×3 作品图集，生产真源已上传 OSS，页面直接引用版本化对象 `media/ipstudio/landing/character-atlas-v1.png`，仓库不保存二进制副本。
 
@@ -1063,7 +1063,7 @@ admin「快速添加」新增“聚算 JusuanHub · MiniMax H3 视频”预设�
 
 ### v0.5（2026-05-08 ~ 05-09）— AI 明星带货线落地
 
-**新增 server 实体**（详见 [`product_spec_ai_celebrity.md`](product_spec_ai_celebrity.md)）：
+**新增 server 实体**（详见 [`product_spec_ai_celebrity.md`](../product_spec_ai_celebrity.md)）：
 
 | 实体 | 用途 |
 |---|---|
@@ -1073,7 +1073,7 @@ admin「快速添加」新增“聚算 JusuanHub · MiniMax H3 视频”预设�
 | `AiModelProvider` | 大模型 provider（OpenAI 兼容；apiKey 用 AES-GCM 加密） |
 | `UserBotReadState` | per-user-per-bot lastReadAt（驱动 Bot 红点） |
 
-**新增 server 端点**（节选；详见 [`specs/openapi.yaml`](specs/openapi.yaml)）：
+**新增 server 端点**（节选；详见 [`specs/openapi.yaml`](../specs/openapi.yaml)）：
 
 ```
 GET  /me/messages-overview                        # 待办 + Bot 会话预览（按需合成）
@@ -1095,7 +1095,7 @@ GET/POST/PUT/DELETE /admin/ai-models[/{id}]
 
 ### v0.7（2026-05-17）— 混剪专区内嵌 web-celebrity
 
-把独立项目 `/Users/donis/dev/mixcut/frontend`（Next 14 + Tailwind 3 + Zustand + 13 页）裁到核心 7 页，作为 `(workspace)/mixcut/*` 子树挂入 web-celebrity。详见 [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
+把独立项目 `/Users/donis/dev/mixcut/frontend`（Next 14 + Tailwind 3 + Zustand + 13 页）裁到核心 7 页，作为 `(workspace)/mixcut/*` 子树挂入 web-celebrity。详见 [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
 
 ### v0.9（2026-05-17）— 混剪用户素材上传 + 真实素材消费
 
@@ -1123,7 +1123,7 @@ web-celebrity:
 
 - 上传 wire 例外：multipart 表单 + snake_case 字段（`user_id` / `kind` / `file` / `name` / `tags`）
 - 安全模型仍 permitAll —— 生产化必须 `.authenticated()` + 校验 `ownerUserId == principal.id`
-- 详见 [`apps/web-celebrity/PRODUCT.md` §5.7](apps/web-celebrity/PRODUCT.md)
+- 详见 [`apps/web-celebrity/PRODUCT.md` §5.7](../apps/web-celebrity/PRODUCT.md)
 
 ### v0.8（2026-05-17）— 混剪专区真后端（ffmpeg 渲染）
 
@@ -1153,7 +1153,7 @@ web-celebrity: api/mixcut.ts 加 NEXT_PUBLIC_MIXCUT_USE_REAL=1 独立开关
 - 输出文件存本地 `mixcut-output/<jobId>/v<N>.mp4`；OSS 集成是 v0.9+
 - 生产环境 `/api/mixcut/**` 应改为 `.authenticated()`，当前 MVP 是 permitAll
 
-详见 [`apps/web-celebrity/PRODUCT.md`](apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
+详见 [`apps/web-celebrity/PRODUCT.md`](../apps/web-celebrity/PRODUCT.md) 「混剪专区」一节。
 
 ### v0.13（2026-05-19）— 扰动贴图池 + 安全前置
 
@@ -1695,7 +1695,7 @@ web-celebrity:
 
 隐藏（源码保留，URL 直访仍可用）：music / film / nft / forge / digital-ip / community / coach / fan / membership / store / monetization。
 
-切换：[`apps/admin/src/constants/nav.ts`](apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
+切换：[`apps/admin/src/constants/nav.ts`](../apps/admin/src/constants/nav.ts) 改 `enabled` 字段。
 
 - **未涉及**：小程序的 wx.subscribeMessage / WebSocket（v0.6+）、Cookie SSO 跨子域（Phase 5）、
   K8s ACK（Phase 6）、MixcutAsset 上传 OSS 化（Phase 4）。
@@ -2412,7 +2412,7 @@ openapi: +/admin/agent-bots（GET/POST）+/scenes（GET）+/{id}（GET/PUT/DELET
 把素材运营之前是「前端表演 / 后端 stub」的三处文本 AI 接到现成的 `AiModelInvocationService.invokeChat`
 网关（不引 agent / 编排框架）：脚本 AI 起稿、商品卖点提取、脚本变量抽取。prompt（system + user 模板）
 建专用 `prompt_template` 表存储，运营可在 admin 后台改 / 灰度 / 回滚。方案见
-[`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](docs/MATERIAL_OPS_AI_TEXT_PLAN.md)。
+[`docs/archive/material-ops-ai-text-plan.md`](archive/material-ops-ai-text-plan.md)。
 
 ```
 server : AiModelPurpose +SELLING_POINTS / +VARIABLE_EXTRACT（SCRIPT_DRAFT 复用）
@@ -2706,8 +2706,8 @@ web-celebrity:
 真人授权管理 / AI 模板中心 / 异步任务中心。**独立实现**：新 server 领域包 `com.aistareco.aep.aiavatar.*`，
 所有新表统一 `aiavatar_` 前缀；账户复用 `aep_users`，积分复用 `CreditService`。新前端 app `apps/web-aiavatar`
 （Next 16 / React 19 / Tailwind v4 / pnpm，port **3013**，深色琥珀主题）。详见
-[`apps/web-aiavatar/README.md`](apps/web-aiavatar/README.md) + [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md) +
-[`docs/AIAVATAR_PROGRESS.md`](docs/AIAVATAR_PROGRESS.md)。
+[`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md) + [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md) +
+[`docs/archive/aiavatar-progress-2026-05.md`](archive/aiavatar-progress-2026-05.md)。
 
 ```
 server : 8 实体（aiavatar_avatar / aiavatar_avatar_version / aiavatar_asset / aiavatar_source_material / aiavatar_license_grant /
@@ -3099,7 +3099,7 @@ apps/web-aiavatar (Next 16.2.6 / React 19 / TypeScript / pnpm, port 3013):
   src/proto/screen-*.tsx                     # 18 屏（home/library/avatar/voiceapps/lictaskme/more/real/chain/aicreate/voicepick）
 ```
 
-**关键决策**（详见 [`apps/web-aiavatar/DECISIONS.md`](apps/web-aiavatar/DECISIONS.md)）：
+**关键决策**（详见 [`apps/web-aiavatar/DECISIONS.md`](../apps/web-aiavatar/DECISIONS.md)）：
 
 - **忠实移植、不绑共享层**：原型自带 HeyGen 风设计系统（纯白 + 单色青 `#12B3DE`），与 `@ai-star-eco/ui`
   的 shadcn 体系完全不同，故 app 自包含（依赖仅 next/react），屏幕层保留原型的
@@ -3218,7 +3218,7 @@ web    : api.ts 重写：auth（token/localStorage + 401 全局事件）+ AuthAp
 
 几何精调从「参数→英文指令→Agnes i2i 整图重绘」（不可控/漂移身份/无预览）改为**端上确定性美颜**：
 浏览器内 MediaPipe Face Landmarker（478 关键点，WASM，Apache-2.0）+ WebGL 位移场液化 + 磨皮美白 +
-滤镜，拖动滑杆实时生效，「应用」时全分辨率导出回传落库。方案调研见 `docs/FACE_BEAUTY_RESEARCH.md`
+滤镜，拖动滑杆实时生效，「应用」时全分辨率导出回传落库。方案调研见 `docs/audits/face-beauty-research-2026-06.md`
 （阿里云 viapi 人脸美型已下架；Face++ 0.1 元/次可作备选；选定端上方案：零成本/实时/保身份）。
 
 ```
@@ -3315,7 +3315,7 @@ openapi: +/me/license/activate (post)
 - **审计**：追加激活复用 `auth.license.activate` 动作（detail 前缀「追加激活」），按 userId 可查。
 - **未做**：(a) 按 app 分桶的积分账户；(c) 批次 platforms 的事后编辑（建批后不可改，防已售秘钥语义漂移）。
 
-**v0.53 第二批（同日）— 三端对齐审计遗留全量治理**（详见 [`docs/ADMIN_ALIGNMENT_AUDIT.md`](docs/ADMIN_ALIGNMENT_AUDIT.md)，10 项发现全部处置）：
+**v0.53 第二批（同日）— 三端对齐审计遗留全量治理**（详见 [`docs/audits/admin-alignment-audit-2026-06.md`](audits/admin-alignment-audit-2026-06.md)，10 项发现全部处置）：
 
 ```
 server : AdminAepUsersController +PATCH /{id}/platforms（SUPER_ADMIN；空/null = 全平台）
@@ -4495,7 +4495,7 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 
 ### v0.102（2026-07-10）— 短剧一致性引擎 C-3（服务端参考装配 + 双线共享 useShotRender）
 
-一致性引擎 C 序列 L1 收官（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §5）。把此前散落前端 `epscript.tsx:shotRefImages` 的参考图优先级链下沉服务端，render 接口收镜头坐标 `shot_ref`（保留 `ref_slots`/`ref_images` 过渡兼容），服务端按项目文档 + 角色/场景实体自装配并按端点 capability（D-11）裁剪、回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用（收敛 P-6 重复）。
+一致性引擎 C 序列 L1 收官（真源 `docs/drama-consistency-engine-design.md` §5）。把此前散落前端 `epscript.tsx:shotRefImages` 的参考图优先级链下沉服务端，render 接口收镜头坐标 `shot_ref`（保留 `ref_slots`/`ref_images` 过渡兼容），服务端按项目文档 + 角色/场景实体自装配并按端点 capability（D-11）裁剪、回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用（收敛 P-6 重复）。
 
 1. **新服务 `DramaReferenceAssembler`**（`@Service`）：**只读文档/实体、绝不回写 `payloadJson`**（§6.1，不新增服务端文档写者）。三级入参优先级 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容：只做 fetchable/capability 裁剪 + `applied_refs` 回报）；`ref_leading` 置顶锚（拆镜末帧出图的本镜首帧）。
    - 角色参考：`shot.cast` @提及 → 画面文本名兜底 → 本项目全体；每角色 `drama_character.refImages`（angle=front 优先）→ 实体缺失兜底文档 `avatarImage/refUrl`。
@@ -4509,7 +4509,7 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 
 ### v0.101（2026-07-10）— 短剧一致性引擎 C-2（角色/场景实体化 + 多角度参考图集）
 
-一致性引擎 C 序列 L0 地基（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §4）。把散落 `DramaProject.payloadJson` 的角色/场景升级为独立表 + 结构化多角度参考图集（cdnKey 真值），渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。**类型真源沿用 drama 本地约定**（`apps/web-drama/src/mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
+一致性引擎 C 序列 L0 地基（真源 `docs/drama-consistency-engine-design.md` §4）。把散落 `DramaProject.payloadJson` 的角色/场景升级为独立表 + 结构化多角度参考图集（cdnKey 真值），渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。**类型真源沿用 drama 本地约定**（`apps/web-drama/src/mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
 
 1. **两新实体 `DramaCharacter`（`drama_character`）/ `DramaScene`（`drama_scene`）**（ddl-auto 自动建，索引 `idx_dc_project`/`idx_ds_project`）：字段名对齐前端 `CharacterDef`/`SceneAsset`；`ref_images_json` = 多角度参考图集 `[{cdnKey,angle,label}]`（真值 cdnKey，§4.7.4，出 wire 由 `signer.signKey` 派生 url，不加 cdnUrl 列）；软删 `deleted_at` 随项目对齐。
 2. **懒回填（read 时）**：`DramaReferenceAssetService.ensureBackfilled` 在 `getProject` 前跑——老项目文档 `characters/scenes` 非空但无实体行 → 从文档建实体（单图 `refCdnKey`→`refImages[0]{angle:front}` 迁移）；幂等闸=「项目实体行是否已存在」（含软删），跑两次不重复建。
@@ -4521,7 +4521,7 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 
 ### v0.100（2026-07-10）— 短剧一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
 
-一致性引擎 D 序列（真源 `docs/[Fabel5]drama-consistency-engine-design.md` §3）。把「用途→单端点」升级为「用途→N 候选端点（带 capability 元数据）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。**核心裁决**：新表 `ai_app_endpoint_candidate`，`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化 → 所有现有调用者与 admin 默认绑定不受影响、零迁移。
+一致性引擎 D 序列（真源 `docs/drama-consistency-engine-design.md` §3）。把「用途→单端点」升级为「用途→N 候选端点（带 capability 元数据）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。**核心裁决**：新表 `ai_app_endpoint_candidate`，`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化 → 所有现有调用者与 admin 默认绑定不受影响、零迁移。
 
 1. **新表 + 兼容迁移**：`AiAppEndpointCandidate`（`ai_app_endpoint_candidate`，唯一 `purpose+endpoint_id` + 索引 `idx_aaec_purpose`）承载 capability（`maxRefImages`/`supportsFirstLastFrame`/`supportsSubjectReference`/`maxDurationSec`，null=未知按 legacy 兼容默认——图像 6 / 首尾帧协议静态判定，C-3 回归修正后口径）+ 可选单价 `creditCostOverride` + `enabled`/`sortOrder`。`AiAppCandidateSeeder`（@Order 60，跑在绑定 seeder 之后）幂等把每条现有 `AiAppBinding` 回填为置顶候选（sortOrder=0，capability 全 null）→ 老数据自动进候选池、UI 即可见、白名单可命中，无需人工。
 2. **`resolveEndpoint` 重载**：`AiModelInvocationService` 加 `resolveEndpoint(purpose, endpointId)`（返回 `ResolvedEndpoint{endpoint,candidate,isDefault}`；endpointId 为空委派默认，指定则查启用 candidate + 启用端点，未命中 empty → 调用方 503 `ENDPOINT_NOT_ALLOWED`，§8.0 不回退默认、不扣费）+ `listCandidates(purpose)`（含默认标记，供 /render/models 与 admin）。`AiAppBindingService` 加候选 CRUD（bind 时幂等纳入候选池）。
@@ -4535,7 +4535,7 @@ web-drama 四批体验打磨 + 审查修复，后端零改动、无契约变更�
 
 ### v0.99（2026-07-10）— 短剧一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
 
-一致性引擎 C 序列（C-1 → D-11 → C-2 → C-3，真源 `docs/[Fabel5]drama-consistency-engine-design.md`）首阶段，修审计 G-6「末帧存上游临时 URL 会过期 + 参考图静默被过滤」。**范围选择**：仅 `last_frame` 做 cdnKey 真值化（§4.7.4）；`video_url`/`thumbnail_url` 只在 `toCard` 加 `signer.maybeSign` 兜底（local `/cdn` 原样返回零影响），完整 URL→key 迁移留独立 PR。
+一致性引擎 C 序列（C-1 → D-11 → C-2 → C-3，真源 `docs/drama-consistency-engine-design.md`）首阶段，修审计 G-6「末帧存上游临时 URL 会过期 + 参考图静默被过滤」。**范围选择**：仅 `last_frame` 做 cdnKey 真值化（§4.7.4）；`video_url`/`thumbnail_url` 只在 `toCard` 加 `signer.maybeSign` 兜底（local `/cdn` 原样返回零影响），完整 URL→key 迁移留独立 PR。
 
 1. **末帧 CDN 镜像**：`MaterialVideoJob` 新列 `lastFrameCdnKey`（ddl-auto 自动加列；旧 `lastFrameUrl` 降级为 fallback）。`MaterialVideoWorker` 成功分支在 video/thumbnail 镜像后追加下载上游末帧（seedance `return_last_frame`）→ `cdnUploader.upload`（key=`material-videos/<jobId>/last-frame.*`）→ `markSucceeded` 落 key。**失败语义（§8.0 观测类旁路例外）**：末帧镜像 best-effort，失败仅 WARN + 保留上游 URL，绝不 markFailed / releaseHold——视频本身已成功出片，缺末帧只是退化为「无末帧承接」。这是 C-3 服务端参考装配「同场上一镜真实末帧」权威来源的前置。
 2. **出 wire 签名**：`MaterialVideoJobService.toCard` 注入 `CdnUrlSigner`——`last_frame_url` = `signKey(lastFrameCdnKey)` 派生（fallback `maybeSign(lastFrameUrl)`）；`video_url`/`thumbnail_url` 走 `maybeSign` 兜底（顺手偿还 §4.7.6 URL 时效欠债的签名部分）。celebrity 素材线共用 `toCard`，local driver 下零影响。

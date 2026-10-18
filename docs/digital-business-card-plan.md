@@ -135,7 +135,7 @@ shot:<name>     → 机位照（DapAvatar.shotKeys[name]）
 
 **ipstudio 对名片的独特价值是一致性。** 名片三个 Roll 是并排给人看的，三张图脸飘一点就露馅；ipstudio 的五层锁定（特征卡文本固定 + 主图作 i2i 锚 + 多候选择优）是专门为「看起来是同一个人」设计的。
 
-> ⚠️ 已识别的重叠风险：dap 的 `expr`（表情图集）/ `ward`（换装变体）与 ipstudio 的「表情包六连」功能重复。长期需要产品分工声明（建议 dap 衍生只保留单张微调，成组一律进工作台），否则两边都会继续长。见 [`ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md)。
+> ⚠️ 已识别的重叠风险：dap 的 `expr`（表情图集）/ `ward`（换装变体）与 ipstudio 的「表情包六连」功能重复。长期需要产品分工声明（建议 dap 衍生只保留单张微调，成组一律进工作台），否则两边都会继续长。见 [`archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md)。
 
 ---
 

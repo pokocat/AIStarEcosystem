@@ -8,7 +8,7 @@ import java.time.Instant;
 /**
  * Prompt 模板（素材运营文本三件 + 后续可扩展）。
  *
- * 决策（MATERIAL_OPS_AI_TEXT_PLAN §6）：system 与 user 模板都建表存，不放 .txt、
+ * 决策（docs/archive/material-ops-ai-text-plan.md §6）：system 与 user 模板都建表存，不放 .txt、
  * 不塞 PlatformConfig blob。运营可在后台改 prompt / 灰度 / 回滚，无需改代码或重启；
  * 代码只负责把业务参数填进 {{占位符}}。
  *

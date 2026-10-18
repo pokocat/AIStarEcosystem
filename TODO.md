@@ -19,6 +19,8 @@
 
 2026-10-13 整理：已完成记录、合并前的重复条目与排障教训见 [历史记录](docs/archive/todo-2026-10-13.md)。历史候选保留原分期，不代表已承诺排期；本次只更正有证据的过时状态，其余问题没有逐项重新验收。
 
+> **已全部完成的段**（段内没有任何 `[ ]`）定期整段移到 [`docs/archive/todo-closed.md`](docs/archive/todo-closed.md)，条目原样保留、不改写；本文件只留还有未勾项的段。2026-10-18 第一次按这条规则整理的 8 段已在那里。
+
 - [Studio 当前待办](#studio-当前待办)
 - [已定位问题与后续限制](#已定位问题与后续限制)
 - [早期候选计划](#早期候选计划)
@@ -1052,7 +1054,7 @@
 
 - [ ] **D-5 admin 镜像**：`apps/admin` 加 drama 管理视图。
 
-- [ ] **后续可选**：VLM best-of-N 首帧一致性自检。~~`lastFrameUrl` 末帧 CDN 镜像~~ **C-1 完成**（v0.99，2026-07-10）：`MaterialVideoJob.lastFrameCdnKey` 真值列 + worker 末帧下载镜像（失败 best-effort 仅 WARN 不 markFailed）+ `toCard` `signKey` 派生 fallback 旧 URL；同批落 `/render/{frame,clip}` 返回体 `applied_refs` 参考生效回报（`MaterialVideoWorkerTest` + `DramaRenderServiceTest`）。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §2。
+- [ ] **后续可选**：VLM best-of-N 首帧一致性自检。~~`lastFrameUrl` 末帧 CDN 镜像~~ **C-1 完成**（v0.99，2026-07-10）：`MaterialVideoJob.lastFrameCdnKey` 真值列 + worker 末帧下载镜像（失败 best-effort 仅 WARN 不 markFailed）+ `toCard` `signKey` 派生 fallback 旧 URL；同批落 `/render/{frame,clip}` 返回体 `applied_refs` 参考生效回报（`MaterialVideoWorkerTest` + `DramaRenderServiceTest`）。真源 `docs/drama-consistency-engine-design.md` §2。
 
 - [ ] **C-4 MaterialVideoJob shotId/sceneId 索引列**（C-3 遗留，DAG 时必做）：C-3 的「同场上一镜真实末帧」权威回退目前用 `MaterialVideoJobRepository.findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc` 拉该项目全部 job 后**内存解析 `variantConfigJson`** 匹配 `scene_id`/`shot_id`（`DramaReferenceAssembler.jobLastFrame`）。大项目 job 多时有内存/扫描成本。C-4（跨镜 DAG 编排）应给 `MaterialVideoJob` 加 `shot_id`/`scene_id` 索引列（ddl-auto=update 自动加）+ Repo `findFirstByOwnerUserIdAndScriptIdAndShotIdAndStatusOrderByCreatedAtDesc`，把内存扫换成索引查询。当前 C-3 内存扫描可接受（架构师裁决），不阻塞。
 

@@ -1,10 +1,12 @@
 # AiAvatar 形象资产管理中心 — 实施进度 & 自恢复台账
 
+> **已归档（2026-10-18）**：这是 2026-05-30 首版「AiAvatar 形象资产管理中心」的实施台账。文中的 `aiavatar_*` 表与 `com.aistareco.aep.aiavatar.*` 包**已不存在**（V5 改名、V8 删表），现行实体是 `dap_*`（`DapAvatar` / `DapLook` / `DapDerivative`…），现行真源见 [`apps/web-aiavatar/PRODUCT.md`](../../apps/web-aiavatar/PRODUCT.md) 与 [`apps/server/README.md`](../../apps/server/README.md) dap 段。只作历史参考，不要按它续传。
+
 > 本文件是**断点续传**台账。任何 agent（含监控线程）重新接手时，先读本文件确认「已完成 / 进行中 / 待办」，
 > 再继续推进，避免重复劳动。每完成一个里程碑就更新这里并 commit。
 >
 > 任务书：用户上传的《实现任务书 · AiAvatar 形象资产管理中心》。
-> 设计决策与「原状→改动→理由」记录在 [`DECISIONS.md`](../DECISIONS.md)。
+> 设计决策与「原状→改动→理由」记录在 [`DECISIONS.md`](../../apps/web-aiavatar/DECISIONS.md)。
 
 ## 总体架构（已定）
 

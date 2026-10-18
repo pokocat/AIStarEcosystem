@@ -747,7 +747,7 @@ public class IpRunService {
      * <p><b>通用化（v0.153）</b>：新节点只写一个 {@code prompt} 字段 ——
      * 原来的 {@code outfit/pose/expression/details/props} 五个字段在这里做的事
      * 一直只是「按顺序拼成一串文本」，服务端从不区分它们的语义，拆分对出图零增益，
-     * 只留下填写负担和边界犹豫（见 docs/ip-studio-generalize-proposal.md）。
+     * 只留下填写负担和边界犹豫（见 docs/archive/ip-studio-generalize-proposal.md）。
      *
      * <p>老画布的 doc 里仍是五字段，所以这里保留回落拼接 —— <b>零迁移</b>：
      * 历史项目不用改数据、不用停机，读的时候按老顺序拼起来即可。

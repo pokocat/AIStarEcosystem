@@ -63,7 +63,11 @@ Aisingerecosystem/
 │   ├── api-client/         # @ai-star-eco/api-client（apiFetch + AuthProvider + format）
 │   └── landing/            # @ai-star-eco/landing（ProductLanding 原语）
 ├── specs/                  # 后端契约（openapi + 业务规则）
-├── docs/                   # 跨应用文档（INDEX 索引 + ADMIN_PRODUCT_SPEC 等）
+├── docs/                   # 跨应用文档：根 = 现行设计真源 + INDEX + VERSION_HISTORY
+│   ├── runbooks/           #   运维 / 联调操作手册
+│   ├── audits/             #   带日期的一次性审计 / 调研报告
+│   ├── archive/            #   已落地或已被取代的方案、关闭的 TODO 段（只读历史）
+│   └── design/             #   子应用视觉系统（celebrity）
 ├── figma/                  # ⚠️ Figma Make 一次性导出，仅 UI 原型参考
 └── .claude/skills/         # AI agent 技能（figma-migrate 等）
 ```
@@ -790,7 +794,8 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 | 加 / 删子应用页面或大模块 | `apps/<sub-app>/PRODUCT.md` 模块清单；`apps/<sub-app>/README.md` 版本日志 |
 | 加 / 删 admin 页面 | `apps/admin/README.md` sidebar 段；`docs/ADMIN_PRODUCT_SPEC.md`（如属新规划） |
 | 加 / 改 / 删小程序页面 | `apps/miniprogram/README.md` 版本日志；`product_spec_ai_celebrity.md` 版本节；平台坑同步到 `apps/miniprogram/agent.md` |
-| 加新文档 | 同时在 `docs/INDEX.md` 添加一行（含 last-reviewed 日期） |
+| 加新文档 | 先按性质选目录：**现行设计真源放 `docs/` 根**（kebab-case 文件名，不加 `[xxx]` 前缀）、操作手册放 `docs/runbooks/`、带日期的审计 / 调研放 `docs/audits/`（文件名带 `-YYYY-MM`）；同 commit 在 `docs/INDEX.md` 加一行（含 last-reviewed 日期） |
+| 方案落地或被取代 | 移到 `docs/archive/`，文件顶部加「已归档 + 现行真源在哪」一行；`git grep` 改掉所有引用（代码注释也算），INDEX 移到「归档」表 |
 | 删旧文档 | 先 `git grep -n '<filename>' -- '*.md'` 改指真源；再 `git rm`，依赖 git history 留底 |
 | 改环境变量 / 部署需求 | [`infra/README.md`](infra/README.md)；[`.claude/skills/aliyun-deploy/SKILL.md`](.claude/skills/aliyun-deploy/SKILL.md)；必要时同步 `infra/env/*.env.example` |
 | **完成 / 搁置 / 新发现任一待办，或审计发现 TODO 与代码 drift** | **`TODO.md`（与产品说明、版本历史同等纪律，同 commit 改）** —— 详见下「TODO.md 维护纪律」 |
@@ -804,6 +809,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - **新发现一个待办**（顺手定位但本轮不修） → 按主题段追加 `- [ ]`，带精确定位（`file:符号` / 错误码 / 触发条件），不要只写一句模糊描述。
 - **降优先级 / 改判**（如「非漏洞，可后置」） → 保留 `[ ]` 但在标题后加判定 + 日期 + 理由，别让后人重复评估。
 - 条目按现有主题段归并（持久化 / 安全 / sau-service / 通知 …），不要散落到版本日志里被忘掉。
+- **整段都勾完了**（段内没有任何 `- [ ]`） → 整段移到 `docs/archive/todo-closed.md`，条目原样不改。TODO.md 只留还有未勾项的段，否则 1800 行里找一条开着的要翻半天（2026-10-18 第一次整理）。
 
 ### 验收
 

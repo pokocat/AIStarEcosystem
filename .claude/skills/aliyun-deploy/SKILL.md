@@ -111,7 +111,7 @@ curl -H "Authorization: Bearer <jwt>" https://api.aibuzz.cn/api/me/mixcut/jobs |
 # 直接 GET 应 200；改 auth_key 后再 GET 应 403
 ```
 
-详见 [`infra/oss/README.md#31-url-鉴权--签名-v047-必配防流量盗刷`](../../infra/oss/README.md)。
+详见 [`infra/oss/README.md#31-url-鉴权--签名-v047-必配防流量盗刷`](../../../infra/oss/README.md)。
 
 ## Deployment Paths
 
