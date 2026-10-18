@@ -67,4 +67,17 @@ class StudioNaturalApprovalsTest {
         assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require("开始，上限 500，重做额度 100",card,100,100)).getCode(),
                 "the redo figure cannot be reused as the total");
     }
+
+    /** R4-01 / R4-02: equal figures keep both bindings; a number the user did not say is 400 even below the quote. */
+    @Test void equalAmountsStayBoundAndUnsaidNumbersAreInputErrorsBeforeTheQuoteCheck() {
+        String same="开始，总上限280积分，重做上限280积分";
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require(same,card,1000,280)).getCode(),
+                "total 1000 was never said; the redo 280 does not vouch for it");
+        assertDoesNotThrow(()->StudioNaturalApprovals.require(same,card,280,280));
+        ObjectNode pricey=card.deepCopy().put("quotedCost",280).put("budgetCap",1000);
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require("开始，上限 500，重做额度 100",pricey,100,100)).getCode(),
+                "100 is below the quote too, but the user said 500: that is an input error, not a budget shortfall");
+        assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require("开始，上限 100",pricey,100,0)).getCode(),
+                "only when the user's own number is below the quote is it a shortfall");
+    }
 }

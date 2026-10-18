@@ -35,17 +35,19 @@ final class StudioNaturalApprovals {
         long proposed = card.path("budgetCap").asLong(), proposedFix = card.path("autoFixCap").asLong(0), quoted = card.path("quotedCost").asLong(0);
         if (budgetCap < 0 || autoFixCap < 0 || autoFixCap > budgetCap)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度不能超过总上限");
-        if (budgetCap < quoted)
-            throw StudioPlanExecutionService.budgetExceeded(card.path("stage").asText(), 0, 0, quoted, budgetCap);
         // The user's own numbers win: whenever the message names a budget figure, the effective cap must be one of them —
         // the model may neither raise nor "round" it (R2-02), and a cap the card never proposed needs the user's number.
-        // Each named amount binds its own cap (R3-01): a redo figure can never stand in for the total, nor the reverse.
+        // Each named amount binds its own cap (R3-01 / R4-01): a redo figure can never stand in for the total, nor the
+        // reverse — even when both figures are the same number; budgetNumbers() already excludes 重做/修正/重试 amounts, so
+        // the two sets are role-bound and must not be subtracted from each other. These checks run before the quote check
+        // (R4-02): a number the user never said is an input error (400) whatever its relation to the quote.
         java.util.Set<Long> saidFix = redoNumbers(said), saidTotal = budgetNumbers(said);
-        saidTotal.removeAll(saidFix);
         if (!saidFix.isEmpty() && !saidFix.contains(autoFixCap))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的重做额度是 " + saidFix.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的额度，或在卡片上修改");
         if (!saidTotal.isEmpty() && !saidTotal.contains(budgetCap))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的上限是 " + saidTotal.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的上限，或在卡片上修改");
+        if (budgetCap < quoted)
+            throw StudioPlanExecutionService.budgetExceeded(card.path("stage").asText(), 0, 0, quoted, budgetCap);
         if (budgetCap != proposed && !mentions(said, budgetCap))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，需要你在消息里说出新的上限，或在卡片上修改");
         if (autoFixCap != proposedFix && !mentions(said, autoFixCap))
