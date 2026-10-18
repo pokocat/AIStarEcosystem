@@ -8,6 +8,12 @@
 //
 // 演示流程：第一条消息 → 读取画布 + 分析计划 + 确认卡「开始分析」→ 拉片（工作记录）→
 // 制作计划（推荐与替代做法）+ 确认卡「开始制作」→ 两段视频节点 + 一次检查（含一项无法判断）。
+//
+// 和真服务端一样：每一步做完都有一次可读取的运行（getRun），画布节点 id 按
+// StudioPlanExecutionIds.nodeId 推出来，节点形状照 StudioPlanExecutor.nodeEvents；
+// 快照只带进行中的制作，做完的制作要从确认卡上的 executionId 读回来；
+// 事件可以被裁掉（eventFloorSeq），游标低于它就要求重新读快照。
+// mockSeedCompletedExecution 造一张「关着页面时制作已经做完」的画布，用来验收重新打开后补节点。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
@@ -15,8 +21,9 @@ import type {
   StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
   StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillSummary, StudioTokenBilling,
 } from "@ai-star-eco/types/ip-studio-workflow";
+import type { IpRun, IpRunOutput } from "@ai-star-eco/types";
 import { dialogueReducer, emptyDialogueStore, isPlaceholderMessage, type DialogueStore } from "@/canvas-bridge/studio-dialogue-store";
-import { mockStore } from "./ip-studio";
+import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockRegisterRun, mockStore } from "./ip-studio";
 
 export const MOCK_STUDIO_SKILLS: StudioSkillSummary[] = [{
   key: "video-recreation", name: "短视频复刻", version: 1, status: "active", planning: "dynamic",
@@ -34,6 +41,8 @@ type Listener = (event: StudioDialogueEvent) => void;
 type Step = { run: () => void; delay?: number; waitsForExecution?: boolean };
 interface MockThread {
   thread: StudioDialogueThread; view: DialogueStore; events: StudioDialogueEvent[]; listeners: Set<Listener>;
+  /** Events at or below this seq were pruned; a cursor below it must rebuild from the snapshot (410 on the server). */
+  eventFloorSeq: number;
   generation: number; running: boolean; turnId?: string; runId?: string; queued: string[]; results: Map<string, StudioPostMessageResult>;
 }
 type Stage = "idle" | "analysis-proposed" | "analysis-running" | "production-proposed" | "production-running" | "done";
@@ -51,7 +60,7 @@ function createThread(projectId: string, parent?: { threadId: string; messageId:
   const at = now();
   const thread: StudioDialogueThread = { id: nextId("thread"), projectId, lastSeq: 0, createdAt: at, updatedAt: at,
     ...(parent ? { parentThreadId: parent.threadId, branchFromMessageId: parent.messageId } : {}) };
-  return { thread, view: { ...emptyDialogueStore(), thread }, events: [], listeners: new Set(), generation: 0, running: false, queued: [], results: new Map() };
+  return { thread, view: { ...emptyDialogueStore(), thread }, events: [], eventFloorSeq: 0, listeners: new Set(), generation: 0, running: false, queued: [], results: new Map() };
 }
 
 function project(projectId: string): MockProject {
@@ -60,6 +69,7 @@ function project(projectId: string): MockProject {
     const main = createThread(projectId);
     p = { threads: new Map([[main.thread.id, main]]), currentThreadId: main.thread.id, stage: "idle" };
     projects.set(projectId, p);
+    if (projectId === MOCK_CLOSED_EXECUTION_PROJECT_ID) seedCompleted(projectId, p, main);
   }
   return p;
 }
@@ -69,10 +79,11 @@ function thread(p: MockProject, threadId: string) {
   return t;
 }
 
+/** Like the server: only an execution still in progress rides along; a finished one is read back by its id. */
 function snapshot(p: MockProject, t: MockThread): StudioDialogueState {
   const active = p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) ? p.execution.id : undefined;
   return clone({ thread: { ...t.thread, activeTurnId: t.running ? t.turnId : undefined, activeExecutionId: active },
-    messages: t.view.messages.filter(m => !isPlaceholderMessage(m.id)), latestSeq: t.thread.lastSeq, ...(p.execution ? { execution: p.execution } : {}) });
+    messages: t.view.messages.filter(m => !isPlaceholderMessage(m.id)), latestSeq: t.thread.lastSeq, ...(active ? { execution: p.execution } : {}) });
 }
 
 function emit<T>(t: MockThread, type: StudioDialogueEventType, data: T, executionId?: string) {
@@ -126,6 +137,9 @@ function applyQueued(p: MockProject, t: MockThread) {
 
 const step = (id: string, title: string, operation: StudioPlanExecutionStep["operation"], stage: StudioPlanExecutionStep["stage"], quotedCost: number, dependsOn: string[] = []): StudioPlanExecutionStep =>
   ({ id, title, operation, stage, dependsOn, status: "pending", runIds: [], attempt: 0, quotedCost });
+/** The step's output node on the canvas: StudioPlanExecutionIds.nodeId on the server. */
+const stepNodeId = (executionId: string, s: Pick<StudioPlanExecutionStep, "id" | "stage">) => `${executionId}-${s.stage === "production" ? "p" : "a"}-${s.id}`;
+const withNodeIds = (executionId: string, steps: StudioPlanExecutionStep[]) => steps.map(s => ({ ...s, nodeId: stepNodeId(executionId, s) }));
 
 function updateExecution(p: MockProject, update: (e: StudioPlanExecution) => StudioPlanExecution) {
   if (p.execution) p.execution = { ...update(p.execution), updatedAt: now() };
@@ -139,6 +153,52 @@ function budget(p: MockProject, t: MockThread, spent: number, inFlight: number, 
   updateExecution(p, x => ({ ...x, budgets: x.budgets.map(y => y.stage === x.stage ? { ...y, spent, inFlight, remaining: y.approvedCap - spent - inFlight } : y) }));
   emit(t, "budget.update", { executionId: e.id, stage: e.stage, approvedCap: b.approvedCap, spent, inFlight, remaining: b.approvedCap - spent - inFlight, source }, e.id);
 }
+
+/** The step's native run, finished: readable through getRun like the real one. */
+function stepRun(projectId: string, e: StudioPlanExecution, s: StudioPlanExecutionStep, output: IpRunOutput, runId = s.runIds.at(-1)!): IpRun {
+  const at = now();
+  return { id: runId, projectId, nodeId: s.nodeId || stepNodeId(e.id, s), kind: `studio-${s.operation}`, status: "done", stage: "done", pct: 100, cost: 0,
+    inputs: { executionId: e.id, stage: s.stage } as unknown as IpRun["inputs"], output: { mock: true, ...output }, createdAt: at, finishedAt: at };
+}
+
+/** node.upsert commands of a finished step, shaped like StudioPlanExecutor.nodeEvents (plus the demo marker). */
+function stepNodeEvents(e: StudioPlanExecution, s: StudioPlanExecutionStep, run: IpRun): StudioNodeUpsertData[] {
+  const nodeId = s.nodeId || stepNodeId(e.id, s), type = s.operation === "video" || s.operation === "assemble" ? "video" : s.operation === "image" ? "image" : "text";
+  const studio: Record<string, unknown> = { runId: run.id, execution: { executionId: e.id, stepId: s.id, runId: run.id }, mock: true };
+  const metadata: Record<string, unknown> = { status: "success", studio };
+  let title = s.title, connection: StudioNodeUpsertData["connection"];
+  if (s.operation === "check") {
+    const subject = e.steps.find(x => run.output.check && x.runIds.includes(run.output.check.targetRunId));
+    const subjectId = subject && (subject.nodeId || stepNodeId(e.id, subject));
+    title = `${subject?.title || "成片"} · 检查`;
+    Object.assign(studio, { kind: "check", parentNodeId: subjectId, check: run.output.check });
+    if (subjectId) connection = { fromNodeId: subjectId, toNodeId: nodeId };
+  } else if (s.operation === "recreation") { studio.kind = "recreation"; metadata.content = run.output.text || ""; }
+  else if (type === "text") { studio.kind = "text"; metadata.content = run.output.textRevision?.content ?? run.output.text ?? ""; }
+  const node = { id: nodeId, type, title, width: type === "text" ? 380 : 320, height: type === "text" ? 320 : 240, position: { x: 0, y: 0 }, metadata } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
+  const out: StudioNodeUpsertData[] = [{ nodeId, op: "create", executionId: e.id, stepId: s.id, runId: run.id, node, ...(connection ? { connection } : {}) }];
+  if (s.operation !== "check") for (const dependency of s.dependsOn) {
+    const upstream = e.steps.find(x => x.id === dependency && x.stage === s.stage);
+    if (upstream && upstream.operation !== "check") out.push({ nodeId, op: "connect", executionId: e.id, stepId: s.id, runId: run.id, connection: { fromNodeId: upstream.nodeId || stepNodeId(e.id, upstream), toNodeId: nodeId } });
+  }
+  return out;
+}
+
+/** A step finished: its run becomes readable and the canvas is told about its node, like the server does. */
+function finishStep(projectId: string, p: MockProject, t: MockThread, stepId: string, output: IpRunOutput, runId?: string) {
+  setStep(p, stepId, "done", runId);
+  const e = p.execution!, s = e.steps.find(x => x.id === stepId)!;
+  const run = stepRun(projectId, e, s, output);
+  mockRegisterRun(run);
+  for (const data of stepNodeEvents(e, s, run)) emit(t, "node.upsert", data, e.id);
+}
+
+const MOCK_CHECK_ITEMS = (targetRunId: string): StudioCheckResultData["result"] => ({ status: "unknown", targetRunId, sampledTimesSec: [0.5, 2.5, 4.5], items: [
+  { id: "subject", status: "pass", evidence: [{ kind: "frame", timeSec: 2.5, observation: "画面中央是新商品，标签朝向镜头" }], reason: "主体和你的商品一致" },
+  { id: "caption", status: "unknown", evidence: [{ kind: "text", observation: "这一段没有可读的字幕" }], reason: "没有字幕，看不出台词是否完整", suggestion: "加上字幕后再检查一次" },
+] });
+const MOCK_RECREATION_TEXT = "切成 2 段：第 1 段人物出场，交代场景；第 2 段可见主体是水杯，靠它做反转。";
+const MOCK_NOTES = "第 1 段：人物出场，中景，节奏慢，先交代场景。\n第 2 段：特写水杯，节奏突然加快，台词点出反转。";
 
 function canvasSize(projectId: string) {
   const nodes = mockStore().projects.get(projectId)?.doc.nodes || [];
@@ -174,7 +234,7 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
   ]);
 }
 
-function analysisTurn(p: MockProject, t: MockThread) {
+function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
   const e = p.execution!, messageId = startTurn(t), tool = nextId("tool"), fingerprint = "mock-production-v2";
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint, plan: {
     summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: "video-recreation", skillVersion: 1, stage: "production", revision: 2, fingerprint,
@@ -199,7 +259,9 @@ function analysisTurn(p: MockProject, t: MockThread) {
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 5, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "recreation", progress: "正在读取第 2 段" }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 5, run: () => {
       emit(t, "tool.finished", { toolCallId: tool, toolName: "recreation", status: "done", result: { summary: "切成 2 段：第 1 段人物出场，第 2 段可见主体是水杯" }, creditsActual: 18, settling: false }, e.id);
-      setStep(p, "s1", "done"); setStep(p, "s2", "done", `${e.id}-run-notes`); budget(p, t, 24, 0, "actual");
+      finishStep(projectId, p, t, "s1", { text: MOCK_RECREATION_TEXT });
+      finishStep(projectId, p, t, "s2", { textRevision: { content: MOCK_NOTES, summary: "每段的画面和节奏" } }, `${e.id}-run-notes`);
+      budget(p, t, 24, 0, "actual");
     } },
     ...say(t, messageId, "b2", "拉片完成。前段交代场景，后段靠水杯做反转。推荐保留原片动作，把水杯换成你的商品、台词重写；也可以重做第 2 段的画面，商品更醒目，但节奏和原片差得多一些。"),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
@@ -214,27 +276,20 @@ function analysisTurn(p: MockProject, t: MockThread) {
 }
 
 function productionTurn(projectId: string, p: MockProject, t: MockThread) {
-  const e = p.execution!, messageId = startTurn(t), canvas = canvasSize(projectId);
-  const segment = (no: number): StudioNodeUpsertData => ({ nodeId: `${e.id}-segment-${no}`, op: "create", executionId: e.id, stepId: `v${no}`, runId: `${e.id}-run-v${no}`,
-    node: { id: `${e.id}-segment-${no}`, type: "video", title: `第 ${no} 段 · 示例`, position: { x: canvas.right + 80 + (no - 1) * 420, y: 120 }, width: 360, height: 640,
-      metadata: { status: "success", prompt: no === 1 ? "参考原片第 1 段的动作，主体换成新商品。" : "参考原片第 2 段的反转，台词按新商品重写。",
-        studio: { kind: "shot", mock: true, execution: { executionId: e.id, stepId: `v${no}`, runId: `${e.id}-run-v${no}` } } } } });
+  const e = p.execution!, messageId = startTurn(t);
   const video = (no: number): Step[] => {
     const tool = nextId("tool");
     return [
       { waitsForExecution: true, run: () => { setStep(p, `v${no}`, "running", `${e.id}-run-v${no}`); emit(t, "tool.started", { toolCallId: tool, toolName: "video", title: `制作第 ${no} 段`, safeInputSummary: "5 秒 · 竖屏 · 参考原片动作", childRunId: `${e.id}-run-v${no}` }, e.id); budget(p, t, (no - 1) * 40, 40, "quote"); } },
       { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "video", progress: "已提交，等待出片" }, e.id) },
       { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 8, run: () => {
-        emit(t, "tool.finished", { toolCallId: tool, toolName: "video", status: "done", result: { summary: `第 ${no} 段出片 1 条`, nodeIds: [`${e.id}-segment-${no}`] }, creditsActual: 40, settling: false }, e.id);
-        emit(t, "node.upsert", segment(no), e.id); setStep(p, `v${no}`, "done"); budget(p, t, no * 40, 0, "actual");
+        emit(t, "tool.finished", { toolCallId: tool, toolName: "video", status: "done", result: { summary: `第 ${no} 段出片 1 条`, nodeIds: [stepNodeId(e.id, { id: `v${no}`, stage: "production" })] }, creditsActual: 40, settling: false }, e.id);
+        finishStep(projectId, p, t, `v${no}`, {}); budget(p, t, no * 40, 0, "actual");
       } },
     ];
   };
   const checkTool = nextId("tool");
-  const check: StudioCheckResultData = { stepId: "c1", runId: `${e.id}-run-c1`, result: { status: "unknown", targetRunId: `${e.id}-run-v1`, sampledTimesSec: [0.5, 2.5, 4.5], items: [
-    { id: "subject", status: "pass", evidence: [{ kind: "frame", timeSec: 2.5, observation: "画面中央是新商品，标签朝向镜头" }], reason: "主体和你的商品一致" },
-    { id: "caption", status: "unknown", evidence: [{ kind: "text", observation: "这一段没有可读的字幕" }], reason: "没有字幕，看不出台词是否完整", suggestion: "加上字幕后再检查一次" },
-  ] } };
+  const check: StudioCheckResultData = { stepId: "c1", runId: `${e.id}-run-c1`, result: MOCK_CHECK_ITEMS(`${e.id}-run-v1`) };
   play(p, t, [
     ...say(t, messageId, "c1", "开始制作，先做第 1 段。"),
     ...video(1),
@@ -243,7 +298,8 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
     { waitsForExecution: true, run: () => { setStep(p, "c1", "running", `${e.id}-run-c1`); emit(t, "tool.started", { toolCallId: checkTool, toolName: "check", title: "检查第 1 段", safeInputSummary: "主体、字幕", childRunId: `${e.id}-run-c1` }, e.id); } },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
       emit(t, "tool.finished", { toolCallId: checkTool, toolName: "check", status: "done", result: { summary: "通过 1 项，无法判断 1 项" }, creditsActual: 2, settling: false }, e.id);
-      emit(t, "check.result", check, e.id); setStep(p, "c1", "done"); budget(p, t, 82, 0, "actual");
+      // The server publishes check.result first, then the executor's node.upsert for the check step.
+      emit(t, "check.result", check, e.id); finishStep(projectId, p, t, "c1", { check: check.result }); budget(p, t, 82, 0, "actual");
     } },
     { run: () => { setStep(p, "m1", "skipped", undefined, "演示模式不合成成片"); updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() })); } },
     ...say(t, messageId, "c3", "两段都做好了，一共用了 82 积分。第 1 段有一项检查无法判断：这一段没有字幕，看不出台词是否完整。演示模式不合成成片。"),
@@ -297,9 +353,14 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   return later(result);
 }
 
-export function mockDialogueSubscribe(projectId: string, threadId: string, afterSeq: number, onEvent: Listener): () => void {
+/** `onExpired`: the cursor is below the pruned floor (the server answers 410); the caller rebuilds from a snapshot. */
+export function mockDialogueSubscribe(projectId: string, threadId: string, afterSeq: number, onEvent: Listener, onExpired?: () => void): () => void {
   const t = thread(project(projectId), threadId);
   let open = true;
+  if (afterSeq < t.eventFloorSeq) {
+    setTimeout(() => { if (open) onExpired?.(); }, 0);
+    return () => { open = false; };
+  }
   const backlog = t.events.filter(e => e.seq > afterSeq).map(e => clone(e));
   const listener: Listener = event => { if (open) onEvent(event); };
   setTimeout(() => { if (!open) return; for (const e of backlog) onEvent(e); t.listeners.add(listener); }, 0);
@@ -341,30 +402,33 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
   const p = project(projectId), t = thread(p, p.currentThreadId), at = now();
   if (request.stage === "analysis") {
     if (p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) && p.execution.stage === "analysis") return later(p.execution);
-    p.execution = { id: nextId("exec"), projectId, threadId: t.thread.id, skillKey: "video-recreation", skillVersion: 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
-      planFingerprint: request.planFingerprint, status: "running", steps: [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"])],
+    const id = nextId("exec");
+    p.execution = { id, projectId, threadId: t.thread.id, skillKey: "video-recreation", skillVersion: 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
+      planFingerprint: request.planFingerprint, status: "running", steps: withNodeIds(id, [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"])]),
       budgets: [{ stage: "analysis", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }],
       startedAt: at, deadlineAt: new Date(Date.now() + 90 * 60_000).toISOString(), updatedAt: at };
-    patchApproval(t, request.approvalId, p.execution.id);
+    patchApproval(t, request.approvalId, p.execution.id, request);
     p.stage = "analysis-running";
-    analysisTurn(p, t);
+    analysisTurn(projectId, p, t);
     return later(p.execution);
   }
   const e = p.execution;
   if (!e || e.id !== request.executionId) throw Object.assign(new Error("分析还没有完成，请先确认分析"), { code: "STUDIO_PLAN_STALE" });
   if (e.stage === "production") return later(e);
   p.execution = { ...e, stage: "production", status: "running", planRunId: request.planRunId, planRevision: request.expectedRevision ?? 2, planFingerprint: request.planFingerprint, needsUserReason: undefined,
-    steps: [...e.steps, step("v1", "第 1 段视频", "video", "production", 40), step("v2", "第 2 段视频", "video", "production", 40), step("c1", "检查第 1 段", "check", "production", 2, ["v1"]), step("m1", "合成成片", "assemble", "production", 0, ["v1", "v2"])],
+    steps: [...e.steps, ...withNodeIds(e.id, [step("v1", "第 1 段视频", "video", "production", 40), step("v2", "第 2 段视频", "video", "production", 40), step("c1", "检查第 1 段", "check", "production", 2, ["v1"]), step("m1", "合成成片", "assemble", "production", 0, ["v1", "v2"])])],
     budgets: [...e.budgets, { stage: "production", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }], updatedAt: at };
-  patchApproval(t, request.approvalId, e.id);
+  patchApproval(t, request.approvalId, e.id, request);
   p.stage = "production-running";
   productionTurn(projectId, p, t);
   return later(p.execution);
 }
 
-function patchApproval(t: MockThread, approvalId: string | undefined, executionId: string) {
+/** Like the server's approval snapshot: the card keeps what was actually authorized, not what it proposed. */
+function patchApproval(t: MockThread, approvalId: string | undefined, executionId: string, request: StudioPlanExecutionCreateRequest) {
   if (!approvalId) return;
-  t.view = { ...t.view, messages: t.view.messages.map(m => ({ ...m, blocks: m.blocks.map(b => b.type === "approval" && b.approvalId === approvalId ? { ...b, status: "approved" as const, executionId } : b) })) };
+  const approved = { approvedBudgetCap: request.budgetCap, approvedAutoFixCap: request.autoFixCap, approvedAt: now(), ...(request.confirmationMessageId ? { approvedByMessageId: request.confirmationMessageId } : {}) };
+  t.view = { ...t.view, messages: t.view.messages.map(m => ({ ...m, blocks: m.blocks.map(b => b.type === "approval" && b.approvalId === approvalId ? { ...b, status: "approved" as const, executionId, ...approved } : b) })) };
 }
 
 export function mockExecutionGet(projectId: string, executionId: string): Promise<StudioPlanExecution> {
@@ -390,6 +454,47 @@ export function mockExecutionAccept(projectId: string, executionId: string, step
   if (!p.execution || p.execution.id !== executionId) throw Object.assign(new Error("找不到这次制作"), { code: "STUDIO_PLAN_EXECUTION_NOT_FOUND" });
   updateExecution(p, x => ({ ...x, steps: x.steps.map(s => s.id === stepId ? { ...s, acceptedRunId: request.runId, acceptedCandidateIndex: request.candidateIndex } : s) }));
   return later(p.execution!);
+}
+
+/**
+ * A canvas whose recreation finished while it was closed: the thread holds both confirmed cards, the execution is
+ * done (and so no longer in the snapshot), every step has a readable run, the canvas has none of the nodes, and the
+ * events are pruned. Opening it must rebuild the nodes from the execution. Returns the execution.
+ */
+export function mockSeedCompletedExecution(projectId: string): StudioPlanExecution {
+  const p = project(projectId);
+  return seedCompleted(projectId, p, thread(p, p.currentThreadId));
+}
+function seedCompleted(projectId: string, p: MockProject, t: MockThread): StudioPlanExecution {
+  const at = now();
+  const id = `exec-${projectId}-done`;
+  const steps = withNodeIds(id, [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"]),
+    step("v1", "第 1 段视频", "video", "production", 40), step("v2", "第 2 段视频", "video", "production", 40), step("c1", "检查第 1 段", "check", "production", 2, ["v1"])])
+    .map(s => ({ ...s, status: "done" as const, attempt: 1, runIds: [`${id}-run-${s.id}`] }));
+  const execution: StudioPlanExecution = { id, projectId, threadId: t.thread.id, skillKey: "video-recreation", skillVersion: 1, stage: "production", planRunId: "mock-plan-production",
+    planRevision: 2, planFingerprint: "mock-production-v2", status: "done", steps, startedAt: at, deadlineAt: at, updatedAt: at, finishedAt: at,
+    budgets: [{ stage: "analysis", approvedCap: 30, autoFixCap: 0, spent: 24, inFlight: 0, remaining: 6 }, { stage: "production", approvedCap: 100, autoFixCap: 20, spent: 82, inFlight: 0, remaining: 18 }] };
+  const outputs: Record<string, IpRunOutput> = { s1: { text: MOCK_RECREATION_TEXT }, s2: { textRevision: { content: MOCK_NOTES, summary: "每段的画面和节奏" } }, v1: {}, v2: {},
+    c1: { check: MOCK_CHECK_ITEMS(`${id}-run-v1`) } };
+  for (const s of steps) mockRegisterRun(stepRun(projectId, execution, s, outputs[s.id]));
+  const approval = (approvalId: string, stage: "analysis" | "production", fingerprint: string, scope: string[], quotedCost: number, budgetCap: number, autoFixCap: number, approvedBudgetCap: number, approvedAutoFixCap: number): StudioMessageBlock =>
+    ({ type: "approval", approvalId, stage, planFingerprint: fingerprint, scope, quotedCost, budgetCap, autoFixCap, status: "approved", executionId: id, approvedBudgetCap, approvedAutoFixCap, approvedAt: at });
+  const message = (mid: string, seq: number, role: "user" | "assistant", text: string, blocks: StudioMessageBlock[] = []): StudioDialogueMessage =>
+    ({ id: mid, threadId: t.thread.id, seq, role, text, blocks, status: "done", createdAt: at });
+  const analysisPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-analysis", revision: 1, fingerprint: "mock-analysis-v1", plan: { summary: "先拉片，再给你制作方案。", questions: [], stage: "analysis", revision: 1, fingerprint: "mock-analysis-v1",
+    steps: [{ id: "s1", operation: "recreation", title: "拉片：切成 2 段", prompt: "", referenceNodeIds: [], quotedCost: 20 }, { id: "s2", operation: "text", title: "整理每段的画面和节奏", prompt: "", referenceNodeIds: [], quotedCost: 6, dependsOn: ["s1"] }], budget: { estimated: 26, autoFixCap: 0 } } };
+  const productionPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint: "mock-production-v2", plan: { summary: "按两段重做：保留原片动作和反转。", questions: [], stage: "production", revision: 2, fingerprint: "mock-production-v2",
+    steps: [{ id: "v1", operation: "video", title: "第 1 段视频", prompt: "", referenceNodeIds: [], quotedCost: 40 }, { id: "v2", operation: "video", title: "第 2 段视频", prompt: "", referenceNodeIds: [], quotedCost: 40 },
+      { id: "c1", operation: "check", title: "检查第 1 段", prompt: "", referenceNodeIds: [], quotedCost: 2, dependsOn: ["v1"] }], budget: { estimated: 82, autoFixCap: 40 } } };
+  const messages = [
+    message("seed-u1", 1, "user", "换成我的洗衣液，保留最后的反转"),
+    message("seed-m1", 2, "assistant", "先拉片确认每段的画面和节奏，这一步不超过 30 积分。", [analysisPlan, approval("seed-approval-analysis", "analysis", "mock-analysis-v1", ["拉片，切成 2 段", "整理每段的画面和节奏"], 26, 30, 0, 30, 0)]),
+    message("seed-m2", 3, "assistant", "拉片完成。推荐保留原片动作，把水杯换成你的商品。", [productionPlan, approval("seed-approval-production", "production", "mock-production-v2", ["第 1 段视频", "第 2 段视频", "检查第 1 段"], 82, 122, 40, 100, 20)]),
+  ];
+  t.thread.lastSeq = 40; t.eventFloorSeq = 40; t.events = [];
+  t.view = { ...t.view, messages, latestSeq: 40 };
+  p.execution = execution; p.stage = "done";
+  return clone(execution);
 }
 
 /** Tests only: drop all mock threads. */

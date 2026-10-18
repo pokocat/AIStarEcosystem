@@ -11,7 +11,7 @@ import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { blockKey, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialogueToolBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { proposalFieldValue } from '@/canvas-bridge/studio-plan-execution';
 import { StudioDialogueToolCard, toolTitle } from './studio-dialogue-tool';
-import { StudioDialogueApprovalCard } from './studio-dialogue-approval';
+import { StudioDialogueApprovalCard, type ApprovedCaps } from './studio-dialogue-approval';
 import { StudioDialogueQuestion, StudioDialogueSuggestions } from './studio-dialogue-question';
 import { StudioPlanCard } from './studio-assistant-plan';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
@@ -23,6 +23,8 @@ export type DialogueMessageHandlers = {
   onRevise: () => void;
   onApprove: (block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string) => Promise<unknown>;
   planReady: (block: DialogueApprovalBlock) => boolean;
+  /** What a confirmed card actually authorized (never the proposal); see approvedCaps in the store. */
+  approvedCaps?: (block: DialogueApprovalBlock) => ApprovedCaps | undefined;
   onAdopt: (block: DialogueAdoptionBlock) => Promise<void>;
   onBranch?: (messageId: string) => Promise<void>;
 };
@@ -56,7 +58,7 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
     case 'plan': return <StudioPlanCard key={blockKey(block)} block={block} onChooseApproach={readOnly ? undefined : title => handlers.onCompose(`改用「${title}」这个做法，重新报价`)}/>;
     case 'approval': return readOnly
       ? <p key={blockKey(block)} className="studio-dialogue-note">确认卡（{block.status === 'approved' ? '已确认' : '没有确认'}）</p>
-      : <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} shortfall={shortfalls[block.approvalId]} planReady={handlers.planReady(block)}
+      : <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId]} planReady={handlers.planReady(block)}
         onStart={caps => handlers.onApprove(block, caps, message.id)} onRevise={handlers.onRevise}/>;
     case 'question': return <StudioDialogueQuestion key={blockKey(block)} block={block} onAnswer={readOnly ? () => {} : handlers.onCompose}/>;
     case 'adoption': return <AdoptionProposal key={blockKey(block)} block={block} nodes={nodes} readOnly={readOnly} onAdopt={handlers.onAdopt}/>;

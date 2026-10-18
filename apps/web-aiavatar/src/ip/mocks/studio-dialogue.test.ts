@@ -1,8 +1,14 @@
+// @vitest-environment jsdom
 // The demo dialogue runs the whole flow on the same reducer and contract as the real server.
 import { beforeEach, expect, test } from 'vitest';
-import type { StudioDialogueEvent } from '@ai-star-eco/types/ip-studio-workflow';
-import { dialogueReducer, emptyDialogueStore, planForApproval, type DialogueApprovalBlock, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
-import { mockDialogueConversation, mockDialoguePost, mockDialogueSubscribe, mockDialogueTiming, mockExecutionCreate, resetMockDialogue } from './studio-dialogue';
+import type { IpRun } from '@ai-star-eco/types';
+import type { StudioDialogueEvent, StudioNodeUpsertData } from '@ai-star-eco/types/ip-studio-workflow';
+import { approvedCaps, approvedExecutionIds, dialogueReducer, emptyDialogueStore, planForApproval, type DialogueApprovalBlock, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
+import { executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
+import { mockReadRun } from './ip-studio';
+import {
+  mockDialogueConversation, mockDialoguePost, mockDialogueSubscribe, mockDialogueTiming, mockExecutionCreate, mockExecutionGet, mockSeedCompletedExecution, resetMockDialogue,
+} from './studio-dialogue';
 
 beforeEach(() => { resetMockDialogue(); mockDialogueTiming.tickMs = 0; });
 
@@ -40,15 +46,53 @@ test('message → streamed text, a work record, a plan and a confirmation; appro
     autoFixCap: production.autoFixCap, executionId: execution.id, approachId: productionPlan.plan.recommendedApproachId, expectedRevision: productionPlan.revision, approvalId: production.approvalId, confirmationMessageId: 'm' });
   await until(events, e => e.type === 'turn.done' && (e.data as { reason: string }).reason === 'completed');
   stop();
-  const upserts = events.filter(e => e.type === 'node.upsert').map(e => e.data as { op: string; node?: { metadata?: { studio?: { mock?: boolean } } } });
-  expect(upserts.filter(u => u.op === 'create')).toHaveLength(2);
-  expect(upserts.every(u => u.node?.metadata?.studio?.mock === true)).toBe(true);
+  // Like the executor: one node per finished step under its stable id, with edges from its inputs, marked as demo output.
+  const upserts = events.filter(e => e.type === 'node.upsert').map(e => e.data as StudioNodeUpsertData);
+  const creates = upserts.filter(u => u.op === 'create');
+  expect(creates.map(u => u.nodeId)).toEqual(['s1', 's2', 'v1', 'v2', 'c1'].map(id => `${execution.id}-${id.startsWith('s') ? 'a' : 'p'}-${id}`));
+  expect(creates.every(u => (u.node?.metadata as { studio?: { mock?: boolean } })?.studio?.mock === true)).toBe(true);
+  expect(upserts.filter(u => u.op === 'connect').map(u => u.connection)).toEqual([{ fromNodeId: `${execution.id}-a-s1`, toNodeId: `${execution.id}-a-s2` }]);
   const check = events.find(e => e.type === 'check.result')!.data as { result: { items: { status: string }[] } };
   expect(check.result.items.map(i => i.status)).toEqual(['pass', 'unknown']);
+  // A finished execution is not in the snapshot; its card names it and it reads back by id. Its runs read back too.
   const snapshot = await mockDialogueConversation('p');
-  expect(snapshot.execution?.status).toBe('done');
+  expect(snapshot.execution).toBeUndefined();
   expect(snapshot.latestSeq).toBe(events.at(-1)!.seq);
+  const done = await mockExecutionGet('p', execution.id);
+  expect(done.status).toBe('done');
+  expect(done.steps.filter(s => s.status === 'done').every(s => mockReadRun(s.runIds.at(-1)!).status === 'done')).toBe(true);
+  const card = snapshot.messages.flatMap(m => m.blocks).find((b): b is DialogueApprovalBlock => b.type === 'approval' && b.stage === 'production')!;
+  expect(card).toMatchObject({ status: 'approved', executionId: execution.id, approvedBudgetCap: production.budgetCap, approvedAutoFixCap: production.autoFixCap });
+  // Projecting the live commands and then restoring from the execution adds nothing more.
+  const live = projectCanvasOps({ nodes: [], connections: [] }, store.canvasOps);
+  const runs = Object.fromEntries(done.steps.flatMap(s => s.runIds).map(id => [id, mockReadRun(id)]));
+  const restore = projectCanvasOps(live.doc, executionRestoreUpserts(done, runs).map(data => ({ kind: 'node' as const, data, turnId: done.id, restore: true })));
+  expect(live.doc.nodes.filter(n => n.metadata?.studio?.kind === 'check')).toHaveLength(1);
+  expect(restore.changed).toBe(false);
 }, 20000);
+
+test('a canvas whose recreation finished while it was closed: nodes come back from the execution, not from pruned events', async () => {
+  const seeded = mockSeedCompletedExecution('closed');
+  const state = await mockDialogueConversation('closed');
+  expect(state.execution).toBeUndefined();
+  let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace', restoreCanvas: true });
+  // The history is gone: subscribing from the start is refused like a 410.
+  let expired = false;
+  const stop = mockDialogueSubscribe('closed', state.thread.id, 0, () => {}, () => { expired = true; });
+  await new Promise(r => setTimeout(r, 5)); stop();
+  expect(expired).toBe(true);
+  store = dialogueReducer(store, { type: 'snapshot', state, mode: 'replace' });
+  expect(approvedExecutionIds(store)).toEqual([seeded.id]);
+  const execution = await mockExecutionGet('closed', seeded.id);
+  const card = store.messages.flatMap(m => m.blocks).find((b): b is DialogueApprovalBlock => b.type === 'approval' && b.stage === 'production')!;
+  expect(approvedCaps(card, [execution])).toMatchObject({ budgetCap: 100, autoFixCap: 20 });
+  const steps = missingExecutionNodes(execution, [], new Set());
+  const runs: Record<string, IpRun> = Object.fromEntries(steps.flatMap(stepRunCandidates).map(id => [id, mockReadRun(id)]));
+  const r = projectCanvasOps({ nodes: [], connections: [] }, executionRestoreUpserts(execution, runs).map(data => ({ kind: 'node' as const, data, turnId: execution.id, restore: true })));
+  expect(r.doc.nodes.map(n => n.title)).toEqual(['拉片：切成 2 段', '整理每段的画面和节奏', '第 1 段视频', '第 2 段视频', '第 1 段视频 · 检查']);
+  expect(r.doc.nodes.every(n => n.metadata?.studio?.mock === true)).toBe(true);
+  expect(r.doc.connections).toHaveLength(2);
+});
 
 test('a message sent while a turn runs is queued and later marked applied', async () => {
   mockDialogueTiming.tickMs = 15;

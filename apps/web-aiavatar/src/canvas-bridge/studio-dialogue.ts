@@ -125,8 +125,16 @@ type ConnectResult = 'aborted' | 'expired' | 'failed' | 'idle' | 'received';
 export function subscribeStudioDialogue(options: DialogueStreamOptions): () => void {
   if (USE_MOCK) {
     options.onMode?.('live');
-    const stop = mockDialogueSubscribe(options.projectId, options.threadId, options.cursor(), options.onEvent);
-    return () => { stop(); options.onMode?.('stopped'); };
+    let stop = () => {};
+    let open = true;
+    const connect = () => {
+      stop = mockDialogueSubscribe(options.projectId, options.threadId, options.cursor(), options.onEvent, () => {
+        // Same as a 410: rebuild from a fresh snapshot, then follow from its cursor.
+        void (options.getSnapshot?.() ?? mockDialogueConversation(options.projectId)).then(state => { if (!open) return; options.onSnapshot(state, 'expired'); connect(); });
+      });
+    };
+    connect();
+    return () => { open = false; stop(); options.onMode?.('stopped'); };
   }
   const controller = new AbortController();
   void runDialogueStream(options, controller.signal);

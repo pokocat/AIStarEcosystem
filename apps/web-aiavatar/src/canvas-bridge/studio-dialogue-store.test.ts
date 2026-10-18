@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import type { StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
-import { dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, planForApproval, type DialogueStore } from './studio-dialogue-store';
+import {
+  approvedCaps, approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, persistableCanvasCursor, planForApproval,
+  type DialogueApprovalBlock, type DialogueStore,
+} from './studio-dialogue-store';
 
 const thread = { id: 'th', projectId: 'p', lastSeq: 5, createdAt: '2026-10-18T01:00:00Z', updatedAt: '2026-10-18T01:00:00Z' };
 const userMessage: StudioDialogueMessage = { id: 'u1', threadId: 'th', seq: 5, role: 'user', text: '换成我的洗衣液', blocks: [], status: 'done', createdAt: '2026-10-18T01:00:00Z', clientMessageId: 'c1' };
@@ -76,6 +79,52 @@ describe('plans and approvals', () => {
     const s = dialogueReducer(fold(loaded(), delta(6, 'x'), ev(7, 'approval.required', { messageId: 'm1', block: approval('a1', 'f1') })), { type: 'approval.local', approvalId: 'a1', status: 'approved', executionId: 'e1' });
     expect(s.messages.find(m => m.id === 'm1')!.blocks[0]).toMatchObject({ status: 'approved', executionId: 'e1' });
   });
+  test('a new plan revision replaces older pending cards as soon as it is proposed, before its own card arrives', () => {
+    const s = fold(loaded(), delta(6, '方案'), ev(7, 'plan.proposed', { messageId: 'm1', block: plan(1, 'f1') }), ev(8, 'approval.required', { messageId: 'm1', block: approval('a1', 'f1') }),
+      // A card whose plan is not loaded (older page) is replaced too; an approved card is history and stays.
+      ev(9, 'approval.required', { messageId: 'm1', block: approval('a0', 'f0') }), ev(10, 'approval.required', { messageId: 'm1', block: approval('ax', 'fx', 'approved') }));
+    const proposed = fold(s, ev(11, 'plan.proposed', { messageId: 'm2', block: plan(2, 'f2') }));
+    const status = (store: DialogueStore) => Object.fromEntries(store.messages.flatMap(m => m.blocks).filter((b): b is DialogueApprovalBlock => b.type === 'approval').map(b => [b.approvalId, b.status]));
+    expect(status(s)).toEqual({ a1: 'superseded', a0: 'pending', ax: 'approved' });
+    expect(status(proposed)).toEqual({ a1: 'superseded', a0: 'superseded', ax: 'approved' });
+    // The new card can even arrive before its plan: it is quoted for the newest fingerprint and stays usable.
+    const early = fold(loaded(), delta(6, '方案'), ev(7, 'plan.proposed', { messageId: 'm1', block: plan(1, 'f1') }), ev(8, 'approval.required', { messageId: 'm1', block: approval('a1', 'f1') }),
+      ev(9, 'approval.required', { messageId: 'm2', block: approval('a2', 'f2') }), ev(10, 'plan.proposed', { messageId: 'm2', block: plan(2, 'f2') }));
+    expect(status(early)).toEqual({ a1: 'superseded', a2: 'pending' });
+  });
+  test('a snapshot re-reads the cards the server superseded, and never makes an outdated card actionable again', () => {
+    const live = fold(loaded(), delta(6, '方案'), ev(7, 'plan.proposed', { messageId: 'm1', block: plan(1, 'f1') }), ev(8, 'approval.required', { messageId: 'm1', block: approval('a1', 'f1') }));
+    const m1 = live.messages.find(m => m.id === 'm1')!;
+    const server = (block: StudioMessageBlock) => ({ ...m1, status: 'done' as const, blocks: [plan(1, 'f1'), block] });
+    // The server marked it superseded: the snapshot shows that.
+    const marked = dialogueReducer(live, { type: 'snapshot', state: state({ latestSeq: 8, messages: [userMessage, server({ ...approval('a1', 'f1'), status: 'superseded' })] }), mode: 'merge' });
+    expect(marked.messages.find(m => m.id === 'm1')!.blocks[1]).toMatchObject({ status: 'superseded' });
+    // A server that still says pending while a newer revision exists does not resurrect it.
+    const newer = { ...m1, id: 'm2', seq: 7, status: 'done' as const, blocks: [plan(2, 'f2'), approval('a2', 'f2')] };
+    const stale = dialogueReducer(live, { type: 'snapshot', state: state({ latestSeq: 9, messages: [userMessage, server(approval('a1', 'f1')), newer] }), mode: 'merge' });
+    expect(stale.messages.flatMap(m => m.blocks).filter(b => b.type === 'approval').map(b => b.type === 'approval' && [b.approvalId, b.status])).toEqual([['a1', 'superseded'], ['a2', 'pending']]);
+    // Without a newer revision a pending card stays pending (its plan may simply not be loaded yet).
+    const alone = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state({ latestSeq: 9, messages: [server(approval('a9', 'f9'))] }), mode: 'replace' });
+    expect(alone.messages[0].blocks[1]).toMatchObject({ status: 'pending' });
+  });
+  test('a confirmed card reports what was actually authorized, never the proposal', () => {
+    const execution = { id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production' as const, planRunId: 'pr', planRevision: 2, planFingerprint: 'f1', status: 'done' as const, steps: [],
+      budgets: [{ stage: 'production' as const, approvedCap: 280, autoFixCap: 0, spent: 2, inFlight: 0, remaining: 278 }], startedAt: thread.createdAt, deadlineAt: thread.createdAt, updatedAt: thread.createdAt };
+    const proposed = { ...approval('a1', 'f1'), budgetCap: 1000, autoFixCap: 40 };
+    expect(approvedCaps(proposed, [execution])).toBeUndefined();
+    const approved = { ...proposed, status: 'approved' as const, executionId: 'e1' };
+    // Server snapshot of the authorization wins.
+    expect(approvedCaps({ ...approved, approvedBudgetCap: 300, approvedAutoFixCap: 20, approvedAt: '2026-10-18T12:01:13Z', approvedPlanRevision: 2 }, [execution]))
+      .toEqual({ budgetCap: 300, autoFixCap: 20, approvedAt: '2026-10-18T12:01:13Z', planRevision: 2 });
+    // Else the execution's stage budget; else nothing (not the 1000 it proposed).
+    expect(approvedCaps(approved, [undefined, execution])).toEqual({ budgetCap: 280, autoFixCap: 0, approvedAt: undefined, planRevision: undefined });
+    expect(approvedCaps(approved, [])).toEqual({ approvedAt: undefined, planRevision: undefined });
+    // A local approval records the accepted caps until the server's snapshot of the card arrives.
+    const s = dialogueReducer(fold(loaded(), delta(6, 'x'), ev(7, 'approval.required', { messageId: 'm1', block: proposed })),
+      { type: 'approval.local', approvalId: 'a1', status: 'approved', executionId: 'e1', approved: { budgetCap: 280, autoFixCap: 0 } });
+    expect(s.messages.find(m => m.id === 'm1')!.blocks[0]).toMatchObject({ status: 'approved', budgetCap: 1000, approvedBudgetCap: 280, approvedAutoFixCap: 0 });
+    expect(approvedExecutionIds(s)).toEqual(['e1']);
+  });
 });
 
 describe('turn.done and execution events', () => {
@@ -117,6 +166,40 @@ describe('canvas cursor', () => {
   test('an expired cursor on the same thread jumps to the snapshot instead of replaying forever', () => {
     const s = dialogueReducer(loaded(), { type: 'snapshot', state: state({ latestSeq: 40 }), mode: 'replace' });
     expect(dialogueCursor(s)).toBe(40);
+  });
+  test('first open without a canvas cursor replays from the start; commands up to the snapshot only restore', () => {
+    const saved = { ...userMessage, id: 'm1', role: 'assistant' as const, seq: 6, text: '做好了', clientMessageId: undefined };
+    const s0 = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state({ latestSeq: 9, messages: [userMessage, saved] }), mode: 'replace', restoreCanvas: true });
+    expect(dialogueCursor(s0)).toBe(0);
+    expect(canvasRestoring(s0)).toBe(true);
+    expect(persistableCanvasCursor(s0)).toBeUndefined();
+    const s1 = fold(s0, ev(3, 'node.upsert', { nodeId: 'n1', op: 'create' }, { executionId: 'e1' }), ev(4, 'node.upsert', { nodeId: 'draft', op: 'create' }), delta(6, '做好了'),
+      ev(8, 'check.result', { runId: 'c', result: { status: 'pass', targetRunId: 'v', items: [] } }, { executionId: 'e1' }));
+    // Text already in the snapshot is not appended again; execution commands are queued as restores, an old draft is not.
+    expect(s1.messages.find(m => m.id === 'm1')!.text).toBe('做好了');
+    expect(s1.canvasOps.map(op => [op.seq, op.restore])).toEqual([[3, true], [8, true]]);
+    const s2 = fold(dialogueReducer(s1, { type: 'canvas.ack', seq: 8 }), delta(9, '。', 'z', 'm9'));
+    expect(canvasRestoring(s2)).toBe(false);
+    expect(persistableCanvasCursor(s2)).toBe(9);
+    // After the snapshot, commands are live again.
+    expect(fold(s2, ev(10, 'node.upsert', { nodeId: 'n2', op: 'create' })).canvasOps.map(op => [op.seq, op.restore])).toEqual([[10, undefined]]);
+  });
+  test('a pruned history (410) rebuilds from the snapshot and ends the restore replay', () => {
+    const s0 = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state({ latestSeq: 40 }), mode: 'replace', restoreCanvas: true });
+    const s1 = dialogueReducer(s0, { type: 'snapshot', state: state({ latestSeq: 40 }), mode: 'replace' });
+    expect(dialogueCursor(s1)).toBe(40);
+    expect(canvasRestoring(s1)).toBe(false);
+    expect(persistableCanvasCursor(s1)).toBe(40);
+  });
+  test('the canvas cursor follows events that carry no canvas command, so it is never stuck behind the thread', () => {
+    const s0 = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state(), mode: 'replace', canvasAckSeq: 5 });
+    const s1 = fold(s0, delta(6, '好的'), ev(7, 'turn.done', { reason: 'completed', messageId: 'm1' }));
+    expect(s1.canvasAckSeq).toBe(7);
+    expect(dialogueCursor(s1)).toBe(7);
+    // While a command waits to be projected, the projected cursor does not pass it.
+    const s2 = fold(s1, ev(8, 'node.upsert', { nodeId: 'n1', op: 'create' }), delta(9, '还有', 'a', 'm2'));
+    expect(s2.canvasAckSeq).toBe(7);
+    expect(dialogueReducer(s2, { type: 'canvas.ack', seq: 8 }).canvasAckSeq).toBe(9);
   });
 });
 

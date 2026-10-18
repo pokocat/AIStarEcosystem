@@ -3,17 +3,20 @@
 // No modes, no history picker, no 「新对话」. The server streams real reply text, work records,
 // plans and confirmation cards into one timeline; the composer stays editable throughout and
 // new messages are queued as steering. Canvas commands from the server are projected into
-// the document idempotently and saved through the ordinary save chain. Conversations from the
+// the document idempotently and saved through the ordinary save chain; work an execution
+// finished while the canvas was closed is rebuilt from that execution on the next open
+// (missing nodes only, never over the user's own text). Conversations from the
 // old four-mode assistant stay readable (with their adoption bindings) under 「之前的对话」.
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError } from "@ai-star-eco/api-client";
 import { Button, Select } from "antd";
 import { ArrowUp, FileText, Image, SlidersHorizontal, Video, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
-import type { IpSavedAsset } from "@ai-star-eco/types";
-import type { StudioAssistantMode, StudioCapabilities, StudioPlan, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
+import type { IpRun, IpSavedAsset } from "@ai-star-eco/types";
+import type { StudioAssistantMode, StudioCapabilities, StudioPlan, StudioPlanExecution, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
+import { getRun } from "@/ip/api/ip-studio";
 import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
 import { importStudioMedia, importStudioStory, submitStudioRun } from "@/canvas-bridge/studio-api";
@@ -23,8 +26,11 @@ import { attachmentNode, readAssistantAttachment, savedAssetPayload } from "@/ca
 import { assistantEditableFields, assistantFieldValue, assistantReplacementNode, assistantStepReferences, assistantUnresolvedReferences, type AssistantReplacement } from "@/canvas-bridge/studio-assistant-plan";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { markStudioDescendants } from "@/canvas-bridge/studio-script";
-import { dialogueSections, executionActive, executionBudget, lastAssistantMessage, planForApproval, type DialogueAdoptionBlock, type DialogueApprovalBlock } from "@/canvas-bridge/studio-dialogue-store";
-import { STUDIO_CHECK_COMMAND, checkSubject, checkedStep, projectCanvasOps, projectStudioExecution, proposalFieldValue, type StudioCheckCommand } from "@/canvas-bridge/studio-plan-execution";
+import { approvedCaps, dialogueSections, executionActive, executionBudget, lastAssistantMessage, planForApproval, type DialogueAdoptionBlock, type DialogueApprovalBlock } from "@/canvas-bridge/studio-dialogue-store";
+import {
+  STUDIO_CHECK_COMMAND, checkSubject, checkedStep, executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, projectStudioExecution, proposalFieldValue,
+  readProjectedNodes, rememberProjectedNodes, stepNodeId, stepRunCandidates, type CanvasProjectionOp, type StudioCheckCommand,
+} from "@/canvas-bridge/studio-plan-execution";
 import { loadStudioSkills, studioSkillNotes } from "@/canvas-bridge/studio-skills";
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from "./studio-errors";
 import { StudioFloatingPanel } from "./studio-floating-panel";
@@ -45,6 +51,8 @@ type Props = {
   capabilities?: StudioCapabilities; open: boolean; initialNodeId?: string; initialPrompt?: string;
   /** Kept for callers; the dialogue routes intent itself and has no modes. */
   initialMode?: StudioAssistantMode;
+  /** The canvas lacks output of an execution (it finished while the canvas was closed): read the thread now, panel open or not. */
+  restorePending?: boolean;
   onClose: () => void; selectedIds: string[]; onUseStep: (step: StudioPlan["steps"][number]) => string | void;
 };
 type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[] };
@@ -53,9 +61,9 @@ const MAX_REFERENCES = 64;
 const ATTACHMENT_NOTE = "可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。";
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, onClose, selectedIds, onUseStep }: Props) {
+export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep }: Props) {
   const { message } = useStudioApp();
-  const session = useStudioDialogueSession({ projectId, open });
+  const session = useStudioDialogueSession({ projectId, open, autoload: !!restorePending });
   const { store } = session;
   const [text, setText] = useState(""), [pinnedIds, setPinnedIds] = useState<string[]>([]), [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [model, setModel] = useState<string>();
@@ -196,24 +204,62 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     saveTimer.current = setTimeout(() => { if (same(project)) void saveStudioDocument(project).catch(e => message.error(e)); }, 300);
   }, [projectId, message]);
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+  /** Project a batch onto the canvas through its two setters and the ordinary save chain. */
+  const applyCanvasOps = (ops: CanvasProjectionOp[], opts: { docVersion?: string } = {}) => {
+    const base = { nodes: live.current.nodes, connections: live.current.connections };
+    const result = projectCanvasOps(base, ops, opts);
+    if (result.changed) {
+      setNodes(list => projectCanvasOps({ nodes: list, connections: base.connections }, ops, opts).doc.nodes);
+      // Edges are projected against the nodes the batch started from: a restore only adds edges next to nodes
+      // the batch itself creates, and against the already-updated nodes it would see none of them as new.
+      setConnections(list => projectCanvasOps({ nodes: base.nodes, connections: list }, ops, opts).doc.connections);
+      scheduleSave();
+    }
+    return result;
+  };
   useEffect(() => {
     const ops = store.canvasOps;
     if (!ops.length) return;
-    const doc = { nodes: live.current.nodes, connections: live.current.connections };
-    const result = projectCanvasOps(doc, ops, { docVersion });
-    if (result.changed) {
-      setNodes(list => projectCanvasOps({ nodes: list, connections: live.current.connections }, ops, { docVersion }).doc.nodes);
-      setConnections(list => projectCanvasOps({ nodes: result.doc.nodes, connections: list }, ops, { docVersion }).doc.connections);
-      scheduleSave();
-    }
+    const result = applyCanvasOps(ops, { docVersion });
     setCanvasNotice(result.conflicts ? "画布已变化，稍后重试" : "");
     const fallback = lastAssistantMessage(store)?.id;
     for (const p of result.proposals) {
       const messageId = store.turnMessages[p.turnId] || fallback;
       if (messageId) session.dispatch({ type: "adoption.add", messageId, block: { type: "adoption", nodeId: p.nodeId, field: p.field, content: p.content, snapshot: p.snapshot, status: "proposed" } });
     }
+    rememberProjectedNodes(projectId, result.projected);
     session.dispatch({ type: "canvas.ack", seq: ops[ops.length - 1].seq });
   }, [store.canvasOps]);
+
+  // ── Work an execution finished while this canvas was closed ─────────────
+  // The execution and its native runs are the record of what was made; events may be pruned and a new browser
+  // has no cursor. Only nodes the canvas lacks and this viewer never projected are added, through the same
+  // idempotent projection and save chain as live commands.
+  const restored = useRef(new Map<string, string>());
+  useEffect(() => { restored.current = new Map(); }, [projectId]);
+  const restoreExecution = async (project: string, execution: StudioPlanExecution) => {
+    const steps = missingExecutionNodes(execution, live.current.nodes, readProjectedNodes(project));
+    if (!steps.length) return;
+    const runs: Record<string, IpRun> = {};
+    for (const step of steps) for (const id of stepRunCandidates(step)) {
+      const run = await getRun(id).catch(() => undefined);
+      if (!same(project)) return;
+      if (run) runs[id] = run;
+      if (run?.status === "done") break;
+    }
+    const ops = executionRestoreUpserts(execution, runs, new Set(steps.map(step => stepNodeId(execution, step))))
+      .map(data => ({ kind: "node" as const, data, executionId: execution.id, turnId: execution.id, restore: true }));
+    if (!ops.length) return;
+    rememberProjectedNodes(project, applyCanvasOps(ops).projected);
+  };
+  useEffect(() => {
+    const project = projectId;
+    for (const execution of session.executions) {
+      if (restored.current.get(execution.id) === execution.updatedAt) continue;
+      restored.current.set(execution.id, execution.updatedAt);
+      void restoreExecution(project, execution).catch(() => restored.current.delete(execution.id));
+    }
+  }, [session.executions]);
   useEffect(() => {
     const execution = store.execution;
     if (!execution || projectStudioExecution(live.current.nodes, execution) === live.current.nodes) return;
@@ -271,7 +317,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   };
   const handlers: DialogueMessageHandlers = {
     onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt,
-    planReady: block => !!planForApproval(store, block), onBranch: session.branch,
+    planReady: block => !!planForApproval(store, block), onBranch: session.branch, approvedCaps: block => approvedCaps(block, session.executions),
   };
 
   // ── Old four-mode conversations (read-only history with adoption) ──────────

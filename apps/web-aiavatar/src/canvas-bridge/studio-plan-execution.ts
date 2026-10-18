@@ -5,9 +5,15 @@
 // idempotent by stable node ids (same pattern as studio-film-study.ts): replaying an event
 // never duplicates a node or an edge, and text the user wrote is never overwritten; a
 // differing server text becomes an adoption proposal instead.
+//
+// A canvas closed while an execution ran gets its nodes back on the next open from the
+// execution itself (steps + their native runs, executionRestoreUpserts), not only from
+// events: those are pruned after a while and a new browser has no cursor. Restored commands
+// only add what is missing, so reopening never duplicates and never touches user writing.
+import type { IpRun, IpRunOutput } from '@ai-star-eco/types';
 import type {
   StudioCheckResultData, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
-  StudioPlanExecutionControlRequest, StudioPlanExecutionCreateRequest,
+  StudioPlanExecutionControlRequest, StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPlanStage,
 } from '@ai-star-eco/types/ip-studio-workflow';
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from '@/canvas/types/canvas';
 import { USE_MOCK, apiFetch } from '@/ip/api/_client';
@@ -68,6 +74,17 @@ function addConnection(doc: ProjectionDoc, from: string, to: string): Projection
   return { ...doc, connections: [...doc.connections, { id: edgeId(from, to), fromNodeId: from, toNodeId: to }] };
 }
 
+/**
+ * The node a command targets: its stable id, or the check node a check.result already made for the same check run
+ * (check.result is published before the executor's node.upsert for that step, under another id).
+ */
+function projectedNode(doc: ProjectionDoc, data: StudioNodeUpsertData, incoming?: CanvasNodeData) {
+  const byId = doc.nodes.find(n => n.id === data.nodeId);
+  if (byId || incoming?.metadata?.studio?.kind !== 'check' || !data.runId) return byId;
+  return doc.nodes.find(n => n.metadata?.studio?.kind === 'check' && n.metadata.studio.execution?.runId === data.runId
+    && (!data.executionId || n.metadata.studio.execution.executionId === data.executionId));
+}
+
 function binding(data: StudioNodeUpsertData, incoming?: CanvasNodeData, existing?: CanvasNodeData) {
   const saved = incoming?.metadata?.studio?.execution || existing?.metadata?.studio?.execution;
   const executionId = data.executionId || saved?.executionId, stepId = data.stepId || saved?.stepId;
@@ -98,12 +115,24 @@ function mergeServerNode(existing: CanvasNodeData, incoming: CanvasNodeData, exe
   return { node: { ...existing, title: existing.title || incoming.title, metadata }, proposals };
 }
 
+export type ProjectionOptions = {
+  docVersion?: string;
+  /**
+   * Restore: add only what the canvas is missing. An existing node is left exactly as it is (no merge, no
+   * proposal), proposals are dropped, and an edge is added only next to a node this batch created.
+   */
+  missingOnly?: boolean;
+  /** Node ids created earlier in the same batch (restore edges may attach to them). */
+  created?: ReadonlySet<string>;
+};
+
 /**
  * Apply one node.upsert. `docVersion` is the canvas fingerprint the client currently holds;
  * when the event names an expected version that the client cannot confirm, nothing is written.
  */
-export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpsertData, opts: { docVersion?: string } = {}): ProjectionResult {
+export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpsertData, opts: ProjectionOptions = {}): ProjectionResult {
   const unchanged = (outcome: ProjectionOutcome = 'unchanged', proposals: ProjectionProposal[] = []): ProjectionResult => ({ ...doc, outcome, proposals });
+  if (data.op === 'propose' && opts.missingOnly) return unchanged();
   if (data.op === 'propose') {
     const target = doc.nodes.find(n => n.id === data.nodeId);
     if (!target || !data.proposal) return unchanged('missing');
@@ -115,12 +144,15 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
   if (data.expectedDocVersion && data.expectedDocVersion !== opts.docVersion) return unchanged('conflict');
   if (data.op === 'connect') {
     if (!data.connection) return unchanged();
-    const next = addConnection(doc, data.connection.fromNodeId, data.connection.toNodeId);
+    const { fromNodeId: from, toNodeId: to } = data.connection;
+    if (opts.missingOnly && doc.nodes.some(n => n.id === from) && doc.nodes.some(n => n.id === to) && !opts.created?.has(from) && !opts.created?.has(to)) return unchanged();
+    const next = addConnection(doc, from, to);
     return !next ? unchanged('missing') : next === doc ? unchanged() : { ...next, outcome: 'applied', proposals: [] };
   }
   if (!data.node) return unchanged();
   const incoming = { ...(data.node as unknown as CanvasNodeData), id: data.nodeId };
-  const existing = doc.nodes.find(n => n.id === data.nodeId);
+  const existing = projectedNode(doc, data, incoming);
+  if (existing && opts.missingOnly) return unchanged();
   const execution = binding(data, incoming, existing);
   let next: ProjectionDoc = doc, proposals: ProjectionProposal[] = [], changed = false;
   if (!existing) {
@@ -133,7 +165,9 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
     if (!sameJson(merged.node, existing)) { next = { ...doc, nodes: doc.nodes.map(n => n.id === existing.id ? merged.node : n) }; changed = true; }
   }
   if (data.connection) {
-    const linked = addConnection(next, data.connection.fromNodeId, data.connection.toNodeId);
+    // Edges name the stable id; a check node merged under another id keeps its own.
+    const target = existing?.id ?? data.nodeId, end = (id: string) => id === data.nodeId ? target : id;
+    const linked = addConnection(next, end(data.connection.fromNodeId), end(data.connection.toNodeId));
     if (linked && linked !== next) { next = linked; changed = true; }
   }
   return { ...next, outcome: changed ? 'applied' : 'unchanged', proposals };
@@ -204,22 +238,168 @@ export function checkSubject(nodes: CanvasNodeData[], node: CanvasNodeData) {
     || nodes.find(n => n.id === node.metadata?.studio?.parentNodeId);
 }
 
-/** Apply a batch of queued canvas operations in seq order. Pure and idempotent. */
-export function projectCanvasOps(doc: ProjectionDoc, ops: ({ kind: 'node'; data: StudioNodeUpsertData; executionId?: string; turnId: string } | { kind: 'check'; data: StudioCheckResultData; executionId?: string; turnId: string })[], opts: { docVersion?: string } = {}) {
+export type CanvasProjectionOp =
+  | { kind: 'node'; data: StudioNodeUpsertData; executionId?: string; turnId: string; restore?: boolean }
+  | { kind: 'check'; data: StudioCheckResultData; executionId?: string; turnId: string; restore?: boolean };
+
+/**
+ * Apply a batch of queued canvas operations in seq order. Pure and idempotent. `projected` lists the nodes the
+ * batch's node commands stand for (created, updated or already there), for the viewer's projection record.
+ */
+export function projectCanvasOps(doc: ProjectionDoc, ops: CanvasProjectionOp[], opts: { docVersion?: string } = {}) {
   let next = doc, conflicts = 0, changed = false;
   const proposals: (ProjectionProposal & { turnId: string })[] = [], missing: StudioNodeUpsertData[] = [];
+  const created = new Set<string>(), projected = new Set<string>();
+  const options = (op: CanvasProjectionOp): ProjectionOptions => ({ ...opts, missingOnly: !!op.restore, created });
   for (const op of ops) {
-    const result = op.kind === 'node' ? projectStudioNodeUpsert(next, op.data, opts) : projectStudioCheckResult(next, op.data, op.executionId);
+    const before = next;
+    const result = op.kind === 'node' ? projectStudioNodeUpsert(next, op.data, options(op)) : projectStudioCheckResult(next, op.data, op.executionId);
     if (result.outcome === 'conflict') conflicts++;
     if (result.outcome === 'applied') changed = true;
     if (result.outcome === 'missing' && op.kind === 'node' && op.data.op === 'connect') missing.push(op.data);
     proposals.push(...result.proposals.map(p => ({ ...p, turnId: op.turnId })));
     next = { nodes: result.nodes, connections: result.connections };
+    for (const n of next.nodes) if (!before.nodes.some(b => b.id === n.id)) created.add(n.id);
+    if (op.kind === 'node' && op.data.op !== 'connect' && op.data.op !== 'propose') {
+      const target = projectedNode(next, op.data, op.data.node ? { ...(op.data.node as unknown as CanvasNodeData), id: op.data.nodeId } : undefined);
+      if (target) projected.add(target.id);
+    }
   }
   // A connection may name a node created later in the same batch.
   for (const data of missing) {
-    const result = projectStudioNodeUpsert(next, data, opts);
+    const op = ops.find(o => o.kind === 'node' && o.data === data);
+    const result = projectStudioNodeUpsert(next, data, { ...opts, missingOnly: !!op?.restore, created });
     if (result.outcome === 'applied') { changed = true; next = { nodes: result.nodes, connections: result.connections }; }
   }
-  return { doc: next, conflicts, proposals, changed };
+  return { doc: next, conflicts, proposals, changed, projected: [...projected] };
+}
+
+// ── Restore from execution state ──────────────────────────────────────────
+
+/** Stable output node id of a step (StudioPlanExecutionIds.nodeId on the server). */
+export const executionNodeId = (executionId: string, stage: StudioPlanStage, stepId: string) => `${executionId}-${stage === 'production' ? 'p' : 'a'}-${stepId}`;
+export const stepNodeId = (execution: Pick<StudioPlanExecution, 'id'>, step: Pick<StudioPlanExecutionStep, 'id' | 'stage' | 'nodeId'>) =>
+  step.nodeId || executionNodeId(execution.id, step.stage, step.id);
+
+/** Runs a finished step stands for, best first: the accepted run, else the most recent attempts. */
+export function stepRunCandidates(step: StudioPlanExecutionStep): string[] {
+  return step.acceptedRunId ? [step.acceptedRunId] : [...step.runIds].reverse();
+}
+/** The run whose output a finished step left behind: the accepted one, else the latest that succeeded. */
+export function stepOutputRun(step: StudioPlanExecutionStep, runs: Record<string, IpRun | undefined>): IpRun | undefined {
+  for (const id of stepRunCandidates(step)) if (runs[id]?.status === 'done') return runs[id];
+  return undefined;
+}
+
+/** Primary media key of a run output, read like StudioPlanOutputs.outputKey (a candidate index picks among candidates). */
+export function runOutputKey(output: IpRunOutput | undefined, candidate?: number): string | undefined {
+  const videos = output?.videoCandidates;
+  if (videos?.length) {
+    if (candidate !== undefined) return videos[candidate]?.status === 'done' ? videos[candidate].storageKey : undefined;
+    return videos.find(v => v.status === 'done')?.storageKey;
+  }
+  const images = output?.candidates;
+  if (images?.length) return images[candidate ?? 0]?.key;
+  return output?.storageKey;
+}
+
+type UpsertNode = NonNullable<StudioNodeUpsertData['node']>;
+function stepUpsert(execution: StudioPlanExecution, nodeId: string, type: 'text' | 'image' | 'video', title: string, stepId: string, runId: string, mock?: boolean) {
+  const node = { id: nodeId, type, title, width: type === 'text' ? 380 : 320, height: type === 'text' ? 320 : 240, position: { x: 0, y: 0 },
+    metadata: { status: 'success', studio: { runId, execution: { executionId: execution.id, stepId, runId }, ...(mock ? { mock: true } : {}) } } };
+  return { nodeId, op: 'create' as const, executionId: execution.id, stepId, runId, node: node as unknown as UpsertNode };
+}
+const meta = (data: StudioNodeUpsertData) => (data.node as unknown as CanvasNodeData).metadata!;
+
+/**
+ * The node.upsert commands a finished execution sent (or would have sent) to the canvas, rebuilt from its steps and
+ * their native runs: one node per finished step with its real output key or text, a check node beside what it
+ * inspected, one video node per film-study segment and the edges from each step's inputs. Same ids and fields as
+ * StudioPlanExecutor.nodeEvents, so a restored node is the node a live client would have made; feed the result
+ * through projectCanvasOps as restore commands. `only` limits it to the given step node ids.
+ */
+export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Record<string, IpRun | undefined>, only?: ReadonlySet<string>): StudioNodeUpsertData[] {
+  const out: StudioNodeUpsertData[] = [];
+  const stageSteps = (stage: StudioPlanStage) => execution.steps.filter(s => s.stage === stage);
+  for (const step of execution.steps) {
+    const nodeId = stepNodeId(execution, step);
+    if (step.status !== 'done' || (only && !only.has(nodeId))) continue;
+    const run = stepOutputRun(step, runs);
+    if (!run) continue;
+    const output = run.output || {}, operation = step.operation;
+    const type = operation === 'image' ? 'image' : operation === 'video' || operation === 'assemble' ? 'video' : 'text';
+    const data = stepUpsert(execution, nodeId, type, step.title, step.id, run.id, output.mock);
+    const metadata = meta(data), studio = metadata.studio!;
+    if (type !== 'text') {
+      const key = runOutputKey(output, step.acceptedRunId === run.id ? step.acceptedCandidateIndex : undefined);
+      if (key) metadata.storageKey = key;
+      if (operation === 'assemble') studio.kind = 'work';
+    } else if (operation === 'check') {
+      const subject = (output.check && checkedStep(execution, output.check.targetRunId)) || stageSteps(step.stage).find(s => s.id === step.dependsOn[0]);
+      const subjectId = subject ? stepNodeId(execution, subject) : undefined;
+      (data.node as unknown as CanvasNodeData).title = `${subject?.title || '成片'} · 检查`;
+      studio.kind = 'check';
+      if (subjectId) { studio.parentNodeId = subjectId; Object.assign(data, { connection: { fromNodeId: subjectId, toNodeId: nodeId } }); }
+      if (output.check) studio.check = output.check;
+    } else if (operation === 'recreation') {
+      studio.kind = 'recreation'; metadata.content = output.text ?? '';
+    } else {
+      studio.kind = 'text'; metadata.content = output.textRevision?.content ?? output.text ?? '';
+    }
+    out.push(data);
+    if (operation !== 'check') for (const dependency of step.dependsOn) {
+      const upstream = stageSteps(step.stage).find(s => s.id === dependency);
+      if (!upstream || upstream.operation === 'check') continue;
+      out.push({ nodeId, op: 'connect', executionId: execution.id, stepId: step.id, runId: run.id, connection: { fromNodeId: stepNodeId(execution, upstream), toNodeId: nodeId } });
+    }
+    if (operation === 'recreation') for (const segment of output.filmStudy?.segments || []) {
+      if (!segment.storageKey) continue;
+      const segmentId = `${nodeId}-s${segment.no}`;
+      const clip = stepUpsert(execution, segmentId, 'video', `第 ${segment.no} 段 · ${segment.title || '片段'}`, step.id, run.id, output.mock);
+      meta(clip).storageKey = segment.storageKey;
+      meta(clip).studio!.sourceRange = { startSec: segment.startSec, endSec: segment.endSec, storageKey: segment.storageKey };
+      out.push({ ...clip, connection: { fromNodeId: nodeId, toNodeId: segmentId } });
+    }
+  }
+  return out;
+}
+
+/** Step output nodes of an execution that the canvas does not have and this viewer has not projected before. */
+export function missingExecutionNodes(execution: StudioPlanExecution, nodes: CanvasNodeData[], projected: ReadonlySet<string>): StudioPlanExecutionStep[] {
+  return execution.steps.filter(step => {
+    if (step.status !== 'done' || !step.runIds.length && !step.acceptedRunId) return false;
+    const id = stepNodeId(execution, step);
+    if (projected.has(id) || nodes.some(n => n.id === id)) return false;
+    // A node bound to one of this step's runs stands for it under another id (a check.result's own check node).
+    // Step ids repeat across stages, so the run decides, not the step id alone.
+    return !nodes.some(n => { const bound = n.metadata?.studio?.execution;
+      return bound?.executionId === execution.id && bound.stepId === step.id && !!bound.runId && (step.runIds.includes(bound.runId) || step.acceptedRunId === bound.runId); });
+  });
+}
+
+/**
+ * The project has a finished execution step run (`inputs.executionId`) that no canvas node stands for and this viewer
+ * never projected: the canvas was closed while the execution ran. A cheap signal from the project's run list, used
+ * to read the dialogue thread on canvas open so the restore can run without the panel being opened.
+ */
+export function executionOutputMissing(runs: IpRun[], nodes: CanvasNodeData[], projected: ReadonlySet<string>): boolean {
+  return runs.some(run => run.status === 'done' && !!(run.inputs as { executionId?: string } | undefined)?.executionId && !projected.has(run.nodeId)
+    && !nodes.some(n => n.id === run.nodeId || n.metadata?.studio?.execution?.runId === run.id || n.metadata?.studio?.runId === run.id));
+}
+
+// Per-viewer record of the nodes this browser already projected, so a node the user deleted is not rebuilt on the
+// next open. It is a convenience: without it (another browser) a deleted output comes back once, never twice.
+const projectedKey = (projectId: string) => `studio-projected-nodes:${projectId}`;
+const PROJECTED_MAX = 2000;
+export function readProjectedNodes(projectId: string): Set<string> {
+  try { const raw = JSON.parse(localStorage.getItem(projectedKey(projectId)) || '[]'); return new Set(Array.isArray(raw) ? raw.filter((v): v is string => typeof v === 'string') : []); }
+  catch { return new Set(); }
+}
+export function rememberProjectedNodes(projectId: string, ids: string[]) {
+  if (!ids.length) return;
+  try {
+    const known = [...readProjectedNodes(projectId)];
+    const fresh = ids.filter(id => !known.includes(id));
+    if (fresh.length) localStorage.setItem(projectedKey(projectId), JSON.stringify([...known, ...fresh].slice(-PROJECTED_MAX)));
+  } catch { /* the canvas itself still holds what was projected */ }
 }

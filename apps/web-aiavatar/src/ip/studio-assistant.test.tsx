@@ -3,7 +3,9 @@ import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 're
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client';
-import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
+import type { IpRun } from '@ai-star-eco/types';
+import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, StudioPlanExecution } from '@ai-star-eco/types/ip-studio-workflow';
+import { formatDateTime } from '@/lib/datetime';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import { StudioAssistant } from './studio-assistant';
@@ -12,7 +14,7 @@ import { STUDIO_CHECK_COMMAND } from '@/canvas-bridge/studio-plan-execution';
 const api = vi.hoisted(() => ({
   getConversation: vi.fn(), post: vi.fn(), subscribe: vi.fn(), control: vi.fn(), branch: vi.fn(), list: vi.fn(),
   createExecution: vi.fn(), getExecution: vi.fn(), pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(), accept: vi.fn(),
-  save: vi.fn(), importStudioStory: vi.fn(), importStudioMedia: vi.fn(), submitStudioRun: vi.fn(), readRun: vi.fn(), success: vi.fn(), error: vi.fn(),
+  save: vi.fn(), importStudioStory: vi.fn(), importStudioMedia: vi.fn(), submitStudioRun: vi.fn(), readRun: vi.fn(), getRun: vi.fn(), success: vi.fn(), error: vi.fn(),
 }));
 vi.mock('@/canvas-bridge/studio-dialogue', () => ({ getStudioConversation: api.getConversation, postStudioDialogueMessage: api.post, subscribeStudioDialogue: api.subscribe,
   controlStudioDialogue: api.control, branchStudioDialogue: api.branch, listStudioDialogueMessages: api.list }));
@@ -23,6 +25,7 @@ vi.mock('@/canvas-bridge/studio-skills', () => ({ loadStudioSkills: async () => 
 vi.mock('@/canvas-bridge/studio-save', () => ({ saveStudioDocument: api.save }));
 vi.mock('@/canvas-bridge/studio-api', () => ({ importStudioStory: api.importStudioStory, importStudioMedia: api.importStudioMedia, submitStudioRun: api.submitStudioRun }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun }));
+vi.mock('@/ip/api/ip-studio', async original => ({ ...(await original<typeof import('@/ip/api/ip-studio')>()), getRun: api.getRun }));
 vi.mock('./studio-floating-panel', () => ({ StudioFloatingPanel: ({ open, title, children, onClose, footer }: any) => open ? <section role="dialog" aria-label={title}><button aria-label={`关闭${title}`} onClick={onClose}>关闭</button>{children}{footer}</section> : null }));
 vi.mock('./studio-conversation-share', () => ({ StudioConversationShare: () => null }));
 vi.mock('./studio-attachment-picker', () => ({ StudioAttachmentPicker: ({ locked, reading, onFiles }: any) => <div><button disabled={locked}>{reading ? '正在导入附件' : '添加附件'}</button><input type="file" aria-label="上传创作附件" multiple onChange={e => onFiles(Array.from(e.target.files || []))}/></div> }));
@@ -71,6 +74,7 @@ beforeEach(() => {
   api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
   api.save.mockResolvedValue(undefined);
   api.post.mockResolvedValue({ messageId: 'u1', turnId: 't1', runId: 'r1', queueState: 'accepted' });
+  api.getRun.mockRejectedValue(new Error('没有这次运行'));
 });
 
 test('one continuous thread: no mode tabs, history picker, new-conversation, canvas-sense or visual toggle', async () => {
@@ -190,6 +194,9 @@ test('confirming production posts the execution, approach, plan revision, approv
     approvalId: 'a2', confirmationMessageId: 'm2', executionId: 'e1', approachId: 'keep', expectedRevision: 2 }]);
   await waitFor(() => expect(within(screen.getByLabelText('确认制作')).getByText('已确认')).toBeDefined());
   expect(within(screen.getByLabelText('确认制作')).queryByRole('button', { name: '开始制作' })).toBeNull();
+  // The record keeps what was confirmed (120 / 30), not what the card proposed (122 / 40).
+  expect(within(screen.getByLabelText('确认制作')).getByText('已确认 · 总上限 120 积分 · 重做上限 30 积分')).toBeDefined();
+  expect(within(screen.getByLabelText('确认制作')).queryByText(/总上限 122 积分/)).toBeNull();
   expect(screen.getByLabelText('制作进度')).toBeDefined();
 });
 
@@ -319,4 +326,136 @@ test('the production strip pauses or stops through the execution endpoints, each
   fireEvent.click(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '停止' }));
   await waitFor(() => expect(api.cancel).toHaveBeenCalledWith('p', 'e1', { clientRequestId: expect.any(String), expectedStatus: 'paused' }));
   expect(api.pause.mock.calls[0][2].clientRequestId).not.toBe(api.cancel.mock.calls[0][2].clientRequestId);
+});
+
+// ── Work finished while the canvas was closed (.studio-e2e/report.md D05) and the confirmed record (D10) ──
+const E = 'PEX-1';
+const doneExecution: StudioPlanExecution = { id: E, projectId: 'p', threadId: 'th', skillKey: 'k', skillVersion: 1, stage: 'production', planRunId: 'plan-2', planRevision: 2, planFingerprint: 'f2', status: 'done',
+  steps: [
+    { id: 'facts', title: '整理事实', operation: 'text', stage: 'analysis', dependsOn: [], status: 'done', runIds: ['r-facts'], attempt: 1, quotedCost: 140, nodeId: `${E}-a-facts` },
+    { id: 'limits', title: '核对边界', operation: 'text', stage: 'analysis', dependsOn: ['facts'], status: 'done', runIds: ['r-limits'], attempt: 1, quotedCost: 140, nodeId: `${E}-a-limits` },
+    { id: 'v1', title: '第 1 段视频', operation: 'video', stage: 'production', dependsOn: [], status: 'done', runIds: ['r-v1'], attempt: 1, quotedCost: 40, nodeId: `${E}-p-v1` },
+    { id: 'c1', title: '检查第 1 段', operation: 'check', stage: 'production', dependsOn: ['v1'], status: 'done', runIds: ['r-c1'], attempt: 1, quotedCost: 2, nodeId: `${E}-p-c1` },
+  ],
+  budgets: [{ stage: 'analysis', approvedCap: 280, autoFixCap: 0, spent: 2, inFlight: 0, remaining: 278 }, { stage: 'production', approvedCap: 260, autoFixCap: 20, spent: 40, inFlight: 0, remaining: 220 }],
+  startedAt: at, deadlineAt: at, updatedAt: at, finishedAt: at };
+const doneRun = (id: string, nodeId: string, kind: IpRun['kind'], output: IpRun['output']): IpRun =>
+  ({ id, projectId: 'p', nodeId, kind, status: 'done', stage: 'done', pct: 100, cost: 1, inputs: { executionId: E } as unknown as IpRun['inputs'], output, createdAt: at, finishedAt: at });
+const doneRuns: Record<string, IpRun> = {
+  'r-facts': doneRun('r-facts', `${E}-a-facts`, 'studio-text', { textRevision: { content: '整理好的事实', summary: '事实' }, text: '整理好的事实' }),
+  'r-limits': doneRun('r-limits', `${E}-a-limits`, 'studio-text', { textRevision: { content: '未知事项', summary: '边界' }, text: '未知事项' }),
+  'r-v1': doneRun('r-v1', `${E}-p-v1`, 'studio-video', { videoCandidates: [{ index: 0, jobId: 'j', status: 'done', pct: 100, storageKey: 'k/v1.mp4', durationSec: 5 }] }),
+  'r-c1': doneRun('r-c1', `${E}-p-c1`, 'studio-check', { check: { status: 'unknown', targetRunId: 'r-v1', items: [{ id: 'caption', status: 'unknown', evidence: [], reason: '没有字幕' }] } }),
+};
+const ALL = [`${E}-a-facts`, `${E}-a-limits`, `${E}-p-c1`, `${E}-p-v1`];
+const confirmedCard = { ...approvalBlock, status: 'approved' as const, executionId: E, budgetCap: 1000, approvedBudgetCap: 280, approvedAutoFixCap: 30, approvedAt: '2026-10-18T12:01:13Z', approvedPlanRevision: 2 };
+/** The thread as the server returns it after the execution finished: no execution in the snapshot, the confirmed card names it. */
+const closedState = (card: StudioMessageBlock = confirmedCard): StudioDialogueState => ({ thread: { ...thread, lastSeq: 22 }, latestSeq: 22, messages: [planMessage([planBlock, card])] });
+const closedCanvas = (card?: StudioMessageBlock) => {
+  api.getConversation.mockResolvedValue(closedState(card));
+  api.getExecution.mockResolvedValue(doneExecution);
+  api.getRun.mockImplementation(async (id: string) => { if (!doneRuns[id]) throw new Error('没有这次运行'); return doneRuns[id]; });
+};
+const settle = () => act(() => new Promise(resolve => setTimeout(resolve, 30)));
+
+test('(a) a canvas opened after its execution finished gets the produced nodes back and saves them', async () => {
+  closedCanvas();
+  let canvas: CanvasNodeData[] = [], edges: any[] = [];
+  await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[], connections: any[]) => { canvas = nodes; edges = connections; }}/>);
+  await waitFor(() => expect(canvas.map(n => n.id).sort()).toEqual(ALL));
+  expect(api.getExecution).toHaveBeenCalledWith('p', E);
+  expect(canvas.find(n => n.id === `${E}-a-facts`)!.metadata).toMatchObject({ content: '整理好的事实', studio: { kind: 'text', execution: { executionId: E, stepId: 'facts', runId: 'r-facts' } } });
+  expect(canvas.find(n => n.id === `${E}-p-v1`)!.metadata?.storageKey).toBe('k/v1.mp4');
+  expect(canvas.find(n => n.id === `${E}-p-c1`)!.metadata?.studio).toMatchObject({ kind: 'check', parentNodeId: `${E}-p-v1` });
+  // Both kinds of edge: a step's input (facts → limits) and the check beside what it inspected (v1 → c1).
+  await waitFor(() => expect(edges.map(e => `${e.fromNodeId}>${e.toNodeId}`).sort()).toEqual([`${E}-a-facts>${E}-a-limits`, `${E}-p-v1>${E}-p-c1`]));
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  // The finished execution is shown again, and canvas commands are replayed from the start of the thread.
+  expect(within(screen.getByLabelText('制作进度')).getByText('制作 · 已完成')).toBeDefined();
+  expect(streams.at(-1)!.cursor()).toBe(0);
+  expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL);
+});
+
+test('(b) opening it again adds nothing and reads no runs; a node deleted here is not rebuilt', async () => {
+  closedCanvas();
+  let canvas: CanvasNodeData[] = [];
+  const first = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  await waitFor(() => expect(canvas).toHaveLength(4));
+  first.unmount();
+  const reads = api.getRun.mock.calls.length, saves = api.save.mock.calls.length;
+  let again: CanvasNodeData[] = [];
+  const second = await ready(<Host initial={canvas} onCanvas={(nodes: CanvasNodeData[]) => { again = nodes; }}/>);
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledTimes(2));
+  await settle();
+  expect(again.map(n => n.id)).toEqual(canvas.map(n => n.id));
+  expect(api.getRun.mock.calls.length).toBe(reads);
+  expect(api.save.mock.calls.length).toBe(saves);
+  second.unmount();
+  let third: CanvasNodeData[] = [];
+  await ready(<Host initial={canvas.filter(n => n.id !== `${E}-p-v1`)} onCanvas={(nodes: CanvasNodeData[]) => { third = nodes; }}/>);
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledTimes(3));
+  await settle();
+  expect(third.map(n => n.id).sort()).toEqual(ALL.filter(id => id !== `${E}-p-v1`));
+});
+
+test('(c) text the user already rewrote on a produced node survives the restore, with no proposal', async () => {
+  closedCanvas();
+  const mine = { ...text, id: `${E}-a-facts`, title: '我的事实', metadata: { content: '我手改过的事实', status: 'success' as const, studio: { kind: 'text' as const, execution: { executionId: E, stepId: 'facts', runId: 'r-facts' } } } } as CanvasNodeData;
+  let canvas: CanvasNodeData[] = [], edges: any[] = [];
+  await ready(<Host initial={[mine]} onCanvas={(nodes: CanvasNodeData[], connections: any[]) => { canvas = nodes; edges = connections; }}/>);
+  await waitFor(() => expect(canvas).toHaveLength(4));
+  expect(canvas.find(n => n.id === `${E}-a-facts`)).toEqual(mine);
+  // The restored step still links to the node it came from.
+  await waitFor(() => expect(edges.map(e => `${e.fromNodeId}>${e.toNodeId}`)).toContain(`${E}-a-facts>${E}-a-limits`));
+  expect(api.getRun).not.toHaveBeenCalledWith('r-facts');
+  expect(screen.queryByLabelText('修改建议')).toBeNull();
+});
+
+test('the canvas restores on open even with the panel closed when it is missing execution output', async () => {
+  closedCanvas();
+  const closed = render(<Host initial={[]} open={false}/>);
+  await settle();
+  expect(api.getConversation).not.toHaveBeenCalled();
+  closed.unmount();
+  let canvas: CanvasNodeData[] = [];
+  render(<Host initial={[]} open={false} restorePending onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  await waitFor(() => expect(canvas).toHaveLength(4));
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+test('a confirmed card shows the authorized caps and when; without the server snapshot, the execution budget, never the proposal', async () => {
+  closedCanvas();
+  const view = await ready(<Host initial={[]}/>);
+  const card = screen.getByLabelText('确认制作');
+  expect(within(card).getByText('已确认 · 总上限 280 积分 · 重做上限 30 积分')).toBeDefined();
+  expect(within(card).getByText(`确认于 ${formatDateTime('2026-10-18T12:01:13Z')} · 第 2 版方案`)).toBeDefined();
+  expect(within(card).getByText('报价 82 积分。')).toBeDefined();
+  expect(card.textContent).not.toContain('1,000');
+  view.unmount();
+  const { approvedBudgetCap: _cap, approvedAutoFixCap: _fix, approvedAt: _at, approvedPlanRevision: _rev, ...legacy } = confirmedCard;
+  closedCanvas(legacy);
+  await ready(<Host initial={[]}/>);
+  await waitFor(() => expect(within(screen.getByLabelText('确认制作')).getByText('已确认 · 总上限 260 积分 · 重做上限 20 积分')).toBeDefined());
+  expect(screen.getByLabelText('确认制作').textContent).not.toContain('1,000');
+});
+
+test('first open on this browser replays execution commands from the start: missing nodes only, then live again', async () => {
+  closedCanvas();
+  api.getExecution.mockRejectedValue(new Error('读取失败'));
+  const mine = { ...text, id: `${E}-a-facts`, metadata: { content: '我手改过的事实', status: 'success' as const, studio: { kind: 'text' as const } } } as CanvasNodeData;
+  let canvas: CanvasNodeData[] = [];
+  await ready(<Host initial={[mine]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  expect(streams.at(-1)!.cursor()).toBe(0);
+  const upsert = (eventSeq: number, nodeId: string, content: string) => ({ eventId: `h${eventSeq}`, seq: eventSeq, threadId: 'th', turnId: E, executionId: E, createdAt: at, type: 'node.upsert' as const,
+    data: { nodeId, op: 'create' as const, executionId: E, stepId: nodeId.split('-').at(-1), runId: `r-${nodeId}`,
+      node: { id: nodeId, type: 'text' as const, title: '整理事实', position: { x: 0, y: 0 }, width: 380, height: 320, metadata: { status: 'success', content, studio: { kind: 'text' } } } } });
+  emit(upsert(5, `${E}-a-facts`, '服务端的事实'), upsert(6, `${E}-a-limits`, '未知事项'), ev('turn.done', { reason: 'completed', messageId: 'm2' }, { seq: 22, eventId: 'h22' }));
+  await waitFor(() => expect(canvas.map(n => n.id)).toEqual([`${E}-a-facts`, `${E}-a-limits`]));
+  expect(canvas[0]).toEqual(mine);
+  expect(screen.queryByLabelText('修改建议')).toBeNull();
+  await waitFor(() => expect(localStorage.getItem('studio-dialogue-canvas-seq:th')).toBe('22'));
+  // After the snapshot point the same command is an ordinary one: differing server text becomes a proposal, never an overwrite.
+  emit(upsert(23, `${E}-a-facts`, '服务端的新事实'));
+  await waitFor(() => expect(screen.getByLabelText('修改建议')).toBeDefined());
+  expect(canvas.find(n => n.id === `${E}-a-facts`)!.metadata?.content).toBe('我手改过的事实');
 });

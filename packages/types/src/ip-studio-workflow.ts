@@ -362,7 +362,17 @@ export interface StudioCheckResult { status: StudioCheckVerdict; targetRunId: st
 export type StudioMessageBlock =
   | { type: "plan"; planRunId: string; revision: number; fingerprint: string; plan: StudioPlan }
   | { type: "approval"; approvalId: string; stage: StudioPlanStage; planFingerprint: string; scope: string[]; quotedCost: number; budgetCap: number; autoFixCap: number;
-      billingSelection?: EnterpriseBillingSelection; status: "pending" | "approved" | "expired" | "superseded"; approvedMessageId?: string; executionId?: string; expiresAt?: string }
+      billingSelection?: EnterpriseBillingSelection; status: "pending" | "approved" | "expired" | "superseded"; approvedMessageId?: string; executionId?: string; expiresAt?: string;
+      /** What the server actually authorized (immutable once approved); the proposal fields above stay the quote. */
+      approvedBudgetCap?: number; approvedAutoFixCap?: number; approvedAt?: string; approvedByMessageId?: string;
+      /** Plan revision the approval bound (the thread's revision at confirmation). */
+      approvedPlanRevision?: number;
+      /** Set when a newer plan revision or a newer card replaced this pending card. */
+      supersededAt?: string;
+      /** Part of the default budgetCap kept for dialogue turns during the stage (turns count against the stage budget). */
+      dialogueReserve?: number;
+      /** Budget-raise cards posted by the executor: how much the next step was short. */
+      shortfall?: number }
   | { type: "tool_call"; toolCallId: string; toolName: string; title: string; safeInputSummary: string; status: "running" | "done" | "failed"; childRunId?: string;
       startedAt: string; finishedAt?: string; durationMs?: number; progress?: string; result?: { summary: string; nodeIds?: string[]; storageKeys?: string[] };
       creditsActual?: number; settling?: boolean; errorCode?: string; errorMessage?: string }
@@ -398,14 +408,18 @@ export interface StudioApprovalRequiredData { messageId: string; block: Extract<
 export interface StudioNodeUpsertData { nodeId: string; op: "create" | "update" | "connect" | "propose"; node?: import("./ip-studio").IpNode; connection?: { fromNodeId: string; toNodeId: string };
   executionId?: string; stepId?: string; runId?: string; expectedDocVersion?: string; proposal?: { field: "content" | "prompt" | "script"; content: string } }
 export interface StudioCheckResultData { stepId?: string; runId: string; result: StudioCheckResult }
-export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote" }
+export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote";
+  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
+  dialogueSpent?: number; dialogueInFlight?: number }
 export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[] }
 
 export type StudioPlanExecutionStatus = "running" | "paused" | "needs_user" | "done" | "partial" | "failed" | "canceled";
 export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" | "done" | "failed" | "skipped" | "needs_user";
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number; nodeId?: string; reason?: string }
-export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number }
+export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number;
+  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
+  dialogueSpent?: number; dialogueInFlight?: number }
 export interface StudioPlanExecution {
   id: string; projectId: string; threadId?: string; skillKey: string; skillVersion: number; stage: StudioPlanStage; planRunId: string; planRevision: number; planFingerprint: string;
   status: StudioPlanExecutionStatus; steps: StudioPlanExecutionStep[]; budgets: StudioPlanExecutionBudget[]; billing?: EnterpriseBillingSelection; needsUserReason?: string;

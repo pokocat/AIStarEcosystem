@@ -7,6 +7,10 @@
 // - tool / plan / approval / turn events upsert typed blocks by their stable ids.
 // - node.upsert / check.result are queued as canvas operations with their own cursor, so
 //   a reconnect from an older seq can replay canvas commands without duplicating text.
+// - A viewer with no canvas cursor for this thread (first open on this browser) replays the
+//   thread from the start; execution commands up to the snapshot are marked `restore`, which
+//   only fills in nodes and edges the canvas is missing (never merges into existing nodes).
+//   Old dialogue drafts are not replayed: the canvas may have dropped them on purpose.
 import type {
   StudioApprovalRequiredData, StudioBudgetUpdateData, StudioCheckResultData, StudioDialogueEvent, StudioDialogueMessage,
   StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioMessageDeltaData, StudioNodeUpsertData,
@@ -27,9 +31,10 @@ export interface DialogueOutboxItem {
   /** The applied seq when the user pressed send; the accepted message sorts right after it, before any reply. */
   afterSeq?: number;
 }
+/** `restore`: a historical command replayed for a canvas that has no projection record; only adds what is missing. */
 export type DialogueCanvasOp =
-  | { seq: number; kind: 'node'; turnId: string; executionId?: string; data: StudioNodeUpsertData }
-  | { seq: number; kind: 'check'; turnId: string; executionId?: string; data: StudioCheckResultData };
+  | { seq: number; kind: 'node'; turnId: string; executionId?: string; restore?: boolean; data: StudioNodeUpsertData }
+  | { seq: number; kind: 'check'; turnId: string; executionId?: string; restore?: boolean; data: StudioCheckResultData };
 /** Arrival order of streamed text parts and blocks inside one live message. */
 export interface DialogueLayout { order: string[]; parts: Record<string, string> }
 
@@ -42,6 +47,8 @@ export interface DialogueStore {
   canvasSeq: number;
   /** Highest canvas seq actually projected onto the canvas (persisted per viewer). */
   canvasAckSeq: number;
+  /** Replaying history for a viewer without a canvas cursor: commands at or below this seq are restores. 0 = none. */
+  restoreThroughSeq: number;
   nextCursor?: string;
   hasOlder: boolean;
   layouts: Record<string, DialogueLayout>;
@@ -63,7 +70,9 @@ export interface DialogueStore {
 
 export type DialogueAction =
   | { type: 'reset' }
-  | { type: 'snapshot'; state: StudioDialogueState; mode: 'replace' | 'merge'; canvasAckSeq?: number }
+  | { type: 'snapshot'; state: StudioDialogueState; mode: 'replace' | 'merge'; canvasAckSeq?: number;
+      /** First open of this thread on this browser (no saved canvas cursor): replay canvas commands from the start. */
+      restoreCanvas?: boolean }
   | { type: 'event'; event: StudioDialogueEvent }
   | { type: 'outbox.add'; item: DialogueOutboxItem }
   | { type: 'outbox.sent'; clientMessageId: string; result: StudioPostMessageResult; createdAt?: string }
@@ -71,13 +80,15 @@ export type DialogueAction =
   | { type: 'outbox.retry'; clientMessageId: string }
   | { type: 'outbox.remove'; clientMessageId: string }
   | { type: 'execution'; execution: StudioPlanExecution }
-  | { type: 'approval.local'; approvalId: string; status: DialogueApprovalBlock['status']; executionId?: string }
+  | { type: 'approval.local'; approvalId: string; status: DialogueApprovalBlock['status']; executionId?: string;
+      /** The caps the server accepted (from the execution it returned); a server snapshot of the card wins. */
+      approved?: { budgetCap: number; autoFixCap: number } }
   | { type: 'adoption.add'; messageId: string; block: DialogueAdoptionBlock }
   | { type: 'canvas.ack'; seq: number }
   | { type: 'older'; messages: StudioDialogueMessage[]; limit: number };
 
 export const emptyDialogueStore = (): DialogueStore => ({
-  messages: [], latestSeq: 0, canvasSeq: 0, canvasAckSeq: 0, hasOlder: false, layouts: {}, turnMessages: {}, doneTurns: [],
+  messages: [], latestSeq: 0, canvasSeq: 0, canvasAckSeq: 0, restoreThroughSeq: 0, hasOlder: false, layouts: {}, turnMessages: {}, doneTurns: [],
   executionTouchedSeq: 0, budgets: {}, checks: {}, suggestions: {}, shortfalls: {}, queueStates: {}, localMessageIds: [], outbox: [], canvasOps: [],
 });
 
@@ -179,6 +190,25 @@ function supersedeApprovals(store: DialogueStore, keep: string): DialogueStore {
     ? { ...m, blocks: m.blocks.map(b => b.type === 'approval' && b.approvalId !== keep && b.status === 'pending' ? { ...b, status: 'superseded' as const } : b) } : m) };
 }
 
+/**
+ * A newer plan revision replaces every pending card quoted for an older one: it can no longer start
+ * anything (the server answers STUDIO_PLAN_STALE), so it must not look actionable. `unknownPlans`: also
+ * replace cards whose plan is not in the loaded messages (only safe when a new revision just arrived).
+ */
+function supersedeOlderApprovals(messages: StudioDialogueMessage[], latest: { fingerprint: string; revision: number }, unknownPlans: boolean): StudioDialogueMessage[] {
+  const revisions = new Map<string, number>();
+  for (const m of messages) for (const b of m.blocks) if (b.type === 'plan') revisions.set(b.fingerprint, Math.max(b.revision, revisions.get(b.fingerprint) ?? -Infinity));
+  const stale = (b: StudioMessageBlock): b is DialogueApprovalBlock => b.type === 'approval' && b.status === 'pending' && b.planFingerprint !== latest.fingerprint
+    && (revisions.has(b.planFingerprint) ? revisions.get(b.planFingerprint)! < latest.revision : unknownPlans);
+  if (!messages.some(m => m.blocks.some(stale))) return messages;
+  return messages.map(m => m.blocks.some(stale) ? { ...m, blocks: m.blocks.map(b => stale(b) ? { ...b, status: 'superseded' as const } : b) } : m);
+}
+function latestPlan(messages: StudioDialogueMessage[]) {
+  let found: DialoguePlanBlock | undefined;
+  for (const m of messages) for (const b of m.blocks) if (b.type === 'plan' && (!found || b.revision > found.revision)) found = b;
+  return found;
+}
+
 function turnDoneStatus(reason: StudioTurnDoneData['reason']): StudioDialogueMessage['status'] {
   return reason === 'failed' ? 'failed' : reason === 'interrupted' ? 'interrupted' : 'done';
 }
@@ -188,11 +218,15 @@ const ACTIVATING = new Set(['message.delta', 'tool.started', 'tool.progress', 't
 function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueStore {
   if (store.thread && event.threadId !== store.thread.id) return store;
   let s = store;
-  if ((event.type === 'node.upsert' || event.type === 'check.result') && event.seq > s.canvasSeq) {
-    const op: DialogueCanvasOp = event.type === 'node.upsert'
-      ? { seq: event.seq, kind: 'node', turnId: event.turnId, executionId: event.executionId, data: event.data as StudioNodeUpsertData }
-      : { seq: event.seq, kind: 'check', turnId: event.turnId, executionId: event.executionId, data: event.data as StudioCheckResultData };
-    s = { ...s, canvasSeq: event.seq, canvasOps: [...s.canvasOps, op] };
+  if (event.seq > s.canvasSeq) {
+    // The stream sends every event after the cursor once, in seq order: having seen this one, every canvas
+    // command up to it is queued, and when nothing is waiting to be projected, it is projected as well.
+    const restore = event.seq <= s.restoreThroughSeq;
+    if ((event.type === 'node.upsert' || event.type === 'check.result') && (!restore || event.executionId)) {
+      const base = { seq: event.seq, turnId: event.turnId, executionId: event.executionId, ...(restore ? { restore: true } : {}) };
+      const op: DialogueCanvasOp = event.type === 'node.upsert' ? { ...base, kind: 'node', data: event.data as StudioNodeUpsertData } : { ...base, kind: 'check', data: event.data as StudioCheckResultData };
+      s = { ...s, canvasSeq: event.seq, canvasOps: [...s.canvasOps, op] };
+    } else s = { ...s, canvasSeq: event.seq, canvasAckSeq: s.canvasOps.length ? s.canvasAckSeq : Math.max(s.canvasAckSeq, event.seq) };
   }
   if (event.type === 'check.result') {
     const d = event.data as StudioCheckResultData;
@@ -208,7 +242,8 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
     case 'plan.proposed': {
       const d = event.data as StudioPlanProposedData;
       const [next, id] = ensureAssistantMessage(s, event, d.messageId);
-      return upsertBlock(next, id, d.block, b => b.type === 'plan');
+      const upserted = upsertBlock(next, id, d.block, b => b.type === 'plan');
+      return { ...upserted, messages: supersedeOlderApprovals(upserted.messages, d.block, true) };
     }
     case 'approval.required': {
       const d = event.data as StudioApprovalRequiredData;
@@ -252,7 +287,10 @@ function applySnapshot(store: DialogueStore, action: Extract<DialogueAction, { t
     !(m.clientMessageId && confirmedClientIds.has(m.clientMessageId)) &&
     !(isPlaceholderMessage(m.id) && state.messages.some(x => x.turnId === m.turnId)) &&
     (!replace || store.localMessageIds.includes(m.id) || isPlaceholderMessage(m.id)));
-  const messages = sortMessages([...kept, ...state.messages]);
+  const merged = sortMessages([...kept, ...state.messages]);
+  // A server that has not marked an outdated card yet must not make it actionable again.
+  const newest = latestPlan(merged);
+  const messages = newest ? supersedeOlderApprovals(merged, newest, false) : merged;
   const layouts: Record<string, DialogueLayout> = {};
   if (sameThread) for (const [id, layout] of Object.entries(store.layouts)) {
     const fresh = incoming.get(id);
@@ -265,15 +303,19 @@ function applySnapshot(store: DialogueStore, action: Extract<DialogueAction, { t
   // Only reached when the snapshot is at least as new as what was streamed, so its view of the active turn wins.
   const active = state.thread.activeTurnId && !doneTurns.includes(state.thread.activeTurnId) ? state.thread.activeTurnId : undefined;
   const latestSeq = replace ? state.latestSeq : Math.max(store.latestSeq, state.latestSeq);
-  // A new thread starts its canvas cursor at the viewer's last projected seq (or the snapshot).
+  // A new thread starts its canvas cursor at the viewer's last projected seq; without one (first open on this
+  // browser) it replays from the start in restore mode, so work finished while the canvas was closed still lands.
+  // Anything else (a branch, a caller that passes no cursor) starts at the snapshot.
   // An expired cursor on the same thread jumps to the snapshot: replaying from it would only 410 again.
-  const canvasAckSeq = !sameThread ? action.canvasAckSeq ?? state.latestSeq : replace ? Math.max(store.canvasAckSeq, state.latestSeq) : store.canvasAckSeq;
+  const restore = !sameThread && !!action.restoreCanvas && state.latestSeq > 0;
+  const canvasAckSeq = !sameThread ? (restore ? 0 : action.canvasAckSeq ?? state.latestSeq) : replace ? Math.max(store.canvasAckSeq, state.latestSeq) : store.canvasAckSeq;
   const canvasSeq = !sameThread ? canvasAckSeq : replace ? Math.max(store.canvasSeq, state.latestSeq) : store.canvasSeq;
+  const restoreThroughSeq = !sameThread ? (restore ? state.latestSeq : 0) : store.restoreThroughSeq;
   return {
     // Seqs are per thread: a branch starts from a clean slate, including its canvas cursor.
     ...(sameThread ? store : emptyDialogueStore()),
     thread: state.thread, messages, layouts, turnMessages, doneTurns, activeTurnId: active,
-    latestSeq, canvasSeq, canvasAckSeq,
+    latestSeq, canvasSeq, canvasAckSeq, restoreThroughSeq,
     nextCursor: state.nextCursor, hasOlder: sameThread && !replace ? store.hasOlder || !!state.nextCursor : !!state.nextCursor,
     execution: replace ? state.execution : newerExecution(store.execution, state.execution),
     outbox: (sameThread ? store.outbox : []).filter(o => !confirmedClientIds.has(o.clientMessageId)),
@@ -314,14 +356,19 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
       const found = findBlock(store, isApproval(action.approvalId));
       if (!found) return store;
       return replaceMessage(store, found.messageId, m => ({ ...m, blocks: m.blocks.map(b => b.type === 'approval' && b.approvalId === action.approvalId
-        ? { ...b, status: action.status, executionId: action.executionId ?? b.executionId } : b) }));
+        ? { ...b, status: action.status, executionId: action.executionId ?? b.executionId,
+            ...(action.approved && b.approvedBudgetCap === undefined ? { approvedBudgetCap: action.approved.budgetCap, approvedAutoFixCap: action.approved.autoFixCap } : {}) } : b) }));
     }
     case 'adoption.add': {
       const message = store.messages.find(m => m.id === action.messageId);
       if (!message || message.blocks.some(b => b.type === 'adoption' && b.nodeId === action.block.nodeId && b.field === action.block.field && b.content === action.block.content)) return store;
       return upsertBlock(store, action.messageId, action.block, () => false);
     }
-    case 'canvas.ack': return { ...store, canvasOps: store.canvasOps.filter(op => op.seq > action.seq), canvasAckSeq: Math.max(store.canvasAckSeq, action.seq) };
+    case 'canvas.ack': {
+      const canvasOps = store.canvasOps.filter(op => op.seq > action.seq);
+      // Nothing left to project: everything seen so far is on the canvas.
+      return { ...store, canvasOps, canvasAckSeq: Math.max(store.canvasAckSeq, action.seq, canvasOps.length ? 0 : store.canvasSeq) };
+    }
     case 'older': {
       const ids = new Set(store.messages.map(m => m.id));
       const fresh = action.messages.filter(m => !ids.has(m.id));
@@ -334,6 +381,35 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
 
 /** The cursor for (re)subscribing: the older of message and canvas progress, so replays reach both. */
 export const dialogueCursor = (store: DialogueStore) => Math.min(store.latestSeq, store.canvasSeq);
+
+/** Still replaying history onto a canvas that had no projection record on this browser. */
+export const canvasRestoring = (store: DialogueStore) => store.restoreThroughSeq > store.canvasAckSeq;
+
+/**
+ * The canvas cursor worth saving for this viewer. Nothing while a restore replay is unfinished: a partial cursor
+ * would make the next open replay the rest as ordinary commands instead of restores.
+ */
+export const persistableCanvasCursor = (store: DialogueStore) => !store.thread || canvasRestoring(store) || !store.canvasAckSeq ? undefined : store.canvasAckSeq;
+
+/** Executions this thread started, newest first, from the approval cards that started them. */
+export function approvedExecutionIds(store: DialogueStore): string[] {
+  const ids: string[] = [];
+  for (const m of [...store.messages].reverse()) for (const b of m.blocks)
+    if (b.type === 'approval' && b.status === 'approved' && b.executionId && !ids.includes(b.executionId)) ids.push(b.executionId);
+  return ids;
+}
+
+/**
+ * What a confirmed card actually authorized: the server's approval snapshot, else that execution's budget for the
+ * stage. Never the proposal; undefined when the card is not approved, {} when the numbers are not known here.
+ */
+export function approvedCaps(block: DialogueApprovalBlock, executions: (StudioPlanExecution | undefined)[]): { budgetCap?: number; autoFixCap?: number; approvedAt?: string; planRevision?: number } | undefined {
+  if (block.status !== 'approved') return undefined;
+  const when = { approvedAt: block.approvedAt, planRevision: block.approvedPlanRevision };
+  if (block.approvedBudgetCap !== undefined) return { budgetCap: block.approvedBudgetCap, autoFixCap: block.approvedAutoFixCap, ...when };
+  const budget = executions.find(e => !!e && e.id === block.executionId)?.budgets.find(b => b.stage === block.stage);
+  return budget ? { budgetCap: budget.approvedCap, autoFixCap: budget.autoFixCap, ...when } : when;
+}
 
 export function dialogueSections(store: DialogueStore) {
   const legacy = store.messages.filter(m => !!m.legacyNodeId);

@@ -98,6 +98,8 @@ export interface IpRunOutput {
   plan?: import("./ip-studio-workflow").StudioPlan;
   recreation?: import("./ip-studio-workflow").StudioRecreationReport;
   filmStudy?: import("./ip-studio-workflow").StudioFilmStudy;
+  /** Native check run: verdicts on the target run's real media. */
+  check?: import("./ip-studio-workflow").StudioCheckResult;
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
   scriptRevision?: { markdown: string; summary: string };
   textRevision?: { content: string; summary: string };

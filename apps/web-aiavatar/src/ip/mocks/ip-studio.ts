@@ -242,8 +242,25 @@ function seedStore(): MockStore {
   };
   s.projects.set(published.id, published);
 
+  // 样例三：关着页面时「短视频复刻」已经做完的画布，画布上还没有产物，
+  // 打开创作助手后按那次制作补回节点（对话与制作见 mocks/studio-dialogue.ts）。
+  const closed: IpProject = {
+    id: MOCK_CLOSED_EXECUTION_PROJECT_ID,
+    name: "洗衣液复刻 · 离开期间已做完",
+    status: "draft",
+    createdAt: "2026-10-18T09:00:00Z",
+    updatedAt: "2026-10-18T09:40:00Z",
+    doc: { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } },
+    runs: {},
+    runsById: {},
+  };
+  s.projects.set(closed.id, closed);
+
   return s;
 }
+
+/** Sample canvas whose recreation finished while it was closed (the dialogue mock seeds that execution). */
+export const MOCK_CLOSED_EXECUTION_PROJECT_ID = "IPP-0003mock";
 
 export function mockStore(): MockStore {
   if (!store) store = seedStore();
@@ -327,6 +344,11 @@ export function mockStartRun(projectId: string, nodeId: string, doc: IpProjectDo
   };
   s.runs.set(runId, { run, startedAtMs: Date.now(), durationMs: 3000, caption, cancelled: false });
   return { ...run };
+}
+
+/** A finished run made elsewhere in the demo (the dialogue's plan execution), readable through getRun like any other. */
+export function mockRegisterRun(run: IpRun) {
+  mockStore().runs.set(run.id, { run: { ...run }, startedAtMs: Date.now(), durationMs: 0, caption: run.nodeId, cancelled: false });
 }
 
 export function mockReadRun(runId: string): IpRun {
