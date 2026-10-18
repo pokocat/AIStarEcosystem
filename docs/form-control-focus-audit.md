@@ -98,3 +98,6 @@ music、drama、celebrity、star、admin 与共享 UI 的源码检查未发现�
 - 设计检测两项 advisory：vendor 配置栏既有 11px 说明、故事板既有 15px 标题（从 select 样式迁给新字段）；沿用原设计，不改字阶、不压制规则。
 
 证据：`.studio-e2e/form-controls-v2/` 的六套桌面/手机截图、`results.json`、`css-sources.json` 与富文本焦点截图。临时页和 bundle 不进入生产包。
+
+
+本轮已部署六个前端，真实线上搜索框、DOM 下拉、压缩图片与构建版本验收通过。确切 SHA、196 项定向测试、资源哈希与回退包见 [2026-10-17 发布记录](studio-images-and-controls-release-20261017.md)。前文“未部署”均为各历史轮次当时的状态，不代表本次发布状态。
