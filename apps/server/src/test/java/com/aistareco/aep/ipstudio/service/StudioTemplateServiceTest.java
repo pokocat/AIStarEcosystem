@@ -76,6 +76,24 @@ class StudioTemplateServiceTest {
         assertTrue(v.recipe().steps().isEmpty());assertTrue(v.recipe().inputs().isEmpty());verifyNoInteractions(images,models,videos);
         assertEquals(5,doc.path("nodes").size());assertTrue(doc.has("assistantConversations"));
     }
+    @Test void fullCanvasPublicationAndCopiesRetainGroupNotesAndRemapMembership() throws Exception {
+        fullCanvasSource();
+        doc.withArray("nodes").addObject().put("id","flow-group").put("type","group").put("title","换人生成")
+            .putObject("metadata").put("groupDescription","替换人物图\n再生成视频");
+        ((ObjectNode)IpDocs.node(doc,"image").path("metadata")).put("groupId","flow-group");
+        author.setDocJson(doc.toString());
+        var version=service.publish("owner","source",new PublishRequest(null,"分组画布","","official",null));
+        var persisted=om.readTree(releases.get(version.id()).getDocJson());
+        assertEquals("替换人物图\n再生成视频",IpDocs.node(persisted,"flow-group").path("metadata").path("groupDescription").asText());
+        assertEquals("flow-group",IpDocs.node(persisted,"image").path("metadata").path("groupId").asText());
+        var copy=StudioTemplateCanvasCopy.copy(om,persisted,version.recipe());
+        var copiedGroup=copy.path("nodes").get(copy.path("nodes").size()-1);
+        assertNotEquals("flow-group",copiedGroup.path("id").asText());
+        assertEquals(copiedGroup.path("id").asText(),copy.path("nodes").get(1).path("metadata").path("groupId").asText());
+        assertEquals("替换人物图\n再生成视频",copiedGroup.path("metadata").path("groupDescription").asText());
+        assertEquals("flow-group",IpDocs.node(doc,"image").path("metadata").path("groupId").asText());
+        verifyNoInteractions(images,models,videos);
+    }
     @Test void fullCanvasUpdatesKeepPriorMediaAndPersonalCopiesRemainOwnerScoped() throws Exception {
         fullCanvasSource();var first=service.publish("owner","source",new PublishRequest(null,"完整画布","","personal",null));String prior=releases.get(first.id()).getDocJson();
         var next=service.publish("owner","source",new PublishRequest(first.templateId(),"完整画布","","personal",null));

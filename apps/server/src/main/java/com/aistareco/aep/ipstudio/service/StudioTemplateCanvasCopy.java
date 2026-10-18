@@ -52,7 +52,13 @@ final class StudioTemplateCanvasCopy {
                 md.put("size", step.size());
             }
         }
-        for (var node : doc.path("nodes")) ((ObjectNode) node).put("id", nodeIds.get(node.path("id").asText()));
+        for (var node : doc.path("nodes")) {
+            ((ObjectNode) node).put("id", nodeIds.get(node.path("id").asText()));
+            if (node.path("metadata") instanceof ObjectNode md && md.has("groupId")) {
+                String groupId = nodeIds.get(md.path("groupId").asText());
+                if (groupId == null) md.remove("groupId"); else md.put("groupId", groupId);
+            }
+        }
         for (var edge : doc.path("connections")) {
             ObjectNode e = (ObjectNode) edge; e.put("id", id("E-")).put("fromNodeId", nodeIds.get(e.path("fromNodeId").asText())).put("toNodeId", nodeIds.get(e.path("toNodeId").asText()));
         }

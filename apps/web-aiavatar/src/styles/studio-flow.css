@@ -43,8 +43,19 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
   --primary-soft:#eee8dd;
 }
 .studio-flow-card.is-selected { border:2px solid var(--primary); }
-.studio-flow-group { height:100%; border:1px dashed var(--ink-3); border-radius:12px; background:var(--primary-soft); }
+.studio-flow-group { position:relative; height:100%; border:1px dashed var(--ink-3); border-radius:12px; background:var(--primary-soft); }
 .studio-flow-group.is-selected { border-color:var(--primary); }
+.studio-group-description { display:flex; align-items:flex-start; gap:10px; width:calc(100% - 24px); margin:0 12px; padding:2px 0; border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:12px; line-height:20px; text-align:left; cursor:pointer; }
+.studio-group-description>span { flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
+.studio-group-description:not(.has-description) { position:absolute; top:8px; right:12px; width:auto; margin:0; padding:0; }
+.studio-flow-group:has(.studio-group-description:not(.has-description))>.studio-flow-drag { padding-right:100px; }
+.studio-group-description.has-description { height:76px; padding-top:4px; }
+.studio-group-description.has-description>span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.studio-group-description>svg { flex-shrink:0; margin-top:3px; }
+.studio-group-description:hover { color:var(--ink); }
+.studio-group-description:focus-visible { outline:2px solid var(--primary); outline-offset:2px; border-radius:4px; }
+.studio-group-description-editor { display:flex; flex-direction:column; gap:8px; padding-bottom:16px; }
+.studio-group-description-reader { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
 .studio-flow-drag { display:flex; align-items:center; gap:8px; height:36px; flex-shrink:0; padding:0 12px; color:var(--ink-2); font-size:12px; cursor:grab; }
 .studio-flow-drag>span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .studio-flow-drag small { font-size:11px; color:var(--primary); }
