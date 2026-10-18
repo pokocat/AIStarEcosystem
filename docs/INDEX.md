@@ -87,7 +87,6 @@
 | [全能创作生产验收](ip-studio-assistant-production-acceptance.md) | **生产发布与真实生成验收** | 简化面板、文字采用、跨步骤节点依赖、六个旧测试修复；真实文字→图片→5秒视频，231积分，刷新与原节点复用通过（last-reviewed 2026-10-13） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
-| [`docs/studio-skill-remake-plan.md`](studio-skill-remake-plan.md) | **Studio 全能创作 · 技能与受控自动制作（规划稿 v1，未实现）** | 在现有助手上加三层：技能（人能读的制作方法 + 服务端只信的边界，`ip_skill` 表 + 仓里 seed + 后台只读）→ 可执行计划（`StudioPlan` 扩 recreation / check / assemble，服务端报价与预算）→ 计划执行器（照模板执行引擎：依赖、一次确认总预算、检查步 + 预算内自动重做、写回文档保留区、前端投影）。第一份技能「参考视频换主体」复用拉片片段 + 全能参考出片；§7 S0 先用线上界面手工实测过线再进 S1（last-reviewed 2026-10-18） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [`docs/ip-studio-ui-audit.md`](ip-studio-ui-audit.md) | **Studio 界面与交互审查** | impeccable审查、画布区域分离、统一人物选择与响应式验收；本地未发布（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
