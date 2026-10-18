@@ -7,6 +7,7 @@ import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader
 import type { IpProjectSummary } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { IpStudioApi } from "./api";
+import { CanvasCoverEditor } from "./canvas-cover-editor";
 import { ProjectCardPreview } from "./project-card-preview";
 import { projectPreview } from "./project-preview";
 import { CanvasThumb } from "./canvas-thumb";
@@ -29,9 +30,6 @@ export function StudioProjects() {
   const [page, setPage] = useState(1);
   const [inspecting, setInspecting] = useState<{ project: IpProjectSummary; mode: "cover" | "flow" }>();
   const [previewRevision, setPreviewRevision] = useState(0);
-  const [savingCover, setSavingCover] = useState(false);
-  const coverLock = useRef(false);
-  const [coverError, setCoverError] = useStudioErrorState();
   const [pendingDelete, setPendingDelete] = useState<IpProjectSummary>();
   const [deleting, setDeleting] = useState(false);
   const deleteRef = useRef(false);
@@ -46,19 +44,7 @@ export function StudioProjects() {
   const { previews, retry: retryPreviews } = useCanvasPreviews(ready ? visible : []);
   const refreshPreviews = () => { setPreviewRevision(n => n + 1); retryPreviews(); };
   const inspectDoc = inspecting && previews[`${inspecting.project.id}:${inspecting.project.updatedAt}`]?.doc;
-  const inspectPreview = useMemo(() => inspectDoc ? projectPreview(inspectDoc) : undefined, [inspectDoc]);
-  const openInspector = (project: IpProjectSummary, mode: "cover" | "flow") => { setCoverError(""); setInspecting({ project, mode }); };
-  const saveCover = async (key: string) => {
-    if (!inspecting || coverLock.current) return;
-    coverLock.current = true; setSavingCover(true); setCoverError("");
-    try {
-      const saved = await IpStudioApi.updateProject(inspecting.project.id, { coverStorageKey: key });
-      projects.setData(items => items.map(p => p.id === saved.id ? saved : p));
-      setInspecting(undefined);
-      refreshPreviews();
-    } catch (e) { setCoverError(e); }
-    finally { coverLock.current = false; setSavingCover(false); }
-  };
+  const openInspector = (project: IpProjectSummary, mode: "cover" | "flow") => setInspecting({ project, mode });
   const remove = async () => {
     if (!pendingDelete || deleteRef.current) return;
     deleteRef.current = true; setDeleting(true); setDeleteError("");
@@ -90,7 +76,7 @@ export function StudioProjects() {
           const content = preview?.doc ? projectPreview(preview.doc) : undefined;
           return <article className="studio-project-card" key={project.id}>
             <Link href={`/projects/${project.id}`} className="studio-project-open" aria-label={`打开画布 ${project.name}`}><div className="studio-gallery-preview">
-              <ProjectCardPreview key={`${project.id}:${project.updatedAt}:${previewRevision}`} coverUrl={project.coverUrl} preview={content} loading={!preview} error={preview?.error}/>
+              <ProjectCardPreview key={`${project.id}:${project.updatedAt}:${previewRevision}`} coverUrl={project.coverUrl} preview={content} doc={preview?.doc} loading={!preview} error={preview?.error}/>
             </div><div className="project-card-copy"><h3 title={project.name}>{project.name}</h3><p className="project-card-summary">{content ? content.counts || (content.empty ? "空白画布" : `${content.steps.length} 个创作节点`) : preview?.error ? "内容摘要暂不可用" : "正在读取内容…"}</p></div></Link>
             <div className="studio-project-info"><div><span className={`studio-project-status is-${project.status}`}><i />{project.status === "published" ? "已发布" : "草稿"}</span><time title="最近编辑时间" dateTime={project.updatedAt}>{formatDateTime(project.updatedAt)}</time></div>
               <details className="studio-project-menu"><summary aria-label={`画布 ${project.name} 的更多操作`}><MoreHorizontal size={18} /></summary><div><Link href={`/projects/${project.id}`}><ArrowRight size={15} />打开画布</Link><button type="button" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); openInspector(project, "cover"); }}><Image size={15}/>设置封面</button><button type="button" className="project-delete-action" onClick={e => { e.currentTarget.closest("details")?.removeAttribute("open"); setDeleteError(""); setPendingDelete(project); }}><Trash2 size={15} />删除画布</button></div></details>
@@ -103,14 +89,13 @@ export function StudioProjects() {
     </section>
 
 
-    <Modal open={!!inspecting} title={inspecting?.mode === "cover" ? "设置项目封面" : "画布流程"} footer={null} onCancel={() => { if (!savingCover) setInspecting(undefined); }} closable={!savingCover} keyboard={!savingCover} mask={{ closable: !savingCover }} getContainer={() => surface.current || document.body} className="project-preview-dialog" centered width={640}>
+    {inspecting?.mode === "cover" && <CanvasCoverEditor target="project" id={inspecting.project.id} name={inspecting.project.name} doc={inspectDoc || undefined} container={() => surface.current || document.body} error={previews[`${inspecting.project.id}:${inspecting.project.updatedAt}`]?.error} onRetry={refreshPreviews} onClose={() => setInspecting(undefined)} onSaved={cover => {
+      projects.setData(items => items.map(p => p.id === inspecting.project.id ? {...p, coverUrl: cover.coverUrl || undefined} : p));
+      setInspecting(undefined);projects.reload();refreshPreviews();
+    }}/>}
+    <Modal open={inspecting?.mode === "flow"} title="画布流程" footer={null} onCancel={() => setInspecting(undefined)} getContainer={() => surface.current || document.body} className="project-preview-dialog" centered width={640}>
       <p className="project-preview-name">{inspecting?.project.name}</p>
-      {inspecting?.mode === "flow" ? inspectDoc ? <><CanvasThumb doc={inspectDoc} height={260}/><p className="project-preview-caption">{inspectDoc.nodes.length} 个节点 · {inspectDoc.connections.length} 条连线</p><Link className="ip-brand-button" href={`/projects/${inspecting.project.id}`}>打开画布<ArrowRight size={15}/></Link></> : <GalleryState loading={!previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} error={previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} retry={refreshPreviews}/> : <>
-        <p className="project-preview-caption">从画布中的图片选择封面，选定后会保持不变。也可以恢复自动选择。</p>
-        {inspectPreview ? inspectPreview.images.length ? <div className="project-cover-choices">{inspectPreview.images.filter(i => i.url).map((img, index) => <button key={img.key} type="button" disabled={savingCover} onClick={() => void saveCover(img.key)} aria-label={`设为封面：${img.title} ${index + 1}`}><img src={img.url} alt={img.title} loading="lazy"/><span>{img.title}</span></button>)}</div> : <p className="project-cover-empty">这张画布还没有可用的图片。添加图片后，就能将它设为封面。</p> : <GalleryState loading={!previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} error={previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} retry={refreshPreviews}/>}
-        {coverError && <StudioErrorNotice error={coverError}/>}
-        <div className="project-cover-footer"><button type="button" className="ip-brand-secondary" disabled={savingCover} onClick={() => void saveCover("")}>恢复自动封面</button><span role="status">{savingCover ? "正在保存封面…" : "选择图片即可保存"}</span></div>
-      </>}
+      {inspectDoc ? <><CanvasThumb doc={inspectDoc} height={260}/><p className="project-preview-caption">{inspectDoc.nodes.length} 个节点 · {inspectDoc.connections.length} 条连线</p><Link className="ip-brand-button" href={`/projects/${inspecting?.project.id}`}>打开画布<ArrowRight size={15}/></Link></> : <GalleryState loading={!previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} error={previews[`${inspecting?.project.id}:${inspecting?.project.updatedAt}`]?.error} retry={refreshPreviews}/>}
     </Modal>
 
     <Modal open={!!pendingDelete} title="删除画布" footer={null} onCancel={() => { if (!deleting) setPendingDelete(undefined); }} closable={!deleting} keyboard={!deleting} mask={{ closable: !deleting }} getContainer={() => surface.current || document.body} className="ip-management-editor studio-gallery-delete" centered>

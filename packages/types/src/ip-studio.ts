@@ -221,3 +221,6 @@ export type IpImageAsset = IpSavedAssetBase<"image"> & { data: { dataUrl: string
 export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; storageKey?: string; width: number; height: number; bytes: number; mimeType: string } };
 export type IpAudioAsset = IpSavedAssetBase<"audio"> & { data: { url: string; storageKey?: string; bytes: number; mimeType: string } };
 export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset | IpAudioAsset;
+
+export type IpCanvasCoverTarget = "project" | "template";
+export interface IpCanvasCover { coverUrl: string | null }

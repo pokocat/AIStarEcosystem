@@ -77,7 +77,7 @@ public class StudioTemplateService {
         versions.save(release);
         row.setName(release.getName());row.setSummary(release.getSummary());row.setDocJson(release.getDocJson());
         String cover=null;for(var node:clean.path("nodes"))if("image".equals(node.path("type").asText())&&node.path("metadata").hasNonNull("storageKey")){cover=node.path("metadata").path("storageKey").asText();break;}
-        row.setCoverKey(cover);row.setCurrentVersionId(release.getId());row.setSourceProjectId(projectId);
+        if(!CanvasCoverService.isUploadedCover(row.getCoverKey(),row.getId())) row.setCoverKey(cover);row.setCurrentVersionId(release.getId());row.setSourceProjectId(projectId);
         row.setUpdatedAt(Instant.now());templates.save(row);
         return view(row,release);
     }

@@ -273,8 +273,10 @@ public class IpDemoTemplateService {
         row.setDocJson(write(doc));
         // 模板不带素材，封面也就无从谈起 —— 而且已有示例**改存成模板**时必须把旧封面清掉，
         // 否则目录里那张卡还挂着上一版示例的照片，卡片和内容对不上。
-        if (asTemplate) row.setCoverKey(null);
-        else if (cover != null) row.setCoverKey(cover);
+        if (!CanvasCoverService.isUploadedCover(row.getCoverKey(), id)) {
+            if (asTemplate) row.setCoverKey(null);
+            else if (cover != null) row.setCoverKey(cover);
+        }
         row.setSourceProjectId(projectId);
         row.setCreatedBy(operatorId);
         row.setUpdatedAt(Instant.now());
@@ -500,7 +502,7 @@ public class IpDemoTemplateService {
 
         int removed = 0, skipped = 0, failed = 0;
         for (String k : keys) {
-            if (!ownedByDemo(k, prefix)) { skipped++; continue; }
+            if (!ownedByDemo(k, prefix) && !CanvasCoverService.isUploadedCover(k, demoId)) { skipped++; continue; }
             try { storage.delete(k); removed++; }
             catch (Exception e) {
                 failed++;

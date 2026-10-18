@@ -1072,3 +1072,9 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 ## Studio 视频上传兼容修复（2026-10-17）
 
 `StudioMediaImportService` 不再因 MP4 内部编码直接拒收：可读的非H.264/非AAC素材用 ffmpeg 自动规范为H.264/AAC；仅音轨不兼容时保留画面码流。最多2编码线程、150秒超时，重新校验音轨和时长后才存储、计配额，异常清理输入/输出临时文件。免费导入，无模型调用。`StudioMediaImportServiceTest` 覆盖原逻辑/转码/失败，`StudioVideoCompatibilityTest` 可通过 `-Dstudio.video.demo=本地视频路径` 验真实HEVC+MP3、MPEG4+MP3、H264+MP3三类素材。
+
+### Studio 统一画布封面（2026-10-17，已发布 a4092626）
+
+POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/studio-shared-covers-validation-20261017.md。
+
+内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。

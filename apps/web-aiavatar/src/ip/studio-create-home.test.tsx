@@ -8,12 +8,13 @@ import { setupRadixSelectDom } from './testing/radix-select-dom';
 
 setupRadixSelectDom();
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), update: vi.fn(), availability: vi.fn() }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none" }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }), usePathname: () => "/create" }));
 vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <p>开通产品</p> }));
-vi.mock("@/proto/api", () => ({ useIdentity: () => ({ operatorRole: "none" }), isOperatorRole: () => false }));
+vi.mock("@/proto/api", () => ({ useIdentity: () => ({ operatorRole: mocks.identityRole }), isOperatorRole: () => false }));
 vi.mock("./api", () => ({ IpStudioApi: { listProjects: mocks.projects, listTemplates: mocks.templates, listDemoExamples: mocks.examples, getProject: mocks.get, createProject: mocks.create, updateProject: mocks.update, deleteProject: mocks.remove } }));
+vi.mock("./canvas-cover-api", () => ({ selectCanvasCover: mocks.selectCover, resetCanvasCover: mocks.resetCover }));
 vi.mock("@/canvas-bridge/template-api", () => ({ templateAvailability: mocks.availability }));
 vi.mock("./studio-template-use", () => ({ StudioTemplateUse: ({ template, onClose }: any) => <div role="dialog"><p>{template.name} · 只读预览</p><button onClick={onClose}>返回</button></div> }));
 vi.mock("antd", () => ({ Modal: ({ open, children, title }: any) => open ? <div role="dialog" aria-label={title}>{children}</div> : null }));
@@ -27,6 +28,7 @@ const official: IpTemplate = { id: "IPD-studio-commerce", name: "IP 商品视频
 const personal: IpTemplate = { ...official, id: "personal", versionId: "v1", visibility: "personal", mine: true, name: "个人工作流", enabled: false };
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.identityRole = "none";
   mocks.projects.mockResolvedValue(projects); mocks.templates.mockResolvedValue([official, personal]); mocks.examples.mockResolvedValue([]);
   mocks.get.mockImplementation(async (id: string) => ({ id, docVersion: "v1", ...projects.find(p => p.id === id), doc }));
   mocks.create.mockResolvedValue({ id: "P-new", docVersion: "v1", doc }); mocks.update.mockImplementation(async (id, body) => ({ id, docVersion: "v2", doc: body.doc })); mocks.remove.mockResolvedValue(undefined); mocks.availability.mockResolvedValue({});
@@ -56,7 +58,8 @@ describe("Creation catalogue", () => {
     mocks.projects.mockResolvedValue([projects[0]]);
     const imageDoc = { ...doc, nodes: [{ ...doc.nodes[0], metadata: { storageKey: 'owned/image.png', url: '/real-image.png' } }] };
     mocks.get.mockResolvedValue({ ...projects[0], doc: imageDoc });
-    mocks.update.mockRejectedValueOnce(new Error('封面保存失败')).mockResolvedValueOnce({ ...projects[0], coverUrl: '/real-image.png', updatedAt: '2026-10-31T10:00:00Z', doc: imageDoc });
+    mocks.selectCover.mockRejectedValueOnce(new Error('封面保存失败')).mockResolvedValueOnce({coverUrl:'/real-image.png'});
+    mocks.projects.mockResolvedValue([{...projects[0],coverUrl:'/real-image.png'}]);
     render(<StudioProjects/>);
     await screen.findByText('1 张图片');
     fireEvent.click(screen.getByRole('button', { name: '查看流程' }));
@@ -68,19 +71,19 @@ describe("Creation catalogue", () => {
     expect(screen.getByRole('dialog')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(mocks.update).toHaveBeenLastCalledWith('P0', { coverStorageKey:'owned/image.png' });
+    expect(mocks.selectCover).toHaveBeenLastCalledWith('project', 'P0', 'owned/image.png');
     expect(document.querySelector('img[src="/real-image.png"]')).toBeTruthy();
   });
   it("restores automatic covers and explicitly refreshes content previews", async () => {
     mocks.projects.mockResolvedValue([projects[0]]);
-    mocks.update.mockResolvedValue({ ...projects[0], doc });
+    mocks.resetCover.mockResolvedValue({coverUrl:null});
     render(<StudioProjects/>);
     await waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole('button', {name:'刷新画布'}));
     await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThan(1));
     fireEvent.click(screen.getAllByRole('button', {name:'设置封面'})[1]);
     fireEvent.click(screen.getByRole('button', {name:'恢复自动封面'}));
-    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('P0', {coverStorageKey:''}));
+    await waitFor(() => expect(mocks.resetCover).toHaveBeenCalledWith('project','P0'));
   });
   it("opens a workflow template read-only without creating a canvas", async () => {
     render(<StudioCreateHome />);
@@ -124,6 +127,7 @@ describe("Creation catalogue", () => {
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
     await screen.findByText("删除未成功");
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole("button", { name: "确认删除" }) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole("button", { name: "确认删除" }));
     await waitFor(() => expect(screen.queryByRole("link", { name: "打开画布 测试画布 0" })).toBeNull());
     expect(mocks.remove).toHaveBeenCalledTimes(2);
@@ -131,6 +135,16 @@ describe("Creation catalogue", () => {
 });
 
 describe("Template market", () => {
+  it("lets super admins manage built-in official covers through the shared editor", async () => {
+    mocks.identityRole = "super_admin";
+    mocks.templates.mockResolvedValue([{...official,visibility:undefined,doc:{...doc,nodes:[{...doc.nodes[0],metadata:{storageKey:'builtin/image',content:'/builtin-image.png'}}]}}]);
+    mocks.selectCover.mockResolvedValue({coverUrl:'/builtin-image.png'});
+    render(<StudioTemplateMarket/>);
+    fireEvent.click(await screen.findByRole('button',{name:'设置封面'}));
+    fireEvent.click(screen.getByRole('button',{name:'设为封面：图 1'}));
+    await waitFor(()=>expect(mocks.selectCover).toHaveBeenCalledWith('template',official.id,'builtin/image'));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).toBeNull());
+  });
   it("keeps personal templates manageable and separates curated examples from the personal catalogue", async () => {
     render(<StudioTemplateMarket />);
     await screen.findByRole("button", { name: "预览模板 IP 商品视频" });

@@ -168,7 +168,7 @@ public class IpPublishService {
 
         project.setStatus(IpProject.STATUS_PUBLISHED);
         project.setPublishedAvatarId(avatar.getId());
-        project.setCoverKey(master.imageKey());
+        if (project.getCoverKey() == null) project.setCoverKey(master.imageKey());
         projects.save(project);
 
         log.info("[ipstudio] 发布完成 project={} avatar={} looks={}", projectId, avatar.getId(), lookIds.size());

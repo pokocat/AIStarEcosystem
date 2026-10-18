@@ -1,6 +1,6 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
-项目卡片优化（2026-10-17，已生产发布 4ed3ecf9）：`/projects` 使用真实内容封面／正文摘要及去重媒体数量，小地图移到「查看流程」。设置封面复用项目 PUT 的 `coverStorageKey`（空字符串恢复自动，省略保持），不发送或覆盖 doc。已有视频封面仅匹配当前采用版本；无封面时显示可读摘要。验证记录见 `docs/studio-workspace-refactor-validation.md`。
+画布封面统一（2026-10-17，已发布 a4092626）：项目页与灵感页共用 ProjectCardPreview、projectPreview、CanvasCoverEditor，优先级为人工封面 → 已保存图片（优先采用图）→ 实际画布缩略图。支持独立 JPG/PNG 上传、选图、恢复自动、失败重试；共用 /v1/ip-studio/covers/{project|template}/{id} 的 POST/PUT/DELETE，不改 doc 或模板版本，列表刷新重新签名。个人模板本人可管理，官方模板仅 SUPER_ADMIN；内置官方模板也支持 SUPER_ADMIN 上传，覆盖信息保存在平台配置，不复制模板文档。原项目 PUT 的 coverStorageKey 继续兼容。
 
 本地界面调整（2026-10-16，未发布）：`/create` 只承载新创作与一行推荐模板，个人画布管理独立为 `/projects`「项目」页。「项目」已加入一级导航，紧跟首页；项目页「新建创作」返回。创作能力已平铺为十项图像卡片，首页画布目录和画布编辑器返回也指向项目。当前规格见 `PRODUCT.md`，验证见 `docs/studio-workspace-refactor-validation.md`（仓库根目录）。
 
