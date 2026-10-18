@@ -29,6 +29,10 @@ export interface IpNodeImage {
   id: string;
   storageKey?: string;
   content?: string;
+  /** 画布分组归属；模板副本会重新映射到副本中的组。 */
+  groupId?: string;
+  /** 分组的说明文案，不作为模型生成输入。 */
+  groupDescription?: string;
   naturalWidth?: number;
   naturalHeight?: number;
   bytes?: number;

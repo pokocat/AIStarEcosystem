@@ -138,6 +138,8 @@ export type CanvasNodeMetadata = {
     // 进程一关任务就没了，所以它**不存** taskId；我们的恰恰是服务端任务，最该存（v0.179）。
     videoTaskProvider?: "openai" | "gemini" | "plugin";
     groupId?: string;
+    /** 本仓：分组的使用说明，独立于参与生成的正文和提示词。 */
+    groupDescription?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };
 

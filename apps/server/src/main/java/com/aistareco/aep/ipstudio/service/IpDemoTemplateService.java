@@ -113,8 +113,10 @@ public class IpDemoTemplateService {
             stripStudioExecution(metadata);
             ObjectNode clean = om.createObjectNode();
             for (String field : List.of("prompt", "storageKey", "images", "videos", "primaryImageId", "primaryVideoId",
-                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio"))
+                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio", "groupId"))
                 if (metadata.has(field)) clean.set(field, metadata.get(field).deepCopy());
+            if ("group".equals(IpDocs.typeOf(node)) && metadata.has("groupDescription"))
+                clean.set("groupDescription", metadata.get("groupDescription").deepCopy());
             if (IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && metadata.has("content")) clean.set("content", metadata.get("content").deepCopy());
             String key = IpDocs.text(clean, "storageKey");
             if (key == null && !IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && !metadata.path("content").asText("").isBlank())
