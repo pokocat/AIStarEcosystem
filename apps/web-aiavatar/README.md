@@ -519,7 +519,7 @@ AI 生成场景 → 存储用量」整条链路。
 
 - **痛点**：几何精调原走「滑杆参数 → 英文指令 → Agnes i2i 整图重绘」，细粒度数值指令对扩散模型
   基本无效 / 不可控，且重绘漂移身份、无预览、不可复算。方案调研见
-  [`docs/FACE_BEAUTY_RESEARCH.md`](../../docs/FACE_BEAUTY_RESEARCH.md)。
+  [`docs/audits/face-beauty-research-2026-06.md`](../../docs/audits/face-beauty-research-2026-06.md)。
 - **新模块 `src/proto/beauty/`**（端上确定性美颜，零新增 npm 依赖）：
   - `landmarks.ts` — MediaPipe Face Landmarker（478 点，WASM，Apache-2.0）运行时加载：
     自托管 `public/mediapipe/**` 优先，jsDelivr CDN 兜底（`NEXT_PUBLIC_MP_ASSETS_BASE` 可覆盖）；

@@ -2,26 +2,12 @@
 
 本文件记录已定位但暂未修复的问题，方便后续排期。动手修时请勾掉对应条目并在代码里落实。
 
+> **已全部完成的巡检 / 收口段**（段内没有任何 `[ ]`）定期整段移到 [`docs/archive/todo-closed.md`](docs/archive/todo-closed.md)，条目原样保留、不改写；本文件只留还有未勾项的段。2026-10-18 第一次整理，移走 8 段。
+
 > 状态注（2026-05-27 / v0.34 部署基础设施落地后审计）：
 > - **2026-04-21 admin auth 块部分完成**：admin `apiFetch` Authorization 头 ✅（`AUTH_TOKEN_KEY` + `Bearer ${token}` 在 `apps/admin/src/api/_client.ts:18-97`）、admin login 页 + AuthContext ✅、MDC ✅（v0.30+ 改名 `traceId`，pattern `%X{traceId:-}` 已生效）。**剩一项未做**：`DevAutoAuthFilter` 仍 `@Profile("dev")`（未按 `aep.dev-auth.enabled` property 门控）。`SecurityJsonEntryPoint` / `SecurityJsonAccessDeniedHandler` 已于 2026-06-10 落地（401/403 JSON body 带 traceId）。
 > - **角色拆分 `SUPER_ADMIN/OPERATOR → PLATFORM_OPERATOR/FINANCE_ADMIN` 已反向决策不做**（v0.31 改在 `aep_users` 加 `operatorRole` 复用现有命名 — 见 `AGENTS.md` v0.31 B 节）。
 > - v0.7 ~ v0.34 期间累积的新待办见文末「v0.7 ~ v0.34 累积待办」段。
-
-
-## 2026-10-07 · v0.200 接手整合
-
-- [x] ~~名片资产归属遗漏（写入 + 存量公开读）~~ **v0.200 完成，2026-10-07**：CardService 同时校验 avatar、嵌套 key 与旧 URL，新增跨用户与公开读回归。
-- [x] ~~混剪下载保护不完整~~ **v0.200 完成，2026-10-07**：AssetDownloader 拒绝任意本地路径、逐跳检查重定向、固定已校验 DNS；MixcutRenderingService 校验资产归属、路径穿越和符号链接。测试不访问真实内网。
-- [x] ~~发布重试升级兼容旧冻结~~ **v0.200 完成，2026-10-07**：V38 显式补 retry_count；0 次仍使用裸 jobId，重试才加 :rN；成功/失败旧回调和迁移幂等测试覆盖。
-- [x] ~~受保护视频镜像失败空成功、DAP 提交前派发~~ **v0.200 完成，2026-10-07**：整合 #126/#107 有效修复及回归测试。
-- [x] ~~开放 PR 分散、冲突及测试基线不同步~~ **v0.200 完成，2026-10-07**：本地整合 #101/#102/#106–#114/#122/#126/#127；#124 被共享 Storage 设置覆盖；保留旧 worktree 未提交内容。部署结果另以实际 release 为准。
-
-
----
-
-## 2026-10-03 · 例行 QA 巡检
-
-- [x] ~~**发布任务重试免费（revenue loss）**~~ **2026-10-03 完成**：`PublishJobService` 的 hold / commitHold / releaseHold 四处都用裸 `job.getId()` 当 CreditHold referenceId，而 `CreditService.hold` 以 `(referenceType, referenceId)` 幂等、对已存在的终态 hold 也直接返回不再扣。失败 → `releaseHoldOnFailure` 把 hold 置 RELEASED；用户重试（`POST /me/publish/jobs/{id}/retry` 或批量 `retryFailedBatch`）复用同一行 → `startJob` 的 hold 命中已 RELEASED 的终态 hold → 扣 0 分，随后 LIVE 的 commit 因 hold 终态抛 409 被 catch 吞掉 → 重发免费。修复：`PublishJob` 加 `retryCount`（v0.200 由 V38 显式补列，存量 0），首次继续用裸 `jobId`（兼容旧在途冻结），重试用 `jobId:r{retryCount}`，`retry()` 先自增，与 DapJob 的 `:rN` 一致；回归测试 `PublishJobServiceTest#retryMintsFreshHoldReferenceSoItChargesAgain`。
 
 ## 2026-09-30 · 视频生成区 v0.199 后续（真源 `docs/video-studio-plan.md` §8）
 
@@ -52,6 +38,7 @@
   - 流式映射里的值没加引号、内容含 `?` / `:` / `[...]`：`creditCost`（「override ?? 带货线默认价」）、`lyrics`（「[verse]/[chorus]」）、ip-studio 两处 `"200": { description: …status=running… }` 与 `…status=rendering…`；
   - 重复的键：`components.schemas.AsyncJobStarted` 定义了两次、`paths./me/wallet/withdraw` 出现两次（后一份会静默覆盖前一份）。
   哪天要用 openapi 生成客户端或文档时先修；修完可以把「严格解析能过」加进 `pnpm check:api-contract`。
+
 ## 2026-09-10 · 例行 QA 巡检（SSRF sweep）
 
 > 本轮开工前确认：唯一开着的旧 routine PR #98（mixcut SSRF）其分支已随 main 历史重写而
@@ -93,7 +80,6 @@
 
 ---
 
-## 2026-09-07 · 画布换成开源无限画布 v0.157 后续
 ## 2026-09-19 · 例行 QA 巡检（成片/音频/分镜下载：非 2xx 分支漏关 HttpClient 连接）
 
 > 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101/#102/#106；
@@ -131,29 +117,6 @@
       （`GET /api/celebrity/projects/{projectId}/videos`、`/api/celebrity/videos/{id}`，controller 不传
       principal）。但 `listAllVideos`（L288）注释明说是「跨项目公共库」，强烈暗示视频库本就是共享展示位
       ——故**判定为需产品拍板，不武断当缺陷改**。`getProject`（L229）自身归属校验正确。
-
----
-
-## 2026-09-17 · 例行 QA 巡检（商品链接抓取 SSRF：白名单只卡初始 URL、重定向照跟）
-
-> 本轮同样承接 #102 分支、不新开 PR。开工前查了三仓开着的 routine PR（本仓 #101 SSRF /
-> #102 合集；ai-pilot #50；shequn-gongju 无），复用 #102。用三个子代理对三仓做对抗式复核：
-> shequn-gongju 基本全是静态原型、无可达缺陷；后端 money/auth/幂等面已被历轮打磨得很干净，
-> 仅落一处新确定缺陷（下）。ai-pilot 侧另落两处（settleVideoJob/httpTool，见 PR #50）。
-> 验证：`./mvnw compile` 绿。
-
-- [x] ~~**Medium：抖音商品链接抓取的 SSRF 白名单被重定向绕过**~~
-      （**完成**，2026-09-17）：`DouyinHtmlScrapeHandler` 的 `HttpClient` 建成
-      `followRedirects(NORMAL)`，而 host 白名单（`*.douyin.com` / `*.jinritemai.com`）**只校验了
-      初始 URL**。任一认证用户 `POST /api/me/products/parse-link` 传一个白名单域上的开放重定向
-      链接，服务端就会跟着 302 去请求任意 host —— 例如 `http://169.254.169.254/…`（云元数据）
-      或内网服务；抓回来的 `og:*` / 图片字段还会部分回显进 `ProductLinkInfoDto`，非全盲。
-      与 #101 的 mixcut `AssetDownloader` SSRF 是不同站点（那条是 file_url 零校验，这条是
-      重定向绕过白名单）。修法：`HttpClient` 改 `Redirect.NEVER` + 手动逐跳跟随
-      （`getFollowingWhitelistedRedirects`），**每一跳的目标 host 都重新过白名单、协议必须
-      http(s)、跳数上限 5 防环**——既堵住 SSRF，又保留抖音短链常见的一两跳合法重定向
-      （直接 NEVER 会让合法短链解析失败）。`fetchPromotionDetail` 的固定可信 URL 也改走同一
-      漏斗做纵深防御。`./mvnw compile` 绿。
 
 ---
 
@@ -693,21 +656,6 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
       保留分钟精度）。这几处的字段名是通用 `iso` / 带 `??` 收尾，`§9` 的字段名 grep 逮不到，
       故一直漏网。
 
-## 2026-09-20 · 例行 QA 巡检（bugfix）
-
-- [x] ~~**DAP 异步作业在事务提交前就派发 worker**~~ **完成，2026-09-20**：
-      `DapJobService.submit` / `retry` 直接 `runner.run(id)`，而 `DapJobRunner.run` 是
-      `@Async`（真线程池 `dapJobExecutor`）。被 `@Transactional` 的 `DapCompositionService.create`
-      / `DapAssetService.generateScene|sceneVariants|generateProduct|productAngles` 调用时，
-      worker 在自己的新事务里 `findById` 查这条尚未提交的作业（生产 MySQL READ_COMMITTED）
-      → `job == null` 静默退出，作业永远停在 running、冻结积分等 180 分钟兜底才回收。改成
-      `TransactionSynchronizationManager` 有活跃事务时挂 `afterCommit` 派发、否则当场派发
-      （范式同 `MaterialVideoJobService` / `IpRunService`）。回归 `DapJobDispatchTest`（有事务→afterCommit 才派、无事务→当场派）。
-- [x] ~~**短剧首帧任务卡把带 TTL 的签名 URL 原样返回（§4.7.7）**~~ **完成，2026-09-20**：
-      `DramaFrameJobService.toFrameTask` 把 `resultJson` 里的 `frames[].url`（1h 签名）
-      原样透到 wire，一小时后任务卡首帧预览 403 图裂。加 `CdnUrlSigner` 依赖，在出 wire 前
-      对 result 递归 `maybeSign`（范式同 `DramaProjectService.resignAssetUrls`）。
-
 ## 2026-09-09 · 生产事故复盘（v0.192，@Id 被挤到常量上）
 
 - [x] ~~**@Id 落到 static 常量上，服务重启循环、API 全挂**~~ **已修并加网**，2026-09-09：
@@ -873,14 +821,6 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
   「合作方」「今日完成」数字），违反 AGENTS.md §8.0。现改为 `USE_MOCK ? SEED : []` +
   新增 `module-notice.tsx` 明确提示「还在建设中，暂时没有数据」，写死的演示 KPI 在真环境显示「—」。
   已构建部署（release `20260906081358-fc8c8702`，构建参数与线上 manifest 逐项一致）。
-
-## 2026-08-29 · nginx 443 vhost 补齐（v0.136）
-
-- [x] ~~仓库 `infra/nginx/` 缺 music / drama / aiavatar / star 的 443 SSL example~~（**v0.136 完成，2026-08-29**）：新增 `{music,drama,aiavatar,star,celebrity,api}.aibuzz.cn.ssl.conf.example` 六份；前五份的 `server` 块与线上 `/etc/nginx/conf.d/` 对应文件逐字节一致（已 diff 校验），七份合起来过 `nginx -t`（docker nginx:1.27-alpine）。`infra/README.md` 新增 **§5.1「每子域必须同时有 80 和 443」**（含 443 默认站机制、线上 vhost 清单、泛域名证书副本台账、新增子域 checklist + 实测过的验证脚本），`docs/INDEX.md` last-reviewed 同步。
-- [x] ~~**`api.aibuzz.cn` 缺 443 vhost（线上仍存在的同类 bug）**~~（**完成，2026-09-06**：已装 `api.aibuzz.cn.ssl.conf`，`https://api.aibuzz.cn/api/me/profile` 实测直通 8080 返回 401 后端 JSON，不再 302 到 /admin）：`aistareco.conf:151` 只有 80 block，`https://api.aibuzz.cn/` 落到 443 默认站 admin 并 302 到 `/admin`（2026-08-29 实测 `curl -sI https://api.aibuzz.cn/` → `location: https://api.aibuzz.cn/admin`；`http://` 为 404 属正常，命中 server 根路径）。修法：装 `infra/nginx/api.aibuzz.cn.ssl.conf.example` 到 `/etc/nginx/conf.d/api.aibuzz.cn.ssl.conf` 后 `nginx -t && systemctl reload nginx`。**修好前不要把 `https://api.aibuzz.cn` 用作支付/短信回调地址或小程序 request 合法域名。**
-- [x] ~~**泛域名证书 5 处副本目录**（2026-11-08 到期前必须处理）~~（**完成，2026-09-06**：drama / celebrity / admin / aistar 四处配置已改指 `/etc/nginx/certs/aibuzz.cn/`，只剩非本仓的 `bossclub.aibuzz.cn.conf` 还引用副本；续期脚本 `deploy-to-ecs.sh` 同时覆盖真值目录与全部 5 个副本）：`/etc/nginx/ssl/{admin,aistar,bossclub,drama}.aibuzz.cn/` 与 `/etc/nginx/certs/celebrity.aibuzz.cn/` 存的是与 `/etc/nginx/certs/aibuzz.cn/` **完全相同**的证书副本（md5 一致，非独立签发），线上 `drama.aibuzz.cn.ssl.conf` / `celebrity-ssl.conf` / `admin.aibuzz.cn.ssl.conf` 仍指向各自副本。续期若只换 canonical 目录，这几个域会继续用旧证书直到过期。修法二选一：把线上配置改指共享路径（仓库 example 已收敛），或让续期脚本覆盖全部 6 个路径。
-- [x] ~~清理 `infra/nginx/{star,aistar}.aibuzz.cn.conf.example` 两份历史「80+443 单文件」example~~（**完成，2026-09-06**：不是删除而是扶正 —— 线上 `aistar.aibuzz.cn.conf` 已补齐 `/api/` `/static/` `/cdn/` 并改指共享证书，`star.aibuzz.cn.conf` 改成纯 80 跳转，两份 example 重新与线上逐字节对齐，README §5.1 的「勿再安装」警告已撤销）。原描述：其 443 块缺 `/api/` `/static/` `/cdn/` 三个反代（装上去前端能开但接口全 404），且引用的 `/etc/nginx/ssl/star.aibuzz.cn/` 线上并不存在。已在 README §5.1 标注「勿再安装」，待确认无人引用后删除。
-- [x] ~~`aibuzz.cn` 顶级域从 ECS 本机与本地 curl 均 `000`~~（**审计确认，2026-09-06**：本机 DNS 确实被代理劫持到 198.18.0.0/15，绕开后用 `--resolve` 与 DoH 复验，`aibuzz.cn` 的 A 记录与 vhost 均正常，非线上缺陷）。原描述：本地 DNS 被 VPN 劫持到 198.18.0.0/15，未能确诊，**与本次 443 改动无关**，需在干净网络下复验 DNS A 记录与安全组。
 
 ## 2026-04-21 · admin 调 server 全 403 + 缺排错手段
 
@@ -1071,11 +1011,11 @@ v0.194 把 §7 版本速览表从 110 行收到 5 行 —— 它曾占全文 **6
   - [x] **P1 文本层 + 机位**：`drama.epscript.md` / `drama.split_scene.md` 补电影语言规则；`BoardShot.camId` + `normalizeShot` 透传 + JSON 模板加字段。
   - [x] **P2 视频层关键帧 i2v**：`MaterialVideoModelClient.PROTOCOL_SEEDANCE`（content 数组 first/last_frame + return_last_frame + `/contents/generations/tasks` 路径）+ GENERIC 补 image/end_image（修复 seedance 落 GENERIC 连首帧都没传）；`MaterialVideoJob.lastFrameUrl` → 任务卡 `last_frame_url` → 前端 `BoardShot.lastFrameUrl` 链式承接闭环；`drama.decompose` 节点（`/me/drama/projects/{id}/shot/decompose` + `drama.credit.decompose` + ff/lf_chars 角色名存在性校验）。门禁：server 35/35 + typecheck:all 10/10 + web-drama build + contract 全绿。
   - [x] **B 收敛（v0.98，2026-06-30）**：短剧工作台 6 阶段 → 5，删「视频工厂」阶段/抽屉/源码，逐镜出片全在剧集脚本分镜表内（`use-shot-render` hook + 分镜表 4 版挑选/AI 拆镜/首帧▷末帧双联+hover 预演）。**P1** epscript 不再 lock（脚本始终可编辑）。**P5** 删左下 AI 浮窗 → 行级 Wand2 就地改写本镜（`/shot/rewrite`）。**P6** 短视频面包屑派生 + beat 改 AI 生成。**P4** 假模型下拉随工厂删除已消失。
-  - [ ] **后续可选**：VLM best-of-N 首帧一致性自检。~~`lastFrameUrl` 末帧 CDN 镜像~~ **C-1 完成**（v0.99，2026-07-10）：`MaterialVideoJob.lastFrameCdnKey` 真值列 + worker 末帧下载镜像（失败 best-effort 仅 WARN 不 markFailed）+ `toCard` `signKey` 派生 fallback 旧 URL；同批落 `/render/{frame,clip}` 返回体 `applied_refs` 参考生效回报（`MaterialVideoWorkerTest` + `DramaRenderServiceTest`）。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §2。
-- [x] ~~**D-11 出片真·多模型选择**~~ **D-11 完成**（v0.100，2026-07-10）：一致性引擎 D 序列。新表 `ai_app_endpoint_candidate`（purpose×endpoint 交点 + capability + 单价 override，`AiAppBinding` 保持默认端点、`resolveEndpoint(purpose)` 行为零变化）；`AiModelInvocationService.resolveEndpoint(purpose, endpointId)` 重载（白名单未命中 → 503 `ENDPOINT_NOT_ALLOWED` 不回退默认、不扣费，§8.0）+ `listCandidates`；`AiAppCandidateSeeder`（@Order 60）幂等回填现有绑定为置顶候选；`GET /me/drama/render/models`（image+video 候选 + capability + isDefault）；`/render/{frame,clip}` body 加 `endpoint_id`（frame debit / clip item credit_cost，override 覆盖用途默认单价）；视频线 endpoint_id 随 `variant_config` 透传 worker → `MaterialVideoModelClient.pickEndpoint`（celebrity 素材线不传 → 默认端点，回归测试守）；前端 `render-model-select`（分镜表 / 短视频出片模型下拉，替代 v0.98 假下拉）+ admin「候选端点与能力」编辑块。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §3。测试：`AiModelInvocationServiceTest`(+6) / `AiAppCandidateSeederTest`(2) / `DramaRenderServiceTest`(+2) / `MaterialVideoWorkerTest` 回归。
+  - [ ] **后续可选**：VLM best-of-N 首帧一致性自检。~~`lastFrameUrl` 末帧 CDN 镜像~~ **C-1 完成**（v0.99，2026-07-10）：`MaterialVideoJob.lastFrameCdnKey` 真值列 + worker 末帧下载镜像（失败 best-effort 仅 WARN 不 markFailed）+ `toCard` `signKey` 派生 fallback 旧 URL；同批落 `/render/{frame,clip}` 返回体 `applied_refs` 参考生效回报（`MaterialVideoWorkerTest` + `DramaRenderServiceTest`）。真源 `docs/drama-consistency-engine-design.md` §2。
+- [x] ~~**D-11 出片真·多模型选择**~~ **D-11 完成**（v0.100，2026-07-10）：一致性引擎 D 序列。新表 `ai_app_endpoint_candidate`（purpose×endpoint 交点 + capability + 单价 override，`AiAppBinding` 保持默认端点、`resolveEndpoint(purpose)` 行为零变化）；`AiModelInvocationService.resolveEndpoint(purpose, endpointId)` 重载（白名单未命中 → 503 `ENDPOINT_NOT_ALLOWED` 不回退默认、不扣费，§8.0）+ `listCandidates`；`AiAppCandidateSeeder`（@Order 60）幂等回填现有绑定为置顶候选；`GET /me/drama/render/models`（image+video 候选 + capability + isDefault）；`/render/{frame,clip}` body 加 `endpoint_id`（frame debit / clip item credit_cost，override 覆盖用途默认单价）；视频线 endpoint_id 随 `variant_config` 透传 worker → `MaterialVideoModelClient.pickEndpoint`（celebrity 素材线不传 → 默认端点，回归测试守）；前端 `render-model-select`（分镜表 / 短视频出片模型下拉，替代 v0.98 假下拉）+ admin「候选端点与能力」编辑块。真源 `docs/drama-consistency-engine-design.md` §3。测试：`AiModelInvocationServiceTest`(+6) / `AiAppCandidateSeederTest`(2) / `DramaRenderServiceTest`(+2) / `MaterialVideoWorkerTest` 回归。
 - [x] ~~**D-12 短视频草稿资产 URL 重签**（v0.98 发现）：`DramaShort.payloadJson` 存的是当时签名的 OSS URL（首帧/末帧/成片），`AEP_CDN_SIGNED_URL_TTL_SECONDS`（默认 3600s）过期后 403 图裂——与 `DramaProject` 同类债。`DramaProject` 已在 `toDetail` 递归 `signer.maybeSign` 重签修复（v0.98，见 AGENTS §4.7.7）；`DramaShort` 出 wire 漏斗需照做（注入 `CdnUrlSigner` + 复用 `resignAssetUrls` 范式）。~~ **审计确认，2026-07-02（例行 QA 巡检）**：本条描述已过时——`DramaShortService` 早在 v0.76 补丁（commit `81d9030`，2026-06-17）就已注入 `CdnUrlSigner` 并在 `toDetail` 里加 `resignPayloadAssets`（遍历 shots 的 `frameUrl`/`frameUrls`/`videoUrl` 走 `resolveAssetUrl`→`signer.maybeSign` 重签），`DramaShortServiceTest` 当时已有断言覆盖。代码复核确认（`grep CdnUrlSigner/resignPayloadAssets apps/server/.../DramaShortService.java` 命中注入+调用），沿用上一轮例行 QA（PR #76）的审计结论，避免后续巡检重复排期。
-- [x] ~~**C-2 角色/场景实体化 + 多角度参考图集**~~ **C-2 完成**（v0.101，2026-07-10）：一致性引擎 L0 地基。两新表 `drama_character`/`drama_scene`（字段名对齐 `CharacterDef`/`SceneAsset`；`ref_images_json`=多角度参考图集 `[{cdnKey,angle,label}]`，真值 cdnKey，出 wire signer 派生，软删随项目）；新服务 `DramaReferenceAssetService`（懒回填 `ensureBackfilled` + 双写 `syncFromDoc`〔§6.1 只 upsert 实体表、不重写 payloadJson〕+ 出 wire overlay + 三视图 `generateReferenceSheet`）。新端点 `POST /me/drama/projects/{id}/characters/{charId}/reference-sheet`（复用 `IMAGE_GENERATION`+`drama.character_frame_image` 加 `{{angleClause}}` 注角度、锁脸用定妆图；计费 **hold→逐角度 commit**，部分失败剩余 release，全失败 release 全额+抛错；§8.0 preflight 在 hold 前）。前端角色卡「一键三视图」+ 正/侧/全身缩略图墙。测试 `DramaReferenceAssetServiceTest`(8)。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §4。类型沿用 drama 本地约定（不进 packages/types）。
-- [x] ~~**C-3 服务端参考装配（Reference Assembler）+ 双线共享 useShotRender**~~ **C-3 完成**（v0.102，2026-07-10）：一致性引擎 L1 收官。新服务 `DramaReferenceAssembler`（`@Service`，**只读文档/实体、绝不回写 payloadJson**，§6.1）把前端 `epscript.tsx:shotRefImages` 优先级链下沉服务端：三级入参 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）+ `ref_leading` 置顶锚；角色 `drama_character.refImages`(front 优先，@cast→文本名→全员，实体缺兜底文档 avatarImage)/场景 `drama_scene`(显式 sceneRefId→名称兜底)/同场上一镜真实末帧（文档优先 + `MaterialVideoJob.lastFrameCdnKey` 权威回退，`variant_config` 内存扫）。按 D-11 capability 裁剪（`maxRefImages` 未配置 null→legacy 兼容默认 6=v0.97 前端既有上限、视频首尾帧 null→协议关键字静态判定；显式配置最高优先——review 回归修正，初版误按保守默认 1），优先级保 identity(character>scene>prev 末位先砍)、超出 `over_max_refs`、本地 `/cdn` `local_unfetchable`（如实回报 §8.0），`applied_refs.role` 精确槽位。`DramaRenderService.renderFrame/renderClip` 接入（删旧 `computeClipAppliedRefs`/`appliedRefsJson`）；前端共享 `lib/use-shot-render.ts`，`epscript` 删 `shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`（体检留 UI 级 `sceneHasRef`）、`shorts/make` 删 `shortRefImages` 改走 `ref_slots`。测试 `DramaReferenceAssemblerTest`(16) + `DramaRenderServiceTest` 精简。真源 `docs/[Fabel5]drama-consistency-engine-design.md` §5。无新 path（复用 `/render/frame,clip`）。
+- [x] ~~**C-2 角色/场景实体化 + 多角度参考图集**~~ **C-2 完成**（v0.101，2026-07-10）：一致性引擎 L0 地基。两新表 `drama_character`/`drama_scene`（字段名对齐 `CharacterDef`/`SceneAsset`；`ref_images_json`=多角度参考图集 `[{cdnKey,angle,label}]`，真值 cdnKey，出 wire signer 派生，软删随项目）；新服务 `DramaReferenceAssetService`（懒回填 `ensureBackfilled` + 双写 `syncFromDoc`〔§6.1 只 upsert 实体表、不重写 payloadJson〕+ 出 wire overlay + 三视图 `generateReferenceSheet`）。新端点 `POST /me/drama/projects/{id}/characters/{charId}/reference-sheet`（复用 `IMAGE_GENERATION`+`drama.character_frame_image` 加 `{{angleClause}}` 注角度、锁脸用定妆图；计费 **hold→逐角度 commit**，部分失败剩余 release，全失败 release 全额+抛错；§8.0 preflight 在 hold 前）。前端角色卡「一键三视图」+ 正/侧/全身缩略图墙。测试 `DramaReferenceAssetServiceTest`(8)。真源 `docs/drama-consistency-engine-design.md` §4。类型沿用 drama 本地约定（不进 packages/types）。
+- [x] ~~**C-3 服务端参考装配（Reference Assembler）+ 双线共享 useShotRender**~~ **C-3 完成**（v0.102，2026-07-10）：一致性引擎 L1 收官。新服务 `DramaReferenceAssembler`（`@Service`，**只读文档/实体、绝不回写 payloadJson**，§6.1）把前端 `epscript.tsx:shotRefImages` 优先级链下沉服务端：三级入参 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）+ `ref_leading` 置顶锚；角色 `drama_character.refImages`(front 优先，@cast→文本名→全员，实体缺兜底文档 avatarImage)/场景 `drama_scene`(显式 sceneRefId→名称兜底)/同场上一镜真实末帧（文档优先 + `MaterialVideoJob.lastFrameCdnKey` 权威回退，`variant_config` 内存扫）。按 D-11 capability 裁剪（`maxRefImages` 未配置 null→legacy 兼容默认 6=v0.97 前端既有上限、视频首尾帧 null→协议关键字静态判定；显式配置最高优先——review 回归修正，初版误按保守默认 1），优先级保 identity(character>scene>prev 末位先砍)、超出 `over_max_refs`、本地 `/cdn` `local_unfetchable`（如实回报 §8.0），`applied_refs.role` 精确槽位。`DramaRenderService.renderFrame/renderClip` 接入（删旧 `computeClipAppliedRefs`/`appliedRefsJson`）；前端共享 `lib/use-shot-render.ts`，`epscript` 删 `shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`（体检留 UI 级 `sceneHasRef`）、`shorts/make` 删 `shortRefImages` 改走 `ref_slots`。测试 `DramaReferenceAssemblerTest`(16) + `DramaRenderServiceTest` 精简。真源 `docs/drama-consistency-engine-design.md` §5。无新 path（复用 `/render/frame,clip`）。
 - [ ] **C-4 MaterialVideoJob shotId/sceneId 索引列**（C-3 遗留，DAG 时必做）：C-3 的「同场上一镜真实末帧」权威回退目前用 `MaterialVideoJobRepository.findByOwnerUserIdAndScriptIdOrderByCreatedAtDesc` 拉该项目全部 job 后**内存解析 `variantConfigJson`** 匹配 `scene_id`/`shot_id`（`DramaReferenceAssembler.jobLastFrame`）。大项目 job 多时有内存/扫描成本。C-4（跨镜 DAG 编排）应给 `MaterialVideoJob` 加 `shot_id`/`scene_id` 索引列（ddl-auto=update 自动加）+ Repo `findFirstByOwnerUserIdAndScriptIdAndShotIdAndStatusOrderByCreatedAtDesc`，把内存扫换成索引查询。当前 C-3 内存扫描可接受（架构师裁决），不阻塞。
 - [x] ~~**P1 · 短剧在聚算 H3 上「生成视频」首帧送不到模型，静默退成文生视频**~~ **2026-09-30 热修完成**（基线 `ada3e17c`，不占版本号）：聚算分支把提示词里的首帧标记剥掉、只认 `variant_config.first_frame_key`，而 `DramaRenderService.renderClip` 从没写过它，`applied_refs` 还按 URL 可抓取报「已送达」。现在 `renderClip` 先问 `MaterialVideoJobService.firstFrameNeedsStorageKey`（协议判定只在 `MaterialVideoModelClient.usesUploadedFirstFrame` 一处，`submit` 也改用它）；是聚算就由 `DramaReferenceAssembler.requireOwnedFrameKey` 用 `CdnUrlSigner.keyOf` 从最终首帧 URL（显式 frame_url / 文档本镜首帧 / 承接的上一镜末帧，优先级不变）反抽 key，再按 `storage_assets(app=drama, owner=本人)` 或本人短剧任务的 `lastFrameCdnKey` 确认归属，写进 `variant_config.first_frame_key`（与 `IpRunService` 同键同层）。不属于本人 → hold 之前 400 `DRAMA_FRAME_NOT_OWNED`；外链派不出 key → 照旧出片，但 `applied_refs` 报 `not_in_storage`；候选 `maxRefImages=0` 时不派生，照旧 `model_no_image_input`。非聚算协议行为不变（不派生、不查归属，提示词标记照留）。上传失败仍由 worker 抛 `VIDEO_REF_UPLOAD_FAILED`。测试：`DramaRenderServiceTest`(+4) / `DramaReferenceAssemblerTest`(+8) / `MaterialVideoModelClientTest`(+1) / 新 `DramaFrameOwnershipH2Test`(3，真 H2 跑两条新查询)，并验证过去掉写 key 那一行时用例是红的。
 - [ ] **部署后核对线上聚算 H3 候选的「最多参考图」**（2026-09-30 热修附带）：v0.131 接 H3 时候选按当时能力标了 `maxRefImages=0`（见 `docs/VERSION_HISTORY.md` v0.131 段），v0.183 接通 i2v 后没人改回来。若线上仍是 0，热修后 H3 照旧不收首帧（界面如实报「当前模型仅开放文生视频」）；要让首帧生效需在后台「AI 应用绑定 → 候选端点与能力」把 H3 改成 1。尾帧仍未接，`supportsFirstLastFrame` 保持 false。
@@ -1281,19 +1221,6 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 ---
 
-## 2026-07-07 · 例行 QA 新发现（均已同轮修复，非遗留待办，留痕备查）
-
-> 本轮复核了 PR #81（遗留 `apps/web` 三处 `window.confirm()`，已携带进本轮）+ 四个专项 agent 交叉审计
-> （credit-ledger bypass / hold-commit-release、`/api/me/**`+`/api/star/**` 归属校验、CDN URL 签名、
-> `?? ""` 掩盖 + 原生 confirm/alert/prompt）。归属校验与 `?? ""`/原生弹窗两类**审计后确认无新增问题**
-> （见 PR 描述）。以下三条是本轮新发现且已在同一 PR 内修复：
-
-- [x] ~~**`MaterialVideoJob.videoUrl`/`thumbnailUrl`/`lastFrameUrl` 从落库那刻就未签名**~~（**已修复**，2026-07-07）：`AliyunOssCdnUploader.upload()` 返回的是未签名 `publicUrlFor(key)`，`MaterialVideoJobService.toCard` 此前原样透传出 wire，从未经过 `CdnUrlSigner`——生产 driver=oss 且开启防盗刷签名时不是 1h TTL 过期才裂，而是从生成那一刻起就 403（AGENTS.md §4.7.7 同类教训，本条之前没堵上）。改为 `toCard` 对三个字段调 `CdnUrlSigner.maybeSign`（URL 反抽 key 重签，同 DramaProject/DramaShort 已有兜底路径），未新增列。回归测试 `MaterialVideoJobServiceCdnSignTest`。注：本条之前在 §4.7.6「local-only 字段迁移」列表里被记成「待迁移到 OSS」，实际当时已经在传 OSS（`mirrorToCdn` 真调用了 `cdnUploader.upload`），真正的洞是「传了但没签」，描述口径已更新。
-- [x] ~~**`StoreService.redeem` 绕开 `CreditService` 手写钱包扣款**~~（**已修复**，2026-07-07）：手写 `walletRepo.findByUserIdForUpdate → setXxxBalance → save`，虽用了悲观锁 + 服务端权威价（未被并发/定价漏洞利用），但违反 AGENTS.md §4.2 硬规则且复制了扣桶优先级逻辑，与 `CreditService` 产生维护漂移风险。改为 `CreditService.debit` 新增的 entryType 可选重载（默认 ADJUST，原 3 个调用方行为不变），`redeem` 传 SPEND，语义等价。回归测试 `StoreServiceRedeemTest`。
-- [x] ~~**`/api/store/items/**`（商店购买）缺显式 `authenticated()`**~~（**已修复**，2026-07-07）：同 F-01（2026-07-05 修的 `/api/settings/**`）一样落 `anyRequest().permitAll()` 兜底，`StoreController#redeem` 未登录会 NPE 500 而非干净 401。只收紧 `items/**`（写路径）；`/api/store/catalog` 保持 permitAll（`StoreController#catalog` 显式支持匿名浏览，收紧会破坏既有设计）。
-
----
-
 ## 2026-07-08 · 例行 QA 新发现（均已同轮修复）
 
 > 本轮承接并复核了历史例行 QA PR #82（本仓）—— 5 个提交（遗留 `apps/web` confirm 迁移 +
@@ -1318,19 +1245,6 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 - [ ] **celebrity 明星头像/封面上传绕开 `CdnUrlSigner`，落库裸 `cdnUrl` 而非 `cdnKey`**（本轮发现，暂不修，理由见下）：`StarProfileUploadController`/`AdminCelebrityUploadController` 都直接返回 `FileStorageService` 的未签名公开 URL，写入 `CelebrityStar.avatar`/`CelebrityStar.cover`（纯 `String` 列，无 `cdnKey`）。代码里已有注释解释这是刻意权衡（"非高带宽盗刷目标，公开 URL 可接受"），且当前 `infra/env/server.env.example` 配置的是 `AEP_CDN_SIGNED_URL_STRATEGY=oss`（非 `cdn`），今天不会触发线上裂图。但该注释的技术理由站不住脚——一旦运维按 AGENTS.md §4.7.3 的建议把策略切到 `cdn`（Aliyun CDN URL 鉴权 Type A 是按域名/路径生效，不区分内容敏感度），这两个字段会立刻裂图（不是 TTL 过期，是从上传那刻起就没签过）。且新增 `cdnUrl` 不带 `cdnKey` 违反 AGENTS.md §4.7.4 的强制规则。修复需要给 `CelebrityStar` 加 `avatarCdnKey`/`coverCdnKey` 列 + 双写迁移 + DTO 出 wire 改走 signer，屬于结构性 schema 变更，非本轮"高度局部化"修复范畴，记录留给下一轮排期。**2026-07-10 复核**：本轮独立审计再次排查，结论不变，仍留给下一轮排期（未新增变更）。
 
 ---
-
-## 2026-07-10 · 例行 QA 新发现（5 处，均已同轮修复）
-
-> 本轮未发现历史遗留的 open routine QA PR 需要承接（`[Routine QA]` 标题 / `qa/routine/` 分支前缀均搜索为空，上一轮 #85 已合并入 main）。独立审计发现并修复以下 5 处：
-
-- [x] ~~**`CreditService.commitHold`/`releaseHold` 用无锁查询读 `CreditHold`，与 `CreditHoldSweeper` 的清扫竞态可导致双重退款 + 账本终态被覆盖**~~（**已修复**，2026-07-10）：两方法都用 `CreditHoldRepository.findByReferenceTypeAndReferenceId`（普通派生查询，无 `@Lock`）读 hold，再单独对 `Wallet` 行加悲观锁——但 hold 行本身没锁。`CreditHoldSweeper` 是 `@Scheduled` 任务，专门清扫超 180 分钟 TTL 的 `ACTIVE` hold，与业务方几乎同时对同一 hold 调 `commitHold`/`releaseHold` 时（sweeper 判定「孤儿」的窗口本就贴着「任务可能仍在跑」的边界），两个事务可能各自读到同一份 `status=ACTIVE` 的旧对象；先提交的一方把 hold 置为终态（COMMITTED 或 RELEASED），后到者仍持有陈旧的内存对象，在 wallet 锁释放后基于旧状态继续操作——`releaseHold` 会把已经 `commitHold` 完成的任务再退一次款（用户白嫖），且把 hold 状态从 COMMITTED 覆盖回 RELEASED（账本审计链损坏）。修复：给 `CreditHoldRepository` 新增 `findByReferenceTypeAndReferenceIdForUpdate`（`@Lock(PESSIMISTIC_WRITE)`，与 `WalletRepository#findByUserIdForUpdate` 同一模式），`commitHold`/`releaseHold` 改用锁版查询，且在获取 wallet 锁之前先锁 hold 行（锁顺序 hold→wallet 两方法一致，不与仅锁 wallet 的 `hold()` 创建路径产生环路，无死锁风险）。回归测试 `CreditServiceHoldLockTest`（3 例：commit/release 均改走锁版查询且不再调无锁版；模拟锁串行化后重读 COMMITTED 状态时 release 正确 no-op、不重复退款）。
-- [x] ~~**`GET /api/admin/users/{id}/wallet` 缺失 `@PreAuthorize`，任意 OPERATOR admin 可读取任意用户钱包**~~（**已修复**，2026-07-10）：与 2026-07-09 刚修的 `AdminCreditController` 是同一 bug class，只是换了一个 controller——`AdminUserController.getWallet` 只受 `/api/admin/**` 的 `hasAnyRole("SUPER_ADMIN","OPERATOR")` 兜底保护，未收紧到 `FINANCE_ADMIN|SUPER_ADMIN`。虽然当前 admin 前端没有页面调用这个端点（`apps/admin/src/api/users.ts` 的 `getUserWallet` 未被引用），但端点本身在 `specs/openapi.yaml` 有登记、可直接访问。修复：补 `@PreAuthorize("hasAnyRole('FINANCE_ADMIN','SUPER_ADMIN')")`，与 `AdminCreditController` 口径一致。回归测试 `AdminUserControllerWalletSecurityTest`（3 例：OPERATOR 403 / FINANCE_ADMIN、SUPER_ADMIN 均 200，200 用例挑一个真有 wallet 的 seed 用户，不是 `AepUserRepository.findAll()` 的第一条）。
-- [x] ~~**`PublishJobDto.from()` 读路径未经 `CdnUrlSigner`，`videoUrl`/`coverUrl` 签名过期后 403**~~（**已修复**，2026-07-10）：2026-07-08 的 `a72317e` 只修了 *派单* 路径（`startJob` 派单前 `maybeSign` 重签），但 *读* 路径（`GET /api/me/publish-jobs`、`GET /api/me/publish-jobs/{id}` 等 9 处调用点）漏签——`PublishJobDto.from(j)` 原样透传落库时已签名的 URL，TTL（默认 3600s）过期后任何读取这些字段的客户端都会拿到失效签名。当前 celebrity/drama 前端还没有把这两个字段渲染成 `<img>`/`<video>` src，所以不是即时可见故障，但属于 AGENTS.md §4.7.7 明确要求必须堵的口子（读路径不重签 = 定时炸弹）。修复：`PublishJobDto.from` 加 `CdnUrlSigner` 参数、对 `videoUrl`/`coverUrl` 各 `maybeSign` 一次；`PublishJobService` 全部 9 处调用点传入已注入的 `cdnUrlSigner`；新增 `PublishJobService.toDto(job)` 包装方法供 `PublishJobBatchService` 复用（不必让它也持有 `CdnUrlSigner`）。同步更新 `PublishJobServiceCdnSignTest`：`startJob` 返回的 DTO 现在也会重签一次，同一 URL 上 `maybeSign` 从断言调用 1 次改为 2 次（派单前 + 出 DTO 各一次），测试注释写明原因。
-- [x] ~~**web-celebrity 素材工坊编辑/预览页拉取脚本失败无 `.catch()`，永久卡在加载态**~~（**已修复**，2026-07-10）：`material/workshop/[scriptId]/edit/editor-client.tsx` 与同目录 `preview-client.tsx` 的 `MaterialOpsApi.getScript(scriptId).then(...)` 都没有 `.catch()`/`.finally()`。JWT 过期 / 500 / 网络抖动时 promise reject，`setLoading(false)` 永远不会跑，页面卡死在「加载脚本…」，控制台留一条 unhandled rejection，且没有任何 error 状态可退——比 2026-07-08 修的 13 个 web-star 页面更彻底（那些好歹有 `!data` 判断，这里是 loading 状态本身卡死）。修复：两个文件都加 `error` state + `.catch()` 设置错误信息并解除 loading + 「重试」按钮（`reloadKey` 触发 `useEffect` 重新拉取）。
-- [x] ~~**web-drama 分发总览页把后端原始状态枚举值直接渲染给用户**~~（**已修复**，2026-07-10）：`distribution/page.tsx` 两处 `<StatusBadge tone={tone}>{p.status}</StatusBadge>` / `{j.status}` 把 `PlatformStatus`（`"connected"`/`"pending"`/`"disconnected"`）和 `PublishJobStatus`（`"awaiting_user"`/`"transcoding"` 等）wire 原值直接当可视文案，违反 AGENTS.md §8「UI 文案：用户友好」（禁止暴露内部枚举原值）。同一枚举在 `web-celebrity` 的 `PublishJobList.tsx` 已有正确的中文 `STATUS_META` 标签映射，确认这是本页遗漏而非有意设计。修复：新增本地 `PLATFORM_STATUS_LABEL`/`JOB_STATUS_LABEL` 映射（对齐 `PublishJobList.tsx` 的中文标签），两处渲染改用映射后的标签。
-
-**本轮复核历史 open routine PR**：无——`[Routine QA]`/`qa/routine/` 搜索均为空（#85 已合并），无需 carry-forward，也无需 supersede/close 任何旧 PR。
-**验证**：`./mvnw compile`（无 `-o`，走代理联网拉包）全绿；`./mvnw -Dtest=CreditServiceHoldLockTest,AdminUserControllerWalletSecurityTest,CreditHoldSweeperTest,AdminCreditControllerSecurityTest,CreditServiceRefundTest,PublishJobServiceCdnSignTest,CelebrityZoneServiceTest,CreditOpsServiceTest,DramaProjectServiceTest,DramaShortServiceTest,LicenseActivationServiceCreditTest,MaterialDraftBillingTest,RechargeServiceTest,StoreServiceRedeemTest,WalletBucketAndConcurrencyTest,MaterialVideoJobServiceCdnSignTest,MixcutPublishServiceTest test` 全绿（17 + 2 + 广谱回归共 90+ 例）；`pnpm typecheck:web-celebrity` / `pnpm typecheck:web-drama` 见本轮 PR 描述。
 
 ## 2026-07-11 · 例行 QA 新发现（2 处，均已同轮修复）
 
@@ -1475,16 +1389,6 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 
 ---
 
-## 2026-07-22 · 例行 QA（承接 #95，1 处 Critical SSRF 高置信度新缺陷已修复）
-
-> 开工前核对：#95（`qa/routine/2026-07-21-bugfix-sweep`）base SHA 与当前 `origin/main` 完全一致（main 在 #95 开出后无新提交），直接从该分支 fast-forward 切出本轮分支，10 个既有提交无需 chery-pick / 无冲突。
->
-> 独立审计（general-purpose 子 agent，要求不复用前几轮"已核实无新缺陷"的结论，聚焦近期未被专门审计过的代码路径），发现并修复以下 1 处：
-
-- [x] ~~**`DramaAssembleService.download()`（成片合成 `POST /me/drama/projects/{id}/assemble`）对用户可控的 shot `videoUrl` 零 origin 校验，构成 SSRF**~~（**已修复**，2026-07-22）：`videoUrl` 来自 `DramaProject.payloadJson`（`episodeDocs[ep].storyboard.scenes[].shots[].videoUrl`），而 `PUT /me/drama/projects/{id}`（`DramaProjectService.saveProject`）把整个 `data` JSON 原样落库、不做任何嵌套字段校验——任何登录用户可经该接口把自己项目的 `shot.videoUrl` 改成任意字符串（如阿里云 metadata 接口 `http://100.100.100.200/latest/meta-data/ram/security-credentials/<role>` 或任意内网服务地址）。`assemble()` 随后对每个 `videoUrl` 调 `download()`：此前该方法只判断 `url.startsWith("http")` 决定是否需要拼自身 origin，对已是绝对 URL 的输入**没有任何 origin 白名单校验**就直接发起服务端 `HttpClient.send(GET)`，把响应体写入本地临时文件喂给 ffmpeg——这与 `PublishJobService.toAbsoluteUrl()` 已经修过的同一类 SSRF（2026-07-11，见上文）是同一漏洞模式的第三个独立代码路径，此前两轮 SSRF 专项审计（2026-07-11 聚焦 `PublishJobService`；`MaterialOpsService.resolveSubmittedVideoUrl` 早已有 `isAllowedViralHost` 校验）均未覆盖到 `DramaAssembleService`，属于遗漏而非新引入。修复：仿照 `PublishJobService` 同一套 `trustedDispatchOrigins` 口径，新增 `trustedDownloadOrigins`（自身 `http://localhost:<server.port>` + `aep.cdn.public-base-url`/`aep.cdn.oss.base-url` 已配置的 origin），`download()` 对已是绝对 URL 的输入强制校验 origin 命中白名单，未命中前**在发起任何网络请求之前**抛 400 `VIDEO_URL_NOT_ALLOWED` 拒绝（`assemble()` 的 `catch (BusinessException e) { throw e; }` 会原样上抛，不会被吞成 502）；相对路径（同源）不受影响。回归测试：新增 `DramaAssembleServiceTest`（2 例：云 metadata 地址 / 任意内网服务地址均 400 拒绝且 `ffmpeg`/`cdnUploader` 零交互）；已验证回退生产代码改动会导致测试类编译失败（构造器签名依赖新增的白名单参数，无法在无该改动的情况下通过 Mockito 组装出旧行为），证明测试确实锁定了这处修复。定位：`apps/server/src/main/java/com/aistareco/aep/service/DramaAssembleService.java`（原 `download()` 方法，约第 177-191 行）。
-
-**验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 **409/409 全绿、0 失败**（较 2026-07-21 基线净增 2 个回归测试）；`DramaAssembleServiceTest` 单独跑 2/2 全绿。本轮未改动前端/契约，未跑 `pnpm typecheck:all`/`check:api-contract`（无相关文件变更）。
-
 ## 2026-07-23 · 例行 QA（承接 #96，2 处已修复 + 1 处记录待排期）
 
 > 开工前核对：#96（`qa/routine/2026-07-22-bugfix-sweep`）base SHA 与当前 `origin/main` 完全一致（main 在 #96 开出后无新提交），直接从该分支 fast-forward 切出本轮分支，11 个既有提交无需 cherry-pick / 无冲突。
@@ -1496,7 +1400,6 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
 - [ ] **`CelebrityStar.avatar`/`cover` 直接存 `FileStorageService` 返回的未签名公开 URL，未经 `CdnUrlSigner`，违反 §4.7.4 "DB 真值必须是 cdnKey" 硬规则**（记录待排期，2026-07-23 发现，暂不修）：`apps/server/src/main/java/com/aistareco/aep/model/CelebrityStar.java`（`avatar`/`cover` 字段，纯 `String` 无对应 `cdnKey` 列）；写入路径 `AdminCelebrityUploadController.java:75-77` 与 `StarProfileUploadController.java:80-83` 均直接把 `fileStorage.store(...)` 返回的稳定公开 URL 落库。当前代码注释里的技术理由（"非高带宽盗刷目标，公开 URL 可接受"）与 §4.7.4 的强制规定冲突——一旦运维按 §4.7.3 建议把 `AEP_CDN_SIGNED_URL_STRATEGY` 从 `oss` 切到 `cdn`，这两个字段会立即 403（不是 TTL 到期后才裂图，而是从来没签过名）。不在本轮修：需要新增 `avatarCdnKey`/`coverCdnKey` 列 + 改两个 upload controller 返回 key 而非 url + DTO 改经 `signer.signKey(...)` 派生，属于 §4.7.6 描述的多步迁移，风险与改动面超出例行 QA 单次 sweep 的范围，留给专门的迁移 PR。
 
 **验证**：`./mvnw compile` 全绿；`./mvnw test` 全量 **409/409 全绿、0 失败**（与 2026-07-22 基线持平，本轮两处修复均为行为收紧/纠正，未新增测试文件——`AepSecurityConfig` 的路由收紧、`DramaReferenceAssembler` 的 sentinel 修正均由既有测试覆盖路径验证未回归）。本轮未改动前端/契约，未跑 `pnpm typecheck:all`/`check:api-contract`（无相关文件变更）。
-
 
 ## 2026-07-27 · AiAvatar 数字资产平台扩展（v0.104）新发现待办
 
@@ -1549,7 +1452,6 @@ Phase 1（引入数字人 + 指定展示图）已落地；以下为已确认方�
   建议排期：要么在 `src/test/resources/application.properties` 里统一把测试上下文钉成
   `aep.cdn.driver=local`（测试本来也不该打真 OSS），要么让 `AliyunOssCdnUploader` 在 test profile 下
   降级而不是 fail-fast —— 前者更符合 §8.0（生产 fail-fast 的行为不该为测试放宽）。
-
 
 ## 2026-08-02 · AiAvatar 真人授权刷脸认证（v0.105）新发现待办
 

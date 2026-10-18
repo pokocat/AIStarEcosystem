@@ -217,7 +217,7 @@ src/components/          — 全局 dialog / drawer（MusicGenerationDialog / NF
 |---|---|
 | [`README.md`](README.md) | 启动 / 技术栈 / 版本日志 |
 | [`src/app/(workspace)/layout.tsx`](src/app/(workspace)/layout.tsx) | sidebar 配置 + topbar + 鉴权 wall |
-| [`src/styles/app.css`](src/styles/app.css) + [`src/styles/tokens.css`](src/styles/tokens.css) | 设计令牌 |
+| [`src/styles/app.css`](src/styles/app.css)（令牌与样式同在一个文件） | 设计令牌 |
 | [`src/api/`](src/api/) | 14 个域 API（USE_MOCK 分支） |
 | [`src/components/producer/`](src/components/producer/) | 22 个业务组件 |
 | [`src/proxy.ts`](src/proxy.ts) | 旧 `/console` 链接兼容 |

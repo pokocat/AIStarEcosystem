@@ -238,7 +238,7 @@ Celebrity 业务线是带货方（CRM 客户）的高客单价、低频次决策
 - ✅ `let's shoot something today.`（句尾轻语）
 - ❌ `<em>明星合作完整流程</em>`（中文不要 italic 衬线）
 
-**The Numeric Stability Rule.** 所有数字字段必须用 `font-variant-numeric: tabular-nums`（KPI、积分单价、销量、播放量），保证翻页 / hover 不抖动。前端格式化在 `apps/web/src/lib/format.ts` 的 `formatCompactNumber / formatCredits / formatCurrency / formatDuration`，**禁止在源数据里写 "128K"** —— 源数据永远是 raw integer。
+**The Numeric Stability Rule.** 所有数字字段必须用 `font-variant-numeric: tabular-nums`（KPI、积分单价、销量、播放量），保证翻页 / hover 不抖动。前端格式化在 `packages/api-client/src/format.ts` 的 `formatCompactNumber / formatCredits / formatCurrency / formatDuration`，**禁止在源数据里写 "128K"** —— 源数据永远是 raw integer。
 
 **The Eyebrow Above Headline Rule.** 每个 dashboard 大区头部都是「label eyebrow（11px UPPERCASE 0.12em ink-2）→ 24px 间距 → display / headline」三层结构；eyebrow 是必备的"哪一区"提示。
 
@@ -339,7 +339,7 @@ Celebrity 业务的生成器关键决策点。三档引擎用 **BigRadioCard 大
 - **Idle**：描边 `line-strong`；标题 Manrope 16 / 700；副文 12 ink-2
 - **Hover**：描边 ink-1；shadow soft
 - **Selected**：描边 violet；左上角浮一个 6×6 violet 实心方块；右下角 24×24 violet circle 内置 ✓
-- **每档专属信息**（来自 `apps/web/src/constants/celebrity-zone-ui.ts`）：
+- **每档专属信息**（来自 `apps/web-celebrity/src/constants/celebrity-zone-ui.ts`）：
   - 左侧 32×32 渐变方块（KeLing teal→lime · HiGen violet→peach · MiniMax amber→peach）
   - 标题 "标准 · HiGen" — 等级前置 Manrope 700
   - quality 用 5 颗星，amber 实心 + ink-3 空心
@@ -383,7 +383,7 @@ Celebrity 业务的生成器关键决策点。三档引擎用 **BigRadioCard 大
 - **Do** 用 `Instrument Serif italic` 衔接版本号、tip-of-the-day、welcome 句尾的英文短句（≤8 词）。
 - **Do** 主 CTA hover 用 `shadow-pop`（紫光晕），一屏只许出现一次。
 - **Do** 所有按钮 focus-visible 显示 `2px solid violet outline` + `2px offset`。
-- **Do** 中文数据字段在源数据里保留 raw integer（如 `fans: 128000`），格式化在 `apps/web/src/lib/format.ts`。
+- **Do** 中文数据字段在源数据里保留 raw integer（如 `fans: 128000`），格式化在 `packages/api-client/src/format.ts`。
 - **Do** 把所有 status pill 做成 `tinted-on-tinted`（强调色 12–18% 底 + 强调色实色字）。
 - **Do** 静止态用 `1px solid line` 表达卡片层级，**默认无阴影**。
 - **Do** 中文字 fallback 用 PingFang SC / Hiragino Sans GB；不用 Microsoft YaHei。
@@ -416,4 +416,4 @@ Celebrity 业务的生成器关键决策点。三档引擎用 **BigRadioCard 大
 > ⑤ 通用组件库（buttons 6 变体 / inputs / status pills / KPI cards / nav / tabs / progress / tables）
 > ⑥ 业务页面铺开（市场首页 / 明星详情 / 模板挑选 / 引擎与参数 / 生成中 / 我的项目 / 积分钱包 / 订单 / 消息中心 等）
 >
-> 接口层与三端数据模型对齐仍走仓库既有铁律：`apps/web/src/types/celebrity-zone.ts` 是真源，`apps/web-celebrity` 复制保持一致；接口走 `apiFetch` → `specs/openapi.yaml` → `npm run check:api-contract`。
+> 接口层与三端数据模型对齐仍走仓库既有铁律：`packages/types/src/celebrity-zone.ts` 是真源，`apps/web-celebrity` 直接 import；接口走 `apiFetch` → `specs/openapi.yaml` → `npm run check:api-contract`。

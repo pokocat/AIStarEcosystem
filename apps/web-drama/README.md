@@ -179,7 +179,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ### v0.102 · 2026-07-10 · 一致性引擎 C-3（服务端参考装配 Reference Assembler + 双线共享 useShotRender）
 
-> L1 收官：把此前散落在 `epscript.tsx` 的参考图优先级链（`shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`）**整体下沉服务端**——render 只传镜头坐标 `shot_ref`，服务端按 `payloadJson` + `drama_character`/`drama_scene` 实体自装配（角色/场景/上一镜真实末帧），按端点 capability（D-11）裁剪并回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §5。
+> L1 收官：把此前散落在 `epscript.tsx` 的参考图优先级链（`shotRefImages`/`sceneRefUrlFor`/`prevFrameInScene`/`nextFrameInScene`）**整体下沉服务端**——render 只传镜头坐标 `shot_ref`，服务端按 `payloadJson` + `drama_character`/`drama_scene` 实体自装配（角色/场景/上一镜真实末帧），按端点 capability（D-11）裁剪并回报精确槽位 `applied_refs`；前端重建共享 `useShotRender` hook，工作台分镜表与短视频工坊两线共用。真源 [`docs/drama-consistency-engine-design.md`](../../docs/drama-consistency-engine-design.md) §5。
 
 - **新服务 `DramaReferenceAssembler`**（`@Service`，纯装配、只读文档/实体，**绝不回写 payloadJson**，§6.1）：三级入参优先级 `shot_ref` > `ref_slots` > `ref_images`（老前端数组直通兼容）；`ref_leading`（拆镜末帧出图的本镜首帧锚）永远置顶。角色参考图 `drama_character.refImages`（angle=front 优先）→ 实体缺失兜底文档 `avatarImage`；场景参考 `drama_scene`（显式 `sceneRefId` 优先）→ 名称兜底；同场上一镜真实末帧**文档优先 + `MaterialVideoJob` 权威回退**（读 C-1 的 `lastFrameCdnKey`→signKey，不用会过期的 lastFrameUrl；`variant_config` 内存扫描）。
 - **capability 裁剪**（D-11 candidate，未配置 null → legacy 兼容默认：`maxRefImages`→6（= v0.97 前端 `slice(0,6)` 既有上限）、视频首尾帧→C-1 协议关键字静态判定；显式配置最高优先。**回归修正**：初版误按保守默认 1——seeder 回填的存量候选 capability 全 null，会让升级当天多参考一致性整体削弱）：优先级保 identity `character_refs > scene_ref > prev_last_frame`（末位先砍），超出标 `over_max_refs`，本地 `/cdn` 标 `local_unfetchable`（如实回报不静默，§8.0/§6.2）。`applied_refs.items[].role` 升级为精确槽位（character/scene/prev_last_frame/first_frame/last_frame）。
@@ -190,7 +190,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ### v0.101 · 2026-07-10 · 一致性引擎 C-2（角色/场景实体化 + 多角度参考图集）
 
-> L0 地基：把散落 `payloadJson` 的角色/场景升级为独立表（`drama_character` / `drama_scene`）+ 结构化多角度参考图集（cdnKey 真值）；渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §4。类型沿用 drama 本地约定（`mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
+> L0 地基：把散落 `payloadJson` 的角色/场景升级为独立表（`drama_character` / `drama_scene`）+ 结构化多角度参考图集（cdnKey 真值）；渲染真值改读实体（过渡期双写 + 懒回填）；新增「角色一键三视图」端点。真源 [`docs/drama-consistency-engine-design.md`](../../docs/drama-consistency-engine-design.md) §4。类型沿用 drama 本地约定（`mocks/drama-workshop/types.ts` + `api/*`，不进 packages/types）。
 
 - **两新表 `drama_character` / `drama_scene`**（ddl-auto 自动建）：字段名对齐前端 `CharacterDef`/`SceneAsset`；`ref_images_json` = 多角度参考图集 `[{cdnKey,angle,label}]`（真值 cdnKey，§4.7.4；出 wire 由 `signer.signKey` 派生 url）。软删随项目对齐。
 - **懒回填（read 时）**：`getProject` 前 `ensureBackfilled`——老项目文档 `characters/scenes` 非空但无实体行 → 从文档建实体（单图 `refCdnKey`→`refImages[0]{angle:front}` 迁移）；幂等闸=「项目实体行是否已存在」（含软删），跑两次不重复建。
@@ -203,7 +203,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ### v0.100 · 2026-07-10 · 一致性引擎 D-11（一用途多候选端点 + capability + 出片模型下拉）
 
-> 把「用途→单端点」升级为「用途→N 候选端点（带 capability）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §3。`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化。
+> 把「用途→单端点」升级为「用途→N 候选端点（带 capability）」，为 C-3 参考裁剪 / C-5 质检路由铺数据基础；分镜表 / 短视频出片入口恢复真·出片模型下拉（替代 v0.98 删掉的假下拉）。真源 [`docs/drama-consistency-engine-design.md`](../../docs/drama-consistency-engine-design.md) §3。`AiAppBinding` 保持不变（= 默认端点），`resolveEndpoint(purpose)` 行为零变化。
 
 - **新表 `ai_app_endpoint_candidate`**（purpose × endpoint 交点）：capability（maxRefImages / supportsFirstLastFrame / supportsSubjectReference / maxDurationSec，null=未知按 legacy 兼容默认——图像 6 / 首尾帧协议静态判定）+ 可选单价 `creditCostOverride` + enabled/sortOrder。幂等 seeder（`AiAppCandidateSeeder` @Order 60）启动把每条现有绑定回填为置顶候选。
 - **`resolveEndpoint(purpose, endpointId)` 重载**：白名单命中返回 `ResolvedEndpoint`，未命中 empty → 调用方抛 503 `ENDPOINT_NOT_ALLOWED`（§8.0：不回退默认、不扣费）；传 null 委派默认端点。`listCandidates(purpose)` 供 /render/models 与 admin。
@@ -216,7 +216,7 @@ USE_MOCK 默认开启（无需 `.env.local`）。所有读写都走 `src/api/*.t
 
 ### v0.99 · 2026-07-10 · 一致性引擎 C-1（末帧 CDN 镜像 + 参考生效回报）
 
-> 一致性引擎 C 序列首阶段，修 G-6（真源 [`docs/[Fabel5]drama-consistency-engine-design.md`](../../docs/%5BFabel5%5Ddrama-consistency-engine-design.md) §2）。范围选择：仅 `last_frame` 做 cdnKey 真值化；`video_url`/`thumbnail_url` 只加 `maybeSign` 兜底，完整 URL→key 迁移留独立 PR。
+> 一致性引擎 C 序列首阶段，修 G-6（真源 [`docs/drama-consistency-engine-design.md`](../../docs/drama-consistency-engine-design.md) §2）。范围选择：仅 `last_frame` 做 cdnKey 真值化；`video_url`/`thumbnail_url` 只加 `maybeSign` 兜底，完整 URL→key 迁移留独立 PR。
 
 - **末帧 CDN 镜像**：`MaterialVideoJob` 新列 `lastFrameCdnKey`（§4.7.4 真值）；worker 成功分支把上游临时末帧 URL（seedance `return_last_frame`）下载镜像到 CDN（`material-videos/<jobId>/last-frame.*`），链式承接不再因上游 URL 过期断链。镜像失败 = best-effort（§8.0 观测类旁路例外）：仅 WARN、保留上游 URL、**绝不 markFailed / 退积分**。
 - **出 wire 签名**：`MaterialVideoJobService.toCard` 注入 `CdnUrlSigner`——`last_frame_url` 走 `signKey(lastFrameCdnKey)` 派生（fallback 旧 `lastFrameUrl` 经 `maybeSign`）；`video_url`/`thumbnail_url` 加 `maybeSign` 兜底（local `/cdn` 原样返回，dev 零影响）。

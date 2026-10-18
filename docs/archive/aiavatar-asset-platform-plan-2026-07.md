@@ -1,8 +1,10 @@
 # [fable5] web-aiavatar 产品定位优化方案：从「数字人生产工具」到「AI 数字资产平台」
 
+> **已归档（2026-10-18）**：2026-07-09 的定位分析稿，未按此改造；后续方向由 [`docs/aiavatar-asset-hub-redesign.md`](../aiavatar-asset-hub-redesign.md)（2026-08-29 立项，P1 已落地）取代。只作历史参考。
+
 > last-reviewed：2026-07-09（初稿，规划文档 —— 仅方案，未开始改造）
 > 范围：`apps/web-aiavatar`（3013）+ server `com.aistareco.aep.dap.*` 域
-> 性质：产品定位分析 + 分阶段改造路线图，供后续执行 agent 作工作输入（同 `docs/drama-audit-2026-07.md` 用法）
+> 性质：产品定位分析 + 分阶段改造路线图，供后续执行 agent 作工作输入（同 `docs/audits/drama-audit-2026-07.md` 用法）
 > 事实底座：2026-07-09 对 web-aiavatar 前端（11 个 screen 文件 / 12 个 API 命名空间）与 server dap 域（10 张 `dap_*` 表 / 44 条 `/api/v1/**` path）的全量调研
 
 ---

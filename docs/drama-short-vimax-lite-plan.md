@@ -3,7 +3,7 @@
 > 状态：P0 / P1 / P2（非视频部分）/ P4 / P5 已实现；P3A/P3B 视频协议、默认模型切换和真实试片按用户要求不做
 > last-reviewed：2026-08-18
 > 范围：`apps/web-drama` 的 `/shorts/make` 风格短片链路
-> 关联真源：[`drama-storyboard-consistency.md`](drama-storyboard-consistency.md)、[`[Fabel5]drama-consistency-engine-design.md`](%5BFabel5%5Ddrama-consistency-engine-design.md)
+> 关联真源：[`drama-storyboard-consistency.md`](drama-storyboard-consistency.md)、[`drama-consistency-engine-design.md`](drama-consistency-engine-design.md)
 
 ## 1. 决策摘要
 

@@ -2,7 +2,8 @@
 
 > 版本：v1.0（2026-05-07）
 > 适用对象：`apps/admin` 管理后台
-> 配套真值源：`apps/web/src/types/*`（领域类型）、`apps/web/src/constants/*`（UI 字典）、`apps/web/src/mocks/*`（待替换为后台可配置的真实数据）
+> 配套真值源：`packages/types/src/*`（领域类型）、各子应用 `src/constants/*`（UI 字典）、`src/mocks/*`（待替换为后台可配置的真实数据）。
+> ⚠️ 本文写于 v1.0（2026-05-07），正文里的 `apps/web/...` 路径指的是已于 2026-08-03 删除的遗留前端；对应代码现在在 `apps/web-{music,drama,celebrity}` 与 `packages/*`，路径按此换算，规划内容本身仍有效。
 > 核心理念：**前台展示的所有内容都必须可被运营在后台配置**——没有"写死在代码里"的字典、参数、模板或列表。
 
 ---

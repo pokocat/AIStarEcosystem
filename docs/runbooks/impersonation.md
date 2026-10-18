@@ -32,7 +32,7 @@ localStorage/refresh token 不被覆盖。过期不会回落到原账号重放�
 关闭标签页不是服务器撤销，剩余会话到期自然失效；显式“退出附身”会马上删除本次服务端会话。
 XSS 可读取 sessionStorage，仍须沿用现有前端安全治理，不宣称等同 HttpOnly。
 
-接口机器可读补充契约：[`../specs/impersonation.openapi.yaml`](../specs/impersonation.openapi.yaml)。
+接口机器可读补充契约：[`specs/impersonation.openapi.yaml`](../../specs/impersonation.openapi.yaml)。
 
 ## 接口
 

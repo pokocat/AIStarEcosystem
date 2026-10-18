@@ -233,5 +233,5 @@ AGENTS §5 新增领域 SOP 走 openapi + BUSINESS_RULES。
   目录仍然成立；本文件是其上的演进层，P3 完成后回收 DECISIONS A/B。
 - `product_spec.md`（AiAvatar 业务规格）：中枢化后的业务规格增量在 P2 落 server 时同步。
 - 明星授权链路真源仍在 web-star / celebrity 线各自文档，本文件只定义分工边界。
-- [`docs/aiavatar-asset-platform-plan.md`](aiavatar-asset-platform-plan.md)（2026-07 定位跃迁方案）是
+- [`docs/archive/aiavatar-asset-platform-plan-2026-07.md`](archive/aiavatar-asset-platform-plan-2026-07.md)（2026-07 定位跃迁方案）是
   本次重构的思路前身；其中"市场流通 / 调用层"等远期方向仍有效，落地节奏以本文件分期为准。

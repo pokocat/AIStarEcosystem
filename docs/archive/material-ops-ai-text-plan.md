@@ -1,9 +1,11 @@
 # 素材运营 · 文本类 AI 接入技术方案（Tier 1）
 
+> **已归档（2026-10-18）**：方案已于 v0.40（2026-05-29）全部落地，现行行为以代码（`MaterialAiService` / `PromptService`）与 `apps/web-celebrity/PRODUCT.md` 为准；本文只留「当时为什么这么设计」。
+
 > 状态：**已落地（v0.40，2026-05-29）** —— M1–M4 + 管理页（M1.5）+ 脚本起稿计费（后端可配置，默认 0）已实现；不静默兜底（配置问题明确报错）；违禁词 server lint / Langfuse 仍为可选未做
 > 范围：脚本 AI 生成 · 卖点提取 · 变量抽取（「文本三件」）+ 顺带的违禁词真扫描
 > last-reviewed：2026-05-29
-> 关联：[`AGENTS.md`](../AGENTS.md) §AI、[`docs/INDEX.md`](INDEX.md)
+> 关联：[`AGENTS.md`](../../AGENTS.md) §AI、[`docs/INDEX.md`](../INDEX.md)
 
 ---
 

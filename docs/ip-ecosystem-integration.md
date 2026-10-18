@@ -1,7 +1,7 @@
 # IP 工作台 · 数字资产 · 数字名片 —— 整合方案
 
 > 三个子产品合成一条链：**造形象 → 登记资产 → 对外发布**。
-> 相关真源：[`ip-studio-plan.md`](ip-studio-plan.md) · [`ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) · [`digital-business-card-plan.md`](digital-business-card-plan.md)
+> 相关真源：[`ip-studio-plan.md`](ip-studio-plan.md) · [`archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md) · [`digital-business-card-plan.md`](digital-business-card-plan.md)
 > last-reviewed：2026-09-07（v0.153–v0.156 落地后回填实际形态）
 
 ---
@@ -113,7 +113,7 @@ shot:<name>   → 机位照
 
 ### 3.4 模板是提示词，不是字段
 
-每个模板项是**一段完整的提示词骨架**，套用后整段落进输入框，随便改。见 [`ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md)。
+每个模板项是**一段完整的提示词骨架**，套用后整段落进输入框，随便改。见 [`archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md)。
 
 表情组与动作组有一条硬约束写进模板正文：**服装、机位、光线保持与主形象一致，只改表情 / 动作**。这是这两组能成套用的前提。
 

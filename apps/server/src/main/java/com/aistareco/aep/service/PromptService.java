@@ -34,7 +34,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Prompt 模板解析与管理（MATERIAL_OPS_AI_TEXT_PLAN §6）。
+ * Prompt 模板解析与管理（docs/archive/material-ops-ai-text-plan.md §6）。
  *
  * resolve(key) 解析顺序：
  *   ① 1min 内存缓存（admin 改后立即失效）—— 沿用 CelebrityActionPricingService 模式

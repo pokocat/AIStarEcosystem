@@ -621,3 +621,21 @@ pnpm typecheck:all && pnpm typecheck:admin && \
 接一句固定话。现在 `text` 是改写/生成指令（≤500 字），按骨架逐段生成，不改段数、不改 role、不动结尾段；
 `text` 留空退回原来的润色行为。引擎仍然只有确定性实现，真模型未接入时非 mock 网关照旧 503
 `CLIP_SCRIPT_ENGINE_NOT_CONFIGURED` —— 要在生产做「一句话生成全片」，调用方得走自己的 LLM 网关。
+
+## 附：线上运营面与账号绑定（2026-09-11 上线，原 `DEPLOYED.md`）
+
+release `20260911133547-8734c100`，Flyway 到 V35（V34 `clip_pricing` 建表、V35 模板出处两列）。
+上一版 `20260911071115-404f8891` 曾因目标机 userspace 卡死（ICMP 正常、TCP 能连、sshd banner 不回）
+卡了一天，控制台强制重启后恢复，两版先后发上去。发布前对生产库做过全量备份
+（目标机 `/tmp/aistareco-preV34-20260911T213202.sql.gz`）。
+
+- `clip_pricing` 上线时 **0 行** = 运营未核定，回落 `application.yml` 兜底价；
+  `GET /admin/video/generation-pricing` 六档齐全、`configured:false` 符合设计。
+- `clip_template` 3 条官方模板，`source_project_id` / `created_by` 为 NULL（V35 之前直接写库建的）。
+- **运营界面不在本仓**：爱速拍有自己的运营台 `https://wxapi.aibuzz.cn/quickreel/`
+  （源码 `ai-pilot/quickreel-console/`），四屏：出片对账 / 模板货架 / 定价 / 供应商。
+  它与军师运营后台 `/admin/` 是两个前端、两个 URL —— 9/11 试过并入军师后台当天撤了，
+  军师 30 屏，爱速拍四屏混进去谁也找不着。
+- 共用账号中心登录，但要有 **quickreel 产品授权**才进得来（军师后台「经营 · 产品」里发；超管隐式拥有）。
+- ⚠️ 「把草稿存成模板」之前，后台账号要先在军师后台「运营账户」里绑好 `linkedUserId`：
+  后台账号和小程序账号是两套体系，服务端只认这一列、不看请求体，否则存不了别人的草稿。

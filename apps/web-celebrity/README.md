@@ -181,7 +181,7 @@ USE_MOCK 默认开启（`@ai-star-eco/api-client` 导出的 `USE_MOCK` 读 `NEXT
 - 派生变体 `DeriveVariablesPanel` 挂载时拉 `POST /material/scripts/{id}/variables`（真 LLM 抽变量）；即时用正则结果占位，AI 回来非空则升级；AI 失败显式警示（保留正则结果可继续编辑）。
 - 卖点提取（商品表单「AI 提取卖点」）后端换真实现（端点不变）；失败 inline 报错。
 - `api/material-ops.ts` +`aiDraftScripts` / `extractScriptVariables`（USE_MOCK → `[]`；live 失败抛 `ApiError`，由调用方展示）。
-- prompt（system+user）由 admin `/platform/prompts` 管理；server 侧见 `MaterialAiService` / `PromptService` / `prompt_template` 表。方案见 [`docs/MATERIAL_OPS_AI_TEXT_PLAN.md`](../../docs/MATERIAL_OPS_AI_TEXT_PLAN.md)。
+- prompt（system+user）由 admin `/platform/prompts` 管理；server 侧见 `MaterialAiService` / `PromptService` / `prompt_template` 表。方案见 [`docs/archive/material-ops-ai-text-plan.md`](../../docs/archive/material-ops-ai-text-plan.md)。
 
 ### v0.31 · 2026-05-24 · 账户隔离收口：商品库公共池只读 + 写收归 admin
 
