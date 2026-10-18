@@ -4651,12 +4651,12 @@ components:
       required: [clientRequestId]
       properties:
         clientRequestId: {type: string, minLength: 1, maxLength: 64}
+        validDays: {type: integer, enum: [90, 365], default: 90, description: 群发链接有效期，可多人加入且随时撤销}
     EnterpriseInvitation:
       type: object
       required: [id, enterpriseId, status, expiresAt]
       properties:
         id: {type: string, minLength: 1, maxLength: 64}
-        validDays: {type: integer, enum: [90, 365], default: 90, description: 群发链接有效期，可多人加入且随时撤销}
         enterpriseId: {type: string, minLength: 1, maxLength: 64}
         status: {type: string, enum: [pending, revoked, expired]}
         expiresAt: {type: string, format: date-time}
@@ -13311,6 +13311,31 @@ paths:
         '403': {description: 无产品开通/手机号未绑定/无企业权限}
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprise-invitations/preview:
+    post:
+      tags: [Enterprise]
+      summary: 匿名读取企业群发邀请的基本信息
+      description: 只读。令牌通过请求正文传入，只返回企业名称、ID 和有效期；不接受邀请或返回成员/钱包信息。响应 no-store，受企业功能开关控制。
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseInvitationAcceptRequest'}
+      responses:
+        '200':
+          description: 邀请可用
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseInvitationPreview'}
+        '400': {description: 令牌输入无效}
+        '404': {description: 企业功能未开放}
+        '409': {description: 邀请无效、已过期、已撤销或邀请人已无权限}
   /v1/ip-studio/enterprise-invitations/accept:
     post:
       tags: [Enterprise]
@@ -13349,31 +13374,6 @@ paths:
         in: path
         required: true
         schema: {type: string, minLength: 1, maxLength: 64}
-  /v1/ip-studio/enterprise-invitations/preview:
-    post:
-      tags: [Enterprise]
-      summary: 匿名读取企业群发邀请的基本信息
-      description: 只读。令牌通过请求正文传入，只返回企业名称、ID 和有效期；不接受邀请或返回成员/钱包信息。响应 no-store，受企业功能开关控制。
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema: {$ref: '#/components/schemas/EnterpriseInvitationAcceptRequest'}
-      responses:
-        '200':
-          description: 邀请可用
-          content:
-            application/json:
-              schema:
-                type: object
-                required: [success, data]
-                properties:
-                  success: {type: boolean}
-                  data: {$ref: '#/components/schemas/EnterpriseInvitationPreview'}
-        '400': {description: 令牌输入无效}
-        '404': {description: 企业功能未开放}
-        '409': {description: 邀请无效、已过期、已撤销或邀请人已无权限}
       responses:
         '200':
           description: 成功，分页直接 PageEnvelope，其余 ApiResponse
