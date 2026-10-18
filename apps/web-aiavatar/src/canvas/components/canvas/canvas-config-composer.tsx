@@ -4,6 +4,7 @@ import { Button, Image } from "antd";
 import { FileText, Group, Image as ImageIcon, Music2, Video, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
+import { isImeComposing } from "@/canvas/lib/keyboard-event";
 import i18n from "@/canvas-bridge/i18n";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
@@ -38,6 +39,8 @@ export function CanvasConfigComposer({ nodeId, nodes, value, inputs, connectedNo
     const theme = canvasThemes[useThemeStore((state) => state.theme)];
     const editorRef = useRef<HTMLDivElement>(null);
     const composingRef = useRef(false);
+    // 本仓：preedit text is visible before the controlled value is committed.
+    const [composing, setComposing] = useState(false);
     const [mention, setMention] = useState<MentionState | null>(null);
     const [activeIndex, setActiveIndex] = useState(0);
     const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -131,26 +134,34 @@ export function CanvasConfigComposer({ nodeId, nodes, value, inputs, connectedNo
                 <Button size="small" type="text" className="!h-7 !w-7 !min-w-7 !p-0" icon={<X className="size-3.5" />} onClick={onClose} />
             </div>
             <CanvasNodeReferenceBar nodeId={nodeId} nodes={nodes} connectedNodes={connectedNodes} onDisconnect={onDisconnectReference} onStartSelection={onStartReferenceSelection} />
-            <div className="relative rounded-xl">
-                {!value.trim() ? <div className="pointer-events-none absolute left-3 top-2 text-sm leading-7" style={{ color: theme.node.placeholder }}>{t("canvas.composer.placeholder")}</div> : null}
+            <div className="canvas-config-field relative rounded-xl">
+                {!composing && !value.trim() ? <div aria-hidden="true" className="pointer-events-none absolute left-3 top-2 text-sm leading-7" style={{ color: theme.node.placeholder }}>{t("canvas.composer.placeholder")}</div> : null}
                 <div
                     ref={editorRef}
                     contentEditable
                     suppressContentEditableWarning
-                    className="thin-scrollbar min-h-28 max-h-72 w-full overflow-y-auto overscroll-contain whitespace-pre-wrap break-words px-3 py-2 text-sm leading-7 outline-none"
+                    role="textbox"
+                    aria-multiline="true"
+                    aria-label={t("canvas.composer.title")}
+                    aria-placeholder={t("canvas.composer.placeholder")}
+                    className="canvas-config-editor thin-scrollbar min-h-28 max-h-72 w-full overflow-y-auto overscroll-contain whitespace-pre-wrap break-words px-3 py-2 text-sm leading-7 outline-none"
                     style={{ color: theme.node.text }}
                     onInput={() => {
                         if (!composingRef.current) syncFromEditor();
                     }}
                     onCompositionStart={() => {
                         composingRef.current = true;
+                        setComposing(true);
                     }}
                     onCompositionEnd={() => {
                         composingRef.current = false;
+                        setComposing(false);
                         syncFromEditor();
                     }}
                     onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
                         event.stopPropagation();
+                        // 本仓：the IME owns Enter/arrows until composition ends.
+                        if (composingRef.current || isImeComposing(event)) return;
                         if (mention && candidates.length) {
                             if (event.key === "ArrowDown") {
                                 event.preventDefault();

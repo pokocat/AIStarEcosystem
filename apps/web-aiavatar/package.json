@@ -45,7 +45,8 @@
     "react-dom": "^19.0.0",
     "react-i18next": "^17.0.13",
     "tailwind-merge": "^2.5.4",
-    "zustand": "^5.0.3"
+    "zustand": "^5.0.3",
+    "@ai-star-eco/ui": "workspace:*"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.12",

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // canvas/assets/asset-list-view.tsx —— 角色和场景 · 列表（v0.198，真源 docs/drama-canvas-plan.md §2.4）。
@@ -289,7 +290,7 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
             )}
           </label>
           {tab !== "materials" && (
-            <select
+            <SelectField
               className="cv-select cva-ep-select"
               value={episode ?? ""}
               onChange={(e) => setEpisode(e.target.value ? Number(e.target.value) : null)}
@@ -302,7 +303,7 @@ export function AssetListView({ tab, onTabChange, onLocate, focus }: AssetListVi
                   第 {no} 集
                 </option>
               ))}
-            </select>
+            </SelectField>
           )}
           {tab !== "materials" && (
             <button

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 import * as React from "react";
 import {
@@ -128,7 +129,7 @@ export function SongDetailDrawer({ song, genres, onClose, onSaved }: SongDetailD
 
           <div className="space-y-2">
             <Label className="text-xs text-gray-400">曲风</Label>
-            <select
+            <SelectField
               value={genre}
               onChange={(e) => setGenre(e.target.value)}
               className="w-full h-9 px-3 rounded-md bg-black/40 border border-white/10 text-sm text-white"
@@ -140,7 +141,7 @@ export function SongDetailDrawer({ song, genres, onClose, onSaved }: SongDetailD
               {genres.map(g => (
                 <option key={g.id} value={g.name}>{g.icon} {g.name}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
 
           <div className="space-y-2">

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ArrowRight, FileImage, Film, FolderOpen, LoaderCircle, Sparkles, UserRound } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
@@ -57,7 +58,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
     {header && <><DesktopTopBar publicMode /><header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
     <main>
       <section className="ip-home-hero">
-        <img className="ip-home-hero-image" src="https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/ip-canvas-hero-v3.png" alt="晨光中回望城市的写实人物，AI 创作示意" fetchPriority="high" />
+        <Image className="ip-home-hero-image" src="/landing/ip-canvas-hero-v3.webp" alt="晨光中回望城市的写实人物，AI 创作示意" fill sizes="100vw" preload />
         <div className="ip-home-hero-copy">
           <h1>让灵感成形<br />让 IP 出圈</h1>
           <p>从一个灵感开始，创造数字人、图片、视频与故事。<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>

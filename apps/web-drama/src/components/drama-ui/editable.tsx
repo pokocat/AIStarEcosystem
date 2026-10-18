@@ -18,6 +18,7 @@ interface EditableProps {
 
 export function Editable({ value, onCommit, placeholder, block, style, className }: EditableProps) {
   const ref = React.useRef<HTMLSpanElement>(null);
+  const composing = React.useRef(false);
   const [hover, setHover] = React.useState(false);
   const [focused, setFocused] = React.useState(false);
   // 受控同步：当外部 value 变化但元素未聚焦时，刷新内容
@@ -41,12 +42,15 @@ export function Editable({ value, onCommit, placeholder, block, style, className
         suppressContentEditableWarning
         className={className}
         data-ph={placeholder}
+        onCompositionStart={() => { composing.current = true; }}
+        onCompositionEnd={() => { composing.current = false; }}
         onFocus={() => setFocused(true)}
         onBlur={(e) => {
           setFocused(false);
           onCommit(e.currentTarget.innerText.trim());
         }}
         onKeyDown={(e) => {
+          if (composing.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
           if (!block && e.key === "Enter") {
             e.preventDefault();
             e.currentTarget.blur();

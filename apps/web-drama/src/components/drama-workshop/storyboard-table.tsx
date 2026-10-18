@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 分镜表（v0.88）— 设计稿 AI短剧工作台.dc.html「剧集脚本 · 分镜表」平铺表格。
 // 列：镜号（含时长）/ 首帧 / 画面内容 / 景别·运镜 / 台词·音频 / 特效氛围。所有单元格结构化可编辑、落库；
@@ -181,7 +182,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                             <span className="row" style={{ gap: 4, alignItems: "center", flex: "none" }} title="这场每一镜出首帧时都会参考这张场景图，让同一场的环境看起来一样">
                               {bound?.refUrl && <img src={bound.refUrl} alt="场景图" style={{ width: 22, height: 14, objectFit: "cover", borderRadius: 3, border: "1px solid var(--line)" }} />}
                               <span className="faint" style={{ fontSize: 10.5 }}>场景图</span>
-                              <select
+                              <SelectField
                                 className="ep-sb-select"
                                 value={sc.sceneRefId ?? ""}
                                 aria-label="这场用哪张场景图"
@@ -192,7 +193,7 @@ export function StoryboardTable(props: StoryboardTableProps) {
                                 {props.sceneAssets!.map((a) => (
                                   <option key={a.id} value={a.id}>{a.name}{a.refUrl ? "" : "（还没有图）"}</option>
                                 ))}
-                              </select>
+                              </SelectField>
                             </span>
                           );
                         })()}
@@ -480,10 +481,10 @@ function ShotRow({
       </td>
       <td className="ep-sb-audio" data-label="台词 · 音频">
         <div className="row gap-1" style={{ alignItems: "center", marginBottom: 3 }}>
-          <select className="ep-sb-select" value={s.voWho || speakerOptions[0]} disabled={locked} aria-label="谁来说这句" onChange={(e) => onPatch({ voWho: e.target.value })}
+          <SelectField className="ep-sb-select" value={s.voWho || speakerOptions[0]} disabled={locked} aria-label="谁来说这句" onChange={(e) => onPatch({ voWho: e.target.value })}
             style={{ height: 22, border: "1px solid var(--line)", borderRadius: 6, fontSize: 11, fontWeight: 700, background: "var(--surface-2)", color: "var(--accent)", outline: "none", maxWidth: 110 }}>
             {whoList.map((w) => <option key={w} value={w}>{w}</option>)}
-          </select>
+          </SelectField>
         </div>
         <Editable block value={s.voText} placeholder="这一镜的台词，没有就留空" onCommit={(v) => onPatch({ voText: v })}
           className="edit-field" style={{ display: "block", fontSize: 12.5, lineHeight: 1.6, padding: "3px 6px", background: "var(--accent-soft)", borderRadius: 8 }} />

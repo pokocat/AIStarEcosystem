@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import { createRef } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -139,4 +142,15 @@ test('duplicate heading titles navigate by native anchor ID and external proposa
   rerender(<StudioScriptRichEditor ref={ref} markdown={'# 建议稿\n\n## 新大纲\n\n### 新子标题'} onOutline={outline} onChange={change}/>);
   await waitFor(()=>expect(outline.mock.calls.at(-1)![0].map((a:any)=>a.textContent)).toEqual(['建议稿','新大纲','新子标题']));
   expect(change).not.toHaveBeenCalled();
+});
+
+test('changing paragraph style through the page menu returns the caret to the edited document',async()=>{
+ vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}});
+ render(<StudioScriptRichEditor markdown="对白" onChange={()=>{}}/>);
+ const doc=await screen.findByRole('textbox',{name:'剧本文档'});
+ const selection=window.getSelection()!,range=document.createRange();range.selectNodeContents(doc.querySelector('p')!);range.collapse(false);selection.removeAllRanges();selection.addRange(range);document.dispatchEvent(new Event('selectionchange'));doc.focus();fireEvent.mouseUp(doc);
+ await selectFieldValue(screen.getByRole('combobox',{name:'段落样式'}),'2');
+ await waitFor(()=>expect(document.activeElement).toBe(doc));
+ expect(doc.querySelector('h2')?.textContent).toBe('对白');
+ expect(doc.contains(window.getSelection()?.anchorNode||null)).toBe(true);
 });

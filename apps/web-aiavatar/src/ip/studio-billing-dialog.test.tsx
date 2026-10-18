@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, afterEach, expect, test, vi } from "vitest";
 import { Children, cloneElement } from "react";
@@ -78,8 +81,8 @@ test("settings can change a default to personal or restore asking each time", as
   const { readStudioBillingPreference } = await import("@/canvas-bridge/studio-billing-preference");
   render(<StudioBillingSettings />);
   const select = await screen.findByRole("combobox", { name: "生成付款账户" });
-  fireEvent.change(select, { target: { value: "personal" } });
+  await selectFieldValue(select, "personal");
   expect(await chooseStudioBilling({ expectedCost: 8 })).toEqual({ mode: "personal" });
-  fireEvent.change(select, { target: { value: "ask" } });
+  await selectFieldValue(select, "ask");
   expect(readStudioBillingPreference(await api.account())).toBeUndefined();
 });

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ArtistOverview.tsx — 艺人视图（聚焦单位艺人）
@@ -152,7 +153,7 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
 
           {/* 艺人切换器 */}
           <div className="relative">
-            <select
+            <SelectField
               aria-label="切换艺人"
               value={artist.id}
               onChange={(e) => {
@@ -164,7 +165,7 @@ export function ArtistOverview({ artist, artists, songs, onSelectArtist, onNavig
               {artists.map(a => (
                 <option key={a.id} value={a.id}>{a.name}</option>
               ))}
-            </select>
+            </SelectField>
             <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
           </div>
 

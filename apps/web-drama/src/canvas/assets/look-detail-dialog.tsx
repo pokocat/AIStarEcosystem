@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // canvas/assets/look-detail-dialog.tsx —— 造型详情（v0.198，props 见 canvas/core/contract.ts LookDetailDialogProps）。
@@ -169,7 +170,7 @@ export function LookDetailDialog({ lookId, open, onClose }: LookDetailDialogProp
         <div className="cva-detail-form">
           <label className="cva-form-row">
             <span className="cva-field-label">角色</span>
-            <select
+            <SelectField
               className="cv-select"
               value={character.id}
               disabled={readOnly || doc.characters.length < 2}
@@ -181,7 +182,7 @@ export function LookDetailDialog({ lookId, open, onClose }: LookDetailDialogProp
                   {c.name}（{ROLE_LABEL[c.role]}）
                 </option>
               ))}
-            </select>
+            </SelectField>
             {doc.characters.length < 2 && <span className="cva-hint">只有一个角色，没有别的可挂。</span>}
             {doc.characters.length >= 2 && <span className="cva-hint">换一个角色 = 把这个造型挪到那个角色下面。</span>}
           </label>

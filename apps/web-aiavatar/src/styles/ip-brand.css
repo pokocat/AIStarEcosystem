@@ -163,12 +163,12 @@ html[data-layout="desktop"] body.has-desktop-bar .ip-home { padding-top: 0; }
 .ip-home-features { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 20px; }
 .ip-home-feature { position: relative; isolation: isolate; text-align: left; border: 0; border-radius: 9px; overflow: hidden; min-height: 208px; padding: 24px; background: var(--ip-soft); }
 .ip-scene-art { position: absolute; inset: 0; z-index: -1; overflow: hidden; background: #ebe5da; }
-.ip-scene-art::before { content: ""; position: absolute; top: 0; height: 100%; aspect-ratio: 1672 / 941; left: 50%; transform: translateX(-50%); background-image: url("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/ip-canvas-scenes-v2.png"); background-size: 200% 200%; }
+.ip-scene-art::before { content: ""; position: absolute; top: 0; height: 100%; aspect-ratio: 1672 / 941; left: 50%; transform: translateX(-50%); background-image: url("/landing/ip-canvas-scenes-v2.webp"); background-size: 200% 200%; }
 .ip-scene-architecture::before { background-position: 0 0; }
 .ip-scene-meadow::before { background-position: 100% 0; }
 .ip-scene-film::before { background-position: 0 100%; }
 .ip-scene-castle::before { background-position: 100% 100%; }
-.ip-feature-character::before,.ip-story-character::before { background-image: url("https://aiartist.oss-cn-hangzhou.aliyuncs.com/media/ipstudio/landing/ip-canvas-hero-v3.png"); background-size: cover; background-position: 65% center; }
+.ip-feature-character::before,.ip-story-character::before { background-image: url("/landing/ip-canvas-hero-v3.webp"); background-size: cover; background-position: 65% center; }
 .ip-home-feature::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg,rgba(249,247,244,.98) 0%,rgba(249,247,244,.88) 36%,rgba(249,247,244,0) 82%); z-index: -1; }
 .ip-home-feature-copy { max-width: 64%; }
 .ip-home-feature h2 { font-size: 19px; font-weight: 700; white-space: nowrap; }

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 import * as React from "react";
 import { apiFetch, USE_MOCK } from "@/api/_client";
@@ -40,9 +41,9 @@ export function ImpersonationDialog({ user, onClose }: { user: AepUser | null; o
         <DialogDescription>以 {user?.displayName || user?.username} 的身份进入产品。操作会真实生效，权限和扣费与该用户一致。</DialogDescription>
       </DialogHeader>
       <label className="grid gap-2 text-sm">选择产品
-        <select aria-label="选择产品" className="rounded-md border bg-background p-2" value={product} onChange={e => setProduct(e.target.value)} disabled={busy}>
+        <SelectField aria-label="选择产品" className="rounded-md border bg-background p-2" value={product} onChange={e => setProduct(e.target.value)} disabled={busy}>
           {PRODUCTS.map(([code, label]) => <option key={code} value={code}>{label}</option>)}
-        </select>
+        </SelectField>
       </label>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <DialogFooter><Button variant="outline" onClick={onClose} disabled={busy}>取消</Button>

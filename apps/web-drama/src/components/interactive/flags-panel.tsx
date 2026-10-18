@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 剧情状态（globalFlags）面板（v0.79）。只添加真正影响走向的状态（拿没拿到钥匙 / 好感度等）+ 开始时的值。
 // 弹出条件 / 选项里「选了之后记下」用到的状态必须先在这里添加（检查会拦住没添加的）。
@@ -115,14 +116,14 @@ export function FlagsPanel({ flags, onChange, usagesOf }: Props) {
                   >
                     {key}
                   </span>
-                  <select value={kind} aria-label={`「${key}」记的是什么`} onChange={(e) => changeKind(key, e.target.value as FlagKind)} style={{ ...INPUT, width: 78 }}>
+                  <SelectField value={kind} aria-label={`「${key}」记的是什么`} onChange={(e) => changeKind(key, e.target.value as FlagKind)} style={{ ...INPUT, width: 78 }}>
                     <option value="boolean">是否</option>
                     <option value="number">数字</option>
                     <option value="string">文字</option>
-                  </select>
+                  </SelectField>
                   <span className="faint" style={{ fontSize: 11, flex: "none" }}>开始时</span>
                   {kind === "boolean" ? (
-                    <select
+                    <SelectField
                       value={String(value)}
                       aria-label={`「${key}」开始时`}
                       onChange={(e) => setFlag(key, e.target.value === "true")}
@@ -130,7 +131,7 @@ export function FlagsPanel({ flags, onChange, usagesOf }: Props) {
                     >
                       <option value="false">否</option>
                       <option value="true">是</option>
-                    </select>
+                    </SelectField>
                   ) : kind === "number" ? (
                     <input
                       type="number"

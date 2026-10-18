@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 顶部步骤页签 — 设计真源 v4 screens-episode-v4.jsx `StepTabs4`:
 // 每一集内两步:① 分镜 › ② 合成成片;下一步带提示。
@@ -84,7 +85,7 @@ export function StepTabs({ stage, ep, locked, onJump, episodes, onEp, onBack, ba
           }}
         >
           第 {ep} 集 <ChevronDown size={14} style={{ flex: "none" }} />
-          <select
+          <SelectField
             aria-label="切换到第几集"
             value={ep}
             onChange={(e) => onEp(Number(e.target.value))}
@@ -95,7 +96,7 @@ export function StepTabs({ stage, ep, locked, onJump, episodes, onEp, onBack, ba
                 第 {e.no} 集 · {episodeTitle(e)}
               </option>
             ))}
-          </select>
+          </SelectField>
         </span>
       )}
       {EP_STEPS.map((s, i) => {

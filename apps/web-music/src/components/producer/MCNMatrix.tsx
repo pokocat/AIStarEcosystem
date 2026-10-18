@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 import React, { useEffect, useState, useMemo } from 'react';
 import {
@@ -607,12 +608,12 @@ export const MCNMatrix = ({ lang }: { lang: Lang }) => {
             placeholder={zh ? '搜索艺人...' : 'Search artists...'} />
         </div>
         <div className="flex gap-2">
-          <select value={sortBy} onChange={e => setSortBy(e.target.value as 'name' | 'level' | 'revenue')}
+          <SelectField value={sortBy} onChange={e => setSortBy(e.target.value as 'name' | 'level' | 'revenue')}
             className="bg-gray-900/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-400 focus:outline-none">
             <option value="level">{zh ? '按等级' : 'By Level'}</option>
             <option value="name">{zh ? '按名称' : 'By Name'}</option>
             <option value="revenue">{zh ? '按收益' : 'By Revenue'}</option>
-          </select>
+          </SelectField>
           <div className="flex border border-white/10 rounded-lg overflow-hidden">
             <button onClick={() => setViewMode('grid')} className={`px-3 py-2 transition ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-gray-500'}`}><Grid3X3 className="w-4 h-4" /></button>
             <button onClick={() => setViewMode('list')} className={`px-3 py-2 transition ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-gray-500'}`}><List className="w-4 h-4" /></button>

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 合同中心 — 授权合同 / 补充协议 / 结算单据管理，到期提醒。
 
@@ -83,19 +84,19 @@ export default function ContractsPage() {
           />
         </div>
         <div className="flex gap-2">
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
+          <SelectField value={typeFilter} onChange={(e) => setTypeFilter(e.target.value as TypeFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
             <option value="all">全部类型</option>
             <option value="authorization">授权合同</option>
             <option value="amendment">补充协议</option>
             <option value="settlement">结算单</option>
-          </select>
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
+          </SelectField>
+          <SelectField value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as StatusFilter)} className="h-10 px-3 rounded-xl text-sm outline-none flex-1 md:flex-none min-w-0" style={selectStyle}>
             <option value="all">全部状态</option>
             <option value="active">生效中</option>
             <option value="pending">待签署</option>
             <option value="expired">已过期</option>
             <option value="terminated">已终止</option>
-          </select>
+          </SelectField>
         </div>
       </div>
 

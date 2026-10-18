@@ -494,8 +494,8 @@ html[data-layout="desktop"] .ip-surface .studio-script-layout.assistant-open { g
 .ip-surface .studio-rich-toolbar button:not(:disabled):hover { background: var(--surface-3); color: var(--ink); }
 .ip-surface .studio-rich-toolbar button[aria-pressed="true"] { background: var(--primary-soft); color: var(--primary); }
 .ip-surface .studio-rich-toolbar button:disabled { color: var(--ink-3); opacity: .55; cursor: default; }
-.ip-surface .studio-rich-toolbar select { height: 32px; max-width: 148px; border: 0; border-radius: 4px; color: var(--ink); background: var(--surface); padding: 0 8px; font: inherit; font-size: 13px; cursor: pointer; }
-.ip-surface .studio-rich-toolbar select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.ip-surface .studio-rich-toolbar :is(select,[data-select-field]) { height: 32px; max-width: 148px; border: 0; border-radius: 4px; color: var(--ink); background: var(--surface); padding: 0 8px; font: inherit; font-size: 13px; cursor: pointer; }
+.ip-surface .studio-rich-toolbar :is(select,[data-select-field]):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 .ip-surface .studio-rich-toolbar-divider { height: 18px; border-left: 1px solid var(--line); margin: 0 5px; }
 .ip-surface .studio-rich-table-controls { display: flex; gap: 8px; padding: 6px 20px; border-bottom: 1px solid var(--line); background: var(--surface); flex: none; }
 .ip-surface .studio-rich-table-controls button { font-size: 12px; padding: 4px 8px; border: 0; color: var(--ink-2); background: transparent; cursor: pointer; }

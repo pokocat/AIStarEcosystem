@@ -1,3 +1,6 @@
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import * as React from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -227,7 +230,7 @@ describe("列表", () => {
 
   it("按集过滤：只看第 1 集时没有「终点站站台」", async () => {
     await renderList("scenes");
-    fireEvent.change(screen.getByLabelText("只看出现在某一集的"), { target: { value: "1" } });
+    await selectFieldValue(screen.getByLabelText("只看出现在某一集的"), "1");
     expect(screen.queryByRole("button", { name: "打开「终点站站台」" })).toBeNull();
     expect(screen.getAllByRole("button", { name: /^打开「/ })).toHaveLength(2);
   });
@@ -305,7 +308,7 @@ describe("列表", () => {
     fireEvent.click(screen.getByRole("button", { name: "多选" }));
     fireEvent.click(screen.getByRole("button", { name: "选中「23 路末班车车厢」" }));
     const dialog = await openBatchDialog(1);
-    fireEvent.change(within(dialog).getByLabelText("出图模型"), { target: { value: "img-b" } });
+    await selectFieldValue(within(dialog).getByLabelText("出图模型"), "img-b");
     expect(dialog.querySelector<HTMLElement>("[data-cost]")!.dataset.cost).toBe("11");
     expect(imageChoice.id).toBe("img-b");
     await act(async () => {
@@ -375,8 +378,8 @@ describe("出图面板", () => {
     api.runImage.mockImplementation(async () => runOf({ id: "r_1", target: "look:lk_ex_shennian" }));
     const { container } = await renderPanel();
     fireEvent.click(within(screen.getByRole("group", { name: "出几张" })).getByRole("button", { name: "2" }));
-    fireEvent.change(screen.getByLabelText("画幅"), { target: { value: "3:4" } });
-    fireEvent.change(screen.getByLabelText("出图模型"), { target: { value: "img-b" } });
+    await selectFieldValue(screen.getByLabelText("画幅"), "3:4");
+    await selectFieldValue(screen.getByLabelText("出图模型"), "img-b");
     const gen = container.querySelector<HTMLButtonElement>(".cva-gen")!;
     expect(gen.textContent).toContain("22");
     await act(async () => {
@@ -403,7 +406,7 @@ describe("出图面板", () => {
   it("出图模型是整张画布一个选择：面板里换了，存回 pricing（批量、出首帧读同一个）；再打开面板还是它", async () => {
     api.runImage.mockImplementation(async () => runOf({ id: "r_3", target: "look:lk_ex_shennian" }));
     const first = await renderPanel();
-    fireEvent.change(screen.getByLabelText("出图模型"), { target: { value: "img-b" } });
+    await selectFieldValue(screen.getByLabelText("出图模型"), "img-b");
     expect(imageChoice.id).toBe("img-b");
     first.unmount();
     const again = await renderPanel();
@@ -507,7 +510,7 @@ describe("角色设计 / 造型详情", () => {
     );
     const dialog = await screen.findByRole("dialog", { name: "造型详情" });
     await act(async () => {
-      fireEvent.change(within(dialog).getByLabelText("属于哪个角色"), { target: { value: "ch_ex_zhouyue" } });
+      await selectFieldValue(within(dialog).getByLabelText("属于哪个角色"), "ch_ex_zhouyue");
     });
     await waitFor(() => expect(latest!.characters.some((c) => c.id === "ch_ex_laowu")).toBe(false));
     expect(confirm).toHaveBeenCalledTimes(1);

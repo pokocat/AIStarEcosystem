@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 单集编辑器（v0.79）—— 编辑某一集：标题 / 剧情 / 成片 / 结局 / 播完接哪一集 + 互动点。
 // 互动点：第几秒弹出 / 类型（选一项·填一句话·倒计时）/ 弹出条件 / 问题 / 限时 / 选项（→ 去哪一集 + 选了之后记下的剧情状态）。
@@ -106,7 +107,7 @@ function FlagValueInput({
   const staleTitle = stale ? `这里还是改类型之前的值，按「${FLAG_KIND_LABEL[kind]}」重新填` : undefined;
   if (kind === "boolean") {
     return (
-      <select
+      <SelectField
         value={stale ? "" : String(value === true)}
         onChange={(e) => onChange(e.target.value === "true")}
         aria-invalid={stale || undefined}
@@ -116,7 +117,7 @@ function FlagValueInput({
         {stale && <option value="" disabled>重选</option>}
         <option value="true">是</option>
         <option value="false">否</option>
-      </select>
+      </SelectField>
     );
   }
   if (kind === "number") {
@@ -282,12 +283,12 @@ export function EpisodeEditor({
         ) : (
           <div className="col gap-1">
             <span style={LABEL}>播完自动接哪一集（没有互动点时用这个）</span>
-            <select value={ep.nextVideoId ?? ""} onChange={(e) => patch({ nextVideoId: e.target.value || null })} style={INPUT}>
+            <SelectField value={ep.nextVideoId ?? ""} onChange={(e) => patch({ nextVideoId: e.target.value || null })} style={INPUT}>
               <option value="">不自动接（由互动点决定去哪）</option>
               {targets.map((t) => (
                 <option key={t.episodeId} value={t.episodeId}>{epOptionLabel(t)}</option>
               ))}
-            </select>
+            </SelectField>
           </div>
         )}
       </div>
@@ -323,7 +324,7 @@ export function EpisodeEditor({
                     <input type="number" aria-label="第几秒弹出" value={it.triggerTime} onChange={(e) => setInteraction(idx, { triggerTime: Math.max(0, Number(e.target.value) || 0) })} style={{ ...INPUT, width: 64, padding: "4px 6px" }} />
                     <span style={LABEL}>秒弹出</span>
                   </div>
-                  <select
+                  <SelectField
                     value={it.interactionType}
                     aria-label="互动方式"
                     title={TYPE_HINT[it.interactionType]}
@@ -333,7 +334,7 @@ export function EpisodeEditor({
                     <option value="choice">选一项</option>
                     <option value="input">填一句话</option>
                     <option value="countdown">倒计时</option>
-                  </select>
+                  </SelectField>
                   <div className="row gap-1" style={{ flex: "none" }}>
                     <span style={LABEL}>限时</span>
                     <input type="number" aria-label="限时秒数" value={it.uiConfig.countdownSec ?? 0} onChange={(e) => setUi(idx, { countdownSec: Math.max(0, Number(e.target.value) || 0) || undefined })} style={{ ...INPUT, width: 56, padding: "4px 6px" }} />
@@ -362,7 +363,7 @@ export function EpisodeEditor({
                   ) : (
                     <>
                       <div className="row gap-2" style={{ flexWrap: "wrap", alignItems: "center" }}>
-                        <select
+                        <SelectField
                           value={cond?.flag ?? ""}
                           aria-label="按哪个剧情状态判断"
                           onChange={(e) => {
@@ -375,10 +376,10 @@ export function EpisodeEditor({
                           <option value="">不设条件</option>
                           {cond && condFlagGone && <option value={cond.flag}>{cond.flag}（已删除）</option>}
                           {flagNames.map((f) => (<option key={f} value={f}>{f}</option>))}
-                        </select>
+                        </SelectField>
                         {cond && (
                           <>
-                            <select
+                            <SelectField
                               value={cond.op}
                               aria-label="怎么比较"
                               onChange={(e) => setInteraction(idx, { condition: buildCondition({ ...cond, op: e.target.value as ConditionOp }) })}
@@ -389,7 +390,7 @@ export function EpisodeEditor({
                               {condOps.map((op) => (
                                 <option key={op} value={op}>{OP_LABEL[op]}</option>
                               ))}
-                            </select>
+                            </SelectField>
                             <FlagValueInput
                               declared={condFlagGone ? undefined : flags[cond.flag]}
                               value={cond.value}
@@ -423,7 +424,7 @@ export function EpisodeEditor({
                   <div className="row gap-2" style={{ flexWrap: "wrap" }}>
                     <div className="col gap-1">
                       <span style={LABEL}>把观众填的内容记到</span>
-                      <select
+                      <SelectField
                         value={it.uiConfig.inputKey ?? ""}
                         onChange={(e) => setUi(idx, { inputKey: e.target.value || undefined })}
                         style={{ ...INPUT, width: 140, ...(it.uiConfig.inputKey && !hasFlag(it.uiConfig.inputKey) ? STALE_INPUT : {}) }}
@@ -433,7 +434,7 @@ export function EpisodeEditor({
                           <option value={it.uiConfig.inputKey}>{it.uiConfig.inputKey}（已删除）</option>
                         )}
                         {flagNames.map((f) => (<option key={f} value={f}>{f}</option>))}
-                      </select>
+                      </SelectField>
                     </div>
                     <div className="col gap-1 grow" style={{ minWidth: 0 }}>
                       <span style={LABEL}>输入框里的提示文字</span>
@@ -454,10 +455,10 @@ export function EpisodeEditor({
                         </div>
                         <div className="row gap-1" style={{ minWidth: 0 }}>
                           <GitBranch size={12} style={{ color: "var(--accent)", flex: "none" }} />
-                          <select value={o.nextVideoId ?? ""} aria-label="选了之后跳到哪一集" onChange={(e) => setOption(idx, oIdx, { nextVideoId: e.target.value || null })} style={{ ...INPUT, flex: 1 }}>
+                          <SelectField value={o.nextVideoId ?? ""} aria-label="选了之后跳到哪一集" onChange={(e) => setOption(idx, oIdx, { nextVideoId: e.target.value || null })} style={{ ...INPUT, flex: 1 }}>
                             <option value="">选了之后跳到…（还没连）</option>
                             {targets.map((t) => (<option key={t.episodeId} value={t.episodeId}>{epOptionLabel(t)}</option>))}
-                          </select>
+                          </SelectField>
                         </div>
                         {/* 选了之后记下的剧情状态 */}
                         <div className="row gap-2" style={{ flexWrap: "wrap", alignItems: "center" }}>
@@ -488,7 +489,7 @@ export function EpisodeEditor({
                             );
                           })}
                           {flagNames.some((f) => (o.setFlags ?? {})[f] === undefined) && (
-                            <select
+                            <SelectField
                               value=""
                               aria-label="选了之后记下哪个剧情状态"
                               onChange={(e) => { if (e.target.value) setOptionFlag(idx, oIdx, e.target.value, defaultValueOf(e.target.value)); }}
@@ -498,7 +499,7 @@ export function EpisodeEditor({
                               {flagNames
                                 .filter((f) => (o.setFlags ?? {})[f] === undefined)
                                 .map((f) => (<option key={f} value={f}>{f}</option>))}
-                            </select>
+                            </SelectField>
                           )}
                         </div>
                       </div>
