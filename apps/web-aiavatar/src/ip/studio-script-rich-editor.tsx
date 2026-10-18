@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { EditorContent, useEditor, useEditorState } from '@tiptap/react';
@@ -92,9 +93,9 @@ export const StudioScriptRichEditor = forwardRef<ScriptRichEditorHandle, Props>(
   const control = (name: string, icon: React.ReactNode, command: (chain: ChainedCommands) => ChainedCommands, active?: boolean, disabled = false) =>
     <button key={name} type="button" title={name} aria-label={name} aria-pressed={active} disabled={!editor || disabled} onMouseDown={e => e.preventDefault()} onClick={() => editor && command(editor.chain().focus()).run()}>{icon}</button>;
   const toolbar = !readOnly && !toolbarHidden && <div className="studio-rich-toolbar" role="toolbar" aria-label="正文格式">
-      <select aria-label="段落样式" value={state?.heading || 0} disabled={!editor} onChange={e => { const level = Number(e.target.value); if (level) editor?.chain().focus().setHeading({ level: level as 1 | 2 | 3 | 4 }).run(); else editor?.chain().focus().setParagraph().run(); }}>
+      <SelectField onCloseAutoFocus={event => { event.preventDefault(); editor?.commands.focus(undefined, { scrollIntoView: false }); }} aria-label="段落样式" value={state?.heading || 0} disabled={!editor} onChange={e => { const level = Number(e.target.value); if (level) editor?.chain().focus(undefined, { scrollIntoView: false }).setHeading({ level: level as 1 | 2 | 3 | 4 }).run(); else editor?.chain().focus(undefined, { scrollIntoView: false }).setParagraph().run(); }}>
         <option value="0">正文</option><option value="1">文档标题</option><option value="2">章节标题</option><option value="3">分集 / 人物标题</option><option value="4">场次标题</option>
-      </select>
+      </SelectField>
       <span className="studio-rich-toolbar-divider"/>
       {control('加粗', <Bold size={17}/>, c => c.toggleBold(), state?.bold)}
       {control('斜体', <Italic size={17}/>, c => c.toggleItalic(), state?.italic)}

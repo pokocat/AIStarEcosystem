@@ -15,6 +15,7 @@ const nextConfig = {
   // 注意本 app 的屏幕层仍是自带的 src/proto/*，只借用 auth 相关能力。
   transpilePackages: [
     "@ai-star-eco/types",
+    "@ai-star-eco/ui",
     "@ai-star-eco/api-client",
     "@ai-star-eco/landing",
   ],

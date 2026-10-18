@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 单集编辑器右栏「预览」（plan §2.6 / §5.3 / §5.4）：挑中的视频或首帧；「出首帧」「用上一片段最后一帧」「生成视频」；
 // 多个版本左右切换 +「用这版」；在跑的显示进度，排队中的可以停；失败写原因；跑完把 refs.notes 如实写出来。
@@ -123,7 +124,7 @@ function FrameModelSelect({ pricing, disabled }: { pricing: CanvasPricingValue; 
     ? `出首帧用「${current.name}」，每张 ${current.creditCost} 积分。换了之后，出图面板和批量出图也用这个模型`
     : "出首帧用的出图模型";
   return (
-    <select
+    <SelectField
       className="cv-select cve-frame-model"
       value={pricing.imageModelId ?? ""}
       disabled={disabled || models.length <= 1}
@@ -137,7 +138,7 @@ function FrameModelSelect({ pricing, disabled }: { pricing: CanvasPricingValue; 
           {m.name}
         </option>
       ))}
-    </select>
+    </SelectField>
   );
 }
 

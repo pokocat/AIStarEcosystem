@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
@@ -71,14 +74,14 @@ test('shot edits keep the original canvas identity and notify linked video witho
   expect(updateStudioStoryboardShot(result, edges, shot.id, { description: '新画面' })).toBe(result);
 });
 
-test('selected detail keeps only its typed list, switches types and follows live node content', () => {
+test('selected detail keeps only its typed list, switches types and follows live node content', async () => {
   const handlers=props(), onCloseDetail=vi.fn();
   const {rerender}=render(<StudioStoryboard {...handlers} selectedNodeId="商品参考" composer={<div>原节点创作表单</div>} onCloseDetail={onCloseDetail}/>);
   expect(screen.getByRole('region',{name:'图片节点列表'})).toBeDefined();
   expect(screen.queryByRole('region',{name:'文本节点列表'})).toBeNull();
   expect(screen.getByRole('region',{name:'节点详情 商品参考'})).toBeDefined();
   expect(screen.getByRole('button',{name:'打开节点 商品参考'}).getAttribute('aria-current')).toBe('true');
-  fireEvent.change(screen.getByRole('combobox',{name:'节点类型'}),{target:{value:'video'}});
+  await selectFieldValue(screen.getByRole('combobox',{name:'节点类型'}), 'video');
   expect(handlers.onOpenNode).toHaveBeenCalledWith(nodes[2]);
   const updated={...nodes[2],title:'当前视频新标题',metadata:{status:'error' as const,errorDetails:'模型服务暂不可用'}};
   rerender(<StudioStoryboard {...handlers} nodes={[...nodes.slice(0,2),updated,...nodes.slice(3)]} selectedNodeId={updated.id} onCloseDetail={onCloseDetail}/>);

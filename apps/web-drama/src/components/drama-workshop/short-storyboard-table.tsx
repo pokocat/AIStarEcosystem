@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 短视频分镜表（v0.94）— 设计真源：短视频制作右侧「分镜表」平铺表格。
 // 列：镜·时长（beat 语义标签 + 镜号 + 时间线 + 时长） / 首帧（4 态 + AI 改图 + 出片）/
@@ -288,7 +289,7 @@ function ShortShotRow({
       <td className="smk-cell-text" style={TD}>
         <div className="row gap-1" style={{ alignItems: "center", marginBottom: 5 }}>
           <Mic size={12} style={{ color: "var(--accent)", flex: "none" }} />
-          <select
+          <SelectField
             value={s.voWho || speakerOptions[0]}
             disabled={locked}
             onChange={(e) => onPatch({ voWho: e.target.value })}
@@ -299,7 +300,7 @@ function ShortShotRow({
             {whoList.map((w) => (
               <option key={w} value={w}>{w}</option>
             ))}
-          </select>
+          </SelectField>
         </div>
         <Editable
           block

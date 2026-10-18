@@ -60,3 +60,41 @@ music、drama、celebrity、star、admin 与共享 UI 的源码检查未发现�
 浏览器实测项目页点击“草稿”后字段与筛选状态同步，排序通过 ArrowDown/Enter 从“最近编辑”切换为“最近创建”，Escape 返回字段；375 CSS 像素下菜单左右边界为 16–120.67px、页面无横向溢出，临时视口已恢复。桌面/手机展开截图为 `.studio-e2e/focus-audit/select-desktop.png`、`select-mobile.png`。本轮没有保存业务数据、删除画布、执行生成或部署。
 
 设计扫描的 13px 字号与菜单 4px 内圆角是此次沿用/明确的工作页组件规格，已同步 DESIGN.md；未刷新已陈旧的设计 sidecar，未压制扫描。布局中既有 Outfit 提示仍保留。
+
+## 全仓补查与页面内下拉统一（2026-10-17，发布记录另列）
+
+本轮按用户要求重新枚举运行源码，覆盖全部 Web 应用、admin、design、小程序与 packages；不把 figma/prototypes 当作运行应用。原生控件声明共 input 255、textarea 57、select 40，包含通用组件，数量不等于独立页面数。另核对 Ant、共享 UI、两个画布富文本、TipTap 剧本/角色输入和短剧段级及行内编辑器。
+
+| 应用 | 原生 input | textarea | 原生 select |
+|---|---:|---:|---:|
+| apps/web-celebrity | 80 | 18 | 1 |
+| apps/design | 1 | 0 | 0 |
+| apps/web-drama | 77 | 22 | 26 |
+| apps/admin | 6 | 4 | 3 |
+| apps/web-star | 14 | 5 | 4 |
+| apps/miniprogram | 7 | 0 | 0 |
+| apps/web-music | 19 | 1 | 3 |
+| apps/web-aiavatar | 38 | 6 | 3 |
+| packages/ui | 1 | 1 | 0 |
+| packages/landing | 12 | 0 | 0 |
+| packages/api-client | 0 | 0 | 0 |
+
+### 本轮修复
+
+- 六个 Web 应用的 40 处原生 select 声明（27 个文件）统一使用共享 SelectField；既有 Ant / Radix Select 不重写。沿用 Radix 的页面内菜单、键盘选择、禁用、Esc 关闭与焦点恢复，菜单有真实选项、勾选、长标签省略和视口边界处理。保留各产品原来的字段样式；菜单从触发器读取实际主题令牌，音乐深色不会变白色菜单。
+- 兼容原回调的真实 HTMLSelectElement change 事件与 wire value；空字符串选项可选，隐藏兼容字段用于表单取值/重置及 ref，不能被 Tab 或读屏重复访问。程序 focus 转给可见字段；外部 form 关联保留。组件限定为单值选择。
+- CanvasConfigComposer 同样存在“组词时暂停 value 同步，却继续画占位提示”的问题：组词期间立即隐藏提示，提交/取消后恢复，并阻止候选词 Enter/方向键被引用菜单接管。编辑区由 12px 圆角父层显示焦点，不重复框内部。
+- 短剧 Editable 原本把组词确认的 Enter 当作失焦提交；加入 composition / isComposing / 229 识别。普通 Enter 与原失焦提交仍保留。
+- 短剧通用 TextInput / TextArea 原本 inline outline:none 且无替代提示，补内沿焦点；其他组件继续按自己的边框/阴影显示。
+- 浏览器确认富文本格式菜单在选择后会把焦点还给下拉触发器，覆盖 TipTap 的编辑焦点；现在返回原文档光标，保持当前阅读位置。故事板与付款设置继续使用正常字段焦点恢复。
+
+### 验证与范围
+
+- 六套应用的生产 CSS 配合真实 React / Ant / Radix / TipTap 组件做隔离浏览器回归：组合输入内部无多余 outline，外层焦点阴影保留，禁用与错误状态保留。菜单支持空值、长标签、主题跟随；390px 下六套菜单均在 x=20..356 内，页面无横向溢出。
+- Ant Modal 中打开菜单、选择、Esc 仅关闭菜单、焦点返回字段，通过；富文本选择章节标题后 activeElement 是“剧本文档”，真实 h2 已写入。中文 composition 模拟下编辑区是 ca、占位已隐藏，内部 outline none、12px 外层轮廓可见，确认汉字后持久值更新。
+- 新控件覆盖真实 change 事件、空值、disabled、外部更新、表单 FormData/reset、外部 form 与 ref.focus；业务测试覆盖模型/价格/引用、付款偏好、故事板草稿失败恢复以及富文本结构/光标。测试总数和发布结果见对应发布记录。
+- 浏览器页为隔离回归页，静态 CSS 从六个线上入口获取，再加载本轮变更；不是逐个业务页面的全量点击验收。首次并行检查因本机内存竞争产生超时，改为单 worker 并复验；保留真实断言，未以超时结果计通过。
+- 小程序与 design 仅源码复查，无同类浏览器焦点/富文本组词叠层实现；未宣称微信真机回归。原生搜狗输入法未做系统级注入；composition 由真实组件事件回归与浏览器模拟覆盖。没有提交收费生成或写生产业务数据。
+- 设计检测两项 advisory：vendor 配置栏既有 11px 说明、故事板既有 15px 标题（从 select 样式迁给新字段）；沿用原设计，不改字阶、不压制规则。
+
+证据：`.studio-e2e/form-controls-v2/` 的六套桌面/手机截图、`results.json`、`css-sources.json` 与富文本焦点截图。临时页和 bundle 不进入生产包。

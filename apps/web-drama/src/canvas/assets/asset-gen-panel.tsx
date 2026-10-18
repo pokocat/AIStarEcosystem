@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // canvas/assets/asset-gen-panel.tsx —— 出图面板（v0.198，props 见 canvas/core/contract.ts AssetGenPanelProps）。
@@ -403,7 +404,7 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
           <div className="cva-panel-foot">
             <label className="cva-field cva-field-model">
               <span className="cva-field-label">出图模型</span>
-              <select
+              <SelectField
                 className="cv-select"
                 value={endpointId ?? ""}
                 disabled={readOnly || models.length <= 1}
@@ -416,17 +417,17 @@ function PanelInner({ target, variant, onClose, onReferenceAdded }: AssetGenPane
                     {m.name}（每张 {m.creditCost} 积分）
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
             <label className="cva-field cva-field-ratio">
               <span className="cva-field-label">画幅</span>
-              <select className="cv-select" value={ratio} disabled={readOnly} onChange={(e) => setRatio(e.target.value as CanvasImageRatio)} aria-label="画幅">
+              <SelectField className="cv-select" value={ratio} disabled={readOnly} onChange={(e) => setRatio(e.target.value as CanvasImageRatio)} aria-label="画幅">
                 {IMAGE_RATIOS.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>
                 ))}
-              </select>
+              </SelectField>
             </label>
             {subject.kind === "look" && (
               <button type="button" className="btn btn-line btn-sm cva-traits-btn" disabled={readOnly} onClick={() => setTraitsOpen(true)}>

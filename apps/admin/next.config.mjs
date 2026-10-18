@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  transpilePackages: ["@ai-star-eco/ui"],
   basePath: "/admin",
   images: {
     remotePatterns: [

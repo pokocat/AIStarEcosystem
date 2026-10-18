@@ -1,4 +1,7 @@
 // @vitest-environment jsdom
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import {useState} from 'react';
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
@@ -708,11 +711,12 @@ test('storyboard node switching persists the original creator draft and a failed
  await screen.findByRole('region',{name:'生成视频'});
  fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'必须保留的视频创作要求'}});
  api.save.mockRejectedValueOnce(new Error('保存失败，保留当前节点'));
- fireEvent.change(screen.getByRole('combobox',{name:'节点类型'}),{target:{value:'image'}});
+ await selectFieldValue(screen.getByRole('combobox',{name:'节点类型'}), 'image');
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存失败，保留当前节点'));
  expect(screen.getByRole('region',{name:'节点详情 old adopted'})).toBeDefined();
  expect(screen.getByRole('textbox',{name:'创作要求'})).toHaveProperty('value','必须保留的视频创作要求');
- fireEvent.change(screen.getByRole('combobox',{name:'节点类型'}),{target:{value:'image'}});
+ await waitFor(()=>expect(screen.getByRole('combobox',{name:'节点类型'}).hasAttribute('disabled')).toBe(false));
+ await selectFieldValue(screen.getByRole('combobox',{name:'节点类型'}), 'image');
  await screen.findByRole('region',{name:'节点详情 图片参考'});
  expect(screen.getByRole('region',{name:'生成图片'})).toBeDefined();
  expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.prompt).toBe('必须保留的视频创作要求');

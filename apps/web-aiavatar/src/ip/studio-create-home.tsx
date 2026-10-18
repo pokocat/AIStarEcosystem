@@ -57,7 +57,7 @@ export function StudioCreateHome() {
     <section className="studio-gallery-panel studio-creation-section" id="start-creation" aria-label="开始创作">
       <StudioCreationBrief creating={creating} pending={!!pendingStart} onStart={(entry, brief) => void start(entry, brief)}/>
     <nav className="studio-create-tools" aria-label="快速开始创作">{studioCreateTools.map(({entry, description, image}, index) => <button type="button" className="studio-create-tool" key={entry} aria-label={studioEntries[entry].title} aria-busy={creating === entry} disabled={creating !== undefined || !!pendingStart} onClick={() => void start(entry)}>
-      <div className="studio-create-tool-visual">{image ? <Image src={`/studio/create/${image}.png`} alt="" width={900} height={600} sizes="(min-width: 960px) 20vw, 50vw" loading={index < 5 ? "eager" : "lazy"}/> : <div className="studio-tool-blank-preview" aria-hidden="true"><span><BookOpen size={16}/>文字</span><span><ImagePlus size={16}/>图片</span><span><Mic size={16}/>声音</span><span><Video size={16}/>视频</span></div>}</div>
+      <div className="studio-create-tool-visual">{image ? <Image src={`/studio/create/${image}.webp`} alt="" width={960} height={640} sizes="(min-width: 960px) 20vw, 50vw" loading={index < 5 ? "eager" : "lazy"}/> : <div className="studio-tool-blank-preview" aria-hidden="true"><span><BookOpen size={16}/>文字</span><span><ImagePlus size={16}/>图片</span><span><Mic size={16}/>声音</span><span><Video size={16}/>视频</span></div>}</div>
       <div className="studio-create-tool-copy"><strong>{studioEntries[entry].title}</strong>{creating === entry ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}<p>{description}</p></div>
     </button>)}</nav>
 

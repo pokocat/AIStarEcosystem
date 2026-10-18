@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 import * as React from "react";
 import { RenderApi } from "@/api";
@@ -149,7 +150,7 @@ export function RenderModelSelect({
       title={current ? capabilityTitle(current) : lane === "image" ? "选择生成首帧用的模型" : "选择生成视频用的模型"}
     >
       <span className="faint" style={{ flex: "none", fontSize: 11 }}>{lane === "image" ? "图片模型" : "视频模型"}</span>
-      <select
+      <SelectField
         value={value ?? ""}
         disabled={disabled}
         aria-label={lane === "image" ? "图片模型" : "视频模型"}
@@ -174,7 +175,7 @@ export function RenderModelSelect({
             {o.isDefault ? "（默认）" : ""}
           </option>
         ))}
-      </select>
+      </SelectField>
     </label>
   );
 }

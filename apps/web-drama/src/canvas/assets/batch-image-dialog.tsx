@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // canvas/assets/batch-image-dialog.tsx —— 列表「为选中的 N 个出图」的确认框（v0.198.1）。
@@ -37,7 +38,7 @@ export function BatchImageDialog({ open, count, skippedNote, onCancel, onConfirm
       </p>
       <label className="cva-field cva-batch-model">
         <span className="cva-field-label">出图模型</span>
-        <select
+        <SelectField
           className="cv-select"
           value={pricing.imageModelId ?? ""}
           disabled={models.length <= 1}
@@ -51,7 +52,7 @@ export function BatchImageDialog({ open, count, skippedNote, onCancel, onConfirm
               {m.name}（每张 {m.creditCost} 积分）
             </option>
           ))}
-        </select>
+        </SelectField>
         <span className="cva-hint">换了之后，出图面板和片段「出首帧」也用这个模型。</span>
       </label>
       {pricing.ready ? (

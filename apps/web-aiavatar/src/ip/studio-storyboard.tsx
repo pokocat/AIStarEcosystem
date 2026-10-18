@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 import { StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useMemo, useState, type ReactNode } from 'react';
@@ -78,10 +79,10 @@ export function StudioStoryboard({ nodes, connections, selectedNodeId, changing,
       {visibleGroups.map(group => {
         const Icon = icons[group.type as keyof typeof icons];
         return <section key={group.type} className="studio-storyboard-column" aria-label={`${group.label}节点列表`}>
-          <header>{selected ? <select aria-label="节点类型" value={group.type} disabled={changing} onChange={e => {
+          <header>{selected ? <SelectField aria-label="节点类型" value={group.type} disabled={changing} onChange={e => {
             const next = groups.find(g => g.type === e.target.value);
             if(next?.nodes.length)onOpenNode(next.nodes[0]);else { setExpanded(next?.type); onCloseDetail?.(); }
-          }}>{groups.map(g => <option key={g.type} value={g.type}>{g.label} · {g.nodes.length}</option>)}</select> : <h3>{group.label}<span>{group.nodes.length}</span></h3>}
+          }}>{groups.map(g => <option key={g.type} value={g.type}>{g.label} · {g.nodes.length}</option>)}</SelectField> : <h3>{group.label}<span>{group.nodes.length}</span></h3>}
             {!selected && <button type="button" aria-label={expanded === group.type ? '恢复全部节点类型' : `展开${group.label}列表`} onClick={() => setExpanded(expanded === group.type ? undefined : group.type)}>{expanded === group.type ? <Minimize2 size={16}/> : <Maximize2 size={16}/>}</button>}</header>
           <div className="studio-storyboard-column-body">
             {!group.nodes.length && <p className="studio-storyboard-empty">暂无{group.label}节点</p>}

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 报白账号授权 — 审核 MCN 提交的切片账号报白申请（5 步推进 + 报白参数一键复制）。
 
@@ -75,7 +76,7 @@ export default function WhitelistPage() {
 
       {/* <sm：双原生 select 一行收口（chips 折行占屏过高）；≥sm 保留 chip 筛选卡 */}
       <div className="sm:hidden grid grid-cols-2 gap-2">
-        <select
+        <SelectField
           value={platformFilter}
           onChange={(e) => setPlatformFilter(e.target.value)}
           aria-label="按平台筛选"
@@ -87,8 +88,8 @@ export default function WhitelistPage() {
               {p.label}（{p.id === "all" ? all.length : all.filter((r) => r.platform === p.id).length}）
             </option>
           ))}
-        </select>
-        <select
+        </SelectField>
+        <SelectField
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
           aria-label="按状态筛选"
@@ -100,7 +101,7 @@ export default function WhitelistPage() {
               {s.label}（{s.id === "all" ? all.length : all.filter((r) => r.status === s.id).length}）
             </option>
           ))}
-        </select>
+        </SelectField>
       </div>
 
       {/* 双筛选条（≥sm） */}

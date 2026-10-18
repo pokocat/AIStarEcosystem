@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 财务 · 充值套餐管理（v0.5 §D4）
@@ -190,7 +191,7 @@ export default function AdminRechargePackagesPage() {
           </div>
           <div>
             <div className="mb-1 text-sm font-medium">适用子应用</div>
-            <select
+            <SelectField
               className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
               value={draft.appScope}
               onChange={(e) => setDraft({ ...draft, appScope: e.target.value })}
@@ -200,7 +201,7 @@ export default function AdminRechargePackagesPage() {
                   {s.label}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </div>
           <div className="md:col-span-1 flex items-end">
             <Button className="w-full" onClick={() => void onCreate()}>

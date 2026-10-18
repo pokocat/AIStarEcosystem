@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 单集编辑器（v0.198，plan §2.6）：
 //   顶栏：「逐集制作 / 第 N 集 · 标题」、视频模型 ▾、合成成片（有成片后：下载成片 + 重新合成）
@@ -78,7 +79,7 @@ function VideoModelSelect() {
     <label className="cve-model" title={current ? `${current.name}：${modelDetail(current)}。换了模型，之后生成的视频按新模型出、按新模型计价` : undefined}>
       <span className="cve-model-label">视频模型</span>
       {/* 选中后只显示模型名（顶栏放不下价格）；价格和单条上限在每个选项的 title 里，片段标题旁也写着 */}
-      <select
+      <SelectField
         className="cv-select cve-model-select"
         value={pricing.videoModelId ?? ""}
         onChange={(e) => pricing.setVideoModelId(e.target.value)}
@@ -90,7 +91,7 @@ function VideoModelSelect() {
             {m.name}
           </option>
         ))}
-      </select>
+      </SelectField>
     </label>
   );
 }

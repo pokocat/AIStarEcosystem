@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 财务 · 支付配置（v0.94 多渠道直连）
@@ -140,7 +141,7 @@ function ChannelCard({
       <CardContent className="space-y-4">
         <div>
           <div className="mb-1 text-sm font-medium">默认支付方式</div>
-          <select
+          <SelectField
             className="h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 text-sm"
             value={defaultWayCode}
             onChange={(e) => setDefaultWayCode(e.target.value)}
@@ -150,7 +151,7 @@ function ChannelCard({
                 {w.label}（{w.code}）
               </option>
             ))}
-          </select>
+          </SelectField>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
