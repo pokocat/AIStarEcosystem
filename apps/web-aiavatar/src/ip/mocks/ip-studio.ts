@@ -348,7 +348,12 @@ export function mockStartRun(projectId: string, nodeId: string, doc: IpProjectDo
 
 /** A finished run made elsewhere in the demo (the dialogue's plan execution), readable through getRun like any other. */
 export function mockRegisterRun(run: IpRun) {
-  mockStore().runs.set(run.id, { run: { ...run }, startedAtMs: Date.now(), durationMs: 0, caption: run.nodeId, cancelled: false });
+  const s = mockStore();
+  s.runs.set(run.id, { run: { ...run }, startedAtMs: Date.now(), durationMs: 0, caption: run.nodeId, cancelled: false });
+  // Like the server, a project's run list includes every run of that project; the workspace reads it on open to
+  // decide whether outputs of a finished execution must be restored (Codex R3-02).
+  const p = s.projects.get(run.projectId);
+  if (p) p.runsById = { ...(p.runsById ?? {}), [run.id]: { ...run } };
 }
 
 export function mockReadRun(runId: string): IpRun {

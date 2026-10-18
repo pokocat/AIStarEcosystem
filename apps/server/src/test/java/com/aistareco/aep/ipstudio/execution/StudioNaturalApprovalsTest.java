@@ -53,4 +53,18 @@ class StudioNaturalApprovalsTest {
                 "a cap the card did not propose and the user did not say is refused even when lower");
         assertDoesNotThrow(()->StudioNaturalApprovals.require("开始吧",card,200,0),"the card's own proposal needs no number");
     }
+
+    /** R3-01: a redo figure the user named never stands in for the total cap, and the reverse. */
+    @Test void eachNamedAmountBindsItsOwnCap() {
+        String both="按这个方案开始，总上限280积分，重做上限0积分";
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require(both,card,200,0)).getCode(),
+                "redo 0 matched, but the total 200 is not the 280 the user said");
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require(both,card,1000,0)).getCode());
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require(both,card,280,20)).getCode(),
+                "the user said redo 0; 20 is refused");
+        assertDoesNotThrow(()->StudioNaturalApprovals.require(both,card,280,0));
+        assertDoesNotThrow(()->StudioNaturalApprovals.require("开始，上限 500，重做额度 100",card,500,100));
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require("开始，上限 500，重做额度 100",card,100,100)).getCode(),
+                "the redo figure cannot be reused as the total");
+    }
 }

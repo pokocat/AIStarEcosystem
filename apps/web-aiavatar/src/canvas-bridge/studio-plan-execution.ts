@@ -366,6 +366,9 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
 
 /** Step output nodes of an execution that the canvas does not have and this viewer has not projected before. */
 export function missingExecutionNodes(execution: StudioPlanExecution, nodes: CanvasNodeData[], projected: ReadonlySet<string>): StudioPlanExecutionStep[] {
+  // An empty canvas is a fresh open (or a reset), not a user who deleted every output: the per-browser record must not
+  // keep finished outputs away from it. A single node left in place keeps deletions honored (Codex R3-02).
+  if (nodes.length === 0) projected = new Set<string>();
   return execution.steps.filter(step => {
     if (step.status !== 'done' || !step.runIds.length && !step.acceptedRunId) return false;
     const id = stepNodeId(execution, step);
@@ -383,6 +386,7 @@ export function missingExecutionNodes(execution: StudioPlanExecution, nodes: Can
  * to read the dialogue thread on canvas open so the restore can run without the panel being opened.
  */
 export function executionOutputMissing(runs: IpRun[], nodes: CanvasNodeData[], projected: ReadonlySet<string>): boolean {
+  if (nodes.length === 0) projected = new Set<string>();
   return runs.some(run => run.status === 'done' && !!(run.inputs as { executionId?: string } | undefined)?.executionId && !projected.has(run.nodeId)
     && !nodes.some(n => n.id === run.nodeId || n.metadata?.studio?.execution?.runId === run.id || n.metadata?.studio?.runId === run.id));
 }

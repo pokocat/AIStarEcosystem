@@ -39,9 +39,13 @@ final class StudioNaturalApprovals {
             throw StudioPlanExecutionService.budgetExceeded(card.path("stage").asText(), 0, 0, quoted, budgetCap);
         // The user's own numbers win: whenever the message names a budget figure, the effective cap must be one of them —
         // the model may neither raise nor "round" it (R2-02), and a cap the card never proposed needs the user's number.
-        java.util.Set<Long> saidNumbers = budgetNumbers(said);
-        if (!saidNumbers.isEmpty() && !saidNumbers.contains(budgetCap) && !saidNumbers.contains(autoFixCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的上限是 " + saidNumbers.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的上限，或在卡片上修改");
+        // Each named amount binds its own cap (R3-01): a redo figure can never stand in for the total, nor the reverse.
+        java.util.Set<Long> saidFix = redoNumbers(said), saidTotal = budgetNumbers(said);
+        saidTotal.removeAll(saidFix);
+        if (!saidFix.isEmpty() && !saidFix.contains(autoFixCap))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的重做额度是 " + saidFix.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的额度，或在卡片上修改");
+        if (!saidTotal.isEmpty() && !saidTotal.contains(budgetCap))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的上限是 " + saidTotal.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的上限，或在卡片上修改");
         if (budgetCap != proposed && !mentions(said, budgetCap))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，需要你在消息里说出新的上限，或在卡片上修改");
         if (autoFixCap != proposedFix && !mentions(said, autoFixCap))
@@ -54,15 +58,29 @@ final class StudioNaturalApprovals {
         return Pattern.compile("(?<!\\d)" + number + "(?!\\d)").matcher(plain).find();
     }
 
-    /** Budget figures the user named, after digit grouping is removed. */
+    private static final Pattern REDO_NUMBER = Pattern.compile("(?:重做|修正|重试)[^\\d]{0,8}(\\d+)");
+
+    /** Budget figures the user named, after digit grouping is removed (redo figures are returned separately). */
     static java.util.Set<Long> budgetNumbers(String text) {
         String plain = DIGIT_GROUPING.matcher(text).replaceAll("");
         java.util.Set<Long> out = new java.util.LinkedHashSet<>();
         var m = BUDGET_NUMBER.matcher(plain);
         while (m.find()) {
+            // 「重做上限 0 积分」 matches the generic pattern too; the words right before the amount decide its role.
+            String before = plain.substring(Math.max(0, m.start() - 8), m.start());
+            if (before.contains("重做") || before.contains("修正") || before.contains("重试")) continue;
             String g = m.group(1) != null ? m.group(1) : m.group(2);
             try { out.add(Long.parseLong(g)); } catch (NumberFormatException ignored) { /* too long to be a budget */ }
         }
+        return out;
+    }
+
+    /** Redo / auto-fix figures the user named: 「重做上限 0」「修正额度 100 积分」. */
+    static java.util.Set<Long> redoNumbers(String text) {
+        String plain = DIGIT_GROUPING.matcher(text).replaceAll("");
+        java.util.Set<Long> out = new java.util.LinkedHashSet<>();
+        var m = REDO_NUMBER.matcher(plain);
+        while (m.find()) { try { out.add(Long.parseLong(m.group(1))); } catch (NumberFormatException ignored) { /* ignore */ } }
         return out;
     }
 

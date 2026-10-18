@@ -230,3 +230,15 @@ describe('restore from execution state', () => {
     expect(executionOutputMissing([{ ...runs['IPR-a-facts'], inputs: {} }], [], new Set())).toBe(false);
   });
 });
+
+describe('an empty canvas is a fresh open, not a user who deleted everything (Codex R3-02)', () => {
+  const run = { id: 'IPR-done', projectId: 'IPP-1', nodeId: 'PEX-1-p-v1', kind: 'studio-video', status: 'done', stage: 'done', progress: 100,
+    inputs: { executionId: 'PEX-1' }, output: {}, createdAt: '2026-10-18T00:00:00Z' } as unknown as import('@ai-star-eco/types').IpRun;
+  it('ignores the per-browser projected record when the canvas has no node at all', () => {
+    expect(executionOutputMissing([run], [], new Set(['PEX-1-p-v1']))).toBe(true);
+  });
+  it('still honors a deletion when any node is left on the canvas', () => {
+    const other = { id: 'n-other', type: 'text', title: 't', position: { x: 0, y: 0 }, metadata: {} } as unknown as import('@/canvas/types/canvas').CanvasNodeData;
+    expect(executionOutputMissing([run], [other], new Set(['PEX-1-p-v1']))).toBe(false);
+  });
+});
