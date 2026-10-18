@@ -14,24 +14,38 @@ import java.util.regex.Pattern;
  */
 final class StudioNaturalApprovals {
     private StudioNaturalApprovals() {}
-    /** Plain substrings of a question or hesitation; matching one only ever refuses (never approves). */
+    /** Plain substrings of a question, hesitation, deferral or edit request; matching one only ever refuses (never approves). */
     private static final List<String> HESITATION = List.of("？", "?", "吗", "先别", "别开始", "不要开始", "不开始", "暂不", "暂时不",
-            "不确认", "不同意", "等一下", "等等", "再想想", "考虑一下", "再看看", "算了", "不用了", "不行");
+            "不确认", "不同意", "等一下", "等等", "再想想", "考虑一下", "再看看", "算了", "不用了", "不行",
+            "等我通知", "等通知", "等我说", "再通知", "等我确认", "稍后", "以后再", "先修改", "只修改", "先改", "改一下", "改成",
+            "不生成", "别生成", "不要生成", "先不", "暂停", "停一下", "不急", "等一等", "晚点", "过会");
+    /** An approval must contain one of these; a message that names neither approval nor hesitation is not an approval. */
+    private static final List<String> APPROVAL = List.of("确认", "开始", "按这个", "按此", "按你", "按推荐", "按方案", "就这样", "就这个", "同意",
+            "批准", "可以做", "可以开始", "做吧", "开工", "执行", "通过", "没问题", "就按", "照这个", "ok", "OK", "Ok", "好的", "行，", "行。");
     private static final Pattern DIGIT_GROUPING = Pattern.compile("(?<=\\d)[,，\\s](?=\\d)");
+    /** Numbers the user tied to a budget: 「上限 280」「预算280积分」「不超过 1,500」「280 积分」. */
+    private static final Pattern BUDGET_NUMBER = Pattern.compile(
+            "(?:上限|预算|最多|不超过|控制在|额度|花)[^\\d]{0,6}(\\d+)|(\\d+)\\s*(?:积分|分钱|个积分)");
 
     static void require(String text, JsonNode card, long budgetCap, long autoFixCap) {
         String said = text == null ? "" : text.strip();
         if (said.isEmpty()) throw ambiguous();
         for (String h : HESITATION) if (said.contains(h)) throw ambiguous();
+        if (APPROVAL.stream().noneMatch(said::contains)) throw ambiguous();
         long proposed = card.path("budgetCap").asLong(), proposedFix = card.path("autoFixCap").asLong(0), quoted = card.path("quotedCost").asLong(0);
         if (budgetCap < 0 || autoFixCap < 0 || autoFixCap > budgetCap)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度不能超过总上限");
         if (budgetCap < quoted)
             throw StudioPlanExecutionService.budgetExceeded(card.path("stage").asText(), 0, 0, quoted, budgetCap);
-        if (budgetCap > proposed && !mentions(said, budgetCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限比确认卡上的 " + proposed + " 积分高，需要你在消息里说出新的上限，或在卡片上修改");
-        if (autoFixCap > proposedFix && !mentions(said, autoFixCap))
-            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度比确认卡上的高，需要你在消息里说出这个数，或在卡片上修改");
+        // The user's own numbers win: whenever the message names a budget figure, the effective cap must be one of them —
+        // the model may neither raise nor "round" it (R2-02), and a cap the card never proposed needs the user's number.
+        java.util.Set<Long> saidNumbers = budgetNumbers(said);
+        if (!saidNumbers.isEmpty() && !saidNumbers.contains(budgetCap) && !saidNumbers.contains(autoFixCap))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "你说的上限是 " + saidNumbers.iterator().next() + " 积分，确认时只能用这个数；要改请直接说新的上限，或在卡片上修改");
+        if (budgetCap != proposed && !mentions(said, budgetCap))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，需要你在消息里说出新的上限，或在卡片上修改");
+        if (autoFixCap != proposedFix && !mentions(said, autoFixCap))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度与确认卡上的不同，需要你在消息里说出这个数，或在卡片上修改");
     }
 
     /** The user wrote this exact number (digit grouping like 1,500 allowed; 15000 does not mention 1500). */
@@ -40,8 +54,20 @@ final class StudioNaturalApprovals {
         return Pattern.compile("(?<!\\d)" + number + "(?!\\d)").matcher(plain).find();
     }
 
+    /** Budget figures the user named, after digit grouping is removed. */
+    static java.util.Set<Long> budgetNumbers(String text) {
+        String plain = DIGIT_GROUPING.matcher(text).replaceAll("");
+        java.util.Set<Long> out = new java.util.LinkedHashSet<>();
+        var m = BUDGET_NUMBER.matcher(plain);
+        while (m.find()) {
+            String g = m.group(1) != null ? m.group(1) : m.group(2);
+            try { out.add(Long.parseLong(g)); } catch (NumberFormatException ignored) { /* too long to be a budget */ }
+        }
+        return out;
+    }
+
     private static BusinessException ambiguous() {
         return new BusinessException(HttpStatus.CONFLICT, "STUDIO_APPROVAL_AMBIGUOUS",
-                "这句话不是明确的确认（像是在提问或还想再看看）。确认的话请直接说「按这个开始」，或点确认卡上的按钮");
+                "这句话不是明确的确认（像是在提问、还想再看看，或要先改方案）。确认的话请直接说「按这个开始」，或点确认卡上的按钮");
     }
 }

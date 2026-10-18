@@ -17,6 +17,7 @@ import { apiFetch, USE_MOCK, mockDelay } from "./_client";
 import {
   MOCK_PRICING, MOCK_STYLES, MOCK_TEMPLATES, mockCancelRun, mockNextId,
   mockPlaceholderImage, mockReadRun, mockStartRun, mockStore, MOCK_PROMPT_GROUPS,
+  MOCK_CLOSED_EXECUTION_PROJECT_ID,
 } from "@/ip/mocks/ip-studio";
 
 const nowIso = () => new Date().toISOString();
@@ -98,7 +99,10 @@ export async function getProject(id: string): Promise<IpProject> {
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
     if (!project) throw new Error("这张画布不存在，或者已经删了");
-    return mockDelay(project);
+    // 样例三的「离开期间已做完」要在首次打开画布时就能恢复产物：先让对话 mock 登记那次制作的 run，
+    // 再把项目（含 runs）交给工作台；否则要等打开创作助手才会 seed（Codex 复验 R2-03）。
+    if (id === MOCK_CLOSED_EXECUTION_PROJECT_ID) (await import("@/ip/mocks/studio-dialogue")).mockEnsureClosedProjectSeeded(id);
+    return mockDelay(mockStore().projects.get(id) ?? project);
   }
   return apiFetch<IpProject>(`/v1/ip-studio/projects/${id}`);
 }

@@ -467,6 +467,8 @@ export function mockExecutionAccept(projectId: string, executionId: string, step
  * done (and so no longer in the snapshot), every step has a readable run, the canvas has none of the nodes, and the
  * events are pruned. Opening it must rebuild the nodes from the execution. Returns the execution.
  */
+/** Idempotent: make sure the closed-canvas sample has its finished execution and runs before the canvas is read. */
+export function mockEnsureClosedProjectSeeded(projectId: string): void { project(projectId); }
 export function mockSeedCompletedExecution(projectId: string): StudioPlanExecution {
   const p = project(projectId);
   return seedCompleted(projectId, p, thread(p, p.currentThreadId));
