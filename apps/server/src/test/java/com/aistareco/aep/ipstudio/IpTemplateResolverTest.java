@@ -114,6 +114,21 @@ class IpTemplateResolverTest {
     }
 
     @Test
+    void builtinCoverOverrideIsSharedByListAndResolveWithoutChangingTheDocument() {
+        var configs=mock(com.aistareco.aep.service.PlatformConfigService.class);
+        var builtin=catalog.templates().get(0);
+        String key=com.aistareco.aep.ipstudio.service.CanvasCoverService.builtinConfigKey(builtin.id());
+        when(configs.findByKey(key)).thenReturn(Optional.of(new com.aistareco.aep.dto.PlatformConfigDto(key,
+                OM.createObjectNode().put("storageKey","ipstudio_cover/"+builtin.id()+"/cover.png"),1,null,null,"operator")));
+        var r=resolverWith(List.of());r.setCoverConfigs(configs);
+        var listed=r.list().stream().filter(t->t.id().equals(builtin.id())).findFirst().orElseThrow();
+        var resolved=r.resolve(builtin.id()).orElseThrow();
+        assertEquals("https://cdn.test/x.png",listed.coverUrl());assertEquals(listed.coverUrl(),resolved.coverUrl());
+        assertEquals(builtin.doc(),listed.doc());assertEquals("official",listed.visibility());
+        assertEquals(catalog.templates().size(),r.list().size());
+    }
+
+    @Test
     void 示例文档坏掉不该让整个目录打不开() {
         IpDemoTemplate broken = demo("IPD-broken", "坏示例", true);
         broken.setDocJson("{ 这不是 JSON");

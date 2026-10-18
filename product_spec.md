@@ -1417,3 +1417,9 @@ V45 为 DapLook 增加可空 assetRole；免费分类接口只修改本人同人
 Enterprise 独立于自然人身份和旧 Tenant/Studio；主账号唯一、可移交，固定管理员/成员角色，一人同时只属于一家企业。分配积分仍归企业、可回收；个人画布、个人积分与产品开通沿用现有逻辑，不做企业席位。
 
 E01–E04 建立类型/API 契约、V56 数据结构、邀请/角色/策略/移交/审计与钱包核心兼容，默认关闭企业入口。E05–E06 增加人工充值、单人/批量划拨、原充值来源退款及交易页面。原单冻结未结算时等待，财务登记人工退款事实，不自动打款。E07/E08 覆盖全部 Studio 入口的显式付款、模型/在途限制、原账户结算、停用退出与旧关系退款；V58 保存付款授权和生命周期回执。完整成员管理、消费流水、平台财务查询接入原有页面。默认关闭，验收结果单独记录。功能与验收边界见 [精简方案](docs/ip-studio-team-accounts-plan.md)、[开发任务](docs/ip-studio-enterprise-development-tasks.md)、[完整验收](docs/ip-studio-enterprise-complete-validation.md)。
+
+### Studio 项目与灵感统一封面（2026-10-17，本地待发布）
+
+人工封面优先，其次自动取已保存图片，没有可用图片则回落实际画布缩略图；两页共用预览、选图、独立 JPG/PNG 上传和恢复自动功能。共用 POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id}；个人项目/模板仅属主，官方模板仅 SUPER_ADMIN 可改。封面独立于 doc 和模板版本，失败保留原封面，可重试；URL 读时签名，不产生生成费用。
+
+内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。

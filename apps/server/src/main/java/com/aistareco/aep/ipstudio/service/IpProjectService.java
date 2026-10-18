@@ -176,16 +176,7 @@ public class IpProjectService {
         if (req.coverStorageKey() != null) {
             String key = trimToNull(req.coverStorageKey());
             if (key != null) {
-                boolean inCanvas = false;
-                for (JsonNode node : IpDocs.nodes(readDoc(p))) {
-                    if (!"image".equals(node.path("type").asText())) continue;
-                    JsonNode meta = IpDocs.metadataOf(node);
-                    if (key.equals(IpDocs.text(meta, "storageKey"))) inCanvas = true;
-                    for (JsonNode image : meta.path("images")) {
-                        if (key.equals(IpDocs.text(image, "storageKey"))) inCanvas = true;
-                    }
-                }
-                if (!inCanvas || !ownsAssetKey(p.getOwnerUserId(), key))
+                if (!CanvasCoverService.containsImage(readDoc(p), key) || !ownsAssetKey(p.getOwnerUserId(), key))
                     throw BusinessException.badRequest("IP_COVER_INVALID", "请选择这张画布中属于本人的图片作为封面");
             }
             p.setCoverKey(key);
@@ -263,6 +254,11 @@ public class IpProjectService {
 
     /** 照片 / 参考图上传：只收 jpg/png、≤ 字节上限且最长边 ≤ 像素上限；产物 key 由客户端写进 doc。 */
     public IpUploadResultDto upload(String userId, MultipartFile file) {
+        return uploadImage(file, CATEGORY_SOURCE, userId);
+    }
+
+    /** Reuse the exact same image validation for canvas media and independent covers. */
+    IpUploadResultDto uploadImage(MultipartFile file, String category, String storageOwner) {
         if (file == null || file.isEmpty()) {
             throw BusinessException.badRequest("IP_UPLOAD_INVALID", "请选择要上传的图片");
         }
@@ -297,7 +293,7 @@ public class IpProjectService {
         Integer w = wh[0], h = wh[1];
 
         FileStorageService.StoredFile stored = storage.store(
-                bytes, CATEGORY_SOURCE, userId, okExt ? ext : "png",
+                bytes, category, storageOwner, okExt ? ext : "png",
                 mime != null && okMime ? mime : "image/png");
         return new IpUploadResultDto(stored.key(), storage.signedUrl(stored.key()), w, h,
                 displayName(original, okExt ? ext : "png"));
@@ -505,40 +501,9 @@ public class IpProjectService {
     // ── DTO ───────────────────────────────────────────────────
 
     private String coverUrl(IpProject p) {
-        String key = p.getCoverKey();
-        if (key == null) {
-            for (JsonNode n : IpDocs.nodes(readDoc(p))) {
-                if (!"image".equals(n.path("type").asText())) continue;
-                String k = IpDocs.text(IpDocs.metadataOf(n),"storageKey");
-                if (k != null && ownsAssetKey(p.getOwnerUserId(),k)) {
-                    key = k;
-                    if (IpDocs.text(IpDocs.metadataOf(n),"runId") != null) break;
-                }
-            }
-        }
-        if (key != null) return storage.signedUrl(key);
-        // Reuse an already-generated poster for the exact adopted video. Never fetch
-        // or transcode full videos while listing projects, and never show a new take's
-        // poster over a different selected take.
-        for (JsonNode node : IpDocs.nodes(readDoc(p))) {
-            if (!"video".equals(node.path("type").asText())) continue;
-            JsonNode meta = IpDocs.metadataOf(node);
-            String selectedKey = IpDocs.text(meta, "storageKey");
-            String takeId = IpDocs.text(meta, "primaryVideoId");
-            if (selectedKey == null || takeId == null) continue;
-            String runId = takeId.contains(":") ? takeId.substring(0, takeId.indexOf(':')) : takeId;
-            var run = runRepo.findById(runId).filter(r -> p.getId().equals(r.getProjectId())
-                    && p.getOwnerUserId().equals(r.getOwnerUserId())).orElse(null);
-            if (run == null) continue;
-            for (String jobId : nativeVideoJobIds(parseOrEmptyObject(run.getInputJson()))) {
-                var job = videoJobs.findById(jobId).filter(j -> p.getOwnerUserId().equals(j.getOwnerUserId())
-                        && MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()) && "succeeded".equals(j.getStatus())).orElse(null);
-                if (job == null || job.getThumbnailUrl() == null || !selectedKey.equals(storage.keyOfStoredUrl(job.getVideoUrl()))) continue;
-                String posterKey = storage.keyOfStoredUrl(job.getThumbnailUrl());
-                if (posterKey != null) return storage.signedUrl(posterKey);
-            }
-        }
-        return null;
+        String key=p.getCoverKey();
+        if(key==null)key=CanvasCoverService.firstImageKey(readDoc(p),k->ownsAssetKey(p.getOwnerUserId(),k));
+        return key==null?null:storage.signedUrl(key);
     }
 
     IpProjectSummaryDto toSummary(IpProject p) {

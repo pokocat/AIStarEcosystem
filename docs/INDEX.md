@@ -262,3 +262,5 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - [企业完整界面验收](ip-studio-enterprise-ui-validation.md)
 
 - [视频解析与拉片生产发布](studio-film-study-production-release.md)：版本、独立媒体运行时、验收范围与备份。
+
+- [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；未发布（last-reviewed: 2026-10-17）。

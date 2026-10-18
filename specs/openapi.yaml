@@ -4026,6 +4026,11 @@ components:
       properties:
         identityCredits: { type: integer, description: 'dap.ip-identity —— 默认 2，admin「权益扣减配置 → 动作单价」可改' }
         imageCredits: { type: integer, description: 'dap.ip-image —— 默认 8，按张计' }
+    IpCanvasCover:
+      type: object
+      required: [coverUrl]
+      properties:
+        coverUrl: { type: string, nullable: true, description: '人工封面的短期签名 URL；null 表示恢复自动选择' }
     IpUploadResult:
       type: object
       required: [key, url, fileName]
@@ -12107,6 +12112,39 @@ paths:
     get: { tags: [ipstudio], operationId: ipStudioStyles, description: '内置风格预设 6 套（bjd / chibi / pixar3d / flat-vector / guochao-ink / clay）。promptEn 与 negativeEn 逐字进出图提示词。', responses: { '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/IpStylePreset' } } } } } } }
   /v1/ip-studio/pricing:
     get: { tags: [ipstudio], operationId: ipStudioPricing, description: '单价快照，前端展示预估用。真扣费一律在服务端 hold/commit，前端数字只是告知。', responses: { '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/IpPricing' } } } } } }
+  /v1/ip-studio/covers/{target}/{id}:
+    parameters:
+      - { in: path, name: target, required: true, schema: { type: string, enum: [project, template] } }
+      - { in: path, name: id, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
+      operationId: studioUploadCanvasCover
+      description: >-
+        项目与灵感模板共用封面上传。仅项目属主、个人模板属主、官方模板 SUPER_ADMIN 可修改。
+        JPG/PNG、大小与尺寸限制沿用图片上传；保存独立 coverKey，不添加节点、不改 doc 或模板版本。
+        替换成功后清理旧独立封面，事务回滚清理新上传；不删除画布原图。URL 读时重签。
+        内置官方模板仅用 studio.builtin-cover.{id} 平台配置保存覆盖 key，不复制 classpath 模板文档。
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpCanvasCover>', content: { application/json: { schema: { $ref: '#/components/schemas/IpCanvasCover' } } } }
+        '400': { description: 'IP_UPLOAD_INVALID / IP_COVER_TARGET_INVALID / IP_DOC_INVALID' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_TEMPLATE_NOT_FOUND，包括无权修改' }
+    put:
+      tags: [ipstudio]
+      operationId: studioSelectCanvasCover
+      description: '从目标画布已保存的图片中指定封面，权限同上传；项目另校验素材归属。仅写 coverKey，不修改 doc。'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [storageKey], properties: { storageKey: { type: string } } } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpCanvasCover>', content: { application/json: { schema: { $ref: '#/components/schemas/IpCanvasCover' } } } }
+        '400': { description: 'IP_COVER_INVALID / IP_ASSET_KEY_INVALID / IP_COVER_TARGET_INVALID' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_TEMPLATE_NOT_FOUND，包括无权修改' }
+    delete:
+      tags: [ipstudio]
+      operationId: studioResetCanvasCover
+      description: '清除人工封面，权限同上传；返回 coverUrl=null，列表重新自动选择图片，无图片时由前端降级画布缩略图。'
+      responses:
+        '200': { description: 'ApiResponse<IpCanvasCover>', content: { application/json: { schema: { $ref: '#/components/schemas/IpCanvasCover' } } } }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / IP_TEMPLATE_NOT_FOUND，包括无权修改' }
   /v1/ip-studio/uploads:
     post:
       tags: [ipstudio]
