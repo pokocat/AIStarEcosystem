@@ -172,6 +172,24 @@ public class IpProjectService {
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
         requireNotStale(p, req.baseDocVersion());
+        // Cover updates never replace the canvas document or its published identity.
+        if (req.coverStorageKey() != null) {
+            String key = trimToNull(req.coverStorageKey());
+            if (key != null) {
+                boolean inCanvas = false;
+                for (JsonNode node : IpDocs.nodes(readDoc(p))) {
+                    if (!"image".equals(node.path("type").asText())) continue;
+                    JsonNode meta = IpDocs.metadataOf(node);
+                    if (key.equals(IpDocs.text(meta, "storageKey"))) inCanvas = true;
+                    for (JsonNode image : meta.path("images")) {
+                        if (key.equals(IpDocs.text(image, "storageKey"))) inCanvas = true;
+                    }
+                }
+                if (!inCanvas || !ownsAssetKey(p.getOwnerUserId(), key))
+                    throw BusinessException.badRequest("IP_COVER_INVALID", "请选择这张画布中属于本人的图片作为封面");
+            }
+            p.setCoverKey(key);
+        }
         String previousDoc = p.getDocJson();
         String previousName = p.getName();
         String name = trimToNull(req.name());
@@ -498,7 +516,29 @@ public class IpProjectService {
                 }
             }
         }
-        return key == null ? null : storage.signedUrl(key);
+        if (key != null) return storage.signedUrl(key);
+        // Reuse an already-generated poster for the exact adopted video. Never fetch
+        // or transcode full videos while listing projects, and never show a new take's
+        // poster over a different selected take.
+        for (JsonNode node : IpDocs.nodes(readDoc(p))) {
+            if (!"video".equals(node.path("type").asText())) continue;
+            JsonNode meta = IpDocs.metadataOf(node);
+            String selectedKey = IpDocs.text(meta, "storageKey");
+            String takeId = IpDocs.text(meta, "primaryVideoId");
+            if (selectedKey == null || takeId == null) continue;
+            String runId = takeId.contains(":") ? takeId.substring(0, takeId.indexOf(':')) : takeId;
+            var run = runRepo.findById(runId).filter(r -> p.getId().equals(r.getProjectId())
+                    && p.getOwnerUserId().equals(r.getOwnerUserId())).orElse(null);
+            if (run == null) continue;
+            for (String jobId : nativeVideoJobIds(parseOrEmptyObject(run.getInputJson()))) {
+                var job = videoJobs.findById(jobId).filter(j -> p.getOwnerUserId().equals(j.getOwnerUserId())
+                        && MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()) && "succeeded".equals(j.getStatus())).orElse(null);
+                if (job == null || job.getThumbnailUrl() == null || !selectedKey.equals(storage.keyOfStoredUrl(job.getVideoUrl()))) continue;
+                String posterKey = storage.keyOfStoredUrl(job.getThumbnailUrl());
+                if (posterKey != null) return storage.signedUrl(posterKey);
+            }
+        }
+        return null;
     }
 
     IpProjectSummaryDto toSummary(IpProject p) {

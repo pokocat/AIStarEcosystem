@@ -107,6 +107,14 @@ export async function updateProject(id: string, payload: IpUpdateProjectRequest)
   if (USE_MOCK) {
     const project = mockStore().projects.get(id);
     if (!project) throw new Error("这张画布不存在，或者已经删了");
+    if (payload.coverStorageKey !== undefined) {
+      const images = project.doc.nodes.filter(n => n.type === "image").flatMap(n => [
+        { storageKey: n.metadata?.storageKey, content: n.metadata?.url || n.metadata?.content }, ...(n.metadata?.images || []),
+      ]);
+      const image = payload.coverStorageKey ? images.find(i => i.storageKey === payload.coverStorageKey) : images[0];
+      if (payload.coverStorageKey && !image) throw new Error("请选择这张画布中的图片");
+      project.coverUrl = image?.content;
+    }
     if (payload.name !== undefined) project.name = payload.name;
     if (payload.doc !== undefined) project.doc = payload.doc;
     project.updatedAt = nowIso();

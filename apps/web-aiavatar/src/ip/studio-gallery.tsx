@@ -59,7 +59,7 @@ export function TemplateCard({ template, onOpen, children }: {
 type Preview = { doc?: IpProjectDoc; error?: string };
 
 /** The list DTO has no document. Fetch only visible covers, at most two at a time,
- * and keep only graph geometry rather than signed URLs or generated media. */
+ * and retain signed media only in memory. Explicit refresh also refreshes expiring URLs. */
 export function useCanvasPreviews(projects: IpProjectSummary[]) {
   const cache = useRef(new Map<string, Promise<IpProjectDoc>>());
   const pool = useRef({ running: 0, waiting: [] as (() => void)[] });
@@ -73,11 +73,7 @@ export function useCanvasPreviews(projects: IpProjectSummary[]) {
     const promise = new Promise<IpProjectDoc>((resolve, reject) => {
       const run = () => {
         pool.current.running++;
-        void IpStudioApi.getProject(project.id).then(p => resolve({
-          nodes: p.doc.nodes.map(({ id, type, position, width, height }) => ({ id, type, title: "", position, width, height })),
-          connections: p.doc.connections.map(({ id, fromNodeId, toNodeId }) => ({ id, fromNodeId, toNodeId })),
-          viewport: { x: 0, y: 0, k: 1 },
-        })).catch(e => { cache.current.delete(key); reject(e); }).finally(() => {
+        void IpStudioApi.getProject(project.id).then(p => resolve(p.doc)).catch(e => { cache.current.delete(key); reject(e); }).finally(() => {
           pool.current.running--;
           pool.current.waiting.shift()?.();
         });
@@ -99,8 +95,8 @@ export function useCanvasPreviews(projects: IpProjectSummary[]) {
       });
     }
     return () => { active = false; };
-    // Geometry requests are keyed by the persisted update time, not the array identity.
+    // Content requests are keyed by the persisted update time, not the array identity.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signature, revision, request]);
-  return { previews, retry: () => { setPreviews(p => Object.fromEntries(Object.entries(p).filter(([, v]) => !v.error))); setRevision(n => n + 1); } };
+  return { previews, retry: () => { cache.current.clear(); setPreviews({}); setRevision(n => n + 1); } };
 }

@@ -22,7 +22,7 @@ import { StudioCreateHome } from "./studio-create-home";
 import { StudioTemplateMarket } from "./studio-template-market";
 
 const doc = { nodes: [{ id: "n1", title: "图", type: "image", position: { x: 0, y: 0 }, width: 200, height: 200 }], connections: [], viewport: { x: 0, y: 0, k: 1 } };
-const projects: IpProjectSummary[] = Array.from({ length: 27 }, (_, i) => ({ id: `P${i}`, name: `测试画布 ${i}`, status: i === 0 ? "published" : "draft", createdAt: `2026-10-${String(30 - i).padStart(2, "0")}T10:00:00Z`, updatedAt: `2026-10-${String(30 - i).padStart(2, "0")}T10:00:00Z`, coverUrl: "/should-not-render.png" }));
+const projects: IpProjectSummary[] = Array.from({ length: 27 }, (_, i) => ({ id: `P${i}`, name: `测试画布 ${i}`, status: i === 0 ? "published" : "draft", createdAt: `2026-10-${String(30 - i).padStart(2, "0")}T10:00:00Z`, updatedAt: `2026-10-${String(30 - i).padStart(2, "0")}T10:00:00Z`, coverUrl: "/project-cover.png" }));
 const official: IpTemplate = { id: "IPD-studio-commerce", name: "IP 商品视频", summary: "人物与商品", visibility: "official", doc, lookCount: 1, estimatedCredits: 0 };
 const personal: IpTemplate = { ...official, id: "personal", versionId: "v1", visibility: "personal", mine: true, name: "个人工作流", enabled: false };
 beforeEach(() => {
@@ -34,11 +34,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Creation catalogue", () => {
-  it("loads minimaps only for the visible page, searches, filters and pages real canvases", async () => {
+  it("loads content only for the visible page, searches, filters and pages real canvases", async () => {
     render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(24));
-    expect(document.querySelector('img[src="/should-not-render.png"]')).toBeNull();
+    expect(document.querySelector('img[src="/project-cover.png"]')).toBeTruthy();
+    expect(screen.queryByRole('img', {name:/工作流示意/})).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "下一页画布" }));
     await screen.findByRole("link", { name: "打开画布 测试画布 26" });
     await waitFor(() => expect(mocks.get).toHaveBeenCalledTimes(27));
@@ -50,6 +51,36 @@ describe("Creation catalogue", () => {
     expect(screen.getByText("没有找到符合条件的画布")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
+  });
+  it("opens the secondary flow preview and persists a fixed cover without sending the document", async () => {
+    mocks.projects.mockResolvedValue([projects[0]]);
+    const imageDoc = { ...doc, nodes: [{ ...doc.nodes[0], metadata: { storageKey: 'owned/image.png', url: '/real-image.png' } }] };
+    mocks.get.mockResolvedValue({ ...projects[0], doc: imageDoc });
+    mocks.update.mockRejectedValueOnce(new Error('封面保存失败')).mockResolvedValueOnce({ ...projects[0], coverUrl: '/real-image.png', updatedAt: '2026-10-31T10:00:00Z', doc: imageDoc });
+    render(<StudioProjects/>);
+    await screen.findByText('1 张图片');
+    fireEvent.click(screen.getByRole('button', { name: '查看流程' }));
+    expect(screen.getByRole('img', {name:'工作流示意：1 个节点'})).toBeTruthy();
+    // Switch the inspector via the card's visible action (the Modal mock has no close chrome).
+    fireEvent.click(screen.getAllByRole('button', {name:'设置封面'})[1]);
+    fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
+    await screen.findByText('封面保存失败');
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(mocks.update).toHaveBeenLastCalledWith('P0', { coverStorageKey:'owned/image.png' });
+    expect(document.querySelector('img[src="/real-image.png"]')).toBeTruthy();
+  });
+  it("restores automatic covers and explicitly refreshes content previews", async () => {
+    mocks.projects.mockResolvedValue([projects[0]]);
+    mocks.update.mockResolvedValue({ ...projects[0], doc });
+    render(<StudioProjects/>);
+    await waitFor(() => expect(mocks.get).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole('button', {name:'刷新画布'}));
+    await waitFor(() => expect(mocks.get.mock.calls.length).toBeGreaterThan(1));
+    fireEvent.click(screen.getAllByRole('button', {name:'设置封面'})[1]);
+    fireEvent.click(screen.getByRole('button', {name:'恢复自动封面'}));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('P0', {coverStorageKey:''}));
   });
   it("opens a workflow template read-only without creating a canvas", async () => {
     render(<StudioCreateHome />);

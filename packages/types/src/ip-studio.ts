@@ -190,6 +190,8 @@ export interface IpPricing { identityCredits: number; imageCredits: number }  //
 
 export interface IpCreateProjectRequest { name?: string; templateId?: string }
 export interface IpUpdateProjectRequest {
+  /** Fixed cover from an image in this canvas. Empty string restores automatic selection. */
+  coverStorageKey?: string;
   name?: string;
   doc?: IpProjectDoc;
   /**

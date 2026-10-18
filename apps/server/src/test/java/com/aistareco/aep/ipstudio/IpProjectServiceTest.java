@@ -88,6 +88,55 @@ class IpProjectServiceTest {
         assertThrows(BusinessException.class,()->svc.create(OTHER,new IpCreateProjectRequest(null,row.getId())));
     }
 
+    @Test void fixedCoverPersistsWithoutChangingDocAndCanBeReset() {
+        var doc = new IpStudioFixtures.Doc();
+        String first = IpStudioFixtures.sourceKey(USER, "first.png"), chosen = IpStudioFixtures.sourceKey(USER, "chosen.png");
+        doc.node("image", "image").put("storageKey", first).putArray("images").addObject().put("storageKey", chosen);
+        var project = IpStudioFixtures.project(PID, USER, doc);
+        projects.repo.save(project);
+        String before = project.getDocJson(), version = svc.detail(USER, PID).docVersion();
+        var saved = svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, chosen));
+        assertTrue(saved.coverUrl().contains(chosen));
+        assertTrue(svc.detail(USER, PID).coverUrl().contains(chosen));
+        assertEquals(before, project.getDocJson()); assertEquals(version, saved.docVersion()); assertTrue(history.isEmpty());
+        svc.update(USER, PID, new IpUpdateProjectRequest("改名", null));
+        assertEquals(chosen, project.getCoverKey());
+        svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, ""));
+        assertNull(project.getCoverKey()); assertTrue(svc.detail(USER, PID).coverUrl().contains(first));
+    }
+
+    @Test void videoCoverUsesOnlyTheAdoptedVideoAndResignsItsPoster() {
+        var doc = new IpStudioFixtures.Doc();
+        String key = "media/material-videos/mvj_cover/video.mp4", poster = "media/material-videos/mvj_cover/cover.jpg";
+        var meta = doc.node("video", "video").put("storageKey", key).put("primaryVideoId", "IPR-cover:1");
+        var project = IpStudioFixtures.project(PID, USER, doc);
+        projects.repo.save(project);
+        runs.repo.save(IpRun.builder().id("IPR-cover").projectId(PID).ownerUserId(USER).kind("studio-video").status("done")
+            .inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"mvj_cover\"]}}").outputJson("{}").createdAt(Instant.now()).build());
+        var job = com.aistareco.aep.model.MaterialVideoJob.builder().id("mvj_cover").ownerUserId(USER).app("ipstudio")
+            .status("succeeded").videoUrl("stored-video").thumbnailUrl("stored-poster").build();
+        org.mockito.Mockito.when(videoJobs.findById("mvj_cover")).thenReturn(java.util.Optional.of(job));
+        org.mockito.Mockito.when(storage.keyOfStoredUrl("stored-video")).thenReturn(key);
+        org.mockito.Mockito.when(storage.keyOfStoredUrl("stored-poster")).thenReturn(poster);
+        assertTrue(svc.detail(USER, PID).coverUrl().contains(poster + "?sig="));
+        meta.put("storageKey", "a-different-selected-video"); project.setDocJson(doc.root.toString());
+        assertNull(svc.detail(USER, PID).coverUrl());
+    }
+
+    @Test void fixedCoverRejectsOtherOwnersAbsentImagesAndVideoKeys() {
+        var doc = new IpStudioFixtures.Doc();
+        String foreign = IpStudioFixtures.sourceKey(OTHER, "foreign.png"), video = IpStudioFixtures.sourceKey(USER, "clip.mp4");
+        doc.node("foreign", "image").put("storageKey", foreign);
+        doc.node("clip", "video").put("storageKey", video);
+        projects.repo.save(IpStudioFixtures.project(PID, USER, doc));
+        for (String key : List.of(foreign, video, IpStudioFixtures.sourceKey(USER, "absent.png"))) {
+            assertEquals("IP_COVER_INVALID", assertThrows(BusinessException.class,
+                () -> svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, key))).getCode());
+        }
+        assertEquals("IP_PROJECT_NOT_FOUND", assertThrows(BusinessException.class,
+            () -> svc.update(OTHER, PID, new IpUpdateProjectRequest(null, null, null, ""))).getCode());
+    }
+
     // ── 创建 ─────────────────────────────────────────────────
 
     @Test void liveQueuePositionIsProjectedWithoutExecutionInternals() {

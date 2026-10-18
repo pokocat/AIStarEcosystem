@@ -16,7 +16,8 @@ public final class IpStudioRequests {
      *                      服务端据此拒绝覆盖别处的编辑（多标签页 / 多设备）。
      *                      不传 = 不参与并发控制（老客户端与内部调用保持兼容）。
      */
-    public record IpUpdateProjectRequest(String name, JsonNode doc, String baseDocVersion) {
+    public record IpUpdateProjectRequest(String name, JsonNode doc, String baseDocVersion, String coverStorageKey) {
+        public IpUpdateProjectRequest(String name, JsonNode doc, String baseDocVersion) { this(name, doc, baseDocVersion, null); }
         public IpUpdateProjectRequest(String name, JsonNode doc) { this(name, doc, null); }
     }
 
