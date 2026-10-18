@@ -68,7 +68,11 @@ public final class StudioWorkflowDtos {
     public record VoiceAsset(String id,String name,String avatarId,String status,String demoUrl) {}
     public record PerformerAsset(String avatarId,String ipId,String name,boolean imageReady,String driverStatus,String voiceId) {}
     public record AssetCatalog(List<ProductAsset> products,List<PerformerAsset> performers,List<VoiceAsset> voices,boolean voiceEngineReady,boolean videoLipSyncReady) {}
-    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost, com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing) {
+    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost, com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing,
+                            boolean supportsTools,boolean supportsStreaming) {
+        public TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost,com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing){
+            this(endpointId,name,isDefault,supportsVision,creditCost,tokenPricing,false,false);
+        }
         public TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost){this(endpointId,name,isDefault,supportsVision,creditCost,null);}
     }
     public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode) {}

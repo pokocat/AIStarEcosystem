@@ -33,7 +33,7 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
 
-    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation");
+    private static final Set<String> OPERATIONS = Set.of("text", "script", "storyboard", "image", "video", "assemble", "assistant", "asset-extract", "recreation", "check");
     private final IpProjectService projects;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -57,6 +57,11 @@ public class StudioWorkflowService {
     @org.springframework.beans.factory.annotation.Autowired
     private com.aistareco.aep.service.storage.FileStorageService recreationStorage;
     @org.springframework.beans.factory.annotation.Autowired private StudioHypitMedia hypitMedia;
+    // Skill plans, native check and plan execution binding (docs/ip-studio-conversational-video-recreation-plan.md).
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.execution.StudioSkillRules skillRules;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.execution.IpPlanExecutionRepository planExecutions;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.ipstudio.execution.StudioPlanOutputs planOutputs;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private StudioVideoService studioVideo;
 
     public StudioWorkflowService(IpProjectService projects, IpRunRepository runs, StudioFixtureProvider fixtures,
             StudioWorkflowWorker worker, DapPricingService pricing, AiModelInvocationService models,
@@ -80,14 +85,16 @@ public class StudioWorkflowService {
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
 
     public Capabilities capabilities() {
-        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant","recreation"),
+        return new Capabilities(fixtures.enabled(), List.of("text","script","storyboard","image","video","assemble","assistant","recreation","check"),
                 fixtures.enabled()?0:scenePolicies == null ? pricing.ipImage() : scenePolicies.available("studio","image",pricing.ipImage()).stream().filter(s->s.resolved().isDefault()).findFirst().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::creditCost).orElse(pricing.ipImage()), fixtures.enabled()?0:textModelOptions().stream().filter(TextModel::isDefault).findFirst().map(TextModel::creditCost).orElse(pricing.ipIdentity()),
                 fixtures.enabled()?0L:null, textModelOptions(), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","script"), scenePolicies == null ? "selectable" : scenePolicies.mode("studio","image"));
     }
     private List<TextModel> textModelOptions() {
         if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA,"studio").stream()
-                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),chatRate(r.endpoint().getId()))).toList();
-        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().publicModelName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),chatRate(s.resolved().endpoint().getId()))).toList();
+                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),chatRate(r.endpoint().getId()),
+                        Boolean.TRUE.equals(r.endpoint().getChatSupportsTools()),Boolean.TRUE.equals(r.endpoint().getChatSupportsStreaming()))).toList();
+        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().publicModelName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),chatRate(s.resolved().endpoint().getId()),
+                Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsTools()),Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsStreaming()))).toList();
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate chatRate(String endpointId) {
@@ -108,12 +115,17 @@ public class StudioWorkflowService {
                     projects.parseOrEmptyObject(prior.getInputJson()).has("studioRequest")?projects.parseOrEmptyObject(prior.getInputJson()).path("studioRequest"):projects.parseOrEmptyObject(prior.getInputJson()),mapper.valueToTree(request)))))) throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
             return projects.toRunDto(prior);
         }
+        boolean skillPlan="text".equals(request.operation())&&request.skillKey()!=null;
+        boolean check="check".equals(request.operation());
+        ExecutionBinding executionBinding=executionBinding(userId,projectId,request);
+        com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill=skillRules(request,skillPlan,check,executionBinding);
         boolean configuredImage = "image".equals(request.operation()) && !fixtures.enabled() && scenePolicies != null
                 && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint());
         // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
-        if (!"assemble".equals(request.operation())
+        if (!"assemble".equals(request.operation()) && !check
                 && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
             requireText(request.prompt(), 16000, "创作内容");
+        if (check && request.prompt()!=null && request.prompt().length()>16000) throw bad("STUDIO_INPUT_INVALID","检查说明最多 16000 字");
         if (configuredImage && (request.prompt()==null || request.prompt().isBlank()))
             throw bad("STUDIO_INPUT_INVALID", "请填写创作内容");
         if (!configuredImage && request.references()!=null && request.references().size()>32) throw bad("STUDIO_REFERENCES_LIMIT", "一次最多使用 32 份参考素材");
@@ -129,12 +141,14 @@ public class StudioWorkflowService {
                 : List.of("9:16","16:9","1:1").contains(request.aspectRatio())))
             throw bad("STUDIO_RATIO_INVALID", "请选择可用画幅");
         validateCreativeRequest(request);
+        validateSkillRequest(request,skillPlan,check);
         StudioPackagingService.validate(request.packaging());
         if(request.packaging()!=null && request.packaging().voiceoverStorageKey()!=null) {
             if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","配音只能用于成片合成");
             projects.requireOwnedAssetKey(userId,request.packaging().voiceoverStorageKey());
         }
-        if ("text".equals(request.operation())) {
+        // Execution-bound steps write to their own output node (projected by the client), never into the canvas document.
+        if ("text".equals(request.operation()) && !skillPlan && executionBinding==null) {
             var node=IpDocs.node(projects.readDoc(project),request.nodeId());
             if (node==null || !"text".equals(node.path("type").asText()) || node.path("metadata").path("studio").hasNonNull("script")
                     || "script".equals(node.path("metadata").path("studio").path("kind").asText()))
@@ -168,18 +182,20 @@ public class StudioWorkflowService {
             runs.save(binding);
             return projects.toRunDto(binding);
         }
-        boolean text=List.of("text","script","storyboard","assistant","asset-extract","recreation").contains(request.operation());
+        boolean text=List.of("text","script","storyboard","assistant","asset-extract","recreation","check").contains(request.operation());
+        if(fixtures.enabled()&&(skillPlan||check))throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不支持制作方法规划和成片检查，请关闭测试响应");
         AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
         PromptService.ResolvedPrompt resolved=null;
         long textPrice=fixtures.enabled()?0:pricing.ipIdentity();
-        String promptKey="recreation".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_RECREATION:List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
+        String promptKey=check?PromptService.KEY_DAP_IP_STUDIO_SKILL_CHECK:skillPlan?PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN
+                :"recreation".equals(request.operation())?PromptService.KEY_DAP_IP_STUDIO_RECREATION:List.of("assistant","text").contains(request.operation())?PromptService.KEY_DAP_IP_STUDIO_ASSISTANT:PromptService.KEY_DAP_IP_STUDIO_SCRIPT;
         if(!fixtures.enabled() && text) {
             if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
             if(scenePolicies != null) {var selection=scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity());textEndpoint=selection.resolved();textPrice=selection.creditCost();}
             resolved=prompts.resolve(promptKey);
             if("code".equals(resolved.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","尚未配置创作提示词");
-            if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation()))&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
+            if((Boolean.TRUE.equals(request.readVisuals())||"recreation".equals(request.operation())||check)&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
                 throw bad("STUDIO_VISION_UNAVAILABLE","这个模型未配置图片读取能力，请切换模型或关闭读取画面");
         }
         if(Boolean.TRUE.equals(request.readVisuals())&&fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","测试响应不读取真实画面，请关闭测试响应");
@@ -187,11 +203,13 @@ public class StudioWorkflowService {
         if("recreation".equals(request.operation())) {
             if(fixtures.enabled())throw bad("STUDIO_VISION_UNAVAILABLE","复刻创作需要读取真实视频，请关闭测试响应");
             var target=IpDocs.node(projects.readDoc(project),request.nodeId());
-            if(target==null||!"text".equals(target.path("type").asText())||!"recreation".equals(target.path("metadata").path("studio").path("kind").asText()))
+            if(executionBinding==null&&(target==null||!"text".equals(target.path("type").asText())||!"recreation".equals(target.path("metadata").path("studio").path("kind").asText())))
                 throw bad("STUDIO_RECREATION_TARGET_INVALID","请先保存拆解报告再开始分析");
             hypitMedia.requireReady();
             recreationSource=StudioRecreation.snapshot(projects.readDoc(project),request.contextNodeIds(),projects,userId,recreationStorage);
         }
+        ObjectNode segmentCap=request.recreation()==null?null:segmentCap(request.recreation(),recreationSource,skill);
+        ObjectNode checkTarget=check?checkTarget(userId,projectId,request.check(),skill):null;
         var chatRate=!fixtures.enabled()&&text?chatRate(textEndpoint.endpoint().getId()):null;
         if(!fixtures.enabled()&&text&&chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
         long cost=chatRate==null?(fixtures.enabled()||!text?0:textPrice):chatRate.maxCost();
@@ -233,7 +251,7 @@ public class StudioWorkflowService {
                         execution.put("fullFilmContext",node.path("metadata").path("content").asText().substring(0,Math.min(16000,node.path("metadata").path("content").asText().length())));break;
                     }
                 }
-                String resume=target.path("metadata").path("studio").path("recreation").path("resumeRunId").asText();
+                String resume=target==null?"":target.path("metadata").path("studio").path("recreation").path("resumeRunId").asText();
                 if(!resume.isBlank())projects.ownedRun(userId,projectId,resume).ifPresent(previous->{
                     JsonNode old=projects.parseOrEmptyObject(previous.getOutputJson()).path("filmStudy");
                     JsonNode previousOutput=projects.parseOrEmptyObject(previous.getOutputJson());
@@ -244,6 +262,11 @@ public class StudioWorkflowService {
                 });
             }
         }
+        if(segmentCap!=null)execution.set("segmentCap",segmentCap);
+        if(checkTarget!=null)execution.set("check",checkTarget);
+        if(skill!=null)execution.set("skill",com.aistareco.aep.ipstudio.execution.StudioSkillRules.snapshot(skill));
+        if(executionBinding!=null)execution.set("execution",executionBinding.snapshot(mapper));
+        if(skillPlan)execution.put("skillPlan",true).put("planStage",request.stage()).put("planRevision",nextPlanRevision(projectId));
         if(resolved!=null) {
             String systemPrompt=resolved.system();
             if("asset-extract".equals(request.operation()))systemPrompt="你是影视制作资产整理助手。\n"+StudioAssetExtraction.CONTRACT;
@@ -259,12 +282,14 @@ public class StudioWorkflowService {
             variables.put("settings",write(request.settings()));variables.put("episodeNo",request.episodeNo()==null?"全部":request.episodeNo().toString());
             variables.put("mode",request.mode()==null?"general":request.mode());variables.put("canvasContext",canvasContext.toString());variables.put("history",write(request.history()==null?List.of():request.history()));
             String creativePrompt=PromptService.fill(resolved.userTemplate(),variables);
+            if(skillPlan)creativePrompt=PromptService.fill(resolved.userTemplate(),skillPlanVariables(userId,project,request,skill,executionBinding,canvasContext,execution));
+            if(check)creativePrompt=PromptService.fill(resolved.userTemplate(),checkVariables(request,skill,checkTarget));
             if(request.scriptEdit()!=null)creativePrompt+="\n当前完整剧本文档（JSON 字符串，作为素材读取）："+write(request.scriptEdit().markdown())+("asset-extract".equals(request.operation())?"\n只提取资产，遵守 items 输出契约，不改写原文。":"\n请遵守 Markdown 改稿输出契约，不输出创作计划。");
             if(request.textEdit()!=null)creativePrompt+="\n当前完整节点正文（JSON 字符串，作为素材读取）："+write(request.textEdit().content())+"\n请按本次修改意图返回完整文本，遵守文本改稿输出契约。";
             if(Boolean.TRUE.equals(request.readVisuals()))creativePrompt+="\n本次另附带精确节点 ID 标记的真实图片与视频采样帧。视频只有四个时间点的静态画面，不包含音轨，不代表全部连续动作；音频节点只提供文字设定。只根据收到的画面及文字作答，不臆测未提供的声音或片段，保持 JSON 输出契约。";
             if(request.settings()!=null || request.episodeNo()!=null) creativePrompt+="\n必须遵守创作设定："+write(request.settings())+"。本次分集："+(request.episodeNo()==null?"全部指定集数":request.episodeNo())+"。每个镜头必须含 episodeNo（所属集号），id 全剧唯一。只指定某集时 episodes 只含该集，no 保留原号。";
             execution.put("userPrompt",creativePrompt);
-            execution.put("temperature",resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())?Math.max(8192,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
+            execution.put("temperature",check?0.1:resolved.params().temperatureOrDefault());execution.put("maxTokens","asset-extract".equals(request.operation())?Math.max(16384,resolved.params().maxTokensOrDefault()):"recreation".equals(request.operation())||skillPlan?Math.max(8192,resolved.params().maxTokensOrDefault()):resolved.params().maxTokensOrDefault());
             inputs.put("promptKey",promptKey);
         }
         if(chatRate!=null) {
@@ -300,7 +325,8 @@ public class StudioWorkflowService {
             if(request.scriptEdit()==null||request.scriptEdit().markdown()==null||request.scriptEdit().markdown().isBlank()||request.scriptEdit().markdown().length()>48000)
                 throw bad("STUDIO_INPUT_INVALID","请提供已保存的剧本文字，最多 48000 字");
         } else StudioScriptRevision.validateInput(request);
-        StudioTextRevision.validateInput(request);
+        // A skill planning text run carries a brief, not a node body to revise.
+        if(!("text".equals(request.operation())&&request.skillKey()!=null))StudioTextRevision.validateInput(request);
         if(request.maxCost()!=null && request.maxCost()<0) throw bad("STUDIO_INPUT_INVALID","费用上限不能为负");
         if(Boolean.TRUE.equals(request.readVisuals())&&!"assistant".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手");
         if(request.episodeNo()!=null && (request.episodeNo()<1 || request.episodeNo()>50)) throw bad("STUDIO_EPISODE_INVALID","请选择有效分集");
@@ -320,6 +346,301 @@ public class StudioWorkflowService {
             for(String value:Arrays.asList(settings.genre(),settings.audience(),settings.era(),settings.core(),settings.style(),settings.characterBrief(),settings.structure())) if(value!=null && value.length()>1000) throw bad("STUDIO_SETTINGS_LIMIT","单项创作设定最多 1000 字");
             if(settings.fusionGenres()!=null && (settings.fusionGenres().size()>3 || settings.fusionGenres().stream().anyMatch(v->v==null || v.isBlank() || v.length()>100))) throw bad("STUDIO_SETTINGS_LIMIT","最多融合 3 种题材，每种最多 100 字");
         }
+    }
+
+    /** Execution identity carried by an executor-submitted step: the step it fills and where its events go. */
+    record ExecutionBinding(com.aistareco.aep.ipstudio.execution.IpPlanExecution execution,JsonNode state,JsonNode step) {
+        ObjectNode snapshot(ObjectMapper mapper) {
+            var out=mapper.createObjectNode().put("executionId",execution.getId());
+            if(step!=null)out.put("stepId",step.path("id").asText()).put("stage",step.path("stage").asText());
+            if(execution.getThreadId()!=null)out.put("threadId",execution.getThreadId());
+            return out;
+        }
+    }
+
+    /**
+     * Only the plan executor fills execution steps: the request must target an existing step of a running execution of this
+     * owner and project, with the step's current attempt identity and the execution's fixed payer.
+     */
+    private ExecutionBinding executionBinding(String userId,String projectId,RunRequest request) {
+        if(request.executionId()==null)return null;
+        if(planExecutions==null)throw new BusinessException(HttpStatus.NOT_FOUND,"STUDIO_PLAN_EXECUTION_NOT_FOUND","这次连续制作不存在或已结束");
+        var execution=planExecutions.findById(request.executionId()).filter(e->userId.equals(e.getOwnerUserId())&&projectId.equals(e.getProjectId()))
+                .orElseThrow(()->new BusinessException(HttpStatus.NOT_FOUND,"STUDIO_PLAN_EXECUTION_NOT_FOUND","这次连续制作不存在或已结束"));
+        JsonNode state=projects.parseOrEmptyObject(execution.getStepsJson());
+        boolean stepNode=false;
+        for(JsonNode step:state.path("steps"))stepNode|=com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds
+                .nodeId(execution.getId(),step.path("stage").asText(),step.path("id").asText()).equals(request.nodeId());
+        // A planning run may read an active execution's outputs as context (e.g. compiling the production plan after
+        // analysis) without filling a step; it never spends the execution's budget.
+        if(!stepNode&&"text".equals(request.operation())&&request.skillKey()!=null) {
+            if(!com.aistareco.aep.ipstudio.execution.IpPlanExecution.active(execution.getStatus()))
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE","这次连续制作已结束，请重新开始");
+            return new ExecutionBinding(execution,state,null);
+        }
+        if(!com.aistareco.aep.ipstudio.execution.IpPlanExecution.RUNNING.equals(execution.getStatus()))
+            throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE","连续制作已暂停或结束，不能再提交新的步骤");
+        if(!stepNode) {
+            // A dialogue child run: it must have been authorized through the execution gate under this request identity.
+            for(JsonNode child:state.path("children"))
+                if(request.clientRequestId().equals(child.path("clientRequestId").asText())&&request.operation().equals(child.path("operation").asText())) {
+                    requireExecutionPayer(execution,request);
+                    return new ExecutionBinding(execution,state,null);
+                }
+            throw new BusinessException(HttpStatus.FORBIDDEN,"STUDIO_PRODUCTION_NOT_AUTHORIZED","这一步还没有经过制作授权，请先确认方案和预算");
+        }
+        for(JsonNode step:state.path("steps")) {
+            String stage=step.path("stage").asText(),id=step.path("id").asText();
+            if(!com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(execution.getId(),stage,id).equals(request.nodeId()))continue;
+            if(!step.path("operation").asText().equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","请求与连续制作的步骤不一致");
+            if(!com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.requestId(execution.getId(),stage,id,step.path("attempt").asInt(1)).equals(request.clientRequestId()))
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE","这一步已经换了新的尝试，请刷新后再看");
+            requireExecutionPayer(execution,request);
+            return new ExecutionBinding(execution,state,step);
+        }
+        throw bad("STUDIO_INPUT_INVALID","请求与连续制作的步骤不一致");
+    }
+    /** Every run under an execution pays with the payer fixed at confirmation; never silently another account. */
+    private void requireExecutionPayer(com.aistareco.aep.ipstudio.execution.IpPlanExecution execution,RunRequest request) {
+        var fixed=projects.parseOrEmptyObject(execution.getBillingJson());
+        var requested=com.aistareco.aep.enterprise.service.EnterpriseBillingService.normalize(request.billing());
+        if(!fixed.path("mode").asText("personal").equals(requested.mode())||!Objects.equals(fixed.path("enterpriseId").asText(null),requested.enterpriseId()))
+            throw new BusinessException(HttpStatus.CONFLICT,"BILLING_SELECTION_CONFLICT","付款账户与已确认的连续制作不一致");
+    }
+
+    /** Active skill for planning/check; a check inside an execution uses the rules snapshot confirmed with its plan. */
+    private com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skillRules(RunRequest request,boolean skillPlan,boolean check,ExecutionBinding binding) {
+        if(!skillPlan&&!check)return null;
+        if(binding!=null&&binding.state().path("skill").isObject()) {
+            // Inside an execution the confirmed snapshot rules apply; a newly deployed file never rewrites them.
+            var snapshot=com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(binding.state().path("skill"));
+            if(request.skillKey()!=null&&!request.skillKey().equals(snapshot.key()))throw bad("STUDIO_INPUT_INVALID","制作方法与这次连续制作不一致");
+            if(skillRules!=null)skillRules.requireActive(snapshot.key());
+            return snapshot;
+        }
+        if(request.skillKey()==null)throw bad("STUDIO_INPUT_INVALID","请说明按哪个制作方法检查");
+        if(skillRules==null)throw com.aistareco.aep.ipstudio.execution.StudioSkillRules.notFound();
+        var rules=skillRules.requireActive(request.skillKey());
+        if(skillPlan&&request.skillVersion()!=null&&request.skillVersion()!=rules.version())
+            throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE","制作方法已更新，请刷新后重新规划");
+        return rules;
+    }
+
+    private void validateSkillRequest(RunRequest request,boolean skillPlan,boolean check) {
+        String operation=request.operation();
+        if(request.stage()!=null&&!com.aistareco.aep.ipstudio.execution.StudioSkillRules.STAGES.contains(request.stage()))throw bad("STUDIO_INPUT_INVALID","请选择分析或制作阶段");
+        if(request.recreation()!=null&&!("recreation".equals(operation)&&"segments".equals(request.mode())))throw bad("STUDIO_INPUT_INVALID","段长上限只能用于视频拉片");
+        if(request.check()!=null&&!check)throw bad("STUDIO_INPUT_INVALID","检查目标只能用于成片检查");
+        if(request.dialogue()!=null) {
+            requireText(request.dialogue().threadId(),64,"对话");
+            requireText(request.dialogue().messageId(),64,"对话消息");
+        }
+        if(skillPlan) {
+            if(request.stage()==null)throw bad("STUDIO_INPUT_INVALID","请选择要规划的阶段");
+            if(request.textEdit()!=null||request.scriptEdit()!=null||request.settings()!=null||request.episodeNo()!=null||Boolean.TRUE.equals(request.readVisuals())
+                    ||request.references()!=null&&!request.references().isEmpty()||request.packaging()!=null||request.video()!=null||request.mode()!=null)
+                throw bad("STUDIO_INPUT_INVALID","制作规划只接受目标说明、画布素材和对话反馈");
+        }
+        if(check) {
+            if(request.check()==null||request.check().targetRunId()==null||request.check().targetRunId().isBlank())throw bad("STUDIO_CHECK_TARGET_INVALID","请选择要检查的成片");
+            if(request.check().checkIds()==null||request.check().checkIds().isEmpty()||request.check().checkIds().size()>16)throw bad("STUDIO_INPUT_INVALID","请选择 1 到 16 个检查项");
+            if(request.textEdit()!=null||request.scriptEdit()!=null||request.settings()!=null||request.episodeNo()!=null||Boolean.TRUE.equals(request.readVisuals())
+                    ||request.references()!=null&&!request.references().isEmpty()||request.packaging()!=null||request.video()!=null||request.mode()!=null
+                    ||request.history()!=null||request.contextNodeIds()!=null&&!request.contextNodeIds().isEmpty())
+                throw bad("STUDIO_INPUT_INVALID","成片检查只接受检查目标、检查项和说明");
+        }
+    }
+
+    /**
+     * Segment cap for film study: "model" reads the selected video model's contract maximum (H3 = 15 s); an explicit
+     * number may not exceed it. A source that cannot fit within maxSegments × cap is refused here, before any hold.
+     */
+    private ObjectNode segmentCap(RecreationSettings settings,JsonNode source,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill) {
+        if(settings.videoModel()==null||settings.videoModel().isBlank())throw bad("STUDIO_INPUT_INVALID","请选择用来生成分段视频的模型");
+        var model=(studioVideo==null?List.<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModel>of():studioVideo.models()).stream()
+                .filter(m->settings.videoModel().equals(m.endpointId())).findFirst()
+                .orElseThrow(()->bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型不可用，请换一个模型"));
+        var contract=model.contract();
+        if(contract==null||contract.maxSeconds()<=0)throw bad("STUDIO_VIDEO_MODEL_UNAVAILABLE","所选视频模型还没有可用的时长规格，请换一个模型");
+        String requested=settings.maxSegmentSec()==null?"model":settings.maxSegmentSec().strip();
+        double cap;
+        if("model".equals(requested))cap=contract.maxSeconds();
+        else {
+            try {cap=Double.parseDouble(requested);} catch(NumberFormatException e){throw bad("STUDIO_INPUT_INVALID","每段时长上限需为秒数或按模型上限");}
+            if(!Double.isFinite(cap)||cap<1)throw bad("STUDIO_INPUT_INVALID","每段时长上限至少 1 秒");
+            if(cap>contract.maxSeconds())throw bad("STUDIO_INPUT_INVALID","每段时长上限不能超过所选模型的 "+contract.maxSeconds()+" 秒");
+        }
+        int maxSegments=skill==null?8:skill.maxSegments();
+        double duration=source==null?0:source.path("durationSec").asDouble();
+        var limit=new StudioFilmStudy.SegmentCap(cap,maxSegments);
+        if(duration>cap*maxSegments+1e-6)throw StudioFilmStudy.tooLong(limit,duration,List.of());
+        ObjectNode out=mapper.createObjectNode().put("maxSegmentSec",cap).put("requested",requested).put("maxSegments",maxSegments)
+                .put("videoModel",model.endpointId());
+        out.putObject("contract").put("minSeconds",contract.minSeconds()).put("maxSeconds",contract.maxSeconds());
+        return out;
+    }
+
+    /**
+     * Server-built check input: the target must be the caller's successful run in this project and the key one of its real
+     * outputs; frames are sampled from that media at fixed, recorded times. The client never supplies visual context.
+     */
+    private ObjectNode checkTarget(String userId,String projectId,CheckSettings check,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill) {
+        Set<String> ids=new LinkedHashSet<>();
+        for(String id:check.checkIds()) {
+            if(id==null||!skill.checks().contains(id))throw bad("STUDIO_INPUT_INVALID","检查项不在本制作方法的清单中");
+            ids.add(id);
+        }
+        var run=projects.ownedRun(userId,projectId,check.targetRunId()).orElseThrow(()->bad("STUDIO_CHECK_TARGET_INVALID","要检查的成片不存在或不属于这张画布"));
+        var dto=projects.toRunDto(run);
+        if(!"done".equals(dto.status()))throw bad("STUDIO_CHECK_TARGET_INVALID","要检查的成片还没有生成成功");
+        var keys=planOutputs==null?List.<String>of():planOutputs.outputKeys(dto);
+        String key=check.targetStorageKey()==null||check.targetStorageKey().isBlank()?(keys.isEmpty()?null:keys.get(0)):check.targetStorageKey();
+        if(key==null||!keys.contains(key))throw bad("STUDIO_CHECK_TARGET_INVALID","只能检查这次生成真实产出的成片");
+        projects.requireOwnedAssetKey(userId,key);
+        boolean video=!key.matches("(?i).*\\.(png|jpe?g|webp)$");
+        ObjectNode out=mapper.createObjectNode().put("targetRunId",run.getId()).put("targetStorageKey",key).put("mediaType",video?"video":"image");
+        var checkIds=out.putArray("checkIds");ids.forEach(checkIds::add);
+        var facts=out.putObject("mediaFacts");
+        List<Double> times=List.of();
+        try {
+            var file=recreationStorage.openForRead(key);
+            if(video) {
+                if(java.nio.file.Files.size(file)>128L*1024*1024)throw bad("STUDIO_VISUAL_LIMIT","成片最多 128 MB");
+                JsonNode probe=StudioLipSyncMedia.probe(file);
+                double duration=probe.path("format").path("duration").asDouble();
+                if(!Double.isFinite(duration)||duration<=0||duration>600)throw bad("STUDIO_CHECK_TARGET_INVALID","成片时长无法读取，不能检查");
+                facts.put("durationSec",Math.round(duration*100)/100.0);
+                for(JsonNode stream:probe.path("streams")) {
+                    if("video".equals(stream.path("codec_type").asText())&&!facts.has("width"))facts.put("width",stream.path("width").asInt()).put("height",stream.path("height").asInt());
+                    if("audio".equals(stream.path("codec_type").asText()))facts.put("hasAudio",true);
+                }
+                if(!facts.has("hasAudio"))facts.put("hasAudio",false);
+                times=com.aistareco.aep.ipstudio.execution.StudioCheckOutcome.sampleTimes(duration,4);
+            }
+        } catch(BusinessException e){throw e;}
+        catch(Exception e){throw bad("STUDIO_CHECK_TARGET_INVALID","要检查的成片无法读取，请确认它仍然存在");}
+        var sampled=out.putArray("sampledTimesSec");times.forEach(sampled::add);
+        return out;
+    }
+
+    private Map<String,String> checkVariables(RunRequest request,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,ObjectNode target) {
+        var variables=new LinkedHashMap<String,String>();
+        StringBuilder checklist=new StringBuilder();
+        for(JsonNode id:target.path("checkIds"))checklist.append("- ").append(id.asText()).append('\n');
+        String guide=skill.checkGuide();
+        if(!guide.isBlank())checklist.append("\n判法说明（来自制作方法）：\n").append(guide);
+        variables.put("checklist",checklist.toString());
+        String description=request.prompt()==null||request.prompt().isBlank()?"未提供额外说明，只按检查清单判断。":request.prompt();
+        variables.put("target",description+"\n成片实测信息（服务端测得，可作为 media 依据）："+target.path("mediaFacts"));
+        variables.put("frames","video".equals(target.path("mediaType").asText())
+                ?"随后附上 "+target.path("sampledTimesSec").size()+" 张真实采样画面，时间依次为 "+target.path("sampledTimesSec")+" 秒。frame 依据的 timeSec 只能从这些时间中选。"
+                :"随后附上 1 张要检查的图片。frame 依据不填 timeSec。");
+        return variables;
+    }
+
+    /** Next plan revision of this project; submit holds the project row lock, so revisions are monotonic per canvas. */
+    private int nextPlanRevision(String projectId) {
+        Long count=em.createQuery("select count(r) from IpRun r where r.projectId=:p and r.kind='studio-text' and r.inputJson like :marker",Long.class)
+                .setParameter("p",projectId).setParameter("marker","%\"skillPlan\":true%").getSingleResult();
+        return (int)Math.min(Integer.MAX_VALUE,(count==null?0:count)+1);
+    }
+
+    private Map<String,String> skillPlanVariables(String userId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,
+            com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,ExecutionBinding binding,JsonNode canvasContext,ObjectNode execution) {
+        var variables=new LinkedHashMap<String,String>();
+        String body=skill.body();
+        variables.put("skill",body.length()>16000?body.substring(0,16000):body);
+        variables.put("stage","analysis".equals(request.stage())?"分析阶段（解析、拉片、制作方案推导与计划编译）":"制作阶段（生成、检查与合成）");
+        ObjectNode constraints=mapper.createObjectNode();
+        var operations=constraints.putArray("operations");skill.stageOperations(request.stage()).forEach(operations::add);
+        constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
+        var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
+        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,size?,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
+        variables.put("constraints",constraints.toString());
+        variables.put("brief",request.prompt());
+        // Allowed binding targets: the canvas nodes the user gave, plus (inside an execution) its own output nodes.
+        Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());
+        var assets=mapper.createArrayNode();
+        for(JsonNode item:canvasContext)assets.addObject().put("id",item.path("id").asText()).put("type",item.path("type").asText()).put("title",item.path("title").asText());
+        String analysis="尚未分析。";
+        if(binding!=null&&planOutputs!=null) {
+            for(JsonNode node:planOutputs.outputNodes(binding.execution(),binding.state().path("steps"))) {
+                if(allowed.add(node.path("nodeId").asText())) {
+                    var item=assets.addObject().put("id",node.path("nodeId").asText()).put("type",node.path("type").asText()).put("title",node.path("title").asText());
+                    if(node.has("durationSec"))item.put("durationSec",node.path("durationSec").asDouble());
+                    if(node.has("startSec"))item.put("sourceStartSec",node.path("startSec").asDouble()).put("sourceEndSec",node.path("endSec").asDouble());
+                }
+            }
+            analysis=planOutputs.analysis(binding.execution(),binding.state().path("steps"));
+            if(analysis.isBlank())analysis="分析步骤没有留下可用结果。";
+        }
+        var allowedIds=execution.putArray("allowedNodeIds");allowed.forEach(allowedIds::add);
+        variables.put("assets",assets.toString());
+        variables.put("analysis",analysis);
+        variables.put("capabilities",planCapabilities());
+        String budget="尚未批准，报价由服务端填写。";
+        if(binding!=null&&binding.step()!=null) {
+            JsonNode stageBudget=projects.parseOrEmptyObject(binding.execution().getBudgetJson()).path(binding.step().path("stage").asText());
+            if(stageBudget.isObject())budget="本阶段已批准 "+stageBudget.path("approvedCap").asLong()+" 积分；制作阶段需用户另行确认。";
+        }
+        variables.put("budget",budget);
+        variables.put("feedback",request.history()==null||request.history().isEmpty()?"无。":write(request.history()));
+        return variables;
+    }
+
+    /** Video model contracts and text/image price hints from server truth, for the planner to stay inside real limits. */
+    private String planCapabilities() {
+        var out=mapper.createObjectNode();
+        var videos=out.putArray("videoModels");
+        if(studioVideo!=null)try {
+            for(var model:studioVideo.models()) {
+                var item=videos.addObject().put("endpointId",model.endpointId()).put("name",model.name()).put("isDefault",model.isDefault());
+                if(model.contract()!=null) {
+                    item.put("minSeconds",model.contract().minSeconds()).put("maxSeconds",model.contract().maxSeconds());
+                    var modes=item.putArray("modes");
+                    for(var mode:model.contract().modes()) {
+                        var m=modes.addObject().put("mode",mode.mode()).put("needsFirstFrame",mode.needsFirstFrame()).put("needsLastFrame",mode.needsLastFrame())
+                                .put("acceptsReferences",mode.references()!=null);
+                        if(mode.label()!=null)m.put("label",mode.label());
+                    }
+                    var tiers=item.putArray("resolutionTiers");
+                    for(var tier:model.contract().tiers()) {
+                        var t=tiers.addObject().put("tier",tier.tier());var ratios=t.putArray("aspectRatios");
+                        tier.canvases().forEach(c->ratios.add(c.aspectRatio()));
+                    }
+                }
+            }
+        } catch(RuntimeException e) {out.put("videoModelsUnavailable",true);}
+        return out.toString();
+    }
+
+    /**
+     * Server quote of one step request (never freezes): token ceiling for text-class runs, the image pipeline's unit
+     * price, or the native video contract price. Video/image references may be quote placeholders: only counts matter.
+     */
+    public long quote(String userId,RunRequest request) {
+        if(request==null||!OPERATIONS.contains(request.operation()))throw bad("STUDIO_OPERATION_INVALID","请选择创作方式");
+        if(fixtures.enabled())return 0;
+        return switch(request.operation()) {
+            case "assemble" -> 0L;
+            case "image" -> {
+                var compiled=imageRuns.compileExplicit(userId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt()==null||request.prompt().isBlank()?"图片":request.prompt(),
+                        List.of(),request.count()==null?1:request.count(),request.size()==null?imageSize(request):request.size(),request.model()));
+                yield Math.multiplyExact(compiled.unitCost(),(long)compiled.count());
+            }
+            case "video" -> {
+                if(request.video()==null||studioVideo==null)throw bad("STUDIO_VIDEO_INPUT_INVALID","制作计划里的视频步骤需要明确视频模式");
+                long unit=studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video()));
+                yield Math.multiplyExact(unit,(long)(request.count()==null?1:request.count()));
+            }
+            default -> {
+                AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()
+                        :models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,request.model(),"studio").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用"));
+                var rate=chatRate(endpoint.endpoint().getId());
+                if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+                yield rate.maxCost();
+            }
+        };
     }
 
     // New nullable fields must not make a saved, accepted request look different after an upgrade.

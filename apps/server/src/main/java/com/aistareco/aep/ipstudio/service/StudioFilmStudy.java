@@ -15,12 +15,18 @@ public final class StudioFilmStudy {
     private StudioFilmStudy() {}
     @FunctionalInterface public interface Chat {String invoke(String system,List<Map<String,Object>> parts,int tokens,boolean json) throws Exception;}
     @FunctionalInterface public interface Checkpoint {boolean save(int pct,String stage,ObjectNode study);}
+    /** Effective per-segment length cap (seconds) from the selected video model contract, plus the segment count limit. */
+    public record SegmentCap(double maxSegmentSec,int maxSegments) {}
     public static ObjectNode run(JsonNode source,String fullFilm,JsonNode resume,StudioRecreation.Study evidence,
             FileStorageService storage,String owner,int budget,int maxImages,Chat chat,Checkpoint checkpoint) throws Exception {
+        return run(source,fullFilm,resume,evidence,storage,owner,budget,maxImages,chat,checkpoint,null);
+    }
+    public static ObjectNode run(JsonNode source,String fullFilm,JsonNode resume,StudioRecreation.Study evidence,
+            FileStorageService storage,String owner,int budget,int maxImages,Chat chat,Checkpoint checkpoint,SegmentCap cap) throws Exception {
         int imageLimit=Math.max(1,Math.min(64,maxImages));
         ObjectNode result=OM.createObjectNode();result.set("source",source.deepCopy());
         var segments=result.putArray("segments");
-        if(resume.path("segments").isArray()&&!resume.path("segments").isEmpty()) {
+        if(resume.path("segments").isArray()&&!resume.path("segments").isEmpty()&&(cap==null||withinCap(resume.path("segments"),cap))) {
             result.put("strategy",resume.path("strategy").asText("model"));segments.addAll((com.fasterxml.jackson.databind.node.ArrayNode)resume.path("segments"));
         } else {
             var parts=new ArrayList<Map<String,Object>>();
@@ -30,9 +36,13 @@ public final class StudioFilmStudy {
                 int at=pages==1?0:(int)Math.round(page*(evidence.pages().size()-1.0)/(pages-1));
                 parts.add(evidence.pages().get(at).get(1));
             }
-            String response=chat.invoke("将原片按叙事或动作阶段划分为1至8个连续片段，一个片段可包含多个镜头，不按固定秒数均切，闪光不等于切镜。仅输出JSON：{\"segments\":[{\"endSec\":3.8,\"title\":\"环境铺垫\"}]}。只给每段在原片中的结束秒数，最后一段结束于原片结尾。",parts,768,true);
+            String planner="将原片按叙事或动作阶段划分为1至8个连续片段，一个片段可包含多个镜头，不按固定秒数均切，闪光不等于切镜。仅输出JSON：{\"segments\":[{\"endSec\":3.8,\"title\":\"环境铺垫\"}]}。只给每段在原片中的结束秒数，最后一段结束于原片结尾。";
+            // Old callers keep the exact planner text; the cap only adds a sentence when a video model contract applies.
+            if(cap!=null)planner+="每段不超过"+seconds(cap.maxSegmentSec())+"秒、最多"+cap.maxSegments()+"段；超过时按叙事或动作边界再细分，不要截断丢掉后半段。";
+            String response=chat.invoke(planner,parts,768,true);
             JsonNode plan;try{plan=OM.readTree(stripFence(response));}catch(Exception ignored){plan=OM.createObjectNode();}
             List<Double> ends=boundaries(plan,source);result.put("strategy",plan.path("segments").isArray()&&!plan.path("segments").isEmpty()?"model":"visual-changes");
+            if(cap!=null)ends=capped(ends,source.path("durationSec").asDouble(),cap);
             double start=0;int no=1;
             for(double end:ends){segments.addObject().put("no",no).put("title","片段 "+no).put("startSec",start).put("endSec",end).put("status","pending");start=end;no++;}
         }
@@ -47,6 +57,8 @@ public final class StudioFilmStudy {
                 segment.remove("error");
                 try {
                     if(!segment.hasNonNull("storageKey"))cut(storage.openForRead(source.path("storageKey").asText()),directory,segment,storage,owner);
+                    // Re-verify the real media length after cutting; a cut that drifted past the cap cannot be generated.
+                    if(cap!=null&&segment.path("durationSec").asDouble(0)>cap.maxSegmentSec()+.3)throw tooLong(cap,source.path("durationSec").asDouble(),List.of(segment));
                     if(!checkpoint.save(35+i*60/segments.size(),"film.analyze",result))return null;
                     var parts=new ArrayList<Map<String,Object>>();
                     double start=segment.path("startSec").asDouble(),end=segment.path("endSec").asDouble();
@@ -66,6 +78,51 @@ public final class StudioFilmStudy {
             return result;
         }finally{try(var paths=Files.walk(directory)){for(Path path:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(path);}}
     }
+    /**
+     * Enforce the segment cap while keeping continuous coverage to the real ending: split each over-long segment evenly
+     * (model boundaries are kept as the narrative cut points), merge the shortest adjacent pairs that still fit when the
+     * count exceeds the limit, and fall back to an even split of the whole film. Never truncates the tail.
+     */
+    static List<Double> capped(List<Double> ends,double duration,SegmentCap cap) {
+        double limit=cap.maxSegmentSec();
+        List<Double> out=new ArrayList<>();double start=0;
+        for(double end:ends) {
+            double length=end-start;int pieces=Math.max(1,(int)Math.ceil(length/limit-1e-9));
+            for(int i=1;i<pieces;i++)out.add(start+length*i/pieces);
+            out.add(end);start=end;
+        }
+        while(out.size()>cap.maxSegments()) {
+            int best=-1;double shortest=Double.MAX_VALUE;
+            for(int i=0;i+1<out.size();i++) {
+                double from=i==0?0:out.get(i-1),merged=out.get(i+1)-from;
+                if(merged<=limit+1e-6&&merged<shortest){shortest=merged;best=i;}
+            }
+            if(best<0)break;
+            out.remove(best);
+        }
+        if(out.size()>cap.maxSegments()) {
+            int pieces=(int)Math.ceil(duration/limit-1e-9);
+            if(pieces>cap.maxSegments())throw tooLong(cap,duration,List.of());
+            out=new ArrayList<>();for(int i=1;i<=pieces;i++)out.add(i==pieces?duration:duration*i/pieces);
+        }
+        return out;
+    }
+    static boolean withinCap(JsonNode segments,SegmentCap cap) {
+        if(segments.size()>cap.maxSegments())return false;
+        for(JsonNode segment:segments)if(segment.path("endSec").asDouble()-segment.path("startSec").asDouble()>cap.maxSegmentSec()+1e-6)return false;
+        return true;
+    }
+    /** 400 with the conflicting ranges and the cap; raised before any hold when the source cannot fit at all. */
+    public static BusinessException tooLong(SegmentCap cap,double duration,List<? extends JsonNode> conflicts) {
+        var details=OM.createObjectNode().put("maxSegmentSec",cap.maxSegmentSec()).put("maxSegments",cap.maxSegments()).put("durationSec",duration);
+        var items=details.putArray("conflicts");
+        if(conflicts.isEmpty())items.addObject().put("no",1).put("startSec",0).put("endSec",duration).put("durationSec",duration);
+        for(JsonNode segment:conflicts)items.addObject().put("no",segment.path("no").asInt()).put("startSec",segment.path("startSec").asDouble())
+                .put("endSec",segment.path("endSec").asDouble()).put("durationSec",segment.path("durationSec").asDouble(segment.path("endSec").asDouble()-segment.path("startSec").asDouble()));
+        return new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,"STUDIO_SEGMENT_TOO_LONG",
+                "原片 "+seconds(duration)+" 秒，按每段不超过 "+seconds(cap.maxSegmentSec())+" 秒最多分 "+cap.maxSegments()+" 段放不下，请先剪短原片或换支持更长时长的视频模型",details);
+    }
+    private static String seconds(double value) {return value==Math.rint(value)?String.valueOf((long)value):String.format(Locale.ROOT,"%.1f",value);}
     static List<Double> validEnds(JsonNode plan,double duration) {
         List<Double> ends=new ArrayList<>();double previous=0;
         for(JsonNode item:plan.path("segments")) {
