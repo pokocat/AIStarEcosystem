@@ -131,3 +131,7 @@
 2026-10-17 已发布 `02a0e7db50b38b0e52a645bf73ca8d024137163f`，release `20261017-video-upload-02a0e7db`，仅 server + web-aiavatar。后端JAR SHA256 `43aafd95dde2a9d7f0b8987734c417e2f2b7ba2c5f7e4431fecadefa63250322`，前端BUILD_ID `d2TuJEt0s1tuvZu8koALE`，线上文件核对一致、两服务active，工作台入口/login/projects及API、nginx与部署verify全部通过；环境和模型配置未改。回滚备份 `/opt/ai-star-eco/backups/studio-video-upload-20261017T150819Z`。
 
 验证：前端90个不同用例（含组件文件选择→media-import→同节点保存/失败重试集成），后端11例（含用户视频派生的HEVC+MP3、MPEG4+MP3、H264+MP3真实ffmpeg转换）通过；全仓/后台类型、后端离线编译、API契约、生产构建通过。并行检查期间工作台测试出现5秒超时，单worker/20秒界限复核70例全部通过。Impeccable机械检查无新增发现。线上核对上传入口已进入发布JS、Next实际代理配置136314880字节/180000ms；浏览器自动化连接不可用，本轮未完成生产账号下实际上传验收，未提交付费解析或模型请求。证据 `.studio-e2e/video-upload-hotfix/`（忽略目录）。
+
+## 段长约束 `maxSegmentSec`（2026-10-18，本地实现，未发布）
+
+`operation=recreation, mode=segments` 请求可带 `recreation: { maxSegmentSec: number | "model", videoModel }`。`model` 在服务端读所选视频模型合同的最长秒数（H3 为 15），显式秒数不能超过它；有效上限与合同快照写入 `_exec`。约束接在 `StudioFilmStudy` 既有的「有限段数、连续、覆盖片尾」校验处：超过上限的段按叙事边界再切或裁切后再切，重新验证覆盖与实际时长；无法同时满足段数、时长与覆盖 → 400 `STUDIO_SEGMENT_TOO_LONG`（带冲突段与上限），不冻结。旧调用不带该字段时行为不变。全能创作的 `analyze_video` 工具固定传 `maxSegmentSec: "model"`。

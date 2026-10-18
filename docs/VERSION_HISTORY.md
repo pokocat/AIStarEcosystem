@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 全能创作 · 对话驱动视频复刻 S1/S2 · 2026-10-18 · 本地实现，未发布
+
+按 `docs/ip-studio-conversational-video-recreation-plan.md`（v4）实现：仓内技能 `reference-video-recreation`；每画布一条连续线程、真流式正文与工作记录卡、输入不锁与转向队列、优先停止、分支、旧四模式对话兼容导入（V61）；父 run `studio-dialogue` 的有界 agent 循环（原生 tool_calls 或 JSON 动作协议，端点能力 V60 后台声明）；两阶段计划（approaches / 类型化 settings / 技能白名单 / 28 步上限 / 服务端报价）；`check` 原生三态检查；拉片 `maxSegmentSec`；`ip_plan_execution` 执行器（V62：提交前预算、付款绑定、租约、暂停只查、90 分钟 partial、同键恢复）；前端线程 UI（SSE 续播 / 轮询回落、确认卡、执行进度条、`node.upsert` 幂等投影、「AI 判断」检查节点）。顺带修接入前两项产品问题（全画布模板丢视频模式；成片 key 前缀与归属闸不一致）。S0 付费实测、S3 技能表与后台、自动修正白名单未做。
+
 ### 统一账号邀请 · 2026-10-17 · 首版发布，线上闭环待完成
 
 ID `e473022` 与 Studio `d88e94a5` 已发布，V12 成功；本人邀请查询、链接生成和匿名邀请上下文已实测。用户指出通用 ID 邀请页脱离 Studio，现先提供 Studio 品牌邀请页设计，应用入口/回跳修正及首次注册线上闭环尚未完成，不宣称整体验收通过。见[首版发布记录](unified-account-referral-production-release-20261017.md)与[设计稿](prototypes/studio-invitation-design.md)。

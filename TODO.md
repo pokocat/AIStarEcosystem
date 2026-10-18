@@ -27,6 +27,18 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-18 · 全能创作对话驱动视频复刻（S1/S2 本地实现，未发布）
+
+- [x] ~~接入前产品问题：全画布模板复制后视频模式回退首尾帧~~ **2026-10-18 已修**：`IpDemoTemplateService.snapshotForTemplate` 保留 `videoMode/vquality/videoCount`，并从剥掉的 request 派生 `studio.videoPreset`；测试 `IpDemoTemplateStripTest.fullCanvasSnapshotKeepsNativeVideoModeAsPreset`。
+- [x] ~~接入前产品问题：合成成片保存触发 IP_ASSET_KEY_INVALID~~ **2026-10-18 已修**：`DramaAssembleService.studioAssemblyPrefix` 改用 `FileStorageService.ownedKeyPrefix(CATEGORY_GEN, uid)`，与 `ownsAssetKey` 同源；存量按旧规则生成、uid 含特殊字符的成片 key 仍不被识别（需要时按 storage_asset 回查补归属）。
+- [ ] **S0 付费实测未做**（方案 §S0实测矩阵）：remap-subject（H3 / Seedance 2.0 各半）、creative-rewrite、长段比例、音频默认、检查可靠性、完整费用，需要用户单独批预算后在线上手工跑；结论回填方案与技能正文，决定哪些检查项进 `autoFixChecks`。
+- [ ] **S3 未做**：技能表 / 不可变版本 / 后台编辑与试跑、更多技能与意图路由、从成功画布蒸馏技能草稿；当前技能只在仓内文件。
+- [ ] **自动修正白名单为空**：检查只建议；`autoFixChecks` 要等对应检查项的 S0 可靠性结论。
+- [ ] **多节点部署**：对话实时广播是进程内（`StudioDialogueEventHub`），多实例需换跨节点发布订阅；单节点下断线靠 SSE 续播 / 轮询回落。
+- [ ] **前端 docVersion 未从工作台传入助手**：`node.upsert` 带 `expectedDocVersion` 时被跳过并提示「画布已变化，稍后重试」；需 `project-sync.ts` 暴露当前基线并经 `studio-workspace` 传给 `StudioAssistant`（prop 已存在）。
+- [ ] **对话循环不直接向模型发图**：附件以对象 id 进上下文，看图依赖拉片 / 解析工具；端点开流式但不回用量会以 `AI_USAGE_MISSING` 失败（后台开关旁已提示）。
+- [ ] **openapi / 前端未覆盖的事件**：提问卡与改稿卡没有专门事件，前端在 `turn.done` 后重拉快照；410 过期期间漏掉的画布命令不重放。
+
 ### 2026-10-17 · 企业群发邀请
 
 - [x] **群发分享与注册加入闭环**：90 天/一年、多人可用链接、企业宣传片新头图；本地短信流程与 MySQL 通过，已生产发布。见 [本地记录](docs/ip-studio-enterprise-invitation-validation.md)。

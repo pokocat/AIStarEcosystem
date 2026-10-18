@@ -1412,3 +1412,20 @@ AiAvatar 发行入口共用当前 uid 的社交账号和历史发布任务：`/a
 ### 后台独立测试账号
 
 仅当前有效 SUPER_ADMIN 可创建、查看、停用测试账号并生成两分钟一次性登录入口；操作写审计。身份真值和随机 UID 由 ID 创建，保留 `TEST_` 命名空间，不占真实手机号或伪造验证；签名令牌携带 `test_account:true`。产品只有在 RS256 验签且 UID 命名空间也匹配时才设置测试上下文，允许免真实手机测试；普通游客和其他令牌不能借 claim/请求参数获得豁免。RBAC、企业唯一归属、产品开通、模型/在途和积分账本规则不变，不自动赠送积分。后台测试账号入口不等于运营附身，也不能进入平台后台。
+
+## Studio 对话 agent 与计划执行（2026-10-18，本地实现，未发布）
+
+真源 `docs/ip-studio-conversational-video-recreation-plan.md`；接口见 `openapi.yaml` 的 `/v1/ip-studio/studio/skills`、`…/conversation*`、`…/plan-executions*`。
+
+1. **一轮对话 = 一条父 run（kind `studio-dialogue`）**。受理条件：按量售价存在，`maxCost ≥ rate.maxCost`，付款选择合法；afterCommit 派发。结束时在同一事务里条件更新终态并按**真实用量**结算、余量退回；失败全额退回。用户停止：已完成的模型调用按真实用量结算，被中断的那段流不计费、不按字数估算。父 run 只结算自己的模型调用；工具产生的子 run（拉片 / 出图 / 出片 / 检查）各自冻结结算，预算汇总按真实收费引用去重，不重复相加。
+2. **模型输出不是授权**。方案（`plan` 块）、确认卡（`approval` 块）、问题、改稿建议都只是消息块；只有用户点确认卡或明确回复，服务端才把 `confirmationMessageId`（本线程助手消息上的那张卡）与计划指纹绑定成授权。旧卡不能批准新修订；预授权范围内不再发 `approval.required`。
+3. **技能边界由服务端强制**：计划步骤的 operation 必须在技能当前阶段白名单内（analysis：recreation/text；production：text/image/video/check/assemble），`settings` 按操作类型化校验，步骤上限 `limits.maxSteps`；模型不得填报价、批准、执行状态与任务身份。方法示例不是白名单，新方法名不触发拒绝。
+4. **提交前预算**：每步提交前在执行租约内核对 `本阶段已消费 + 在途占用（已受理未结算 run 的已批准 maxCost）+ 本步报价 ≤ 本阶段已批准上限`；不满足则不提交、不冻结，步骤 `needs_user`、执行暂停，返回 402 `STUDIO_PLAN_BUDGET_EXCEEDED`（`stage, spent, inFlight, quotedCost, approvedCap, shortfall`）。`autoFixCap` 是制作阶段上限内的子额度。付款模式、企业 id、授权快照在确认时写入不可变 `billing_json`，每步原样携带；换付款人只能结束原执行另建。
+5. **三处真值**：`ip_plan_execution` 只存编排（阶段、步骤、依赖、runId 列表、尝试次数、预算与占用、付款绑定、租约、状态）；`IpRun` / 原生媒体任务 / 账本存执行与费用；画布文档存用户内容与节点上的 `execution` 绑定。服务端不写画布文档，产物通过 `node.upsert` 事件由前端幂等投影；用户手改过的文字不会被覆盖。
+6. **推进与恢复**：租约 CAS（`lease_owner / lease_until / lease_version`），启动扫描、定时唤醒、用户继续共用同一入口；`paused` 只刷新已有 run 不提交；`cancel` 停止新增提交并取消可取消任务；`deadline_at` 90 分钟到点标 `partial`，已受理任务继续查询结算。每步 `clientRequestId` 由 `executionId + stage + stepId + attempt` 派生，重复唤醒不重复提交。
+7. **检查三态**：`check` 是文本类 run，`output.check.status ∈ pass|fail|unknown`，逐项带真实采样时刻的证据；缺依据不判通过；首版 `autoFixChecks` 为空，检查只建议，用户 `accept` 不改写 AI 结论。
+8. **事件与流式**：`message.delta` 只能来自供应商真实增量（不支持流式的端点一次给出完整正文）；事件只在对应状态提交后发布；`turn.done` 不等于作品完成。SSE 断线不取消任务，`afterSeq` / `Last-Event-ID` 续播，游标过期 410。
+9. **拉片段长**：`recreation.maxSegmentSec`（数字或 `model`）接入段数 / 连续 / 覆盖校验，显式秒数不能超过所选视频模型合同上限；不能同时满足 → 400 `STUDIO_SEGMENT_TOO_LONG`，不冻结。
+10. **端点能力**：`chat_supports_tools / chat_supports_streaming` 由后台显式声明，NULL 视为不支持，不按模型名猜测；端点开流式但不回用量 → `AI_USAGE_MISSING` 失败并退回。
+11. **错误码**：`STUDIO_SKILL_NOT_FOUND`(404) · `STUDIO_SKILL_OPERATION_NOT_ALLOWED`(400) · `STUDIO_PLAN_STALE`(409) · `STUDIO_PLAN_BUDGET_EXCEEDED`(402) · `STUDIO_PLAN_EXECUTION_BUSY`(409) · `STUDIO_PLAN_EXECUTION_NOT_FOUND`(404) · `STUDIO_PLAN_INPUT_MISSING`(400) · `STUDIO_PRODUCTION_NOT_AUTHORIZED`(403) · `STUDIO_SEGMENT_TOO_LONG`(400) · `STUDIO_CHECK_TARGET_INVALID`(400) · `STUDIO_VIDEO_MODEL_UNAVAILABLE`(503) · `STUDIO_SOURCE_AUDIO_UNAVAILABLE`(503) · `STUDIO_THREAD_NOT_FOUND` / `STUDIO_MESSAGE_NOT_FOUND` / `STUDIO_APPROVAL_NOT_FOUND`(404) · `STUDIO_EXECUTION_NOT_ACTIVE`(409) · `STUDIO_EVENT_CURSOR_EXPIRED`(410) · `AI_TOOLS_NOT_SUPPORTED` / `AI_STREAM_INCOMPLETE` / `AI_USAGE_MISSING`。
+12. **已知边界**：制作开始后不能换新的计划修订（只能调高同一份计划的上限）；父对话 run 的 Token 费用不计入阶段预算；视频步骤用默认 Studio 视频模型。

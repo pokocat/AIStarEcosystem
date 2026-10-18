@@ -1078,3 +1078,23 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/studio-shared-covers-validation-20261017.md。
 
 内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。
+
+## Studio 对话 agent、技能与计划执行（2026-10-18，本地实现，未发布）
+
+真源 [`docs/ip-studio-conversational-video-recreation-plan.md`](../../docs/ip-studio-conversational-video-recreation-plan.md)。
+
+**对话（`ipstudio/dialogue/**`）**：每轮对话是一条父 `IpRun`（kind `studio-dialogue`，nodeId = 线程 id，clientRequestId = 用户消息 id）。`DialogueLoop` 是纯状态机：模型 → 类型化动作 → 技能阶段白名单与参数校验 → 工具 → 结果回传 → 继续；上限 8 次模型调用 / 12 次工具 / 10 分钟 / 费率 Token 总额，或收到停止。端点 `chat_supports_tools=TRUE` 用原生 tool_calls，否则走 `<<<studio-actions>>>` JSON 动作协议（正文与动作分开解析，动作块不出 wire）；`chat_supports_streaming=TRUE` 才 `stream:true` + `stream_options.include_usage` 真流式（`AiModelInvocationService.invokeChatTurnOnEndpoint` / `UpstreamModelHttp.sendStream`，看门狗处理空闲、总时长与停止；断流 `AI_STREAM_INCOMPLETE`），否则完整回复作为**一次** delta，不拆字不延时（§8.0）。计费：受理时要求按量售价（否则 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`）、`maxCost ≥ rate.maxCost`（否则 409 `STUDIO_PRICE_CHANGED`），按付款选择冻结，afterCommit 派发；本轮全部模型调用累计真实用量，结束时在同一个 REQUIRES_NEW 事务里条件更新 running → done/failed、结算 / 退回、关闭消息、追加 `turn.done`，提交后才广播。**用户停止**：已完成的调用按真实用量结算，被中断那段流不计费也不按字数估算（与现有 Studio 取消的全额退回不同，刻意为之）。线程活动轮次 3 分钟无心跳由 `StudioDialogueSweeper` 判失败并退回。
+
+工具（`dialogue/tools/`）：`read_canvas` / `read_skill` / `analyze_video`（子 run = recreation segments，带 `recreation.maxSegmentSec=model`）/ `propose_plan`（`skill_plan` 提示词 → `StudioPlanValidator.validateSkillPlan` + `quotePlan` 报价 → 消息块 `plan`，指纹 64 hex）/ `request_approval` / `ask_question` / `propose_text` / `create_nodes` / `connect_nodes`（只发 `node.upsert` 事件，服务端不写画布文档）/ `submit_generation`（必须先过 `StudioExecutionGate` 且线程已绑定执行，否则回复「制作尚未授权」、不冻结）/ `stop`。
+
+持久化（**V61**）：`ip_dialogue_thread`（每画布主线程 `IPT-<projectId>`、分支、`last_opened_at`、历史摘要、活动 run / 执行指针）、`ip_dialogue_message`（text + blocks_json，`UNIQUE(thread_id, client_message_id)`）、`ip_dialogue_event`（`UNIQUE(thread_id, seq)`）、`ip_dialogue_steering`。旧四模式对话节点只导入一次，不重跑不重计费。SSE（`GET …/conversations/{threadId}/events`）：先补放 `afterSeq` / `Last-Event-ID` 之后已入库事件再接实时；id = seq；15 秒注释心跳；游标过期 410 `STUDIO_EVENT_CURSOR_EXPIRED`；事件只在行提交后广播；实时广播为进程内（多节点需换跨节点发布订阅）。父 run 的回复正文存 `output.reply`（不是 `output.text`，否则资产库收集器会把聊天回复收进资产）。
+
+**技能（`ipstudio/skill/`）**：`StudioSkillCatalog` 加载 `resources/studio/skills/*.md`（YAML 头 = 服务端边界：阶段操作白名单、limits（`maxSteps` 表达式求值）、checks ⊇ autoFixChecks；Markdown 正文 = 给模型的方法）；`GET /v1/ip-studio/studio/skills`。首期不建技能表与后台（S3）。
+
+**计划与执行（`ipstudio/execution/**`，V62 `ip_plan_execution`）**：`StudioPlanValidator` 对带 `skillKey` 的计划按技能当前阶段白名单与类型化 `settings` 校验，步骤上限 `limits.maxSteps`（8 段 → 28），模型不得填 `quotedCost / approvedCap / confirmedApproachId / resultNodeId`；`check` 正式进 `StudioWorkflowService.OPERATIONS`（文本类 run，服务端从目标 run 成片抽帧建 `visualContext`，输出 `output.check` 三态，证据时刻只能是真实采样时刻）；`recreation.maxSegmentSec`（`model` = 读所选视频模型合同上限）接入 `StudioFilmStudy` 的段数 / 连续 / 覆盖校验，不满足 400 `STUDIO_SEGMENT_TOO_LONG`。执行器：创建分析执行 / 在同一执行上确认制作阶段（`confirmationMessageId` 必须是本线程助手消息上的确认卡，`StudioDialogueApprovals.requireApproval` → `markApproved` 绑定线程），每项目一份活跃执行；每步提交前在租约内核对 `spent + inFlight + quotedCost ≤ approvedCap`，不够 → 步骤 `needs_user`、402 `STUDIO_PLAN_BUDGET_EXCEEDED`（带 shortfall）；租约 `lease_owner / lease_until / lease_version` CAS，启动扫描 / 定时 / 用户继续共用同一推进入口；`paused` 只刷新已有 run；`cancel` 取消可取消任务；`deadline_at` = 开始 + 90 分钟 → `partial`；每步 `clientRequestId` 由 `executionId + stage + stepId + attempt` 派生，重复唤醒不重复提交。执行器自己不冻结一分钱（冻结 / 结算在原生 run）。首版 `autoFixChecks` 为空：检查只建议。
+
+**端点能力（V60）**：`ai_model_providers.chat_supports_tools / chat_supports_streaming`（NULL = 未知 = 不支持，不按模型名猜），后台「AI 模型与 Key」两个开关。
+
+错误码：`STUDIO_SKILL_NOT_FOUND`(404) · `STUDIO_SKILL_OPERATION_NOT_ALLOWED`(400) · `STUDIO_PLAN_STALE`(409) · `STUDIO_PLAN_BUDGET_EXCEEDED`(402) · `STUDIO_PLAN_EXECUTION_BUSY`(409) · `STUDIO_SEGMENT_TOO_LONG`(400) · `STUDIO_THREAD_NOT_FOUND` / `STUDIO_MESSAGE_NOT_FOUND` / `STUDIO_APPROVAL_NOT_FOUND`(404) · `STUDIO_EXECUTION_NOT_ACTIVE`(409) · `STUDIO_EXECUTION_UNAVAILABLE` · `STUDIO_EVENT_CURSOR_EXPIRED`(410) · `AI_TOOLS_NOT_SUPPORTED` · `AI_STREAM_INCOMPLETE` · `AI_USAGE_MISSING` · `STUDIO_PRODUCTION_NOT_AUTHORIZED`(403) · `STUDIO_CHECK_TARGET_INVALID`(400) · `STUDIO_PLAN_INPUT_MISSING`(400) · `STUDIO_VIDEO_MODEL_UNAVAILABLE`(503) · `STUDIO_SOURCE_AUDIO_UNAVAILABLE`(503) · `STUDIO_PLAN_EXECUTION_NOT_FOUND`(404)。
+
+执行器的两条已知边界：制作开始后不能换新的计划修订（409 `STUDIO_PLAN_STALE`，只能调高同一份计划的预算上限）；父对话 run 自身的 Token 费用不计入阶段预算（它有自己的 maxCost）。视频步骤报价与提交用默认 Studio 视频模型，拉片步骤的 `videoModel` 只用来定段长上限。
