@@ -1,0 +1,17 @@
+"use client";
+import {useEffect,useState} from "react";
+import {TestAccountsApi,type TestAccountList} from "@/api/test-accounts";
+import {Button} from "@/components/ui/button";
+import {Input} from "@/components/ui/input";
+export function TestAccountsPanel(){
+ const [data,setData]=useState<TestAccountList>(),[page,setPage]=useState(0),[name,setName]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState(""),[entry,setEntry]=useState<{loginUrl:string;expiresAt:string}>();
+ const load=()=>TestAccountsApi.list(page).then(setData);
+ useEffect(()=>{void load().catch(()=>setError("测试账号暂时无法读取，请重试。"));},[page]);
+ async function run(fn:()=>Promise<unknown>){if(busy)return;setBusy(true);setError("");try{await fn();await load();}catch(e){setError(e instanceof Error?e.message:"操作失败，请重试。");}finally{setBusy(false);}}
+ return <section className="rounded-xl border border-border bg-card p-5 mb-6" aria-label="测试账号管理"><h2 className="text-lg font-semibold">测试账号</h2><p className="text-sm text-muted-foreground mt-1 mb-4">独立测试身份，无需真实手机号。不会自动获得积分；企业权限和产品开通规则照常检查。登录入口仅可使用一次，两分钟内有效。</p>
+ <form className="flex flex-wrap gap-2 mb-4" onSubmit={e=>{e.preventDefault();void run(async()=>{const u=await TestAccountsApi.create(name.trim());setName("");setEntry(await TestAccountsApi.login(u.uid));});}}><Input aria-label="测试账号名称" value={name} maxLength={40} onChange={e=>setName(e.target.value)} placeholder="例如：企业邀请验收 A" className="max-w-xs" disabled={busy}/><Button disabled={busy||!name.trim()} type="submit">创建测试账号</Button><Button type="button" variant="outline" disabled={busy} onClick={()=>void run(load)}>刷新</Button></form>
+ {error&&<p role="alert" className="text-sm text-destructive mb-3">{error}</p>}
+ {entry&&<div className="rounded-lg bg-muted p-4 mb-4"><h3 className="font-medium">一次性测试登录入口</h3><p className="text-sm my-2">请在独立浏览器窗口打开，避免切换日常使用的账号。有效至 {new Date(entry.expiresAt).toLocaleTimeString("zh-CN")}。</p><Input aria-label="测试登录链接" value={entry.loginUrl} readOnly className="mb-2"/><div className="flex gap-2"><Button variant="outline" onClick={()=>void navigator.clipboard.writeText(entry.loginUrl).catch(()=>setError("复制失败，请选中链接手动复制。"))}>复制链接</Button><Button variant="outline" onClick={()=>setEntry(undefined)}>收起</Button></div></div>}
+ {!data?<p role="status">正在读取测试账号…</p>:<><div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b text-left"><th className="py-2">测试账号</th><th>状态</th><th>操作</th></tr></thead><tbody>{data.accounts.map(u=><tr key={u.uid} className="border-b"><td className="py-3">{u.displayName}</td><td>{u.status==="active"?"正常":"已停用"}</td><td className="flex gap-2 py-2"><Button size="sm" variant="outline" disabled={busy||u.status!=="active"} onClick={()=>void run(async()=>setEntry(await TestAccountsApi.login(u.uid)))}>生成登录入口</Button><Button size="sm" variant="outline" disabled={busy||u.status!=="active"} onClick={()=>void run(async()=>{await TestAccountsApi.suspend(u.uid);setEntry(undefined);})}>停用</Button></td></tr>)}</tbody></table></div>{!data.accounts.length&&<p className="text-sm text-muted-foreground py-3">还没有测试账号。</p>}<div className="flex gap-3 items-center mt-3"><Button variant="outline" size="sm" disabled={page===0||busy} onClick={()=>setPage(p=>p-1)}>上一页</Button><span className="text-sm">第 {page+1} 页 · 共 {data.total} 个</span><Button variant="outline" size="sm" disabled={(page+1)*20>=data.total||busy} onClick={()=>setPage(p=>p+1)}>下一页</Button></div></>}
+ </section>;
+}

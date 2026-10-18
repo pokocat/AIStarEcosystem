@@ -254,7 +254,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String role = user.getKind() == null
                 ? AepUser.AccountKind.PERSONAL.name()
                 : user.getKind().name();
-        applyAuthentication(user.getId(), user.getUsername(), role, false, phoneVerified);
+        boolean testAccount = Boolean.TRUE.equals(jwt.getClaims().get("test_account")) && uid.matches("TEST_[0-9A-HJKMNP-TV-Z]{26}");
+        applyAuthentication(user.getId(), user.getUsername(), role, false, phoneVerified, testAccount);
         return false;
     }
 
@@ -262,6 +263,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private void applyAuthentication(String userId, String username, String role, boolean adminToken,
                                      boolean phoneVerified) {
+        applyAuthentication(userId, username, role, adminToken, phoneVerified, false);
+    }
+    private void applyAuthentication(String userId, String username, String role, boolean adminToken,
+                                     boolean phoneVerified, boolean testAccount) {
         List<SimpleGrantedAuthority> authorities;
         if (role == null || role.isBlank()) {
             authorities = List.of();
@@ -277,6 +282,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (role != null && !role.isBlank()) details.put("role", role);
         // PhoneVerificationGuard 据此拦写操作；两条认证链路都显式写，不留「缺省」这一档。
         details.put(PHONE_VERIFIED_DETAIL, phoneVerified);
+        details.put("identityTestAccount", testAccount);
         auth.setDetails(details);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }

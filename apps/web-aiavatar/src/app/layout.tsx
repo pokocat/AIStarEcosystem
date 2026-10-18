@@ -24,6 +24,7 @@ import "../styles/enterprise.css";
 import "../styles/control-focus.css";
 import "../styles/studio-select.css";
 import { StudioNotifications } from '@/ip/studio-errors';
+import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 
@@ -81,6 +82,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <ImpersonationBridge>
           <StudioNotifications />
           <AppChrome />
+          <TestAccountBanner />
           <ImpersonationBar />
           {children}
         </ImpersonationBridge>
