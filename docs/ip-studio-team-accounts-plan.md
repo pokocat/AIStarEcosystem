@@ -1,7 +1,7 @@
 # Studio 企业主子账号与积分管理方案
 
 > **v0.4 · 已生产发布 · 2026-10-15**
-> 根据用户在 v0.1 决策表中的评论及后续 review 重写。以本版替代原月配额方案；线上代码 `f068b51d`，部署、开关与验收见 [发布记录](ip-studio-enterprise-production-release.md)。
+> 根据用户在 v0.1 决策表中的评论及后续 review 重写。以本版替代原月配额方案；线上代码 `f068b51d`，部署、开关与验收见 [发布记录](releases/ip-studio-enterprise-production-release.md)。
 
 **目标：企业充值积分，管理员给成员分配积分，成员分到多少就能消费多少；支持批量操作和独立个人充值。**
 
@@ -50,7 +50,7 @@ D12 采用简单停用状态，防止余额清空后因任务退款恢复消费�
 
 成员通过邀请加入，服务端保证每人只有一个当前企业归属，停用仍保留归属。加入和退出均不迁移个人钱包、画布及成果。
 
-2026-10-17 更新：企业邀请改为群发分享链接，默认 90 天，可选一年；多人可通过同一链接注册/登录后加入，管理员可撤销。取消单次使用和手工粘贴口令；旧邀请记录清理，不维护旧流程。增量当前仅本地实现，见 [验收记录](ip-studio-enterprise-invitation-validation.md)。
+2026-10-17 更新：企业邀请改为群发分享链接，默认 90 天，可选一年；多人可通过同一链接注册/登录后加入，管理员可撤销。取消单次使用和手工粘贴口令；旧邀请记录清理，不维护旧流程。增量当前仅本地实现，见 [验收记录](releases/ip-studio-enterprise-invitation-validation.md)。
 
 **回收积分与停用分成两个动作：**
 
@@ -98,7 +98,7 @@ D12 采用简单停用状态，防止余额清空后因任务退款恢复消费�
 
 ## 5. 页面与实施顺序
 
-具体开发任务、依赖与完成标准见 [开发任务清单](ip-studio-enterprise-development-tasks.md)。本文保留产品规则，任务执行状态统一登记在 [TODO](../TODO.md)。
+具体开发任务、依赖与完成标准见 [开发任务清单](archive/ip-studio-enterprise-development-tasks.md)。本文保留产品规则，任务执行状态统一登记在 [TODO](../TODO.md)。
 
 **企业管理页**：企业概览、成员管理、单人/批量分配与回收、充值记录、消费流水。成员侧显示企业积分与个人积分，生成前明确本次扣哪一份。
 
@@ -118,4 +118,4 @@ D12 采用简单停用状态，防止余额清空后因任务退款恢复消费�
 
 **本版删除**：月预算/月配额、周期结转、席位套餐、多来源开通迁移、多团队切换，以及对应的数据表、接口和验收任务。暂不扩展自定义角色、共享画布和复杂审批。
 
-> E01–E04 的契约、V56、企业基础接口和钱包兼容已本地实现，验收见 [第一批记录](ip-studio-enterprise-foundation-validation.md)。E05–E12 已补齐积分、财务、全部生成付款、生命周期、完整页面与发布准备；[完整验收](ip-studio-enterprise-complete-validation.md) 按自动化/真实页面分别记录。代码默认关闭；生产已显式开启，见 [发布记录](ip-studio-enterprise-production-release.md)。
+> E01–E04 的契约、V56、企业基础接口和钱包兼容已本地实现，验收见 [第一批记录](releases/ip-studio-enterprise-foundation-validation.md)。E05–E12 已补齐积分、财务、全部生成付款、生命周期、完整页面与发布准备；[完整验收](releases/ip-studio-enterprise-complete-validation.md) 按自动化/真实页面分别记录。代码默认关闭；生产已显式开启，见 [发布记录](releases/ip-studio-enterprise-production-release.md)。

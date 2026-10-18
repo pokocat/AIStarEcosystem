@@ -11,7 +11,7 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 本次精确清理 11 个产品账号与 4 个统一身份，真实后台 API 默认返回 17 个未注销账号；两库备份在 `/var/backups/aistareco/test-account-cleanup-20261010T180720Z/`。原恢复账号及其他账号、钱包、账本逐项核对未变化。
 
-追加验收：补归档 1 个无真实身份和权益的 SOP 占位账号；当前默认仍为 17 个正常账号，显式注销筛选为 15 个历史档案。最终后端发布 `20261010-test-validation-8a1abf7a` 保留当前生产身份修复，线上校验和、分页/搜索、原账号状态及非法 demoId 的真实 400 错误通过；详见 [追加发布记录](../../docs/identity-phone-release-20261010.md)。
+追加验收：补归档 1 个无真实身份和权益的 SOP 占位账号；当前默认仍为 17 个正常账号，显式注销筛选为 15 个历史档案。最终后端发布 `20261010-test-validation-8a1abf7a` 保留当前生产身份修复，线上校验和、分页/搜索、原账号状态及非法 demoId 的真实 400 错误通过；详见 [追加发布记录](../../docs/releases/identity-phone-release-20261010.md)。
 
 ## CI 与 H2 测试库（2026-10-10）
 
@@ -890,7 +890,7 @@ V39 新增 `ip_project_revision` / `ip_saved_asset`，项目文档 TEXT 扩为 L
 
 `StudioAssetCatalogService` 只读本人商品、人物驱动和声音记录，不调用供应商；固定音色由下节的 StudioSpeechService 接通，X-Dub 同音频口型短样片已接，人物固定声音版本绑定已接通，专属声音仍未完成。`StudioPackagingService` 校验明确时间段和文本上限，用 Java2D 绘制文字再由 ffmpeg 叠加，合成仍零模型积分；不将用户文字插入 shell/filter，也不冒充 ASR。模板及示例发布清理 Studio 执行/审批/对话/采用身份，保留创作结构；模板移除素材，示例复制为平台自有素材。v0.203 已补输入槽、不可变发布版本、独立套用与创建时制作计划；后续有限图片依赖与部分资产包已接入（v0.204），默认一次设定图仍待真实单图验收。
 
-测试参数 `--aep.ipstudio.fixture-enabled=true --aep.ipstudio.fixture-directory=<绝对目录>` 默认关闭，prod/production/mysql 启动硬拒绝。只供隔离的本地 H2 验证；mock 前端仍使用 NEXT_PUBLIC_USE_MOCK=0，调用真接口。旧原生模型入口在此模式下拒绝执行；bridge 将普通图片/视频生成也导入 fixture 运行。准备与验收脚本在 `scripts/studio/`；命令、结果和限制见 `docs/ip-studio-unified-canvas-validation.md`。
+测试参数 `--aep.ipstudio.fixture-enabled=true --aep.ipstudio.fixture-directory=<绝对目录>` 默认关闭，prod/production/mysql 启动硬拒绝。只供隔离的本地 H2 验证；mock 前端仍使用 NEXT_PUBLIC_USE_MOCK=0，调用真接口。旧原生模型入口在此模式下拒绝执行；bridge 将普通图片/视频生成也导入 fixture 运行。准备与验收脚本在 `scripts/studio/`；命令、结果和限制见 `docs/releases/ip-studio-unified-canvas-validation.md`。
 
 
 ### v0.202 配音增量 · 2026-10-08（本地验收通过，代码未发布）
@@ -899,7 +899,7 @@ Studio 新增固定音色配音节点、试听/下载、刷新恢复和成片采
 
 平台按明确配置的单次配音价格校验 maxCost、冻结和结算；供应商按实际音频秒计量，两者分开。持久化原请求与 Job，afterCommit 派发，Idempotency-Key=runId，已受理任务重启只查询，超时不新建任务；音频鉴权下载、实际格式检查后转存 key，短期地址与到期换签。合成可用 `packaging.voiceoverStorageKey` 替换原轨，先验本人归属；长于成片拒绝，不截断台词。
 
-真实 Vivian WAV 3.52 秒与带中文包装的 5.066016 秒成片通过，新增 8 积分、pending=0，恢复/重放不重复扣费。线上仅登记 Qwen3 TTS 端点，Studio 代码和 DAP_AUDIO 绑定仍待发布，生产售价未定。固定预设音色不代表专属声音克隆或数字人口型驱动完成。详见 `docs/ip-studio-unified-canvas-validation.md` §11。
+真实 Vivian WAV 3.52 秒与带中文包装的 5.066016 秒成片通过，新增 8 积分、pending=0，恢复/重放不重复扣费。线上仅登记 Qwen3 TTS 端点，Studio 代码和 DAP_AUDIO 绑定仍待发布，生产售价未定。固定预设音色不代表专属声音克隆或数字人口型驱动完成。详见 `docs/releases/ip-studio-unified-canvas-validation.md` §11。
 
 
 ### v0.202 口型增量 · 2026-10-08（本地短样片通过，未发布）
@@ -908,7 +908,7 @@ Studio 口型同步采用聚算 `x-dub`：选择本人 MP4 人物片段与已生
 
 结果另存片段，先检查再采用。X-Dub 此次返回左原片/右口型的对照；“提取口型片段 · 免费”在画幅及左侧与源片 SSIM 匹配后取右侧，保留对照版本，不调供应商、不改输入或账本，重复提取返回同一文件。采用口型片段显式排除原片；合成保留该片段的原音轨。任务列表可定位画布结果。
 
-真实小紫卡通 IP + 原 Vivian WAV 3.52 秒完成，原口型结果 1408×1280/25fps、提取为 704×1280，中文包装成片 720×1280/3.540998 秒。新增 40 积分，提取/合成 0，同键恢复/提取重放没有新增扣费，pending=0；浏览器下载与我方文件一致。详细证据见 `docs/ip-studio-unified-canvas-validation.md` §12。仅证明短样片闭环与可见嘴部变化，未量化音素同步质量或长口播。人物固定声音版本绑定后续已接通（验证记录 §13），专属声音克隆仍未接通；本次未修改线上绑定，代码未提交、未发布。
+真实小紫卡通 IP + 原 Vivian WAV 3.52 秒完成，原口型结果 1408×1280/25fps、提取为 704×1280，中文包装成片 720×1280/3.540998 秒。新增 40 积分，提取/合成 0，同键恢复/提取重放没有新增扣费，pending=0；浏览器下载与我方文件一致。详细证据见 `docs/releases/ip-studio-unified-canvas-validation.md` §12。仅证明短样片闭环与可见嘴部变化，未量化音素同步质量或长口播。人物固定声音版本绑定后续已接通（验证记录 §13），专属声音克隆仍未接通；本次未修改线上绑定，代码未提交、未发布。
 
 ### v0.202 人物声音版本增量 · 2026-10-08（本地真实验收通过，未发布）
 
@@ -918,7 +918,7 @@ Studio 口型同步采用聚算 `x-dub`：选择本人 MP4 人物片段与已生
 
 新增 `GET /api/v1/ip-studio/studio/voice-profiles`、`POST /api/v1/ip-studio/projects/{id}/adopt-voice`、`PUT /api/v1/ip-studio/studio/performers/{avatarId}/voice`。TTS 请求可带 avatarId/voiceId，服务端校验本人、同人物、就绪、音色与风格一致；输入保存 appliedVoice 快照，已受理任务复用原请求正文。原请求兼容新增空字段的旧指纹，重放先于当前配置检查。成功配音与原积分结算同事务记录声音在项目的使用，不建立第二份任务或声音库存。
 
-真实“小紫 · 自然声 v1”使用 Vivian 与“自然明快，像朋友一样介绍。”，原试听 3.52 秒；同版本新台词生成 WAV 4.96 秒，唯一新增消费 8 积分。v2 以新台词为试听，保留同一官方音色/风格；v1/v2 采纳重放、默认切换及原任务重放没有新增账本记录，旧任务仍是 v1。两版本均能在画布查看和试听，当前默认切回 v1。证据见 `docs/ip-studio-unified-canvas-validation.md` §13。专属声音克隆、长口播和生产整体发布验收仍未完成。
+真实“小紫 · 自然声 v1”使用 Vivian 与“自然明快，像朋友一样介绍。”，原试听 3.52 秒；同版本新台词生成 WAV 4.96 秒，唯一新增消费 8 积分。v2 以新台词为试听，保留同一官方音色/风格；v1/v2 采纳重放、默认切换及原任务重放没有新增账本记录，旧任务仍是 v1。两版本均能在画布查看和试听，当前默认切回 v1。证据见 `docs/releases/ip-studio-unified-canvas-validation.md` §13。专属声音克隆、长口播和生产整体发布验收仍未完成。
 
 
 ### v0.203 · 2026-10-08 · Studio 模板发布版本与输入表单（本地通过，未发布）
@@ -935,7 +935,7 @@ M7.1 验收：两个不同人物输入分别建立独立画布，8 图片配方�
 
 进阶模板可免费将采用且未过期的原图打包为 ZIP（来源清单）与可读中文展示板；部分选择明确显示 n/总数。主形象与人物造型显式归档，归档/打包重放复用原结果。本人版本统计派生自原生任务实际费用和采用状态，不含全平台指标。真实进阶样例14次生成/112积分、同请求恢复零新增扣费、pending=0；六张通过并在浏览器完成6/8部分资产包下载，两张仍因侧视角/面部风格未通过，不称完整成功。
 
-按用户澄清，默认旗舰模板改为一个 `sheet` 图片步骤，一次生成一张包含人物档案、三视图、表情、面部/服装细节、配饰与材质配色的设定图。整图继续供图像参考，先生成单独镜头再做视频；独立资产/拼板为可选进阶流程。提示词见 `docs/prompts/ip-character-sheet.md`，按用户附图编写，不称作者原词。本地个人模板与独立实例只验证一张/8积分报价、零生成/零扣费；一次成图质量及整图参考出镜头尚待真实验收。代码与新增表尚未生产发布，详情见 `docs/ip-studio-unified-canvas-validation.md` §15。
+按用户澄清，默认旗舰模板改为一个 `sheet` 图片步骤，一次生成一张包含人物档案、三视图、表情、面部/服装细节、配饰与材质配色的设定图。整图继续供图像参考，先生成单独镜头再做视频；独立资产/拼板为可选进阶流程。提示词见 `docs/prompts/ip-character-sheet.md`，按用户附图编写，不称作者原词。本地个人模板与独立实例只验证一张/8积分报价、零生成/零扣费；一次成图质量及整图参考出镜头尚待真实验收。代码与新增表尚未生产发布，详情见 `docs/releases/ip-studio-unified-canvas-validation.md` §15。
 
 
 ### v0.205 · 2026-10-08 · IP 人物库与功能验收（本地，未发布）
@@ -944,7 +944,7 @@ M7.1 验收：两个不同人物输入分别建立独立画布，8 图片配方�
 
 V45 为 DapLook 增加可空 assetRole；免费分类接口只修改本人同人物的已完成造型类别，不改主图、版本或积分。旧请求缺此字段仍按旧指纹恢复，避免重复归档。模板结果在画布打开时恢复，计划关闭期间原任务仍继续更新，无需打开制作计划才找回图片。
 
-用户明确本轮验收聚焦界面交互、功能逻辑与 LibTV 创作动线，图片美观及人物一致性不作为功能通过条件，不为改善效果反复生成。一次设定图已通过原生任务受理、结果返回与恢复；浏览器采用、人物sheet归档、跨画布整图引用和一次真实镜头生成均通过，原请求恢复没有新增费用。历史画质观察保留为模型效果备注，不阻塞已实现功能的验收。模板仍为有限图片配方；高级视频模式、专属声音克隆及生产发布不在已完成范围。详细交互与持久化证据见 docs/ip-studio-character-library.md 和 docs/ip-studio-unified-canvas-validation.md §16。
+用户明确本轮验收聚焦界面交互、功能逻辑与 LibTV 创作动线，图片美观及人物一致性不作为功能通过条件，不为改善效果反复生成。一次设定图已通过原生任务受理、结果返回与恢复；浏览器采用、人物sheet归档、跨画布整图引用和一次真实镜头生成均通过，原请求恢复没有新增费用。历史画质观察保留为模型效果备注，不阻塞已实现功能的验收。模板仍为有限图片配方；高级视频模式、专属声音克隆及生产发布不在已完成范围。详细交互与持久化证据见 docs/ip-studio-character-library.md 和 docs/releases/ip-studio-unified-canvas-validation.md §16。
 
 ### v0.212 · 2026-10-08 · Studio 视频特效描述库（本地，未发布）
 
@@ -997,7 +997,7 @@ V54 为图片模型端点新增 `image_request_spec_json`：每个端点保存�
 
 配音按正文 Unicode 字符数 + 10 秒（上限 600 秒）确定并显示预冻结上限，生成完成按实际音频时长结算、退回剩余冻结；这是一笔消费上限，不是时长预测。极端慢速音频超出上限则明确失败并释放冻结，不追加扣费。口型同步按已解码驱动音频时长报价。任务保存完整定价快照，重启恢复、同键重放和后台调价不改变原请求；已受理旧任务保留旧快照兼容。
 
-正式发布覆盖后端、AiAvatar 和管理后台；保留个人画布发布模板，整画布分享仍暂缓。发布前已完成生产数据库/旧服务备份，隔离 MySQL 8.0.46 上 V39→V48 九项迁移与重复启动零迁移检查；正式部署与线上验收事实记录在 `docs/ip-studio-production-release.md`。
+正式发布覆盖后端、AiAvatar 和管理后台；保留个人画布发布模板，整画布分享仍暂缓。发布前已完成生产数据库/旧服务备份，隔离 MySQL 8.0.46 上 V39→V48 九项迁移与重复启动零迁移检查；正式部署与线上验收事实记录在 `docs/releases/ip-studio-production-release.md`。
 
 ### v0.231 · 模板复制为普通个人画布（2026-10-10）
 
@@ -1005,7 +1005,7 @@ V54 为图片模型端点新增 `image_request_spec_json`：每个端点保存�
 
 ## 统一认证跨应用复核（2026-10-10，本地未发布）
 
-本次共享后端覆盖 music/drama/celebrity/aiavatar（含 Studio）/star 的相同身份代码。资料写入与事件使用行锁并复查 UID/ACTIVE；合并/注销的旧 UID 保留墓碑，避免旧 token 重新建档；注销/合并回执失败停止游标。专项回归及范围见 [跨应用复核记录](../../docs/unified-identity-sop-audit-20261010.md)。本节不改变此前手机号发布记录的线上结论，本轮新增修复尚未部署。
+本次共享后端覆盖 music/drama/celebrity/aiavatar（含 Studio）/star 的相同身份代码。资料写入与事件使用行锁并复查 UID/ACTIVE；合并/注销的旧 UID 保留墓碑，避免旧 token 重新建档；注销/合并回执失败停止游标。专项回归及范围见 [跨应用复核记录](../../docs/audits/unified-identity-sop-audit-2026-10.md)。本节不改变此前手机号发布记录的线上结论，本轮新增修复尚未部署。
 
 ## Studio 文本改稿与视频错误字段（2026-10-11）
 
@@ -1024,7 +1024,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 持久化使用 V52 `ip_library_record`（folder/object/binding/preference/receipt），原媒体仍用 `ip_saved_asset`，原生成、积分与画布文档继续各自为真值。接口为 `/api/v1/ip-studio/library/**` 与 `projects/{id}/library/{extract,save-extraction,folder}`；分页直接返回 PageEnvelope，资源返回 ApiResponse。跨子产品的音乐/短剧/带货资产统一、团队共享及自动项目归属不在本轮范围。
 
-发布与本地/生产验收范围见 `docs/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
+发布与本地/生产验收范围见 `docs/releases/ip-studio-asset-library-validation.md`（2026-10-11）；本地样例不自动迁移到生产。
 
 ### Studio 错误追查（2026-10-13）
 
@@ -1032,9 +1032,9 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 ## 企业主子账号（2026-10-15，本地实施，未生产发布）
 
-2026-10-17 增量（已生产发布）：企业邀请改为群发链接，默认 90 天、可选 365 天、可多人接受并可撤销。匿名只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅回企业名称/ID/有效期；接受仍检查登录、手机号和 aiavatar 开通。V59 清空旧邀请并删除 `accepted_by`，不迁移单次使用逻辑，不改成员或资金。页面 `/enterprise/invite#token=...` 在短信注册/登录后接受邀请，企业令牌不进入账号中心的推荐关系。验收见 [生产记录](../../docs/ip-studio-enterprise-invitation-production-release-20261017.md)。超级管理员的 `/api/admin/test-accounts` 代理账号中心创建/生成入口/停用并审计；仅已验签 TEST_ 身份可免真实手机要求，不放宽普通游客、产品开通、RBAC 或计费。
+2026-10-17 增量（已生产发布）：企业邀请改为群发链接，默认 90 天、可选 365 天、可多人接受并可撤销。匿名只读 `POST /api/v1/ip-studio/enterprise-invitations/preview` 仅回企业名称/ID/有效期；接受仍检查登录、手机号和 aiavatar 开通。V59 清空旧邀请并删除 `accepted_by`，不迁移单次使用逻辑，不改成员或资金。页面 `/enterprise/invite#token=...` 在短信注册/登录后接受邀请，企业令牌不进入账号中心的推荐关系。验收见 [生产记录](../../docs/releases/ip-studio-enterprise-invitation-production-release-20261017.md)。超级管理员的 `/api/admin/test-accounts` 代理账号中心创建/生成入口/停用并审计；仅已验签 TEST_ 身份可免真实手机要求，不放宽普通游客、产品开通、RBAC 或计费。
 
-- 设计：[精简方案](../../docs/ip-studio-team-accounts-plan.md)、[任务拆分](../../docs/ip-studio-enterprise-development-tasks.md)。类型真源 `packages/types/src/enterprise.ts`，业务代码 `aep/enterprise`。
+- 设计：[精简方案](../../docs/ip-studio-team-accounts-plan.md)、[任务拆分](../../docs/archive/ip-studio-enterprise-development-tasks.md)。类型真源 `packages/types/src/enterprise.ts`，业务代码 `aep/enterprise`。
 - 基础 API：`/api/v1/ip-studio/enterprises` 的创建/当前企业、成员分页、邀请/接受/撤销、角色能力、模型策略、主账号移交和审计。默认 `AEP_ENTERPRISE_ENABLED=false`，显式开启才注册 controller；仍要求现有 aiavatar 开通和手机号验证。
 - V56 数据模型：`aep_enterprises`、`aep_enterprise_members`、`aep_enterprise_current`（userId主键）、`aep_enterprise_invitations`、`aep_enterprise_policies`、`aep_enterprise_ownership_transfers`、`aep_enterprise_audit`、`aep_enterprise_points_batches/transfers`。划拨行为由 E05 实现。
 - `aep_wallets` 新增 accountType/accountKey/enterpriseId/memberUserId，企业账户 userId 为空。旧个人钱包 ID、余额不变，accountKey 回填 personal:userId；历史账本不重写。冻结和账本补充 actor/enterprise/membership/authorization，任务和订单补充付款关联。
@@ -1042,7 +1042,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 - E05：`points/allocate|reclaim/preview` → `points/allocate|reclaim`，批次查询 `points/batches/{batchId}`、流水分页 `points/transfers`。1–100人、确认指纹、正文幂等、整批原子，保留来源、不回收冻结。
 - E06：产品侧 `wallet`、`member-balances`、`recharges`；平台 `/api/admin/finance/enterprise-recharges` 列表、`/{orderId}/confirm|reject|refund-preview|refund`。核准固定企业根钱包；原单有冻结先等结算，退款按原单可用额和原比例人民币登记，不自动打款。
 - V57：企业现金凭据唯一、充值申请/核准/退款快照、原单积分来源及冻结分配。原个人订单与余额不改，旧收银台/核准/退款入口拒绝企业单；人工单不走在线支付超时关单。
-- Studio `/enterprise` 和后台充值订单的企业页接真接口，沿用原组件；前端入口须构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`。成员管理、模型/在途策略、付款选择与消费报表接入真接口；代码默认关闭；2026-10-15 生产已显式开启，迁移及资金核对见 [发布记录](../../docs/ip-studio-enterprise-production-release.md)。平台财务 controller 不随新企业入口开关关闭。
+- Studio `/enterprise` 和后台充值订单的企业页接真接口，沿用原组件；前端入口须构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`。成员管理、模型/在途策略、付款选择与消费报表接入真接口；代码默认关闭；2026-10-15 生产已显式开启，迁移及资金核对见 [发布记录](../../docs/releases/ip-studio-enterprise-production-release.md)。平台财务 controller 不随新企业入口开关关闭。
 - 验收：`EnterpriseFoundationTest`（H2或独立MySQL）、`EnterpriseMigrationTest`、`EnterpriseFeatureGateTest`，加旧钱包/财务权限回归。MySQL 测试使用一次性独立库，绝不能指向开发业务库或生产库。
 
 - V58：`aep_enterprise_billing_authorizations` 固定每笔实际任务的付款、成员版本、最终模型/冻结金额、撤销与终态；`aep_enterprise_lifecycle_operations` 保存正文幂等回执。`credit_lot_holds.released_amount` 标出本次释放的原充值来源，避免误回收重入后的新分配。
@@ -1050,7 +1050,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 - 生命周期：`POST /enterprises/{id}/lifecycle/preview` → `POST /lifecycle`，action 为 suspend/resume/remove/leave/close。确认指纹覆盖关系、余额与在途；停用/退出回收可用，已受理任务的晚退款回原企业。停用成员仍可查询本人余额、退出，不能发新企业任务。
 - 报表：用户 `GET /enterprises/{id}/my-balance|usage`；管理者查询全企业，普通/停用成员仅本人。平台 `/api/admin/finance/enterprises` 服务端分页检索，并有 `/{id}/wallet|member-balances|points/transfers|usage`。不返回私有文档/提示词。
 - 受理恢复：图片/视频保存原供应商路由/请求与任务号，轮询故障保留冻结；仅 SUPER_ADMIN/OPERATOR（不含纯 FINANCE_ADMIN）GET `/api/admin/material-video-jobs/{id}` 或 `/api/admin/ip-studio/runs/{id}` 核对，reconcile 可带原任务号和证据，只查询原任务。不提供无证据强制退积分或重新提交。
-- 完整结果见 [交付验收](../../docs/ip-studio-enterprise-complete-validation.md)；产品场景见 [端到端用例](../../docs/ip-studio-enterprise-scenario-acceptance.md)；发布与回退边界见 [发布准备](../../docs/ip-studio-enterprise-release-readiness.md)。
+- 完整结果见 [交付验收](../../docs/releases/ip-studio-enterprise-complete-validation.md)；产品场景见 [端到端用例](../../docs/releases/ip-studio-enterprise-scenario-acceptance.md)；发布与回退边界见 [发布准备](../../docs/releases/ip-studio-enterprise-release-readiness.md)。
 
 受理未知而供应商明确证明原请求未受理时，运营可提交核对依据并显式确认：图片 `POST /api/admin/ip-studio/runs/{id}/release-unknown`，视频 reconcile 的 `confirmedNotAccepted=true`。仅无原供应商ID、原冻结/授权仍有效且符合未知状态时允许；审计、原任务失败、仅剩余原冻结释放/归集及授权结束同事务。已有原ID必须继续查询，不允许单凭“查不到状态”释放，也不退已成功产物的费用。
 
@@ -1061,13 +1061,13 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 `ProductRouteTable` 将原本人社交账号域 `/api/me/social-accounts/**` 共享给 celebrity / aiavatar；`GET /api/me/publish-jobs` 及子路径共享读取。均须匹配 `X-App-Code` 与该产品 ACTIVE enrollment，owner 检查不变。发布任务 POST（包括创建/开始/取消/重试）继续仅 celebrity。前端没有把 QUEUED 任务当草稿，不在本轮新增画布成片发布。
 
-边界与验收见 `docs/studio-workspace-refactor-validation.md`；无迁移改动。
+边界与验收见 `docs/releases/studio-workspace-refactor-validation.md`；无迁移改动。
 
-2026-10-17 后端与 AiAvatar 已发布 `81778bef`，V58 零新增迁移、两模板实际落库通过；见 [生产记录](../../docs/studio-workspace-production-release-20261017.md)。
+2026-10-17 后端与 AiAvatar 已发布 `81778bef`，V58 零新增迁移、两模板实际落库通过；见 [生产记录](../../docs/releases/studio-workspace-production-release-20261017.md)。
 
 ## Studio 拉片原声提取（2026-10-17，已发布f8d8cf1b）
 
-`StudioSourceAudio`在全片解析/分段拉片时用原媒体运行时提取完整混合音轨，生成48kHz双声道16bit PCM WAV；无音轨返回`absent`，不创建占位、不做ASR或人声/BGM分离。`output.sourceAudio`先检查点保存，后续模型失败保留；分段继续只复用本人原任务同源结果，key持久化、出wire签URL。前端落为普通音频节点，可选入原成片合成`packaging.voiceoverStorageKey`替换音轨，无新增供应商调用、积分项、表或路径。既有Studio原生视频全能参考链可按模型合同传入音频，首尾帧等不支持的模式仍拒绝，原声按原样复用可走生成后合成。契约见`specs/openapi.yaml`，技术和验收见[分享第7节](../../docs/studio-film-study-technical-sharing-20261017.md#7-按产品边界收简拉片只提取原声)。
+`StudioSourceAudio`在全片解析/分段拉片时用原媒体运行时提取完整混合音轨，生成48kHz双声道16bit PCM WAV；无音轨返回`absent`，不创建占位、不做ASR或人声/BGM分离。`output.sourceAudio`先检查点保存，后续模型失败保留；分段继续只复用本人原任务同源结果，key持久化、出wire签URL。前端落为普通音频节点，可选入原成片合成`packaging.voiceoverStorageKey`替换音轨，无新增供应商调用、积分项、表或路径。既有Studio原生视频全能参考链可按模型合同传入音频，首尾帧等不支持的模式仍拒绝，原声按原样复用可走生成后合成。契约见`specs/openapi.yaml`，技术和验收见[分享第7节](../../docs/audits/studio-film-study-technical-sharing-2026-10.md#7-按产品边界收简拉片只提取原声)。
 
 ## Studio 视频上传兼容修复（2026-10-17）
 
@@ -1075,6 +1075,6 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 
 ### Studio 统一画布封面（2026-10-17，已发布 a4092626）
 
-POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/studio-shared-covers-validation-20261017.md。
+POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCoverService：个人项目和模板属主、官方模板 SUPER_ADMIN，可上传 JPG/PNG、选择目标画布图片、恢复自动。只改 coverKey，不改 doc 或版本；独立封面提交后清理旧文件，回滚清理新文件，不删除画布素材。见 docs/releases/studio-shared-covers-validation-20261017.md。
 
 内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。

@@ -69,7 +69,7 @@ AiAvatar typecheck、23 项定向测试通过（创作/项目/模板、首页、
 
 创作页十项能力平铺：图片、视频、剧本、解析视频、导演、成片、配音、口型、人物库、空白画布。前九项使用内置 image_gen 生成的独立功能示意图，空白画布用原生图文声像节点示意。卡片显示用途说明，点击仍经原 StudioEntry 打开免费画布；未自动调用模型或制造结果。推荐模板仍一行四份，更多进入灵感。
 
-- 9 张图已复制到 `apps/web-aiavatar/public/studio/create/`，Next Image 优化加载。原图路径、最终用途和完整提示词集见 `docs/designs/studio-v3/creation-cover-sources.json`；不是客户产物。
+- 9 张图已复制到 `apps/web-aiavatar/public/studio/create/`，Next Image 优化加载。原图路径、最终用途和完整提示词集见 `docs/design/studio/studio-v3/creation-cover-sources.json`；不是客户产物。
 - 创作/项目/模板与主导航 15 项、原画布入口 7 项测试通过；导航顺序更新后其 6 项再次通过。AiAvatar typecheck 与 diff 空白检查通过。
 - 浏览器：默认桌面和 960px 七项导航同一行，无页面横向溢出；十卡五列两行，九图全部实际加载。390px 自动切换移动布局，十卡两列五行，模板保持局部横向单行，页面无横向溢出；原手机底栏保留。
 - 已实际从第二项「项目」进入 `/projects`，确认选中项目并显示已有画布，再返回创作；未提交生成或删除任何项目。临时视口覆盖已恢复。

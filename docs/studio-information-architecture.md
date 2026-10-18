@@ -1,4 +1,4 @@
-> 实施更新（2026-10-16）：用户已授权界面重构；部分方案已在本地接入，实际能力与【待建设】边界见 [本地实施与验收](studio-workspace-refactor-validation.md)。本文保留设计目标，不代表所有规划功能均已实现。
+> 实施更新（2026-10-16）：用户已授权界面重构；部分方案已在本地接入，实际能力与【待建设】边界见 [本地实施与验收](releases/studio-workspace-refactor-validation.md)。本文保留设计目标，不代表所有规划功能均已实现。
 
 # Studio 导航与内容组织定稿
 
@@ -6,7 +6,7 @@
 
 按本定稿制作的图片见 [关键页面设计稿](studio-v3-design-review.md)，覆盖完整一级导航、场景工坊、我的 IP 列表与详情、就地选择及发行各页面。图片设计不代表功能已实现。
 
-本文件记录用户最终确定的导航、IP 合并前提及后续扩展规则。它替代此前将带货和分发各自增加为一级菜单的临时方案。线上现状与本方案的差异见 [现有页面核对](studio-commerce-current-page-audit.md)；开发拆分见 [任务清单](studio-commerce-development-tasks.md)。
+本文件记录用户最终确定的导航、IP 合并前提及后续扩展规则。它替代此前将带货和分发各自增加为一级菜单的临时方案。线上现状与本方案的差异见 [现有页面核对](audits/studio-commerce-current-page-audit-2026-10.md)；开发拆分见 [任务清单](studio-commerce-development-tasks.md)。
 
 ## 一级导航
 

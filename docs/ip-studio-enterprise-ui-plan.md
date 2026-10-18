@@ -34,4 +34,4 @@
 
 ## 验收依据
 
-前端测试覆盖权限、预览确认、旧预览、防重试、错误、开关和充值刷新；浏览器验收覆盖桌面/手机、真实接口和刷新后的资金守恒。具体结果见 [完整交付验收](ip-studio-enterprise-complete-validation.md) 和 [界面验收](ip-studio-enterprise-ui-validation.md)；组件 mock、真实接口、本地供应商与生产严格分别记录。
+前端测试覆盖权限、预览确认、旧预览、防重试、错误、开关和充值刷新；浏览器验收覆盖桌面/手机、真实接口和刷新后的资金守恒。具体结果见 [完整交付验收](releases/ip-studio-enterprise-complete-validation.md) 和 [界面验收](releases/ip-studio-enterprise-ui-validation.md)；组件 mock、真实接口、本地供应商与生产严格分别记录。

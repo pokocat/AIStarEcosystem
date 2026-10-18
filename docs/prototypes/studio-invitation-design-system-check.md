@@ -63,4 +63,4 @@
 
 ## 2026-10-17 · 生产交付补记
 
-上述“待发布/待人工验收”是核对时状态。现已完成 Studio 与 ID 配套发布、用户亲自输入真实短信验证码注册、进入 Studio、双方邀请视图及生成/复制链接核对，见[当前生产验收](../unified-account-referral-production-release-20261017.md)及[生产截图](studio-invitation-live-preview/production-inviter.png)。没有改变视觉系统。现网产品侧既有 GRANT_ALL 策略独立执行，邀请本身不增加开通、积分或奖励操作。
+上述“待发布/待人工验收”是核对时状态。现已完成 Studio 与 ID 配套发布、用户亲自输入真实短信验证码注册、进入 Studio、双方邀请视图及生成/复制链接核对，见[当前生产验收](../releases/unified-account-referral-production-release-20261017.md)及[生产截图](studio-invitation-live-preview/production-inviter.png)。没有改变视觉系统。现网产品侧既有 GRANT_ALL 策略独立执行，邀请本身不增加开通、积分或奖励操作。

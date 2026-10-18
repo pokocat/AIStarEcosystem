@@ -1,7 +1,7 @@
 # 统一账号邀请关系方案
 
 > 版本：v0.5 实施版 · 2026-10-17
-> 状态：ID 与 Studio 首版已发布；邀请落地页的 Studio 品牌与回跳体验待修正，完整线上验收未完成。当前先审阅 [品牌邀请页设计](prototypes/studio-invitation-design.md)，详见 [首版发布记录](unified-account-referral-production-release-20261017.md)。
+> 状态：ID 与 Studio 首版已发布；邀请落地页的 Studio 品牌与回跳体验待修正，完整线上验收未完成。当前先审阅 [品牌邀请页设计](prototypes/studio-invitation-design.md)，详见 [首版发布记录](releases/unified-account-referral-production-release-20261017.md)。
 > 本版按用户最新要求收简：只记录邀请关系。
 
 ## 1. 要做什么
@@ -100,7 +100,7 @@
 
 ## 8. 上一版评审的适用范围
 
-[Astra 独立评审](unified-account-referral-astra-review-20261017.md)针对 v0.2 完整方案，保留作为历史参考，并非对本简化版的重新评审。真实首建事务、已有账号不误绑、隐私和业务隔离的提醒仍适用；关系投影、私有事件流、全图重建不再纳入本期。
+[Astra 独立评审](audits/unified-account-referral-astra-review-2026-10.md)针对 v0.2 完整方案，保留作为历史参考，并非对本简化版的重新评审。真实首建事务、已有账号不误绑、隐私和业务隔离的提醒仍适用；关系投影、私有事件流、全图重建不再纳入本期。
 
 实施位置：[账号模型](../../aibuzz-id/src/main/java/com/aibuzz/id/model/IdUser.java)、[短信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/user/IdUserService.java)、[微信建号](../../aibuzz-id/src/main/java/com/aibuzz/id/wechat/WechatIdentityResolver.java)、[邀请服务](../../aibuzz-id/src/main/java/com/aibuzz/id/referral/ReferralService.java)。邀请码字段和邀请表由账号仓独立的 V12 迁移添加，不修改本仓后端数据库。
 

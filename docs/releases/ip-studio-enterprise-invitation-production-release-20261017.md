@@ -6,7 +6,7 @@
 
 - 企业邀请：默认 90 天、可选一年，同一链接不限单人，可撤销；注册/登录后加入企业，沿用产品开通和 RBAC。企业宣传片风格新头图已上线。
 - 后台[账号管理](https://admin.aibuzz.cn/admin/platform/accounts)增加「测试账号」，仅有效超级管理员可创建、生成入口和停用。独立身份无手机号；一次性入口两分钟有效，正常 OIDC/PKCE 登录 Studio，持续显示测试标识。
-- 测试身份只免真实手机要求，产品开通、企业权限、积分和模型计费照常；不发放免费积分，不使用固定验证码或模拟短信。具体约束见[测试账号说明](test-accounts-plan.md)。
+- 测试身份只免真实手机要求，产品开通、企业权限、积分和模型计费照常；不发放免费积分，不使用固定验证码或模拟短信。具体约束见[测试账号说明](../test-accounts-plan.md)。
 
 ## 发布真值
 
@@ -46,4 +46,4 @@
 - 备份位于服务器 root 私有目录 `/opt/ai-star-eco/backups/20261017-enterprise-invite-test-accounts`，含两库、旧制品、环境/客户端配置和财务快照。日志不记录邀请 token、一次性入口或访问令牌。
 - V59 已执行；回退应用须保留当前数据库，选择兼容群发结构的制品或关闭入口，不能直接恢复整库覆盖上线后的正常数据。ID 无新迁移，可按既有发布脚本回退。
 
-[邀请页截图](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-invite.png) · [三成员结果](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-members.png) · [后台收尾](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-admin-test-accounts.png)
+[邀请页截图](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-invite.png) · [三成员结果](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-members.png) · [后台收尾](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/production-admin-test-accounts.png)

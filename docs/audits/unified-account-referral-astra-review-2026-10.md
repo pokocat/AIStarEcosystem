@@ -1,6 +1,6 @@
 # 统一账号注册邀请链独立评审
 
-> 历史评审范围说明：本文评审 v0.2 完整方案。用户随后要求仅记录邀请关系，当前建议以 [v0.3 简化方案](unified-account-referral-plan.md)为准；本文未对 v0.3 重新评审，投影、事件流与全图重建不再属于本期要求。原评审内容保留，不将其结论冒用于新版本。
+> 历史评审范围说明：本文评审 v0.2 完整方案。用户随后要求仅记录邀请关系，当前建议以 [v0.3 简化方案](../unified-account-referral-plan.md)为准；本文未对 v0.3 重新评审，投影、事件流与全图重建不再属于本期要求。原评审内容保留，不将其结论冒用于新版本。
 
 日期：2026-10-17。评审模型：`gpt-6-astra`。范围：统一账号注册邀请链的产品语义、架构边界、实际登录和合并入口、数据一致性、权限及后续扩展。此次仅设计评审与文档，不修改运行时代码，不部署，**未跑代码测试，也未验证当前生产状态**。
 
@@ -32,7 +32,7 @@
 | 现有产品 outbox 的 NULL product 是全产品广播 | `../aibuzz-id/src/main/java/com/aibuzz/id/product/OutboxWriter.java:44–54`、`repository/IdOutboxRepository.java:13–19`、`api/OutboxController.java:70–93`。事件类型目前只有身份生命周期/资料事件，见 `model/OutboxEventType.java:12–17`。 |
 | 现有发布游标保证不漏晚提交事件，不保证业务因果顺序 | `../aibuzz-id/README.md:477–481`。不得用插入 ID 当提交顺序，也不得用 published_id 当合并冲突规则。 |
 | 产品开通、企业成员、钱包和作品各自独立 | `specs/BUSINESS_RULES.md:461–499,1334–1346`、`docs/ip-studio-team-accounts-plan.md:12–20,74–91`。注册邀请不得调用这些写操作。 |
-| 合并消费方不会自动迁移所有业务权益 | 账号仓 `docs/INTEGRATION-GUIDE-FOR-AGENTS.md:455,594–608`；主仓 `docs/unified-identity-sop-audit-20261010.md:7–9,28–30`。身份邀请图重建不能被描述为跨生态全部业务关系合并。 |
+| 合并消费方不会自动迁移所有业务权益 | 账号仓 `docs/INTEGRATION-GUIDE-FOR-AGENTS.md:455,594–608`；主仓 `docs/audits/unified-identity-sop-audit-2026-10.md:7–9,28–30`。身份邀请图重建不能被描述为跨生态全部业务关系合并。 |
 
 ## 3. 问题及具体修正
 
@@ -191,7 +191,7 @@ web context 绑定稳定的 flowId/受控浏览器流程，不直接依赖会轮
 
 ## 9. 对主方案 v0.2 的交叉核对
 
-已读取 [统一账号邀请关系方案](unified-account-referral-plan.md) 的 2026-10-17 v0.2 工作稿。该稿已采纳有界模块、首建同事务、扫码首建前确认、存量来源区分、业务归因隔离和私有事件边界；本报告 R1–R8 主要针对原初稿，不能被误读为主方案尚未讨论这些问题。
+已读取 [统一账号邀请关系方案](../unified-account-referral-plan.md) 的 2026-10-17 v0.2 工作稿。该稿已采纳有界模块、首建同事务、扫码首建前确认、存量来源区分、业务归因隔离和私有事件边界；本报告 R1–R8 主要针对原初稿，不能被误读为主方案尚未讨论这些问题。
 
 另向主方案作者提交四项实现合同收敛：版本化 current 的唯一键应包含 `projectionVersion`，并有单独发布指针；注册线程只写事实/任务，不与单投影器争写正式 current；上线要阻止旧服务实例继续裸建 UID；图是否完成重建与个别边是否被抑制必须分开，允许 `READY` 图中存在 `SUPPRESSED_CYCLE`，否则一个历史冲突就会让全图永久不可用。主方案可能继续更新，最终以其最新文稿和后续实现验收为准。
 

@@ -22,7 +22,7 @@ V59 清空 `aep_enterprise_invitations` 中旧邀请，删除 `accepted_by`。�
 | 前端交互与共享客户端 | 37 项通过：页面/链接/企业管理/工作区/外壳 35，匿名 preview 客户端 2。覆盖登录、注册、失败重试、开通拦截和邀请失效。 |
 | 实际页面闭环 | 同一链接让两个新测试账号分别完成短信注册→自动加入→进入企业管理；后台共 3 人（主账号 + 两位普通成员），链接仍为有效状态，成员积分均为 0。 |
 | 迁移范围 | H2、MySQL 均验证旧邀请清空、旧列删除，成员与钱包保留；重复执行不删除新群发链接。 |
-| 界面 | 1280px 桌面、375px 手机均无横向溢出，独立界面复核通过。见[桌面](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/desktop.jpg)、[手机](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/mobile.jpg)、[加入结果](../apps/web-aiavatar/.impeccable/review/enterprise-invitation/joined-member.jpg)。 |
+| 界面 | 1280px 桌面、375px 手机均无横向溢出，独立界面复核通过。见[桌面](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/desktop.jpg)、[手机](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/mobile.jpg)、[加入结果](../../apps/web-aiavatar/.impeccable/review/enterprise-invitation/joined-member.jpg)。 |
 | 契约 | API 契约检查、enterprise 16 组 DTO/TS 镜像通过。全局镜像仍有此前登记的 4 组 clip 字段漂移，与本次邀请无关。 |
 | 构建 | 全 workspace 类型检查（含 admin）、后端离线编译、web-aiavatar 生产构建通过；构建产物包含 `/enterprise/invite`。 |
 

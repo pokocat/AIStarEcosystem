@@ -1,7 +1,9 @@
 # Studio 企业积分管理：开发任务
 
-> 2026-10-15 · 对应 [方案 v0.4](ip-studio-team-accounts-plan.md) · 已生产发布，部署与验收见 [发布记录](ip-studio-enterprise-production-release.md)，任务执行状态以 TODO 为准。
-> 已确认：企业分配积分仍归企业、可回收；产品开通沿用现有逻辑，不做企业席位。本文描述交付与验收，[TODO](../TODO.md) 统一记录执行状态。
+> **已归档（2026-10-18）**：E01–E12 已全部生产发布，现行真源是 [`docs/ip-studio-team-accounts-plan.md`](../ip-studio-team-accounts-plan.md)；本文保留任务拆分与验收标准，供回看。
+
+> 2026-10-15 · 对应 [方案 v0.4](../ip-studio-team-accounts-plan.md) · 已生产发布，部署与验收见 [发布记录](../releases/ip-studio-enterprise-production-release.md)，任务执行状态以 TODO 为准。
+> 已确认：企业分配积分仍归企业、可回收；产品开通沿用现有逻辑，不做企业席位。本文描述交付与验收，[TODO](../../TODO.md) 统一记录执行状态。
 
 ## 1. 开发顺序
 
@@ -138,7 +140,7 @@
 
 ## 3. 执行约束
 
-- E01–E04 已本地实现，验收见 [第一批记录](ip-studio-enterprise-foundation-validation.md)，页面规划见 [前端设计](ip-studio-enterprise-ui-plan.md)。第二批验收另记；后续完整生成、管理与财务页面、生命周期及发布准备已本地实施，见 [完整验收](ip-studio-enterprise-complete-validation.md)。未向实际企业充值或生产发布。
+- E01–E04 已本地实现，验收见 [第一批记录](../releases/ip-studio-enterprise-foundation-validation.md)，页面规划见 [前端设计](../ip-studio-enterprise-ui-plan.md)。第二批验收另记；后续完整生成、管理与财务页面、生命周期及发布准备已本地实施，见 [完整验收](../releases/ip-studio-enterprise-complete-validation.md)。未向实际企业充值或生产发布。
 - 不做：月预算、席位开通、多来源产品权益迁移、多企业切换、企业资产接管。
 - 需求改变先更新产品方案，再调整任务；工程状态只维护 TODO，避免多份进度互相矛盾。
 - 每次实现同步对应类型、OpenAPI、BUSINESS_RULES、README 和版本记录；新增迁移不修改已执行文件。

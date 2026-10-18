@@ -30,7 +30,7 @@ FINISH：unreviewed and undocumented is unfinished; this build ends with the fin
 
 正式接入时，Studio 保持该品牌表单，ID 继续提供短信验证、账号创建和邀请绑定；不再使用“先跳通用 ID 邀请页、再接受”的路径。保留邀请码与应用回跳约束，不将身份或邀请真值放入 Studio，也不因注册自动开通产品。
 
-初版邀请后台与管理视图已部署；完整线上首注册闭环待新入口接入后验收，见[发布记录](../unified-account-referral-production-release-20261017.md)。指定测试手机号已释放，本次仅修改设计稿，不再操作生产账号。
+初版邀请后台与管理视图已部署；完整线上首注册闭环待新入口接入后验收，见[发布记录](../releases/unified-account-referral-production-release-20261017.md)。指定测试手机号已释放，本次仅修改设计稿，不再操作生产账号。
 
 ## 设计证据
 

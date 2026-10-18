@@ -10,4 +10,4 @@
 
 身份实现在 aibuzz-id README §26，无新数据库迁移、env 或客户端授权；已同步发布 ID、server、web-aiavatar、admin。账号中心原仓未提交的资料编辑不在范围内。
 
-验证：ID 专项 9 项（正常 OIDC code/PKCE 与刷新、票据重放、CSRF、停用与普通账号拒绝），产品后端专项 78 项、后台交互 3 项通过；admin/Studio 类型与 API 契约门通过。ID 全量 75 类、528 项全过，MySQL/Redis CI 成功；线上创建、复制、停用及同一链接两人入企均通过。版本、清理与证据见[发布记录](ip-studio-enterprise-invitation-production-release-20261017.md)。
+验证：ID 专项 9 项（正常 OIDC code/PKCE 与刷新、票据重放、CSRF、停用与普通账号拒绝），产品后端专项 78 项、后台交互 3 项通过；admin/Studio 类型与 API 契约门通过。ID 全量 75 类、528 项全过，MySQL/Redis CI 成功；线上创建、复制、停用及同一链接两人入企均通过。版本、清理与证据见[发布记录](releases/ip-studio-enterprise-invitation-production-release-20261017.md)。

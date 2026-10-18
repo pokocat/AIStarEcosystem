@@ -2,7 +2,7 @@
 
 > 2026-10-15 · 本地实现，未提交、未部署。浏览器结果仅在实际执行后登记。
 
-产品依据为 [企业方案](ip-studio-team-accounts-plan.md) 与 [E09/E10 任务卡](ip-studio-enterprise-development-tasks.md)。本记录只描述前端交付与本地验证，服务端积分、并发与迁移以对应集成验收记录为准。
+产品依据为 [企业方案](../ip-studio-team-accounts-plan.md) 与 [E09/E10 任务卡](../archive/ip-studio-enterprise-development-tasks.md)。本记录只描述前端交付与本地验证，服务端积分、并发与迁移以对应集成验收记录为准。
 
 ## 页面与交互
 

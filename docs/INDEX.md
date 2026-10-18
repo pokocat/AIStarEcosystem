@@ -3,7 +3,7 @@
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
 > last-reviewed：**2026-10-18**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
 > 根目录 `DEPLOYED.md` 并入 clip 方案；上一次内容性更新是 2026-10-07 / v0.201）。
-> 同日合入 Studio 统一画布主线（`codex/unified-ip-studio`，v0.202–v0.231 及 2026-10-17 的发布记录），其文档登记见 [§1.4](#14-studio-统一画布2026-10-主线)。
+> 同日合入 Studio 统一画布主线（`codex/unified-ip-studio`，v0.202–v0.231），新增 `docs/releases/` 放发布与验收记录；Studio 设计真源见 [§1.4](#14-studio-统一画布2026-10-主线)，记录见 [§7](#7-发布与验收记录docsreleases)。
 
 **目录约定**（新文档按这个放，细则见 [`AGENTS.md` §9](../AGENTS.md)）：
 
@@ -13,7 +13,9 @@
 | `docs/runbooks/` | 运维 / 联调**操作手册**（照着做就行的） | kebab-case |
 | `docs/audits/` | 带日期的**一次性审计 / 调研**，写完不再改 | `xxx-YYYY-MM.md` |
 | `docs/archive/` | **已落地或已被取代**的方案、关闭的 TODO 段；顶部一行写明现行真源在哪 | 原名 |
-| `docs/design/` | 子应用视觉系统（目前只有 celebrity；其他 app 的 `DESIGN*.md` 在各自目录） | — |
+| `docs/releases/` | **发布与验收记录**：上线制品与线上验收、本地实施验收的证据；配图放同名子目录 | 原名，新文件带日期 `-YYYYMMDD` |
+| `docs/design/` | 子应用视觉系统与设计稿：`celebrity/`、`studio/`（Studio 设计图）；其他 app 的 `DESIGN*.md` 在各自目录 | — |
+| `docs/prototypes/` · `docs/prompts/` · `docs/training/` | 设计原型说明、可复用的提示词、带截图的操作培训 | kebab-case |
 
 新人 agent 顺序：**[`AGENTS.md`](../AGENTS.md)** → 对应 `apps/<sub-app>/PRODUCT.md` → `apps/<sub-app>/README.md`。
 不动产品方向时，§1 的设计真源按需翻，不必通读。
@@ -82,39 +84,23 @@
 
 ### 1.4 Studio 统一画布（2026-10 主线）
 
-AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）在 `codex/unified-ip-studio` 上的方案、设计与验收。文件都在 `docs/` 根，尚未按上面的目录约定分拣；状态以各文档头注为准。
+AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。发布与验收记录见 [§7](#7-发布与验收记录docsreleases)，审计与评审见 §6；状态以各文档头注为准。
 
-**方案、设计与验收**
+**方案与设计**
 
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
 | [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [统一账号邀请关系方案](unified-account-referral-plan.md) | 账号中心邀请码、一张原始邀请关系表、注册时记录与直接查询；§9 复核后期本体/整体链路视图，不增加当前数据结构 | v0.5；ID/Studio 首版已发布，品牌邀请入口与完整线上验收待完成（last-reviewed 2026-10-17） |
 | [统一账号邀请 · 前端设计](unified-account-referral-frontend.md) | Studio 内邀请视图/链接管理、账号中心落地页与注册提示，含手机和失败状态 | v0.4；首版已发布，Studio 品牌邀请页先行设计（last-reviewed 2026-10-17） |
-| [统一账号邀请 · 本地验收](unified-account-referral-validation-20261017.md) | 两仓范围、ID/Studio 闭环、账号与共享 SDK/前端回归、MySQL、浏览器截图及发布边界 | 发布前本地证据；首版已发布、线上闭环待完成（last-reviewed 2026-10-17） |
-| [统一账号邀请 · 首版发布](unified-account-referral-production-release-20261017.md) | 两仓 SHA、CI、制品、V12、备份、账号释放及已验/待验范围 | 首版上线，完整线上验收待品牌入口修正（2026-10-17） |
 | [Studio 品牌邀请页设计](prototypes/studio-invitation-design.md) | 品牌、创作能力、朋友邀请、认证后返回 Studio；独立交互原型及桌面/手机截图 | 设计审阅稿，尚未替换线上（2026-10-17） |
-| [统一账号邀请链 · Astra 独立评审](unified-account-referral-astra-review-20261017.md) | `gpt-6-astra` 对 v0.2 完整方案的独立核对及风险记录 | 历史参考，未重新评审 v0.3；投影与事件设施不再属本期（last-reviewed 2026-10-17） |
-| [统一认证手机号与后台搜索发布验收](identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
-| [统一认证跨应用 SOP 复核](unified-identity-sop-audit-20261010.md) | 全生态在用客户端、资料/后台/竞态/事件消费复核；各仓修复与既有缺口 | 本轮本地完成、未发布；ClassVibe 生产停服及两项既有脚本门禁失败，Slides/Quickreel 完整接入未通过 |
-| [`docs/ip-studio-ui-release-20261010.md`](ip-studio-ui-release-20261010.md) | Studio 生产发布 | 统一界面与独立品牌更新的代码 SHA、发布包、备份、线上资源校验与视觉验收；当前前端 `fb4502a2`（last-reviewed 2026-10-10） |
-| [Studio 节点交互发布](ip-studio-node-release-20261011.md) | 素材上传、故事板、文本 AI 改稿与视频错误映射的发布/验收 | 2026-10-11 |
 | [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
-| [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **已生产发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
-| [企业积分生产发布](ip-studio-enterprise-production-release.md) | **f068b51d · 已开启** | 三服务发布、V56–V58、线上页面与存量钱包/账本/开通核对、备份及回退边界（last-reviewed 2026-10-15） |
-| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
-| [企业群发邀请实现与验收](ip-studio-enterprise-invitation-validation.md) | **已生产发布** | 90 天/一年可多人分享链接、品牌短信注册加入、V59 旧邀请清理与权限边界（last-reviewed 2026-10-17） |
-| [企业邀请与测试账号生产验收](ip-studio-enterprise-invitation-production-release-20261017.md) | **d8195896 · 已上线** | 同链接双成员入企、后台测试账号创建/入口/停用、V59、制品与清理；无需真实短信（last-reviewed 2026-10-17） |
 | [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
-| [企业积分完整交付验收](ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |
-| [企业积分第二批验收](ip-studio-enterprise-points-validation.md) | **E05–E06 测试与边界** | 划拨、人工财务、原充值来源、H2/MySQL及真实浏览器交易验收（last-reviewed 2026-10-15） |
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
-| [全能创作生产验收](ip-studio-assistant-production-acceptance.md) | **生产发布与真实生成验收** | 简化面板、文字采用、跨步骤节点依赖、六个旧测试修复；真实文字→图片→5秒视频，231积分，刷新与原节点复用通过（last-reviewed 2026-10-13） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
-| [`docs/ip-studio-ui-audit.md`](ip-studio-ui-audit.md) | **Studio 界面与交互审查** | impeccable审查、画布区域分离、统一人物选择与响应式验收；本地未发布（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
 | [Studio 视频模式](ip-studio-video-modes.md) | 产品 / 实施 | 原生首尾帧、全能参考、模型合同与费用校验；本地验证边界 |
 | [Studio 运镜标签](ip-studio-camera-motion.md) | 产品 / 实施 | 原生面板、展开编辑器与抽屉共用命名指令、光标插入、编辑/移除及正文保存；v0.211 本地 |
@@ -123,48 +109,22 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）在 `codex/unified-ip-s
 | [个人资产库与快速编辑方案](ip-studio-personal-asset-library-plan.md) | **实际产品方案，已生产发布** | 贴合现有 `/assets`、画布、人物详情及剧本素材面板；提取/快速完善不进一级导航；自动归集与跨画布引用（last-reviewed 2026-10-11） |
 | [个人资产库可交互原型](../prototypes/asset-library/README.md) | **停止迭代，不作为正式产品设计依据** | 独立本地演示，未接生产；用户改为评审实际产品方案；[演示边界](prototypes/asset-library-validation.md)（2026-10-11） |
 | [`docs/prompts/ip-character-sheet.md`](prompts/ip-character-sheet.md) | **人物设定图一次出图提示词** | 用户附图版式拆解、可换人物的提示词与整图参考出单独镜头；反推词，不称作者原词（last-reviewed 2026-10-08） |
-| [`docs/ip-studio-unified-canvas-validation.md`](ip-studio-unified-canvas-validation.md) | **统一 Studio 真实 Agnes 与确定性验证记录** | 样例与真实证据分开；三镜/双集/商品包装媒体、平台积分、恢复与下载、测试/构建/手机检查，以及声音和生产未验收边界（last-reviewed 2026-10-09） |
 | [平台后台模型管理接入](platform-model-management.md) | 模型管理 | 视频模型目录的智能优化开关、`endpointProbe` 读厂商目录、Studio 选模型走端点合同 |
 | [模型类型与应用开放范围](model-access-policy.md) | 模型管理 | 端点多类型标签 + 全部 / 指定应用开放，存于 `platform_config` 的 `ai.model-access.<endpointId>` |
 | [Studio 聚算模型配置](ip-studio-jusuan-models.md) | 模型管理 | Studio 文本 / 图片 / 视频只走聚算，端点与可选范围由后端管，浏览器不持密钥（2026-10-10） |
 | [Studio 平台配音定价接入](studio-platform-pricing.md) | 计价 | 配音发布价读取、任务价格快照与采用回执；动作 `studio.speech`，按秒 |
-| [管理明细与 Prompt 保存后续修复](admin-pagination-prompt-cas.md) | 运营后台 | 用量明细库内分页与固定 asOf、Prompt 保存并发保护（2026-10-13） |
 | [Studio 邀请页：既有设计系统核对](prototypes/studio-invitation-design-system-check.md) | 设计 | 邀请页设计稿对照 Studio DESIGN.md / PRODUCT.md 的核对；只是设计稿，不代表线上（2026-10-17） |
 
-**发布与验收记录**
+**其他设计与参考**
 
 - [资产库独立设计原型](../prototypes/asset-library/README.md)：[设计方向](prototypes/asset-library-direction.md)、[设计检查](prototypes/asset-library-design-check.md)与[原型验证](prototypes/asset-library-validation.md)；静态原型，与业务代码分离（last-reviewed: 2026-10-17）。
-- [项目卡片生产发布](studio-project-cards-release-20261017.md)：真实内容预览、固定／自动封面、上线制品及真实浏览器验收；已发布（last-reviewed: 2026-10-17）。
-- [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收及浏览器限制；已发布（last-reviewed: 2026-10-17）。
-- [全仓表单聚焦样式检查](form-control-focus-audit.md)：输入、下拉、文本域及组合控件的焦点归属修复、74 项组件回归与真实本地页面验证；代码已生产发布（last-reviewed: 2026-10-17）。
-- [导航与内容组织定稿](studio-information-architecture.md)、[设计图片](studio-v3-design-review.md)、[UI规格](studio-commerce-ui-design.md)、[开发任务](studio-commerce-development-tasks.md)、[现状审计](studio-commerce-current-page-audit.md)：设计与剩余任务（last-reviewed: 2026-10-16）。
-- [实施与验收](studio-workspace-refactor-validation.md)：七项导航、独立项目、模板画布、IP资产合并、存量账号/记录复用及【待建设】边界；代码已发布（last-reviewed: 2026-10-17）。
+- [导航与内容组织定稿](studio-information-architecture.md)、[设计图片](studio-v3-design-review.md)、[UI规格](studio-commerce-ui-design.md)、[开发任务](studio-commerce-development-tasks.md)、[现状审计](audits/studio-commerce-current-page-audit-2026-10.md)：设计与剩余任务（last-reviewed: 2026-10-16）。
 - Studio 对话快照分享 v0.217：见 [助手范围](ip-studio-assistant-context.md) 与统一验证§28；last-reviewed: 2026-10-08，本地未发布。
 - [模型接入端点并发与排队](ai-endpoint-generation-queue.md) · v0.220；last-reviewed: 2026-10-09，本地未发布。
-- [Studio 生产发布与计价](ip-studio-production-release.md) · v0.228 定价快照、V48 迁移及上线记录；last-reviewed: 2026-10-10。
 - [AiAvatar 账号与旧 Studio 界面统一](aiavatar-account-unification.md) · v0.230 桌面外壳、旧深链兼容与验收边界；last-reviewed: 2026-10-10。
-- [个人资产库闭环验收](ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地与生产验收通过，含 V52 和发布制品记录；last-reviewed: 2026-10-11。
 - [复刻创作：全片创作拆解与视频拉片](ip-studio-recreation.md)：视频入口、报告契约、分段裁切、逐段Markdown及恐龙视频验收。last-reviewed: 2026-10-15。
 - [视频拉片操作手册](training/studio-film-study.md)：6步实操截图，覆盖开始、进度、播放、文档编辑与导出。last-reviewed: 2026-10-15。
-- [视频拉片技术分享：媒体工程、模型理解、成本与音频补全](studio-film-study-technical-sharing-20261017.md)：程序／LLM分工、资源与积分、模型候选；拉片仅提取原声，字幕等后续放在音频节点，含本地实施与验收边界。last-reviewed: 2026-10-17。
-- [Studio原声提取发布](studio-source-audio-release-20261017.md)：本次提交与制品、用户视频的已有媒体结果、直接发布及未追加业务验收边界。last-reviewed: 2026-10-17。
 - [企业生成入口与扣费引用](ip-studio-enterprise-generation-entry-map.md)
-- [企业产品场景端到端验收](ip-studio-enterprise-scenario-acceptance.md)
-- [企业发布准备与回退](ip-studio-enterprise-release-readiness.md)
-- [企业完整界面验收](ip-studio-enterprise-ui-validation.md)
-- [视频解析与拉片生产发布](studio-film-study-production-release.md)：版本、独立媒体运行时、验收范围与备份。
-- [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
-- [统一画布封面生产发布](studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
-- [画布分组说明与复刻模板精简](studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
-- [Seedance 2.0 接入与生产发布](studio-seedance-2026-10-14-release.md)：端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）。
-- [视频模型按开放范围生效](studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
-- [图片上传与模型 404 修复](studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
-- [创作输入框修复](studio-prompt-ime-release-20261017.md)：中文输入法组词时占位提示重叠；已发布 dd228379（2026-10-17）。
-- [生成付款默认设置](studio-billing-default-release-20261017.md)：未加入企业的账号直接用个人积分；已发布 a2221b9a（2026-10-17）。
-- [图片压缩与全仓输入控件修复](studio-images-and-controls-release-20261017.md)：16 张界面配图压缩 96.95%、输入控件热修；已发布（2026-10-17）。
-- [视频节点暖白配色发布](studio-video-node-warm-production-20261017.md)：2011deda 上线记录（2026-10-17）。
-- [助手正文字体统一](studio-body-font-release-20261017.md)：助手面板改用共享正文字体；已发布（2026-10-17）。
-- [官方内容管理页展示修复](studio-demos-layout-release-20261018.md)：`/projects/demos` 手机布局修复，仅发布 web-aiavatar（2026-10-18）。
 
 **账号中心对接**：接入 SOP 见 [`aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)， §7.9 / §10.6 包含资料来源、手机号读取、后台搜索、分页、换绑、存量补齐与本地重启验收（last-reviewed 2026-10-10）。
 
@@ -222,8 +182,58 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）在 `codex/unified-ip-s
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |
 | [`docs/audits/admin-alignment-audit-2026-06.md`](audits/admin-alignment-audit-2026-06.md) | admin ↔ server ↔ 子应用三端对齐审计：10 项全部处置；文末「长期防 drift 约定」仍有效 |
 | [`docs/audits/face-beauty-research-2026-06.md`](audits/face-beauty-research-2026-06.md) | 形象精调 / 美颜方案调研：浏览器端确定性美颜（已采纳）vs 云 API vs i2i |
+| [`docs/audits/form-control-focus-audit-2026-10.md`](audits/form-control-focus-audit-2026-10.md) | 全仓输入、下拉、文本域与组合控件的重复聚焦框检查：焦点归属修复、74 项组件回归；代码已发布（2026-10-17） |
+| [`docs/audits/ip-studio-ui-audit-2026-10.md`](audits/ip-studio-ui-audit-2026-10.md) | Studio 画布界面与交互审查：区域分离、人物选择统一、三档宽度响应式（2026-10-08，v0.206） |
+| [`docs/audits/studio-commerce-current-page-audit-2026-10.md`](audits/studio-commerce-current-page-audit-2026-10.md) | 线上 Studio 页面与带货分发现状核对，是导航定稿和剧情带货开发任务的依据（2026-10-16） |
+| [`docs/audits/unified-account-referral-astra-review-2026-10.md`](audits/unified-account-referral-astra-review-2026-10.md) | `gpt-6-astra` 对统一账号邀请链 v0.2 方案的独立评审与风险记录；v0.3 未复审（2026-10-17） |
+| [`docs/audits/unified-identity-sop-audit-2026-10.md`](audits/unified-identity-sop-audit-2026-10.md) | 统一认证发布与跨应用 SOP 复核：资料、后台、竞态修复与既有缺口（2026-10-10） |
+| [`docs/audits/studio-film-study-technical-sharing-2026-10.md`](audits/studio-film-study-technical-sharing-2026-10.md) | 视频拉片技术分享：媒体工程、模型理解、成本与音频补全，程序和大模型各管什么（2026-10-17） |
 
-## 7. 待办与归档
+## 7. 发布与验收记录（`docs/releases/`）
+
+上线制品、线上验收与本地实施验收的证据，写完基本不再改。现行设计以 §1 的真源为准。
+
+| 文档 | 主题 | 内容与状态 |
+|---|---|---|
+| [统一账号邀请 · 本地验收](releases/unified-account-referral-validation-20261017.md) | 两仓范围、ID/Studio 闭环、账号与共享 SDK/前端回归、MySQL、浏览器截图及发布边界 | 发布前本地证据；首版已发布、线上闭环待完成（last-reviewed 2026-10-17） |
+| [统一账号邀请 · 首版发布](releases/unified-account-referral-production-release-20261017.md) | 两仓 SHA、CI、制品、V12、备份、账号释放及已验/待验范围 | 首版上线，完整线上验收待品牌入口修正（2026-10-17） |
+| [统一认证手机号与后台搜索发布验收](releases/identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
+| [`docs/releases/ip-studio-ui-release-20261010.md`](releases/ip-studio-ui-release-20261010.md) | Studio 生产发布 | 统一界面与独立品牌更新的代码 SHA、发布包、备份、线上资源校验与视觉验收；当前前端 `fb4502a2`（last-reviewed 2026-10-10） |
+| [Studio 节点交互发布](releases/ip-studio-node-release-20261011.md) | 素材上传、故事板、文本 AI 改稿与视频错误映射的发布/验收 | 2026-10-11 |
+| [企业积分生产发布](releases/ip-studio-enterprise-production-release.md) | **f068b51d · 已开启** | 三服务发布、V56–V58、线上页面与存量钱包/账本/开通核对、备份及回退边界（last-reviewed 2026-10-15） |
+| [企业积分第一批验收](releases/ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
+| [企业群发邀请实现与验收](releases/ip-studio-enterprise-invitation-validation.md) | **已生产发布** | 90 天/一年可多人分享链接、品牌短信注册加入、V59 旧邀请清理与权限边界（last-reviewed 2026-10-17） |
+| [企业邀请与测试账号生产验收](releases/ip-studio-enterprise-invitation-production-release-20261017.md) | **d8195896 · 已上线** | 同链接双成员入企、后台测试账号创建/入口/停用、V59、制品与清理；无需真实短信（last-reviewed 2026-10-17） |
+| [企业积分完整交付验收](releases/ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |
+| [企业积分第二批验收](releases/ip-studio-enterprise-points-validation.md) | **E05–E06 测试与边界** | 划拨、人工财务、原充值来源、H2/MySQL及真实浏览器交易验收（last-reviewed 2026-10-15） |
+| [全能创作生产验收](releases/ip-studio-assistant-production-acceptance.md) | **生产发布与真实生成验收** | 简化面板、文字采用、跨步骤节点依赖、六个旧测试修复；真实文字→图片→5秒视频，231积分，刷新与原节点复用通过（last-reviewed 2026-10-13） |
+| [`docs/releases/ip-studio-unified-canvas-validation.md`](releases/ip-studio-unified-canvas-validation.md) | **统一 Studio 真实 Agnes 与确定性验证记录** | 样例与真实证据分开；三镜/双集/商品包装媒体、平台积分、恢复与下载、测试/构建/手机检查，以及声音和生产未验收边界（last-reviewed 2026-10-09） |
+| [管理明细与 Prompt 保存后续修复](releases/admin-pagination-prompt-cas.md) | 运营后台 | 用量明细库内分页与固定 asOf、Prompt 保存并发保护（2026-10-13） |
+
+- [项目卡片生产发布](releases/studio-project-cards-release-20261017.md)：真实内容预览、固定／自动封面、上线制品及真实浏览器验收；已发布（last-reviewed: 2026-10-17）。
+- [生产发布记录](releases/studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收及浏览器限制；已发布（last-reviewed: 2026-10-17）。
+- [实施与验收](releases/studio-workspace-refactor-validation.md)：七项导航、独立项目、模板画布、IP资产合并、存量账号/记录复用及【待建设】边界；代码已发布（last-reviewed: 2026-10-17）。
+- [Studio 生产发布与计价](releases/ip-studio-production-release.md) · v0.228 定价快照、V48 迁移及上线记录；last-reviewed: 2026-10-10。
+- [个人资产库闭环验收](releases/ip-studio-asset-library-validation.md) · 剧本内提取、快速完善与新画布引用；本地与生产验收通过，含 V52 和发布制品记录；last-reviewed: 2026-10-11。
+- [Studio原声提取发布](releases/studio-source-audio-release-20261017.md)：本次提交与制品、用户视频的已有媒体结果、直接发布及未追加业务验收边界。last-reviewed: 2026-10-17。
+- [企业产品场景端到端验收](releases/ip-studio-enterprise-scenario-acceptance.md)
+- [企业发布准备与回退](releases/ip-studio-enterprise-release-readiness.md)
+- [企业完整界面验收](releases/ip-studio-enterprise-ui-validation.md)
+- [视频解析与拉片生产发布](releases/studio-film-study-production-release.md)：版本、独立媒体运行时、验收范围与备份。
+- [项目与灵感统一封面验收](releases/studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
+- [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
+- [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
+- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）。
+- [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
+- [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
+- [创作输入框修复](releases/studio-prompt-ime-release-20261017.md)：中文输入法组词时占位提示重叠；已发布 dd228379（2026-10-17）。
+- [生成付款默认设置](releases/studio-billing-default-release-20261017.md)：未加入企业的账号直接用个人积分；已发布 a2221b9a（2026-10-17）。
+- [图片压缩与全仓输入控件修复](releases/studio-images-and-controls-release-20261017.md)：16 张界面配图压缩 96.95%、输入控件热修；已发布（2026-10-17）。
+- [视频节点暖白配色发布](releases/studio-video-node-warm-production-20261017.md)：2011deda 上线记录（2026-10-17）。
+- [助手正文字体统一](releases/studio-body-font-release-20261017.md)：助手面板改用共享正文字体；已发布（2026-10-17）。
+- [官方内容管理页展示修复](releases/studio-demos-layout-release-20261018.md)：`/projects/demos` 手机布局修复，仅发布 web-aiavatar（2026-10-18）。
+
+## 8. 待办与归档
 
 | 文档 | 用途 |
 |---|---|
@@ -234,6 +244,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）在 `codex/unified-ip-s
 | [`docs/archive/aiavatar-asset-platform-plan-2026-07.md`](archive/aiavatar-asset-platform-plan-2026-07.md) | 2026-07 数字资产平台定位分析，被 asset-hub-redesign 取代 |
 | [`docs/archive/material-ops-ai-text-plan.md`](archive/material-ops-ai-text-plan.md) | 素材运营文本三件接真 LLM，v0.40 已落地 |
 | [`docs/archive/aiavatar-progress-2026-05.md`](archive/aiavatar-progress-2026-05.md) | 首版 AiAvatar 实施台账；文中 `aiavatar_*` 表已删（V8），只作历史 |
+| [`docs/archive/ip-studio-enterprise-development-tasks.md`](archive/ip-studio-enterprise-development-tasks.md) | Studio 企业积分 E01–E12 开发任务与验收标准，已全部上线；现行真源 [`ip-studio-team-accounts-plan.md`](ip-studio-team-accounts-plan.md) |
 
 ---
 

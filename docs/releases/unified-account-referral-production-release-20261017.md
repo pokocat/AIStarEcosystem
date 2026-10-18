@@ -28,7 +28,7 @@ Studio 真实 API、正式 ID issuer、企业入口开关沿用线上设置，mo
 7. 邀请人积分始终为 295；新账号验收时没有钱包行，邀请链未发积分、返佣或手工改动钱包。数据库未人工插入注册关系。
 8. 公开预览只返回展示名，`no-store`、精确 CORS 且无 credentials；匿名本人 API 401、非允许来源预检 403、失效邀请 404。最终 ID 失效文案为“这份邀请已失效。”，不含 Studio 品牌。
 
-[生产邀请人视图](prototypes/studio-invitation-live-preview/production-inviter.png)。本地桌面/手机视觉、读取失败和错误验证码状态见[实施对照](prototypes/studio-invitation-design-system-check.md)。老账号不重绑、并发唯一关系、运营查看状态不发码/不注册等由对应自动化覆盖；不把这些全部表述为生产短信重复注册实测。真实微信网关与跨设备扫码不在本次短信交付范围内。
+[生产邀请人视图](../prototypes/studio-invitation-live-preview/production-inviter.png)。本地桌面/手机视觉、读取失败和错误验证码状态见[实施对照](../prototypes/studio-invitation-design-system-check.md)。老账号不重绑、并发唯一关系、运营查看状态不发码/不注册等由对应自动化覆盖；不把这些全部表述为生产短信重复注册实测。真实微信网关与跨设备扫码不在本次短信交付范围内。
 
 ## 既有产品开通策略（独立于邀请）
 
@@ -44,7 +44,7 @@ Studio 真实 API、正式 ID issuer、企业入口开关沿用线上设置，mo
 
 ## 首版历史记录（以下为当时状态，不代表当前状态）
 
-2026-10-17 UTC。**ID 与 Studio 首版已提交、推送并发布，但线上首次注册闭环尚未完成验收。** 用户指出通用 ID 邀请页脱离 Studio，当前按“先设计”要求，先审阅 [Studio 品牌邀请页](prototypes/studio-invitation-design.md)；应用入口与认证回跳修正尚未发布。不能据本记录宣称整体功能已通过用户验收。
+2026-10-17 UTC。**ID 与 Studio 首版已提交、推送并发布，但线上首次注册闭环尚未完成验收。** 用户指出通用 ID 邀请页脱离 Studio，当前按“先设计”要求，先审阅 [Studio 品牌邀请页](../prototypes/studio-invitation-design.md)；应用入口与认证回跳修正尚未发布。不能据本记录宣称整体功能已通过用户验收。
 
 ### 发布真值
 

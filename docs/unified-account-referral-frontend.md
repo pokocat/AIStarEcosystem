@@ -138,7 +138,7 @@ https://id.aibuzz.cn/i/……        [复制链接]
 5. 320px/390px 与桌面无横向溢出；键盘和无脚本流程可用。
 6. 普通用户无法查看别人的邀请列表，匿名页不泄露联系方式或完整关系网。
 
-本地已验证生成/复制邀请链接、接受邀请、短信新注册的真实成功反馈、双方记录、320px/390px 与桌面、关闭脚本后查看与手动复制入口。专项测试覆盖已有账号、微信网页/扫码和小程序 grant、无效码、CSRF、权限与并发。具体证据及未验收范围见 [验收记录](unified-account-referral-validation-20261017.md)。
+本地已验证生成/复制邀请链接、接受邀请、短信新注册的真实成功反馈、双方记录、320px/390px 与桌面、关闭脚本后查看与手动复制入口。专项测试覆盖已有账号、微信网页/扫码和小程序 grant、无效码、CSRF、权限与并发。具体证据及未验收范围见 [验收记录](releases/unified-account-referral-validation-20261017.md)。
 
 实页结构：`aibuzz-id` 的 `invitation.html`、`account-invitations.html`、`invitation-scan.html`，复制增强位于 `invitations.js`，布局位于 `invitations.css`。登录页仅增加邀请提示；公众号扫码在授权建号前增加说明与一次明确确认。
 
@@ -156,4 +156,4 @@ Studio 新增公开 `/invite/{code}`，按已确认原型直接展示手机号�
 
 ID 注册只写身份及首次邀请关系；进入 Studio 后产品按既有开通和权益策略建档，不因邀请新增赋权。本次现网既有策略为 GRANT_ALL，已在生产记录单独说明。
 
-生产状态：2026-10-17 已完成直接真实短信注册、进入 Studio、双方邀请记录、生成/复制链接及数据库一致性验收，见[发布记录](unified-account-referral-production-release-20261017.md)。
+生产状态：2026-10-17 已完成直接真实短信注册、进入 Studio、双方邀请记录、生成/复制链接及数据库一致性验收，见[发布记录](releases/unified-account-referral-production-release-20261017.md)。

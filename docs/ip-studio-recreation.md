@@ -116,11 +116,11 @@
 
 ## 分段拉片与生产发布
 
-2026-10-17 技术分享与音频增量见[媒体工程、模型理解、成本与音频补全](studio-film-study-technical-sharing-20261017.md)。线上版本保留裁切视频的原音轨；本轮新增解析／拉片自动提取完整原声WAV，作为普通音频节点供播放、下载及现有合成入口选择，无音轨不创建占位。`output.sourceAudio`先checkpoint、出wire签URL；分段继续复用原音频，前端同源跨解析/拉片复用节点，不覆盖编辑或重建已删节点。不新增模型调用或积分项。ASR、OCR、音频翻译和人声／BGM分离留在音频节点后续单独触发，本次不实现。原声提取已发布`f8d8cf1b`，按用户要求未追加页面验收，见[发布记录](studio-source-audio-release-20261017.md)。
+2026-10-17 技术分享与音频增量见[媒体工程、模型理解、成本与音频补全](audits/studio-film-study-technical-sharing-2026-10.md)。线上版本保留裁切视频的原音轨；本轮新增解析／拉片自动提取完整原声WAV，作为普通音频节点供播放、下载及现有合成入口选择，无音轨不创建占位。`output.sourceAudio`先checkpoint、出wire签URL；分段继续复用原音频，前端同源跨解析/拉片复用节点，不覆盖编辑或重建已删节点。不新增模型调用或积分项。ASR、OCR、音频翻译和人声／BGM分离留在音频节点后续单独触发，本次不实现。原声提取已发布`f8d8cf1b`，按用户要求未追加页面验收，见[发布记录](releases/studio-source-audio-release-20261017.md)。
 
 视频节点「素材拆解 → 拉片」及全片报告「继续拉片」提交 `operation=recreation, mode=segments`，最多8段，连续覆盖原片。真实裁切为可播放视频，逐段生成可编辑 Markdown，增量落入画布的片段分组；确认后关闭面板，进度在节点显示。刷新匹配原任务，失败继续复用已有产物，已编辑的文档不被完成任务覆盖。模型正文不做语义或章节齐全校验。
 
-2026-10-16 已生产发布，实际版本、生产媒体运行时、验收边界和备份见[发布记录](studio-film-study-production-release.md)；操作见[培训手册](training/studio-film-study.md)。独立媒体目录通过 `AEP_STUDIO_RECREATION_MEDIA_BIN` 配置，仅影响本功能；FFmpeg须支持5.1以上参数，受理前探针失败不冻结积分。
+2026-10-16 已生产发布，实际版本、生产媒体运行时、验收边界和备份见[发布记录](releases/studio-film-study-production-release.md)；操作见[培训手册](training/studio-film-study.md)。独立媒体目录通过 `AEP_STUDIO_RECREATION_MEDIA_BIN` 配置，仅影响本功能；FFmpeg须支持5.1以上参数，受理前探针失败不冻结积分。
 
 ## 视频上传入口与编码兼容（2026-10-17）
 

@@ -1,13 +1,13 @@
 # 待办与已知问题
 
-- [x] ~~项目列表画布卡片只有小地图，无法识别内容~~ **已生产发布（4ed3ecf9），2026-10-17**：真实内容预览、正文摘要、去重数量、固定／自动封面、二级流程预览；封面归属与失败重试测试、桌面／手机布局验证见 `docs/studio-workspace-refactor-validation.md`。
+- [x] ~~项目列表画布卡片只有小地图，无法识别内容~~ **已生产发布（4ed3ecf9），2026-10-17**：真实内容预览、正文摘要、去重数量、固定／自动封面、二级流程预览；封面归属与失败重试测试、桌面／手机布局验证见 `docs/releases/studio-workspace-refactor-validation.md`。
 
 ## Studio 工作台重构与发行（2026-10-16）
 
-- [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 已生产发布（81778bef）**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/form-control-focus-audit.md`。
+- [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 已生产发布（81778bef）**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/audits/form-control-focus-audit-2026-10.md`。
 - [x] ~~项目、IP 与发行筛选的原生菜单风格割裂~~ **2026-10-17 已生产发布（81778bef）**：八处共用 `StudioSelect`，菜单在字段下方展开；21 项测试、类型检查及桌面/375px 手机浏览器验证见同一检查记录。
 
-- [x] ~~七项导航、独立项目、场景工坊、IP 并入资产与灵感整理~~ **2026-10-17 已生产发布（81778bef）**：原画布路径保留，剧情带货/爆款复刻引用普通模板，IP完整详情、旧入口参数兼容；验收见 `docs/studio-workspace-refactor-validation.md`。
+- [x] ~~七项导航、独立项目、场景工坊、IP 并入资产与灵感整理~~ **2026-10-17 已生产发布（81778bef）**：原画布路径保留，剧情带货/爆款复刻引用普通模板，IP完整详情、旧入口参数兼容；验收见 `docs/releases/studio-workspace-refactor-validation.md`。
 - [x] ~~发行复用存量账号与发布记录~~ **2026-10-17 已生产发布（81778bef）**：`StudioDistribution` 读本人账号/批次/任务，接原扫码绑定、验证与解绑；仅精确共享账号域和发布 GET 路由，未进行真实平台扫码发布。
 - [ ] **画布商品选品与剧本融合【待建设】**：`StudioSceneWorkshop` 已可创建剧情带货模板；商品库/抖音链接选择、商品事实进入剧本编辑器改稿请求及局部采纳，按 C01-C06 后续完成，不新增业务项目域。
 - [ ] **画布成片投递和发布草稿【待建设】**：`StudioDistribution` 仅显示状态；需要验证本人精确输出来源、可持久化非执行草稿与显式发布受理，不能用现有 PublishJob.createBatch 冒充草稿。
@@ -31,29 +31,29 @@
 
 ### 2026-10-17 · 企业群发邀请
 
-- [x] **群发分享与注册加入闭环**：90 天/一年、多人可用链接、企业宣传片新头图；本地短信流程与 MySQL 通过，已生产发布。见 [本地记录](docs/ip-studio-enterprise-invitation-validation.md)。
-- [x] **企业邀请及后台测试账号发布、线上验收**：ID `0dc48cb9` + 产品 `d8195896`（server V59、Studio、admin）；同一链接两位独立测试身份正常 OIDC 后加入企业，后台创建/复制/停用通过；临时企业已关闭、邀请撤销、4 个验收身份停用，账本 810 条未变。按用户要求无需短信；真实短信首次注册本次未重测，见 [生产记录](docs/ip-studio-enterprise-invitation-production-release-20261017.md)。
+- [x] **群发分享与注册加入闭环**：90 天/一年、多人可用链接、企业宣传片新头图；本地短信流程与 MySQL 通过，已生产发布。见 [本地记录](docs/releases/ip-studio-enterprise-invitation-validation.md)。
+- [x] **企业邀请及后台测试账号发布、线上验收**：ID `0dc48cb9` + 产品 `d8195896`（server V59、Studio、admin）；同一链接两位独立测试身份正常 OIDC 后加入企业，后台创建/复制/停用通过；临时企业已关闭、邀请撤销、4 个验收身份停用，账本 810 条未变。按用户要求无需短信；真实短信首次注册本次未重测，见 [生产记录](docs/releases/ip-studio-enterprise-invitation-production-release-20261017.md)。
 
 ### 2026-10-17 · 拉片原声与音频节点后续
 
-- [x] ~~拉片提取完整原声~~ **2026-10-17 已生产发布（f8d8cf1b）**：`StudioSourceAudio.extract`为解析/拉片提取本人WAV，`output.sourceAudio`持久检查点与签名，普通音频节点稳定落地、跨同源任务复用；可用现有成片音轨选择替换音轨，无ASR或新增模型调用；用户要求直接发布，未追加页面验收。已有证据见[技术分享第7节](docs/studio-film-study-technical-sharing-20261017.md#7-按产品边界收简拉片只提取原声)。
+- [x] ~~拉片提取完整原声~~ **2026-10-17 已生产发布（f8d8cf1b）**：`StudioSourceAudio.extract`为解析/拉片提取本人WAV，`output.sourceAudio`持久检查点与签名，普通音频节点稳定落地、跨同源任务复用；可用现有成片音轨选择替换音轨，无ASR或新增模型调用；用户要求直接发布，未追加页面验收。已有证据见[技术分享第7节](docs/audits/studio-film-study-technical-sharing-2026-10.md#7-按产品边界收简拉片只提取原声)。
 - [ ] **音频节点高阶工具（后续独立能力）**：字幕提取/ASR、编辑与SRT/VTT导出、音频翻译、人声/背景音分离留在音频节点显式触发，不纳入拉片必经流程。当前`audioAnalyzed=false`不变，供应商与报价尚未确认；既有原生视频全能参考链可传音频，具体开放以模型合同为准；音频节点高级操作仍未接入。
 
 ### 2026-10-15 · 主子账号与算力管理（已生产发布）
 
-- [x] **评审并工程化主子账号方案**：方案、功能、本地产品场景验收与发布准备已完成。见 [v0.4 精简方案](docs/ip-studio-team-accounts-plan.md) 和 [开发任务清单](docs/ip-studio-enterprise-development-tasks.md)。用户已确认分配积分仍归企业、可以回收，产品开通沿用现有逻辑、不做企业席位；采用单企业归属、固定 RBAC、人工充值与批量分配/回收，不做月配额或多团队。任务进度以以下条目为准；2026-10-15 已部署 `f068b51d` 并开启企业功能，见 [生产发布记录](docs/ip-studio-enterprise-production-release.md)；本地完整场景结果见 [交付验收](docs/ip-studio-enterprise-complete-validation.md)。
-- [x] ~~E01 契约与规则~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：类型/API调用层、28项schema和基础/计划路径、权限/幂等业务规则；现有开通逻辑保留。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
-- [x] ~~E02 数据迁移~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：V56企业与账户结构、当前归属唯一约束、个人钱包元数据回填；H2/MySQL历史金额与账本保留验证。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
-- [x] ~~E03 企业 RBAC~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：13个基础操作覆盖邀请/撤销/角色/策略/双方移交/审计；唯一归属和竞争移交并发验证。停用/退出资金处理仍属E08。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
-- [x] ~~E04 钱包核心兼容~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：按walletId共用核心、原userId包装、wallet→hold锁序、引用核对、划拨类型及统计排除、个人和财务回归。见 [验收记录](docs/ip-studio-enterprise-foundation-validation.md)。
-- [x] ~~E05 分配/回收~~ **2026-10-15 本地完成**：1–100人原子划拨、预览重验、正文幂等、原来源/桶保留，H2/MySQL各17项通过；真实页面完成2人分配回收。见 [第二批验收](docs/ip-studio-enterprise-points-validation.md)。
-- [x] ~~E06 财务充值与退款~~ **2026-10-15 本地完成**：V57原充值来源、固定企业钱包、凭据去重、人工核准/退款和汇总；H2/MySQL各15项通过、迁移两库通过；浏览器充值→分配/回收→人工退款通过。见 [第二批验收](docs/ip-studio-enterprise-points-validation.md)。
+- [x] **评审并工程化主子账号方案**：方案、功能、本地产品场景验收与发布准备已完成。见 [v0.4 精简方案](docs/ip-studio-team-accounts-plan.md) 和 [开发任务清单](docs/archive/ip-studio-enterprise-development-tasks.md)。用户已确认分配积分仍归企业、可以回收，产品开通沿用现有逻辑、不做企业席位；采用单企业归属、固定 RBAC、人工充值与批量分配/回收，不做月配额或多团队。任务进度以以下条目为准；2026-10-15 已部署 `f068b51d` 并开启企业功能，见 [生产发布记录](docs/releases/ip-studio-enterprise-production-release.md)；本地完整场景结果见 [交付验收](docs/releases/ip-studio-enterprise-complete-validation.md)。
+- [x] ~~E01 契约与规则~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：类型/API调用层、28项schema和基础/计划路径、权限/幂等业务规则；现有开通逻辑保留。见 [验收记录](docs/releases/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E02 数据迁移~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：V56企业与账户结构、当前归属唯一约束、个人钱包元数据回填；H2/MySQL历史金额与账本保留验证。见 [验收记录](docs/releases/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E03 企业 RBAC~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：13个基础操作覆盖邀请/撤销/角色/策略/双方移交/审计；唯一归属和竞争移交并发验证。停用/退出资金处理仍属E08。见 [验收记录](docs/releases/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E04 钱包核心兼容~~ **企业方案 v0.4 完成，2026-10-15（批次验收）**：按walletId共用核心、原userId包装、wallet→hold锁序、引用核对、划拨类型及统计排除、个人和财务回归。见 [验收记录](docs/releases/ip-studio-enterprise-foundation-validation.md)。
+- [x] ~~E05 分配/回收~~ **2026-10-15 本地完成**：1–100人原子划拨、预览重验、正文幂等、原来源/桶保留，H2/MySQL各17项通过；真实页面完成2人分配回收。见 [第二批验收](docs/releases/ip-studio-enterprise-points-validation.md)。
+- [x] ~~E06 财务充值与退款~~ **2026-10-15 本地完成**：V57原充值来源、固定企业钱包、凭据去重、人工核准/退款和汇总；H2/MySQL各15项通过、迁移两库通过；浏览器充值→分配/回收→人工退款通过。见 [第二批验收](docs/releases/ip-studio-enterprise-points-validation.md)。
 - [x] **E07 生成准入**：全部 Studio/原生入口显式付款、最终模型/在途准入、原任务授权与冻结、原生视频重试绑定完成；旧个人兼容。见 [入口映射](docs/ip-studio-enterprise-generation-entry-map.md)。
-- [x] **E08 结算与生命周期**：V58持久授权/回执、同事务部分结算与原任务恢复、停用/退出/重入旧退款归原企业；MySQL生命周期17/17。见 [完整验收](docs/ip-studio-enterprise-complete-validation.md)。
-- [x] **E09 企业/成员前端**：完整成员/邀请/授权/策略/移交、生命周期预览、两份余额、每次付款与记录；企业专项36项，桌面/390px实页验收。见 [界面验收](docs/ip-studio-enterprise-ui-validation.md)。
-- [x] **E10 财务前端**：企业搜索、资金/成员/划拨/消费查询及人工财务闭环完成，后台交互13项；原任务恢复仅平台运营，财务403。见 [界面验收](docs/ip-studio-enterprise-ui-validation.md)。
-- [x] **E11 集成验收**：18个产品场景按真实JPA/MySQL、本地HTTP/TLS与浏览器分别验证，迁移/个人兼容通过；三条未知任务实际核对并释放46，最终企业992/冻结0/消费8。见 [完整验收](docs/ip-studio-enterprise-complete-validation.md)。
-- [x] **E12 发布准备**：默认关闭/指定企业试点、原任务对账与兼容回退准备完成；真实关闭后端企业开关仍可个人生成（1992→1984），企业992不变，平台财务对账保留。已按本次授权发布 `f068b51d`，三服务/开关/V56–V58及线上只读验收通过，20钱包/781账本/132开通逐条未变；生产未登记模拟资金或调用收费模型。见 [生产记录](docs/ip-studio-enterprise-production-release.md)。见 [发布准备](docs/ip-studio-enterprise-release-readiness.md)。
+- [x] **E08 结算与生命周期**：V58持久授权/回执、同事务部分结算与原任务恢复、停用/退出/重入旧退款归原企业；MySQL生命周期17/17。见 [完整验收](docs/releases/ip-studio-enterprise-complete-validation.md)。
+- [x] **E09 企业/成员前端**：完整成员/邀请/授权/策略/移交、生命周期预览、两份余额、每次付款与记录；企业专项36项，桌面/390px实页验收。见 [界面验收](docs/releases/ip-studio-enterprise-ui-validation.md)。
+- [x] **E10 财务前端**：企业搜索、资金/成员/划拨/消费查询及人工财务闭环完成，后台交互13项；原任务恢复仅平台运营，财务403。见 [界面验收](docs/releases/ip-studio-enterprise-ui-validation.md)。
+- [x] **E11 集成验收**：18个产品场景按真实JPA/MySQL、本地HTTP/TLS与浏览器分别验证，迁移/个人兼容通过；三条未知任务实际核对并释放46，最终企业992/冻结0/消费8。见 [完整验收](docs/releases/ip-studio-enterprise-complete-validation.md)。
+- [x] **E12 发布准备**：默认关闭/指定企业试点、原任务对账与兼容回退准备完成；真实关闭后端企业开关仍可个人生成（1992→1984），企业992不变，平台财务对账保留。已按本次授权发布 `f068b51d`，三服务/开关/V56–V58及线上只读验收通过，20钱包/781账本/132开通逐条未变；生产未登记模拟资金或调用收费模型。见 [生产记录](docs/releases/ip-studio-enterprise-production-release.md)。见 [发布准备](docs/releases/ip-studio-enterprise-release-readiness.md)。
 
 ### 2026-10-08 · 统一 Studio 首版（v0.202 后续）
 
@@ -73,7 +73,7 @@
 
 ### v0.228 · 生产发布收尾（2026-10-10）
 
-- [ ] **Studio 新用户 OIDC 登录闭环验收证据**（2026-10-13 澄清）：[生产发布记录](docs/ip-studio-production-release.md) 已确认真实认证配置、匿名跳转账号中心和生产业务验收，但业务验收使用临时登录交接，未记录完整新用户 OIDC 登录闭环。先核对后续验收记录；若仍缺，补账号中心登录 → 回到 Studio → 读取本人画布的验收，无需重复付费生成。
+- [ ] **Studio 新用户 OIDC 登录闭环验收证据**（2026-10-13 澄清）：[生产发布记录](docs/releases/ip-studio-production-release.md) 已确认真实认证配置、匿名跳转账号中心和生产业务验收，但业务验收使用临时登录交接，未记录完整新用户 OIDC 登录闭环。先核对后续验收记录；若仍缺，补账号中心登录 → 回到 Studio → 读取本人画布的验收，无需重复付费生成。
 
 - [ ] 核实 x-dub 聚算每秒积分成本后开放口型生成。
 
@@ -292,7 +292,7 @@
 
 ### 2026-09-04 · 统一账号中心（服务在独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)，设计真源 `docs/unified-identity-plan.md`）
 
-- [x] **统一账号注册邀请关系 · 首版已发布，2026-10-17**：ID V12、首建事务记录、本体定义与查询权限；Studio `/invitations` 提供真实邀请视图、链接生成/复制/预览及分页刷新，桌面/手机账号入口已接通。共用 ID 真值，分佣奖励后续实现。账号原全量543项、此次ID专项15项，前端778项及共享SDK77项通过，见[验收记录](docs/unified-account-referral-validation-20261017.md)。首版已发布；Studio 品牌邀请页当前先设计，首次注册线上闭环与真微信验收尚待完成，见[发布记录](docs/unified-account-referral-production-release-20261017.md)。
+- [x] **统一账号注册邀请关系 · 首版已发布，2026-10-17**：ID V12、首建事务记录、本体定义与查询权限；Studio `/invitations` 提供真实邀请视图、链接生成/复制/预览及分页刷新，桌面/手机账号入口已接通。共用 ID 真值，分佣奖励后续实现。账号原全量543项、此次ID专项15项，前端778项及共享SDK77项通过，见[验收记录](docs/releases/unified-account-referral-validation-20261017.md)。首版已发布；Studio 品牌邀请页当前先设计，首次注册线上闭环与真微信验收尚待完成，见[发布记录](docs/releases/unified-account-referral-production-release-20261017.md)。
 
 - [ ] **identity · 无 `typ` 的历史后台令牌过渡兼容需按期删除**（v0.149）：`JwtAuthenticationFilter.LEGACY_ADMIN_ROLES` 让 v0.149 之前签的后台令牌（`role` 是 `SUPER_ADMIN`/`OPERATOR`/`FINANCE_ADMIN`、无 `typ`）继续拿后台权限，每次打 WARN。JWT TTL 7 天，**上线满 7 天后**删掉该字段与它的两处分支，否则「消费者令牌不得提权」这条闸只是半开。
 
@@ -1220,4 +1220,4 @@
 ### Studio 统一画布封面（2026-10-17）
 
 - [x] 项目/灵感共用人工封面 → 自动图片 → 画布缩略图，独立上传/选择/恢复/失败重试，21 项前端 + 91 项服务端测试及类型/契约检查通过，包含内置官方模板上传。
-- [x] 已提交部署 a4092626，线上上传/刷新/恢复自动与灵感封面已验收，记录见 docs/studio-shared-covers-production-20261017.md。
+- [x] 已提交部署 a4092626，线上上传/刷新/恢复自动与灵感封面已验收，记录见 docs/releases/studio-shared-covers-production-20261017.md。

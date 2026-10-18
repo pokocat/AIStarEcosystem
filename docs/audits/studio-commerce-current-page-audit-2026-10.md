@@ -1,4 +1,4 @@
-> 本轮范围修订：剧情带货与爆款复刻等入口都由模板画布承载，不新增独立带货项目、商品核对向导或专项项目管理。下文作为现状审计记录保留；方案以 [导航定稿](studio-information-architecture.md)、[最新任务清单](studio-commerce-development-tasks.md) 和 [图片设计](studio-v3-design-review.md) 为准。
+> 本轮范围修订：剧情带货与爆款复刻等入口都由模板画布承载，不新增独立带货项目、商品核对向导或专项项目管理。下文作为现状审计记录保留；方案以 [导航定稿](../studio-information-architecture.md)、[最新任务清单](../studio-commerce-development-tasks.md) 和 [图片设计](../studio-v3-design-review.md) 为准。
 
 # Studio 当前页面与带货分发增量设计依据
 
@@ -40,7 +40,7 @@
 
 ## 已确认的目标结构
 
-用户于 2026-10-16 确认：**首页｜画布·自由创作｜场景·专项创作｜灵感｜资产｜发行**。进入“场景·专项创作”后的页面标题为“场景工坊”。完整规则见 [Studio 导航与内容组织定稿](studio-information-architecture.md)。
+用户于 2026-10-16 确认：**首页｜画布·自由创作｜场景·专项创作｜灵感｜资产｜发行**。进入“场景·专项创作”后的页面标题为“场景工坊”。完整规则见 [Studio 导航与内容组织定稿](../studio-information-architecture.md)。
 
 现状事实与目标结构应分别阅读：上文五项导航是本轮已核对的线上现状；六项导航是尚未实施的用户定稿。此前独立增加带货、分发形成七项导航的提议已被替代。
 

@@ -18,7 +18,7 @@ V48 新增 `ai_model_providers.concurrency_limit` 与 `ai_generation_queue`。�
 
 排队不计入生成超时，不由孤儿冻结清扫器退款；用户明确停止或任务明确失败才按原账本流程释放。未知视频受理仍沿用原视频失败退款政策，保留容量票据不代表另收一次积分。存在等待/执行票据的端点禁止删除。
 
-验证以数据库并发测试、供应商调用计数和 UI 排队/停止回归为主，不触发收费模型或反复验收图片质量。具体结果见 [统一验收记录](ip-studio-unified-canvas-validation.md) §36。
+验证以数据库并发测试、供应商调用计数和 UI 排队/停止回归为主，不触发收费模型或反复验收图片质量。具体结果见 [统一验收记录](releases/ip-studio-unified-canvas-validation.md) §36。
 
 ## 排队位置（v0.221，本地未发布）
 

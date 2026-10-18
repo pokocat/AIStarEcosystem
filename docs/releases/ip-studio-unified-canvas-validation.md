@@ -1,6 +1,6 @@
 # 统一 Studio 实施与验证记录
 
-日期：2026-10-08。分支 `codex/unified-ip-studio`，**M0–M4、M6 双集及 M5 商品样片通过真实 Agnes 本地验收；聚算固定音色、试听与配音成片通过。X-Dub 同音频口型短样片通过，人物固定声音版本绑定通过，专属声音仍未接通，代码未提交、未发布**。范围沿用[统一方案](ip-studio-unified-canvas-plan.md)。用户已授权使用线上 Agnes 配置；只读获取对应配置后在隔离本地运行，线上原有用途绑定未修改；随后按用户指定新增聚算音频端点，见 §11。参数化模板、有限图片执行、归档和部分资产包已在本地实现，见 §14–16。**本轮按用户最新要求验收交互与功能，模型画质不作为通过条件，不再为效果反复生成。**
+日期：2026-10-08。分支 `codex/unified-ip-studio`，**M0–M4、M6 双集及 M5 商品样片通过真实 Agnes 本地验收；聚算固定音色、试听与配音成片通过。X-Dub 同音频口型短样片通过，人物固定声音版本绑定通过，专属声音仍未接通，代码未提交、未发布**。范围沿用[统一方案](../ip-studio-unified-canvas-plan.md)。用户已授权使用线上 Agnes 配置；只读获取对应配置后在隔离本地运行，线上原有用途绑定未修改；随后按用户指定新增聚算音频端点，见 §11。参数化模板、有限图片执行、归档和部分资产包已在本地实现，见 §14–16。**本轮按用户最新要求验收交互与功能，模型画质不作为通过条件，不再为效果反复生成。**
 
 ## 1. 已接通的链路
 
@@ -49,21 +49,21 @@ HTTP 验收项目 `IPP-6643e7cb`，IP `IP-70522`，人物 `DH-94860`：10 次主
 - 四个并发同键提交返回同一运行，同键改输入返回 409；采用主形象也幂等。
 - 剧本与分镜输出、三段视频、真实 ffmpeg 合成、音视频流、保存/刷新/重签、非本人 key 拒绝、作品回流通过。
 - 主形象升级后旧版本仍可引用，错误 key/版本组合拒绝；造型可引用且不改变主形象；fixture 模式原生收费入口被拒绝。
-- 合成文件实测 **24.032 秒、H.264、包含音频轨**。记录见 [.studio-e2e/http-e2e-report.json](../.studio-e2e/http-e2e-report.json)。
+- 合成文件实测 **24.032 秒、H.264、包含音频轨**。记录见 [.studio-e2e/http-e2e-report.json](../../.studio-e2e/http-e2e-report.json)。
 - 相同竖屏输入分别选择横屏/方形后，真实文件为 **1280×720 / 720×720、24.0 秒，均含音频**。修正了同尺寸输入走直接复制时忽略所选画幅的问题；默认竖屏仍保留原尺寸和音轨。
 
 浏览器项目 `IPP-900a3e00` 完整走过形象定稿、实际剧本编辑、拆出三镜、首帧、三段视频、片段顺序调整、真实合成与下载；提交在途刷新后继续恢复原任务。浏览器下载文件与服务端实际成片 SHA256 相同。
 
 第二项目 `IPP-87093a00` 从新建入口进入，引用原 IP，粘贴剧本并只改写指定正文，刷新后两版脚本保留。第一镜追加四张候选，比较并采用其中一张后，旧视频仍保留原首帧快照；合成输入仍对应明确选中的三条视频。
 
-375px 手机检查了故事板、创作面板、顶栏入口及无横向溢出；手机柔性提示允许继续打开画布，显式切换电脑版后 `data-layout=desktop` 在 375px 继续生效。样式改为从应用布局静态引入，避免动态画布热更新后样式缺失。桌面故事板与本地生产构建均检查通过。记录见 [.studio-e2e/browser-e2e-report.json](../.studio-e2e/browser-e2e-report.json)。
+375px 手机检查了故事板、创作面板、顶栏入口及无横向溢出；手机柔性提示允许继续打开画布，显式切换电脑版后 `data-layout=desktop` 在 375px 继续生效。样式改为从应用布局静态引入，避免动态画布热更新后样式缺失。桌面故事板与本地生产构建均检查通过。记录见 [.studio-e2e/browser-e2e-report.json](../../.studio-e2e/browser-e2e-report.json)。
 
 本地生产构建预览 `http://localhost:3018/projects/IPP-900a3e00` 已通过浏览器读取保存作品；三段视频与 24.032 秒成片的媒体 readyState=4，均无播放错误。预览截图：
 
-- [编译后故事板](../.studio-e2e/screenshots/production-storyboard.jpg)
-- [编译后成片及下载入口](../.studio-e2e/screenshots/production-work.jpg)
-- [375px 故事板](../.studio-e2e/screenshots/mobile-storyboard-confirmed.jpg)
-- [375px 创作面板](../.studio-e2e/screenshots/mobile-director.jpg)
+- [编译后故事板](../../.studio-e2e/screenshots/production-storyboard.jpg)
+- [编译后成片及下载入口](../../.studio-e2e/screenshots/production-work.jpg)
+- [375px 故事板](../../.studio-e2e/screenshots/mobile-storyboard-confirmed.jpg)
+- [375px 创作面板](../../.studio-e2e/screenshots/mobile-director.jpg)
 
 以上报告、截图和媒体保存在当前工作区忽略目录，属于本地证据；不随源代码提交。
 
@@ -276,7 +276,7 @@ IP 人物库按 Chrome 中实际观察的小云雀组织：一位人物一张卡
 
 工作台人物库、底部人物图标、节点参考、创作要求、商品人物与模板输入共用同一人物/素材详情选择器。节点参考确认后增加精确素材节点及入向连接，回到原节点输入；取消恢复原输入，不清空提示词。模板选择只回填当前输入槽，保留ipId/avatarId/version/lookId/storageKey并使旧计划失效，不提前实例化或生成。参考选择模式隐藏节点操作条，故事板/成片隐藏画布工具和缩放。
 
-本地Chrome使用既有真实素材验证了以上动线。前端33文件/245项、workspace类型检查、AiAvatar生产构建、API契约及diff检查通过。没有调用模型生成、改动线上提示词或发布代码；LibTV未实现的高级能力继续按对齐记录保留。详细问题与测量见[界面与交互审查](ip-studio-ui-audit.md)，最终界面证据为`.studio-e2e/ui-audit/desktop-final.png`。
+本地Chrome使用既有真实素材验证了以上动线。前端33文件/245项、workspace类型检查、AiAvatar生产构建、API契约及diff检查通过。没有调用模型生成、改动线上提示词或发布代码；LibTV未实现的高级能力继续按对齐记录保留。详细问题与测量见[界面与交互审查](../audits/ip-studio-ui-audit-2026-10.md)，最终界面证据为`.studio-e2e/ui-audit/desktop-final.png`。
 
 ## 18. Studio 首页入口与模板输入闭环（2026-10-08，未发布）
 
@@ -310,7 +310,7 @@ Chrome 真实入口验证：图片 `IPP-bf4bdcd6`、视频 `IPP-bcc883f8`、剧�
 
 Impeccable 原审查者收到同尺寸复截图、连续操作记录与提交规格测试后，对列出的 F1/F2 均判 resolved，最终 `disposition: ship`。此 verdict 只覆盖两项状态修复；已有66条令牌 advisory 按品牌体系保留，没有第二次 detector、扩大视觉改造或收费生成。审查与文档核对为 `.studio-e2e/video-modes/design-review.md`、`design-documentation.md`。
 
-本节验收范围是模式、界面交互、预检和协议组包，没有新增真实 H3 成片效果验收。五分钟长视频、多候选视频、运镜/特效预设及其余 LibTV 差距仍待实现，见[功能对齐记录](ip-studio-libtv-alignment.md)。
+本节验收范围是模式、界面交互、预检和协议组包，没有新增真实 H3 成片效果验收。五分钟长视频、多候选视频、运镜/特效预设及其余 LibTV 差距仍待实现，见[功能对齐记录](../ip-studio-libtv-alignment.md)。
 
 ## 20. 助手引用与故事导入（v0.209，本地，未发布）
 
@@ -336,7 +336,7 @@ Chrome 桌面实际用 ArrowDown / Enter 选择背视图，输入继续描述后
 
 独立文档核对完成，报告为 `.studio-e2e/assistant-context/design-documentation.md`；六个现有设计系统文件在文档交接前后 SHA256 全部一致。旧 H5/桌面文档漂移只记录，没有修理。最终正常界面展示为 `.impeccable/review/studio-assistant/final-context-desktop.jpg`，未点击发送。
 
-当前助手仍只读取文字设定，不读取图片/视频/音轨；PDF/Word、多模态、Skill/插件与对话分享尚未接通，见[助手实现范围](ip-studio-assistant-context.md)。不将本节认作完整 LibTV 功能对齐或生产上线验收。
+当前助手仍只读取文字设定，不读取图片/视频/音轨；PDF/Word、多模态、Skill/插件与对话分享尚未接通，见[助手实现范围](../ip-studio-assistant-context.md)。不将本节认作完整 LibTV 功能对齐或生产上线验收。
 
 ## 21. 多候选视频与双入口参数一致（v0.210，本地，未发布）
 
@@ -372,7 +372,7 @@ Studio 视频抽屉与原生视频节点共用 `studio-runs` 幂等批次。画�
 
 视频原生生成面板、展开编辑器与 Studio 创作抽屉共用同一个运镜组件。搜索目录、按光标插入/替换选区、点名称展开修改、移除按钮及相邻 Backspace/Delete 均操作完整正文。复制、剪切、纯文本粘贴及刷新还原不包含删除按钮名称或隐藏参数；@ 参考标签仍独立保留。生成与保存只使用自然语言提示词，不增加供应商原生相机控制字段。
 
-本次实时查看 LibTV 确认，首尾帧节点的工具会随模型变化，特效入口有广场、收藏、最近使用和作者搜索；这轮没有重新看到运镜菜单。命名标签基于先前已记录的观察，本平台自写十条可编辑运镜指令；不能据此宣称与 LibTV 的全部目录/模型一一相同。详见 [运镜范围](ip-studio-camera-motion.md)。
+本次实时查看 LibTV 确认，首尾帧节点的工具会随模型变化，特效入口有广场、收藏、最近使用和作者搜索；这轮没有重新看到运镜菜单。命名标签基于先前已记录的观察，本平台自写十条可编辑运镜指令；不能据此宣称与 LibTV 的全部目录/模型一一相同。详见 [运镜范围](../ip-studio-camera-motion.md)。
 
 首轮界面检查发现运镜浮层点击冒泡导致画布失选，搜索聚焦早于 AntD 浮层挂载，以及手机入口位于正文之后难发现。集中修正为浮层隔离 pointer/mouse/click/wheel、搜索挂载聚焦、可读占位文字，并把工具放在正文前。两个自身界面检查轮次及唯一 detector 已完成；不继续开放式打磨。Detector primary0、advisory85，为 H5 DESIGN 标尺对桌面密度及既有工作流圆角色值的建议，未改全域令牌或重复扫描。
 
@@ -398,7 +398,7 @@ Studio 视频抽屉与原生视频节点共用 `studio-runs` 幂等批次。画�
 
 ## 23. 视频特效描述库与账号复用（v0.212，本地，未发布）
 
-原生视频节点、放大编辑和 Studio 视频抽屉共用官方广场、我的收藏、最近使用及我的特效。名称/作者/模型名称/标签搜索与分类、当前模型筛选、完整描述、适用模型和显式应用可用。个人保存形成私有不可变条目，封面只能用本人真实图片；参考封面不称效果视频，三条官方文本预设显示暂无预览。当前是自然语言描述复用，供应商原生效果、完整社区视频预览和长视频仍有差距，见 [特效库范围](ip-studio-video-effects.md)。
+原生视频节点、放大编辑和 Studio 视频抽屉共用官方广场、我的收藏、最近使用及我的特效。名称/作者/模型名称/标签搜索与分类、当前模型筛选、完整描述、适用模型和显式应用可用。个人保存形成私有不可变条目，封面只能用本人真实图片；参考封面不称效果视频，三条官方文本预设显示暂无预览。当前是自然语言描述复用，供应商原生效果、完整社区视频预览和长视频仍有差距，见 [特效库范围](../ip-studio-video-effects.md)。
 
 LibTV 调研画布实际观察到广场/收藏/最近、作者/模型/标签搜索，以及点选特效直接返回节点后替换/移除。本次选择一次360旋转展示再移除，恢复原模型，未生成、收藏、上传或投稿。本平台先查看完整描述再点应用，多一步确认仍明确记录，不称完全一致。
 
@@ -592,7 +592,7 @@ LibTV 调研画布实际观察到广场/收藏/最近、作者/模型/标签搜�
 - review 后只重跑调度、配音生命周期和视频排队 3 类 13 项，全通过；其中 3 项为新增调度回归。本轮后端共覆盖 86 个不同用例，没有重新跑首批全部用例。
 - 最终 AiAvatar/admin 类型和 API 契约通过。当前仅本地实现，未提交、部署；本轮新增模型消费 0。其他独立音乐/真人训练协议不宣称已接入。视频受理未知、无原外部 ID 时人工容量解除的管理入口仍在 TODO，禁止用新任务冒充恢复。
 
-实现与运行边界见 [端点队列说明](ai-endpoint-generation-queue.md)。测试日志 `/tmp/endpoint-queue-final-tests.log`、`/tmp/endpoint-queue-review-tests.log`、`/tmp/endpoint-queue-ui-confirm.log`；不是全仓测试或所有厂商配额的生产验收。
+实现与运行边界见 [端点队列说明](../ai-endpoint-generation-queue.md)。测试日志 `/tmp/endpoint-queue-final-tests.log`、`/tmp/endpoint-queue-review-tests.log`、`/tmp/endpoint-queue-ui-confirm.log`；不是全仓测试或所有厂商配额的生产验收。
 
 ## 37. 实时队列位置与自动轮询（v0.221，2026-10-09，本地未发布）
 

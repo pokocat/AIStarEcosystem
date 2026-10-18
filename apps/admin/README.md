@@ -140,4 +140,4 @@ DataInitializer 默认 seed 两个账号：
 
 ### 企业积分财务与任务核对（2026-10-15）
 
-财务「充值订单 → 企业订单」支持人工收款/退款及企业资金、成员余额、划拨和消费查询；沿用 FINANCE_ADMIN/SUPER_ADMIN。平台「AI模型 → 请求日志」提供图片/视频原任务核对，仅 SUPER_ADMIN/OPERATOR，纯财务不可操作。补原供应商号后只查询原任务；明确未受理须依据和二次确认后释放原剩余冻结。详见 [企业界面验收](../../docs/ip-studio-enterprise-ui-validation.md)。
+财务「充值订单 → 企业订单」支持人工收款/退款及企业资金、成员余额、划拨和消费查询；沿用 FINANCE_ADMIN/SUPER_ADMIN。平台「AI模型 → 请求日志」提供图片/视频原任务核对，仅 SUPER_ADMIN/OPERATOR，纯财务不可操作。补原供应商号后只查询原任务；明确未受理须依据和二次确认后释放原剩余冻结。详见 [企业界面验收](../../docs/releases/ip-studio-enterprise-ui-validation.md)。

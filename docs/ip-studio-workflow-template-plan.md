@@ -119,7 +119,7 @@ M7.1：现有“存成模板”的 Studio 兼容清理；完成输入槽和不�
 ```text
 按 docs/ip-studio-workflow-template-plan.md 完成 M7，先交付 M7.1，再做首个人物资产包。
 沿用 apps/web-aiavatar 同一画布、IpDemoTemplate/IpTemplateResolver、IP 资产和原生 IpRun/媒体任务/账本。
-先读现有模板发布/套用与 docs/ip-studio-unified-canvas-validation.md，保留已验通的请求幂等、来源版本和恢复行为。
+先读现有模板发布/套用与 docs/releases/ip-studio-unified-canvas-validation.md，保留已验通的请求幂等、来源版本和恢复行为。
 M7.1 实现输入槽、不可变发布版本、用户填入自己的 IP/图片后独立实例化、版本锁定及准确制作计划；不只复制布局和提示词。
 M7.2 默认旗舰模板只有一个 sheet 图片步骤，一次调用生成含多视角/表情/细节的人物设定图；采用后整图作为出图参考，先生成单独镜头再做视频。分步独立资产作为可选进阶模板，保留依赖、人工采用和单步重做。
 M7.3 按需裁取/补单图，不要求设定图之前生成独立资产。进阶模式可控排版输出中文展示板，原图和来源清单打包，显式归档到所选 IP。

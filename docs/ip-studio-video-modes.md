@@ -25,7 +25,7 @@
 
 后台单元测试覆盖共享规格/报价、素材归属、类型和大小、费用上限、原分区限制，以及既有厂商原生请求组包。真实本地 API 对缺尾帧、越权 key、视频冒充图片、非支持模型及费用上限不足均拒绝，账本前后相同。详细报告位于 `.studio-e2e/video-modes/api-preflight.json`。
 
-界面和编译检查结果见[统一验证记录](ip-studio-unified-canvas-validation.md) §19。
+界面和编译检查结果见[统一验证记录](releases/ip-studio-unified-canvas-validation.md) §19。
 
 ## v0.210 多候选视频（本地，未发布）
 

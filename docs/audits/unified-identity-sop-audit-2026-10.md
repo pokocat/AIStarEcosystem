@@ -1,6 +1,6 @@
 # 统一认证发布与 SOP 验收（2026-10-10）
 
-状态：最终身份代码 **484e3cda** 已提交、推送、部署。跨产品结论及未完成项见[中心复核记录](../../aibuzz-id/docs/INTEGRATION-SOP-AUDIT-20261010.md)，规则为[接入SOP](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。快出片小程序仅开发版已上传，正式发布需用户完成。
+状态：最终身份代码 **484e3cda** 已提交、推送、部署。跨产品结论及未完成项见[中心复核记录](../../../aibuzz-id/docs/INTEGRATION-SOP-AUDIT-20261010.md)，规则为[接入SOP](../../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。快出片小程序仅开发版已上传，正式发布需用户完成。
 
 ## 修复与回归
 

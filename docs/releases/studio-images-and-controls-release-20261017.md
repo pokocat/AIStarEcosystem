@@ -10,7 +10,7 @@
 
 ## 控件
 
-全仓清单、40 处 select 统一、IME/焦点修复与浏览器验收范围，见 [输入控件检查](form-control-focus-audit.md) 的本轮补查章节。
+全仓清单、40 处 select 统一、IME/焦点修复与浏览器验收范围，见 [输入控件检查](../audits/form-control-focus-audit-2026-10.md) 的本轮补查章节。
 
 ## 发布状态
 

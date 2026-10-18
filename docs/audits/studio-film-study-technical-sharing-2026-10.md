@@ -99,7 +99,7 @@ Hypit 固定版本为 `dc2b7a8f31b1ef1443a79ca448548d69e3ceb6a0`。我们使用�
 
 历史五段任务实际扣 11 积分，使用的是 Agnes。当前 Qwen 端点只完成过独立文字与图片连通性验证，不能把旧任务的内容质量和费用写成 Qwen 的同片实测结论。历史验收以流程和媒体产物为主，模型内容尚不能宣称达到用户范例的准确度。
 
-证据见[功能记录](ip-studio-recreation.md)、[培训手册](training/studio-film-study.md)、[发布记录](studio-film-study-production-release.md)与[模型切换记录](studio-upload-chat-repair-20261016.md)。
+证据见[功能记录](../ip-studio-recreation.md)、[培训手册](../training/studio-film-study.md)、[发布记录](../releases/studio-film-study-production-release.md)与[模型切换记录](../releases/studio-upload-chat-repair-20261016.md)。
 
 ## 4. 资源使用与成本口径
 
@@ -247,7 +247,7 @@ WAV 格式也符合现有口型入口的音频格式要求，但是否适合驱�
 - 有声／无音轨／静音素材、提取失败与恢复复用通过。音频存储使用测试替身，真实FFmpeg读写媒体；没有将其表述为生产OSS端到端验收。
 - 前端共 58 项相关回归通过，覆盖原声落地、跨同源任务去重、改名保留、删除不重建、全片分组布局、签名恢复、视频参考与原有设置；AiAvatar类型检查通过。
 - API契约检查通过；Impeccable对两个修改面板的机械扫描为空。浏览器控制连接超时，未完成本轮页面实操和截图；不将组件检查替代浏览器验收。
-- 未调用收费供应商、未新增用户扣费。用户随后要求直接提交发布，不再追加测试或页面验收；实际发布状态见[原声提取发布记录](studio-source-audio-release-20261017.md)。
+- 未调用收费供应商、未新增用户扣费。用户随后要求直接提交发布，不再追加测试或页面验收；实际发布状态见[原声提取发布记录](../releases/studio-source-audio-release-20261017.md)。
 
 上述验证不代表字幕或音效理解已实现。用户已要求直接发布，因此真实页面上的解析／拉片 → 原声播放／下载 → 选择音轨合成流程仍待后续补验；本次已发布，不据此宣称页面全链验收通过。
 

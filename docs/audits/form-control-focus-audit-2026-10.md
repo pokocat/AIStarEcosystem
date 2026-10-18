@@ -1,6 +1,6 @@
 # 表单控件聚焦样式检查（2026-10-17）
 
-当前：代码 `81778bef` 已生产发布；以下保留本地检查时的事实。生产交互复验受本机网络限制，详见[发布记录](studio-workspace-production-release-20261017.md)。
+当前：代码 `81778bef` 已生产发布；以下保留本地检查时的事实。生产交互复验受本机网络限制，详见[发布记录](../releases/studio-workspace-production-release-20261017.md)。
 
 ## 范围与结论
 
@@ -100,4 +100,4 @@ music、drama、celebrity、star、admin 与共享 UI 的源码检查未发现�
 证据：`.studio-e2e/form-controls-v2/` 的六套桌面/手机截图、`results.json`、`css-sources.json` 与富文本焦点截图。临时页和 bundle 不进入生产包。
 
 
-本轮已部署六个前端，真实线上搜索框、DOM 下拉、压缩图片与构建版本验收通过。确切 SHA、196 项定向测试、资源哈希与回退包见 [2026-10-17 发布记录](studio-images-and-controls-release-20261017.md)。前文“未部署”均为各历史轮次当时的状态，不代表本次发布状态。
+本轮已部署六个前端，真实线上搜索框、DOM 下拉、压缩图片与构建版本验收通过。确切 SHA、196 项定向测试、资源哈希与回退包见 [2026-10-17 发布记录](../releases/studio-images-and-controls-release-20261017.md)。前文“未部署”均为各历史轮次当时的状态，不代表本次发布状态。

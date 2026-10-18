@@ -44,11 +44,11 @@ MySQL 验收另传 `-Denterprise.test.jdbc=<独立测试库JDBC>`、`-Denterpris
 
 接口验收使用 Spring Security 链和 MockMvc，覆盖实际 controller/service/JPA。不是浏览器页面验收、真实 OIDC 登录链路或真实供应商生成验收。未调用付费生成，也未给实际企业充值。
 
-页面规划已按指定 [gpt-taste](ip-studio-enterprise-ui-plan.md) 完成，E09/E10 的完整界面尚未实现。旧财务页面仅做 nullable userId 和新流水类型兼容。
+页面规划已按指定 [gpt-taste](../ip-studio-enterprise-ui-plan.md) 完成，E09/E10 的完整界面尚未实现。旧财务页面仅做 nullable userId 和新流水类型兼容。
 
 ## 后续边界
 
-E05 分配/回收、E06 企业人工充值、E07 企业生成准入、E08 停用/退出的资金闭环及 E09/E10 页面仍待实现；不能将基础开关打开当作这些能力已可用。企业分配积分仍归企业、开通沿用现有逻辑的规则已固定，后续按 [任务清单](ip-studio-enterprise-development-tasks.md) 继续。
+E05 分配/回收、E06 企业人工充值、E07 企业生成准入、E08 停用/退出的资金闭环及 E09/E10 页面仍待实现；不能将基础开关打开当作这些能力已可用。企业分配积分仍归企业、开通沿用现有逻辑的规则已固定，后续按 [任务清单](../archive/ip-studio-enterprise-development-tasks.md) 继续。
 
 契约检查仍有仓库存量的非本期 handler/orphan 提示；本期已使用的企业调用均有对应 handler。额外严格解析发现并修正了原 OpenAPI 四处 flow description 缺少引号的问题，未改变其业务含义。
 

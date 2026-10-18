@@ -4,7 +4,7 @@
 > **范围**：aibuzz.cn 生态全部面向用户的产品：本仓 5 个 web app + 带货小程序、军师 ai-pilot（H5 / PC / 小程序）、主理人公社 ai-society（会员小程序）、以及后续任何新产品。
 > **落点**：独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（Spring Boot 3.3.5 / Java 17 / Spring Authorization Server / Flyway / H2 dev · MySQL prod），生产域名 `id.aibuzz.cn`，本地 port **8090**；建议 clone 到本仓同级的 `../aibuzz-id`。初版代码曾在本仓 `apps/id-server` 孵化，2026-09-04 抽离，本仓只保留消费方接入（§12）。
 > **相关**：军师侧早期思路见 `ai-pilot/docs/ECOSYSTEM_ACCOUNT_DESIGN.md`（2026-07，单库共用 User 的方案，已被本文取代）。
-> **账号注册邀请（2026-10-17，本地实现，未发布）**：[统一账号邀请关系方案 v0.5](unified-account-referral-plan.md)将跨应用的原始注册邀请纳入账号中心，一张关系表加本体定义/映射；会员/商业/活动归因仍留业务域。§6 的边界已同步，运行契约见账号仓 README §25。[验收记录](unified-account-referral-validation-20261017.md)区分本地完成与待发布；[Astra 记录](unified-account-referral-astra-review-20261017.md)仅针对此前 v0.2 完整方案。
+> **账号注册邀请（2026-10-17，本地实现，未发布）**：[统一账号邀请关系方案 v0.5](unified-account-referral-plan.md)将跨应用的原始注册邀请纳入账号中心，一张关系表加本体定义/映射；会员/商业/活动归因仍留业务域。§6 的边界已同步，运行契约见账号仓 README §25。[验收记录](releases/unified-account-referral-validation-20261017.md)区分本地完成与待发布；[Astra 记录](audits/unified-account-referral-astra-review-2026-10.md)仅针对此前 v0.2 完整方案。
 
 ---
 
@@ -377,4 +377,4 @@ server：`./mvnw test` 全量不得回退（基线 471，唯一已知 flaky `Jwt
 
 ### 2026-10-10 跨应用 SOP 复核补充（本地未发布）
 
-当前资料不由旧 JWT 反复覆盖，事件与 userinfo 写入使用 UID/ACTIVE 行锁复核，旧 UID 保留墓碑。共享 api-client 成功及失败响应都复查发起时 access/refresh 会话，退出/换账号后丢弃旧结果；68 项后端身份与 70 项共享客户端回归通过。各产品适用字段、真实生产登记、接入缺口及部署边界见 [复核记录](unified-identity-sop-audit-20261010.md)，不得把先前 server/admin 手机号发布当作本轮发布。
+当前资料不由旧 JWT 反复覆盖，事件与 userinfo 写入使用 UID/ACTIVE 行锁复核，旧 UID 保留墓碑。共享 api-client 成功及失败响应都复查发起时 access/refresh 会话，退出/换账号后丢弃旧结果；68 项后端身份与 70 项共享客户端回归通过。各产品适用字段、真实生产登记、接入缺口及部署边界见 [复核记录](audits/unified-identity-sop-audit-2026-10.md)，不得把先前 server/admin 手机号发布当作本轮发布。

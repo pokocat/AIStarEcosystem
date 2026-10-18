@@ -1,6 +1,6 @@
 # 统一账号注册邀请 · 本地实施与验收
 
-> 本文保留 2026-10-17 发布前的本地验证事实；后续两仓已配套发布并完成真实短信注册闭环，最新状态见[生产发布与验收](unified-account-referral-production-release-20261017.md)。本文末尾“Studio 应用内视图增量”是最新范围，替代早期仅跳转入口的边界。方案见 [v0.5](unified-account-referral-plan.md)，页面见 [前端设计](unified-account-referral-frontend.md)。
+> 本文保留 2026-10-17 发布前的本地验证事实；后续两仓已配套发布并完成真实短信注册闭环，最新状态见[生产发布与验收](unified-account-referral-production-release-20261017.md)。本文末尾“Studio 应用内视图增量”是最新范围，替代早期仅跳转入口的边界。方案见 [v0.5](../unified-account-referral-plan.md)，页面见 [前端设计](../unified-account-referral-frontend.md)。
 
 ## 实施范围
 
@@ -53,10 +53,10 @@ Studio 入口通过 `pnpm --filter @ai-star-eco/web-aiavatar typecheck`。邀请
 
 | 页面 | 证据 |
 |---|---|
-| 桌面 · 邀请人查看新增记录 | [截图](validation/account-referrals-20261017/desktop-records.jpg) |
-| 390px · 本人邀请记录 | [截图](validation/account-referrals-20261017/mobile-records.jpg) |
-| 320px · 受邀者查看邀请人 | [截图](validation/account-referrals-20261017/mobile-inviter.jpg) |
-| 390px · 公开邀请落地页 | [截图](validation/account-referrals-20261017/mobile-landing.jpg) |
+| 桌面 · 邀请人查看新增记录 | [截图](account-referrals-20261017/desktop-records.jpg) |
+| 390px · 本人邀请记录 | [截图](account-referrals-20261017/mobile-records.jpg) |
+| 320px · 受邀者查看邀请人 | [截图](account-referrals-20261017/mobile-inviter.jpg) |
+| 390px · 公开邀请落地页 | [截图](account-referrals-20261017/mobile-landing.jpg) |
 
 ## 后续发布边界
 
@@ -96,6 +96,6 @@ Studio 入口通过 `pnpm --filter @ai-star-eco/web-aiavatar typecheck`。邀请
 4. 邀请人产品积分在操作前后均显示 **1,500**，未修改产品余额、开通或资料。
 5. 390px、320px 下 `html[data-layout=mobile]` 且 `scrollWidth == innerWidth`；复制与预览并列、只读链接独占一行，记录可换行。手机返回“我的”后可找到同名邀请入口。
 
-截图：[Studio 桌面](validation/account-referrals-20261017/studio-desktop.jpg)、[390px](validation/account-referrals-20261017/studio-mobile-390.jpg)、[320px](validation/account-referrals-20261017/studio-mobile-320.jpg)。页面时间按当前浏览器本地时区显示，此次为 America/Los_Angeles；中心旧模板的固定时区不作为邀请记录的存储真值。
+截图：[Studio 桌面](account-referrals-20261017/studio-desktop.jpg)、[390px](account-referrals-20261017/studio-mobile-390.jpg)、[320px](account-referrals-20261017/studio-mobile-320.jpg)。页面时间按当前浏览器本地时区显示，此次为 America/Los_Angeles；中心旧模板的固定时区不作为邀请记录的存储真值。
 
 临时浏览器视口已恢复，Next 自动加入的验收专用 tsconfig 路径已清理。生产仍需先发布 ID API，再发布 Studio 前端，并做真实域名/CORS、微信与存量账号验收。
