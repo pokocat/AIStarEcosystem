@@ -614,7 +614,7 @@ html[data-layout="mobile"] .ip-surface .studio-share-heading h1 { font-size: 24p
 html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(30dvh,250px); }
 
 /* Compact assistant: conversation scrolls independently of the always-visible composer. */
-.ip-surface .studio-assistant-panel { height:min(780px,calc(100% - 144px)); font-family:'Outfit',var(--font-sans,system-ui),sans-serif; }
+.ip-surface .studio-assistant-panel { height:min(780px,calc(100% - 144px)); font-family:var(--font-ui); }
 .ip-surface .studio-assistant-panel>.studio-floating-body { flex:1; padding:0 20px 20px; scroll-padding-block:16px; }
 .ip-surface .studio-assistant-panel>.studio-floating-footer { display:block; padding:14px 16px; background:var(--surface); max-height:55%; overflow:auto; }
 .ip-surface .studio-assistant-panel .studio-assistant { gap:18px; }
