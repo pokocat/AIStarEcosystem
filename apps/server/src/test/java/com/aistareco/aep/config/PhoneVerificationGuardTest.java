@@ -150,6 +150,15 @@ class PhoneVerificationGuardTest {
         assertEquals(403, run("PATCH", "/api/v1/ip-studio/enterprise-invitations/preview", new MockFilterChain()).getStatus());
     }
 
+    @Test void explicitlyAuthenticatedTestIdentityDoesNotPretendToHaveAVerifiedPhone() throws Exception {
+        loginAsGuest();
+        var auth=(UsernamePasswordAuthenticationToken)SecurityContextHolder.getContext().getAuthentication();
+        Map<String,Object> details=new HashMap<>();details.put(JwtAuthenticationFilter.PHONE_VERIFIED_DETAIL,false);details.put("identityTestAccount",true);auth.setDetails(details);
+        MockFilterChain chain=new MockFilterChain();
+        assertEquals(200,run("POST","/api/v1/ip-studio/enterprise-invitations/accept",chain).getStatus());assertPassedThrough(chain);
+        assertEquals(false,details.get(JwtAuthenticationFilter.PHONE_VERIFIED_DETAIL));
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     private void loginAsGuest() {

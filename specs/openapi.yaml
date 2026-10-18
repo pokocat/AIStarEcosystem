@@ -14548,3 +14548,26 @@ paths:
         content:
           application/json:
             schema: {$ref: '#/components/schemas/StudioImageUnknownReleaseRequest'}
+  /admin/test-accounts:
+    get:
+      tags: [Admin]
+      summary: 超管分页查看独立测试账号
+      parameters: [{in: query, name: page, schema: {type: integer, minimum: 0, default: 0}}]
+      responses: {'200': {description: 'ApiResponse<{accounts:[{uid,displayName,status,createdAt}],total,page}>'}, '403': {description: 仅有效超级管理员}, '503': {description: 账号中心不可用}}
+    post:
+      tags: [Admin]
+      summary: 超管创建无手机号的独立测试身份
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [displayName], properties: {displayName: {type: string, minLength: 1, maxLength: 40}}}}}}
+      responses: {'200': {description: 'ApiResponse<{uid,displayName,status,createdAt}>'}, '403': {description: 仅有效超级管理员}, '503': {description: 账号中心不可用}}
+  /admin/test-accounts/{uid}/login:
+    post:
+      tags: [Admin]
+      summary: 生成两分钟一次性测试登录链接
+      parameters: [{in: path, name: uid, required: true, schema: {type: string}}]
+      responses: {'200': {description: 'ApiResponse<{loginUrl,expiresAt}>，no-store'}, '403': {description: 仅有效超级管理员}, '404': {description: 不是测试账号}}
+  /admin/test-accounts/{uid}/suspend:
+    post:
+      tags: [Admin]
+      summary: 停用测试身份并撤销其授权
+      parameters: [{in: path, name: uid, required: true, schema: {type: string}}]
+      responses: {'200': {description: 沿用账号中心停用语义}, '403': {description: 仅有效超级管理员}, '404': {description: 不是测试账号}}

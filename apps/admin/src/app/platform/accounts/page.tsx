@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import {TestAccountsPanel} from "@/components/TestAccountsPanel";
 import { getMe as getAdminMe } from "@/api/auth";
 import { ImpersonationDialog } from "@/components/ImpersonationDialog";
 import { Users, UserCheck, UserX, Search, Building2, Coins } from "lucide-react";
@@ -154,6 +155,7 @@ export default function AccountsPage() {
         breadcrumb={[{ label: "平台账户" }, { label: "账号 & 经纪公司" }]}
       />
 
+      {canImpersonate && <TestAccountsPanel />}
       <section className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard label={searchQuery || kind !== "all" || status !== "all" ? "匹配账号" : "账号总数"} value={counts.total} icon={Users} />
         <StatCard label="本页启用中"      value={counts.active}                     icon={UserCheck} tone="success" />

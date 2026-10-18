@@ -309,6 +309,23 @@ class IdentityJwtFilterTest {
         assertThat(runFilter("/api/me", token)).isNull();
     }
 
+    @Test void trustedTestIdentityKeepsPhoneFalseAndReceivesOnlyOrdinaryRole() throws Exception {
+        String token=mintToken(c->c.issuer(ISSUER).subject("TEST_0123456789ABCDEFGHJKMNPQRS").audience(AUDIENCE)
+                .claim("amr",List.of("test")).claim("phone_verified",false).claim("test_account",true));
+        Authentication auth=runFilter("/api/me",token);assertThat(auth).isNotNull();
+        assertThat(((Map<?,?>)auth.getDetails()).get("identityTestAccount")).isEqualTo(true);
+        assertThat(((Map<?,?>)auth.getDetails()).get(JwtAuthenticationFilter.PHONE_VERIFIED_DETAIL)).isEqualTo(false);
+        assertThat(auth.getAuthorities()).extracting(Object::toString).doesNotContain("ROLE_SUPER_ADMIN");
+    }
+    @Test void testClaimCannotPromoteAnOrdinaryUidOrAStringFlag() throws Exception {
+        for (String uid:List.of("ordinary-user","TEST_0123456789ABCDEFGHJKMNPQRS")) {
+            String token=mintToken(c->c.issuer(ISSUER).subject(uid).audience(AUDIENCE).claim("amr",List.of("test"))
+                    .claim("phone_verified",false).claim("test_account",uid.startsWith("TEST_")?"true":true));
+            Authentication auth=runFilter("/api/me",token);assertThat(auth).isNotNull();
+            assertThat(((Map<?,?>)auth.getDetails()).get("identityTestAccount")).isEqualTo(false);
+        }
+    }
+
     private Authentication runFilter(String path, String token) throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", path);
         request.addHeader("Authorization", "Bearer " + token);
