@@ -79,9 +79,13 @@ public class ChildRuns {
                                      com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RecreationSettings recreation,
                                      ToolContext ctx) {
         var skill = ctx.skill();
+        // Only `check` needs the skill binding (its checkIds are validated against the skill). A `text` request that
+        // carries skillKey is classified as a planning run by StudioWorkflowService, so never attach the key to
+        // ordinary child work; recreation / image / video are bound to the execution by executionId + stage alone.
+        boolean bindSkill = skill != null && "check".equals(operation);
         return new RunRequest(clientRequestId, nodeId, operation, prompt, references, model, null, durationSec, aspectRatio, count,
                 null, null, mode, contextNodeIds, null, null, null, null, null, null, null, null, recreation, null,
-                skill == null ? null : skill.key(), skill == null ? null : skill.version(), ctx.stage(), ctx.executionId, null);
+                bindSkill ? skill.key() : null, bindSkill ? skill.version() : null, ctx.stage(), ctx.executionId, null);
     }
 
     static String stageLabel(IpRun run) {
