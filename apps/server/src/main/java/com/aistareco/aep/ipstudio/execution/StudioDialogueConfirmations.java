@@ -41,7 +41,10 @@ public class StudioDialogueConfirmations implements StudioPlanSource {
         if(message==null)return Optional.empty();
         for(JsonNode block:blocks(message)) {
             if(!"plan".equals(block.path("type").asText())||!planRunId.equals(block.path("planRunId").asText())||!fingerprint.equals(block.path("fingerprint").asText()))continue;
-            List<String> context=new ArrayList<>();input.path("contextNodeIds").forEach(v->context.add(v.asText()));
+            // The turn's own attachments plus the canvas nodes the plan names (attached in an earlier turn, still referenced).
+            LinkedHashSet<String> refs=new LinkedHashSet<>();input.path("contextNodeIds").forEach(v->refs.add(v.asText()));
+            for(JsonNode step:block.path("plan").path("steps"))PlanState.canvasRefs(step,refs);
+            List<String> context=new ArrayList<>(refs);
             return Optional.of(new PlanRecord(planRunId,block.path("plan"),input.path("_exec").path("skill"),context,block.path("revision").asInt(1),threadId,assistantId));
         }
         return Optional.empty();

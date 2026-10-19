@@ -111,8 +111,9 @@ public final class StudioPlanValidator {
     // from whitelisted fields only: quotes, approvals, confirmed approach, result nodes and task identities are server-owned.
     private static final ObjectMapper OM=new ObjectMapper();
     private static final java.util.regex.Pattern ID=java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,32}");
-    private static final Set<String> BINDING_ROLES=Set.of("character","scene","product","frame","clip","reference-image","reference-video","reference-audio");
-    private static final Set<String> IMAGE_BINDING_ROLES=Set.of("character","scene","product","frame","reference-image");
+    /** Reference roles a video / image step may bind; the planner contract lists exactly these (StudioWorkflowService). */
+    static final Set<String> BINDING_ROLES=Set.of("character","scene","product","frame","clip","reference-image","reference-video","reference-audio");
+    static final Set<String> IMAGE_BINDING_ROLES=Set.of("character","scene","product","frame","reference-image");
     private static final Set<String> TEXT_PURPOSES=Set.of("script","prompt-revision","plan-compile","note");
 
     /** True when the stored or model plan claims a skill; legacy assistant plans never carry one. */

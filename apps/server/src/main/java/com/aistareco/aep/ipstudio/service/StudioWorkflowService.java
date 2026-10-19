@@ -600,6 +600,8 @@ public class StudioWorkflowService {
                 +"最后一步 text（settings 只写 purpose:\"plan-compile\"，不写 editTarget），它依赖前面所有拉片步骤，负责用分析结果编排制作计划。分析阶段不写 image、video、check、assemble。"
                 :"制作阶段只写 text（改词：purpose 填 script / prompt-revision / note，改已有文字时写 editTarget）、image、video、check、assemble。"
                 +"视频步骤排在它引用的图片步骤之后，建议每段视频后面接一个 check，最后用 assemble 按顺序合成；每段 durationSec 在所选视频模型的最短与最长秒数之间。");
+        constraints.put("bindingRoles","referenceBindings 的 role 只能取这些值：图片步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.IMAGE_BINDING_ROLES))
+                +"；视频步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.BINDING_ROLES))+"（原片片段用 reference-video 或 clip）。order 从 0 开始，同一步里不重复。");
         constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
         constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。");
         return constraints;
