@@ -126,6 +126,11 @@ public class ProposePlanTool implements StudioDialogueTool {
             log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
             return ToolRun.failed(e.getCode(), e.getMessage(), DialogueTools.fail(e.getMessage() + "。请按允许的操作和参数重新整理方案。")).settlingInTurn();
         }
+        String unknown = unknownVideoModel(plan);
+        if (unknown != null) {
+            log.info("[dialogue] plan names a video model that is not offered run={} {}", ctx.runId, unknown);
+            return ToolRun.failed("AI_BAD_OUTPUT", "方案里的视频模型不可用", DialogueTools.fail(unknown + "。请重新整理方案。")).settlingInTurn();
+        }
         plan.put("skillKey", skill.key()).put("skillVersion", skill.version()).put("stage", stage);
         boolean quoted = false;
         var planQuoter = quoter.getIfAvailable();
@@ -164,15 +169,44 @@ public class ProposePlanTool implements StudioDialogueTool {
         return out.length() == 0 ? "（还没有分析结果）" : out.toString();
     }
 
-    private String capabilities() {
+    private String capabilitiesJson() {
         var planner = workflow.getIfAvailable();
-        if (planner == null) return "（视频模型信息不可用）";
+        if (planner == null) return null;
         try {
-            return DialogueTools.excerpt(planner.planCapabilities(), 8000);
+            return planner.planCapabilities();
         } catch (RuntimeException e) {
             log.warn("[dialogue] video capabilities unavailable: {}", e.toString());
-            return "（视频模型信息暂不可用）";
+            return null;
         }
+    }
+
+    private String capabilities() {
+        String json = capabilitiesJson();
+        return json == null ? "（视频模型信息暂不可用）" : DialogueTools.excerpt(json, 8000);
+    }
+
+    /**
+     * A recreation step has to name one of the endpoints the planner was shown; the quote would otherwise fail much later with
+     * a message that tells the assistant to stop. Null when every named model is offered (or the offer could not be read, in
+     * which case the quote reports it).
+     */
+    private String unknownVideoModel(ObjectNode plan) {
+        String json = capabilitiesJson();
+        if (json == null) return null;
+        Set<String> offered = new LinkedHashSet<>();
+        try {
+            for (JsonNode model : mapper.readTree(json).path("videoModels")) if (model.path("endpointId").isTextual()) offered.add(model.path("endpointId").asText());
+        } catch (Exception e) { return null; }
+        if (offered.isEmpty()) return null;
+        int index = 0;
+        for (JsonNode step : plan.path("steps")) {
+            index++;
+            if (!"recreation".equals(step.path("operation").asText())) continue;
+            String named = step.path("settings").path("videoModel").asText("");
+            if (!offered.contains(named))
+                return "第 " + index + " 步的视频模型「" + named + "」不在可用列表里，videoModel 必须原样填写 videoModels 里的 endpointId，可选：" + String.join("、", offered);
+        }
+        return null;
     }
 
     static long estimate(List<Map<String, Object>> messages) {

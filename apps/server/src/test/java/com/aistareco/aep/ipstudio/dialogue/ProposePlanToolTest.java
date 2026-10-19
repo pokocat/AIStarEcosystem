@@ -127,6 +127,9 @@ class ProposePlanToolTest {
         String sent = userPromptSentToTheModel();
         assertTrue(sent.contains("recreation{sourceNodeId"), "the per-operation field names must reach the model, not just the operation names");
         assertTrue(sent.contains("plan-compile"), "the two-stage rule must reach the model");
+        assertTrue(sent.contains("分析阶段的步骤顺序固定"), "the analysis plan's step order must reach the model");
+        assertTrue(sent.contains("referenceNodeIds 只能填素材清单里的画布对象 id"), "step numbers are not assets");
+        assertTrue(sent.contains("原样复制「可用模型与合同」里 videoModels[].endpointId"), "videoModel is an endpoint id, not a name");
         assertTrue(sent.contains("\"endpointId\":\"ep-h3\""), "videoModel is picked from the real capability list");
         assertTrue(sent.contains("[vid-1]"), "canvas ids come from the digest");
     }
@@ -155,5 +158,27 @@ class ProposePlanToolTest {
         modelReplies("方案如下：\n" + FOLLOWS_THE_CONTRACT.replace("```json", "").replace("```", "") + "\n以上。");
         var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
         assertEquals("done", run.status(), run.forModel());
+    }
+
+    @Test void aPlanThatCompilesBeforeTheFilmStudyIsRefusedWithTheReorderReason() throws Exception {
+        // Shape of the third production reply: plan-compile first, recreation second and dependent on it.
+        modelReplies("""
+                {"summary":"先编排再拉片","approaches":[{"id":"a","title":"t","summary":"s","rationale":"r"}],"recommendedApproachId":"a",
+                 "steps":[{"id":"step_1","operation":"text","title":"编排","prompt":"p","settings":{"purpose":"plan-compile"},"referenceNodeIds":["vid-1"],"dependsOn":[]},
+                          {"id":"step_2","operation":"recreation","title":"拉片","prompt":"p","settings":{"sourceNodeId":"vid-1","mode":"segments","maxSegmentSec":"model","videoModel":"minimax-h3"},"referenceNodeIds":["img-1"],"dependsOn":["step_1"]}],
+                 "questions":[]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
+        assertEquals("failed", run.status());
+        assertTrue(run.forModel().contains("拉片"), run.forModel());
+        verify(effects, never()).appendPlan(any(), any());
+    }
+
+    @Test void aVideoModelThatIsNotAnOfferedEndpointIsRefusedWithTheOfferedIds() throws Exception {
+        // Second production reply: the capability list had ai-jusuan-minimax-h3 and the model wrote its own short name.
+        modelReplies(FOLLOWS_THE_CONTRACT.replace("\"videoModel\":\"ep-h3\"", "\"videoModel\":\"minimax-h3\""));
+        var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
+        assertEquals("failed", run.status());
+        assertTrue(run.forModel().contains("minimax-h3") && run.forModel().contains("ep-h3"), run.forModel());
+        verify(effects, never()).appendPlan(any(), any());
     }
 }

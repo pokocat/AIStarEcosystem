@@ -154,6 +154,7 @@ public final class StudioPlanValidator {
         Map<String,String> earlier=new LinkedHashMap<>(); // id -> operation
         var outSteps=plan.putArray("steps");
         int index=0;
+        boolean compiled=false; // a plan-compile step turns the analysis into the production plan, so it has to come last
         for(JsonNode step:steps) {
             index++;
             String label="第 "+index+" 步";
@@ -201,7 +202,10 @@ public final class StudioPlanValidator {
                         ||!Set.of("content","prompt","script").contains(edit.path("field").asText()))invalid(label+"的改稿对象不正确");
                 out.putObject("editTarget").put("nodeId",edit.path("nodeId").asText()).put("field",edit.path("field").asText());
             }
-            out.set("settings",settings(step.path("settings"),operation,stage,rules,allowed,earlier,dependencies,label));
+            ObjectNode settings=settings(step.path("settings"),operation,stage,rules,allowed,earlier,dependencies,label);
+            out.set("settings",settings);
+            if("recreation".equals(operation)&&compiled)invalid(label+"的拉片要放在「编排制作计划」那一步之前");
+            if("text".equals(operation)&&"plan-compile".equals(settings.path("purpose").asText()))compiled=true;
             var depends=out.putArray("dependsOn");dependencies.forEach(depends::add);
             earlier.put(id,operation);
         }
@@ -286,7 +290,8 @@ public final class StudioPlanValidator {
                 // Compiling the production plan needs every earlier analysis result.
                 if("plan-compile".equals(purpose))dependencies.addAll(earlier.keySet());
                 out.put("purpose",purpose);
-                if(raw.hasNonNull("editTarget")) {
+                // A plan-compile step edits nothing; a stray editTarget there is dropped, never read.
+                if(!"plan-compile".equals(purpose)&&raw.hasNonNull("editTarget")) {
                     JsonNode edit=raw.path("editTarget");
                     if(!edit.isObject()||!allowed.contains(edit.path("nodeId").asText())||!Set.of("content","prompt","script").contains(edit.path("field").asText()))
                         invalid(label+"的改稿对象不正确");

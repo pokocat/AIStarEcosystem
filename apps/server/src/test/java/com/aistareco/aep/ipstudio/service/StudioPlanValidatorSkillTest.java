@@ -148,4 +148,48 @@ class StudioPlanValidatorSkillTest {
             for(String key:keys)assertTrue(contract.contains(key),operation+" needs "+key+" in the contract line");
         });
     }
+
+    @Test void aPlanCompileStepDropsAStrayEditTargetInsteadOfRefusingThePlan() throws Exception {
+        // Second production reply: the model wrote editTarget as a plain string on its plan-compile step.
+        var raw=analysis();
+        ((ObjectNode)raw.path("steps").get(1).path("settings")).put("editTarget","source-video");
+        var compile=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context).path("steps").get(1);
+        assertEquals("plan-compile",compile.path("settings").path("purpose").asText());
+        assertFalse(compile.path("settings").has("editTarget"));
+        // an ordinary text step still needs a real edit target
+        var edit=production();
+        ((ObjectNode)edit.path("steps").get(0)).put("operation","text");
+        ((ObjectNode)edit.path("steps").get(0)).set("settings",om.readTree("{\"purpose\":\"script\",\"editTarget\":\"not-an-object\"}"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(edit,rules(),"production",context));
+    }
+
+    @Test void theAnalysisPlanCannotCompileTheProductionPlanBeforeTheFilmStudy() throws Exception {
+        // Third production reply: plan-compile first, the recreation analysis depending on it.
+        var raw=analysis();
+        var steps=(ArrayNode)raw.path("steps");
+        JsonNode cut=steps.get(0),compile=steps.get(1);
+        ((ObjectNode)compile).putArray("dependsOn");
+        ((ObjectNode)cut).putArray("dependsOn").add("compile");
+        steps.removeAll();steps.add(compile);steps.add(cut);
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context));
+        assertEquals("AI_BAD_OUTPUT",refused.getCode());
+        assertTrue(refused.getMessage().contains("拉片"),"the model is told what to reorder");
+    }
+
+    @Test void stepNumbersAreNotCanvasAssetsAndTheRefusalSaysSo() throws Exception {
+        var raw=analysis();
+        ((ObjectNode)raw.path("steps").get(1)).putArray("referenceNodeIds").add("cut");
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context));
+        assertTrue(refused.getMessage().contains("素材"));
+    }
+
+    @Test void thePlannerIsToldHowEachStageIsBuiltAndWhatReferenceNodeIdsMayHold() throws Exception {
+        var analysisGuide=StudioWorkflowService.skillPlanConstraints(om,rules(),"analysis");
+        String stage=analysisGuide.path("stageGuide").asText();
+        assertTrue(stage.indexOf("recreation")<stage.indexOf("plan-compile"),"film study first, then the compile step");
+        assertTrue(stage.contains("不写 image"));
+        var production=StudioWorkflowService.skillPlanConstraints(om,rules(),"production");
+        assertTrue(production.path("stageGuide").asText().contains("assemble"));
+        assertTrue(analysisGuide.path("references").asText().contains("dependsOn"));
+    }
 }
