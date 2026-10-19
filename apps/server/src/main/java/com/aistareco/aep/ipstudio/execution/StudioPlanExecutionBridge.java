@@ -139,6 +139,13 @@ public class StudioPlanExecutionBridge implements StudioExecutionGate {
         return stage;
     }
 
+    @Override
+    @Transactional(readOnly=true)
+    public com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection executionPayer(String userId,String projectId,String executionId) {
+        return executions.findById(executionId).filter(x->userId.equals(x.getOwnerUserId())&&projectId.equals(x.getProjectId()))
+                .filter(x->IpPlanExecution.active(x.getStatus())).map(this::billing).orElse(null);
+    }
+
     /** D04: an approval in words takes exactly the card button's path (StudioPlanExecutionService#confirmNatural). */
     @Override
     public Object confirmFromDialogue(String userId,String projectId,NaturalApproval approval) {

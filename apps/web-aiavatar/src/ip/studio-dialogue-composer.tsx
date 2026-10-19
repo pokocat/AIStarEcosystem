@@ -2,7 +2,7 @@
 // The always-editable composer. Typing is never locked by streaming, tools or a running
 // production; only the send button waits for attachments to finish saving. `@` pins a
 // canvas object for this message, attachments are added as ordinary canvas nodes first.
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { gsap } from 'gsap';
 import { Button, Input } from 'antd';
 import { ArrowUp, AtSign, Square, X } from 'lucide-react';
@@ -35,8 +35,6 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
   const [caret, setCaret] = useState(0), [mentionOpen, setMentionOpen] = useState(false), [mentionIndex, setMentionIndex] = useState(0);
   const [libraryQuery, setLibraryQuery] = useState<string>();
   const libraryMention = useRef<ReturnType<typeof assistantMentionQuery>>(undefined);
-  const [shortcut, setShortcut] = useState('Ctrl Enter');
-  useEffect(() => { if (/Mac|iPhone|iPad|iPod/.test(navigator.platform)) setShortcut('⌘ Enter'); }, []);
   const latest = useRef(text); latest.current = text;
   const openMention = () => {
     const current = latest.current, value = current + (current && !/\s$/.test(current) ? ' ' : '') + '@';
@@ -80,10 +78,12 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       onSelect={e => setCaret(e.currentTarget.selectionStart)}
       onKeyDown={e => {
         if (e.nativeEvent.isComposing) return;
-        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !query) { e.preventDefault(); if (!sendDisabledReason && !sending) onSend(); return; }
         if (query && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setMentionOpen(false); }
         else if (query && suggestions.length && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); setMentionIndex(i => (i + (e.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
         else if (query && suggestions.length && e.key === 'Enter') { e.preventDefault(); choose(suggestions[mentionIndex % suggestions.length]); }
+        // Like the home page's conversation box and every chat app: Enter sends, Shift+Enter starts a new line
+        // (⌘/Ctrl+Enter still sends). Before this, Enter only added a line and the message seemed not to go.
+        else if (e.key === 'Enter' && !e.shiftKey && !e.altKey) { e.preventDefault(); if (!sendDisabledReason && !sending) onSend(); }
       }} autoSize={{ minRows: compact ? 1 : 2, maxRows: 6 }} maxLength={4000}/>
     {query && <div id="studio-dialogue-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">
       {suggestions.length ? suggestions.map((node, index) => <button key={node.id} id={`studio-dialogue-mention-${node.id}`} type="button" role="option" aria-selected={index === mentionIndex % suggestions.length}
@@ -92,14 +92,14 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     </div>}
     <div className="studio-assistant-composer-toolbar">
       <div className="studio-assistant-context-actions">
-        <Button icon={<AtSign size={16}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
+        <Button icon={<AtSign size={17}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
         <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets} iconOnly actions={picker}/>
         {tools}
       </div>
       <div className="studio-dialogue-send">
         {sendDisabledReason && text.trim() && <span className="studio-dialogue-send-reason" role="status" title={sendDisabledReason}>{sendDisabledReason}</span>}
         {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}/>}
-        <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title={sendDisabledReason || `发送（${shortcut}）；回复按实际用量扣积分`} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
+        <Button aria-label="发送" aria-keyshortcuts="Enter" title={sendDisabledReason || `发送（Enter；Shift+Enter 换行）。${costHint || '回复按实际用量扣积分'}`} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
           icon={<ArrowUp size={18}/>} loading={sending} disabled={!!sendDisabledReason} onClick={onSend}/>
       </div>
     </div>
@@ -110,6 +110,6 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       libraryMention.current = undefined;
     }}/>
     {attachmentsUnsaved && <Button onClick={onRetrySave}>重试保存附件</Button>}
-    {costHint && <p className="studio-assistant-send-hint">{costHint}</p>}
+    {/* The reply's cost note rides on the send button's tooltip: the design's box ends at the buttons. Each reply's actual cost still shows under it. */}
   </div>;
 });

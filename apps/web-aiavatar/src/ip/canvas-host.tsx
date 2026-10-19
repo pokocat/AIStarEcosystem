@@ -15,7 +15,7 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, Popover, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Ellipsis, Loader2, RefreshCw, Send, Star } from "lucide-react";
+import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, LayoutTemplate, Loader2, RefreshCw, Send } from "lucide-react";
 import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -25,6 +25,7 @@ import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { registerStudioSave } from "@/canvas-bridge/studio-save";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { ProjectHistory } from "@/ip/project-history";
+import { CanvasConflictDialog } from "@/ip/canvas-conflict-dialog";
 import { StudioTemplatePublish } from "@/ip/studio-template-publish";
 import { StudioTemplateSource } from "@/ip/studio-template-source";
 import { USE_MOCK } from "@ai-star-eco/api-client";
@@ -39,16 +40,22 @@ const SAVE_LABEL: Record<string, string> = {
   saving: "保存中",
   saved: "已保存",
   failed: "没保存上，改动还在本地",
-  conflict: "这张画布有更新的版本 · 刷新后再改",
+  conflict: "别处改过了，这里的改动没存上",
 };
 
 function Host({ projectId }: { projectId: string }) {
-  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
+  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave, resolveConflict, remoteRefreshes } = useProjectSync(projectId);
   React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [templateOpen, setTemplateOpen] = React.useState(false);
   const [templateVisibility, setTemplateVisibility] = React.useState<'personal'|'official'>('personal');
   const { message } = useStudioApp();
+
+  // 撞上别处的编辑：弹窗自动开一次让用户选；关掉之后顶栏徽标变成「处理冲突」能再打开。
+  const [conflictOpen, setConflictOpen] = React.useState(false);
+  React.useEffect(() => { setConflictOpen(saveState === "conflict"); }, [saveState]);
+  // 别的标签页存了新版、这里没改过东西 → 已经悄悄换成最新内容了，轻轻说一声就够
+  React.useEffect(() => { if (remoteRefreshes > 0) message.info("这张画布在别的窗口改过了，已经换成最新内容"); }, [remoteRefreshes, message]);
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
@@ -76,7 +83,9 @@ function Host({ projectId }: { projectId: string }) {
       if (leaving) return;
       leaving = true;
       void saveNow().then((outcome) => {
-        if (outcome === "failed" || outcome === "conflict") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
+        // 冲突：直接把选出路的弹窗打开，别再弹一条「请先处理保存问题」让人自己找
+        if (outcome === "conflict") { setConflictOpen(true); leaving = false; }
+        else if (outcome === "failed") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
         else window.location.assign(dest.href);
       }).catch((e) => { message.error(e); leaving = false; });
     };
@@ -130,40 +139,49 @@ function Host({ projectId }: { projectId: string }) {
       <Popover trigger="click" placement="bottomRight" getPopupContainer={modalContainerOf} content={<div className="studio-host-more" role="group" aria-label="画布更多操作">
         <ProjectHistory projectId={projectId} saveNow={saveNow} />
         <LastRunPanel />
-        {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>保存为模板</button></>}
+        {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="studio-host-more-item"><LayoutTemplate aria-hidden="true"/>保存为模板</button></>}
         {isOperator && (
           <button
+            type="button"
             onClick={()=>{setTemplateVisibility('official');setTemplateOpen(true);}}
-            className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
-            style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+            className="studio-host-more-item"
             title="完整保存画布和素材，所有用户都能查看"
           >
-            <Star className="w-3.5 h-3.5 shrink-0" />
+            <BadgeCheck aria-hidden="true" />
             存为官方内容
           </button>
         )}
       </div>}>
         <button type="button" aria-label="更多" title="历史记录、上次发给模型、模板" className="studio-host-more-button"><Ellipsis className="w-4 h-4" /></button>
       </Popover>
+      {/* 设计稿 Main 画板：保存状态是标题旁的一行灰字，不是胶囊；顶栏右侧依次是「⋯」、积分、发布（顺序由 studio-flow.css 排）。 */}
       {saveState !== "idle" && (
         <span
-          className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"
-          style={
-            saveState === "failed" || saveState === "conflict"
-              ? { background: "var(--err-soft)", color: "var(--err)" }
-              : { background: "var(--surface-2)", color: "var(--ink-3)" }
-          }
+          className={`studio-host-save${saveState === "failed" || saveState === "conflict" ? " is-error" : ""}`}
           title={SAVE_LABEL[saveState]}
         >
           {SAVE_LABEL[saveState]}
         </span>
+      )}
+      {/* 冲突不给「重试」（自动重试就是覆盖别处的改动），给的是一个能打开弹窗选出路的按钮 ——
+          此前只有徽标上一句「刷新后再改」，而 F5 还会被「离开页面？」拦住。 */}
+      {saveState === "conflict" && (
+        <button
+          onClick={() => setConflictOpen(true)}
+          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          style={{ background: "var(--err)", color: "var(--on-action)" }}
+          title="选一种处理方式：另存一份 / 换成最新内容 / 以这里为准"
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          处理冲突
+        </button>
       )}
       {/* 存不上时给一个真的能点的重试 —— 此前只有那个小徽标，用户唯一的办法是
           「再随便改一下」去触发下一次防抖（冲突不给重试：重试就是覆盖别处的改动）。 */}
       {saveState === "failed" && (
         <button
           onClick={() => void retrySave()}
-          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          className="studio-host-save h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--err-soft)", color: "var(--err)" }}
           title="再存一次。改动还在这个页面上，先别关"
         >
@@ -175,7 +193,7 @@ function Host({ projectId }: { projectId: string }) {
         // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
         <a
           href={`/assets/${publishedAvatarId}`}
-                    className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
+          className="studio-host-publish h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
           style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
           title={`已发布为 ${publishedAvatarId}，点开去资产库看`}
         >
@@ -185,8 +203,8 @@ function Host({ projectId }: { projectId: string }) {
       ) : (
         <button
           onClick={() => setPublishOpen(true)}
-          className="h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
-          style={{ background: "var(--action)", color: "var(--on-action)" }}
+          className="studio-host-publish h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
           <Send className="w-3.5 h-3.5" />
           发布
@@ -213,7 +231,7 @@ function Host({ projectId }: { projectId: string }) {
         <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 rounded-xl text-[12.5px] font-bold transition hover:brightness-95"
-          style={{ background: "var(--action)", color: "var(--on-action)" }}
+          style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
           重新加载
         </button>
@@ -227,6 +245,12 @@ function Host({ projectId }: { projectId: string }) {
   return (
     <div className="h-full relative">
       <StudioFlowCanvas projectId={projectId}/>
+      <CanvasConflictDialog
+        open={conflictOpen}
+        onClose={() => setConflictOpen(false)}
+        resolve={resolveConflict}
+        onCopySaved={(copyId) => message.success({ content: <span>这里的改动已另存为新画布，<a href={`/projects/${copyId}`} target="_blank" rel="noreferrer">打开看看</a></span>, duration: 8 })}
+      />
       {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog

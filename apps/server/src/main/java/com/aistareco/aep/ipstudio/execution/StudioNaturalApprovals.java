@@ -22,6 +22,15 @@ final class StudioNaturalApprovals {
     /** An approval must contain one of these; a message that names neither approval nor hesitation is not an approval. */
     private static final List<String> APPROVAL = List.of("确认", "开始", "按这个", "按此", "按你", "按推荐", "按方案", "就这样", "就这个", "同意",
             "批准", "可以做", "可以开始", "做吧", "开工", "执行", "通过", "没问题", "就按", "照这个", "ok", "OK", "Ok", "好的", "行，", "行。");
+    /**
+     * A reply made only of short affirmatives — 「可以」「好」「行」「嗯，可以」「好吧」 — is how people actually answer a card
+     * (the card itself says 「直接回复「可以」也行」). Each piece between punctuation, after its trailing particles, must be one
+     * of these; so 「可以把第 2 段换成横屏」, 「行不行」 and 「不可以」 are not approvals (questions and edits are refused above anyway).
+     */
+    private static final java.util.Set<String> SHORT_AFFIRMATIVES = java.util.Set.of("可以", "可", "好", "好好", "行", "行行", "嗯", "嗯嗯",
+            "对", "对的", "是", "是的", "没错", "可以可以", "好嘞", "妥");
+    private static final Pattern PIECE_SEPARATORS = Pattern.compile("[\\s,，。.!！、;；~～…]+");
+    private static final Pattern TRAILING_PARTICLES = Pattern.compile("[吧啊呀啦哈哦呢嘛了]+$");
     private static final Pattern DIGIT_GROUPING = Pattern.compile("(?<=\\d)[,，\\s](?=\\d)");
     /** Numbers the user tied to a budget: 「上限 280」「预算280积分」「不超过 1,500」「280 积分」. */
     private static final Pattern BUDGET_NUMBER = Pattern.compile(
@@ -31,7 +40,7 @@ final class StudioNaturalApprovals {
         String said = text == null ? "" : text.strip();
         if (said.isEmpty()) throw ambiguous();
         for (String h : HESITATION) if (said.contains(h)) throw ambiguous();
-        if (APPROVAL.stream().noneMatch(said::contains)) throw ambiguous();
+        if (APPROVAL.stream().noneMatch(said::contains) && !onlyAffirmatives(said)) throw ambiguous();
         long proposed = card.path("budgetCap").asLong(), proposedFix = card.path("autoFixCap").asLong(0), quoted = card.path("quotedCost").asLong(0);
         if (budgetCap < 0 || autoFixCap < 0 || autoFixCap > budgetCap)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度不能超过总上限");
@@ -52,6 +61,18 @@ final class StudioNaturalApprovals {
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "上限与确认卡上的 " + proposed + " 积分不同，需要你在消息里说出新的上限，或在卡片上修改");
         if (autoFixCap != proposedFix && !mentions(said, autoFixCap))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "重做额度与确认卡上的不同，需要你在消息里说出这个数，或在卡片上修改");
+    }
+
+    /** True when every piece of the reply is a short affirmative (see {@link #SHORT_AFFIRMATIVES}). */
+    static boolean onlyAffirmatives(String text) {
+        String[] pieces = PIECE_SEPARATORS.split(text.strip());
+        if (pieces.length == 0) return false;
+        for (String piece : pieces) {
+            String core = TRAILING_PARTICLES.matcher(piece).replaceAll("");
+            if (piece.isEmpty()) continue;
+            if (!SHORT_AFFIRMATIVES.contains(core)) return false;
+        }
+        return java.util.Arrays.stream(pieces).anyMatch(p -> !p.isEmpty());
     }
 
     /** The user wrote this exact number (digit grouping like 1,500 allowed; 15000 does not mention 1500). */

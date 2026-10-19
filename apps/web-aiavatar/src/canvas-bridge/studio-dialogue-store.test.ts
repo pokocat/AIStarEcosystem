@@ -201,6 +201,17 @@ describe('canvas cursor', () => {
     expect(s2.canvasAckSeq).toBe(7);
     expect(dialogueReducer(s2, { type: 'canvas.ack', seq: 8 }).canvasAckSeq).toBe(9);
   });
+  test('commands projected but not saved keep the persisted cursor below them until the save lands', () => {
+    const s0 = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state(), mode: 'replace', canvasAckSeq: 5 });
+    const s1 = dialogueReducer(fold(s0, ev(6, 'node.upsert', { nodeId: 'n1', op: 'create' }), ev(7, 'node.upsert', { nodeId: 'n2', op: 'create' })), { type: 'canvas.ack', seq: 7 });
+    expect(persistableCanvasCursor(s1)).toBe(7);
+    const unsaved = dialogueReducer(s1, { type: 'canvas.unsaved', fromSeq: 6 });
+    expect(unsaved.canvasAckSeq).toBe(7);
+    expect(persistableCanvasCursor(unsaved)).toBe(5);
+    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: undefined }))).toBe(7);
+    // Nothing below the first unsaved command: no cursor rather than 0 (the next open replays them).
+    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: 1 }))).toBeUndefined();
+  });
 });
 
 describe('outbox and snapshots', () => {
@@ -218,6 +229,14 @@ describe('outbox and snapshots', () => {
     s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c3', result: { messageId: 'u3', turnId: 't1', queueState: 'accepted' } });
     expect(s.messages.map(m => m.id)).toEqual(['u1', 'u3', 'm1']);
     expect(s.activeTurnId).toBe('t1');
+    // 「已收到」 only until the reply starts: once it has, the bubble is just the message (canvas redesign).
+    expect(messageQueueLabel(s, s.messages.find(m => m.id === 'u3')!)).toBeUndefined();
+  });
+  test('an accepted message says 「已收到」 while no reply has started yet', () => {
+    let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c4', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
+    s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c4', result: { messageId: 'u4', turnId: 't2', queueState: 'accepted' } });
+    const sent = s.messages.find(m => m.id === 'u4') ?? { ...userMessage, id: 'u4', seq: s.latestSeq + 1 };
+    expect(messageQueueLabel(s, sent)).toBe('已收到');
   });
   test('a failed send stays in the outbox for a same-key retry; a snapshot that contains it clears it', () => {
     let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c9', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });

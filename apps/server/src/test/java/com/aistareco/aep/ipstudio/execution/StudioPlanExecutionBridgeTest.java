@@ -27,6 +27,7 @@ class StudioPlanExecutionBridgeTest {
     @BeforeEach void setUp() throws Exception {
         var executions=mock(IpPlanExecutionRepository.class);
         when(executions.lockById(anyString())).thenAnswer(i->Optional.ofNullable(row));
+        when(executions.findById(anyString())).thenAnswer(i->Optional.ofNullable(row));
         when(executions.save(any())).thenAnswer(i->i.getArgument(0));
         workflow=mock(StudioWorkflowService.class);when(workflow.quote(eq("u"),any())).thenReturn(21L);
         projects=mock(IpProjectService.class);
@@ -81,5 +82,15 @@ class StudioPlanExecutionBridgeTest {
         row.setStatus("done");
         assertNull(bridge.attributeTurn("u","p","PEX-1","IPR-turn-3",1),"a finished execution no longer owns the thread's turns");
         assertNull(bridge.attributeTurn("someone-else","p","PEX-1","IPR-turn-4",1));
+    }
+
+    /** The payer a bound dialogue turn must use: the execution's fixed one while it is active, nobody's once it ended. */
+    @Test void theExecutionPayerIsTheFixedOneWhileActive() {
+        row.setBillingJson("{\"mode\":\"enterprise\",\"enterpriseId\":\"ent-1\"}");
+        var payer=bridge.executionPayer("u","p","PEX-1");
+        assertEquals("enterprise",payer.mode());assertEquals("ent-1",payer.enterpriseId());
+        assertNull(bridge.executionPayer("other","p","PEX-1"),"not the owner's");
+        row.setStatus("done");
+        assertNull(bridge.executionPayer("u","p","PEX-1"),"an ended execution fixes nothing");
     }
 }

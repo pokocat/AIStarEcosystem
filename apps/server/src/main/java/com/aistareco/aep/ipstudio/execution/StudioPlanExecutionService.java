@@ -98,8 +98,8 @@ public class StudioPlanExecutionService {
             executionId=active.getId();
             var loaded=loadPlan(userId,projectId,card.cardPlanRunId(),card.planFingerprint(),"production");
             approachId=loaded.plan().path("confirmedApproachId").asText(loaded.plan().path("recommendedApproachId").asText(null));
-        } else if(active!=null&&card.planFingerprint().equals(active.getPlanFingerprint())&&stage.equals(active.getStage())) {
-            executionId=active.getId(); // a raise of the running stage's cap
+        } else if(active!=null&&stage.equals(active.getStage())) {
+            executionId=active.getId(); // a raise of the running stage's cap, or a revised plan for it (replanStage)
         }
         var req=new PlanExecutionCreateRequest(approval.clientRequestId(),stage,card.cardPlanRunId(),card.planFingerprint(),approachId,cap,autoFix,
                 billing,executionId,card.cardPlanRevision(),approval.approvalId(),approval.userMessageId());
@@ -168,9 +168,10 @@ public class StudioPlanExecutionService {
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
         Instant now=Instant.now();
         if(req.stage().equals(e.getStage())) {
-            // Same stage: only the approved cap moves (e.g. after a shortfall); a different plan needs a new execution.
+            // Same stage, another plan: the user changed course mid-stage (steering → revised plan → its card).
             if(!req.planRunId().equals(e.getPlanRunId())||!req.planFingerprint().equals(e.getPlanFingerprint()))
-                throw stale("这一阶段已经在按另一份计划执行；要换方案请结束这次制作后重新开始");
+                return replanStage(userId,projectId,e,req,fingerprint,billing,byMessage,state,budget,now);
+            // Same plan: only the approved cap moves (e.g. after a shortfall).
             ObjectNode current=(ObjectNode)budget.path(req.stage());
             long committed=current.path("spent").asLong()+current.path("inFlight").asLong();
             if(req.budgetCap()<committed)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","上限不能低于已花费和在途的 "+committed+" 积分");
@@ -179,6 +180,7 @@ public class StudioPlanExecutionService {
             current.put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("clientRequestId",req.clientRequestId())
                     .put("requestFingerprint",fingerprint).put("confirmedAt",now.toString()).remove("shortfall");
             current.put("confirmationMessageId",req.confirmationMessageId()).put("approvalId",req.approvalId());
+            resumeAfterRaise(e,state,now);
             markSteeringSeen(e,state);
             e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
             executions.save(e);
@@ -216,6 +218,127 @@ public class StudioPlanExecutionService {
         markApproved(userId,projectId,confirmation,e.getId(),"production",req,now);
         wakeAfterCommit(e.getId());
         return toDto(e);
+    }
+
+    /**
+     * The executor's raise card says 「确认把上限提高到 X 积分后，我接着做」: the steps it stopped for want of budget go back to
+     * pending and a waiting execution runs again. Anything else that still needs the user (a failed step, an unresolved
+     * check, a step that asks for confirmation) stops it again at the next advance; a user's own pause stays a pause.
+     */
+    private void resumeAfterRaise(IpPlanExecution e,ObjectNode state,Instant now) {
+        boolean released=false;
+        for(JsonNode raw:PlanState.stageSteps(state,e.getStage())) {
+            ObjectNode step=(ObjectNode)raw;
+            if(!"needs_user".equals(step.path("status").asText()))continue;
+            // budgetBlocked is set by the executor; the reason prefix covers steps it stopped before the flag existed.
+            if(!step.path("budgetBlocked").asBoolean(false)&&!step.path("reason").asText("").startsWith("本阶段预算还差"))continue;
+            step.put("status","pending");step.remove("reason");step.remove("budgetBlocked");
+            released=true;
+        }
+        if(!released||!IpPlanExecution.NEEDS_USER.equals(e.getStatus()))return;
+        e.setStatus(IpPlanExecution.RUNNING);state.remove("needsUserReason");
+        if(e.getDeadlineAt()==null||now.isAfter(e.getDeadlineAt()))e.setDeadlineAt(now.plus(StudioPlanExecutor.WINDOW));
+    }
+
+    /**
+     * The user changed course mid-stage (D03: 「第 3 段换个人物」 → the dialogue proposed a revised plan for the same stage →
+     * the user confirmed its card): the confirmed plan replaces the stage's remaining work on the same execution, the payer
+     * and the stage stay. Steps the revision keeps unchanged (same id, same definition) keep their results; a changed one
+     * — or one downstream of a changed one — is redone as a new attempt, its earlier runs kept for the record and the
+     * budget; a step the revision drops stays only if it already ran. Work already handed to a provider is never
+     * rewritten: changing a step that is still generating is refused until it ends. The new cap must cover what is spent
+     * and in flight plus every step still to run.
+     */
+    private PlanExecution replanStage(String userId,String projectId,IpPlanExecution e,PlanExecutionCreateRequest req,String fingerprint,
+            BillingSelection billing,boolean byMessage,ObjectNode state,ObjectNode budget,Instant now) {
+        String stage=e.getStage();
+        if(req.expectedRevision()==null)throw stale("请看最新的计划后再确认");
+        var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),stage);
+        if(!loaded.rules().key().equals(e.getSkillKey()))throw stale("新方案与这次制作使用的制作方法不一致，请结束这次制作后重新开始");
+        skills.requireActive(loaded.rules().key());
+        if("production".equals(stage)&&(req.approachId()==null||!req.approachId().equals(loaded.plan().path("recommendedApproachId").asText(""))))
+            throw stale("确认的方案与当前计划不一致，请按所选方案重新生成计划后再确认");
+        Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
+        if(confirmation.threadId()!=null&&e.getThreadId()!=null&&!confirmation.threadId().equals(e.getThreadId()))throw stale("这条确认来自另一段对话");
+
+        Map<String,ObjectNode> prior=new LinkedHashMap<>();
+        for(JsonNode raw:PlanState.stageSteps(state,stage))prior.put(raw.path("id").asText(),(ObjectNode)raw);
+        // Which steps of the revision must run again: changed or new ones, then everything downstream of them.
+        Map<String,JsonNode> definitions=new LinkedHashMap<>();
+        for(JsonNode definition:loaded.plan().path("steps"))
+            if(definitions.put(definition.path("id").asText(),definition)!=null)throw stale("计划里有重复的步骤");
+        Set<String> redo=new HashSet<>();
+        for(var entry:definitions.entrySet()) {
+            ObjectNode old=prior.get(entry.getKey());
+            if(old==null||!keepsResult(old)||!sameDefinition(old.path("definition"),entry.getValue()))redo.add(entry.getKey());
+        }
+        for(boolean grew=true;grew;) {
+            grew=false;
+            for(var entry:definitions.entrySet()) {
+                if(redo.contains(entry.getKey()))continue;
+                for(JsonNode dependency:entry.getValue().path("dependsOn"))
+                    if(redo.contains(dependency.asText())){redo.add(entry.getKey());grew=true;break;}
+            }
+        }
+        ArrayNode next=mapper.createArrayNode();
+        for(JsonNode raw:state.path("steps"))if(!stage.equals(raw.path("stage").asText()))next.add(raw);
+        long toRun=0;
+        for(var entry:definitions.entrySet()) {
+            ObjectNode old=prior.remove(entry.getKey());
+            if(!redo.contains(entry.getKey())){next.add(old);continue;}
+            if(old!=null&&Set.of("submitted","running").contains(old.path("status").asText()))
+                throw stale("「"+old.path("title").asText()+"」还在生成中，新方案要改它，等它做完后再确认");
+            ObjectNode step=newStep(entry.getValue(),loaded,stage);
+            if(old!=null&&ran(old)) {
+                // A new attempt: a new request identity; the earlier runs stay counted in the stage budget.
+                step.put("attempt",old.path("attempt").asInt(1)+1);
+                ArrayNode previous=step.putArray("previousRunIds");
+                old.path("previousRunIds").forEach(previous::add);old.path("runIds").forEach(previous::add);
+            } else if(old!=null)step.put("attempt",old.path("attempt").asInt(1));
+            next.add(step);
+            toRun=Math.addExact(toRun,step.path("quotedCost").asLong());
+        }
+        // Steps the revision no longer has: ones that ran stay (their results and charges are real), the rest go.
+        for(ObjectNode old:prior.values()) {
+            if(!ran(old)&&!Set.of("submitted","running").contains(old.path("status").asText()))continue;
+            if(Set.of("pending","needs_user","failed").contains(old.path("status").asText()))old.put("status","skipped").put("reason","新方案里没有这一步");
+            next.add(old);
+        }
+        ObjectNode current=(ObjectNode)budget.path(stage);
+        long spent=current.path("spent").asLong(),inFlight=current.path("inFlight").asLong();
+        if(req.budgetCap()<Math.addExact(Math.addExact(spent,inFlight),toRun))throw budgetExceeded(stage,spent,inFlight,toRun,req.budgetCap());
+        state.set("steps",next);
+        state.remove("needsUserReason");
+        markSteeringSeen(e,state);
+        current.put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("quoted",quotedTotal(loaded))
+                .put("planRunId",loaded.planRunId()).put("planFingerprint",req.planFingerprint()).put("planRevision",confirmation.card().cardPlanRevision())
+                .put("clientRequestId",req.clientRequestId()).put("requestFingerprint",fingerprint).put("confirmedAt",now.toString())
+                .put("confirmationMessageId",req.confirmationMessageId()).put("approvalId",req.approvalId()).remove("shortfall");
+        if(req.approachId()!=null)current.put("approachId",req.approachId());
+        e.setPlanRunId(loaded.planRunId());e.setPlanRevision(confirmation.card().cardPlanRevision());e.setPlanFingerprint(req.planFingerprint());
+        e.setStatus(IpPlanExecution.RUNNING);e.setDeadlineAt(now.plus(StudioPlanExecutor.WINDOW));
+        e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
+        executions.save(e);
+        markApproved(userId,projectId,confirmation,e.getId(),stage,req,now);
+        wakeAfterCommit(e.getId());
+        return toDto(e);
+    }
+    /**
+     * A step whose result a revision can keep: it finished, or it is still generating (then it has to stay unchanged). A
+     * skipped step (dropped by an earlier revision) runs again when a later revision brings it back.
+     */
+    private static boolean keepsResult(JsonNode step) {
+        return Set.of("done","submitted","running").contains(step.path("status").asText());
+    }
+    private static boolean ran(JsonNode step) {
+        return step.path("runIds").size()>0||step.path("previousRunIds").size()>0;
+    }
+    /** Same step content; the server quote may move with prices and does not make it a different step. */
+    private static boolean sameDefinition(JsonNode before,JsonNode after) {
+        if(!before.isObject()||!after.isObject())return false;
+        ObjectNode a=((ObjectNode)before).deepCopy(),b=((ObjectNode)after).deepCopy();
+        a.remove("quotedCost");b.remove("quotedCost");
+        return a.equals(b);
     }
 
     // ── Read / controls ─────────────────────────────────────────────────────────────────────────────────────────
@@ -487,16 +610,19 @@ public class StudioPlanExecutionService {
         Set<String> seen=new HashSet<>();
         for(JsonNode existing:steps)if(stage.equals(existing.path("stage").asText()))seen.add(existing.path("id").asText());
         for(JsonNode definition:loaded.plan().path("steps")) {
-            String id=definition.path("id").asText();
-            if(!seen.add(id))throw stale("计划里有重复的步骤");
-            var step=steps.addObject().put("id",id).put("stage",stage).put("title",definition.path("title").asText())
-                    .put("operation",definition.path("operation").asText()).put("execution",definition.path("execution").asText("auto"))
-                    .put("status","pending").put("attempt",1).put("quotedCost",definition.path("quotedCost").asLong())
-                    .put("maxCost",definition.path("quotedCost").asLong()).put("planRunId",loaded.planRunId());
-            step.set("dependsOn",definition.path("dependsOn").isArray()?definition.path("dependsOn").deepCopy():mapper.createArrayNode());
-            step.putArray("runIds");
-            step.set("definition",definition.deepCopy());
+            if(!seen.add(definition.path("id").asText()))throw stale("计划里有重复的步骤");
+            steps.add(newStep(definition,loaded,stage));
         }
+    }
+    private ObjectNode newStep(JsonNode definition,LoadedPlan loaded,String stage) {
+        var step=mapper.createObjectNode().put("id",definition.path("id").asText()).put("stage",stage).put("title",definition.path("title").asText())
+                .put("operation",definition.path("operation").asText()).put("execution",definition.path("execution").asText("auto"))
+                .put("status","pending").put("attempt",1).put("quotedCost",definition.path("quotedCost").asLong())
+                .put("maxCost",definition.path("quotedCost").asLong()).put("planRunId",loaded.planRunId());
+        step.set("dependsOn",definition.path("dependsOn").isArray()?definition.path("dependsOn").deepCopy():mapper.createArrayNode());
+        step.putArray("runIds");
+        step.set("definition",definition.deepCopy());
+        return step;
     }
 
     private ObjectNode stageBudget(PlanExecutionCreateRequest req,String fingerprint,LoadedPlan loaded,int revision,long quoted,Instant now) {

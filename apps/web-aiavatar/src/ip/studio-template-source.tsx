@@ -3,6 +3,7 @@ import { StudioErrorNotice, studioRunError, useStudioErrorState } from './studio
 
 import { useCallback, useEffect, useState } from 'react';
 import { Alert, Button, Input, Modal, Select } from 'antd';
+import { ListChecks } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import { USE_MOCK } from '@ai-star-eco/api-client';
 import { studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-bridge/studio-task-status';
@@ -47,7 +48,7 @@ export function StudioTemplateSource({projectId}:{projectId:string}) {
     setError('');try{const ips=await listStudioIpAssets();const options=ips.filter(p=>p.current).map(p=>({value:p.avatarId,label:p.characterName||p.name,ipId:p.ipId||undefined}));setPeople(options);setPerson(undefined);setName(step.title);setArchive(step);}catch(e){setError(e);}
   };
   if(!source)return null;
-  return <><button type="button" className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:'var(--surface-2)',color:'var(--ink-2)'}} onClick={()=>setOpen(true)}>模板 v{source.source.version} · 制作计划</button>
+  return <><button type="button" className="studio-host-more-item" onClick={()=>setOpen(true)}><ListChecks aria-hidden="true"/><span>模板 v{source.source.version} · 制作计划</span></button>
     <Modal open={open} onCancel={()=>setOpen(false)} footer={<><Button onClick={()=>void refresh().catch(e=>setError(e))}>刷新任务</Button><Button disabled={!execution?.steps.some(s=>!isVideo(s)&&s.accepted&&s.status==='done')} onClick={()=>{setPackageTitle(source.project.name);setPackageSteps(execution?.steps.filter(s=>!isVideo(s)&&s.accepted&&s.status==='done').map(s=>s.id)??[]);setPackageOpen(true);}}>排版并下载资产包</Button></>} width={860} styles={{body:{maxHeight:'70dvh',overflowY:'auto'}}} title={`${source.source.name} · v${source.source.version}`}>
       <div className="studio-template-form"><p>画布锁定此版本。按步骤生成，每次确认费用；需要采用确认的上游结果未采用前，下游不会执行。刷新会找回原任务。</p><strong>创建时计划 · {source.plan.imageCount} 张图片{source.plan.videoCount?` · ${source.plan.videoCount} 条视频`:''} · {source.plan.totalCost} 积分。实际费用逐步确认。</strong>
         {metrics&&<p>我套用这个版本：{metrics.instances} 个画布，{metrics.completedInstances} 个已完成；已消费 {metrics.spentCredits} 积分，冻结 {metrics.pendingCredits}；采用 {metrics.acceptedSteps} 个结果，首轮采用 {metrics.firstPassAcceptedSteps} 个，失败任务 {metrics.failedRuns} 个。</p>}

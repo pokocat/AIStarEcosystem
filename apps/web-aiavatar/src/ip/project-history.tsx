@@ -2,6 +2,7 @@
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from './studio-errors';
 import * as React from "react";
 import { App, Button, Empty, Modal, Spin, Tabs } from "antd";
+import { History } from "lucide-react";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { formatDateTime } from "@/lib/datetime";
 import { nanoid } from "nanoid";
@@ -66,7 +67,7 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
   });
   const prompt = (run: IpRun) => run.inputs.userPrompt || run.inputs.prompt || "";
   return <>
-    <button type="button" onClick={() => { setOpen(true); void load(); }} className="ip-canvas-history h-8 px-3 rounded-full text-[12px] font-semibold whitespace-nowrap" style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}>历史记录</button>
+    <button type="button" onClick={() => { setOpen(true); void load(); }} className="ip-canvas-history studio-host-more-item"><History aria-hidden="true" />历史记录</button>
     <Modal title="历史记录" open={open} onCancel={() => setOpen(false)} footer={null} width={760} getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}>
       {error && <div style={{ color: "var(--err)", marginBottom: 12 }}><StudioErrorNotice error={error}/> <Button onClick={() => void load()} disabled={loading}>重试</Button></div>}
       <Tabs items={[

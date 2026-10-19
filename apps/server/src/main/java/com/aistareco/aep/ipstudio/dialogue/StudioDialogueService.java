@@ -171,8 +171,55 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         validate(request);
         requireThread(userId, projectId, threadId);
         reconcile(threadId); // an abandoned turn must not swallow new input as steering forever
+        var said = StudioStopIntent.of(request.text());
+        if (said != null && distinct(request.pinnedNodeIds()).isEmpty() && distinct(request.attachmentNodeIds()).isEmpty()) {
+            PostMessageResult controlled = postControl(userId, projectId, threadId, request, said);
+            if (controlled != null) return controlled;
+        }
         PostMessageResult result = tx.execute(s -> postLocked(userId, projectId, threadId, request));
         return result;
+    }
+
+    /**
+     * 「先停」「停止」「暂停」 typed while a reply or a bound execution is working is a priority control, not steering: it goes
+     * through {@link #control} at once instead of waiting in the queue for the next safe boundary and a model turn (Codex
+     * 2026-10-19). Stop cancels the cancellable queued tasks like the stop button; pause keeps them (plan §制作中输入与转向).
+     * The message stays in the thread, answered with what happened; nothing is charged. Null when nothing is working (or
+     * the message was already posted): it is then an ordinary message.
+     */
+    private PostMessageResult postControl(String userId, String projectId, String threadId, PostMessageRequest request, StudioStopIntent.Kind kind) {
+        if (messages.findByThreadIdAndClientMessageId(threadId, request.clientMessageId()).isPresent()) return null;
+        IpDialogueThread thread = threads.findById(threadId).orElse(null);
+        if (thread == null) return null;
+        var bound = execution(userId, projectId, thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
+        if (bound == null && thread.getActiveTurnId() == null) return null;
+        String action = kind == StudioStopIntent.Kind.PAUSE && bound != null ? "pause" : "stop";
+        String key = UUID.nameUUIDFromBytes((threadId + "|" + request.clientMessageId()).getBytes(StandardCharsets.UTF_8)).toString().replace("-", "");
+        try { control(userId, projectId, threadId, new ControlRequest("say-" + key, action, null)); }
+        catch (BusinessException e) {
+            log.info("[dialogue] typed {} not applied, posting it as a message thread={} code={}", action, threadId, e.getCode());
+            return null;
+        }
+        String[] id = new String[1];
+        store.write(threadId, t -> {
+            var prior = messages.findByThreadIdAndClientMessageId(threadId, request.clientMessageId()).orElse(null);
+            if (prior != null) { id[0] = prior.getId(); return List.of(); }
+            Instant now = Instant.now();
+            var message = IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(threadId)
+                    .seq(StudioDialogueStore.nextMessageSeq(t)).role("user").text(request.text()).blocksJson("[]")
+                    .pinnedNodeIdsJson("[]").attachmentNodeIdsJson("[]").clientMessageId(request.clientMessageId())
+                    .requestJson(mapper.createObjectNode().put("control", action).toString()).status(IpDialogueMessage.DONE)
+                    .createdAt(now).updatedAt(now).build();
+            messages.save(message);
+            id[0] = message.getId();
+            t.setLastOpenedAt(now);
+            return List.of();
+        });
+        String reply = "pause".equals(action) ? "好，先暂停：不会再提交新的步骤，已经开始的任务会照常做完。要接着做，点进度条上的「继续制作」。"
+                : bound != null ? "好，停下了：不会再提交新的步骤，还在排队的任务会取消；已经交给生成引擎的任务会照原样做完并结算。"
+                : "好，这条回复停下了。";
+        postExecutionMessage(threadId, bound == null ? null : bound.id(), "ack-" + key, reply, null, null);
+        return new PostMessageResult(id[0], null, null, "applied");
     }
 
     private PostMessageResult postLocked(String userId, String projectId, String threadId, PostMessageRequest request) {
@@ -251,6 +298,17 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             skill = routeSkill(userId, thread, inputs); // S3: one active skill → it; several → triggers / default / 400 STUDIO_SKILL_REQUIRED
         }
         var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
+        var gate = gates == null ? null : gates.getIfAvailable();
+        // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread counts against its stage
+        // budget (D06), so the turn is paid by that same account. A message naming another payer is refused; one naming
+        // none uses the fixed one (Codex 2026-10-19: a later personal selection was accepted and drew on the enterprise stage).
+        BillingSelection fixedPayer = bound == null || gate == null ? null : gate.executionPayer(userId, thread.getProjectId(), bound.id());
+        if (fixedPayer != null) {
+            if (billing != null && !com.aistareco.aep.enterprise.service.EnterpriseBillingService.normalize(billing).equals(fixedPayer))
+                throw new BusinessException(HttpStatus.CONFLICT, "BILLING_SELECTION_CONFLICT",
+                        "这次制作已确认由" + ("enterprise".equals(fixedPayer.mode()) ? "企业" : "个人") + "积分付款，制作期间的对话也由它付；要换付款账户，请先结束这次制作");
+            billing = fixedPayer;
+        }
         String stage = bound != null && bound.stage() != null ? bound.stage()
                 : thread.getStage() != null ? thread.getStage() : skill == null ? null : StudioSkill.ANALYSIS;
         AiModelEndpoint endpoint = null;
@@ -312,7 +370,6 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         }
         // D06: a turn on a thread bound to an active execution belongs to that stage: the same pre-submit check
         // (spent + inFlight + this turn's ceiling ≤ approved cap) runs before anything is frozen; 402 when it does not fit.
-        var gate = gates == null ? null : gates.getIfAvailable();
         if (bound != null && gate != null && cost > 0) {
             String attributedStage = gate.attributeTurn(userId, thread.getProjectId(), bound.id(), runId, cost);
             if (attributedStage != null) exec.put("attributedExecutionId", bound.id()).put("attributedStage", attributedStage);

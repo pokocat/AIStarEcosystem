@@ -46,3 +46,12 @@ it('copies all diagnostic fields through the visible notification action', async
   await waitFor(() => expect(screen.getByRole('button', {name: '已复制'})).toBeTruthy());
   expect(writeText).toHaveBeenCalledWith('错误码：UPSTREAM_400\n错误信息：聚算图片接口暂时不可用（400）\nlogId：ABCDEF234567\n任务 ID：r');
 });
+it('does not toast canvas save conflicts: the conflict dialog owns them, and every save after a conflict would repeat it', async () => {
+  render(<StudioNotifications/>);
+  reportStudioError(Object.assign(new Error('这张画布在别处被改过了'), { code: 'IP_PROJECT_STALE' }));
+  reportStudioError({ code: 'IP_PROJECT_STALE', message: '这张画布已经有一份更新的内容了' });
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect(api.error).not.toHaveBeenCalled();
+  // 内联状态仍拿得到原文
+  expect(reportStudioError({ code: 'IP_PROJECT_STALE', message: '原文' }).message).toBe('原文');
+});

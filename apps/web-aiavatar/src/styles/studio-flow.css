@@ -31,8 +31,15 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 /* 顶栏收口：低频项进「⋯」 */
 .studio-host-more-button { display:grid; place-items:center; width:34px; height:34px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink-2); cursor:pointer; }
 .studio-host-more-button:hover { background:var(--surface-2); color:var(--ink); }
-.studio-host-more { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:220px; }
-.studio-host-more>* { justify-content:flex-start; }
+.studio-host-more { display:flex; flex-direction:column; align-items:stretch; gap:2px; min-width:200px; margin:-4px; }
+/* One menu row for every item: full width, left aligned, icon then text. The items used to carry their old
+   top-bar pill styles (rounded-full, some centred, some with an icon), which looked like four unrelated buttons. */
+.studio-host-more-item { display:flex; align-items:center; gap:10px; width:100%; min-height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--ink); font:inherit; font-size:13px; font-weight:500; text-align:left; white-space:nowrap; cursor:pointer; }
+.studio-host-more-item > svg { width:16px; height:16px; flex-shrink:0; color:var(--ink-2); }
+.studio-host-more-item > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.studio-host-more-item:hover { background:var(--surface-2); }
+.studio-host-more-item:disabled { opacity:.6; cursor:not-allowed; }
+.studio-host-more-item:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
 .studio-flow-card { display:flex; flex-direction:column; height:100%; background:var(--surface); border:1px solid var(--line-2); border-radius:12px; }
 /* Warm video work surface, distinct from the cool canvas and white title bar.
    Keep these aliases on the card so tools and other node types retain their palette. */
@@ -83,22 +90,7 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-placeholder { width:100%; height:100%; display:flex; gap:16px; align-items:center; justify-content:center; flex-direction:column; border:0; background:transparent; color:var(--ink-2); cursor:pointer; font-size:12px; }
 .studio-flow-image-placeholder { cursor:default; font-size:14px; padding:20px; text-align:center; }
 .studio-flow-media-generating { position:absolute; inset:0; z-index:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:18px; background:color-mix(in srgb,var(--surface-2) 92%,transparent); backdrop-filter:blur(6px); text-align:center; color:var(--ink); }
-.studio-flow-generation-visual { position:relative; display:grid; place-items:center; width:88px; height:88px; flex:none; }
-.studio-flow-generation-orbit { position:absolute; inset:0; border:2px solid var(--line-2); border-top-color:var(--primary); border-right-color:var(--primary); border-radius:50%; animation:studio-flow-generation-spin 2.4s linear infinite; }
-.studio-flow-generation-icon { display:grid; place-items:center; width:62px; height:62px; border:1px solid var(--line-2); border-radius:18px; background:var(--surface); color:var(--ai); box-shadow:var(--shadow-card); animation:studio-flow-generation-breathe 2.4s ease-in-out infinite; }
-.studio-flow-media-generating>strong { font-size:20px; font-weight:650; line-height:1.35; }
-.studio-flow-generation-detail { max-width:280px; font-size:13px; line-height:1.5; color:var(--ink-2); }
-.studio-flow-generation-progress { display:flex; align-items:center; gap:10px; width:min(240px,100%); margin-top:6px; }
-.studio-flow-generation-track { height:7px; flex:1; overflow:hidden; border-radius:99px; background:var(--line-2); }
-.studio-flow-generation-track>span { position:relative; display:block; width:100%; height:100%; border-radius:inherit; background:var(--ai-gradient); transform-origin:left center; transition:transform 450ms ease-out; }
-.studio-flow-generation-track>span::after { content:''; position:absolute; inset:0; background:linear-gradient(90deg,transparent,rgba(255,255,255,.5),transparent); animation:studio-flow-generation-sheen 1.8s ease-in-out infinite; }
-.studio-flow-generation-percent { width:36px; color:var(--primary); font-size:13px; font-variant-numeric:tabular-nums; text-align:right; }
 @keyframes studio-flow-generation-spin { to { transform:rotate(360deg); } }
-@keyframes studio-flow-generation-breathe { 50% { transform:scale(.92); } }
-@keyframes studio-flow-generation-sheen { from { transform:translateX(-100%); } to { transform:translateX(100%); } }
-@container (max-width:280px) { .studio-flow-generation-visual { width:56px; height:56px; } .studio-flow-generation-icon { width:42px; height:42px; border-radius:12px; } .studio-flow-media-generating>strong { font-size:15px; } .studio-flow-generation-detail { font-size:11px; } }
-@container (max-height:180px) { .studio-flow-media-generating { gap:5px; padding:7px; } .studio-flow-generation-visual { width:42px; height:42px; } .studio-flow-generation-icon { width:32px; height:32px; border-radius:9px; } .studio-flow-generation-icon svg { width:17px; } .studio-flow-media-generating>strong { font-size:14px; } .studio-flow-generation-detail { display:none; } .studio-flow-generation-progress { margin-top:0; } }
-@media (prefers-reduced-motion:reduce) { .studio-flow-generation-orbit,.studio-flow-generation-icon,.studio-flow-generation-track>span::after { animation:none; } .studio-flow-generation-track>span { transition:none; } }
 .studio-flow-image-actions { display:flex; flex-wrap:wrap; justify-content:center; gap:8px; }
 .studio-flow-image-actions button,.studio-flow-replace-image { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:36px; padding:8px 12px; border:1px solid var(--line-2); border-radius:var(--r-xs); background:var(--surface); color:var(--ink); font:inherit; cursor:pointer; }
 .studio-flow-image-actions button:first-child { background:var(--ink); color:var(--surface); border-color:transparent; }
@@ -148,21 +140,25 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-shell button:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
 .studio-flow-tools>.ant-btn { padding:8px; width:36px; height:36px; overflow:hidden; font-size:0; }
 .studio-flow-tools>.ant-btn .ant-btn-icon { margin:0; }
-.studio-flow-tool-label { display:none; }
-/* Expand the shared surface, keeping every button and caption inside it. */
-html[data-layout="desktop"] .studio-flow-tools { width:50px; box-sizing:border-box; align-items:stretch; }
-html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) { width:164px; }
-html[data-layout="desktop"] .studio-flow-tools>button { position:relative; flex-shrink:0; justify-content:flex-start; gap:8px; width:100%; height:36px; box-sizing:border-box; padding:8px; overflow:hidden; font-size:12px; transition:background-color 120ms ease-out; }
+/* 画布页改版（设计稿 Main 画板）：桌面左栏是贴边、通高、56px 宽的白色一列，平时只露图标；鼠标移上去（或键盘聚焦）
+   展开到 168px 显示名字，浮在画布上不挤画布（用户反馈：只有图标认不出是什么，2026-10-19 恢复改版前的悬停展开）。
+   创作任务按钮由工作台渲染，定位在这列最底下（见 ip-studio-workflow.css 的 .studio-tasks-launch）。手机仍是浮在画布上的小卡片，不显示名字。 */
+/* z 74：在工作台覆盖层（z 75，指针穿透）之下，好让覆盖层里的任务按钮落在这列最底下。 */
+html[data-layout="desktop"] .studio-flow-tools { z-index:74; left:0; top:0; bottom:0; width:56px; box-sizing:border-box; align-items:stretch; gap:4px; padding:12px 8px; border:0; border-right:1px solid var(--line); border-radius:0; overflow:hidden; transition:width 160ms cubic-bezier(.16,1,.3,1), box-shadow 160ms ease-out; }
+html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) { width:168px; box-shadow:12px 0 32px rgb(20 24 40 / 10%); }
+html[data-layout="desktop"] .studio-flow-tools>button { flex-shrink:0; justify-content:flex-start; gap:10px; width:100%; height:40px; padding:0 10.5px; border-radius:10px; overflow:hidden; font-size:13px; transition:background-color 120ms ease-out; }
+html[data-layout="desktop"] .studio-flow-tools>button>svg { flex-shrink:0; }
+html[data-layout="desktop"] .studio-flow-tools>.studio-flow-add { padding:0 10px; }
 html[data-layout="desktop"] .studio-flow-tools>button:disabled { opacity:.4; cursor:not-allowed; }
+html[data-layout="desktop"] .studio-flow-tools>hr { width:auto; margin:6px 6px; }
+.studio-flow-tool-label { display:none; }
+html[data-layout="desktop"] .studio-flow-tools .studio-flow-tool-label { display:block; flex-shrink:0; white-space:nowrap; opacity:0; transform:translateX(-4px); transition:opacity 120ms ease-out, transform 160ms cubic-bezier(.16,1,.3,1); }
+html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) .studio-flow-tool-label { opacity:1; transform:translateX(0); }
 .studio-flow-tools .studio-flow-add { background:var(--ink); color:var(--surface); }
 .studio-flow-shell .studio-flow-tools .studio-flow-add:hover:not(:disabled) { background:var(--ink-2); color:var(--surface); }
-html[data-layout="desktop"] .studio-flow-tools>button>svg,
-html[data-layout="desktop"] .studio-flow-tools>button>.ant-btn-icon { flex-shrink:0; width:19px; }
-html[data-layout="desktop"] .studio-flow-tools .studio-flow-tool-label { display:block; flex-shrink:0; white-space:nowrap; opacity:0; transform:translateX(-4px); transition:opacity 120ms ease-out,transform 160ms cubic-bezier(.16,1,.3,1); }
-html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) .studio-flow-tool-label { opacity:1; transform:translateX(0); }
-/* A resource sidebar owns this space while open; the rail stays compact beside it. */
-html[data-layout="desktop"] .studio-flow-stage:has(.studio-asset-sidebar) .studio-flow-tools { width:50px; }
-html[data-layout="desktop"] .studio-flow-stage:has(.studio-asset-sidebar) .studio-flow-tool-label { opacity:0; }
+.studio-flow-add-menu .ant-dropdown-menu { width:168px; padding:6px; border:1px solid var(--line); border-radius:12px; box-shadow:0 14px 36px rgba(20, 24, 40, 0.14); }
+.studio-flow-add-menu .ant-dropdown-menu-item { height:36px; padding:0 10px; gap:10px; border-radius:8px; font-size:13px; color:var(--ink); }
+.studio-flow-add-menu .ant-dropdown-menu-item-divider { margin:4px 6px; background:var(--line); }
 html[data-layout="desktop"] .studio-asset-sidebar { position:absolute; z-index:90; left:76px; top:72px; bottom:76px; width:340px; box-sizing:border-box; display:flex; flex-direction:column; padding:16px; gap:12px; background:var(--surface); overflow:hidden; }
 html[data-layout="desktop"] .studio-asset-sidebar>header,
 html[data-layout="desktop"] .studio-asset-sidebar>p,
@@ -174,7 +170,7 @@ html[data-layout="desktop"] .studio-asset-sidebar .studio-helper-note { margin:0
 html[data-layout="desktop"] .studio-asset-sidebar .studio-attachment-content { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
 html[data-layout="desktop"] .studio-asset-sidebar footer { padding-top:12px; border-top:1px solid var(--line); }
 @media (prefers-reduced-motion:reduce) {
-  html[data-layout="desktop"] .studio-flow-tools>button { transition:background-color 120ms ease-out; }
+  html[data-layout="desktop"] .studio-flow-tools { transition:none; }
   html[data-layout="desktop"] .studio-flow-tools .studio-flow-tool-label { transform:none; transition:opacity 120ms ease-out; }
 }
 .studio-flow-tools hr,.studio-flow-controls hr { border:0; background:var(--line); width:100%; height:1px; margin:3px 0; }
@@ -241,8 +237,9 @@ html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-error-no
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-director-launch,
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-ip-library,
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-commerce-launch { right:calc(var(--studio-docked-panel,0px) + 18px); }
-html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-flow-selection,
-html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-view-switch { left:calc((100% - var(--studio-docked-panel,0px)) / 2); }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-flow-selection { left:calc((100% - var(--studio-docked-panel,0px)) / 2); }
+/* 视图切换居中在左栏（56px）和助手之间的画布区（设计稿 Main 画板）。 */
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-view-switch { left:calc((100% - var(--studio-docked-panel,0px) + 56px) / 2); }
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-test-note { right:calc(var(--studio-docked-panel,0px) + 16px); left:auto; transform:none; }
 /* 故事板 / 成片编辑器也让出停靠的助手（2026-10-19：原来右边的排序按钮和画幅选择被助手盖住）。 */
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-focused-view { right:calc(var(--studio-docked-panel,0px) + 18px); }
@@ -424,3 +421,42 @@ html[data-layout="desktop"] .studio-text-spinner { animation:studio-text-spin 1s
 .studio-flow-card.is-fresh { box-shadow:0 0 0 3px var(--ai-glow), 0 12px 32px rgba(79, 91, 213, 0.14); transition:box-shadow 600ms ease-out; }
 @keyframes studio-ai-breathe { 0%,100% { outline-color:var(--ai-ring); } 50% { outline-color:rgba(139, 108, 240, 0.18); } }
 @media (prefers-reduced-motion:reduce) { .studio-flow-card.is-generating { animation:none; } }
+
+/* ── 画布页改版 · 照设计稿 Main 画板补齐（2026-10-19 第二遍） ───────────────────────────── */
+/* 顶栏：返回、标题、标题旁一行「已保存」；右侧依次「⋯」、积分、发布。插槽里的项靠 order 进同一行排。 */
+.studio-flow-header .ip-canvas-host-actions { display:contents; }
+.studio-flow-header .studio-host-save { order:1; }
+.studio-flow-header .studio-host-more-button { order:2; margin-left:auto; }
+.studio-flow-header .studio-canvas-credit { order:3; }
+.studio-flow-header .studio-host-publish { order:4; }
+.studio-host-save:not(button) { font-size:12px; color:var(--ink-3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:240px; }
+.studio-host-save.is-error { color:var(--err); }
+.studio-flow-header button.studio-host-publish { height:34px; padding:0 16px; border-radius:9px; font-size:13px; font-weight:600; }
+html[data-layout="desktop"] .studio-flow-header .studio-canvas-credit .desktop-credit-link { height:34px; border-radius:999px; background:var(--surface); }
+/* 缩放条：画布区左下角，只有 − 百分比 + 适应。 */
+html[data-layout="desktop"] .studio-flow-controls { left:72px; bottom:16px; gap:2px; padding:4px; border-radius:10px; }
+html[data-layout="desktop"] .studio-flow-controls button { width:30px; height:30px; min-height:30px; padding:0; }
+html[data-layout="desktop"] .studio-flow-controls span { min-width:44px; color:var(--ink-2); }
+/* 连线是灰色虚线；选中的那条用群青（选中 = 群青，见 Language 画板）。 */
+.studio-flow-shell .react-flow__edge-path { stroke:var(--line-3); stroke-width:1.5; stroke-dasharray:4 4; }
+.studio-flow-shell .react-flow__edge.selected .react-flow__edge-path,
+.studio-flow-shell .react-flow__edge:focus-visible .react-flow__edge-path { stroke:var(--primary); }
+/* 节点头部右侧的小记号：AI 做的是渐变小胶囊，你上传的是灰字；都不参与标题的伸缩（此前被 `>span{flex:1}` 拉成长条）。 */
+.studio-flow-drag>.studio-flow-ai-badge,.studio-flow-drag>.studio-flow-origin { flex:none; margin-left:auto; }
+.studio-flow-ai-badge { gap:4px; font-size:11px; }
+.studio-flow-origin { font-size:11px; color:var(--ink-3); white-space:nowrap; }
+/* 生成中：设计稿的 44px 渐变圆环 + 一行灰字（排队位次 / 真实进度），底色 --surface-2。 */
+.studio-flow-media-generating { gap:8px; background:var(--surface-2); backdrop-filter:none; color:var(--ink-2); font-size:12px; }
+.studio-flow-generation-ring { width:44px; height:44px; flex:none; border-radius:50%; background:conic-gradient(from 0deg, var(--ai), var(--ai-2), var(--surface-3) 70%, var(--ai)); -webkit-mask:radial-gradient(circle, transparent 54%, #000 56%); mask:radial-gradient(circle, transparent 54%, #000 56%); animation:studio-flow-generation-spin 1.6s linear infinite; }
+.studio-flow-generation-line { max-width:100%; padding:0 12px; line-height:1.5; overflow-wrap:anywhere; }
+@media (prefers-reduced-motion:reduce) { .studio-flow-generation-ring { animation:none; } }
+/* 画布页按钮配色统一（2026-10-19）：浮层里的主按钮，带 AI 记号的（会去生成、要花积分）用 AI 渐变，其它用深色；不再用麦黄。 */
+.studio-floating-panel .ant-btn-primary:not(:disabled) { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.studio-floating-panel .ant-btn-primary:not(:disabled):hover { background:var(--ink-2); border-color:var(--ink-2); color:var(--surface); }
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon),
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon):hover { background:var(--ai-gradient); border-color:transparent; color:#fff; }
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon):hover { filter:brightness(1.06); }
+.studio-template-preview-copy.ant-btn-primary,
+.studio-template-preview-copy.ant-btn-primary:not(:disabled):hover { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.studio-flow-shell .react-flow__handle:hover { background:var(--primary); }
+.studio-flow-port-icon::after { background:var(--primary-soft); }

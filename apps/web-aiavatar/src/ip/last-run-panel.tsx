@@ -20,12 +20,11 @@ export function LastRunPanel() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="ip-canvas-last-run h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 max-w-[200px]"
-        style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+        className="ip-canvas-last-run studio-host-more-item"
         title="看这次实际发给模型的提示词和参考图"
         aria-label="上次发给模型"
       >
-        <FileText className="w-3.5 h-3.5 shrink-0" />
+        <FileText aria-hidden="true" />
         <span className="truncate">
           上次发给模型{last.refs.length ? ` · 参考图 ${applied}/${last.refs.length}` : ""}
         </span>

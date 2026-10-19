@@ -4,6 +4,14 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 对话与制作修复（Codex 2026-10-19 六项）· 2026-10-19 · 本地未发布（server + web-aiavatar）
+
+制作中确认同阶段新方案时在原执行上替换剩余工作（`StudioPlanExecutionService.replanStage`：未变且已完成的步骤保留，改动及下游重做，原 run 进 `previousRunIds` 继续计费，在途步骤不改写）；执行器预算停下的步骤标 `budgetBlocked`，追加预算确认后自动继续（用户暂停除外）；绑定执行的对话轮次用执行的固定付款人，消息带别的付款人 409（`StudioExecutionGate.executionPayer`）；整句停止 / 暂停的消息走优先控制（`StudioStopIntent`），不进转向队列；前端助手把所选模型随消息发出，分析阶段的追加卡带上执行 id；画布投影只有保存成功才记「已投影」和画布游标（`canvasUnsavedFrom`）。无迁移、无 API 路径变化。server ipstudio 659 项、web-aiavatar 970 项通过。
+
+### Studio 画布页改版 · 第二遍 · 2026-10-19 · 本地未发布（仅 web-aiavatar）
+
+第一遍只照设计稿批注的文字清单收了外框；第二遍逐块对照 Main 画板补齐：顶栏顺序与「已保存」灰字（`canvas-host.tsx` + `studio-flow.css` 的 `order`）；左栏改为贴边通高 56px、去掉「专项创作」与「从资产库添加」（各有去处），＋菜单向右弹出、「配音」改叫「声音」，任务按钮落到左栏底部；视图切换去图标；缩放条去撤销 / 重做 / 小地图（挪到画布空白处右键）；节点 AI 记号修复被拉长、换实心四角星 `AiMark`，新增「你上传的」，生成中改为渐变圆环 + 一行（`studio-media-generation-state.tsx`），连线虚线；选中操作条改到节点下方左对齐、自适应宽度（`StudioFloatingPanel toolbar`、`floatingPosition` 的 toolbar 分支），只留问助手 + 两个主操作，其余进「⋯」；助手头部去掉「?」改由技能胶囊展开说明；进度条改三行，逐步清单 `StudioDialogueSteps` 移进对话（`StudioDialogueTimeline progress` → 最新回复）；消息作者字样隐藏、用户消息靠右气泡。不照做：ETA、每步积分。同日第三遍对齐对话框与按钮区：技能实心小胶囊（绑定后静态显示；修正 antd 6 Select 选择器）、发送始终渐变只变淡、输入框浅灰细边、回复末尾一行元信息（`.studio-dialogue-meta`）、工具记录无边框、建议 30px 无图标、已确认卡收成一行（`studio-dialogue-approval-done`）、「已收到」在回复开始后隐藏（`messageQueueLabel`）、气泡里的分支入口悬停才出现、停靠图标与停止按钮配色。画布页按钮配色统一（不再用麦黄：AI 动作紫色渐变、其它主操作深色）；演示模式里回复进行中打的「可以」也会在回复结束后确认。输入框再按设计稿对齐：发送键始终满色渐变，费用说明从框内移到发送键提示，技能胶囊的点两边留白。同日第四遍按用户真实路径端到端走查对话交互（AGENTS §8.0.1 ⑭）：Enter 发送 / Shift+Enter 换行；「问助手」真正把节点加进引用并聚焦输入框（原来恢复草稿后提前 return）；Esc 不再关掉正在输入的面板、不再因画布上的 Esc 关掉停靠助手、不再随 Antd 菜单一起关；「在画布上看」等聚焦此前从未生效（受控节点 `useNodesInitialized()` 恒为 false），改为只等目标节点、并按可见区域（`visibleFitPadding`）适配，助手放进的新节点、整理、适应全部节点同样避开停靠面板；打字确认：服务端 `StudioNaturalApprovals` 放行整句只由短肯定词组成的回复（「可以」「好」「行」「嗯，可以」，疑问 / 犹豫 / 改动照旧拒绝），对话提示词同步举例并 bump `PromptTemplateSeeder.SEED_VERSION`，确认卡保持「直接回复「可以」也行」，演示模式 `mockSaysApprove` 同一套规则（**含 server 改动，需同发 server**）。无 API / 迁移改动（server 只改确认词规则与提示词）。web-aiavatar vitest 920/920，server `StudioNaturalApprovalsTest` 7 / `StudioDialogueServiceTest` 15 / `StudioPlanExecutionServiceTest` 11 全绿，tsc 绿；演示模式 1440 下逐条路径用无头浏览器读 DOM 状态复验（发送、打字确认、犹豫不确认、进行中插话、暂停继续、在画布上看、Esc、问助手、适应全部）与 375 宽实测。
+
 ### Studio 画布页改版 · 2026-10-19 · 同日已生产发布（仅 web-aiavatar，`20261019-studio-canvas-redesign`，GIT_SHA f7b414b9；同包含助手默认打开与停靠通高）
 
 按设计稿（画布页改版：现状标注 / 改版布局 / AI 视觉语言）实现：顶栏低频项进「⋯」（`canvas-host.tsx` Popover）；第二排工具条取消，视图切换居中悬浮，素材库 / 模板 / 专项创作进左栏（`studio-flow-canvas.tsx` 13 → 7，「＋添加」菜单），任务到左下角带角标，助手关闭时右上角 AI 圆钮；`.ip-surface` 新增 AI 群青紫令牌，节点 AI 记号 / 生成中呼吸 / 刚放进来的光晕（`is-ai / is-generating / is-fresh`），助手头部、发送、进度条、问助手改用 AI 渐变。工作台新增 `studio-command: library`。无后端 / API / 迁移改动。web-aiavatar vitest 904/904，tsc 绿；演示模式 1440 / 375 宽实测。

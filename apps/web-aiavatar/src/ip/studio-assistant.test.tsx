@@ -112,7 +112,7 @@ test('the composer stays editable while a reply streams, and a tool event render
   api.post.mockResolvedValueOnce({ messageId: 'u2', turnId: 't1', queueState: 'queued' });
   fireEvent.click(sendButton());
   await waitFor(() => expect(screen.getByText('排队中，下一步应用')).toBeDefined());
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21, model: 'one' });
   emit(ev('tool.finished', { toolCallId: 'x', toolName: 'read_canvas', status: 'done', result: { summary: '找到 1 条视频' }, creditsActual: 0, settling: false }));
   expect(within(card).getByText('找到 1 条视频')).toBeDefined();
   expect(within(card).getByText('0 积分')).toBeDefined();
@@ -255,7 +255,32 @@ test('server canvas commands create nodes once, even when replayed, and save the
   emit(upsert);
   await waitFor(() => expect(canvas.filter(n => n.id === 'e1-seg-1')).toHaveLength(1));
   await waitFor(() => expect(api.save).toHaveBeenCalled());
-  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(upsert.seq);
+  await waitFor(() => expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(upsert.seq));
+});
+
+// Codex 2026-10-19 (P1): the node was recorded as projected and the event acknowledged before the canvas was saved. When
+// that save failed, reopening on the same browser skipped the node for good (a recorded node reads as one the user
+// deleted) while its video task kept running. Both records now wait for the save.
+test('a canvas command whose save failed is neither recorded as projected nor skipped on the next open', async () => {
+  let canvas: CanvasNodeData[] = [];
+  api.save.mockRejectedValue(new Error('画布保存失败，请先重试保存'));
+  await ready(<Host onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  emit(ev('message.delta', { messageId: 'm1', partId: 'a', delta: '好的' }));
+  const seen = seq;
+  const upsert = ev('node.upsert', { nodeId: 'e1-seg-1', op: 'create', executionId: 'e1', stepId: 'v1', runId: 'run-v1',
+    node: { id: 'e1-seg-1', type: 'video', title: '第 1 段', position: { x: 0, y: 0 }, width: 360, height: 640, metadata: { status: 'success', storageKey: 'k/v1' } } }, { executionId: 'e1' });
+  emit(upsert);
+  await waitFor(() => expect(canvas.some(n => n.id === 'e1-seg-1')).toBe(true));
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  await settle();
+  expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).not.toContain('e1-seg-1');
+  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th') || 0)).toBeLessThan(upsert.seq);
+  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th') || 0)).toBeLessThanOrEqual(seen);
+  // The next successful save records it and moves the cursor past it.
+  api.save.mockResolvedValue(undefined);
+  emit(ev('node.upsert', { nodeId: 'new-2', op: 'create', node: { id: 'new-2', type: 'text', title: '口播稿', position: { x: 0, y: 0 }, width: 320, height: 200, metadata: { content: '第一版' } } }));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toEqual(expect.arrayContaining(['e1-seg-1', 'new-2'])));
+  await waitFor(() => expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(seq));
 });
 
 test('a text proposal is adopted only while the node still holds the text it was written against', async () => {
@@ -328,9 +353,11 @@ test('the production strip pauses or stops through the execution endpoints, each
   api.cancel.mockResolvedValue({ ...execution, status: 'canceled', updatedAt: '2026-10-18T01:00:09Z' });
   await ready();
   const strip = screen.getByLabelText('制作进度');
-  expect(within(strip).getByText('已完成 1/2 项')).toBeDefined();
+  // Canvas redesign (design Main board): the strip says which step of how many; the step list itself is in the conversation.
+  expect(within(strip).getByText('制作中 · 第 2 步，共 2 步')).toBeDefined();
   expect(within(strip).getByText(/已用 40 \/ 120 积分/)).toBeDefined();
-  fireEvent.click(within(strip).getByRole('button', { name: '暂停后续' }));
+  expect(within(screen.getByRole('list', { name: '各步进度' })).getAllByRole('listitem').map(li => li.getAttribute('data-status'))).toEqual(['done', 'running']);
+  fireEvent.click(within(strip).getByRole('button', { name: '暂停' }));
   await waitFor(() => expect(api.pause).toHaveBeenCalledWith('p', 'e1', { clientRequestId: expect.any(String), expectedStatus: 'running' }));
   await waitFor(() => expect(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '继续制作' })).toBeDefined());
   fireEvent.click(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '停止' }));
@@ -381,9 +408,27 @@ test('(a) a canvas opened after its execution finished gets the produced nodes b
   await waitFor(() => expect(edges.map(e => `${e.fromNodeId}>${e.toNodeId}`).sort()).toEqual([`${E}-a-facts>${E}-a-limits`, `${E}-p-v1>${E}-p-c1`]));
   await waitFor(() => expect(api.save).toHaveBeenCalled());
   // The finished execution is shown again, and canvas commands are replayed from the start of the thread.
-  expect(within(screen.getByLabelText('制作进度')).getByText('制作 · 已完成')).toBeDefined();
+  expect(within(screen.getByLabelText('制作进度')).getByText(/^制作 · 已完成/)).toBeDefined();
   expect(streams.at(-1)!.cursor()).toBe(0);
   expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL);
+});
+
+test('(a2) a restore whose save failed is restored again on the next open', async () => {
+  closedCanvas();
+  api.save.mockRejectedValue(new Error('画布保存失败，请先重试保存'));
+  let canvas: CanvasNodeData[] = [];
+  const first = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  await waitFor(() => expect(canvas).toHaveLength(4));
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  await settle();
+  expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toEqual([]);
+  first.unmount();
+  // The server never got those nodes: the canvas opens without them, and they come back.
+  api.save.mockResolvedValue(undefined);
+  let again: CanvasNodeData[] = [];
+  await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { again = nodes; }}/>);
+  await waitFor(() => expect(again.map(n => n.id).sort()).toEqual(ALL));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL));
 });
 
 test('(b) opening it again adds nothing and reads no runs; a node deleted here is not rebuilt', async () => {
@@ -391,6 +436,8 @@ test('(b) opening it again adds nothing and reads no runs; a node deleted here i
   let canvas: CanvasNodeData[] = [];
   const first = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
   await waitFor(() => expect(canvas).toHaveLength(4));
+  // Recorded once the restore is saved (a save that never happened leaves them restorable, see (a2)).
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toHaveLength(4));
   first.unmount();
   const reads = api.getRun.mock.calls.length, saves = api.save.mock.calls.length;
   let again: CanvasNodeData[] = [];
@@ -497,10 +544,10 @@ test('the progress strip breaks out the dialogue share of the stage budget', asy
   api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, activeExecutionId: E }, execution });
   await ready();
   const strip = screen.getByLabelText('制作进度');
-  expect(within(strip).getByText(/已用 43 \/ 260 积分/)).toBeDefined();
-  expect(within(strip).getByText('其中对话 3 积分，对话进行中占用 20 积分')).toBeDefined();
+  // The strip shows only 「已用 / 上限」 (design Main board); the in-flight and dialogue breakdown rides on its tooltip.
+  expect(within(strip).getByText(/已用 43 \/ 260 积分/).getAttribute('title')).toContain('其中对话 3 积分，对话进行中占用 20 积分');
   emit(ev('budget.update', { executionId: E, stage: 'production', approvedCap: 260, spent: 45, inFlight: 0, remaining: 215, source: 'actual', dialogueSpent: 5, dialogueInFlight: 0 }, { executionId: E }));
-  expect(within(screen.getByLabelText('制作进度')).getByText('其中对话 5 积分')).toBeDefined();
+  expect(within(screen.getByLabelText('制作进度')).getByText(/已用 45 \/ 260 积分/).getAttribute('title')).toBe('其中对话 5 积分');
 });
 
 test('follow-ups saved on the completion summary show after a reload, and once when turn.done repeats them', async () => {
@@ -548,13 +595,27 @@ test('confirming a card, then the server closing its synthetic turn, leaves noth
   expect(screen.getAllByLabelText('Studio 的回复')).toHaveLength(1);
 });
 
+// Codex 2026-10-19 (P2): an analysis-stage card the running execution posted (a budget raise) was sent without its
+// execution, so the server tried to start a second analysis and refused it as busy.
+test('a raise card of the running analysis confirms that same execution', async () => {
+  const analysisPlan = { ...planBlock, planRunId: 'plan-1', fingerprint: 'f1', plan: { ...planBlock.plan, stage: 'analysis' as const } };
+  const raise = { ...approvalBlock, approvalId: 'a9', stage: 'analysis' as const, planFingerprint: 'f1', budgetCap: 45, quotedCost: 40, autoFixCap: 0, shortfall: 5, executionId: 'PEX-9' };
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([analysisPlan, raise])] });
+  api.createExecution.mockResolvedValue({ ...doneExecution, id: 'PEX-9', stage: 'analysis', status: 'running', budgets: [{ stage: 'analysis', approvedCap: 45, autoFixCap: 0, spent: 40, inFlight: 0, remaining: 5 }] });
+  await ready();
+  fireEvent.click(within(screen.getByLabelText('确认分析')).getByRole('button', { name: '开始分析' }));
+  await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
+  expect(api.createExecution.mock.calls[0][1]).toMatchObject({ stage: 'analysis', executionId: 'PEX-9', approvalId: 'a9', budgetCap: 45, expectedRevision: 2 });
+});
+
 // ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
 
 const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {}): StudioSkillSummary => ({ key, name, version: 1, status: 'active', planning: 'dynamic', summary: `${name}的说明`,
   methodExamples: [], operations: { analysis: ['text'], production: ['text', 'video'] }, limits: { maxSourceSec: 60, maxSegments: 4, maxSegmentSec: 'model', maxSteps: 16, maxAutoFixPerSegment: 1 },
   checks: [], autoFixChecks: [], requiredCapabilities: [], ...extra });
 const recreation = skill('video-recreation', '短视频复刻', { version: 2 }), seeding = skill('talking-head-seeding', '口播种草');
-const openGuide = () => fireEvent.click(screen.getByRole('button', { name: '使用说明' }));
+// The guide opens from the skill chip in the header (the design has no separate 「?」).
+const openGuide = () => fireEvent.click(screen.getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!);
 
 test('with several active skills the settings offer 「技能」 (default 自动 = no skillKey); a chosen one rides on the message and its retry', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
@@ -693,6 +754,25 @@ test.each(['fixed', 'selectable'] as const)('assistant shows its single %s model
   expect(api.post).not.toHaveBeenCalled();
 });
 
+// Codex 2026-10-19 (P2): the request carried the picked model's ceiling but not the model, so the server ran the default
+// one (and a cheaper pick looked like a price change). The model now goes with its ceiling; a fixed scene sends none.
+test('the picked model goes with its own ceiling', async () => {
+  await ready();
+  fireEvent.change(screen.getByRole('combobox', { name: '助手模型' }), { target: { value: 'two' } });
+  fireEvent.change(composer(), { target: { value: '写一段口播' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 8 });
+});
+test('a fixed model is not sent', async () => {
+  await ready(<Host capabilities={{ ...capabilities, textModelMode: 'fixed' }}/>);
+  fireEvent.change(composer(), { target: { value: '写一段口播' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  expect(api.post.mock.calls[0][2].model).toBeUndefined();
+  expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 21 });
+});
+
 // ── Opening guidance: inventory chips, task cards and the recreation checklist ──────────────────────────────
 const clip = { ...character, id: 'clip', type: 'video', title: '带货样片', metadata: { storageKey: 'k/clip' } } as CanvasNodeData;
 
@@ -708,6 +788,12 @@ test('an empty canvas opens on task cards and what the canvas holds; a chip pins
   // The guide is one click away and holds the notes that used to hide behind a settings icon.
   fireEvent.click(screen.getByRole('button', { name: '第一次用？花 30 秒看它怎么工作' }));
   expect(within(screen.getByRole('region', { name: '使用说明' })).getByText(/整张画布都会作为参考/)).toBeDefined();
+  // Each step is a two-column grid (number + text). A bare text node beside <strong> becomes a third grid item and
+  // drops into the 24px number column, one character per line; title and text must share one element.
+  for (const li of screen.getByRole('region', { name: '使用说明' }).querySelectorAll('ol > li')) {
+    expect(li.children.length).toBe(1);
+    expect([...li.childNodes].every(n => n.nodeType === Node.ELEMENT_NODE)).toBe(true);
+  }
 });
 
 test('「复刻一条短视频」 pins the only video, drafts the request with blanks and holds the send until the pieces are there', async () => {
@@ -771,4 +857,27 @@ test('nodes the assistant creates are brought into view and the first time shows
   fireEvent.click(screen.getByRole('button', { name: '知道了' }));
   expect(screen.queryByText(/结果放进画布了/)).toBeNull();
   expect(localStorage.getItem('studio-assistant:canvas-hint')).toBe('1');
+});
+
+// 2026-10-19 walkthrough: Enter only added a line (the home page's box sends on Enter), and 「问助手」 did nothing once a
+// draft existed — the assistant opens by default, so a draft always existed.
+test('Enter sends and Shift+Enter starts a new line', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '第一行' } });
+  fireEvent.keyDown(composer(), { key: 'Enter', shiftKey: true });
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.keyDown(composer(), { key: 'Enter' });
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第一行' });
+});
+
+test('「问助手」 adds the node to this message and keeps what was already typed', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '写到一半' } });
+  act(() => { window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'assistant', nodeId: 't' } })); });
+  expect(await screen.findByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
+  expect(composer().value).toBe('写到一半');
+  act(() => { window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'assistant', nodeId: 'c' } })); });
+  expect(await screen.findByRole('button', { name: '移除引用 角色 A' })).toBeDefined();
+  expect(screen.getByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
 });

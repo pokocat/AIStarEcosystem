@@ -39,6 +39,13 @@ public interface StudioExecutionGate {
     default String attributeTurn(String userId, String projectId, String executionId, String runId, long maxCost) { return null; }
 
     /**
+     * The payer this active execution was confirmed with (D10: fixed for the whole execution). A parent turn on its thread
+     * counts against its stage budget, so it must be paid by the same account. Null when the execution is not active (or
+     * unknown): the turn is then an ordinary one with the message's own payer.
+     */
+    default com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection executionPayer(String userId, String projectId, String executionId) { return null; }
+
+    /**
      * The user approved a pending card in words. The dialogue's {@code confirm_approval} tool hands the request here; it
      * runs through the same creation / stage-confirmation path as the card button, with the approving user message as
      * the confirmation source. Returns the execution projection.

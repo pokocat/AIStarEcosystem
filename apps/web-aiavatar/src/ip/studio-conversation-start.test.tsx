@@ -19,14 +19,15 @@ test('a brief goes out on 「开始对话」 or Enter; Shift+Enter keeps writing
   expect(onStart).toHaveBeenCalledTimes(2);
 });
 
-test('example openers fill the box without sending; 「先进画布看看」 starts with no brief', () => {
+test('example openers fill the box without sending; no idea yet points to 灵感 and 专项创作, not an empty canvas', () => {
   const onStart = vi.fn();
   render(<StudioConversationStart onStart={onStart} compact/>);
   fireEvent.click(screen.getByRole('button', { name: '复刻一条短视频' }));
   expect(box().value).toContain('照这条视频的拍法');
   expect(onStart).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: '先进画布看看' }));
-  expect(onStart).toHaveBeenCalledWith('');
+  expect(screen.getByRole('link', { name: '灵感' }).getAttribute('href')).toBe('/templates');
+  expect(screen.getByRole('link', { name: '专项创作' }).getAttribute('href')).toBe('/scenes');
+  expect(screen.queryByRole('button', { name: '先进画布看看' })).toBeNull();
 });
 
 test('while a canvas is being created nothing can be sent twice', () => {
