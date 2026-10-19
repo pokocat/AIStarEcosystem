@@ -192,4 +192,14 @@ class StudioPlanValidatorSkillTest {
         assertTrue(production.path("stageGuide").asText().contains("assemble"));
         assertTrue(analysisGuide.path("references").asText().contains("dependsOn"));
     }
+
+    /** Production planning reply of 2026-10-18 bound segment clips with role "video_reference"; the contract never listed the roles. */
+    @Test void thePlannerContractListsEveryReferenceRoleTheValidatorAccepts() throws Exception {
+        String roles=StudioWorkflowService.skillPlanConstraints(om,rules(),"production").path("bindingRoles").asText();
+        for(String role:StudioPlanValidator.BINDING_ROLES)assertTrue(roles.contains(role),role);
+        var raw=production();
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("role","video_reference");
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
+        assertTrue(refused.getMessage().contains("参考用途"));
+    }
 }

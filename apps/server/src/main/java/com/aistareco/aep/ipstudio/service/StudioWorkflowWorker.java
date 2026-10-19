@@ -224,6 +224,7 @@ public class StudioWorkflowWorker {
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
+        int[] budgetRung={-1}; // index into StudioVisualContext.BUDGET_EDGES of the size the endpoint last accepted; -1 = original
         var capNode=exec.path("segmentCap");
         var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
         var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
@@ -234,16 +235,18 @@ public class StudioWorkflowWorker {
                 String focus=input.path("prompt").asText("").strip();
                 var messages=new ArrayList<Map<String,Object>>();
                 messages.add(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)));
-                List<Map<String,Object>> content=parts;
-                for(int rung=0;;rung++) {
+                // A size the endpoint accepted is reused for the rest of this run instead of being rediscovered per call.
+                List<Map<String,Object>> content=budgetRung[0]<0?parts:StudioVisualContext.shrink(parts,StudioVisualContext.BUDGET_EDGES[budgetRung[0]]);
+                for(int next=budgetRung[0]+1;;next++) {
                     try {
                         var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(messages.get(0),Map.of("role","user","content",content)),params);
                         used[0]=consumeUsage(reply,used[0],rate);return reply.content();
                     } catch(BusinessException e) {
                         // Over the vendor's visual budget: the same real frames, smaller. Never fewer or invented frames.
-                        if(!StudioVisualContext.isVisualBudgetRejection(e)||rung>=StudioVisualContext.BUDGET_EDGES.length)throw e;
-                        int edge=StudioVisualContext.BUDGET_EDGES[rung];
+                        if(!StudioVisualContext.isVisualBudgetRejection(e)||next>=StudioVisualContext.BUDGET_EDGES.length)throw e;
+                        int edge=StudioVisualContext.BUDGET_EDGES[next];
                         log.info("[studio] film study images over the visual budget run={} endpoint={} retry maxEdge={}",id,endpoint.endpoint().getId(),edge);
+                        budgetRung[0]=next;
                         content=StudioVisualContext.shrink(parts,edge);
                     }
                 }
