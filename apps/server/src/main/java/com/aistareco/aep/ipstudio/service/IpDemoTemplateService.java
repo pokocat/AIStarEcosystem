@@ -115,9 +115,11 @@ public class IpDemoTemplateService {
             // videoMode / vquality / videoCount are authored node controls, not run traces: without them a copied
             // universal-reference node fell back to "first/last frame" by reference count (S0 product issue, plan §当前基础与实现缺口).
             for (String field : List.of("prompt", "storageKey", "images", "videos", "primaryImageId", "primaryVideoId",
-                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio",
+                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio", "groupId",
                     "videoMode", "vquality", "videoCount"))
                 if (metadata.has(field)) clean.set(field, metadata.get(field).deepCopy());
+            if ("group".equals(IpDocs.typeOf(node)) && metadata.has("groupDescription"))
+                clean.set("groupDescription", metadata.get("groupDescription").deepCopy());
             if (IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && metadata.has("content")) clean.set("content", metadata.get("content").deepCopy());
             String key = IpDocs.text(clean, "storageKey");
             if (key == null && !IpDocs.T_TEXT.equals(IpDocs.typeOf(node)) && !metadata.path("content").asText("").isBlank())
