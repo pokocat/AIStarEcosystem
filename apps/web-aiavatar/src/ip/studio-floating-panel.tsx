@@ -46,6 +46,8 @@ function writeLayout(key:string|undefined,patch:PanelLayout) {
 type FloatingEntry={id:symbol;root:HTMLElement;update:(layer:number,active:boolean)=>void};
 // One bounded stack per canvas stage. Popups remain above it; closed entries are removed.
 const floatingStack:FloatingEntry[]=[];
+/** Where a docked panel's width is published: the canvas shell (its overlay is the stage's sibling), else the stage itself. */
+const dockHost=(root:HTMLElement)=>root.closest<HTMLElement>('.studio-flow-shell')||root;
 function refreshStack(root:HTMLElement) {
   const entries=floatingStack.filter(entry=>entry.root===root);
   entries.forEach((entry,index)=>entry.update(90+index,index===entries.length-1));
@@ -71,7 +73,10 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
   useLayoutEffect(()=>{
     if(!open||embedded||!root||!ref.current)return;
     const place=()=>{
-      if(!ref.current)return;const stage=root.getBoundingClientRect(),panel=ref.current.getBoundingClientRect();
+      if(!ref.current)return;const rect=root.getBoundingClientRect(),panel=ref.current.getBoundingClientRect();
+      // Floating panels lay out inside the part of the stage a docked panel leaves free.
+      const dock=docked?0:parseFloat(dockHost(root).style.getPropertyValue('--studio-docked-panel'))||0;
+      const stage={left:rect.left,top:rect.top,width:rect.width-dock,height:rect.height};
       const anchor=anchorId?root.querySelector<HTMLElement>(`[data-id="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect():undefined;
       const next=floatingPosition(stage,utility?undefined:anchor,panel,above);
       if(!utility&&anchor&&!above) {
@@ -90,6 +95,14 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     return()=>observer.disconnect();
   },[open,embedded,root,anchorId,revision,manual,docked,utility,above]);
   useEffect(()=>{setManual(undefined);},[anchorId]);
+  // A docked panel owns a strip of the stage: the stage learns its width so right-anchored toolbars and other
+  // floating panels keep clear of it (CSS reads --studio-docked-panel on the stage root).
+  useLayoutEffect(()=>{
+    if(!open||embedded||!root||!docked)return;
+    const host=dockHost(root);
+    host.classList.add('has-docked-panel');host.style.setProperty('--studio-docked-panel',`${dockedWidth}px`);
+    return()=>{host.classList.remove('has-docked-panel');host.style.removeProperty('--studio-docked-panel');};
+  },[open,embedded,root,docked,dockedWidth]);
   useLayoutEffect(()=>{
     if(!open||embedded||!root||!title)return;
     const entry:FloatingEntry={id:identity.current,root,update:(z,active)=>setLayer({z,active})};

@@ -43,8 +43,8 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
+      <p className="studio-conversation-start-note">建画布免费。回复按实际用量扣积分，做图、做视频前会先报价，你确认了才开始。
+        <button type="button" className="studio-conversation-start-link" disabled={locked} onClick={() => onStart("")}>先进画布看看</button></p>
     </div>
-    <p className="studio-conversation-start-note">建画布免费。助手的回复按实际用量扣积分，做图、做视频之前会先报价，你确认了才开始。
-      <button type="button" className="studio-conversation-start-link" disabled={locked} onClick={() => onStart("")}>先进画布看看</button></p>
   </form>;
 }

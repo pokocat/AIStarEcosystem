@@ -225,7 +225,18 @@ html[data-layout="desktop"] .studio-flow-shell:has(.studio-focused-view) .react-
 .studio-floating-body { padding:16px; min-height:0; overflow:auto; overscroll-behavior:contain; }
 .studio-floating-footer { padding:12px 16px; border-top:1px solid var(--line); flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .studio-floating-panel.is-utility { top:24px; max-height:calc(100% - 96px); }
-.studio-floating-panel.is-docked { right:0; top:72px; bottom:16px; max-height:calc(100% - 88px); border-radius:16px 0 0 16px; }
+.studio-floating-panel.is-docked { right:0; top:0; bottom:0; max-height:none; border-radius:0; border-top:0; border-right:0; border-bottom:0; box-shadow:-12px 0 32px rgb(20 24 40 / 8%); }
+/* While a panel is docked the stage keeps its right-anchored chrome clear of it (the panel sets --studio-docked-panel). */
+/* The class and --studio-docked-panel live on the shell (the workspace overlay is the stage's sibling, not its child). */
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-command-strip,
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-canvas-toolbar,
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-error-note { right:calc(var(--studio-docked-panel,0px) + 16px); }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-director-launch,
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-ip-library,
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-commerce-launch { right:calc(var(--studio-docked-panel,0px) + 18px); }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-flow-selection,
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-view-switch { left:calc((100% - var(--studio-docked-panel,0px)) / 2); }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-test-note { right:calc(var(--studio-docked-panel,0px) + 16px); left:auto; transform:none; }
 .studio-floating-panel.is-context-toolbar { border-radius:10px; box-shadow:none; }
 .studio-floating-panel.is-context-toolbar .studio-floating-body { padding:0; }
 .studio-flow-shell .studio-floating-panel .studio-context-actions { position:static; transform:none; max-width:100%; border:0; border-radius:0; flex-wrap:wrap; overflow:visible; gap:2px; }
@@ -257,6 +268,7 @@ html[data-layout="desktop"] .studio-flow-shell:has(.studio-focused-view) .react-
 .studio-flow-stage.is-picking-reference .studio-flow-media audio { pointer-events:none; }
 .studio-floating-panel { max-height:calc(100% - 140px); }
 .studio-floating-panel.is-utility { max-height:calc(100% - 140px); }
+.studio-floating-panel.is-docked { max-height:none; }
 .studio-assistant-footer { display:flex; align-items:center; gap:8px; width:100%; }
 .studio-assistant-footer .ant-select { flex:1; min-width:0; }
 .studio-assistant-footer .ant-btn { flex:none; }

@@ -744,7 +744,7 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-send-row>span { visibil
 .ip-surface .studio-assistant-checklist-actions button:hover { background:var(--surface-2); border-color:var(--ink-3); }
 .ip-surface .studio-assistant-checklist .studio-helper-note { margin:0; }
 .ip-surface .studio-assistant-checklist .studio-dialogue-link { margin-left: 6px; }
-html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; }
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; border:1px solid var(--line-2); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }
 .ip-surface .studio-assistant-status.is-hint { align-items:flex-start; justify-content:space-between; padding:10px 20px; background:var(--action-tint); color:var(--ink); line-height:1.6; }
 .ip-surface .studio-assistant-status.is-hint>span { min-width:0; overflow-wrap:anywhere; }

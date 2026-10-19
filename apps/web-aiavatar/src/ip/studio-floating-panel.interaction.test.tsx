@@ -42,13 +42,19 @@ test('a dockable panel remembers docked / floating and its docked width per brow
   const dialog=screen.getByRole('dialog',{name:'助手'});
   expect(dialog.classList.contains('is-docked')).toBe(true);
   expect(dialog.style.width).toBe('480px');
+  // The stage learns the docked width so its right-anchored chrome can step aside.
+  const stage=document.querySelector<HTMLElement>('[data-studio-floating-root]')!;
+  expect(stage.classList.contains('has-docked-panel')).toBe(true);
+  expect(stage.style.getPropertyValue('--studio-docked-panel')).toBe('480px');
   expect(screen.getByText('全能')).toBeDefined();
   expect(screen.getByText('进度条').closest('.studio-floating-subheader')).not.toBeNull();
   const handle=screen.getByRole('separator',{name:'调整宽度'});
   fireEvent.pointerDown(handle,{clientX:800,pointerId:1});fireEvent.pointerMove(handle,{clientX:700,pointerId:1});fireEvent.pointerUp(handle,{pointerId:1});
   expect(dialog.style.width).toBe('580px');
+  expect(stage.style.getPropertyValue('--studio-docked-panel')).toBe('580px');
   fireEvent.click(screen.getByRole('button',{name:'改成浮窗'}));
   expect(dialog.classList.contains('is-docked')).toBe(false);
+  expect(stage.classList.contains('has-docked-panel')).toBe(false);
   expect(screen.queryByRole('separator',{name:'调整宽度'})).toBeNull();
   view.unmount();
   render(<Panel/>);

@@ -15,14 +15,13 @@
 .studio-conversation-start-send { display:inline-flex; align-items:center; gap:8px; flex-shrink:0; min-height:40px; padding:0 16px 0 12px; border:0; border-radius:10px; background:var(--action, #e7d58d); color:var(--on-action, #202c42); font:inherit; font-size:14px; font-weight:600; cursor:pointer; transition:background-color 120ms ease-out; }
 .studio-conversation-start-send:not(:disabled):hover { background:var(--action-600, #dcc671); }
 .studio-conversation-start-send:disabled { background:var(--ip-line, var(--line-2, #d3d9e5)); color:var(--ip-muted, var(--ink-2, #55607a)); cursor:not-allowed; }
-.studio-conversation-start-note { margin:0; padding:0 4px; font-size:12px; line-height:1.7; color:var(--ip-muted, var(--ink-2, #55607a)); }
+.studio-conversation-start-note { margin:0; padding:8px 2px 0; border-top:1px solid var(--ip-line, var(--line, #e4e7ef)); font-size:12px; line-height:1.7; color:var(--ip-muted, var(--ink-2, #55607a)); overflow-wrap:anywhere; }
 .studio-conversation-start-link { margin-left:8px; padding:0; border:0; background:transparent; color:inherit; font:inherit; font-size:12px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
 .studio-conversation-start :is(button,textarea):focus-visible { outline:2px solid var(--primary, #495b91); outline-offset:2px; }
 .studio-conversation-start.is-compact .studio-conversation-start-box { box-shadow:none; }
 .studio-conversation-start.is-compact textarea { font-size:15px; }
 /* In the hero the box sits over the photograph; the copy column already sets its width. */
 .ip-home-hero-copy .studio-conversation-start { margin-top:28px; }
-.ip-home-hero-copy .studio-conversation-start-note { color:#535b60; }
 html[data-layout="mobile"] .studio-conversation-start-row { flex-direction:column; align-items:stretch; }
 html[data-layout="mobile"] .studio-conversation-start-send { justify-content:center; min-height:44px; }
 html[data-layout="mobile"] .studio-conversation-start-examples button { min-height:34px; }

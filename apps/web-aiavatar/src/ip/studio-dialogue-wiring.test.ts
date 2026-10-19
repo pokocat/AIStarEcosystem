@@ -45,6 +45,10 @@ test('the dialogue is actually mounted and wired', () => {
   expect(read('ip/studio-workspace.tsx')).toContain('className="studio-start studio-canvas-empty"');
   expect(assistant).toContain('dispatchStudioCommand("reveal"');
   expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'reveal'");
+  // The assistant opens by default on desktop canvases; the stage steps its chrome aside for a docked panel.
+  expect(read('ip/studio-workspace.tsx')).toContain('useState(readAssistantOpenPreference)');
+  expect(read('ip/studio-floating-panel.tsx')).toContain("host.classList.add('has-docked-panel')");
+  expect(read('styles/studio-flow.css')).toContain('.studio-flow-shell.has-docked-panel .studio-command-strip');
 });
 
 test('the composer is never disabled as a whole', () => {
