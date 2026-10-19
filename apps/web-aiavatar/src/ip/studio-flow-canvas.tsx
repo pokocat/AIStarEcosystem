@@ -420,8 +420,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       </ReactFlow>
       {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
-        <button aria-label="拖动画布" title="平移" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19} strokeWidth={1.75}/></button>
-        <button aria-label="选择工具" title="选择" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19} strokeWidth={1.75}/></button><hr/>
+        <button aria-label="拖动画布" title="平移" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">平移</span></button>
+        <button aria-label="选择工具" title="选择" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">选择</span></button><hr/>
         {/* 画布页改版（2026-10-19，设计稿 Main 画板）：贴边通高的一列，七个工具 —— 平移、选择、＋添加、素材库、模板、查找、整理；
             创作任务在这列最底下（工作台渲染，见 studio-tasks-launch）。复制、删除、更多节点操作只在右键菜单和多选条里。
             原第二排「更多」里的四项都有去处：商品 / 数字人视频模板在「模板」里，解析视频、口型同步在视频节点的「⋯」里，
@@ -433,11 +433,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           { key: 'speech', label: '声音', icon: <Music2 size={16}/>, onClick: () => dispatchStudioCommand('speech') },
           { type: 'divider' },
           { key: 'upload', label: '上传文件', icon: <Upload size={16}/>, onClick: () => picker.current?.upload() },
-        ] }}><button aria-label="添加内容" title="添加" className="studio-flow-add"><Plus size={20} strokeWidth={2}/></button></Dropdown>
-        <button aria-label="素材库" title="素材库" onClick={() => dispatchStudioCommand('library')}><ShoppingBag size={19} strokeWidth={1.75}/></button>
-        <button aria-label="画布模板" title="模板" onClick={() => dispatchStudioCommand('templates')}><LayoutGrid size={19} strokeWidth={1.75}/></button><hr/>
-        <button aria-label="查找节点" title="查找" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19} strokeWidth={1.75}/></button>
-        <button aria-label="整理画布" title="整理" onClick={arrange}><AlignLeft size={19} strokeWidth={1.75}/></button>
+        ] }}><button aria-label="添加内容" title="添加" className="studio-flow-add"><Plus size={20} strokeWidth={2}/><span className="studio-flow-tool-label">添加</span></button></Dropdown>
+        <button aria-label="素材库" title="素材库" onClick={() => dispatchStudioCommand('library')}><ShoppingBag size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">素材库</span></button>
+        <button aria-label="画布模板" title="模板" onClick={() => dispatchStudioCommand('templates')}><LayoutGrid size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">模板</span></button><hr/>
+        <button aria-label="查找节点" title="查找" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">查找</span></button>
+        <button aria-label="整理画布" title="整理" onClick={arrange}><AlignLeft size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">整理</span></button>
         <div hidden><StudioAttachmentPicker projectId={projectId} variant="canvas" locked={reading} reading={reading} actions={picker} onFiles={files => void importFiles(files)} onAssets={async assets => {
           checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, placeVisibleNode(n, old)]); last = n.id; }
           await saveStudioDocument(projectId); if (last) focusNode(last);

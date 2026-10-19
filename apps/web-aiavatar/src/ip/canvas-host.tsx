@@ -15,7 +15,7 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, Popover, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, Loader2, RefreshCw, Send } from "lucide-react";
+import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, LayoutTemplate, Loader2, RefreshCw, Send } from "lucide-react";
 import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -130,15 +130,15 @@ function Host({ projectId }: { projectId: string }) {
       <Popover trigger="click" placement="bottomRight" getPopupContainer={modalContainerOf} content={<div className="studio-host-more" role="group" aria-label="画布更多操作">
         <ProjectHistory projectId={projectId} saveNow={saveNow} />
         <LastRunPanel />
-        {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>保存为模板</button></>}
+        {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="studio-host-more-item"><LayoutTemplate aria-hidden="true"/>保存为模板</button></>}
         {isOperator && (
           <button
+            type="button"
             onClick={()=>{setTemplateVisibility('official');setTemplateOpen(true);}}
-            className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
-            style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+            className="studio-host-more-item"
             title="完整保存画布和素材，所有用户都能查看"
           >
-            <BadgeCheck className="w-3.5 h-3.5 shrink-0" />
+            <BadgeCheck aria-hidden="true" />
             存为官方内容
           </button>
         )}

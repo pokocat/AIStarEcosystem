@@ -531,9 +531,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   </>;
   const guide = <section id="studio-assistant-guide" className="studio-assistant-guide" aria-label="使用说明">
     <ol>
-      <li><strong>说想法</strong>一句话说清要做什么。用 @ 指定画布上的素材；附件会先进画布，再被引用。</li>
-      <li><strong>看方案和报价</strong>我先看素材，列出每一步做什么、大概花多少积分，然后停在确认卡上。</li>
-      <li><strong>确认后开始做</strong>结果一步步出现在画布上。超过上限会停下来问你；中途随时插话，也随时能停。</li>
+      <li><span><strong>说想法</strong>一句话说清要做什么。用 @ 指定画布上的素材；附件会先进画布，再被引用。</span></li>
+      <li><span><strong>看方案和报价</strong>我先看素材，列出每一步做什么、大概花多少积分，然后停在确认卡上。</span></li>
+      <li><span><strong>确认后开始做</strong>结果一步步出现在画布上。超过上限会停下来问你；中途随时插话，也随时能停。</span></li>
     </ol>
     {pickSkill && <p className="studio-helper-note">{chosenSkill ? chosenSkill.summary : "自动：按你的消息和素材挑一个合适的技能。第一次回复之后，这段对话就一直用它"}</p>}
     {boundSkill && activeSkills.length > 1 && <p className="studio-helper-note">这段对话在按「{boundSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」。</p>}

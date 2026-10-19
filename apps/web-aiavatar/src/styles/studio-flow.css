@@ -31,8 +31,15 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 /* 顶栏收口：低频项进「⋯」 */
 .studio-host-more-button { display:grid; place-items:center; width:34px; height:34px; border:1px solid var(--line); border-radius:8px; background:var(--surface); color:var(--ink-2); cursor:pointer; }
 .studio-host-more-button:hover { background:var(--surface-2); color:var(--ink); }
-.studio-host-more { display:flex; flex-direction:column; align-items:stretch; gap:6px; min-width:220px; }
-.studio-host-more>* { justify-content:flex-start; }
+.studio-host-more { display:flex; flex-direction:column; align-items:stretch; gap:2px; min-width:200px; margin:-4px; }
+/* One menu row for every item: full width, left aligned, icon then text. The items used to carry their old
+   top-bar pill styles (rounded-full, some centred, some with an icon), which looked like four unrelated buttons. */
+.studio-host-more-item { display:flex; align-items:center; gap:10px; width:100%; min-height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--ink); font:inherit; font-size:13px; font-weight:500; text-align:left; white-space:nowrap; cursor:pointer; }
+.studio-host-more-item > svg { width:16px; height:16px; flex-shrink:0; color:var(--ink-2); }
+.studio-host-more-item > span { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.studio-host-more-item:hover { background:var(--surface-2); }
+.studio-host-more-item:disabled { opacity:.6; cursor:not-allowed; }
+.studio-host-more-item:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
 .studio-flow-card { display:flex; flex-direction:column; height:100%; background:var(--surface); border:1px solid var(--line-2); border-radius:12px; }
 /* Warm video work surface, distinct from the cool canvas and white title bar.
    Keep these aliases on the card so tools and other node types retain their palette. */
@@ -133,13 +140,20 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-shell button:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
 .studio-flow-tools>.ant-btn { padding:8px; width:36px; height:36px; overflow:hidden; font-size:0; }
 .studio-flow-tools>.ant-btn .ant-btn-icon { margin:0; }
-/* 画布页改版（设计稿 Main 画板）：桌面左栏是贴边、通高、56px 宽的白色一列，只有图标（名字在 title 与 aria-label 里）；
-   创作任务按钮由工作台渲染，定位在这列最底下（见 ip-studio-workflow.css 的 .studio-tasks-launch）。手机仍是浮在画布上的小卡片。 */
+/* 画布页改版（设计稿 Main 画板）：桌面左栏是贴边、通高、56px 宽的白色一列，平时只露图标；鼠标移上去（或键盘聚焦）
+   展开到 168px 显示名字，浮在画布上不挤画布（用户反馈：只有图标认不出是什么，2026-10-19 恢复改版前的悬停展开）。
+   创作任务按钮由工作台渲染，定位在这列最底下（见 ip-studio-workflow.css 的 .studio-tasks-launch）。手机仍是浮在画布上的小卡片，不显示名字。 */
 /* z 74：在工作台覆盖层（z 75，指针穿透）之下，好让覆盖层里的任务按钮落在这列最底下。 */
-html[data-layout="desktop"] .studio-flow-tools { z-index:74; left:0; top:0; bottom:0; width:56px; box-sizing:border-box; align-items:center; gap:4px; padding:12px 0; border:0; border-right:1px solid var(--line); border-radius:0; }
-html[data-layout="desktop"] .studio-flow-tools>button { flex-shrink:0; width:40px; height:40px; padding:0; border-radius:10px; transition:background-color 120ms ease-out; }
+html[data-layout="desktop"] .studio-flow-tools { z-index:74; left:0; top:0; bottom:0; width:56px; box-sizing:border-box; align-items:stretch; gap:4px; padding:12px 8px; border:0; border-right:1px solid var(--line); border-radius:0; overflow:hidden; transition:width 160ms cubic-bezier(.16,1,.3,1), box-shadow 160ms ease-out; }
+html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) { width:168px; box-shadow:12px 0 32px rgb(20 24 40 / 10%); }
+html[data-layout="desktop"] .studio-flow-tools>button { flex-shrink:0; justify-content:flex-start; gap:10px; width:100%; height:40px; padding:0 10.5px; border-radius:10px; overflow:hidden; font-size:13px; transition:background-color 120ms ease-out; }
+html[data-layout="desktop"] .studio-flow-tools>button>svg { flex-shrink:0; }
+html[data-layout="desktop"] .studio-flow-tools>.studio-flow-add { padding:0 10px; }
 html[data-layout="desktop"] .studio-flow-tools>button:disabled { opacity:.4; cursor:not-allowed; }
-html[data-layout="desktop"] .studio-flow-tools>hr { width:28px; margin:6px 0; }
+html[data-layout="desktop"] .studio-flow-tools>hr { width:auto; margin:6px 6px; }
+.studio-flow-tool-label { display:none; }
+html[data-layout="desktop"] .studio-flow-tools .studio-flow-tool-label { display:block; flex-shrink:0; white-space:nowrap; opacity:0; transform:translateX(-4px); transition:opacity 120ms ease-out, transform 160ms cubic-bezier(.16,1,.3,1); }
+html[data-layout="desktop"] .studio-flow-tools:is(:hover,:has(>button:focus-visible)) .studio-flow-tool-label { opacity:1; transform:translateX(0); }
 .studio-flow-tools .studio-flow-add { background:var(--ink); color:var(--surface); }
 .studio-flow-shell .studio-flow-tools .studio-flow-add:hover:not(:disabled) { background:var(--ink-2); color:var(--surface); }
 .studio-flow-add-menu .ant-dropdown-menu { width:168px; padding:6px; border:1px solid var(--line); border-radius:12px; box-shadow:0 14px 36px rgba(20, 24, 40, 0.14); }
@@ -156,7 +170,7 @@ html[data-layout="desktop"] .studio-asset-sidebar .studio-helper-note { margin:0
 html[data-layout="desktop"] .studio-asset-sidebar .studio-attachment-content { flex:1; min-height:0; overflow-y:auto; overscroll-behavior:contain; }
 html[data-layout="desktop"] .studio-asset-sidebar footer { padding-top:12px; border-top:1px solid var(--line); }
 @media (prefers-reduced-motion:reduce) {
-  html[data-layout="desktop"] .studio-flow-tools>button { transition:background-color 120ms ease-out; }
+  html[data-layout="desktop"] .studio-flow-tools { transition:none; }
   html[data-layout="desktop"] .studio-flow-tools .studio-flow-tool-label { transform:none; transition:opacity 120ms ease-out; }
 }
 .studio-flow-tools hr,.studio-flow-controls hr { border:0; background:var(--line); width:100%; height:1px; margin:3px 0; }

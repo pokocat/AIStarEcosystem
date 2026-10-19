@@ -57,6 +57,8 @@ test('the dialogue is actually mounted and wired', () => {
   const rail = canvas.slice(canvas.indexOf('<nav className="studio-flow-tools"'), canvas.indexOf('</nav>', canvas.indexOf('<nav className="studio-flow-tools"')));
   // Design Main board: seven tools. 专项创作 is not one of them (its items live in 模板, the video node's 「⋯」 and 素材库).
   for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
+  // Every rail tool carries a visible name that slides out on hover (icons alone were not recognisable).
+  for (const name of ['平移', '选择', '添加', '素材库', '模板', '查找', '整理']) expect(rail).toContain(`<span className="studio-flow-tool-label">${name}</span>`);
   expect(rail).not.toContain('aria-label="专项创作"');
   expect(rail).not.toContain("label: '从资产库添加'");
   // Node operations left the rail for the context menu and the multi-select bar.

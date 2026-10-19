@@ -242,9 +242,6 @@ html[data-layout="mobile"] .ip-canvas-topbar > div:first-child > div:last-child 
 html[data-layout="mobile"] .ip-canvas-topbar > div:last-child { flex-shrink: 0; }
 html[data-layout="mobile"] .ip-canvas-topbar > div:last-child > div:last-child:not(.ip-canvas-host-actions) { display: none; }
 html[data-layout="mobile"] .ip-canvas-host-actions { gap: 4px; }
-html[data-layout="mobile"] .ip-canvas-history { padding-inline: 6px; font-size: 11px; }
-html[data-layout="mobile"] .ip-canvas-last-run { padding-inline: 6px; }
-html[data-layout="mobile"] .ip-canvas-last-run span { display: none; }
 .studio-episode-nav { display:flex; align-items:center; gap:12px; margin:0 0 24px; flex-wrap:wrap; }
 .studio-episode-nav .ant-select { min-width:150px; }
 .studio-settings-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }

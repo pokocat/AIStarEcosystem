@@ -701,6 +701,12 @@ test('an empty canvas opens on task cards and what the canvas holds; a chip pins
   // The guide is one click away and holds the notes that used to hide behind a settings icon.
   fireEvent.click(screen.getByRole('button', { name: '第一次用？花 30 秒看它怎么工作' }));
   expect(within(screen.getByRole('region', { name: '使用说明' })).getByText(/整张画布都会作为参考/)).toBeDefined();
+  // Each step is a two-column grid (number + text). A bare text node beside <strong> becomes a third grid item and
+  // drops into the 24px number column, one character per line; title and text must share one element.
+  for (const li of screen.getByRole('region', { name: '使用说明' }).querySelectorAll('ol > li')) {
+    expect(li.children.length).toBe(1);
+    expect([...li.childNodes].every(n => n.nodeType === Node.ELEMENT_NODE)).toBe(true);
+  }
 });
 
 test('「复刻一条短视频」 pins the only video, drafts the request with blanks and holds the send until the pieces are there', async () => {
