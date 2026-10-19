@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 创作助手改版 · 2026-10-18 · 本地实现，未发布
+
+按设计稿（Studio 创作助手改版，四个状态）实现：面板默认停靠右侧、占满画布高度、可拖宽，停靠与宽度按浏览器记忆（`StudioFloatingPanel` 新增 `layoutKey / defaultDocked / resizable / subheader / titleExtra`）；进度条固定在头部下方（`StudioDialogueExecution` 加进度条、各步列表与「在画布上看」→ 画布 `studio-command: focus`）；技能 / 模型 chip 进输入区，发送原因内联；开场任务卡 + 画布素材 chip + 使用说明；「复刻一条短视频」素材清单（`studio-assistant-checklist.tsx`，纯前端引导）；确认卡改为报价大数字 + 折叠的上限输入。无后端 / API / 迁移改动。web-aiavatar vitest 899/899，typecheck 绿，mock 模式在 1440 与 375 宽实测。
+
 ### Studio 全能创作 · 对话驱动视频复刻 S1/S2 · 2026-10-18 · 本地实现，未发布
 
 按 `docs/ip-studio-conversational-video-recreation-plan.md`（v4）实现：仓内技能 `reference-video-recreation`；每画布一条连续线程、真流式正文与工作记录卡、输入不锁与转向队列、优先停止、分支、旧四模式对话兼容导入（V61）；父 run `studio-dialogue` 的有界 agent 循环（原生 tool_calls 或 JSON 动作协议，端点能力 V60 后台声明）；两阶段计划（approaches / 类型化 settings / 技能白名单 / 28 步上限 / 服务端报价）；`check` 原生三态检查；拉片 `maxSegmentSec`；`ip_plan_execution` 执行器（V62：提交前预算、付款绑定、租约、暂停只查、90 分钟 partial、同键恢复）；前端线程 UI（SSE 续播 / 轮询回落、确认卡、执行进度条、`node.upsert` 幂等投影、「AI 判断」检查节点）。顺带修接入前两项产品问题（全画布模板丢视频模式；成片 key 前缀与归属闸不一致）。S0 付费实测与自动修正白名单未做。

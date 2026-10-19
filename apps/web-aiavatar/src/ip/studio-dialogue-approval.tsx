@@ -32,6 +32,9 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
   onStart: (caps: { budgetCap: number; autoFixCap: number }) => Promise<unknown>; onRevise: () => void;
 }) {
   const [budgetCap, setBudgetCap] = useState(String(block.budgetCap)), [autoFixCap, setAutoFixCap] = useState(String(block.autoFixCap));
+  // The two cap fields stay folded until asked for; a shortfall opens them, since raising the cap is the point of that card.
+  const [capsOpen, setCapsOpen] = useState(!!shortfall);
+  useEffect(() => { if (shortfall) setCapsOpen(true); }, [shortfall]);
   const [busy, setBusy] = useState(false), [error, setError] = useStudioErrorState();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { setBudgetCap(String(block.budgetCap)); setAutoFixCap(String(block.autoFixCap)); }, [block.approvalId, block.budgetCap, block.autoFixCap]);
@@ -60,15 +63,18 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
   const confirmed = status === 'approved' ? approvedSummary(block.stage, approved) : undefined;
   const approvedWhen = status === 'approved' ? [approved?.approvedAt && `确认于 ${formatDateTime(approved.approvedAt)}`, approved?.planRevision && `第 ${approved.planRevision} 版方案`].filter(Boolean).join(' · ') : '';
   return <section className="studio-dialogue-approval" data-status={status} aria-label={analysis ? '确认分析' : '确认制作'}>
-    <header><ShieldCheck size={16} aria-hidden="true"/><h4>{analysis ? '分析之前请确认' : '制作之前请确认'}</h4><span>{STATUS_LABEL[status]}</span></header>
+    <header><ShieldCheck size={16} aria-hidden="true"/><h4>{analysis ? '开始分析前确认' : '开始制作前确认'}</h4><span>{STATUS_LABEL[status]}</span></header>
     {!!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>}
-    {actionable ? <p className="studio-dialogue-approval-quote">当前报价 {formatCredits(block.quotedCost)} 积分{block.autoFixCap > 0 ? `，重做额度最多 ${formatCredits(block.autoFixCap)} 积分` : ''}，总上限 {formatCredits(block.budgetCap)} 积分{block.dialogueReserve ? `（含一轮对话预留 ${formatCredits(block.dialogueReserve)} 积分）` : ''}。</p>
-      : <p className="studio-dialogue-approval-quote">报价 {formatCredits(block.quotedCost)} 积分。</p>}
-    {actionable && <div className="studio-dialogue-caps">
+    {actionable ? <>
+      <p className="studio-dialogue-approval-price"><strong>{formatCredits(block.quotedCost)}</strong><span>积分，按实际用量结算</span></p>
+      <p className="studio-dialogue-approval-cap">最多花到 {formatCredits(cap || block.budgetCap)} 积分{fix > 0 ? `，其中 ${formatCredits(fix)} 积分留给重做` : ''}{block.dialogueReserve ? `，含一轮对话预留 ${formatCredits(block.dialogueReserve)} 积分` : ''}。超过会停下来问你，不会自己继续。
+        <button type="button" className="studio-dialogue-link" aria-expanded={capsOpen} onClick={() => setCapsOpen(v => !v)}>{capsOpen ? '收起' : '调整上限'}</button></p>
+    </> : <p className="studio-dialogue-approval-quote">报价 {formatCredits(block.quotedCost)} 积分。</p>}
+    {actionable && capsOpen && <div className="studio-dialogue-caps">
       <label><span>总上限（积分）</span><input type="number" inputMode="numeric" min={block.quotedCost} step={1} value={budgetCap} disabled={busy} onChange={e => setBudgetCap(e.target.value)}/></label>
       <label><span>其中重做额度</span><input type="number" inputMode="numeric" min={0} step={1} value={autoFixCap} disabled={busy} onChange={e => setAutoFixCap(e.target.value)}/></label>
     </div>}
-    {actionable && <p className="studio-dialogue-note">改上限只是草稿，点「{label}」才生效。超出上限不会再提交新任务。</p>}
+    {actionable && capsOpen && <p className="studio-dialogue-note">改上限只是草稿，点「{label}」才生效。超出上限不会再提交新任务。</p>}
     {actionable && !!shortfall && shortfall > 0 && <p className="studio-dialogue-warning" role="status">本阶段预算还差 {formatCredits(shortfall)} 积分，确认新的上限后继续。</p>}
     {actionable && block.expiresAt && <p className="studio-dialogue-note">请在 {formatDateTime(block.expiresAt)} 前确认，过期后需要重新报价。</p>}
     {confirmed && <p className="studio-dialogue-note" role="status">{confirmed}</p>}
@@ -80,6 +86,7 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
       <Button className="studio-assistant-primary" type="primary" loading={busy} disabled={!!invalid || !planReady} title={analysis ? '确认后开始分析，按实际用量结算' : '确认后按方案开始制作，按实际用量结算'} onClick={() => void start()}>{label}</Button>
       <Button disabled={busy} onClick={onRevise}>先改改</Button>
     </div>}
+    {actionable && <p className="studio-dialogue-note">直接回复「可以」也行；说「再想想」就不会开始。</p>}
     {actionable && invalid && <p className="studio-dialogue-warning" role="alert">{invalid}</p>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
   </section>;

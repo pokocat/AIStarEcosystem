@@ -45,7 +45,8 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     if (store.outbox.length > sent.current) stick.current = true;
     sent.current = store.outbox.length;
     const body = root.current?.closest<HTMLElement>('.studio-floating-body');
-    if (body && stick.current) body.scrollTop = body.scrollHeight;
+    // An empty thread has nothing to follow; scrolling then would push the opening cards out of view.
+    if (body && stick.current && (store.messages.length || store.outbox.length)) body.scrollTop = body.scrollHeight;
   }, [tail]);
   // Messages still on their way sit where they were sent, not after a reply that overtook them.
   const entries = [...current.map(m => ({ seq: m.seq, message: m, item: undefined })), ...store.outbox.map(item => ({ seq: (item.afterSeq ?? store.latestSeq) + .5, message: undefined, item }))]

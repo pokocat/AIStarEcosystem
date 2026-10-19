@@ -27,6 +27,14 @@ test('the dialogue is actually mounted and wired', () => {
   expect(read('ip/studio-dialogue-message.tsx')).toContain('handlers.completionActions?.(message)');
   expect(read('ip/studio-dialogue-message.tsx')).toContain('skillLabel={handlers.skillLabel?.(block.plan)}');
   expect(read('ip/studio-dialogue-session.tsx')).toContain('skillKey: input.skillKey');
+  // The side-panel layout and the opening guidance are mounted, not just defined.
+  expect(assistant).toContain('<StudioFloatingPanel title="创作助手"');
+  expect(assistant).toContain('dockable defaultDocked resizable layoutKey="assistant"');
+  expect(assistant).toContain('subheader={subheader}');
+  expect(assistant).toContain('<StudioAssistantChecklist');
+  expect(assistant).toContain('aria-label="使用说明"');
+  expect(read('ip/studio-dialogue-execution.tsx')).toContain('role="progressbar"');
+  expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'focus'");
 });
 
 test('the composer is never disabled as a whole', () => {
