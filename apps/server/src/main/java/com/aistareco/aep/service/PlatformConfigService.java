@@ -33,6 +33,10 @@ public class PlatformConfigService {
         return repo.findByConfigKey(key).map(c -> PlatformConfigDto.from(c, objectMapper));
     }
 
+    public void lockRequired(String key) { if(repo.lockByConfigKey(key).isEmpty()) throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,"management configuration guard missing"); }
+
+    public void lockExisting(String key) { repo.lockByConfigKey(key); }
+
     public PlatformConfigDto requireByKey(String key) {
         return findByKey(key)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "config not found: " + key));
@@ -71,6 +75,7 @@ public class PlatformConfigService {
         if (key == null || key.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "configKey 必填");
         }
+        if(AiChatTokenPricing.KEY.equals(key))AiChatTokenPricing.validate(value);
         PlatformConfig existing = repo.findByConfigKey(key).orElse(null);
         String json = serialize(value);
         Instant now = Instant.now();

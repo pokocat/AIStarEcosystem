@@ -4,6 +4,7 @@
 > **范围**：aibuzz.cn 生态全部面向用户的产品：本仓 5 个 web app + 带货小程序、军师 ai-pilot（H5 / PC / 小程序）、主理人公社 ai-society（会员小程序）、以及后续任何新产品。
 > **落点**：独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)（Spring Boot 3.3.5 / Java 17 / Spring Authorization Server / Flyway / H2 dev · MySQL prod），生产域名 `id.aibuzz.cn`，本地 port **8090**；建议 clone 到本仓同级的 `../aibuzz-id`。初版代码曾在本仓 `apps/id-server` 孵化，2026-09-04 抽离，本仓只保留消费方接入（§12）。
 > **相关**：军师侧早期思路见 `ai-pilot/docs/ECOSYSTEM_ACCOUNT_DESIGN.md`（2026-07，单库共用 User 的方案，已被本文取代）。
+> **账号注册邀请（2026-10-17，本地实现，未发布）**：[统一账号邀请关系方案 v0.5](unified-account-referral-plan.md)将跨应用的原始注册邀请纳入账号中心，一张关系表加本体定义/映射；会员/商业/活动归因仍留业务域。§6 的边界已同步，运行契约见账号仓 README §25。[验收记录](releases/unified-account-referral-validation-20261017.md)区分本地完成与待发布；[Astra 记录](audits/unified-account-referral-astra-review-2026-10.md)仅针对此前 v0.2 完整方案。
 
 ---
 
@@ -150,6 +151,12 @@ wx_openid        仅当客户端绑定了 appid 且该 uid 有对应 openid 时�
 
 **不带**：手机号（隐私，走 `/userinfo` scope `phone`）、已开通产品列表（D13）、产品角色。
 
+**产品消费不能停在验签**（2026-10-10）：本仓 `IdentityPhoneSyncService` 从已获 `phone` 授权的
+用户令牌调用 `/userinfo`，核对 `sub` 与行锁后的 `identity_uid`，同步完整号展示副本；读取有界缓存，
+换绑/合并使旧号码与缓存失效。后台 `/admin/users?q=` 在分页前搜索并返回真实分页总数。
+资料展示、搜索、存量补齐及本地持久账号的接入 SOP 真源为
+[`aibuzz-id 接入指南`](../../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md) §7.9 / §10.6。
+
 ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token 不透明。
 
 **昵称是账号中心的唯一真源**（aibuzz-id README §22）。产品**不要**自己生成显示名 ——
@@ -215,7 +222,7 @@ ID token 标准 claims + `phone_verified` + `name` / `picture`。Refresh token �
 3. 解析 / 建号（§5），发 access + refresh；`session_key` 留在账号中心不下发。
 4. 小程序本地存两枚令牌，请求本产品接口带 `Authorization: Bearer`；401 用 refresh 换新。
 5. 需要手机号的动作由产品判断 `phone_verified`，引导调 `/api/me/phone/wechat-bind` 或短信绑定。
-6. 邀请码 / 渠道码等归因参数不进账号中心，登录后由小程序自己带给产品后端。
+6. 产品会员推荐、渠道/活动归因参数仍由小程序带给产品后端；跨应用的账号注册邀请在账号中心按新建 UID 同事务记录。短信/微信 grant 可选 `invite_code`，已有账号不补绑、不改邀请人。契约见账号仓 README §25（2026-10-17 本地实现，未发布）。
 
 三个小程序改动量：军师最小（换地址、`x-user-id` 改 Bearer、本地 User 加 uid）；公社换地址、归因留本地；本仓带货小程序改动最大（补 wx.login，删短信注册页，激活码改成登录后「开通带货」一步）。
 
@@ -328,7 +335,7 @@ entitlement_grant (id, user_id, product, source, source_reference, granted_at, v
 
 - server `IdentityCenterClient`（`AEP_ID_ISSUER` + `AEP_ID_CLIENT_ID`=`aistar-server` + `AEP_ID_CLIENT_SECRET`，client_credentials，令牌缓存到过期前 60s）。
 - outbox 响应壳：`{success:true, data:{events:[{id, eventType, uid, productCode, payload:{…}, createdAt}], nextAfter}}`；server 解析 `data.events`，壳不认识 → 报错、游标不推进。已识别事件但 payload 非法 → 不推进游标，连续 5 轮失败后落 dead-letter（`platform_config` 键 `identity.outbox.deadletter`）并 ERROR。
-- `IdentityOutboxPoller`（@Scheduled 30s，游标存 `platform_config` 键 `identity.outbox.cursor`）：`USER_MERGED{fromUid,toUid}` → `from` 的本地用户：若 `to` 无本地用户则把 `identity_uid` 改成 `to`；若 `to` 已有本地用户 → `from` 本地用户 `identity_uid=null`、`status=SUSPENDED`，WARN 记「需人工合并两份本地档案」（本期不自动合并业务数据）。`USER_CLOSED{uid}` → 本地用户 `status=DELETED`、`identity_uid` 保留（墓碑）、撤销其 HS256 会话不可行则忽略。`PHONE_CHANGED` → 忽略。
+- `IdentityOutboxPoller`（@Scheduled 30s，游标存 `platform_config` 的 `identity.outbox.cursor`）：`USER_MERGED` 的存活方无本地行时改指原业务行、清旧号并为旧 UID 留 DELETED 墓碑；两侧都有业务行时被并方保留 UID、清号、SUSPENDED，需人工处理业务资产。`USER_CLOSED` 将本地行 DELETED，首次登录前注销也建无权益墓碑。`PHONE_CHANGED` 清旧号并使资料缓存/在途读取失效；`PROFILE_CHANGED` 同步昵称与明确删除头像。注销/合并本地事务提交 → 中心 receipt COMPLETED → 游标前进；回执失败不得跳过。2026-10-10 本地复核新增修复未部署，详见跨应用复核记录。
 
 ### 12.5 前端（`packages/api-client` 共享，五个 web app 零散改动）
 
@@ -367,3 +374,7 @@ server：`./mvnw test` 全量不得回退（基线 471，唯一已知 flaky `Jwt
 **2026-09-05 · Codex P2 第六轮**：接管者首次 invalid_grant 已保留令牌，但释放租约后「不确定」状态丢失，下一次重试按空闲取得进来再失败即清会话——只是把误清推迟了一次。同日修复：不确定状态以 `aistareco.auth.refresh_ambiguous`（绑定出问题的 refresh token，窗口 60s）跨重试保留；窗口内同 token 再失败仍瞬时，窗口过后再失败才清会话重登；成功换发即作废标记。真吊销 / 冻结页永不醒来最多多等 60s，不会永久 TRANSIENT。
 
 **2026-09-05 · Codex P2 第七轮**：不确定状态已跨重试保留、真吊销最多多等 60s、无新 P0/P1。**判定：可进入预发联调。** 顺手修正一条测试注释（原称「不发请求直接采纳」与实际不符，改为断言成功后标记被清）。至此 P1 六轮 + P2 七轮评审收口；下一步按 TODO.md「P2 收尾 · 预发联调」上线：账号中心（`pokocat/aibuzz-id`）→ server → 前端。
+
+### 2026-10-10 跨应用 SOP 复核补充（本地未发布）
+
+当前资料不由旧 JWT 反复覆盖，事件与 userinfo 写入使用 UID/ACTIVE 行锁复核，旧 UID 保留墓碑。共享 api-client 成功及失败响应都复查发起时 access/refresh 会话，退出/换账号后丢弃旧结果；68 项后端身份与 70 项共享客户端回归通过。各产品适用字段、真实生产登记、接入缺口及部署边界见 [复核记录](audits/unified-identity-sop-audit-2026-10.md)，不得把先前 server/admin 手机号发布当作本轮发布。

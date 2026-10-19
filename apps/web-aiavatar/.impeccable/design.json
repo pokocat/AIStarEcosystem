@@ -1,179 +1,376 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-06-09",
-  "title": "Design System: AiAvatar · 数字人资产平台",
+  "generatedAt": "2026-10-10T12:15:47.764108+00:00",
+  "title": "Design System: AI IP 画布",
   "extensions": {
     "colorMeta": {
-      "primary": {
-        "role": "primary",
-        "displayName": "Studio Cyan",
-        "canonical": "oklch(73% 0.13 220)",
-        "tonalRamp": ["#062C38", "#0A4757", "#0C6379", "#0C97BE", "#12B3DE", "#4CCBEC", "#9AE2F4", "#E6F5FA"]
+      "bg": {
+        "role": "neutral",
+        "displayName": "暖灰底",
+        "canonical": "#f0efec",
+        "tonalRamp": [
+          "oklch(15% 0.00414 91.45)",
+          "oklch(25% 0.00414 91.45)",
+          "oklch(35% 0.00414 91.45)",
+          "oklch(45% 0.00414 91.45)",
+          "oklch(55% 0.00414 91.45)",
+          "oklch(65% 0.00414 91.45)",
+          "oklch(80% 0.00414 91.45)",
+          "oklch(95% 0.00414 91.45)"
+        ]
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "白纸面",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "oklch(15% 0.00000 0.00)",
+          "oklch(25% 0.00000 0.00)",
+          "oklch(35% 0.00000 0.00)",
+          "oklch(45% 0.00000 0.00)",
+          "oklch(55% 0.00000 0.00)",
+          "oklch(65% 0.00000 0.00)",
+          "oklch(80% 0.00000 0.00)",
+          "oklch(95% 0.00000 0.00)"
+        ]
+      },
+      "soft": {
+        "role": "neutral",
+        "displayName": "浅灰面",
+        "canonical": "#f6f6f5",
+        "tonalRamp": [
+          "oklch(15% 0.00132 106.42)",
+          "oklch(25% 0.00132 106.42)",
+          "oklch(35% 0.00132 106.42)",
+          "oklch(45% 0.00132 106.42)",
+          "oklch(55% 0.00132 106.42)",
+          "oklch(65% 0.00132 106.42)",
+          "oklch(80% 0.00132 106.42)",
+          "oklch(95% 0.00132 106.42)"
+        ]
       },
       "ink": {
+        "role": "primary",
+        "displayName": "深墨",
+        "canonical": "#192229",
+        "tonalRamp": [
+          "oklch(15% 0.01858 241.89)",
+          "oklch(25% 0.01858 241.89)",
+          "oklch(35% 0.01858 241.89)",
+          "oklch(45% 0.01858 241.89)",
+          "oklch(55% 0.01858 241.89)",
+          "oklch(65% 0.01858 241.89)",
+          "oklch(80% 0.01858 241.89)",
+          "oklch(95% 0.01858 241.89)"
+        ]
+      },
+      "ink-hover": {
+        "role": "primary",
+        "displayName": "深墨 hover",
+        "canonical": "#323e45",
+        "tonalRamp": [
+          "oklch(15% 0.01994 233.69)",
+          "oklch(25% 0.01994 233.69)",
+          "oklch(35% 0.01994 233.69)",
+          "oklch(45% 0.01994 233.69)",
+          "oklch(55% 0.01994 233.69)",
+          "oklch(65% 0.01994 233.69)",
+          "oklch(80% 0.01994 233.69)",
+          "oklch(95% 0.01994 233.69)"
+        ]
+      },
+      "muted": {
         "role": "neutral",
-        "displayName": "Deep Slate Ink",
-        "canonical": "oklch(25% 0.025 245)",
-        "tonalRamp": ["#0A1117", "#14202B", "#2B3B49", "#5A6873", "#8A96A1", "#BAC4CD", "#E0E6EC", "#F7F9FB"]
+        "displayName": "次文字灰",
+        "canonical": "#65707e",
+        "tonalRamp": [
+          "oklch(15% 0.02567 254.50)",
+          "oklch(25% 0.02567 254.50)",
+          "oklch(35% 0.02567 254.50)",
+          "oklch(45% 0.02567 254.50)",
+          "oklch(55% 0.02567 254.50)",
+          "oklch(65% 0.02567 254.50)",
+          "oklch(80% 0.02567 254.50)",
+          "oklch(95% 0.02567 254.50)"
+        ]
       },
-      "canvas": {
+      "line": {
         "role": "neutral",
-        "displayName": "Cool Paper",
-        "canonical": "oklch(98% 0.004 240)",
-        "tonalRamp": ["#DCE3EA", "#EBEFF3", "#EDF1F5", "#EEF2F6", "#F6F8FB", "#F7F9FB", "#FCFDFE", "#FFFFFF"]
+        "displayName": "细边线",
+        "canonical": "#e8eaec",
+        "tonalRamp": [
+          "oklch(15% 0.00346 247.86)",
+          "oklch(25% 0.00346 247.86)",
+          "oklch(35% 0.00346 247.86)",
+          "oklch(45% 0.00346 247.86)",
+          "oklch(55% 0.00346 247.86)",
+          "oklch(65% 0.00346 247.86)",
+          "oklch(80% 0.00346 247.86)",
+          "oklch(95% 0.00346 247.86)"
+        ]
       },
-      "ok": {
-        "role": "tertiary",
-        "displayName": "Ledger Green",
-        "canonical": "oklch(64% 0.13 162)",
-        "tonalRamp": ["#073D29", "#0B5E3F", "#0E7E54", "#149069", "#1AA06E", "#4FBA90", "#A6DEC9", "#E2F4EC"]
+      "selected": {
+        "role": "neutral",
+        "displayName": "选中浅灰",
+        "canonical": "#eeefef",
+        "tonalRamp": [
+          "oklch(15% 0.00107 197.14)",
+          "oklch(25% 0.00107 197.14)",
+          "oklch(35% 0.00107 197.14)",
+          "oklch(45% 0.00107 197.14)",
+          "oklch(55% 0.00107 197.14)",
+          "oklch(65% 0.00107 197.14)",
+          "oklch(80% 0.00107 197.14)",
+          "oklch(95% 0.00107 197.14)"
+        ]
       },
-      "warn": {
-        "role": "tertiary",
-        "displayName": "Amber",
-        "canonical": "oklch(70% 0.13 75)",
-        "tonalRamp": ["#4A3203", "#6E4B05", "#936408", "#B87D0B", "#D9920E", "#E6B252", "#F3D9A2", "#FBF0DA"]
+      "green": {
+        "role": "secondary",
+        "displayName": "定稿绿",
+        "canonical": "#28694f",
+        "tonalRamp": [
+          "oklch(15% 0.07917 163.95)",
+          "oklch(25% 0.07917 163.95)",
+          "oklch(35% 0.07917 163.95)",
+          "oklch(45% 0.07917 163.95)",
+          "oklch(55% 0.07917 163.95)",
+          "oklch(65% 0.07917 163.95)",
+          "oklch(80% 0.07917 163.95)",
+          "oklch(95% 0.07917 163.95)"
+        ]
       },
-      "err": {
-        "role": "tertiary",
-        "displayName": "Rose",
-        "canonical": "oklch(60% 0.18 16)",
-        "tonalRamp": ["#4D0E18", "#7A1726", "#A72035", "#D03048", "#E0455C", "#EB7184", "#F5B5C0", "#FBE6EA"]
+      "green-soft": {
+        "role": "secondary",
+        "displayName": "定稿轻底",
+        "canonical": "#eaf4ee",
+        "tonalRamp": [
+          "oklch(15% 0.01322 159.91)",
+          "oklch(25% 0.01322 159.91)",
+          "oklch(35% 0.01322 159.91)",
+          "oklch(45% 0.01322 159.91)",
+          "oklch(55% 0.01322 159.91)",
+          "oklch(65% 0.01322 159.91)",
+          "oklch(80% 0.01322 159.91)",
+          "oklch(95% 0.01322 159.91)"
+        ]
+      },
+      "gold": {
+        "role": "secondary",
+        "displayName": "进行中赭金",
+        "canonical": "#805a27",
+        "tonalRamp": [
+          "oklch(15% 0.08355 71.65)",
+          "oklch(25% 0.08355 71.65)",
+          "oklch(35% 0.08355 71.65)",
+          "oklch(45% 0.08355 71.65)",
+          "oklch(55% 0.08355 71.65)",
+          "oklch(65% 0.08355 71.65)",
+          "oklch(80% 0.08355 71.65)",
+          "oklch(95% 0.08355 71.65)"
+        ]
+      },
+      "gold-soft": {
+        "role": "secondary",
+        "displayName": "进行中轻底",
+        "canonical": "#f8eddb",
+        "tonalRamp": [
+          "oklch(15% 0.02663 80.25)",
+          "oklch(25% 0.02663 80.25)",
+          "oklch(35% 0.02663 80.25)",
+          "oklch(45% 0.02663 80.25)",
+          "oklch(55% 0.02663 80.25)",
+          "oklch(65% 0.02663 80.25)",
+          "oklch(80% 0.02663 80.25)",
+          "oklch(95% 0.02663 80.25)"
+        ]
+      },
+      "error": {
+        "role": "secondary",
+        "displayName": "错误红",
+        "canonical": "#a43845",
+        "tonalRamp": [
+          "oklch(15% 0.14209 16.92)",
+          "oklch(25% 0.14209 16.92)",
+          "oklch(35% 0.14209 16.92)",
+          "oklch(45% 0.14209 16.92)",
+          "oklch(55% 0.14209 16.92)",
+          "oklch(65% 0.14209 16.92)",
+          "oklch(80% 0.14209 16.92)",
+          "oklch(95% 0.14209 16.92)"
+        ]
+      },
+      "error-soft": {
+        "role": "secondary",
+        "displayName": "错误轻底",
+        "canonical": "#fcf0f1",
+        "tonalRamp": [
+          "oklch(15% 0.01301 11.54)",
+          "oklch(25% 0.01301 11.54)",
+          "oklch(35% 0.01301 11.54)",
+          "oklch(45% 0.01301 11.54)",
+          "oklch(55% 0.01301 11.54)",
+          "oklch(65% 0.01301 11.54)",
+          "oklch(80% 0.01301 11.54)",
+          "oklch(95% 0.01301 11.54)"
+        ]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Display", "purpose": "Screen and section headings, top tabs (17px), nav titles. Manrope 700, -0.02em." },
-      "asset-name": { "displayName": "Asset Name", "purpose": "The serif identity of a digital human. The product's single warm, editorial type gesture. Newsreader 500. Never used for UI chrome." },
-      "reg": { "displayName": "Registration No.", "purpose": "The REG · DH-2041 asset number, prefixed by a tinted REG chip. JetBrains Mono, 0.04em." },
-      "label": { "displayName": "Field Label", "purpose": "Uppercase spec-sheet field labels in the dossier. JetBrains Mono 10px, 0.1em." }
+      "display": {
+        "displayName": "首页展示标题",
+        "purpose": "首页中文主标题。"
+      },
+      "headline": {
+        "displayName": "页面标题",
+        "purpose": "IP 管理页面标题。"
+      },
+      "title": {
+        "displayName": "档案人物名",
+        "purpose": "相邻详情中的人物名称，长名可换行。"
+      },
+      "asset-name": {
+        "displayName": "人物卡名称",
+        "purpose": "人物卡片名称，单行截断。"
+      },
+      "body": {
+        "displayName": "正文",
+        "purpose": "正文基准与常规操作。"
+      },
+      "label": {
+        "displayName": "紧凑操作",
+        "purpose": "详情操作与紧凑标签。"
+      }
     },
-    "shadows": [
-      { "name": "resting", "value": "0 1px 2px rgba(20,36,55,.035), 0 1px 3px rgba(20,36,55,.04)", "purpose": "Cards, badges, the default float. Barely there." },
-      { "name": "raised", "value": "0 2px 6px rgba(20,36,55,.04), 0 8px 20px rgba(20,36,55,.055)", "purpose": "Card hover and lifted state." },
-      { "name": "overlay", "value": "0 8px 24px rgba(20,36,55,.07), 0 24px 50px rgba(20,36,55,.09)", "purpose": "Modals, bottom sheets, toasts." },
-      { "name": "float", "value": "0 6px 18px rgba(20,40,60,.07), 0 24px 60px rgba(20,40,60,.10)", "purpose": "Floating shells and the desktop content column." },
-      { "name": "focus-ring", "value": "0 0 0 3px rgba(18,179,222,.16)", "purpose": "The cyan focus glow on inputs and selected cards. The only colored shadow." }
-    ],
     "motion": [
-      { "name": "ease-standard", "value": "cubic-bezier(.4,0,.2,1)", "purpose": "Default easing for state transitions (buttons, cards, hover). 140 to 200ms." },
-      { "name": "ease-out-soft", "value": "cubic-bezier(.22,1,.36,1)", "purpose": "Entrances: page fade-up, sheets, staggered lists. 300 to 420ms." },
-      { "name": "ease-overshoot", "value": "cubic-bezier(.34,1.56,.64,1)", "purpose": "The one permitted overshoot: archival seal stamp-in and the raised create key press." },
-      { "name": "duration-tap", "value": "120ms", "purpose": "Press feedback on tappable surfaces." },
-      { "name": "duration-state", "value": "160ms", "purpose": "Button and control state changes." }
+      {
+        "name": "ip-ease",
+        "value": "cubic-bezier(.22,1,.36,1)",
+        "purpose": "主按钮底色与入口箭头的状态过渡。"
+      },
+      {
+        "name": "button-state",
+        "value": "160ms",
+        "purpose": "主按钮底色变化。"
+      },
+      {
+        "name": "entry-arrow",
+        "value": "180ms",
+        "purpose": "创作入口箭头平移反馈。"
+      }
     ],
     "breakpoints": [
-      { "name": "phone", "value": "460px", "purpose": "At and below: app fills the viewport edge-to-edge (no rounded frame), true H5 form." },
-      { "name": "desktop-column", "value": "481px", "purpose": "At and above: app centers as a 480px content column with a hairline and soft shadow." },
-      { "name": "layout-collapse", "value": "1080px", "purpose": "Multi-column workspace grids (detail, refine) collapse to a single column." }
+      {
+        "name": "layout-default",
+        "value": "960px",
+        "purpose": "仅在用户未显式选择时作为设备形态默认值，最终真值为 html[data-layout]。"
+      },
+      {
+        "name": "composition-compact",
+        "value": "1250px",
+        "purpose": "已有宽度约束；压缩导航和 IP 列宽，不重新决定设备形态。"
+      }
     ]
   },
   "components": [
     {
-      "name": "Primary Button",
+      "name": "深墨主按钮",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The high-emphasis action. Studio Cyan fill, lifts on hover.",
-      "html": "<button class=\"ds-btn-primary\">保存资产</button>",
-      "css": ".ds-btn-primary { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; font-weight:700; color:#fff; background:#12B3DE; border:1px solid transparent; border-radius:12px; box-shadow:0 1px 2px rgba(20,36,55,.035),0 1px 3px rgba(20,36,55,.04); cursor:pointer; transition:all .16s cubic-bezier(.4,0,.2,1); } .ds-btn-primary:hover { background:#0C97BE; transform:translateY(-1px); box-shadow:0 2px 6px rgba(20,36,55,.04),0 8px 20px rgba(20,36,55,.055); } .ds-btn-primary:active { transform:translateY(0) scale(.99); } .ds-btn-primary:focus-visible { outline:none; box-shadow:0 0 0 3px rgba(18,179,222,.16); }"
+      "description": "主要操作；加载时禁用重复提交。",
+      "html": "<button class=\"ds-primary\">开始创作<svg width=\"18\" height=\"18\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><path d=\"M5 12h14m-6-6 6 6-6 6\"/></svg></button><button class=\"ds-primary\" disabled>正在打开画布</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:10px 17px;border-radius:8px;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;font-weight:600;white-space:nowrap;cursor:pointer;border:0;background:#192229;color:#ffffff;transition:background 160ms cubic-bezier(.22,1,.36,1);}.ds-primary:not(:disabled):hover,.ds-primary:not(:disabled):active{background:#323e45;}.ds-primary:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-primary:disabled{opacity:.5;cursor:default;}"
     },
     {
-      "name": "Soft Button",
+      "name": "白面次按钮",
       "kind": "button",
-      "refersTo": "button-soft",
-      "description": "The quiet primary: Cyan Wash background, cyan text. Used where a full cyan fill would be too loud.",
-      "html": "<button class=\"ds-btn-soft\">试听音色</button>",
-      "css": ".ds-btn-soft { display:inline-flex; align-items:center; justify-content:center; height:40px; padding:0 16px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; font-weight:700; color:#12B3DE; background:#E6F5FA; border:1px solid transparent; border-radius:12px; cursor:pointer; transition:all .16s cubic-bezier(.4,0,.2,1); } .ds-btn-soft:hover { background:#D7EFF7; } .ds-btn-soft:active { transform:scale(.99); }"
+      "refersTo": "button-secondary",
+      "description": "编辑、导出及取消等次操作。",
+      "html": "<button class=\"ds-secondary\">编辑设定</button><button class=\"ds-secondary\" disabled>正在保存</button>",
+      "css": ".ds-secondary{display:inline-flex;align-items:center;justify-content:center;gap:9px;min-height:42px;padding:10px 17px;border-radius:8px;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;line-height:1.6;font-weight:600;white-space:nowrap;cursor:pointer;background:#ffffff;color:#192229;border:1px solid #e8eaec;}.ds-secondary:not(:disabled):hover,.ds-secondary:not(:disabled):active{background:#f6f6f5;}.ds-secondary:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-secondary:disabled{opacity:.5;cursor:default;}"
     },
     {
-      "name": "Dossier Card",
-      "kind": "card",
-      "refersTo": "card",
-      "description": "White paper card on cool canvas. Serif asset name over a mono record line. Rests flat, lifts on hover.",
-      "html": "<div class=\"ds-card\"><div class=\"ds-card-name\">林深</div><div class=\"ds-card-sub\">已就绪 · 3 个版本</div></div>",
-      "css": ".ds-card { max-width:280px; background:#fff; border:1px solid #EBEFF3; border-radius:15px; padding:18px; box-shadow:0 1px 2px rgba(20,36,55,.035),0 1px 3px rgba(20,36,55,.04); transition:transform .18s cubic-bezier(.4,0,.2,1), box-shadow .18s cubic-bezier(.4,0,.2,1); cursor:pointer; } .ds-card:hover { transform:translateY(-2px); box-shadow:0 2px 6px rgba(20,36,55,.04),0 8px 20px rgba(20,36,55,.055); } .ds-card-name { font-family:'Newsreader',Georgia,serif; font-weight:500; font-size:22px; line-height:1.04; letter-spacing:-.01em; color:#14202B; } .ds-card-sub { margin-top:6px; font-family:'Manrope',system-ui,sans-serif; font-size:13px; color:#5A6873; }"
-    },
-    {
-      "name": "Search Input",
+      "name": "IP 搜索",
       "kind": "input",
-      "refersTo": "input",
-      "description": "White field, cool border. On focus the border turns cyan and a soft cyan ring appears, the only state change.",
-      "html": "<input class=\"ds-input\" placeholder=\"搜索数字人资产\" />",
-      "css": ".ds-input { width:100%; max-width:280px; height:44px; padding:0 14px; font-family:'Manrope',system-ui,sans-serif; font-size:14px; color:#14202B; background:#fff; border:1px solid #E0E6EC; border-radius:12px; outline:none; transition:border-color .15s, box-shadow .15s; } .ds-input::placeholder { color:#8A96A1; } .ds-input:focus { border-color:#12B3DE; box-shadow:0 0 0 3px rgba(18,179,222,.16); }"
+      "refersTo": "search-field",
+      "description": "白面搜索区域，聚焦时深墨边线。",
+      "html": "<label class=\"ds-search\"><svg width=\"17\" height=\"17\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><circle cx=\"10.8\" cy=\"10.8\" r=\"7.5\"/><path d=\"m16.2 16.2 4.5 4.5\"/></svg><input class=\"ds-search-input\" aria-label=\"搜索 IP\" placeholder=\"搜索 IP 名称、标签或关键词…\" /></label>",
+      "css": ".ds-search{display:flex;align-items:center;gap:9px;max-width:330px;padding:0 12px;border:1px solid #e8eaec;border-radius:8px;background:#ffffff;color:#65707e;}.ds-search:hover{border-color:#e8eaec;}.ds-search:focus-within{border-color:#192229;}.ds-search-input{width:100%;min-width:0;height:38px;padding:10px 0;border:0;outline:0;background:transparent;color:#192229;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;line-height:1.6;caret-color:#192229;}.ds-search-input::placeholder{color:#65707e;}.ds-search-input:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-search-input:disabled{opacity:.5;cursor:default;}"
     },
     {
-      "name": "Filter Pill",
+      "name": "工作空间导航",
+      "kind": "nav",
+      "refersTo": "navigation-active",
+      "description": "浅灰当前项，当前名称和图标同时可见。",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作空间导航\"><a class=\"ds-nav-link\" href=\"#projects\">创作</a><a class=\"ds-nav-link\" href=\"#ips\" aria-current=\"page\">IP 管理</a><a class=\"ds-nav-link\" href=\"#templates\">模板管理</a><a class=\"ds-nav-link\" href=\"#assets\">素材库</a></nav>",
+      "css": ".ds-nav{display:flex;flex-direction:column;gap:7px;width:166px;padding:10px;background:#ffffff6b;border-radius:13px;}.ds-nav-link{display:flex;align-items:center;gap:13px;min-height:44px;padding:10px 14px;border-radius:7px;color:#65707e;text-decoration:none;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;font-weight:600;line-height:1.6;}.ds-nav-link:hover{background:#f6f6f5;color:#192229;}.ds-nav-link[aria-current=\"page\"]{background:#eeefef;color:#192229;}.ds-nav-link:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-nav-link[aria-disabled=\"true\"]{opacity:.5;cursor:default;}"
+    },
+    {
+      "name": "状态筛选",
       "kind": "chip",
-      "refersTo": "filter-pill",
-      "description": "Selection among filters. Active is Deep Slate Ink (not cyan); selection reads as ink, action reads as cyan.",
-      "html": "<div style=\"display:flex; gap:8px;\"><button class=\"ds-pill is-active\">全部</button><button class=\"ds-pill\">公开</button></div>",
-      "css": ".ds-pill { display:inline-flex; align-items:center; justify-content:center; gap:6px; height:34px; min-width:84px; padding:0 15px; font-family:'Manrope',system-ui,sans-serif; font-size:13px; font-weight:600; color:#5A6873; background:#EDF1F5; border:none; border-radius:999px; cursor:pointer; transition:all .14s; } .ds-pill:hover { background:#E0E6EC; } .ds-pill.is-active { background:#14202B; color:#fff; }"
+      "refersTo": "filter",
+      "description": "当前筛选使用深墨；数量来自实际接口。",
+      "html": "<div class=\"ds-filters\"><button class=\"ds-filter\" aria-pressed=\"true\">全部 <span>6</span></button><button class=\"ds-filter\" aria-pressed=\"false\">进行中 <span>2</span></button><button class=\"ds-filter\" disabled>已定稿 <span>—</span></button></div>",
+      "css": ".ds-filters{display:flex;flex-wrap:wrap;gap:7px;}.ds-filter{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:6px 12px;border:0;border-radius:20px;background:#f6f6f5;color:#192229;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;line-height:1.6;cursor:pointer;}.ds-filter[aria-pressed=\"true\"]{background:#192229;color:#ffffff;}.ds-filter:not(:disabled):hover{background:#f6f6f5;}.ds-filter[aria-pressed=\"true\"]:not(:disabled):hover{background:#192229;}.ds-filter:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-filter:disabled{opacity:.5;cursor:default;}.ds-filter span{font-variant-numeric:tabular-nums;}"
     },
     {
-      "name": "Category Badge",
-      "kind": "chip",
-      "refersTo": "badge-primary",
-      "description": "Pill status badge. The primary tone (Cyan Wash + cyan) marks the key deliverable; a leading dot is optional.",
-      "html": "<span class=\"ds-badge-primary\"><span class=\"dot\"></span>定妆形象</span>",
-      "css": ".ds-badge-primary { display:inline-flex; align-items:center; gap:5px; height:23px; padding:0 9px; font-family:'Manrope',system-ui,sans-serif; font-size:11.5px; font-weight:700; letter-spacing:.01em; color:#12B3DE; background:#E6F5FA; border-radius:999px; } .ds-badge-primary .dot { width:6px; height:6px; border-radius:99px; background:#12B3DE; }"
+      "name": "人物卡片",
+      "kind": "card",
+      "refersTo": "ip-card",
+      "description": "示例为未设置主形象的真实空素材样式；卡片选择与档案联动。",
+      "html": "<button class=\"ds-ip-card\" aria-pressed=\"true\"><span class=\"ds-card-image\"><svg width=\"30\" height=\"30\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.7\" aria-hidden=\"true\"><circle cx=\"12\" cy=\"8\" r=\"4\"/><path d=\"M5 21v-2a7 7 0 0 1 14 0v2\"/></svg><span>尚未设置主形象</span></span><span class=\"ds-card-body\"><span class=\"ds-card-name\">角色名称</span><span class=\"ds-card-description\">尚未填写角色简介</span><span class=\"ds-card-tags\"><span>人物设定</span></span></span></button>",
+      "css": ".ds-ip-card{display:block;width:230px;padding:3px;border:1px solid #e8eaec;background:#ffffff;border-radius:8px;overflow:hidden;text-align:left;color:#192229;cursor:pointer;transition:border-color 160ms cubic-bezier(.22,1,.36,1);}.ds-ip-card:not(:disabled):hover{border-color:#a8b0b7;}.ds-ip-card[aria-pressed=\"true\"]{border-color:#192229;outline:1px solid #192229;}.ds-ip-card:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-ip-card:disabled{opacity:.5;cursor:default;}.ds-card-image{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;aspect-ratio:1.48;border-radius:5px;background:#f6f6f5;color:#65707e;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;line-height:1.6;}.ds-card-body{display:block;padding:10px 10px 8px;}.ds-card-name{display:block;font-family:'Noto Serif SC','Songti SC','STSong',serif;font-size:18px;font-weight:700;line-height:1.6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}.ds-card-description{display:block;margin-top:3px;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:11px;line-height:1.6;color:#65707e;}.ds-card-tags{display:flex;gap:6px;margin-top:12px;}.ds-card-tags span{padding:3px 9px;background:#f6f6f5;border-radius:6px;color:#606c77;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:10px;line-height:1.6;}"
     },
     {
-      "name": "Registration Number",
+      "name": "相邻人物档案",
       "kind": "custom",
-      "refersTo": "reg",
-      "description": "Signature dossier primitive: the accessioned asset number in mono, with a tinted REG chip prefix.",
-      "html": "<span class=\"ds-reg\">DH-2041 · V3</span>",
-      "css": ".ds-reg { display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:11px; font-weight:500; letter-spacing:.04em; color:#8A96A1; } .ds-reg::before { content:'REG'; font-size:8.5px; font-weight:600; letter-spacing:.12em; color:#8A96A1; background:#EDF1F5; padding:2px 5px; border-radius:4px; }"
-    },
-    {
-      "name": "Archival Seal",
-      "kind": "custom",
-      "refersTo": "seal",
-      "description": "Signature dossier primitive: a rotated, pill-outlined mono stamp in Ledger Green, reserved for archived / ready milestones.",
-      "html": "<span class=\"ds-seal\">已归档</span>",
-      "css": ".ds-seal { display:inline-flex; align-items:center; justify-content:center; gap:6px; font-family:'JetBrains Mono',ui-monospace,monospace; font-size:10.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:#1AA06E; border:1.5px solid #1AA06E; border-radius:999px; padding:5px 13px; opacity:.9; transform:rotate(-4deg); }"
+      "refersTo": "dossier",
+      "description": "详情正文独立滚动，底部操作保留；此模式只用于 IP 管理。",
+      "html": "<aside class=\"ds-dossier\" aria-label=\"人物档案\"><div class=\"ds-dossier-scroll\"><h2 class=\"ds-dossier-name\">角色名称</h2><div class=\"ds-dossier-tabs\" role=\"tablist\"><button class=\"ds-dossier-tab\" role=\"tab\" aria-selected=\"false\">概览</button><button class=\"ds-dossier-tab\" role=\"tab\" aria-selected=\"true\">角色设定</button><button class=\"ds-dossier-tab\" role=\"tab\" aria-selected=\"false\">形象视图</button><button class=\"ds-dossier-tab\" role=\"tab\" aria-selected=\"false\">内容资产</button></div><dl class=\"ds-dossier-fields\"><div><dt>姓名</dt><dd>角色名称</dd></div><div><dt>年龄</dt><dd>未填写</dd></div><div><dt>气质</dt><dd>未填写</dd></div><div><dt>核心设定</dt><dd>尚未填写角色描述。可以编辑设定，记录身份、性格与故事。</dd></div></dl></div><footer class=\"ds-dossier-footer\"><button class=\"ds-dossier-action\">编辑设定</button><button class=\"ds-dossier-action\" data-primary>生成形象</button><button class=\"ds-dossier-action\">导出设定</button><small>免费进入画布。生成前在节点里确认模型、参考与积分。</small></footer></aside>",
+      "css": ".ds-dossier{display:flex;flex-direction:column;width:420px;max-width:100%;height:315px;background:#ffffff;border-radius:13px;overflow:hidden;color:#192229;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;line-height:1.6;}.ds-dossier-scroll{flex:1;min-height:0;overflow-y:auto;padding:22px 20px 0;scrollbar-width:thin;}.ds-dossier-name{margin:0 0 12px;font-family:'Noto Serif SC','Songti SC','STSong',serif;font-size:27px;font-weight:700;line-height:1.35;}.ds-dossier-tabs{display:flex;justify-content:space-between;gap:8px;border-bottom:1px solid #e8eaec;margin-bottom:18px;}.ds-dossier-tab{border:0;border-bottom:2px solid transparent;background:transparent;color:#65707e;padding:10px 8px;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;line-height:1.6;white-space:nowrap;cursor:pointer;}.ds-dossier-tab:hover{color:#192229;}.ds-dossier-tab[aria-selected=\"true\"]{color:#192229;font-weight:700;border-bottom-color:#192229;}.ds-dossier-tab:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-dossier-tab:disabled{opacity:.5;cursor:default;}.ds-dossier-fields{margin:0;padding-left:24px;}.ds-dossier-fields>div{display:grid;grid-template-columns:72px minmax(0,1fr);gap:9px;border-bottom:1px solid #e8eaec;padding:6px 0;}.ds-dossier-fields dt{color:#65707e;}.ds-dossier-fields dd{margin:0;overflow-wrap:anywhere;}.ds-dossier-footer{flex-shrink:0;padding:14px 16px 10px;border-top:1px solid #e8eaec;background:#ffffff;}.ds-dossier-action{min-height:42px;padding:9px;border:1px solid #e8eaec;border-radius:8px;background:#ffffff;color:#192229;font-family:'Manrope','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:12px;font-weight:600;line-height:1.6;cursor:pointer;}.ds-dossier-action[data-primary]{border:0;background:#192229;color:#ffffff;}.ds-dossier-action:not(:disabled):hover{background:#f6f6f5;}.ds-dossier-action[data-primary]:not(:disabled):hover{background:#323e45;}.ds-dossier-action:focus-visible{outline:2px solid #192229;outline-offset:3px;}.ds-dossier-action:disabled{opacity:.5;cursor:default;}.ds-dossier-footer small{display:block;text-align:center;margin-top:7px;font-size:10px;color:#65707e;}"
     }
   ],
   "narrative": {
-    "northStar": "The Atelier Ledger",
-    "overview": "Two voices share one surface. A maker's serif (Newsreader) names each creation with warmth; a registrar's mono (JetBrains Mono) records it with precision; and a calm sans (Manrope) runs the controls in between. The atelier is bright, paper-white, and uncluttered. The ledger is exact: every digital human is an accessioned asset with a serif name, a REG · DH-2041 number, a version history, a license, and an archival seal. Cyan is the ink reserved for the active entry. This is a mobile-first H5 product surface, not a marketing page. It rejects the SaaS dark-dashboard reflex and decorative color in equal measure: the shipped 清爽 skin keeps one cyan for action and live state, a small sanctioned secondary palette for identity and wayfinding, and calm gray for dense category chips. The feel is clinical-warm: cool-white paper, hairline cool-gray rules, and soft blue-tuned shadows, warmed by the serif identity layer and rounded corners.",
+    "northStar": "角色与世界的创作空间",
+    "overview": "人物与内容是视觉中心。暖灰承托白色工作面，深墨明确操作，中文衬线给标题和人物名称留出创作的温度；搜索、筛选与设置使用清晰的无衬线字。界面既能容纳完整人物图，也能安静地承载版本、设定和状态，不以装饰代替内容。\n\n本文件记录已实现的首页、IP 管理和共享浅色顶栏系统。适用代码为 `src/styles/ip-brand.css`，令牌限定在 `.ip-brand-surface` 与 `.ip-management-editor`。页面组成和业务行为见 [DESIGN-desktop.md](DESIGN-desktop.md)；首页及管理页的具体设计意图分别见 [.impeccable/ip-home.md](.impeccable/ip-home.md) 与 [.impeccable/ip-management.md](.impeccable/ip-management.md)。\n\n旧青色移动 H5 仍按 [DESIGN-mobile.md](DESIGN-mobile.md) 及 [.impeccable/design-mobile.json](.impeccable/design-mobile.json)；画布内部仍按 `.ip-surface` 的群青与麦黄系统，见 [DESIGN-desktop.md](DESIGN-desktop.md)。这些入口按页面作用域使用，不能把本文件的令牌全局写到 `:root`。",
     "keyCharacteristics": [
-      "Cool paper-white surfaces (#F7F9FB canvas, #FFFFFF cards), never pure black-on-white.",
-      "One cyan accent (#12B3DE), touching under a tenth of any screen.",
-      "Three type voices with three jobs: serif identity, mono record, sans control.",
-      "Rounded cards floating on soft, blue-tuned shadows, no harsh elevation.",
-      "Mobile-native: real safe areas, a bottom 5-tab bar with a raised center create key.",
-      "Disciplined color: one cyan for action/live, a small sanctioned secondary palette for identity and wayfinding, calm gray for dense category chips."
+      "暖灰底、白色表面与细边线，内容平稳地留在工作面上。",
+      "深墨主按钮与选中标记，状态色只表达状态。",
+      "中文衬线承载标题与人物名，无衬线承载正文与操作。",
+      "图像有完整的阅读位置，缺失素材有清楚的占位说明。",
+      "常规控件紧凑，详情正文可换行，键盘焦点清晰可见。"
     ],
     "rules": [
-      { "name": "The One Ink Rule", "body": "Cyan (#12B3DE) is reserved for primary action and live/active state. Selection among options (filter pills, view tabs) is ink, not cyan, so the two signals never blur. Cyan is never decoration; on any given screen it touches under a tenth of the pixels. Its rarity is the meaning.", "section": "colors" },
-      { "name": "The Sanctioned Palette Rule", "body": "Beyond cyan, a small named secondary palette is permitted for identity and wayfinding only: downstream-app identity (Music Violet #7C5CE6, Commerce Orange #E8884A, Drama Blue #3E63C8), creation path (AI-Original Violet #8F6BFF vs Real-Person Cyan), and the storage breakdown (video #1AA06E, 3D #D9920E, voice #8A6BFF). Solid icon/bar/badge fills only. Dense derivative-category chips in the asset grid stay Muted Slate (#5A6873) + icon for calm; color is earned by top-level identity surfaces, not by every list row.", "section": "colors" },
-      { "name": "The No-Decorative-Glow Rule", "body": "Secondary colors are solid marks, never full-screen radial-glow beds. No violet or pink blurred blooms behind login, create, or hero screens; at most one faint cyan wash (var(--primary-tint)) over paper.", "section": "colors" },
-      { "name": "The No-Pure-Black, No-Pure-White Rule", "body": "Text is Deep Slate Ink (#14202B), not #000. Canvas is cool Paper (#F7F9FB), not #FFF. Every neutral is tuned toward the slate-blue hue.", "section": "colors" },
-      { "name": "The Three-Voice Rule", "body": "Serif names assets, mono records facts, sans runs controls. Never cross them: no serif on a button, no mono in a paragraph, no sans on an asset's identity name.", "section": "typography" },
-      { "name": "The Serif-Is-Sacred Rule", "body": "Newsreader appears only as an asset's name. It is the product's one moment of warmth; spending it on headings, buttons, or marketing copy cheapens it.", "section": "typography" },
-      { "name": "The Lift-On-Touch Rule", "body": "Cards rest at Resting shadow and rise to Raised with a -2 to -3px translateY on hover or press. Elevation is a response to interaction, not a permanent decoration.", "section": "elevation" },
-      { "name": "The Blue-Shadow Rule", "body": "Every shadow uses rgba(20,36,55,...), the slate-blue ink, never neutral black. Black shadows would read as a different, colder product.", "section": "elevation" }
+      {
+        "name": "The 状态有文字 Rule",
+        "body": "状态色必须与状态名称并用；绿色的「已定稿」不改写成「已发布」，未知统计使用「—」。",
+        "section": "colors"
+      },
+      {
+        "name": "The 字体按职责 Rule",
+        "body": "衬线用于标题与人物名称；按钮、输入、筛选、日期和说明保持无衬线，不能把首页大字的形式扩散到操作控件。",
+        "section": "typography"
+      },
+      {
+        "name": "The 平面工作面 Rule",
+        "body": "常规卡片和控件保持平稳；交互优先改变边线、底色或文字，不添加常驻悬浮投影。",
+        "section": "elevation"
+      }
     ],
     "dos": [
-      "Do keep cyan (#12B3DE) under a tenth of any screen, spent only on active, primary, or live state (The One Ink Rule).",
-      "Do name digital humans in Newsreader serif, and use serif nowhere else (The Serif-Is-Sacred Rule).",
-      "Do keep dense derivative-category chips Muted Slate + icon; reserve the sanctioned secondary palette for identity surfaces (apps, storage, creation paths).",
-      "Do tune every neutral and every shadow toward the slate-blue ink (rgba(20,36,55,...)): text #14202B, canvas #F7F9FB.",
-      "Do rest cards flat at Resting shadow and lift them -2 to -3px on touch.",
-      "Do use real env(safe-area-inset-*); this is a true H5 app, not a framed phone preview.",
-      "Do show skeletons (.m-skel) while loading, not spinners mid-content.",
-      "Do route destructive actions through the Confirm dialog and report results with toasts."
+      "Do 在首页、IP 管理和共享顶栏使用本系统；旧移动 H5 与画布分别使用明确的设计入口。",
+      "Do 让人物与内容成为视觉中心，保持白面、暖灰间隔和细边线。",
+      "Do 按职责使用衬线与无衬线，并保留系统字体回退。",
+      "Do 同时展示状态名称与状态色，让焦点和选中状态清楚可见。",
+      "Do 为缺失素材、未知统计、加载和错误提供明确说明与可用的下一步。",
+      "Do 按真实实体与具体版本展示人物内容，保存后同步列表与详情。"
     ],
     "donts": [
-      "Don't use #000 or #fff; both read as a different, colder product.",
-      "Don't use decorative full-screen radial-glow beds (violet/pink blurred blooms behind login, create, or hero); at most one faint cyan wash over paper.",
-      "Don't color dense derivative-category chips in the asset grid; those stay Muted Slate + icon. Color is for top-level identity surfaces (apps, storage, creation paths).",
-      "Don't use window.confirm, alert, or prompt; use the Confirm dialog and toasts (a repo-wide rule).",
-      "Don't put serif on buttons, headings, or body, put mono in paragraphs, or put sans on an asset's identity name.",
-      "Don't add side-stripe borders (border-left color accents), gradient text (background-clip: text), or decorative glassmorphism. The only blurs are the frosted tab bar and sheet backdrops.",
-      "Don't make the active filter pill cyan; selection among filters is ink, action is cyan.",
-      "Don't use black or hard drop-shadows; depth is soft, diffuse, and blue-tuned.",
-      "Don't revive the iPhone shell or fake WeChat chrome (status bar, capsule, home bar); v0.3 removed them on purpose."
+      "Don't 把作用域令牌写到全局根节点，或将画布群青与麦黄套用到新的浅色主系统。",
+      "Don't 用伪造作品、表情、收藏数、用户照片或通知按钮补满设计图。",
+      "Don't 把「已定稿」显示成「已发布」，或以零值冒充失败接口的真实统计。",
+      "Don't 给平面卡片添加常驻发光、重叠拼贴或强投影。",
+      "Don't 将新中文衬线用于按钮、筛选和字段说明。",
+      "Don't 用媒体查询重新判定设备形态，绕过用户明确选择。"
     ]
   }
 }

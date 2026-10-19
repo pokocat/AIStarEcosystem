@@ -234,6 +234,7 @@ export default function DramaPromptsPage() {
   const [jsonMode, setJsonMode] = React.useState(true);
   const [enabled, setEnabled] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const editVersion = React.useRef<number | null>(null);
 
   const [sampleVars, setSampleVars] = React.useState("{}");
   const [dryRun, setDryRun] = React.useState<PromptDryRun | null>(null);
@@ -270,6 +271,7 @@ export default function DramaPromptsPage() {
 
   React.useEffect(() => {
     if (!active) return;
+    editVersion.current = active.version;
     setSystemPrompt(active.systemPrompt ?? "");
     setUserTemplate(active.userTemplate ?? "");
     setTemperature(active.params?.temperature != null ? String(active.params.temperature) : "");
@@ -282,10 +284,10 @@ export default function DramaPromptsPage() {
   }, [activeKey]);
 
   const save = async () => {
-    if (!activeKey) return;
+    if (!activeKey || !active || editVersion.current === null) return;
     setSaving(true);
     try {
-      await PromptsApi.upsertPrompt(activeKey, {
+      const saved = await PromptsApi.upsertPrompt(activeKey, {
         systemPrompt,
         userTemplate,
         params: {
@@ -294,7 +296,8 @@ export default function DramaPromptsPage() {
           jsonMode,
         },
         enabled,
-      });
+      }, editVersion.current);
+      editVersion.current = saved.version;
       toast.success({ title: "已保存", description: "1 分钟内全节点生效，所有用户下次生成即用新提示词" });
       await load();
     } catch (e) {

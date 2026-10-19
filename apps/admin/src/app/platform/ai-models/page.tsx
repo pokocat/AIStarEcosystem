@@ -1,4 +1,5 @@
 "use client";
+import { GenerationTaskReconciliation } from "./material-video-reconciliation";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 平台 · AI 模型与用量
@@ -51,6 +52,7 @@ import type {
   AiModelAlert,
   AiModelFailureStat,
   AdminAiModelEndpointUpsert,
+  AiImageRequestSpec,
   AiAppEndpointCandidate,
 } from "@/api/ai-models";
 
@@ -107,6 +109,7 @@ interface FormDefaults {
   defaultMaxTokens?: string;
   defaultTopP?: string;
   rpmLimit?: string;
+  concurrencyLimit?: string;
   tpmLimit?: string;
   dailyTokenQuota?: string;
   dailyCostQuotaYuan?: string;
@@ -132,7 +135,13 @@ interface FormState {
   defaultTemperature: string;
   defaultMaxTokens: string;
   defaultTopP: string;
+  chatSupportsTemperature: boolean;
+  chatSupportsTopP: boolean;
+  chatSupportsResponseFormat: boolean;
+  chatMaxOutputTokens: string;
+  imageRequestSpecJson: string;
   rpmLimit: string;
+  concurrencyLimit: string;
   tpmLimit: string;
   dailyTokenQuota: string;
   dailyCostQuotaYuan: string;
@@ -160,7 +169,13 @@ const EMPTY_FORM: FormState = {
   defaultTemperature: "",
   defaultMaxTokens: "",
   defaultTopP: "",
+  chatSupportsTemperature: true,
+  chatSupportsTopP: true,
+  chatSupportsResponseFormat: true,
+  chatMaxOutputTokens: "",
+  imageRequestSpecJson: "",
   rpmLimit: "",
+  concurrencyLimit: "",
   tpmLimit: "",
   dailyTokenQuota: "",
   dailyCostQuotaYuan: "",
@@ -222,7 +237,7 @@ const BINDING_GROUPS: Array<{
       "数字人人设解析、图片生成与视频生成的多模态调用。**AI IP 工作台的画布出图走的就是这里的「数字人 / IP 画布 出图」（DAP_IMAGE）** —— "
       + "画布上那个模型下拉列的是它的候选端点，在「AI 短剧 → 图像生成」下加模型不会出现在画布里（那是另一个用途）。"
       + "「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
-    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_REAL_AVATAR"],
+    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_REAL_AVATAR"],
   },
   {
     key: "creator",
@@ -353,7 +368,13 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
     defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+    chatSupportsTemperature: p.chatSupportsTemperature !== false,
+    chatSupportsTopP: p.chatSupportsTopP !== false,
+    chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
+    chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
+    imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
     dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -376,6 +397,7 @@ function editFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -403,7 +425,13 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
     defaultTemperature: p.defaultTemperature != null ? String(p.defaultTemperature) : "",
     defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
     defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
+    chatSupportsTemperature: p.chatSupportsTemperature !== false,
+    chatSupportsTopP: p.chatSupportsTopP !== false,
+    chatSupportsResponseFormat: p.chatSupportsResponseFormat !== false,
+    chatMaxOutputTokens: p.chatMaxOutputTokens != null ? String(p.chatMaxOutputTokens) : "",
+    imageRequestSpecJson: p.imageRequestSpec ? JSON.stringify(p.imageRequestSpec, null, 2) : "",
     rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
     tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
     dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
     dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -425,6 +453,7 @@ function copyFormFromEndpoint(p: AiModelEndpoint): FormState {
       defaultMaxTokens: p.defaultMaxTokens != null ? String(p.defaultMaxTokens) : "",
       defaultTopP: p.defaultTopP != null ? String(p.defaultTopP) : "",
       rpmLimit: p.rpmLimit != null ? String(p.rpmLimit) : "",
+    concurrencyLimit: p.concurrencyLimit != null ? String(p.concurrencyLimit) : "",
       tpmLimit: p.tpmLimit != null ? String(p.tpmLimit) : "",
       dailyTokenQuota: p.dailyTokenQuota != null ? String(p.dailyTokenQuota) : "",
       dailyCostQuotaYuan: microsToYuanText(p.dailyCostQuotaMicros),
@@ -614,6 +643,13 @@ export default function AdminAiModelsPage() {
     const defaultTemperature = parseOptionalNumber(editing.defaultTemperature, 0, 2);
     const defaultMaxTokens = parseOptionalInt(editing.defaultMaxTokens, 1);
     const defaultTopP = parseOptionalNumber(editing.defaultTopP, 0, 1);
+    const chatMaxOutputTokens = parseOptionalInt(editing.chatMaxOutputTokens, 1);
+    let imageRequestSpec: AiImageRequestSpec | undefined;
+    if (editing.imageRequestSpecJson.trim()) {
+      try { imageRequestSpec = JSON.parse(editing.imageRequestSpecJson) as AiImageRequestSpec; }
+      catch { toast.warning({ title: "图片请求规格不是有效 JSON" }); return; }
+    }
+    const concurrencyLimit = parseOptionalInt(editing.concurrencyLimit, 1);
     const rpmLimit = parseOptionalInt(editing.rpmLimit, 1);
     const tpmLimit = parseOptionalInt(editing.tpmLimit, 1);
     const dailyTokenQuota = parseOptionalLong(editing.dailyTokenQuota, 1);
@@ -636,6 +672,9 @@ export default function AdminAiModelsPage() {
       defaultTemperature === undefined ||
       defaultMaxTokens === undefined ||
       defaultTopP === undefined ||
+      chatMaxOutputTokens === undefined ||
+      concurrencyLimit === undefined ||
+      (concurrencyLimit != null && concurrencyLimit > 1000) ||
       rpmLimit === undefined ||
       tpmLimit === undefined ||
       dailyTokenQuota === undefined ||
@@ -657,6 +696,13 @@ export default function AdminAiModelsPage() {
         defaultTemperature,
         defaultMaxTokens,
         defaultTopP,
+        chatSupportsTemperature: editing.chatSupportsTemperature,
+        chatSupportsTopP: editing.chatSupportsTopP,
+        chatSupportsResponseFormat: editing.chatSupportsResponseFormat,
+        chatMaxOutputTokens: chatMaxOutputTokens ?? 0,
+        ...(imageRequestSpec ? { imageRequestSpec } : {}),
+        ...(!imageRequestSpec && editing.id ? { clearImageRequestSpec: true } : {}),
+        concurrencyLimit: concurrencyLimit ?? 0,
         rpmLimit,
         tpmLimit,
         dailyTokenQuota,
@@ -854,7 +900,7 @@ export default function AdminAiModelsPage() {
                   >
                     <Select
                       value={editing.providerType}
-                      onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType })}
+                      onValueChange={(v) => setEditing({ ...editing, providerType: v as AiModelProviderType, imageRequestSpecJson: v===editing.providerType?editing.imageRequestSpecJson:"" })}
                     >
                       <SelectTrigger>
                         <SelectValue />
@@ -876,7 +922,7 @@ export default function AdminAiModelsPage() {
                   <Field label="调用地址" hint="服务商提供的 API base URL">
                     <Input
                       value={editing.baseUrl}
-                      onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value })}
+                      onChange={(e) => setEditing({ ...editing, baseUrl: e.target.value, imageRequestSpecJson: e.target.value===editing.baseUrl?editing.imageRequestSpecJson:"" })}
                       placeholder={placeholderFor(editing, "baseUrl", "https://api.openai.com/v1")}
                     />
                   </Field>
@@ -903,7 +949,7 @@ export default function AdminAiModelsPage() {
                   <Field label="固定模型" hint="本端点固定调用的模型，例如 gpt-4o / qwen-plus / doubao-1-5-pro-32k">
                     <Input
                       value={editing.model}
-                      onChange={(e) => setEditing({ ...editing, model: e.target.value })}
+                      onChange={(e) => setEditing({ ...editing, model: e.target.value, imageRequestSpecJson: e.target.value===editing.model?editing.imageRequestSpecJson:"" })}
                       placeholder={placeholderFor(editing, "model", "gpt-4o")}
                     />
                   </Field>
@@ -948,7 +994,7 @@ export default function AdminAiModelsPage() {
                           <button
                             key={m.id}
                             type="button"
-                            onClick={() => setEditing({ ...editing, model: m.id })}
+                            onClick={() => setEditing({ ...editing, model: m.id, imageRequestSpecJson: m.id===editing.model?editing.imageRequestSpecJson:"" })}
                             aria-pressed={active}
                             title={m.label && m.label !== m.id ? m.label : undefined}
                             className={cn(
@@ -1008,6 +1054,36 @@ export default function AdminAiModelsPage() {
                         value={editing.defaultTopP}
                         onChange={(e) => setEditing({ ...editing, defaultTopP: e.target.value })}
                         placeholder={editing.defaults?.defaultTopP || "留空"}
+                      />
+                    </Field>
+                    <div className="md:col-span-2 rounded-md border border-border p-3">
+                      <div className="text-sm font-medium">模型请求参数能力</div>
+                      <p className="mt-1 text-xs text-muted-foreground">配置保存在此模型端点；所有应用经统一调用层发送请求时生效。关闭的参数不会发送，包含上方默认值。</p>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                        <label className="flex items-center gap-2 text-sm"><Switch checked={editing.chatSupportsTemperature} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsTemperature: v })} />temperature</label>
+                        <label className="flex items-center gap-2 text-sm"><Switch checked={editing.chatSupportsTopP} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsTopP: v })} />top_p</label>
+                        <label className="flex items-center gap-2 text-sm"><Switch checked={editing.chatSupportsResponseFormat} onCheckedChange={(v) => setEditing({ ...editing, chatSupportsResponseFormat: v })} />response_format</label>
+                      </div>
+                      <div className="mt-3 max-w-xs">
+                        <Field label="单次输出 Token 上限" hint="调用方请求超过此值时自动收敛；留空表示不限。">
+                          <Input type="number" min="1" step="1" value={editing.chatMaxOutputTokens}
+                            onChange={(e) => setEditing({ ...editing, chatMaxOutputTokens: e.target.value })} placeholder="不限" />
+                        </Field>
+                      </div>
+                    </div>
+                    <Field label="图片请求规格（模型级）" hint="填写此模型支持的提示词长度、参考图数量及各画幅的供应商请求字段；所有应用读取同一配置。留空表示此模型未配置图片能力。">
+                      <textarea aria-label="图片请求规格 JSON" rows={10} value={editing.imageRequestSpecJson}
+                        onChange={(e) => setEditing({ ...editing, imageRequestSpecJson: e.target.value })}
+                        className="w-full rounded-md border border-border bg-background p-3 font-mono text-xs"
+                        placeholder='{"promptMaxChars":500,"minReferenceImages":0,"maxReferenceImages":5,"referenceField":"multiple","outputs":[]}' />
+                    </Field>
+                    <Field label="生成任务并发上限" hint="此端点的文字、图片、通用视频及 Studio 配音/口型任务共用名额，超出自动排队。留空不限制，修改不打断正在执行的任务。">
+                      <Input
+                        aria-label="生成任务并发上限"
+                        type="number" min="1" max="1000" step="1"
+                        value={editing.concurrencyLimit}
+                        onChange={(e) => setEditing({ ...editing, concurrencyLimit: e.target.value })}
+                        placeholder="不限制"
                       />
                     </Field>
                     <Field label="实时限速 RPM / TPM" hint="为空不限制；超过后会直接返回稍后重试">
@@ -1229,6 +1305,7 @@ export default function AdminAiModelsPage() {
                           <TableCell className="py-3">
                             <div className="truncate font-medium" title={p.name}>{p.name}</div>
                             <div className="truncate font-mono text-[10px] text-muted-foreground" title={p.id}>{p.id}</div>
+                            <div className="text-xs text-muted-foreground">生成并发：{p.concurrencyLimit ?? "不限制"}</div>
                           </TableCell>
                           <TableCell className="py-3">
                             <Badge tone="neutral" className="font-normal">
@@ -1451,6 +1528,7 @@ export default function AdminAiModelsPage() {
 
         {/* ── Tab 4：请求日志 ── */}
         <TabsContent value="records" className="space-y-6">
+          <GenerationTaskReconciliation />
           <Card>
             <CardHeader className="flex-col items-start gap-3 space-y-0 sm:flex-row sm:items-center sm:justify-between">
               <CardTitle className="flex items-center gap-1.5 text-base">

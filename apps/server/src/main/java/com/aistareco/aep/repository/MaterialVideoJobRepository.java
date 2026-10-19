@@ -13,6 +13,10 @@ import java.util.List;
 @Repository
 public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJob, String> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select j from MaterialVideoJob j where j.id=:id")
+    java.util.Optional<MaterialVideoJob> lockById(@Param("id") String id);
+
     /**
      * 行的子产品分区表达式：app 列为真值；老数据（回填前 app 为 null）按 kind 前缀推断
      * （drama-shot / drama-episode → drama，其余 → celebrity）。与
@@ -47,6 +51,7 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
                                                          @Param("keys") java.util.Collection<String> keys);
 
     long countByStatus(String status);
+    List<MaterialVideoJob> findByStatusIn(java.util.Collection<String> statuses);
 
     long countByStatusIn(java.util.Collection<String> statuses);
 

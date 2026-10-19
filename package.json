@@ -27,9 +27,14 @@
     "check:wire-mirror": "node scripts/check-wire-mirror.mjs",
     "drama:recipe:prep": "node scripts/drama-recipe/prep.mjs",
     "drama:recipe:build": "node scripts/drama-recipe/build-seed.mjs",
-    "drama:recipe:check": "node scripts/drama-recipe/build-seed.mjs --check"
+    "drama:recipe:check": "node scripts/drama-recipe/build-seed.mjs --check",
+    "hypit:media:build": "node tools/hypit-media/build.mjs",
+    "check:hypit-media": "node tools/hypit-media/build.mjs --check"
   },
   "dependencies": {
     "miniprogram-ci": "^2.1.31"
+  },
+  "devDependencies": {
+    "esbuild": "0.27.7"
   }
 }

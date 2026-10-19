@@ -39,6 +39,23 @@ import java.util.List;
  */
 @Service
 public class IpRunWorker {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
+    @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
+
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+
+    @org.springframework.beans.factory.annotation.Autowired private JusuanImageClient jusuanImages;
+
+    private org.springframework.transaction.support.TransactionTemplate billingTransactions;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void billingTransactions(org.springframework.transaction.PlatformTransactionManager manager) {
+        billingTransactions=new org.springframework.transaction.support.TransactionTemplate(manager);
+    }
+    private void atomic(Runnable action) {
+        if(billingTransactions==null)action.run();else billingTransactions.executeWithoutResult(tx->action.run());
+    }
 
     private static final Logger log = LoggerFactory.getLogger(IpRunWorker.class);
 
@@ -75,16 +92,61 @@ public class IpRunWorker {
     }
 
     /** 同步入口（测试与 reaper 补跑用；@Async 只是它的包装）。 */
-    public void runBlocking(String runId) {
+    public void runBlocking(String runId) {runBlocking(runId,false);}
+
+    @Async("ipRunExecutor")
+    public void recoverNative(String runId) {
+        final boolean[] claimed={false};
+        atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
+            var run=runRepo.lockById(runId).orElse(null);
+            if(run==null||!canResumeNative(run))return;
+            ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(run.getInputJson());
+            ObjectNode exec=(ObjectNode)input.path("_exec");
+            if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis())return;
+            exec.put("nativeLeaseUntil",System.currentTimeMillis()+180_000);
+            run.setInputJson(write(input));run.setHeartbeatAt(Instant.now());runRepo.save(run);claimed[0]=true;
+        });
+        if(claimed[0])runBlocking(runId,true);
+    }
+    public static boolean hasNativeSubmission(IpRun run) {
+        if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
+        try {
+            for(var checkpoint:new ObjectMapper().readTree(run.getInputJson()).path("_exec").path("imageJobs"))
+                if(checkpoint.path("submitAttempted").asBoolean())return true;
+        }catch(Exception ignored){}
+        return false;
+    }
+    public boolean canResumeNative(IpRun run) {
+        if(!hasNativeSubmission(run))return false;
+        var input=projects.parseOrEmptyObject(run.getInputJson());
+        int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
+        var checkpoint=input.path("_exec").path("imageJobs").path(completed);
+        return !checkpoint.path("submitAttempted").asBoolean() || checkpoint.hasNonNull("jobId") || checkpoint.hasNonNull("storageKey");
+    }
+    private void runBlocking(String runId,boolean recovery) {
         IpRun run = runRepo.findById(runId).orElse(null);
         if (run == null) {
             log.warn("[ipstudio] worker 找不到运行 run={}", runId);
             return;
         }
         if (!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
-        run.setStartedAt(Instant.now());
-        progress(run, 8, "prompt.compile");
+        if(queue != null) {
+            JsonNode exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+            var purpose=IpRun.KIND_IDENTITY.equals(run.getKind())?com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA:com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE;
+            var admission=queue.acquire(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId,queue.endpointFor(purpose,exec.path("endpointId").asText(null)),recovery);
+            if(admission==com.aistareco.aep.service.AiGenerationQueueService.Admission.WAITING){progress(run,0,"endpoint.queued");return;}
+            if(admission==com.aistareco.aep.service.AiGenerationQueueService.Admission.BUSY)return;
+            if(!recovery && runRepo.claimUnstarted(runId,Instant.now())!=1) {
+                queue.finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);return;
+            }
+        }
+        if(run.getStartedAt()==null)run.setStartedAt(Instant.now());
+        var context=queue==null?null:queue.bind(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
         try {
+            if(enterpriseBilling!=null && IpRun.KIND_IDENTITY.equals(run.getKind()))enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,runId,
+                    projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("endpointId").asText(null));
+            progress(run, 8, "prompt.compile");
             if (IpRun.KIND_IDENTITY.equals(run.getKind())) {
                 runIdentity(run);
             } else {
@@ -95,8 +157,17 @@ public class IpRunWorker {
             // 带上异常本身（不是 toString）—— 用户报回来的追查号就是 runId，
             // 运维要能顺着它在日志里看到栈，否则「可追查」只是个说法
             log.warn("[ipstudio] 运行异常 run={}", runId, e);
-            release(run, "IP 运行失败 · 释放冻结");
-            failWithoutSpend(run, codeOf(e), friendly(e, run.getId()));
+            if(hasNativeSubmission(run)) {
+                // A transient checkpoint/settlement failure cannot turn an accepted request into a refund.
+                int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
+                boolean known=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(completed).hasNonNull("jobId");
+                try{pending(run,new JusuanImageClient.Pending(known,e));}
+                catch(RuntimeException checkpointFailure){log.warn("[ipstudio] 原图片任务状态写入失败，保留原冻结 run={}",runId,checkpointFailure);}
+            } else failWithoutSpend(run, codeOf(e), friendly(e, run.getId()), e);
+        } finally {
+            if(context!=null)context.close();
+            if(queue!=null && runRepo.findById(runId).filter(r->IpRun.STATUS_RUNNING.equals(r.getStatus())).isEmpty())
+                queue.finish(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
         }
     }
 
@@ -107,10 +178,9 @@ public class IpRunWorker {
         JsonNode exec = inputs.path("_exec");
         String sourceKey = exec.path("sourceKey").asText(null);
         long unit = unitCostOf(exec, pricing.ipIdentity());
-        long holdTotal = exec.path("holdTotal").asLong(unit);
 
         if (isCancelRequested(run)) {
-            release(run, "IP 特征卡 · 已取消，释放冻结");
+
             failWithoutSpend(run, "IP_RUN_CANCELLED", "已取消");
             return;
         }
@@ -118,7 +188,7 @@ public class IpRunWorker {
         progress(run, 20, "identity.extract");
         String image = sourceKey == null ? null : imageInput.of(sourceKey);
         if (image == null) {
-            release(run, "IP 特征卡 · 照片不可读，释放冻结");
+
             failWithoutSpend(run, "IP_NODE_INPUT_MISSING", "读取不到照片，请重新上传后再抽取");
             return;
         }
@@ -128,39 +198,36 @@ public class IpRunWorker {
             parsed = multimodal.chatJsonWithImages(
                     exec.path("system").asText(""), exec.path("user").asText(""), List.of(image));
         } catch (RuntimeException e) {
-            release(run, "IP 特征卡 · 抽取失败，释放冻结");
+
             failWithoutSpend(run, "IP_IDENTITY_EXTRACT_FAILED",
                     "看图抽取特征卡失败：当前形象引擎可能不支持图片输入。"
-                            + "请在后台给「数字人 · 人设」用途绑定支持看图的模型，或手动填写特征卡");
+                            + "请在后台给「数字人 · 人设」用途绑定支持看图的模型，或手动填写特征卡", e);
             return;
         }
 
         String text = textOf(parsed, "text");
         String promptEn = textOf(parsed, "promptEn");
         if (text == null && promptEn == null) {
-            release(run, "IP 特征卡 · 输出不可用，释放冻结");
+
             failWithoutSpend(run, "IP_IDENTITY_EXTRACT_FAILED", "抽取结果为空，请重试或手动填写特征卡");
             return;
         }
 
         // 模型已经算完了才发现用户点了取消：这时候还没扣款，就别扣了，整笔退回
         if (isCancelRequested(run)) {
-            release(run, "IP 特征卡 · 已取消，释放冻结");
+
             failWithoutSpend(run, "IP_RUN_CANCELLED", "已取消");
             return;
         }
 
         // 先扣款，再落产物（顺序见类注释）；单价只认 hold 时的快照
-        if (unit > 0) {
-            credits.commitHold(IpRunService.REF_TYPE, run.getId(), unit, "IP 人物特征卡抽取");
-        }
-        if (holdTotal > unit) release(run, "IP 特征卡 · 冻结额有余，释放剩余");
-        ObjectNode out = om.createObjectNode();
-        if (text != null) out.put("text", text);
-        if (promptEn != null) out.put("promptEn", promptEn);
-        run.setOutputJson(write(out));
-        run.setCost(unit);
-        finish(run);
+        atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+            if (unit > 0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 人物特征卡抽取");
+            ObjectNode out=om.createObjectNode();
+            if(text!=null)out.put("text",text);if(promptEn!=null)out.put("promptEn",promptEn);
+            run.setOutputJson(write(out));run.setCost(unit);finishAtomically(run);
+        });
     }
 
     // ── generate：逐张出图 ───────────────────────────────────
@@ -172,72 +239,121 @@ public class IpRunWorker {
         String size = inputs.path("size").asText("768x1024");
         int count = Math.max(1, inputs.path("count").asInt(1));
         long unit = unitCostOf(exec, pricing.ipImage());
-        long holdTotal = exec.path("holdTotal").asLong(unit * count);
 
         // 参考图必须在第一次出图**之前**全部物化。
         // 以前是边循环边 of(key)、读不到就静默丢掉：主图 / 原照片读不到时，
         // inputs.refs 里已经写着 applied=true，用户界面显示「身份已锁定」，
         // 实际却按纯文生图出了一张不像自己的脸，还照价扣满。
+        JsonNode priorCandidates=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates");
+        ArrayNode candidates=priorCandidates.isArray()?priorCandidates.deepCopy():om.createArrayNode();
+        int committed=candidates.size();
+        boolean acceptedCurrent=exec.path("imageJobs").path(committed).path("submitAttempted").asBoolean();
         List<String> refs;
         try {
-            refs = materializeRefs(run, inputs, exec);
+            refs = acceptedCurrent?List.of():materializeRefs(run, inputs, exec);
         } catch (UnreadableIdentityRefException e) {
-            release(run, "IP 出图 · 身份参考图不可读，释放冻结");
-            failWithoutSpend(run, "IP_REF_UNREADABLE", e.getMessage());
+
+            run.setCost(unit*committed);
+            fail(run,"IP_REF_UNREADABLE",e.getMessage(),e);
             return;
         }
 
-        ArrayNode candidates = om.createArrayNode();
-        int committed = 0;
+
         RuntimeException lastErr = null;
         boolean cancelled = false;
 
-        for (int i = 0; i < count; i++) {
-            if (isCancelRequested(run)) { cancelled = true; break; }
+        for (int i=committed;i<count;i++) {
+            JsonNode checkpoint=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(i);
+            if(isCancelRequested(run) && !checkpoint.path("submitAttempted").asBoolean()) {cancelled=true;break;}
             progress(run, 10 + (int) Math.round(80.0 * i / count), "image.generate." + (i + 1));
+            String previousOutput=run.getOutputJson();
+            long previousCost=unit*committed;
             try {
                 // 用户在画布上选的模型 —— 不传下去就等于「选了没用」：
                 // 界面按那个模型标价、也按它扣了钱，实际却跑的默认端点。
-                byte[] bytes = multimodal.generateImage(prompt, size,
-                        refs.isEmpty() ? null : refs, IpDocs.text(exec, "endpointId"));
+                String endpointId=IpDocs.text(exec,"endpointId");
+                final int current=i;
+                byte[] bytes;
+                boolean nativeImage=checkpoint.path("submitAttempted").asBoolean() || jusuanImages!=null && jusuanImages.supportsEndpoint(endpointId);
+                if(checkpoint.hasNonNull("storageKey")) {
+                    try{bytes=java.nio.file.Files.readAllBytes(storage.openForRead(checkpoint.path("storageKey").asText()));}
+                    catch(java.io.IOException error){
+                        ObjectNode missing=checkpoint.deepCopy();missing.remove("storageKey");nativeCheckpoint(run,i,missing);
+                        throw new JusuanImageClient.Pending(true,error);
+                    }
+                } else if(nativeImage) {
+                    List<String> keys=new ArrayList<>();
+                    for(JsonNode ref:exec.path("refKeys")) {
+                        int index=ref.path("refIndex").asInt(-1);
+                        if(index>=0 && !inputs.path("refs").path(index).path("applied").asBoolean(true))continue;
+                        String key=ref.isTextual()?ref.asText():ref.path("key").asText(null);
+                        if(key!=null)keys.add(key);
+                    }
+                    var imageSpec=exec.hasNonNull("imageRequestSpec")
+                            ? com.aistareco.aep.model.AiImageRequestSpec.read(exec.path("imageRequestSpec").toString()):null;
+                    bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec,
+                            checkpoint,state->nativeCheckpoint(run,current,state));
+                } else {
+                    if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),endpointId);
+                    bytes=multimodal.generateImage(prompt,size,refs.isEmpty()?null:refs,endpointId,"studio");
+                }
                 requireDecodableImage(bytes);
                 progress(run, 10 + (int) Math.round(80.0 * (i + 1) / count), "storage.persist");
-                FileStorageService.StoredFile stored = storage.store(
-                        bytes, IpProjectService.CATEGORY_GEN, run.getOwnerUserId(), "png", "image/png");
-                if (unit > 0) {
-                    credits.commitHold(IpRunService.REF_TYPE, run.getId(), unit,
-                            "IP 形象出图 · 第 " + (i + 1) + " 张");
+                String storedKey;
+                if(checkpoint.hasNonNull("storageKey"))storedKey=checkpoint.path("storageKey").asText();
+                else {
+                    storedKey=storage.store(bytes,IpProjectService.CATEGORY_GEN,run.getOwnerUserId(),"png","image/png").key();
+                    if(nativeImage) {
+                        JsonNode existing=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(i);
+                        ObjectNode mirrored=existing.isObject()?existing.deepCopy():om.createObjectNode();
+                        mirrored.put("storageKey",storedKey);nativeCheckpoint(run,i,mirrored);
+                    }
                 }
+                final String candidateKey=storedKey;
+                final int candidateNo=i+1;
+                atomic(()->{
+                if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张");
                 // commit 成功之后才承认这张图。
                 // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，
                 // 竖图会被撑成方框（「框很大图很小」）。文件头里就有，不用整图解码。
-                var cand = candidates.addObject().put("key", stored.key());
+                var cand = candidates.addObject().put("key",candidateKey);
                 int[] wh = IpProjectService.readDimensions(bytes);
                 if (wh != null) cand.put("width", wh[0]).put("height", wh[1]);
-                committed++;
                 ObjectNode partial = om.createObjectNode();
                 partial.set("candidates", candidates.deepCopy());
                 run.setOutputJson(write(partial));
-                run.setCost(unit * committed);
+                run.setCost(unit*candidateNo);
                 runRepo.save(run);
-            } catch (RuntimeException e) {
+                // The last spend can close the hold/auth; persist the job terminal in that same transaction.
+                if(candidateNo==count)finishAtomically(run);
+                });
+                committed++;
+            } catch(JusuanImageClient.Pending pending) {pending(run,pending);return;}
+            catch (RuntimeException e) {
+                JsonNode accepted=projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("imageJobs").path(i);
+                if(accepted.path("submitAttempted").asBoolean() && !(e instanceof JusuanImageClient.ProviderRejected)) {
+                    while(candidates.size()>committed)candidates.remove(candidates.size()-1);
+                    run.setOutputJson(previousOutput);run.setCost(previousCost);
+                    pending(run,new JusuanImageClient.Pending(accepted.hasNonNull("jobId"),e));return;
+                }
+                while(candidates.size()>committed)candidates.remove(candidates.size()-1);
+                run.setOutputJson(previousOutput);run.setCost(previousCost);
                 lastErr = e;
                 break;
             }
         }
 
-        // 按**金额**判断有没有剩余（而不是张数）：单价快照与 hold 总额都来自同一份 _exec，
-        // 少扣一分都要退回去，绝不把冻结额留给三小时后的 CreditHoldSweeper。
-        if (unit * committed < holdTotal) {
-            release(run, cancelled ? "IP 出图 · 已取消，释放剩余冻结" : "IP 出图 · 剩余释放");
-        }
+        if(committed==count) {if(IpRun.STATUS_RUNNING.equals(run.getStatus()))finish(run);return;}
+
+        // Terminal settlement atomically releases the unspent portion of this reservation.
         run.setCost(unit * committed);
         if (committed == 0) {
             if (cancelled) {
                 fail(run, "IP_RUN_CANCELLED", "已取消");
             } else {
                 log.warn("[ipstudio] 出图全部失败 run={}", run.getId(), lastErr);
-                fail(run, codeOf(lastErr), friendly(lastErr, run.getId()));
+                fail(run, codeOf(lastErr), friendly(lastErr, run.getId()), lastErr);
             }
             return;
         }
@@ -248,10 +364,40 @@ public class IpRunWorker {
             // 已出的图归用户，但这次运行不是完整的 —— 如实标成失败态并说明原因
             fail(run, "IP_RUN_CANCELLED", "已取消（已生成的 " + committed + " 张仍可使用）");
         } else if (lastErr != null) {
-            fail(run, codeOf(lastErr), friendly(lastErr, run.getId()) + "（已生成 " + committed + " 张）");
+            fail(run, codeOf(lastErr), friendly(lastErr, run.getId()) + "（已生成 " + committed + " 张）", lastErr);
         } else {
             finish(run);
         }
+    }
+
+    private void nativeCheckpoint(IpRun run,int index,ObjectNode state) {
+        atomic(()->{
+            if(enterpriseBilling!=null) {
+                enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+                var before=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+                if(state.path("submitAttempted").asBoolean()&&!before.path("imageJobs").path(index).path("submitAttempted").asBoolean())
+                    enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),before.path("endpointId").asText(null));
+            }
+            var fresh=runRepo.lockById(run.getId()).orElseThrow();
+            if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))throw new IllegalStateException("Image run is terminal");
+            if(fresh.isCancelRequested()&&!hasNativeSubmission(fresh))throw com.aistareco.common.BusinessException.badRequest("IP_RUN_CANCELLED","已停止生成");
+            ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
+            ObjectNode exec=(ObjectNode)input.path("_exec");ArrayNode jobs=exec.withArray("imageJobs");
+            while(jobs.size()<=index)jobs.addNull();jobs.set(index,state.deepCopy());
+            exec.put("nativeLeaseUntil",System.currentTimeMillis()+180_000);
+            fresh.setInputJson(write(input));fresh.setHeartbeatAt(Instant.now());runRepo.save(fresh);
+            run.setInputJson(fresh.getInputJson());
+        });
+    }
+    private void pending(IpRun run,JusuanImageClient.Pending pending) {
+        atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+            var fresh=runRepo.lockById(run.getId()).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))return;
+            ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
+            ((ObjectNode)input.path("_exec")).put("nativeLeaseUntil",0);
+            fresh.setInputJson(write(input));fresh.setStage("image.provider.recovering");fresh.setErrorCode(pending.code());fresh.setErrorMessage(pending.getMessage());
+            fresh.setHeartbeatAt(Instant.now());runRepo.save(fresh);run.setInputJson(fresh.getInputJson());
+        });
     }
 
     // ── 参考图物化 ────────────────────────────────────────────
@@ -365,8 +511,23 @@ public class IpRunWorker {
     public void abandon(String runId, String code, String message) {
         IpRun run = runRepo.findById(runId).orElse(null);
         if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
-        release(run, "IP 运行未能派发 · 释放冻结");
+
         failWithoutSpend(run, code, message);
+    }
+
+    /** Reaper uses the same locked terminal transaction as normal completion. */
+    public boolean expire(String runId,Instant cutoff) {
+        final boolean[] expired={false};
+        atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
+            var run=runRepo.lockById(runId).orElse(null);
+            if(run==null || hasNativeSubmission(run) || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getHeartbeatAt()==null || !run.getHeartbeatAt().isBefore(cutoff))return;
+            var input=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+            run.setCost(projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size()*input.path("unitCost").asLong());
+            failAtomically(run,"IP_RUN_TIMEOUT","生成超时，未产生结果，已退回冻结积分，请重试",null);
+            expired[0]=true;
+        });
+        return expired[0];
     }
 
     private boolean isCancelRequested(IpRun run) {
@@ -378,10 +539,23 @@ public class IpRunWorker {
         run.setPct(Math.min(99, Math.max(0, pct)));
         run.setStage(stage);
         run.setHeartbeatAt(Instant.now());
-        runRepo.save(run);
+        // Queue cancellation owns status/cancelRequested; progress must never overwrite those fields.
+        runRepo.updateProgressIfRunning(run.getId(),run.getPct(),stage,run.getHeartbeatAt(),run.getStartedAt());
+        if(hasNativeSubmission(run))atomic(()->{
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+            var fresh=runRepo.lockById(run.getId()).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))return;
+            ObjectNode input=(ObjectNode)projects.parseOrEmptyObject(fresh.getInputJson());
+            ((ObjectNode)input.path("_exec")).put("nativeLeaseUntil",System.currentTimeMillis()+180_000);
+            fresh.setInputJson(write(input));runRepo.save(fresh);run.setInputJson(fresh.getInputJson());
+        });
+        if(queue!=null)queue.touch(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,run.getId());
     }
 
-    private void finish(IpRun run) {
+    private void finish(IpRun run) {atomic(()->finishAtomically(run));}
+    private void finishAtomically(IpRun run) {
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+        if(billingTransactions!=null && runRepo.lockById(run.getId()).filter(r->IpRun.STATUS_RUNNING.equals(r.getStatus())).isEmpty())return;
+        releaseRemainder(run,"IP 运行完成 · 释放剩余冻结");
         run.setStatus(IpRun.STATUS_DONE);
         run.setStage("done");
         run.setPct(100);
@@ -390,33 +564,44 @@ public class IpRunWorker {
         run.setHeartbeatAt(Instant.now());
         run.setFinishedAt(Instant.now());
         runRepo.save(run);
+        if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());
         log.info("[ipstudio] 运行完成 run={} kind={} cost={}", run.getId(), run.getKind(), run.getCost());
     }
 
     /** 一次都没 commit 就失败：{@code cost} 必须归零 —— 建行时写的是冻结额，失败后留着就是虚报花费。 */
+    private void failWithoutSpend(IpRun run, String code, String message, Throwable cause) {
+        run.setCost(0);
+        fail(run, code, message, cause);
+    }
+
     private void failWithoutSpend(IpRun run, String code, String message) {
         run.setCost(0);
         fail(run, code, message);
     }
 
-    private void fail(IpRun run, String code, String message) {
+    private void fail(IpRun run, String code, String message) { fail(run, code, message, null); }
+
+    private void fail(IpRun run, String code, String message, Throwable cause) {atomic(()->failAtomically(run,code,message,cause));}
+    private void failAtomically(IpRun run,String code,String message,Throwable cause) {
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
+        if(billingTransactions!=null && runRepo.lockById(run.getId()).filter(r->IpRun.STATUS_RUNNING.equals(r.getStatus())).isEmpty())return;
+        releaseRemainder(run,"IP 运行失败或取消 · 释放剩余冻结");
         run.setStatus(IpRun.STATUS_FAILED);
         run.setStage("failed");
         run.setErrorCode(code);
         run.setErrorMessage(message);
+        if (errorLog != null) errorLog.attach(run, cause);
         run.setHeartbeatAt(Instant.now());
         run.setFinishedAt(Instant.now());
         runRepo.save(run);
+        if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());
         log.warn("[ipstudio] 运行失败 run={} kind={} code={} msg={}", run.getId(), run.getKind(), code, message);
     }
 
-    /** best-effort 释放：释放本身失败不能覆盖业务终态（同 DapJobRunner.releaseCredits）。 */
-    private void release(IpRun run, String reason) {
-        try {
-            credits.releaseHold(IpRunService.REF_TYPE, run.getId(), reason);
-        } catch (Exception e) {
-            log.warn("[ipstudio] 释放冻结失败 run={}: {}", run.getId(), e.getMessage());
-        }
+    private void releaseRemainder(IpRun run,String reason) {
+        var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+        long held=exec.path("holdTotal").asLong(run.getCost());
+        if(!exec.has("holdTotal")||held>run.getCost())credits.releaseHold(IpRunService.REF_TYPE,run.getId(),reason);
     }
 
     private static String codeOf(RuntimeException e) {
@@ -432,17 +617,16 @@ public class IpRunWorker {
      * 一律显示「生成失败，请稍后重试」。厂商超时、网络中断、HTTP 5xx、镜像失败全被抹成这一句 ——
      * 用户看不出该重试、该换模型、还是该找运维，我们自己也无从判断（用户复述不出任何信息）。
      *
-     * <p>现在的分寸：我们写过文案的异常直出；没写过的**不直出技术串**（那种「409 CONFLICT
-     * hold 已是终态」是天书），但一定给出**异常类型 + 追查号** —— 用户把追查号报过来，
-     * 运维就能在 ErrorLog / 日志里定位到这一次。有信息可查，比一句正确的废话有用。
+     * <p>友好信息与追查号分开：结构化 output.logId 指向真实 ErrorLog，runId 只作为任务号。
+     * 未知异常不向客户端直出内部响应体；原异常和供应商细节由 StudioRunErrorLog 保留。
      */
     private static String friendly(RuntimeException e, String runId) {
-        if (e == null) return "生成失败，请稍后重试 · 追查号 " + runId;
+        if (e == null) return "生成失败，请稍后重试";
         if (e instanceof DapModelException || e instanceof com.aistareco.common.BusinessException) {
             String m = e.getMessage();
             if (m != null && !m.isBlank()) return m;
         }
-        return "生成失败（" + e.getClass().getSimpleName() + "）· 追查号 " + runId + " —— 把这个号报给运维可以定位原因";
+        return "生成失败（" + e.getClass().getSimpleName() + "），请稍后重试";
     }
 
     private static String textOf(JsonNode n, String field) {

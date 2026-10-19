@@ -215,6 +215,8 @@ export const LEDGER_ENTRY_TYPE: Record<string, StatusMeta> = {
   freeze:        { label: "冻结",         tone: "danger", actionable: true },
   unfreeze:      { label: "解冻",         tone: "info" },
   adjust:        { label: "人工调账",     tone: "warning", actionable: true },
+  transfer_in:   { label: "积分转入", tone: "success" },
+  transfer_out:  { label: "积分转出", tone: "neutral" },
   refund_cash:   { label: "现金退款",     tone: "warning" },
 };
 

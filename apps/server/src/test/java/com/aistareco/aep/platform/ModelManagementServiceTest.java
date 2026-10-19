@@ -1,0 +1,125 @@
+package com.aistareco.aep.platform;
+import com.aistareco.aep.dto.*;
+import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.repository.AuditLogRepository;
+import com.aistareco.aep.service.*;
+import com.aistareco.aep.videostudio.service.VideoStudioPricingService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import java.util.List;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class ModelManagementServiceTest {
+ private final ObjectMapper mapper=new ObjectMapper().findAndRegisterModules();
+ private final AiModelEndpointAdminService endpoints=mock(AiModelEndpointAdminService.class);
+ private final AiAppBindingService bindings=mock(AiAppBindingService.class);
+ private final AiModelAccessPolicyService access=mock(AiModelAccessPolicyService.class);
+ {when(access.allows(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);}
+ private final AuditLogRepository audit=mock(AuditLogRepository.class);
+ private ModelManagementService service(){return new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),mock(AiAppSceneModelPolicyService.class),access,mock(ModelFeatureManagementService.class),audit,mapper);}
+ @Test void costEditPreservesModelLimitsAndNeverRewritesKey() throws Exception {
+  var old=mapper.readValue("{\"id\":\"a\",\"name\":\"A\",\"providerType\":\"OPENAI\",\"baseUrl\":\"https://example.com\",\"upstreamApiKeyMasked\":\"***\",\"model\":\"m\",\"concurrencyLimit\":3,\"rpmLimit\":30,\"tpmLimit\":4000,\"dailyTokenQuota\":9999,\"promptTokenPriceMicros\":10,\"completionTokenPriceMicros\":20,\"unitPriceMicros\":0}",AiModelEndpointDto.class);
+  when(endpoints.get("a")).thenReturn(old);when(endpoints.updateCosts(eq("a"),any())).thenReturn(old);
+  service().execute(mapper.readTree("{\"action\":\"endpointCosts\",\"id\":\"a\",\"value\":{\"supplierBillingMode\":\"TOKENS\",\"promptTokenPriceMicros\":100,\"completionTokenPriceMicros\":200,\"unitPriceMicros\":0}}"),"operator");
+  var cap=ArgumentCaptor.forClass(AiModelEndpointCostUpsertDto.class);verify(endpoints).updateCosts(eq("a"),cap.capture());
+  assertEquals("TOKENS",cap.getValue().supplierBillingMode());assertEquals(100L,cap.getValue().promptTokenPriceMicros());verify(endpoints,never()).update(any(),any());verify(audit).save(any());
+ }
+ @Test void capabilityEditPreservesSalePriceAndCostEditCannotSmuggleModel() throws Exception {
+  var old=new AiAppEndpointCandidateDto("DAP_IMAGE","image","a","A",true,false,1,true,new EndpointCapabilityDto(6,true,false,15,5,768000,null,null),12L,null);
+  when(bindings.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(old));when(bindings.updateCandidate(eq(AiModelPurpose.DAP_IMAGE),eq("a"),any())).thenReturn(old);
+  service().execute(mapper.readTree("{\"action\":\"candidateSave\",\"purpose\":\"DAP_IMAGE\",\"endpointId\":\"a\",\"value\":{\"maxRefImages\":2,\"minImagePixels\":1920000}}"),"operator");
+  var cap=ArgumentCaptor.forClass(AiAppEndpointCandidateUpsert.class);verify(bindings).updateCandidate(eq(AiModelPurpose.DAP_IMAGE),eq("a"),cap.capture());assertEquals(12L,cap.getValue().creditCostOverride());assertEquals(1920000,cap.getValue().minImagePixels());
+  when(endpoints.get("a")).thenReturn(mapper.readValue("{}",AiModelEndpointDto.class));
+  assertThrows(Exception.class,()->service().execute(mapper.readTree("{\"action\":\"endpointCosts\",\"id\":\"a\",\"value\":{\"model\":\"outside\"}}"),"operator"));
+ }
+ @Test void rejectsUnknownActionInsteadOfBecomingAnAdminProxy() {
+  assertThrows(Exception.class,()->service().execute(mapper.readTree("{\"action\":\"staffDelete\",\"id\":\"root\"}"),"operator"));verifyNoInteractions(endpoints,bindings,audit);
+ }
+ @Test void scenePreparationPreservesSharedPriceAndNeverChangesDefault() throws Exception {
+  var policies=mock(AiAppSceneModelPolicyService.class);when(policies.registeredPurpose("studio","image")).thenReturn(AiModelPurpose.DAP_IMAGE);
+  var svc=new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),policies,access,mock(ModelFeatureManagementService.class),audit,mapper);
+  var old=new AiAppEndpointCandidateDto("DAP_IMAGE","image","a","A",true,false,1,true,new EndpointCapabilityDto(6,true,false,15,5,768000,null,null),12L,null);
+  when(bindings.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(old));when(bindings.updateCandidate(eq(AiModelPurpose.DAP_IMAGE),eq("a"),any())).thenReturn(old);
+  svc.execute(mapper.readTree("{\"action\":\"sceneCandidatePrepare\",\"appCode\":\"studio\",\"scene\":\"image\",\"endpointId\":\"a\",\"value\":{\"maxRefImages\":2}}"),"operator");
+  var cap=ArgumentCaptor.forClass(AiAppEndpointCandidateUpsert.class);verify(bindings).updateCandidate(eq(AiModelPurpose.DAP_IMAGE),eq("a"),cap.capture());assertEquals(12L,cap.getValue().creditCostOverride());assertEquals(2,cap.getValue().maxRefImages());verify(bindings,never()).bind(any(),any());verify(audit).save(any());
+ }
+ @Test void studioVideoCandidateCanBeConfiguredFromItsFunctionEditor() throws Exception {
+  var command=mapper.createObjectNode();command.put("action","functionCandidatePrepare");command.put("appCode","studio");command.put("feature","video");command.put("endpointId","seedance");command.set("value",mapper.readTree("{\"enabled\":true,\"sortOrder\":1}"));
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  service().execute(command,"operator");
+  verify(bindings).addCandidate(eq(AiModelPurpose.VIDEO_GENERATION),argThat(value->"seedance".equals(value.endpointId())&&Boolean.TRUE.equals(value.enabled())));
+  verify(bindings,never()).bind(any(),any());
+  verify(audit).save(any());
+ }
+ @Test void studioVideoRateCanBeEditedWithPricingPermissionAndSharedImpactConfirmation() throws Exception {
+  var old=new AiAppEndpointCandidateDto("VIDEO_GENERATION","视频生成","seedance","Seedance 2.0",true,false,0,true,
+    new EndpointCapabilityDto(null,null,null,null,null,null,null,null,null),null,null);
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(old));
+  when(bindings.updateCandidate(eq(AiModelPurpose.VIDEO_GENERATION),eq("seedance"),any())).thenReturn(old);
+  var command=mapper.createObjectNode();command.put("action","functionCandidatePriceSave");command.put("appCode","studio");command.put("feature","video");command.put("endpointId","seedance");command.put("creditCostOverride",30);
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(bindings,never()).updateCandidate(any(),any(),any());
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  service().execute(command,"operator");
+  verify(bindings).updateCandidate(eq(AiModelPurpose.VIDEO_GENERATION),eq("seedance"),argThat(value->Long.valueOf(30).equals(value.creditCostOverride())));
+  command.put("creditCostOverride",0);
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+ }
+ @Test void studioVideoOpenRangeDoesNotChangeTheSharedVideoBinding() throws Exception {
+  var policies=mock(AiAppSceneModelPolicyService.class);
+  var group=new AiAppSceneModelPolicyService.VideoGroup("seedance",List.of("seedance"));
+  when(policies.saveStudioVideoGroup(eq(group),eq("operator"))).thenReturn(group);
+  var svc=new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),policies,access,mock(ModelFeatureManagementService.class),audit,mapper);
+  svc.execute(mapper.readTree("{\"action\":\"studioVideoGroupSave\",\"value\":{\"defaultEndpointId\":\"seedance\",\"endpointIds\":[\"seedance\"]}}"),"operator");
+  verify(policies).saveStudioVideoGroup(eq(group),eq("operator"));
+  verify(bindings,never()).bind(any(),any());
+ }
+ @Test void modelScopePreparesStudioVideoCandidateInTheSameCommand() throws Exception {
+  var endpoint=mapper.readValue("{\"videoRequestSpec\":{}}",AiModelEndpointDto.class);
+  when(endpoints.get("seedance")).thenReturn(endpoint);
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  var command=mapper.createObjectNode();command.put("action","modelAccessSave");command.put("endpointId","seedance");
+  command.set("value",mapper.readTree("{\"categories\":[\"video\"],\"scope\":\"selected\",\"appCodes\":[\"studio\"]}"));
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(access,never()).save(anyString(),any(),anyString());
+  command.set("acknowledgedAffectedFeatures",mapper.valueToTree(ModelFeatureRegistry.affected(ModelFeatureRegistry.require("studio","video"))));
+  service().execute(command,"operator");
+  verify(access).save(eq("seedance"),any(),eq("operator"));
+  verify(bindings).addCandidate(eq(AiModelPurpose.VIDEO_GENERATION),argThat(value->"seedance".equals(value.endpointId())&&Boolean.TRUE.equals(value.enabled())));
+  verify(bindings,never()).bind(any(),any());
+  verify(audit,times(2)).save(any());
+ }
+ @Test void modelScopeCannotOpenStudioVideoWithoutVerifiedProtocol() throws Exception {
+  when(endpoints.get("seedance")).thenReturn(mapper.readValue("{}",AiModelEndpointDto.class));
+  when(bindings.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
+  var command=mapper.readTree("{\"action\":\"modelAccessSave\",\"endpointId\":\"seedance\",\"value\":{\"categories\":[\"video\"],\"scope\":\"selected\",\"appCodes\":[\"studio\"]}}");
+  assertThrows(Exception.class,()->service().execute(command,"operator"));
+  verify(access,never()).save(anyString(),any(),anyString());
+  verify(bindings,never()).addCandidate(any(),any());
+ }
+ @Test void priceOnlyReadProjectsNameAndDisabledStateWithoutEndpointSecrets() throws Exception {
+  var policies=mock(AiAppSceneModelPolicyService.class);
+  when(policies.get("studio","script")).thenReturn(java.util.Optional.empty());when(policies.get("studio","image")).thenReturn(java.util.Optional.of(new AiAppSceneModelPolicyDto("studio","image","fixed","a",List.of(new AiAppSceneModelPolicyDto.Candidate("a",null,"per_image")))));
+  when(policies.registeredPurpose("studio","script")).thenReturn(AiModelPurpose.DAP_PERSONA);when(policies.registeredPurpose("studio","image")).thenReturn(AiModelPurpose.DAP_IMAGE);when(bindings.listCandidates(any())).thenReturn(List.of());
+  when(policies.billingUnit("script")).thenReturn("per_call");when(policies.billingUnit("image")).thenReturn("per_image");
+  when(endpoints.list()).thenReturn(List.of(mapper.readValue("{\"id\":\"a\",\"name\":\"A\",\"baseUrl\":\"https://vendor.example\",\"upstreamApiKeyMasked\":\"***\",\"enabled\":false}",AiModelEndpointDto.class)));
+  var svc=new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),policies,access,mock(ModelFeatureManagementService.class),audit,mapper);
+  var result=mapper.valueToTree(svc.execute(mapper.readTree("{\"action\":\"scenePrices\"}"),"operator"));
+  assertFalse(result.get(0).path("configured").asBoolean());var c=result.get(1).path("candidates").get(0);assertEquals("A",c.path("endpointName").asText());assertFalse(c.path("endpointEnabled").asBoolean());assertFalse(c.path("available").asBoolean());assertTrue(c.path("creditCost").isNull());assertFalse(c.has("baseUrl"));assertFalse(c.has("upstreamApiKeyMasked"));verifyNoInteractions(audit);
+ }
+ @Test void priceAvailabilityRequiresEnabledPurposeCandidateEvenWhenEndpointEnabled() throws Exception {
+  var policies=mock(AiAppSceneModelPolicyService.class);when(policies.registeredPurpose("studio","script")).thenReturn(AiModelPurpose.DAP_PERSONA);when(policies.registeredPurpose("studio","image")).thenReturn(AiModelPurpose.DAP_IMAGE);
+  when(policies.get("studio","script")).thenReturn(java.util.Optional.empty());when(policies.get("studio","image")).thenReturn(java.util.Optional.of(new AiAppSceneModelPolicyDto("studio","image","fixed","a",List.of(new AiAppSceneModelPolicyDto.Candidate("a",2L,"per_image")))));
+  when(policies.billingUnit("script")).thenReturn("per_call");when(policies.billingUnit("image")).thenReturn("per_image");
+  when(endpoints.list()).thenReturn(List.of(mapper.readValue("{\"id\":\"a\",\"name\":\"A\",\"enabled\":true}",AiModelEndpointDto.class)));
+  var svc=new ModelManagementService(endpoints,bindings,mock(PromptService.class),mock(AgentBotProviderAdminService.class),mock(CelebrityActionPricingService.class),mock(VideoStudioPricingService.class),mock(AiModelUsageService.class),policies,access,mock(ModelFeatureManagementService.class),audit,mapper);
+  for(Boolean enabled:List.of(false,true)) {
+   when(bindings.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(new AiAppEndpointCandidateDto("DAP_IMAGE","image","a","A",true,false,1,enabled,null,null,null)));
+   var c=mapper.valueToTree(svc.execute(mapper.readTree("{\"action\":\"scenePrices\"}"),"operator")).get(1).path("candidates").get(0);assertTrue(c.path("endpointEnabled").asBoolean());assertEquals(enabled,c.path("available").asBoolean());
+  }
+  when(bindings.listCandidates(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of());var c=mapper.valueToTree(svc.execute(mapper.readTree("{\"action\":\"scenePrices\"}"),"operator")).get(1).path("candidates").get(0);assertTrue(c.path("endpointEnabled").asBoolean());assertFalse(c.path("available").asBoolean());
+ }
+}

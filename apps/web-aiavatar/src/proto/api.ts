@@ -24,6 +24,7 @@ import {
   setAuthToken as idSetToken,
 } from "@ai-star-eco/api-client";
 import * as Mock from "./data";
+import type { Wallet } from "@ai-star-eco/types/wallet";
 
 // ── 开关 / 错误 ──────────────────────────────────────────────
 
@@ -1564,6 +1565,17 @@ async function meFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const WalletApi = {
+  /** Read the spendable wallet balance without AccountApi's legacy monthly-grant side effect. */
+  balance: async (): Promise<Pick<Wallet, "totalBalance">> => {
+    if (USE_MOCK) return mock({ totalBalance: Mock.ACCOUNT.credits });
+    try {
+      return await meFetch<Wallet>("/me/wallet", { cache: "no-store", signal: AbortSignal.timeout(15_000) });
+    } catch (error) {
+      // An explicitly unopened wallet has no spendable credits; other failures remain visible.
+      if (error instanceof ApiError && error.status === 404 && error.message === "当前账号尚未开通钱包") return { totalBalance: 0 };
+      throw error;
+    }
+  },
   packages: (): Promise<WalletPackage[]> => {
     if (USE_MOCK) return mock(MOCK_WALLET_PACKAGES.slice());
     return meFetch(`/me/wallet/packages?sourceApp=aiavatar`);

@@ -9,10 +9,11 @@
 // ============================================================
 import React, { useEffect, useState } from "react";
 import { IpLanding } from "@/components/landing/ip-landing";
+import { studioEntryDestination } from "@/shell/account-navigation";
 
 /** 旧链接 / 刷脸回调的 hash 前缀 → 整体转发 /studio。 */
 function isLegacyHash(hash: string): boolean {
-  return /^#\/?(avatar|ip|scene|product|style|compose|create|real-auth|home|library|apps|me|tasks|licenses|realmaterials|voice|settings|security|membership|storage|trash|voiceclone)(\/|$)/.test(hash);
+  return /^#\/?(studio|avatar|ip|scene|product|style|compose|create|real-auth|home|library|apps|me|tasks|licenses|realmaterials|voice|settings|security|membership|storage|trash|voiceclone)(\/|$)/.test(hash);
 }
 
 export default function HomePage() {
@@ -22,7 +23,7 @@ export default function HomePage() {
   useEffect(() => {
     const hash = window.location.hash || "";
     if (hash && isLegacyHash(hash)) {
-      window.location.replace(`/studio${hash}`);
+      window.location.replace(studioEntryDestination(hash, window.location.search) || `/studio${window.location.search}${hash}`);
       return; // 保持空白直到跳转完成，别闪一下落地页
     }
     setForwarding(false);

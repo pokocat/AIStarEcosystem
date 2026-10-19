@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 /**
  * 全局内容的**运营后台**（v0.192）。
@@ -106,6 +107,17 @@ class IpDemoAdminTest {
         var dto = svc.listForAdmin().get(0);
         assertEquals(2, dto.nodeCount());
         assertEquals(2, dto.assetCount(), "运营靠这两个数字判断「这条是不是空的 / 是不是那条重复的」");
+    }
+
+    @Test
+    void 管理列表暴露已发布版本标识并继续禁止配方覆盖() {
+        var recipe = seed("IPD-recipe", IpDemoTemplate.KIND_TEMPLATE, true, 0, docWith());
+        recipe.setCurrentVersionId("IPV-v1");
+        assertEquals("IPV-v1", svc.listForAdmin().get(0).currentVersionId());
+        var error = assertThrows(BusinessException.class, () -> svc.publishFromProject("operator", "project", "IPD-recipe", "修改模板", "", "template"));
+        assertEquals("STUDIO_TEMPLATE_VERSIONED", error.getCode());
+        assertEquals("IPV-v1", recipe.getCurrentVersionId());
+        verifyNoInteractions(storage);
     }
 
     @Test
@@ -249,6 +261,7 @@ class IpDemoAdminTest {
                     "素材目录是拿 demoId 拼的，而 buildKey 会把 / 净化成 _ —— "
                             + "IPD/a 与 IPD_a 会落进同一个目录：" + bad);
         }
+        verifyNoInteractions(projects, repo);
     }
 
     @Test

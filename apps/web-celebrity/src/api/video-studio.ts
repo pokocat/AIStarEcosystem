@@ -68,11 +68,15 @@ export async function listModels(): Promise<VideoStudioModel[]> {
 }
 
 /** 上传一个素材（图片 / 视频 / 音频），返回提交任务时要带回的 key 与预览地址。 */
-export async function upload(file: File, mediaType: VideoStudioMediaType): Promise<VideoStudioUpload> {
+export async function upload(file: File, mediaType: VideoStudioMediaType,
+  selection: { endpointId: string | null; mode: VideoStudioMode; frame: boolean }): Promise<VideoStudioUpload> {
   if (USE_MOCK) return mockUpload(file, mediaType);
   const form = new FormData();
   form.append("file", file);
   form.append("mediaType", mediaType);
+  if (selection.endpointId) form.append("endpointId", selection.endpointId);
+  form.append("mode", selection.mode);
+  form.append("frame", String(selection.frame));
   return apiFetch<VideoStudioUpload>("/me/celebrity/video-studio/uploads", { method: "POST", body: form });
 }
 
@@ -409,7 +413,8 @@ async function mockSubmit(req: VideoStudioJobRequest): Promise<VideoStudioJob> {
   }
 
   const imageCount = resolved.references.filter((r) => r.mediaType === "image").length;
-  const price = quote(model.pricing, req.resolutionTier, req.seconds, req.mode, imageCount);
+  const price = quote(model.pricing, req.resolutionTier, req.seconds, req.mode, imageCount,
+    model.contract.modes.some((mode) => mode.mode === req.mode && mode.references !== null));
   if (!price) throw mockError("VIDEO_STUDIO_PRICE_NOT_CONFIGURED", PRICE_NOT_CONFIGURED_MESSAGE, 503);
   const canvas = findCanvas(model.contract, req.resolutionTier, req.aspectRatio);
   const materials = materialsOf(resolved);

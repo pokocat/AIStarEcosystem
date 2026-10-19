@@ -42,7 +42,8 @@ public class AdminUserController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(required = false) String status,
-            @RequestParam(required = false) String kind) {
+            @RequestParam(required = false) String kind,
+            @RequestParam(required = false) String q) {
 
         AepUser.UserStatus statusEnum = parseEnum(status, AepUser.UserStatus.class, "不支持的用户状态筛选值");
         AepUser.AccountKind kindEnum = parseEnum(kind, AepUser.AccountKind.class, "不支持的账号类型筛选值");
@@ -50,7 +51,7 @@ public class AdminUserController {
         page = Math.max(0, page);
         size = Math.min(Math.max(1, size), 100);
         PageRequest pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
-        return PageEnvelope.from(userService.list(statusEnum, kindEnum, pageable));
+        return PageEnvelope.from(userService.list(statusEnum, kindEnum, pageable, q));
     }
 
     @GetMapping("/{id}")

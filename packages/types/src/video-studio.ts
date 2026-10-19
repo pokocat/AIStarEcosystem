@@ -3,33 +3,28 @@
 // server mirror：apps/server …/videostudio/dto/VideoStudioDtos.java（字段名 1:1）。
 // 设计真源：docs/video-studio-plan.md。
 //
-// 这块区域是把视频模型的原生能力直接搬过来（当前对标 MiniMax H3 的四种模式），
-// 不做产品化的封装：模式、规格、素材限制都照厂商合同来，由服务端下发，前端只负责渲染和预检。
+// 模式、规格、素材限制来自端点保存的合同，由服务端下发，前端只负责渲染和预检。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ID, ISODateTime } from "./_shared";
 
-/** 生成模式，取值即厂商 wire 值（H3 generationMode）。 */
-export type VideoStudioMode =
-  | "t2v"
-  | "i2v"
-  | "first_last_frame_video"
-  | "universal_reference_video";
+/** 生成模式标识来自端点合同；供应商请求字段由端点协议适配器映射。 */
+export type VideoStudioMode = string;
 
 /** 素材类型。 */
 export type VideoStudioMediaType = "image" | "video" | "audio";
 
-/** 一个受控画布：比例 + 像素（厂商固定的六种之一）。 */
+/** 模型画布：比例、像素，以及需供应商尺寸编码的协议配置。 */
 export interface VideoStudioCanvas {
-  /** "21:9" | "16:9" | "4:3" | "1:1" | "3:4" | "9:16" */
   aspectRatio: string;
   width: number;
   height: number;
+  outputSizeCode: string | null;
 }
 
 /** 一档清晰度及其可选画布。 */
 export interface VideoStudioTier {
-  /** "768p" | "544p" */
+  /** 来自端点规格，如 "768p"、"544p"。 */
   tier: string;
   canvases: VideoStudioCanvas[];
 }
@@ -37,15 +32,15 @@ export interface VideoStudioTier {
 /** 某类素材的限制。 */
 export interface VideoStudioMediaLimit {
   mediaType: VideoStudioMediaType;
-  /** 本类最多几个（全能参考：图 9 / 视频 1 / 音频 3）。 */
+  /** 本类最多几个；由端点模式的素材规则决定。 */
   maxCount: number;
   /** 单个文件上限（字节）。 */
   maxBytes: number;
   /** 展示用格式名，如 ["PNG","JPEG","WEBP"]。 */
   formats: string[];
-  /** 单段时长下限（秒）；null = 不限。音频为 2。 */
+  /** 单段时长下限（秒）；null = 不限。 */
   minDurationSec: number | null;
-  /** 单段时长上限（秒）；null = 不限。音频为 15。 */
+  /** 单段时长上限（秒）；null = 不限。 */
   maxDurationSec: number | null;
 }
 
@@ -54,26 +49,30 @@ export interface VideoStudioReferenceRules {
   image: VideoStudioMediaLimit;
   video: VideoStudioMediaLimit;
   audio: VideoStudioMediaLimit;
-  /** 带了视频时图片最多几张（H3 为 8）。 */
+  /** 带了视频时图片最多几张。 */
   maxImagesWithVideo: number;
-  /** 素材总数上限（H3 为 12）。 */
+  /** 素材总数上限。 */
   maxTotal: number;
-  /** 视觉素材（图 + 视频）至少几个（H3 为 1）。 */
+  /** 视觉素材（图 + 视频）至少几个。 */
   minVisual: number;
-  /** 所有音频加起来最长几秒（H3 为 15）。 */
+  /** 所有音频加起来最长几秒。 */
   maxAudioTotalSec: number;
 }
 
 /** 某个模式要什么输入。 */
 export interface VideoStudioModeSpec {
   mode: VideoStudioMode;
+  /** 端点配置的业务名称；旧模型未配置时客户端使用内置名称。 */
+  label?: string | null;
+  /** false 时可提交空提示词；未配置时按必填处理。 */
+  promptRequired?: boolean | null;
   /** 是否必须传首帧图（i2v / 首尾帧）。 */
   needsFirstFrame: boolean;
   /** 是否必须传尾帧图（首尾帧）。 */
   needsLastFrame: boolean;
   /** 首帧 / 尾帧图的限制；本模式不用帧图时为 null。 */
   frameImage: VideoStudioMediaLimit | null;
-  /** 参考素材规则；只有全能参考非 null。 */
+  /** 参考素材规则；此模式不使用参考素材时为 null。 */
   references: VideoStudioReferenceRules | null;
 }
 
@@ -100,7 +99,7 @@ export interface VideoStudioContract {
  * 智能优化：每次 promptOptimizationPerCall（0 = 不收费），与生成分开扣。
  */
 export interface VideoStudioPricing {
-  /** 每秒价：按模式、清晰度（"768p" / "544p"）。null = 未定价。 */
+  /** 每秒价：按端点合同中的模式、清晰度索引。null = 未定价。 */
   perSecond: Record<VideoStudioMode, Record<string, number | null>>;
   /** 全能参考里前几张参考图不加价。 */
   freeRefImages: number;
@@ -130,6 +129,9 @@ export interface VideoStudioModel {
   isDefault: boolean;
   /** false = 合成的默认项（无候选行），提交时必须省略 endpointId。 */
   selectableById: boolean;
+  /** 当前端点的供应商协议是否支持提交前的提示词智能优化。 */
+  supportsPromptOptimization: boolean;
+  batchCounts: number[];
   contract: VideoStudioContract;
   pricing: VideoStudioPricing;
 }
@@ -163,9 +165,9 @@ export interface VideoStudioJobRequest {
   endpointId?: string | null;
   mode: VideoStudioMode;
   prompt: string;
-  /** "768p" | "544p" */
+  /** 端点合同中的清晰度标识。 */
   resolutionTier: string;
-  /** 所选清晰度下的六种比例之一。 */
+  /** 所选清晰度下的画面比例。 */
   aspectRatio: string;
   seconds: number;
   /** 0 ~ seedMax；不传 = 随机。 */

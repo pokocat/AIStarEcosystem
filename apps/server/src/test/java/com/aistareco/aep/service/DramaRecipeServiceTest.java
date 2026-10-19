@@ -61,8 +61,8 @@ class DramaRecipeServiceTest {
 
     /** 蒸馏链路成功 stub（端点 + LLM 输出可解析）。 */
     private void stubDistillOk() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"title\":\"反转悬疑·步步惊心\",\"summary\":\"适合都市悬疑\",\"mainline\":\"通用追凶主线\","
                                 + "\"beats\":[{\"no\":1,\"hook\":\"开局悬念\",\"beat\":\"建立不安\"}],"
@@ -105,8 +105,8 @@ class DramaRecipeServiceTest {
     @Test
     void extractDistillsProjectIntoSubmittedRecipe() {
         seedProject();
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"title\":\"反转悬疑·步步惊心\",\"summary\":\"适合都市悬疑\",\"mainline\":\"通用追凶主线\","
                                 + "\"beats\":[{\"no\":1,\"hook\":\"开局悬念\",\"beat\":\"建立不安\"}],"
@@ -129,7 +129,7 @@ class DramaRecipeServiceTest {
     @Test
     void extractThrowsWhenAiNotConfigured() {
         seedProject();
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp1", "u1"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());
         verify(recipeRepo, never()).save(any());
@@ -138,12 +138,12 @@ class DramaRecipeServiceTest {
     @Test
     void extractThrowsWhenPromptNotConfigured() {
         seedProject();
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         when(promptService.resolve(PromptService.KEY_DRAMA_RECIPE_EXTRACT)).thenReturn(new PromptService.ResolvedPrompt(
                 "", "{{title}}", new PromptParamsDto(null, null, null), "code"));
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp1", "u1"));
         assertEquals("PROMPT_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
@@ -152,7 +152,7 @@ class DramaRecipeServiceTest {
                 .id("dp2").ownerUserId("u1").title("空项目").type("短剧").typeKey("custom").ratio("9:16")
                 .episodes(1).payloadJson("{\"projectInfo\":{\"title\":\"空项目\"},\"episodes\":[]}").build();
         when(projectRepo.findByIdAndOwnerUserIdAndDeletedAtIsNull("dp2", "u1")).thenReturn(Optional.of(p));
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp2", "u1"));
         assertEquals("DRAMA_RECIPE_NEEDS_OUTLINE", ex.getCode());
     }
@@ -172,7 +172,7 @@ class DramaRecipeServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.extractFromProject("dp1", "u1"));
         assertEquals("DRAMA_RECIPE_ALREADY_EXISTS", ex.getCode());
         // 守门在蒸馏前：不触发大模型、不落库
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
         verify(recipeRepo, never()).save(any());
     }
 

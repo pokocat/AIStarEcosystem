@@ -8,10 +8,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const fetchModelsMock = vi.fn();
-vi.mock("./api", () => ({ fetchModels: (...a: unknown[]) => fetchModelsMock(...a) }));
+vi.mock("./api", () => ({ fetchModels: (...a: unknown[]) => fetchModelsMock(...a), fetchStudioVideoModels: async()=>[] }));
 
-import { useConfigStore } from "./config-store";
-import { endpointIdFor, loadServerModels, SERVER_CHANNEL_ID } from "./models";
+import { modelOptionLabel, useConfigStore } from "./config-store";
+import { endpointIdFor, imageBatchCountsFor, loadServerModels, SERVER_CHANNEL_ID } from "./models";
 
 const serverModels = {
   image: [
@@ -37,11 +37,20 @@ describe("默认配置不能带假模型", () => {
 });
 
 describe("灌入服务端候选", () => {
-  it("下拉里显示的是后台配的真模型名", async () => {
+  it("画布图片候选数按端点能力提供", async () => {
+    fetchModelsMock.mockResolvedValue({...serverModels,image:[
+      {...serverModels.image[0],capability:{imageBatchCounts:[1,3,5]}},
+    ]});
+    await loadServerModels();
+    expect(imageBatchCountsFor("ai-7f6cce37-778")).toEqual([1,3,5]);
+  });
+  it("下拉只显示后台别名，选择值保留端点 ID", async () => {
     fetchModelsMock.mockResolvedValue(serverModels);
     await loadServerModels();
     const ch = useConfigStore.getState().config.channels.find((c) => c.id === SERVER_CHANNEL_ID);
-    expect(ch?.models.map((m) => m.name)).toEqual(["agnes-image", "agnes-video", "MiniMax H3 · 768P"]);
+    expect(ch?.models.map((m) => m.displayName)).toEqual(["agnes-image", "agnes-video", "MiniMax H3 · 768P"]);
+    const c = useConfigStore.getState().config;
+    expect(modelOptionLabel(c, c.imageModel)).toBe("agnes-image");
   });
 
   it("capability 按它来自哪个列表定，不靠猜名字", async () => {
@@ -50,8 +59,8 @@ describe("灌入服务端候选", () => {
     fetchModelsMock.mockResolvedValue(serverModels);
     await loadServerModels();
     const ch = useConfigStore.getState().config.channels.find((c) => c.id === SERVER_CHANNEL_ID);
-    expect(ch?.models.find((m) => m.name === "MiniMax H3 · 768P")?.capability).toBe("video");
-    expect(ch?.models.find((m) => m.name === "agnes-image")?.capability).toBe("image");
+    expect(ch?.models.find((m) => m.displayName === "MiniMax H3 · 768P")?.capability).toBe("video");
+    expect(ch?.models.find((m) => m.displayName === "agnes-image")?.capability).toBe("image");
   });
 
   it("默认选中的是后台标了 isDefault 的那个", async () => {
@@ -105,4 +114,19 @@ describe("就绪判断不再要 API Key", () => {
     expect(ch?.apiKey).toBe("");
     expect(useConfigStore.getState().isAiConfigReady(c, c.imageModel)).toBe(true);
   });
+});
+
+it("同名别名的候选仍按端点 ID 提交，改名不改变选择", async () => {
+  fetchModelsMock.mockResolvedValue({image:[
+    {endpointId:"a",name:"同一别名",isDefault:true,creditCost:8},
+    {endpointId:"b",name:"同一别名",isDefault:false,creditCost:12}
+  ],video:[]});
+  await loadServerModels();
+  expect(endpointIdFor("server::a")).toBe("a");
+  expect(endpointIdFor("server::b")).toBe("b");
+  fetchModelsMock.mockResolvedValue({image:[{endpointId:"b",name:"改后的别名",isDefault:true,creditCost:12}],video:[]});
+  await loadServerModels();
+  const c=useConfigStore.getState().config;
+  expect(endpointIdFor("server::b")).toBe("b");
+  expect(modelOptionLabel(c,"server::b")).toBe("改后的别名");
 });

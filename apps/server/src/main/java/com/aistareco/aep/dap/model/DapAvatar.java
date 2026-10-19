@@ -160,6 +160,10 @@ public class DapAvatar {
     @Column(length = 64)
     private String voiceName;
 
+    /** 默认声音资产的精确 id；更换默认不改写已生成任务的版本快照。 */
+    @Column(length = 32)
+    private String voiceId;
+
     /** 当前定妆主图 storage key。 */
     @Column(length = 512)
     private String imageKey;

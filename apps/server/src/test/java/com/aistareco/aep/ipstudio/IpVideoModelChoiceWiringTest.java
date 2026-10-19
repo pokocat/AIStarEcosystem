@@ -82,14 +82,14 @@ class IpVideoModelChoiceWiringTest {
     void theChosenModelIsValidatedPricedAndHandedToTheWorker() throws Exception {
         String ref = IpStudioFixtures.sourceKey(USER, "p.jpg");
         // 选中模型的报价（40 积分/秒 × 5 秒）；默认端点另有价格，用错了下面的 hold 金额就对不上
-        when(modelClient.resolveCreditCostOverride("ep-h3", 5)).thenReturn(200L);
-        when(modelClient.resolveCreditCostOverride(isNull(), anyInt())).thenReturn(999L);
+        when(modelClient.resolveCreditCostOverride("ep-h3", 5, "studio")).thenReturn(200L);
+        when(modelClient.resolveCreditCostOverride(isNull(), anyInt(), eq("studio"))).thenReturn(999L);
 
         svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("让它挥手", ref, 5, "9:16", "ep-h3"));
 
         // 时长按选中模型的区间校验（画布前端也是按它夹的时长）
-        verify(modelClient).validateRequest("ep-h3", 5);
-        verify(modelClient, never()).validateRequest(isNull(), anyInt());
+        verify(modelClient).validateRequest("ep-h3", 5, "studio");
+        verify(modelClient, never()).validateRequest(isNull(), anyInt(), eq("studio"));
         // 冻结的是选中模型的价
         verify(credits).hold(eq(USER), eq(200L), eq("material_video_job"), anyString(), anyString());
 
@@ -105,11 +105,11 @@ class IpVideoModelChoiceWiringTest {
 
     @Test
     void withoutAChoice_theDefaultEndpointIsUsedEverywhere() {
-        when(modelClient.resolveCreditCostOverride(isNull(), eq(5))).thenReturn(150L);
+        when(modelClient.resolveCreditCostOverride(isNull(), eq(5), eq("studio"))).thenReturn(150L);
 
         svc.generateVideo(USER, PID, new IpRunService.IpVideoRequest("让它挥手", null, 5, "9:16", null));
 
-        verify(modelClient).validateRequest(isNull(), eq(5));
+        verify(modelClient).validateRequest(isNull(), eq(5), eq("studio"));
         verify(credits).hold(eq(USER), eq(150L), eq("material_video_job"), anyString(), anyString());
         ArgumentCaptor<MaterialVideoJob> saved = ArgumentCaptor.forClass(MaterialVideoJob.class);
         verify(jobRepo).save(saved.capture());

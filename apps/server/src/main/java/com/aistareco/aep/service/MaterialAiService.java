@@ -207,7 +207,7 @@ public class MaterialAiService {
 
     private void ensureConfigured(AiModelPurpose purpose, ResolvedPrompt p) {
         String key = PromptService.promptKeyFor(purpose);
-        if (!invocation.hasEndpointFor(purpose)) {
+        if (!invocation.hasEndpointFor(purpose, "celebrity")) {
             log.warn("[material-ai] {} key={} 阻断：未绑定可用 AI 模型端点", purpose.wire(), key);
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "未为「" + purposeLabel(purpose) + "」绑定 AI 模型端点（promptKey=" + key + "）。请到 管理后台 → "
@@ -241,7 +241,7 @@ public class MaterialAiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             AiModelInvocationService.AiModelResponse resp;
             try {
-                resp = invocation.invokeChat(purpose, messages, options);
+                resp = invocation.invokeChat(purpose, messages, options, "celebrity");
             } catch (BusinessException be) {
                 String hint = (be.getStatus() == HttpStatus.UNAUTHORIZED || be.getStatus() == HttpStatus.FORBIDDEN)
                         ? "（API Key 可能无效或无权限，请检查 AI 模型配置）" : "";

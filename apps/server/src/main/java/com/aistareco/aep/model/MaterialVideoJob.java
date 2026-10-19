@@ -38,6 +38,10 @@ public class MaterialVideoJob {
     /** 归属人（AepUser.id）；仅本人可见 / 可查。 */
     @Column(name = "owner_user_id", length = 64)
     private String ownerUserId;
+    @Column(length=64) private String billingWalletId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     /**
      * 所属子产品（celebrity | drama）—— 本表被带货线与短剧线共用，必须按子产品分区，
@@ -99,6 +103,14 @@ public class MaterialVideoJob {
     @Column(name = "external_task_id", length = 256)
     private String externalTaskId;
 
+    /** Accepted task's request route; later endpoint edits must not redirect its poll. */
+    @Column(name = "upstream_base_url_snapshot", length = 2000)
+    private String upstreamBaseUrlSnapshot;
+
+    @Lob
+    @Column(name = "video_request_spec_snapshot_json", columnDefinition = "LONGTEXT")
+    private String videoRequestSpecSnapshotJson;
+
     /** 出片 URL（status=succeeded 时非空）。 */
     @Column(name = "video_url", length = 1024)
     private String videoUrl;
@@ -118,6 +130,10 @@ public class MaterialVideoJob {
 
     @Column(name = "error_message", length = 1024)
     private String errorMessage;
+
+    /** Stable platform error code; provider-specific codes are normalized before persistence. */
+    @Column(name = "error_code", length = 64)
+    private String errorCode;
 
     @Column(name = "provider_used", length = 128)
     private String providerUsed;

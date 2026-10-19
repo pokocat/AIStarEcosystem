@@ -38,7 +38,16 @@ import java.util.Locale;
  */
 @Service
 public class MaterialVideoWorker {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ErrorLogService errorLogs;
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+    private org.springframework.transaction.support.TransactionTemplate transactions;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void transactionManager(org.springframework.transaction.PlatformTransactionManager manager) {
+        transactions=new org.springframework.transaction.support.TransactionTemplate(manager);
+    }
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoWorker.class);
     private static final ObjectMapper OM = new ObjectMapper();
     static final String RECOVERY_CREDIT_REF_TYPE = "material_video_job_recovery";
@@ -94,21 +103,57 @@ public class MaterialVideoWorker {
             log.info("[material-video] job {} already terminal ({}), skip", jobId, job.getStatus());
             return;
         }
+        if(queue!=null) {
+            var admission=queue.acquire(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId,
+                queue.endpointFor(com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION,extractEndpointId(job.getVariantConfigJson())),false);
+            if(admission!=com.aistareco.aep.service.AiGenerationQueueService.Admission.READY)return;
+        }
+        boolean[] terminal={false};
         try {
-            runGeneration(job);
+            runGeneration(job,terminal);
         } catch (Throwable t) {
             log.error("[material-video] job {} failed", jobId, t);
             String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
-            markFailed(jobId, msg);
-            // 提交阶段（submit）抛错时积分已 hold 但 runGeneration 内部没机会 release；
-            // 这里兜底退款。releaseHold 幂等：若内部失败路径已退过，这次是 no-op。
-            releaseCredits(job, msg);
+            MaterialVideoJob current=jobRepo.findById(jobId).orElse(job);
+            if(t instanceof MaterialVideoModelClient.SubmissionUnknown || hasAcceptedTask(current)) {
+                // An HTTP timeout is not supplier failure. Keep the original money and capacity reserved.
+                markPending(jobId,t instanceof MaterialVideoModelClient.SubmissionUnknown
+                        ? "VIDEO_SUBMISSION_UNKNOWN" : "VIDEO_RECONCILIATION_PENDING");
+            } else {
+                markFailed(jobId, t instanceof BusinessException business ? business.getCode() : null, msg);
+                terminal[0]=true;
+            }
+        } finally {
+            if(queue!=null && terminal[0] && jobRepo.findById(jobId).map(j->isTerminal(j.getStatus())).orElse(true))
+                queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+        }
+    }
+
+    /** After a process loss, resume only a recorded upstream ID. Never submit a second task. */
+    @Async("materialVideoExecutor")
+    public void recoverQueuedGeneration(String jobId) {
+        var job=jobRepo.findById(jobId).orElse(null);
+        if(job==null)return;
+        if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())return; // unknown acceptance holds its slot for reconciliation
+        boolean[] terminal={false};
+        try {
+            if(isTerminal(job.getStatus())) {
+                String endpointId=queue==null?null:queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+                if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
+                var submit=modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),
+                        appCodeOf(job),job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson());
+                var poll=modelClient.poll(submit);terminal[0]=poll.succeeded()||poll.failed();
+            } else runGeneration(job,terminal);
+        } catch(Exception error){log.warn("[material-video] original task recovery pending job={}",jobId);}
+        finally {
+            if(queue!=null && terminal[0] && jobRepo.findById(jobId).map(j->isTerminal(j.getStatus())).orElse(true))
+                queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         }
     }
 
     /**
      * 对账恢复“上游已受理/成功、但本地轮询误判失败”的任务。只查询既有 externalTaskId，绝不重提。
-     * 产物先镜像 OSS，再通过独立幂等 hold 真扣，最后把本地任务改为 succeeded。
+     * 产物先镜像 OSS，再结算原冻结并在同一事务内改为 succeeded；只有旧个人任务兼容独立恢复冻结。
      */
     public MaterialVideoJob reconcileSucceeded(String jobId) {
         MaterialVideoJob job = jobRepo.findById(jobId)
@@ -120,9 +165,11 @@ public class MaterialVideoWorker {
                     "该任务没有上游 Job ID，无法对账恢复");
         }
 
-        String endpointId = extractEndpointId(job.getVariantConfigJson());
+        String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+        if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit = modelClient.resumeExistingTask(
-                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed());
+                job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(), appCodeOf(job),
+                job.getUpstreamBaseUrlSnapshot(), job.getVideoRequestSpecSnapshotJson());
         MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
         if (!poll.succeeded()) {
             throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM",
@@ -142,10 +189,15 @@ public class MaterialVideoWorker {
         // 调用方自己定的价（视频生成区按清晰度 / 参考图张数、短剧按自己的单价）按冻结价结算 ——
         // 拿端点单价 × 秒数重算会把 544p 收成 768p 的价、把多参考图的加价丢掉。
         // 其余任务沿用 v0.131：按端点当前每秒价重算，那一版是为了补收计费规则上线前按每条 30 冻结的老任务。
-        Long override = callerPriced(job) ? null : modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
+        Long override = job.getBillingWalletId()!=null || callerPriced(job) ? null : modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
         long expectedCredits = override != null ? override : Math.max(0L, job.getCreditsHeld());
+        CreditHold originalHold=creditService.findHold(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
+        boolean useOriginal=originalHold!=null && originalHold.getStatus()!=CreditHold.Status.RELEASED;
+        if(job.getEnterpriseId()!=null && !useOriginal && expectedCredits>0)
+            throw new BusinessException(HttpStatus.CONFLICT,"ENTERPRISE_VIDEO_RECOVERY_REQUIRES_REVIEW",
+                    "原企业冻结已退回，请核对原企业资金后处理，不能改用个人积分恢复");
         CreditHold recoveryHold = null;
-        if (billable(job.getOwnerUserId()) && expectedCredits > 0) {
+        if (!useOriginal && billable(job.getOwnerUserId()) && expectedCredits > 0) {
             recoveryHold = creditService.findHold(RECOVERY_CREDIT_REF_TYPE, jobId);
             if (recoveryHold == null) {
                 recoveryHold = creditService.hold(job.getOwnerUserId(), expectedCredits,
@@ -162,13 +214,18 @@ public class MaterialVideoWorker {
                     submit, poll.outputAssetId());
             storage.record(appCodeOf(job), job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
                     mirror.videoKey(), mirror.videoBytes());
-            if (recoveryHold != null && recoveryHold.getStatus() == CreditHold.Status.ACTIVE) {
-                creditService.commitHold(RECOVERY_CREDIT_REF_TYPE, jobId, expectedCredits,
-                        "视频生成成功对账 · " + safe(job.getName()));
-            }
-            job.setCreditsHeld(expectedCredits);
-            jobRepo.save(job);
-            markSucceeded(jobId, mirror.videoUrl(), mirror.thumbnailUrl(), poll.lastFrameUrl(), mirror.lastFrameKey());
+            final CreditHold recovery=recoveryHold;
+            inTransaction(()->{
+                var current=settlementJob(jobId).orElseThrow();
+                if("succeeded".equals(current.getStatus()))return;
+                if (recovery != null && recovery.getStatus() == CreditHold.Status.ACTIVE)
+                    creditService.commitHold(RECOVERY_CREDIT_REF_TYPE,jobId,expectedCredits,
+                            "视频生成成功对账 · " + safe(job.getName()));
+                current.setCreditsHeld(expectedCredits);
+                // Legacy recovery has a separate hold; modern jobs always settle their original reference.
+                succeedLocked(current,mirror.videoUrl(),mirror.thumbnailUrl(),poll.lastFrameUrl(),mirror.lastFrameKey(),useOriginal);
+            });
+            if(queue!=null)queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
             log.info("[material-video] reconciled succeeded job={} upstreamTask={} credits={}",
                     jobId, job.getExternalTaskId(), expectedCredits);
             return jobRepo.findById(jobId).orElse(job);
@@ -183,12 +240,21 @@ public class MaterialVideoWorker {
         }
     }
 
-    private void runGeneration(MaterialVideoJob job) throws InterruptedException {
+    private void runGeneration(MaterialVideoJob job,boolean[] terminal) throws InterruptedException {
         String jobId = job.getId();
         // v0.198 条件认领（queued → submitting，影响 1 行才继续）：与 MaterialVideoJobService.cancelQueued /
         // expireQueued 的条件更新互斥。以前是读出来再整行写回，排队中取消与 worker 接手撞在一起时，
         // 取消写的 failed 会被这里的 submitting 盖掉，任务照样交给厂商。
-        if (jobRepo.claimQueued(jobId, OffsetDateTime.now()) != 1) {
+        boolean accepted=job.getExternalTaskId()!=null&&!job.getExternalTaskId().isBlank();
+        // A previous submit without an ID remains uncertain even if the member later leaves.
+        // Only a fresh queued task may enter the dispatch authorization/claim path.
+        if(!accepted && !"queued".equals(job.getStatus()))return;
+        String endpointId = queue==null?extractEndpointId(job.getVariantConfigJson()):queue.pinnedEndpoint(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
+        if(endpointId==null)endpointId=extractEndpointId(job.getVariantConfigJson());
+        if(!accepted && enterpriseBilling!=null)
+            enterpriseBilling.requireDispatchAllowed(MaterialVideoJobService.CREDIT_REF_TYPE,jobId,endpointId);
+        if (!accepted && jobRepo.claimQueued(jobId, OffsetDateTime.now()) != 1) {
+            terminal[0]=true;
             log.info("[material-video] job {} 已不在排队（取消 / 超时 / 已被接手），不提交", jobId);
             return;
         }
@@ -196,16 +262,19 @@ public class MaterialVideoWorker {
         // 用量归属：短剧分镜（kind=drama-*）记到 drama，其余（素材运营 / 视频生成区 / 画布）记到 celebrity。
         String appCode = appCodeOf(job);
         // D-11：短剧线可在 variant_config 指定候选出片端点；带货素材线不写此键 → null → 默认端点（默认路径不变）。
-        String endpointId = extractEndpointId(job.getVariantConfigJson());
         // 输入规格只在这里解析一次（§8.0.1 ④）：画布出视频带首帧 key，视频生成区带完整的 H3 原生规格，
         // 带货 / 短剧线什么都不写 → EMPTY → 纯文生视频，行为不变。
         // v0.183 之前首帧根本没往下传，聚算那条链一律发 generationMode=t2v —— 用户接了参考图，
         // 出来的片跟参考图毫无关系。
         VideoGenSpec spec = VideoGenSpec.fromVariantConfigJson(job.getVariantConfigJson());
         MaterialVideoModelClient.SubmitResult submit =
-                modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
-                        job.getOwnerUserId(), appCode, endpointId, spec);
-        markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
+                accepted?modelClient.resumeExistingTask(job.getExternalTaskId(),endpointId,job.getProviderUsed(),job.getModelUsed(),appCode,
+                        job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson()):modelClient.submit(job.getPrompt(), job.getDurationSec(), job.getAspectRatio(),
+                        job.getOwnerUserId(), appCode, endpointId, spec,context->recordSubmissionRoute(jobId,context));
+        try {markGenerating(jobId, submit);}
+        catch(RuntimeException persistenceFailure) {
+            throw new MaterialVideoModelClient.SubmissionUnknown("accepted task="+submit.externalId()+"; persistence="+persistenceFailure.getClass().getSimpleName());
+        }
 
         long start = System.currentTimeMillis();
         long maxWaitMs = props.getMaxWaitSeconds() * 1000L;
@@ -215,7 +284,9 @@ public class MaterialVideoWorker {
             Thread.sleep(intervalMs);
             long elapsed = System.currentTimeMillis() - start;
 
+            if(queue!=null)queue.touch(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
             MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
+            terminal[0]=poll.succeeded()||poll.failed();
             if (poll.succeeded()) {
                 boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
                 boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();
@@ -223,7 +294,6 @@ public class MaterialVideoWorker {
                     // 任务号、上游状态只进日志；失败原因是给用户看的，不放内部字段（AGENTS.md §8 界面文案）
                     log.warn("[material-video] job {} upstream succeeded without output taskId={}", jobId, submit.taskId());
                     markFailed(jobId, "视频模型报告已完成，但没有交回成片");
-                    releaseCredits(job, "视频生成无成片产物");
                     return;
                 }
                 String videoUrl = poll.videoUrl();
@@ -234,7 +304,6 @@ public class MaterialVideoWorker {
                     log.error("[material-video] job {} protected output but OSS mirror disabled (uploadToCdn={} uploader={}) taskId={}",
                             jobId, props.isUploadToCdn(), cdnUploader != null, submit.taskId());
                     markFailed(jobId, "成片已经生成，但平台存储还没配置好，暂时取不回来，请联系运营");
-                    releaseCredits(job, "视频产物镜像未配置");
                     return;
                 }
                 // v0.198：要求必须存进我方存储的任务（画布只存 key，厂商外链交付不了）—— 镜像不了就不交付、不扣费（§8.0）。
@@ -244,7 +313,6 @@ public class MaterialVideoWorker {
                 if (requireMirror && (!props.isUploadToCdn() || cdnUploader == null)) {
                     log.warn("[material-video] job {} require_mirror 但没配置我方存储镜像，判失败并退回冻结", jobId);
                     markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但当前没配置我方存储，没能存下来");
-                    releaseCredits(job, "视频没存进我方存储");
                     return;
                 }
                 if (props.isUploadToCdn() && cdnUploader != null) {
@@ -269,7 +337,6 @@ public class MaterialVideoWorker {
                                     jobId, hasProtectedAsset ? "受保护产物" : "require_mirror", submit.taskId(), e.toString());
                             markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
                                     + truncate(e.getMessage(), 200) + "）");
-                            releaseCredits(job, "视频没存进我方存储");
                             return;
                         }
                         log.warn("[material-video] job {} CDN mirror failed (keeping provider URL): {}",
@@ -277,7 +344,6 @@ public class MaterialVideoWorker {
                     }
                 }
                 markSucceeded(jobId, videoUrl, thumbnailUrl, lastFrameUrl, lastFrameCdnKey);
-                commitCredits(job);
                 log.info("[material-video] job {} succeeded · url={}", jobId, videoUrl);
                 return;
             }
@@ -287,7 +353,6 @@ public class MaterialVideoWorker {
                 log.warn("[material-video] job {} failed upstream status={} taskId={} reason={}",
                         jobId, poll.rawStatus(), submit.taskId(), poll.failReason());
                 markFailed(jobId, reason.isEmpty() ? "视频生成失败，模型没有给出原因" : "视频生成失败" + reason);
-                releaseCredits(job, "视频生成失败");
                 return;
             }
             // 仍在生成：优先采用服务商返回的真实进度；没有则按 elapsed/maxWait 估算。
@@ -300,8 +365,8 @@ public class MaterialVideoWorker {
 
             if (elapsed >= maxWaitMs) {
                 log.warn("[material-video] job {} timed out after {}s taskId={}", jobId, props.getMaxWaitSeconds(), submit.taskId());
-                markFailed(jobId, "视频生成超时，等了 " + Math.max(1, (props.getMaxWaitSeconds() + 59) / 60) + " 分钟还没有出结果");
-                releaseCredits(job, "视频生成超时");
+                terminal[0]=false;
+                markPending(jobId,"VIDEO_RECONCILIATION_PENDING");
                 return;
             }
         }
@@ -449,65 +514,123 @@ public class MaterialVideoWorker {
         });
     }
 
-    private void markGenerating(String jobId, String taskId, String provider, String model) {
+    private void markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {
         jobRepo.findById(jobId).ifPresent(j -> {
             j.setStatus("generating");
             j.setProgress(Math.max(j.getProgress(), 10));
-            j.setExternalTaskId(taskId);
-            j.setProviderUsed(provider);
-            j.setModelUsed(model);
+            j.setExternalTaskId(submit.taskId());
+            j.setProviderUsed(submit.providerUsed());
+            j.setModelUsed(submit.modelUsed());
+            if(submit.baseUrlSnapshot()!=null)j.setUpstreamBaseUrlSnapshot(submit.baseUrlSnapshot());
+            if(submit.requestSpecSnapshotJson()!=null)j.setVideoRequestSpecSnapshotJson(submit.requestSpecSnapshotJson());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });
+    }
+
+    private void recordSubmissionRoute(String jobId,MaterialVideoModelClient.SubmitResult context) {
+        if(enterpriseBilling!=null)enterpriseBilling.requireEndpointAllowed(MaterialVideoJobService.CREDIT_REF_TYPE,jobId,context.endpointId());
+        MaterialVideoJob j=jobRepo.findById(jobId).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在"));
+        j.setProviderUsed(context.providerUsed());j.setModelUsed(context.modelUsed());
+        j.setUpstreamBaseUrlSnapshot(context.baseUrlSnapshot());j.setVideoRequestSpecSnapshotJson(context.requestSpecSnapshotJson());
+        try {
+            JsonNode value=j.getVariantConfigJson()==null?OM.createObjectNode():OM.readTree(j.getVariantConfigJson());
+            var variant=value.isObject()?(com.fasterxml.jackson.databind.node.ObjectNode)value:OM.createObjectNode();
+            variant.put("endpoint_id",context.endpointId());j.setVariantConfigJson(OM.writeValueAsString(variant));
+        }catch(java.io.IOException invalid){throw BusinessException.badRequest("VIDEO_SUBMISSION_ROUTE_INVALID","视频提交路由无法保存，请重新检查任务");}
+        j.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(j);
     }
 
     private void markSucceeded(String jobId, String videoUrl, String thumb, String lastFrameUrl, String lastFrameCdnKey) {
-        jobRepo.findById(jobId).ifPresent(j -> {
-            j.setStatus("succeeded");
-            j.setProgress(100);
-            j.setVideoUrl(videoUrl);
-            if (thumb != null) j.setThumbnailUrl(thumb);
-            // v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考，链式承接。
-            if (lastFrameUrl != null && !lastFrameUrl.isBlank()) j.setLastFrameUrl(lastFrameUrl);
-            // C-1：末帧 CDN 镜像真值（key，不过期）；镜像失败为 null → 出 wire fallback lastFrameUrl。
-            if (lastFrameCdnKey != null && !lastFrameCdnKey.isBlank()) j.setLastFrameCdnKey(lastFrameCdnKey);
-            j.setErrorMessage(null);
-            j.setCompletedAt(OffsetDateTime.now());
-            j.setUpdatedAt(OffsetDateTime.now());
-            jobRepo.save(j);
-        });
+        inTransaction(()->succeed(jobId,videoUrl,thumb,lastFrameUrl,lastFrameCdnKey,true));
+    }
+
+    private void succeed(String jobId,String videoUrl,String thumb,String lastFrameUrl,String lastFrameCdnKey,boolean settleOriginal) {
+        settlementJob(jobId).ifPresent(j -> succeedLocked(j,videoUrl,thumb,lastFrameUrl,lastFrameCdnKey,settleOriginal));
+    }
+
+    private void succeedLocked(MaterialVideoJob j,String videoUrl,String thumb,String lastFrameUrl,String lastFrameCdnKey,boolean settleOriginal) {
+        if("succeeded".equals(j.getStatus()))return;
+        if(settleOriginal)commitCredits(j);
+        if(enterpriseBilling!=null)enterpriseBilling.complete(MaterialVideoJobService.CREDIT_REF_TYPE,j.getId());
+        j.setStatus("succeeded");
+        j.setProgress(100);
+        j.setVideoUrl(videoUrl);
+        if (thumb != null) j.setThumbnailUrl(thumb);
+        // v0.97 P2：成片真实末帧（seedance return_last_frame）→ 下一镜首帧参考，链式承接。
+        if (lastFrameUrl != null && !lastFrameUrl.isBlank()) j.setLastFrameUrl(lastFrameUrl);
+        // C-1：末帧 CDN 镜像真值（key，不过期）；镜像失败为 null → 出 wire fallback lastFrameUrl。
+        if (lastFrameCdnKey != null && !lastFrameCdnKey.isBlank()) j.setLastFrameCdnKey(lastFrameCdnKey);
+        j.setErrorMessage(null);
+        j.setErrorCode(null);
+        j.setCompletedAt(OffsetDateTime.now());
+        j.setUpdatedAt(OffsetDateTime.now());
+        jobRepo.save(j);
     }
 
     private void markFailed(String jobId, String message) {
-        jobRepo.findById(jobId).ifPresent(j -> {
+        markFailed(jobId, null, message);
+    }
+
+    private void markFailed(String jobId, String code, String message) {
+        inTransaction(()->settlementJob(jobId).ifPresent(j -> {
+            if(isTerminal(j.getStatus()))return;
+            releaseCredits(j,message);
+            if(enterpriseBilling!=null)enterpriseBilling.complete(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
             j.setStatus("failed");
-            j.setErrorMessage(truncate(message, 1000));
+            j.setErrorCode(code);
+            String visible = truncate(message, 900);
+            if (MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()) && errorLogs != null) {
+                String logId = errorLogs.recordTask(new IllegalStateException(message), code == null ? "STUDIO_VIDEO_FAILED" : code, j.getOwnerUserId(), j.getId());
+                if (logId != null) visible += " · 追查号 " + logId;
+            }
+            j.setErrorMessage(visible);
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
-        });
+        }));
+    }
+
+    private void markPending(String jobId,String code) {
+        inTransaction(()->jobRepo.findById(jobId).ifPresent(j->{
+            if(isTerminal(j.getStatus()))return;
+            j.setErrorCode(code);j.setErrorMessage("正在核对生成结果，请稍后查看");
+            j.setUpdatedAt(OffsetDateTime.now());jobRepo.save(j);
+        }));
+    }
+
+    private static boolean hasAcceptedTask(MaterialVideoJob job) {
+        return job.getExternalTaskId()!=null&&!job.getExternalTaskId().isBlank();
+    }
+
+    private void inTransaction(Runnable action) {
+        if(transactions!=null)transactions.executeWithoutResult(status->action.run());
+        else action.run(); // constructor-based unit tests; Spring always injects a transaction manager
+    }
+
+    private java.util.Optional<MaterialVideoJob> settlementJob(String jobId) {
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
+        var found=transactions==null?jobRepo.findById(jobId):jobRepo.lockById(jobId);
+        found.ifPresent(j->{if(entityManager!=null)entityManager.refresh(j);});
+        return found;
     }
 
     // ── 积分 ────────────────────────────────────────────────────────────────
 
     private void commitCredits(MaterialVideoJob job) {
         if (job.getCreditsHeld() <= 0) return;
-        try {
-            creditService.commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
-                    job.getCreditsHeld(), creditLabelOf(job) + " · " + safe(job.getName()));
-        } catch (Exception e) {
-            log.warn("[material-video] commit credits failed job={} err={}", job.getId(), e.getMessage());
-        }
+        CreditHold hold=creditService.findHold(MaterialVideoJobService.CREDIT_REF_TYPE,job.getId());
+        if(hold!=null && hold.getStatus()==CreditHold.Status.COMMITTED)return;
+        if(hold!=null && hold.getStatus()==CreditHold.Status.RELEASED)
+            throw new BusinessException(HttpStatus.CONFLICT,"VIDEO_ORIGINAL_HOLD_RELEASED","原任务冻结已释放，请从原任务对账恢复");
+        creditService.commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
+                job.getCreditsHeld(), creditLabelOf(job) + " · " + safe(job.getName()));
     }
 
     private void releaseCredits(MaterialVideoJob job, String reason) {
         if (job.getCreditsHeld() <= 0) return;
-        try {
-            creditService.releaseHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
-                    creditLabelOf(job) + "失败 · 退回积分 · " + truncate(reason, 200));
-        } catch (Exception e) {
-            log.warn("[material-video] release credits failed job={} err={}", job.getId(), e.getMessage());
-        }
+        creditService.releaseHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
+                creditLabelOf(job) + "失败 · 退回积分 · " + truncate(reason, 200));
     }
 
     /**
@@ -529,7 +652,7 @@ public class MaterialVideoWorker {
 
     /** 用量归属子应用：短剧（kind=drama-*）记 drama，其余记 celebrity。 */
     static String appCodeOf(MaterialVideoJob job) {
-        return job.getKind() != null && job.getKind().startsWith("drama") ? "drama" : "celebrity";
+        return MaterialVideoJobService.modelAppCode(job.getApp());
     }
 
     /** 存储用量里的分类名：短剧「分镜视频」、视频生成区（kind=studio-*）「视频生成」、其余「素材视频」。 */

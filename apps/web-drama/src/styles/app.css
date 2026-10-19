@@ -553,3 +553,6 @@ img, video, canvas, svg { max-width: 100%; }
   .landing-reel-card { height: 200px; }
   .landing-reel-title { font-size: 15px; }
 }
+
+/* Shared form fields deliberately remove the browser outline; retain a visible inset focus. */
+.drama-form-control:focus-visible { box-shadow:inset 0 0 0 2px var(--accent); }

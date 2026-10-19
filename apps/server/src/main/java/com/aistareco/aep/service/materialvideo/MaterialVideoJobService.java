@@ -38,6 +38,11 @@ import java.util.UUID;
  */
 @Service
 public class MaterialVideoJobService {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.repository.EnterpriseBillingAuthorizationRepository enterpriseAuthorizations;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AuditService audits;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
 
     private static final Logger log = LoggerFactory.getLogger(MaterialVideoJobService.class);
 
@@ -60,7 +65,7 @@ public class MaterialVideoJobService {
     public static final String APP_IPSTUDIO = "ipstudio";
     /**
      * 明星带货工作台「AI 创作 → 视频生成」（v0.199，docs/video-studio-plan.md）：
-     * 把 MiniMax H3 的四种原生模式原样开放。只有这个分区的任务可以带原生规格（见 {@link #requireInputsAllowedIn}）。
+     * 把 MiniMax H3 的四种原生模式原样开放。v0.208 的 Studio 也复用此合同，两个分区可带原生规格（见 {@link #requireInputsAllowedIn}）。
      */
     public static final String APP_VIDEO_STUDIO = "video-studio";
 
@@ -73,6 +78,7 @@ public class MaterialVideoJobService {
      * 参考图张数、短剧按自己的单价）。管理端对账恢复据此沿用冻结价，不拿端点单价 × 秒数重算。
      */
     static final String PAYLOAD_CALLER_PRICED = "caller_priced";
+    private static final String PAYLOAD_NOT_ACCEPTED_PROOF = "_not_accepted_proof";
 
     /** {@link #cancelQueued} 写进 errorMessage 的固定文案；调用方（画布同步）据此认出「是取消，不是失败」。 */
     public static final String CANCELED_MESSAGE = "已取消";
@@ -116,7 +122,7 @@ public class MaterialVideoJobService {
     @Transactional(readOnly = true)
     public MaterialVideoModelsDto listModels() {
         List<MaterialVideoModelsDto.VideoModelOptionDto> out = new ArrayList<>();
-        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)) {
+        for (AiModelInvocationService.ResolvedEndpoint r : invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity")) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
             // 缺 baseUrl / 有效 apiKey 的端点提交时必吃 VIDEO_NOT_CONFIGURED —— 不作为可用模型出 wire，
             // 否则前端会放开报价与提交、用户走到最后一步才失败。
@@ -124,7 +130,7 @@ public class MaterialVideoJobService {
             out.add(toModelOption(r.endpoint(), r.candidate(), r.isDefault()));
         }
         if (out.isEmpty()) {
-            invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)
+            invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "celebrity")
                     .filter(modelClient::isEndpointReady)
                     .ifPresent(ep -> out.add(toModelOption(ep, null, true)));
         }
@@ -152,7 +158,7 @@ public class MaterialVideoJobService {
     /** 默认视频端点的有效时长区间；视频能力未配置时返回 null（起稿等旁路消费方自行回落默认值）。 */
     @Transactional(readOnly = true)
     public MaterialVideoModelClient.DurationBounds defaultDurationBounds() {
-        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null)
+        return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "celebrity")
                 .map(r -> MaterialVideoModelClient.intersect(
                         modelClient.protocolDurationBounds(r.endpoint()), r.candidate()))
                 .orElse(null);
@@ -164,12 +170,30 @@ public class MaterialVideoJobService {
         modelClient.validateRequest(endpointId, durationSec);
     }
 
+    public void validateRequest(String endpointId, int durationSec, String appCode) {
+        modelClient.validateRequest(endpointId, durationSec, appCode);
+    }
+
+    /** Free canvas/template quote; shares the submit price calculation, without creating a job. */
+    public long quote(String endpointId, int durationSec) {
+        return quote(endpointId, durationSec, "celebrity");
+    }
+
+    public long quote(String endpointId, int durationSec, String appCode) {
+        validateRequest(endpointId, durationSec, appCode);
+        return itemUnitCost(om.createObjectNode(), endpointId, durationSec, appCode);
+    }
+
     /**
      * 所选端点收首帧是不是只认「我方存储 key」（聚算媒体协议，见 {@link MaterialVideoModelClient#firstFrameNeedsStorageKey}）。
      * 是 → 调用方必须把首帧的 key 写进 {@code variant_config.first_frame_key}，否则首帧到不了模型。
      */
     public boolean firstFrameNeedsStorageKey(String endpointId) {
         return modelClient.firstFrameNeedsStorageKey(endpointId);
+    }
+
+    public boolean firstFrameNeedsStorageKey(String endpointId, String appCode) {
+        return modelClient.firstFrameNeedsStorageKey(endpointId, appCode);
     }
 
     /**
@@ -184,13 +208,22 @@ public class MaterialVideoJobService {
      */
     @Transactional
     public List<JsonNode> submit(JsonNode body, String userId, String app) {
+        return submit(body,userId,app,null);
+    }
+
+    /** Studio chooses the payer explicitly. Other products cannot spend an enterprise account. */
+    @Transactional
+    public List<JsonNode> submit(JsonNode body, String userId, String app,
+            com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+        if (billing != null && !"personal".equals(billing.mode()) && !APP_IPSTUDIO.equals(normalizeApp(app)))
+            throw BusinessException.badRequest("ENTERPRISE_BILLING_SCOPE_INVALID", "企业积分仅用于 Studio 创作");
         List<JsonNode> items = new ArrayList<>();
         JsonNode arr = body != null ? body.get("items") : null;
         if (arr != null && arr.isArray()) arr.forEach(items::add);
         if (items.isEmpty()) return List.of();
 
         // 失败快：未配 token 直接抛明确错误（不静默兜底，对齐 MaterialAiService）。
-        modelClient.ensureConfigured();
+        modelClient.ensureConfigured(modelAppCode(app));
 
         boolean billable = billable(userId);
 
@@ -198,21 +231,46 @@ public class MaterialVideoJobService {
         // PER_SECOND 展开与 VIDEO_PRICE_OVERFLOW）——任何 hold 之前完成全部校验与报价，
         // 批内任一非法 → 整批无任务、无冻结、不提前占钱包锁（@Transactional 回滚只是最后防线）。
         // 单价优先级：内部调用方 item.credit_cost（如短剧独立定价）> 候选模型 override > 带货线默认价。
-        record PlannedItem(JsonNode item, long unit) {}
+        record PlannedItem(JsonNode item, long unit, String endpointId) {}
         List<PlannedItem> planned = new ArrayList<>();
         for (JsonNode item : items) {
             requireInputsAllowedIn(normalizeApp(app), item == null ? null : item.get("variant_config"));
             String endpointId = endpointIdOf(item);
+            if (billing != null && "enterprise".equals(billing.mode()) && (endpointId == null || endpointId.isBlank()))
+                endpointId = modelClient.resolvedEndpointId(endpointId, modelAppCode(app));
             int durationSec = item.path("duration_sec").asInt(0);
-            modelClient.validateRequest(endpointId, durationSec);
-            planned.add(new PlannedItem(item, itemUnitCost(item, endpointId, durationSec)));
+            modelClient.validateRequest(endpointId, durationSec, modelAppCode(app));
+            modelClient.validateConfiguredLegacySubmission(endpointId, modelAppCode(app),
+                    VideoGenSpec.fromVariantConfig(item.path("variant_config")), text(item, "aspect_ratio"));
+            long unit=itemUnitCost(item, endpointId, durationSec, modelAppCode(app));
+            if(APP_IPSTUDIO.equals(normalizeApp(app)) && item.hasNonNull("max_credit_cost")) {
+                com.aistareco.aep.ipstudio.service.IpRunService.requireApprovedCost(item.path("max_credit_cost").asLong(-1),unit);
+            }
+            planned.add(new PlannedItem(item, unit, endpointId));
         }
 
         // 第二阶段：逐 item 落库 + hold（金额 = 第一阶段算好的 unit，报价与冻结同源）。
         List<MaterialVideoJob> created = new ArrayList<>();
         for (PlannedItem p : planned) {
             MaterialVideoJob job = buildJob(p.item(), userId, app);
-            if (billable && p.unit() > 0) {
+            if (billable && APP_IPSTUDIO.equals(normalizeApp(app)) && enterpriseBilling != null) {
+                String label = orDefault(text(p.item(), PAYLOAD_CREDIT_LABEL), DEFAULT_CREDIT_LABEL);
+                var account = enterpriseBilling.reserve(userId,billing,CREDIT_REF_TYPE,job.getId(),p.endpointId(),p.unit(),
+                        label + " · " + safe(job.getName(), "视频"));
+                job.setBillingWalletId(account.walletId());
+                job.setEnterpriseId(account.enterpriseId());
+                job.setMembershipId(account.membershipId());
+                job.setBillingAuthorizationId(account.billingAuthorizationId());
+                job.setCreditsHeld(p.unit());
+                // Pin the resolved endpoint with the authorization; a later default change cannot redirect it.
+                if(p.endpointId()!=null) {
+                    ObjectNode spec = p.item().path("variant_config").isObject()
+                            ? ((ObjectNode)p.item().path("variant_config")).deepCopy() : om.createObjectNode();
+                    spec.put("endpoint_id",p.endpointId());job.setVariantConfigJson(write(spec));
+                }
+            } else if (billing != null && "enterprise".equals(billing.mode())) {
+                throw BusinessException.badRequest("ENTERPRISE_BILLING_UNAVAILABLE", "企业积分当前不可使用");
+            } else if (billable && p.unit() > 0) {
                 // 余额不足 → CreditService 抛 402（PAYMENT_REQUIRED），整批回滚（同事务）。
                 String label = orDefault(text(p.item(), PAYLOAD_CREDIT_LABEL), DEFAULT_CREDIT_LABEL);
                 creditService.hold(userId, p.unit(), CREDIT_REF_TYPE, job.getId(),
@@ -229,16 +287,24 @@ public class MaterialVideoJobService {
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() {
-                    ids.forEach(worker::generateAsync);
+                    ids.forEach(MaterialVideoJobService.this::dispatch);
                 }
             });
         } else {
-            ids.forEach(worker::generateAsync);
+            ids.forEach(this::dispatch);
         }
 
         log.info("[material-video] submitted {} job(s) user={} app={} billable={}",
                 created.size(), userId, normalizeApp(app), billable);
         return created.stream().map(this::toCard).toList();
+    }
+
+    private void dispatch(String id) {
+        try {worker.generateAsync(id);}
+        catch(RuntimeException unavailable) {
+            // The committed job is the durable request. The queue dispatcher discovers it after restart/pool rejection.
+            log.warn("[material-video] committed job dispatch deferred job={} reason={}",id,unavailable.getClass().getSimpleName());
+        }
     }
 
     // ── 查询 ─────────────────────────────────────────────────────────────────
@@ -268,21 +334,38 @@ public class MaterialVideoJobService {
         return failQueued(jobId, userId, CANCELED_MESSAGE, "视频生成已取消 · 退回积分");
     }
 
+    /** Internal lifecycle hook: resource ownership stays with the original creator. */
+    @Transactional
+    public boolean cancelBeforeDispatch(String jobId) {
+        MaterialVideoJob job=jobRepo.findById(jobId).orElse(null);
+        return job!=null && job.getEnterpriseId()!=null && cancelQueued(jobId,job.getOwnerUserId());
+    }
+
     /**
      * 排队太久一直没被接手（典型：进程重启，内存里的派发队列丢了）→ 置 failed 并退回冻结。条件同 {@link #cancelQueued}：
      * 只动从没交给厂商的任务（已有 externalTaskId 的只能走管理端对账，绝不在这里判失败或重提）。
      */
     @Transactional
     public boolean expireQueued(String jobId, String userId, String message) {
+        if(generationQueue!=null && generationQueue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId))return false;
         return failQueued(jobId, userId, message, "视频排队超时 · 退回积分");
     }
 
     private boolean failQueued(String jobId, String userId, String message, String releaseReason) {
         if (jobId == null || userId == null) return false;
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(CREDIT_REF_TYPE,jobId);
         if (jobRepo.failIfQueued(jobId, userId, message, OffsetDateTime.now()) != 1) return false;
         MaterialVideoJob job = jobRepo.findById(jobId).orElse(null);
         if (job != null && job.getCreditsHeld() > 0) {
             creditService.releaseHold(CREDIT_REF_TYPE, jobId, releaseReason + " · " + safe(job.getName(), "视频"));
+        }
+        if(job!=null && enterpriseBilling!=null)enterpriseBilling.complete(CREDIT_REF_TYPE,jobId);
+        if(generationQueue!=null) {
+            if(TransactionSynchronizationManager.isSynchronizationActive()) {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override public void afterCommit(){generationQueue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);}
+                });
+            } else generationQueue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         }
         log.info("[material-video] queued job failed before submit job={} user={} reason={}", jobId, userId, message);
         return true;
@@ -291,6 +374,99 @@ public class MaterialVideoJobService {
     /** 管理端按 externalTaskId 对账恢复误判失败任务；不重提上游。 */
     public JsonNode reconcileSucceeded(String id) {
         return toCard(worker.reconcileSucceeded(id));
+    }
+
+    @Transactional(readOnly=true)
+    public JsonNode adminGet(String id) {
+        return toCard(jobRepo.findById(id).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在")));
+    }
+
+    /** Evidence identifies the original supplier job or confirms it was never accepted. The original payer is immutable. */
+    @Transactional
+    public JsonNode bindOriginalSupplierTask(String id,com.aistareco.aep.dto.MaterialVideoReconcileRequest request,String actorId) {
+        if(actorId==null||actorId.isBlank())throw new BusinessException(org.springframework.http.HttpStatus.FORBIDDEN,"VIDEO_RECOVERY_ACTOR_REQUIRED","需要平台运营人员处理");
+        String external=request==null?null:request.externalTaskId()==null?null:request.externalTaskId().trim();
+        String evidence=request==null?null:request.evidence()==null?null:request.evidence().trim();
+        boolean notAccepted=request!=null&&Boolean.TRUE.equals(request.confirmedNotAccepted());
+        if(evidence==null||evidence.length()<8||evidence.length()>2000 ||
+                (notAccepted?external!=null&&!external.isBlank():external==null||!external.matches("[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}")))
+            throw BusinessException.badRequest("VIDEO_RECOVERY_EVIDENCE_REQUIRED",notAccepted
+                    ?"请确认原请求未受理、没有在途原任务，并填写 8 至 2000 字的核对依据"
+                    :"请填写原厂商任务号和 8 至 2000 字的核对依据");
+        enterpriseBilling.lockForSettlement(CREDIT_REF_TYPE,id);
+        MaterialVideoJob job=jobRepo.lockById(id).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在"));
+        entityManager.refresh(job);
+        if(notAccepted)return confirmNotAccepted(job,evidence,actorId);
+        if(job.getExternalTaskId()!=null&&!job.getExternalTaskId().isBlank()) {
+            if(!external.equals(job.getExternalTaskId()))throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_ORIGINAL_TASK_IMMUTABLE","原厂商任务号已经固定，不能替换");
+            return toCard(job); // Exact replay preserves the original evidence and never repeats a charge or submit.
+        }
+        if(!"submitting".equals(job.getStatus())||!"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_JOB_NOT_UNCERTAIN","仅受理结果待核对的视频任务可以补录原任务号");
+        if(job.getCreditsHeld()>0) {
+            var hold=creditService.findHold(CREDIT_REF_TYPE,id);
+            if(hold==null||hold.getStatus()!=com.aistareco.aep.model.CreditHold.Status.ACTIVE)
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_ORIGINAL_HOLD_RELEASED","原任务冻结已释放，请先核对原付款账户");
+        }
+        if(job.getUpstreamBaseUrlSnapshot()==null||job.getModelUsed()==null)
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_SUBMISSION_ROUTE_MISSING","原提交路由缺失，需先核对原厂商端点，不能猜测查询");
+        ObjectNode detail=om.createObjectNode().put("externalTaskId",external).put("evidence",evidence);
+        audits.record(actorId,null,"admin.video.bind_original_task","material_video_job",id,null,null,
+                com.aistareco.aep.model.AuditLog.AuditResult.SUCCESS,write(detail));
+        job.setExternalTaskId(external);job.setStatus("generating");job.setErrorCode("VIDEO_RECONCILIATION_PENDING");
+        job.setErrorMessage("正在核对生成结果，请稍后查看");job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit(){
+                try {worker.recoverQueuedGeneration(id);}
+                catch(RuntimeException unavailable){log.warn("[material-video] original task recovery deferred job={} reason={}",id,unavailable.getClass().getSimpleName());}
+            }
+        });
+        return toCard(job);
+    }
+
+    private JsonNode confirmNotAccepted(MaterialVideoJob job,String evidence,String actorId) {
+        if(job.getExternalTaskId()!=null&&!job.getExternalTaskId().isBlank())
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_ORIGINAL_TASK_IMMUTABLE","已有原厂商任务号，必须查询原任务，不能按未受理关闭");
+        ObjectNode payload;
+        try {
+            JsonNode parsed=job.getPayloadJson()==null?om.createObjectNode():om.readTree(job.getPayloadJson());
+            payload=parsed.isObject()?(ObjectNode)parsed:om.createObjectNode();
+        }catch(java.io.IOException invalid){throw BusinessException.badRequest("VIDEO_SUBMISSION_ROUTE_INVALID","原任务记录无法读取，请先核对原任务");}
+        String proof;
+        try {proof=java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(evidence.getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
+        catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
+        if("failed".equals(job.getStatus())&&"VIDEO_CONFIRMED_NOT_ACCEPTED".equals(job.getErrorCode())) {
+            if(!proof.equals(payload.path(PAYLOAD_NOT_ACCEPTED_PROOF).asText()))
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_RECOVERY_EVIDENCE_IMMUTABLE","任务已按原核对依据关闭，不能替换依据");
+            return toCard(job);
+        }
+        if(!"submitting".equals(job.getStatus())||!"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))
+            throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_JOB_NOT_UNCERTAIN","仅受理结果待核对的视频任务可以按未受理关闭");
+        var hold=creditService.findHold(CREDIT_REF_TYPE,job.getId());
+        if(job.getCreditsHeld()>0) {
+            if(hold==null||hold.getStatus()!=com.aistareco.aep.model.CreditHold.Status.ACTIVE)
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_ORIGINAL_HOLD_RELEASED","原任务冻结已结算，请先核对原付款账户");
+        } else {
+            var authorization=enterpriseAuthorizations.findByReferenceTypeAndReferenceId(CREDIT_REF_TYPE,job.getId()).orElse(null);
+            if(authorization==null||authorization.getTerminalAt()!=null||authorization.getAmount()!=0||
+                    !authorization.getId().equals(job.getBillingAuthorizationId()))
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"VIDEO_ORIGINAL_AUTHORIZATION_NOT_ACTIVE","原任务已无在途授权，请先核对原任务");
+        }
+        ObjectNode detail=om.createObjectNode().put("confirmedNotAccepted",true).put("evidence",evidence)
+                .put("referenceType",CREDIT_REF_TYPE).put("referenceId",job.getId())
+                .put("walletId",hold==null?job.getBillingWalletId():hold.getWalletId())
+                .put("enterpriseId",job.getEnterpriseId()).put("membershipId",job.getMembershipId());
+        audits.record(actorId,null,"admin.video.confirm_not_accepted","material_video_job",job.getId(),null,null,
+                com.aistareco.aep.model.AuditLog.AuditResult.SUCCESS,write(detail));
+        if(job.getCreditsHeld()>0)creditService.releaseHold(CREDIT_REF_TYPE,job.getId(),"供应商已确认未受理 · 退回原付款账户");
+        enterpriseBilling.complete(CREDIT_REF_TYPE,job.getId());
+        payload.put(PAYLOAD_NOT_ACCEPTED_PROOF,proof);job.setPayloadJson(write(payload));
+        job.setStatus("failed");job.setErrorCode("VIDEO_CONFIRMED_NOT_ACCEPTED");job.setErrorMessage("供应商已确认未受理，任务已关闭");
+        job.setCompletedAt(OffsetDateTime.now());job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
+        if(generationQueue!=null)TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit(){generationQueue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,job.getId());}
+        });
+        return toCard(job);
     }
 
     /** 列出当前用户在指定子产品下的生成任务（可按 scriptId / productId 过滤），新→旧。 */
@@ -316,12 +492,21 @@ public class MaterialVideoJobService {
         return app != null && !app.isBlank() ? app : APP_CELEBRITY;
     }
 
+    static String modelAppCode(String app) {
+        return switch (normalizeApp(app)) {
+            case APP_IPSTUDIO -> "studio";
+            case APP_DRAMA -> "drama";
+            case APP_CELEBRITY, APP_VIDEO_STUDIO -> "celebrity";
+            default -> throw BusinessException.badRequest("VIDEO_APP_INVALID", "视频任务所属应用无效");
+        };
+    }
+
     /**
      * 一个分区的任务能在 variant_config 里带哪些生成输入（worker 会把它们原样交给厂商）。
      *
      * <ul>
-     *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只属于视频生成区：只有那里的计价
-     *       覆盖得到清晰度与参考图张数，也只有那里在提交前校验过每个 key 的归属。</li>
+     *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只允许视频生成区与 Studio：两处均复用原生合同计价，
+     *       在提交前校验规格、媒体和每个 key 的归属；variant_config 均由服务端组装。</li>
      *   <li>首帧参考图 key 只许三个分区带：画布（提交前过 {@code requireOwnedAssetKey}）、视频生成区，和短剧 ——
      *       短剧的 variant_config 全部由服务端逐字段组装（{@code DramaRenderService} / 短剧画布），首帧 key 只在
      *       确认属于本人之后才写进去（2026-09-30 首帧热修：{@code DramaReferenceAssembler.requireOwnedFrameKey}）。</li>
@@ -331,7 +516,9 @@ public class MaterialVideoJobService {
      */
     static void requireInputsAllowedIn(String app, JsonNode variantConfig) {
         VideoGenSpec spec = VideoGenSpec.fromVariantConfig(variantConfig);
-        if (!APP_VIDEO_STUDIO.equals(app) && spec.hasNativeOptions()) {
+        // ipstudio's typed request is validated and priced by StudioVideoService before writing this spec.
+        // Celebrity still forwards raw variant_config and must remain excluded.
+        if (!APP_VIDEO_STUDIO.equals(app) && !APP_IPSTUDIO.equals(app) && spec.hasNativeOptions()) {
             throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "这里不支持指定生成模式、清晰度、尾帧或参考素材");
         }
         if (spec.firstFrameKey() != null && (app == null || !FIRST_FRAME_KEY_APPS.contains(app))) {  // Set.of 不收 null
@@ -410,6 +597,7 @@ public class MaterialVideoJobService {
         // 账本文案与「调用方定价」标记都是给 worker / 对账用的内部字段，不属于 MaterialVideo 契约。
         card.remove(PAYLOAD_CREDIT_LABEL);
         card.remove(PAYLOAD_CALLER_PRICED);
+        card.remove(PAYLOAD_NOT_ACCEPTED_PROOF);
         card.put("id", job.getId());
         card.put("script_id", nz(job.getScriptId()));
         if (job.getProductId() != null) card.put("product_id", job.getProductId());
@@ -430,7 +618,9 @@ public class MaterialVideoJobService {
         card.putNull("render_cost_sec");
         card.put("model", orDefault(job.getModelUsed(), "ai-video"));
         card.put("progress_pct", job.getProgress());
-        card.put("stage", stageLabel(job.getStatus()));
+        boolean awaitingReconciliation="VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())
+                || "VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
+        card.put("stage", awaitingReconciliation?"正在核对生成结果":stageLabel(job.getStatus()));
         // 资产 URL 出 wire 经 signer（OSS 域才签，local /cdn 相对路径不匹配 base → 原样返回，dev 零影响）。
         // C-1 范围选择：last_frame 走 cdnKey 真值派生（§4.7.4，不过期）+ fallback 旧 lastFrameUrl；
         // video/thumbnail 只做 maybeSign 兜底（顺手偿还 §4.7.6 URL 时效欠债，不做完整 URL→key 迁移）。
@@ -448,6 +638,7 @@ public class MaterialVideoJobService {
             lastFrame = signer.maybeSign(job.getLastFrameUrl());
         }
         if (lastFrame != null) card.put("last_frame_url", lastFrame);
+        if (job.getErrorCode() != null) card.put("error_code", job.getErrorCode());
         if (job.getErrorMessage() != null) card.put("error_message", job.getErrorMessage());
         if (job.getExternalTaskId() != null) card.put("external_task_id", job.getExternalTaskId());
         return card;
@@ -476,10 +667,10 @@ public class MaterialVideoJobService {
     }
 
     /** 单条视频单价：调用方在 item 里显式传 credit_cost（≥0）则用它（app 维度独立定价，解耦本带货线），否则回落带货线定价。 */
-    private long itemUnitCost(JsonNode item, String endpointId, int durationSec) {
+    private long itemUnitCost(JsonNode item, String endpointId, int durationSec, String appCode) {
         long override = item.path("credit_cost").asLong(-1L);
         if (override >= 0) return override;
-        Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec);
+        Long modelOverride = modelClient.resolveCreditCostOverride(endpointId, durationSec, appCode);
         if (modelOverride != null) return modelOverride;
         return defaultUnitCost();
     }

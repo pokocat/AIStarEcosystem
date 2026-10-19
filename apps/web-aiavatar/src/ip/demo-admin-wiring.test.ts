@@ -13,7 +13,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
 
 const api = read("src/ip/api/ip-studio.ts");
 const page = read("src/app/projects/demos/page.tsx");
-const list = read("src/app/projects/page.tsx");
+const list = read("src/ip/studio-template-market.tsx");
 const host = read("src/ip/canvas-host.tsx");
 
 describe("运营后台必须真的接到那四个端点", () => {
@@ -43,10 +43,12 @@ describe("运营后台必须真的接到那四个端点", () => {
     expect(page).toMatch(/canDelete\s*=\s*isSuperAdminRole/);
   });
 
-  it("发布弹窗给得出「覆盖已有」—— 否则同一张画布存两次就是两张一样的卡", () => {
-    expect(host).toContain("demoTarget");
-    expect(host).toContain("listDemosForAdmin");
-    expect(host).toMatch(/demoId:\s*demoTarget\s*\|\|\s*undefined/);
+  it("保存官方内容共用完整画布保存入口，并能更新已有模板", () => {
+    const form = read("src/ip/studio-template-publish.tsx");
+    expect(host).toContain("setTemplateVisibility('official')");
+    expect(host).not.toContain("publishAsDemo");
+    expect(form).toContain("templateId:target");
+    expect(form).toContain("t.mine&&t.versionId");
   });
 });
 
@@ -68,9 +70,9 @@ describe("节点自动标题", () => {
     }
   });
 
-  it("发布弹窗会检查还剩几个自动标题", () => {
-    expect(host).toContain("looksAutoTitled");
-    // 只提醒不拦：不能因为有自动标题就禁用确认按钮
-    expect(host).not.toMatch(/disabled=\{[^}]*autoTitled/);
+  it("保存完整画布允许沿用节点默认名，不再要求逐一重命名", () => {
+    const form = read("src/ip/studio-template-publish.tsx");
+    expect(form).toContain("保存完整画布");
+    expect(form).not.toContain("looksAutoTitled");
   });
 });

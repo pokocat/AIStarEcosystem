@@ -1,0 +1,26 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "newsreader",
+        "files": [
+          "apps/web-aiavatar/src/app/layout.tsx"
+        ],
+        "createdAt": "2026-10-10T12:14:45.484Z",
+        "reason": "Agent verified: pre-existing shared loader; intentional asset-name font documented in apps/web-aiavatar/DESIGN-mobile.md, separate from ip-brand.css scope"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "jetbrains mono",
+        "files": [
+          "apps/web-aiavatar/src/app/layout.tsx"
+        ],
+        "createdAt": "2026-10-10T12:14:45.870Z",
+        "reason": "Agent verified: pre-existing shared loader; registration-number font documented in apps/web-aiavatar/DESIGN-mobile.md, separate from ip-brand.css scope"
+      }
+    ]
+  }
+}

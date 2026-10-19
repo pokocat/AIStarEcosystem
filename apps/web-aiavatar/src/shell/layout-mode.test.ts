@@ -217,7 +217,6 @@ describe("CSS 与 JS 读的是同一个真值", () => {
       ".hub-section { margin-inline: 0",
       ".hub-screen--form { max-width: 720px; }",
       ".hub-grid-cards {\n  grid-template-columns: repeat(auto-fill, minmax(200px",
-      "body.studio-desktop {",
     ];
     for (const sel of mustBeGuarded) {
       const at = css.indexOf(sel);

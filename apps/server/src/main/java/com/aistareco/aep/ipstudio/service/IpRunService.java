@@ -47,6 +47,9 @@ import java.util.UUID;
  */
 @Service
 public class IpRunService {
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+
 
     private static final Logger log = LoggerFactory.getLogger(IpRunService.class);
 
@@ -56,7 +59,7 @@ public class IpRunService {
     /** 沿入边向上找 identity / style / source 的最大跳数（模板里它们挂在 master 上，不在每个 look 上）。 */
     private static final int ANCESTOR_DEPTH = 8;
 
-    private static final List<String> ALLOWED_SIZES = List.of("768x1024", "1024x1024", "768x1365");
+    private static final List<String> ALLOWED_SIZES = List.of("768x1024", "1024x1024", "768x1365", "1365x768");
     private static final String DEFAULT_SIZE = "768x1024";
 
     private final IpRunRepository runRepo;
@@ -72,6 +75,19 @@ public class IpRunService {
     private final com.aistareco.aep.service.materialvideo.MaterialVideoJobService videoJobs;
     private final com.aistareco.aep.service.AiModelInvocationService aiModels;
     private final ObjectMapper om;
+    @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
+    private StudioFixtureProvider studioFixtures;
+    private StudioVideoService studioVideo;
+    @org.springframework.beans.factory.annotation.Autowired
+    public void studioVideoService(StudioVideoService service) {this.studioVideo=service;}
+    @org.springframework.beans.factory.annotation.Autowired
+    public void studioFixtureProvider(StudioFixtureProvider fixtures) {this.studioFixtures=fixtures;}
+    private void requireNativeMode() {
+        if(studioFixtures!=null && studioFixtures.enabled()) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                "STUDIO_FIXTURE_NATIVE_DISABLED","测试响应模式已关闭原模型入口，请使用画布 AI 创作入口");
+    }
 
     public IpRunService(IpRunRepository runRepo,
                         IpProjectService projects,
@@ -116,7 +132,12 @@ public class IpRunService {
      */
     @Transactional
     public IpRunDto run(String userId, String projectId, String nodeId, IpRunNodeRequest req) {
+        requireNativeMode();
         IpProject project = projects.requiredForUpdate(userId, projectId);
+        String requestId=req==null?null:req.clientRequestId();
+        String fingerprint=nativeFingerprint(nodeId,req);
+        IpRun prior=nativeReplay(projectId,requestId,fingerprint,req==null?null:req.billing());
+        if(prior!=null)return projects.toRunDto(prior);
         if (req != null && req.doc() != null && !req.doc().isNull()) {
             projects.applyUpdate(project, new com.aistareco.aep.ipstudio.dto.IpStudioRequests
                     .IpUpdateProjectRequest(null, req.doc()));
@@ -141,7 +162,8 @@ public class IpRunService {
 
         // 输入编译（含缺失校验 + 资产 key 归属闸）—— 全部在 hold 之前
         Compiled compiled = compileGeneration(userId, projectId, doc, node);
-        return execute(userId, project, projectId, nodeId, compiled);
+        requireApprovedCost(req==null?null:req.maxCost(),compiled.unitCost()*compiled.count());
+        return execute(userId, project, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
     }
 
     /**
@@ -154,7 +176,12 @@ public class IpRunService {
      */
     @Transactional
     public IpRunDto generate(String userId, String projectId, IpGenerateRequest req) {
-        IpProject project = projects.required(userId, projectId);
+        requireNativeMode();
+        IpProject project = projects.requiredForUpdate(userId, projectId);
+        String requestId=req==null?null:req.clientRequestId();
+        String fingerprint=nativeFingerprint(req==null?null:req.nodeId(),req);
+        IpRun prior=nativeReplay(projectId,requestId,fingerprint,req==null?null:req.billing());
+        if(prior!=null)return projects.toRunDto(prior);
         if (req == null || req.prompt() == null || req.prompt().isBlank()) {
             requireNoMissing(List.of("prompt"));
         }
@@ -165,12 +192,18 @@ public class IpRunService {
                     "这张正在生成中，等它完成再跑");
         }
         Compiled compiled = compileExplicit(userId, req);
-        return execute(userId, project, projectId, nodeId, compiled);
+        requireApprovedCost(req.maxCost(), compiled.unitCost() * compiled.count());
+        return execute(userId, project, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
     }
 
     /** 画布出视频的请求。 */
     public record IpVideoRequest(String prompt, String refKey, Integer durationSec,
-                                 String aspectRatio, String model) {}
+                                 String aspectRatio, String model, Long maxCost, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing, String clientRequestId) {
+        public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,video,billing,null);}
+        public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings video) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,video,null);}
+        public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model,Long maxCost) {this(prompt,refKey,durationSec,aspectRatio,model,maxCost,null);}
+        public IpVideoRequest(String prompt,String refKey,Integer durationSec,String aspectRatio,String model) {this(prompt,refKey,durationSec,aspectRatio,model,null);}
+    }
 
     /**
      * 画布出视频。
@@ -184,8 +217,51 @@ public class IpRunService {
      */
     @Transactional
     public JsonNode generateVideo(String userId, String projectId, IpVideoRequest req) {
+        requireNativeMode();
+        // Serialize the direct API's request binding before any native job freezes funds. The workflow
+        // entry point already owns its binding and therefore continues calling generateVideoBatch directly.
+        projects.requiredForUpdate(userId, projectId);
+        String requestId=req==null?null:req.clientRequestId();
+        String fingerprint=nativeFingerprint("native-video",req);
+        IpRun prior=nativeReplay(projectId,requestId,fingerprint,req==null?null:req.billing());
+        if(prior!=null) {
+            var ids=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(prior.getInputJson()));
+            if(!"studio-video".equals(prior.getKind()) || ids.size()!=1)
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的创作方式已改变，请重新提交");
+            return videoJobs.getJob(ids.get(0),userId,
+                    com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
+        }
+        JsonNode created=generateVideoBatch(userId, projectId, req, 1).get(0);
+        if(requestId!=null) {
+            ObjectNode inputs=om.valueToTree(req);
+            inputs.putObject("_exec").putArray("nativeVideoJobIds").add(created.path("id").asText());
+            Instant now=Instant.now();
+            runRepo.save(IpRun.builder().id(uniqueRunId()).projectId(projectId).ownerUserId(userId)
+                    .nodeId("adhoc").kind("studio-video").status(IpRun.STATUS_DONE).stage("video.bound").cost(0)
+                    .enterpriseId(req.billing()!=null&&"enterprise".equals(req.billing().mode())?req.billing().enterpriseId():null)
+                    .clientRequestId(requestId).inputFingerprint(fingerprint).inputJson(writeJson(inputs)).outputJson("{}")
+                    .createdAt(now).heartbeatAt(now).build());
+        }
+        return created;
+    }
+
+    /** One native batch: all candidates pass preflight before any hold or after-commit dispatch. */
+    @Transactional
+    public List<JsonNode> generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count) {
+        requireNativeMode();
+        List<Integer> allowedCounts=List.of(1,2,4);
+        String batchEndpointId=null;
+        if(req!=null && req.video()!=null && scenePolicies!=null) {
+            var endpoint=scenePolicies.resolveStudioVideo(req.model()).endpoint();
+            batchEndpointId=endpoint.getId();
+            var spec=com.aistareco.aep.model.AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+            if(spec!=null)allowedCounts=spec.allowedBatchCounts();
+        }
+        if (!allowedCounts.contains(count)) throw BusinessException.badRequest("STUDIO_VIDEO_COUNT_INVALID",
+                "当前视频模型每次可生成 " + allowedCounts.stream().map(String::valueOf)
+                        .collect(java.util.stream.Collectors.joining("、")) + " 条");
         projects.required(userId, projectId);
-        if (req == null || req.prompt() == null || req.prompt().isBlank()) {
+        if (req == null || req.video() == null && (req.prompt() == null || req.prompt().isBlank())) {
             requireNoMissing(List.of("prompt"));
         }
         // 首帧图：非本人的 key 直接 400（画布是客户端，能塞任何字符串进来）
@@ -194,45 +270,76 @@ public class IpRunService {
         ObjectNode item = om.createObjectNode();
         item.put("name", "画布视频");
         item.put("kind", "ipstudio-clip");
-        item.put("prompt", req.prompt().trim());
+        item.put("credit_label","Studio 视频生成");
+        item.put("prompt", req.prompt() == null ? "" : req.prompt().trim());
         if (req.durationSec() != null) item.put("duration_sec", req.durationSec());
         if (req.aspectRatio() != null && !req.aspectRatio().isBlank()) item.put("aspect_ratio", req.aspectRatio());
+        if (req.maxCost() != null) item.put("max_credit_cost", req.maxCost() / count);
         // 选的模型和首帧图都放进 variant_config —— MaterialVideoJobService（时长校验、报价、冻结）
         // 和 worker（真正调哪个端点）只从这里读 endpoint_id。此前模型 id 写在 item 顶层，
         // 没有任何地方读它：画布上选哪个模型，跑的、校验的、计价的都是后台默认那个。
         ObjectNode variantConfig = om.createObjectNode();
-        if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
-        if (refKey != null) variantConfig.put("first_frame_key", refKey);
+        long seedMax = 2_147_483_647L;
+        if (scenePolicies != null) variantConfig.put("endpoint_id", batchEndpointId==null
+                ?scenePolicies.resolveStudioVideo(req.model()).endpoint().getId():batchEndpointId);
+        else if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
+        if (req.video() != null) {
+            if (refKey != null) throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID", "请在视频模式中明确选择首帧或参考素材");
+            var prepared=studioVideo.prepare(userId,req);
+            seedMax = prepared.seedMax();
+            requireApprovedCost(req.maxCost(),Math.multiplyExact(prepared.credits(), count));
+            item.put("credit_cost",prepared.credits());
+            prepared.spec().writeTo(variantConfig);
+        } else if (refKey != null) variantConfig.put("first_frame_key", refKey);
         if (!variantConfig.isEmpty()) item.set("variant_config", variantConfig);
 
         ObjectNode body = om.createObjectNode();
-        body.putArray("items").add(item);
-
-        List<JsonNode> created = videoJobs.submit(body, userId,
-                com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
-        if (created.isEmpty()) {
-            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建起来，请稍后再试");
+        var items = body.putArray("items");
+        for (int index = 0; index < count; index++) {
+            ObjectNode candidate = item.deepCopy();
+            if (count > 1) candidate.put("name", "画布视频 · 候选 " + (index + 1));
+            // A supplied seed anchors the first candidate; subsequent candidates advance deterministically.
+            if (variantConfig.hasNonNull("seed")) {
+                long seed = variantConfig.path("seed").asLong();
+                for (int step = 0; step < index; step++) seed = seed == seedMax ? 0 : seed + 1;
+                ((ObjectNode) candidate.path("variant_config")).put("seed", seed);
+            }
+            items.add(candidate);
         }
-        return created.get(0);
+
+        List<JsonNode> created = req.billing()==null
+                ? videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO)
+                : videoJobs.submit(body,userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO,req.billing());
+        if (created.size() != count) {
+            throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建齐，请稍后再试");
+        }
+        return created;
     }
 
     /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */
-    private IpRunDto execute(String userId, IpProject project, String projectId, String nodeId, Compiled compiled) {
+    private IpRunDto execute(String userId, IpProject project, String projectId, String nodeId, Compiled compiled, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selection,String clientRequestId,String fingerprint) {
 
         // preflight（§8.0）：引擎与提示词，缺一不可，且不冻结
         preflight(compiled);
 
-        accounts.ensureMonthlyGrant(userId);
+        // Pin the resolved default before authorization so a later default change cannot change the payer's model.
+        ObjectNode execution = (ObjectNode) compiled.inputs().path("_exec");
+        if (enterpriseBilling != null && !execution.hasNonNull("endpointId")) {
+            var endpoint = aiModels.resolveDefaultEndpoint(AiModelPurpose.DAP_IMAGE,"studio").orElseThrow(() ->
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","选择的出图模型不可用"));
+            execution.put("endpointId",endpoint.getId());
+        }
+        if (selection == null || !"enterprise".equals(selection.mode())) accounts.ensureMonthlyGrant(userId);
 
         String runId = uniqueRunId();
         long total = compiled.unitCost() * compiled.count();
-        if (total > 0) {
-            // 余额不足在这里抛 402，run 行不落库
-            credits.hold(userId, total, REF_TYPE, runId, compiled.holdLabel());
-        }
+        var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId, selection, REF_TYPE, runId,
+                execution.path("endpointId").asText(null),total,compiled.holdLabel());
+        if (enterpriseBilling == null && total > 0) credits.hold(userId,total,REF_TYPE,runId,compiled.holdLabel());
         // 把「按什么价冻的」写进 _exec：worker 结算时只认这份快照，绝不回头再读一次后台单价。
         // 否则运营在 hold 与 commit 之间改了价，worker 会按新价 commit —— 少扣（用户白得图）
         // 或多扣（超过 hold 剩余，commitHold 直接 400）都是真金白银的错账。
+        if(selection!=null)compiled.inputs().set("billing",om.valueToTree(selection));
         ObjectNode execSnapshot = (ObjectNode) compiled.inputs().path("_exec");
         execSnapshot.put("unitCost", compiled.unitCost());
         execSnapshot.put("holdTotal", total);
@@ -241,7 +348,7 @@ public class IpRunService {
                 .id(runId)
                 .projectId(projectId)
                 .ownerUserId(userId)
-                .nodeId(nodeId)
+                .nodeId(nodeId).clientRequestId(clientRequestId).inputFingerprint(clientRequestId==null?null:fingerprint)
                 .kind(compiled.kind())
                 .status(IpRun.STATUS_RUNNING)
                 .stage("queued")
@@ -251,6 +358,7 @@ public class IpRunService {
                 .createdAt(Instant.now())
                 .heartbeatAt(Instant.now())
                 .build();
+        StudioRunBilling.apply(run,billing);
         runRepo.save(run);
         log.info("[ipstudio] 运行受理 run={} project={} node={} kind={} count={} hold={}",
                 runId, projectId, nodeId, compiled.kind(), compiled.count(), total);
@@ -305,7 +413,29 @@ public class IpRunService {
     @Transactional
     public IpRunDto cancel(String userId, String runId) {
         IpRun run = requiredRun(userId, runId);
+        if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(REF_TYPE,runId);
+        run=runRepo.lockById(runId).orElseThrow();
+        if(entityManager!=null)entityManager.refresh(run,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(IpRunWorker.hasNativeSubmission(run))throw BusinessException.badRequest("STUDIO_IMAGE_ALREADY_SUBMITTED","图片已交给生成引擎，请等待原任务结果");
+        if(StudioSpeechWorker.manages(run.getKind()) && IpRun.STATUS_RUNNING.equals(run.getStatus()) &&
+                projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("submitAttempts").asInt()>0)
+            throw BusinessException.badRequest("STUDIO_SPEECH_ALREADY_SUBMITTED","生成已交给引擎，暂时不能停止。请等待原任务结果");
+        var nativeVideoIds=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(run.getInputJson()));
+        if(!nativeVideoIds.isEmpty()) {
+            // The enclosing transaction rolls back earlier cancellations if any candidate has been submitted.
+            for (String id : nativeVideoIds) if(!videoJobs.cancelQueued(id,userId))
+                throw BusinessException.badRequest("STUDIO_VIDEO_ALREADY_SUBMITTED","视频已交给生成引擎，暂时不能停止。可以继续编辑并等待原任务结果");
+            return projects.toRunDto(run);
+        }
         if (IpRun.STATUS_RUNNING.equals(run.getStatus())) {
+            if("endpoint.queued".equals(run.getStage())||run.getStartedAt()==null) {
+                credits.releaseHold(REF_TYPE,run.getId(),"排队任务已停止 · 释放冻结");
+                run.setCancelRequested(true);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
+                run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止排队");run.setCost(0);
+                run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runRepo.save(run);
+                if(enterpriseBilling!=null)enterpriseBilling.complete(REF_TYPE,run.getId());
+                return projects.toRunDto(run);
+            }
             run.setCancelRequested(true);
             runRepo.save(run);
         }
@@ -338,6 +468,11 @@ public class IpRunService {
         if (prompt == null) missing.add("prompt");
         requireNoMissing(missing);
 
+        String nodeEndpoint=IpDocs.text(md,"endpointId");
+        if(nodeEndpoint == null) nodeEndpoint=IpDocs.text(md.path("studio").path("request"),"model");
+        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", nodeEndpoint, pricing.ipImage());
+        boolean configuredImage = selected != null && JusuanImageClient.supports(selected.resolved().endpoint());
+
         // ── 参考图：上游连进来的图，近的排前面 ────────────────────────────
         // 归属闸：只认本人本项目上传或生成的 key。别人的 key 连进来就是越权读图，
         // 而画布文档是客户端拥有的，客户端能塞任何字符串进来。
@@ -349,10 +484,13 @@ public class IpRunService {
             if (key == null) continue;
             String title = IpDocs.text(up, "title");
             refs.add(new Ref("reference", key, title == null ? "参考图" : title));
-            if (refs.size() >= props.getMaxRefImages()) break;
+            if (!configuredImage && refs.size() >= props.getMaxRefImages()) break;
         }
 
-        int count = normalizeCount(md);
+        int count = configuredImage
+                ? imageBatchCount(md==null?1:md.path("count").asInt(1),
+                    com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson()))
+                : normalizeCount(md);
         String size = normalizeSize(md);
 
         // ── 提示词模板（服务端唯一漏斗；用户能在 inputs.prompt 看到原文）────
@@ -387,20 +525,65 @@ public class IpRunService {
         ObjectNode exec = inputs.putObject("_exec");
         exec.set("refKeys", refKeys);
 
-        return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
+        // Endpoint IDs are explicit server identifiers; vendor model display names are not IDs.
+        if(nodeEndpoint != null) exec.put("endpointId",nodeEndpoint);
+        if(selected != null) {
+            if(JusuanImageClient.supports(selected.resolved().endpoint())) {
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+                if(spec!=null) {
+                    String requested=IpDocs.text(md,"size");
+                    size=requested==null?spec.outputs().get(0).canvasSize():requested;
+                    inputs.put("size",size);
+                }
+            }
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
+        }
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
     }
 
     /** 显式生成请求 —— 画布把「画什么、参考谁、出几张」说清楚。 */
     public record IpGenerateRequest(String nodeId, String prompt, List<String> refKeys,
-                                    Integer count, String size, String model) {}
+                                    Integer count, String size, String model, Long maxCost, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,String clientRequestId) {
+        public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model,Long maxCost,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {this(nodeId,prompt,refKeys,count,size,model,maxCost,billing,null);}
+        public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model,Long maxCost) {this(nodeId,prompt,refKeys,count,size,model,maxCost,null);}
+        public IpGenerateRequest(String nodeId,String prompt,List<String> refKeys,Integer count,String size,String model) {this(nodeId,prompt,refKeys,count,size,model,null);}
+    }
+
+    private String nativeFingerprint(String nodeId,Object request) {
+        ObjectNode input=om.createObjectNode();input.put("nodeId",nodeId);input.set("request",om.valueToTree(request));
+        try{return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(writeJson(input).getBytes(java.nio.charset.StandardCharsets.UTF_8)));}
+        catch(java.security.NoSuchAlgorithmException e){throw new IllegalStateException(e);}
+    }
+    private IpRun nativeReplay(String projectId,String requestId,String fingerprint,com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selected) {
+        if(com.aistareco.aep.enterprise.service.EnterpriseBillingService.enterprise(selected) && (requestId==null||requestId.isBlank()))
+            throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","企业积分创作需要请求编号，请刷新后重试");
+        if(requestId==null)return null;
+        if(requestId.isBlank()||requestId.length()>64)throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请求编号无效");
+        var prior=runRepo.findByProjectIdAndClientRequestId(projectId,requestId).orElse(null);
+        if(prior!=null) {
+            StudioRunBilling.requireSamePayer(prior,selected);
+            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+        }
+        return prior;
+    }
+
+    public static void requireApprovedCost(Long ceiling,long actual) {
+        if(ceiling!=null && (ceiling<0 || actual>ceiling)) throw new BusinessException(HttpStatus.CONFLICT,
+                "STUDIO_PRICE_CHANGED","价格已变化，请重新确认本次创作费用");
+    }
 
     /**
      * 编译一次显式生成。与按节点编译共用同一套提示词模板与计价，
      * 差别只在参考图从哪来：这里是画布点名的，那里是从文档回溯的。
      */
     Compiled compileExplicit(String userId, IpGenerateRequest req) {
+        String requestedEndpoint = req.model() == null || req.model().isBlank() ? null : req.model().trim();
+        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", requestedEndpoint, pricing.ipImage());
+        boolean configuredImage = selected != null && JusuanImageClient.supports(selected.resolved().endpoint());
         List<Ref> refs = new ArrayList<>();
         if (req.refKeys() != null) {
             for (String raw : req.refKeys()) {
@@ -408,11 +591,14 @@ public class IpRunService {
                 String key = projects.requireOwnedAssetKey(userId, raw);
                 if (key == null) continue;
                 refs.add(new Ref("reference", key, "参考图"));
-                if (refs.size() >= props.getMaxRefImages()) break;
+                if (!configuredImage && refs.size() >= props.getMaxRefImages()) break;
             }
         }
 
-        int count = req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
+        int count = configuredImage
+                ? imageBatchCount(req.count()==null?1:req.count(),
+                    com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson()))
+                : req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
         String size = req.size() == null || req.size().isBlank() ? DEFAULT_SIZE : req.size();
         if (!ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
 
@@ -440,9 +626,21 @@ public class IpRunService {
         inputs.put("count", count);
         ObjectNode exec = inputs.putObject("_exec");
         exec.set("refKeys", refKeys);
-        if (req.model() != null && !req.model().isBlank()) exec.put("endpointId", req.model().trim());
+        if (requestedEndpoint != null) exec.put("endpointId", requestedEndpoint);
 
-        return new Compiled(IpRun.KIND_GENERATE, pricing.ipImage(), count,
+        if(selected != null) {
+            if(JusuanImageClient.supports(selected.resolved().endpoint())) {
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson());
+                if(spec!=null) {
+                    size=req.size()==null||req.size().isBlank()?spec.outputs().get(0).canvasSize():req.size();
+                    inputs.put("size",size);
+                }
+            }
+            JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
+        }
+        return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
     }
@@ -517,7 +715,7 @@ public class IpRunService {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
                     "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 人设」用途绑定一个支持图片输入的模型");
         }
-        if (c.needsImage() && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
+        if (c.needsImage() && !c.inputs().path("_exec").hasNonNull("endpointId") && (multimodal.imageModel() == null || multimodal.imageModel().isBlank())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DAP_ENGINE_NOT_CONFIGURED",
                     "形象引擎未配置：请在管理后台「AI 应用绑定」为「数字人 · 图片」用途绑定启用端点");
         }
@@ -525,7 +723,7 @@ public class IpRunService {
         // 运行行已经落库，用户看到的是一次「跑起来又失败」而不是「这个模型不能选」。
         // 不在白名单不静默回退默认（D-11 纪律）—— 他是按那个模型的价付的钱。
         String endpointId = IpDocs.text(c.inputs().path("_exec"), "endpointId");
-        if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId).isEmpty()) {
+        if (endpointId != null && aiModels.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpointId,"studio").isEmpty()) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
                     "选择的出图模型不可用，请在下拉里重新选一个");
         }
@@ -593,6 +791,14 @@ public class IpRunService {
     private static int normalizeCount(JsonNode gd) {
         int raw = gd == null ? 1 : gd.path("count").asInt(1);
         return raw >= 4 ? 4 : raw >= 2 ? 2 : 1;
+    }
+
+    private static int imageBatchCount(int requested, com.aistareco.aep.model.AiImageRequestSpec spec) {
+        if(!spec.allowedBatchCounts().contains(requested))
+            throw BusinessException.badRequest("STUDIO_IMAGE_COUNT_INVALID",
+                    "当前图片模型每次可生成 " + spec.allowedBatchCounts().stream().map(String::valueOf)
+                            .collect(java.util.stream.Collectors.joining("、")) + " 张");
+        return requested;
     }
 
     private static String normalizeSize(JsonNode gd) {

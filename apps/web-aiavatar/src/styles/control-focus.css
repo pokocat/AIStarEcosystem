@@ -1,0 +1,60 @@
+/* Focus ownership across the Studio, account and asset-library shells.
+   Native fields follow their own rounded edge; compound library controls already
+   draw a focus indicator on their outer surface. Do not outline their inner input.
+   Keep this after the shell styles, which supply the fallback keyboard outline. */
+:is(.ip-surface, .ip-brand-surface, .ip-management-editor, .account-workspace, .enterprise-workspace, .desktop-credit, .studio-canvas-credit)
+  :is(input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]), textarea, select, [contenteditable="true"]):focus-visible {
+  outline-offset: -2px;
+}
+
+/* Ant Design owns the focus ring for Input/Password/Search/TextArea, Select,
+   AutoComplete, InputNumber, date/time pickers and selection controls. Radix
+   primitives own theirs too. Leave their shadows, borders and invalid states intact. */
+:is(.ip-surface, .ip-brand-surface, .ip-management-editor, .account-workspace, .enterprise-workspace, .desktop-credit, .studio-canvas-credit)
+  :is(.ant-input, .ant-input-affix-wrapper, .ant-input-number, .ant-input-number-input,
+      .ant-select, .ant-select input, .ant-picker, .ant-picker input,
+      .ant-checkbox-input, .ant-radio-input,
+      [data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"],
+      [data-slot="command-input"], [data-slot="checkbox"], [data-slot="radio-group-item"],
+      [data-slot="switch"], [data-slot="slider-thumb"]):focus-visible {
+  outline: none;
+}
+
+/* These editors intentionally remove the textarea's border/shadow. The composed
+   field, including its rounded corners, must supply the keyboard indicator. */
+.ip-surface .studio-script-chat-input:has(textarea:focus-visible),
+html[data-layout="desktop"] .ip-surface .studio-text-node-composer:has(textarea:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+/* Vendored canvas dimension/count/duration controls have a label with a unit or
+   prefix beside a borderless number input. Style the host here instead of changing
+   the vendored components: drawing around only the inner input splits the field. */
+.ip-surface label:has(> input[type="number"].outline-none:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.ip-surface label > input[type="number"].outline-none:focus-visible {
+  outline: none;
+}
+
+/* Prompt chips share a rounded focus surface. Outlining the inner editable
+   reintroduces a square box and overriding its radius erases the drawer border. */
+.ip-surface .canvas-prompt-chip-field {
+  border-radius: 8px;
+}
+.ip-surface .canvas-prompt-chip-field:has(> .canvas-prompt-chip-editor:focus-visible) {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.ip-surface .canvas-prompt-chip-editor:focus,
+.ip-surface .canvas-prompt-chip-editor:focus-visible {
+  outline: none;
+}
+
+/* Keep the node-type field's compact typography after removing the OS menu. */
+html[data-layout="desktop"] .ip-surface .studio-storyboard-column>header [data-select-field] { border:0; background:transparent; color:var(--ink); font:inherit; font-size:15px; font-weight:600; min-height:32px; }
+
+.ip-surface .canvas-config-field:has(> .canvas-config-editor:focus-visible) { outline:2px solid var(--primary); outline-offset:-2px; }
+.ip-surface .canvas-config-editor:focus-visible { outline:none; }

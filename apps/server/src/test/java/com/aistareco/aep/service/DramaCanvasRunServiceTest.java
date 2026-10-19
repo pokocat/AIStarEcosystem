@@ -91,7 +91,7 @@ class DramaCanvasRunServiceTest {
     void setUp() throws Exception {
         useDoc(sampleDoc(), "9:16");
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.getArgument(1));
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         // 以 someone/ 开头的 key 不是本人的，其余都是
         when(assets.findOwnedCdnKeys(eq("drama"), eq(USER), any())).thenAnswer(inv ->
                 ((Collection<String>) inv.getArgument(2)).stream().filter(k -> !k.startsWith("someone/")).toList());
@@ -293,7 +293,7 @@ class DramaCanvasRunServiceTest {
 
     @Test
     void llmNotConfigured_503_nothingFrozen() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         BusinessException e = assertThrows(BusinessException.class, () -> svc.submitScript(USER, CANVAS,
                 new CanvasScriptRunBody("request-5", ver(), "outline", null, null)));
         assertEquals("AI_NOT_CONFIGURED", e.getCode());
@@ -373,9 +373,9 @@ class DramaCanvasRunServiceTest {
     // ── 视频 ───────────────────────────────────────────────────────────────────
 
     private void stubVideo(MaterialVideoModelClient.DurationBounds bounds) {
-        when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null))
+        when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, null, "drama"))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(videoEp, null, true)));
-        when(videoModels.effectiveDurationBounds(isNull(), eq(videoEp))).thenReturn(bounds);
+        when(videoModels.effectiveDurationBounds(isNull(), eq(videoEp), eq("drama"))).thenReturn(bounds);
         when(render.resolveClipPlan(isNull(), anyInt())).thenAnswer(inv ->
                 new DramaRenderService.ClipPlan(null, videoEp, 40L * inv.<Integer>getArgument(1), null, false, false));
         when(render.submitClip(any(), any(), eq(USER))).thenReturn(OM.createObjectNode().put("id", "mvj_1"));

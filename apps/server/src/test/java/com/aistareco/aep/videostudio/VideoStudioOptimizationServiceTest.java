@@ -4,6 +4,7 @@ import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.repository.MaterialVideoJobRepository;
 import com.aistareco.aep.security.InAppOperatorGuard;
 import com.aistareco.aep.service.AiModelInvocationService;
@@ -14,9 +15,13 @@ import com.aistareco.aep.service.materialvideo.MaterialVideoModelClient;
 import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioOptimization;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioOptimizationRequest;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioPricingConfig;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier;
 import com.aistareco.aep.videostudio.model.StudioPromptOptimization;
 import com.aistareco.aep.videostudio.model.StudioTemplate;
 import com.aistareco.aep.videostudio.repository.StudioPromptOptimizationRepository;
@@ -44,6 +49,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -110,7 +116,7 @@ class VideoStudioOptimizationServiceTest {
         AiModelEndpoint h3 = AiModelEndpoint.builder().id("ep-h3").name("MiniMax H3").baseUrl("https://api.jusuanhub.com/v1")
                 .model("minimax-h3").billingMode(AiModelBillingMode.PER_SECOND).enabled(true).build();
         candidate = AiAppEndpointCandidate.builder().endpointId("ep-h3").enabled(true).creditCostOverride(40L).build();
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION))
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
                 .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(h3, candidate, true)));
         when(modelClient.isEndpointReady(h3)).thenReturn(true);
         when(modelClient.isJusuanMedia(h3)).thenReturn(true);
@@ -148,6 +154,27 @@ class VideoStudioOptimizationServiceTest {
         ArgumentCaptor<StudioPromptOptimization> row = ArgumentCaptor.forClass(StudioPromptOptimization.class);
         verify(repo).saveAndFlush(row.capture());
         return row.getValue();
+    }
+
+    @Test
+    @DisplayName("Seedance 不支持智能优化：在插入记录和冻结积分之前拒绝")
+    void unsupportedModelRejectedBeforeHold() {
+        var contract = new VideoStudioContract(
+                List.of(new VideoStudioModeSpec("t2v", false, false, null, null)),
+                List.of(new VideoStudioTier("768p", List.of(new VideoStudioCanvas("9:16", 720, 1280)))),
+                5, 15, 2000, 4294967295L);
+        var seedance = AiModelEndpoint.builder().id("ep-seedance").name("Seedance")
+                .baseUrl("https://example.test").model("seedance-2.0")
+                .videoRequestSpecJson(new AiVideoRequestSpec("seedance", contract, "/tasks", "/tasks/{id}", Map.of()).json())
+                .enabled(true).build();
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION, "celebrity"))
+                .thenReturn(List.of(new AiModelInvocationService.ResolvedEndpoint(seedance, candidate, true)));
+        when(modelClient.isEndpointReady(seedance)).thenReturn(true);
+        when(modelClient.protocolDurationBounds(seedance))
+                .thenReturn(new MaterialVideoModelClient.DurationBounds(5, 15));
+        priceOptimization(5L);
+
+        assertEquals("VIDEO_MODE_UNSUPPORTED", code(t2v()));
     }
 
     @Test

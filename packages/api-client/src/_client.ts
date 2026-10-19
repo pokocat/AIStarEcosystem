@@ -12,7 +12,7 @@
 import { isImpersonating, expireImpersonation } from "./impersonation-session";
 import type { ApiResponse, ApiErrorShape } from "@ai-star-eco/types/_shared";
 import { findMockHandler, type MockMethod } from "./_mock-registry";
-import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, isIdMode } from "./config";
+import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, idIssuer, isIdMode } from "./config";
 import { clearAuthTokens, getAuthToken } from "./token-store";
 import { beginLogin, isTransientOidcError, refreshAccessToken } from "./oidc";
 
@@ -56,11 +56,13 @@ export function registerUnauthorizedHandler(fn: UnauthorizedHandler | null) {
 
 export class ApiError extends Error {
   code: string;
+  logId?: string;
   details?: unknown;
   status?: number;
   constructor(shape: ApiErrorShape, status?: number) {
     super(shape.message);
     this.code = shape.code;
+    this.logId = shape.logId;
     this.details = shape.details;
     this.status = status;
   }
@@ -87,6 +89,8 @@ interface RequestOptions {
   suppressParseErrorLog?: boolean;
   /** @internal id 模式刷新令牌后的重放标记；外部不要传。 */
   __idRetry?: boolean;
+  /** @internal 仅由 idApiFetch 设置；账号接口直连 issuer，不携带产品请求头或 Cookie。 */
+  __identityService?: boolean;
 }
 
 /**
@@ -212,18 +216,19 @@ export async function apiFetch<T>(
     signal,
     suppressParseErrorLog = false,
     __idRetry = false,
+    __identityService = false,
   } = opts;
 
   // USE_MOCK：在网络层拦截，命中 registry 直接返回 handler 结果（已是 unwrapped T）。
   // handler 抛 ApiError 即可模拟错误。未注册路径会落到下方网络分支（dev 期可见 404，便于发现缺口）。
-  if (USE_MOCK) {
+  if (USE_MOCK && !__identityService) {
     const match = findMockHandler(method as MockMethod, path);
     if (match) {
       return (await match.handler({ params: match.params, query, body })) as T;
     }
   }
 
-  const url = `${API_BASE_URL}${path}${buildQuery(query)}`;
+  const url = `${__identityService ? idIssuer() : API_BASE_URL}${path}${buildQuery(query)}`;
 
   const token = getAuthToken();
   // FormData 支持 multipart 上传：不设 Content-Type，让浏览器自动加 boundary
@@ -233,7 +238,7 @@ export async function apiFetch<T>(
     headers: {
       ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(appCode ? { "X-App-Code": appCode } : {}),
+      ...(appCode && !__identityService ? { "X-App-Code": appCode } : {}),
       ...(headers || {}),
     },
     // 已经是字符串的 body 原样发，不再 stringify 一遍（v0.178）。
@@ -246,7 +251,7 @@ export async function apiFetch<T>(
     // 双重编码没有任何正当用途，所以这里直接吸收掉，而不是留一个静默的坑。
     body: body === undefined ? undefined : isFormData ? body : typeof body === "string" ? body : JSON.stringify(body),
     signal,
-    credentials: "include",
+    credentials: __identityService ? "omit" : "include",
   });
 
   if (res.status === 401 && token?.startsWith("imp_")) {
@@ -348,6 +353,20 @@ export async function apiFetch<T>(
     throw new ApiError(err, res.status);
   }
   return envelope.data;
+}
+
+/** 账号中心本人接口：复用刷新与错误处理，令牌仅发送至配置的 issuer。 */
+export function idApiFetch<T>(path: `/api/me/${string}`, opts: RequestOptions = {}): Promise<T> {
+  if (isImpersonating()) {
+    throw new ApiError({ code: "IDENTITY_IMPERSONATION_UNSUPPORTED", message: "当前为运营查看状态，请返回本人账号后管理邀请。" }, 403);
+  }
+  if (!isIdMode() || !idIssuer()) {
+    throw new ApiError({ code: "IDENTITY_NOT_CONFIGURED", message: "当前登录方式不支持邀请管理，请使用统一账号登录。" });
+  }
+  if (!/^\/api\/me\/[a-zA-Z0-9/_-]+$/.test(path) || path.includes("//")) {
+    throw new ApiError({ code: "IDENTITY_PATH_INVALID", message: "账号请求地址不正确，请刷新后重试。" });
+  }
+  return apiFetch<T>(path, { ...opts, __identityService: true });
 }
 
 /** Mock 延迟，模拟真实网络抖动。 */

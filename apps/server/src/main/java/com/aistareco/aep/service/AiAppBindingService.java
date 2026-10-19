@@ -132,6 +132,7 @@ public class AiAppBindingService {
                 .supportsFirstLastFrame(body.supportsFirstLastFrame())
                 .supportsSubjectReference(body.supportsSubjectReference())
                 .maxDurationSec(body.maxDurationSec())
+                .minImagePixels(body.minImagePixels())
                 .creditCostOverride(body.creditCostOverride())
                 .build();
         candidateRepo.save(c);

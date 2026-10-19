@@ -7,18 +7,14 @@ import { ImageSettingsTheme } from "@/canvas/components/image-settings-panel";
 import { type CanvasTheme } from "@/canvas/lib/canvas-theme";
 import { clampVideoSeconds, computeVideoSize, inferVideoRatio, parseAspectRatio, parseVideoResolution, readVideoDimensions, VIDEO_SECONDS_MAX, VIDEO_SECONDS_MIN, videoRatioOptions } from "@/canvas/lib/media-size";
 import { type AiConfig } from "@/canvas-bridge/config-store";
-import { videoDurationBoundsFor, videoGeometryFor } from "@/canvas-bridge/models";
+import { videoDurationBoundsFor, videoGeometryFor, nativeVideoModelFor } from "@/canvas-bridge/models";
+import { studioVideoModeName } from "@/canvas-bridge/studio-video";
 
 const resolutionOptions = [
     { value: "480", label: "480p" },
     { value: "720", label: "720p" },
     { value: "1080", label: "1080p" },
 ];
-const videoModeOptions = [
-    { value: "frames", labelKey: "frames" },
-    { value: "reference", labelKey: "reference" },
-];
-
 export const videoResolutionOptions = resolutionOptions.map((item) => ({ value: item.value, label: item.label }));
 export const videoSizeOptions = videoRatioOptions.map((item) => ({ value: item.value, get label() { return item.value === "auto" ? i18n.t("settingsPanels.common.auto") : item.value; } }));
 export const videoSecondsRange = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MAX };
@@ -38,6 +34,13 @@ export const videoSecondsRange = { min: VIDEO_SECONDS_MIN, max: VIDEO_SECONDS_MA
  *     而用户明明看到的是 5。上限切换同理（显示 15、提交 30）。
  */
 export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "videoModel" | "model">) {
+    const native=nativeVideoModelFor(config.model || config.videoModel);
+    if(native) {
+        const min=native.contract.minSeconds,max=native.contract.maxSeconds;
+        const stored=Number(config.videoSeconds);
+        const requested=Number.isFinite(stored)&&stored>0?Math.floor(stored):Math.max(min,Math.min(max,6));
+        return {seconds:Math.min(max,Math.max(min,requested)),min,max};
+    }
     const bounds = videoDurationBoundsFor(config.model || config.videoModel);
     const min = Math.max(VIDEO_SECONDS_MIN, bounds?.min ?? VIDEO_SECONDS_MIN);
     const max = Math.max(min, Math.min(VIDEO_SECONDS_MAX, bounds?.max ?? VIDEO_SECONDS_MAX));
@@ -59,13 +62,18 @@ export function effectiveVideoSeconds(config: Pick<AiConfig, "videoSeconds" | "v
  */
 export function effectiveVideoGeometry(config: Pick<AiConfig, "vquality" | "size" | "videoModel" | "model">) {
     const geo = videoGeometryFor(config.model || config.videoModel);
+    const native=nativeVideoModelFor(config.model || config.videoModel);
     const resolutions = geo?.resolutions?.length ? geo.resolutions : null;
-    const ratios = geo?.ratios?.length ? geo.ratios : null;
 
-    const storedResolution = parseVideoResolution(config.vquality);
+    const storedResolution = resolutions?.find(value=>value===config.vquality||`${value}p`===config.vquality)
+        ?? parseVideoResolution(config.vquality);
     const resolution = resolutions && !resolutions.includes(storedResolution) ? resolutions[0] : storedResolution;
+    const tier=native?.contract.tiers.find(item=>item.tier===resolution||item.tier===`${resolution}p`);
+    const tierRatios=tier?.canvases.map(canvas=>canvas.aspectRatio);
+    const ratios = tierRatios?.length ? tierRatios : geo?.ratios?.length ? geo.ratios : null;
 
-    const storedRatio = inferVideoRatio(config.size || "auto");
+    const storedRatio = tier?.canvases.find(canvas=>config.size===canvas.aspectRatio||config.size===`${canvas.width}x${canvas.height}`)?.aspectRatio
+        ?? inferVideoRatio(config.size || "auto");
     // 受限时不保留 auto：它在服务端会被当成横屏，等于替用户做了个没说出口的选择。
     const ratio = ratios && !ratios.includes(storedRatio) ? nearestRatio(storedRatio, ratios) : storedRatio;
 
@@ -83,7 +91,7 @@ export function effectiveVideoGeometry(config: Pick<AiConfig, "vquality" | "size
 
 /** 模型报的清晰度档 → 面板选项。表里有就用表里的标签，没有就现造一个（"768" → "768p"）。 */
 function toResolutionOption(value: string) {
-    return resolutionOptions.find((item) => item.value === value) ?? { value, label: `${value}p` };
+    return resolutionOptions.find((item) => item.value === value) ?? { value, label: /^\d+$/.test(value)?`${value}p`:value };
 }
 
 /** 模型报的比例 → 面板选项（带缩略图要用的宽高）。表里没有就从 "9:16" 里解出来。 */
@@ -110,7 +118,7 @@ function nearestRatio(current: string, allowed: string[]) {
 
 type VideoSettingsPanelProps = {
     config: AiConfig;
-    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode", value: string) => void;
+    onConfigChange: (key: "vquality" | "size" | "videoSeconds" | "videoGenerateAudio" | "videoWatermark" | "videoMode" | "videoCount", value: string) => void;
     theme: CanvasTheme;
     showTitle?: boolean;
     className?: string;
@@ -128,14 +136,30 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [seconds, config.videoSeconds]);
     const videoMode = normalizeVideoModeValue(config.videoMode);
+    const nativeModel=nativeVideoModelFor(config.model||config.videoModel);
+    const batchCounts=nativeModel?.batchCounts?.length?nativeModel.batchCounts:[1,2,4];
+    useEffect(()=>{
+        if(nativeModel&&!batchCounts.includes(Number(config.videoCount||1)))onConfigChange("videoCount",String(batchCounts[0]));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    },[nativeModel,config.videoCount]);
+    const modeOptions=nativeModel
+        ? [
+            ...((videoMode==="frames"||videoMode==="reference")&&!nativeModel.contract.modes.some(mode=>mode.mode===videoMode)
+                ? [{value:videoMode,label:videoMode==="frames"?"自动匹配素材":"沿用参考模式"}] : []),
+            ...nativeModel.contract.modes.map(mode=>({value:mode.mode,label:studioVideoModeName(mode)})),
+          ]
+        : [{value:"frames",label:"首帧"}];
+    const selectedMode=nativeModel?.contract.modes.find(mode=>mode.mode===videoMode);
     // 清晰度 / 比例同样按**选中模型真正能出的**来（v0.184）；夹过之后要回写。
     const geometry = effectiveVideoGeometry(config);
     const resolution = geometry.resolution;
     const selectedRatio = geometry.ratio;
     const dimensions = readVideoDimensions(config.size || "auto", resolution, selectedRatio);
     const applySize = (nextResolution: string, ratio: string) => {
-        onConfigChange("vquality", nextResolution);
-        onConfigChange("size", computeVideoSize(nextResolution, ratio));
+        const tier=nativeModel?.contract.tiers.find(item=>item.tier===nextResolution||item.tier===`${nextResolution}p`);
+        const canvas=tier?.canvases.find(item=>item.aspectRatio===ratio);
+        onConfigChange("vquality", tier?.tier??nextResolution);
+        onConfigChange("size", canvas?`${canvas.width}x${canvas.height}`:computeVideoSize(nextResolution, ratio));
     };
     const selectResolution = (nextResolution: string) => {
         if (selectedRatio === "auto") onConfigChange("vquality", nextResolution);
@@ -143,8 +167,11 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
     };
     useEffect(() => {
         if (!geometry.constrained) return;
-        const storedResolution = parseVideoResolution(config.vquality);
-        const storedRatio = inferVideoRatio(config.size || "auto");
+        const storedResolution = geometry.resolutionOptions.find(item=>item.value===config.vquality||`${item.value}p`===config.vquality)?.value
+            ?? parseVideoResolution(config.vquality);
+        const storedTier=nativeModel?.contract.tiers.find(item=>item.tier===config.vquality||item.tier===`${config.vquality}p`);
+        const storedRatio = storedTier?.canvases.find(canvas=>config.size===canvas.aspectRatio||config.size===`${canvas.width}x${canvas.height}`)?.aspectRatio
+            ?? inferVideoRatio(config.size || "auto");
         if (storedResolution === resolution && storedRatio === selectedRatio) return;
         applySize(resolution, selectedRatio);
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +181,10 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
         <ImageSettingsTheme theme={theme}>
             <div className={className} style={{ color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()}>
                 {showTitle ? <div className="text-lg font-semibold">{t("settingsPanels.video.title")}</div> : null}
+                {/* 本仓：one atomic batch, matching the Studio video drawer. */}
+                <SettingGroup title="候选数量" color={theme.node.muted}>
+                    <div className="grid grid-cols-3 gap-2.5">{batchCounts.map(count=><OptionPill key={count} selected={String(count)===(config.videoCount||"1")} theme={theme} onClick={()=>onConfigChange("videoCount",String(count))}>{count} 条</OptionPill>)}</div>
+                </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.quality")} color={theme.node.muted}>
                     <div className="grid grid-cols-4 gap-2.5">
                         {geometry.resolutionOptions.map((item) => (
@@ -206,12 +237,15 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
                 </SettingGroup>
                 <SettingGroup title={t("settingsPanels.video.mode")} color={theme.node.muted}>
                     <div className="grid grid-cols-2 gap-2.5">
-                        {videoModeOptions.map((item) => (
+                        {modeOptions.map((item) => (
                             <OptionPill key={item.value} selected={videoMode === item.value} theme={theme} onClick={() => onConfigChange("videoMode", item.value)}>
-                                {t(`settingsPanels.video.modes.${item.labelKey}`)}
+                                {item.label}
                             </OptionPill>
                         ))}
                     </div>
+                    <p className="mt-2 text-xs leading-relaxed" style={{color:theme.node.muted}}>{selectedMode
+                        ? `${selectedMode.needsFirstFrame?"需要首帧图片；":""}${selectedMode.needsLastFrame?"需要尾帧图片；":""}${selectedMode.references?"按模型规则选择参考素材。":""}${!selectedMode.needsFirstFrame&&!selectedMode.needsLastFrame&&!selectedMode.references?"只需填写创作要求。":""}`
+                        : videoMode==="reference"?"按参考素材编号描述用途。":nativeModel?"自动按画布连接的素材匹配开放模式。":"不接图片为文生视频；接一张图片作为首帧。"}</p>
                 </SettingGroup>
             </div>
         </ImageSettingsTheme>
@@ -219,7 +253,7 @@ export function VideoSettingsPanel({ config, onConfigChange, theme, showTitle = 
 }
 
 export function videoResolutionLabel(value: string) {
-    return `${parseVideoResolution(value)}p`;
+    return /^\d+p?$/.test(value)?`${parseVideoResolution(value)}p`:value;
 }
 
 export function videoSizeLabel(value: string) {
@@ -232,12 +266,17 @@ export function videoSecondsLabel(value: string) {
     return `${value || "6"}s`;
 }
 
-export function videoModeLabel(value: string) {
+export function videoModeLabel(value: string, model?: string) {
+    const native=nativeVideoModelFor(model);
+    const configured=native?.contract.modes.find(mode=>mode.mode===value);
+    if(configured)return studioVideoModeName(configured);
+    if(native&&value==="frames")return "自动匹配素材";
+    if(native&&value==="reference")return "沿用参考模式";
     return i18n.t(`settingsPanels.video.modes.${normalizeVideoModeValue(value)}`);
 }
 
 export function normalizeVideoModeValue(value: string | undefined) {
-    return value === "reference" ? "reference" : "frames";
+    return value?.trim() || "frames";
 }
 
 export function normalizeVideoSizeValue(value: string, resolution = "720") {
@@ -258,7 +297,7 @@ function updateDimension(key: "width" | "height", value: number | null, dimensio
 
 function OptionPill({ selected, disabled = false, theme, onClick, children }: { selected: boolean; disabled?: boolean; theme: CanvasTheme; onClick: () => void; children: ReactNode }) {
     return (
-        <button type="button" disabled={disabled} className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
+        <button type="button" aria-pressed={selected} disabled={disabled} className="h-9 cursor-pointer rounded-full border px-2 text-sm transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-35" style={{ background: "transparent", borderColor: selected ? theme.node.text : theme.node.stroke, color: theme.node.text }} onMouseDown={(event) => event.stopPropagation()} onClick={onClick}>
             {children}
         </button>
     );

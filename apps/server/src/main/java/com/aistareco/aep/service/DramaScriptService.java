@@ -120,7 +120,7 @@ public class DramaScriptService {
     /** body: { theme, genre?, duration_sec?, count? } → 返回 count 个候选短剧脚本（未落库）。 */
     public List<JsonNode> aiDraft(JsonNode body, String userId) {
         PromptService.ResolvedPrompt prompt = promptService.resolve(AiModelPurpose.DRAMA_SCRIPT_DRAFT);
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "AI 写脚本还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -181,7 +181,7 @@ public class DramaScriptService {
 
         AiModelInvocationService.AiModelResponse resp;
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

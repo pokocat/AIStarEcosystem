@@ -18,6 +18,13 @@ import static org.mockito.Mockito.when;
 
 class AiModelGuardServiceTest {
 
+    @Test void visualTokenReserveCountsImagesWithoutCountingBase64Characters() {
+        var guard=new AiModelGuardService(mock(AiModelUsageRecordRepository.class));
+        var text=java.util.List.of(java.util.Map.of("role","user","content",java.util.List.of(java.util.Map.of("type","text","text","read"))));
+        var picture=java.util.List.of(java.util.Map.of("role","user","content",java.util.List.of(java.util.Map.of("type","text","text","read"),java.util.Map.of("type","image_url","image_url",java.util.Map.of("url","data:image/jpeg;base64,"+"A".repeat(90000))))));
+        assertEquals(8192,guard.estimateChatTokens(picture,java.util.Map.of()).promptTokens()-guard.estimateChatTokens(text,java.util.Map.of()).promptTokens());
+    }
+
     @Test
     void rejectsRequestsOverRpmLimit() {
         AiModelGuardService guard = new AiModelGuardService(mock(AiModelUsageRecordRepository.class));

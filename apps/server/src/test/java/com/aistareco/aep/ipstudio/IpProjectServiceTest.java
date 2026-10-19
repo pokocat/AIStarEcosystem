@@ -30,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -63,7 +64,113 @@ class IpProjectServiceTest {
                 IpStudioFixtures.props(), videoJobs, OM, revisions);
     }
 
+    @Test void versionedPersonalTemplateCreatesIndependentOrdinaryCopiesWithoutInputsOrModels() throws Exception {
+        var row = new com.aistareco.aep.ipstudio.model.IpDemoTemplate();
+        row.setId("my-template"); row.setName("个人工作流"); row.setVisibility("personal"); row.setCreatedBy(USER); row.setEnabled(true); row.setCurrentVersionId("release-v1");
+        String source = "{\"nodes\":[{\"id\":\"brief\",\"type\":\"text\",\"title\":\"要求\",\"metadata\":{}},{\"id\":\"image\",\"type\":\"image\",\"title\":\"主形象\",\"metadata\":{}}],\"connections\":[]}";
+        row.setDocJson(source);
+        var recipe = new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Recipe(
+            List.of(new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Input("brief","brief","要求","text",true,null,null)),
+            List.of(new com.aistareco.aep.ipstudio.dto.StudioTemplateDtos.Step("image","image","主形象","image","创建人物 {{brief}}",List.of(),"768x1365","main",true)));
+        var version = com.aistareco.aep.ipstudio.model.IpTemplateVersion.builder().id("release-v1").templateId(row.getId()).version(1).name(row.getName()).docJson(source).recipeJson(OM.writeValueAsString(recipe)).build();
+        var repository = org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpDemoTemplateRepository.class);
+        var versions = org.mockito.Mockito.mock(com.aistareco.aep.ipstudio.repository.IpTemplateVersionRepository.class);
+        org.mockito.Mockito.when(repository.findByEnabledTrueOrderBySortOrderAscCreatedAtAsc()).thenReturn(List.of(row));
+        org.mockito.Mockito.when(versions.findById("release-v1")).thenReturn(java.util.Optional.of(version));
+        var resolver = new com.aistareco.aep.ipstudio.service.IpTemplateResolver(new IpCatalogService(OM),repository,storage,OM);
+        org.springframework.test.util.ReflectionTestUtils.setField(resolver,"versions",versions);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"templates",resolver);
+        var one = svc.create(USER,new IpCreateProjectRequest(null,row.getId()));
+        var two = svc.create(USER,new IpCreateProjectRequest(null,row.getId()));
+        assertNotNull(one.id()); assertNotEquals(one.id(),two.id()); assertNull(one.templateVersionId());
+        assertNotEquals(one.doc().path("nodes").get(0).path("id").asText(),two.doc().path("nodes").get(0).path("id").asText());
+        assertEquals(1,one.doc().path("connections").size()); assertEquals(source,version.getDocJson()); assertEquals(source,row.getDocJson());
+        assertThrows(BusinessException.class,()->svc.create(OTHER,new IpCreateProjectRequest(null,row.getId())));
+    }
+
+    @Test void fixedCoverPersistsWithoutChangingDocAndCanBeReset() {
+        var doc = new IpStudioFixtures.Doc();
+        String first = IpStudioFixtures.sourceKey(USER, "first.png"), chosen = IpStudioFixtures.sourceKey(USER, "chosen.png");
+        doc.node("image", "image").put("storageKey", first).putArray("images").addObject().put("storageKey", chosen);
+        var project = IpStudioFixtures.project(PID, USER, doc);
+        projects.repo.save(project);
+        String before = project.getDocJson(), version = svc.detail(USER, PID).docVersion();
+        var saved = svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, chosen));
+        assertTrue(saved.coverUrl().contains(chosen));
+        assertTrue(svc.detail(USER, PID).coverUrl().contains(chosen));
+        assertEquals(before, project.getDocJson()); assertEquals(version, saved.docVersion()); assertTrue(history.isEmpty());
+        svc.update(USER, PID, new IpUpdateProjectRequest("改名", null));
+        assertEquals(chosen, project.getCoverKey());
+        svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, ""));
+        assertNull(project.getCoverKey()); assertTrue(svc.detail(USER, PID).coverUrl().contains(first));
+    }
+
+    @Test void automaticCoverUsesSelectedImageAndHasNoVideoOnlyFallback() {
+        var doc=new IpStudioFixtures.Doc();
+        String first=IpStudioFixtures.sourceKey(USER,"first.png"),selected=IpStudioFixtures.sourceKey(USER,"selected.png");
+        doc.node("image","image").put("storageKey",first).put("primaryImageId","selected").putArray("images").addObject().put("id","selected").put("storageKey",selected);
+        var project=IpStudioFixtures.project(PID,USER,doc);projects.repo.save(project);
+        assertTrue(svc.detail(USER,PID).coverUrl().contains(selected));
+        var video=new IpStudioFixtures.Doc();video.node("video","video").put("storageKey",IpStudioFixtures.sourceKey(USER,"video.mp4"));project.setDocJson(video.root.toString());
+        assertNull(svc.detail(USER,PID).coverUrl());
+    }
+
+    @Test void fixedCoverRejectsOtherOwnersAbsentImagesAndVideoKeys() {
+        var doc = new IpStudioFixtures.Doc();
+        String foreign = IpStudioFixtures.sourceKey(OTHER, "foreign.png"), video = IpStudioFixtures.sourceKey(USER, "clip.mp4");
+        doc.node("foreign", "image").put("storageKey", foreign);
+        doc.node("clip", "video").put("storageKey", video);
+        projects.repo.save(IpStudioFixtures.project(PID, USER, doc));
+        for (String key : List.of(foreign, video, IpStudioFixtures.sourceKey(USER, "absent.png"))) {
+            assertEquals("IP_COVER_INVALID", assertThrows(BusinessException.class,
+                () -> svc.update(USER, PID, new IpUpdateProjectRequest(null, null, null, key))).getCode());
+        }
+        assertEquals("IP_PROJECT_NOT_FOUND", assertThrows(BusinessException.class,
+            () -> svc.update(OTHER, PID, new IpUpdateProjectRequest(null, null, null, ""))).getCode());
+    }
+
     // ── 创建 ─────────────────────────────────────────────────
+
+    @Test void liveQueuePositionIsProjectedWithoutExecutionInternals() {
+        var queue=org.mockito.Mockito.mock(com.aistareco.aep.service.AiGenerationQueueService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"generationQueue",queue);
+        var position=new com.aistareco.aep.dto.AiGenerationQueuePositionDto(2,4,1,1);
+        org.mockito.Mockito.when(queue.position("ip-image","queued")).thenReturn(position);
+        var run=IpRun.builder().id("queued").kind("generate").status("running").stage("queued").pct(8)
+            .inputJson("{\"_exec\":{\"endpointId\":\"private-endpoint\"}}").outputJson("{}").build();
+        var dto=svc.toRunDto(run);
+        assertEquals(position,dto.queue());assertEquals("endpoint.queued",dto.stage());assertEquals(0,dto.pct());
+        assertFalse(dto.inputs().has("_exec"));
+        run.setStatus("failed");assertNull(svc.toRunDto(run).queue());
+    }
+
+    @Test void extractedSourceAudioIsSignedOnReadWithoutPersistingItsUrl() {
+        org.mockito.Mockito.when(storage.signedUrl("soundtrack.wav")).thenReturn("fresh-audio-url");
+        String persisted="{\"sourceAudio\":{\"status\":\"ready\",\"sourceNodeId\":\"video\",\"sourceStorageKey\":\"source.mp4\",\"sourceTitle\":\"原片\",\"storageKey\":\"soundtrack.wav\",\"durationSec\":17.067,\"mimeType\":\"audio/wav\"}}";
+        var run=IpRun.builder().id("audio-run").ownerUserId(USER).kind("studio-recreation").status("running").inputJson("{}").outputJson(persisted).build();
+        var dto=svc.toRunDto(run);
+        assertEquals("fresh-audio-url",dto.output().path("sourceAudio").path("url").asText());
+        assertEquals(persisted,run.getOutputJson());
+    }
+
+    @Test void videoBatchHasIndependentQueuePositionsAndOnlyAllWaitingHasParentQueue() {
+        var queue=org.mockito.Mockito.mock(com.aistareco.aep.service.AiGenerationQueueService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"generationQueue",queue);
+        var one=com.aistareco.aep.model.MaterialVideoJob.builder().id("v1").ownerUserId(USER).app("ipstudio").status("queued").durationSec(5).build();
+        var two=com.aistareco.aep.model.MaterialVideoJob.builder().id("v2").ownerUserId(USER).app("ipstudio").status("queued").durationSec(5).build();
+        org.mockito.Mockito.when(videoJobs.findById("v1")).thenReturn(java.util.Optional.of(one));
+        org.mockito.Mockito.when(videoJobs.findById("v2")).thenReturn(java.util.Optional.of(two));
+        var position=new com.aistareco.aep.dto.AiGenerationQueuePositionDto(2,3,1,1);
+        org.mockito.Mockito.when(queue.position("material-video","v1")).thenReturn(position);
+        org.mockito.Mockito.when(queue.position("material-video","v2")).thenReturn(new com.aistareco.aep.dto.AiGenerationQueuePositionDto(3,3,1,1));
+        var run=IpRun.builder().id("video-run").ownerUserId(USER).kind("studio-video").status("running")
+            .inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"v1\",\"v2\"]}}").build();
+        var dto=svc.toRunDto(run);assertEquals(position,dto.queue());
+        assertEquals(3,dto.output().path("videoCandidates").path(1).path("queue").path("position").asInt());
+        one.setStatus("generating");org.mockito.Mockito.when(queue.position("material-video","v1")).thenReturn(null);
+        assertNull(svc.toRunDto(run).queue());
+        assertFalse(dto.inputs().has("_exec"));
+    }
 
     @Test
     void createFromTemplate_prefillsNodeGraph() {

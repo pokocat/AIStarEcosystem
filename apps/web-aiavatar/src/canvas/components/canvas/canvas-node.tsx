@@ -1,4 +1,8 @@
+// 本仓 v0.210：mixed candidate states share the Studio adoption rules.
+import { nextStudioVideoTake, playableVideoTake, canDeleteStudioVideoTake } from '@/canvas-bridge/studio-nodes';
 import { SignedImage } from "@/canvas-bridge/signed-image";
+// Host integration: native TTS audio uses renewable platform URLs, never provider credentials.
+import { SignedAudio } from "@/canvas-bridge/signed-audio";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { ChevronRight, Copy, Download, Group, Image as ImageIcon, Music2, Puzzle, RefreshCw, Star, Trash2, Video } from "lucide-react";
@@ -437,9 +441,13 @@ export const CanvasNode = React.memo(function CanvasNode({
 });
 
 function NodeContent(props: NodeContentRendererProps) {
+    // Host business summaries use the existing content slot; editing stays outside scale(k).
+    if (props.node.type === CanvasNodeType.Text && props.node.metadata?.studio && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.node.type === CanvasNodeType.Config && props.renderNodeContent) return props.renderNodeContent(props.node);
     if (props.isBatchRoot && props.node.type === CanvasNodeType.Image) return <ImageNodeContent {...props} />;
     if (props.node.type === CanvasNodeType.Text && props.node.metadata?.texts?.length && (props.node.metadata.status !== "error" || props.node.metadata.texts.some((text) => text.content))) return <TextContent {...props} />;
+    // 本仓 v0.210：a replacement batch never hides the already adopted playable clip.
+    if (props.node.type === CanvasNodeType.Video && props.node.metadata?.storageKey && props.node.metadata?.content) return <VideoNodeContent {...props} />;
     if (props.node.metadata?.status === "loading") return <LoadingContent theme={props.theme} />;
     if (props.node.metadata?.status === "error") return <ErrorContent node={props.node} theme={props.theme} onRetry={props.onRetry} />;
 
@@ -689,8 +697,7 @@ function VideoNodeContent({ node, theme, onSetBatchPrimary, onDeleteBatchImage }
     const currentId = node.metadata?.primaryVideoId;
     const idx = Math.max(0, takes.findIndex((v) => v.id === currentId));
     const go = (delta: number) => {
-        if (takes.length < 2) return;
-        const next = takes[(idx + delta + takes.length) % takes.length];
+        const next = nextStudioVideoTake(takes, currentId, delta);
         if (next) onSetBatchPrimary?.(next.id);
     };
 
@@ -704,6 +711,7 @@ function VideoNodeContent({ node, theme, onSetBatchPrimary, onDeleteBatchImage }
     return (
         <div className="relative h-full w-full">
             <video src={node.metadata.content} controls className="h-full w-full rounded-[18px] bg-black object-contain" data-canvas-video={node.id} data-canvas-no-zoom />
+            {(node.metadata.status === "loading" || node.metadata.status === "error") && <span role="status" title={node.metadata.errorDetails} className="absolute left-2 right-2 top-2 rounded-md px-2 py-1 text-xs text-white" style={{ background: "rgba(15,23,42,.72)" }}>保留已采用视频 · {node.metadata.status === "loading" ? "本批生成中" : "本批生成失败"}</span>}
             {takes.length > 1 ? (
                 <div
                     className="absolute inset-x-0 bottom-0 z-30 flex items-center justify-center gap-1.5 rounded-b-[18px] px-2 py-1.5"
@@ -711,13 +719,15 @@ function VideoNodeContent({ node, theme, onSetBatchPrimary, onDeleteBatchImage }
                     onMouseDown={(event) => event.stopPropagation()}
                     onPointerDown={(event) => event.stopPropagation()}
                 >
-                    <TakeButton label="上一版" onClick={() => go(-1)}>‹</TakeButton>
+                    <TakeButton label="上一版" disabled={takes.filter(playableVideoTake).length<2} onClick={() => go(-1)}>‹</TakeButton>
                     <span className="select-none px-1 text-[11px] font-semibold text-white/90">
                         第 {idx + 1}/{takes.length} 版
                     </span>
-                    <TakeButton label="下一版" onClick={() => go(1)}>›</TakeButton>
+                    <TakeButton label="下一版" disabled={takes.filter(playableVideoTake).length<2} onClick={() => go(1)}>›</TakeButton>
                     <TakeButton
                         label="删掉这一版"
+                        disabled={!canDeleteStudioVideoTake(node,takes[idx]?.id||"")}
+                        hint={!canDeleteStudioVideoTake(node,takes[idx]?.id||"")?"保留最后一条可用视频":undefined}
                         onClick={() => onDeleteBatchImage?.(takes[idx]?.id ?? "")}
                     >
                         <Trash2 className="size-3" />
@@ -728,14 +738,15 @@ function VideoNodeContent({ node, theme, onSetBatchPrimary, onDeleteBatchImage }
     );
 }
 
-function TakeButton({ label, onClick, children }: { label: string; onClick: () => void; children: ReactNode }) {
+function TakeButton({ label, onClick, children, disabled=false, hint }: { label: string; onClick: () => void; children: ReactNode; disabled?:boolean; hint?:string }) {
     return (
         <button
             type="button"
-            title={label}
+            title={hint||label}
+            disabled={disabled}
             aria-label={label}
             onClick={(event) => { event.stopPropagation(); onClick(); }}
-            className="flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[13px] leading-none text-white/90 transition hover:bg-white/20"
+            className="flex h-6 min-w-6 items-center justify-center rounded-md px-1.5 text-[13px] leading-none text-white/90 transition hover:bg-white/20 disabled:opacity-40 disabled:cursor-not-allowed"
         >
             {children}
         </button>
@@ -757,7 +768,7 @@ function AudioNodeContent({ node, theme }: NodeContentRendererProps) {
                 <Music2 className="size-4 shrink-0" />
                 <span className="truncate">{t("canvas.node.audio")}</span>
             </div>
-            <audio src={node.metadata.content} controls className="w-full" data-canvas-no-zoom />
+            <SignedAudio src={node.metadata.content} storageKey={node.metadata.storageKey} controls className="w-full" data-canvas-no-zoom />
         </div>
     );
 }
@@ -994,5 +1005,3 @@ function ConnectionHandleDot({ side, visible, onMouseDown }: { side: "left" | "r
         </div>
     );
 }
-
-

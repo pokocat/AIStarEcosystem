@@ -29,6 +29,7 @@ interface KnownKeyMeta {
 }
 
 const GROUPS: { label: string; keys: KnownKeyMeta[] }[] = [
+  {label:"AI 文本计费",keys:[{key:"ai.chat-token-pricing",label:"模型 Token 售价",schema:"unknown",hint:"按 endpoints 的模型端点 ID 保存输入/输出积分每千 Token（inputCreditsPerK / outputCreditsPerK）与最大用量（maxInputTokens / maxOutputTokens）。用于 Studio 所有文本 AI 操作（改稿、剧本、分镜、对话与资产提取）。supplierReference 记录核价依据；修改售价只影响新任务。"}]},
   {
     label: "孵化向导",
     keys: [

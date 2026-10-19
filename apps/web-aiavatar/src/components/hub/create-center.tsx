@@ -11,6 +11,7 @@ import type { Job } from "@/proto/data";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref, useHubData } from "@/components/hub/data";
 import { Badge, Card, Chevron, HubScreen, LinkAction, LoadingBlock, NavBar, SectionHeader } from "@/components/hub/ui";
+import { StudioHome } from "./studio-home";
 
 interface Entry {
   href: string;
@@ -22,7 +23,6 @@ const MAKE_PEOPLE: Entry[] = [
   // AI IP 工作台（v0.190 并入）：一张照片 → 一整组同人同风格的形象，发布成数字资产。
   // 列表页手机上能看，进画布会给「请到电脑上打开」的说明（ip/canvas-gate.tsx）——
   // 这里如实写清楚，别让人点进去才发现用不了。
-  { href: "/projects", title: "AI IP 工作台", sub: "一张照片起一整套形象 · 画布需要电脑" },
   { href: "/studio?start=real", title: "真人复刻", sub: "上传一段本人出镜视频，做成会说话的数字人" },
   { href: "/studio?start=ai", title: "AI 原创人物", sub: "写清楚长相与性格，直接生成一个虚拟角色" },
   { href: studioHref("#/voice"), title: "克隆声音", sub: "录一段自己的声音，之后配音都用它" },
@@ -78,8 +78,9 @@ export function CreateCenter() {
   const running = jobs.data.filter((j) => j.status === "running").slice(0, 3);
 
   return (
-    <HubScreen tabBar>
-      <NavBar title="创作" />
+    <div data-studio-overlay-root className="ip-surface studio-home-surface"><HubScreen tabBar>
+      <StudioHome ready={ready}/>
+      <NavBar title="更多资产工具" />
 
       <div style={{ margin: "6px 16px 0" }}>
         <SectionHeader title="做一个人物" />
@@ -133,6 +134,6 @@ export function CreateCenter() {
           )}
         </div>
       )}
-    </HubScreen>
+    </HubScreen></div>
   );
 }

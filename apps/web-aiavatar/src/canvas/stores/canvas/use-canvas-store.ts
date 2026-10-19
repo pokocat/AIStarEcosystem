@@ -12,6 +12,8 @@ export type CanvasProject = {
     title: string;
     createdAt: string;
     updatedAt: string;
+    // Local integration: assistant history is separate from the vendor canvas graph.
+    assistantConversations?: CanvasNodeData[];
     nodes: CanvasNodeData[];
     connections: CanvasConnection[];
     chatSessions: CanvasAssistantSession[];
@@ -37,7 +39,7 @@ type CanvasStore = {
     renameProject: (id: string, title: string) => void;
     deleteProjects: (ids: string[]) => void;
     replaceProjects: (projects: CanvasProject[], deletedProjects?: CanvasDeletedProject[]) => void;
-    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport">>) => void;
+    updateProject: (id: string, patch: Partial<Pick<CanvasProject, "assistantConversations" | "nodes" | "connections" | "chatSessions" | "activeChatId" | "backgroundMode" | "showImageInfo" | "viewport">>) => void;
 };
 
 const initialViewport: ViewportTransform = { x: 0, y: 0, k: 1 };
@@ -75,6 +77,7 @@ export const useCanvasStore = create<CanvasStore>()(
                     title: source.title || i18n.t("canvas.project.imported"),
                     createdAt: source.createdAt || now,
                     updatedAt: now,
+                    assistantConversations: source.assistantConversations || [],
                     nodes: source.nodes || [],
                     connections: source.connections || [],
                     chatSessions: source.chatSessions || [],

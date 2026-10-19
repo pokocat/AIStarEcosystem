@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
+import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
@@ -166,7 +167,33 @@ class MaterialVideoModelClientBodyTest {
     private static final String KEY_URL = "https://cdn.test/ipstudio_gen/u1/a.png";
 
     @Test
-    @DisplayName("短剧请求（prompt 里只有首尾帧标记、没有 key）：三种协议的请求体逐字节不变")
+    @DisplayName("Agnes Video 2.5 Flash 用新版 text/keyframe 合同，不携带旧版帧数与像素字段")
+    void agnes25Bodies() {
+        Map<String, Object> text = client.buildSubmitBody("agnes", "agnes-video-2.5-flash", "蓝色陶瓷杯", 5,
+                "9:16", VideoGenSpec.EMPTY, MaterialVideoModelClient.UpstreamInputs.NONE);
+        assertEquals(List.of("model", "prompt", "mode", "seconds", "size", "aspect_ratio", "n"),
+                List.copyOf(text.keySet()));
+        assertEquals("text", text.get("mode"));
+        assertEquals("720P", text.get("size"));
+        assertEquals("9:16", text.get("aspect_ratio"));
+        assertEquals("5", text.get("seconds"));
+        FORBIDDEN.forEach(f -> assertFalse(text.containsKey(f), f));
+
+        Map<String, Object> image = client.buildSubmitBody("agnes", "agnes-video-2.5-flash", "轻轻挥手", 5,
+                "9:16", VideoGenSpec.firstFrameOnly("owned-key"),
+                MaterialVideoModelClient.UpstreamInputs.firstFrameUrl(KEY_URL));
+        assertEquals("keyframe", image.get("mode"));
+        assertEquals(KEY_URL, image.get("first_frame"));
+        assertFalse(image.containsKey("image"));
+
+        var bounds = client.protocolDurationBounds(AiModelEndpoint.builder()
+                .name("Agnes 2.5").model("agnes-video-2.5-flash").build());
+        assertEquals(4, bounds.minSec());
+        assertEquals(12, bounds.maxSec());
+    }
+
+    @Test
+    @DisplayName("短剧首尾帧标记继续传入三个协议；Agnes 同画布按 9:16 的真实像素和时长组包")
     void dramaMarkerOnlyBodiesUnchanged() {
         var none = MaterialVideoModelClient.UpstreamInputs.NONE;
         assertEquals("{\"model\":\"doubao-seedance-1\",\"content\":[{\"type\":\"text\",\"text\":\"镜头推近\"},"
@@ -174,7 +201,7 @@ class MaterialVideoModelClientBodyTest {
                         + "{\"type\":\"image_url\",\"image_url\":{\"url\":\"https://cdn.x/l.png\"},\"role\":\"last_frame\"}],"
                         + "\"ratio\":\"9:16\",\"duration\":5,\"return_last_frame\":true}",
                 json(client.buildSubmitBody("seedance", "doubao-seedance-1", DRAMA_PROMPT, 5, "9:16", VideoGenSpec.EMPTY, none)));
-        assertEquals("{\"model\":\"agnes-video\",\"prompt\":\"镜头推近\",\"width\":768,\"height\":1152,"
+        assertEquals("{\"model\":\"agnes-video\",\"prompt\":\"镜头推近\",\"size\":\"720x1280\",\"seconds\":\"5\",\"width\":720,\"height\":1280,"
                         + "\"num_frames\":121,\"frame_rate\":24,\"image\":\"https://cdn.x/f.png\"}",
                 json(client.buildSubmitBody("agnes", "agnes-video", DRAMA_PROMPT, 5, "9:16", VideoGenSpec.EMPTY, none)));
         assertEquals("{\"model\":\"some-video\",\"prompt\":\"镜头推近\",\"duration\":5,\"aspect_ratio\":\"9:16\","

@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 表单字段原语：Field（label + 错误） + Input/Textarea/Select 的轻量样式。
 // 不引 react-hook-form，用受控 state；FormDialog 会聚合校验。
@@ -44,17 +45,18 @@ const inputBase: React.CSSProperties = {
 };
 
 export const TextInput = React.forwardRef<HTMLInputElement, React.InputHTMLAttributes<HTMLInputElement>>(
-  function TextInput({ style, ...rest }, ref) {
-    return <input ref={ref} {...rest} style={{ ...inputBase, ...style }} />;
+  function TextInput({ style, className, ...rest }, ref) {
+    return <input ref={ref} {...rest} className={`drama-form-control ${className || ""}`} style={{ ...inputBase, ...style }} />;
   }
 );
 
 export const TextArea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
-  function TextArea({ style, rows = 4, ...rest }, ref) {
+  function TextArea({ style, rows = 4, className, ...rest }, ref) {
     return (
       <textarea
         ref={ref}
         rows={rows}
+        className={`drama-form-control ${className || ""}`}
         {...rest}
         style={{ ...inputBase, resize: "vertical", lineHeight: 1.5, ...style }}
       />
@@ -62,12 +64,12 @@ export const TextArea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTML
   }
 );
 
-export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttributes<HTMLSelectElement>>(
+export const Select = React.forwardRef<HTMLSelectElement, React.ComponentPropsWithoutRef<typeof SelectField>>(
   function Select({ style, children, ...rest }, ref) {
     return (
-      <select ref={ref} {...rest} style={{ ...inputBase, ...style }}>
+      <SelectField ref={ref} {...rest} style={{ ...inputBase, ...style }}>
         {children}
-      </select>
+      </SelectField>
     );
   }
 );

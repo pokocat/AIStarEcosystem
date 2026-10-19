@@ -17,9 +17,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-/** 我的声线资产（VC-xx）。克隆声线的试听 = 原始采样回放（TTS 合成排期中）。 */
+/** 声线资产（VC-xx）：legacy 采样/训练声音，以及 Studio 官方预设的不可变版本。 */
 @Entity
-@Table(name = "dap_voice", indexes = {
+@Table(name = "dap_voice", uniqueConstraints = @jakarta.persistence.UniqueConstraint(name="uk_dap_voice_source",columnNames={"avatarId","sourceRunId"}), indexes = {
         @Index(name = "idx_dap_voice_owner", columnList = "ownerUserId")
 })
 @Getter
@@ -43,7 +43,7 @@ public class DapVoice {
     @Column(length = 32)
     private String avatarId;
 
-    /** clone | design */
+    /** clone | design | preset（官方预设音色，不表示声音训练）。 */
     @Column(nullable = false, length = 8)
     private String kind;
 
@@ -70,7 +70,7 @@ public class DapVoice {
     @Builder.Default
     private boolean fav = false;
 
-    /** 原始采样音频 storage key。 */
+    /** 原始采样或已生成的真实配音 storage key；不保存签名 URL。 */
     @Column(length = 512)
     private String audioKey;
 
@@ -85,6 +85,16 @@ public class DapVoice {
 
     @Column(length = 24)
     private String engineStatus;
+
+    /** 人物声音的不可变版本；旧资产保持 null，不占用版本号。 */
+    private Integer profileVersion;
+
+    @Column(length = 160)
+    private String stylePrompt;
+
+    /** 成功配音的来源任务；同一人物重复采纳不会创建第二份版本。 */
+    @Column(length = 32)
+    private String sourceRunId;
 
     private Instant engineTrainedAt;
 

@@ -54,6 +54,14 @@ public class IpProject {
     @Column(length = 64)
     private String templateId;
 
+    @Column(name = "template_version_id", length = 32)
+    private String templateVersionId;
+
+    /** Server-owned creation inputs and node bindings. Workers never rewrite the client canvas. */
+    @Lob
+    @Column(name = "template_instance_json", columnDefinition = "LONGTEXT")
+    private String templateInstanceJson;
+
     /** draft | published */
     @Column(nullable = false, length = 16)
     private String status;

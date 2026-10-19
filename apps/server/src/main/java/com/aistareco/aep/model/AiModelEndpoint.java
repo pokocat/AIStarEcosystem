@@ -67,9 +67,35 @@ public class AiModelEndpoint {
     @Column(name = "default_top_p")
     private Double defaultTopP;
 
+    /** Chat wire capabilities belong to this fixed supplier/model endpoint, not to a caller. Null = supported (legacy). */
+    @Column(name = "chat_supports_temperature")
+    private Boolean chatSupportsTemperature;
+
+    @Column(name = "chat_supports_top_p")
+    private Boolean chatSupportsTopP;
+
+    @Column(name = "chat_supports_response_format")
+    private Boolean chatSupportsResponseFormat;
+
+    /** Supplier-specific upper bound; null means no endpoint cap. */
+    @Column(name = "chat_max_output_tokens")
+    private Integer chatMaxOutputTokens;
+
+    /** Legal image request limits and canvas-to-wire presets for this fixed supplier model. */
+    @Column(name = "image_request_spec_json", columnDefinition = "LONGTEXT")
+    private String imageRequestSpecJson;
+
+    /** Editable video modes, dimensions and wire adapter for this fixed supplier model. */
+    @Column(name = "video_request_spec_json", columnDefinition = "LONGTEXT")
+    private String videoRequestSpecJson;
+
     /** 每分钟请求数限制；为空表示不限制。 */
     @Column(name = "rpm_limit")
     private Integer rpmLimit;
+
+    /** Active generation tasks for this endpoint; null = unlimited. */
+    @Column(name = "concurrency_limit")
+    private Integer concurrencyLimit;
 
     /** 每分钟 token 估算限制；为空表示不限制。 */
     @Column(name = "tpm_limit")
@@ -95,10 +121,18 @@ public class AiModelEndpoint {
     @Column(name = "owner_user_id")
     private String ownerUserId;
 
-    /** 成本估算口径；null = 自动按用途推断（文本 token / 图片按次 / 视频按秒）。 */
+    /** Legacy operational unit, also consumed by customer candidate pricing. Cost editing must not change it. */
     @Enumerated(EnumType.STRING)
     @Column(name = "billing_mode", length = 32)
     private AiModelBillingMode billingMode;
+
+    /** Supplier cost unit; null preserves legacy billingMode, explicit AUTO infers from the invocation. */
+    @Column(name = "supplier_billing_mode", length = 32)
+    private String supplierBillingMode;
+
+    public AiModelBillingMode effectiveSupplierBillingMode() {
+        return supplierBillingMode == null ? billingMode : AiModelBillingMode.fromWire(supplierBillingMode);
+    }
 
     /** 输入 token 单价，单位：人民币微元 / 1K Token。0 = 未配置成本价。 */
     @ColumnDefault("0")
@@ -162,4 +196,9 @@ public class AiModelEndpoint {
     void onUpdate() {
         updatedAt = Instant.now();
     }
+    /** Customer-facing model label; internal endpoint names may identify the supplier. */
+    public String publicModelName() {
+        return modelAlias == null || modelAlias.isBlank() ? "未命名模型" : modelAlias.trim();
+    }
+
 }

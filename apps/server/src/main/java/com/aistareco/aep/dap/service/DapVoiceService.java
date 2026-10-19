@@ -101,8 +101,8 @@ public class DapVoiceService {
     public Map<String, Object> preview(String userId, String voiceId) {
         if (voiceId != null) {
             DapVoice mine = voiceRepo.findByIdAndOwnerUserId(voiceId, userId).orElse(null);
-            if (mine != null && mine.getAudioKey() != null) {
-                return Map.of("audioUrl", storage.signedUrl(mine.getAudioKey()), "kind", "sample");
+            if (mine != null && mine.getDeletedAt() == null && mine.getAudioKey() != null) {
+                return Map.of("audioUrl", storage.signedUrl(mine.getAudioKey()), "kind", "preset".equals(mine.getKind()) ? "preset" : "sample");
             }
             boolean builtin = catalog.builtinVoices().stream().anyMatch(v -> v.get("id").equals(voiceId));
             if (builtin) {

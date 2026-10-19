@@ -58,7 +58,7 @@ public class DramaHotspotService {
     /** 抓热搜 → 蒸馏 → 返回候选短剧选题钩子（最多 max 条，默认 12）。不落库。 */
     public List<String> generate(int max) {
         int cap = max > 0 ? Math.min(max, 30) : 12;
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "AI 整理热点还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -91,7 +91,7 @@ public class DramaHotspotService {
 
         AiModelInvocationService.AiModelResponse resp;
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

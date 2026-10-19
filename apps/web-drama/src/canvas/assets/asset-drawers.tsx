@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 列表里点卡片打开的抽屉（手机上点角色 / 场景卡、任何宽度点素材卡）：
 //   角色：改名、分级、选哪个造型 → 这个造型的出图面板（inline，面板里有「造型详情」）；加一个造型；删掉角色
@@ -86,7 +87,7 @@ function CharacterBody({ id, initialLookId, onClose }: { id: string; initialLook
           />
           <label className="cva-form-row">
             <span className="cva-field-label">分级</span>
-            <select
+            <SelectField
               className="cv-select"
               value={c.role}
               disabled={readOnly}
@@ -101,7 +102,7 @@ function CharacterBody({ id, initialLookId, onClose }: { id: string; initialLook
                   {ROLE_LABEL[r]}
                 </option>
               ))}
-            </select>
+            </SelectField>
           </label>
         </div>
         {c.bio && <p className="cva-bio">{c.bio}</p>}

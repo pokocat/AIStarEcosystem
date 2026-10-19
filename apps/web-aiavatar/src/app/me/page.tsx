@@ -11,6 +11,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
+import { AccountOverview } from "@/shell/account-workspace";
 
 export default function MePage() {
   const router = useRouter();
@@ -19,11 +20,14 @@ export default function MePage() {
   const noPlatform = authState === "no-platform";
   // 「我是谁」的真源是 /api/me（hook 必须在早退之前调用）。
   const identity = useIdentity();
+  const layout = useLayoutMode();
   if (noPlatform) return <PlatformGateScreen />;
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const displayName = identity?.displayName || "我的账号";
   const initial = String(displayName).trim().slice(0, 1) || "我";
+
+  if (layout === "desktop") return <AccountOverview name={displayName} phone={identity?.phoneMasked} demo={USE_MOCK || identity?.demo} />;
 
   return (
     <HubScreen tabBar>
@@ -73,7 +77,9 @@ export default function MePage() {
 
       <div style={{ margin: "12px 16px 0" }}>
         <Card pad={0}>
+          {ID_MODE && <ListRow href="/invitations" title="邀请朋友" sub="管理邀请链接 · 查看邀请记录" divider />}
           <ListRow href={studioHref("#/membership")} title="会员与算力" divider />
+          {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <ListRow href="/enterprise" title="企业积分" sub="企业余额 · 积分分配 · 充值记录" divider />}
           <ListRow href={studioHref("#/storage")} title="存储用量" divider />
           <ListRow href={studioHref("#/trash")} title="回收站" divider />
           <ListRow href={studioHref("#/settings")} title="设置" />

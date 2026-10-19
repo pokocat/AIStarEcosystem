@@ -68,7 +68,7 @@ public class EnumColumnWideningMigration implements CommandLineRunner {
             // LedgerEntry.LedgerEntryType（C3/D17：+REFUND_CASH）
             new EnumColumn("aep_ledger_entries", "entry_type",
                     List.of("LICENSE_GRANT", "RECHARGE", "REFUND", "REFUND_CASH", "INCOME",
-                            "GIFT", "SPEND", "WITHDRAW", "FREEZE", "UNFREEZE", "ADJUST"))
+                            "GIFT", "SPEND", "WITHDRAW", "FREEZE", "UNFREEZE", "ADJUST", "TRANSFER_IN", "TRANSFER_OUT"))
     );
 
     /** 测试用：暴露目标清单做反射对齐校验（同包可见）。 */

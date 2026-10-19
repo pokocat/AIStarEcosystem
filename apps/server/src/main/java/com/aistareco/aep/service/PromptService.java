@@ -21,6 +21,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -139,6 +143,9 @@ public class PromptService {
     public static final String KEY_DAP_IP_LOOK_IMAGE = "dap.ip_look_image";
     /** 画布出图（v0.157）：用户自己写提示词，服务端只加一致性从句与负面词。 */
     public static final String KEY_DAP_IP_CANVAS_IMAGE = "dap.ip_canvas_image";
+    public static final String KEY_DAP_IP_STUDIO_SCRIPT = "dap.ip_studio_script";
+    public static final String KEY_DAP_IP_STUDIO_RECREATION = "dap.ip_studio_recreation";
+    public static final String KEY_DAP_IP_STUDIO_ASSISTANT = "dap.ip_studio_assistant";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
@@ -162,7 +169,7 @@ public class PromptService {
                     KEY_DAP_IMAGE_DERIV, KEY_DAP_VIDEO_ORBIT,
                     KEY_DAP_SCENE_IMAGE, KEY_DAP_SCENE_VARIANT, KEY_DAP_PRODUCT_IMAGE,
                     KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE,
-                    KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE);
+                    KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE, KEY_DAP_IP_STUDIO_SCRIPT, KEY_DAP_IP_STUDIO_ASSISTANT, KEY_DAP_IP_STUDIO_RECREATION);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
@@ -388,35 +395,65 @@ public class PromptService {
                 });
     }
 
-    /** admin PUT：upsert 并立即失效缓存。version 自增。 */
-    public PromptTemplateDto upsert(String promptKey, PromptTemplateUpsertDto in, String updatedBy) {
-        if (promptKey == null || promptKey.isBlank()) {
-            throw new BusinessException(HttpStatus.BAD_REQUEST, "PROMPT_KEY_REQUIRED", "promptKey 必填");
+    /** Original writes and snapshots commit together; a version predicate protects concurrent updates. */
+    @Transactional
+    public PromptTemplateDto upsert(String key, PromptTemplateUpsertDto in, String by) {
+        return upsert(key, in, by, null);
+    }
+
+    @Transactional
+    public PromptTemplateDto upsert(String key, PromptTemplateUpsertDto in, String by, Integer expectedVersion) {
+        if (key == null || key.isBlank())
+            throw BusinessException.badRequest("PROMPT_KEY_REQUIRED", "promptKey 必填");
+        PromptTemplate current = repo.findByPromptKey(key).orElse(null);
+        checkVersion(current, expectedVersion);
+        String[] def = current == null ? loadResource(key) : null;
+        String system = in.systemPrompt() != null ? in.systemPrompt()
+                : current != null ? current.getSystemPrompt() : def != null ? def[0] : "";
+        String user = in.userTemplate() != null ? in.userTemplate()
+                : current != null ? current.getUserTemplate() : def != null ? def[1] : "";
+        String params = in.params() != null ? writeParams(in.params())
+                : current != null ? current.getParamsJson() : null;
+        boolean enabled = in.enabled() != null ? in.enabled() : current == null || current.isEnabled();
+        return writeVersion(key, current, system, user, params, enabled, by, in.changeNote());
+    }
+
+    private static void checkVersion(PromptTemplate current, Integer expected) {
+        if (expected != null && (expected < 0 || expected != (current == null ? 0 : current.getVersion())))
+            throw versionConflict();
+    }
+
+    private static BusinessException versionConflict() {
+        return new BusinessException(HttpStatus.CONFLICT, "PROMPT_VERSION_CONFLICT",
+                "提示词已被更新，请核对最新版本后再保存");
+    }
+
+    private PromptTemplateDto writeVersion(String key, PromptTemplate current, String system, String user,
+                                            String params, boolean enabled, String by, String note) {
+        String actor = by == null ? "admin" : by;
+        Instant now = Instant.now();
+        PromptTemplate saved;
+        if (current == null) {
+            try {
+                saved = repo.saveAndFlush(PromptTemplate.builder().id(UUID.randomUUID().toString())
+                        .promptKey(key).systemPrompt(system).userTemplate(user).paramsJson(params)
+                        .version(1).enabled(enabled).updatedAt(now).updatedBy(actor).build());
+            } catch (DataIntegrityViolationException collision) {
+                throw versionConflict();
+            }
+        } else {
+            // Do not mutate the managed entity before the conditional update: JPA auto-flush would bypass CAS.
+            if (repo.updateIfVersion(key, current.getVersion(), system, user, params, enabled, now, actor) != 1)
+                throw versionConflict();
+            saved = repo.findByPromptKey(key).orElseThrow(PromptService::versionConflict);
         }
-        PromptTemplate row = repo.findByPromptKey(promptKey).orElse(null);
-        if (row == null) {
-            // 新建时用 resource 默认填补未提供的字段
-            String[] def = loadResource(promptKey);
-            row = PromptTemplate.builder()
-                    .id(UUID.randomUUID().toString())
-                    .promptKey(promptKey)
-                    .systemPrompt(def != null ? def[0] : "")
-                    .userTemplate(def != null ? def[1] : "")
-                    .version(0)
-                    .enabled(true)
-                    .build();
-        }
-        if (in.systemPrompt() != null) row.setSystemPrompt(in.systemPrompt());
-        if (in.userTemplate() != null) row.setUserTemplate(in.userTemplate());
-        if (in.params() != null) row.setParamsJson(writeParams(in.params()));
-        if (in.enabled() != null) row.setEnabled(in.enabled());
-        row.setVersion(row.getVersion() + 1);
-        row.setUpdatedAt(Instant.now());
-        row.setUpdatedBy(updatedBy == null ? "admin" : updatedBy);
-        repo.save(row);
-        saveVersion(row, row.getUpdatedBy(), in.changeNote());
-        cache.remove(promptKey); // 立即失效
-        return toDto(row);
+        saveVersion(saved, actor, note);
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { cache.remove(key); }
+            });
+        } else cache.remove(key);
+        return toDto(saved);
     }
 
     /** admin 试运行：用样例参数 fill 出最终 messages（不真调模型）。 */
@@ -464,27 +501,19 @@ public class PromptService {
                 .toList();
     }
 
-    public PromptTemplateDto rollback(String promptKey, int version, String updatedBy) {
-        PromptTemplateVersion snapshot = versionRepo.findByPromptKeyAndVersion(promptKey, version)
-                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "PROMPT_VERSION_NOT_FOUND",
-                        "指定 Prompt 版本不存在"));
-        PromptTemplate row = repo.findByPromptKey(promptKey).orElseGet(() -> PromptTemplate.builder()
-                .id(UUID.randomUUID().toString())
-                .promptKey(promptKey)
-                .version(0)
-                .enabled(true)
-                .build());
-        row.setSystemPrompt(snapshot.getSystemPrompt());
-        row.setUserTemplate(snapshot.getUserTemplate());
-        row.setParamsJson(snapshot.getParamsJson());
-        row.setEnabled(snapshot.isEnabled());
-        row.setVersion(row.getVersion() + 1);
-        row.setUpdatedAt(Instant.now());
-        row.setUpdatedBy(updatedBy == null ? "admin" : updatedBy);
-        repo.save(row);
-        saveVersion(row, row.getUpdatedBy(), "rollback to v" + version);
-        cache.remove(promptKey);
-        return toDto(row);
+    @Transactional
+    public PromptTemplateDto rollback(String key, int version, String by) {
+        return rollback(key, version, by, null);
+    }
+
+    @Transactional
+    public PromptTemplateDto rollback(String key, int version, String by, Integer expectedVersion) {
+        PromptTemplate current = repo.findByPromptKey(key).orElse(null);
+        checkVersion(current, expectedVersion);
+        PromptTemplateVersion snapshot = versionRepo.findByPromptKeyAndVersion(key, version)
+                .orElseThrow(() -> BusinessException.notFound("PROMPT_VERSION_NOT_FOUND", "指定 Prompt 版本不存在"));
+        return writeVersion(key, current, snapshot.getSystemPrompt(), snapshot.getUserTemplate(),
+                snapshot.getParamsJson(), snapshot.isEnabled(), by, "rollback to v" + version);
     }
 
     private PromptTemplateDto virtualDefaultDto(String promptKey) {

@@ -34,6 +34,8 @@ infra/.local/
 # v0.34.x dev-server.sh --log 写到这里（包含完整 SQL / stack trace，不入 git）
 /logs/
 .dap-verify/
+.studio-fixtures/
+.studio-e2e/
 # v0.51 dap：统一文件存储门面本地落盘（FileStorageService local-dir，运行时产物）
 apps/server/file-storage/
 __pycache__/
@@ -45,3 +47,7 @@ log
 apps/web-drama/public/recipes/home/
 .codexalipay-pay.html
 .codex
+
+# Local Studio acceptance screenshots and transient logs
+.impeccable/review/
+.studio-e2e-floating-tests.log

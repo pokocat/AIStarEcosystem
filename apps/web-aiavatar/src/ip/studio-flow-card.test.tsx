@@ -1,0 +1,48 @@
+// @vitest-environment jsdom
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, expect, test, vi } from 'vitest';
+import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
+import { StudioFlowCard } from './studio-flow-canvas';
+
+vi.mock('@xyflow/react',()=>({useViewport:()=>({zoom:1}),Handle:()=>null,NodeResizer:()=>null,Position:{Right:'right',Left:'left'}}));
+vi.mock('./studio-workspace',()=>({StudioWorkspace:()=>null}));
+vi.mock('./studio-node-title',()=>({StudioNodeTitle:({title}:any)=><span>{title}</span>}));
+vi.mock('@/canvas-bridge/signed-image',()=>({SignedImage:({storageKey,...props}:any)=><img {...props} src={props.src}/>}));
+vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:({storageKey,...props}:any)=><video {...props}/>}));
+afterEach(cleanup);
+
+test.each([CanvasNodeType.Image,CanvasNodeType.Video])('%s generation is centered and disappears when its result completes',type=>{
+  const node:CanvasNodeData={id:'n',type,title:'场景动作',position:{x:0,y:0},width:320,height:400,
+    metadata:{status:'loading',content:'/old',storageKey:'old',studio:{kind:'shot',runId:'accepted',task:{status:'running',pct:11}}}};
+  const props={data:{document:node},selected:true} as any;
+  const view=render(<StudioFlowCard {...props}/>);
+  const label=type===CanvasNodeType.Video?'视频':'图片';
+  expect(screen.getByRole('status').textContent).toContain(`正在生成${label}`);
+  expect(screen.getByRole('progressbar',{name:`${label}任务进度`}).getAttribute('aria-valuenow')).toBe('11');
+  expect(view.container.querySelector('header small')).toBeNull();
+  expect(screen.queryByText('任务进行中，可继续编辑画布')).toBeNull();
+  if(type===CanvasNodeType.Video)expect(view.container.querySelector('video')?.getAttribute('src')).toBe('/old');
+  view.rerender(<StudioFlowCard {...props} data={{document:{...node,metadata:{...node.metadata,status:'success',content:'/new',storageKey:'new',studio:{...node.metadata!.studio!,task:{status:'done',pct:100}}}}}}/>);
+  expect(screen.queryByRole('status')).toBeNull();expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(view.container.querySelector(type===CanvasNodeType.Video?'video':'img')?.getAttribute('src')).toBe('/new');
+});
+
+test('an empty video offers upload without starting generation and hides mutation in read-only previews',()=>{
+  const node:CanvasNodeData={id:'source',type:CanvasNodeType.Video,title:'参考视频',position:{x:0,y:0},width:360,height:270,metadata:{status:'idle'}};
+  const commands:unknown[]=[]; const listener=(e:Event)=>commands.push((e as CustomEvent).detail);
+  window.addEventListener('studio-command',listener);
+  const view=render(<StudioFlowCard {...({data:{document:node},selected:true} as any)}/>);
+  fireEvent.click(screen.getByRole('button',{name:'上传视频'}));
+  expect(commands).toEqual([{action:'upload-video',nodeId:'source'}]);
+  expect(screen.getByRole('button',{name:'生成视频'})).toBeDefined();
+  view.rerender(<StudioFlowCard {...({data:{document:node,uploading:true},selected:true} as any)}/>);
+  expect(screen.getByRole('button',{name:'上传处理中…'})).toHaveProperty('disabled',true);
+  view.rerender(<StudioFlowCard {...({data:{document:node,readOnly:true},selected:false} as any)}/>);
+  expect(screen.queryByRole('button',{name:'上传视频'})).toBeNull();
+  window.removeEventListener('studio-command',listener);
+});
+test('a completed video can be replaced in place',()=>{
+  const node:CanvasNodeData={id:'source',type:CanvasNodeType.Video,title:'参考视频',position:{x:0,y:0},width:360,height:270,metadata:{status:'success',content:'/clip.mp4',storageKey:'own/clip.mp4'}};
+  render(<StudioFlowCard {...({data:{document:node},selected:true} as any)}/>);
+  expect(screen.getByRole('button',{name:'替换视频'})).toBeDefined();
+});

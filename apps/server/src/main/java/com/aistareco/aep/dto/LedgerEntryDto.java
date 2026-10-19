@@ -9,7 +9,7 @@ import java.util.Locale;
 public record LedgerEntryDto(
         String id,
         String walletId,
-        String userId,
+        @com.fasterxml.jackson.annotation.JsonInclude(com.fasterxml.jackson.annotation.JsonInclude.Include.ALWAYS) String userId,
         /** v0.58：账号登录名 / 昵称（admin 结算中心溯源用；用户自查等场景不填，wire 上省略）。 */
         String username,
         String displayName,
@@ -21,8 +21,17 @@ public record LedgerEntryDto(
         String description,
         String referenceId,
         String referenceType,
-        Instant createdAt
+        Instant createdAt,
+        String enterpriseId,
+        String actorUserId,
+        String membershipId,
+        String billingAuthorizationId
 ) {
+    /** Compatibility for existing personal-ledger callers. */
+    public LedgerEntryDto(String id,String walletId,String userId,String username,String displayName,String phone,
+            String type,long amount,long balanceAfter,String description,String referenceId,String referenceType,Instant createdAt) {
+        this(id,walletId,userId,username,displayName,phone,type,amount,balanceAfter,description,referenceId,referenceType,createdAt,null,null,null,null);
+    }
     public static LedgerEntryDto from(LedgerEntry e) {
         return from(e, null);
     }
@@ -36,7 +45,7 @@ public record LedgerEntryDto(
                 owner != null ? owner.getPhone() : null,
                 lower(e.getEntryType()), e.getAmount(), e.getBalanceAfter(),
                 e.getDescription(), e.getReferenceId(), e.getReferenceType(),
-                e.getCreatedAt()
+                e.getCreatedAt(), e.getEnterpriseId(), e.getActorUserId(), e.getMembershipId(), e.getBillingAuthorizationId()
         );
     }
 

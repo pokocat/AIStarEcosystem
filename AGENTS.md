@@ -5,6 +5,8 @@
 
 **Single sources of truth**
 
+企业群发邀请（2026-10-17，已生产发布）：`EnterpriseService` 新建邀请默认 90 天、可选 365 天，可多人接受、可撤销；匿名只读 POST preview 只回企业名称/ID/有效期，accept 仍要求原产品开通及手机号。`/enterprise/invite#token=...` 注册/登录后加入，不传企业令牌到 ID 推荐关系。V59 只清理旧企业邀请和 accepted_by，不动成员/钱包/作品；旧单次逻辑不兼容。见 `docs/releases/ip-studio-enterprise-invitation-production-release-20261017.md`。后台 `/admin/platform/accounts` 的测试账号仅 SUPER_ADMIN 可管理；ID 独立 TEST_ 身份无手机号，通过两分钟一次性入口和正常 OIDC 进入 Studio。仅已验签的明确测试身份免真实手机要求，开通/RBAC/积分不变；线上已用两个独立身份验收同链接入企，未重测真实短信。约束见 `docs/test-accounts-plan.md`。
+
 | 维度 | 真值文件 | 备注 |
 |---|---|---|
 | 项目结构 / 工作流 | 本文件（**AGENTS.md**） | 给 agent 看的执行约束 |
@@ -24,6 +26,7 @@
     画布那一页的设备判定是**柔性提示不是拦路**：手机上先给一屏说明，但主按钮是「仍然在手机上打开」。仍走 `dynamic({ssr:false})`，chunk 只有真进画布才下（CSS 藏起来组件照样 mount、照样下 15k 行）。原 `apps/web-ipstudio`（3015）已删除，`ipstudio.aibuzz.cn` 保留为 308 跳转。
 - 管理后台 **apps/admin**（3003，已升级到 pnpm + Next 16）
 - 统一账号中心 **独立仓库 [`pokocat/aibuzz-id`](https://github.com/pokocat/aibuzz-id)**（Spring Boot 3.3.5 + Spring Authorization Server，本地 `./mvnw spring-boot:run` 起 **8090**，生产 `id.aibuzz.cn`；建议 clone 到本仓同级的 `../aibuzz-id`）：全生态 OIDC 身份源（RS256 + JWKS），**v0.149 P1 落地 + 本仓 P2 接入完成，已于 2026-09-05 上线**；设计真源 [`docs/unified-identity-plan.md`](docs/unified-identity-plan.md)。**身份只有一份 uid，产品侧建档自动、开通显式，权益真值永远在产品侧**，账号中心不做任何「开通」写操作
+- **账号注册邀请（2026-10-17，已发布并完成真实短信注册验收）**：关系、首建绑定与权限归 `../aibuzz-id`（README §25，V12）；Studio `/invitations` 提供本人链接生成/复制/预览、邀请人和直属记录、分页刷新，分享 `/invite/{code}` 品牌页直接输入手机号/验证码，ID 核验并签发令牌后进入 `/dashboard`。前端直连 ID，不在本仓 server 复制邀请规则或表。邀请不产生分佣/奖励，产品侧既有开通策略独立执行，见 [`docs/unified-account-referral-plan.md`](docs/unified-account-referral-plan.md)、[本地验收](docs/releases/unified-account-referral-validation-20261017.md)及[当前发布与线上验收](docs/releases/unified-account-referral-production-release-20261017.md)。
 - 子产品开通 **enrollment**（v0.149）：「能进哪个子产品」的真值是 `product_enrollment` 表，**后端真拦** —— `EnrollmentGuard` 按 `X-App-Code` 请求头（或 `/api/star`→star、`/api/v1`→aiavatar 前缀）把请求映射到子产品，无 ACTIVE 开通记录 → 403 `PRODUCT_NOT_ENROLLED`，缺头 → 403 `APP_CODE_REQUIRED`；开关 `AEP_ENROLLMENT_ENFORCE` 默认 true，**只允许测试关闭**。`MeDto.platforms` 退化为 active enrollment 的兼容投影（无 enrollment 行才回落读旧 `aep_users.platforms` CSV）。激活码兑换只有一条路径（`EnrollmentService`）：**条件更新占码**（`UPDATE license_key ... WHERE status='CREATED'`，影响 1 行才继续）+ `entitlement_grant` 的 `UNIQUE(source, source_reference)` 双闸，杜绝并发兑换发两份积分；调用方指定的产品不在批次授权范围内先判后占、不烧码。契约见 `specs/BUSINESS_RULES.md` §6.0 与 `apps/server/README.md`「子产品开通（enrollment）」。
 - **未绑手机号只读**（微信游客）：账号中心允许「只有微信、没有手机号」的账号登录（令牌 `phone_verified=false`），这类账号在本仓**能看不能改** —— `PhoneVerificationGuard`（挂在 `EnrollmentGuard` 之前）放行 `GET/HEAD/OPTIONS`，任何写方法一律 403 `PHONE_VERIFICATION_REQUIRED`，`error.details.bindUrl` 指向账号中心的绑定入口（由 `aep.identity.issuer` 派生，不硬编码域名）。标记由 `JwtAuthenticationFilter` 写进 `Authentication.details`：RS256 按 `phone_verified` claim（缺 claim 的旧令牌按已验证），legacy HS256 一律 `true`（游客只由账号中心的微信登录建出来，而它从不签 HS256）；标记缺失的内部服务令牌不拦。同时把本地 `aep_users.phone_verified` 按令牌回填（此前 JIT 一律写 false 且无人回填）。前端由 `AuthProvider` 注册回调，403 时整页跳 `bindUrl`。契约见 `apps/server/README.md` §3.5。
 - 小程序: **apps/miniprogram**（微信小程序，AI 明星带货线消费方）
@@ -64,7 +67,9 @@ Aisingerecosystem/
 │   ├── runbooks/           #   运维 / 联调操作手册
 │   ├── audits/             #   带日期的一次性审计 / 调研报告
 │   ├── archive/            #   已落地或已被取代的方案、关闭的 TODO 段（只读历史）
-│   └── design/             #   子应用视觉系统（celebrity）
+│   ├── releases/           #   发布与验收记录（上线制品、线上 / 本地验收证据）
+│   ├── design/             #   子应用视觉系统与设计稿（celebrity / studio）
+│   └── prototypes/ prompts/ training/  # 设计原型说明、可复用提示词、操作培训
 ├── figma/                  # ⚠️ Figma Make 一次性导出，仅 UI 原型参考
 └── .claude/skills/         # AI agent 技能（figma-migrate 等）
 ```
@@ -116,6 +121,10 @@ Aisingerecosystem/
 ---
 
 ## 2. Daily Commands
+
+**统一认证接入必读 SOP**：[`../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md`](../aibuzz-id/docs/INTEGRATION-GUIDE-FOR-AGENTS.md)
+§7.9 / §10.6。登录成功之外，必须验证本人/后台昵称头像手机号、手机号搜索、服务端分页、换绑缓存失效、存量用户和本地重启登录；
+完整手机号仅从获 phone 授权的 `/userinfo` 获取并核对 UID，不能把 `phone_verified` 当号码，也不能改变钱包/开通。
 
 ### 飞书 CLI
 
@@ -496,11 +505,16 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
+| **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
+| **v0.205** | 2026-10-08 | Studio IP 人物库按人物汇总，素材详情/筛选/默认声音与精确版本引用；V45 素材分类与免费整理，浏览器恢复/账本验收通过。设定图系统提示词冲突已修，两次实图均未通过质量，未发布 |
+| **v0.204** | 2026-10-08 | 有限图片模板执行/采用/费用上限/CAS重做与恢复、中文展示板/原图ZIP/归档/本人指标；进阶真实6/8部分输出，默认按用户澄清改为一次设定图，仅报价/免费套用通过，单图质量待验，未发布 |
+| **v0.203** | 2026-10-08 | M7.1 模板输入槽、不可变发布版本、个人/官方范围、当前模型报价与独立套用；V44，两个不同人物输入/v1-v2/停用恢复和零账本变化通过。依赖执行、真实人物资产包及展示板仍待完成，未发布 |
+| **v0.202** | 2026-10-08 | 统一 Studio M0–M4 真实 Agnes 本地验收通过；新增四模式导演助手、分集与有费用上限的连续制作，双集出片及刷新恢复通过；商品脚本/素材与中文包装通过，Qwen3 TTS 配音与 X-Dub 同音频口型短样片真实通过，人物固定声音版本绑定已接，专属声音未接；模板清理作者运行，标准模板 M7 有独立方案；V40–V43，未发布 |
 | **v0.201** | 2026-10-07 | 画布完整生成历史与最近 50 版恢复；加入资产改云端并在顶部资产页显示；V39 文档 LONGTEXT，旧本人素材迁移，切页先保存 |
 | **v0.200** | 2026-10-07 | 接手整合开放修复 PR；名片完整资产归属、混剪下载边界、视频镜像退款、DAP afterCommit；发布 retry_count 走 V38，首次冻结保留裸 jobId 兼容在途任务 |
 | **v0.199.1** | 2026-10-04 | 视频生成区真厂商实测后的修补：厂商不给封面，worker 就从成片截一帧当封面（`MaterialVideoCover`，老任务启动时后台补），模板卡片不再是黑块；智能优化结果是英文时加一句说明，演示数据照真厂商改成英文。1:1 的 `square` 实测通过 |
 | **v0.199** | 2026-09-30 | 明星带货新增「AI 创作 → 视频生成」（`/studio/video`）：把 MiniMax H3 四种原生模式原样搬过来（文生 / 首帧 / 首尾帧 / 全能参考，768p·544p × 六种画布，5–15 秒），出片复用通用视频链（分区 `video-studio`）；价格我们自己定、后台「引擎定价 → 视频生成」可配；可选的提示词智能优化（默认勾上，优化完能改再生成）；作品存为模板、做同款（官方模板只有运营能发）；V37 两张新表；顺手修画布选模型不生效、非聚算协议丢首帧、老接口可夹带原生规格、对账错价、工作台底部被裁 |
-| **v0.198.1** | 2026-10-03 | 画布线上实测修复：拆角色 JSON 漏括号（共用 `ModelJsonRepair` + 不合格重问一次 + 截断不收）、聚算 Key 并发 2 撞 429（文字类并发闸 + 退避 + 独立线程池，写全部逐集写）、默认出图模型只认 768×768（出图模型按画布记、`IMAGE_SIZE_UNSUPPORTED`）、分镜片段短于视频模型下限（`minSegmentSec` + 并段）、五个提示词改写、合成按众数尺寸归一。真源 `docs/drama-canvas-plan.md` §11 |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -782,7 +796,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 | 加 / 删子应用页面或大模块 | `apps/<sub-app>/PRODUCT.md` 模块清单；`apps/<sub-app>/README.md` 版本日志 |
 | 加 / 删 admin 页面 | `apps/admin/README.md` sidebar 段；`docs/ADMIN_PRODUCT_SPEC.md`（如属新规划） |
 | 加 / 改 / 删小程序页面 | `apps/miniprogram/README.md` 版本日志；`product_spec_ai_celebrity.md` 版本节；平台坑同步到 `apps/miniprogram/agent.md` |
-| 加新文档 | 先按性质选目录：**现行设计真源放 `docs/` 根**（kebab-case 文件名，不加 `[xxx]` 前缀）、操作手册放 `docs/runbooks/`、带日期的审计 / 调研放 `docs/audits/`（文件名带 `-YYYY-MM`）；同 commit 在 `docs/INDEX.md` 加一行（含 last-reviewed 日期） |
+| 加新文档 | 先按性质选目录：**现行设计真源放 `docs/` 根**（kebab-case 文件名，不加 `[xxx]` 前缀）、操作手册放 `docs/runbooks/`、带日期的审计 / 调研放 `docs/audits/`（文件名带 `-YYYY-MM`）、发布与验收记录放 `docs/releases/`（新文件名带 `-YYYYMMDD`，配图放同名子目录）；同 commit 在 `docs/INDEX.md` 加一行（含 last-reviewed 日期） |
 | 方案落地或被取代 | 移到 `docs/archive/`，文件顶部加「已归档 + 现行真源在哪」一行；`git grep` 改掉所有引用（代码注释也算），INDEX 移到「归档」表 |
 | 删旧文档 | 先 `git grep -n '<filename>' -- '*.md'` 改指真源；再 `git rm`，依赖 git history 留底 |
 | 改环境变量 / 部署需求 | [`infra/README.md`](infra/README.md)；[`.claude/skills/aliyun-deploy/SKILL.md`](.claude/skills/aliyun-deploy/SKILL.md)；必要时同步 `infra/env/*.env.example` |
@@ -882,3 +896,144 @@ pnpm typecheck:all
 | 部署流程 / 生产配置 | [`infra/README.md`](infra/README.md) + [`.claude/skills/aliyun-deploy/SKILL.md`](.claude/skills/aliyun-deploy/SKILL.md) |
 | Figma 原型迁移 | [`.claude/skills/figma-migrate/SKILL.md`](.claude/skills/figma-migrate/SKILL.md) |
 | 待办 / v0.6 候选 | `TODO.md` |
+
+
+### v0.202 配音增量（2026-10-08，代码未发布）
+
+`StudioSpeechService/Worker` 用 `DAP_AUDIO` 白名单调用聚算 `qwen3-tts`；V41 显式扩用途 ENUM（H2 和 MySQL），不修改旧迁移。仍复用 IpRun，前端配音 request 先存文档，后台 owner 行锁 + 指纹 + maxCost + afterCommit + hold/commit 保证同键不重复计费。实时服务契约要求 Idempotency-Key，保存原正文与原 Job；已受理永远查询原 Job，未确认受理超过短窗保留待核对，不退款后另发。配音 active hold 由 worker 拥有，reaper/sweeper 不作孤儿释放。下载携同 Key，先验返回 URL 主机、路径与 model 作用域，检查真实音频后存 CATEGORY_GEN key；SignedAudio 可换签。
+
+平台用户按后台明确单次 price 收费，供应商按音频秒计量，不能照抄供应商积分价作为平台价格。`packaging.voiceoverStorageKey` 仅 assemble 放行，先验本人 key；长于成片拒绝，不截断，不能称为口型同步。线上仅登记 `ai-jusuan-qwen3-tts` 端点；新用途绑定与生产定价必须在代码/V41 发布后配置。真实固定配音与带字幕成片证据见验证文档 §11，克隆/驱动仍在 TODO。
+
+
+### v0.202 口型增量（2026-10-08，代码未发布）
+
+Studio `DAP_LIP_SYNC`/V42 为聚算 `x-dub` 的原生视频 + WAV 口型链，不能把通用 H3 图生视频当口型引擎。先验本人实际媒体、向上取整音频秒数和后台明确每秒价，再 hold；逐素材上传/原请求正文/Job 保存到同一 IpRun，派发 afterCommit，已受理只轮询原 Job，同 Key 下载保留 model 作用域，终态与结算同事务。输入 MP4≤128MiB/15–60fps、WAV≤25MiB/60秒，配音不得长于视频。已付费对照结果免费提取须匹配源片画幅/左侧像素（SSIM），保留原件，重复返回同文件；不额外调模型/改账本。真实短样片通过，生产绑定和定价未配置。人物固定声音版本绑定现已接通，专属声音仍待实现，证据见验证记录 §12。
+
+### v0.202 人物声音版本增量 · 2026-10-08（本地真实验收通过，未发布）
+
+官方预设声音现可归属于人物：在完成的配音节点选择“设为人物声音”，保存音色、风格与真实试听，生成不可变版本，并明确设为默认；保存和切换免费。配音入口可选人物与历史声音版本、播放试听，已选择的版本锁定音色与风格。修改风格需要使用临时固定音色，再显式保存新版本；临时配音不改默认，旧任务继续使用原版本。
+
+复用 `DapVoice(kind=preset,engine=qwen3-tts)`，新增 `profileVersion/stylePrompt/sourceRunId`；`DapAvatar.voiceId` 为默认声音的精确引用，新增 V43，不修改旧迁移，不给旧采样伪造训练状态。来源必须是本人当前项目成功的 studio-audio；音色/风格/试听来自服务端任务，人物行锁、expectedVoiceId 与唯一(avatar_id,source_run_id) 防止覆盖和重复采纳。采纳重放返回原版本，不将当前默认切回旧版本。试听只存 key、实时签名；画布只保存声音版本和 key 的快照。
+
+新增 `GET /api/v1/ip-studio/studio/voice-profiles`、`POST /api/v1/ip-studio/projects/{id}/adopt-voice`、`PUT /api/v1/ip-studio/studio/performers/{avatarId}/voice`。TTS 请求可带 avatarId/voiceId，服务端校验本人、同人物、就绪、音色与风格一致；输入保存 appliedVoice 快照，已受理任务复用原请求正文。原请求兼容新增空字段的旧指纹，重放先于当前配置检查。成功配音与原积分结算同事务记录声音在项目的使用，不建立第二份任务或声音库存。
+
+真实“小紫 · 自然声 v1”使用 Vivian 与“自然明快，像朋友一样介绍。”，原试听 3.52 秒；同版本新台词生成 WAV 4.96 秒，唯一新增消费 8 积分。v2 以新台词为试听，保留同一官方音色/风格；v1/v2 采纳重放、默认切换及原任务重放没有新增账本记录，旧任务仍是 v1。两版本均能在画布查看和试听，当前默认切回 v1。证据见 `docs/releases/ip-studio-unified-canvas-validation.md` §13。专属声音克隆、长口播和生产整体发布验收仍未完成。
+
+
+### v0.203 · 2026-10-08 · Studio 模板发布版本与输入表单（本地通过，未发布）
+
+沿用 IpDemoTemplate/IpTemplateResolver，增加个人与官方可见范围、不可变 IpTemplateVersion（V44）及 Project.templateVersionId。本人在同一画布配置图片/IP、文字或选项输入、图片步骤、依赖、尺寸、输出角色和采用确认点；个人模板仅本人可见，官方发布仍需超级管理员。模板发布只按白名单重建配方与画布，作者媒体、历史候选、任务、身份、对话和批准不进入版本；旧接口不能覆盖版本模板或删除历史发布，旧模板和项目保持兼容。
+
+用户先填自己的真实图片或精确 IP 图片版本，使用平台当前 DAP_IMAGE 配置预览逐步费用，再免费创建独立画布。每份实例重建 node/connection id、保留自己的输入并锁定来源版本；模板更新后旧画布不跟随变化，下架阻止新套用，旧画布仍可恢复创建时计划。发布与套用均不启动模型、不冻结积分；生成任务仍走原生 IpRun/账本。新增本人模板停用/启用、来源版本与创建时计划查看。商品入口同步修复仅引用旧人物图片时漏显示驱动/声音状态，多人物引用不猜默认出镜人。
+
+M7.1 验收：两个不同人物输入分别建立独立画布，8 图片配方按当前单价报价 64 积分，v1/v2 锁定、停用阻止新建、恢复与作者私有素材清理通过，账本零变化。M7.2 的依赖执行/人工采用暂停/单步恢复与 M7.3 中文展示板/资产包归档尚未完成，八张图片尚未生成；不能将准备好的画布标为成功资产包。验证记录见 `ip-studio-unified-canvas-validation.md` §14。
+
+### v0.204 · 2026-10-08 · 图片模板执行与一次人物设定图（本地，未发布）
+
+有限图片配方复用原生 IpRun/账本，支持依赖、人工采用、逐步费用上限、单步指令调整、显式 CAS 重做和同键恢复；原任务/候选保留，上游变化标记过期，不自动重跑。未知受理结果不能修改原正文后重新提交。画布文档仍由客户端维护，执行指针和模板来源由服务端维护。
+
+进阶模板可免费将采用且未过期的原图打包为 ZIP（来源清单）与可读中文展示板；部分选择明确显示 n/总数。主形象与人物造型显式归档，归档/打包重放复用原结果。本人版本统计派生自原生任务实际费用和采用状态，不含全平台指标。真实进阶样例14次生成/112积分、同请求恢复零新增扣费、pending=0；六张通过并在浏览器完成6/8部分资产包下载，两张仍因侧视角/面部风格未通过，不称完整成功。
+
+按用户澄清，默认旗舰模板改为一个 `sheet` 图片步骤，一次生成一张包含人物档案、三视图、表情、面部/服装细节、配饰与材质配色的设定图。整图继续供图像参考，先生成单独镜头再做视频；独立资产/拼板为可选进阶流程。提示词见 `docs/prompts/ip-character-sheet.md`，按用户附图编写，不称作者原词。本地个人模板与独立实例只验证一张/8积分报价、零生成/零扣费；一次成图质量及整图参考出镜头尚待真实验收。代码与新增表尚未生产发布，详情见 `docs/releases/ip-studio-unified-canvas-validation.md` §15。
+
+### v0.205 · 2026-10-08 · Studio IP 人物库（本地，未发布）
+
+`StudioIpLibrary` 按 avatarId 汇总，明确展示主形象、整张设定图、特写、表情、三视图/独立视角、细节与历史版本；缺少项不造假。目录补充已有属性和人物名称，默认声音来自 DapVoice 精确版本和真实试听。引用保留图片/造型/声音版本，不复制人物，保存失败恢复不重复添加节点。造型归档默认不覆盖主形象。新 V45 只加 dap_look.asset_role，免费分类 PUT 强验 owner/avatar/look；旧归档请求不因新 nullable 字段产生新指纹。见 `docs/ip-studio-character-library.md`。
+
+设定图实测发现有效系统提示词仍禁止网格/拼版/文字，资源与本地配置已修正为遵从用户明确布局；生产未变。两次单图任务成功结算16积分，原请求和图片保留。用户随后明确本轮聚焦界面交互、功能逻辑和 LibTV 动线，模型画质不作通过条件，不再为效果反复生成。第二份结果用作功能验收素材，浏览器显式采用与归档；图像效果观察只保留备注。模板结果进入画布即恢复，关闭计划面板仍更新原任务。
+
+
+### v0.208 · Studio 原生视频（本地，未发布）
+
+Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及种子：`StudioVideoService` 使用 IP 画布归属闸与实际字节/ffprobe 校验，再复用视频生成区规格与定价；类型化 `video` 入参转换为服务端生成的 `VideoGenSpec`。因此 `MaterialVideoJobService` 原生规格新增允许 `APP_IPSTUDIO`，素材运营和短剧仍拒绝。H3 默认用途绑定不改；旧协议保留文字/单首帧。真源 `docs/ip-studio-video-modes.md`；本轮没有提交收费生成。
+
+### v0.217 · Studio 对话快照分享（2026-10-08，本地未发布）
+
+助手历史旁“分享”仅在完成一轮对话后开放。先保存画布并预览服务端白名单文字快照，再明确创建链接；任何获得链接的人可匿名查看对话和创作建议。V47 新增 `ip_conversation_share` / `ip_conversation_copy`，不修改原画布、素材和积分。24字节随机 token，同内容发布幂等；更新快照撤销旧链接，撤销和源画布删除使公开读取失效。公开 GET 仅豁免精确路径，返回 no-store/noindex；复制和管理保留登录、aiavatar 开通、手机绑定及本人归属检查。
+
+快照不含源节点、素材 key/URL、请求、模型、任务或账号字段，原参考绑定替换为重新选择提示。公开页“在 Studio 中继续创作”将文字与建议复制到本人新画布，创建新节点 ID并直接打开助手，无媒体和执行请求，未自动生成；同 owner/clientRequestId 幂等，浏览器 session 保留复制键以供失败/刷新重试。复制内容仍需显式选择本人参考素材、模型并确认费用。分享后新增消息不会自动公开，未发送草稿不进入快照。
+
+这是 Studio 自有分享闭环；LibTV 当前可见“空对话不能分享”入口，但调研账号无历史，本轮未为探测弹窗调用模型，不能宣称其分享表单的所有行为逐项一致。公开画布与复制、社区展示仍是独立待办。验收见统一验证§28。
+
+
+### v0.218 · 剧本原创/改编与连续制作（2026-10-09，本地未发布）
+
+剧本面板明确区分原创与故事改编，可选择画布文字或已编辑剧本作为素材；提交时保存其当前正文快照，原稿保留。创作设定增加最多三种融合题材、人物关系与叙事结构，生成后的编辑器共用同一设定表单。设定修改只影响后续改写与拆镜，不改原受理请求，并提示既有下游内容需要重新制作。文本请求沿用已选模型；新可空字段不破坏旧请求幂等。
+
+连续制作可选择图片/视频模型及画幅，确认步骤与费用上限后按序执行。已有采用首帧被替换时必须重新确认；计划及输出自动避开已有节点。弹窗内容滚动、确认/暂停固定在底部。暂停只停止后续提交，刷新从原请求继续。实际验收见统一验证§34。
+
+用户明确暂不做整画布分享/复制，本轮保留个人画布发布为模板及新输入套用；不据对话分享推定已实现公开画布。
+
+### v0.219 · 新画布图片/视频工具收尾（2026-10-09，本地未发布）
+
+选中图片或视频后可直接下载当前采用版本，复用同源素材原件及字节判断后缀；裁剪、拆图、局部重绘自动避开已有节点。局部重绘保留原图，先保存标记/连接，再确认模型、候选数量与费用；新界面真实两图候选、第二版采用/刷新/下载已闭合。视频四模式、帧交换、编号参考、实际合同参数与整批报价使用同一面板；混合候选状态复用隔离交互样例、不新增供应商视频。证据与本地交付边界见统一验证 §35，个人模板保留，整画布分享暂缓。
+
+### v0.221 · Studio 队列位置（2026-10-09，本地未发布）
+
+`IpRunDto.queue`/原生视频候选 `queue` 是持久票据的实时只读投影：同一接入端点 FIFO 等待位次从 1 开始，已执行/结束为空；不持久化位次，不向客户端暴露其他用户任务。前端沿用 1.2 秒运行轮询，画布/任务列表统一提示、停止原请求，终态防迟到响应覆盖。不得编造倒计时或 ETA；验证见 `docs/releases/ip-studio-unified-canvas-validation.md` §37。
+
+### v0.220 · 模型接入端点并发（2026-10-09，本地未发布）
+
+用户确定按端点而非 vendor 分组。`concurrencyLimit` 在原后台配置，V48 增列与持久票据；`AiGenerationQueueService` 的端点行锁、FIFO 和派发租约为准入唯一真值。Studio 和通用视频 worker 超限即退出线程并排队，旧同步 chat/images 调用共用同一额度；ThreadLocal Scope 防内部重复占名额，结束必须清理。视频和配音/口型持有到上游终态，未知受理不可释放容量后重提；排队时长不当运行超时/孤儿 hold，停止退回原冻结。原业务任务/账本仍各自真值，票据不能保存密钥、素材或提示词。其他协议及人工容量核对边界见 `docs/ai-endpoint-generation-queue.md`。
+
+
+### v0.222 · Studio 画布浮层（2026-10-09，本地未发布）
+
+创作操作默认在画布内无蒙层浮层，禁止恢复为强制右侧 Drawer。`studio-floating-panel.tsx` portal 到 stage 屏幕层，视口/节点 context 与 ResizeObserver 定位，不随画布缩放、不轮询 DOM；模型/费用/提交 footer 固定。助手默认可拖动浮窗，停靠为显式选择；普通节点选择不关闭工具浮窗。人物库返回保持原节点/草稿/视口，展开编辑器关闭回原内容。工作台 async session guard 防旧请求关闭新面板，助手历史草稿按项目/对话缓存在内存，不能写进已受理请求。无后端/API 改动，证据见统一验证 §38；手机/生产未验收。
+
+### v0.223 · Studio 节点与浮层上下文（2026-10-09，本地未发布）
+
+业务节点路由先于泛型媒体，单击/双击/右键与旧 editor 命令共用 `studio-node-command.ts`。口型入口固定打开对象，不读取动态 selected；视频有效输入与提示词 @ 编号共用映射，换序按 nodeId 重绑，移除被引用素材必须修正后才可生成。舞台内浮层焦点/层级与 Esc 统一；口型报价/执行固定 footer。剧本编辑器本体暂缓，后续 Markdown 专项。88 个不同定向用例、桌面零生成验收、类型/契约通过；独立 review `ship` 仅评价这五项，证据统一验证 §39，未部署。
+
+### Studio 正式积分价格（v0.228）
+
+新增配音/口型使用平台配置 `ipstudio.supplier-point-pricing`，供应商积分与平台积分当前 1:1，加 50% 溢价；不得将旧本地 8 积分/次、10 积分/秒作为正式成本。端点 `unitPriceMicros` 是金额，不承载聚算积分。整笔计费取整，价格快照随任务保存，预冻结多余部分经账本释放。未核实供应商单价的模型不开放调用。
+
+### Studio 连线引用（v0.229）
+
+连线是生成输入，不是装饰：从右侧输出端口拖到空白处，保留预览线并出现“引用该节点生成”菜单；文本/图片/视频新草稿与输入连接必须一次写入文档，再打开对应创作浮层。连接已有节点支持目标端口及节点内容区；自连、重复连线不新增。剪刀删除、撤销和保存刷新复用文档连接真值。断开媒体引用同步清掉当前创作面板的输入，不修改已受理请求；文字连线使用当前富文本稿快照拼入请求，并显示可移除的文本引用。不要再仅实现 `onConnect` 而遗漏 `onConnectEnd` 空白落点。
+
+2026-10-10 线上 H3 首帧失败已定位为配置的 `api.jusuanhub.com:10443` 连接超时；标准 HTTPS `/v1` 已核实模型及输入资产上传后修正，未重提用户任务。端点密钥、模型、价格与并发限制保持原样。
+
+### v0.230 账号与旧 Studio 外壳 · 2026-10-10
+
+`src/shell/account-workspace.tsx` + `account-navigation.ts` 是桌面 `/me` 与 `/studio` 账号工具的共享外壳/入口映射；样式在 `account-workspace.css`，跟随 `html[data-layout]`。旧根入口转 `/projects`，业务深链、创建参数与 `#/real-auth/{sessionId}` 保留；账号菜单 hashchange/popstate 与旧 SPA 同步。详情与创建继续复用 proto 业务，未新增账号、计费或任务真值。见 `docs/aiavatar-account-unification.md`。
+
+### Studio 平台配音定价（本地实现，2026-10-10）
+
+可选 `aep.studio.platform-pricing.enabled` 默认 false，启用后由独立 aibuzz-platform 发布价驱动 Studio 配音，并通过固定版本 Java SDK 读取。权威成本与积分策略发布快照写入 `_exec.pointPricing`，已受理任务保持原价；钱包仍走 CreditService。缺价或平台错误不回退旧价。采用回执在任务行持久补报，不代表供应商成功。口型及其他图片视频未接入。配置与验收见 `docs/studio-platform-pricing.md`；本次没有生产配置或付费调用。
+
+
+### v0.231 · 2026-10-10 · 模板直接复制为普通画布
+
+官方/本人已启用模板经原 projects 创建接口直接免费进入个人副本，取消画布外输入、模型和报价门槛。IpTemplateResolver 按请求人解析；StudioTemplateCanvasCopy 从当前不可变版本重建节点/连线编号、默认文字、实际文本引用和媒体规格。新副本仅记 templateId 来源，不写版本执行锁；保存只改客户端拥有的个人文档，原模板不变，个人发布仍保留。旧版本实例与原任务恢复保持兼容。普通节点缺参考图/必填文本/选项在提交时提示，既有归属、模型、preflight、报价、账本和幂等继续生效。无新迁移/API 路径；新 metadata 由 packages/types 定义，胶水代码不改 vendor 引擎。
+
+### v0.232 · 模板只读预览与显式个人副本（2026-10-10）
+
+官方模板点击后先打开只读画布，浏览、缩放和查看节点提示词不创建项目。仅点击“存为个人副本”免费创建一份普通可编辑画布；保存中禁用重复提交，失败保留预览并由用户重试。首页、画布列表与画布内模板库共用这条路径，个人发布模板也按不可变来源预览。预览不挂载项目同步或生成工作台，不能拖动、增删、改写节点及连线；沿用现有节点样式和画布浮层查看设置。个人副本继续在节点内替换输入、编辑和确认生成费用，原模板不变，旧锁定实例保持兼容。本规则替代 v0.231 的“点击即创建”入口。
+
+### Studio 节点交互增量 · 2026-10-11
+
+故事板只投影画布原节点和连线，同屏详情复用原创作组件；普通文本 `operation=text` 的 `textEdit.content` 是受理正文快照，prompt 是修改意图，结果回写原节点，较新手改保留待采纳建议。任务仍走原端点队列、幂等与账本。V51 新增 `material_video_job.error_code`，用于厂商错误规范映射，不能用供应商队列拒绝冒充平台排队。发布状态见 `docs/releases/ip-studio-node-release-20261011.md`。
+
+
+### 个人资产库 · 2026-10-11（已生产发布）
+
+现有 /assets 为统一个人资产入口；剧本节点/编辑器素材面板负责提取，快速完善为任务内弹窗。V52 ip_library_record 保存对象身份、文件夹、来源绑定、画布文件夹偏好和归集回执，不使用假 finalized DapAvatar 承载无图草稿。名字不合并身份，引用锁具体版本，移动文件夹不复制对象。IpRun 与 ip_saved_asset 继续作为任务/文件真值，定时归集不调用模型或修改结算；生成与计费复用原 Studio 链。合同见 specs/openapi.yaml、specs/BUSINESS_RULES.md；方案与实际验收见 docs/ip-studio-personal-asset-library-plan.md、docs/releases/ip-studio-asset-library-validation.md。
+
+### 模型合法请求规格 · 2026-10-13
+
+供应商模型的可用参数和组合应保存在固定模型端点 `ai_model_providers`，由后台维护；场景候选只决定可见性和售价。V53 的聊天参数能力和 V54 的图片 `image_request_spec_json` 已按此执行：列表、提交校验和供应商组包读取同一条端点记录，受理时保存规格快照；缺图片规格时拒绝聚算图片任务，不按模型名选代码常量。V54 只初始化三个现有聚算图片端点，不是其他模型的通用默认值。当前 H3 视频及部分配音/口型协议限制仍在专用代码中，迁移前不得宣称全供应商已完成配置化；新增模型必须先核实供应商合法组合并配置到对应端点，不能直接复制其他模型的预设。
+
+### 企业主子账号 · 2026-10-15（已生产发布）
+
+`aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知、零价均计入在途。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/releases/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/archive/ip-studio-enterprise-development-tasks.md`、`docs/releases/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
+
+
+### Studio 七项导航与存量发行界面（2026-10-17，已生产发布）
+
+主导航：`首页 / 项目 / 画布·自由创作 / 场景·专项创作 / 灵感 / 资产 / 发行`。项目为独立大预览画廊，创作页平铺十项能力入口。`/scenes` 前两项引用 `StudioScenePresets` 补缺的普通模板，不新建场景项目；旧 `/ips` 参数兼容到资产默认我的 IP。发行仅共享本人账号域和发布任务 GET；任务写权限不扩大，草稿、画布直发与未接通能力标【待建设】。页面/功能边界及本地验收见 `docs/releases/studio-workspace-refactor-validation.md`；代码 `81778bef` 已部署 server/web-aiavatar，实际版本与验收限制见 `docs/releases/studio-workspace-production-release-20261017.md`。
+
+- **Studio 统一画布封面（2026-10-17，已发布 a4092626）**：项目/灵感共用 ProjectCardPreview 与 CanvasCoverEditor，人工封面 → 自动图片 → 画布缩略图。POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用鉴权与存储生命周期；个人属主/官方 SUPER_ADMIN，封面不改 doc 或不可变模板版本，不触发生成或积分。
+
+内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。

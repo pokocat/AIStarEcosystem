@@ -64,9 +64,9 @@ class MaterialVideoJobServiceSubmitTest {
     @Test
     void batch_with_invalid_item_holds_nothing_and_saves_nothing() {
         // 第 2 个 item 时长非法（modelClient 校验抛 400）——第 1 个合法 item 也不得先 hold。
-        doNothing().when(modelClient).validateRequest(isNull(), eq(10));
+        doNothing().when(modelClient).validateRequest(isNull(), eq(10),eq("celebrity"));
         doThrow(new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                "VIDEO_DURATION_UNSUPPORTED", "超限")).when(modelClient).validateRequest(isNull(), eq(40));
+                "VIDEO_DURATION_UNSUPPORTED", "超限")).when(modelClient).validateRequest(isNull(), eq(40),eq("celebrity"));
 
         BusinessException e = assertThrows(BusinessException.class, () -> svc.submit(body("""
             {"items":[
@@ -80,8 +80,8 @@ class MaterialVideoJobServiceSubmitTest {
 
     @Test
     void per_second_quote_equals_credits_held() {
-        doNothing().when(modelClient).validateRequest(any(), anyInt());
-        when(modelClient.resolveCreditCostOverride(isNull(), eq(15))).thenReturn(600L); // 40/s × 15s
+        doNothing().when(modelClient).validateRequest(any(), anyInt(),eq("celebrity"));
+        when(modelClient.resolveCreditCostOverride(isNull(), eq(15),eq("celebrity"))).thenReturn(600L); // 40/s × 15s
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         List<com.fasterxml.jackson.databind.JsonNode> cards = svc.submit(body("""
@@ -94,11 +94,19 @@ class MaterialVideoJobServiceSubmitTest {
         verify(jobRepo).save(saved.capture());
         assertEquals(600L, saved.getValue().getCreditsHeld());
     }
+    @Test void studioApprovalIsACeilingAndNeverOverridesTheNativePrice() {
+        when(modelClient.resolveCreditCostOverride(isNull(),eq(5),eq("studio"))).thenReturn(40L);
+        BusinessException e=assertThrows(BusinessException.class,()->svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":30}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO));
+        assertEquals("STUDIO_PRICE_CHANGED",e.getCode());verifyNoInteractions(creditService,jobRepo);
+        when(jobRepo.save(any())).thenAnswer(inv->inv.getArgument(0));
+        svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":50}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO);
+        verify(creditService).hold(eq("user-1"),eq(40L),eq("material_video_job"),any(),any());
+    }
 
     @Test
     void caller_priced_items_are_marked_in_the_payload_so_reconcile_keeps_the_frozen_price() throws Exception {
-        doNothing().when(modelClient).validateRequest(any(), anyInt());
-        when(modelClient.resolveCreditCostOverride(any(), anyInt())).thenReturn(200L);
+        doNothing().when(modelClient).validateRequest(any(), anyInt(),any());
+        when(modelClient.resolveCreditCostOverride(any(), anyInt(),eq("celebrity"))).thenReturn(200L);
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         // 内部调用方自己算好的价（视频生成区 544p · 5 秒 = 100）
@@ -135,7 +143,7 @@ class MaterialVideoJobServiceSubmitTest {
         AiAppEndpointCandidate cA = AiAppEndpointCandidate.builder()
                 .endpointId("ep-a").enabled(true).creditCostOverride(40L).maxDurationSec(15).build();
         AiAppEndpointCandidate cB = AiAppEndpointCandidate.builder().endpointId("ep-b").enabled(true).build();
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of(
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION,"celebrity")).thenReturn(List.of(
                 new AiModelInvocationService.ResolvedEndpoint(ready, cA, true),
                 new AiModelInvocationService.ResolvedEndpoint(noKey, cB, false)));
         when(modelClient.isEndpointReady(ready)).thenReturn(true);
@@ -154,8 +162,8 @@ class MaterialVideoJobServiceSubmitTest {
         assertEquals(15, opt.effectiveMaxDurationSec());
 
         // 无任何 candidate 时合成默认项：selectableById=false（显式传 id 会被白名单拒）。
-        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION)).thenReturn(List.of());
-        when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)).thenReturn(Optional.of(ready));
+        when(invocation.listCandidates(AiModelPurpose.VIDEO_GENERATION,"celebrity")).thenReturn(List.of());
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION,"celebrity")).thenReturn(Optional.of(ready));
         when(actionPricing.creditPriceOf(any())).thenReturn(null);
         MaterialVideoModelsDto fallback = svc.listModels();
         assertEquals(1, fallback.video().size());

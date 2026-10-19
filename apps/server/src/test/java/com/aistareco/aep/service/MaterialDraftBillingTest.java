@@ -20,6 +20,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -53,8 +54,8 @@ class MaterialDraftBillingTest {
 
     @BeforeEach
     void setUp() {
-        when(invocation.hasEndpointFor(any())).thenReturn(true);
-        when(invocation.invokeChat(any(), any(), any()))
+        when(invocation.hasEndpointFor(any(), eq("celebrity"))).thenReturn(true);
+        when(invocation.invokeChat(any(), any(), any(), eq("celebrity")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(VALID, "stop", 50L, "fake", "m"));
     }
 

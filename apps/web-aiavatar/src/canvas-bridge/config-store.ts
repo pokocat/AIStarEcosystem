@@ -11,6 +11,7 @@ export type ReasoningEffort = "auto" | "low" | "medium" | "high" | "xhigh";
 
 export type ChannelModel = {
     name: string;
+    displayName?: string;
     capability: ModelCapability;
     script?: string;
 };
@@ -40,10 +41,12 @@ export type AiConfig = {
     audioSpeed: string;
     audioInstructions: string;
     videoSeconds: string;
+    videoCount: string;
     vquality: string;
     videoGenerateAudio: string;
     videoWatermark: string;
     videoMode: string;
+    videoSeed?: number;
     systemPrompt: string;
     reasoningEffort: ReasoningEffort;
     models: string[];
@@ -108,6 +111,7 @@ export const defaultConfig: AiConfig = {
     audioSpeed: "1",
     audioInstructions: "",
     videoSeconds: "6",
+    videoCount: "1",
     vquality: "720",
     videoGenerateAudio: "true",
     videoWatermark: "false",
@@ -283,10 +287,12 @@ export const useConfigStore = create<ConfigStore>()(
                         audioInstructions: config.audioInstructions || "",
                         reasoningEffort: config.reasoningEffort || "auto",
                         videoSeconds: config.videoSeconds || "6",
+                        videoCount: ["1","2","4"].includes(config.videoCount)?config.videoCount:"1",
                         vquality: config.vquality || "720",
                         videoGenerateAudio: config.videoGenerateAudio || "true",
                         videoWatermark: config.videoWatermark || "false",
-                        videoMode: config.videoMode === "reference" ? "reference" : "frames",
+                        videoMode: typeof config.videoMode === "string" && config.videoMode.trim()
+                            ? config.videoMode : "frames",
                         canvasImageCount: config.canvasImageCount || "1",
                     },
                 };
@@ -310,7 +316,8 @@ export function normalizeChannelModels(models: Array<string | ChannelModel> | un
         seen.add(name);
         const capability = typeof item === "string" ? guessCapability(name) : item.capability || guessCapability(name);
         const script = typeof item === "string" ? undefined : item.script?.trim() || undefined;
-        result.push({ name, capability, script });
+        const displayName = typeof item === "string" ? undefined : item.displayName?.trim() || undefined;
+        result.push({ name, capability, script, ...(displayName ? { displayName } : {}) });
     }
     return result;
 }
@@ -413,6 +420,7 @@ export function modelOptionLabel(config: AiConfig, value: string) {
     const decoded = decodeChannelModel(value);
     if (!decoded) return value;
     const channel = config.channels.find((item) => item.id === decoded.channelId);
+    if (decoded.channelId === "server") return channel?.models.find(model => model.name === decoded.model)?.displayName || "请选择模型";
     return channel ? `${decoded.model}（${channel.name}）` : decoded.model;
 }
 

@@ -45,7 +45,7 @@ function le(
   return {
     id,
     walletId: walletState.id,
-    userId: walletState.userId,
+    userId: walletState.userId ?? "mock-personal-user",
     type,
     amount,
     balanceAfter,
@@ -252,7 +252,7 @@ registerMocks([
       }
       const order: RechargeOrder = {
         id: nextOrderId(),
-        userId: walletState.userId,
+        userId: walletState.userId ?? "mock-personal-user",
         packageId: pkg.id,
         packageTag: pkg.tag,
         credits: pkg.credits,

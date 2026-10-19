@@ -21,10 +21,12 @@ vi.mock("@/ip/api", () => ({
 vi.mock("./api", () => ({
   setCurrentProjectId: vi.fn(),
   fetchModels: vi.fn().mockResolvedValue({ image: [], video: [] }),
+  fetchStudioVideoModels: vi.fn().mockResolvedValue([]),
 }));
 
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { useProjectSync } from "./project-sync";
+import { subscribeStudioErrors } from "@/ip/studio-errors";
 
 const serverDoc = {
   nodes: [{ id: "n-1", type: "image", title: "招牌形象", position: { x: 0, y: 0 }, width: 300, height: 400, metadata: { prompt: "画一个" } }],
@@ -39,6 +41,17 @@ beforeEach(() => {
 });
 
 describe("加载", () => {
+  it("加载失败通知保留服务端错误码和真实追查号，仍不创建空画布", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockRejectedValue(Object.assign(new Error("画布不存在"), { code: "IP_PROJECT_NOT_FOUND", logId: "ABCDEF234567" }));
+    const view = renderHook(() => useProjectSync("IPP-missing"));
+    try {
+      await waitFor(() => expect(view.result.current.state).toBe("error"));
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_NOT_FOUND", message: "画布不存在", logId: "ABCDEF234567" }));
+      expect(useCanvasStore.getState().projects).toHaveLength(0);
+      expect(updateProjectMock).not.toHaveBeenCalled();
+    } finally { view.unmount(); unsubscribe(); }
+  });
   it("把服务端的文档灌进画布，ready 之后才允许渲染", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc, updatedAt: "2026-09-07T00:00:00Z" });
 
@@ -63,6 +76,22 @@ describe("加载", () => {
 });
 
 describe("自动保存", () => {
+  it("保存失败通知保留服务端诊断，原文档和失败状态仍可恢复", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
+    updateProjectMock.mockRejectedValue(Object.assign(new Error("保存失败"), { code: "IP_PROJECT_SAVE_FAILED", logId: "ABCDEF234567" }));
+    const view = renderHook(() => useProjectSync("IPP-1"));
+    try {
+      await waitFor(() => expect(view.result.current.state).toBe("ready"));
+      act(() => useCanvasStore.getState().updateProject("IPP-1", { title: "新标题" }));
+      let outcome: string | undefined;
+      await act(async () => { outcome = await view.result.current.saveNow(); });
+      expect(outcome).toBe("failed");
+      expect(view.result.current.saveState).toBe("failed");
+      expect(useCanvasStore.getState().projects[0]?.title).toBe("新标题");
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_SAVE_FAILED", message: "保存失败", logId: "ABCDEF234567" }));
+    } finally { view.unmount(); unsubscribe(); }
+  });
   it("加载完成之前的任何改动都不回存", async () => {
     // 最危险的一条：画布挂载得比加载快，此时 store 里是空的。
     // 存下去就是把服务端上真正的内容覆盖成空文档。
@@ -414,4 +443,18 @@ describe("等补存落地也要有上限", () => {
       vi.useRealTimers();
     }
   });
+});
+
+it('loads legacy conversation nodes into separate history and persists history-only changes without adding graph nodes',async()=>{
+  const legacy={...serverDoc.nodes[0],id:'history',type:'text',metadata:{studio:{kind:'assistant',request:{clientRequestId:'original-paid-request'},conversation:{mode:'general',turns:[{role:'user',content:'原对话'}]}}}};
+  getProjectMock.mockResolvedValue({id:'IPP-history',name:'历史画布',doc:{...serverDoc,nodes:[...serverDoc.nodes,legacy],connections:[{id:'legacy-edge',fromNodeId:'n-1',toNodeId:'history'}]},docVersion:'old'});
+  const view=renderHook(()=>useProjectSync('IPP-history'));
+  await waitFor(()=>expect(view.result.current.state).toBe('ready'));
+  const project=useCanvasStore.getState().projects[0];
+  expect(project.nodes.map(n=>n.id)).toEqual(['n-1']);expect(project.connections).toEqual([]);
+  expect(project.assistantConversations?.[0].metadata?.studio?.request?.clientRequestId).toBe('original-paid-request');
+  await act(async()=>{useCanvasStore.getState().updateProject('IPP-history',{assistantConversations:project.assistantConversations!.map(n=>({...n,title:'更新后的对话'}))});await view.result.current.saveNow();});
+  const payload=updateProjectMock.mock.calls.at(-1)![1];
+  expect(payload.doc.nodes.map((n:{id:string})=>n.id)).toEqual(['n-1']);expect(payload.doc.assistantConversations[0].title).toBe('更新后的对话');
+  view.unmount();
 });

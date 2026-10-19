@@ -1,0 +1,74 @@
+/* Extends StudioPage's paper surface; controls and modal behavior are Ant Design. */
+.enterprise-workspace .ant-alert { margin-bottom: 20px; }
+.enterprise-balances { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 24px; padding: 0 0 28px; font-variant-numeric: tabular-nums; }
+.enterprise-balances > div { min-width: 0; }
+.enterprise-balances span,.enterprise-balances small { display: block; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.enterprise-balances strong { display: block; margin: 7px 0 4px; color: var(--ip-ink); font-size: 28px; font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.enterprise-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 20px; }
+.enterprise-invite-actions { display:flex; align-items:center; gap:10px; flex-shrink:0; flex-wrap:wrap; }
+.enterprise-section-heading h2,.enterprise-onboarding h2 { margin: 0 0 8px; color: var(--ip-ink); font-size: 18px; font-weight: 600; }
+.enterprise-section-heading p,.enterprise-empty > p,.enterprise-transfer-form p { color: var(--ip-muted); font-size: 13px; line-height: 1.8; }
+.enterprise-batch-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 0; border-block: 1px solid var(--ip-line); font-size: 13px; }
+.enterprise-batch-bar > div { display: flex; flex-wrap: wrap; gap: 8px; }
+.enterprise-workspace .ant-table { font-size: 13px; }
+/* The incumbent brand button reset inherits text color; restore library semantic contrast. */
+.enterprise-workspace .ant-btn-primary:not(:disabled) { color: var(--ip-paper); }
+.enterprise-workspace .ant-btn-primary:not(:disabled):hover { color: var(--ip-paper); }
+.enterprise-member-name { display: grid; gap: 4px; min-width: 100px; }
+.enterprise-member-name strong { font-weight: 600; overflow-wrap: anywhere; }
+.enterprise-member-name small { color: var(--ip-muted); font-size: 11px; }
+.enterprise-number { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.enterprise-pagination { margin-top: 22px; justify-content: flex-end; }
+.enterprise-mobile-hint { display: none; color: var(--ip-muted); font-size: 11px; margin-top: 10px; }
+.enterprise-empty { max-width: 760px; margin: 32px auto; }
+.enterprise-empty > p { max-width: 65ch; text-align: center; margin: 20px auto 28px; }
+.enterprise-onboarding { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 32px; }
+.enterprise-onboarding > div { display: grid; align-content: start; gap: 12px; }
+.enterprise-onboarding label,.enterprise-transfer-form label { font-size: 13px; font-weight: 500; }
+.enterprise-empty .ant-alert { margin-top: 20px; }
+.enterprise-transfer-form { display: grid; gap: 16px; padding-block: 12px 6px; color: var(--ip-ink); font-family: var(--ip-ui,sans-serif); }
+.enterprise-transfer-form p { margin: 0; }
+.enterprise-transfer-form .ant-alert { margin-bottom: 0; }
+.enterprise-transfer-form .ant-table { font-variant-numeric: tabular-nums; }
+.enterprise-workspace :focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
+html[data-layout="mobile"] .enterprise-balances { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 20px 16px; }
+html[data-layout="mobile"] .enterprise-balances strong { font-size: 23px; }
+html[data-layout="mobile"] .enterprise-balances small { font-size: 11px; }
+html[data-layout="mobile"] .enterprise-section-heading { align-items: flex-start; }
+html[data-layout="mobile"] .enterprise-section-heading > .ant-btn { flex-shrink: 0; }
+html[data-layout="mobile"] .enterprise-batch-bar { flex-direction: column; align-items: stretch; gap: 12px; }
+html[data-layout="mobile"] .enterprise-mobile-hint { display: block; }
+html[data-layout="mobile"] .enterprise-onboarding { grid-template-columns: minmax(0,1fr); }
+html[data-layout="mobile"] .enterprise-workspace .studio-page-heading { flex-wrap: wrap; }
+html[data-layout="mobile"] .enterprise-workspace .studio-page-actions { max-width: none; }
+@media (prefers-reduced-motion: reduce) { .enterprise-workspace * { transition-duration: .01ms !important; animation-duration: .01ms !important; } }
+.enterprise-own-balances { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 30px; padding-bottom: 24px; margin-bottom: 24px; border-bottom: 1px solid var(--ip-line); }
+.enterprise-own-balances span,.enterprise-own-balances small { display: block; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.enterprise-own-balances strong { display: block; color: var(--ip-ink); font-size: 24px; font-weight: 600; line-height: 1.8; font-variant-numeric: tabular-nums; }
+.enterprise-policy-form { display: grid; gap: 14px; max-width: 760px; }
+.enterprise-policy-form > .ant-btn { justify-self: start; }
+.enterprise-policy-form label { color: var(--ip-ink); font-size: 13px; font-weight: 600; }
+.enterprise-policy-form p,.enterprise-invitations p,.enterprise-lifecycle p { color: var(--ip-muted); font-size: 13px; line-height: 1.8; margin: 0 0 12px; max-width: 72ch; }
+.enterprise-policy-form .ant-select { width: 100%; }
+.enterprise-management h2 { font-size: 18px; font-weight: 600; margin: 0 0 12px; }
+.enterprise-management h3 { font-size: 15px; font-weight: 600; margin: 28px 0 16px; }
+.enterprise-row-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.enterprise-consequences { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px 20px; font-variant-numeric: tabular-nums; font-size: 13px; }
+.enterprise-consequences dd { margin: 0; font-weight: 600; }
+.enterprise-record-reference { color: var(--ip-muted); font-size: 11px; overflow-wrap: anywhere; }
+.enterprise-invitations { margin-top: 32px; padding-top: 4px; border-top: 1px solid var(--ip-line); }
+html[data-layout="mobile"] .enterprise-own-balances { gap: 20px; }
+html[data-layout="mobile"] .enterprise-own-balances strong { font-size: 22px; }
+html[data-layout="mobile"] .enterprise-section-heading { flex-wrap: wrap; }
+.studio-billing-form { display: grid; gap: 16px; padding: 12px 0; color: var(--ip-ink,#192229); }
+.studio-billing-form p { margin: 0; font-size: 13px; line-height: 1.8; color: var(--ip-muted,#65707e); }
+.studio-billing-options { display: grid; gap: 14px; }
+.studio-billing-options .ant-radio-wrapper { display: flex; align-items: flex-start; padding: 16px; border: 1px solid var(--ip-line,#e8eaec); border-radius: 8px; margin: 0; min-height: 68px; }
+.studio-billing-options .ant-radio-wrapper-checked { border-color: var(--ip-ink,#192229); background: var(--ip-soft,#f6f6f5); }
+.studio-billing-options strong,.studio-billing-options small { display: block; overflow-wrap: anywhere; }
+.studio-billing-options strong { color: var(--ip-ink,#192229); font-size: 14px; font-weight: 600; }
+.studio-billing-options small { color: var(--ip-muted,#65707e); font-size: 12px; line-height: 1.7; margin-top: 4px; }
+.studio-billing-host .ant-btn-primary:not(:disabled) { color: #fff; }
+.enterprise-selection-hint { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.enterprise-workspace .ant-table-cell { overflow-wrap: anywhere; max-width: 360px; }
+.enterprise-workspace .studio-page-heading p { overflow-wrap: anywhere; }

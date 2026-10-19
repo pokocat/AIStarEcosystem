@@ -1,3 +1,6 @@
+import {setupSelectFieldDom,createSelectFieldUser} from '../../../../../scripts/vitest/select-field';
+setupSelectFieldDom();
+const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
@@ -468,9 +471,9 @@ describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
       expect(el).not.toBeNull();
       return el!;
     });
-    expect(sel.value).toBe("mock-image-std");
+    expect((document.getElementById(sel.dataset.selectNative!) as HTMLSelectElement).value).toBe("mock-image-std");
     expect(preview().querySelector('[data-action="frame"] .cve-credits')?.getAttribute("aria-label")).toBe("2 积分");
-    fireEvent.change(sel, { target: { value: "mock-image-hd" } });
+    await selectFieldValue(sel, "mock-image-hd");
     await waitFor(() => expect(preview().querySelector('[data-action="frame"] .cve-credits')?.getAttribute("aria-label")).toBe("4 积分"));
     await act(async () => {
       fireEvent.click(preview().querySelector('[data-action="frame"]')!);
@@ -512,7 +515,7 @@ describe("单集编辑器 · 出图模型与片段时长（v0.198.1）", () => {
     expect(CanvasApi.runVideo).not.toHaveBeenCalled();
 
     const model = document.querySelector<HTMLSelectElement>('.cv-topbar [data-action="video-model"]')!;
-    fireEvent.change(model, { target: { value: "mock-video-t2v" } });
+    await selectFieldValue(model, "mock-video-t2v");
     await waitFor(() => expect(preview().querySelector<HTMLButtonElement>('[data-action="video"]')!.disabled).toBe(false));
     expect(preview().querySelector('[data-reason="video"]')).toBeNull();
   });
@@ -592,7 +595,7 @@ describe("视频模型下拉", () => {
       expect(el).not.toBeNull();
       return el!;
     });
-    const opts = [...select.options];
+    const opts = [...(document.getElementById(select.dataset.selectNative!) as HTMLSelectElement).options];
     expect(opts.map((o) => o.value)).toEqual(["mock-video-i2v", "mock-video-t2v"]);
     for (const o of opts) {
       expect(o.textContent).not.toMatch(/积分|秒/);

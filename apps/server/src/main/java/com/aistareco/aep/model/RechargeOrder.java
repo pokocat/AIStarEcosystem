@@ -20,7 +20,7 @@ import java.time.Instant;
 @NoArgsConstructor
 @AllArgsConstructor
 @Entity
-@Table(name = "recharge_order", indexes = {
+@Table(name = "recharge_order", uniqueConstraints=@UniqueConstraint(name="uk_enterprise_recharge_request",columnNames={"enterprise_id","enterprise_request_id"}), indexes = {
         @Index(name = "idx_recharge_order_user", columnList = "userId"),
         @Index(name = "idx_recharge_order_status", columnList = "status")
 })
@@ -32,6 +32,19 @@ public class RechargeOrder {
     /** 下单用户（owner，授权校验依据）。 */
     @Column(nullable = false)
     private String userId;
+    @Column(length=64) private String targetWalletId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=256) private String receiptReference;
+    @Column(length=128) private String enterpriseName;
+    @Column(length=64) private String enterpriseRequestId;
+    @Column(length=64) private String enterpriseRequestFingerprint;
+    @Column(length=64) private String confirmRequestId;
+    @Column(length=64) private String confirmFingerprint;
+    @Column(length=64) private String refundRequestId;
+    @Column(length=64) private String refundFingerprint;
+    private long requestedPriceCents;
+    private long refundedPriceCents;
+    @Column(length=256) private String refundReceiptReference;
 
     /** 下单时快照的账号信息（admin 列表展示用，避免每行 join）。 */
     private String username;

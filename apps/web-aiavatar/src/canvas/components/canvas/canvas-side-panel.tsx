@@ -19,6 +19,7 @@ import { CANVAS_SIDE_PANEL_MAX_WIDTH, CANVAS_SIDE_PANEL_MIN_WIDTH, CANVAS_SIDE_P
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 
+import { savedAssetPayload } from "@/canvas-bridge/studio-attachments";
 import type { InsertAssetPayload } from "./asset-picker-modal";
 
 const PANEL_MOTION_SECONDS = CANVAS_SIDE_PANEL_MOTION_MS / 1000;
@@ -299,13 +300,13 @@ function CheckMark({ checked, theme }: { checked: boolean; theme: CanvasTheme })
 const ASSET_GROUPS: { kind: AssetKind; icon: typeof Square }[] = [
     { kind: "image", icon: ImageIcon },
     { kind: "video", icon: Video },
+    { kind: "audio", icon: Music2 },
     { kind: "text", icon: FileText },
 ];
 
 function buildInsertPayload(asset: Asset): InsertAssetPayload {
-    if (asset.kind === "text") return { kind: "text", content: asset.data.content, title: asset.title };
-    if (asset.kind === "video") return { kind: "video", url: asset.data.url, storageKey: asset.data.storageKey, title: asset.title, width: asset.data.width, height: asset.data.height };
-    return { kind: "image", dataUrl: asset.data.dataUrl, storageKey: asset.data.storageKey, title: asset.title };
+    // 本仓：与助手附件使用同一素材投影。
+    return savedAssetPayload(asset);
 }
 
 const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
@@ -455,6 +456,7 @@ function AssetCard({ asset, theme, onInsert, onRemove }: { asset: Asset; theme: 
 
 function AssetCover({ asset }: { asset: Asset }) {
     if (asset.kind === "text") return <div className="size-full overflow-hidden whitespace-pre-wrap break-words p-2.5 text-[11px] leading-snug opacity-80">{asset.data.content}</div>;
+    if (asset.kind === "audio") return <div className="flex size-full items-center justify-center"><Music2 size={28}/></div>;
     if (asset.kind === "video") {
         if (asset.coverUrl) return <img src={asset.coverUrl} alt="" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;
         return <video src={`${asset.data.url}#t=0.1`} muted playsInline preload="metadata" className="size-full object-cover transition duration-300 group-hover:scale-[1.04]" />;

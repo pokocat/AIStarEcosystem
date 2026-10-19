@@ -28,11 +28,19 @@ import java.util.List;
 @ConditionalOnProperty(name = "aep.credit.stale-hold-sweeper.enabled", havingValue = "true", matchIfMissing = true)
 public class CreditHoldSweeper {
 
+    @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService generationQueue;
+
     private static final Logger log = LoggerFactory.getLogger(CreditHoldSweeper.class);
 
     private final CreditHoldRepository holdRepo;
     private final CreditService creditService;
     private final long ttlMinutes;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.ipstudio.repository.IpRunRepository ipRuns;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs;
+    @org.springframework.beans.factory.annotation.Autowired
+    private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.service.materialvideo.MaterialVideoJobService> videoService;
 
     public CreditHoldSweeper(CreditHoldRepository holdRepo,
                              CreditService creditService,
@@ -56,6 +64,23 @@ public class CreditHoldSweeper {
         int released = 0;
         for (CreditHold h : stale) {
             try {
+                // A recorded/uncertain upstream video submission owns its hold until reconciliation.
+                // A TTL does not establish supplier failure and must never fund a second submission.
+                if(videoJobs!=null && "material_video_job".equals(h.getReferenceType())) {
+                    var job=videoJobs.findById(h.getReferenceId()).orElse(null);
+                    if(job!=null && ("submitting".equals(job.getStatus()) || "generating".equals(job.getStatus())))continue;
+                    if(job!=null && "queued".equals(job.getStatus())) {
+                        if(videoService!=null && videoService.getObject().expireQueued(job.getId(),job.getOwnerUserId(),"视频排队超时"))released++;
+                        continue; // live tasks are canceled with their hold/auth; never refund and leave them dispatchable
+                    }
+                }
+                if(generationQueue!=null && (("ip-run".equals(h.getReferenceType()) &&
+                        (generationQueue.isWaiting(AiGenerationQueueService.IMAGE,h.getReferenceId()) || generationQueue.isWaiting(AiGenerationQueueService.WORKFLOW,h.getReferenceId()))) ||
+                        ("material_video_job".equals(h.getReferenceType()) && generationQueue.isWaiting(AiGenerationQueueService.VIDEO,h.getReferenceId())))) continue;
+                // An accepted audio Job remains recoverable after a long provider outage.
+                // Its hold is owned by the durable speech worker, not an orphan.
+                if(ipRuns!=null && com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE.equals(h.getReferenceType()) &&
+                        ipRuns.findById(h.getReferenceId()).filter(r->"running".equals(r.getStatus()) && (com.aistareco.aep.ipstudio.service.StudioSpeechWorker.manages(r.getKind()) || com.aistareco.aep.ipstudio.service.IpRunWorker.hasNativeSubmission(r))).isPresent()) continue;
                 creditService.releaseHold(h.getReferenceType(), h.getReferenceId(),
                         "超时自动释放（hold 超 " + ttlMinutes + " 分钟未结算）");
                 released++;

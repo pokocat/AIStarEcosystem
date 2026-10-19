@@ -181,6 +181,9 @@ class DramaAssembleServiceNormalizeTest {
         svc = new DramaAssembleService(mock(DramaProjectRepository.class), ffmpeg, uploader, signer,
                 mock(StorageQuotaService.class), new ObjectMapper(), http.getAddress().getPort(), "/cdn", "");
         when(signer.signKey(anyString())).thenAnswer(inv -> "/cdn/" + inv.getArgument(0));
+        when(uploader.upload(any(Path.class), anyString(), anyString())).thenAnswer(inv ->
+                new CdnUploader.CdnUploadResult("/cdn/" + inv.getArgument(1), inv.getArgument(1),
+                        Files.size(inv.getArgument(0)), java.time.Instant.now()));
         when(ffmpeg.runFfmpeg(anyList())).thenAnswer(inv -> {
             List<String> args = inv.getArgument(0);
             ffmpegCalls.add(args);
@@ -209,6 +212,28 @@ class DramaAssembleServiceNormalizeTest {
         svc.assembleKeys("u1", "dcv_1", 1, List.of("k0.mp4", "k1.mp4"), "9:16");
         assertEquals(1, ffmpegCalls.size());
         assertTrue(ffmpegCalls.get(0).containsAll(List.of("-f", "concat", "-c", "copy")), ffmpegCalls.get(0).toString());
+    }
+
+    @Test
+    void studioUniformPortraitClips_honorSelectedLandscapeAndSquareOutput() {
+        clipProbes.addAll(List.of(portrait(true), portrait(true)));
+        for (var choice : Map.of("16:9", "1280:720", "1:1", "720:720").entrySet()) {
+            ffmpegCalls.clear();
+            svc.assembleStudioKeys("u1", "IPP-1", List.of("k0.mp4", "k1.mp4"), choice.getKey());
+            assertEquals(1, ffmpegCalls.size());
+            List<String> args = ffmpegCalls.get(0);
+            assertFalse(args.contains("copy"), "changing the output canvas must not stream-copy portrait clips");
+            String graph = args.get(args.indexOf("-filter_complex") + 1);
+            assertTrue(graph.contains("scale=" + choice.getValue() + ":"), graph);
+            assertTrue(graph.contains("pad=" + choice.getValue() + ":"), graph);
+        }
+    }
+
+    @Test
+    void studioMatchingRatio_keepsSourceResolutionAndAudioWithoutReencode() {
+        clipProbes.addAll(List.of(portrait(true), portrait(true)));
+        svc.assembleStudioKeys("u1", "IPP-1", List.of("k0.mp4", "k1.mp4"), "9:16");
+        assertTrue(ffmpegCalls.get(0).containsAll(List.of("-c", "copy")), ffmpegCalls.get(0).toString());
     }
 
     @Test

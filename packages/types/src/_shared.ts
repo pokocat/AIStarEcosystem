@@ -28,6 +28,8 @@ export interface ApiResponse<T> {
 }
 
 export interface ApiErrorShape {
+  /** Persisted ErrorLog lookup ID; absent for expected auth and client errors. */
+  logId?: string;
   code: string;
   message: string;
   details?: unknown;

@@ -75,8 +75,8 @@ export async function getPrompt(key: string): Promise<PromptTemplate> {
 }
 
 /** PUT /admin/prompts/{key} */
-export async function upsertPrompt(key: string, body: PromptUpsert): Promise<PromptTemplate> {
-  return apiFetch<PromptTemplate>(`/admin/prompts/${encodeURIComponent(key)}`, { method: "PUT", body });
+export async function upsertPrompt(key: string, body: PromptUpsert, expectedVersion: number): Promise<PromptTemplate> {
+  return apiFetch<PromptTemplate>(`/admin/prompts/${encodeURIComponent(key)}?expectedVersion=${expectedVersion}`, { method: "PUT", body });
 }
 
 /** POST /admin/prompts/{key}/dry-run — 用样例参数填出最终 messages（不真调模型）。 */
@@ -98,8 +98,8 @@ export async function testRunPrompt(
 export async function listPromptVersions(key: string): Promise<PromptTemplateVersion[]> {
   return apiFetch<PromptTemplateVersion[]>(`/admin/prompts/${encodeURIComponent(key)}/versions`);
 }
-export async function rollbackPrompt(key: string, version: number): Promise<PromptTemplate> {
-  return apiFetch<PromptTemplate>(`/admin/prompts/${encodeURIComponent(key)}/versions/${version}/rollback`, {
+export async function rollbackPrompt(key: string, version: number, expectedVersion: number): Promise<PromptTemplate> {
+  return apiFetch<PromptTemplate>(`/admin/prompts/${encodeURIComponent(key)}/versions/${version}/rollback?expectedVersion=${expectedVersion}`, {
     method: "POST",
   });
 }

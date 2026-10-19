@@ -17,35 +17,35 @@ import java.util.Map;
  * 前端不报价、不许提交，服务端提交 → 503 {@code VIDEO_STUDIO_PRICE_NOT_CONFIGURED}。**不回落任何写死的价**（§8.0）。
  *
  * <p>生成总价 = (每秒价 + max(0, 参考图张数 − freeRefImages) × extraRefImagePerSecond) × 秒数，
- * 只有全能参考算图片张数；{@code Math.multiplyExact}，溢出 → 400 {@code VIDEO_PRICE_OVERFLOW}。
+     * 是否计算参考图按当前模式的素材规则决定，避免自定义模式复用旧名称时漏计。
+ * {@code Math.multiplyExact}，溢出 → 400 {@code VIDEO_PRICE_OVERFLOW}。
  * {@code GET /models} 下发的 {@link VideoStudioDtos.VideoStudioPricing} 与提交时冻结的金额出自同一组数。
  */
 public final class VideoStudioPricing {
 
     private VideoStudioPricing() {}
 
-    /** 一格每秒价的合法范围（含两端）。 */
+    /** 每秒价必须为正；金额上限由整数表示范围及最终报价的溢出检查决定。 */
     public static final long CELL_MIN = 1;
-    public static final long CELL_MAX = 100_000;
-    /** 加价、优化单价的上限（下限 0 = 不加 / 不收费）。 */
-    public static final long AMOUNT_MAX = 100_000;
-    /** 全能参考前几张不加价，最多就是参考图上限。 */
-    public static final int FREE_REF_IMAGES_MAX = JusuanH3Contract.REFERENCE_IMAGE_MAX_COUNT;
 
     /** 首次启动写入的配置：全 null / 0 —— 生成按模型单价、不加价、智能优化不收费，运营再按需改。 */
     public static VideoStudioPricingConfig defaults() {
         return new VideoStudioPricingConfig(fullGrid(Map.of()), 0, 0L, 0L);
     }
 
-    /** 四种模式 × 两档清晰度补齐（缺的格子 = null），顺序固定（与合同的展示顺序一致）。 */
+    /** Keep configured model tiers, and retain the legacy H3 grid for existing endpoints. */
     static Map<String, Map<String, Long>> fullGrid(Map<String, Map<String, Long>> cells) {
         Map<String, Map<String, Long>> out = new LinkedHashMap<>();
         for (String mode : JusuanH3Contract.MODES) {
             Map<String, Long> byTier = cells == null ? null : cells.get(mode);
             Map<String, Long> row = new LinkedHashMap<>();
             for (String tier : JusuanH3Contract.TIERS) row.put(tier, byTier == null ? null : byTier.get(tier));
+            if (byTier != null) byTier.forEach(row::put);
             out.put(mode, row);
         }
+        if (cells != null) cells.forEach((mode, row) -> {
+            if (!out.containsKey(mode)) out.put(mode, row == null ? new LinkedHashMap<>() : new LinkedHashMap<>(row));
+        });
         return out;
     }
 
@@ -55,7 +55,22 @@ public final class VideoStudioPricing {
      * @param modelRatePerSecond 后台给这个模型配的每秒价（候选 override 且端点按秒计费）；没有为 null
      */
     public static VideoStudioDtos.VideoStudioPricing effective(VideoStudioPricingConfig config, Long modelRatePerSecond) {
-        Map<String, Map<String, Long>> grid = fullGrid(config.perSecond());
+        return effective(config, modelRatePerSecond, VideoStudioService.contract(
+                JusuanH3Contract.MIN_SECONDS, JusuanH3Contract.MAX_SECONDS));
+    }
+
+    /** Project shared overrides onto only the combinations this configured endpoint exposes. */
+    public static VideoStudioDtos.VideoStudioPricing effective(VideoStudioPricingConfig config, Long modelRatePerSecond,
+                                                                VideoStudioDtos.VideoStudioContract contract) {
+        Map<String, Map<String, Long>> grid = new LinkedHashMap<>();
+        for (var mode : contract.modes()) {
+            Map<String, Long> prices = new LinkedHashMap<>();
+            for (var tier : contract.tiers()) {
+                Map<String, Long> configured = config.perSecond().get(mode.mode());
+                prices.put(tier.tier(), configured == null ? null : configured.get(tier.tier()));
+            }
+            grid.put(mode.mode(), prices);
+        }
         for (Map<String, Long> row : grid.values()) {
             row.replaceAll((tier, cell) -> cell != null ? cell : modelRatePerSecond);
         }
@@ -66,21 +81,21 @@ public final class VideoStudioPricing {
     /**
      * 一条生成任务的总价。
      *
-     * @param referenceImages 全能参考里的图片张数；其它模式传 0
+     * @param referenceImages 当前模式实际提交的参考图片张数
+     * @param hasReferenceRules 当前端点模式是否配置了多参考素材规则
      * @throws BusinessException 503 {@code VIDEO_STUDIO_PRICE_NOT_CONFIGURED}：这一格没定价；
      *                           400 {@code VIDEO_PRICE_OVERFLOW}：乘出来超过 long
      */
     public static long total(VideoStudioDtos.VideoStudioPricing pricing, String mode, String tier, int seconds,
-                             int referenceImages) {
+                             int referenceImages, boolean hasReferenceRules) {
         Map<String, Long> row = pricing.perSecond() == null ? null : pricing.perSecond().get(mode);
         Long perSecond = row == null ? null : row.get(tier);
         if (perSecond == null) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_PRICE_NOT_CONFIGURED",
-                    "这个模式和清晰度还没有定价，暂时不能生成。请联系运营在后台「明星带货 → 引擎定价 → 视频生成」里设置");
+                    "这个模式和清晰度还没有定价，暂时不能生成。请联系运营在模型管理中设置视频售价");
         }
         try {
-            long extraImages = JusuanH3Contract.MODE_UNIVERSAL_REFERENCE.equals(mode)
-                    ? Math.max(0, referenceImages - pricing.freeRefImages()) : 0;
+            long extraImages = hasReferenceRules ? Math.max(0, referenceImages - pricing.freeRefImages()) : 0;
             long unit = Math.addExact(perSecond, Math.multiplyExact(extraImages, pricing.extraRefImagePerSecond()));
             return Math.multiplyExact(unit, (long) seconds);
         } catch (ArithmeticException e) {
@@ -90,26 +105,26 @@ public final class VideoStudioPricing {
 
     /**
      * 后台保存时的严格校验，返回补齐后的配置（整份替换）。
-     * 不认识的模式 / 清晰度、格子不在 1..100000、免费张数不在 0..9、加价或优化单价不在 0..100000、
+     * 非法的模式 / 清晰度名称、格子小于 1、免费张数为负、加价或优化单价为负、
      * 缺了标量 → 400 {@code VIDEO_STUDIO_PRICING_INVALID}。
      */
     public static VideoStudioPricingConfig validate(VideoStudioPricingConfig input) {
         if (input == null || input.perSecond() == null) throw invalid("缺少每秒价表 perSecond");
         for (Map.Entry<String, Map<String, Long>> row : input.perSecond().entrySet()) {
-            if (!JusuanH3Contract.isMode(row.getKey())) throw invalid("不认识的生成模式：" + row.getKey());
+            if (!validModeKey(row.getKey())) throw invalid("生成模式名称无效：" + row.getKey());
             if (row.getValue() == null) continue;
             for (Map.Entry<String, Long> cell : row.getValue().entrySet()) {
-                if (!JusuanH3Contract.TIERS.contains(cell.getKey())) throw invalid("不认识的清晰度：" + cell.getKey());
+                if (!cell.getKey().matches("[A-Za-z0-9_.-]{1,32}")) throw invalid("清晰度名称无效：" + cell.getKey());
                 Long v = cell.getValue();
-                if (v != null && (v < CELL_MIN || v > CELL_MAX)) {
-                    throw invalid(row.getKey() + " · " + cell.getKey() + " 的每秒价要在 " + CELL_MIN + " 到 " + CELL_MAX
-                            + " 之间，空着表示按模型单价");
+                if (v != null && v < CELL_MIN) {
+                    throw invalid(row.getKey() + " · " + cell.getKey() + " 的每秒价至少为 " + CELL_MIN
+                            + "，空着表示按模型单价");
                 }
             }
         }
         Integer free = input.freeRefImages();
-        if (free == null || free < 0 || free > FREE_REF_IMAGES_MAX) {
-            throw invalid("全能参考免费张数要在 0 到 " + FREE_REF_IMAGES_MAX + " 之间");
+        if (free == null || free < 0) {
+            throw invalid("全能参考免费张数不能为负数");
         }
         requireAmount(input.extraRefImagePerSecond(), "全能参考每张加价");
         requireAmount(input.promptOptimizationPerCall(), "智能优化单价");
@@ -117,8 +132,12 @@ public final class VideoStudioPricing {
                 input.extraRefImagePerSecond(), input.promptOptimizationPerCall());
     }
 
+    static boolean validModeKey(String mode) {
+        return mode != null && mode.matches("[A-Za-z][A-Za-z0-9_-]{0,63}");
+    }
+
     private static void requireAmount(Long v, String what) {
-        if (v == null || v < 0 || v > AMOUNT_MAX) throw invalid(what + "要在 0 到 " + AMOUNT_MAX + " 之间");
+        if (v == null || v < 0) throw invalid(what + "不能为负数");
     }
 
     private static BusinessException invalid(String message) {

@@ -57,7 +57,7 @@ class DapModelinkGatewayTest {
                 .model("bytedance/doubao-seedance-2-0-260128")
                 .build();
         AiModelInvocationService models = mock(AiModelInvocationService.class);
-        when(models.resolveEndpoint(any(AiModelPurpose.class))).thenReturn(Optional.of(ep));
+        when(models.resolveDefaultEndpoint(any(AiModelPurpose.class), eq("aiavatar"))).thenReturn(Optional.of(ep));
         gateway = new HttpModelinkGateway(models, new DapProperties());
     }
 

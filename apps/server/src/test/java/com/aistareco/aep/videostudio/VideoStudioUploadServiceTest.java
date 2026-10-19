@@ -4,6 +4,7 @@ import com.aistareco.aep.service.mixcut.FfmpegRunner;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.aep.service.storage.StorageQuotaService;
 import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioUpload;
+import com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioMediaLimit;
 import com.aistareco.aep.videostudio.service.VideoStudioUploadService;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
@@ -197,6 +198,50 @@ class VideoStudioUploadServiceTest {
         assertEquals("VIDEO_STUDIO_AUDIO_DURATION_INVALID", code(file("a.wav", wav), "audio"));
         probeReturns(new FfmpegRunner.MediaProbe(15.2, "wav", null, "pcm_s16le", 0, 0, 44100, 2, true));
         assertEquals("VIDEO_STUDIO_AUDIO_DURATION_INVALID", code(file("a.wav", wav), "audio"));
+    }
+
+    @Test
+    void selectedModelRulesControlUploadSizeFormatAndVideoDuration() {
+        byte[] jpeg = head(64, 0xFF, 0xD8, 0xFF, 0xE0);
+        var tooSmall = new VideoStudioMediaLimit("image", 1, 32, List.of("JPEG"), null, null);
+        assertEquals("VIDEO_STUDIO_FILE_TOO_LARGE", assertThrows(BusinessException.class,
+                () -> svc.upload("u1", file("a.jpg", jpeg), "image", tooSmall)).getCode());
+        var pngOnly = new VideoStudioMediaLimit("image", 1, 128, List.of("PNG"), null, null);
+        assertEquals("VIDEO_STUDIO_FORMAT_UNSUPPORTED", assertThrows(BusinessException.class,
+                () -> svc.upload("u1", file("a.jpg", jpeg), "image", pngOnly)).getCode());
+        var jpegRule = new VideoStudioMediaLimit("image", 1, 128, List.of("JPEG"), null, null);
+        assertEquals("image", svc.upload("u1", file("a.jpg", jpeg), "image", jpegRule).mediaType());
+
+        byte[] mp4 = head(64, 0, 0, 0, 0x20, 'f', 't', 'y', 'p', 'i', 's', 'o', 'm');
+        probeReturns(new FfmpegRunner.MediaProbe(4.5, "mp4", "h264", null, 720, 1280, 0, 0, true));
+        var shortVideo = new VideoStudioMediaLimit("video", 1, 128, List.of("MP4"), 2, 3);
+        assertEquals("VIDEO_STUDIO_MEDIA_DURATION_INVALID", assertThrows(BusinessException.class,
+                () -> svc.upload("u1", file("a.mp4", mp4), "video", shortVideo)).getCode());
+        var allowedVideo = new VideoStudioMediaLimit("video", 1, 128, List.of("MP4"), 2, 5);
+        assertEquals(4.5, svc.upload("u1", file("a.mp4", mp4), "video", allowedVideo).durationSec());
+    }
+
+    @Test
+    void configuredFormatsAreUsedForUploadAndStoredMime() {
+        byte[] gif = head(64, 'G', 'I', 'F', '8', '9', 'a');
+        var gifRule = new VideoStudioMediaLimit("image", 1, 128, List.of("GIF"), null, null);
+        assertEquals("image", svc.upload("u1", file("fake.png", gif), "image", gifRule).mediaType());
+        verify(fileStorage).store(any(byte[].class), eq("video-studio-image"), eq("u1"), eq("gif"), eq("image/gif"));
+        var pngRule = new VideoStudioMediaLimit("image", 1, 128, List.of("PNG"), null, null);
+        assertEquals("VIDEO_STUDIO_FORMAT_UNSUPPORTED", assertThrows(BusinessException.class,
+                () -> svc.upload("u1", file("fake.png", gif), "image", pngRule)).getCode());
+
+        byte[] mov = head(64, 0, 0, 0, 0x20, 'f', 't', 'y', 'p', 'q', 't', ' ', ' ');
+        probeReturns(new FfmpegRunner.MediaProbe(4.5, "mov", "h264", "aac", 720, 1280, 44100, 2, true));
+        var movRule = new VideoStudioMediaLimit("video", 1, 128, List.of("MOV"), 1, 5);
+        assertEquals(4.5, svc.upload("u1", file("fake.mp4", mov), "video", movRule).durationSec());
+        verify(fileStorage).store(any(byte[].class), eq("video-studio-video"), eq("u1"), eq("mov"), eq("video/quicktime"));
+
+        byte[] webm = head(64, 0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x82, 0x84, 'w', 'e', 'b', 'm');
+        probeReturns(new FfmpegRunner.MediaProbe(4.5, "matroska,webm", "vp9", "opus", 720, 1280, 44100, 2, true));
+        var webmRule = new VideoStudioMediaLimit("video", 1, 128, List.of("WEBM"), 1, 5);
+        assertEquals(4.5, svc.upload("u1", file("fake.mov", webm), "video", webmRule).durationSec());
+        verify(fileStorage).store(any(byte[].class), eq("video-studio-video"), eq("u1"), eq("webm"), eq("video/webm"));
     }
 
     @Test

@@ -159,7 +159,7 @@ class DramaProjectServiceTest {
 
     @Test
     void outlineThrowsWhenAiNotConfigured() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
         BusinessException ex = assertThrows(BusinessException.class, () -> svc.outlineAiDraft(id, null, "u1"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());
@@ -167,8 +167,8 @@ class DramaProjectServiceTest {
 
     @Test
     void outlineParsesEpisodesFromLlmJson() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"开场钩子\",\"synopsis\":\"梗概\",\"beat\":\"转折\"}]}",
                         "stop", 100L, "ep", "fake-model"));
@@ -181,8 +181,8 @@ class DramaProjectServiceTest {
 
     @Test
     void epscriptDraftParsesScenesAndShots() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"scenes\":[{\"place\":\"内景 · 客厅 · 夜\",\"mood\":\"悬疑\",\"action\":\"她发现异样\","
                                 + "\"lines\":[{\"who\":\"旁白\",\"text\":\"第一晚就不对劲\"}],"
@@ -203,8 +203,8 @@ class DramaProjectServiceTest {
 
     @Test
     void castDraftParsesCharacters() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"characters\":[{\"name\":\"林夏\",\"role\":\"key\",\"cast\":\"女·28\",\"desc\":\"坚韧\"},"
                                 + "{\"name\":\"陈姨\",\"role\":\"weird\",\"cast\":\"女·55\",\"desc\":\"热心\"}]}",
@@ -219,8 +219,8 @@ class DramaProjectServiceTest {
 
     @Test
     void outlineThrowsOnUnparseableLlmOutput() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "对不起我无法生成", "stop", 10L, "ep", "fake-model"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
@@ -232,8 +232,8 @@ class DramaProjectServiceTest {
 
     @Test
     void aiSuccessHoldsAndCommitsCredits() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
                         "stop", 100L, "ep", "fake-model"));
@@ -247,8 +247,8 @@ class DramaProjectServiceTest {
 
     @Test
     void aiFailureReleasesHold() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "不是 JSON", "stop", 10L, "ep", "fake-model"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
@@ -264,23 +264,23 @@ class DramaProjectServiceTest {
     @Test
     void throwsWhenPromptNotConfigured() {
         // 端点已绑，但 prompt 未配置（DB / resource 都没有，origin=code）→ 不调模型、不扣费
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         when(promptService.resolve(PromptService.KEY_DRAMA_EPSCRIPT)).thenReturn(new PromptService.ResolvedPrompt(
                 "你是助手。", "{{input}}", new PromptParamsDto(null, null, null), "code"));
         String id = createReturningId("{\"type\":\"X\",\"typeKey\":\"x\",\"mode\":\"guided\"}", "u1");
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.epscriptAiDraft(id, node("{\"ep\":1,\"plot\":\"剧情\"}"), "u1"));
         assertEquals("PROMPT_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
         verify(creditService, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
     }
 
     @Test
     void promptParamsOverrideTemperatureAndMaxTokens() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         when(promptService.resolve(PromptService.KEY_DRAMA_OUTLINE)).thenReturn(new PromptService.ResolvedPrompt(
                 "sys", "为《{{title}}》生成 {{count}} 集大纲", new PromptParamsDto(0.3, 1234, true), "db"));
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(
                         "{\"episodes\":[{\"no\":1,\"hook\":\"h\",\"synopsis\":\"s\",\"beat\":\"b\"}]}",
                         "stop", 1L, "ep", "fake-model"));
@@ -289,7 +289,7 @@ class DramaProjectServiceTest {
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> opts = ArgumentCaptor.forClass(Map.class);
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), opts.capture());
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), opts.capture(), eq("drama"));
         assertEquals(0.3, opts.getValue().get("temperature"), "运营设的 temperature 应覆盖默认");
         assertEquals(1234, opts.getValue().get("max_tokens"), "运营设的 max_tokens 应生效");
     }
@@ -310,17 +310,17 @@ class DramaProjectServiceTest {
 
     @Test
     void interactiveDraftThrowsWhenAiNotConfigured() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(false);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
         String id = createReturningId("{\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\"}", "u1");
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.interactiveDraft(id, node("{\"theme\":\"末日列车\"}"), "u1"));
         assertEquals("AI_NOT_CONFIGURED", ex.getCode());
-        verify(invocation, never()).invokeChat(any(), anyList(), anyMap());
+        verify(invocation, never()).invokeChat(any(), anyList(), anyMap(), eq("drama"));
     }
 
     @Test
     void interactiveDraftBuildsGraphAndOverlayFromLlm() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
         String graph = "{\"title\":\"末日列车\",\"globalFlags\":{\"hasKey\":false},\"startEp\":1,\"episodes\":["
                 + "{\"no\":1,\"hook\":\"上车\",\"synopsis\":\"逃上末班车\",\"interactions\":["
                 + "  {\"triggerTime\":52,\"interactionType\":\"choice\",\"condition\":\"globalFlags.hasKey == true\","
@@ -331,7 +331,7 @@ class DramaProjectServiceTest {
                 + "\"isEnding\":false},"
                 + "{\"no\":2,\"hook\":\"生还\",\"synopsis\":\"活下来\",\"interactions\":[],\"isEnding\":true,\"endingLabel\":\"生还结局\"},"
                 + "{\"no\":3,\"hook\":\"沦陷\",\"synopsis\":\"失败\",\"interactions\":[],\"isEnding\":true}]}";
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(graph, "stop", 100L, "ep", "fake-model"));
 
         String id = createReturningId("{\"type\":\"互动剧\",\"typeKey\":\"interactive\",\"mode\":\"interactive\"}", "u1");

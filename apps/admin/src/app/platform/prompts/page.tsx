@@ -32,6 +32,7 @@ import { cn, formatDateTimeCN } from "@/lib/utils";
 // v0.53（审计 #7）：补全友好名，与 server PromptService.KNOWN_KEYS 对齐。
 // 列表本身由服务端动态返回（新 key 自动出现）；这里只是展示用中文名，缺失时回退裸 key。
 const KEY_LABEL: Record<string, string> = {
+  "dap.ip_studio_assistant": "Studio 导演对话与创作方案",
   "material.script_draft": "带货脚本起稿",
   "material.selling_points": "商品卖点提取",
   "material.variable_extract": "脚本变量抽取",
@@ -58,6 +59,7 @@ const KEY_LABEL: Record<string, string> = {
   "dap.image_atlas": "数字人 · 标准图集",
   "dap.ip_identity": "AI IP 工作台 · 人物特征卡抽取",
   "dap.ip_canvas_image": "AI IP 工作台 · 画布出图",
+  "dap.ip_studio_script": "AI IP Studio · 剧本与分镜",
   "dap.image_deriv": "数字人 · 衍生图（表情/场景/服装）",
   "dap.video_orbit": "数字人 · 运镜视频",
 };
@@ -89,6 +91,7 @@ const KEY_DESCRIPTION: Record<string, string> = {
   "dap.image_atlas": "生成数字人标准图集，用于头像、半身、全身和多角度资产沉淀。",
   "dap.ip_identity": "从用户上传的照片里抽出人物特征卡，后续每张图都以它锁住同一个人。",
   "dap.ip_canvas_image": "AI IP 工作台画布上的出图提示词模板，用户在节点里写的那段话按它拼进去。",
+  "dap.ip_studio_script": "Studio 剧本起草、改写与分镜的结构化 JSON 模板，采用已编辑正文及人物设定快照。",
   "dap.image_deriv": "生成数字人衍生图，覆盖表情、场景、服装和营销素材延展。",
   "dap.video_orbit": "生成数字人环绕运镜视频，用于资产展示、发布预览和短视频素材。",
 };
@@ -171,6 +174,7 @@ export default function PromptsPage() {
   const [jsonMode, setJsonMode] = React.useState(true);
   const [enabled, setEnabled] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
+  const editVersion = React.useRef<number | null>(null);
 
   // 试运行
   const [sampleVars, setSampleVars] = React.useState("{}");
@@ -221,6 +225,7 @@ export default function PromptsPage() {
   // 选中 prompt 时把编辑态灌进表单
   React.useEffect(() => {
     if (!active) return;
+    editVersion.current = active.version;
     setSystemPrompt(active.systemPrompt ?? "");
     setUserTemplate(active.userTemplate ?? "");
     setTemperature(active.params?.temperature != null ? String(active.params.temperature) : "");
@@ -243,10 +248,10 @@ export default function PromptsPage() {
   }, [activeKey]);
 
   const save = async () => {
-    if (!activeKey) return;
+    if (!activeKey || !active || editVersion.current === null) return;
     setSaving(true);
     try {
-      await PromptsApi.upsertPrompt(activeKey, {
+      const saved = await PromptsApi.upsertPrompt(activeKey, {
         systemPrompt,
         userTemplate,
         params: {
@@ -256,7 +261,8 @@ export default function PromptsPage() {
         },
         enabled,
         changeNote: "admin save",
-      });
+      }, editVersion.current);
+      editVersion.current = saved.version;
       toast.success({ title: "已保存", description: "1 分钟内全节点生效" });
       await load();
     } catch (e) {
@@ -312,7 +318,15 @@ export default function PromptsPage() {
   const rollback = async (version: number) => {
     if (!activeKey) return;
     try {
-      await PromptsApi.rollbackPrompt(activeKey, version);
+      if (!active) return;
+      const restored = await PromptsApi.rollbackPrompt(activeKey, version, active.version);
+      editVersion.current = restored.version;
+      setSystemPrompt(restored.systemPrompt ?? "");
+      setUserTemplate(restored.userTemplate ?? "");
+      setTemperature(restored.params?.temperature != null ? String(restored.params.temperature) : "");
+      setMaxTokens(restored.params?.maxTokens != null ? String(restored.params.maxTokens) : "");
+      setJsonMode(restored.params?.jsonMode !== false);
+      setEnabled(restored.enabled);
       toast.success({ title: `已回滚到 v${version}` });
       await load();
     } catch (e) {

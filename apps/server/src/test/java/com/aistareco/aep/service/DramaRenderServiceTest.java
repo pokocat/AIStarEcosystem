@@ -142,7 +142,7 @@ class DramaRenderServiceTest {
     @Test
     void renderFrame_illegal_endpoint_id_503_and_no_charge() {
         // 传旧式 prompt 绕过 promptService；endpoint_id 不在候选池 → resolveEndpoint 返回 empty。
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.IMAGE_GENERATION), eq("ep-ghost")))
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.IMAGE_GENERATION), eq("ep-ghost"), eq("drama")))
                 .thenReturn(Optional.empty());
         ObjectNode body = om.createObjectNode();
         body.put("prompt", "一间昏暗的房间");
@@ -158,7 +158,7 @@ class DramaRenderServiceTest {
 
     @Test
     void renderClip_illegal_endpoint_id_503_and_no_submit() {
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-ghost")))
+        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("ep-ghost"), eq("drama")))
                 .thenReturn(Optional.empty());
         ObjectNode body = om.createObjectNode();
         body.put("prompt", "镜头缓缓推进");
@@ -194,7 +194,7 @@ class DramaRenderServiceTest {
             int q = rest.indexOf('?');
             return q >= 0 ? rest.substring(0, q) : rest;
         });
-        when(videoJobs.firstFrameNeedsStorageKey(any())).thenReturn(firstFrameByKey);
+        when(videoJobs.firstFrameNeedsStorageKey(any(), eq("drama"))).thenReturn(firstFrameByKey);
         when(videoJobs.submit(any(), any(), any())).thenAnswer(inv -> List.of(om.createObjectNode().put("id", "mvj_1")));
         DramaReferenceAssembler assembler = new DramaReferenceAssembler(
                 mock(DramaProjectRepository.class), mock(DramaCharacterRepository.class),

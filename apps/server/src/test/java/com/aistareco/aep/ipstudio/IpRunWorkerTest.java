@@ -157,7 +157,7 @@ class IpRunWorkerTest {
     @Test
     void allImagesSucceed_commitsPerImage_andNoRelease() {
         seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"))).thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
 
@@ -174,7 +174,7 @@ class IpRunWorkerTest {
     @Test
     void midBatchFailure_keepsSuccesses_releasesRemainder_andReportsErrorCode() {
         seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenThrow(new DapModelException("DAP_MODEL_HTTP_429", "上游限流"));
@@ -193,7 +193,7 @@ class IpRunWorkerTest {
     @Test
     void zeroSuccess_isFailedWithOriginalCodeAndZeroCost() {
         seedGenerateRun(2);
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenThrow(new DapModelException("DAP_MODEL_BAD_OUTPUT", "上游没给图"));
 
         worker.runBlocking(RID);
@@ -212,7 +212,7 @@ class IpRunWorkerTest {
         // commitHold 抛的是 ResponseStatusException（不是 BusinessException）——
         // 只抓 BusinessException 会跳过释放，把冻结额挂到 CreditHoldSweeper 三小时后才回来
         seedGenerateRun(2);
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"))).thenReturn(IpStudioFixtures.pngBytes());
         doThrow(new ResponseStatusException(HttpStatus.CONFLICT, "hold 已是终态"))
                 .when(credits).commitHold(anyString(), anyString(), anyLong(), anyString());
 
@@ -228,7 +228,7 @@ class IpRunWorkerTest {
     @Test
     void cancelRequestedBetweenImages_keepsPaidImagesAndReleasesRest() {
         IpRun run = seedGenerateRun(4);
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any())).thenAnswer(inv -> {
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"))).thenAnswer(inv -> {
             // 第一张出完就请求取消
             reload().setCancelRequested(true);
             return IpStudioFixtures.pngBytes();
@@ -248,13 +248,13 @@ class IpRunWorkerTest {
     @Test
     void noReferenceAtAll_generatesTextToImage() {
         seedGenerateRun(1, 8L, 8L);   // 一个参考图都没有（主形象节点、用户也没传照片）
-        when(multimodal.generateImage(anyString(), anyString(), isNull(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), isNull(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
 
         assertEquals(IpRun.STATUS_DONE, reload().getStatus());
-        verify(multimodal).generateImage(anyString(), eq("768x1024"), isNull(), org.mockito.ArgumentMatchers.any());
+        verify(multimodal).generateImage(anyString(), eq("768x1024"), isNull(), org.mockito.ArgumentMatchers.any(), eq("studio"));
     }
 
     // ── 身份参考图不可读：绝不降级成「照价出一张不像他的图」──
@@ -272,7 +272,7 @@ class IpRunWorkerTest {
         assertEquals(IpRun.STATUS_FAILED, r.getStatus());
         assertEquals("IP_REF_UNREADABLE", r.getErrorCode());
         assertEquals(0L, r.getCost());
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"));
         verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
     }
@@ -285,7 +285,7 @@ class IpRunWorkerTest {
             String key = inv.getArgument(0, String.class);
             return key.endsWith("ref-1.png") ? null : "https://cdn.test/" + key;
         });
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
@@ -298,7 +298,7 @@ class IpRunWorkerTest {
         assertEquals("unreadable", refs.get(1).path("reason").asText());
         // 只带得动的那一张进了模型请求
         verify(multimodal).generateImage(anyString(), eq("768x1024"), eq(List.of("https://cdn.test/"
-                + IpStudioFixtures.sourceKey(USER, "ref-0.png"))), org.mockito.ArgumentMatchers.any());
+                + IpStudioFixtures.sourceKey(USER, "ref-0.png"))), org.mockito.ArgumentMatchers.any(), eq("studio"));
     }
 
     @Test
@@ -311,12 +311,12 @@ class IpRunWorkerTest {
         run.setInputJson(inputs.toString());
         runs.repo.save(run);
         when(multimodal.generateImage(anyString(), anyString(), org.mockito.ArgumentMatchers.any(),
-                org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+                org.mockito.ArgumentMatchers.any(), eq("studio"))).thenReturn(IpStudioFixtures.pngBytes());
 
         worker.execute(RID);
 
         verify(multimodal).generateImage(anyString(), anyString(),
-                org.mockito.ArgumentMatchers.any(), eq("ep-chosen"));
+                org.mockito.ArgumentMatchers.any(), eq("ep-chosen"), eq("studio"));
     }
 
     // ── 单价快照：hold 与 commit 之间后台改价，不许按新价结算 ──
@@ -325,7 +325,7 @@ class IpRunWorkerTest {
     void commitsUseHeldUnitPriceEvenIfAdminChangesItMidRun() {
         seedGenerateRun(4, 8L, 32L, "source");           // 冻结时 8/张 × 4 = 32
         when(pricing.ipImage()).thenReturn(99L);          // 运行途中运营把单价改成 99
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn(IpStudioFixtures.pngBytes());
 
         worker.runBlocking(RID);
@@ -342,7 +342,7 @@ class IpRunWorkerTest {
     void partialCommitAgainstSnapshotReleasesTheRemainder() {
         seedGenerateRun(4, 8L, 32L, "source");
         when(pricing.ipImage()).thenReturn(1L);           // 就算现价变得很低，剩余仍按冻结额退
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn(IpStudioFixtures.pngBytes())
                 .thenThrow(new DapModelException("DAP_MODEL_HTTP_500", "上游炸了"));
 
@@ -359,7 +359,7 @@ class IpRunWorkerTest {
     @Test
     void providerReturnsNonImageBytes_isBadOutputFailureAndNothingIsStored() {
         seedGenerateRun(2, 8L, 16L, "source");
-        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any()))
+        when(multimodal.generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio")))
                 .thenReturn("{\"error\":\"quota exceeded\"}".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
         worker.runBlocking(RID);
@@ -386,7 +386,7 @@ class IpRunWorkerTest {
         assertEquals("IP_RUN_QUEUE_FULL", r.getErrorCode());
         assertEquals(0L, r.getCost(), "没跑过一张，冻结额全退");
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(RID), anyString());
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"));
     }
 
     @Test
@@ -508,7 +508,7 @@ class IpRunWorkerTest {
         r.setStatus(IpRun.STATUS_DONE);
         runs.repo.save(r);
         worker.runBlocking(RID);
-        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any());
+        verify(multimodal, never()).generateImage(anyString(), anyString(), anyList(), org.mockito.ArgumentMatchers.any(), eq("studio"));
     }
 
     private com.fasterxml.jackson.databind.JsonNode readJson(String json) {
@@ -529,4 +529,66 @@ class IpRunWorkerTest {
         }
         return out;
     }
+    @Test void jusuanUsesOriginalPromptOwnedReferenceKeysAndExistingSettlement() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,30L,30L,"source");var input=(ObjectNode)OM.readTree(run.getInputJson());
+        input.put("prompt","legacy template ".repeat(100)).put("userPrompt","保持同一个人物，生成三视图");((ObjectNode)input.path("_exec")).put("endpointId","jusuan");
+        run.setInputJson(input.toString());runs.repo.save(run);when(nativeImages.supportsEndpoint("jusuan")).thenReturn(true);
+        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        worker.runBlocking(RID);assertEquals(IpRun.STATUS_DONE,reload().getStatus());assertEquals(30,reload().getCost());
+        verify(credits).commitHold(eq(IpRunService.REF_TYPE),eq(RID),eq(30L),anyString());
+        verify(multimodal,never()).generateImage(anyString(),anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(), eq("studio"));
+    }
+    @Test void nativeAcceptedSecondImageRecoversOriginalCheckpointWithoutRepeatingFirstSpend() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(2,8L,16L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        java.util.concurrent.atomic.AtomicInteger second=new java.util.concurrent.atomic.AtomicInteger();
+        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any())).thenAnswer(inv->{
+            String request=inv.getArgument(4);com.fasterxml.jackson.databind.JsonNode previous=inv.getArgument(8);
+            java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(9);
+            if(request.endsWith("-0")){checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-first").put("requestBody","original-first-body"));return IpStudioFixtures.pngBytes();}
+            if(second.getAndIncrement()==0){checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-second").put("requestBody","original-second-body"));throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(true,new IllegalStateException("poll outage"));}
+            assertEquals("original-second",previous.path("jobId").asText());assertEquals("original-second-body",previous.path("requestBody").asText());return IpStudioFixtures.pngBytes();
+        });
+        worker.runBlocking(RID);assertEquals("running",reload().getStatus());assertEquals(1,candidates(reload()).size());
+        assertEquals("STUDIO_IMAGE_RECOVERING",reload().getErrorCode());verify(credits,times(1)).commitHold(eq("ip-run"),eq(RID),eq(8L),anyString());
+        verify(credits,never()).releaseHold(anyString(),anyString(),anyString());assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));
+        when(nativeImages.supportsEndpoint("native")).thenReturn(false);worker.recoverNative(RID);
+        assertEquals("done",reload().getStatus());assertEquals(16,reload().getCost());assertEquals(2,candidates(reload()).size());
+        verify(nativeImages,times(1)).generate(eq("native"),anyString(),anyString(),anyList(),eq(RID+"-image-0"),eq(USER),any(),any(),any(),any());
+        verify(credits,times(2)).commitHold(eq("ip-run"),eq(RID),eq(8L),anyString());verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
+    }
+    @Test void unknownNativeAcceptanceKeepsHoldAndNeverAttemptsAnotherSubmitOrTimeoutRefund() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,8L,8L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(9);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original-body"));
+            throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(false,new IllegalStateException("reply lost"));
+        });
+        worker.runBlocking(RID);assertEquals("running",reload().getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
+        assertTrue(IpRunWorker.hasNativeSubmission(reload()));assertFalse(worker.canResumeNative(reload()));worker.recoverNative(RID);
+        assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));verifyNoCharges();
+        verify(nativeImages,times(1)).generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any());
+    }
+    @Test void acceptedImageCheckpointWriteFailureCannotFallThroughToRefund() throws Exception {
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,8L,8L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(9);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-job").put("requestBody","original-body"));
+            throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(true,new IllegalStateException("poll outage"));
+        });
+        var failed=new java.util.concurrent.atomic.AtomicBoolean();
+        org.mockito.Mockito.doAnswer(inv->{IpRun saved=inv.getArgument(0);if("image.provider.recovering".equals(saved.getStage())&&!failed.getAndSet(true))throw new IllegalStateException("transient database checkpoint failure");runs.rows.put(saved.getId(),saved);return saved;}).when(runs.repo).save(any(IpRun.class));
+        worker.runBlocking(RID);assertTrue(failed.get());assertEquals("running",reload().getStatus());assertEquals("STUDIO_IMAGE_RECOVERING",reload().getErrorCode());verifyNoCharges();
+    }
+    private void verifyNoCharges(){verify(credits,never()).releaseHold(anyString(),anyString(),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());}
+
 }

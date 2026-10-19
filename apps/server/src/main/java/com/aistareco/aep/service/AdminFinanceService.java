@@ -76,7 +76,7 @@ public class AdminFinanceService {
                 : ledgerRepo.findByUserId(userId, pageable).getContent();
         Map<String, AepUser> users = usersOf(entries);
         List<TransactionDto> rows = new ArrayList<>(entries.size());
-        for (LedgerEntry e : entries) rows.add(toTransaction(e, users.get(e.getUserId())));
+        for (LedgerEntry e : entries) rows.add(toTransaction(e, e.getUserId()==null?null:users.get(e.getUserId())));
         return rows;
     }
 
@@ -170,6 +170,7 @@ public class AdminFinanceService {
             case WITHDRAW, REFUND_CASH -> "withdrawal";
             case SPEND, FREEZE -> "spend";
             case INCOME, GIFT, REFUND, UNFREEZE, ADJUST -> "income";
+            case TRANSFER_IN, TRANSFER_OUT -> "transfer";
         };
     }
 

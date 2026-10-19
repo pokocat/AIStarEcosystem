@@ -129,6 +129,7 @@ public class PaymentService {
         if (!"pending".equalsIgnoreCase(dto.status())) {
             return dto; // 终态不再查
         }
+        if (dto.wayCode() == null && dto.payOrderId() == null) return dto;
         boolean overTtl = dto.createdAt() != null
                 && dto.createdAt().isBefore(Instant.now().minus(Duration.ofMinutes(rechargeService.pendingTtlMinutes())));
         String channel = PaymentChannelCatalog.channelFromWayCode(dto.wayCode());

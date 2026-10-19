@@ -65,16 +65,23 @@ public class AiModelGuardService {
         }
     }
 
-    public TokenEstimate estimateChatTokens(List<Map<String, String>> messages, Map<String, Object> body) {
+    public TokenEstimate estimateChatTokens(List<? extends Map<String, ?>> messages, Map<String, Object> body) {
         long chars = 0L;
+        long visualTokens=0L;
         if (messages != null) {
-            for (Map<String, String> message : messages) {
+            for (Map<String, ?> message : messages) {
                 if (message == null) continue;
                 chars += lengthOf(message.get("role"));
-                chars += lengthOf(message.get("content"));
+                if(message.get("content") instanceof List<?> parts) {
+                    for(Object part:parts) {
+                        if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))visualTokens+=8192L;
+                        else if(part instanceof Map<?,?> map)chars+=lengthOf(map.get("text"));
+                        else chars+=lengthOf(part);
+                    }
+                } else chars += lengthOf(message.get("content"));
             }
         }
-        return new TokenEstimate(estimateTokensFromChars(chars), outputReserve(body));
+        return new TokenEstimate(estimateTokensFromChars(chars)+visualTokens, outputReserve(body));
     }
 
     public TokenEstimate estimateOpenAiBodyTokens(Map<String, Object> body) {

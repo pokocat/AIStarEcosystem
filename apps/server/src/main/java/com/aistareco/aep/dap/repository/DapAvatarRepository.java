@@ -9,6 +9,9 @@ import java.util.Optional;
 
 @Repository
 public interface DapAvatarRepository extends JpaRepository<DapAvatar, String> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from DapAvatar a where a.id=:id and a.ownerUserId=:owner")
+    Optional<DapAvatar> lockOwned(@org.springframework.data.repository.query.Param("id") String id,@org.springframework.data.repository.query.Param("owner") String owner);
     /**
      * 乐观认领：只有 demoAttempts 仍等于我读到的那个值时才 +1。
      *

@@ -104,7 +104,7 @@ public class DramaShortPromptService {
                     "原文有 " + prompt.length() + " 字，一次最多拆 " + MAX_PROMPT_CHARS
                             + " 字。请分成几段，一段做一条短视频。");
         }
-        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)) {
+        if (!invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
                     "拆分镜还没接入大模型：请在管理后台为「短剧脚本起草」用途绑定一个模型端点后再试。");
         }
@@ -148,7 +148,7 @@ public class DramaShortPromptService {
                 userId, prompt.length(), instruction != null);
         AiModelInvocationService.AiModelResponse resp;
         try {
-            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options);
+            resp = invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
         } catch (BusinessException e) {
             throw e;
         } catch (Exception e) {

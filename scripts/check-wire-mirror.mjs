@@ -29,6 +29,56 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 // 新增一组镜像时在这里加一项即可。
 const MIRRORS = [
   {
+    label: "enterprise-billing",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterpriseBillingDtos.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: { ReplaySelection: "EnterpriseBillingReplaySelection" },
+    inlined: ["BillingSelection"],
+  },
+  {
+    label: "enterprise-lifecycle",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterpriseLifecycleDtos.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: { PreviewRequest: "EnterpriseLifecyclePreviewRequest", Preview: "EnterpriseLifecyclePreview", Request: "EnterpriseLifecycleRequest", Result: "EnterpriseLifecycleResult" },
+    inlined: [],
+  },
+  {
+    label: "enterprise-usage",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterpriseUsageDto.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: { EnterpriseUsageDto: "EnterpriseUsage" },
+    inlined: [],
+  },
+  {
+    label: "enterprise-points",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterprisePointsDtos.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: { Item: "EnterprisePointsItem", PreviewRequest: "EnterprisePointsPreviewRequest", SubmitRequest: "EnterprisePointsRequest", PreviewItem: "EnterprisePointsPreviewItem", Preview: "EnterprisePointsPreview", Transfer: "EnterprisePointsTransfer", Batch: "EnterprisePointsBatch" },
+    inlined: [],
+  },
+  {
+    label: "enterprise-recharge",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterpriseRechargeDtos.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: { RechargeRequest: "EnterpriseRechargeRequest", ConfirmRequest: "EnterpriseRechargeConfirmRequest", RefundRequest: "EnterpriseRefundRequest", RejectRequest: "EnterpriseRechargeRejectRequest", WalletSummary: "EnterpriseWalletSummary", MemberBalance: "EnterpriseMemberBalance", RefundPreview: "EnterpriseRefundPreview", Order: "EnterpriseRechargeOrder" },
+    inlined: [],
+  },
+  {
+    label: "enterprise",
+    java: "apps/server/src/main/java/com/aistareco/aep/enterprise/dto/EnterpriseDtos.java",
+    ts: "packages/types/src/enterprise.ts",
+    pairs: {
+      Capabilities: "EnterpriseCapabilities", Enterprise: "Enterprise", Member: "EnterpriseMember",
+      Context: "EnterpriseContext", CreateRequest: "EnterpriseCreateRequest",
+      InvitationRequest: "EnterpriseInvitationRequest", Invitation: "EnterpriseInvitation",
+      InvitationCreated: "EnterpriseInvitationCreated", AcceptRequest: "EnterpriseInvitationAcceptRequest",
+      InvitationPreview: "EnterpriseInvitationPreview",
+      MemberUpdate: "EnterpriseMemberUpdateRequest", Policy: "EnterprisePolicy", PolicyUpdate: "EnterprisePolicyUpdateRequest",
+      OwnershipRequest: "EnterpriseOwnershipRequest", OwnershipTransfer: "EnterpriseOwnershipTransfer", Audit: "EnterpriseAudit",
+    },
+    inlined: [],
+  },
+  {
     label: "clip",
     java: "apps/server/src/main/java/com/aistareco/aep/clip/dto/ClipDtos.java",
     ts: "packages/types/src/clip.ts",
@@ -154,7 +204,14 @@ function main() {
   console.log("─".repeat(72));
 
   let failed = 0;
-  for (const mirror of MIRRORS) {
+  const domain = process.argv.find((arg) => arg.startsWith("--domain="))?.slice("--domain=".length);
+  const selected = domain ? MIRRORS.filter((mirror) => mirror.label === domain) : MIRRORS;
+  if (domain && selected.length === 0) {
+    console.error(`Unknown mirror domain: ${domain}`);
+    process.exitCode = 2;
+    return;
+  }
+  for (const mirror of selected) {
     const { drift, missing, unmapped, recordCount } = checkMirror(mirror);
     const pairCount = Object.keys(mirror.pairs).length;
     console.log(`\n[${mirror.label}]  ${pairCount} pair(s) from ${recordCount} record(s)`);

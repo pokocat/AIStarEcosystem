@@ -33,6 +33,10 @@ public class LedgerEntry {
 
     /** Wallet owner — denormalized for per-user queries. */
     private String userId;
+    @Column(length=64) private String actorUserId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     @Enumerated(EnumType.STRING)
     private LedgerEntryType entryType;
@@ -79,7 +83,9 @@ public class LedgerEntry {
         WITHDRAW,
         FREEZE,
         UNFREEZE,
-        ADJUST
+        ADJUST,
+        TRANSFER_IN,
+        TRANSFER_OUT
     }
 
     /**

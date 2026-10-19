@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const boundsMock = vi.fn();
 vi.mock("./models", () => ({
+  nativeVideoModelFor: () => undefined,
   endpointIdFor: (v?: string | null) => (v ? `ep-${v}` : undefined),
   videoDurationBoundsFor: (v?: string | null) => boundsMock(v),
 }));

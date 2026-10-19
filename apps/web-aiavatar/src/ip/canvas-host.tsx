@@ -1,4 +1,5 @@
 "use client";
+import { StudioErrorNotice, useStudioApp } from './studio-errors';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 画布宿主 —— 把搬来的画布（src/canvas）接到本仓的路由、账号与服务端上。
@@ -11,23 +12,24 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { App as AntdApp, ConfigProvider, Modal, theme } from "antd";
+import { App as AntdApp, ConfigProvider, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertTriangle, AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
-import CanvasPage from "@/canvas/pages/canvas/project";
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
+import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
 import { serverModelsLoaded } from "@/canvas-bridge/models";
 import { useHostActions } from "@/canvas-bridge/host-actions";
 import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
+import { registerStudioSave } from "@/canvas-bridge/studio-save";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { ProjectHistory } from "@/ip/project-history";
+import { StudioTemplatePublish } from "@/ip/studio-template-publish";
+import { StudioTemplateSource } from "@/ip/studio-template-source";
+import { USE_MOCK } from "@ai-star-eco/api-client";
 import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { LastRunPanel } from "@/ip/last-run-panel";
-import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
-import { looksAutoTitled } from "@/canvas-bridge/node-title";
-import type { IpDemoAdmin } from "@ai-star-eco/types";
 import { IpStudioApi } from "@/ip/api";
 import { useIdentity, isSuperAdminRole } from "@/proto/api";
 import "@/canvas-bridge/i18n";
@@ -42,8 +44,11 @@ const SAVE_LABEL: Record<string, string> = {
 
 function Host({ projectId }: { projectId: string }) {
   const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
+  React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
-  const { message } = AntdApp.useApp();
+  const [templateOpen, setTemplateOpen] = React.useState(false);
+  const [templateVisibility, setTemplateVisibility] = React.useState<'personal'|'official'>('personal');
+  const { message } = useStudioApp();
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
@@ -58,79 +63,6 @@ function Host({ projectId }: { projectId: string }) {
   // 运营会看到一个点了必然 403 的按钮。
   React.useEffect(() => { const store = useAssetStore.getState(); store.reset(); void store.loadAssets(); return () => store.reset(); }, [identity?.uid]);
   const isOperator = isSuperAdminRole(identity?.operatorRole);
-  const [savingDemo, setSavingDemo] = React.useState(false);
-  // 画布当前标题（画布 store 是这份的真值，顶栏改名改的也是它）
-  const canvasTitle = useCanvasStore(
-    (st) => st.projects.find((p) => p.id === projectId)?.title ?? "",
-  );
-  // 存为示例前先弹一次确认。理由有两条，都不是走流程：
-  //   ① 这一下是**推给全平台每一个用户**的，不该和「保存」一样一点就发生；
-  //   ② 示例在目录里显示的是这个名字，而画布标题往往是「未命名 IP 项目」——
-  //      不给改名的话，所有人看到的就是一排「未命名」。
-  const [demoOpen, setDemoOpen] = React.useState(false);
-  const [demoName, setDemoName] = React.useState("");
-  const [demoSummary, setDemoSummary] = React.useState("");
-  const [demoKind, setDemoKind] = React.useState<"template" | "example">("example");
-  // 覆盖哪一条已有的（空 = 新建一条）。不给这个选项的话，同一张画布存两次就是
-  // 目录里两张一模一样的卡 —— 而普通用户那边没有任何办法分辨或去掉其中一张。
-  const [demoTarget, setDemoTarget] = React.useState("");
-  const [existingDemos, setExistingDemos] = React.useState<IpDemoAdmin[]>([]);
-
-  // 标题还是「没改过的自动标题」的那些节点。
-  //
-  // 线上第一条官方示例的 10 个标题里有 7 个是提示词截断，别人点开看到的是每张卡都顶着
-  // 一段话。v0.194 手工改了那条数据、也把自动取名改短了，但**只要标题还是从提示词派生的，
-  // 存进官方内容之前就该有人看一眼** —— 自动值最多做到"不难看"，做不到"是个名字"。
-  // 只提醒不拦（§2.4）：运营可能就是想先发出去。
-  // ⚠️ selector 只能返回 store 里**已有的引用**，不能在里面 filter/map 出新数组 ——
-  // 那样每次调用都是一个新数组，useSyncExternalStore 认为快照一直在变，直接把页面搞崩
-  // （实测：整个画布页变成「This page couldn't load」；typecheck / build / 结构测试全绿，
-  // 只有浏览器逮得到。§8.0.1 ③ 说的就是这个）。派生放 useMemo。
-  const nodes = useCanvasStore((st) => st.projects.find((p) => p.id === projectId)?.nodes);
-  const autoTitled = React.useMemo(
-    () => (nodes ?? []).filter((n) => looksAutoTitled(n.title, n.metadata?.prompt)).map((n) => n.title),
-    [nodes],
-  );
-
-  const openDemoDialog = React.useCallback(() => {
-    // 预填当前画布名，多数情况下改一两个字就能用
-    setDemoName(canvasTitle || "");
-    setDemoSummary("");
-    setDemoKind("example");
-    setDemoTarget("");
-    setDemoOpen(true);
-    // 旁路加载已有列表，供「覆盖已有」用。拉不到就只是少一个下拉，不挡发布。
-    void IpStudioApi.listDemosForAdmin().then(setExistingDemos).catch(() => setExistingDemos([]));
-  }, [canvasTitle]);
-
-  const saveAsDemo = React.useCallback(async () => {
-    const name = demoName.trim();
-    if (!name) return;
-    setSavingDemo(true);
-    try {
-      // 先把当前画布存下来再快照，**存不上就不发**（同发布资产那条闸，见 publish-gate.ts）：
-      // 服务端读的是库里那份文档，存失败 / 撞上别处的编辑还继续发的话，
-      // 推给全平台的是**上一版**，而界面刚说完「已存为官方模板」——两边都不报错，最难查。
-      const demo = await publishWithLatestDoc(saveNow, () =>
-        IpStudioApi.publishAsDemo(projectId, {
-          demoId: demoTarget || undefined,   // 空 = 新建一条
-          name,
-          summary: demoSummary.trim() || undefined,
-          kind: demoKind,
-        }),
-      );
-      setDemoOpen(false);
-      const what = demoKind === "template"
-        ? `官方模板「${demo.name}」，所有人在「新建画布」那一排都能选到`
-        : `官方示例「${demo.name}」，所有人在画布列表里都能打开`;
-      message.success(demoTarget ? `已更新${what}` : `已存为${what}`);
-    } catch (e) {
-      message.error(e instanceof Error ? e.message : "没存上，再试一次");
-    } finally {
-      setSavingDemo(false);
-    }
-  }, [projectId, saveNow, message, demoName, demoSummary, demoKind, demoTarget]);
-
   React.useEffect(() => {
     if (state !== "ready") return;
     let leaving = false;
@@ -146,7 +78,7 @@ function Host({ projectId }: { projectId: string }) {
       void saveNow().then((outcome) => {
         if (outcome === "failed" || outcome === "conflict") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
         else window.location.assign(dest.href);
-      }).catch(() => { message.error("画布保存失败，请重试"); leaving = false; });
+      }).catch((e) => { message.error(e); leaving = false; });
     };
     document.addEventListener("click", guard, true);
     return () => document.removeEventListener("click", guard, true);
@@ -182,11 +114,9 @@ function Host({ projectId }: { projectId: string }) {
   // 设计。本仓的 Key 在服务端，用户在那个表单里什么也做不了，只会以为是自己没配好。
   React.useEffect(() => {
     setModelsUnavailableHandler(() => {
-      message.warning(
-        serverModelsLoaded()
+      message.error({ code: serverModelsLoaded() ? "STUDIO_MODEL_NOT_CONFIGURED" : "STUDIO_MODELS_UNAVAILABLE", message: serverModelsLoaded()
           ? "平台还没配可用的模型，现在生成不了。找管理员在后台加一个。"
-          : "模型列表没加载上，刷新页面再试",
-      );
+          : "模型列表没加载上，刷新页面再试" });
     });
     return () => setModelsUnavailableHandler(null);
   }, [message]);
@@ -198,13 +128,13 @@ function Host({ projectId }: { projectId: string }) {
     <>
       <ProjectHistory projectId={projectId} saveNow={saveNow} />
       <LastRunPanel />
+      {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>保存为模板</button></>}
       {isOperator && (
         <button
-          onClick={openDemoDialog}
-          disabled={savingDemo}
+          onClick={()=>{setTemplateVisibility('official');setTemplateOpen(true);}}
           className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
           style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
-          title="把这张画布存一份给所有用户，在「新建画布」那一排能选到"
+          title="完整保存画布和素材，所有用户都能查看"
         >
           <Star className="w-3.5 h-3.5 shrink-0" />
           存为官方内容
@@ -273,7 +203,8 @@ function Host({ projectId }: { projectId: string }) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 px-8 text-center">
         <AlertCircle className="w-6 h-6" style={{ color: "var(--err)" }} />
-        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>{error}</p>
+        <p className="text-[13px] max-w-sm" style={{ color: "var(--ink-2)" }}>画布暂时无法打开</p>
+        <StudioErrorNotice error={error}/>
         <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 rounded-xl text-[12.5px] font-bold transition hover:brightness-95"
@@ -290,7 +221,8 @@ function Host({ projectId }: { projectId: string }) {
 
   return (
     <div className="h-full relative">
-      <CanvasPage />
+      <StudioFlowCanvas projectId={projectId}/>
+      {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog
         open={publishOpen}
@@ -307,135 +239,10 @@ function Host({ projectId }: { projectId: string }) {
         }
       />
 
-      {/* 存为全局示例的确认框。刻意不是「点了就发生」——
-          这一下会把画布连素材复制成**所有人**都看得到的内容；而且目录里显示的是
-          这里填的名字，画布标题常常还是「未命名 IP 项目」，不给改就是一排「未命名」。 */}
-      <Modal
-        open={demoOpen}
-        title="存为官方内容"
-        onCancel={() => setDemoOpen(false)}
-        onOk={() => void saveAsDemo()}
-        okText={savingDemo ? "保存中…" : "确认"}
-        cancelText="取消"
-        okButtonProps={{ loading: savingDemo, disabled: !demoName.trim() }}
-        cancelButtonProps={{ disabled: savingDemo }}
-        mask={{ closable: !savingDemo }}
-        keyboard={!savingDemo}
-        closable={!savingDemo}
-        getContainer={() => document.querySelector<HTMLElement>(".ip-surface") ?? document.body}
-      >
-        <div style={{ display: "flex", gap: 10, marginBottom: 14 }}>
-          <KindChoice
-            active={demoKind === "template"}
-            title="存成模板"
-            hint="只给工作流：节点怎么排、提示词怎么写。素材不跟着走，用户填自己的。出现在「新建画布」那一排。"
-            onClick={() => setDemoKind("template")}
-          />
-          <KindChoice
-            active={demoKind === "example"}
-            title="存成示例"
-            hint="连素材一起给：用户点开就能看见做完长什么样。出现在画布列表里，标「官方示例」。"
-            onClick={() => setDemoKind("example")}
-          />
-        </div>
-        <p style={{ fontSize: 12, lineHeight: 1.7, color: "var(--ink-3)", margin: "0 0 14px" }}>
-          原项目不受影响 —— 之后你改它、甚至删它，都不会动到这份。
-        </p>
-        {existingDemos.length > 0 && (
-          <>
-            <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
-              新建还是覆盖
-            </label>
-            <select
-              value={demoTarget}
-              onChange={(e) => {
-                setDemoTarget(e.target.value);
-                const hit = existingDemos.find((d) => d.id === e.target.value);
-                if (hit) { setDemoName(hit.name); setDemoSummary(hit.summary); setDemoKind(hit.kind); }
-              }}
-              style={{ ...DEMO_FIELD, marginBottom: 12 }}
-            >
-              <option value="">新建一条</option>
-              {existingDemos.map((d) => (
-                <option key={d.id} value={d.id}>
-                  覆盖「{d.name}」（{d.kind === "template" ? "模板" : "示例"}
-                  {d.enabled ? "" : " · 已下线"}）
-                </option>
-              ))}
-            </select>
-          </>
-        )}
-        {autoTitled.length > 0 && (
-          <div style={{
-            display: "flex", gap: 8, padding: "9px 11px", marginBottom: 14, borderRadius: "var(--r-sm)",
-            background: "var(--warn-soft, #fdf4e3)", border: "1px solid var(--warn, #b8860b)33",
-          }}>
-            <AlertTriangle size={14} style={{ color: "var(--warn, #b8860b)", flexShrink: 0, marginTop: 1 }} />
-            <div style={{ fontSize: 12, lineHeight: 1.65, color: "var(--ink-2)", minWidth: 0 }}>
-              有 <b>{autoTitled.length}</b> 个节点的名字还是自动取的（
-              {autoTitled.slice(0, 2).map((t) => `「${t}」`).join("、")}
-              {autoTitled.length > 2 ? " 等" : ""}）。
-              别人点开会看到每张卡都顶着一段提示词 —— 双击卡片标题可以改名。
-              <br />
-              <span style={{ color: "var(--ink-3)" }}>不改也能发，这里只是提个醒。</span>
-            </div>
-          </div>
-        )}
-        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", marginBottom: 5 }}>
-          示例名称
-        </label>
-        <input
-          value={demoName}
-          onChange={(e) => setDemoName(e.target.value)}
-          placeholder="别人看到的名字"
-          autoFocus
-          style={DEMO_FIELD}
-        />
-        <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "var(--ink-2)", margin: "12px 0 5px" }}>
-          一句话说明<span style={{ fontWeight: 400, color: "var(--ink-4)" }}>（选填）</span>
-        </label>
-        <input
-          value={demoSummary}
-          onChange={(e) => setDemoSummary(e.target.value)}
-          placeholder="这套工作流能做出什么"
-          style={DEMO_FIELD}
-        />
-      </Modal>
+
     </div>
   );
 }
-
-function KindChoice({
-  active, title, hint, onClick,
-}: { active: boolean; title: string; hint: string; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      style={{
-        flex: 1, textAlign: "left", padding: "11px 12px", borderRadius: 11, cursor: "pointer",
-        border: active ? "2px solid var(--primary)" : "1px solid var(--line-2)",
-        background: active ? "var(--primary-soft)" : "var(--surface)",
-        fontFamily: "inherit",
-      }}
-    >
-      <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, marginBottom: 4,
-                     color: active ? "var(--primary-700)" : "var(--ink)" }}>
-        {title}
-      </span>
-      <span style={{ display: "block", fontSize: 11.5, lineHeight: 1.65, color: "var(--ink-3)" }}>
-        {hint}
-      </span>
-    </button>
-  );
-}
-
-const DEMO_FIELD: React.CSSProperties = {
-  width: "100%", boxSizing: "border-box", padding: "9px 11px",
-  border: "1px solid var(--line-2)", borderRadius: "var(--r-sm)",
-  background: "var(--surface)", color: "var(--ink)",
-  fontFamily: "inherit", fontSize: 14, lineHeight: 1.5, outline: "none",
-};
 
 /**
  * 画布里有两处用 react-query（节点提示词面板、侧边提示词库）。搬画布时漏了这个 provider，

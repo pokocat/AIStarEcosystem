@@ -32,6 +32,11 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
      */
     Optional<AepUser> findByIdentityUid(String identityUid);
 
+    /** Identity events serialize against JIT/profile updates on the same row. */
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AepUser u where u.identityUid = :uid")
+    Optional<AepUser> findByIdentityUidForUpdate(@Param("uid") String uid);
+
     /**
      * v0.149+（§12.3 老用户导入）：还没有 uid 但有手机号的账号，按 id 游标升序取一批。
      * 用 id 游标而不是 offset 分页 —— 导入过程中会把命中的行写上 identity_uid，
@@ -43,9 +48,23 @@ public interface AepUserRepository extends JpaRepository<AepUser, String>,
 
     Page<AepUser> findByStatus(AepUser.UserStatus status, Pageable pageable);
 
+    Page<AepUser> findByStatusNot(AepUser.UserStatus status, Pageable pageable);
+
+    Page<AepUser> findByStatusNotAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
+
     Page<AepUser> findByKind(AepUser.AccountKind kind, Pageable pageable);
 
     Page<AepUser> findByStatusAndKind(AepUser.UserStatus status, AepUser.AccountKind kind, Pageable pageable);
+
+    /** 默认排除注销账号；显式 status=DELETED 可查归档。搜索与过滤均在分页前执行。 */
+    @Query("select u from AepUser u where (:status is null or u.status = :status) "
+            + "and (:status is not null or u.status <> 'DELETED') "
+            + "and (:kind is null or u.kind = :kind) and ("
+            + "locate(:q, lower(u.username)) > 0 or locate(:q, lower(coalesce(u.displayName, ''))) > 0 "
+            + "or locate(:q, lower(coalesce(u.phone, ''))) > 0 or locate(:q, lower(coalesce(u.email, ''))) > 0 "
+            + "or locate(:q, lower(u.id)) > 0 or locate(:q, lower(coalesce(u.identityUid, ''))) > 0)")
+    Page<AepUser> search(@Param("q") String q, @Param("status") AepUser.UserStatus status,
+                        @Param("kind") AepUser.AccountKind kind, Pageable pageable);
 
     boolean existsByUsername(String username);
 

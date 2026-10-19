@@ -6,6 +6,7 @@ import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.repository.AiAppBindingRepository;
 import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
@@ -15,6 +16,7 @@ import com.aistareco.aep.service.ai.UpstreamModelHttp;
 import com.aistareco.common.AepCryptoUtil;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -61,6 +63,7 @@ public class AiModelInvocationService {
     private final AiModelUsageService usage;
     private final AiModelGuardService guard;
     private final UpstreamModelHttp upstreamHttp;
+    private final AiModelAccessPolicyService accessPolicy;
 
     @Value("${aep.llm.chat-timeout-seconds:90}")
     private long chatTimeoutSeconds = 90;
@@ -70,20 +73,32 @@ public class AiModelInvocationService {
                                     AiAppEndpointCandidateRepository candidateRepo,
                                     AiModelUsageService usage,
                                     AiModelGuardService guard,
-                                    UpstreamModelHttp upstreamHttp) {
+                                    UpstreamModelHttp upstreamHttp,
+                                    AiModelAccessPolicyService accessPolicy) {
         this.endpointRepo = endpointRepo;
         this.bindingRepo = bindingRepo;
         this.candidateRepo = candidateRepo;
         this.usage = usage;
         this.guard = guard;
         this.upstreamHttp = upstreamHttp;
+        this.accessPolicy = accessPolicy;
     }
 
     /** purpose → 绑定端点（启用）。无绑定 / 端点停用 / 端点不存在 → empty。行为零变化（D-11 仍读 AiAppBinding）。 */
     public Optional<AiModelEndpoint> resolveEndpoint(AiModelPurpose purpose) {
+        return resolveDefaultEndpoint(purpose, null);
+    }
+
+    /** Trusted worker recovery only: an already accepted task must remain pollable after its candidate is disabled. */
+    public Optional<AiModelEndpoint> storedEndpoint(String endpointId) {
+        return endpointId == null || endpointId.isBlank() ? Optional.empty() : endpointRepo.findById(endpointId);
+    }
+
+    public Optional<AiModelEndpoint> resolveDefaultEndpoint(AiModelPurpose purpose, String appCode) {
         return bindingRepo.findById(purpose)
                 .flatMap(b -> endpointRepo.findById(b.getEndpointId()))
-                .filter(AiModelEndpoint::isEnabled);
+                .filter(AiModelEndpoint::isEnabled)
+                .filter(endpoint -> accessPolicy.allows(endpoint, appCode));
     }
 
     /**
@@ -92,24 +107,34 @@ public class AiModelInvocationService {
      * {@code ENDPOINT_NOT_ALLOWED}，§8.0：不静默回退默认、不扣费）。
      */
     public Optional<ResolvedEndpoint> resolveEndpoint(AiModelPurpose purpose, String endpointId) {
+        return resolveEndpoint(purpose, endpointId, null);
+    }
+
+    public Optional<ResolvedEndpoint> resolveEndpoint(AiModelPurpose purpose, String endpointId, String appCode) {
         if (endpointId == null || endpointId.isBlank()) {
-            return resolveEndpoint(purpose).map(ep -> new ResolvedEndpoint(ep,
+            return resolveDefaultEndpoint(purpose, appCode).map(ep -> new ResolvedEndpoint(ep,
                     candidateRepo.findByPurposeAndEndpointId(purpose, ep.getId()).orElse(null), true));
         }
         return candidateRepo.findByPurposeAndEndpointId(purpose, endpointId)
                 .filter(AiAppEndpointCandidate::isEnabled)
                 .flatMap(c -> endpointRepo.findById(c.getEndpointId())
                         .filter(AiModelEndpoint::isEnabled)
+                        .filter(ep -> accessPolicy.allows(ep, appCode))
                         .map(ep -> new ResolvedEndpoint(ep, c, isDefaultEndpoint(purpose, ep.getId()))));
     }
 
     /** D-11：列出某用途全部候选（含 capability + 默认标记），给 /render/models 与 admin。端点已删的孤儿候选跳过。 */
     public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose) {
+        return listCandidates(purpose, null);
+    }
+
+    public List<ResolvedEndpoint> listCandidates(AiModelPurpose purpose, String appCode) {
         String defaultEndpointId = bindingRepo.findById(purpose).map(b -> b.getEndpointId()).orElse(null);
         List<ResolvedEndpoint> out = new ArrayList<>();
         for (AiAppEndpointCandidate c : candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)) {
             AiModelEndpoint ep = endpointRepo.findById(c.getEndpointId()).orElse(null);
             if (ep == null) continue; // 孤儿候选（端点已删）→ 不展示
+            if (appCode != null && !accessPolicy.allows(ep, appCode)) continue;
             out.add(new ResolvedEndpoint(ep, c, c.getEndpointId().equals(defaultEndpointId)));
         }
         return out;
@@ -135,13 +160,22 @@ public class AiModelInvocationService {
 
     /** 是否已为该用途绑定可用端点（上层在调用前判断「未配置」并给明确提示）。 */
     public boolean hasEndpointFor(AiModelPurpose purpose) {
-        return resolveEndpoint(purpose).isPresent();
+        return hasEndpointFor(purpose, null);
+    }
+
+    public boolean hasEndpointFor(AiModelPurpose purpose, String appCode) {
+        return resolveDefaultEndpoint(purpose, appCode).isPresent();
     }
 
     /** 简易 chat：messages = [{role, content}, ...]。单端点，无兜底。 */
     public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
                                       Map<String, Object> options) {
-        AiModelEndpoint endpoint = resolveEndpoint(purpose).orElse(null);
+        return invokeChat(purpose, messages, options, null);
+    }
+
+    public AiModelResponse invokeChat(AiModelPurpose purpose, List<Map<String, String>> messages,
+                                      Map<String, Object> options, String appCode) {
+        AiModelEndpoint endpoint = resolveDefaultEndpoint(purpose, appCode).orElse(null);
         if (endpoint == null) {
             log.warn("[ai-chat] blocked purpose={} reason=no-enabled-endpoint", purpose == null ? null : purpose.wire());
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_NOT_CONFIGURED",
@@ -161,13 +195,13 @@ public class AiModelInvocationService {
 
     /** 管理端试运行 / 重放等场景：显式指定端点，仍使用同一调用与观测链路。 */
     public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
-                                                List<Map<String, String>> messages,
+                                                List<? extends Map<String, ?>> messages,
                                                 Map<String, Object> options) {
         return invokeChatOnEndpoint(endpoint, purpose, messages, options, null);
     }
 
     public AiModelResponse invokeChatOnEndpoint(AiModelEndpoint endpoint, AiModelPurpose purpose,
-                                                List<Map<String, String>> messages,
+                                                List<? extends Map<String, ?>> messages,
                                                 Map<String, Object> options,
                                                 String replayOfRecordId) {
         if (endpoint == null || !endpoint.isEnabled()) {
@@ -186,23 +220,34 @@ public class AiModelInvocationService {
         }
     }
 
-    /** 测试连通性：调 /v1/models（GET），200 即通过。 */
+    /** 测试已配置的模型目录（GET）；未配置路径时沿用 baseUrl/models。 */
     public Map<String, Object> testConnection(String endpointId) {
         AiModelEndpoint e = endpointRepo.findById(endpointId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ENDPOINT_NOT_FOUND",
                         "AI 模型端点不存在"));
         AiModelProviderType type = e.getProviderType();
-        if (!isOpenAiCompatible(type)) {
+        AiVideoRequestSpec videoSpec;
+        try {
+            videoSpec = AiVideoRequestSpec.read(e.getVideoRequestSpecJson());
+        } catch (BusinessException invalid) {
+            return Map.of("ok", false, "error", "视频模型的目录配置无效，请检查端点规格");
+        }
+        if (videoSpec != null && "".equals(videoSpec.modelsPath()))
+            return Map.of("ok", false, "error", "此供应商未配置模型目录，请手动填写模型标识");
+        if (!isOpenAiCompatible(type) && (videoSpec == null
+                || videoSpec.modelsPath() == null && videoSpec.authHeader() == null
+                        && videoSpec.catalogSpec() == null)) {
             return Map.of("ok", false,
-                    "error", "providerType=" + type.wire() + " 暂不支持连通测试（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）",
+                    "error", "请先配置供应商的模型目录路径、密钥请求头和回包字段",
                     "providerType", type.wire());
         }
         try {
             String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
-            URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/models");
+            URI uri = modelCatalogUri(e.getBaseUrl(), videoSpec == null ? null : videoSpec.modelsPath());
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(8))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header(videoSpec == null ? "Authorization" : videoSpec.credentialHeaderName(),
+                            videoSpec == null ? "Bearer " + apiKey : videoSpec.credentialHeaderValue(apiKey))
                     .GET()
                     .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
@@ -210,60 +255,122 @@ public class AiModelInvocationService {
                 log.info("[ai-model] test-connection ok endpointId={} endpoint={} status={}",
                         e.getId(), e.getName(), resp.statusCode());
             } else {
-                log.warn("[ai-model] test-connection failed endpointId={} endpoint={} status={} body={}",
-                        e.getId(), e.getName(), resp.statusCode(), snippet(resp.body()));
+                log.warn("[ai-model] test-connection failed endpointId={} endpoint={} status={}",
+                        e.getId(), e.getName(), resp.statusCode());
             }
-            return Map.of(
-                    "ok", resp.statusCode() == 200,
-                    "statusCode", resp.statusCode(),
-                    "snippet", resp.body() == null ? "" : (resp.body().length() > 200 ? resp.body().substring(0, 200) : resp.body())
-            );
+            if (resp.statusCode() == 200) return Map.of("ok", true, "statusCode", 200);
+            return Map.of("ok", false, "statusCode", resp.statusCode(),
+                    "error", "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。");
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            log.warn("[ai-model] test-connection interrupted endpointId={}", e.getId());
+            return Map.of("ok", false, "error", "模型目录检查已中断，请重试");
         } catch (Exception ex) {
-            log.warn("[ai-model] test-connection exception endpointId={} endpoint={} err={}",
-                    e.getId(), e.getName(), ex.toString());
-            return Map.of("ok", false, "error", ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            log.warn("[ai-model] test-connection exception endpointId={} errorType={}",
+                    e.getId(), ex.getClass().getSimpleName());
+            return Map.of("ok", false, "error", catalogFailureReason(ex));
         }
     }
 
     /**
-     * 拉取服务商可用模型列表（GET {baseUrl}/models）。失败不抛异常，包成
+     * 拉取服务商可用模型列表（GET 可配置目录路径，默认 {baseUrl}/models）。失败不抛异常，包成
      * AiModelDiscoveryResultDto.fail 返回，便于前端直接展示原因。
      */
     public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey) {
-        if (type != null && !isOpenAiCompatible(type)) {
-            return AiModelDiscoveryResultDto.fail(null,
-                    "providerType=" + type.wire() + " 暂不支持模型发现（仅 ANTHROPIC / AZURE_OPENAI 需独立适配）");
+        return listModels(type, baseUrl, apiKey, null);
+    }
+
+    public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey, String modelsPath) {
+        return listModels(type, baseUrl, apiKey, modelsPath, null);
+    }
+
+    public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey,
+                                                 String modelsPath, AiVideoRequestSpec.AuthHeader authHeader) {
+        return listModels(type, baseUrl, apiKey, modelsPath, authHeader, null);
+    }
+
+    public AiModelDiscoveryResultDto listModels(AiModelProviderType type, String baseUrl, String apiKey,
+                                                 String modelsPath, AiVideoRequestSpec.AuthHeader authHeader,
+                                                 AiVideoRequestSpec.CatalogSpec catalogSpec) {
+        if (type != null && !isOpenAiCompatible(type)
+                && modelsPath == null && authHeader == null && catalogSpec == null) {
+            return AiModelDiscoveryResultDto.fail(null, "请先配置供应商的模型目录路径、密钥请求头和回包字段");
         }
         if (baseUrl == null || baseUrl.isBlank()) return AiModelDiscoveryResultDto.fail(null, "baseUrl 为空");
         if (apiKey == null || apiKey.isBlank()) return AiModelDiscoveryResultDto.fail(null, "apiKey 为空");
         try {
-            URI uri = URI.create(rstrip(baseUrl, "/") + "/models");
+            if (authHeader != null) authHeader.validate();
+            if (catalogSpec != null) catalogSpec.validate();
+            URI uri = modelCatalogUri(baseUrl, modelsPath);
             HttpRequest req = HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofSeconds(15))
-                    .header("Authorization", "Bearer " + apiKey)
+                    .header(authHeader == null ? "Authorization" : authHeader.name(),
+                            (authHeader == null ? "Bearer " : authHeader.prefix()) + apiKey)
                     .GET()
                     .build();
             HttpResponse<String> resp = HTTP.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                log.warn("[ai-model] discover-models failed providerType={} baseUrl={} status={} body={}",
-                        type == null ? null : type.wire(), baseUrl, resp.statusCode(), snippet(resp.body()));
+                log.warn("[ai-model] discover-models failed providerType={} status={}",
+                        type == null ? null : type.wire(), resp.statusCode());
                 return AiModelDiscoveryResultDto.fail(resp.statusCode(),
-                        "HTTP " + resp.statusCode() + ": " + snippet(resp.body()));
+                        "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。");
             }
-            List<AiModelEntryDto> models = parseModelsResponse(resp.body());
-            log.info("[ai-model] discover-models ok providerType={} baseUrl={} status={} count={}",
-                    type == null ? null : type.wire(), baseUrl, resp.statusCode(), models.size());
+            List<AiModelEntryDto> models = parseModelsResponse(resp.body(), catalogSpec);
+            log.info("[ai-model] discover-models ok providerType={} status={} count={}",
+                    type == null ? null : type.wire(), resp.statusCode(), models.size());
             return AiModelDiscoveryResultDto.ok(resp.statusCode(), models);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("[ai-model] discover-models interrupted providerType={}", type == null ? null : type.wire());
+            return AiModelDiscoveryResultDto.fail(null, "模型目录检查已中断，请重试");
         } catch (Exception e) {
-            log.warn("[ai-model] discover-models exception providerType={} baseUrl={} err={}",
-                    type == null ? null : type.wire(), baseUrl, e.toString());
-            return AiModelDiscoveryResultDto.fail(null, e.getClass().getSimpleName() + ": " + e.getMessage());
+            log.warn("[ai-model] discover-models exception providerType={} errorType={}",
+                    type == null ? null : type.wire(), e.getClass().getSimpleName());
+            return AiModelDiscoveryResultDto.fail(null, catalogFailureReason(e));
         }
+    }
+
+    private static String catalogFailureReason(Exception error) {
+        if (error instanceof java.net.http.HttpTimeoutException)
+            return "模型目录连接超时，请检查调用地址和网络";
+        if (error instanceof com.fasterxml.jackson.core.JsonProcessingException)
+            return "模型目录返回内容不是有效 JSON，请检查目录路径";
+        if (error instanceof java.io.IOException)
+            return "无法连接模型目录，请检查调用地址和网络";
+        if (error instanceof IllegalArgumentException)
+            return "模型目录路径或返回结构无效，请检查目录路径与字段映射";
+        return "模型目录检查失败，请核对调用地址、密钥和目录配置";
+    }
+
+    static URI modelCatalogUri(String baseUrl, String configuredPath) {
+        return configuredPath == null
+                ? URI.create(rstrip(baseUrl, "/") + "/models")
+                : URI.create(baseUrl).resolve(configuredPath);
     }
 
     // ── 内部 ───────────────────────────────────────────────────────────────
 
-    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<Map<String, String>> messages,
+    static List<Map<String,Object>> observedChatMessages(List<? extends Map<String,?>> messages) {
+        if(messages==null)return null;
+        List<Map<String,Object>> result=new ArrayList<>();
+        for(var message:messages) {
+            if(message==null){result.add(null);continue;}
+            Map<String,Object> safe=new LinkedHashMap<>(message);
+            if(message.get("content") instanceof List<?> parts) {
+                List<Object> observed=new ArrayList<>();
+                for(Object part:parts) {
+                    if(part instanceof Map<?,?> map && "image_url".equals(map.get("type")))
+                        observed.add(Map.of("type","image_url","image_url",Map.of("url","[image payload omitted]")));
+                    else observed.add(part);
+                }
+                safe.put("content",observed);
+            }
+            result.add(safe);
+        }
+        return result;
+    }
+
+    private AiModelResponse doChat(AiModelEndpoint e, AiModelPurpose purpose, List<? extends Map<String, ?>> messages,
                                    Map<String, Object> options, String replayOfRecordId) throws Exception {
         AiModelProviderType type = e.getProviderType();
         if (!isOpenAiCompatible(type)) {
@@ -274,42 +381,49 @@ public class AiModelInvocationService {
         }
         String apiKey = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
         String model = resolveModel(e, options);
+        if (hasExplicitChatCapabilities(e) && e.getModel() != null && !e.getModel().isBlank()
+                && !e.getModel().equals(model)) {
+            throw BusinessException.badRequest("MODEL_MISMATCH_FOR_ENDPOINT", "该端点的聊天参数能力仅适用于配置的固定模型");
+        }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("model", model);
         body.put("messages", messages);
         if (options != null) {
-            if (options.get("temperature") != null && !usesPlatformControlledSampling(model)) {
+            if (options.get("temperature") != null && supports(e.getChatSupportsTemperature())) {
                 body.put("temperature", options.get("temperature"));
             }
             if (options.get("max_tokens") != null) body.put("max_tokens", options.get("max_tokens"));
-            if (options.get("top_p") != null) body.put("top_p", options.get("top_p"));
-            // 聚算 Qwen 3.5 明确拒绝 response_format，须依靠 prompt 约束纯 JSON；其他端点照常透传。
-            if (options.get("response_format") != null && !usesPlatformControlledSampling(model)) {
+            if (options.get("top_p") != null && supports(e.getChatSupportsTopP())) body.put("top_p", options.get("top_p"));
+            if (options.get("response_format") != null && supports(e.getChatSupportsResponseFormat())) {
                 body.put("response_format", options.get("response_format"));
             }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
-                && !usesPlatformControlledSampling(model)) {
+                && supports(e.getChatSupportsTemperature())) {
             body.put("temperature", e.getDefaultTemperature());
         }
         if (!body.containsKey("max_tokens") && e.getDefaultMaxTokens() != null && e.getDefaultMaxTokens() > 0) {
             body.put("max_tokens", e.getDefaultMaxTokens());
         }
-        if (!body.containsKey("top_p") && e.getDefaultTopP() != null) {
+        if (!body.containsKey("top_p") && e.getDefaultTopP() != null && supports(e.getChatSupportsTopP())) {
             body.put("top_p", e.getDefaultTopP());
         }
-        clampQwen35OutputBudget(model, body);
+        clampOutputBudget(e.getChatMaxOutputTokens(), body);
         URI uri = URI.create(rstrip(e.getBaseUrl(), "/") + "/chat/completions");
         long startNanos = System.nanoTime();
         String requestId = "aic-" + UUID.randomUUID().toString().substring(0, 16);
         String requestJson = OM.writeValueAsString(body);
+        // Media payloads are transient: observation must never persist signed URLs or inline image bytes.
+        var observedMessages=observedChatMessages(messages);
+        Map<String,Object> observedBody=new LinkedHashMap<>(body);observedBody.put("messages",observedMessages);
+        String observedJson=OM.writeValueAsString(observedBody);
         try {
             guard.checkBeforeCall(e, guard.estimateChatTokens(messages, body));
         } catch (BusinessException ex) {
             usage.recordObserved(e.getId(), e.getName(), model,
                     purpose != null ? purpose.wire() : null, null, null, null, false,
                     requestId, null, elapsedMs(startNanos), ex.getCode(), ex.getMessage(),
-                    requestJson, null, replayOfRecordId);
+                    observedJson, null, replayOfRecordId);
             throw ex;
         }
         log.info("[ai-chat] invoke start requestId={} purpose={} endpointId={} endpoint={} providerType={} model={} messages={} maxTokens={} jsonMode={}",
@@ -320,13 +434,13 @@ public class AiModelInvocationService {
                 type == null ? null : type.wire(),
                 model,
                 messages == null ? 0 : messages.size(),
-                options == null ? null : options.get("max_tokens"),
-                hasJsonMode(options));
+                body.get("max_tokens"),
+                hasJsonMode(body));
         // 发给大模型的最终提示词全文（排查用）。独立 logger，默认 INFO，可单独降级/落盘。
         if (ioLog.isInfoEnabled()) {
             try {
                 ioLog.info("[ai-chat-io] REQUEST requestId={} purpose={} endpoint={} model={} messages={}",
-                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(messages));
+                        requestId, purpose == null ? null : purpose.wire(), e.getName(), model, OM.writeValueAsString(observedMessages));
             } catch (Exception ignore) { /* 序列化失败不阻塞主链路 */ }
         }
         HttpRequest req = HttpRequest.newBuilder(uri)
@@ -340,7 +454,7 @@ public class AiModelInvocationService {
                 .endpoint(e.getId(), e.getName())
                 .model(model)
                 .requestId(requestId)
-                .requestBodyJson(requestJson)
+                .requestBodyJson(observedJson)
                 .replayOfRecordId(replayOfRecordId)
                 .client(HTTP)
                 .build();
@@ -361,7 +475,9 @@ public class AiModelInvocationService {
             // 失败流水 + WARN 已由原语处理；不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏），
             // 技术细节进 ErrorLog 供「追查号」排障。
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                    "AI 生成失败，请稍后重试",
+                    resp.statusCode() == 404
+                            ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
+                            : "AI 生成失败，请稍后重试",
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
                             + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
         }
@@ -409,7 +525,7 @@ public class AiModelInvocationService {
                 purpose != null ? purpose.wire() : null,
                 promptTokens, completionTokens, tokensUsed, true,
                 requestId, upstreamId, elapsedMs(startNanos), null, null,
-                requestJson, resp.body(), replayOfRecordId);
+                observedJson, resp.body(), replayOfRecordId);
         log.info("[ai-chat] invoke ok requestId={} upstreamId={} purpose={} endpointId={} endpoint={} model={} finish={} tokens={} promptTokens={} completionTokens={} contentLength={} durationMs={}",
                 requestId,
                 upstreamId,
@@ -423,29 +539,29 @@ public class AiModelInvocationService {
                 completionTokens,
                 content == null ? 0 : content.length(),
                 elapsedMs(startNanos));
-        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model);
+        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens);
     }
 
     private static Long asLong(Object o) {
         return o instanceof Number n ? n.longValue() : null;
     }
 
-    /**
-     * 聚算 Qwen 3.5 chat 路由由平台托管采样参数；显式传 temperature 会被上游以 400 拒绝。
-     * 该路由同时拒绝 response_format，JSON 只能由 prompt 约束；max_tokens 仍按 prompt 配置发送。
-     */
-    private static boolean usesPlatformControlledSampling(String model) {
-        if (model == null) return false;
-        String normalized = model.toLowerCase(Locale.ROOT);
-        return normalized.contains("qwen3-5") || normalized.contains("qwen3.5");
+    private static boolean supports(Boolean capability) {
+        return !Boolean.FALSE.equals(capability);
     }
 
-    /** 聚算 Qwen 3.5 路由的输出预算上限为 4096，是否传 response_format 都执行该限制。 */
-    private static void clampQwen35OutputBudget(String model, Map<String, Object> body) {
-        if (!usesPlatformControlledSampling(model)) return;
+    private static boolean hasExplicitChatCapabilities(AiModelEndpoint endpoint) {
+        return Boolean.FALSE.equals(endpoint.getChatSupportsTemperature())
+                || Boolean.FALSE.equals(endpoint.getChatSupportsTopP())
+                || Boolean.FALSE.equals(endpoint.getChatSupportsResponseFormat())
+                || endpoint.getChatMaxOutputTokens() != null;
+    }
+
+    private static void clampOutputBudget(Integer cap, Map<String, Object> body) {
+        if (cap == null || cap <= 0) return;
         Object configured = body.get("max_tokens");
-        if (configured instanceof Number n && n.longValue() > 4096L) {
-            body.put("max_tokens", 4096);
+        if (configured instanceof Number n && n.longValue() > cap) {
+            body.put("max_tokens", cap);
         }
     }
 
@@ -458,24 +574,30 @@ public class AiModelInvocationService {
         return !NON_OPENAI_WIRE.contains(type);
     }
 
-    /** 解析 OpenAI /models 响应 data[]；过滤 status=Shutdown/Retiring（火山方舟会带 status）。 */
-    private static List<AiModelEntryDto> parseModelsResponse(String body) throws Exception {
-        Map<?, ?> parsed = OM.readValue(body, Map.class);
+    /** Parse the configured catalog shape; default to OpenAI data[]. */
+    private static List<AiModelEntryDto> parseModelsResponse(String body,
+                                                              AiVideoRequestSpec.CatalogSpec configured) throws Exception {
+        AiVideoRequestSpec.CatalogSpec spec = configured == null
+                ? new AiVideoRequestSpec.CatalogSpec("/data", "/id", "/name", "/status") : configured;
+        JsonNode parsed = OM.readTree(body);
+        JsonNode list = parsed.at(spec.items());
+        if (!list.isArray()) throw new IllegalArgumentException("模型目录列表路径未找到数组");
         List<AiModelEntryDto> out = new ArrayList<>();
-        if (parsed.get("data") instanceof List<?> list) {
-            for (Object o : list) {
-                if (!(o instanceof Map<?, ?> m)) continue;
-                Object id = m.get("id");
-                if (id == null) continue;
-                Object status = m.get("status");
-                if (status != null) {
-                    String s = String.valueOf(status);
-                    if (s.equalsIgnoreCase("Shutdown") || s.equalsIgnoreCase("Retiring")) continue;
-                }
-                Object name = m.get("name");
-                String label = name != null ? String.valueOf(name) : String.valueOf(id);
-                out.add(new AiModelEntryDto(String.valueOf(id), label, null, null));
-            }
+        Set<String> seen = new HashSet<>();
+        for (JsonNode item : list) {
+            JsonNode id = item.at(spec.id());
+            if (!id.isTextual() || id.asText().isBlank()) continue;
+            String modelId=id.asText().trim();
+            if(modelId.length()>200||!seen.add(modelId))continue;
+            JsonNode status = spec.status() == null ? null : item.at(spec.status());
+            if (status != null && ("Shutdown".equalsIgnoreCase(status.asText())
+                    || "Retiring".equalsIgnoreCase(status.asText()))) continue;
+            JsonNode name = spec.label() == null ? null : item.at(spec.label());
+            String label = name != null && name.isValueNode() && !name.isNull()
+                    ? name.asText() : id.asText();
+            if(label.length()>200)label=label.substring(0,200);
+            out.add(new AiModelEntryDto(modelId, label, null, null));
+            if(out.size()>1000)throw new IllegalArgumentException("模型目录超过支持范围");
         }
         return out;
     }
@@ -537,6 +659,8 @@ public class AiModelInvocationService {
             String finishReason,
             Long tokensUsed,
             String endpointUsed,
-            String modelUsed
-    ) {}
+            String modelUsed, Long promptTokens, Long completionTokens
+    ) {
+        public AiModelResponse(String content,String finishReason,Long tokensUsed,String endpointUsed,String modelUsed){this(content,finishReason,tokensUsed,endpointUsed,modelUsed,null,null);}
+    }
 }

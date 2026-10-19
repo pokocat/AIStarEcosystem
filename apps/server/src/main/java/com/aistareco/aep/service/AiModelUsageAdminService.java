@@ -85,6 +85,8 @@ public class AiModelUsageAdminService {
             if (!(messagesObj instanceof List<?> rawMessages)) {
                 throw BusinessException.badRequest("LLM_REPLAY_MESSAGES_MISSING", "原请求缺少 messages");
             }
+            if(rawMessages.stream().anyMatch(item->item instanceof Map<?,?> message && message.get("content") instanceof List<?>))
+                throw BusinessException.badRequest("LLM_REPLAY_MEDIA_UNAVAILABLE","图片请求的观测记录不保存原媒体，请从原画布确认任务或重新选择素材，不能按文字重放");
             List<Map<String, String>> messages = rawMessages.stream()
                     .filter(Map.class::isInstance)
                     .map(Map.class::cast)

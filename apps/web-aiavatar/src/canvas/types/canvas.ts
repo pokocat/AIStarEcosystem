@@ -37,12 +37,20 @@ export type CanvasNodeVideoTake = {
     seconds?: string;
     mimeType?: string;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
+    // 本仓 Studio：每条视频候选的实时排队投影，不是客户端调度真值。
+    queue?: import("@ai-star-eco/types").AiGenerationQueuePosition | null;
 };
 
 export type CanvasNodeImage = {
     id: string;
     status: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     content: string;
     storageKey?: string;
     /**
@@ -62,16 +70,28 @@ export type CanvasNodeText = {
     id: string;
     status: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     content: string;
 };
 
 export type CanvasNodeMetadata = {
+    // 本仓：homepage brief is a saved text node; the bridge opens its creation panel.
+    studioStart?: import("@/ip/studio-entry").StudioEntry;
+    // Studio business metadata is owned by the bridge, not the vendored engine.
+    studio?: import("@ai-star-eco/types/ip-studio-workflow").StudioNodeMetadata;
+    // 本仓：template nodes open the locked execution plan rather than a separate generator.
+    templateStepId?: string;
     batchExpanded?: boolean; // 本仓：重新打开保留候选组展开状态。
     content?: string;
     composerContent?: string;
     prompt?: string;
     status?: CanvasNodeStatus;
     errorDetails?: string;
+    // 本仓：structured diagnostics survive refresh and open on the global notification layer.
+    errorCode?: string;
+    errorLogId?: string;
     fontSize?: number;
     generationMode?: CanvasGenerationMode;
     generationType?: CanvasImageGenerationType;
@@ -89,6 +109,7 @@ export type CanvasNodeMetadata = {
     generateAudio?: string;
     watermark?: string;
     videoMode?: string;
+    videoCount?: string;
     audioVoice?: string;
     audioFormat?: string;
     audioSpeed?: string;
@@ -117,6 +138,8 @@ export type CanvasNodeMetadata = {
     // 进程一关任务就没了，所以它**不存** taskId；我们的恰恰是服务端任务，最该存（v0.179）。
     videoTaskProvider?: "openai" | "gemini" | "plugin";
     groupId?: string;
+    /** 本仓：分组的使用说明，独立于参与生成的正文和提示词。 */
+    groupDescription?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };
 

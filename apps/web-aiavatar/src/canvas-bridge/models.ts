@@ -10,12 +10,12 @@
 // 于是必须把两头接上，否则就是 v0.157 之后生产上的样子：下拉里列着我们根本没有的
 // 模型，选哪个 preflight 都回 503 ENDPOINT_NOT_ALLOWED —— 画布出不了图。
 //
-// **模型名直接对外**：下拉里显示的就是后台配的端点名（agnes-image、MiniMax H3 · 768P），
-// 不做遮掩 —— 用户有权知道自己在用哪个模型、按什么价扣费。藏起来的只有 Key。
-// 传给服务端的是 endpointId（端点主键），显示名与 id 的对应关系留在下面这张表里。
+// 对外只显示后台 modelAlias；供应商端点名称仅用于管理和运维。
+// 选择值使用 endpointId，别名重复或改名不会把请求发到另一模型。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { fetchModels, type IpModelOption } from "./api";
+import { fetchModels, fetchStudioVideoModels, type IpModelOption } from "./api";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import {
   decodeChannelModel,
   encodeChannelModel,
@@ -30,6 +30,11 @@ export const SERVER_CHANNEL_ID = "server";
 const endpointIdByName = new Map<string, string>();
 /** endpointId → 单价，属性面板要显示「这一张多少积分」。 */
 const creditByEndpointId = new Map<string, number>();
+const billingByEndpointId = new Map<string, string>();
+const imageBatchCountsByEndpointId = new Map<string, number[]>();
+export function imageBatchCountsFor(value: string | undefined | null): number[] | undefined {
+  const id=endpointIdFor(value);return id?imageBatchCountsByEndpointId.get(id):undefined;
+}
 /**
  * endpointId → 视频时长可提交区间。
  *
@@ -44,6 +49,10 @@ const durationBoundsByEndpointId = new Map<string, { min?: number; max?: number 
  * 空 = 不受限（agnes / generic 我们自己按比例算宽高，整张比例表都成立）。
  */
 const geometryByEndpointId = new Map<string, { resolutions?: string[]; ratios?: string[] }>();
+const nativeVideoModels = new Map<string,VideoStudioModel>();
+export function nativeVideoModelFor(value:string|undefined|null):VideoStudioModel|undefined {
+  const id=endpointIdFor(value);return id?nativeVideoModels.get(id):undefined;
+}
 
 let loaded = false;
 
@@ -74,6 +83,11 @@ export function creditCostFor(value: string | undefined | null): number | undefi
   return id ? creditByEndpointId.get(id) : undefined;
 }
 
+/** Legacy video quote uses the same billing unit as its server candidate. */
+export function legacyVideoQuoteFor(value:string|undefined,seconds:number):number|null {
+  const id=endpointIdFor(value),rate=creditCostFor(value);
+  return id&&rate!=null?rate*(billingByEndpointId.get(id)==="per_second"?seconds:1):null;
+}
 export function serverModelsLoaded() {
   return loaded;
 }
@@ -103,8 +117,12 @@ export function videoDurationBoundsFor(value: string | undefined | null): { min?
 
 function toChannelModels(list: IpModelOption[], capability: ChannelModel["capability"]): ChannelModel[] {
   return list.map((m) => {
-    endpointIdByName.set(m.name, m.endpointId);
+    endpointIdByName.set(m.endpointId, m.endpointId);
+    if (!endpointIdByName.has(m.name)) endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
+    billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");
+    if(capability==="image")imageBatchCountsByEndpointId.set(m.endpointId,
+      m.capability?.imageBatchCounts?.length?m.capability.imageBatchCounts:[1,2,4]);
     const min = m.capability?.minDurationSec ?? undefined;
     const max = m.capability?.maxDurationSec ?? undefined;
     if (min != null || max != null) durationBoundsByEndpointId.set(m.endpointId, { min: min ?? undefined, max: max ?? undefined });
@@ -116,13 +134,13 @@ function toChannelModels(list: IpModelOption[], capability: ChannelModel["capabi
         ratios: ratios?.length ? ratios : undefined,
       });
     }
-    return { name: m.name, capability };
+    return { name: m.endpointId, displayName: m.name, capability };
   });
 }
 
 function pickDefault(list: IpModelOption[]): string {
   const chosen = list.find((m) => m.isDefault) ?? list[0];
-  return chosen ? encodeChannelModel(SERVER_CHANNEL_ID, chosen.name) : "";
+  return chosen ? encodeChannelModel(SERVER_CHANNEL_ID, chosen.endpointId) : "";
 }
 
 /**
@@ -132,14 +150,23 @@ function pickDefault(list: IpModelOption[]): string {
  * 用户点运行会看到「不可用」，而不是选了一个不存在的模型跑起来再失败（§8.0）。
  */
 export async function loadServerModels(): Promise<{ image: number; video: number }> {
-  const models = await fetchModels();
+  const [models,nativeModels] = await Promise.all([fetchModels(),fetchStudioVideoModels()]);
   endpointIdByName.clear();
   creditByEndpointId.clear();
+  billingByEndpointId.clear();
+  imageBatchCountsByEndpointId.clear();
   durationBoundsByEndpointId.clear();
   geometryByEndpointId.clear();
+  nativeVideoModels.clear();
 
   const image = toChannelModels(models.image ?? [], "image");
   const video = toChannelModels(models.video ?? [], "video");
+  for(const model of nativeModels) {
+    nativeVideoModels.set(model.endpointId,model);
+    geometryByEndpointId.set(model.endpointId,{resolutions:model.contract.tiers.map(t=>/^\d+p$/.test(t.tier)?t.tier.slice(0,-1):t.tier),
+      ratios:[...new Set(model.contract.tiers.flatMap(t=>t.canvases.map(c=>c.aspectRatio)))]});
+    durationBoundsByEndpointId.set(model.endpointId,{min:model.contract.minSeconds,max:model.contract.maxSeconds});
+  }
 
   const config = useConfigStore.getState().config;
   // 只替换服务端频道，用户自建的频道（如果将来允许）不动

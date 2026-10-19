@@ -1,5 +1,7 @@
 # 视频生成区（web-celebrity「AI 创作 → 视频生成」）设计
 
+> 2026-10-13 补充：视频端点现可保存独立的模式、画布、素材和时长规格，Studio 选择模型时使用端点合同；原文中的 H3 数值仅描述 H3。当前接入边界见 [平台后台模型管理接入](platform-model-management.md)。
+
 > **状态**：v0.199 已实现（2026-09-30），本机端到端跑通（见 §7）；**v0.199.1（2026-10-04）已接真实聚算 H3 实测**，修补项见 `VERSION_HISTORY.md` `### v0.199.1`。本文件是这块功能的设计真源；接口字段以
 > [`packages/types/src/video-studio.ts`](../packages/types/src/video-studio.ts) 为准。
 >
@@ -103,11 +105,11 @@
 }
 ```
 
-- `perSecond[模式][清晰度]`：积分 / 秒，整数 1..100000；**null = 这一格不单独定价，按后台给这个模型配的每秒价**
+- `perSecond[模式][清晰度]`：积分 / 秒，正整数；**null = 这一格不单独定价，按后台给这个模型配的每秒价**。最终报价按整数运算并检查溢出。
   （候选 `creditCostOverride` 且端点 `PER_SECOND`；**`creditCostOverride` 为 0 算没配，不算免费**）。模型也没配每秒价 → 这一格**未定价**：下发给用户的 pricing 里是 null，
   前端不报价、不许提交，服务端提交 → 503 `VIDEO_STUDIO_PRICE_NOT_CONFIGURED`（文案告诉运营去哪配）。**不回落任何写死的价**（§8.0）。
-- 全能参考加价：前 `freeRefImages`（0..9）张不加价，之后每张每秒加 `extraRefImagePerSecond`（0..100000，0 = 不加）。
-- 智能优化：每次 `promptOptimizationPerCall`（0..100000，**0 = 不收费**，同「AI 脚本起稿」默认 0 的口径；运营设了价才开始收）。
+- 多参考素材加价：前 `freeRefImages`（非负；H3 素材合同本身最多 9 张）张不加价，之后每张每秒加 `extraRefImagePerSecond`（非负，0 = 不加）。是否使用这项加价由当前模式的参考素材规则决定，与模式名称无关；其他模型的实际参考图数量由其端点素材规格决定。
+- 智能优化：每次 `promptOptimizationPerCall`（非负，**0 = 不收费**，同「AI 脚本起稿」默认 0 的口径；运营设了价才开始收）。
 - 种子值（首次启动写入）：上面那份全 null / 0 —— 即「生成按模型单价、不加价、优化不收费」，运营再按需改。
 
 **公式**（服务端一处算，`GET …/models` 把每个模型**回落后**的结果下发成 `VideoStudioPricing`，前端照着算报价）：
@@ -141,16 +143,16 @@
 
 | code | HTTP | 什么时候 |
 |---|---|---|
-| `VIDEO_STUDIO_MODEL_UNSUPPORTED` | 400 | 所选端点不在本区模型列表里（不是聚算媒体协议 / 未启用 / 未就绪） |
-| `VIDEO_STUDIO_MODE_INVALID` | 400 | 模式不是四种之一 |
-| `VIDEO_STUDIO_PROMPT_REQUIRED` | 400 | 提示词去空白后为空 |
-| `VIDEO_STUDIO_PROMPT_TOO_LONG` | 400 | 超过 7000 字 |
+| `VIDEO_STUDIO_MODEL_UNSUPPORTED` | 400 | 所选端点不在本区开放的可用模型列表里 |
+| `VIDEO_STUDIO_MODE_INVALID` | 400 | 模式不在当前端点的视频规格中 |
+| `VIDEO_STUDIO_PROMPT_REQUIRED` | 400 | 当前模式要求提示词，但去空白后为空 |
+| `VIDEO_STUDIO_PROMPT_TOO_LONG` | 400 | 超过当前端点配置的字数上限 |
 | `VIDEO_STUDIO_SPEC_INVALID` | 400 | 清晰度 / 比例不在合同内，时长越界，种子越界 |
 | `VIDEO_STUDIO_INPUT_INVALID` | 400 | 素材与模式不匹配（缺首帧、文生视频带了素材、超数量、无视觉素材、重复…），文案说清哪一条 |
-| `VIDEO_STUDIO_ASSET_INVALID` | 400 | key 不是本人在本区上传的，或类型对不上 |
+| `VIDEO_STUDIO_ASSET_INVALID` | 400 | key 不是本人在本区上传的，类型对不上，或文件已不可读 |
 | `VIDEO_STUDIO_FILE_EMPTY` / `VIDEO_STUDIO_FILE_TOO_LARGE` / `VIDEO_STUDIO_FORMAT_UNSUPPORTED` | 400 | 上传：空文件 / 超大小 / 按字节判不是允许的格式 |
 | `VIDEO_STUDIO_MEDIA_UNREADABLE` | 400 | 上传：ffprobe 读不出音视频 |
-| `VIDEO_STUDIO_AUDIO_DURATION_INVALID` | 400 | 上传：单段音频不在 2–15 秒 |
+| `VIDEO_STUDIO_AUDIO_DURATION_INVALID` | 400 | 未指定模型规格的旧上传：单段音频不在 2–15 秒 |
 | `VIDEO_STUDIO_JOB_NOT_FOUND` | 404 | 查任务 |
 | `VIDEO_STUDIO_PRICE_NOT_CONFIGURED` | 503 | 所选模式 × 清晰度没定价（配置那格空着，模型也没配每秒价）；文案指向后台「引擎定价 → 视频生成」 |
 | `VIDEO_STUDIO_REQUEST_ID_INVALID` | 400 | 智能优化的 clientRequestId 不是 8–128 个可见 ASCII |
@@ -159,10 +161,12 @@
 | `VIDEO_STUDIO_TEMPLATE_NOT_FOUND` | 404 | 模板不存在 / 已下架 / 不是官方也不是本人的 |
 | `VIDEO_STUDIO_TEMPLATE_FORBIDDEN` | 403 | 不是运营却要发布官方模板 |
 | `VIDEO_STUDIO_TEMPLATE_INVALID` | 400 | 存模板：任务不是本人的 / 不是本区的 / 没成功；标题或说明长度不对 |
-| `VIDEO_STUDIO_PRICING_INVALID` | 400 | 后台保存定价：格子不在 1..100000、加价 / 免费张数 / 优化单价越界、模式或清晰度不认识 |
-| `VIDEO_MODE_UNSUPPORTED` | 400 | 模型客户端最后一道：非聚算协议却带了原生模式参数 |
+| `VIDEO_STUDIO_PRICING_INVALID` | 400 | 后台保存定价：格子不是正整数、加价 / 免费张数 / 优化单价为负或缺失、模式或清晰度不认识 |
+| `VIDEO_MODE_UNSUPPORTED` | 400 | 模型客户端最后一道：所选协议无法表达本次模式或素材参数 |
 
 沿用：`VIDEO_NOT_CONFIGURED`（503）、`PAYMENT_REQUIRED`（402，余额不足）、`VIDEO_PRICE_OVERFLOW`。
+
+配置了视频规格的端点在提交时按**当前所选模型**重新核对素材的字节大小、实际格式和音视频时长；旧素材即使在另一模型下上传成功，也不能绕过当前模型规则。核验发生在积分冻结之前。未配置规格的存量 H3 端点沿用原上传规则。
 
 ---
 

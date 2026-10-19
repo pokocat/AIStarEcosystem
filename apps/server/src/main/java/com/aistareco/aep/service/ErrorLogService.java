@@ -47,6 +47,7 @@ public class ErrorLogService {
     /** stacktrace 截断阈值：DB TEXT 列 hold 8KB 妥妥够，多了反而吓人。 */
     private static final int STACKTRACE_CAP = 8 * 1024;
 
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.transaction.PlatformTransactionManager taskTransactions;
     private final ErrorLogRepository repo;
     private final SecureRandom random = new SecureRandom();
 
@@ -67,6 +68,23 @@ public class ErrorLogService {
                          String errorCode,
                          int httpStatus,
                          HttpServletRequest request) {
+        return recordContext(ex, errorCode, httpStatus, request, currentUserId(), currentUsername(), null);
+    }
+
+    public String recordTask(Throwable ex, String errorCode, String ownerUserId, String taskId) {
+        try {
+            var tx = new org.springframework.transaction.support.TransactionTemplate(taskTransactions);
+            tx.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+            return tx.execute(status -> recordContext(ex, errorCode, ex instanceof BusinessException business ? business.getStatus().value() : 500, null, ownerUserId, null, "async:" + taskId));
+        } catch (Exception failure) {
+            // Observability must never roll back task completion or its credit settlement.
+            log.warn("写异步 ErrorLog 失败 task={} code={}", taskId, errorCode, failure);
+            return null;
+        }
+    }
+
+    private String recordContext(Throwable ex, String errorCode, int httpStatus, HttpServletRequest request,
+                                 String userId, String username, String taskEndpoint) {
         try {
             String logId = generateLogId();
             ErrorLog entry = ErrorLog.builder()
@@ -75,10 +93,10 @@ public class ErrorLogService {
                     .traceId(TraceContext.current())
                     .occurredAt(Instant.now())
                     .hostname(HOSTNAME)
-                    .userId(currentUserId())
-                    .username(currentUsername())
+                    .userId(userId)
+                    .username(username)
                     .httpMethod(request == null ? null : request.getMethod())
-                    .endpoint(request == null ? null : request.getRequestURI())
+                    .endpoint(request == null ? taskEndpoint : request.getRequestURI())
                     .httpStatus(httpStatus)
                     .errorType(ex.getClass().getSimpleName())
                     .errorCode(errorCode)

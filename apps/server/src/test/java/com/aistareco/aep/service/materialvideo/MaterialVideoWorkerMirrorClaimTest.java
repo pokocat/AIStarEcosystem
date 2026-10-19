@@ -67,7 +67,7 @@ class MaterialVideoWorkerMirrorClaimTest {
 
         modelClient = mock(MaterialVideoModelClient.class);
         var submit = new MaterialVideoModelClient.SubmitResult("task_m", null, "vendor", "model-x", "generic", null);
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult("succeeded", base + "/video.mp4", null, "SUCCESS", 100, null, null));
         creditService = mock(CreditService.class);
@@ -134,7 +134,7 @@ class MaterialVideoWorkerMirrorClaimTest {
         // 否则 markSucceeded(null) + commitHold：用户付了钱、任务显示成功，却取不回成片，且 admin 对账对
         // 已 succeeded 的任务早退出、永远修不回来（§8.0 不交付不扣费）。此前只在 require_mirror 下才拦。
         var submit = new MaterialVideoModelClient.SubmitResult("task_m", null, "vendor", "minimax-h3", "jusuan-media", "ep");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult(
                         "succeeded", null, null, "succeeded", 100, null, null, "asset_h3"));
@@ -157,7 +157,7 @@ class MaterialVideoWorkerMirrorClaimTest {
         job.setErrorMessage(MaterialVideoJobService.CANCELED_MESSAGE);
         worker(new FailingUploader()).generateAsync("mvj_m");
 
-        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any());
+        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(creditService);
     }
 
@@ -166,7 +166,7 @@ class MaterialVideoWorkerMirrorClaimTest {
         // worker 读到的还是 queued，但在它认领之前取消已经提交（数据库里已不是 queued）→ 认领影响 0 行
         when(jobRepo.claimQueued(eq("mvj_m"), any())).thenReturn(0);
         worker(new FailingUploader()).generateAsync("mvj_m");
-        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any());
+        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(creditService);
     }
 

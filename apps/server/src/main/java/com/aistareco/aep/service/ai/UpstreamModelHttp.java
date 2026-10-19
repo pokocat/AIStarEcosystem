@@ -33,6 +33,7 @@ import java.net.http.HttpTimeoutException;
  */
 @Component
 public class UpstreamModelHttp {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
 
     private static final Logger log = LoggerFactory.getLogger(UpstreamModelHttp.class);
     /** 上游原始请求/响应全文流水（排查用）。独立 logger，默认 INFO，可单独降级 / 落单独文件。 */
@@ -51,6 +52,13 @@ public class UpstreamModelHttp {
      * 网络层失败（IOException / 超时 / 中断）按 {@code ctx.maxAttempts()} 退避重试后抛 {@link UpstreamCallException}。
      */
     public HttpResponse<String> sendJson(HttpRequest req, ModelCallCtx ctx) {
+        String path=req.uri().getPath();
+        if(queue!=null && "POST".equals(req.method()) &&
+                (path.endsWith("/chat/completions")||path.endsWith("/images/generations")))
+            return queue.synchronous(ctx.endpointId(),req.timeout().orElse(java.time.Duration.ofMinutes(5)),()->sendAdmitted(req,ctx));
+        return sendAdmitted(req,ctx);
+    }
+    private HttpResponse<String> sendAdmitted(HttpRequest req,ModelCallCtx ctx) {
         int maxAttempts = Math.max(1, ctx.maxAttempts());
         long start = System.nanoTime();
         logRequest(req, ctx);

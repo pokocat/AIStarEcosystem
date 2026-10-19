@@ -1,3 +1,4 @@
+import type { AiModelConcurrencyConfig } from "../../../../packages/types/src/ai-model-concurrency";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/ai-models.ts: Admin AI 模型接入端点 + AI 应用绑定。
 // 对应 AdminAiModelEndpointController + AdminAiAppBindingController。
@@ -34,6 +35,8 @@ export type AiModelPurpose =
   | "DAP_PERSONA"
   | "DAP_IMAGE"
   | "DAP_VIDEO"
+  | "DAP_AUDIO"
+  | "DAP_LIP_SYNC"
   | "DAP_REAL_AVATAR"
   | "GENERAL";
 
@@ -47,8 +50,17 @@ export interface AiModelEntry {
   supportsVision?: boolean;
 }
 
+/** 图片模型合法请求规格，保存在固定模型端点记录中。 */
+export interface AiImageRequestSpec {
+  promptMaxChars: number;
+  minReferenceImages: number;
+  maxReferenceImages: number;
+  referenceField: "none" | "single" | "multiple";
+  outputs: { canvasSize: string; aspectRatio: string; providerFields: Record<string, string | number> }[];
+}
+
 /** 模型接入端点读 DTO（上游 apiKey 不返回明文）。 */
-export interface AiModelEndpoint {
+export interface AiModelEndpoint extends AiModelConcurrencyConfig {
   id: string;
   name: string;
   providerType: AiModelProviderType;
@@ -60,6 +72,11 @@ export interface AiModelEndpoint {
   defaultTemperature?: number;
   defaultMaxTokens?: number;
   defaultTopP?: number;
+  chatSupportsTemperature?: boolean;
+  chatSupportsTopP?: boolean;
+  chatSupportsResponseFormat?: boolean;
+  chatMaxOutputTokens?: number | null;
+  imageRequestSpec?: AiImageRequestSpec | null;
   rpmLimit?: number;
   tpmLimit?: number;
   dailyTokenQuota?: number;
@@ -86,7 +103,7 @@ export interface AiModelEndpoint {
 }
 
 /** 写请求（上游 apiKey 走明文，service 端加密落库；PUT 时省略表示不修改）。 */
-export interface AdminAiModelEndpointUpsert {
+export interface AdminAiModelEndpointUpsert extends AiModelConcurrencyConfig {
   id?: string;
   name: string;
   providerType: AiModelProviderType;
@@ -98,6 +115,13 @@ export interface AdminAiModelEndpointUpsert {
   defaultTemperature?: number | null;
   defaultMaxTokens?: number | null;
   defaultTopP?: number | null;
+  chatSupportsTemperature?: boolean;
+  chatSupportsTopP?: boolean;
+  chatSupportsResponseFormat?: boolean;
+  /** 0 清空上限；省略保持不变。 */
+  chatMaxOutputTokens?: number | null;
+  imageRequestSpec?: AiImageRequestSpec | null;
+  clearImageRequestSpec?: boolean;
   rpmLimit?: number | null;
   tpmLimit?: number | null;
   dailyTokenQuota?: number | null;

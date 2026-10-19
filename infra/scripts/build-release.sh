@@ -29,6 +29,7 @@ SKIP_TYPECHECK="${SKIP_TYPECHECK:-0}"
 
 export NEXT_PUBLIC_USE_MOCK="${NEXT_PUBLIC_USE_MOCK:-0}"
 export NEXT_PUBLIC_ENABLE_DEV_LOGIN="${NEXT_PUBLIC_ENABLE_DEV_LOGIN:-0}"
+export NEXT_PUBLIC_ENTERPRISE_ENABLED="${NEXT_PUBLIC_ENTERPRISE_ENABLED:-0}"
 export NEXT_PUBLIC_MIXCUT_USE_REAL="${NEXT_PUBLIC_MIXCUT_USE_REAL:-1}"
 export NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-/api}"
 export NEXT_PUBLIC_SERVER_API_BASE="${NEXT_PUBLIC_SERVER_API_BASE:-http://127.0.0.1:8080}"
@@ -38,8 +39,8 @@ export NEXT_PUBLIC_SERVER_API_BASE="${NEXT_PUBLIC_SERVER_API_BASE:-http://127.0.
 # 默认 legacy = 现网行为不变；切统一账号中心时显式：
 #   NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn ./build-release.sh all
 # client_id 按 app 逐个取（web-music … web-star），由下面的 export_auth_env 注入。
-export NEXT_PUBLIC_AUTH_MODE="${NEXT_PUBLIC_AUTH_MODE:-legacy}"
-export NEXT_PUBLIC_ID_ISSUER="${NEXT_PUBLIC_ID_ISSUER:-}"
+export NEXT_PUBLIC_AUTH_MODE="${NEXT_PUBLIC_AUTH_MODE:-id}"
+export NEXT_PUBLIC_ID_ISSUER="${NEXT_PUBLIC_ID_ISSUER:-https://id.aibuzz.cn}"
 export COPYFILE_DISABLE="${COPYFILE_DISABLE:-1}"
 export CI="${CI:-true}"
 
@@ -131,6 +132,7 @@ export_auth_env() {
 }
 
 build_server() {
+  "$REPO_ROOT/infra/scripts/prepare-platform-sdk.sh"
   log "building server jar"
   (cd apps/server && ./mvnw -DskipTests package)
   local jar="apps/server/target/ai-star-eco-server-1.0.0.jar"
@@ -313,6 +315,7 @@ CREATED_AT='$CREATED_AT'
 SERVICES='$(printf "%s" "$SERVICES_LIST" | xargs)'
 NEXT_PUBLIC_USE_MOCK='$NEXT_PUBLIC_USE_MOCK'
 NEXT_PUBLIC_ENABLE_DEV_LOGIN='$NEXT_PUBLIC_ENABLE_DEV_LOGIN'
+NEXT_PUBLIC_ENTERPRISE_ENABLED='$NEXT_PUBLIC_ENTERPRISE_ENABLED'
 NEXT_PUBLIC_MIXCUT_USE_REAL='$NEXT_PUBLIC_MIXCUT_USE_REAL'
 NEXT_PUBLIC_API_BASE_URL='$NEXT_PUBLIC_API_BASE_URL'
 NEXT_PUBLIC_SERVER_API_BASE='$NEXT_PUBLIC_SERVER_API_BASE'

@@ -106,7 +106,7 @@ class MaterialVideoWorkerTest {
         modelClient = mock(MaterialVideoModelClient.class);
         // 默认路径回归（D-11）：job.variantConfigJson 无 endpoint_id → worker 传 null → 默认端点，行为不变。
         var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "vendor", "model-x", "generic", null);
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", base + "/video.mp4", base + "/thumb.png", "SUCCESS", 100, null, base + "/last.png"));
 
@@ -160,6 +160,17 @@ class MaterialVideoWorkerTest {
     }
 
     @Test
+    void acceptedTaskPersistsItsPollConfiguration() {
+        var submit = new MaterialVideoModelClient.SubmitResult("task_1", null, "vendor", "seedance-2.0",
+                "seedance", "ep-sd", "celebrity", "https://old.example",
+                "{\"adapter\":\"seedance\"}");
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
+        worker(new FakeUploader(false)).generateAsync("mvj_test");
+        assertEquals("https://old.example", job.getUpstreamBaseUrlSnapshot());
+        assertEquals("{\"adapter\":\"seedance\"}", job.getVideoRequestSpecSnapshotJson());
+    }
+
+    @Test
     void success_mirrors_last_frame_to_cdn_and_stores_key() {
         FakeUploader uploader = new FakeUploader(false);
         worker(uploader).generateAsync("mvj_test");
@@ -194,7 +205,7 @@ class MaterialVideoWorkerTest {
     void protected_output_asset_is_downloaded_with_model_client_then_mirrored() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult(
                         "succeeded", null, null, "succeeded", 100, null, null, "asset_video_h3"));
@@ -226,7 +237,7 @@ class MaterialVideoWorkerTest {
     private void stubH3OutputWithoutCover() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult(
                         "succeeded", null, null, "succeeded", 100, null, null, "asset_video_h3"));
@@ -309,7 +320,7 @@ class MaterialVideoWorkerTest {
 
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3_existing", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.resumeExistingTask("job_h3_existing", null, "MiniMax H3", "minimax-h3"))
+        when(modelClient.resumeExistingTask("job_h3_existing", null, "MiniMax H3", "minimax-h3", "celebrity", null, null))
                 .thenReturn(submit);
         when(modelClient.poll(eq(submit))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", null, null, "succeeded", 100, null, null, "asset_h3_existing"));
@@ -362,7 +373,7 @@ class MaterialVideoWorkerTest {
 
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3_studio", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.resumeExistingTask("job_h3_studio", null, "MiniMax H3", "minimax-h3")).thenReturn(submit);
+        when(modelClient.resumeExistingTask("job_h3_studio", null, "MiniMax H3", "minimax-h3", "celebrity", null, null)).thenReturn(submit);
         when(modelClient.poll(eq(submit))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", null, null, "succeeded", 100, null, null, "asset_h3_studio"));
         when(modelClient.resolveCreditCostOverride(any(), anyInt())).thenReturn(200L);
@@ -401,6 +412,21 @@ class MaterialVideoWorkerTest {
     }
 
     @Test
+    void releasedEnterpriseTaskNeverRecoversByChargingItsCreatorsPersonalWallet() {
+        job.setStatus("failed");job.setExternalTaskId("existing");job.setEnterpriseId("original-enterprise");
+        job.setBillingWalletId("original-enterprise-member-wallet");job.setCreditsHeld(30);
+        var submit=new MaterialVideoModelClient.SubmitResult("existing",null,"vendor","model","generic","endpoint");
+        when(modelClient.resumeExistingTask(any(),any(),any(),any(),any(),any(),any())).thenReturn(submit);
+        when(modelClient.poll(submit)).thenReturn(new MaterialVideoModelClient.PollResult("succeeded",base+"/video.mp4",null,"succeeded",100,null,null));
+        when(creditService.findHold(MaterialVideoJobService.CREDIT_REF_TYPE,"mvj_test"))
+                .thenReturn(CreditHold.builder().walletId("original-enterprise-member-wallet").status(CreditHold.Status.RELEASED).build());
+        var failure=org.junit.jupiter.api.Assertions.assertThrows(com.aistareco.common.BusinessException.class,
+                ()->worker(new FakeUploader(false)).reconcileSucceeded("mvj_test"));
+        assertEquals("ENTERPRISE_VIDEO_RECOVERY_REQUIRES_REVIEW",failure.getCode());
+        verify(creditService,never()).hold(anyString(),org.mockito.ArgumentMatchers.anyLong(),anyString(),anyString(),anyString());
+    }
+
+    @Test
     void callerPricedFlagIsReadFromThePayload_andAbsentMeansNo() {
         job.setPayloadJson(null);
         assertFalse(MaterialVideoWorker.callerPriced(job));
@@ -426,7 +452,7 @@ class MaterialVideoWorkerTest {
 
         var submit = new MaterialVideoModelClient.SubmitResult(
                 "job_h3_existing", null, "MiniMax H3", "minimax-h3", "jusuan-media", "ep-h3");
-        when(modelClient.resumeExistingTask("job_h3_existing", null, "MiniMax H3", "minimax-h3"))
+        when(modelClient.resumeExistingTask("job_h3_existing", null, "MiniMax H3", "minimax-h3", "celebrity", null, null))
                 .thenReturn(submit);
         when(modelClient.poll(eq(submit))).thenReturn(new MaterialVideoModelClient.PollResult(
                 "succeeded", null, null, "succeeded", 100, null, null, "asset_h3_existing"));

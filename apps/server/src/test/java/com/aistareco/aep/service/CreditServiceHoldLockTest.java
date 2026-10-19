@@ -59,6 +59,7 @@ class CreditServiceHoldLockTest {
                 .pendingBalance(pending).rechargeBalance(recharge)
                 .totalBalance(recharge).build();
         when(walletRepo.findByUserIdForUpdate(USER)).thenReturn(Optional.of(w));
+        when(walletRepo.findByIdForUpdate("w1")).thenReturn(Optional.of(w));
         return w;
     }
 
@@ -71,7 +72,8 @@ class CreditServiceHoldLockTest {
         svc.commitHold(REF_TYPE, REF_ID, 100, "commit");
 
         verify(holdRepo).findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID);
-        verify(holdRepo, never()).findByReferenceTypeAndReferenceId(anyString(), anyString());
+        // An unlocked snapshot locates the wallet; terminal mutation still requires the locked hold.
+        verify(holdRepo).findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID);
     }
 
     @Test
@@ -83,7 +85,8 @@ class CreditServiceHoldLockTest {
         svc.releaseHold(REF_TYPE, REF_ID, "release");
 
         verify(holdRepo).findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID);
-        verify(holdRepo, never()).findByReferenceTypeAndReferenceId(anyString(), anyString());
+        // An unlocked snapshot locates the wallet; terminal mutation still requires the locked hold.
+        verify(holdRepo).findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID);
     }
 
     @Test
@@ -111,7 +114,7 @@ class CreditServiceHoldLockTest {
     @Test
     void holdChecksIdempotencyAfterAcquiringWalletLock() {
         wallet(0, 500);
-        when(holdRepo.findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID))
+        when(holdRepo.findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID))
                 .thenReturn(Optional.of(activeHold(100)));
 
         CreditHold result = svc.hold(USER, 100, REF_TYPE, REF_ID, "hold");
@@ -119,7 +122,7 @@ class CreditServiceHoldLockTest {
         org.junit.jupiter.api.Assertions.assertEquals("h1", result.getId(), "应直接返回已存在的 hold，不重复创建");
         InOrder order = inOrder(walletRepo, holdRepo);
         order.verify(walletRepo).findByUserIdForUpdate(USER);
-        order.verify(holdRepo).findByReferenceTypeAndReferenceId(REF_TYPE, REF_ID);
+        order.verify(holdRepo).findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID);
         // 幂等命中后不应再对钱包做任何扣减性写入。
         verify(walletRepo, never()).save(any());
     }

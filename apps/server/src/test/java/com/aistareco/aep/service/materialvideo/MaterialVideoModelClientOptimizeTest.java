@@ -124,7 +124,7 @@ class MaterialVideoModelClientOptimizeTest {
     private void useEndpoint(String name, String baseUrl, String model) {
         AiModelEndpoint ep = AiModelEndpoint.builder().id("ep-h3").name(name).baseUrl(baseUrl).model(model)
                 .upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("sk-test")).enabled(true).build();
-        when(invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION)).thenReturn(Optional.of(ep));
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_GENERATION, "celebrity")).thenReturn(Optional.of(ep));
     }
 
     private static String ok() {

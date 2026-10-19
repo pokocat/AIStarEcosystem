@@ -54,6 +54,10 @@ public class RechargeService {
     private final CreditService creditService;
     private final NotificationPublisher notificationPublisher;
     private final com.aistareco.aep.service.storage.StorageQuotaService storageQuota;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.repository.WalletRepository enterpriseWallets;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.enterprise.service.EnterpriseCreditLotService enterpriseCreditLots;
 
     public RechargeService(RechargePackageRepository pkgRepo,
                            RechargeOrderRepository orderRepo,
@@ -108,7 +112,7 @@ public class RechargeService {
         if (!pkg.isActive()) {
             throw new BusinessException(HttpStatus.GONE, "PACKAGE_INACTIVE", "套餐已下架：" + packageId);
         }
-        if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
+        if (orderRepo.countByUserIdAndEnterpriseIdIsNullAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
             throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",
                     "你有较多待确认的充值订单，请先完成付款或取消后再下单");
         }
@@ -156,7 +160,7 @@ public class RechargeService {
     @Transactional
     public RechargeOrder createPendingForCheckout(String userId, String packageId, String wayCode, String sourceApp) {
         RechargePackage pkg = requireCheckoutablePackage(packageId, sourceApp);
-        if (orderRepo.countByUserIdAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
+        if (orderRepo.countByUserIdAndEnterpriseIdIsNullAndStatus(userId, RechargeOrder.Status.PENDING) >= MAX_PENDING_PER_USER) {
             throw new BusinessException(HttpStatus.CONFLICT, "TOO_MANY_PENDING_ORDERS",
                     "你有较多待确认的充值订单，请先完成付款或取消后再下单");
         }
@@ -230,6 +234,7 @@ public class RechargeService {
     @Transactional
     public void attachPayOrder(String orderId, String payOrderId) {
         RechargeOrder order = orderRepo.findById(orderId)
+                .filter(o -> o.getEnterpriseId() == null)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
         order.setPayOrderId(payOrderId);
         order.setUpdatedAt(Instant.now());
@@ -240,6 +245,7 @@ public class RechargeService {
     @Transactional
     public RechargeOrderDto cancelForGatewayError(String orderId, String reason) {
         RechargeOrder order = orderRepo.findById(orderId)
+                .filter(o -> o.getEnterpriseId() == null)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
         if (order.getStatus() == RechargeOrder.Status.PENDING) {
             order.setStatus(RechargeOrder.Status.CANCELLED);
@@ -253,6 +259,7 @@ public class RechargeService {
     /** 单个订单查询（影子 timeout 等场景返回当前态）。 */
     public RechargeOrderDto getOrder(String orderId) {
         return orderRepo.findById(orderId)
+                .filter(o -> o.getEnterpriseId() == null)
                 .map(RechargeOrderDto::from)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
     }
@@ -260,6 +267,7 @@ public class RechargeService {
     /** 单个订单查询 + 归属校验（用户侧收银台轮询 / 详情用，防越权查他人单）。 */
     public RechargeOrderDto getOrderForUser(String userId, String orderId) {
         return orderRepo.findByIdAndUserId(orderId, userId)
+                .filter(o -> o.getEnterpriseId() == null)
                 .map(RechargeOrderDto::from)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
     }
@@ -282,7 +290,7 @@ public class RechargeService {
         Instant cutoff = Instant.now().minus(Duration.ofMinutes(ttlMinutes));
         int n = 0;
         for (RechargeOrder o : orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING)) {
-            if (o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)
+            if (isOnlineOrder(o) && o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)
                     && orderRepo.markClosed(o.getId(), "支付超时自动关闭（超过 " + ttlMinutes + " 分钟未支付）", Instant.now()) > 0) {
                 n++;
             }
@@ -300,6 +308,7 @@ public class RechargeService {
 
     public List<RechargeOrderDto> listMyOrders(String userId) {
         return orderRepo.findByUserIdOrderByCreatedAtDesc(userId).stream()
+                .filter(o -> o.getEnterpriseId() == null)
                 .map(RechargeOrderDto::from)
                 .toList();
     }
@@ -308,6 +317,7 @@ public class RechargeService {
     @Transactional
     public RechargeOrderDto cancelOrder(String userId, String orderId) {
         RechargeOrder order = orderRepo.findByIdAndUserId(orderId, userId)
+                .filter(o -> o.getEnterpriseId() == null)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
         if (order.getStatus() != RechargeOrder.Status.PENDING) {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING", "该订单不是待确认状态，无法取消");
@@ -340,6 +350,7 @@ public class RechargeService {
             rows = orderRepo.findAllByOrderByCreatedAtDesc();
         }
         // v0.86：财务工作台辨识用户身份 —— read-time 批量回填手机号（避免 N+1；旧订单也能显示）。
+        rows = rows.stream().filter(o -> o.getEnterpriseId() == null).toList();
         java.util.Map<String, AepUser> users = usersByIds(rows.stream().map(RechargeOrder::getUserId).toList());
         return rows.stream().map(o -> RechargeOrderDto.from(o, users.get(o.getUserId()))).toList();
     }
@@ -366,6 +377,7 @@ public class RechargeService {
     public RechargeOrderDto approveOrder(String orderId, String reviewerId, String reviewNote) {
         RechargeOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        requirePersonalOrder(order);
         if (order.getStatus() != RechargeOrder.Status.PENDING) {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法核准");
@@ -397,7 +409,16 @@ public class RechargeService {
     @Transactional
     public RechargeOrderDto settlePaidOrder(String orderId, String paidVia, String channelPayNo,
                                             String reviewerId, String reviewNote) {
-        Instant now = Instant.now();
+        // Enterprise manual orders must have finance-confirmed facts before the shared posting core runs.
+        RechargeOrder targetSnapshot = orderRepo.findById(orderId)
+                .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        if (targetSnapshot.getEnterpriseId() != null && (!"manual".equals(paidVia) || reviewerId == null || reviewerId.isBlank()
+                || targetSnapshot.getReceiptReference() == null || targetSnapshot.getConfirmFingerprint() == null
+                || targetSnapshot.getCredits() <= 0 || targetSnapshot.getPriceCents() <= 0)) {
+            throw new BusinessException(HttpStatus.CONFLICT, "ENTERPRISE_FINANCE_CONFIRM_REQUIRED", "企业充值须由平台财务登记收款后核准");
+        }
+        // 截到微秒：库里只存到微秒，内存里的实体若带纳秒，首次返回与幂等重放（从库读）会对不上（Linux 时钟到纳秒）
+        Instant now = Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         int claimed = orderRepo.markPaid(orderId, now);
         if (claimed == 0) {
             // 已被结算（重复回调 / 并发）或订单不存在 → 幂等 no-op
@@ -413,14 +434,20 @@ public class RechargeService {
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
 
         // 1) 主分录：充值进 recharge 桶
-        LedgerEntryDto mainEntry = creditService.creditAccount(
-                order.getUserId(),
-                order.getCredits(),
-                LedgerEntry.LedgerEntryType.RECHARGE,
-                "recharge_order",
-                order.getId(),
-                "充值订单入账 " + nz(order.getPackageTag()) + "（" + order.getCredits() + " 积分）"
-        );
+        LedgerEntryDto mainEntry;
+        if (order.getEnterpriseId() != null) {
+            var target = enterpriseWallets.findById(order.getTargetWalletId()).orElseThrow(() -> BusinessException.badRequest("ENTERPRISE_TARGET_INVALID", "企业充值目标无效"));
+            if (!"enterprise".equals(target.getAccountType()) || !order.getEnterpriseId().equals(target.getEnterpriseId()))
+                throw BusinessException.badRequest("ENTERPRISE_TARGET_INVALID", "企业充值目标无效");
+            if(order.getCredits()>9_007_199_254_740_991L-target.getTotalBalance())
+                throw BusinessException.badRequest("ENTERPRISE_BALANCE_LIMIT", "企业余额超出允许范围");
+            mainEntry = creditService.creditWallet(target.getId(),order.getCredits(),LedgerEntry.LedgerEntryType.RECHARGE,
+                    "recharge_order",order.getId(),"企业充值订单入账（"+order.getCredits()+" 积分）");
+            enterpriseCreditLots.origin(target,order.getId(),order.getCredits());
+        } else {
+            mainEntry = creditService.creditAccount(order.getUserId(),order.getCredits(),LedgerEntry.LedgerEntryType.RECHARGE,
+                    "recharge_order",order.getId(),"充值订单入账 "+nz(order.getPackageTag())+"（"+order.getCredits()+" 积分）");
+        }
 
         // 2) 赠送（可选）：进 gift 桶
         if (order.getBonusCredits() > 0) {
@@ -481,6 +508,7 @@ public class RechargeService {
     public RechargeOrderDto rejectOrder(String orderId, String reviewerId, String reason) {
         RechargeOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
+        requirePersonalOrder(order);
         if (order.getStatus() != RechargeOrder.Status.PENDING) {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法驳回");
@@ -511,6 +539,7 @@ public class RechargeService {
      */
     @Transactional
     public RechargeOrderDto refundOrder(String orderId, String operatorId, String reason) {
+        requirePersonalOrder(orderRepo.findById(orderId).orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,"ORDER_NOT_FOUND","充值订单不存在")));
         if (reason == null || reason.isBlank()) {
             throw BusinessException.badRequest("REFUND_REASON_REQUIRED", "请填写退款原因");
         }
@@ -571,6 +600,11 @@ public class RechargeService {
 
     private static String nz(String s) {
         return s == null ? "" : s;
+    }
+
+    private static void requirePersonalOrder(RechargeOrder order) {
+        if (order.getEnterpriseId() != null) throw new BusinessException(HttpStatus.CONFLICT,
+                "ENTERPRISE_FINANCE_ROUTE_REQUIRED", "请从企业充值入口处理该订单");
     }
 
     private static String trimToNull(String s, int max) {

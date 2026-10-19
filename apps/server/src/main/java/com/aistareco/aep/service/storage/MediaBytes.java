@@ -1,5 +1,8 @@
 package com.aistareco.aep.service.storage;
 
+import java.util.List;
+import java.util.Locale;
+
 /**
  * 从**字节本身**认出音视频容器格式（magic number），不看文件名 —— {@link ImageBytes} 的音视频版。
  *
@@ -7,11 +10,12 @@ package com.aistareco.aep.service.storage;
  * 对方是按我们声明的 Content-Type 去解码的。视频生成区的上传接口与模型客户端把素材传给聚算时
  * 都用这里，一处判定。
  *
- * <p>只认厂商合同里写了的几种（docs/video-studio-plan.md §2）：
+ * <p>{@link #sniff} 只认旧 H3 合同里的格式（docs/video-studio-plan.md §2）：
  * <ul>
  *   <li>视频：MP4（ISO BMFF {@code ftyp}，且品牌不是 QuickTime 的 {@code "qt  "}）</li>
  *   <li>音频：WAV / MP3 / FLAC / OGG / AAC（ADTS）/ M4A / MOV（带声音的 QuickTime）</li>
  * </ul>
+ * 已配置端点通过 {@link #sniffConfigured} 增加 GIF/BMP、MOV 视频和 WebM；端点格式列表决定是否允许。
  * 认不出返回 null，由调用方拒绝 —— 这里不猜。字节只能说明「容器像」，有没有画面 / 声音、
  * 时长多少，要交给 ffprobe 去判。
  */
@@ -23,6 +27,8 @@ public final class MediaBytes {
     public record Format(String ext, String mime) {}
 
     public static final Format MP4 = new Format("mp4", "video/mp4");
+    public static final Format WEBM_VIDEO = new Format("webm", "video/webm");
+    public static final Format WEBM_AUDIO = new Format("webm", "audio/webm");
     public static final Format MOV = new Format("mov", "video/quicktime");
     public static final Format M4A = new Format("m4a", "audio/mp4");
     public static final Format WAV = new Format("wav", "audio/wav");
@@ -37,7 +43,7 @@ public final class MediaBytes {
     /**
      * 按素材类型判：{@code image} → PNG / JPEG / WEBP（{@link ImageBytes}，GIF / BMP 不收），
      * {@code video} → {@link #sniffVideo}，{@code audio} → {@link #sniffAudio}；其它类型或认不出 → null。
-     * 视频生成区的上传接口与模型客户端把素材交给厂商时都走这一个入口，规则只写这一遍。
+     * 无端点规格的旧 H3 上传沿用这组格式。
      */
     public static Format sniff(String mediaType, byte[] b) {
         if ("video".equals(mediaType)) return sniffVideo(b);
@@ -47,6 +53,38 @@ public final class MediaBytes {
             if (f == ImageBytes.PNG || f == ImageBytes.JPEG || f == ImageBytes.WEBP) return new Format(f.ext(), f.mime());
         }
         return null;
+    }
+
+    /** 已配置的端点可选更多容器；旧 H3 请求仍使用 {@link #sniff} 的合同范围。 */
+    public static Format sniffConfigured(String mediaType, byte[] b) {
+        Format legacy = sniff(mediaType, b);
+        if (legacy != null) return legacy;
+        if ("image".equals(mediaType)) {
+            ImageBytes.Format image = ImageBytes.sniff(b);
+            if (image == ImageBytes.GIF || image == ImageBytes.BMP) return new Format(image.ext(), image.mime());
+        }
+        if ("video".equals(mediaType) && enough(b)) {
+            if ((isFtyp(b) && isQuickTimeBrand(b)) || isClassicQuickTime(b)) return MOV;
+            if (isWebm(b)) return WEBM_VIDEO;
+        }
+        if ("audio".equals(mediaType) && isWebm(b)) return WEBM_AUDIO;
+        return null;
+    }
+
+    /** 配置里的 JPEG 对应字节识别出的 jpg；其余格式按扩展名比较。 */
+    public static boolean allowed(Format format, List<String> formats) {
+        if (format == null || formats == null) return false;
+        String name = "jpg".equals(format.ext()) ? "JPEG" : format.ext().toUpperCase(Locale.ROOT);
+        return formats.stream().anyMatch(allowed -> name.equalsIgnoreCase(allowed));
+    }
+
+    /** EBML 头内明确声明 DocType=webm；仅有 EBML magic 不能把 Matroska 当成 WebM。 */
+    private static boolean isWebm(byte[] b) {
+        if (!enough(b) || !starts(b, 0x1A, 0x45, 0xDF, 0xA3)) return false;
+        for (int i = 4; i + 7 <= Math.min(b.length, 4096); i++) {
+            if (at(b, i, 0x42, 0x82, 0x84, 'w', 'e', 'b', 'm')) return true;
+        }
+        return false;
     }
 
     /** 视频：只认 MP4。MOV（QuickTime）不收 —— 厂商合同里视频只写了 MP4。 */

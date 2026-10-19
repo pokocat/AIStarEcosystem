@@ -113,7 +113,7 @@ class MaterialVideoWorkerSpecTest {
     void successPassesSpecAndUsesCreditLabel() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult("job_h3", null, "MiniMax H3", "minimax-h3",
                 "jusuan-media", "ep-h3");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenReturn(submit);
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult("succeeded", null, null, "succeeded", 100, null, null, "asset_out"));
         @SuppressWarnings("unchecked")
@@ -129,7 +129,7 @@ class MaterialVideoWorkerSpecTest {
 
         assertEquals("succeeded", job.getStatus());
         ArgumentCaptor<VideoGenSpec> spec = ArgumentCaptor.forClass(VideoGenSpec.class);
-        verify(modelClient).submit(eq("图1在跳舞"), eq(5), eq("9:16"), eq("u1"), eq("celebrity"), eq("ep-h3"), spec.capture());
+        verify(modelClient).submit(eq("图1在跳舞"), eq(5), eq("9:16"), eq("u1"), eq("celebrity"), eq("ep-h3"), spec.capture(), any());
         assertEquals(VideoGenSpec.fromVariantConfigJson(VARIANT_CONFIG), spec.getValue());
         assertEquals("universal_reference_video", spec.getValue().generationMode());
         assertEquals(2, spec.getValue().references().size());
@@ -143,7 +143,7 @@ class MaterialVideoWorkerSpecTest {
     @Test
     @DisplayName("提交被厂商拒（4xx）：任务失败原因是给用户看的那句，退款文案用 credit_label")
     void submitRejectionReleasesWithCreditLabel() {
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenThrow(
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenThrow(
                 BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_SUBMIT_FAILED",
                         "视频模型拒绝了这次请求：orientation square is not supported", "status=400"));
 
@@ -161,7 +161,7 @@ class MaterialVideoWorkerSpecTest {
     void missingCreditLabelFallsBackToLegacyText() {
         job.setPayloadJson("{\"id\":\"mvj_studio\"}");
         job.setKind("baseline");
-        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any())).thenThrow(
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenThrow(
                 new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_MODE_UNSUPPORTED", "所选视频模型不支持"));
 
         worker().generateAsync("mvj_studio");
@@ -179,8 +179,9 @@ class MaterialVideoWorkerSpecTest {
         assertEquals("带货视频生成", MaterialVideoWorker.creditLabelOf(
                 MaterialVideoJob.builder().payloadJson("{broken").build()));
 
-        assertEquals("drama", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().kind("drama-shot").build()));
-        assertEquals("celebrity", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().kind("studio-t2v").build()));
+        assertEquals("drama", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_DRAMA).kind("drama-shot").build()));
+        assertEquals("studio", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_IPSTUDIO).kind("studio-t2v").build()));
+        assertEquals("celebrity", MaterialVideoWorker.appCodeOf(MaterialVideoJob.builder().app(MaterialVideoJobService.APP_VIDEO_STUDIO).kind("studio-t2v").build()));
         assertEquals("分镜视频", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("drama-episode").build()));
         assertEquals("视频生成", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("studio-flf").build()));
         assertEquals("素材视频", MaterialVideoWorker.storageCategoryOf(MaterialVideoJob.builder().kind("variant").build()));

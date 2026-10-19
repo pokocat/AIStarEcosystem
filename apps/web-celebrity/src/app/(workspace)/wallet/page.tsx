@@ -42,6 +42,8 @@ const ENTRY_META: Record<LedgerEntryType, { label: string; tone: ChipTone }> = {
   freeze:        { label: "冻结",         tone: "neutral" },
   unfreeze:      { label: "解冻",         tone: "neutral" },
   adjust:        { label: "管理员调整",   tone: "neutral" },
+  transfer_in: { label: "积分转入", tone: "success" },
+  transfer_out: { label: "积分转出", tone: "neutral" },
   refund_cash:   { label: "现金退款",     tone: "warning" },
 };
 const ENTRY_FALLBACK = { label: "其它变动", tone: "neutral" as ChipTone };

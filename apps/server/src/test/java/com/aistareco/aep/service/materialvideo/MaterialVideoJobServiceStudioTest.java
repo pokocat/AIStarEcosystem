@@ -76,10 +76,9 @@ class MaterialVideoJobServiceStudioTest {
     }
 
     @Test
-    @DisplayName("原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只许视频生成区带：其它分区在冻结之前 400")
+    @DisplayName("原生规格只许视频生成区和已校验的 IP 画布带：素材运营与短剧在冻结之前 400")
     void nativeOptionsOnlyInVideoStudio() {
-        for (String app : List.of(MaterialVideoJobService.APP_CELEBRITY, MaterialVideoJobService.APP_DRAMA,
-                MaterialVideoJobService.APP_IPSTUDIO)) {
+        for (String app : List.of(MaterialVideoJobService.APP_CELEBRITY, MaterialVideoJobService.APP_DRAMA)) {
             assertRejected("{\"generation_mode\":\"t2v\"}", app);
             assertRejected("{\"resolution_tier\":\"544p\"}", app);
             assertRejected("{\"seed\":1}", app);
@@ -112,6 +111,19 @@ class MaterialVideoJobServiceStudioTest {
         svc.submit(body("{\"target\":\"shot\",\"scene_id\":\"s1\",\"endpoint_id\":\"ep\"}"), "u1",
                 MaterialVideoJobService.APP_DRAMA);
         verify(creditService, org.mockito.Mockito.times(2)).hold(eq("u1"), eq(200L), any(), any(), any());
+    }
+
+    @Test
+    void configuredLegacyVideoSpecIsCheckedBeforeHoldingCredits() {
+        org.mockito.Mockito.doThrow(BusinessException.badRequest("VIDEO_STUDIO_SPEC_INVALID", "不支持当前画幅"))
+                .when(modelClient).validateConfiguredLegacySubmission(eq("ep"), eq("studio"),
+                        any(VideoGenSpec.class), org.mockito.ArgumentMatchers.isNull());
+        var error = assertThrows(BusinessException.class, () -> svc.submit(
+                body("{\"endpoint_id\":\"ep\",\"first_frame_key\":\"ipstudio_gen/u1/a.png\"}"),
+                "u1", MaterialVideoJobService.APP_IPSTUDIO));
+        assertEquals("VIDEO_STUDIO_SPEC_INVALID", error.getCode());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(jobRepo, never()).save(any());
     }
 
     @Test

@@ -124,6 +124,7 @@ public class FinanceController {
             case FREEZE -> "冻结";
             case UNFREEZE -> "解冻";
             case ADJUST -> "调整";
+            case TRANSFER_IN, TRANSFER_OUT -> "积分划拨";
         };
     }
 
@@ -151,6 +152,7 @@ public class FinanceController {
             case RECHARGE, REFUND -> "recharge";
             case LICENSE_GRANT -> "license_grant";
             case WITHDRAW -> "withdrawal";
+            case TRANSFER_IN, TRANSFER_OUT -> "transfer";
             case SPEND, FREEZE -> "spend";
             default -> "income";
         };

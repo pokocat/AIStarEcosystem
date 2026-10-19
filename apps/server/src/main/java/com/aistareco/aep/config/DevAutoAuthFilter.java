@@ -62,7 +62,8 @@ public class DevAutoAuthFilter extends OncePerRequestFilter {
                 && SecurityContextHolder.getContext().getAuthentication().isAuthenticated();
         if (!alreadyAuthed) {
             String path = request.getRequestURI();
-            if (shouldAutoAuth(path)) {
+            if (shouldAutoAuth(path) && !("GET".equals(request.getMethod())
+                    && path.matches("/api/v1/ip-studio/shared/conversations/[A-Za-z0-9_-]{32}"))) {
                 seedAuth(path);
             }
         }

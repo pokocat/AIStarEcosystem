@@ -88,6 +88,11 @@ public class PhoneVerificationGuard extends OncePerRequestFilter {
             return;
         }
         String path = EnrollmentGuard.pathOf(request);
+        // This POST only reads a bearer invitation; it does not accept it or change any identity.
+        if ("POST".equals(request.getMethod()) && "/api/v1/ip-studio/enterprise-invitations/preview".equals(path)) {
+            chain.doFilter(request, response);
+            return;
+        }
         if (isExempt(path)) {
             chain.doFilter(request, response);
             return;
@@ -107,6 +112,8 @@ public class PhoneVerificationGuard extends OncePerRequestFilter {
     private static boolean isPhoneUnverified(Authentication auth) {
         if (auth == null || !auth.isAuthenticated()) return false;
         if (!(auth.getDetails() instanceof Map<?, ?> details)) return false;
+        // 仅由已验签 RS256 身份链写入；测试身份不冒充已验证手机号，其余业务闸门不变。
+        if (Boolean.TRUE.equals(details.get("identityTestAccount"))) return false;
         return Boolean.FALSE.equals(details.get(JwtAuthenticationFilter.PHONE_VERIFIED_DETAIL));
     }
 

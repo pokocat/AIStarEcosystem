@@ -89,15 +89,18 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private final IdentityTokenVerifier identityVerifier;
     private final IdentityProvisioningService provisioningService;
     private final IdentityProperties identityProps;
+    private final com.aistareco.aep.identity.IdentityPhoneSyncService phoneSync;
 
     public JwtAuthenticationFilter(JwtUtil jwtUtil,
                                     IdentityTokenVerifier identityVerifier,
                                     IdentityProvisioningService provisioningService,
-                                    IdentityProperties identityProps) {
+                                    IdentityProperties identityProps,
+                                    com.aistareco.aep.identity.IdentityPhoneSyncService phoneSync) {
         this.jwtUtil = jwtUtil;
         this.identityVerifier = identityVerifier;
         this.provisioningService = provisioningService;
         this.identityProps = identityProps;
+        this.phoneSync = phoneSync;
     }
 
     /**
@@ -159,6 +162,12 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         // legacy HS256 定义上不可能是「微信游客」：游客只由账号中心的微信登录建出来，
         // 而账号中心从不签 HS256。所以这条链路一律按「已验证」处理，不进只读闸门。
+        if (!adminToken) {
+            AepUser linked = provisioningService.linkedLocalUser(userId);
+            if (linked != null && (linked.getStatus() != AepUser.UserStatus.ACTIVE
+                    || (linked.getIdentityState() != null && !"ACTIVE".equals(linked.getIdentityState()))
+                    || (linked.getIdentityTokensValidAfter() != null && (claims.getIssuedAt() == null || !claims.getIssuedAt().toInstant().isAfter(linked.getIdentityTokensValidAfter()))))) return;
+        }
         applyAuthentication(userId, username, role, adminToken, true);
     }
 
@@ -208,6 +217,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
+        if ((user.getIdentityState() != null && !"ACTIVE".equals(user.getIdentityState()))
+                || (user.getIdentityTokensValidAfter() != null && (jwt.getIssuedAt() == null || !jwt.getIssuedAt().isAfter(user.getIdentityTokensValidAfter())))) {
+            SecurityJsonEntryPoint.write(MAPPER, response, HttpServletResponse.SC_UNAUTHORIZED,
+                    "ACCOUNT_STATE_INVALID", "统一账号状态已变更，请重新登录");
+            return true;
+        }
+
         // 手机号是否已验证 —— 真值在令牌里，本地那份只是给 /api/me 用的副本。
         // 缺这个 claim（老版本账号中心签的令牌）按「已验证」处理：微信游客这个概念
         // 是随本次改动一起出现的，更早的令牌不可能属于游客。
@@ -217,24 +233,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // getClaimAsString 规避同一问题，这里保持一致。缺 claim 仍按「已验证」处理。
         Boolean claim = jwt.getClaimAsBoolean("phone_verified");
         boolean phoneVerified = claim == null || claim;
-        // 昵称与头像同样以账号中心为准（OIDC 标准 claim）。本地 displayName / avatarUrl
-        // 以前没有任何来源，界面只能显示 JIT 建档时那串 id_xxxx，或各产品自己编一个。
-        // 令牌没带这两个（老版本账号中心）时是 null，下面会保留本地已有的值，不会清空。
-        String name = jwt.getClaimAsString("name");
-        String picture = jwt.getClaimAsString("picture");
+        // 昵称/头像采用当前 /userinfo 和 PROFILE_CHANGED，不能反复写回旧 JWT 快照。
+        // 身份映射或状态在解析期间改变时，当前请求必须拒绝认证。
         try {
-            provisioningService.syncFromIdentityToken(user.getId(), phoneVerified, name, picture);
+            user = provisioningService.syncIdentityVerification(user.getId(), uid, phoneVerified);
         } catch (RuntimeException e) {
-            // 回填只影响展示，失败不该让登录失败（闸门读的是下面这份 details）。
+            // 行锁后身份已改变或存储失败，不能继续授权旧主体。
             log.warn("[auth] 回填账号中心身份字段失败 uid={} localUserId={} err={}",
                     uid, user.getId(), e.toString());
+            return false; // cannot authorize an identity that moved while resolving
         }
+
+        if (user.getIdentityTokensValidAfter() != null && (jwt.getIssuedAt() == null || !jwt.getIssuedAt().isAfter(user.getIdentityTokensValidAfter()))) {
+            SecurityJsonEntryPoint.write(MAPPER, response, HttpServletResponse.SC_UNAUTHORIZED, "ACCOUNT_STATE_INVALID", "统一账号状态已变更，请重新登录");
+            return true;
+        }
+        phoneSync.sync(user, jwt, token);
 
         // RS256 令牌只按账号类型派权限，永不映射后台角色。
         String role = user.getKind() == null
                 ? AepUser.AccountKind.PERSONAL.name()
                 : user.getKind().name();
-        applyAuthentication(user.getId(), user.getUsername(), role, false, phoneVerified);
+        boolean testAccount = Boolean.TRUE.equals(jwt.getClaims().get("test_account")) && uid.matches("TEST_[0-9A-HJKMNP-TV-Z]{26}");
+        applyAuthentication(user.getId(), user.getUsername(), role, false, phoneVerified, testAccount);
         return false;
     }
 
@@ -242,6 +263,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private void applyAuthentication(String userId, String username, String role, boolean adminToken,
                                      boolean phoneVerified) {
+        applyAuthentication(userId, username, role, adminToken, phoneVerified, false);
+    }
+    private void applyAuthentication(String userId, String username, String role, boolean adminToken,
+                                     boolean phoneVerified, boolean testAccount) {
         List<SimpleGrantedAuthority> authorities;
         if (role == null || role.isBlank()) {
             authorities = List.of();
@@ -257,6 +282,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (role != null && !role.isBlank()) details.put("role", role);
         // PhoneVerificationGuard 据此拦写操作；两条认证链路都显式写，不留「缺省」这一档。
         details.put(PHONE_VERIFIED_DETAIL, phoneVerified);
+        details.put("identityTestAccount", testAccount);
         auth.setDetails(details);
         SecurityContextHolder.getContext().setAuthentication(auth);
     }

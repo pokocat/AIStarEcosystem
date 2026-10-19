@@ -12,12 +12,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import { reportStudioError } from "@/ip/studio-errors";
 import { useCanvasStore, type CanvasProject } from "@/canvas/stores/canvas/use-canvas-store";
 import type { CanvasConnection, CanvasNodeData, ViewportTransform } from "@/canvas/types/canvas";
 import { IpStudioApi } from "@/ip/api";
 import { setCurrentProjectId } from "./api";
 import { recordRun, useLastRun } from "./last-run";
 import { loadServerModels } from "./models";
+
+import { splitStudioConversations } from "./studio-conversations";
 
 const SAVE_DEBOUNCE_MS = 900;
 
@@ -85,7 +88,7 @@ export async function awaitPendingSaves(projectId: string): Promise<"drained" | 
   return "timeout";
 }
 
-type IpDoc = { nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform };
+type IpDoc = { assistantConversations?: CanvasNodeData[]; nodes?: CanvasNodeData[]; connections?: CanvasConnection[]; viewport?: ViewportTransform };
 
 const EMPTY_VIEWPORT: ViewportTransform = { x: 0, y: 0, k: 1 };
 
@@ -134,8 +137,7 @@ function toCanvasProject(id: string, name: string, doc: IpDoc | null | undefined
     title: name || "未命名 IP",
     createdAt: updatedAt || new Date().toISOString(),
     updatedAt: updatedAt || new Date().toISOString(),
-    nodes: healDanglingPrimary(doc?.nodes ?? []),
-    connections: doc?.connections ?? [],
+    ...splitStudioConversations(healDanglingPrimary(doc?.nodes ?? []),doc?.assistantConversations,doc?.connections),
     chatSessions: [],
     activeChatId: null,
     backgroundMode: "lines",
@@ -255,6 +257,7 @@ export function useProjectSync(projectId: string) {
     // 选中后 preflight 一律 503，出图从头到尾跑不了。
     void loadServerModels().catch((e: unknown) => {
       console.warn("[ipstudio] 模型候选加载失败，生成会显示为不可用", e);
+      if (alive && epoch === epochRef.current) reportStudioError(e, { once: `models:${projectId}` });
     });
 
     // 先等上一次打开留下的补存**全部**落地，再读 —— 否则读回的是补存之前那一版，
@@ -264,7 +267,7 @@ export function useProjectSync(projectId: string) {
         if (!alive || epoch !== epochRef.current) return null;
         if (queue === "timeout") {
           // 已经知道要读到的是旧内容了 —— 不能摆出来当正常内容让人接着改（见上面的注释）
-          setError("上一次的改动还在保存中（网络好像卡住了）。现在打开会看到旧内容，改动也存不上 —— 等一下点「重新加载」再试。");
+          setError(reportStudioError({ code: "IP_PROJECT_SAVE_PENDING", message: "上一次的改动还在保存中。请等待原保存完成，再重新加载画布。" }).message);
           setState("error");
           return null;
         }
@@ -286,7 +289,7 @@ export function useProjectSync(projectId: string) {
       })
       .catch((e: unknown) => {
         if (!alive || epoch !== epochRef.current) return;
-        setError(e instanceof Error ? e.message : "这个项目打不开");
+        setError(reportStudioError(e, { fallback: "这个项目打不开" }).message);
         setState("error");
       });
 
@@ -316,7 +319,7 @@ export function useProjectSync(projectId: string) {
     return {
       id: project.id,
       title: project.title,
-      doc: { nodes: project.nodes, connections: project.connections, viewport: project.viewport },
+      doc: { ...splitStudioConversations(project.nodes,project.assistantConversations,project.connections), viewport: project.viewport },
       base: baseRef.current,
     };
   }, [projectId]);
@@ -338,6 +341,7 @@ export function useProjectSync(projectId: string) {
       .catch((e: unknown): SaveResult => {
         const stale = Boolean(e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "IP_PROJECT_STALE");
         if (epoch === epochRef.current) {
+          reportStudioError(e, { fallback: "画布保存失败，改动仍保留在本地" });
           dirtyRef.current = true;   // 没存上，改动还在本地
           if (stale) {
             // 冲突不能重试（重试就是覆盖别处的改动，而画布是整存整取的 —— 覆盖掉的
@@ -414,7 +418,7 @@ export function useProjectSync(projectId: string) {
       const a = cur.projects.find((p) => p.id === projectId);
       const b = prev.projects.find((p) => p.id === projectId);
       // 只认内容变化：拖动视口也算（用户下次打开希望还在原来那个位置）
-      if (!a || (b && a.nodes === b.nodes && a.connections === b.connections
+      if (!a || (b && a.assistantConversations === b.assistantConversations && a.nodes === b.nodes && a.connections === b.connections
                  && a.viewport === b.viewport && a.title === b.title)) return;
       markDirty();
       if (timerRef.current) clearTimeout(timerRef.current);

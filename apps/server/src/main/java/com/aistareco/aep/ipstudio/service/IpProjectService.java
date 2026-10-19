@@ -67,6 +67,8 @@ public class IpProjectService {
     private final IpStudioProperties props;
     private final ObjectMapper om;
     private final com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions;
+    private final StudioIpAssetService studioAssets;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
 
     public IpProjectService(IpProjectRepository projectRepo,
                            IpRunRepository runRepo,
@@ -76,6 +78,13 @@ public class IpProjectService {
                            IpStudioProperties props,
                            com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs,
                            ObjectMapper om, com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions) {
+        this(projectRepo,runRepo,catalog,templates,storage,props,videoJobs,om,revisions,null);
+    }
+    @org.springframework.beans.factory.annotation.Autowired
+    public IpProjectService(IpProjectRepository projectRepo,IpRunRepository runRepo,IpCatalogService catalog,
+            IpTemplateResolver templates,FileStorageService storage,IpStudioProperties props,
+            com.aistareco.aep.repository.MaterialVideoJobRepository videoJobs,ObjectMapper om,
+            com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions,StudioIpAssetService studioAssets) {
         this.projectRepo = projectRepo;
         this.runRepo = runRepo;
         this.catalog = catalog;
@@ -85,6 +94,7 @@ public class IpProjectService {
         this.videoJobs = videoJobs;
         this.om = om;
         this.revisions = revisions;
+        this.studioAssets = studioAssets;
     }
 
     // ── 查询 ──────────────────────────────────────────────────
@@ -121,7 +131,7 @@ public class IpProjectService {
         // 走 IpTemplateResolver 而不是 catalog：目录里列出来的既有内置模板也有全局示例，
         // 只查 catalog 的话，运营存的示例点开必报「内置工作流不存在」（目录列一套、建的时候查另一套）。
         IpTemplateDto tpl = templateId == null ? null
-                : templates.resolve(templateId).orElseThrow(() ->
+                : templates.resolve(templateId, userId).orElseThrow(() ->
                         BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
         String name = req == null ? null : trimToNull(req.name());
@@ -129,7 +139,7 @@ public class IpProjectService {
         if (name.length() > 128) name = name.substring(0, 128);
 
         JsonNode doc = tpl != null && tpl.doc() != null && tpl.doc().isObject()
-                ? tpl.doc().deepCopy()
+                ? templates.canvasCopy(tpl)
                 : IpDocs.emptyDoc(om);
 
         IpProject p = IpProject.builder()
@@ -162,6 +172,15 @@ public class IpProjectService {
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
         requireNotStale(p, req.baseDocVersion());
+        // Cover updates never replace the canvas document or its published identity.
+        if (req.coverStorageKey() != null) {
+            String key = trimToNull(req.coverStorageKey());
+            if (key != null) {
+                if (!CanvasCoverService.containsImage(readDoc(p), key) || !ownsAssetKey(p.getOwnerUserId(), key))
+                    throw BusinessException.badRequest("IP_COVER_INVALID", "请选择这张画布中属于本人的图片作为封面");
+            }
+            p.setCoverKey(key);
+        }
         String previousDoc = p.getDocJson();
         String previousName = p.getName();
         String name = trimToNull(req.name());
@@ -235,6 +254,11 @@ public class IpProjectService {
 
     /** 照片 / 参考图上传：只收 jpg/png、≤ 字节上限且最长边 ≤ 像素上限；产物 key 由客户端写进 doc。 */
     public IpUploadResultDto upload(String userId, MultipartFile file) {
+        return uploadImage(file, CATEGORY_SOURCE, userId);
+    }
+
+    /** Reuse the exact same image validation for canvas media and independent covers. */
+    IpUploadResultDto uploadImage(MultipartFile file, String category, String storageOwner) {
         if (file == null || file.isEmpty()) {
             throw BusinessException.badRequest("IP_UPLOAD_INVALID", "请选择要上传的图片");
         }
@@ -269,7 +293,7 @@ public class IpProjectService {
         Integer w = wh[0], h = wh[1];
 
         FileStorageService.StoredFile stored = storage.store(
-                bytes, CATEGORY_SOURCE, userId, okExt ? ext : "png",
+                bytes, category, storageOwner, okExt ? ext : "png",
                 mime != null && okMime ? mime : "image/png");
         return new IpUploadResultDto(stored.key(), storage.signedUrl(stored.key()), w, h,
                 displayName(original, okExt ? ext : "png"));
@@ -351,7 +375,7 @@ public class IpProjectService {
         // 刷新之后 content 是空的、视频就此消失（v0.180 线上实测，日志里每次加载都刷两条
         // 「文档里出现非本人资产 key」）。这里改成按 jobId 回查任务的真实归属 ——
         // 不是放宽，是换成一个真的能判归属的办法：owner 必须是本人、分区必须是 ipstudio。
-        return ownsVideoKey(userId, k);
+        return ownsVideoKey(userId, k) || studioAssets != null && studioAssets.owns(userId,k);
     }
 
     /** `material-videos/<jobId>/…` → 回查 MaterialVideoJob 确认 owner + 分区。 */
@@ -477,18 +501,9 @@ public class IpProjectService {
     // ── DTO ───────────────────────────────────────────────────
 
     private String coverUrl(IpProject p) {
-        String key = p.getCoverKey();
-        if (key == null) {
-            for (JsonNode n : IpDocs.nodes(readDoc(p))) {
-                if (!"image".equals(n.path("type").asText())) continue;
-                String k = IpDocs.text(IpDocs.metadataOf(n),"storageKey");
-                if (k != null && ownsAssetKey(p.getOwnerUserId(),k)) {
-                    key = k;
-                    if (IpDocs.text(IpDocs.metadataOf(n),"runId") != null) break;
-                }
-            }
-        }
-        return key == null ? null : storage.signedUrl(key);
+        String key=p.getCoverKey();
+        if(key==null)key=CanvasCoverService.firstImageKey(readDoc(p),k->ownsAssetKey(p.getOwnerUserId(),k));
+        return key==null?null:storage.signedUrl(key);
     }
 
     IpProjectSummaryDto toSummary(IpProject p) {
@@ -504,7 +519,7 @@ public class IpProjectService {
                 coverUrl(p),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()),
                 docVersion(p.getDocJson()),
-                doc, runs.runs(), runs.runsById());
+                doc, runs.runs(), runs.runsById(), p.getTemplateVersionId());
     }
 
     /** runs 投影结果：{@code runs} 按 nodeId、{@code runsById} 按 runId。 */
@@ -536,6 +551,8 @@ public class IpProjectService {
         for (JsonNode n : IpDocs.nodes(doc)) {
             String sel = IpDocs.text(IpDocs.metadataOf(n), "runId");
             if (sel != null) selected.add(sel);
+            String studioRun=IpDocs.metadataOf(n).path("studio").path("runId").asText(null);
+            if(studioRun!=null) selected.add(studioRun);
         }
         if (!selected.isEmpty()) {
             for (IpRun r : all) {
@@ -552,16 +569,107 @@ public class IpProjectService {
      */
     public IpRunDto toRunDto(IpRun r) {
         JsonNode inputs = parseOrEmptyObject(r.getInputJson());
+        if(r.getClientRequestId()!=null && inputs instanceof ObjectNode on) on.put("clientRequestId",r.getClientRequestId());
+        var videoJobIds=nativeVideoJobIds(inputs);
         if (inputs instanceof com.fasterxml.jackson.databind.node.ObjectNode on) on.remove("_exec");
+        if(!videoJobIds.isEmpty()) return videoBindingDto(r,inputs,videoJobIds);
         JsonNode output = signCandidates(parseOrEmptyObject(r.getOutputJson()));
+        var queue=runQueuePosition(r);
         return new IpRunDto(r.getId(), r.getProjectId(), r.getNodeId(), r.getKind(),
-                r.getStatus(), r.getStage(), r.getPct(), r.getCost(),
+                r.getStatus(), queue==null?r.getStage():"endpoint.queued", queue==null?r.getPct():0, r.getCost(),
                 r.getErrorCode(), r.getErrorMessage(), inputs, output,
-                iso(r.getCreatedAt()), iso(r.getFinishedAt()));
+                iso(r.getCreatedAt()), iso(r.getFinishedAt()),queue);
+    }
+    private com.aistareco.aep.dto.AiGenerationQueuePositionDto runQueuePosition(IpRun run) {
+        if(generationQueue==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return null;
+        String type=switch(run.getKind()) {
+            case "generate","identity","studio-image" -> com.aistareco.aep.service.AiGenerationQueueService.IMAGE;
+            case "studio-audio","studio-lip-sync" -> com.aistareco.aep.service.AiGenerationQueueService.SPEECH;
+            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
+            default -> null;
+        };
+        return type==null?null:generationQueue.position(type,run.getId());
+    }
+    static List<String> nativeVideoJobIds(JsonNode inputs) {
+        JsonNode exec=inputs.path("_exec");
+        List<String> ids=new ArrayList<>();
+        if(exec.path("nativeVideoJobIds").isArray()) exec.path("nativeVideoJobIds").forEach(id->ids.add(id.asText()));
+        else if(exec.hasNonNull("nativeVideoJobId")) ids.add(exec.path("nativeVideoJobId").asText());
+        return ids;
+    }
+    private IpRunDto videoBindingDto(IpRun r,JsonNode inputs,List<String> ids) {
+        ObjectNode output=om.createObjectNode();output.put("mock",false);
+        if(ids.size()==1)output.put("nativeVideoJobId",ids.get(0));
+        var candidates=output.putArray("videoCandidates");
+        boolean active=false,allQueued=true;int successes=0,pct=0;long cost=0;Instant finished=null;String firstError=null,firstErrorCode=null;
+        com.aistareco.aep.dto.AiGenerationQueuePositionDto firstQueue=null;
+        for(int index=0;index<ids.size();index++) {
+            String id=ids.get(index);
+            var job=videoJobs.findById(id).filter(j->r.getOwnerUserId().equals(j.getOwnerUserId()))
+                    .filter(j->MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp())).orElseThrow(()->
+                            BusinessException.notFound("IP_VIDEO_NOT_FOUND","视频任务不存在"));
+            boolean done="succeeded".equals(job.getStatus()),failed="failed".equals(job.getStatus());
+            String key=done?storage.keyOfStoredUrl(job.getVideoUrl()):null;
+            if(done && key==null) {done=false;failed=true;}
+            String error=failed?(job.getErrorMessage()==null?"视频未交付，请查看任务状态":job.getErrorMessage()):null;
+            var candidate=candidates.addObject().put("index",index).put("jobId",id)
+                    .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
+                    .put("durationSec",job.getDurationSec());
+            if(!done&&!failed&&generationQueue!=null) {
+                var queue=generationQueue.position(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,id);
+                if(queue!=null) {
+                    candidate.set("queue",om.valueToTree(queue));
+                    if(firstQueue==null||queue.position()<firstQueue.position())firstQueue=queue;
+                }
+            }
+            if(done) {
+                candidate.put("storageKey",key).put("url",storage.signedUrl(key));successes++;
+                if(!output.has("storageKey")) output.put("storageKey",key).put("url",candidate.path("url").asText()).put("durationSec",job.getDurationSec());
+            }
+            if(error!=null) {
+                candidate.put("errorMessage",error);
+                var logIdMatch = java.util.regex.Pattern.compile("追查号\\s+([A-Z2-9]{12})").matcher(error);
+                if (logIdMatch.find()) {
+                    candidate.put("logId", logIdMatch.group(1));
+                    if (!output.has("logId")) output.put("logId", logIdMatch.group(1));
+                }
+                if(job.getErrorCode()!=null)candidate.put("errorCode",job.getErrorCode());
+                if(firstError==null) {firstError=error;firstErrorCode=job.getErrorCode();}
+            }
+            active|=!done&&!failed;pct+=done||failed?100:job.getProgress();
+            if(!"queued".equals(job.getStatus()))allQueued=false;
+            if(!"failed".equals(job.getStatus()))cost+=job.getCreditsHeld();
+            if(job.getCompletedAt()!=null) {Instant time=job.getCompletedAt().toInstant();if(finished==null||time.isAfter(finished))finished=time;}
+        }
+        boolean allFailed=!active&&successes==0;
+        String stage=active?allQueued?"endpoint.queued":"视频生成中":allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
+        return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
+                stage,pct/ids.size(),cost,allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
+                allFailed?firstError:null,inputs,output,
+                iso(r.getCreatedAt()),active||finished==null?null:finished.toString(),active&&allQueued?firstQueue:null);
     }
 
     private JsonNode signCandidates(JsonNode output) {
         if (output == null || !output.isObject()) return output;
+        // Studio video/assembly outputs use the same key-only persistence as image candidates.
+        String outputKey = output.path("storageKey").asText(null);
+        if (outputKey != null && !outputKey.isBlank()) {
+            ((ObjectNode) output).put("url", storage.signedUrl(outputKey));
+        }
+        String comparisonKey=output.path("comparisonStorageKey").asText(null);
+        if(comparisonKey!=null&&!comparisonKey.isBlank())((ObjectNode)output).put("comparisonUrl",storage.signedUrl(comparisonKey));
+        // Analysis reference images are persisted by key; URLs are signed only on the wire.
+        JsonNode audio=output.path("sourceAudio");
+        if(audio instanceof ObjectNode row && "ready".equals(row.path("status").asText())&&!row.path("storageKey").asText().isBlank())
+            row.put("url",storage.signedUrl(row.path("storageKey").asText()));
+        for(JsonNode ref:output.path("recreation").path("references"))if(ref instanceof ObjectNode row) {
+            String key=row.path("storageKey").asText(null);if(key!=null&&!key.isBlank())row.put("url",storage.signedUrl(key));
+        }
+        for(JsonNode segment:output.path("filmStudy").path("segments"))if(segment instanceof ObjectNode row) {
+            for(String field:List.of("storageKey","coverStorageKey")) {
+                String key=row.path(field).asText(null);if(key!=null&&!key.isBlank())row.put(field.equals("storageKey")?"url":"coverUrl",storage.signedUrl(key));
+            }
+        }
         JsonNode arr = output.path("candidates");
         if (!arr.isArray()) return output;
         for (JsonNode c : arr) {

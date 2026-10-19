@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 新建画布（v0.198，docs/drama-canvas-plan.md §2.2）：两个页签「粘贴写好的剧本」「让 AI 写剧本」、风格浮层、画幅、
 // 集数 / 每集时长、开始。开始不花钱：建画布（粘贴的剧本由服务端按集切开）后进剧本页。
@@ -190,23 +191,23 @@ export default function NewCanvasPage() {
             <div className="cv-new-row">
               <label className="cv-inline-field">
                 <span>集数</span>
-                <select className="cv-select" value={episodes} onChange={(e) => setEpisodes(Number(e.target.value))}>
+                <SelectField className="cv-select" value={episodes} onChange={(e) => setEpisodes(Number(e.target.value))}>
                   {EPISODE_OPTIONS.map((n) => (
                     <option key={n} value={n}>
                       {n} 集
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
               <label className="cv-inline-field">
                 <span>每集时长</span>
-                <select className="cv-select" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
+                <SelectField className="cv-select" value={duration} onChange={(e) => setDuration(Number(e.target.value))}>
                   {DURATION_OPTIONS.map((d) => (
                     <option key={d.value} value={d.value}>
                       {d.label}
                     </option>
                   ))}
-                </select>
+                </SelectField>
               </label>
             </div>
           </div>

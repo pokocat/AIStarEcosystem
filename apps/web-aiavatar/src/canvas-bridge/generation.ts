@@ -71,7 +71,7 @@ export class GenerationCanceled extends Error {
  */
 export class RunFailed extends Error {
   readonly runId: string;
-  constructor(runId: string, message: string) {
+  constructor(runId: string, message: string, readonly code?: string, readonly logId?: string) {
     super(message);
     this.name = "RunFailed";
     this.runId = runId;
@@ -98,7 +98,7 @@ async function waitForRun(runId: string, signal?: AbortSignal): Promise<IpRun> {
       recordRun(run);
       // 服务端已经退过冻结，这里只负责把话说清楚 —— 不吞、不改写成「成功但没图」。
       // 用 RunFailed（而不是普通 Error）：调用点据此知道「这次运行结束了，运行号可以丢」。
-      throw new RunFailed(runId, run.errorMessage || "生成失败，请稍后再试");
+      throw new RunFailed(runId, run.errorMessage || "生成失败，请稍后再试", run.errorCode, run.logId || run.output?.logId);
     }
     if (Date.now() - started > POLL_TIMEOUT_MS) {
       // 别在这儿承诺退款：**前端等超时不等于服务端结束**。那头要么还在跑，要么真的卡住了
@@ -191,7 +191,8 @@ export async function requestEdit(
   const run = await generate(projectId, {
     prompt,
     refKeys: refKeysOf(references),
-    count: Math.max(1, Math.min(4, Number(config.count) || 1)),
+    count: Number.isInteger(Number(config.count)) && Number(config.count) > 0
+      ? Number(config.count) : 1,
     size: config.size,
     // 下拉里选的是**模型名**（agnes-image…），服务端认的是 endpointId。
     // 翻不出来就不传 —— 服务端走后台配的默认端点。指定了却悄悄换一个才是不允许的（D-11）。

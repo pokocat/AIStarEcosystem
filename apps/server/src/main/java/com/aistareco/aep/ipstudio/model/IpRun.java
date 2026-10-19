@@ -56,13 +56,24 @@ public class IpRun {
 
     @Column(nullable = false, length = 64)
     private String ownerUserId;
+    @Column(length=64) private String billingWalletId;
+    @Column(length=64) private String enterpriseId;
+    @Column(length=64) private String membershipId;
+    @Column(length=128) private String billingAuthorizationId;
 
     /** 画布节点 id（客户端生成，服务端不解释其格式）。 */
     @Column(nullable = false, length = 64)
     private String nodeId;
 
-    /** identity | generate */
-    @Column(nullable = false, length = 16)
+    /** Studio idempotency key. Old generation records leave these null. */
+    @Column(length = 64)
+    private String clientRequestId;
+
+    @Column(length = 64)
+    private String inputFingerprint;
+
+    /** identity | generate | studio-* */
+    @Column(nullable = false, length = 32)
     private String kind;
 
     /** running | done | failed（wire 三态，与 dap_job 一致）。 */

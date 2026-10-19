@@ -79,6 +79,16 @@ class IpTemplateResolverTest {
     }
 
     @Test
+    void personalTemplateIsResolvableOnlyByItsOwnerWithoutAnInputForm() {
+        var personal = demo("IPD-personal", "我的模板", true, IpDemoTemplate.KIND_TEMPLATE);
+        personal.setVisibility("personal"); personal.setCreatedBy("owner");
+        var r = resolverWith(List.of(personal));
+        assertTrue(r.resolve(personal.getId(), "owner").isPresent());
+        assertTrue(r.resolve(personal.getId(), "other").isEmpty());
+        assertTrue(r.resolve(personal.getId()).isEmpty());
+    }
+
+    @Test
     void 全局示例排在内置模板前面() {
         IpTemplateResolver r = resolverWith(List.of(demo("IPD-abc123", "潮玩模板", true, IpDemoTemplate.KIND_TEMPLATE)));
         assertEquals("IPD-abc123", r.list().get(0).id(), "运营精选的模板应当排在最前");
@@ -101,6 +111,21 @@ class IpTemplateResolverTest {
         for (IpTemplateDto t : builtins) {
             assertTrue(r.resolve(t.id()).isPresent(), "内置模板解析不到：" + t.id());
         }
+    }
+
+    @Test
+    void builtinCoverOverrideIsSharedByListAndResolveWithoutChangingTheDocument() {
+        var configs=mock(com.aistareco.aep.service.PlatformConfigService.class);
+        var builtin=catalog.templates().get(0);
+        String key=com.aistareco.aep.ipstudio.service.CanvasCoverService.builtinConfigKey(builtin.id());
+        when(configs.findByKey(key)).thenReturn(Optional.of(new com.aistareco.aep.dto.PlatformConfigDto(key,
+                OM.createObjectNode().put("storageKey","ipstudio_cover/"+builtin.id()+"/cover.png"),1,null,null,"operator")));
+        var r=resolverWith(List.of());r.setCoverConfigs(configs);
+        var listed=r.list().stream().filter(t->t.id().equals(builtin.id())).findFirst().orElseThrow();
+        var resolved=r.resolve(builtin.id()).orElseThrow();
+        assertEquals("https://cdn.test/x.png",listed.coverUrl());assertEquals(listed.coverUrl(),resolved.coverUrl());
+        assertEquals(builtin.doc(),listed.doc());assertEquals("official",listed.visibility());
+        assertEquals(catalog.templates().size(),r.list().size());
     }
 
     @Test

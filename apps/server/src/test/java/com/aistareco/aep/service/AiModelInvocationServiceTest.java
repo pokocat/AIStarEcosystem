@@ -7,6 +7,7 @@ import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.repository.AiAppBindingRepository;
 import com.aistareco.aep.repository.AiAppEndpointCandidateRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
@@ -49,6 +50,48 @@ import static org.mockito.Mockito.when;
  * AiModelUsageService 用 mock（用量流水是 best-effort 副作用，与解析/路由断言无关）。
  */
 class AiModelInvocationServiceTest {
+    @org.junit.jupiter.api.Test
+    void configuredVideoCatalogPathUsesSupplierRootWhileLegacyPathKeepsBasePrefix() {
+        org.junit.jupiter.api.Assertions.assertEquals("https://api.onetoken.love/v1/models",
+                AiModelInvocationService.modelCatalogUri("https://api.onetoken.love", "/v1/models").toString());
+        org.junit.jupiter.api.Assertions.assertEquals("https://api.onetoken.love/v1/models?category=video",
+                AiModelInvocationService.modelCatalogUri("https://api.onetoken.love",
+                        "/v1/models?category=video").toString());
+        org.junit.jupiter.api.Assertions.assertEquals("https://vendor.example/v1/models",
+                AiModelInvocationService.modelCatalogUri("https://vendor.example/v1", null).toString());
+    }
+    @Test
+    void endpointAvailabilityUsesTheCallingApplicationForAnyModel() {
+        var endpoints = mock(AiModelEndpointRepository.class);
+        var bindings = mock(AiAppBindingRepository.class);
+        var candidates = mock(AiAppEndpointCandidateRepository.class);
+        var access = mock(AiModelAccessPolicyService.class);
+        var endpoint = AiModelEndpoint.builder().id("generic-image-model").enabled(true).build();
+        var candidate = AiAppEndpointCandidate.builder().endpointId(endpoint.getId()).enabled(true).build();
+        var binding = new AiAppBinding();
+        binding.setPurpose(AiModelPurpose.DAP_IMAGE);
+        binding.setEndpointId(endpoint.getId());
+        when(bindings.findById(AiModelPurpose.DAP_IMAGE)).thenReturn(Optional.of(binding));
+        when(endpoints.findById(endpoint.getId())).thenReturn(Optional.of(endpoint));
+        when(candidates.findByPurposeAndEndpointId(AiModelPurpose.DAP_IMAGE, endpoint.getId())).thenReturn(Optional.of(candidate));
+        when(candidates.findByPurposeOrderBySortOrderAscCreatedAtAsc(AiModelPurpose.DAP_IMAGE)).thenReturn(List.of(candidate));
+        when(access.allows(endpoint, "studio")).thenReturn(true);
+        var service = new AiModelInvocationService(endpoints, bindings, candidates,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), access);
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpoint.getId(), "studio").isPresent());
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_IMAGE, endpoint.getId(), "drama").isEmpty());
+        assertEquals(1, service.listCandidates(AiModelPurpose.DAP_IMAGE, "studio").size());
+        assertTrue(service.listCandidates(AiModelPurpose.DAP_IMAGE, "drama").isEmpty());
+    }
+
+    private static AiModelAccessPolicyService allowAllAccess() {
+        var policy = mock(AiModelAccessPolicyService.class);
+        when(policy.allows(org.mockito.ArgumentMatchers.any(AiModelEndpoint.class),
+                org.mockito.ArgumentMatchers.nullable(String.class))).thenReturn(true);
+        return policy;
+    }
+
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -103,7 +146,7 @@ class AiModelInvocationServiceTest {
         when(endpointRepo.findById(ep.getId())).thenReturn(Optional.of(ep));
         return new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     @Test
@@ -123,6 +166,8 @@ class AiModelInvocationServiceTest {
         assertEquals("你好，我是测试回答。", resp.content());
         assertEquals("stop", resp.finishReason());
         assertEquals(42L, resp.tokensUsed().longValue());
+        assertEquals(10L, resp.promptTokens());
+        assertEquals(32L, resp.completionTokens());
         assertEquals("stub-ep1", resp.endpointUsed());
         assertEquals("override-model", resp.modelUsed());
 
@@ -138,6 +183,14 @@ class AiModelInvocationServiceTest {
         assertEquals(256, ((Number) sent.get("max_tokens")).intValue());
         assertTrue(sent.get("messages") instanceof List<?>);
         assertEquals(2, ((List<?>) sent.get("messages")).size());
+    }
+
+    @Test void contentPartsReachTheProviderButMediaPayloadsAreRedactedFromObservation() throws Exception {
+        StubServer server=stub(200,CHAT_OK);var ep=endpoint("vision",server.baseUrl(),AiModelProviderType.OPENAI_COMPATIBLE,"vision","test-key",true);
+        List<Map<String,Object>> parts=List.of(Map.of("type","text","text","read image"),Map.of("type","image_url","image_url",Map.of("url","data:image/png;base64,PRIVATE_BYTES")));
+        List<Map<String,Object>> messages=List.of(Map.of("role","user","content",parts));
+        var response=boundSvc(AiModelPurpose.DAP_PERSONA,ep).invokeChatOnEndpoint(ep,AiModelPurpose.DAP_PERSONA,messages,Map.of("max_tokens",256));assertEquals("你好，我是测试回答。",response.content());
+        assertTrue(server.requests.get(0).body().contains("PRIVATE_BYTES"));String observed=OM.writeValueAsString(AiModelInvocationService.observedChatMessages(messages));assertFalse(observed.contains("PRIVATE_BYTES"));assertTrue(observed.contains("read image"));assertTrue(messages.toString().contains("PRIVATE_BYTES"),"observation must not mutate the real request");
     }
 
     @Test
@@ -165,6 +218,9 @@ class AiModelInvocationServiceTest {
         AiModelEndpoint ep = endpoint("ep-qwen35", server.baseUrl(),
                 AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-5-9b", "sk-x", true);
         ep.setDefaultTemperature(0.6);
+        ep.setChatSupportsTemperature(false);
+        ep.setChatSupportsResponseFormat(false);
+        ep.setChatMaxOutputTokens(4096);
         AiModelInvocationService svc = boundSvc(AiModelPurpose.DRAMA_SCRIPT_DRAFT, ep);
 
         svc.invokeChat(
@@ -185,6 +241,62 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void qwen36OmitsUnsupportedParametersButKeepsOutputBudget() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-qwen36", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
+        ep.setDefaultTemperature(0.6);
+        ep.setChatSupportsTemperature(false);
+        ep.setChatSupportsResponseFormat(false);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.DAP_PERSONA, ep);
+
+        svc.invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写一个短剧剧本")),
+                Map.of("temperature", 0.7, "max_tokens", 8192,
+                        "response_format", Map.of("type", "json_object")));
+
+        assertEquals(1, server.requests.size());
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertFalse(sent.containsKey("temperature"), "Qwen 3.6 vision_chat 不接受显式 temperature");
+        assertEquals(8192, ((Number) sent.get("max_tokens")).intValue());
+        assertFalse(sent.containsKey("response_format"), "Qwen 3.6 不接受显式 response_format");
+    }
+
+    @Test
+    void chatWireCapabilitiesAreEndpointSpecificNotModelNameRules() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-custom", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "custom-chat", "sk-x", true);
+        ep.setChatSupportsTopP(false);
+        ep.setChatSupportsResponseFormat(false);
+        ep.setChatMaxOutputTokens(2000);
+        ep.setDefaultTopP(0.7);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+        svc.invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")),
+                Map.of("top_p", 0.5, "response_format", Map.of("type", "json_object"),
+                        "temperature", 0.2, "max_tokens", 3000));
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertFalse(sent.containsKey("top_p"));
+        assertFalse(sent.containsKey("response_format"));
+        assertEquals(0.2, ((Number) sent.get("temperature")).doubleValue());
+        assertEquals(2000, ((Number) sent.get("max_tokens")).intValue());
+    }
+
+    @Test
+    void configuredEndpointRejectsOverrideToAnotherModel() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("ep-configured", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "qwen3-6-35b-a3b", "sk-x", true);
+        ep.setChatSupportsTemperature(false);
+        AiModelInvocationService svc = boundSvc(AiModelPurpose.GENERAL, ep);
+        BusinessException ex = assertThrows(BusinessException.class, () -> svc.invokeChat(
+                AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")),
+                Map.of("model", "other-chat")));
+        assertEquals("MODEL_MISMATCH_FOR_ENDPOINT", ex.getCode());
+        assertEquals(0, server.requests.size());
+    }
+
+    @Test
     void unboundPurposeThrowsAiNotConfigured() {
         // 用途无绑定 → 503 AI_NOT_CONFIGURED（不发 HTTP）。
         AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
@@ -194,7 +306,7 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).invokeChat(
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).invokeChat(
                         AiModelPurpose.SCRIPT_DRAFT,
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.SERVICE_UNAVAILABLE, ex.getStatus());
@@ -243,6 +355,19 @@ class AiModelInvocationServiceTest {
                         List.of(Map.of("role", "user", "content", "hi")), null));
         assertEquals(HttpStatus.BAD_GATEWAY, ex.getStatus());
         assertEquals("AI_CALL_FAILED", ex.getCode());
+        assertEquals(1, bad.requests.size());
+    }
+
+    @Test
+    void unavailableModelReportsAnActionableErrorWithoutEchoingVendorDetails() throws Exception {
+        StubServer bad = stub(404, "{\"error\":{\"message\":\"private credential content\"}}");
+        var ep = endpoint("retired", bad.baseUrl(), AiModelProviderType.OPENAI, "old-model", "sk-private", true);
+        var ex = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.GENERAL, ep)
+                .invokeChat(AiModelPurpose.GENERAL, List.of(Map.of("role", "user", "content", "hi")), null));
+        assertEquals("AI_CALL_FAILED", ex.getCode());
+        assertTrue(ex.getMessage().contains("404"));
+        assertTrue(ex.getMessage().contains("更新模型配置"));
+        assertFalse(ex.getMessage().contains("private"));
         assertEquals(1, bad.requests.size());
     }
 
@@ -300,11 +425,10 @@ class AiModelInvocationServiceTest {
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pX");
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("pX");
 
         assertEquals(true, result.get("ok"));
         assertEquals(200, result.get("statusCode"));
-        assertTrue(String.valueOf(result.get("snippet")).contains("gpt-4o"));
 
         StubServer.Recorded r = server.requests.get(0);
         assertEquals("GET", r.method());
@@ -313,8 +437,28 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void testConnectionReturnsSafeReasonOnCatalogFailure() throws Exception {
+        StubServer server = stub(404, "{\"error\":\"upstream private detail\"}");
+        AiModelEndpoint ep = endpoint("p404", server.baseUrl(),
+                AiModelProviderType.OPENAI, "video-model", "sk-conn", true);
+        AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
+        when(endpointRepo.findById("p404")).thenReturn(Optional.of(ep));
+
+        Map<String, Object> result = new AiModelInvocationService(endpointRepo, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection("p404");
+
+        assertEquals(false, result.get("ok"));
+        assertEquals(404, result.get("statusCode"));
+        assertTrue(String.valueOf(result.get("error")).contains("404"));
+        assertFalse(result.containsKey("snippet"));
+    }
+
+    @Test
     void testConnectionRejectsUnsupportedType() {
-        // AZURE_OPENAI 走独立 wire → 不做连通测试，直接返回 ok=false（不发 HTTP）。
+        // 未填写目录规则时不猜供应商的目录地址或鉴权方式。
         AiModelEndpoint ep = endpoint("pY", "http://127.0.0.1:1/v1",
                 AiModelProviderType.AZURE_OPENAI, "gpt-4o", "sk-x", true);
         AiModelEndpointRepository endpointRepo = mock(AiModelEndpointRepository.class);
@@ -323,9 +467,52 @@ class AiModelInvocationServiceTest {
 
         Map<String, Object> result = new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("pY");
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("pY");
         assertEquals(false, result.get("ok"));
         assertEquals("AZURE_OPENAI", result.get("providerType"));
+    }
+
+    @Test
+    void testConnectionUsesConfiguredCatalogForOtherProviderTypes() throws Exception {
+        StubServer server = stub(200, "{\"payload\":{\"models\":[]}}");
+        AiModelEndpoint ep = endpoint("custom-catalog", server.baseUrl(),
+                AiModelProviderType.AZURE_OPENAI, "video-model", "catalog-key", true);
+        var contract = new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioContract(
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioModeSpec(
+                        "t2v", false, false, null, null)),
+                List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioTier("720p",
+                        List.of(new com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioCanvas("16:9", 1280, 720)))),
+                4, 15, 2000, 4294967295L);
+        ep.setVideoRequestSpecJson(new AiVideoRequestSpec("seedance", contract,
+                "/tasks", "/tasks/{id}", Map.of(), "/v1/custom/models", null, null,
+                new AiVideoRequestSpec.AuthHeader("api-key", ""),
+                new AiVideoRequestSpec.CatalogSpec("/payload/models", "/code", null, null),
+                null, null, null, null, null).json());
+        AiModelEndpointRepository endpoints = mock(AiModelEndpointRepository.class);
+        when(endpoints.findById(ep.getId())).thenReturn(Optional.of(ep));
+        var result = new AiModelInvocationService(endpoints, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection(ep.getId());
+        assertEquals(true, result.get("ok"));
+        assertEquals("/v1/custom/models", server.requests.get(0).path());
+    }
+
+    @Test
+    void testConnectionDoesNotReturnInvalidAddressOrCredential() {
+        AiModelEndpoint ep = endpoint("bad-address", "http://bad host/sk-never-show-this",
+                AiModelProviderType.OPENAI, "video-model", "secret-key", true);
+        AiModelEndpointRepository endpoints = mock(AiModelEndpointRepository.class);
+        when(endpoints.findById(ep.getId())).thenReturn(Optional.of(ep));
+        var result = new AiModelInvocationService(endpoints, mock(AiAppBindingRepository.class),
+                mock(AiAppEndpointCandidateRepository.class), mock(AiModelUsageService.class),
+                mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)),
+                allowAllAccess()).testConnection(ep.getId());
+        assertEquals(false, result.get("ok"));
+        assertFalse(String.valueOf(result.get("error")).contains("sk-never-show-this"));
+        assertFalse(String.valueOf(result.get("error")).contains("secret-key"));
     }
 
     @Test
@@ -337,7 +524,7 @@ class AiModelInvocationServiceTest {
         BusinessException ex = assertThrows(BusinessException.class, () ->
                 new AiModelInvocationService(endpointRepo, bindingRepo, mock(AiAppEndpointCandidateRepository.class),
                         mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class))).testConnection("nope"));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess()).testConnection("nope"));
         assertEquals(HttpStatus.NOT_FOUND, ex.getStatus());
         assertEquals("ENDPOINT_NOT_FOUND", ex.getCode());
     }
@@ -372,6 +559,31 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void listModelsUsesConfiguredCatalogPointersAndRejectsWrongListShape() throws Exception {
+        var spec = new AiVideoRequestSpec.CatalogSpec("/payload/models", "/model/id",
+                "/display/name", null);
+        StubServer server = stub(200, "{\"payload\":{\"models\":[{\"model\":{\"id\":\"seedance\"},\"display\":{\"name\":\"Seedance 2.0\"}}]}}");
+        var result = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE, server.baseUrl(),
+                "secret", "/v1/models", null, spec);
+        assertTrue(result.ok());
+        assertEquals("seedance", result.models().get(0).id());
+        assertEquals("Seedance 2.0", result.models().get(0).label());
+
+        StubServer malformed = stub(200, "{\"payload\":{\"models\":{}}}");
+        var failure = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE,
+                malformed.baseUrl(), "secret", "/v1/models", null, spec);
+        assertFalse(failure.ok());
+        assertEquals("模型目录路径或返回结构无效，请检查目录路径与字段映射", failure.error());
+
+        StubServer invalidJson = stub(200, "{\"private\":\"sk-never-show-this\",");
+        var invalid = bareSvc().listModels(AiModelProviderType.OPENAI_COMPATIBLE,
+                invalidJson.baseUrl(), "secret", "/v1/models", null, spec);
+        assertFalse(invalid.ok());
+        assertEquals("模型目录返回内容不是有效 JSON，请检查目录路径", invalid.error());
+        assertFalse(invalid.error().contains("sk-never-show-this"));
+    }
+
+    @Test
     void listModelsReturnsFailOnNon2xx() throws Exception {
         StubServer server = stub(401, "{\"error\":\"unauthorized\"}");
         AiModelDiscoveryResultDto result = bareSvc().listModels(
@@ -388,7 +600,28 @@ class AiModelInvocationServiceTest {
         AiModelDiscoveryResultDto result = bareSvc().listModels(
                 AiModelProviderType.ANTHROPIC, "http://127.0.0.1:1/v1", "sk-x");
         assertFalse(result.ok());
-        assertNotNull(result.error());
+        assertTrue(result.error().contains("请先配置供应商的模型目录"));
+    }
+
+    @Test
+    void configuredCatalogCanBeReadRegardlessOfProviderType() throws Exception {
+        StubServer server = stub(200, "{\"payload\":{\"models\":[{\"code\":\"custom-video\"}]}}");
+        var result = bareSvc().listModels(AiModelProviderType.AZURE_OPENAI, server.baseUrl(),
+                "catalog-key", "/v1/custom/models", new AiVideoRequestSpec.AuthHeader("api-key", ""),
+                new AiVideoRequestSpec.CatalogSpec("/payload/models", "/code", null, null));
+        assertTrue(result.ok());
+        assertEquals("custom-video", result.models().get(0).id());
+        assertEquals("/v1/custom/models", server.requests.get(0).path());
+    }
+
+    @Test
+    void modelDiscoveryRejectsInvalid200AndDeduplicatesModelIds() throws Exception {
+        StubServer malformed = stub(200, "{\"error\":\"not a catalog\"}");
+        assertFalse(bareSvc().listModels(AiModelProviderType.OPENAI, malformed.baseUrl(), "fixture").ok());
+        StubServer valid = stub(200, "{\"data\":[{\"id\":\" m \"},{\"id\":\"m\"},{\"id\":1},{\"id\":\"\"}]}");
+        var result = bareSvc().listModels(AiModelProviderType.OPENAI, valid.baseUrl(), "fixture");
+        assertTrue(result.ok()); assertEquals(List.of("m"),result.models().stream().map(AiModelEntryDto::id).toList());
+        assertEquals(1,valid.requests.size());
     }
 
     private static AiModelInvocationService bareSvc() {
@@ -396,7 +629,7 @@ class AiModelInvocationServiceTest {
                 mock(AiModelEndpointRepository.class), mock(AiAppBindingRepository.class),
                 mock(AiAppEndpointCandidateRepository.class),
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     // ── D-11：resolveEndpoint(purpose, endpointId) 白名单 + listCandidates ──────────
@@ -426,7 +659,7 @@ class AiModelInvocationServiceTest {
         when(candidateRepo.findByPurposeOrderBySortOrderAscCreatedAtAsc(purpose)).thenReturn(candidates);
         return new AiModelInvocationService(endpointRepo, bindingRepo, candidateRepo,
                 mock(AiModelUsageService.class), mock(AiModelGuardService.class),
-                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)));
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
     }
 
     private static AiAppEndpointCandidate candidate(AiModelPurpose purpose, String endpointId,

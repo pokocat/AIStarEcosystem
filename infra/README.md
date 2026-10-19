@@ -6,6 +6,19 @@
 
 本文件是 AI Star Eco 在阿里云上部署的**单一真值源**。
 
+## Studio 本地账号中心（2026-10-10）
+
+本机运行 `python3 infra/scripts/studio-local-identity.py`；更新本地配置或替换旧进程时加
+`--restart`。脚本仅启动同级 `../aibuzz-id` 的 dev profile，使用
+`infra/local/studio-identity.yml`、回环监听 8098、固定 issuer `http://localhost:8098`。
+浏览器公开客户端 `web-aiavatar-local` 强制 PKCE；3013/3016/3019 的 localhost 与 127.0.0.1
+都有精确回调、退出回跳和 CORS 声明。此配置及脚本不参与生产部署。
+
+测试账号 `dev` / `devdevdevdevdev` 由身份服务既有 API 初始化；H2 文件库及自动生成的初始化
+服务密钥保存在 gitignored `.studio-e2e/unified-auth/local-identity/`，重启保持 UID。
+脚本不操作 Studio 的产品库、开通或积分。Studio 前端与后端配置见
+[`apps/web-aiavatar/README.md`](../apps/web-aiavatar/README.md#studio-统一登录2026-10-10)。
+
 ## `clip` 军师预发隔离实例（2026-08-11）
 
 军师「快出片」预发不复用 AIStar 生产实例：`aistareco-clip-preprod` 仅监听 `127.0.0.1:8081`，工作目录 `/opt/aistareco-clip-preprod/server`，运行时机密在 `/etc/aistareco/clip-preprod.env`（0600）。军师预发 BFF 从同机 `http://127.0.0.1:8081` 回源；公网只通过 `wxapi.aibuzz.cn/clip_preprod/cdn/` 与 `/files/` 读取作品，不公开 AIStar API。
@@ -781,3 +794,22 @@ ssh <ECS_HOST> 'systemctl restart aistareco-sau-service'
 **原因**：nginx `/api/` 的 `proxy_read_timeout` 太短，首次 patchright + SPA 慢可达 60-90s。
 
 **解决**：确认 nginx 配的是 `proxy_read_timeout 180s` + `proxy_send_timeout 180s`（见 `nginx/ai.conf.example`）。
+
+
+### Studio 本地模型响应样例开关（v0.202，2026-10-08）
+
+`aep.ipstudio.fixture-enabled` 缺省 false，`fixture-directory` 缺省 `../../.studio-fixtures`。只在本地隔离 H2 验证显式使用命令行参数开启；prod/production/mysql profile 启动硬拒绝。不要加入生产环境文件或部署包。开关只替换模型返回，存储/数据库/ffmpeg 仍需有效的本地配置；素材准备、启动和验收见 `docs/releases/ip-studio-unified-canvas-validation.md`。
+
+## 后端固定 SDK 构建（2026-10-10）
+
+CI 与发布构建在 Maven 编译前执行 `infra/scripts/prepare-platform-sdk.sh`。`infra/vendor/platform-sdk/` 镜像固定 release 的薄 SDK JAR/POM，校验 SHA256 后安装；不保存凭据或平台业务源码。新 runner 不需要跨私有仓读取权限，详情见该目录 README。
+
+## 企业功能发布开关（2026-10-15）
+
+`AEP_ENTERPRISE_ENABLED=false` 为默认值；映射 `aep.enterprise.enabled`。仅在受控环境显式开启时注册企业关系、邀请、RBAC、策略和移交 API，仍受登录/手机号/产品开通保护。E01–E12 已含关系、划拨、人工财务、全部Studio付款与结算、生命周期和对账；已分配积分仍归企业，不增加席位开通。`NEXT_PUBLIC_ENTERPRISE_ENABLED=0` 默认隐藏 Studio 入口，启用须在构建期传1（build-release.sh 会记录），仅改运行期env无效。平台财务已有订单处理保持注册，不随后端入口开关关闭。后续存在在途资金时，关闭新入口不得停用结算、退款和对账；不能回退到不认识企业账户/nullable userId 的版本。环境文件修改按既有流程重建运行实例，授权企业功能上线时同时开启前台构建期开关与后端非机密功能开关；其他环境项和凭据保留。
+
+企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。
+
+### Studio 媒体上传代理（2026-10-17）
+
+web-aiavatar 的 Next rewrite 设置 `experimental.proxyClientMaxBodySize=130mb`、`proxyTimeout=180000`，匹配媒体导入128MiB和自动编码兼容处理；后端转码超时150秒。生产 nginx `/api` 直转server仍采用现有200m/180s配置，无需更改环境变量。

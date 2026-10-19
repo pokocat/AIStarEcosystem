@@ -28,10 +28,49 @@ public record EndpointCapabilityDto(
          */
         java.util.List<String> videoResolutions,
         /** 出视频**真正能出**的比例（如 ["16:9","9:16"]）；null = 不受限。 */
-        java.util.List<String> videoRatios
+        java.util.List<String> videoRatios,
+        /** 出图真正可选的比例；null = 未限制。 */
+        java.util.List<String> imageRatios,
+        /** 当前图片端点的提示词上限；null 表示沿用旧生成链的上限。 */
+        Integer imagePromptMaxChars,
+        /** 当前图片端点允许的一次生成候选数；null 表示旧链路。 */
+        java.util.List<Integer> imageBatchCounts
 ) {
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios,
+                                 java.util.List<String> imageRatios, Integer imagePromptMaxChars) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,imageRatios,imagePromptMaxChars,null);
+    }
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios,
+                                 java.util.List<String> imageRatios) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,imageRatios,null);
+    }
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,null);
+    }
     public static EndpointCapabilityDto from(AiAppEndpointCandidate c) {
         return from(c, null, null, null);
+    }
+
+    public static EndpointCapabilityDto image(AiAppEndpointCandidate c, com.aistareco.aep.model.AiImageRequestSpec spec) {
+        EndpointCapabilityDto base=from(c);
+        Integer maxRefImages=base.maxRefImages();
+        if(spec!=null)maxRefImages=spec.maxReferenceImages();
+        return new EndpointCapabilityDto(maxRefImages,base.supportsFirstLastFrame(),
+                base.supportsSubjectReference(),base.maxDurationSec(),base.minDurationSec(),
+                base.minImagePixels(),base.videoResolutions(),base.videoRatios(),spec==null?null:spec.ratios(),
+                spec==null?null:spec.promptMaxChars(),spec==null?null:spec.allowedBatchCounts());
     }
 
     /** 带**有效**时长区间（协议硬边界 ∩ 候选配置）+ 可出画幅的版本；视频用途用它。 */
@@ -39,9 +78,9 @@ public record EndpointCapabilityDto(
                                              com.aistareco.aep.service.materialvideo.MaterialVideoModelClient.VideoGeometry geo) {
         java.util.List<String> res = geo == null ? null : geo.resolutions();
         java.util.List<String> ratios = geo == null ? null : geo.ratios();
-        if (c == null) return new EndpointCapabilityDto(null, null, null, maxSec, minSec, null, res, ratios);
+        if (c == null) return new EndpointCapabilityDto(null, null, null, maxSec, minSec, null, res, ratios, null);
         return new EndpointCapabilityDto(c.getMaxRefImages(), c.getSupportsFirstLastFrame(),
                 c.getSupportsSubjectReference(),
-                maxSec != null ? maxSec : c.getMaxDurationSec(), minSec, c.getMinImagePixels(), res, ratios);
+                maxSec != null ? maxSec : c.getMaxDurationSec(), minSec, c.getMinImagePixels(), res, ratios, null);
     }
 }

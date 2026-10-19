@@ -1,6 +1,7 @@
 package com.aistareco.aep.service;
 
 import com.aistareco.aep.dto.AdminAiModelEndpointUpsertDto;
+import com.aistareco.aep.dto.AiModelEndpointCostUpsertDto;
 import com.aistareco.aep.dto.AiModelDiscoveryRequestDto;
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEndpointDto;
@@ -9,6 +10,7 @@ import com.aistareco.aep.dto.AiModelProviderPresetDto;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelProviderType;
+import com.aistareco.aep.model.AiVideoRequestSpec;
 import com.aistareco.aep.repository.AiAppBindingRepository;
 import com.aistareco.aep.repository.AiModelEndpointRepository;
 import com.aistareco.common.AepCryptoUtil;
@@ -21,6 +23,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.net.URI;
 
 /**
  * AI 模型接入端点管理（v0.41，原 AiModelProviderAdminService；v0.81 移除外部 API Token）。
@@ -29,6 +32,7 @@ import java.util.UUID;
 @Service
 @Transactional
 public class AiModelEndpointAdminService {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.repository.AiGenerationQueueRepository generationQueue;
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -91,6 +95,12 @@ public class AiModelEndpointAdminService {
         if (req == null || req.name() == null || req.name().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "NAME_REQUIRED", "name 必填");
         }
+        validateConcurrency(req.concurrencyLimit());
+        validateChatMaxOutputTokens(req.chatMaxOutputTokens());
+        if(Boolean.TRUE.equals(req.clearImageRequestSpec()) && req.imageRequestSpec()!=null)
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","不能同时设置和清空图片请求规格");
+        if(Boolean.TRUE.equals(req.clearVideoRequestSpec()) && req.videoRequestSpec()!=null)
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID","不能同时设置和清空视频请求规格");
         if (req.baseUrl() == null || req.baseUrl().isBlank()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "BASE_URL_REQUIRED", "baseUrl 必填");
         }
@@ -117,6 +127,13 @@ public class AiModelEndpointAdminService {
                 .defaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0))
                 .defaultMaxTokens(req.defaultMaxTokens() != null && req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null)
                 .defaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0))
+                .chatSupportsTemperature(req.chatSupportsTemperature())
+                .chatSupportsTopP(req.chatSupportsTopP())
+                .chatSupportsResponseFormat(req.chatSupportsResponseFormat())
+                .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
+                .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
+                .videoRequestSpecJson(req.videoRequestSpec() == null ? null : req.videoRequestSpec().json())
+                .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
                 .rpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null)
                 .tpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null)
                 .dailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null)
@@ -132,11 +149,22 @@ public class AiModelEndpointAdminService {
                 .unitPriceMicros(nonNegative(req.unitPriceMicros()))
                 .enabled(req.enabled() != null ? req.enabled() : true)
                 .build();
+        requireConfiguredVideoModel(entity);
         return AiModelEndpointDto.from(repo.save(entity));
     }
 
     public AiModelEndpointDto update(String id, AdminAiModelEndpointUpsertDto req) {
+        validateConcurrency(req.concurrencyLimit());
+        validateChatMaxOutputTokens(req.chatMaxOutputTokens());
+        if(Boolean.TRUE.equals(req.clearImageRequestSpec()) && req.imageRequestSpec()!=null)
+            throw BusinessException.badRequest("IMAGE_REQUEST_SPEC_INVALID","不能同时设置和清空图片请求规格");
+        if(Boolean.TRUE.equals(req.clearVideoRequestSpec()) && req.videoRequestSpec()!=null)
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID","不能同时设置和清空视频请求规格");
         AiModelEndpoint entity = load(id);
+        boolean supplierChanged=(req.providerType()!=null && AiModelProviderType.fromWire(req.providerType())!=entity.getProviderType())
+                || (req.baseUrl()!=null && !req.baseUrl().equals(entity.getBaseUrl()))
+                || (req.model()!=null && !req.model().equals(entity.getModel()));
+        if (req.concurrencyLimit() != null) entity.setConcurrencyLimit(req.concurrencyLimit() == 0 ? null : req.concurrencyLimit());
         if (req.name() != null) entity.setName(req.name());
         if (req.providerType() != null) entity.setProviderType(AiModelProviderType.fromWire(req.providerType()));
         if (req.baseUrl() != null) entity.setBaseUrl(req.baseUrl());
@@ -145,10 +173,20 @@ public class AiModelEndpointAdminService {
         }
         if (req.apiVersion() != null) entity.setApiVersion(req.apiVersion());
         if (req.model() != null) entity.setModel(req.model());
+        if (supplierChanged && req.imageRequestSpec()==null) entity.setImageRequestSpecJson(null);
+        if (supplierChanged && req.videoRequestSpec()==null) entity.setVideoRequestSpecJson(null);
         if (req.modelAlias() != null) entity.setModelAlias(blankToNull(req.modelAlias()));
         if (req.defaultTemperature() != null) entity.setDefaultTemperature(clampDouble(req.defaultTemperature(), 0.0, 2.0));
         if (req.defaultMaxTokens() != null) entity.setDefaultMaxTokens(req.defaultMaxTokens() > 0 ? req.defaultMaxTokens() : null);
         if (req.defaultTopP() != null) entity.setDefaultTopP(clampDouble(req.defaultTopP(), 0.0, 1.0));
+        if (req.chatSupportsTemperature() != null) entity.setChatSupportsTemperature(req.chatSupportsTemperature());
+        if (req.chatSupportsTopP() != null) entity.setChatSupportsTopP(req.chatSupportsTopP());
+        if (req.chatSupportsResponseFormat() != null) entity.setChatSupportsResponseFormat(req.chatSupportsResponseFormat());
+        if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
+        if (req.imageRequestSpec() != null) entity.setImageRequestSpecJson(req.imageRequestSpec().json());
+        if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
+        if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());
+        if (Boolean.TRUE.equals(req.clearVideoRequestSpec())) entity.setVideoRequestSpecJson(null);
         entity.setRpmLimit(req.rpmLimit() != null && req.rpmLimit() > 0 ? req.rpmLimit() : null);
         entity.setTpmLimit(req.tpmLimit() != null && req.tpmLimit() > 0 ? req.tpmLimit() : null);
         entity.setDailyTokenQuota(req.dailyTokenQuota() != null && req.dailyTokenQuota() > 0 ? req.dailyTokenQuota() : null);
@@ -170,6 +208,31 @@ public class AiModelEndpointAdminService {
             entity.setUnitPriceMicros(nonNegative(req.unitPriceMicros()));
         }
         if (req.enabled() != null) entity.setEnabled(req.enabled());
+        requireConfiguredVideoModel(entity);
+        return AiModelEndpointDto.from(repo.save(entity));
+    }
+
+    private static void requireConfiguredVideoModel(AiModelEndpoint endpoint) {
+        AiVideoRequestSpec spec = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        if (spec != null && spec.requiresModelIdentifier()
+                && (endpoint.getModel() == null || endpoint.getModel().isBlank())) {
+            throw BusinessException.badRequest("VIDEO_REQUEST_SPEC_INVALID", "视频端点需要填写模型标识");
+        }
+    }
+
+    public AiModelEndpointDto updateCosts(String id, AiModelEndpointCostUpsertDto req) {
+        if (req == null || req.supplierBillingMode() == null
+                || !java.util.Set.of("AUTO", "TOKENS", "PER_CALL", "PER_SECOND").contains(req.supplierBillingMode())
+                || req.promptTokenPriceMicros() == null || req.promptTokenPriceMicros() < 0
+                || req.completionTokenPriceMicros() == null || req.completionTokenPriceMicros() < 0
+                || req.unitPriceMicros() == null || req.unitPriceMicros() < 0) {
+            throw BusinessException.badRequest("INVALID_SUPPLIER_COST", "供应商成本单位和价格无效");
+        }
+        AiModelEndpoint entity = load(id);
+        entity.setSupplierBillingMode(req.supplierBillingMode());
+        entity.setPromptTokenPriceMicros(req.promptTokenPriceMicros());
+        entity.setCompletionTokenPriceMicros(req.completionTokenPriceMicros());
+        entity.setUnitPriceMicros(req.unitPriceMicros());
         return AiModelEndpointDto.from(repo.save(entity));
     }
 
@@ -177,6 +240,10 @@ public class AiModelEndpointAdminService {
         if (!repo.existsById(id)) {
             return;
         }
+        repo.lockById(id);
+        if(generationQueue!=null && (generationQueue.countByEndpointIdAndState(id,"waiting")+
+                generationQueue.countByEndpointIdAndState(id,"running")>0))
+            throw BusinessException.badRequest("ENDPOINT_HAS_ACTIVE_GENERATIONS","此端点还有生成或排队任务，请等任务结束后再删除");
         long bound = bindingRepo.countByEndpointId(id);
         if (bound > 0) {
             throw new BusinessException(HttpStatus.CONFLICT, "ENDPOINT_IN_USE",
@@ -186,6 +253,9 @@ public class AiModelEndpointAdminService {
     }
 
     public Map<String, Object> testConnection(String id) {
+        AiVideoRequestSpec spec = AiVideoRequestSpec.read(load(id).getVideoRequestSpecJson());
+        if (spec != null && "".equals(spec.modelsPath()))
+            throw BusinessException.badRequest("MODEL_CATALOG_DISABLED", "该端点未启用模型目录，无法通过目录检测连接");
         return invocation.testConnection(id);
     }
 
@@ -203,16 +273,134 @@ public class AiModelEndpointAdminService {
         return invocation.listModels(type, req.baseUrl(), req.apiKey());
     }
 
+    /** Preview current form values without creating an endpoint or writing a credential. */
+    public AiModelDiscoveryResultDto probeDraft(String id, AiModelDiscoveryRequestDto req) {
+        if (req == null) throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID", "检测配置无效");
+        java.net.URI target;
+        try {
+            target = java.net.URI.create(req.baseUrl());
+            if (!"https".equalsIgnoreCase(target.getScheme()) || target.getHost() == null
+                    || target.getUserInfo() != null || target.getQuery() != null || target.getFragment() != null)
+                throw new IllegalArgumentException();
+            for (java.net.InetAddress address : java.net.InetAddress.getAllByName(target.getHost())) {
+                byte[] ip = address.getAddress();
+                boolean reservedV4 = ip.length == 4 && ((ip[0] & 255) == 0 || (ip[0] & 255) >= 224
+                        || ((ip[0] & 255) == 100 && (ip[1] & 255) >= 64 && (ip[1] & 255) <= 127));
+                boolean privateV6 = ip.length == 16 && (ip[0] & 254) == 252;
+                if (address.isAnyLocalAddress() || address.isLoopbackAddress() || address.isLinkLocalAddress()
+                        || address.isSiteLocalAddress() || address.isMulticastAddress() || reservedV4 || privateV6)
+                    throw new IllegalArgumentException();
+            }
+        } catch (Exception invalid) {
+            return AiModelDiscoveryResultDto.fail(null, "供应商地址无效或不可访问，请使用公网 HTTPS 地址");
+        }
+        String key = req.apiKey();
+        if (key == null || key.isBlank()) {
+            if (id == null || id.isBlank()) throw BusinessException.badRequest("API_KEY_REQUIRED", "请填写上游密钥");
+            AiModelEndpoint saved = load(id);
+            java.net.URI original = java.net.URI.create(saved.getBaseUrl());
+            if (!java.util.Objects.equals(original.getHost(), target.getHost()) || original.getPort() != target.getPort())
+                throw BusinessException.badRequest("API_KEY_REQUIRED", "更换供应商地址后请重新填写密钥");
+            key = AepCryptoUtil.decrypt(saved.getUpstreamApiKeyEncrypted());
+        }
+        return discoverModels(new AiModelDiscoveryRequestDto(req.providerType(), req.baseUrl(), key));
+    }
+
     /** 已存端点：用落库（解密后）的 apiKey 拉取可用模型（不落库；前端拉回后由保存写入）。 */
     public AiModelDiscoveryResultDto fetchModels(String id) {
         AiModelEndpoint entity = load(id);
+        AiVideoRequestSpec spec = AiVideoRequestSpec.read(entity.getVideoRequestSpecJson());
+        if (spec != null && "".equals(spec.modelsPath()))
+            throw BusinessException.badRequest("MODEL_CATALOG_DISABLED", "该端点未启用模型目录，请手动填写固定模型");
         String apiKey;
         try {
             apiKey = AepCryptoUtil.decrypt(entity.getUpstreamApiKeyEncrypted());
         } catch (Exception e) {
             return AiModelDiscoveryResultDto.fail(null, "已存 apiKey 解密失败：" + e.getMessage());
         }
-        return invocation.listModels(entity.getProviderType(), entity.getBaseUrl(), apiKey);
+        return spec == null || spec.authHeader() == null && spec.catalogSpec() == null
+                ? invocation.listModels(entity.getProviderType(), entity.getBaseUrl(), apiKey,
+                        spec == null ? null : spec.modelsPath())
+                : invocation.listModels(entity.getProviderType(), entity.getBaseUrl(), apiKey,
+                        spec.modelsPath(), spec.authHeader(), spec.catalogSpec());
+    }
+
+    /** Check an unsaved connection without persisting it or submitting a generation. */
+    public AiModelDiscoveryResultDto probe(String id, AiModelProviderType type, String baseUrl,
+                                           String suppliedApiKey, String modelsPath) {
+        return probe(id, type, baseUrl, suppliedApiKey, modelsPath, null);
+    }
+
+    public AiModelDiscoveryResultDto probe(String id, AiModelProviderType type, String baseUrl,
+                                           String suppliedApiKey, String modelsPath,
+                                           AiVideoRequestSpec.AuthHeader authHeader) {
+        return probe(id, type, baseUrl, suppliedApiKey, modelsPath, authHeader, null);
+    }
+
+    public AiModelDiscoveryResultDto probe(String id, AiModelProviderType type, String baseUrl,
+                                           String suppliedApiKey, String modelsPath,
+                                           AiVideoRequestSpec.AuthHeader authHeader,
+                                           AiVideoRequestSpec.CatalogSpec catalogSpec) {
+        if ("".equals(modelsPath))
+            throw BusinessException.badRequest("MODEL_CATALOG_DISABLED", "模型目录未启用，请手动填写固定模型");
+        if (authHeader != null) authHeader.validate();
+        if (catalogSpec != null) catalogSpec.validate();
+        URI target;
+        try {
+            target = URI.create(baseUrl);
+            if (!"https".equalsIgnoreCase(target.getScheme()) || target.getHost() == null
+                    || target.getRawUserInfo() != null || target.getRawQuery() != null || target.getRawFragment() != null)
+                throw new IllegalArgumentException();
+            if (modelsPath != null) {
+                URI catalog = URI.create(modelsPath);
+                if (!modelsPath.startsWith("/") || modelsPath.startsWith("//")
+                        || modelsPath.contains("..") || modelsPath.contains("\\")
+                        || catalog.getRawFragment() != null
+                        || !sameOrigin(target, target.resolve(catalog)))
+                    throw new IllegalArgumentException();
+            }
+        } catch (RuntimeException e) {
+            throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID", "供应商地址或模型目录路径无效");
+        }
+        String apiKey = suppliedApiKey;
+        if (apiKey == null || apiKey.isBlank()) {
+            if (id == null || id.isBlank())
+                throw BusinessException.badRequest("API_KEY_REQUIRED", "请填写上游密钥");
+            AiModelEndpoint saved = load(id);
+            URI origin = URI.create(saved.getBaseUrl());
+            if (saved.getProviderType() != type || !sameOrigin(origin, target))
+                throw BusinessException.badRequest("API_KEY_REQUIRED", "更换供应商地址后，请重新填写上游密钥");
+            try {
+                apiKey = AepCryptoUtil.decrypt(saved.getUpstreamApiKeyEncrypted());
+            } catch (Exception e) {
+                throw BusinessException.badRequest("API_KEY_REQUIRED", "已保存的上游密钥不可用，请重新填写");
+            }
+        }
+        return authHeader == null && catalogSpec == null
+                ? invocation.listModels(type, baseUrl, apiKey, modelsPath)
+                : catalogSpec == null
+                    ? invocation.listModels(type, baseUrl, apiKey, modelsPath, authHeader)
+                    : invocation.listModels(type, baseUrl, apiKey, modelsPath, authHeader, catalogSpec);
+    }
+
+    private static boolean sameOrigin(URI a, URI b) {
+        return a.getScheme().equalsIgnoreCase(b.getScheme())
+                && a.getHost().equalsIgnoreCase(b.getHost())
+                && effectivePort(a) == effectivePort(b);
+    }
+
+    private static int effectivePort(URI uri) {
+        return uri.getPort() < 0 ? ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80) : uri.getPort();
+    }
+
+    private static void validateConcurrency(Integer value) {
+        if(value != null && (value < 0 || value > 1000))
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CONCURRENCY_LIMIT", "并发上限须为 0–1000 的整数，0 表示不限制");
+    }
+
+    private static void validateChatMaxOutputTokens(Integer value) {
+        if (value != null && value < 0)
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "INVALID_CHAT_MAX_OUTPUT_TOKENS", "输出 Token 上限须为正整数，0 表示不限制");
     }
 
     private static String serializeModels(List<AiModelEntryDto> models) {

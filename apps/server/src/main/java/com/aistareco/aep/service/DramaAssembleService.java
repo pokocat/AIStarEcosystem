@@ -60,6 +60,7 @@ public class DramaAssembleService {
             .followRedirects(HttpClient.Redirect.NORMAL)
             .build();
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.ipstudio.service.StudioPackagingService studioPackaging;
     private final DramaProjectRepository repo;
     private final FfmpegRunner ffmpeg;
     private final CdnUploader cdnUploader;
@@ -219,6 +220,23 @@ public class DramaAssembleService {
      */
     public AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys,
                                        String canvasRatio) {
+        return assembleKeys(userId, refId, episodeNo, videoKeys, canvasRatio, false);
+    }
+
+    /** Neutral assembly entry for Studio. Ownership is checked by Studio before dispatch. */
+    public AssembledVideo assembleStudioKeys(String userId, String projectId, List<String> videoKeys, String ratio) {
+        return assembleStudioKeys(userId,projectId,videoKeys,ratio,null);
+    }
+
+    public AssembledVideo assembleStudioKeys(String userId,String projectId,List<String> videoKeys,String ratio,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging) {
+        return assembleKeys(userId,projectId,1,videoKeys,ratio,true,packaging);
+    }
+
+    private AssembledVideo assembleKeys(String userId, String refId, int episodeNo, List<String> videoKeys,
+                                        String canvasRatio, boolean studio) {
+        return assembleKeys(userId,refId,episodeNo,videoKeys,canvasRatio,studio,null);
+    }
+    private AssembledVideo assembleKeys(String userId,String refId,int episodeNo,List<String> videoKeys,String canvasRatio,boolean studio,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging packaging) {
         if (videoKeys == null || videoKeys.isEmpty()) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DRAMA_CANVAS_NOTHING_TO_ASSEMBLE",
                     "这一集还没有可以合成的视频。");
@@ -252,7 +270,10 @@ public class DramaAssembleService {
             Path out = workDir.resolve("episode.mp4");
             double tolerance = durationTolerance(expected);
             double actual = -1;
-            if (uniformForCopy(probes)) {
+            // Studio lets users choose an output ratio after selecting clips. A uniform input
+            // must still be normalized when it does not match that explicit choice.
+            if (uniformForCopy(probes) && (!studio || ratioMatches(probes.get(0).width(),
+                    probes.get(0).height(), parseRatio(canvasRatio)))) {
                 log.info("[drama-assemble] canvas path=copy canvas={} ep={} clips={} size={}x{}",
                         refId, episodeNo, locals.size(), probes.get(0).width(), probes.get(0).height());
                 Path listFile = workDir.resolve("list.txt");
@@ -285,7 +306,7 @@ public class DramaAssembleService {
                     }
                 }
             } else {
-                int[] target = targetSize(probes, canvasRatio);
+                int[] target = studio ? studioTargetSize(probes, canvasRatio) : targetSize(probes, canvasRatio);
                 log.info("[drama-assemble] canvas path=normalize canvas={} ep={} clips={} ratio={} target={}x{} clipsMeta={}",
                         refId, episodeNo, locals.size(), canvasRatio, target[0], target[1], describe(probes));
                 ffmpeg.runFfmpeg(normalizeArgs(locals, probes, target[0], target[1], out));
@@ -295,12 +316,26 @@ public class DramaAssembleService {
                 }
             }
 
-            String key = "drama/canvas/assemblies/" + safeSegment(refId) + "_ep" + episodeNo + "_"
+            if(studio && packaging!=null) {
+                if(studioPackaging==null)throw new IllegalStateException("Studio packaging renderer unavailable");
+                Path speech=null;
+                if(packaging.voiceoverStorageKey()!=null) {
+                    String speechUrl=signer.signKey(packaging.voiceoverStorageKey());
+                    if(speechUrl==null||speechUrl.isBlank())throw new IllegalStateException("Speech URL unavailable");
+                    speech=download(speechUrl,workDir.resolve("speech.media"));
+                }
+                out=studioPackaging.decorate(out,workDir,packaging,speech);
+                actual=gatedDuration(out);
+                if(actual<0 || Math.abs(actual-expected)>tolerance)throw new IllegalStateException("包装后成片时长不匹配");
+            }
+            String prefix = studio ? "ipstudio_gen/" + safeSegment(userId) + "/" : "drama/canvas/assemblies/";
+            String key = prefix + safeSegment(refId) + "_ep" + episodeNo + "_"
                     + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
-            cdnUploader.upload(out, key, "video/mp4");
+            var uploaded = cdnUploader.upload(out, key, "video/mp4");
+            if (studio) key = uploaded.key();
             long bytes = Files.size(out);
             // 记入存储用量（成片，归属画布）。画布的归属闸也查这张表；调用方会再用 DramaCanvasOwnership.record 兜一次。
-            storage.record("drama", userId, "成片", refId, key, bytes);
+            storage.record(studio ? "aiavatar" : "drama", userId, "成片", refId, key, bytes);
             log.info("[drama-assemble] canvas ok user={} canvas={} ep={} clips={} dur={}s key={}",
                     userId, refId, episodeNo, locals.size(), Math.round(actual), key);
             return new AssembledVideo(key, Math.round(actual), bytes);
@@ -354,6 +389,23 @@ public class DramaAssembleService {
 
     /** 片段宽高比与画布比例的容差（相对误差）：768×1344 ≈ 0.571 对 9:16 = 0.5625 差 1.6%，算同一比例。 */
     static final double RATIO_TOLERANCE = 0.02;
+
+    private static boolean ratioMatches(int width, int height, Double want) {
+        return want == null || (width > 0 && height > 0
+                && Math.abs((double) width / height - want) / want <= RATIO_TOLERANCE);
+    }
+
+    /** Keep a matching source resolution; otherwise honor Studio's selected output canvas. */
+    private static int[] studioTargetSize(List<FfmpegRunner.MediaProbe> probes, String ratio) {
+        int[] target = targetSize(probes, ratio);
+        if (ratioMatches(target[0], target[1], parseRatio(ratio))) return target;
+        return switch (ratio) {
+            case "9:16" -> new int[]{720, 1280};
+            case "16:9" -> new int[]{1280, 720};
+            case "1:1" -> new int[]{720, 720};
+            default -> target;
+        };
+    }
 
     /**
      * 统一画幅的目标宽高。成片尽量跟画布比例走（2026-10-03 生产：9:16 画布里一条老的 768×1024（3:4）

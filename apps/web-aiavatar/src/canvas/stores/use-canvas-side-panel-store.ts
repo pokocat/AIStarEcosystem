@@ -16,8 +16,9 @@ function initialWidth() {
 }
 
 function initialOpen() {
-    if (typeof window === "undefined") return true;
-    return localStorage.getItem(OPEN_KEY) !== "0";
+    // Studio starts with an unobstructed canvas; preserve explicit panel preferences.
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(OPEN_KEY) === "1";
 }
 
 type CanvasSidePanelStore = {

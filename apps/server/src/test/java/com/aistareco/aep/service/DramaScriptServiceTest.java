@@ -32,7 +32,7 @@ class DramaScriptServiceTest {
         service = new DramaScriptService(
                 mock(DramaScriptRepository.class), invocation, promptService,
                 videoJobs = mock(MaterialVideoJobService.class), new DramaShortContinuityService(OM), OM);
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT)).thenReturn(true);
+        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
     }
 
     /** v0.198：画布的片段视频和短剧同一个分区，但老工作台的视频列表不显示它们。 */
@@ -49,7 +49,7 @@ class DramaScriptServiceTest {
     @Test
     void shortDraftUsesPromptScoped6144Default() {
         stubPrompt(new PromptParamsDto(null, null, true));
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(response(validScript(), "stop"));
 
         var scripts = service.aiDraft(OM.createObjectNode().put("theme", "喵影江湖"), "u1");
@@ -58,27 +58,27 @@ class DramaScriptServiceTest {
         assertEquals("1.0", scripts.get(0).path("continuity_manifest").path("version").asText());
         assertEquals("shot-01", scripts.get(0).path("continuity_manifest").path("shots").path(0).path("id").asText());
         ArgumentCaptor<Map<String, Object>> options = optionsCaptor();
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), options.capture());
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), options.capture(), eq("drama"));
         assertEquals(6144, options.getValue().get("max_tokens"));
     }
 
     @Test
     void operatorConfiguredMaxTokensStillWins() {
         stubPrompt(new PromptParamsDto(0.7, 7000, true));
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(response(validScript(), "stop"));
 
         service.aiDraft(OM.createObjectNode().put("theme", "喵影江湖"), "u1");
 
         ArgumentCaptor<Map<String, Object>> options = optionsCaptor();
-        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), options.capture());
+        verify(invocation).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), options.capture(), eq("drama"));
         assertEquals(7000, options.getValue().get("max_tokens"));
     }
 
     @Test
     void lengthFinishReasonReturnsExplicitTruncationError() {
         stubPrompt(new PromptParamsDto(null, null, true));
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(response("{\"scripts\":[", "length"));
 
         BusinessException ex = assertThrows(BusinessException.class,
@@ -95,7 +95,7 @@ class DramaScriptServiceTest {
         stubPrompt(new PromptParamsDto(null, null, true));
         String missingScriptsArrayCloser = "{\"scripts\":[{\"title\":\"雨夜霓虹迷局\","
                 + "\"scenes\":[{\"duration_sec\":30,\"shot\":\"雨夜街头\",\"dialogue\":\"找到你了\"}]}}";
-        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap()))
+        when(invocation.invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), anyList(), anyMap(), eq("drama")))
                 .thenReturn(response(missingScriptsArrayCloser, "stop"));
 
         var scripts = service.aiDraft(OM.createObjectNode().put("theme", "未来城市悬疑"), "u1");

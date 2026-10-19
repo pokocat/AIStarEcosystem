@@ -39,8 +39,8 @@ function MWave({ data, color = 'var(--primary)', playing }) {
 
 function VoiceRowM({ v, playing, onPlay, chars }: any) {
   const char = (chars || []).find(c => c.id === v.char);
-  const kindLabel = { clone: '真人克隆', design: 'AI 设计' }[v.kind];
-  const kindTone = { clone: 'info', design: 'primary' }[v.kind];
+  const kindLabel = { clone: '真人克隆', design: 'AI 设计', preset: '预设音色' }[v.kind];
+  const kindTone = { clone: 'info', design: 'primary', preset: 'primary' }[v.kind];
   return hMV('div', { className: 'm-card', style: { padding: '12px 14px' } },
     hMV('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
       hMV('button', { onClick: () => onPlay(v.id), className: 'm-tap', style: {

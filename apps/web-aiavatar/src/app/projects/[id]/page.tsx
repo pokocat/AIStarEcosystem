@@ -10,9 +10,8 @@ export default async function ProjectCanvasPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  // 高度交给 CSS 类，不写死也不在这儿算：手机形态没有桌面顶栏，
-  // 却照样减 52px 的话，画布下面会空出一条（此前手机进不来画布，所以没露出来）。
-  // 见 globals.css 的 .canvas-page（顶栏高度是 token，顶栏改高度这里自动跟着走）。
+  // 预览与个人画布统一占满浏览器内容区。网站导航由 AppChrome 排除，
+  // 这里只保留画布自己的工具栏；设备提示和登录闸仍由 CanvasGate 管理。
   return (
     <div className="canvas-page">
       <CanvasGate projectId={id} />

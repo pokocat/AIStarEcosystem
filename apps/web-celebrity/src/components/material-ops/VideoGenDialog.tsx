@@ -1,4 +1,5 @@
 "use client";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 视频生成弹窗 —— 真实提交视频大模型 + 轮询回显。
 //   · baseline 模式：直接生成（一句话补充要求即可，不再堆 6 轴 + 18 项参数）。
@@ -325,7 +326,7 @@ function ModelSelectRow({
           </span>
         )}
         {models != null && models.length > 1 && (
-          <select
+          <SelectField
             value={selected?.endpointId ?? ""}
             onChange={(e) => onSelect(e.target.value)}
             aria-label="选择生成模型"
@@ -345,7 +346,7 @@ function ModelSelectRow({
                 {m.name}{m.isDefault ? "（默认）" : ""}
               </option>
             ))}
-          </select>
+          </SelectField>
         )}
         {models != null && models.length === 1 && selected && (
           <span style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 600, maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{selected.name}</span>

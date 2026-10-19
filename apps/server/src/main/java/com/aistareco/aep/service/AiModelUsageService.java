@@ -23,6 +23,11 @@ import com.aistareco.common.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
+import jakarta.persistence.criteria.Predicate;
+import jakarta.persistence.criteria.Expression;
+import com.aistareco.aep.dto.AiModelUsagePageDto;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.security.core.Authentication;
@@ -344,6 +349,62 @@ public class AiModelUsageService {
                 .filter(dto -> normalizedApp == null || normalizedApp.equals(dto.appCode()))
                 .limit(safeSize)
                 .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public AiModelUsagePageDto recordsPage(int days, int page, int size, Instant asOf,
+            String appCode, String userId, String tenantId, String purpose, String providerId,
+            String model, Boolean success, String q) {
+        Instant now = Instant.now();
+        Instant upper = asOf == null ? now : asOf;
+        if (days < 1 || days > MAX_WINDOW_DAYS || page < 0 || size < 1 || size > 200
+                || (long) page * size > Integer.MAX_VALUE || upper.isAfter(now.plusSeconds(1)))
+            throw BusinessException.badRequest("MODEL_MANAGEMENT_COMMAND_INVALID", "调用记录筛选无效");
+        Instant lower = upper.minus(days, ChronoUnit.DAYS);
+        Specification<AiModelUsageRecord> filter = (root, query, cb) -> {
+            List<Predicate> conditions = new ArrayList<>();
+            conditions.add(cb.greaterThanOrEqualTo(root.get("createdAt"), lower));
+            conditions.add(cb.lessThanOrEqualTo(root.get("createdAt"), upper));
+            String[] fields = {"userId", "tenantId", "purpose", "providerId"};
+            String[] values = {userId, tenantId, purpose, providerId};
+            for (int n = 0; n < fields.length; n++)
+                if (blankToNull(values[n]) != null) conditions.add(cb.equal(root.get(fields[n]), values[n].trim()));
+            if (success != null) conditions.add(cb.equal(root.get("success"), success));
+            if (blankToNull(model) != null)
+                conditions.add(cb.like(cb.lower(root.get("model")), literalLike(model), '\\'));
+            if (blankToNull(q) != null) {
+                List<Predicate> matches = new ArrayList<>();
+                for (String field : List.of("userId", "tenantId", "appCode", "providerName", "model", "purpose", "requestId", "upstreamId", "errorCode"))
+                    matches.add(cb.like(cb.lower(root.get(field)), literalLike(q), '\\'));
+                conditions.add(cb.or(matches.toArray(Predicate[]::new)));
+            }
+            String normalizedApp = normalizeAppCode(appCode);
+            if (normalizedApp != null) {
+                var inferred = cb.<String>selectCase();
+                for (AiModelPurpose kind : AiModelPurpose.values()) {
+                    String app = inferAppCodeForPurpose(kind.wire());
+                    if (app != null) inferred.when(cb.equal(root.get("purpose"), kind.wire()), app);
+                }
+                Expression<String> stored = cb.lower(cb.trim(cb.coalesce(root.get("appCode"), "")));
+                Expression<String> resolved = cb.<String>selectCase()
+                        .when(cb.notEqual(stored, ""), cb.substring(stored, 1, 32))
+                        .otherwise(inferred.otherwise("unknown"));
+                conditions.add(cb.equal(resolved, normalizedApp));
+            }
+            return cb.and(conditions.toArray(Predicate[]::new));
+        };
+        var result = repo.findAll(filter, PageRequest.of(page, size,
+                Sort.by(Sort.Order.desc("createdAt"), Sort.Order.desc("id"))));
+        List<AiModelUsageRecord> records = result.getContent();
+        var endpoints = endpointMap(records); var users = userLabels(records); var tenants = tenantLabels(records);
+        return new AiModelUsagePageDto(records.stream()
+                .map(r -> toRecordDto(r, endpoints.get(r.getProviderId()), users, tenants)).toList(),
+                result.getTotalElements(), page, size, upper);
+    }
+
+    private static String literalLike(String value) {
+        return "%" + value.trim().toLowerCase(java.util.Locale.ROOT)
+                .replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%";
     }
 
     public AiModelUsageRecordDto recordDto(AiModelUsageRecord record) {
@@ -842,7 +903,7 @@ public class AiModelUsageService {
                     VIDEO_REF_ANALYSIS, TEMPLATE_REWRITE -> "celebrity";
             case DRAMA_SCRIPT_DRAFT, IMAGE_GENERATION -> "drama";
             case APPEARANCE_FORGE, MUSIC_GENERATION -> "music";
-            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_REAL_AVATAR -> "aiavatar";
+            case DAP_PERSONA, DAP_IMAGE, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC, DAP_REAL_AVATAR -> "aiavatar";
             case SAFETY_REVIEW, GENERAL -> null;
         };
     }
@@ -870,7 +931,7 @@ public class AiModelUsageService {
     private static AiModelBillingMode effectiveBillingMode(AiModelEndpoint endpoint,
                                                            String purpose,
                                                            AiModelBillingMode requested) {
-        if (endpoint != null && endpoint.getBillingMode() != null) return endpoint.getBillingMode();
+        if (endpoint != null && endpoint.effectiveSupplierBillingMode() != null) return endpoint.effectiveSupplierBillingMode();
         if (requested != null) return requested;
         return inferBillingModeForPurpose(purpose);
     }
@@ -878,7 +939,7 @@ public class AiModelUsageService {
     private static AiModelBillingMode inferBillingModeForPurpose(String purpose) {
         return switch (AiModelPurpose.fromWire(purpose)) {
             case IMAGE_GENERATION, DAP_IMAGE -> AiModelBillingMode.PER_CALL;
-            case VIDEO_GENERATION, DAP_VIDEO -> AiModelBillingMode.PER_SECOND;
+            case VIDEO_GENERATION, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC -> AiModelBillingMode.PER_SECOND;
             default -> AiModelBillingMode.TOKENS;
         };
     }

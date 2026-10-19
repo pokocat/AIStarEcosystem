@@ -8,6 +8,7 @@ import { ImageSettingsPanel, imageQualityLabel, imageSizeLabel } from "@/canvas/
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import { useThemeStore } from "@/canvas/stores/use-theme-store";
 import type { AiConfig } from "@/canvas-bridge/config-store";
+import { imageBatchCountsFor } from "@/canvas-bridge/models";
 
 type CanvasImageSettingsPopoverProps = {
     config: AiConfig;
@@ -28,7 +29,14 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
     const [open, setOpen] = useState(false);
     const [buttonRect, setButtonRect] = useState<DOMRect | null>(null);
     const quality = config.quality || "auto";
-    const count = Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    const batchCounts=imageBatchCountsFor(config.model||config.imageModel);
+    const count = batchCounts?.length
+        ? batchCounts.includes(Number(config.count))?Number(config.count):batchCounts[0]
+        : Math.max(1, Math.min(15, Math.floor(Math.abs(Number(config.count)) || 1)));
+    useEffect(()=>{
+        if(batchCounts?.length&&!batchCounts.includes(Number(config.count)))onConfigChange("count",String(batchCounts[0]));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    },[config.model,config.imageModel,config.count,batchCounts]);
     const activeSize = config.size || "auto";
     const updateOpen = (nextOpen: boolean) => {
         setOpen(nextOpen);
@@ -58,7 +66,7 @@ export function CanvasImageSettingsPopover({ config, onConfigChange, onOpenChang
         };
     }, [onOpenChange, open]);
 
-    const panel = open && buttonRect ? <ImageSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} onConfigChange={onConfigChange} /> : null;
+    const panel = open && buttonRect ? <ImageSettingsPortal buttonRect={buttonRect} panelRef={panelRef} placement={placement} theme={theme} config={config} batchCounts={batchCounts} onConfigChange={onConfigChange} /> : null;
 
     return (
         <>
@@ -80,6 +88,7 @@ function ImageSettingsPortal({
     placement,
     theme,
     config,
+    batchCounts,
     onConfigChange,
 }: {
     buttonRect: DOMRect;
@@ -87,6 +96,7 @@ function ImageSettingsPortal({
     placement: CanvasImageSettingsPopoverProps["placement"];
     theme: (typeof canvasThemes)[keyof typeof canvasThemes];
     config: AiConfig;
+    batchCounts?: number[];
     onConfigChange: (key: keyof AiConfig, value: string) => void;
 }) {
     const width = 356;
@@ -119,7 +129,7 @@ function ImageSettingsPortal({
             onMouseDown={(event) => event.stopPropagation()}
             onClick={(event) => event.stopPropagation()}
         >
-            <ImageSettingsPanel config={config} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
+            <ImageSettingsPanel config={config} batchCounts={batchCounts} onConfigChange={(key, value) => onConfigChange(key, value)} theme={theme} className="space-y-4" />
         </div>,
         document.body,
     );

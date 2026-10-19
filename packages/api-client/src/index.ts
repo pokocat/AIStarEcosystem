@@ -10,6 +10,7 @@
 
 export {
   apiFetch,
+  idApiFetch,
   apiFetchPaginated,
   ApiError,
   USE_MOCK,
@@ -45,11 +46,13 @@ export {
 } from "./_client";
 
 // 登录模式开关（docs/unified-identity-plan.md §12.5）
+export * as InvitationApi from "./api/invitation";
 export { authMode, idIssuer, idClientId, isIdMode, type AuthMode } from "./config";
 
 // 统一账号中心 OIDC + PKCE 流程
 export {
   beginLogin,
+  loginWithIdSms,
   completeAuthCallback,
   refreshAccessToken,
   logout as idLogout,
@@ -117,3 +120,5 @@ export type { CheckoutPayload, CheckoutResponse, PaymentChannel } from "./api/ac
 //   import { devLogin } from "@ai-star-eco/api-client/api/auth";
 //   import { listPublishJobs } from "@ai-star-eco/api-client/api/publish-job";
 //   import { initBind } from "@ai-star-eco/api-client/api/social-account";
+
+export * as EnterpriseApi from "./api/enterprise";

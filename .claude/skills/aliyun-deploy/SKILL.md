@@ -15,6 +15,10 @@ This skill is the repo-local deployment entrypoint. Before any deployment action
 
 During the explicit testing stage, the script defaults `TEST_MEDIA_MODE=true`, which writes only `AEP_CLIP_FORCE_MOCK=true` to the isolated preprod env. This mode must still produce a playable stored MP4 through real ffmpeg assembly/quality gates and permanently burn `测试演示`; it may not fall back to a status-only fake work. Set `TEST_MEDIA_MODE=false` for real Shiliu media acceptance. `prod`/`mysql` profiles must reject force-mock at startup.
 
+Unified IP Studio local acceptance uses `aep.ipstudio.fixture-enabled=true` and a local `aep.ipstudio.fixture-directory`. Both are local development settings, default off; `prod`/`production`/`mysql` must reject fixture mode at startup. Never carry fixture settings or `.studio-fixtures` media into a production release. Native provider generation is disabled while this mode is active. Real API acceptance runs with the switch off after the user supplies model configuration.
+
+Studio local identity uses `infra/scripts/studio-local-identity.py` and `infra/local/studio-identity.yml` on loopback port 8098 with a persistent local H2 database. Its fixed `dev` fixture and initialization credentials are local only; never deploy this configuration, database, or startup script to production. See `infra/README.md` for the local login workflow.
+
 ## Services
 
 Current production services are:
@@ -256,3 +260,9 @@ templates, OSS credentials, or PEM contents into the repo; runtime app credentia
 - Chinese text mojibake has two separate causes. For API/usernames, inspect DB stored values and MySQL `utf8mb4` connection/table settings. For picgen/ffmpeg/browser rendering, first run `fc-list :lang=zh family`, `fc-match 'Noto Sans CJK SC:lang=zh-cn'`, and check `journalctl -u aistareco-server` for `[fonts] registry total`.
 - If a deploy changes only one app, pass only that service list. Do not redeploy `all` unless the user asks for a full release or dependencies require it.
 - If production env values need changes, stop and ask the user to edit `/etc/aistareco/*.env` or confirm the exact non-secret change. Do not invent or overwrite secrets.
+
+## Enterprise release flags (2026-10-15)
+
+Keep `AEP_ENTERPRISE_ENABLED=false` unless enterprise foundation access is explicitly included in a release. E01–E12 provide relations/RBAC, corporate-owned recoverable credits, manual enterprise cash records, all Studio payer selection/admission/settlement, lifecycle recovery, and finance reports. Product enrollment stays explicit; no enterprise seats. This feature is enabled only when explicitly included in an authorized release. NEXT_PUBLIC_ENTERPRISE_ENABLED defaults0 and is a build-time flag for Studio navigation; rebuild with1 only when included in an authorized release. Platform finance handlers remain available for existing enterprise orders when new product entry is disabled. V57 records original recharge provenance and unique cash receipts; refunds wait for original frozen credits to settle and never use later recharge lots. V56 introduces corporate wallets with nullable user_id; once corporate data exists, rollback must retain corporate-aware wallet/ledger readers and hold settlement by wallet_id. Disabling new access must never disable in-flight financial settlement or reconciliation. Environment changes require the existing recreation/restart procedure appropriate to the actual service host.
+
+企业付款灰度：`AEP_ENTERPRISE_ALLOWED_IDS` 可填逗号分隔的企业ID；留空表示全局开关开启后全部企业。只限制新企业付款，不影响原任务结算与恢复。

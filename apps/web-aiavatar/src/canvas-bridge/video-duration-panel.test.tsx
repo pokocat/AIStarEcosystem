@@ -8,18 +8,23 @@ import { render } from "@testing-library/react";
 
 const boundsMock = vi.fn();
 const geometryMock = vi.fn();
+const nativeMock = vi.fn();
 vi.mock("@/canvas-bridge/models", () => ({
+  nativeVideoModelFor: () => nativeMock(),
   videoDurationBoundsFor: (v?: string | null) => boundsMock(v),
   videoGeometryFor: (v?: string | null) => geometryMock(v),
   endpointIdFor: (v?: string | null) => v,
 }));
 
-import { effectiveVideoGeometry, VideoSettingsPanel } from "@/canvas/components/video-settings-panel";
+import { effectiveVideoGeometry, effectiveVideoSeconds, VideoSettingsPanel } from "@/canvas/components/video-settings-panel";
 import { CanvasVideoSettingsPopover } from "@/canvas/components/canvas/canvas-video-settings-popover";
 import { canvasThemes } from "@/canvas/lib/canvas-theme";
 import type { AiConfig } from "@/canvas-bridge/config-store";
 
-beforeEach(() => { boundsMock.mockReset(); geometryMock.mockReset(); });
+beforeEach(() => {
+  boundsMock.mockReset(); geometryMock.mockReset(); nativeMock.mockReset();
+  vi.stubGlobal("ResizeObserver",class { observe(){} unobserve(){} disconnect(){} });
+});
 
 const cfg = (over: Partial<AiConfig>) => ({
   videoSeconds: "4", vquality: "720", size: "720x1280", videoMode: "frames",
@@ -27,6 +32,22 @@ const cfg = (over: Partial<AiConfig>) => ({
 }) as AiConfig;
 
 describe("参数面板：夹过的时长要回写", () => {
+  it("候选数跟随所选端点，旧值不在清单时回写", () => {
+    nativeMock.mockReturnValue({batchCounts:[1,3,5],contract:{minSeconds:5,maxSeconds:15,modes:[],tiers:[]}});
+    const onConfigChange=vi.fn();
+    const view=render(<VideoSettingsPanel config={cfg({videoSeconds:"8",videoCount:"2"})} onConfigChange={onConfigChange} theme={canvasThemes.light}/>);
+    expect(onConfigChange).toHaveBeenCalledWith("videoCount","1");
+    expect(view.getByText("3 条")).toBeDefined();
+    expect(view.queryByText("2 条")).toBeNull();
+  });
+  it("自定义模型允许超过旧画布 30 秒上限的合同区间", () => {
+    nativeMock.mockReturnValue({contract:{minSeconds:35,maxSeconds:60,modes:[],tiers:[]}});
+    const config=cfg({videoSeconds:"45"});
+    expect(effectiveVideoSeconds(config)).toEqual({seconds:45,min:35,max:60});
+    const onConfigChange=vi.fn();
+    render(<VideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={canvasThemes.light}/>);
+    expect(onConfigChange.mock.calls.filter(([key])=>key==="videoSeconds")).toHaveLength(0);
+  });
   it("存 4 秒、模型最短 5 秒 → 打开面板就把 5 写回 config", () => {
     boundsMock.mockReturnValue({ min: 5, max: 15 });
     const onConfigChange = vi.fn();
@@ -46,6 +67,14 @@ describe("参数面板：夹过的时长要回写", () => {
 // 也就是现在点发送真会送出去的时长。夹 + 回写只在面板打开时发生，
 // 所以没打开过的节点显示「有效值」就是骗人（显示 5、提交 4、然后被服务端拒）。
 describe("参数按钮收起状态", () => {
+  it("自定义画幅和清晰度正确显示且不出现误报", () => {
+    nativeMock.mockReturnValue({contract:{minSeconds:35,maxSeconds:60,modes:[{mode:"product-shot",label:"商品镜头"}],
+      tiers:[{tier:"portraitX",canvases:[{aspectRatio:"2:3",width:600,height:900}]}]}});
+    geometryMock.mockReturnValue({resolutions:["portraitX"],ratios:["2:3"]});
+    const {container}=render(<CanvasVideoSettingsPopover config={cfg({videoSeconds:"45",vquality:"portraitX",size:"600x900",videoMode:"product-shot"})} onConfigChange={vi.fn()}/>);
+    expect(container.textContent).toContain("portraitX · 2:3 · 45s");
+    expect(container.textContent).not.toContain("⚠");
+  });
   it("显示存着的 4 秒（不是夹过的 5 秒），并标出「这样发会被拒」", () => {
     boundsMock.mockReturnValue({ min: 5, max: 15 });
     const { container } = render(
@@ -83,6 +112,21 @@ describe("参数按钮收起状态", () => {
 // 聚算按 768p·portrait 出，回来 768×1376，全程不报错。所以面板不能再把
 // 兑现不了的档位摆出来给人选。
 describe("参数面板：画幅按模型真正能出的来", () => {
+  it("自定义清晰度和画幅沿用端点合同，不补 p 或改成内置比例", () => {
+    geometryMock.mockReturnValue({resolutions:["portraitX"],ratios:["2:3","1:1"]});
+    nativeMock.mockReturnValue({contract:{minSeconds:5,maxSeconds:15,modes:[{mode:"product-shot",label:"商品镜头"}],
+      tiers:[{tier:"portraitX",canvases:[{aspectRatio:"2:3",width:600,height:900}]}]}});
+    const onConfigChange=vi.fn();
+    const config=cfg({vquality:"portraitX",size:"600x900",videoMode:"product-shot"});
+    const geometry=effectiveVideoGeometry(config);
+    expect(geometry).toMatchObject({resolution:"portraitX",ratio:"2:3"});
+    expect(geometry.ratioOptions.map(item=>item.value)).toEqual(["2:3"]);
+    const {container}=render(<VideoSettingsPanel config={config} onConfigChange={onConfigChange} theme={canvasThemes.light}/>);
+    expect(container.textContent).toContain("portraitX");
+    expect(container.textContent).toContain("商品镜头");
+    expect(container.textContent).not.toContain("portraitXp");
+    expect(onConfigChange.mock.calls.filter(([key])=>key==="vquality"||key==="size")).toHaveLength(0);
+  });
   it("只渲染这个模型能出的清晰度与比例，并把选不了的值夹回去写回 config", () => {
     boundsMock.mockReturnValue({ min: 5, max: 15 });
     geometryMock.mockReturnValue({ resolutions: ["768"], ratios: ["16:9", "9:16"] });

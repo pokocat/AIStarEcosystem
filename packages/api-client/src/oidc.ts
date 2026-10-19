@@ -13,6 +13,7 @@
 //   sessionStorage aistareco.oidc.pending   ← {verifier, state, returnPath}，只活一次跳转
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isImpersonating } from "./impersonation-session";
 import { idClientId, idIssuer, isIdMode, USE_MOCK } from "./config";
 import {
   clearAuthTokens,
@@ -394,6 +395,20 @@ function storeTokens(token: TokenResponse) {
   );
 }
 
+/** 产品内的短信注册/登录：复用 ID 的 SMS grant 与标准令牌存储。 */
+export async function loginWithIdSms(phone: string, code: string, invitationCode?: string): Promise<void> {
+  if (!isIdMode() || !idIssuer()) throw new OidcError("ID_DISABLED", "当前暂不支持短信注册。");
+  if (isImpersonating()) throw new OidcError("IDENTITY_IMPERSONATION_UNSUPPORTED", "请先退出运营查看，再注册或登录本人账号。");
+  const token = await postToken({
+    grant_type: "urn:aibuzz:params:oauth:grant-type:sms",
+    client_id: idClientId(), phone, code, scope: SCOPE,
+    ...(invitationCode ? { invite_code: invitationCode } : {}),
+  });
+  // 换账号成功后才替换整组令牌，不能沿用上个账号的 refresh/id_token。
+  clearAuthTokens();
+  storeTokens(token);
+}
+
 /**
  * 回调页调用：校验 state → 拿 code 换令牌 → 落地存储 → 返回登录前的站内路径。
  * 失败抛 `OidcError`（message 已是可直接展示的中文）。
@@ -630,12 +645,15 @@ async function doRefresh(startedWith: string, ctx: RefreshContext = { takeover: 
     return !!getAuthToken();
   }
 
+  const currentAccess = getAuthToken();
   try {
     const token = await postToken({
       grant_type: "refresh_token",
       client_id: idClientId(),
       refresh_token: current,
     });
+    // 退出或换账号可能绕过刷新锁；旧成功响应也不能恢复/覆盖已变更的会话。
+    if (getRefreshToken() !== current || getAuthToken() !== currentAccess) return !!getAuthToken();
     // 先落存储、再返回（返回即释放锁）：等锁的标签页醒来时一定读得到新令牌。
     storeTokens(token);
     return true;
@@ -643,7 +661,7 @@ async function doRefresh(startedWith: string, ctx: RefreshContext = { takeover: 
     // 防线 3：`invalid_grant` 往往意味着「别的标签页已经用掉了这个 token」。
     // 只有存储里的 refresh token 仍然是失败的这一个，才是真的过期 / 被吊销。
     const after = getRefreshToken();
-    if (after && after !== current) return !!getAuthToken();
+    if (after !== current || getAuthToken() !== currentAccess) return !!getAuthToken();
     if (isTransientOidcError(e)) {
       // 网络断 / 账号中心 5xx：这次没换成，但令牌未必失效 —— 保留，交给调用方重试。
       throw new OidcError("TRANSIENT", "暂时无法连接账号中心，请稍后重试。", {
