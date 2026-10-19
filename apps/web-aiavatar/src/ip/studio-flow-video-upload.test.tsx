@@ -17,9 +17,9 @@ vi.mock('./studio-flow-image-tools',()=>({StudioFlowImageTools:()=>null}));
 vi.mock('./studio-attachment-picker',()=>({StudioAttachmentPicker:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:({storageKey,...props}:any)=><video {...props}/>}));
 vi.mock('@xyflow/react',()=>{
- const viewport={x:0,y:0,zoom:1},flow={viewportInitialized:true,fitView:vi.fn(),screenToFlowPosition:(p:any)=>p};
+ const viewport={x:0,y:0,zoom:1},flow={viewportInitialized:true,fitView:vi.fn(),screenToFlowPosition:(p:any)=>p,getInternalNode:(id:string)=>({id})};
  return {ReactFlowProvider:({children}:any)=>children,ReactFlow:({nodes,nodeTypes}:any)=><div>{nodes.map((n:any)=>{const Card=nodeTypes.studio;return <Card key={n.id} data={n.data} selected/>;})}</div>,
- useReactFlow:()=>flow,useViewport:()=>viewport,useNodesInitialized:()=>false,Background:()=>null,MiniMap:()=>null,Handle:()=>null,NodeResizer:()=>null,
+ useReactFlow:()=>flow,useViewport:()=>viewport,Background:()=>null,MiniMap:()=>null,Handle:()=>null,NodeResizer:()=>null,
  Position:{Right:'right',Left:'left'},SelectionMode:{Partial:'partial'},BackgroundVariant:{Dots:'dots'}};
 });
 beforeEach(()=>{

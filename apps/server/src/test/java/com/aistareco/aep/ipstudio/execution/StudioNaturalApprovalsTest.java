@@ -31,6 +31,18 @@ class StudioNaturalApprovalsTest {
                 "never below the quote");
     }
 
+    /** 2026-10-19: the plain replies people actually type to a card — 「可以」「好」「行」 — confirm; edits and questions still don't. */
+    @Test void shortAffirmativeRepliesApprove() {
+        for(String text:new String[]{"可以","可以。","好","好的","好吧","行","行吧！","嗯","嗯，可以","对的","是的","可以可以","好了"})
+            assertDoesNotThrow(()->StudioNaturalApprovals.require(text,card,200,0),text);
+        for(String text:new String[]{"可以吗","可以？","行不行","不可以","可以把第 2 段换成横屏","好，我再看看","嗯，先改一下第二段","可以，等我通知"}) {
+            var e=assertThrows(BusinessException.class,()->StudioNaturalApprovals.require(text,card,200,0),text);
+            assertEquals("STUDIO_APPROVAL_AMBIGUOUS",e.getCode(),text);
+        }
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->StudioNaturalApprovals.require("可以",card,500,0)).getCode(),
+                "a short yes never raises the cap above the card");
+    }
+
     /** R2-01: a deferral or an edit request is not an approval even when the model calls the tool. */
     @Test void deferralsAndEditRequestsNeverApprove() {
         for(String text:new String[]{"只修改方案，生成等我通知","先改一下第二段再说","按这个方案，但先不生成","等我确认再开始","改成横屏，开始前再问我","好的，稍后再说"}) {

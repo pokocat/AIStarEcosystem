@@ -33,7 +33,9 @@ vi.mock('antd',()=>{
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel}:any)=>open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}</section>:null,
  Select:({options,value,onChange,mode,...p}:any)=><select multiple={mode==='multiple'} aria-label={p['aria-label']} disabled={p.disabled} value={value??(mode==='multiple'?[]:'')} onChange={e=>onChange(mode==='multiple'?Array.from(e.target.selectedOptions).map(o=>o.value):options.find((o:any)=>String(o.value)===e.target.value)?.value)}>{(options||[]).map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
- Checkbox:({children,...p}:any)=><label><input type="checkbox" {...p}/>{children}</label>,Dropdown:({children,menu}:any)=><div>{children}{menu?.items?.map((item:any)=><button key={item.key} onClick={()=>menu.onClick({key:item.key})}>{item.label}</button>)}</div>,Tabs:({items}:any)=><>{items.map((item:any)=><section key={item.key}>{item.children}</section>)}</>};
+ Checkbox:({children,...p}:any)=><label><input type="checkbox" {...p}/>{children}</label>,Dropdown:({children,menu}:any)=><div>{children}{menu?.items?.map((item:any)=><button key={item.key} onClick={()=>menu.onClick({key:item.key})}>{item.label}</button>)}</div>,Tabs:({items}:any)=><>{items.map((item:any)=><section key={item.key}>{item.children}</section>)}</>,
+  // Like Dropdown above, the overflow 「⋯」 content renders inline so existing action tests reach every action; the split itself is tested separately.
+  Popover:({children,content}:any)=><>{children}{content}</>};
 });
 vi.mock('./studio-commerce',()=>({StudioCommerce:()=>null}));
 vi.mock('./studio-speech',()=>({StudioSpeech:()=>null}));
@@ -580,6 +582,18 @@ test.each(['image','video'])('the %s download uses the newly adopted take and ne
  fireEvent.change(screen.getByRole('combobox',{name:'采用版本'}),{target:{value:'new'}});
  fireEvent.click(screen.getByRole('button',{name:type==='image'?'下载图片':'下载视频',exact:true}));
  expect(api.download).toHaveBeenCalledWith('/new','old adopted',undefined,'new-media');expect(api.submit).not.toHaveBeenCalled();
+});
+
+// Canvas redesign (design Main board): the node bar is 「问助手」 plus at most two main actions; everything else is in 「⋯」.
+test('a selected video with two takes keeps 问助手, 重新生成视频 and 比较版本 on the bar and the rest under 更多操作',()=>{
+ const takes=[{id:'old',status:'success',storageKey:'old-media',content:'/old'},{id:'new',status:'success',storageKey:'new-media',content:'/new'}];
+ render(<Host initial={{...node,type:'video',metadata:{status:'success',storageKey:'old-media',content:'/old',videos:takes,primaryVideoId:'old',studio:{kind:'shot'}}}}/>);
+ const bar=screen.getByLabelText('继续创作'),more=within(bar).getByRole('group',{name:'更多操作'});
+ const inline=[...bar.querySelectorAll(':scope>button')].map(b=>b.textContent);
+ expect(inline).toEqual(['问助手','重新生成视频','比较版本','']);
+ expect(within(bar).getByRole('button',{name:'更多操作'})).toBeDefined();
+ for(const label of ['替换视频','解析视频','拉片','口型同步','加入成片','下载视频'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
+ expect(within(more).getByRole('combobox',{name:'采用版本'})).toBeDefined();
 });
 
 test('a queued video shows waiting instead of fake progress and can be stopped without a new submission',async()=>{

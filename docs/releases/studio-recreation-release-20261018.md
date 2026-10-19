@@ -80,3 +80,74 @@
 
 **未验证**：真模型下的完整链（本地只在演示模式实测），由用户走一遍。回滚：`deploy-release.sh dist/deploy/20261019-studio-dialogue-first web-aiavatar`。
 
+
+## 追加发布 · 2026-10-19 晚 · 画布页照设计稿补齐 + 对话交互修复 + 打字确认（server + web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-canvas-dialogue` |
+| GIT_SHA | `8ee73439`（`release/studio-recreation-20261018`，四个提交 `a42736ed` `fa120469` `6881ee02` `8ee73439`，与 dev 分支 `dev/canvas-page-optimization-b16f3d` 的 `0c49fccf` `68ca2a36` `5abaf10e` `b85b916f` 内容一致；main 上 Codex 未上线的改动不带） |
+| 服务 | server + web-aiavatar（admin 不动；无迁移、无 API 路径变化） |
+| 构建参数 | 与上一版 web-aiavatar 相同（`AUTH_MODE=id`、`ID_ISSUER=https://id.aibuzz.cn`、`ENTERPRISE_ENABLED=1`） |
+| 发布前基线 | web-aiavatar = `f7b414b9`（`20261019-studio-canvas-redesign`）；server = `403e856d`（`20261018-studio-owned-prefix`） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；两个服务 21:19:35 / 21:19:36 CST 重启，server 15.7 秒起来，重启后 0 条 ERROR（同一 grep 近 7 天命中 103 条，确认能命中），2 条 WARN 为启动时的 Hibernate 方言 / Spring Security 默认提示；`PromptTemplateSeeder` 刷新 54 个未改动的提示词 → `v14-2026-10-19-dialogue-short-approvals`；web-aiavatar 0 条错误；`/projects`、`/dashboard`、`/scenes` 200；运行目录的包里含 `studio-dialogue-steps`、`studio-context-more-button`、`studio-flow-origin`、`studio-dialogue-approval-done`、`studio-host-publish` |
+
+内容：
+- 画布页照设计稿 Main 画板补齐（第二、三遍）：顶栏顺序与「已保存」、左栏 56px 七个图标、节点下方操作条（问助手 + 两个主操作 + ⋯）、AI 记号 /「你上传的」/ 生成中圆环、虚线连线、助手头部技能胶囊、三行进度条、对话里的逐步清单、确认后收成一行的确认卡、输入框与按钮区逐像素对齐。
+- 对话交互（端到端走查找到的五处）：Enter 发送、「问助手」把节点带进对话、输入框和画布上的 Esc 不再误关助手、「在画布上看」真的移动画布（不再卡在 `useNodesInitialized`）、按可见区域适配。
+- server：`StudioNaturalApprovals` 接受「可以 / 好 / 行 / 嗯，可以」这类整句短肯定回复（疑问、犹豫、改动照旧拒绝），对话提示词同步举例并 bump `SEED_VERSION`。
+- 按钮配色统一：画布页不再有麦黄，AI 动作用紫色渐变，其它主按钮用墨色（发布、开始制作、发布弹窗、出错重载）。
+
+**未验证**：真模型下的完整对话链（本地在演示模式按真实路径走过，1440 与 375 宽），由用户走一遍；「可以」确认在线上真对话里由用户试一次。回滚：
+`deploy-release.sh dist/deploy/20261019-studio-canvas-redesign web-aiavatar`、`deploy-release.sh dist/deploy/20261018-studio-owned-prefix server`（server 回滚后提示词行停在 v14，只多了短回复示例，不影响旧版行为）。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框聚焦样式热修（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-focus` |
+| GIT_SHA | `94d9ad09`（在 `8ee73439` 上只改 `studio-conversation-start.css`；本分支 cherry-pick 为 `940b541a`，内容相同） |
+| 服务 | web-aiavatar（server / admin 不动） |
+| 构建参数 | 同上一版（`AUTH_MODE=id`、`ID_ISSUER=https://id.aibuzz.cn`、`ENTERPRISE_ENABLED=1`） |
+| 结果 | `verify.sh` ALL GREEN；线上 CSS 已含 `textarea:is(:focus,:focus-visible){outline:none}` 与卡片 `:focus-within` 光圈 |
+
+内容：首页「想做什么」对话框点进输入框时，首页 / 外壳的通用焦点规则给内部 textarea 画了一圈直角描边，浮在圆角卡片里很怪。改为 textarea 不画描边，焦点显示在卡片圆角边缘（浅边 + 3px 淡色光圈）；按钮的键盘焦点描边保留。本地 1440 宽实测。回滚：`deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue web-aiavatar`（在本工作区的 dist 下）。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框文案（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-copy` |
+| GIT_SHA | `ebb62e3c`（在上一版焦点热修之上只改文案：`studio-conversation-start.tsx`、`studio-home.tsx`、`studio-assistant.tsx`） |
+| 结果 | `verify.sh` ALL GREEN；线上 chunk 已含新说明句 |
+
+改动（去掉 AI 腔）：
+- 说明句「建画布免费。回复按实际用量扣积分，做图、做视频前会先报价，你确认了才开始。」→「画布免费建，聊天按用量计积分；出图、出视频前先报价，你确认后才开工。」
+- 输入框提示「想做什么，直接说。比如：……」→「说说你的想法，比如：……」；手机首页标题「想做什么，直接说」→「今天想做点什么？」
+- 两个示例开头（首页与助手开场卡同步）：「设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。」→「帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。」；「帮我搭建从角色描述……到场景视频的创作流程。」→「帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。」
+- 无障碍名「想做什么」与按钮「开始对话」未改。回滚：焦点热修那一版的本地 dist 没保留（只在 ECS 的 `/opt/ai-star-eco/releases/20261019-studio-home-dialog-focus`），本地可直接用 `deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue web-aiavatar` 退回热修之前。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框去掉说明句、改指向灵感与专项（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-links` |
+| GIT_SHA | `e75f5659`（只改 `studio-conversation-start.tsx` / `.css` / `.test.tsx`） |
+| 结果 | `verify.sh` ALL GREEN；线上 chunk 含「还没想好？逛逛」，不再含「画布免费建」 |
+
+用户反馈说明句多余、「先进画布看看」进的是空画布对没想法的人没用：删掉计费说明句；底部改为「还没想好？逛逛 灵感（`/templates`）或 专项创作（`/scenes`）」。首页、手机首页、「画布·自由创作」页三处共用此组件，同时生效；空白画布仍可从各页已有的「新建空白画布」入口进。回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-copy web-aiavatar`。
+
+## 追加发布 · 2026-10-19 晚 · 画布页三处细节（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-canvas-polish` |
+| GIT_SHA | `0b1803be` |
+| 结果 | `verify.sh` ALL GREEN；线上 CSS 含 `.studio-host-more-item` 与左栏 `:hover` 展开规则；本地 `src/ip` 62 个测试文件 435 条全过、tsc 干净 |
+
+用户反馈的三处：
+- 助手「使用说明」一字一行：每步是「序号 24px + 正文」两列网格，`<strong>` 后面的裸文字成了第三个网格项、掉进 24px 序号列。标题和正文包进同一个 `<span>`；测试钉住每个 `li` 只有一个元素子节点（旧代码上确认会红）。
+- 顶栏「⋯」菜单四项样子各异（沿用当初顶栏胶囊的样式，有的居中有的靠左、有的带图标有的不带）：统一成 `.studio-host-more-item`，整宽、左对齐、图标 + 文字；删掉手机端藏「上次发给模型」文字的旧规则。
+- 左栏只有图标认不出：恢复改版前的悬停 / 键盘聚焦展开（56px → 168px，浮在画布上不挤画布），七个工具都带名字；结构测试钉住标签。
+
+回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-links web-aiavatar`。

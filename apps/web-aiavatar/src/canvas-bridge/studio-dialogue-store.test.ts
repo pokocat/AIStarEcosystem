@@ -218,6 +218,14 @@ describe('outbox and snapshots', () => {
     s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c3', result: { messageId: 'u3', turnId: 't1', queueState: 'accepted' } });
     expect(s.messages.map(m => m.id)).toEqual(['u1', 'u3', 'm1']);
     expect(s.activeTurnId).toBe('t1');
+    // 「已收到」 only until the reply starts: once it has, the bubble is just the message (canvas redesign).
+    expect(messageQueueLabel(s, s.messages.find(m => m.id === 'u3')!)).toBeUndefined();
+  });
+  test('an accepted message says 「已收到」 while no reply has started yet', () => {
+    let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c4', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
+    s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c4', result: { messageId: 'u4', turnId: 't2', queueState: 'accepted' } });
+    const sent = s.messages.find(m => m.id === 'u4') ?? { ...userMessage, id: 'u4', seq: s.latestSeq + 1 };
+    expect(messageQueueLabel(s, sent)).toBe('已收到');
   });
   test('a failed send stays in the outbox for a same-key retry; a snapshot that contains it clears it', () => {
     let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c9', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });

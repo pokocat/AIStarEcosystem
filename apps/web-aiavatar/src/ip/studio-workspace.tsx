@@ -5,13 +5,13 @@ import { StudioRecreation } from "./studio-recreation";
 import { StudioTaskList } from "./studio-task-list";
 import { studioTaskPresentation } from '@/canvas-bridge/studio-task-title';
 import { StudioFloatingPanel } from "./studio-floating-panel";
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction, type ReactNode } from "react";
 import { inferMediaRatio } from "@/canvas/lib/media-size";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
-import { App, Button, Checkbox, Dropdown, Input, InputNumber, Modal, Select } from "antd";
+import { App, Button, Checkbox, Dropdown, Input, InputNumber, Modal, Popover, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Images, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { BookOpen, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, SquareCheckBig, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -35,7 +35,7 @@ import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas
 import { StudioAssetMentionInput } from "./studio-asset-mention-input";
 import { StudioMotionPrompt } from "./studio-motion-prompt";
 import { encodeChannelModel } from "@/canvas-bridge/config-store";
-import { StudioAiIcon } from "./studio-ai-icon";
+import { AiMark, StudioAiIcon } from "./studio-ai-icon";
 import { SERVER_CHANNEL_ID, endpointIdFor } from "@/canvas-bridge/models";
 import { computeVideoSize } from "@/canvas/lib/media-size";
 import { saveStudioDocument } from "@/canvas-bridge/studio-save";
@@ -167,6 +167,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [settings,setSettings]=useState<StudioScriptSettings>({genre:"都市治愈",episodeCount:1,episodeDurationSec:30});
   const [episodeNo,setEpisodeNo]=useState<number>(),[episodeFilter,setEpisodeFilter]=useState<number|"all">("all");
   const [takePicker,setTakePicker]=useState<string>();
+  const [contextMoreOpen,setContextMoreOpen]=useState(false);
+  useEffect(()=>{setContextMoreOpen(false);},[selectedNodeIds]);
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
   // Output of a plan execution that finished while this canvas was closed: let the assistant restore it on open.
   const executionRestorePending = useMemo(() => executionOutputMissing(runs, nodesRef.current, readProjectedNodes(projectId)), [runs, projectId]);
@@ -904,44 +906,77 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const directorOrigin=nodes.find(n=>n.id===originId);
   const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
-  const contextualActions=selected && selectedNodeIds.size===1 && mode==="canvas" && !referencePicking && !pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
-      <span className="studio-selected-name">{selected.title}</span>
-      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><Sparkles size={15}/>问助手</button>
-      {selected.type===CanvasNodeType.Image && <><button data-studio-command="image" type="button" onClick={() => {
+  // 设计稿 Main 画板 · 选中节点的操作条：名字、「问助手」、最多两个主操作，其余进「⋯」（更少的按钮，一个焦点）。
+  // 主操作按 rank 排：先是任务状态（确认原任务 / 失败重来），再是这个节点最主要的「生成」，然后是比较版本。
+  type ContextAction={key:string;rank?:number;node:ReactNode};
+  const contextItems:ContextAction[]=[];
+  if(selected&&selectedNodeIds.size===1&&mode==="canvas"&&!referencePicking&&!pickingReferences){
+    const meta=selected.metadata, studio=meta?.studio, add=(key:string,node:ReactNode,rank?:number)=>contextItems.push({key,node,rank});
+    if(meta?.status==="loading" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest) && !studio?.runId) add("confirm",<button type="button" disabled={busy} onClick={()=>void retry(selected)}>确认原任务</button>,0);
+    if(meta?.status==="error" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest)) add("retry",<button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>,0);
+    if(selected.type===CanvasNodeType.Image){
+      add("image",<button data-studio-command="image" type="button" onClick={() => {
           openDirector("image",selected);
           if(selectedStudio?.libraryAssetRole==="sheet"){
             setPrompt("以选中的整张人物设定图为角色参考，生成一张单独的镜头画面。保持同一人物特征、服饰和视觉风格。只呈现一个场景，不要多视角拼版、说明文字或边框。请在此补充场景、动作与镜头角度。");setRatio("9:16");
           }
-        }}><ImagePlus size={15}/>{selectedStudio?.libraryAssetRole==="sheet"?"生成镜头画面":selected.metadata?.storageKey?"继续改图":"生成图片"}</button>
-        {!!selected.metadata?.storageKey&&<>{selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" onClick={() => openDirector("video",selected)}><Play size={15}/>引用生成视频</button>}
-        <button type="button" onClick={() => openAdopt(selected)}><UserRound size={15}/>{selected.metadata?.studio?.adoption?.lookId?"另存人物素材":selected.metadata?.studio?.adoption?"更新主形象":"加入 IP"}</button></>}</>}
-      {selected.type===CanvasNodeType.Text&&selected.metadata?.studio?.script && <><button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>
-        <button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button><button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button></>}
-      {selected.type===CanvasNodeType.Text&&!selected.metadata?.studio?.script&&!selected.metadata?.studio?.libraryReference&&<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>}
-      {selected.type===CanvasNodeType.Image&&selected.metadata?.storageKey&&(selected.metadata?.studio?.adoption||selected.metadata?.studio?.references?.some(r=>r.avatarId)) && <button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>}
-      {selectedStudio?.recreation?.report&&<button type="button" onClick={()=>dispatchStudioCommand('film-study',selected.id)}><Clapperboard size={15}/>继续拉片</button>}
-      {selectedStudio?.kind==='recreation'&&<button type="button" onClick={()=>dispatchStudioCommand('recreation',selected.id)}><FileText size={15}/>打开文档</button>}
-      {selected.type===CanvasNodeType.Video && <><button type="button" disabled={studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand('upload-video',selected.id)}><Upload size={15}/>{selected.metadata?.storageKey?'替换视频':'上传视频'}</button>{!!selected.metadata?.storageKey&&<Dropdown trigger={["click"]} menu={{items:[{key:"analyze",label:"解析",icon:<FileText size={15}/>,onClick:()=>dispatchStudioCommand("recreation",selected.id)},{key:"film-study",label:"拉片",icon:<Clapperboard size={15}/>,onClick:()=>dispatchStudioCommand("film-study",selected.id)}]}}><button type="button"><FileText size={15}/>素材拆解<ChevronDown size={13}/></button></Dropdown>}{!!selected.metadata?.storageKey&&<button type="button" disabled={!!selected.metadata.templateStepId&&selected.metadata.studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>}
-        {selected.metadata?.studio?.kind!=="work" && <button data-studio-command="video" type="button" disabled={selected.metadata?.status==="loading"} onClick={()=>openDirector("video",selected)}>{selected.metadata?.storageKey?"重新生成视频":"生成视频"}</button>}</>}
-      {selected.metadata?.studio?.lipSyncRequest&&selected.metadata.storageKey&&!selected.metadata.studio.lipSyncNormalized&&<button type="button" disabled={busy} onClick={()=>void (async()=>{
+        }}><ImagePlus size={15}/>{selectedStudio?.libraryAssetRole==="sheet"?"生成镜头画面":meta?.storageKey?"继续改图":"生成图片"}</button>,1);
+      if(meta?.storageKey){
+        add("image-next",selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" onClick={() => openDirector("video",selected)}><Play size={15}/>引用生成视频</button>);
+        add("adopt",<button type="button" onClick={() => openAdopt(selected)}><UserRound size={15}/>{studio?.adoption?.lookId?"另存人物素材":studio?.adoption?"更新主形象":"加入 IP"}</button>);
+        if(studio?.adoption||studio?.references?.some(r=>r.avatarId)) add("script",<button type="button" onClick={() => openDirector("script",selected)}><BookOpen size={15}/>创作剧本</button>);
+      }
+    }
+    if(selected.type===CanvasNodeType.Text&&studio?.script){
+      add("editor",<button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>,1);
+      add("split",<button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button>,2);
+      add("extract",<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>);
+    }
+    if(selected.type===CanvasNodeType.Text&&!studio?.script&&!studio?.libraryReference) add("extract",<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>);
+    if(studio?.recreation?.report) add("film-study",<button type="button" onClick={()=>dispatchStudioCommand('film-study',selected.id)}><Clapperboard size={15}/>继续拉片</button>,1);
+    if(studio?.kind==='recreation') add("recreation-doc",<button type="button" onClick={()=>dispatchStudioCommand('recreation',selected.id)}><FileText size={15}/>打开文档</button>,1);
+    if(selected.type===CanvasNodeType.Video){
+      if(studio?.kind!=="work") add("video",<button data-studio-command="video" type="button" disabled={meta?.status==="loading"} onClick={()=>openDirector("video",selected)}>{meta?.storageKey?"重新生成视频":"生成视频"}</button>,1);
+      add("upload-video",<button type="button" disabled={studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand('upload-video',selected.id)}><Upload size={15}/>{meta?.storageKey?'替换视频':'上传视频'}</button>);
+      if(meta?.storageKey){
+        // 原第二排「专项创作」里的解析视频、口型同步，落在视频节点的「⋯」里。
+        add("analyze",<button type="button" onClick={()=>dispatchStudioCommand("recreation",selected.id)}><FileText size={15}/>解析视频</button>);
+        add("film",<button type="button" onClick={()=>dispatchStudioCommand("film-study",selected.id)}><Clapperboard size={15}/>拉片</button>);
+        add("lip",<button type="button" onClick={()=>openLipSync(selected)}>口型同步</button>);
+        add("work",<button type="button" disabled={!!meta.templateStepId&&studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>);
+      }
+    }
+    if(studio?.lipSyncRequest&&meta?.storageKey&&!studio.lipSyncNormalized) add("lip-extract",<button type="button" disabled={busy} onClick={()=>void (async()=>{
         if(busy||!selected.metadata?.studio?.runId)return;setBusy(true);const token=epoch.current;
         try{const run=await extractStudioLipSync(projectId,selected.metadata.studio.runId);if(epoch.current!==token)return;
           patch(selected.id,n=>applyStudioRun(n,run));setRuns(current=>[run,...current.filter(r=>r.id!==run.id)]);await saveStudioDocument(projectId);
           message.success("口型片段已提取，原始对照视频保留在版本中；未再次扣积分");}
         catch(e){if(epoch.current===token)message.error(e);}
         finally{if(epoch.current===token)setBusy(false);}
-      })()}>提取口型片段 · 免费</button>}
-      {selected.metadata?.studio?.lipSyncRequest&&selected.metadata.storageKey&&selected.metadata.studio.lipSyncNormalized&&!selected.metadata.primaryVideoId?.endsWith(":comparison")&&<button type="button" onClick={()=>{
+      })()}>提取口型片段 · 免费</button>,1);
+    if(studio?.lipSyncRequest&&meta?.storageKey&&studio.lipSyncNormalized&&!meta.primaryVideoId?.endsWith(":comparison")) add("lip-adopt",<button type="button" onClick={()=>{
         const original=selected.metadata?.studio?.parentNodeId;
         setNodes(current=>current.map(n=>n.id===selected.id||n.id===original?{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:n.id===selected.id}}}:n));setMode("work");
-      }}>采用口型片段</button>}
-      {selected.type===CanvasNodeType.Audio && selected.metadata?.studio?.speechRequest && selected.metadata?.studio?.runId && selected.metadata?.status==="success" && <button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>}
-      {selected.type===CanvasNodeType.Audio && selected.metadata?.content && <button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey)}>下载配音</button>}
-      {(selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&selected.metadata?.storageKey&&selected.metadata.content&&<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>}
-      {selected.metadata?.status==="loading" && (selected.metadata.studio?.request||selected.metadata.studio?.speechRequest||selected.metadata.studio?.lipSyncRequest) && !selected.metadata.studio.runId && <button type="button" disabled={busy} onClick={()=>void retry(selected)}>确认原任务</button>}
-      {selected.metadata?.status==="error" && (selected.metadata.studio?.request||selected.metadata.studio?.speechRequest||selected.metadata.studio?.lipSyncRequest) && <button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>}
-      {selectedTakes && selectedTakes.length>1 && <><button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button><Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?selected.metadata?.primaryImageId:selected.metadata?.primaryVideoId}
-        onChange={id => chooseTake(selected.id,id)} options={selectedTakes.map((v,i) => ({value:v.id,label:v.id.endsWith(":comparison")?"原始对照结果":`版本 ${i+1}${v.status==="loading"?" · 生成中":v.status==="error"?" · 失败":""}`,disabled:v.status!=="success"||!v.storageKey}))}/></>}</div>:null;
+      }}>采用口型片段</button>,1);
+    if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>,1);
+    if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey)}>下载配音</button>);
+    if((selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&meta?.storageKey&&meta.content) add("download",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>);
+    if(selectedTakes && selectedTakes.length>1){
+      add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>,3);
+      add("take",<Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?meta?.primaryImageId:meta?.primaryVideoId} getPopupContainer={containers}
+        onChange={id => chooseTake(selected.id,id)} options={selectedTakes.map((v,i) => ({value:v.id,label:v.id.endsWith(":comparison")?"原始对照结果":`版本 ${i+1}${v.status==="loading"?" · 生成中":v.status==="error"?" · 失败":""}`,disabled:v.status!=="success"||!v.storageKey}))}/>);
+    }
+  }
+  const contextPrimary=contextItems.filter(a=>a.rank!==undefined).sort((a,b)=>a.rank!-b.rank!).slice(0,2);
+  const contextMore=contextItems.filter(a=>!contextPrimary.includes(a));
+  const contextualActions=selected&&selectedNodeIds.size===1&&mode==="canvas"&&!referencePicking&&!pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
+      <span className="studio-selected-name" title={selected.title}>{selected.title}</span>
+      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
+      {contextPrimary.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}
+      {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen} onOpenChange={setContextMoreOpen} getPopupContainer={containers}
+        content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(false);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>
+        <button type="button" className="studio-context-more-button" aria-label="更多操作" title="更多操作" aria-expanded={contextMoreOpen}><Ellipsis size={18}/></button>
+      </Popover>}</div>:null;
   const storyboardNode=nodes.find(n=>n.id===storyboardNodeId);
   const directorPanel = operation==="text" ? <StudioTextComposer open={director} embedded={mode==="storyboard"} nodeId={originId} value={prompt} onChange={setPrompt}
     model={model} onModelChange={setModel} capabilities={capabilities} busy={busy||directorSaving}
@@ -1006,20 +1041,21 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   return <div className="studio-overlay">
     {/* 画布页改版（2026-10-19）：第二排工具条取消。视图切换居中悬浮；素材库 / 模板 / 专项创作进左栏；任务在左下角带角标；
         助手默认打开，关掉后右上角留一个 AI 圆钮。 */}
-    <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
-      <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
-    {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="和助手说一句，它会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={20}/></button>}
-    <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(v=>!v)} aria-label={activeRunCount?`查看创作任务，${activeRunCount} 个进行中`:"查看创作任务"} title="创作任务" aria-pressed={taskList}><ListChecks size={18}/>{activeRunCount>0&&<span className="studio-tasks-count" aria-hidden="true">{activeRunCount}</span>}</button>
+    {/* 设计稿 Main 画板：分段控件只有文字。 */}
+    <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布"],["storyboard","故事板"],["work","成片"]] as const).map(([value,label]) =>
+      <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}>{label}</button>)}</nav>
+    {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="和助手说一句，它会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><AiMark size={18}/></button>}
+    <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(v=>!v)} aria-label={activeRunCount?`查看创作任务，${activeRunCount} 个进行中`:"查看创作任务"} title="创作任务" aria-pressed={taskList}><SquareCheckBig size={19} strokeWidth={1.75}/>{activeRunCount>0&&<span className="studio-tasks-count" aria-hidden="true">{activeRunCount}</span>}</button>
     {recreationOpen&&<StudioRecreation key={`${projectId}:${recreationId||'new'}`} projectId={projectId} initialNodeId={recreationId} nodes={nodes} capabilities={capabilities} setNodes={setNodes} setConnections={setConnections}
       mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
     {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
     {!nodes.length&&mode==="canvas"&&!assistantOpen&&<section className="studio-start studio-canvas-empty" aria-label="开始创作"><h2>画布还是空的</h2><p>跟助手说想做什么，它会把每一步放进这里。想自己动手也行，左边工具栏能加文字、图片和视频。</p>
-      <button type="button" className="studio-start-primary" onClick={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}><Sparkles size={16}/>和助手开始</button>
+      <button type="button" className="studio-start-primary" onClick={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}><AiMark size={14}/>和助手开始</button>
       <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>做一个 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>写剧本做短视频</button></div></section>}
     {/* Plain text actions and editing share one screen-space surface. */}
     {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
-      : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
+      : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} toolbar width="auto">{contextualActions}</StudioFloatingPanel>}
     {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
       <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}

@@ -1,19 +1,21 @@
 'use client';
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { PanelRight, PanelRightClose, X } from 'lucide-react';
+import { PanelRight, PanelRightOpen, X } from 'lucide-react';
 
 // Screen-space chrome lives outside React Flow's scaled viewport. Context changes
 // remeasure the anchor on pan, zoom and node drag without polling the DOM.
 export const StudioFloatingContext = createContext<unknown>(undefined);
 type Rect = { left:number; top:number; width:number; height:number };
-export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width:number;height:number}, above=false) {
+export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width:number;height:number}, toolbar=false) {
   const gap=12, topBound=72, leftBound=72, rightBound=stage.width-16-panel.width, bottomBound=stage.height-68-panel.height;
   const clamp=(v:number,min:number,max:number)=>Math.max(min,Math.min(v,Math.max(min,max)));
   if(!anchor)return {left:clamp(stage.width-panel.width-24,leftBound,rightBound),top:clamp(topBound,topBound,bottomBound)};
   const x=anchor.left-stage.left, y=anchor.top-stage.top;
-  let left=x+anchor.width/2-panel.width/2, top=above?y-panel.height-gap:y+anchor.height+gap;
-  if(!above&&top>bottomBound) {
+  // A node's action bar sits right under it, flush with its left edge (画布页改版设计稿 · Main 画板); above it only when there is no room below.
+  if(toolbar){const below=y+anchor.height+gap;return {left:clamp(x,leftBound,rightBound),top:below<=bottomBound?Math.max(topBound,below):clamp(y-panel.height-gap,topBound,bottomBound)};}
+  let left=x+anchor.width/2-panel.width/2, top=y+anchor.height+gap;
+  if(top>bottomBound) {
     // Prefer a clear side when there is no room below; never cover the node
     // simply because the canvas is zoomed in.
     if(x+anchor.width+gap+panel.width<=stage.width-16){left=x+anchor.width+gap;top=y;}
@@ -22,8 +24,10 @@ export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width
   }
   return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
 }
-type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number;children:ReactNode;footer?:ReactNode;
-  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean;
+type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number|'auto';children:ReactNode;footer?:ReactNode;
+  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;
+  /** A node's action bar: no title, sized to its buttons, under the node. */
+  toolbar?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean;
   /** Chips next to the title (a mode, a demo mark); the title itself stays a plain string so the dialog keeps its name. */
   titleExtra?:ReactNode;
   /** A mark before the title (the assistant's AI sign). */
@@ -50,6 +54,11 @@ type FloatingEntry={id:symbol;root:HTMLElement;update:(layer:number,active:boole
 const floatingStack:FloatingEntry[]=[];
 /** Where a docked panel's width is published: the canvas shell (its overlay is the stage's sibling), else the stage itself. */
 const dockHost=(root:HTMLElement)=>root.closest<HTMLElement>('.studio-flow-shell')||root;
+// An Escape that closes an Antd menu / select / popover belongs to it. Antd hides the popup before a document listener
+// runs, so whether one was open is recorded in the capture phase (the ＋ menu's Escape used to close the assistant too).
+const OPEN_POPUPS='.ant-select-dropdown:not(.ant-select-dropdown-hidden),.ant-popover:not(.ant-popover-hidden),.ant-dropdown:not(.ant-dropdown-hidden)';
+const popupEscapes=new WeakSet<Event>();
+if(typeof document!=='undefined')document.addEventListener('keydown',e=>{if(e.key==='Escape'&&document.querySelector(OPEN_POPUPS))popupEscapes.add(e);},true);
 function refreshStack(root:HTMLElement) {
   const entries=floatingStack.filter(entry=>entry.root===root);
   entries.forEach((entry,index)=>entry.update(90+index,index===entries.length-1));
@@ -61,13 +70,13 @@ function raiseFloating(id:symbol) {
   if(floatingStack.filter(item=>item.root===entry.root).at(-1)===entry)return;
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
-export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container,embedded=false,
+export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,toolbar=false,className='',container,embedded=false,
   titleExtra,titleIcon,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
   const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0});
   const [docked,setDocked]=useState(()=>dockable&&(readLayout(layoutKey).docked??defaultDocked));
-  const [dockedWidth,setDockedWidth]=useState(()=>{const saved=readLayout(layoutKey).width;return saved&&saved>=minWidth&&saved<=maxWidth?saved:width;});
+  const [dockedWidth,setDockedWidth]=useState(()=>{const saved=readLayout(layoutKey).width;return saved&&saved>=minWidth&&saved<=maxWidth?saved:typeof width==='number'?width:480;});
   const toggleDocked=()=>setDocked(v=>{writeLayout(layoutKey,{docked:!v});return !v;});
   const resize=useRef<{x:number;width:number}|undefined>(undefined);
   const [manual,setManual]=useState<{left:number;top:number}>(),drag=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
@@ -80,8 +89,8 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       const dock=docked?0:parseFloat(dockHost(root).style.getPropertyValue('--studio-docked-panel'))||0;
       const stage={left:rect.left,top:rect.top,width:rect.width-dock,height:rect.height};
       const anchor=anchorId?root.querySelector<HTMLElement>(`[data-id="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect():undefined;
-      const next=floatingPosition(stage,utility?undefined:anchor,panel,above);
-      if(!utility&&anchor&&!above) {
+      const next=floatingPosition(stage,utility?undefined:anchor,panel,toolbar);
+      if(!utility&&anchor&&!toolbar) {
         for(const sibling of root.querySelectorAll<HTMLElement>('.studio-floating-panel.is-utility')) {
           const other=sibling.getBoundingClientRect(),left=other.left-stage.left,top=other.top-stage.top;
           if(next.left<left+other.width&&next.left+panel.width>left&&next.top<top+other.height&&next.top+panel.height>top) {
@@ -95,7 +104,7 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     };
     place();const observer=new ResizeObserver(place);observer.observe(root);observer.observe(ref.current);
     return()=>observer.disconnect();
-  },[open,embedded,root,anchorId,revision,manual,docked,utility,above]);
+  },[open,embedded,root,anchorId,revision,manual,docked,utility,toolbar]);
   useEffect(()=>{setManual(undefined);},[anchorId]);
   // A docked panel owns a strip of the stage: the stage learns its width so right-anchored toolbars and other
   // floating panels keep clear of it (CSS reads --studio-docked-panel on the stage root).
@@ -115,19 +124,24 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     if(!open||embedded||!onClose||!closable)return;
     const escape=(e:KeyboardEvent)=>{
       if(e.key!=='Escape'||e.defaultPrevented||!title||floatingStack.filter(entry=>entry.root===root).at(-1)?.id!==identity.current)return;
-      // Inner editors and Antd menus own their first Escape. Expanded modals protect focus.
-      if(document.querySelector('.ant-modal-wrap:not([style*="display: none"]),.ant-select-dropdown:not(.ant-select-dropdown-hidden),.ant-popover:not(.ant-popover-hidden)'))return;
+      // Inner editors and Antd menus own their first Escape (the ＋ menu's Escape used to close the assistant too). Expanded modals protect focus.
+      if(popupEscapes.has(e)||document.querySelector(`.ant-modal-wrap:not([style*="display: none"]),${OPEN_POPUPS}`))return;
+      // A docked panel is part of the layout: an Escape meant for the canvas (clear the selection) must not close it.
+      if(docked&&!ref.current?.contains(document.activeElement))return;
+      // Escape while writing in this panel never throws the panel away; it only leaves the field.
+      const field=(e.target as HTMLElement|null)?.closest?.('textarea,input,[contenteditable="true"]') as HTMLInputElement|HTMLTextAreaElement|null;
+      if(field&&ref.current?.contains(field)&&(field.value??field.textContent??'').trim()){field.blur();return;}
       e.preventDefault();onClose();
     };
     document.addEventListener('keydown',escape);return()=>document.removeEventListener('keydown',escape);
-  },[open,embedded,onClose,closable,root,!!title]);
+  },[open,embedded,onClose,closable,root,!!title,docked]);
   if(!open)return null;
   // Storyboard embeds the same creator in its detail pane; no canvas anchor or floating stack.
   if(embedded)return <section className={`studio-embedded-composer ${className}`} aria-label={typeof title==='string'?title:undefined}>
     <div className="studio-floating-body">{children}</div>{footer&&<footer className="studio-floating-footer">{footer}</footer>}
   </section>;
   if(!root)return null;
-  return createPortal(<section ref={ref} className={`studio-floating-panel nodrag nopan nowheel${utility?' is-utility':''}${docked?' is-docked':''}${above?' is-context-toolbar':''} ${className}`}
+  return createPortal(<section ref={ref} className={`studio-floating-panel nodrag nopan nowheel${utility?' is-utility':''}${docked?' is-docked':''}${toolbar?' is-context-toolbar':''} ${className}`}
     role={title?'dialog':undefined} aria-modal={title?false:undefined} aria-label={typeof title==='string'?title:undefined} data-anchor-id={anchorId} data-active={title?layer.active:undefined}
     onPointerDownCapture={()=>raiseFloating(identity.current)} onFocusCapture={()=>raiseFloating(identity.current)}
     style={{width:docked?dockedWidth:width,left:docked?undefined:position.left,top:docked?undefined:position.top,zIndex:title?layer.z:undefined}}>
@@ -141,7 +155,7 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       drag.current={x:e.clientX,y:e.clientY,...position};e.currentTarget.setPointerCapture?.(e.pointerId);
     }} onPointerMove={e=>{if(drag.current)setManual({left:drag.current.left+e.clientX-drag.current.x,top:drag.current.top+e.clientY-drag.current.y});}}
     onPointerUp={()=>{drag.current=undefined;}} onPointerCancel={()=>{drag.current=undefined;}}>
-      <div className="studio-floating-title">{titleIcon}<strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRightClose size={17}/>:<PanelRight size={17}/>}</button>}
+      <div className="studio-floating-title">{titleIcon}<strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRight size={17}/>:<PanelRightOpen size={17}/>}</button>}
       {onClose&&<button type="button" aria-label={`关闭${typeof title==='string'?title:'浮层'}`} disabled={!closable} onClick={onClose}><X size={17}/></button>}</div>
     </header>}
     {subheader&&<div className="studio-floating-subheader">{subheader}</div>}
