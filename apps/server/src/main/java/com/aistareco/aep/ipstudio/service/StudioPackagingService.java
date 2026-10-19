@@ -30,6 +30,16 @@ public class StudioPackagingService {
         }
         if(blank(value.brand())&&blank(value.title())&&blank(value.cta())&&(value.captions()==null||value.captions().isEmpty())&&blank(value.voiceoverStorageKey()))fail("请填写品牌文字、字幕或选择配音");
     }
+    /**
+     * Run before the clips are spliced, against the planned length (sum of the probed clips). It rejects only what
+     * {@link #decorate} would certainly reject after a full splice: the result may come out up to {@code slack} seconds
+     * longer than planned and still pass the assembly quality gate, so the same limits are applied to planned + slack.
+     */
+    public void precheck(Packaging value,Path audio,double plannedSec,double slack) {
+        validate(value);if(value==null)return;
+        checkCaptions(value,plannedSec+slack);
+        if(audio!=null)checkSpeech(ffmpeg.probeMedia(audio.toFile()),plannedSec+slack);
+    }
     public Path decorate(Path source,Path work,Packaging value) throws Exception {
         return decorate(source,work,value,null);
     }
@@ -37,7 +47,7 @@ public class StudioPackagingService {
         validate(value);var probe=ffmpeg.probeMedia(source.toFile());
         int width=probe.width(),height=probe.height();double duration=probe.durationSec();
         if(!probe.readable()||width<1||height<1||duration<=0)fail("包装来源视频无法读取");
-        if(value.captions()!=null)for(var c:value.captions())if(c.end()>duration+0.25)fail("字幕时间超过成片时长");
+        checkCaptions(value,duration);
         List<String> args=new ArrayList<>(List.of("-y","-i",source.toString()));
         Path base=work.resolve("studio-brand.png");ImageIO.write(overlay(width,height,value.brand(),value.title(),value.cta(),null),"png",base.toFile());
         args.addAll(List.of("-loop","1","-i",base.toString()));String filter="[0:v]setsar=1[v0];[v0][1:v]overlay=0:0[v1]";int n=1;
@@ -48,9 +58,7 @@ public class StudioPackagingService {
         }
         Path out=work.resolve("studio-packaged.mp4");
         if(audio!=null) {
-            var speech=ffmpeg.probeMedia(audio.toFile());
-            if(!speech.readable()||!speech.hasAudio()||speech.hasVideo()||speech.durationSec()<=0)fail("所选配音不是可用音频");
-            if(speech.durationSec()>duration+.05)throw BusinessException.badRequest("STUDIO_SPEECH_TOO_LONG","配音长于视频，请缩短文案或增加视频片段；不会截断台词");
+            checkSpeech(ffmpeg.probeMedia(audio.toFile()),duration);
             args.addAll(List.of("-i",audio.toString()));
             filter+=";["+(n+1)+":a]aresample=48000,loudnorm=I=-16:TP=-2.5:LRA=11,apad[aout]";
         }
@@ -79,7 +87,53 @@ public class StudioPackagingService {
         g.setColor(new Color(17,24,39,195));g.fillRoundRect(x,y,boxWidth,lines.size()*(size+8)+18,12,12);g.setColor(Color.WHITE);
         for(int i=0;i<lines.size();i++)g.drawString(lines.get(i),x+12,y+12+metrics.getAscent()+i*(size+8));
     }
+    /** 成片高级编辑的一段文字：整幅透明图，文字（可多行）居中在画面中心 + (x, y)，粗体、给定字号和颜色（与编辑器预览一致：只有填充，没有底框）。 */
+    public BufferedImage editText(int width,int height,String text,double x,double y,int size,String color) {
+        BufferedImage image=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);Graphics2D g=image.createGraphics();
+        try {
+            hints(g);g.setFont(font(text,size));g.setColor(color==null?Color.WHITE:Color.decode(color));
+            centered(g,text.split("\n",-1),width/2.0+x,height/2.0+y);
+            return image;
+        } finally {g.dispose();}
+    }
+    /** 成片高级编辑的字幕：和编辑器里的「SOFT_BOX」样式一致 —— 40px 白色粗体、#333 底框，整句居中在画面中线往下 30% 高度处。 */
+    public BufferedImage editCaption(int width,int height,String text) {
+        BufferedImage image=new BufferedImage(width,height,BufferedImage.TYPE_INT_ARGB);Graphics2D g=image.createGraphics();
+        try {
+            hints(g);int size=Math.max(18,Math.round(40f*width/720f));g.setFont(font(text,size));var m=g.getFontMetrics();
+            String[] lines=wrap(text,m,width-2*Math.max(20,width/18)-24);
+            int lineH=m.getHeight(),boxW=0;for(String l:lines)boxW=Math.max(boxW,m.stringWidth(l));boxW+=32;int boxH=lines.length*lineH+20;
+            double cy=height/2.0+height*0.3;g.setColor(new Color(51,51,51,215));
+            g.fillRoundRect((int)Math.round(width/2.0-boxW/2.0),(int)Math.round(cy-boxH/2.0),boxW,boxH,16,16);
+            g.setColor(Color.WHITE);centered(g,lines,width/2.0,cy);
+            return image;
+        } finally {g.dispose();}
+    }
+    private static void hints(Graphics2D g) {g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);g.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,RenderingHints.VALUE_TEXT_ANTIALIAS_ON);}
+    private Font font(String text,int size) {
+        Font font=fonts.byKind(FontRegistry.Kind.SANS).stream().map(FontRegistry.RegisteredFont::font).filter(f->f.canDisplayUpTo(text.replace("\n",""))<0).findFirst().orElse(new Font(Font.SANS_SERIF,Font.BOLD,size));
+        if(font.canDisplayUpTo(text.replace("\n",""))>=0)fail("中文字体未安装，暂不能添加这些文字");
+        return font.deriveFont(Font.BOLD,(float)size);
+    }
+    private static void centered(Graphics2D g,String[] lines,double cx,double cy) {
+        var m=g.getFontMetrics();int lineH=m.getHeight();double top=cy-lines.length*lineH/2.0;
+        for(int i=0;i<lines.length;i++)g.drawString(lines[i],(float)(cx-m.stringWidth(lines[i])/2.0),(float)(top+i*lineH+m.getAscent()));
+    }
+    private static String[] wrap(String text,java.awt.FontMetrics m,int maxWidth) {
+        List<String> lines=new ArrayList<>();StringBuilder line=new StringBuilder();
+        for(int cp:text.codePoints().toArray()){String c=new String(Character.toChars(cp));if(cp=='\n'||m.stringWidth(line+c)>maxWidth&&!line.isEmpty()){lines.add(line.toString());line.setLength(0);}if(cp!='\n')line.append(c);}
+        if(!line.isEmpty())lines.add(line.toString());return lines.toArray(String[]::new);
+    }
     private static boolean blank(String v) {return v==null||v.isBlank();}
     private static void text(String v,int max) {if(v!=null&&v.length()>max)fail("包装文字过长");}
+    /** The one caption limit, shared by {@link #precheck} and {@link #decorate}. */
+    private static void checkCaptions(Packaging value,double duration) {
+        if(value.captions()!=null)for(var c:value.captions())if(c.end()>duration+0.25)fail("字幕时间超过成片时长");
+    }
+    /** The one voiceover limit, shared by {@link #precheck} and {@link #decorate}: never truncated, never longer than the video. */
+    private static void checkSpeech(FfmpegRunner.MediaProbe speech,double duration) {
+        if(!speech.readable()||!speech.hasAudio()||speech.hasVideo()||speech.durationSec()<=0)fail("所选配音不是可用音频");
+        if(speech.durationSec()>duration+.05)throw BusinessException.badRequest("STUDIO_SPEECH_TOO_LONG","配音长于视频，请缩短文案或增加视频片段；不会截断台词");
+    }
     private static void fail(String message) {throw BusinessException.badRequest("STUDIO_PACKAGING_INVALID",message);}
 }

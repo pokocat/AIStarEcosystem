@@ -143,6 +143,12 @@ public class StudioWorkflowService {
         validateCreativeRequest(request);
         validateSkillRequest(request,skillPlan,check);
         StudioPackagingService.validate(request.packaging());
+        if(request.edit()!=null) {
+            if(!"assemble".equals(request.operation()))throw bad("STUDIO_EDIT_ASSEMBLE_ONLY","剪辑时间线只能用于成片合成");
+            StudioEditGraph.validate(request.edit());
+            for(var media:request.edit().clips())projects.requireOwnedAssetKey(userId,media.storageKey());
+            if(request.edit().audios()!=null)for(var media:request.edit().audios())projects.requireOwnedAssetKey(userId,media.storageKey());
+        }
         if(request.packaging()!=null && request.packaging().voiceoverStorageKey()!=null) {
             if(!"assemble".equals(request.operation()))throw bad("STUDIO_SPEECH_ASSEMBLE_ONLY","配音只能用于成片合成");
             projects.requireOwnedAssetKey(userId,request.packaging().voiceoverStorageKey());

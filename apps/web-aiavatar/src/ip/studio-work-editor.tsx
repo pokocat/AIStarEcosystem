@@ -1,7 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Button, Checkbox, Input, Select } from "antd";
-import { ArrowDown, ArrowUp, Download, GripVertical, Mic, Pause, Play } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, GripVertical, Mic, Pause, Play, SlidersHorizontal } from "lucide-react";
+import { formatDateTime } from "@/lib/datetime";
 import type { StudioWorkDraft } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
@@ -26,6 +27,8 @@ type Props = {
   busy: boolean; locked: boolean; mock?: boolean;
   onAssemble: () => void; onDownload: (node: CanvasNodeData) => void;
   onAddClips: () => void; onCreateVideo: () => void; onOpenStoryboard: () => void; onMakeVoice: () => void;
+  /** 高级编辑（Twick）。只有电脑版界面能用，手机上提示去电脑。 */
+  onOpenAdvanced: () => void; onDropAdvanced: () => void; advancedAvailable: boolean;
 };
 
 const ORIGIN_TAGS: Record<StudioClipOrigin, string> = { source: "原片素材", generated: "AI 生成", uploaded: "上传" };
@@ -183,13 +186,21 @@ export function StudioWorkEditor(p: Props) {
           </>}
         </section>
 
-        <div className="studio-work-actions">
+        {draft.advanced ? <div className="studio-work-actions">
+          <Button type="primary" icon={<SlidersHorizontal size={15}/>} disabled={!p.advancedAvailable} onClick={p.onOpenAdvanced}>继续高级编辑</Button>
+          <Button disabled={p.locked} onClick={p.onDropAdvanced}>改回一键成片</Button>
+          <div>
+            <strong>这份成片在高级编辑里改过</strong>
+            <span>{p.advancedAvailable ? `上次保存 ${formatDateTime(draft.advanced.savedAt)}，在高级编辑里导出成片。上面的设置不再生效。` : "高级编辑要在电脑上打开"}</span>
+          </div>
+        </div> : <div className="studio-work-actions">
           <Button type="primary" loading={p.busy} disabled={p.locked || !!blocked} onClick={p.onAssemble}>合成作品</Button>
+          <Button icon={<SlidersHorizontal size={15}/>} disabled={p.locked || !p.advancedAvailable} title={p.advancedAvailable ? "掐头去尾、切开、加文字和字幕，再导出" : "高级编辑要在电脑上打开"} onClick={p.onOpenAdvanced}>高级编辑</Button>
           <div>
             <strong>已选 {included.length}/{clips.length} 段 · {known ? `共 ${formatStudioSeconds(total)}` : included.length ? "时长读取中" : "还没选片段"}</strong>
             {blocked ? <span className="is-error">{blocked}</span> : <span>{p.mock ? "测试响应，不产生模型费用" : "合成不收模型积分"}</span>}
           </div>
-        </div>
+        </div>}
       </div>
     </div>
     <StudioWorkResults works={p.works} onDownload={p.onDownload} anchor={results}/>
@@ -276,6 +287,7 @@ function StudioWorkPreview({ clips, seconds, ratio, voice, draft, index, onIndex
             <span style={{ width: `${fill * 100}%` }}/></button>;
         })}</div>
       </div>}
-    <p className="studio-work-preview-note">预览把勾选的片段按顺序连着放{voice ? "，配音跟着一起放" : ""}。合成后的画面和文字以成片为准。</p>
+    <p className="studio-work-preview-note">{draft.advanced ? "这里播的是一键成片的顺序。高级编辑里剪过的版本，请在高级编辑里播放。"
+      : `预览把勾选的片段按顺序连着放${voice ? "，配音跟着一起放" : ""}。合成后的画面和文字以成片为准。`}</p>
   </aside>;
 }

@@ -46,6 +46,11 @@ vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null}));
 vi.mock('./studio-motion-prompt',()=>({StudioMotionPrompt:({value,onChange,references}:any)=><textarea data-references={JSON.stringify(references.map((r:any)=>[r.nodeId,r.label]))} aria-label="创作要求" value={value} onChange={e=>onChange(e.target.value)}/>}));
 vi.mock('@/canvas-bridge/signed-image',()=>({SignedImage:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:()=>null}));
+vi.mock('@/shell/layout-mode',async orig=>({...await orig<object>(),useLayoutMode:()=>'desktop'}));
+const advancedTimeline=vi.hoisted(()=>({width:720,height:1280,clips:[{storageKey:'take.mp4',start:0,end:3,from:0.5,volume:0}],audios:[{storageKey:'voice.wav',start:0,end:3,from:0,volume:1}],texts:[{text:'限时优惠',start:0,end:2,x:0,y:-400,fontSize:48,color:'#FFFFFF'}],captions:[]}));
+// 高级编辑（Twick）经 next/dynamic 按需加载；这里换成一个只会「导出成片」的替身。
+vi.mock('next/dynamic',()=>({default:()=>function AdvancedStub(p:any){return p.onExport?<section role="dialog" aria-label="高级编辑">
+  <button onClick={()=>void p.onExport(advancedTimeline,{engine:'twick',savedAt:'2026-10-19T03:00:00Z',project:{tracks:[],version:1}}).then((ok:boolean)=>{if(ok)p.onClose();})}>导出成片</button></section>:null;}}));
 const node:CanvasNodeData={id:'v',type:'video' as never,title:'old adopted',width:320,height:400,position:{x:0,y:0},metadata:{status:'success',prompt:'saved prompt',storageKey:'old.mp4',content:'/old.mp4',primaryVideoId:'old',videos:[{id:'old',status:'success',storageKey:'old.mp4',content:'/old.mp4'}],model:'model',seconds:'8',videoCount:'4',size:'768x1365',vquality:'768',studio:{kind:'shot',episodeNo:2,order:3,includeInWork:false}}};
 const request={clientRequestId:'original-key',nodeId:'v',operation:'video' as const,prompt:'original prompt',model:'model',count:4,durationSec:8,aspectRatio:'9:16',maxCost:320};
 const done={id:'accepted',projectId:'p',nodeId:'v',kind:'studio-video',status:'done',pct:100,cost:320,inputs:request,output:{videoCandidates:[{index:0,jobId:'job',status:'done',pct:100,durationSec:8,storageKey:'new.mp4',url:'/new.mp4'}]},createdAt:''};
@@ -485,6 +490,25 @@ test('assembling a recreation canvas leaves out the original the clip was made f
  expect((screen.getByRole('checkbox',{name:'把「原片」放进成片'}) as HTMLInputElement).checked).toBe(false);
  fireEvent.click(screen.getByRole('button',{name:'合成作品',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1].references).toEqual([{storageKey:'take.mp4',role:'clip',ipId:undefined}]);
+});
+
+// 2026-10-19：高级编辑导出走普通的成片合成任务，带着时间线、不带一键成片的包装；工程存进成片方案。
+test('exporting from the advanced editor submits an assemble run with the edit timeline and keeps the project',async()=>{
+ const take:CanvasNodeData={id:'take',type:'video' as never,title:'视频',width:320,height:400,position:{x:0,y:0},metadata:{status:'success',storageKey:'take.mp4',content:'/take.mp4',studio:{kind:'shot',includeInWork:true,runId:'r'}}};
+ const audio:CanvasNodeData={id:'voice',type:'audio' as never,title:'配音',position:{x:500,y:500},width:300,height:150,metadata:{status:'success',storageKey:'voice.wav'}};
+ api.submit.mockImplementation(async(_project,body)=>({...done,kind:'studio-assemble',nodeId:body.nodeId,inputs:body,output:{storageKey:'work.mp4',url:'/work.mp4'}}));
+ render(<Host initialNodes={[take,audio]}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
+ fireEvent.click(screen.getByRole('button',{name:'高级编辑'}));
+ fireEvent.click(within(screen.getByRole('dialog',{name:'高级编辑'})).getByRole('button',{name:'导出成片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ const body=api.submit.mock.calls[0][1];
+ expect(body).toMatchObject({operation:'assemble',references:[{storageKey:'take.mp4',role:'clip'}],edit:advancedTimeline});
+ expect(body.packaging).toBeUndefined();
+ expect(connectionSnapshot.some(c=>c.fromNodeId==='voice'&&c.toNodeId===body.nodeId)).toBe(true);
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'高级编辑'})).toBeNull());
+ expect(snapshot.find(n=>n.metadata?.studio?.workDraft)?.metadata?.studio?.workDraft?.advanced?.engine).toBe('twick');
+ expect(screen.getByRole('button',{name:'继续高级编辑'})).toBeDefined();
 });
 
 test('assembly resumes saved packaging and adds the actual audio dependency without changing its settings',async()=>{

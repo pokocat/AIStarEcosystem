@@ -861,3 +861,52 @@ html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:
 }
 html[data-layout="mobile"] .studio-work-grip, html[data-layout="mobile"] .studio-work-drag-hint { display:none; }
 html[data-layout="mobile"] .studio-work-actions { bottom:-16px; }
+
+/* 成片高级编辑（Twick，2026-10-19）：挂到 body 上的全屏外壳。Twick 自己的样式只在 .twick-scope 内生效（见 twick-scoped.css）。 */
+.studio-advanced-shell { position:fixed; inset:0; z-index:1100; display:flex; flex-direction:column; min-height:0; background:#111318; color:#e7e9ee; font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif; }
+.studio-advanced-loading { align-items:center; justify-content:center; font-size:14px; color:#c9cfdb; }
+.studio-advanced-bar { flex-shrink:0; display:flex; align-items:center; gap:16px; height:56px; padding:0 16px; border-bottom:1px solid #262a33; background:#15181e; }
+.studio-advanced-bar > strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:15px; font-weight:600; }
+.studio-advanced-bar > div { display:flex; align-items:center; gap:10px; margin-left:auto; flex-shrink:0; }
+.studio-advanced-back { display:inline-flex; align-items:center; gap:6px; height:34px; padding:0 10px; border:1px solid #2f3440; border-radius:8px; background:transparent; color:#e7e9ee; font:inherit; font-size:13px; cursor:pointer; flex-shrink:0; }
+.studio-advanced-back:hover:not(:disabled) { background:#1f232b; }
+.studio-advanced-back:disabled { opacity:.5; cursor:not-allowed; }
+.studio-advanced-size { flex-shrink:0; font-size:12px; color:#8b93a3; font-variant-numeric:tabular-nums; }
+.studio-advanced-progress { font-size:12px; color:#c9cfdb; white-space:nowrap; }
+.studio-advanced-warning { flex-shrink:0; margin:0; padding:8px 16px; background:#3a2a14; color:#f3d9a4; font-size:12px; }
+.studio-advanced-body { flex:1; min-height:0; overflow:hidden; display:flex; }
+.studio-advanced-studio { flex:1; min-width:0; min-height:0; display:flex; flex-direction:column; }
+.studio-advanced-studio > * { flex:1; min-height:0; }
+/* Twick 自带的英文属性栏不用，换成我们的 .studio-advanced-inspector。 */
+.twick-scope .studio-advanced-body .studio-right-panel { display:none !important; }
+.studio-advanced-inspector { flex:0 0 280px; min-height:0; overflow:auto; padding:16px; border-left:1px solid #262a33; background:#15181e; display:flex; flex-direction:column; gap:14px; }
+.studio-advanced-inspector h3 { margin:0; font-size:15px; font-weight:600; overflow-wrap:anywhere; }
+.studio-advanced-guide ul { margin:8px 0 0; padding-left:18px; font-size:13px; line-height:1.9; color:#c9cfdb; }
+.studio-advanced-field { display:flex; flex-direction:column; gap:6px; font-size:13px; color:#c9cfdb; }
+.studio-advanced-field input[type="color"] { width:48px; height:32px; padding:0; border:1px solid #2f3440; border-radius:6px; background:none; cursor:pointer; }
+.studio-advanced-row { display:flex; gap:16px; }
+.studio-advanced-panel { display:flex; flex-direction:column; gap:10px; }
+.studio-advanced-media { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin:0; padding:0; list-style:none; }
+/* Twick 自带的英文顶栏（新建 / 读档 / 导出字幕 / 章节 / 导出）不用：我们的顶栏负责保存和导出。 */
+.twick-scope .studio-advanced-body .studio-header, .twick-scope .studio-advanced-body header:not(.studio-advanced-bar) { display:none !important; }
+.studio-advanced-media li button { display:flex; flex-direction:column; gap:4px; width:100%; padding:4px; border:1px solid #2f3440; border-radius:8px; background:#1a1d24; color:#e7e9ee; font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.studio-advanced-media li button:hover:not(:disabled) { border-color:#6b7cff; }
+.studio-advanced-media li button:disabled { opacity:.6; cursor:wait; }
+.studio-advanced-media li video { width:100%; aspect-ratio:9/16; max-height:120px; object-fit:cover; border-radius:6px; background:#000; pointer-events:none; }
+.studio-advanced-media li span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.studio-advanced-audio-icon { display:grid; place-items:center; height:48px; border-radius:6px; background:#232733; font-size:20px; }
+.studio-advanced-empty, .studio-advanced-hint { margin:8px 0 0; font-size:12px; line-height:1.6; color:#8b93a3; }
+html[data-layout="mobile"] .studio-advanced-shell { display:none; }
+/* Twick 的画面区没有定高，内容一撑就把时间线挤出屏幕；让它吃满中间区域，播放器和时间线在里面分。 */
+.twick-scope .studio-advanced-body .canvas-container { height:100%; }
+/* Twick 的播放区固定占 80dvh，时间线只剩一条缝；给时间线留出约 280px，能看到视频、配音、文字、字幕几条轨道。 */
+.twick-scope .studio-advanced-body .twick-editor-container { height:max(240px, calc(100dvh - 56px - 24px - 290px)); }
+.twick-scope .studio-advanced-body .twick-editor-timeline-section { flex:1; min-height:0; height:auto; }
+.twick-scope .studio-advanced-body .twick-editor-view-section { height:auto; flex:0 0 auto; }
+/* Twick 的外壳写死了 100vw / 100vh；放进我们的布局里改成跟父元素走，右边才放得下我们的属性栏。 */
+.twick-scope .studio-advanced-studio { overflow:hidden; }
+.twick-scope .studio-advanced-studio .studio-container { width:100% !important; max-width:100%; height:100% !important; }
+/* antd 滑块默认的底轨在深色背景上看不见 */
+.studio-advanced-inspector .ant-slider-rail { background:#3a3f4b; }
+.studio-advanced-inspector .ant-slider:hover .ant-slider-rail { background:#4a5060; }
+.studio-advanced-shell .ant-btn:disabled { color:#6b7280; background:#1f232b; border-color:#2f3440; }
