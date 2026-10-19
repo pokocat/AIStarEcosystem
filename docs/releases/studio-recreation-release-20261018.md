@@ -151,3 +151,21 @@
 - 左栏只有图标认不出：恢复改版前的悬停 / 键盘聚焦展开（56px → 168px，浮在画布上不挤画布），七个工具都带名字；结构测试钉住标签。
 
 回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-links web-aiavatar`。
+
+## 追加发布 · 2026-10-19 晚 · 成片编辑器改版 + 成片高级编辑（server + web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-advanced-editor` |
+| GIT_SHA | `7dbf8028`（release 分支上 cherry-pick 的 `eb5a3d8e` 成片编辑器改版 + `a05f2ea1` 高级编辑与拼接前预检） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1` |
+| 结果 | `verify.sh` ALL GREEN；server 重启后 0 条 ERROR（同一 grep 近两天能匹配到 119 条，确认能命中）；线上 web-aiavatar 运行目录的 chunk 含「导出成片」 |
+
+内容：
+- 成片编辑器改版：整片预览、原片素材默认不进成片、合成前就地拦下配音过长 / 字幕超时 / 空字幕。
+- 成片高级编辑（Twick 0.15.31 + 两个 pnpm 补丁，仅电脑端）：切开、掐头去尾、删段补位、文字、字幕、两条音轨音量；导出走普通 assemble 任务带 `edit`，服务端 `StudioEditGraph` 用 FFmpeg 合成，不扣积分。
+- 服务端在拼接之前先判配音过长 / 字幕超时（`StudioPackagingService.precheck`）。
+
+发布前核对：用新代码生成的 FFmpeg 命令在生产主机的 `/usr/local/bin/ffmpeg`（2018 静态版）上用测试素材跑通（5.5 秒、720×1280、有声、空隙为黑），临时目录已删。release 树上 web-aiavatar 全量 124 个测试文件 938 条通过；server 的 Studio / 合成测试里 `IpVideoModelChoiceWiringTest`（2 条）与 `StudioAssetCatalogPricingTest`（1 条）在未加本次提交的 `343105e0` 上同样失败，属既有问题，与本次无关。本地真服务端 + 浏览器验收：切开、删段、加文字、导出、刷新后继续编辑、改回一键成片均通过，产物逐帧与编辑器一致。生产上没有用真账号点一遍导出。
+
+回滚：`deploy-release.sh dist/deploy/20261019-studio-canvas-polish web-aiavatar` 与 `deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue server`（server 那个包同时含 web-aiavatar，只传 `server`）。无数据库迁移；已存的 `workDraft.advanced` 在旧前端里会被忽略，不影响一键成片。
