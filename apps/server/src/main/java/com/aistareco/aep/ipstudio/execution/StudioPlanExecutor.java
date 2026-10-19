@@ -206,6 +206,12 @@ public class StudioPlanExecutor {
             ObjectNode step=(ObjectNode)raw;
             String stage=step.path("stage").asText();
             long ceiling=step.path("maxCost").asLong(step.path("quotedCost").asLong());
+            // Earlier attempts a revised plan replaced (StudioPlanExecutionService#replanStage) stay charged to the stage.
+            for(JsonNode previous:step.path("previousRunIds")) {
+                var dto=outputs.run(e.getOwnerUserId(),e.getProjectId(),previous.asText()).orElse(null);
+                if(dto==null||!counted.add(dto.id()))continue;
+                if("running".equals(dto.status()))inFlight.merge(stage,ceiling,Long::sum);else spent.merge(stage,dto.cost(),Long::sum);
+            }
             if("submitted".equals(step.path("status").asText())) {
                 String requestId=step.path("pendingRequestId").asText(null);
                 var found=requestId==null?null:runRepository.findByProjectIdAndClientRequestId(e.getProjectId(),requestId)
@@ -333,7 +339,7 @@ public class StudioPlanExecutor {
         long spent=stageBudget.path("spent").asLong(),inFlight=stageBudget.path("inFlight").asLong(),cap=stageBudget.path("approvedCap").asLong();
         if(!resubmit&&spent+inFlight+quoted>cap) {
             long shortfall=spent+inFlight+quoted-cap;
-            ready.put("status","needs_user").put("reason","本阶段预算还差 "+shortfall+" 积分");
+            ready.put("status","needs_user").put("reason","本阶段预算还差 "+shortfall+" 积分").put("budgetBlocked",true);
             stageBudget.put("shortfall",shortfall);
             out.add(budgetEvent(e,stage,stageBudget,shortfall,"quote"));
             raiseCard(e,state,stage,stageBudget,remainingQuote(state,stage),cap+shortfall,shortfall,ready.path("title").asText(),after);

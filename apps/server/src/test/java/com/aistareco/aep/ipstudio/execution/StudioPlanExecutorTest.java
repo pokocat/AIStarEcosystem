@@ -182,6 +182,32 @@ class StudioPlanExecutorTest {
         assertEquals(1,posted.size(),"one card per shortfall");
     }
 
+    /** The shortfall stop marks its step, so a confirmed raise can release exactly the budget stops (and nothing else). */
+    @Test void aBudgetStopMarksItsStepForTheRaise() throws Exception {
+        execution("running",44,videoStep("v1",40),checkStep("c1","v1",5));
+        executor.advance("PEX-1");
+        dtos.put("IPR-PEX-1-p-v1",dto("IPR-PEX-1-p-v1","done",40,videoOutput("v1.mp4")));
+        executor.advance("PEX-1");
+        assertTrue(step("c1").path("budgetBlocked").asBoolean(),"stopped for budget");
+        assertFalse(step("v1").has("budgetBlocked"));
+    }
+
+    /** Runs of an attempt a revised plan replaced stay charged to the stage, so the new attempt cannot overspend the cap. */
+    @Test void earlierAttemptsAReplanReplacedStayInTheStageBudget() throws Exception {
+        var v1=videoStep("v1",40);v1.put("attempt",2);v1.putArray("previousRunIds").add("IPR-old");
+        execution("running",80,v1);
+        dtos.put("IPR-old",dto("IPR-old","done",40,videoOutput("old.mp4")));
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size(),"40 spent earlier + 40 for the new attempt = 80 fits");
+        assertEquals(StudioPlanExecutionIds.requestId("PEX-1","production","v1",2),submitted.get(0).clientRequestId(),"a new request identity");
+        assertEquals(40,budget().path("spent").asLong());assertEquals(40,budget().path("inFlight").asLong());
+        execution("running",79,v1);
+        submitted.clear();
+        executor.advance("PEX-1");
+        assertTrue(submitted.isEmpty(),"40 + 40 > 79: the earlier attempt still counts");
+        assertEquals(1,budget().path("shortfall").asLong());
+    }
+
     @Test void inFlightRunsOccupyTheirApprovedCeiling() throws Exception {
         execution("running",79,videoStep("v1",40),videoStep("v2",40));
         executor.advance("PEX-1");

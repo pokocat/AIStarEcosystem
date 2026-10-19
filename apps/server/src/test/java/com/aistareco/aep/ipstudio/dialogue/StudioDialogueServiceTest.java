@@ -367,4 +367,73 @@ class StudioDialogueServiceTest {
         assertEquals(14L, run.getValue().getCost());
         assertTrue(run.getValue().getInputJson().contains("\"tokenPricing\""));
     }
+
+    /**
+     * Codex 2026-10-19 (P2): 「先停」 typed while the execution ran was queued as steering, so nothing stopped until the next
+     * safe boundary and a model turn, and queued tasks were not cancelled. It is now the priority stop, at once.
+     */
+    @Test void aTypedStopWhileTheExecutionRunsIsThePriorityStopNotSteering() {
+        var control = mock(StudioExecutionControl.class);
+        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "production", "running")));
+        ReflectionTestUtils.setField(service, "executionControl", control);
+        var result = service.post("u1", "P1", "IPT-P1", request("c-stop", "先停", 5L));
+        assertEquals("applied", result.queueState());
+        verify(control).stop(eq("u1"), eq("P1"), eq("PEX-1"), startsWith("say-"));
+        verify(steering, never()).save(any());
+        verify(runs, never()).save(any());
+        verifyNoInteractions(credits);
+        assertEquals("done", stored.get(result.messageId()).getStatus());
+        assertTrue(stored.values().stream().anyMatch(m -> "assistant".equals(m.getRole()) && m.getText().startsWith("好，停下了")), "answered with what happened");
+        assertEquals(result.messageId(), service.post("u1", "P1", "IPT-P1", request("c-stop", "先停", 5L)).messageId(), "a resend is the same message");
+        verify(control, times(1)).stop(anyString(), anyString(), anyString(), anyString());
+    }
+
+    /** 「暂停」 keeps the queued tasks (pause), and a sentence that only mentions stopping is ordinary steering. */
+    @Test void aTypedPauseIsAPauseAndAnythingLongerIsSteering() {
+        var control = mock(StudioExecutionControl.class);
+        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "production", "running")));
+        ReflectionTestUtils.setField(service, "executionControl", control);
+        assertEquals("applied", service.post("u1", "P1", "IPT-P1", request("c-pause", "暂停一下", 5L)).queueState());
+        verify(control).pause(eq("u1"), eq("P1"), eq("PEX-1"), startsWith("say-"));
+        verify(control, never()).stop(anyString(), anyString(), anyString(), anyString());
+        for (String text : List.of("不要停", "要停吗？", "先停一下第 3 段，换个人物"))
+            assertEquals("queued", service.post("u1", "P1", "IPT-P1", request("c-" + text.hashCode(), text, 5L)).queueState(), text);
+        verify(control, times(1)).pause(anyString(), anyString(), anyString(), anyString());
+    }
+
+    /** With nothing working, 「停」 is just a message (there is nothing to stop). */
+    @Test void aTypedStopWithNothingWorkingIsAnOrdinaryMessage() {
+        when(fixtures.enabled()).thenReturn(true);
+        var control = mock(StudioExecutionControl.class);
+        ReflectionTestUtils.setField(service, "executionControl", control);
+        assertEquals("accepted", service.post("u1", "P1", "IPT-P1", request("c-idle", "停", null)).queueState());
+        verify(control, never()).stop(anyString(), anyString(), anyString(), anyString());
+    }
+
+    /**
+     * Codex 2026-10-19 (P1): a later turn on a thread bound to an enterprise-paid execution could carry a personal payer
+     * and was accepted, drawing on the enterprise stage budget. The execution's fixed payer now pays every such turn.
+     */
+    @Test void aTurnOnABoundExecutionIsPaidByItsFixedPayer() {
+        when(fixtures.enabled()).thenReturn(true);
+        var control = mock(StudioExecutionControl.class);
+        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "production", "needs_user")));
+        ReflectionTestUtils.setField(service, "executionControl", control);
+        var gate = mock(StudioExecutionGate.class);
+        @SuppressWarnings("unchecked") org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates = mock(org.springframework.beans.factory.ObjectProvider.class);
+        when(gates.getIfAvailable()).thenReturn(gate);
+        ReflectionTestUtils.setField(service, "gates", gates);
+        var enterprise = new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise", "ent-1");
+        when(gate.executionPayer("u1", "P1", "PEX-1")).thenReturn(enterprise);
+        var personal = new PostMessageRequest("c-pay", "第 3 段换个人物", null, null, null, null,
+                new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("personal", null), null, null);
+        var refused = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", personal));
+        assertEquals("BILLING_SELECTION_CONFLICT", refused.getCode());
+        verify(runs, never()).save(any());
+        var none = service.post("u1", "P1", "IPT-P1", request("c-none", "第 3 段换个人物", null));
+        var run = ArgumentCaptor.forClass(IpRun.class);
+        verify(runs).save(run.capture());
+        assertEquals(none.runId(), run.getValue().getId());
+        assertTrue(run.getValue().getInputJson().contains("\"billing\":{\"mode\":\"enterprise\",\"enterpriseId\":\"ent-1\"}"), "the fixed payer, not the message's");
+    }
 }
