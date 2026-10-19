@@ -4,6 +4,7 @@
 // (free) with the brief and opens it with the assistant already talking; nothing is generated and
 // nothing is charged until the assistant quotes and the user confirms inside the canvas.
 import { useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
 import { ArrowUp, Loader2 } from "lucide-react";
 
 export const conversationExamples = [
@@ -43,8 +44,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      <p className="studio-conversation-start-note">画布免费建，聊天按用量计积分；出图、出视频前先报价，你确认后才开工。
-        <button type="button" className="studio-conversation-start-link" disabled={locked} onClick={() => onStart("")}>先进画布看看</button></p>
+      <p className="studio-conversation-start-note">还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></p>
     </div>
   </form>;
 }
