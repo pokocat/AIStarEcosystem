@@ -26,6 +26,8 @@ type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number;childre
   onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean;
   /** Chips next to the title (a mode, a demo mark); the title itself stays a plain string so the dialog keeps its name. */
   titleExtra?:ReactNode;
+  /** A mark before the title (the assistant's AI sign). */
+  titleIcon?:ReactNode;
   /** A strip between the header and the scrolling body: progress, status. Never scrolls away. */
   subheader?:ReactNode;
   /** Remember docked / floating and the docked width per viewer under this key (a per-browser convenience, not state). */
@@ -60,7 +62,7 @@ function raiseFloating(id:symbol) {
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
 export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container,embedded=false,
-  titleExtra,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
+  titleExtra,titleIcon,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
   const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0});
@@ -139,7 +141,7 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       drag.current={x:e.clientX,y:e.clientY,...position};e.currentTarget.setPointerCapture?.(e.pointerId);
     }} onPointerMove={e=>{if(drag.current)setManual({left:drag.current.left+e.clientX-drag.current.x,top:drag.current.top+e.clientY-drag.current.y});}}
     onPointerUp={()=>{drag.current=undefined;}} onPointerCancel={()=>{drag.current=undefined;}}>
-      <div className="studio-floating-title"><strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRightClose size={17}/>:<PanelRight size={17}/>}</button>}
+      <div className="studio-floating-title">{titleIcon}<strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRightClose size={17}/>:<PanelRight size={17}/>}</button>}
       {onClose&&<button type="button" aria-label={`关闭${typeof title==='string'?title:'浮层'}`} disabled={!closable} onClick={onClose}><X size={17}/></button>}</div>
     </header>}
     {subheader&&<div className="studio-floating-subheader">{subheader}</div>}

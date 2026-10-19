@@ -106,6 +106,15 @@
   --action-700: #8a6f1b;      /* 浅底上的麦黄系文字（4.8:1 on white） */
   --action-soft: #f7efd5;
   --action-tint: #fcf8ec;
+  /* AI 群青紫（2026-10-19）：只给 AI 做过 / 正在做的东西 —— AI 记号、助手头部、生成中光圈、问助手、发送。
+     麦黄只给要付钱 / 要发布的动作；群青给选中与链接；灰给普通操作。 */
+  --ai: #4f5bd5;
+  --ai-2: #8b6cf0;
+  --ai-gradient: linear-gradient(135deg, var(--ai), var(--ai-2));
+  --ai-soft: #ebe7fb;
+  --ai-ink: #4a4fb8;      /* 5.9:1 on white */
+  --ai-ring: rgba(139, 108, 240, 0.65);
+  --ai-glow: rgba(139, 108, 240, 0.22);
   --action-line: #d8c274;
   --on-action: #202c42;       /* 9.5:1 on --action */
 

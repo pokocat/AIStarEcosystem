@@ -123,7 +123,7 @@
 .ip-surface .studio-dialogue-execution-checks { margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--ink-2); }
 .ip-surface .studio-dialogue-execution-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .ip-surface .studio-dialogue-execution-track { height: 6px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
-.ip-surface .studio-dialogue-execution-track > span { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 320ms ease-out; }
+.ip-surface .studio-dialogue-execution-track > span { display: block; height: 100%; border-radius: inherit; background: var(--ai-gradient); transition: width 320ms ease-out; }
 .ip-surface .studio-dialogue-execution-steps > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
 .ip-surface .studio-dialogue-execution-steps ol { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .ip-surface .studio-dialogue-execution-steps li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 12px; min-width: 0; }

@@ -753,3 +753,22 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-
 .ip-surface .studio-start.studio-canvas-empty .studio-start-primary { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:0 20px; border:0; border-radius:10px; background:var(--action); color:var(--on-action); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
 .ip-surface .studio-start.studio-canvas-empty .studio-start-primary:hover { background:var(--action-600); }
 .ip-surface .studio-start.studio-canvas-empty > div { margin-top:16px; }
+
+/* 画布页改版（2026-10-19）：第二排工具条取消后的三个悬浮件 */
+.studio-ai-orb { position:absolute; right:18px; top:72px; z-index:82; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:50%; background:var(--ai-gradient); color:#fff; box-shadow:0 8px 22px rgba(79, 91, 213, 0.35); cursor:pointer; pointer-events:auto; transition:transform 160ms ease-out, box-shadow 160ms ease-out; }
+.studio-ai-orb:hover { transform:translateY(-1px); box-shadow:0 12px 28px rgba(79, 91, 213, 0.42); background:var(--ai-gradient); }
+.studio-ai-orb:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
+.ip-surface .studio-tasks-launch { position:absolute; left:18px; bottom:20px; z-index:80; display:grid; place-items:center; width:50px; height:40px; padding:0; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink-2); cursor:pointer; pointer-events:auto; }
+.ip-surface .studio-tasks-launch:hover,.ip-surface .studio-tasks-launch[aria-pressed="true"] { background:var(--surface-2); color:var(--ink); }
+.ip-surface .studio-tasks-count { position:absolute; top:-6px; right:-6px; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:var(--ai-gradient); color:#fff; font-size:10px; font-weight:700; line-height:18px; text-align:center; box-shadow:0 0 0 2px var(--surface); }
+.ip-surface .studio-context-actions .studio-ask-assistant { border:1.5px solid transparent; background:linear-gradient(var(--surface), var(--surface)) padding-box, var(--ai-gradient) border-box; color:var(--ai-ink); font-weight:600; }
+.ip-surface .studio-context-actions .studio-ask-assistant:hover { background:linear-gradient(var(--ai-soft), var(--ai-soft)) padding-box, var(--ai-gradient) border-box; color:var(--ai-ink); }
+.ip-surface .studio-assistant-mark { display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:var(--ai-gradient); color:#fff; flex-shrink:0; }
+.ip-surface .studio-assistant-panel>.studio-floating-header { background:linear-gradient(90deg, rgba(79, 91, 213, 0.06), rgba(139, 108, 240, 0.02)); }
+.ip-surface .studio-assistant-mode.is-skill,.ip-surface .studio-dialogue-chip.is-skill { background:var(--ai-soft); color:var(--ai-ink); border-color:transparent; }
+.ip-surface .studio-dialogue-chip.is-skill .ant-select .ant-select-selection-item { color:var(--ai-ink); }
+.ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled) { background:var(--ai-gradient); color:#fff; border-color:transparent; }
+.ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled):hover { background:var(--ai-gradient); filter:brightness(1.06); }
+.ip-surface .studio-assistant-status.is-hint { background:var(--ai-soft); }
+html[data-layout="mobile"] .studio-ai-orb { right:12px; top:68px; width:40px; height:40px; }
+html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:84px; }
