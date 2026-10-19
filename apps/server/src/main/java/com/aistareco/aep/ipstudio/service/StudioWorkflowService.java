@@ -595,6 +595,15 @@ public class StudioWorkflowService {
         constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
         var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
         constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,size?,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
+        constraints.put("stageGuide","analysis".equals(stage)
+                ?"分析阶段的步骤顺序固定：先 recreation（对参考视频分段拉片，一条参考视频一步，sourceNodeId 填素材清单里那条视频的 id；用户没给参考视频就不写这一步），"
+                +"最后一步 text（settings 只写 purpose:\"plan-compile\"，不写 editTarget），它依赖前面所有拉片步骤，负责用分析结果编排制作计划。分析阶段不写 image、video、check、assemble。"
+                :"制作阶段只写 text（改词：purpose 填 script / prompt-revision / note，改已有文字时写 editTarget）、image、video、check、assemble。"
+                +"视频步骤排在它引用的图片步骤之后，建议每段视频后面接一个 check，最后用 assemble 按顺序合成；每段 durationSec 在所选视频模型的最短与最长秒数之间。");
+        constraints.put("bindingRoles","referenceBindings 的 role 只能取这些值：图片步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.IMAGE_BINDING_ROLES))
+                +"；视频步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.BINDING_ROLES))+"（原片片段用 reference-video 或 clip）。order 从 0 开始，同一步里不重复。");
+        constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
+        constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。素材清单里的对象（包括分析阶段产出的分段片段）在 referenceBindings 里一律写 nodeId，stepId 只填本计划里更早的步骤编号。");
         return constraints;
     }
 

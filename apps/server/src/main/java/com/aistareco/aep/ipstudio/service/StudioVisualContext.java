@@ -122,5 +122,32 @@ public final class StudioVisualContext {
         ByteArrayOutputStream encoded=new ByteArrayOutputStream();ImageIO.write(out,"jpg",encoded);
         return Map.of("type","image_url","image_url",Map.of("url","data:image/jpeg;base64,"+Base64.getEncoder().encodeToString(encoded.toByteArray())));
     }
+    /** Smaller long edges tried, in order, when a vision endpoint refuses a request as over its visual budget. */
+    public static final int[] BUDGET_EDGES={1600,1024,640};
+
+    /** The vendor refused the request's image geometry (e.g. Jusuan Qwen: 400 unsupported_geometry, "visual activation/HBM headroom budget"). */
+    public static boolean isVisualBudgetRejection(Throwable error) {
+        for(Throwable e=error;e!=null;e=e.getCause())
+            if(e instanceof BusinessException b&&b.getInternalDetail()!=null&&b.getInternalDetail().contains("unsupported_geometry"))return true;
+        return false;
+    }
+
+    /**
+     * The same real images re-encoded with a long edge of at most {@code maxSide}; text parts and image order are untouched,
+     * nothing is dropped or invented. Images already within the edge are kept as they are.
+     */
+    public static List<Map<String,Object>> shrink(List<Map<String,Object>> parts,int maxSide) throws Exception {
+        List<Map<String,Object>> out=new ArrayList<>(parts.size());
+        for(Map<String,Object> part:parts) {
+            Object url=part.get("image_url") instanceof Map<?,?> m?m.get("url"):null;
+            String data=url instanceof String u&&u.startsWith("data:image/")&&u.contains(";base64,")?u.substring(u.indexOf(";base64,")+8):null;
+            if(!"image_url".equals(part.get("type"))||data==null){out.add(part);continue;}
+            byte[] bytes=Base64.getDecoder().decode(data);
+            var probe=ImageIO.read(new java.io.ByteArrayInputStream(bytes));
+            out.add(probe!=null&&Math.max(probe.getWidth(),probe.getHeight())<=maxSide?part:image(bytes,maxSide));
+        }
+        return out;
+    }
+
     private static BusinessException bad(String code,String message){return BusinessException.badRequest(code,message);}
 }

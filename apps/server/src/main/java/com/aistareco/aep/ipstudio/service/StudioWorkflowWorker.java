@@ -135,7 +135,7 @@ public class StudioWorkflowWorker {
                         var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
-                        script=mapper.readTree(reply.content());
+                        script=ModelJson.parse(mapper,reply.content());
                         if(tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);
@@ -224,6 +224,7 @@ public class StudioWorkflowWorker {
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
+        int[] budgetRung={-1}; // index into StudioVisualContext.BUDGET_EDGES of the size the endpoint last accepted; -1 = original
         var capNode=exec.path("segmentCap");
         var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
         var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
@@ -232,8 +233,23 @@ public class StudioWorkflowWorker {
                 var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("max_tokens",tokens);params.put("temperature",.3);
                 if(json)params.put("response_format",Map.of("type","json_object"));
                 String focus=input.path("prompt").asText("").strip();
-                var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)),Map.of("role","user","content",parts)),params);
-                used[0]=consumeUsage(reply,used[0],rate);return reply.content();
+                var messages=new ArrayList<Map<String,Object>>();
+                messages.add(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)));
+                // A size the endpoint accepted is reused for the rest of this run instead of being rediscovered per call.
+                List<Map<String,Object>> content=budgetRung[0]<0?parts:StudioVisualContext.shrink(parts,StudioVisualContext.BUDGET_EDGES[budgetRung[0]]);
+                for(int next=budgetRung[0]+1;;next++) {
+                    try {
+                        var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(messages.get(0),Map.of("role","user","content",content)),params);
+                        used[0]=consumeUsage(reply,used[0],rate);return reply.content();
+                    } catch(BusinessException e) {
+                        // Over the vendor's visual budget: the same real frames, smaller. Never fewer or invented frames.
+                        if(!StudioVisualContext.isVisualBudgetRejection(e)||next>=StudioVisualContext.BUDGET_EDGES.length)throw e;
+                        int edge=StudioVisualContext.BUDGET_EDGES[next];
+                        log.info("[studio] film study images over the visual budget run={} endpoint={} retry maxEdge={}",id,endpoint.endpoint().getId(),edge);
+                        budgetRung[0]=next;
+                        content=StudioVisualContext.shrink(parts,edge);
+                    }
+                }
             },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")),cap);
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));

@@ -485,8 +485,7 @@ public class StudioPlanExecutor {
             check=new CheckSettings(targetRun,key,ids);
             step.put("checkTargetRunId",targetRun);
         }
-        List<String> canvas=new ArrayList<>();
-        for(JsonNode ref:state.path("canvasContextIds"))canvas.add(ref.asText());
+        List<String> canvas=PlanState.canvasContext(state);
         BillingSelection billing=billing(e);
         String nodeId=StudioPlanExecutionIds.nodeId(e.getId(),stage,step.path("id").asText());
         var binding=new StudioPlanSteps.Binding(requestId,nodeId,step.path("quotedCost").asLong(),billing,e.getId(),e.getSkillKey(),e.getSkillVersion(),stage,canvas,check);

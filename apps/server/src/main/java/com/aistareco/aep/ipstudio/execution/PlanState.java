@@ -20,6 +20,25 @@ final class PlanState {
             return node.isObject()?(ObjectNode)node:mapper.createObjectNode();
         } catch(Exception e){throw new IllegalStateException("Corrupt plan execution state",e);}
     }
+    /**
+     * Canvas nodes a validated plan step names: referenceNodeIds, the film-study source, reference bindings and the edit
+     * target. They were checked against the canvas when the plan was proposed, so a later planning run of the same
+     * execution may reference them too (the user's photo, the reference video) even if they were attached in an earlier turn.
+     */
+    static void canvasRefs(JsonNode step,Collection<String> out) {
+        for(JsonNode ref:step.path("referenceNodeIds"))if(ref.isTextual()&&!ref.asText().isBlank())out.add(ref.asText());
+        JsonNode settings=step.path("settings");
+        if(settings.path("sourceNodeId").isTextual()&&!settings.path("sourceNodeId").asText().isBlank())out.add(settings.path("sourceNodeId").asText());
+        for(JsonNode binding:settings.path("referenceBindings"))if(binding.path("nodeId").isTextual()&&!binding.path("nodeId").asText().isBlank())out.add(binding.path("nodeId").asText());
+        if(settings.path("editTarget").path("nodeId").isTextual()&&!settings.path("editTarget").path("nodeId").asText().isBlank())out.add(settings.path("editTarget").path("nodeId").asText());
+    }
+    /** Context recorded at confirmation plus every canvas node the confirmed step definitions name, in order, without repeats. */
+    static List<String> canvasContext(JsonNode state) {
+        LinkedHashSet<String> out=new LinkedHashSet<>();
+        for(JsonNode ref:state.path("canvasContextIds"))if(ref.isTextual())out.add(ref.asText());
+        for(JsonNode step:state.path("steps"))canvasRefs(step.path("definition"),out);
+        return List.copyOf(out);
+    }
     static List<JsonNode> stageSteps(JsonNode state,String stage) {
         List<JsonNode> out=new ArrayList<>();
         for(JsonNode step:state.path("steps"))if(stage.equals(step.path("stage").asText()))out.add(step);

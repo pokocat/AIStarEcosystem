@@ -111,8 +111,9 @@ public final class StudioPlanValidator {
     // from whitelisted fields only: quotes, approvals, confirmed approach, result nodes and task identities are server-owned.
     private static final ObjectMapper OM=new ObjectMapper();
     private static final java.util.regex.Pattern ID=java.util.regex.Pattern.compile("[A-Za-z0-9_-]{1,32}");
-    private static final Set<String> BINDING_ROLES=Set.of("character","scene","product","frame","clip","reference-image","reference-video","reference-audio");
-    private static final Set<String> IMAGE_BINDING_ROLES=Set.of("character","scene","product","frame","reference-image");
+    /** Reference roles a video / image step may bind; the planner contract lists exactly these (StudioWorkflowService). */
+    static final Set<String> BINDING_ROLES=Set.of("character","scene","product","frame","clip","reference-image","reference-video","reference-audio");
+    static final Set<String> IMAGE_BINDING_ROLES=Set.of("character","scene","product","frame","reference-image");
     private static final Set<String> TEXT_PURPOSES=Set.of("script","prompt-revision","plan-compile","note");
 
     /** True when the stored or model plan claims a skill; legacy assistant plans never carry one. */
@@ -154,6 +155,7 @@ public final class StudioPlanValidator {
         Map<String,String> earlier=new LinkedHashMap<>(); // id -> operation
         var outSteps=plan.putArray("steps");
         int index=0;
+        boolean compiled=false; // a plan-compile step turns the analysis into the production plan, so it has to come last
         for(JsonNode step:steps) {
             index++;
             String label="第 "+index+" 步";
@@ -201,11 +203,14 @@ public final class StudioPlanValidator {
                         ||!Set.of("content","prompt","script").contains(edit.path("field").asText()))invalid(label+"的改稿对象不正确");
                 out.putObject("editTarget").put("nodeId",edit.path("nodeId").asText()).put("field",edit.path("field").asText());
             }
-            out.set("settings",settings(step.path("settings"),operation,stage,rules,allowed,earlier,dependencies,label));
+            ObjectNode settings=settings(step.path("settings"),operation,stage,rules,allowed,earlier,dependencies,label);
+            out.set("settings",settings);
+            if("recreation".equals(operation)&&compiled)invalid(label+"的拉片要放在「编排制作计划」那一步之前");
+            if("text".equals(operation)&&"plan-compile".equals(settings.path("purpose").asText()))compiled=true;
             var depends=out.putArray("dependsOn");dependencies.forEach(depends::add);
             earlier.put(id,operation);
         }
-        plan.set("questions",strings(raw.path("questions"),4,1000));
+        plan.set("questions",questions(raw.path("questions")));
         if(raw.hasNonNull("notes"))plan.set("notes",strings(raw.path("notes"),12,16500));
         return plan;
     }
@@ -286,7 +291,8 @@ public final class StudioPlanValidator {
                 // Compiling the production plan needs every earlier analysis result.
                 if("plan-compile".equals(purpose))dependencies.addAll(earlier.keySet());
                 out.put("purpose",purpose);
-                if(raw.hasNonNull("editTarget")) {
+                // A plan-compile step edits nothing; a stray editTarget there is dropped, never read.
+                if(!"plan-compile".equals(purpose)&&raw.hasNonNull("editTarget")) {
                     JsonNode edit=raw.path("editTarget");
                     if(!edit.isObject()||!allowed.contains(edit.path("nodeId").asText())||!Set.of("content","prompt","script").contains(edit.path("field").asText()))
                         invalid(label+"的改稿对象不正确");
@@ -306,6 +312,8 @@ public final class StudioPlanValidator {
         Set<Integer> orders=new HashSet<>();
         for(JsonNode binding:raw) {
             String stepId=binding.path("stepId").asText(""),nodeId=binding.path("nodeId").asText("");
+            // A canvas asset id written under stepId (seen from a real planner) is unambiguous: it is that asset, never a step.
+            if(nodeId.isEmpty()&&!stepId.isEmpty()&&!earlier.containsKey(stepId)&&allowed.contains(stepId)){nodeId=stepId;stepId="";}
             if(stepId.isEmpty()==nodeId.isEmpty())invalid(label+"的每份参考只能来自一个步骤或一个画布素材");
             if(!stepId.isEmpty()&&!earlier.containsKey(stepId))invalid(label+"只能引用更早步骤的产物");
             if(!nodeId.isEmpty()&&!allowed.contains(nodeId))invalid(label+"引用了不存在的素材");
@@ -343,6 +351,27 @@ public final class StudioPlanValidator {
     private static String text(JsonNode value,int max,boolean required,String label) {
         if(!value.isTextual()||value.asText().length()>max||required&&value.asText().isBlank())invalid(label+(required?"不能为空，":"")+"最多 "+max+" 字");
         return value.asText();
+    }
+    /**
+     * Questions are display text only. Asked for "a default for each question", models often answer with
+     * {@code {question, default}} objects instead of strings; both spellings become the same single line, nothing else is read.
+     */
+    private static ArrayNode questions(JsonNode value) {
+        ArrayNode out=OM.createArrayNode();
+        if(value.isMissingNode()||value.isNull())return out;
+        if(!value.isArray()||value.size()>4)fail();
+        for(JsonNode item:value) {
+            String text;
+            if(item.isTextual())text=item.asText();
+            else if(item.isObject()&&item.path("question").isTextual()) {
+                text=item.path("question").asText();
+                JsonNode fallback=item.path("default");
+                if(fallback.isTextual()&&!fallback.asText().isBlank())text=text+"（默认："+fallback.asText().strip()+"）";
+            } else {fail();return out;}
+            if(text.isBlank()||text.length()>1000)fail();
+            out.add(text);
+        }
+        return out;
     }
     private static ArrayNode strings(JsonNode value,int maxItems,int maxLength) {
         ArrayNode out=OM.createArrayNode();

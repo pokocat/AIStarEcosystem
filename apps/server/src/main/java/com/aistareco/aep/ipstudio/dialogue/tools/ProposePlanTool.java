@@ -4,8 +4,9 @@ import com.aistareco.aep.ipstudio.dialogue.DialogueCanvasDigest;
 import com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate;
 import com.aistareco.aep.ipstudio.execution.StudioSkillRules;
 import com.aistareco.aep.ipstudio.service.IpDocs;
+import com.aistareco.aep.ipstudio.service.ModelJson;
 import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
-import com.aistareco.aep.ipstudio.service.StudioVideoService;
+import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.aep.ipstudio.skill.StudioSkill;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
@@ -27,6 +28,11 @@ import java.util.*;
  * current-stage whitelist and typed settings, quoted by the executor's quoter when available, fingerprinted with the
  * executor's fingerprint, and stored as a plan block. Tokens count in this turn's own billing; a plan never authorizes
  * anything by itself.
+ *
+ * <p>The planner's input (stage line, whitelist, the typed {@code settings} contract, model capabilities) comes from
+ * {@link StudioWorkflowService} so this tool, the executor's planning runs and the admin dry-run all show the model the same
+ * thing. A second hand-written copy of that contract once left out the per-operation field names, and a real model had to
+ * guess them.
  */
 @Component
 public class ProposePlanTool implements StudioDialogueTool {
@@ -34,13 +40,13 @@ public class ProposePlanTool implements StudioDialogueTool {
     static final int MIN_OUTPUT = 2048, DESIRED_OUTPUT = 8192;
     private final AiModelInvocationService models;
     private final PromptService prompts;
-    private final ObjectProvider<StudioVideoService> videos;
+    private final ObjectProvider<StudioWorkflowService> workflow;
     private final ObjectProvider<StudioExecutionGate> quoter;
     private final ObjectMapper mapper;
 
-    public ProposePlanTool(AiModelInvocationService models, PromptService prompts, ObjectProvider<StudioVideoService> videos,
+    public ProposePlanTool(AiModelInvocationService models, PromptService prompts, ObjectProvider<StudioWorkflowService> workflow,
                            ObjectProvider<StudioExecutionGate> quoter, ObjectMapper mapper) {
-        this.models = models; this.prompts = prompts; this.videos = videos; this.quoter = quoter; this.mapper = mapper;
+        this.models = models; this.prompts = prompts; this.workflow = workflow; this.quoter = quoter; this.mapper = mapper;
     }
 
     public String name() { return "propose_plan"; }
@@ -78,8 +84,9 @@ public class ProposePlanTool implements StudioDialogueTool {
         JsonNode doc = ctx.effects.readDoc();
         Map<String, String> vars = new LinkedHashMap<>();
         vars.put("skill", skill.body());
-        vars.put("stage", stage);
-        vars.put("constraints", constraints(skill, stage));
+        StudioSkillRules.Rules rules = StudioSkillRules.fromSnapshot(skill.snapshot(mapper));
+        vars.put("stage", StudioWorkflowService.skillPlanStageText(stage));
+        vars.put("constraints", StudioWorkflowService.skillPlanConstraints(mapper, rules, stage).toString());
         vars.put("brief", DialogueTools.text(args, "brief"));
         vars.put("analysis", analysis(doc));
         vars.put("assets", DialogueCanvasDigest.build(doc, List.of(), List.of()));
@@ -105,15 +112,24 @@ public class ProposePlanTool implements StudioDialogueTool {
         if ("length".equals(reply.finishReason()))
             return ToolRun.failed("AI_BAD_OUTPUT", "方案太长被截断了", DialogueTools.fail("方案输出被截断，请缩小范围（减少段数或步骤）后重试")).settlingInTurn();
         JsonNode raw;
-        try { raw = mapper.readTree(reply.content()); }
-        catch (Exception e) { return ToolRun.failed("AI_BAD_OUTPUT", "方案格式不完整", DialogueTools.fail("方案不是有效 JSON，请重新整理")).settlingInTurn(); }
+        try { raw = ModelJson.parse(mapper, reply.content()); }
+        catch (Exception e) { raw = null; }
+        if (raw == null || !raw.isObject()) {
+            log.info("[dialogue] plan reply is not a JSON object run={} finish={} chars={}", ctx.runId, reply.finishReason(), reply.content() == null ? 0 : reply.content().length());
+            return ToolRun.failed("AI_BAD_OUTPUT", "方案格式不完整", DialogueTools.fail("方案不是有效 JSON，请重新整理")).settlingInTurn();
+        }
         Set<String> contextIds = DialogueCanvasDigest.nodeIds(doc);
         contextIds.addAll(ctx.createdNodeIds);
         ObjectNode plan;
-        try { plan = StudioPlanValidator.validateSkillPlan(raw, StudioSkillRules.fromSnapshot(skill.snapshot(mapper)), stage, contextIds); }
+        try { plan = StudioPlanValidator.validateSkillPlan(raw, rules, stage, contextIds); }
         catch (BusinessException e) {
             log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
             return ToolRun.failed(e.getCode(), e.getMessage(), DialogueTools.fail(e.getMessage() + "。请按允许的操作和参数重新整理方案。")).settlingInTurn();
+        }
+        String unknown = unknownVideoModel(plan);
+        if (unknown != null) {
+            log.info("[dialogue] plan names a video model that is not offered run={} {}", ctx.runId, unknown);
+            return ToolRun.failed("AI_BAD_OUTPUT", "方案里的视频模型不可用", DialogueTools.fail(unknown + "。请重新整理方案。")).settlingInTurn();
         }
         plan.put("skillKey", skill.key()).put("skillVersion", skill.version()).put("stage", stage);
         boolean quoted = false;
@@ -139,12 +155,6 @@ public class ProposePlanTool implements StudioDialogueTool {
                 DialogueTools.ok(body), List.of(), List.of(), null, null, true, null, null, null);
     }
 
-    static String constraints(StudioSkill skill, String stage) {
-        return "允许的操作：" + String.join("、", skill.stageOperations(stage)) + "；最多 " + skill.maxSteps() + " 步；最多 "
-                + skill.maxSegments() + " 段；每段时长上限：" + ("model".equals(skill.maxSegmentSec()) ? "按所选视频模型合同" : skill.maxSegmentSec() + " 秒")
-                + "；原片最长 " + skill.maxSourceSec() + " 秒；检查项：" + String.join("、", skill.checks());
-    }
-
     static String analysis(JsonNode doc) {
         StringBuilder out = new StringBuilder();
         int n = 0;
@@ -159,20 +169,44 @@ public class ProposePlanTool implements StudioDialogueTool {
         return out.length() == 0 ? "（还没有分析结果）" : out.toString();
     }
 
-    private String capabilities() {
-        var service = videos.getIfAvailable();
-        if (service == null) return "（视频模型信息不可用）";
+    private String capabilitiesJson() {
+        var planner = workflow.getIfAvailable();
+        if (planner == null) return null;
         try {
-            var list = DialogueTools.OM.createArrayNode();
-            for (var m : service.models()) {
-                var item = list.addObject().put("model", m.endpointId()).put("name", m.name()).put("default", m.isDefault());
-                if (m.contract() != null) item.set("contract", mapper.valueToTree(m.contract()));
-            }
-            return DialogueTools.excerpt(list.toString(), 8000);
+            return planner.planCapabilities();
         } catch (RuntimeException e) {
             log.warn("[dialogue] video capabilities unavailable: {}", e.toString());
-            return "（视频模型信息暂不可用）";
+            return null;
         }
+    }
+
+    private String capabilities() {
+        String json = capabilitiesJson();
+        return json == null ? "（视频模型信息暂不可用）" : DialogueTools.excerpt(json, 8000);
+    }
+
+    /**
+     * A recreation step has to name one of the endpoints the planner was shown; the quote would otherwise fail much later with
+     * a message that tells the assistant to stop. Null when every named model is offered (or the offer could not be read, in
+     * which case the quote reports it).
+     */
+    private String unknownVideoModel(ObjectNode plan) {
+        String json = capabilitiesJson();
+        if (json == null) return null;
+        Set<String> offered = new LinkedHashSet<>();
+        try {
+            for (JsonNode model : mapper.readTree(json).path("videoModels")) if (model.path("endpointId").isTextual()) offered.add(model.path("endpointId").asText());
+        } catch (Exception e) { return null; }
+        if (offered.isEmpty()) return null;
+        int index = 0;
+        for (JsonNode step : plan.path("steps")) {
+            index++;
+            if (!"recreation".equals(step.path("operation").asText())) continue;
+            String named = step.path("settings").path("videoModel").asText("");
+            if (!offered.contains(named))
+                return "第 " + index + " 步的视频模型「" + named + "」不在可用列表里，videoModel 必须原样填写 videoModels 里的 endpointId，可选：" + String.join("、", offered);
+        }
+        return null;
     }
 
     static long estimate(List<Map<String, Object>> messages) {

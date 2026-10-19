@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Skill plans: stage whitelist, typed settings, step cap from the real skill file, server-owned fields stripped. */
@@ -113,5 +114,104 @@ class StudioPlanValidatorSkillTest {
         assertEquals(base,StudioPlanValidator.fingerprint(reordered),"key order is irrelevant");
         var repriced=plan.deepCopy();((ObjectNode)repriced.path("steps").get(0)).put("quotedCost",9);
         assertNotEquals(base,StudioPlanValidator.fingerprint(repriced));
+    }
+
+    @Test void questionsMayBeStringsOrQuestionAndDefaultObjectsAndBothBecomeOneLine() throws Exception {
+        var raw=analysis();
+        ((ObjectNode)raw).set("questions",om.readTree("[\"是否保留原声？默认保留\",{\"id\":\"q2\",\"question\":\"主角是成人吗？\",\"default\":\"看分析结果\"},{\"question\":\"没有默认的问题\"}]"));
+        var questions=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context).path("questions");
+        assertEquals("[\"是否保留原声？默认保留\",\"主角是成人吗？（默认：看分析结果）\",\"没有默认的问题\"]",questions.toString());
+        var bad=analysis();((ObjectNode)bad).set("questions",om.readTree("[{\"default\":\"没有问题文字\"}]"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(bad,rules(),"analysis",context));
+        var tooMany=analysis();((ObjectNode)tooMany).set("questions",om.readTree("[\"1\",\"2\",\"3\",\"4\",\"5\"]"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(tooMany,rules(),"analysis",context));
+    }
+
+    /**
+     * What the planner is told must name every field this validator reads. A real model guessed videoId/analysisType for the
+     * recreation step because the dialogue's own copy of the planner input had only the operation names; the shared contract
+     * line lives in StudioWorkflowService and these are the keys the fixtures above are written with.
+     */
+    @Test void thePlannerContractNamesEveryFieldTheValidatorReads() throws Exception {
+        String contract=StudioWorkflowService.skillPlanConstraints(om,rules(),"production").path("settings").asText();
+        Map<String,List<String>> required=Map.of(
+                "recreation",List.of("sourceNodeId","mode","maxSegmentSec","videoModel"),
+                "image",List.of("count","referenceBindings"),
+                "video",List.of("video","mode","resolutionTier","durationSec","aspectRatio","count","referenceBindings"),
+                "check",List.of("targetStepId","checkIds"),
+                "assemble",List.of("clipOrder","audioStrategy"),
+                "text",List.of("purpose","plan-compile"));
+        required.forEach((operation,keys)->{
+            int at=contract.indexOf(operation+"{");
+            if(at<0)at=contract.indexOf(operation);
+            assertTrue(at>=0,operation+" is missing from the contract line");
+            for(String key:keys)assertTrue(contract.contains(key),operation+" needs "+key+" in the contract line");
+        });
+    }
+
+    @Test void aPlanCompileStepDropsAStrayEditTargetInsteadOfRefusingThePlan() throws Exception {
+        // Second production reply: the model wrote editTarget as a plain string on its plan-compile step.
+        var raw=analysis();
+        ((ObjectNode)raw.path("steps").get(1).path("settings")).put("editTarget","source-video");
+        var compile=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context).path("steps").get(1);
+        assertEquals("plan-compile",compile.path("settings").path("purpose").asText());
+        assertFalse(compile.path("settings").has("editTarget"));
+        // an ordinary text step still needs a real edit target
+        var edit=production();
+        ((ObjectNode)edit.path("steps").get(0)).put("operation","text");
+        ((ObjectNode)edit.path("steps").get(0)).set("settings",om.readTree("{\"purpose\":\"script\",\"editTarget\":\"not-an-object\"}"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(edit,rules(),"production",context));
+    }
+
+    @Test void theAnalysisPlanCannotCompileTheProductionPlanBeforeTheFilmStudy() throws Exception {
+        // Third production reply: plan-compile first, the recreation analysis depending on it.
+        var raw=analysis();
+        var steps=(ArrayNode)raw.path("steps");
+        JsonNode cut=steps.get(0),compile=steps.get(1);
+        ((ObjectNode)compile).putArray("dependsOn");
+        ((ObjectNode)cut).putArray("dependsOn").add("compile");
+        steps.removeAll();steps.add(compile);steps.add(cut);
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context));
+        assertEquals("AI_BAD_OUTPUT",refused.getCode());
+        assertTrue(refused.getMessage().contains("拉片"),"the model is told what to reorder");
+    }
+
+    @Test void stepNumbersAreNotCanvasAssetsAndTheRefusalSaysSo() throws Exception {
+        var raw=analysis();
+        ((ObjectNode)raw.path("steps").get(1)).putArray("referenceNodeIds").add("cut");
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context));
+        assertTrue(refused.getMessage().contains("素材"));
+    }
+
+    @Test void thePlannerIsToldHowEachStageIsBuiltAndWhatReferenceNodeIdsMayHold() throws Exception {
+        var analysisGuide=StudioWorkflowService.skillPlanConstraints(om,rules(),"analysis");
+        String stage=analysisGuide.path("stageGuide").asText();
+        assertTrue(stage.indexOf("recreation")<stage.indexOf("plan-compile"),"film study first, then the compile step");
+        assertTrue(stage.contains("不写 image"));
+        var production=StudioWorkflowService.skillPlanConstraints(om,rules(),"production");
+        assertTrue(production.path("stageGuide").asText().contains("assemble"));
+        assertTrue(analysisGuide.path("references").asText().contains("dependsOn"));
+    }
+
+    /** Production planning reply of 2026-10-18 bound segment clips with role "video_reference"; the contract never listed the roles. */
+    @Test void thePlannerContractListsEveryReferenceRoleTheValidatorAccepts() throws Exception {
+        String roles=StudioWorkflowService.skillPlanConstraints(om,rules(),"production").path("bindingRoles").asText();
+        for(String role:StudioPlanValidator.BINDING_ROLES)assertTrue(roles.contains(role),role);
+        var raw=production();
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("role","video_reference");
+        var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
+        assertTrue(refused.getMessage().contains("参考用途"));
+    }
+
+    /** Second production planning reply: every binding wrote the canvas asset id (the photo, a segment clip) under stepId. */
+    @Test void aCanvasAssetIdWrittenUnderStepIdBindsThatAssetAndAnUnknownIdIsStillRefused() throws Exception {
+        var raw=production();
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).remove("nodeId");
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("stepId","person-img");
+        var binding=StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context).path("steps").get(1).path("settings").path("referenceBindings").get(1);
+        assertEquals("person-img",binding.path("nodeId").asText());
+        assertFalse(binding.has("stepId"));
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("stepId","nobody");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
     }
 }
