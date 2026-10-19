@@ -13,6 +13,7 @@ import com.aistareco.aep.ipstudio.service.StudioFixtureProvider;
 import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.skill.StudioSkill;
 import com.aistareco.aep.ipstudio.skill.StudioSkillCatalog;
+import com.aistareco.aep.ipstudio.skill.StudioSkillRouter;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiChatTokenPricing;
@@ -160,7 +161,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         catch (BusinessException e) { log.info("[dialogue] execution projection unavailable thread={} code={}", threadId, e.getCode()); execution = null; }
         var t = state.thread();
         var withExecution = new DialogueThread(t.id(), t.projectId(), t.parentThreadId(), t.branchFromMessageId(), t.title(), t.lastSeq(),
-                t.activeTurnId(), view.id(), t.createdAt(), t.updatedAt());
+                t.activeTurnId(), view.id(), t.createdAt(), t.updatedAt(), t.skillKey(), t.skillVersion());
         return new State(withExecution, state.messages(), state.nextCursor(), state.latestSeq(), execution);
     }
 
@@ -240,11 +241,14 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         boolean mock = fixtures.enabled();
         StudioSkill skill = null;
         if (skillKey != null && !skillKey.isBlank()) {
-            skill = catalog.requireForNewWork(skillKey);
+            // A thread without a skill may only pick an active one; a bound thread keeps working while its skill is a draft.
+            skill = thread.getSkillKey() == null ? catalog.requireForNewSelection(skillKey) : catalog.requireForNewWork(skillKey);
             if (thread.getSkillKey() != null && !thread.getSkillKey().equals(skill.key()))
                 throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话已经在按另一种方法制作；要换方法，请从某条消息重新开始");
         } else if (thread.getSkillKey() != null) {
             skill = catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
+        } else {
+            skill = routeSkill(userId, thread, inputs); // S3: one active skill → it; several → triggers / default / 400 STUDIO_SKILL_REQUIRED
         }
         var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
         String stage = bound != null && bound.stage() != null ? bound.stage()
@@ -339,6 +343,29 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             }
         });
         return new Started(turnId, runId);
+    }
+
+    /**
+     * Intent routing for a thread that has no skill yet ({@link StudioSkillRouter}): the media types of the pinned and
+     * attached nodes and the message text against each active skill's triggers. The canvas is read only when there is
+     * more than one active skill to choose from. The caller persists the choice on the thread.
+     */
+    private StudioSkill routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs) {
+        List<StudioSkill> active = catalog.available();
+        if (active.size() <= 1) return active.isEmpty() ? null : active.get(0);
+        Set<String> media = new LinkedHashSet<>();
+        StringBuilder text = new StringBuilder();
+        JsonNode doc = projects.readDoc(projects.required(userId, thread.getProjectId()));
+        for (var m : inputs) {
+            if (m.getText() != null) text.append(m.getText()).append('\n');
+            for (String id : concat(ids(m.getPinnedNodeIdsJson()), ids(m.getAttachmentNodeIdsJson()))) {
+                String type = StudioSkillRouter.mediaOf(IpDocs.node(doc, id) == null ? null : IpDocs.node(doc, id).path("type").asText(null));
+                if (type != null) media.add(type);
+            }
+        }
+        StudioSkill chosen = StudioSkillRouter.route(active, media, text.toString()).orElse(null);
+        if (chosen != null) log.info("[dialogue] routed thread={} to skill={} v{} media={}", thread.getId(), chosen.key(), chosen.version(), media);
+        return chosen;
     }
 
     /**
@@ -783,7 +810,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
 
     DialogueThread toDto(IpDialogueThread t) {
         return new DialogueThread(t.getId(), t.getProjectId(), t.getParentThreadId(), t.getBranchFromMessageId(), t.getTitle(), t.getLastSeq(),
-                t.getActiveTurnId(), t.getActiveExecutionId(), iso(t.getCreatedAt()), iso(t.getUpdatedAt()));
+                t.getActiveTurnId(), t.getActiveExecutionId(), iso(t.getCreatedAt()), iso(t.getUpdatedAt()), t.getSkillKey(), t.getSkillVersion());
     }
 
     Message toDto(IpDialogueMessage m) {

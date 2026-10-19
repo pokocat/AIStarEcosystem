@@ -29,6 +29,10 @@ checks:
   - duration-and-order
 autoFixChecks: []
 requiredCapabilities: [vision-text-model, video-generation, film-study]
+triggers:
+  media: [video]
+  keywords: [复刻, 拉片, 参考视频, 照着这条, 做同款, 翻拍]
+  default: true
 ---
 
 # 参考视频复刻

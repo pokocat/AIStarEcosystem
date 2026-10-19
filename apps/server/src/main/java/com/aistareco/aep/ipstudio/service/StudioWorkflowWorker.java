@@ -30,6 +30,8 @@ public class StudioWorkflowWorker {
     // Plan quoting, executor wake-up and dialogue events; all optional so the native run never depends on them.
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.execution.StudioPlanQuoter> planQuoter;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.execution.StudioPlanExecutor> planExecutor;
+    // S3: a finished distill run's draft is saved in the run's settlement transaction (optional so the worker never depends on it).
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.skill.StudioSkillDraftSink> skillDrafts;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
     private final IpRunRepository runs;
@@ -160,6 +162,10 @@ public class StudioWorkflowWorker {
                                 "image".equals(target.path("mediaType").asText()),target.path("mediaFacts").size()>0,
                                 target.path("targetRunId").asText(),target.path("targetStorageKey").asText(null));
                         output.set("check",result);output.put("text",checkSummary(result));
+                    } else if("text".equals(operation)&&input.path("_exec").path("skillDistill").isObject()) {
+                        // S3 distill: the draft body is normalized here (keys / URLs / verbatim case text stripped) and saved
+                        // by StudioSkillDraftSink inside the settlement transaction. Not output.text: the asset library would file it.
+                        output.set("skillDraft",com.aistareco.aep.ipstudio.skill.StudioSkillDistill.normalize(script,input.path("_exec").path("skillDistill")));
                     } else if("text".equals(operation)&&input.path("_exec").path("skillPlan").asBoolean(false)) {
                         output.set("plan",skillPlan(run,input,script));output.put("text",output.path("plan").path("summary").asText());
                     } else if("text".equals(operation)) {
@@ -319,9 +325,17 @@ public class StudioWorkflowWorker {
         transactions.executeWithoutResult(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+            // A distill run commits its credits only together with its saved draft; if saving fails this transaction rolls
+            // back and the caller's catch fails the run with a full refund.
+            if(error==null&&output!=null&&output.path("skillDraft").isObject()&&!run.isCancelRequested())saveSkillDraft(run,(ObjectNode)output.path("skillDraft"));
             terminal(run,output,error);
         });
         afterTerminal(id);
+    }
+    private void saveSkillDraft(IpRun run,ObjectNode draft) {
+        var sink=skillDrafts==null?null:skillDrafts.getIfAvailable();
+        if(sink==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_SKILL_DRAFT_UNAVAILABLE","暂时无法保存方法草稿，本次未扣积分");
+        sink.save(run,draft);
     }
 
     /** Normalized two-stage skill plan: whitelisted, server-quoted and fingerprinted; the model never sets prices or approvals. */

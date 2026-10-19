@@ -36,7 +36,7 @@ public class ReadSkillTool implements StudioDialogueTool {
     public ToolRun run(JsonNode args, ToolContext ctx, ToolHandle handle) {
         StudioSkill skill = ctx.skill();
         if (skill == null) {
-            try { skill = catalog.requireForNewWork(DialogueTools.text(args, "key")); }
+            try { skill = catalog.requireForNewSelection(DialogueTools.text(args, "key")); } // binding a new thread: active skills only
             catch (BusinessException e) { return ToolRun.failed(e.getCode(), e.getMessage(), DialogueTools.fail(e.getMessage())); }
             ctx.effects.bindSkill(skill);
         }

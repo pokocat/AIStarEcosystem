@@ -438,6 +438,136 @@ components:
         checks: { type: array, items: { type: string } }
         autoFixChecks: { type: array, items: { type: string } }
         requiredCapabilities: { type: array, items: { type: string } }
+        triggers: { $ref: '#/components/schemas/StudioSkillTriggers' }
+    StudioSkillTriggers:
+      type: object
+      nullable: true
+      description: S3 路由提示（YAML 头可选字段，宽松解析，缺省 = 无）。只用于给还没选定方法的对话挑一个方法，从不授予任何权限。
+      properties:
+        media: { type: array, items: { type: string, enum: [video, image, audio, text] }, description: 钉住或附件节点里出现这些媒体类型时倾向这个方法 }
+        keywords: { type: array, maxItems: 32, items: { type: string, maxLength: 32 }, description: 消息文本命中（不区分大小写的子串） }
+        default: { type: boolean, description: 平局或都没命中时用它；同一时间只能有一个启用中的默认方法 }
+    StudioSkillVersion:
+      type: object
+      required: [id, skillKey, version, source, author, createdAt, frontmatter, bodyMd]
+      description: 一个不可变的技能版本（ip_skill_version）：YAML 头与正文写入后不再修改，只有草稿的 status 会在发布时变为 published。
+      properties:
+        id: { type: string }
+        skillKey: { type: string }
+        version: { type: integer }
+        status: { type: string, enum: [published, draft] }
+        source: { type: string, enum: [seed, admin, rollback, distilled] }
+        author: { type: string }
+        note: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        frontmatter: { type: object, additionalProperties: true, description: 解析后的 YAML 头（JSON） }
+        bodyMd: { type: string }
+        current: { type: boolean, nullable: true, description: 当前生效的版本为 true }
+        baseVersion: { type: integer, nullable: true, description: 草稿据以整理的版本；不等于当前版本时不能直接发布 }
+        sourceProjectId: { type: string, nullable: true }
+        sourceExecutionId: { type: string, nullable: true }
+        sourceRunId: { type: string, nullable: true }
+        publishedAt: { type: string, format: date-time, nullable: true }
+    StudioSkillAdminItem:
+      type: object
+      required: [key, name, status, currentVersion, summary, createdAt, updatedAt, pendingDrafts]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        status: { type: string, enum: [active, draft, withdrawn] }
+        currentVersion: { type: integer }
+        summary: { type: string }
+        updatedBy: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        pendingDrafts: { type: integer, description: 比当前版本新、待审核的草稿数 }
+        skill: { $ref: '#/components/schemas/StudioSkillSummary' }
+        seedFile: { type: string, nullable: true, description: 来自仓库 resources/studio/skills 时的文件名 }
+    StudioSkillAdminDetail:
+      allOf:
+        - $ref: '#/components/schemas/StudioSkillAdminItem'
+        - type: object
+          properties:
+            current: { $ref: '#/components/schemas/StudioSkillVersion' }
+    StudioSkillCreateRequest:
+      type: object
+      required: [markdown]
+      properties:
+        markdown: { type: string, maxLength: 80000, description: 完整技能文件（YAML 头 + Markdown 正文）；key 取自 YAML 头且不得与已有技能重复 }
+        note: { type: string, maxLength: 1000, nullable: true }
+    StudioSkillPublishRequest:
+      type: object
+      required: [frontmatter, bodyMd]
+      properties:
+        frontmatter: { oneOf: [{ type: string, description: YAML 文本（可带或不带 --- 包围） }, { type: object, additionalProperties: true }], description: key 必须等于路径中的 key；version 与 status 由服务端决定 }
+        bodyMd: { type: string, maxLength: 64000 }
+        note: { type: string, maxLength: 1000, nullable: true }
+        expectedVersion: { type: integer, nullable: true, description: 编辑所基于的当前版本；不匹配返回 409 STUDIO_SKILL_VERSION_CONFLICT }
+    StudioSkillStatusRequest:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [active, draft, withdrawn] }
+    StudioSkillVersionActionRequest:
+      type: object
+      properties:
+        note: { type: string, maxLength: 1000, nullable: true }
+        expectedVersion: { type: integer, nullable: true }
+    StudioSkillDryRunRequest:
+      type: object
+      required: [brief]
+      properties:
+        analysisMarkdown: { type: string, maxLength: 48000, description: 样例原片分析；空 = 尚未分析 }
+        brief: { type: string, maxLength: 16000 }
+        stage: { type: string, enum: [analysis, production], default: analysis }
+        assets:
+          type: array
+          maxItems: 32
+          items:
+            type: object
+            required: [type]
+            properties:
+              id: { type: string, pattern: '^[A-Za-z0-9_-]{1,32}$', description: 缺省为 asset-N }
+              type: { type: string, enum: [video, image, audio, text] }
+              title: { type: string, maxLength: 64 }
+              description: { type: string, maxLength: 500 }
+              durationSec: { type: number }
+        endpointId: { type: string, nullable: true, description: 管理员选择的文本端点；缺省用 Studio 创作的默认规划模型 }
+        version: { type: integer, nullable: true, description: 试跑某个已存版本（含草稿）；与 frontmatter/bodyMd 互斥 }
+        frontmatter: { oneOf: [{ type: string }, { type: object, additionalProperties: true }], description: 试跑未保存的修改，须与 bodyMd 同时提供，按发布规则校验 }
+        bodyMd: { type: string }
+    StudioSkillDryRunResult:
+      type: object
+      required: [validation, usage, skillKey, stage, endpointId]
+      properties:
+        plan: { type: object, nullable: true, description: 通过校验的规范化计划（不报价、不带指纹，不能用于确认执行）；未通过为 null }
+        validation: { type: object, required: [ok, errors], properties: { ok: { type: boolean }, errors: { type: array, items: { type: string } } } }
+        usage: { type: object, properties: { inputTokens: { type: integer }, outputTokens: { type: integer }, totalTokens: { type: integer } } }
+        skillKey: { type: string }
+        skillVersion: { type: integer }
+        stage: { type: string, enum: [analysis, production] }
+        endpointId: { type: string }
+        model: { type: string, nullable: true }
+        finishReason: { type: string, nullable: true }
+        rawExcerpt: { type: string, nullable: true, description: 未通过校验时模型回复的开头（最多 2000 字） }
+    StudioSkillDraftRequest:
+      type: object
+      required: [clientRequestId, executionId, maxCost]
+      properties:
+        clientRequestId: { type: string, pattern: '^[A-Za-z0-9_.:-]{1,64}$', description: 同画布内幂等 }
+        executionId: { type: string, description: 本画布上已 done / partial 的连续制作 }
+        note: { type: string, maxLength: 1000, nullable: true, description: 运营给的整理重点 }
+        maxCost: { type: integer, minimum: 0, description: 用户批准的费用上限（按 Token 计费的冻结额）；低于当前报价返回 409 STUDIO_PRICE_CHANGED }
+        billing: { $ref: '#/components/schemas/EnterpriseBillingSelection' }
+    StudioSkillDraftOutput:
+      type: object
+      description: 整理任务成功后 IpRun.output.skillDraft：草稿已保存为 ip_skill_version(status=draft, source=distilled)，不改变当前版本与状态。
+      properties:
+        skillKey: { type: string }
+        version: { type: integer }
+        baseVersion: { type: integer }
+        changeNote: { type: string }
+        strippedReferences: { type: integer, description: 服务端移除的疑似私人素材 / 地址 / 编号处数 }
     StudioCheckResult:
       type: object
       required: [status, targetRunId, items]
@@ -490,6 +620,8 @@ components:
         lastSeq: { type: integer }
         activeTurnId: { type: string, nullable: true }
         activeExecutionId: { type: string, nullable: true }
+        skillKey: { type: string, nullable: true, description: 线程绑定的技能（显式选择或首轮意图路由的结果）；还没有任何一轮选定时为空 }
+        skillVersion: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     StudioDialogueState:
@@ -9693,6 +9825,110 @@ paths:
         '200': { description: 恢复历史内容并创建新版本；原模板与历史同事务保存 }
         '409': { description: PROMPT_VERSION_CONFLICT }
 
+  # ── Studio 技能库（S3；ip_skill / ip_skill_version，不可变版本；SUPER_ADMIN / OPERATOR，FINANCE_ADMIN 403） ──────────
+  /admin/studio/skills:
+    get:
+      tags: [admin-studio-skills]
+      operationId: adminListStudioSkills
+      responses: { '200': { description: 'ApiResponse<StudioSkillAdminItem[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSkillAdminItem' } } } } } }
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminCreateStudioSkill
+      description: 用一份完整技能文件新建技能（v1，source=admin，状态取 YAML 头）。校验规则与仓库文件相同。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillCreateRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
+        '400': { description: 'STUDIO_SKILL_INVALID（error.details.reason 为具体原因）/ STUDIO_INPUT_INVALID' }
+        '409': { description: 'STUDIO_SKILL_EXISTS / STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/{key}:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [admin-studio-skills]
+      operationId: adminGetStudioSkill
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>（含当前版本全文）' }
+        '404': { description: STUDIO_SKILL_NOT_FOUND }
+  /admin/studio/skills/{key}/versions:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    get:
+      tags: [admin-studio-skills]
+      operationId: adminListStudioSkillVersions
+      description: 全部版本（新到旧），含草稿及其来源（distilled）、作者、基础版本与来源画布 / 执行 / 任务编号。
+      responses: { '200': { description: 'ApiResponse<StudioSkillVersion[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSkillVersion' } } } } } }
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminPublishStudioSkillVersion
+      description: 发布一个新的不可变版本并立即成为当前版本（source=admin）。校验与仓库文件相同：阶段操作白名单、autoFixChecks ⊆ checks、maxSteps 表达式、各上限范围；key 须等于路径；version / status 由服务端决定。同一时间只能有一个启用中的默认方法。提交后失效运行时缓存；已受理的对话、计划与执行继续用各自的快照。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillPublishRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
+        '400': { description: 'STUDIO_SKILL_INVALID / STUDIO_INPUT_INVALID' }
+        '404': { description: STUDIO_SKILL_NOT_FOUND }
+        '409': { description: 'STUDIO_SKILL_VERSION_CONFLICT（expectedVersion 不是当前版本）/ STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/{key}/versions/{version}:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [admin-studio-skills]
+      operationId: adminGetStudioSkillVersion
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillVersion>（任意历史版本或草稿全文，供对比）' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / STUDIO_SKILL_VERSION_NOT_FOUND' }
+  /admin/studio/skills/{key}/versions/{version}/publish:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminPublishStudioSkillDraft
+      description: 原样发布一份从画布整理出的草稿：草稿的 baseVersion 必须等于当前版本，否则 409 STUDIO_SKILL_DRAFT_STALE（发布它会悄悄撤掉之后发布的修改，请对照当前版本手动合并后用 POST versions 发布）。草稿 status → published，当前版本指向它。
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillVersionActionRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
+        '400': { description: STUDIO_SKILL_INVALID }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / STUDIO_SKILL_VERSION_NOT_FOUND' }
+        '409': { description: 'STUDIO_SKILL_DRAFT_STALE / STUDIO_SKILL_VERSION_CONFLICT（已经发布过，或 expectedVersion 不匹配）/ STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/{key}/status:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    put:
+      tags: [admin-studio-skills]
+      operationId: adminSetStudioSkillStatus
+      description: active（可被新对话选择）/ draft（只在后台可见；已绑定它的对话继续可用）/ withdrawn（停用：阻止新的对话轮次、计划与执行；进行中的执行保留快照）。让平台一个启用中的技能都不剩会被拒绝。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillStatusRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_SKILL_INVALID（当前版本已不能通过校验，不能启用）' }
+        '404': { description: STUDIO_SKILL_NOT_FOUND }
+        '409': { description: 'STUDIO_SKILL_LAST_ACTIVE / STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/{key}/rollback/{version}:
+    parameters:
+      - { name: key, in: path, required: true, schema: { type: string } }
+      - { name: version, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminRollbackStudioSkill
+      description: 复制某个已发布过的历史版本为一个新版本（source=rollback）并设为当前；草稿从未生效，不能作为回滚目标。
+      requestBody: { required: false, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillVersionActionRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillAdminDetail>' }
+        '400': { description: 'STUDIO_INPUT_INVALID（目标是草稿或已经是当前版本）/ STUDIO_SKILL_INVALID' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / STUDIO_SKILL_VERSION_NOT_FOUND' }
+        '409': { description: 'STUDIO_SKILL_VERSION_CONFLICT / STUDIO_SKILL_DEFAULT_CONFLICT' }
+  /admin/studio/skills/{key}/dry-run:
+    parameters: [{ name: key, in: path, required: true, schema: { type: string } }]
+    post:
+      tags: [admin-studio-skills]
+      operationId: adminDryRunStudioSkill
+      description: 试跑：用样例分析、用户目标与素材清单，按当前版本 / 指定版本（含草稿）/ 未保存的修改，调用一次 skill_plan 提示词（dap.ip_studio_skill_plan）。不向任何用户计费、不报价、不保存；回复经与正式规划相同的计划校验器，返回规范化计划或校验错误与 Token 用量。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillDryRunRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioSkillDryRunResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillDryRunResult' } } } }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_SKILL_INVALID（未保存的修改校验不过）' }
+        '404': { description: 'STUDIO_SKILL_NOT_FOUND / STUDIO_SKILL_VERSION_NOT_FOUND / ENDPOINT_NOT_FOUND' }
+        '502': { description: 'AI_PROVIDER_ERROR（上游失败，原因见服务端日志）' }
+        '503': { description: 'AI_NOT_CONFIGURED（没有可用的规划模型，或所选端点已停用）/ PROMPT_NOT_CONFIGURED；不会产出假计划' }
+
 
   # ── 素材运营 · 文本类 AI（v0.40 新增；接真 LLM，失败降级，见 MaterialAiService） ──────────
   /material/scripts:
@@ -12660,9 +12896,23 @@ paths:
     get:
       tags: [ipstudio]
       operationId: studioSkills
-      description: 当前可用技能（首期读仓内 resources/studio/skills/*.md）：标识、版本、动态规划方式、方法示例、阶段操作白名单、上限、检查项与能力要求。
+      description: 当前启用（status=active）的技能及其当前版本（S3 起来自 ip_skill / ip_skill_version，仓内 resources/studio/skills/*.md 仅作种子）：标识、版本、动态规划方式、方法示例、阶段操作白名单、上限、检查项、能力要求与可选的路由提示 triggers。草稿与停用的技能不出现。
       responses:
         '200': { description: 'ApiResponse<StudioSkillSummary[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSkillSummary' } } } } }
+  /v1/ip-studio/projects/{id}/skill-drafts:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    post:
+      tags: [ipstudio]
+      operationId: studioDistillSkillDraft
+      description: S3 只限运营（aep_users.operatorRole，判定同 InAppOperatorGuard）：把本画布一次已完成（done / partial）的连续制作整理成所用技能的一份草稿版本。受理一个按 Token 计费的文本任务（operation=text, purpose=skill-distill，kind=studio-text）：冻结前核对模型、提示词 dap.ip_studio_skill_distill 与按量售价，maxCost 须不低于报价；冻结与任务同事务，提交后派发。模型只看到当前技能正文与这次制作的结构化记录（方案、每步结果与重做次数、检查结论、用户采用了哪些结果），看不到步骤提示词、用户原话与存储地址；服务端再从结果中移除疑似存储 key、网址、内部编号与案例原句，YAML 头沿用基础版本。成功时在结算的同一事务里写入 ip_skill_version(status=draft, source=distilled)，不改变技能的当前版本与状态（发布是管理员动作）；保存失败则任务失败并全额退回。同 clientRequestId 幂等。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSkillDraftRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<IpRun>（完成后 output.skillDraft 见 StudioSkillDraftOutput）' }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_SKILL_DRAFT_UNAVAILABLE（测试响应模式不支持）' }
+        '403': { description: 'STUDIO_SKILL_DRAFT_FORBIDDEN（不是运营）' }
+        '404': { description: 'IP_PROJECT_NOT_FOUND / STUDIO_PLAN_EXECUTION_NOT_FOUND（执行不属于本人本画布）/ STUDIO_SKILL_NOT_FOUND（技能不存在或已停用）' }
+        '409': { description: 'STUDIO_SKILL_DRAFT_NOT_READY（执行还没做完）/ STUDIO_PRICE_CHANGED（未带 maxCost 或低于报价）/ STUDIO_REQUEST_CHANGED' }
+        '503': { description: 'AI_NOT_CONFIGURED / ENDPOINT_NOT_ALLOWED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED；不建任务不冻结' }
   /v1/ip-studio/projects/{id}/conversation:
     parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
     get:
@@ -12688,14 +12938,14 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPostMessage
-      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。S3 意图路由：线程还没有技能时，带 skillKey 则必须是启用中的技能；不带则只有一个启用中的技能就用它，多个时按钉住 / 附件节点的媒体类型（每命中一种 2 分）与消息关键词（每个 1 分）打分取唯一最高分，平局或都没命中用 default 方法，仍定不下来返回 400 STUDIO_SKILL_REQUIRED；选定结果写到线程（thread.skillKey / skillVersion），之后不再改。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
-        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）' }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）/ STUDIO_SKILL_REQUIRED（S3：线程还没有技能、启用中的技能不止一个，按附件媒体类型与关键词打分没有唯一最高分且没有默认方法；error.details.skills=[{key,name,summary}]，界面据此请用户选一个后带 skillKey 重发）' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（线程绑定的后台制作本阶段预算放不下这一轮对话；带 stage, spent, inFlight, quotedCost=本轮上限, approvedCap, shortfall）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
-        '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND / IP_PROJECT_NOT_FOUND' }
+        '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND（显式 skillKey 不存在、已停用，或在还没有技能的线程上选了非启用的方法）/ IP_PROJECT_NOT_FOUND' }
         '503': { description: 'AI_NOT_CONFIGURED / PROMPT_NOT_CONFIGURED / AI_TOKEN_PRICE_NOT_CONFIGURED / AI_TOOLS_NOT_SUPPORTED（端点声明不支持工具且无 JSON 协议回落时）' }
   /v1/ip-studio/projects/{id}/conversations/{threadId}/events:
     parameters:

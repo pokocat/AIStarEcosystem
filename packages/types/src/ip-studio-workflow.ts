@@ -352,6 +352,8 @@ export interface StudioSkillSummary {
   key: string; name: string; version: number; status: "active" | "draft" | "withdrawn"; planning: "dynamic";
   summary: string; methodExamples: string[]; operations: Record<StudioPlanStage, StudioPlanOperation[]>;
   limits: StudioSkillLimits; checks: string[]; autoFixChecks: string[]; requiredCapabilities: string[];
+  /** S3: optional routing hints from the front matter (absent = no triggers). Only used to pick a skill for a thread that has none yet. */
+  triggers?: StudioSkillTriggers;
 }
 export type StudioCheckVerdict = "pass" | "fail" | "unknown";
 export interface StudioCheckEvidence { kind: "frame" | "media" | "text"; timeSec?: number; observation: string }
@@ -391,6 +393,8 @@ export interface StudioDialogueMessage {
 export interface StudioDialogueThread {
   id: string; projectId: string; parentThreadId?: string; branchFromMessageId?: string; title?: string;
   lastSeq: number; activeTurnId?: string; activeExecutionId?: string; createdAt: string; updatedAt: string;
+  /** S3: the skill this thread is bound to (explicit choice or intent routing on its first turn); absent until a turn picks one. */
+  skillKey?: string; skillVersion?: number;
 }
 export interface StudioDialogueState { thread: StudioDialogueThread; messages: StudioDialogueMessage[]; nextCursor?: string; latestSeq: number; execution?: StudioPlanExecution }
 export interface StudioPostMessageRequest { clientMessageId: string; text: string; pinnedNodeIds?: string[]; attachmentNodeIds?: string[]; expectedPlanRevision?: number; skillKey?: string; billing?: EnterpriseBillingSelection; maxCost?: number;
@@ -432,3 +436,80 @@ export interface StudioPlanExecutionCreateRequest { clientRequestId: string; sta
   billing?: EnterpriseBillingSelection; executionId?: string; expectedRevision?: number; approvalId?: string; confirmationMessageId?: string }
 export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
+
+// ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───
+// (docs/ip-studio-conversational-video-recreation-plan.md §第三阶段 S3; server: ipstudio/skill/**, V63 ip_skill / ip_skill_version)
+/** Routing hints in a skill's front matter. media = attachment/pinned node types that suggest this skill; default = fallback on ties / no hits. */
+export interface StudioSkillTriggers { media?: ("video" | "image" | "audio" | "text")[]; keywords?: string[]; default?: boolean }
+export type StudioSkillStatus = "active" | "draft" | "withdrawn";
+export type StudioSkillVersionSource = "seed" | "admin" | "rollback" | "distilled";
+/** published = in effect now or earlier; draft = distilled from a canvas, waiting for an admin to publish (never in effect by itself). */
+export type StudioSkillVersionStatus = "published" | "draft";
+/** One immutable skill version: front matter + body (and digest) never change after insert; publishing a draft only flips its status, sets publishedAt and appends the publish note. */
+export interface StudioSkillVersion {
+  id: string; skillKey: string; version: number; status?: StudioSkillVersionStatus; source: StudioSkillVersionSource;
+  author: string; note?: string; createdAt: string;
+  /** Parsed YAML front matter (the server-side execution boundary) as JSON. */
+  frontmatter: Record<string, unknown>;
+  bodyMd: string;
+  /** true for the version currently in effect (ip_skill.current_version). */
+  current?: boolean;
+  /** Drafts: the version they were distilled from. A draft at or below the current version can no longer be published as is. */
+  baseVersion?: number;
+  /** Drafts: where they came from (ids only, never content). */
+  sourceProjectId?: string; sourceExecutionId?: string; sourceRunId?: string;
+  publishedAt?: string;
+}
+/** GET /admin/studio/skills item. */
+export interface StudioSkillAdminItem {
+  key: string; name: string; status: StudioSkillStatus; currentVersion: number; summary: string;
+  updatedBy?: string; createdAt: string; updatedAt: string;
+  /** Drafts newer than the current version, waiting for review. */
+  pendingDrafts: number;
+  /** The current version as the runtime sees it (status = ip_skill.status, limits evaluated, triggers parsed). */
+  skill: StudioSkillSummary;
+  /** Repository seed file name when this skill is seeded from resources/studio/skills/*.md. */
+  seedFile?: string;
+}
+/** GET /admin/studio/skills/{key}: the item plus the current version's full content. */
+export interface StudioSkillAdminDetail extends StudioSkillAdminItem { current: StudioSkillVersion }
+/** POST /admin/studio/skills: a whole skill file (YAML front matter + Markdown body); the key comes from the front matter. */
+export interface StudioSkillCreateRequest { markdown: string; note?: string }
+/** POST /admin/studio/skills/{key}/versions: publish a new immutable version (becomes current). */
+export interface StudioSkillPublishRequest {
+  /** YAML text (without the --- fences) or the JSON object. key must equal the path key; version and status are set by the server. */
+  frontmatter: string | Record<string, unknown>;
+  bodyMd: string; note?: string;
+  /** Current version the admin edited from; mismatch → 409 STUDIO_SKILL_VERSION_CONFLICT. Omitted = no check. */
+  expectedVersion?: number;
+}
+/** PUT /admin/studio/skills/{key}/status. Withdrawing the only active skill → 409 STUDIO_SKILL_LAST_ACTIVE. */
+export interface StudioSkillStatusRequest { status: StudioSkillStatus }
+/** POST /admin/studio/skills/{key}/rollback/{version} and POST /admin/studio/skills/{key}/versions/{version}/publish. */
+export interface StudioSkillVersionActionRequest { note?: string; expectedVersion?: number }
+export interface StudioSkillDryRunAsset { id?: string; type: "video" | "image" | "audio" | "text"; title?: string; description?: string; durationSec?: number }
+/** POST /admin/studio/skills/{key}/dry-run: one skill_plan call, no user billing, nothing saved. */
+export interface StudioSkillDryRunRequest {
+  analysisMarkdown: string; brief: string; stage?: StudioPlanStage; assets?: StudioSkillDryRunAsset[];
+  /** Admin-chosen text endpoint; omitted = the default planning endpoint. */
+  endpointId?: string;
+  /** Try a stored version (drafts included) instead of the current one. */
+  version?: number;
+  /** Try an unsaved edit before publishing (send both together; validated like a publish). */
+  frontmatter?: string | Record<string, unknown>; bodyMd?: string;
+}
+export interface StudioSkillDryRunResult {
+  /** The normalized plan when the reply passed validation (not quoted, not fingerprinted); null otherwise. */
+  plan: StudioPlan | null;
+  validation: { ok: boolean; errors: string[] };
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  skillKey: string; skillVersion?: number; stage: StudioPlanStage; endpointId: string; model?: string; finishReason?: string;
+  /** Start of the model reply when it did not validate (truncated, for debugging the skill). */
+  rawExcerpt?: string;
+}
+/** POST /v1/ip-studio/projects/{id}/skill-drafts (operators only): distill a finished execution into a draft version. Returns the text run (IpRun). */
+export interface StudioSkillDraftRequest { clientRequestId: string; executionId: string; note?: string; maxCost: number; billing?: EnterpriseBillingSelection }
+/** output.skillDraft of a finished distill run: the draft was saved; publishing is an admin action. */
+export interface StudioSkillDraftOutput { skillKey: string; version: number; baseVersion: number; changeNote: string; strippedReferences: number }
+/** error.details of 400 STUDIO_SKILL_REQUIRED: several skills fit (or none clearly), so the UI should ask which one. */
+export interface StudioSkillRequiredDetails { skills: { key: string; name: string; summary: string }[] }

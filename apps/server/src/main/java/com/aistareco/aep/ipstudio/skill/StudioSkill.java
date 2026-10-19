@@ -2,6 +2,7 @@ package com.aistareco.aep.ipstudio.skill;
 
 import com.aistareco.aep.ipstudio.dto.StudioSkillDtos.SkillLimits;
 import com.aistareco.aep.ipstudio.dto.StudioSkillDtos.SkillSummary;
+import com.aistareco.aep.ipstudio.dto.StudioSkillDtos.SkillTriggers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -11,21 +12,45 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * One parsed repository skill file. The YAML header is the execution boundary (stage operation whitelist, limits,
- * checks); the Markdown body is method text for the model and never widens it.
+ * One parsed skill version (a repository seed file or an {@code ip_skill_version} row). The YAML header is the execution
+ * boundary (stage operation whitelist, limits, checks); the Markdown body is method text for the model and never widens it.
  *
  * @param maxSegmentSec positive integer, or the string {@code "model"} (resolved from the selected video model contract)
- * @param digest        sha256 of the whole normalized file; part of every accepted snapshot
+ * @param digest        sha256 of the version content; part of every accepted snapshot
+ * @param triggers      routing hints (S3), {@link Triggers#NONE} when the header declares none; never a permission
  */
 public record StudioSkill(String key, String name, int version, String status, String planning, String summary,
                           List<String> methodExamples, Map<String, List<String>> operations, int maxSourceSec,
                           int maxSegments, Object maxSegmentSec, int maxSteps, int maxAutoFixPerSegment,
                           List<String> checks, List<String> autoFixChecks, List<String> requiredCapabilities,
-                          String body, String digest) {
+                          String body, String digest, Triggers triggers) {
     public static final String ANALYSIS = "analysis";
     public static final String PRODUCTION = "production";
 
+    /** Routing hints: node media types and message keywords that suggest this skill; {@code defaultSkill} = fallback. */
+    public record Triggers(List<String> media, List<String> keywords, boolean defaultSkill) {
+        public static final Triggers NONE = new Triggers(List.of(), List.of(), false);
+        public boolean declared() { return !media.isEmpty() || !keywords.isEmpty() || defaultSkill; }
+        SkillTriggers dto() { return declared() ? new SkillTriggers(media, keywords, defaultSkill ? Boolean.TRUE : null) : null; }
+    }
+
+    public StudioSkill {
+        if (triggers == null) triggers = Triggers.NONE;
+    }
+
+    /** The same content under another runtime status / version number (the DB row is the truth for both). */
+    public StudioSkill withRuntime(String newStatus, int newVersion) {
+        return new StudioSkill(key, name, newVersion, newStatus, planning, summary, methodExamples, operations, maxSourceSec, maxSegments,
+                maxSegmentSec, maxSteps, maxAutoFixPerSegment, checks, autoFixChecks, requiredCapabilities, body, digest, triggers);
+    }
+
+    public StudioSkill withDigest(String newDigest) {
+        return new StudioSkill(key, name, version, status, planning, summary, methodExamples, operations, maxSourceSec, maxSegments,
+                maxSegmentSec, maxSteps, maxAutoFixPerSegment, checks, autoFixChecks, requiredCapabilities, body, newDigest, triggers);
+    }
+
     public boolean active() { return "active".equals(status); }
+    public boolean draft() { return "draft".equals(status); }
     public boolean withdrawn() { return "withdrawn".equals(status); }
     public List<String> stageOperations(String stage) { return operations.getOrDefault(stage, List.of()); }
     public boolean allows(String stage, String operation) { return stageOperations(stage).contains(operation); }
@@ -33,7 +58,7 @@ public record StudioSkill(String key, String name, int version, String status, S
     public SkillSummary summaryDto() {
         return new SkillSummary(key, name, version, status, planning, summary, methodExamples, operations,
                 new SkillLimits(maxSourceSec, maxSegments, maxSegmentSec, maxSteps, maxAutoFixPerSegment),
-                checks, autoFixChecks, requiredCapabilities);
+                checks, autoFixChecks, requiredCapabilities, triggers.dto());
     }
 
     /**
@@ -56,6 +81,12 @@ public record StudioSkill(String key, String name, int version, String status, S
         autoFixChecks.forEach(fixes::add);
         var caps = out.putArray("requiredCapabilities");
         requiredCapabilities.forEach(caps::add);
+        if (triggers.declared()) {
+            var t = out.putObject("triggers");
+            var media = t.putArray("media"); triggers.media().forEach(media::add);
+            var words = t.putArray("keywords"); triggers.keywords().forEach(words::add);
+            t.put("default", triggers.defaultSkill());
+        }
         out.put("body", body);
         return out;
     }
@@ -72,7 +103,9 @@ public record StudioSkill(String key, String name, int version, String status, S
                 strings(node.path("methodExamples")), Map.copyOf(operations), limits.path("maxSourceSec").asInt(),
                 limits.path("maxSegments").asInt(), maxSegmentSec, limits.path("maxSteps").asInt(),
                 limits.path("maxAutoFixPerSegment").asInt(), strings(node.path("checks")), strings(node.path("autoFixChecks")),
-                strings(node.path("requiredCapabilities")), node.path("body").asText(""), node.path("digest").asText(""));
+                strings(node.path("requiredCapabilities")), node.path("body").asText(""), node.path("digest").asText(""),
+                node.path("triggers").isObject() ? new Triggers(strings(node.path("triggers").path("media")), strings(node.path("triggers").path("keywords")),
+                        node.path("triggers").path("default").asBoolean(false)) : Triggers.NONE);
     }
 
     private static List<String> strings(JsonNode array) {

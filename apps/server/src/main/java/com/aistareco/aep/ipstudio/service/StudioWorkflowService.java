@@ -550,13 +550,8 @@ public class StudioWorkflowService {
         var variables=new LinkedHashMap<String,String>();
         String body=skill.body();
         variables.put("skill",body.length()>16000?body.substring(0,16000):body);
-        variables.put("stage","analysis".equals(request.stage())?"分析阶段（解析、拉片、制作方案推导与计划编译）":"制作阶段（生成、检查与合成）");
-        ObjectNode constraints=mapper.createObjectNode();
-        var operations=constraints.putArray("operations");skill.stageOperations(request.stage()).forEach(operations::add);
-        constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
-        var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
-        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,size?,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
-        variables.put("constraints",constraints.toString());
+        variables.put("stage",skillPlanStageText(request.stage()));
+        variables.put("constraints",skillPlanConstraints(mapper,skill,request.stage()).toString());
         variables.put("brief",request.prompt());
         // Allowed binding targets: the canvas nodes the user gave, plus (inside an execution) its own output nodes.
         Set<String> allowed=new LinkedHashSet<>(request.contextNodeIds()==null?List.of():request.contextNodeIds());
@@ -588,8 +583,23 @@ public class StudioWorkflowService {
         return variables;
     }
 
+    /** Stage line of the skill_plan prompt; shared with the admin dry-run so both see the same planner input. */
+    public static String skillPlanStageText(String stage) {
+        return "analysis".equals(stage)?"分析阶段（解析、拉片、制作方案推导与计划编译）":"制作阶段（生成、检查与合成）";
+    }
+
+    /** Stage whitelist, limits, checks and the typed settings contract given to the planner (also used by the admin dry-run). */
+    public static ObjectNode skillPlanConstraints(ObjectMapper mapper,com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill,String stage) {
+        ObjectNode constraints=mapper.createObjectNode();
+        var operations=constraints.putArray("operations");skill.stageOperations(stage).forEach(operations::add);
+        constraints.put("maxSteps",skill.maxSteps()).put("maxSegments",skill.maxSegments()).put("maxSourceSec",skill.maxSourceSec()).put("maxSegmentSec",skill.maxSegmentSec());
+        var checks=constraints.putArray("checks");skill.checks().forEach(checks::add);
+        constraints.put("settings","每步 settings 按操作填写：recreation{sourceNodeId,mode:\"segments\",maxSegmentSec:\"model\"|秒数,videoModel}；image{count:1|2|4,size?,referenceBindings[]}；video{video:{mode,resolutionTier,seed?},durationSec,aspectRatio,count:1|2|4,referenceBindings[]}；check{targetStepId,checkIds[],candidateIndex?}；assemble{clipOrder:[{stepId,candidateIndex?}],audioStrategy:\"generated\"|\"source-audio\"}；text{purpose:\"script\"|\"prompt-revision\"|\"plan-compile\"|\"note\",editTarget?}。referenceBindings 每项 {stepId 或 nodeId 二选一,role,order}。plan-compile 只在分析阶段用于编排制作计划。");
+        return constraints;
+    }
+
     /** Video model contracts and text/image price hints from server truth, for the planner to stay inside real limits. */
-    private String planCapabilities() {
+    public String planCapabilities() {
         var out=mapper.createObjectNode();
         var videos=out.putArray("videoModels");
         if(studioVideo!=null)try {

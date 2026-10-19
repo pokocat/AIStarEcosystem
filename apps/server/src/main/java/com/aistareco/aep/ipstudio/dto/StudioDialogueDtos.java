@@ -13,8 +13,10 @@ import java.util.List;
 public final class StudioDialogueDtos {
     private StudioDialogueDtos() {}
 
+    /** {@code skillKey / skillVersion}: the skill the thread is bound to (explicit choice or S3 intent routing), null until a turn picks one. */
     public record DialogueThread(String id, String projectId, String parentThreadId, String branchFromMessageId, String title,
-                         long lastSeq, String activeTurnId, String activeExecutionId, String createdAt, String updatedAt) {}
+                         long lastSeq, String activeTurnId, String activeExecutionId, String createdAt, String updatedAt,
+                         String skillKey, Integer skillVersion) {}
 
     public record Message(String id, String threadId, long seq, String turnId, String runId, String role, String text,
                           JsonNode blocks, List<String> pinnedNodeIds, List<String> attachmentNodeIds, String clientMessageId,

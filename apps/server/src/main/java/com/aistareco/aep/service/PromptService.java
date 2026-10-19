@@ -150,6 +150,8 @@ public class PromptService {
     public static final String KEY_DAP_IP_STUDIO_SKILL_DIALOGUE = "dap.ip_studio_skill_dialogue";
     public static final String KEY_DAP_IP_STUDIO_SKILL_PLAN = "dap.ip_studio_skill_plan";
     public static final String KEY_DAP_IP_STUDIO_SKILL_CHECK = "dap.ip_studio_skill_check";
+    /** S3: turn a finished Studio plan execution into a draft revision of the skill body (operators only, reviewed in admin). */
+    public static final String KEY_DAP_IP_STUDIO_SKILL_DISTILL = "dap.ip_studio_skill_distill";
 
     /** admin 列表 / seeder 默认覆盖的已知 key（顺序即展示顺序）。 */
     public static final List<String> KNOWN_KEYS =
@@ -174,7 +176,8 @@ public class PromptService {
                     KEY_DAP_SCENE_IMAGE, KEY_DAP_SCENE_VARIANT, KEY_DAP_PRODUCT_IMAGE,
                     KEY_DAP_PRODUCT_ANGLE, KEY_DAP_COMPOSE,
                     KEY_DAP_IP_IDENTITY, KEY_DAP_IP_LOOK_IMAGE, KEY_DAP_IP_CANVAS_IMAGE, KEY_DAP_IP_STUDIO_SCRIPT, KEY_DAP_IP_STUDIO_ASSISTANT, KEY_DAP_IP_STUDIO_RECREATION,
-                    KEY_DAP_IP_STUDIO_SKILL_DIALOGUE, KEY_DAP_IP_STUDIO_SKILL_PLAN, KEY_DAP_IP_STUDIO_SKILL_CHECK);
+                    KEY_DAP_IP_STUDIO_SKILL_DIALOGUE, KEY_DAP_IP_STUDIO_SKILL_PLAN, KEY_DAP_IP_STUDIO_SKILL_CHECK,
+                    KEY_DAP_IP_STUDIO_SKILL_DISTILL);
 
     /** 代码内最终兜底（resource 也缺失时）。故意通用，仅保证非空可降级。 */
     private static final String CODE_FALLBACK_SYSTEM =
