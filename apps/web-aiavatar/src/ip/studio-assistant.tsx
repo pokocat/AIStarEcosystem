@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button, Select } from "antd";
-import { ChevronRight, CircleHelp, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
+import { ChevronRight, CircleHelp, FileText, Image, PenLine, Sparkles, Video, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpRun, IpSavedAsset } from "@ai-star-eco/types";
 import type { StudioAssistantMode, StudioCapabilities, StudioDialogueMessage, StudioPlan, StudioPlanExecution, StudioSkillRequiredDetails, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
@@ -534,7 +534,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution}
       locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}
   </> : undefined;
-  return <StudioFloatingPanel title="创作助手" titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }}
+  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><Sparkles size={13}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }}
     width={480} utility dockable defaultDocked resizable layoutKey="assistant" footer={<>
       <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}

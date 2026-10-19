@@ -12,10 +12,10 @@ import { StudioErrorNotice, useStudioApp } from './studio-errors';
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
-import { App as AntdApp, ConfigProvider, theme } from "antd";
+import { App as AntdApp, ConfigProvider, Popover, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Send, Star } from "lucide-react";
+import { AlertCircle, CheckCircle2, Ellipsis, Loader2, RefreshCw, Send, Star } from "lucide-react";
 import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -126,20 +126,25 @@ function Host({ projectId }: { projectId: string }) {
   // 画布还没加载完时插槽内容也无所谓，反正顶栏那会儿还没渲染。
   useHostActions(
     <>
-      <ProjectHistory projectId={projectId} saveNow={saveNow} />
-      <LastRunPanel />
-      {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>保存为模板</button></>}
-      {isOperator && (
-        <button
-          onClick={()=>{setTemplateVisibility('official');setTemplateOpen(true);}}
-          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
-          style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
-          title="完整保存画布和素材，所有用户都能查看"
-        >
-          <Star className="w-3.5 h-3.5 shrink-0" />
-          存为官方内容
-        </button>
-      )}
+      {/* 低频项（历史记录、上次发给模型、模板来源、存为模板）收进「⋯」，顶栏只留保存状态、发布和积分（画布页改版，2026-10-19）。 */}
+      <Popover trigger="click" placement="bottomRight" getPopupContainer={modalContainerOf} content={<div className="studio-host-more" role="group" aria-label="画布更多操作">
+        <ProjectHistory projectId={projectId} saveNow={saveNow} />
+        <LastRunPanel />
+        {!USE_MOCK && <><StudioTemplateSource projectId={projectId}/><button type="button" onClick={()=>{setTemplateVisibility('personal');setTemplateOpen(true);}} className="h-8 px-3 rounded-full text-[12px] whitespace-nowrap" style={{background:"var(--surface-2)",color:"var(--ink-2)"}}>保存为模板</button></>}
+        {isOperator && (
+          <button
+            onClick={()=>{setTemplateVisibility('official');setTemplateOpen(true);}}
+            className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-semibold transition hover:brightness-95 whitespace-nowrap disabled:opacity-60"
+            style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
+            title="完整保存画布和素材，所有用户都能查看"
+          >
+            <Star className="w-3.5 h-3.5 shrink-0" />
+            存为官方内容
+          </button>
+        )}
+      </div>}>
+        <button type="button" aria-label="更多" title="历史记录、上次发给模型、模板" className="studio-host-more-button"><Ellipsis className="w-4 h-4" /></button>
+      </Popover>
       {saveState !== "idle" && (
         <span
           className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"
@@ -255,6 +260,8 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false, staleTime: 5 * 60_000 } },
 });
 
+/** Popovers from the header stay inside the canvas shell so they stack with its floating panels. */
+const modalContainerOf = () => document.querySelector<HTMLElement>(".studio-flow-shell")?.closest<HTMLElement>(".ip-surface") || document.body;
 export function CanvasHost({ projectId }: { projectId: string }) {
   return (
     <ConfigProvider

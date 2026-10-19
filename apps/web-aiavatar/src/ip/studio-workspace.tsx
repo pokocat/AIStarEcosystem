@@ -489,6 +489,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       else if(action==="speech") openSpeech(node);
       else if(action==="lip") openLipSync(node);
       else if(action==="templates")openTemplates();
+      else if(action==="library")openIpLibrary();
       else if(action==="commerce")openTemplates("commerce");
       else if(action==="digital")openTemplates("digital");
       else if(action==="work"||action==='editor'&&node?.metadata?.studio?.workDraft) {if(node?.metadata?.studio?.workDraft)setEpisodeFilter(node.metadata.studio.episodeNo??'all');setMode("work");onClosePanel();}
@@ -903,7 +904,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
   const contextualActions=selected && selectedNodeIds.size===1 && mode==="canvas" && !referencePicking && !pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
       <span className="studio-selected-name">{selected.title}</span>
-      <button type="button" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><Sparkles size={15}/>问助手</button>
+      <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><Sparkles size={15}/>问助手</button>
       {selected.type===CanvasNodeType.Image && <><button data-studio-command="image" type="button" onClick={() => {
           openDirector("image",selected);
           if(selectedStudio?.libraryAssetRole==="sheet"){
@@ -999,29 +1000,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       </details>
       {nativeVideo&&videoValidationError&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
     </StudioFloatingPanel>;
+  const activeRunCount=runs.filter(run=>run.status==="running").length;
   return <div className="studio-overlay">
-    <div className="studio-command-strip" aria-label="工作台工具">
-      <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
-        <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
-      <div className="studio-director-launch">
-        <div className="studio-resource-tools" role="group" aria-label="素材入口">
-        <button type="button" className="studio-ip-library" onClick={()=>openIpLibrary()}><Images size={15}/>素材库</button>
-        <button type="button" className="studio-template-launch" onClick={()=>openTemplates()}><PanelsTopLeft size={15}/>画布模板</button>
-        </div>
-        <div className="studio-utility-tools" role="group" aria-label="任务与更多工具">
-        <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(true)} aria-label="查看创作任务" aria-pressed={taskList}><ListChecks size={16}/>创作任务{runs.some(run=>run.status==='running')&&<span className="studio-tasks-active" aria-label="有进行中的任务"/>}</button>
-        <Dropdown trigger={["click"]} getPopupContainer={containers} menu={{items:[
-          {key:"recreation",label:"解析视频",onClick:()=>dispatchStudioCommand("recreation",selected?.type===CanvasNodeType.Video?selected.id:undefined)},
-          {key:"commerce",label:"商品视频模板",onClick:()=>openTemplates("commerce")},
-          {key:"digital",label:"数字人视频模板",onClick:()=>openTemplates("digital")},
-          {key:"speech",label:"配音",onClick:()=>openSpeech(selected)},
-          {key:"lip",label:"口型同步",onClick:()=>openLipSync(selected)},
-          {key:"assistant",label:"导演助手",onClick:()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}},
-        ]}}><button type="button" aria-label="更多创作工具">更多<ChevronDown size={13}/></button></Dropdown>
-        </div>
-        <button type="button" className="studio-primary" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={17}/>AI 创作</button>
-      </div>
-    </div>
+    {/* 画布页改版（2026-10-19）：第二排工具条取消。视图切换居中悬浮；素材库 / 模板 / 专项创作进左栏；任务在左下角带角标；
+        助手默认打开，关掉后右上角留一个 AI 圆钮。 */}
+    <nav className="studio-view-switch" aria-label="创作视图">{([["canvas","画布",Layers],["storyboard","故事板",Clapperboard],["work","成片",Play]] as const).map(([value,label,Icon]) =>
+      <button type="button" key={value} aria-pressed={mode===value} disabled={workSaving||directorSaving||busy} onClick={() => void switchView(value)}><Icon size={15}/>{label}</button>)}</nav>
+    {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="和助手说一句，它会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><Sparkles size={20}/></button>}
+    <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(v=>!v)} aria-label={activeRunCount?`查看创作任务，${activeRunCount} 个进行中`:"查看创作任务"} title="创作任务" aria-pressed={taskList}><ListChecks size={18}/>{activeRunCount>0&&<span className="studio-tasks-count" aria-hidden="true">{activeRunCount}</span>}</button>
     {recreationOpen&&<StudioRecreation key={`${projectId}:${recreationId||'new'}`} projectId={projectId} initialNodeId={recreationId} nodes={nodes} capabilities={capabilities} setNodes={setNodes} setConnections={setConnections}
       mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}

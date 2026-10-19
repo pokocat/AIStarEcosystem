@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 画布页改版 · 2026-10-19 · 本地实现，未发布
+
+按设计稿（画布页改版：现状标注 / 改版布局 / AI 视觉语言）实现：顶栏低频项进「⋯」（`canvas-host.tsx` Popover）；第二排工具条取消，视图切换居中悬浮，素材库 / 模板 / 专项创作进左栏（`studio-flow-canvas.tsx` 13 → 7，「＋添加」菜单），任务到左下角带角标，助手关闭时右上角 AI 圆钮；`.ip-surface` 新增 AI 群青紫令牌，节点 AI 记号 / 生成中呼吸 / 刚放进来的光晕（`is-ai / is-generating / is-fresh`），助手头部、发送、进度条、问助手改用 AI 渐变。工作台新增 `studio-command: library`。无后端 / API / 迁移改动。web-aiavatar vitest 904/904，tsc 绿；演示模式 1440 / 375 宽实测。
+
 ### Studio 对话优先的创作入口 · 2026-10-19 · 同日已生产发布（仅 web-aiavatar，`20261019-studio-dialogue-first`，GIT_SHA 44c7fa22）
 
 首页英雄区、手机首页与创作页共用 `StudioConversationStart`（一句话 + 示例开头 + 开始对话）；`studioEntryHref(..., { send: true })` 生成 `?start=assistant&send=1`，画布的 `StudioAssistant.autoSend` 在线程就绪且为空时把想法自动发出一次。对话驱动画布：`projectCanvasOps` 回传 `created`，助手对新建节点派发 `studio-command: reveal`（画布只 fitView 不改选中）并显示一次性提示；节点操作条新增「问助手」；空画布空态改为「和助手开始」（助手打开时隐藏，顺手把「打造 IP 形象」改成「做一个 IP 形象」）；首页想法占位不再算作「之前的对话」；创作页不再嵌套 form。同日追加：桌面画布默认打开助手（按浏览器记住开/关）；停靠面板通高，shell 发布 `--studio-docked-panel` 让顶部工具条与右侧入口让位；首页对话框的费用说明收进卡片内（不再压在英雄图上）。无后端 / API / 迁移改动。测试：新增 `studio-conversation-start.test.tsx`，助手自动发送 / 进视野 / 提示，两个首页测试改写，wiring 守结构；演示模式下首页 → 画布 → 自动发送 → 方案与确认卡、空画布空态、问助手、375 宽首页均实测。

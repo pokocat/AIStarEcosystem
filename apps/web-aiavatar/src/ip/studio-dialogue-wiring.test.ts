@@ -48,7 +48,17 @@ test('the dialogue is actually mounted and wired', () => {
   // The assistant opens by default on desktop canvases; the stage steps its chrome aside for a docked panel.
   expect(read('ip/studio-workspace.tsx')).toContain('useState(readAssistantOpenPreference)');
   expect(read('ip/studio-floating-panel.tsx')).toContain("host.classList.add('has-docked-panel')");
-  expect(read('styles/studio-flow.css')).toContain('.studio-flow-shell.has-docked-panel .studio-command-strip');
+  expect(read('styles/studio-flow.css')).toContain('.studio-flow-shell.has-docked-panel .studio-view-switch');
+  // Canvas page redesign: no second toolbar row; the rail is seven tools; AI marks on nodes; the orb when the assistant is closed.
+  const workspace = read('ip/studio-workspace.tsx'), canvas = read('ip/studio-flow-canvas.tsx');
+  expect(workspace).not.toContain('className="studio-command-strip"');
+  expect(workspace).toContain('className="studio-ai-orb"');
+  expect(workspace).toContain('className="studio-tasks-launch"');
+  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '专项创作', '查找节点', '整理画布']) expect(canvas).toContain(`aria-label="${label}"`);
+  expect(canvas).not.toContain('aria-label="删除选中节点" onClick');
+  expect(canvas).toContain('className="studio-flow-ai-badge"');
+  expect(read('ip/canvas-host.tsx')).toContain('className="studio-host-more-button"');
+  expect(read('styles/ip-desktop.css')).toContain('--ai-gradient:');
 });
 
 test('the composer is never disabled as a whole', () => {
