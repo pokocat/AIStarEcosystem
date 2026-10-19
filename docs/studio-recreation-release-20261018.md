@@ -100,3 +100,15 @@
 
 **未验证**：真模型下的完整对话链（本地在演示模式按真实路径走过，1440 与 375 宽），由用户走一遍；「可以」确认在线上真对话里由用户试一次。回滚：
 `deploy-release.sh dist/deploy/20261019-studio-canvas-redesign web-aiavatar`、`deploy-release.sh dist/deploy/20261018-studio-owned-prefix server`（server 回滚后提示词行停在 v14，只多了短回复示例，不影响旧版行为）。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框聚焦样式热修（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-focus` |
+| GIT_SHA | `94d9ad09`（在 `8ee73439` 上只改 `studio-conversation-start.css`；本分支 cherry-pick 为 `940b541a`，内容相同） |
+| 服务 | web-aiavatar（server / admin 不动） |
+| 构建参数 | 同上一版（`AUTH_MODE=id`、`ID_ISSUER=https://id.aibuzz.cn`、`ENTERPRISE_ENABLED=1`） |
+| 结果 | `verify.sh` ALL GREEN；线上 CSS 已含 `textarea:is(:focus,:focus-visible){outline:none}` 与卡片 `:focus-within` 光圈 |
+
+内容：首页「想做什么」对话框点进输入框时，首页 / 外壳的通用焦点规则给内部 textarea 画了一圈直角描边，浮在圆角卡片里很怪。改为 textarea 不画描边，焦点显示在卡片圆角边缘（浅边 + 3px 淡色光圈）；按钮的键盘焦点描边保留。本地 1440 宽实测。回滚：`deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue web-aiavatar`（在本工作区的 dist 下）。
