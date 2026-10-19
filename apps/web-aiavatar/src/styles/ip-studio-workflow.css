@@ -879,3 +879,12 @@ html[data-layout="desktop"] .studio-flow-shell .studio-view-switch { top:74px; l
 .ip-surface .studio-dialogue-approval-done[open] { display:flex; flex-direction:column; gap:6px; }
 /* 运营专用的「整理成技能草稿」和建议一样是小胶囊。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-skill-draft .ant-btn { height:30px; padding:0 12px; border-color:var(--line); border-radius:999px; font-size:12px; box-shadow:none; }
+/* 输入框按钮区与设计稿逐像素对齐（第五遍）：发送键始终是满色渐变（不能发时只换指针，原因写在旁边 / 提示里）；
+   「技能 · 名称」的点两边留白；占位字用更浅的灰。 */
+.ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:disabled { background:var(--ai-gradient); color:#fff; opacity:1; cursor:not-allowed; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip { gap:0; }
+.ip-surface .studio-dialogue-chip-dot { margin:0 6px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select { margin-left:0; }
+.ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input::placeholder { color:var(--ink-3); }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip { font-weight:500; }
+.ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input { padding:8px 4px; }
