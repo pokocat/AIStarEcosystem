@@ -112,3 +112,17 @@
 | 结果 | `verify.sh` ALL GREEN；线上 CSS 已含 `textarea:is(:focus,:focus-visible){outline:none}` 与卡片 `:focus-within` 光圈 |
 
 内容：首页「想做什么」对话框点进输入框时，首页 / 外壳的通用焦点规则给内部 textarea 画了一圈直角描边，浮在圆角卡片里很怪。改为 textarea 不画描边，焦点显示在卡片圆角边缘（浅边 + 3px 淡色光圈）；按钮的键盘焦点描边保留。本地 1440 宽实测。回滚：`deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue web-aiavatar`（在本工作区的 dist 下）。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框文案（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-copy` |
+| GIT_SHA | `ebb62e3c`（在上一版焦点热修之上只改文案：`studio-conversation-start.tsx`、`studio-home.tsx`、`studio-assistant.tsx`） |
+| 结果 | `verify.sh` ALL GREEN；线上 chunk 已含新说明句 |
+
+改动（去掉 AI 腔）：
+- 说明句「建画布免费。回复按实际用量扣积分，做图、做视频前会先报价，你确认了才开始。」→「画布免费建，聊天按用量计积分；出图、出视频前先报价，你确认后才开工。」
+- 输入框提示「想做什么，直接说。比如：……」→「说说你的想法，比如：……」；手机首页标题「想做什么，直接说」→「今天想做点什么？」
+- 两个示例开头（首页与助手开场卡同步）：「设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。」→「帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。」；「帮我搭建从角色描述……到场景视频的创作流程。」→「帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。」
+- 无障碍名「想做什么」与按钮「开始对话」未改。回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-focus web-aiavatar`（已在本工作区 dist 下）。
