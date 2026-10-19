@@ -202,4 +202,16 @@ class StudioPlanValidatorSkillTest {
         var refused=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
         assertTrue(refused.getMessage().contains("参考用途"));
     }
+
+    /** Second production planning reply: every binding wrote the canvas asset id (the photo, a segment clip) under stepId. */
+    @Test void aCanvasAssetIdWrittenUnderStepIdBindsThatAssetAndAnUnknownIdIsStillRefused() throws Exception {
+        var raw=production();
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).remove("nodeId");
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("stepId","person-img");
+        var binding=StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context).path("steps").get(1).path("settings").path("referenceBindings").get(1);
+        assertEquals("person-img",binding.path("nodeId").asText());
+        assertFalse(binding.has("stepId"));
+        ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("stepId","nobody");
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
+    }
 }
