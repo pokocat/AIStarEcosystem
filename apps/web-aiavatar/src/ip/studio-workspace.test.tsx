@@ -463,17 +463,30 @@ test('work settings survive remount without assembly, and a failed save keeps th
  fireEvent.click(screen.getByRole('checkbox',{name:'添加品牌文字与字幕'}));
  fireEvent.change(screen.getByRole('textbox',{name:'成片标题文字'}),{target:{value:'新商品介绍'}});
  fireEvent.change(screen.getByRole('textbox',{name:'成片字幕时间与文字'}),{target:{value:'0-5: 日常随行'}});
- fireEvent.change(screen.getByRole('combobox',{name:'作品画幅'}),{target:{value:'16:9'}});
+ fireEvent.click(screen.getByRole('button',{name:'横屏 16:9'}));
  const persisted=JSON.parse(JSON.stringify(snapshot));cleanup();mountStudioErrorNotifications(api.error);render(<Host initialNodes={persisted}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect((screen.getByRole('textbox',{name:'成片标题文字'}) as HTMLInputElement).value).toBe('新商品介绍');
  expect((screen.getByRole('textbox',{name:'成片字幕时间与文字'}) as HTMLInputElement).value).toBe('0-5: 日常随行');
- expect((screen.getByRole('combobox',{name:'作品画幅'}) as HTMLSelectElement).value).toBe('16:9');
+ expect(screen.getByRole('button',{name:'横屏 16:9'}).getAttribute('aria-pressed')).toBe('true');
  api.save.mockRejectedValueOnce(new Error('成片配置保存失败'));
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('成片配置保存失败'));
  expect(screen.getByRole('region',{name:'成片编辑器'})).toBeDefined();
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));await waitFor(()=>expect(screen.queryByRole('region',{name:'成片编辑器'})).toBeNull());
  expect(api.submit).not.toHaveBeenCalled();expect(snapshot.filter(n=>n.metadata?.studio?.workDraft)).toHaveLength(1);
+});
+
+// 2026-10-19 user report (爆款复刻): the uploaded original was ticked by default and stitched in front of the recreated clip.
+test('assembling a recreation canvas leaves out the original the clip was made from',async()=>{
+ const source:CanvasNodeData={id:'src',type:'video' as never,title:'视频',width:320,height:400,position:{x:0,y:0},metadata:{status:'success',storageKey:'src.mp4',content:'/src.mp4'}};
+ const take:CanvasNodeData={id:'take',type:'video' as never,title:'视频',width:320,height:400,position:{x:400,y:0},metadata:{status:'success',storageKey:'take.mp4',content:'/take.mp4',studio:{kind:'shot',includeInWork:true,runId:'r'}}};
+ api.submit.mockImplementation(async(_project,body)=>({...done,kind:'studio-assemble',nodeId:body.nodeId,inputs:body,output:{storageKey:'work.mp4',url:'/work.mp4'}}));
+ render(<Host initialNodes={[source,take]} initialConnections={[{id:'e',fromNodeId:'src',toNodeId:'take'}]}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
+ expect(screen.queryByRole('combobox',{name:'当前分集'})).toBeNull();
+ expect((screen.getByRole('checkbox',{name:'把「原片」放进成片'}) as HTMLInputElement).checked).toBe(false);
+ fireEvent.click(screen.getByRole('button',{name:'合成作品',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ expect(api.submit.mock.calls[0][1].references).toEqual([{storageKey:'take.mp4',role:'clip',ipId:undefined}]);
 });
 
 test('assembly resumes saved packaging and adds the actual audio dependency without changing its settings',async()=>{

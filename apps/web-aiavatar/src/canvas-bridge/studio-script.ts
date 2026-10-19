@@ -50,10 +50,11 @@ export function studioNodeReferences(node: CanvasNodeData, role: StudioReference
     ipId: adopted?.ipId || node.metadata?.studio?.references?.find(r=>r.ipId)?.ipId, avatarId: adopted?.avatarId, version: adopted?.version,lookId:adopted?.lookId }];
 }
 
+/** Moves one clip to another position (arrows move by one, dragging moves anywhere); the others keep their order. */
 export function reorderStudioClips(nodes: CanvasNodeData[], orderedIds: string[], from: number, to: number): CanvasNodeData[] {
-  if (to < 0 || to >= orderedIds.length) return nodes;
+  if (from === to || from < 0 || from >= orderedIds.length || to < 0 || to >= orderedIds.length) return nodes;
   const next = [...orderedIds];
-  [next[from], next[to]] = [next[to], next[from]];
+  next.splice(to, 0, ...next.splice(from, 1));
   const positions = new Map(next.map((id, index) => [id, index]));
   return nodes.map(n => positions.has(n.id) ? { ...n, metadata: { ...n.metadata, studio: { ...n.metadata!.studio!, order: positions.get(n.id) } } } : n);
 }

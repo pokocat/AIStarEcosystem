@@ -4,7 +4,7 @@ import * as React from "react";
 import { refreshImageUrl } from "./image-storage";
 
 /** Storage keys remain authoritative when a long editing session outlives its signed URL. */
-export function SignedVideo({ storageKey, src, ...props }: React.VideoHTMLAttributes<HTMLVideoElement> & { storageKey?: string }) {
+export function SignedVideo({ storageKey, src, ...props }: React.ComponentProps<"video"> & { storageKey?: string }) {
   const [url, setUrl] = React.useState(src);
   const [failed, setFailed] = React.useState(false);
   const [reloadKey,setReloadKey] = React.useState(0);

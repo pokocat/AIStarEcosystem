@@ -4,7 +4,7 @@ import * as React from "react";
 import { refreshImageUrl } from "./image-storage";
 
 /** Renew from an owned storage key when the audio URL expires in a long canvas session. */
-export function SignedAudio({ storageKey, src, ...props }: React.AudioHTMLAttributes<HTMLAudioElement> & { storageKey?: string }) {
+export function SignedAudio({ storageKey, src, ...props }: React.ComponentProps<"audio"> & { storageKey?: string }) {
   const [url, setUrl] = React.useState(src), [failed, setFailed] = React.useState(false);
   const [reloadKey,setReloadKey] = React.useState(0);
   const renewed = React.useRef(false), epoch = React.useRef(0);
