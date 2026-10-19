@@ -354,7 +354,7 @@ public class IpProjectService {
             return false;
         }
         // 图片：key 里带 uid，看前缀就够了
-        if (k.startsWith(keyPrefix(CATEGORY_SOURCE, userId)) || k.startsWith(keyPrefix(CATEGORY_GEN, userId))) {
+        if (startsWithOwned(k, keyPrefix(CATEGORY_SOURCE, userId)) || startsWithOwned(k, keyPrefix(CATEGORY_GEN, userId))) {
             return true;
         }
         // 全局示例的素材：平台自有内容，**所有登录用户都可读**（v0.182）。
@@ -376,6 +376,19 @@ public class IpProjectService {
         // 「文档里出现非本人资产 key」）。这里改成按 jobId 回查任务的真实归属 ——
         // 不是放宽，是换成一个真的能判归属的办法：owner 必须是本人、分区必须是 ipstudio。
         return ownsVideoKey(userId, k) || studioAssets != null && studioAssets.owns(userId,k);
+    }
+
+    /**
+     * 本人前缀本身，或前面恰好多一段 OSS key-prefix（生产是 {@code media/}）。从上传结果 / URL 反抽回来的 key
+     * 带这一段（合成成片就是这样落库的），而 {@link #keyPrefix} 推导出的前缀不带 —— 视频 key 早已按同样规则
+     * 收一个可选前缀段（见 {@code VIDEO_KEY}）。属主段仍必须是本人，这不是放宽归属。
+     * 2026-10-18 线上：合成成片 {@code media/ipstudio_gen/<uid>/IPP-…_ep1_….mp4} 被判非本人、出 wire 不重签，用户看不到成片；
+     * 资产库收录对同类 key 每 5 秒无限重试。
+     */
+    static boolean startsWithOwned(String key, String prefix) {
+        if (key.startsWith(prefix)) return true;
+        int slash = key.indexOf('/');
+        return slash > 0 && key.startsWith(prefix, slash + 1);
     }
 
     /** `material-videos/<jobId>/…` → 回查 MaterialVideoJob 确认 owner + 分区。 */
