@@ -136,3 +136,18 @@
 | 结果 | `verify.sh` ALL GREEN；线上 chunk 含「还没想好？逛逛」，不再含「画布免费建」 |
 
 用户反馈说明句多余、「先进画布看看」进的是空画布对没想法的人没用：删掉计费说明句；底部改为「还没想好？逛逛 灵感（`/templates`）或 专项创作（`/scenes`）」。首页、手机首页、「画布·自由创作」页三处共用此组件，同时生效；空白画布仍可从各页已有的「新建空白画布」入口进。回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-copy web-aiavatar`。
+
+## 追加发布 · 2026-10-19 晚 · 画布页三处细节（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-canvas-polish` |
+| GIT_SHA | `0b1803be` |
+| 结果 | `verify.sh` ALL GREEN；线上 CSS 含 `.studio-host-more-item` 与左栏 `:hover` 展开规则；本地 `src/ip` 62 个测试文件 435 条全过、tsc 干净 |
+
+用户反馈的三处：
+- 助手「使用说明」一字一行：每步是「序号 24px + 正文」两列网格，`<strong>` 后面的裸文字成了第三个网格项、掉进 24px 序号列。标题和正文包进同一个 `<span>`；测试钉住每个 `li` 只有一个元素子节点（旧代码上确认会红）。
+- 顶栏「⋯」菜单四项样子各异（沿用当初顶栏胶囊的样式，有的居中有的靠左、有的带图标有的不带）：统一成 `.studio-host-more-item`，整宽、左对齐、图标 + 文字；删掉手机端藏「上次发给模型」文字的旧规则。
+- 左栏只有图标认不出：恢复改版前的悬停 / 键盘聚焦展开（56px → 168px，浮在画布上不挤画布），七个工具都带名字；结构测试钉住标签。
+
+回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-links web-aiavatar`。
