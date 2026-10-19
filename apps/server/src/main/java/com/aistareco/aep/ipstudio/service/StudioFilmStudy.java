@@ -158,7 +158,7 @@ public final class StudioFilmStudy {
         Process process=StudioHypitMedia.configureMediaRuntime(new ProcessBuilder(command)).redirectOutput(ProcessBuilder.Redirect.DISCARD).redirectError(ProcessBuilder.Redirect.DISCARD).start();
         try {if(!process.waitFor(120,TimeUnit.SECONDS)||process.exitValue()!=0)throw new IllegalStateException("Clip processing failed");}finally{if(process.isAlive())process.destroyForcibly();}
     }
-    static String stripFence(String value) {String text=value==null?"":value.trim();if(text.startsWith("```")){int first=text.indexOf('\n');if(first>=0)text=text.substring(first+1);if(text.endsWith("```"))text=text.substring(0,text.length()-3);}return text.trim();}
+    static String stripFence(String value) {return ModelJson.stripFence(value);}
     static String time(double seconds) {long ms=Math.round(seconds*1000);return String.format(Locale.ROOT,"%02d:%02d:%02d.%03d",ms/3600000,ms/60000%60,ms/1000%60,ms%1000);}
     public static String summary(JsonNode study) {StringBuilder out=new StringBuilder("# 视频拉片\n\n");for(JsonNode segment:study.path("segments"))out.append("- 片段 ").append(segment.path("no").asInt()).append("：").append(time(segment.path("startSec").asDouble())).append(" → ").append(time(segment.path("endSec").asDouble())).append(" · ").append("done".equals(segment.path("status").asText())?"已完成":"待完成").append('\n');return out.toString();}
 }

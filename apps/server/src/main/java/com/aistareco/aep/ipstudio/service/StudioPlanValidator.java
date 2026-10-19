@@ -205,7 +205,7 @@ public final class StudioPlanValidator {
             var depends=out.putArray("dependsOn");dependencies.forEach(depends::add);
             earlier.put(id,operation);
         }
-        plan.set("questions",strings(raw.path("questions"),4,1000));
+        plan.set("questions",questions(raw.path("questions")));
         if(raw.hasNonNull("notes"))plan.set("notes",strings(raw.path("notes"),12,16500));
         return plan;
     }
@@ -343,6 +343,27 @@ public final class StudioPlanValidator {
     private static String text(JsonNode value,int max,boolean required,String label) {
         if(!value.isTextual()||value.asText().length()>max||required&&value.asText().isBlank())invalid(label+(required?"不能为空，":"")+"最多 "+max+" 字");
         return value.asText();
+    }
+    /**
+     * Questions are display text only. Asked for "a default for each question", models often answer with
+     * {@code {question, default}} objects instead of strings; both spellings become the same single line, nothing else is read.
+     */
+    private static ArrayNode questions(JsonNode value) {
+        ArrayNode out=OM.createArrayNode();
+        if(value.isMissingNode()||value.isNull())return out;
+        if(!value.isArray()||value.size()>4)fail();
+        for(JsonNode item:value) {
+            String text;
+            if(item.isTextual())text=item.asText();
+            else if(item.isObject()&&item.path("question").isTextual()) {
+                text=item.path("question").asText();
+                JsonNode fallback=item.path("default");
+                if(fallback.isTextual()&&!fallback.asText().isBlank())text=text+"（默认："+fallback.asText().strip()+"）";
+            } else {fail();return out;}
+            if(text.isBlank()||text.length()>1000)fail();
+            out.add(text);
+        }
+        return out;
     }
     private static ArrayNode strings(JsonNode value,int maxItems,int maxLength) {
         ArrayNode out=OM.createArrayNode();

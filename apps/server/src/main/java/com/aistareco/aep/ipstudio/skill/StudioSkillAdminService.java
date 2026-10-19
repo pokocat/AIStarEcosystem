@@ -3,6 +3,7 @@ package com.aistareco.aep.ipstudio.skill;
 import com.aistareco.aep.dap.service.DapPricingService;
 import com.aistareco.aep.ipstudio.dto.StudioSkillDtos.*;
 import com.aistareco.aep.ipstudio.execution.StudioSkillRules;
+import com.aistareco.aep.ipstudio.service.ModelJson;
 import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -323,7 +324,7 @@ public class StudioSkillAdminService {
         JsonNode plan = null;
         if ("length".equals(response.finishReason())) errors.add("回复被截断：请提高这个模型的输出上限后再试");
         JsonNode answer = null;
-        try { answer = response.content() == null ? null : mapper.readTree(response.content()); }
+        try { answer = response.content() == null ? null : ModelJson.parse(mapper, response.content()); }
         catch (Exception e) { errors.add("模型回复不是 JSON 对象"); }
         if (answer != null && !answer.isObject()) { errors.add("模型回复不是 JSON 对象"); answer = null; }
         if (answer == null && errors.isEmpty()) errors.add("模型没有返回内容");

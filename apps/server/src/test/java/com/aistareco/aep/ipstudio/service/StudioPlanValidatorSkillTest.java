@@ -10,6 +10,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.junit.jupiter.api.Test;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Skill plans: stage whitelist, typed settings, step cap from the real skill file, server-owned fields stripped. */
@@ -113,5 +114,38 @@ class StudioPlanValidatorSkillTest {
         assertEquals(base,StudioPlanValidator.fingerprint(reordered),"key order is irrelevant");
         var repriced=plan.deepCopy();((ObjectNode)repriced.path("steps").get(0)).put("quotedCost",9);
         assertNotEquals(base,StudioPlanValidator.fingerprint(repriced));
+    }
+
+    @Test void questionsMayBeStringsOrQuestionAndDefaultObjectsAndBothBecomeOneLine() throws Exception {
+        var raw=analysis();
+        ((ObjectNode)raw).set("questions",om.readTree("[\"是否保留原声？默认保留\",{\"id\":\"q2\",\"question\":\"主角是成人吗？\",\"default\":\"看分析结果\"},{\"question\":\"没有默认的问题\"}]"));
+        var questions=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context).path("questions");
+        assertEquals("[\"是否保留原声？默认保留\",\"主角是成人吗？（默认：看分析结果）\",\"没有默认的问题\"]",questions.toString());
+        var bad=analysis();((ObjectNode)bad).set("questions",om.readTree("[{\"default\":\"没有问题文字\"}]"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(bad,rules(),"analysis",context));
+        var tooMany=analysis();((ObjectNode)tooMany).set("questions",om.readTree("[\"1\",\"2\",\"3\",\"4\",\"5\"]"));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(tooMany,rules(),"analysis",context));
+    }
+
+    /**
+     * What the planner is told must name every field this validator reads. A real model guessed videoId/analysisType for the
+     * recreation step because the dialogue's own copy of the planner input had only the operation names; the shared contract
+     * line lives in StudioWorkflowService and these are the keys the fixtures above are written with.
+     */
+    @Test void thePlannerContractNamesEveryFieldTheValidatorReads() throws Exception {
+        String contract=StudioWorkflowService.skillPlanConstraints(om,rules(),"production").path("settings").asText();
+        Map<String,List<String>> required=Map.of(
+                "recreation",List.of("sourceNodeId","mode","maxSegmentSec","videoModel"),
+                "image",List.of("count","referenceBindings"),
+                "video",List.of("video","mode","resolutionTier","durationSec","aspectRatio","count","referenceBindings"),
+                "check",List.of("targetStepId","checkIds"),
+                "assemble",List.of("clipOrder","audioStrategy"),
+                "text",List.of("purpose","plan-compile"));
+        required.forEach((operation,keys)->{
+            int at=contract.indexOf(operation+"{");
+            if(at<0)at=contract.indexOf(operation);
+            assertTrue(at>=0,operation+" is missing from the contract line");
+            for(String key:keys)assertTrue(contract.contains(key),operation+" needs "+key+" in the contract line");
+        });
     }
 }
