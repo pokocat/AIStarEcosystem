@@ -160,6 +160,10 @@ function applyQueued(p: MockProject, t: MockThread) {
   if (!t.queued.length || t.running) return;
   const ids = t.queued.splice(0);
   for (const id of ids) patchViewMessage(t, id, m => ({ ...m, status: "applied" }));
+  // A 「可以」 typed while the reply that brought the card was still running confirms it once that reply ends —
+  // the server sends queued messages through the model too. The demo used to answer every queued message with 「收到…」.
+  const approving = [...ids].reverse().map(id => t.view.messages.find(m => m.id === id)).find(m => m && mockSaysApprove(m.text));
+  if (approving && naturalApproval(t.thread.projectId, p, t, approving.text, approving.id)) return;
   const messageId = startTurn(t);
   play(p, t, [...say(t, messageId, "ack", "收到，后面的步骤会按你刚才说的来。已经交给厂商的任务保持原样。"),
     { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false }) }]);
