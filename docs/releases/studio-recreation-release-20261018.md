@@ -65,3 +65,18 @@
 
 **未验证**：真模型下首页一句话 → 自动发送 → 方案的完整链（本地只在演示模式实测），由用户走一遍。回滚：`deploy-release.sh dist/deploy/20261018-studio-assistant-redesign web-aiavatar`。
 
+## 追加发布 · 2026-10-19 午后 · 画布页改版 + 助手默认打开 / 通高（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-canvas-redesign` |
+| GIT_SHA | `f7b414b9`（`release/studio-recreation-20261018`，与 dev 的 `17813e42` 同树；三个提交：默认打开 + 通高、画布页改版、测试修正） |
+| 服务 | web-aiavatar（server / admin 不动，无迁移、无 API 变化） |
+| 构建参数 | 与上一版相同（`AUTH_MODE=id`、`ID_ISSUER=https://id.aibuzz.cn`、`ENTERPRISE_ENABLED=1`） |
+| 发布前基线 | web-aiavatar = `44c7fa22`（`20261019-studio-dialogue-first`） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；服务 16:20:45 CST 重启，5 分钟内 0 条错误；`/projects`、`/dashboard` 200；线上包含 `studio-ai-orb`、`studio-flow-ai-badge`、`studio-host-more-button` 与 `--ai-gradient` |
+
+内容：助手在桌面画布默认打开（记住关闭）、停靠通高且工具条让位；顶栏低频项进「⋯」；第二排工具条取消，视图切换居中，素材库 / 模板 / 专项创作进左栏（13 → 7），任务左下角带角标，关掉助手后右上角 AI 圆钮；AI 群青紫记号、生成中呼吸、新节点光晕。详见 `AGENTS.md`「画布页改版」。
+
+**未验证**：真模型下的完整链（本地只在演示模式实测），由用户走一遍。回滚：`deploy-release.sh dist/deploy/20261019-studio-dialogue-first web-aiavatar`。
+
