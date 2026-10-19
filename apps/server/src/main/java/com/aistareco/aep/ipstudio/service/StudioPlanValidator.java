@@ -312,6 +312,8 @@ public final class StudioPlanValidator {
         Set<Integer> orders=new HashSet<>();
         for(JsonNode binding:raw) {
             String stepId=binding.path("stepId").asText(""),nodeId=binding.path("nodeId").asText("");
+            // A canvas asset id written under stepId (seen from a real planner) is unambiguous: it is that asset, never a step.
+            if(nodeId.isEmpty()&&!stepId.isEmpty()&&!earlier.containsKey(stepId)&&allowed.contains(stepId)){nodeId=stepId;stepId="";}
             if(stepId.isEmpty()==nodeId.isEmpty())invalid(label+"的每份参考只能来自一个步骤或一个画布素材");
             if(!stepId.isEmpty()&&!earlier.containsKey(stepId))invalid(label+"只能引用更早步骤的产物");
             if(!nodeId.isEmpty()&&!allowed.contains(nodeId))invalid(label+"引用了不存在的素材");
