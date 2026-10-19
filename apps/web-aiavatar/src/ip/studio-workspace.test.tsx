@@ -32,7 +32,7 @@ vi.mock('antd',()=>{
  Button:({loading,block,type,icon,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel}:any)=>open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}</section>:null,
- Select:({options,value,onChange,mode,...p}:any)=><select multiple={mode==='multiple'} aria-label={p['aria-label']} value={value??(mode==='multiple'?[]:'')} onChange={e=>onChange(mode==='multiple'?Array.from(e.target.selectedOptions).map(o=>o.value):options.find((o:any)=>String(o.value)===e.target.value)?.value)}>{(options||[]).map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
+ Select:({options,value,onChange,mode,...p}:any)=><select multiple={mode==='multiple'} aria-label={p['aria-label']} disabled={p.disabled} value={value??(mode==='multiple'?[]:'')} onChange={e=>onChange(mode==='multiple'?Array.from(e.target.selectedOptions).map(o=>o.value):options.find((o:any)=>String(o.value)===e.target.value)?.value)}>{(options||[]).map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
  Checkbox:({children,...p}:any)=><label><input type="checkbox" {...p}/>{children}</label>,Dropdown:({children,menu}:any)=><div>{children}{menu?.items?.map((item:any)=><button key={item.key} onClick={()=>menu.onClick({key:item.key})}>{item.label}</button>)}</div>,Tabs:({items}:any)=><>{items.map((item:any)=><section key={item.key}>{item.children}</section>)}</>};
 });
 vi.mock('./studio-commerce',()=>({StudioCommerce:()=>null}));
@@ -807,4 +807,56 @@ test('a completed video exposes recreation from its own composer and opens the s
  const reportPanel=await screen.findByRole('dialog',{name:'解析视频'});
  expect(within(reportPanel).queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(within(reportPanel).queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(within(reportPanel).getByLabelText('当前参考视频').textContent).toContain('old adopted');
  expect(api.save).toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();
+});
+
+
+// Model names and single-option visibility are the user-facing contract here.
+test.each(['fixed','selectable'])('image composer displays its single configured model in %s mode',async policy=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageModelMode:policy,imageCost:8});
+ api.models.mockResolvedValue({image:[{endpointId:'image-one',name:'图片模型一',isDefault:true,creditCost:8}],video:[]});
+ const image={...node,type:'image' as never,metadata:{status:'idle' as const}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ const select=within(panel).getByRole('combobox',{name:'生成模型'});
+ await waitFor(()=>expect(select).toHaveProperty('value','image-one'));
+ expect(select).toHaveProperty('disabled',true);
+ expect(within(select).getByRole('option',{name:'图片模型一'})).toBeDefined();
+ expect(api.submit).not.toHaveBeenCalled();
+});
+test('image model switching submits the selected endpoint and its price',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageModelMode:'selectable',imageCost:8});
+ api.models.mockResolvedValue({image:[{endpointId:'image-one',name:'图片模型一',isDefault:true,creditCost:8},{endpointId:'image-two',name:'图片模型二',creditCost:12}],video:[]});
+ render(<Host initial={{...node,type:'image' as never,metadata:{status:'idle' as const}}}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ const select=within(panel).getByRole('combobox',{name:'生成模型'});
+ await waitFor(()=>expect(select).toHaveProperty('value','image-one'));
+ expect(select).toHaveProperty('disabled',false);
+ fireEvent.change(select,{target:{value:'image-two'}});
+ fireEvent.change(within(panel).getByRole('textbox',{name:'创作要求'}),{target:{value:'画一棵树'}});
+ fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ expect(api.submit.mock.calls[0][1]).toMatchObject({model:'image-two',maxCost:12});
+});
+test.each(['fixed','selectable'])('text composer keeps its single configured model visible in %s mode',async policy=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['text'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'文本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
+ render(<Host initial={{...node,type:'text' as never,metadata:{content:'原文'}}}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'text',nodeId:'v'}}));
+ const select=await screen.findByRole('combobox',{name:'文本模型'});
+ await waitFor(()=>expect(select).toHaveProperty('value','text-one'));
+ expect(select).toHaveProperty('disabled',true);
+ expect(within(select).getByRole('option',{name:'文本模型一'})).toBeDefined();
+ expect(api.submit).not.toHaveBeenCalled();
+});
+test.each(['fixed','selectable'])('script composer shows its single %s model outside collapsed settings',async policy=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['script'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'剧本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
+ render(<Host initial={{...node,type:'text' as never,metadata:{status:'idle',studio:{kind:'script'}}}}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
+ const select=await screen.findByRole('combobox',{name:'剧本模型'});
+ await waitFor(()=>expect(select).toHaveProperty('value','text-one'));
+ expect(select).toHaveProperty('disabled',true);
+ expect(select.closest('details')).toBeNull();
+ expect(within(select).getByRole('option',{name:'剧本模型一'})).toBeDefined();
+ expect(api.submit).not.toHaveBeenCalled();
 });

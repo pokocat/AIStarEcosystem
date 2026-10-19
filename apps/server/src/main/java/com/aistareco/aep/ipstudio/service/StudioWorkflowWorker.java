@@ -79,7 +79,7 @@ public class StudioWorkflowWorker {
             }
             switch(operation) {
                 case "text","script","storyboard","assistant","asset-extract","recreation" -> {
-                    JsonNode script;StudioRecreation.Study recreationStudy=null;
+                    JsonNode script;StudioRecreation.Study recreationStudy=null;ObjectNode recreationFallback=mapper.createObjectNode();
                     if(mock) script=fixtureScript(input);
                     else {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
@@ -102,9 +102,11 @@ public class StudioWorkflowWorker {
                             var observations=mapper.createArrayNode();
                             for(int page=0;page<study.pages().size();page++) {
                                 if(!progress(id,25+page*55/study.pages().size(),"recreation.read"))return;
-                                if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
                                 int first=page*8+1,last=Math.min(first+7,input.path("_exec").path("recreationSource").path("frameTimes").size());
-                                var observed=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",StudioRecreation.OBSERVATION_PROMPT+"本次evidenceFrames只允许使用"+java.util.stream.IntStream.rangeClosed(first,last).boxed().toList()+"，不允许填写本页格子序号。"),Map.of("role","user","content",study.pages().get(page))),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",0.1,"max_tokens",pageBudget));
+                                var observed=recreationChat(id,endpoint.endpoint(),tokenRate,consumed,
+                                        StudioRecreation.OBSERVATION_PROMPT+"本次evidenceFrames只允许使用"+java.util.stream.IntStream.rangeClosed(first,last).boxed().toList()+"，不允许填写本页格子序号。",
+                                        study.pages().get(page),pageBudget,.1,java.util.stream.IntStream.range(first-1,last).boxed().toList(),
+                                        input.path("_exec").path("recreationSource"),recreationFallback,output);
                                 if("length".equals(observed.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","片段读取结果被截断，请调整模型输出配置");
                                 consumed=consumeUsage(observed,consumed,tokenRate);
                                 observations.addObject().put("firstFrame",first).put("lastFrame",last).set("facts",StudioRecreation.observation(observed.content(),first,last));
@@ -117,9 +119,17 @@ public class StudioWorkflowWorker {
                             if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","创作模型的图片读取能力已停用");
                             userContent=new StudioVisualContext(storage).parts(user,visual);
                         }
-                        if(enterpriseBilling!=null) enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
-                        var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
+                        AiModelInvocationService.AiModelResponse reply;
+                        if("recreation".equals(operation)&&recreationStudy!=null&&userContent instanceof List<?> contentParts&&contentParts.contains(recreationStudy.ending())) {
+                            @SuppressWarnings("unchecked") var parts=(List<Map<String,Object>>)userContent;
+                            var source=input.path("_exec").path("recreationSource");
+                            reply=recreationChat(id,endpoint.endpoint(),tokenRate,consumed,system,parts,finalTokens,
+                                    input.path("_exec").path("temperature").asDouble(.7),List.of(source.path("frameTimes").size()-1),source,recreationFallback,output);
+                        } else {
+                        if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
+                        }
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
                         script=mapper.readTree(reply.content());
                         if(tokenRate!=null) {
@@ -197,19 +207,65 @@ public class StudioWorkflowWorker {
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
+        StudioFilmStudy.Chat chat=studioChat(id,endpoint.endpoint(),rate,used,input.path("prompt").asText("").strip(),.3,null);
         var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
-            (system,parts,tokens,json)->{
-                if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
-                var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("max_tokens",tokens);params.put("temperature",.3);
-                if(json)params.put("response_format",Map.of("type","json_object"));
-                String focus=input.path("prompt").asText("").strip();
-                var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)),Map.of("role","user","content",parts)),params);
-                used[0]=consumeUsage(reply,used[0],rate);return reply.content();
-            },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")));
+            chat,(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")));
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
         finish(id,output,null);
+    }
+    private StudioFilmStudy.Chat studioChat(String id,com.aistareco.aep.model.AiModelEndpoint endpoint,
+            AiChatTokenPricing.Rate rate,long[][] used,String focus,double temperature,AiModelInvocationService.AiModelResponse[] last) {
+        return new StudioFilmStudy.Chat() {
+            @Override public int remainingOutputTokens(){return rate==null?Integer.MAX_VALUE:(int)Math.max(0,rate.maxOutputTokens()-used[0][1]);}
+            @Override public String context(){return endpoint.getId()+":"+endpoint.getModel()+":"+focus;}
+            @Override public String invoke(String system,List<Map<String,Object>> parts,int tokens,boolean json) throws Exception {
+                return call(system,parts,tokens,json,focus);
+            }
+            @Override public String observe(String system,List<Map<String,Object>> parts,int tokens) throws Exception {
+                return call(system,parts,tokens,true,"");
+            }
+            private String call(String system,List<Map<String,Object>> parts,int tokens,boolean json,String requestFocus) {
+                if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
+                if(remainingOutputTokens()<64||(rate!=null&&used[0][0]>=rate.maxInputTokens()))
+                    throw BusinessException.badRequest("AI_USAGE_LIMIT","本次Token预算已用完，请调整后台预算");
+                var params=new HashMap<String,Object>();params.put("timeout_seconds",300);
+                params.put("max_tokens",Math.min(tokens,remainingOutputTokens()));params.put("temperature",temperature);
+                if(json)params.put("response_format",Map.of("type","json_object"));
+                var reply=models.invokeChatOnEndpoint(endpoint,AiModelPurpose.DAP_PERSONA,List.of(
+                        Map.of("role","system","content",system+(requestFocus.isBlank()?"":"\n用户补充分析重点："+requestFocus)),
+                        Map.of("role","user","content",parts)),params);
+                used[0]=consumeUsage(reply,used[0],rate);if(last!=null)last[0]=reply;
+                if("length".equals(reply.finishReason()))throw BusinessException.badRequest("AI_BAD_OUTPUT","模型输出被截断，请调整后台输出预算");
+                return reply.content();
+            }
+        };
+    }
+    private AiModelInvocationService.AiModelResponse recreationChat(String id,com.aistareco.aep.model.AiModelEndpoint endpoint,
+            AiChatTokenPricing.Rate rate,long[] previous,String system,List<Map<String,Object>> parts,int tokens,
+            double temperature,List<Integer> indices,JsonNode source,ObjectNode state,ObjectNode output) throws Exception {
+        long[][] used={previous.clone()};AiModelInvocationService.AiModelResponse[] last={null};
+        var chat=studioChat(id,endpoint,rate,used,"",temperature,last);
+        String content=StudioVisionFallback.invoke(chat,system,parts,tokens,true,indices,source,
+                index->StudioVisionFallback.nativeFrame(storage,source,index),state,(pct,stage,partial)->{
+                    output.set("_visionFallback",partial.deepCopy());
+                    return Boolean.TRUE.equals(transactions.execute(tx->{
+                        var run=billingLockedRun(id).orElse(null);if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
+                        if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
+                        try{run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception e){throw new IllegalStateException(e);}
+                        run.setStage("recreation.vision.batch");run.setHeartbeatAt(Instant.now());runs.save(run);return true;
+                    }));
+                });
+        StudioVisionFallback.discardCompleted(state);
+        if(state.isEmpty())output.remove("_visionFallback");
+        // Keep the exact original successful response. A fallback returns combined usage for the existing caller.
+        if(last[0]!=null&&content.equals(last[0].content())&&(rate==null||
+                (used[0][0]-previous[0]==last[0].promptTokens()&&used[0][1]-previous[1]==last[0].completionTokens())))return last[0];
+        if(last[0]==null)throw new IllegalStateException("Missing recreation response");
+        long input=used[0][0]-previous[0],completion=used[0][1]-previous[1];
+        return new AiModelInvocationService.AiModelResponse(content,last[0].finishReason(),input+completion,
+                last[0].endpointUsed(),last[0].modelUsed(),input,completion);
     }
     private boolean checkpointSourceAudio(String id,ObjectNode audio) {
         return Boolean.TRUE.equals(transactions.execute(tx->{

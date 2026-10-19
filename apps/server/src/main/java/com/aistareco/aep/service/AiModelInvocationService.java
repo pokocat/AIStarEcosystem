@@ -474,7 +474,7 @@ public class AiModelInvocationService {
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             // 失败流水 + WARN 已由原语处理；不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏），
             // 技术细节进 ErrorLog 供「追查号」排障。
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
+            throw new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
                     resp.statusCode() == 404
                             ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
                             : "AI 生成失败，请稍后重试",

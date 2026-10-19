@@ -438,3 +438,13 @@ test('text node adoption can explicitly write its prompt instead of replacing it
   await waitFor(()=>expect(api.saveStudioDocument).toHaveBeenCalledOnce());
   expect(canvas[0].metadata).toMatchObject({content:text.metadata?.content,prompt:'优化后的生成指令'});expect(canvas).toHaveLength(1);
 });
+
+
+test.each(['fixed','selectable'])('assistant exposes its single %s model without opening settings',policy=>{
+ render(<Host capabilities={{...visualCapabilities,textModelMode:policy,textModels:[visualCapabilities.textModels[0]]}}/>);
+ const select=screen.getByRole('combobox',{name:'助手模型'});
+ expect(select).toHaveProperty('value','vision');
+ expect(select).toHaveProperty('disabled',true);
+ expect(screen.getByRole('button',{name:'创作设置与历史'}).getAttribute('aria-expanded')).toBe('false');
+ expect(api.submitStudioRun).not.toHaveBeenCalled();
+});

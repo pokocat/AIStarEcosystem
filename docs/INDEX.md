@@ -16,6 +16,7 @@
 
 - [资产库独立设计原型](../prototypes/asset-library/README.md)：[设计方向](prototypes/asset-library-direction.md)、[设计检查](prototypes/asset-library-design-check.md)与[原型验证](prototypes/asset-library-validation.md)；静态原型，与业务代码分离（last-reviewed: 2026-10-17）。
 
+- [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
 - [项目卡片生产发布](studio-project-cards-release-20261017.md)：真实内容预览、固定／自动封面、上线制品及真实浏览器验收；已发布（last-reviewed: 2026-10-17）。
 - [生产发布记录](studio-workspace-production-release-20261017.md)：全部改动提交、server/web-aiavatar 制品与线上验收及浏览器限制；已发布（last-reviewed: 2026-10-17）。
 
@@ -73,10 +74,10 @@
 | [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
 | [Studio 企业积分管理开发任务](ip-studio-enterprise-development-tasks.md) | **已生产发布** | E01–E12 的依赖、改造位置及验收标准；覆盖账户、RBAC、划拨、充值、全部生成链路、前后台与发布，执行状态统一在 TODO（last-reviewed 2026-10-15） |
 | [企业积分生产发布](ip-studio-enterprise-production-release.md) | **f068b51d · 已开启** | 三服务发布、V56–V58、线上页面与存量钱包/账本/开通核对、备份及回退边界（last-reviewed 2026-10-15） |
-| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
 | [企业群发邀请实现与验收](ip-studio-enterprise-invitation-validation.md) | **已生产发布** | 90 天/一年可多人分享链接、品牌短信注册加入、V59 旧邀请清理与权限边界（last-reviewed 2026-10-17） |
 | [企业邀请与测试账号生产验收](ip-studio-enterprise-invitation-production-release-20261017.md) | **d8195896 · 已上线** | 同链接双成员入企、后台测试账号创建/入口/停用、V59、制品与清理；无需真实短信（last-reviewed 2026-10-17） |
 | [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
+| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
 | [企业积分完整交付验收](ip-studio-enterprise-complete-validation.md) | **E07–E12 本地结果** | 18个产品场景、真实页面资金核对、任务恢复、测试与发布边界（last-reviewed 2026-10-15） |
 | [企业积分第二批验收](ip-studio-enterprise-points-validation.md) | **E05–E06 测试与边界** | 划拨、人工财务、原充值来源、H2/MySQL及真实浏览器交易验收（last-reviewed 2026-10-15） |
@@ -85,6 +86,7 @@
 | [`docs/ip-studio-generalize-proposal.md`](ip-studio-generalize-proposal.md) | **IP 工作台通用化提案（v0.153 已落地）** | 形象卡五字段（outfit/pose/expression/details/props）在服务端只是按序拼成一串文本，拆分对出图无增益；改为「一个提示词框 + 内置模板库」，五层一致性锁定与计费纪律不动，零迁移（老画布读取回落）。文末有落地记录（last-reviewed 2026-09-07） |
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [全能创作生产验收](ip-studio-assistant-production-acceptance.md) | **生产发布与真实生成验收** | 简化面板、文字采用、跨步骤节点依赖、六个旧测试修复；真实文字→图片→5秒视频，231积分，刷新与原节点复用通过（last-reviewed 2026-10-13） |
+| [全能创作对话驱动视频复刻方案](ip-studio-conversational-video-recreation-plan.md) | **统一产品与开发规格 v4，未实现** | 连续线程、真流式agent循环、工具记录与SSE契约；AI动态提方案，制作中转向、时间线审批、预算与租约恢复，含S1形态验收及S2执行边界（last-reviewed 2026-10-18） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
@@ -265,5 +267,4 @@ sudo yum install -y ffmpeg ffmpeg-devel
 
 - [视频解析与拉片生产发布](studio-film-study-production-release.md)：版本、独立媒体运行时、验收范围与备份。
 
-- [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
 - [统一画布封面生产发布](studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。

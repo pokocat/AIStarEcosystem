@@ -42,7 +42,7 @@ export function StudioSceneWorkshop() {
       <div className="studio-scene-grid">{studioScenes.map(scene => {
         const template = sceneTemplate(templates.data, scene.templateId);
         return <article key={scene.id} className="studio-scene-card">
-          <div className="studio-scene-visual"><Image src={scene.image} alt="" width={900} height={600} sizes="(min-width: 960px) 25vw, 50vw"/></div>
+          <div className="studio-scene-visual"><Image src={scene.image} alt="" width={960} height={640} sizes="(min-width: 960px) 25vw, 50vw"/></div>
           <div className="studio-scene-copy"><h2>{scene.title}</h2><p>{scene.description}</p>
             <button className="ip-brand-button" disabled={!template || starting !== undefined || templates.loading} onClick={() => template && void start(template)}>{starting === template?.id && starting ? <><Loader2 size={16} className="studio-gallery-spinner"/>正在打开</> : template ? <>开始创作<ArrowRight size={16}/></> : templates.loading && scene.templateId ? '正在读取…' : '【待建设】'}</button>
             {template ? <button className="studio-scene-preview" disabled={starting !== undefined} onClick={() => setPreview(template)}>预览模板</button> : <small>{scene.templateId ? '模板上线后开放' : '创作能力后续接入'}</small>}

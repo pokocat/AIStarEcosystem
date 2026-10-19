@@ -36,6 +36,8 @@ import { placeNodeInViewport } from '@/canvas-bridge/viewport-placement';
 import { StudioNodeTitle } from './studio-node-title';
 import { replaceStudioVideo, STUDIO_VIDEO_UPLOAD_ACCEPT, validateStudioVideoUpload } from '@/canvas-bridge/studio-video-upload';
 import { StudioMediaGenerationState } from './studio-media-generation-state';
+import { StudioGroupDescription } from './studio-group-description';
+import { describeStudioGroup } from '@/canvas-bridge/studio-group-description';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
@@ -51,6 +53,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   if (node.type === CanvasNodeType.Group) return <article className={`studio-flow-group${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · 分组`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     <header className="studio-flow-drag"><Group size={15}/>{title}</header>{port('source')}
+    <StudioGroupDescription title={node.title} description={meta?.groupDescription} onChange={!data.readOnly && data.onDescribeGroup ? value => data.onDescribeGroup!(node.id, value) : undefined}/>
   </article>;
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
@@ -149,6 +152,10 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const renameNode = useCallback((id: string, title: string) => {
     if (!title.trim() || current().nodes.find(n => n.id === id)?.title === title.trim()) return;
     checkpoint(); setNodes(old => old.map(n => n.id === id ? { ...n, title: title.trim() } : n));
+  }, [current, checkpoint, setNodes]);
+  const describeGroup = useCallback((id: string, description: string) => {
+    if ((current().nodes.find(n => n.id === id)?.metadata?.groupDescription || '') === description.trim()) return;
+    checkpoint(); setNodes(old => describeStudioGroup(old, id, description));
   }, [current, checkpoint, setNodes]);
   const focusNode = useCallback((id: string) => { setSelected(new Set([id])); setSelectedEdges(new Set()); setPendingFocus(id); }, []);
   const connectReference=(source:string,target:string)=>{
@@ -314,7 +321,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e); }
     finally { setReading(false); }
   };
-  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, onRename: renameNode } })), [project?.nodes, selected, uploadingImageId, renameNode]);
+  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, onRename: renameNode, onDescribeGroup: describeGroup } })), [project?.nodes, selected, uploadingImageId, renameNode, describeGroup]);
   const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));
@@ -354,7 +361,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`}/></div>
     </header>
     <div className={`studio-flow-stage${referencePick?' is-picking-reference':''}`} data-studio-floating-root>
-      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes}
+      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false}
         onNodesChange={changeNodes} onEdgesChange={changeEdges} onNodeDragStart={checkpoint}
         onConnectStart={()=>{closeConnectionMenu();setContext(undefined);}} onConnectEnd={finishConnection}
         isValidConnection={c=>c.source!==c.target&&!current().connections.some(edge=>edge.fromNodeId===c.source&&edge.toNodeId===c.target)}
