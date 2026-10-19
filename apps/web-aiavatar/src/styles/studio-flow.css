@@ -432,3 +432,13 @@ html[data-layout="desktop"] .studio-flow-controls span { min-width:44px; color:v
 .studio-flow-generation-ring { width:44px; height:44px; flex:none; border-radius:50%; background:conic-gradient(from 0deg, var(--ai), var(--ai-2), var(--surface-3) 70%, var(--ai)); -webkit-mask:radial-gradient(circle, transparent 54%, #000 56%); mask:radial-gradient(circle, transparent 54%, #000 56%); animation:studio-flow-generation-spin 1.6s linear infinite; }
 .studio-flow-generation-line { max-width:100%; padding:0 12px; line-height:1.5; overflow-wrap:anywhere; }
 @media (prefers-reduced-motion:reduce) { .studio-flow-generation-ring { animation:none; } }
+/* 画布页按钮配色统一（2026-10-19）：浮层里的主按钮，带 AI 记号的（会去生成、要花积分）用 AI 渐变，其它用深色；不再用麦黄。 */
+.studio-floating-panel .ant-btn-primary:not(:disabled) { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.studio-floating-panel .ant-btn-primary:not(:disabled):hover { background:var(--ink-2); border-color:var(--ink-2); color:var(--surface); }
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon),
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon):hover { background:var(--ai-gradient); border-color:transparent; color:#fff; }
+.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon):hover { filter:brightness(1.06); }
+.studio-template-preview-copy.ant-btn-primary,
+.studio-template-preview-copy.ant-btn-primary:not(:disabled):hover { background:var(--ink); border-color:var(--ink); color:var(--surface); }
+.studio-flow-shell .react-flow__handle:hover { background:var(--primary); }
+.studio-flow-port-icon::after { background:var(--primary-soft); }

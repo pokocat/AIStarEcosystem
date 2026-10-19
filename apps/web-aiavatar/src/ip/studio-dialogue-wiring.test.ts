@@ -129,3 +129,9 @@ test('the word the confirmation card suggests actually confirms', async () => {
   for (const yes of ['可以', '好', '行吧', '嗯，可以', '好的，开始制作']) expect(mockSaysApprove(yes)).toBe(true);
   for (const no of ['可以吗？', '先别开始', '再想想', '改成横屏', '可以把第 2 段换成横屏', '行不行', '不可以']) expect(mockSaysApprove(no)).toBe(false);
 });
+
+// 2026-10-19: one button language on the canvas page — AI actions use the AI gradient, other main actions are ink; no wheat yellow.
+test('canvas page buttons use the AI gradient or ink, never the wheat action color', () => {
+  for (const file of ['ip/canvas-host.tsx', 'ip/publish/publish-dialog.tsx']) expect(read(file)).not.toContain('var(--action)');
+  expect(read('styles/studio-flow.css')).toContain('.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon)');
+});
