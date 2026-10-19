@@ -32,8 +32,8 @@
 - [x] ~~接入前产品问题：全画布模板复制后视频模式回退首尾帧~~ **2026-10-18 已修**：`IpDemoTemplateService.snapshotForTemplate` 保留 `videoMode/vquality/videoCount`，并从剥掉的 request 派生 `studio.videoPreset`；测试 `IpDemoTemplateStripTest.fullCanvasSnapshotKeepsNativeVideoModeAsPreset`。
 - [x] ~~接入前产品问题：合成成片保存触发 IP_ASSET_KEY_INVALID~~ **2026-10-18 已修**：`DramaAssembleService.studioAssemblyPrefix` 改用 `FileStorageService.ownedKeyPrefix(CATEGORY_GEN, uid)`，与 `ownsAssetKey` 同源；存量按旧规则生成、uid 含特殊字符的成片 key 仍不被识别（需要时按 storage_asset 回查补归属）。
 - [ ] **S0 付费实测未做**（方案 §S0实测矩阵）：remap-subject（H3 / Seedance 2.0 各半）、creative-rewrite、长段比例、音频默认、检查可靠性、完整费用，需要用户单独批预算后在线上手工跑；结论回填方案与技能正文，决定哪些检查项进 `autoFixChecks`。
-- [ ] **S3 未做**：技能表 / 不可变版本 / 后台编辑与试跑、更多技能与意图路由、从成功画布蒸馏技能草稿；当前技能只在仓内文件。
-- [ ] **自动修正白名单为空**：检查只建议；`autoFixChecks` 要等对应检查项的 S0 可靠性结论。
+- [x] ~~S3 未做~~ **2026-10-18 完成**：`ip_skill` / `ip_skill_version`（V63）、后台「Studio 技能」页（查看 / 编辑 / 发版 / 回滚 / 停用 / 试跑 / 审阅发布草稿）、多技能路由（`StudioSkillRouter`）、运营蒸馏草稿（`StudioSkillDraftService`，prompt `dap.ip_studio_skill_distill`）；测试 `StudioSkillRegistryTest` 等 38 项。仍只有一份技能内容；第二份技能要等 S0 结论再写，不凭空编。
+- [ ] **自动修正白名单为空**：检查只建议；`autoFixChecks` 要等对应检查项的 S0 可靠性结论（后台技能页已能改这一字段，但没有实测依据前不要改）。
 - [ ] **多节点部署**：对话实时广播是进程内（`StudioDialogueEventHub`），多实例需换跨节点发布订阅；单节点下断线靠 SSE 续播 / 轮询回落。
 - [ ] **前端 docVersion 未从工作台传入助手**：`node.upsert` 带 `expectedDocVersion` 时被跳过并提示「画布已变化，稍后重试」；需 `project-sync.ts` 暴露当前基线并经 `studio-workspace` 传给 `StudioAssistant`（prop 已存在）。
 - [ ] **对话循环不直接向模型发图**：附件以对象 id 进上下文，看图依赖拉片 / 解析工具；端点开流式但不回用量会以 `AI_USAGE_MISSING` 失败（后台开关旁已提示）。

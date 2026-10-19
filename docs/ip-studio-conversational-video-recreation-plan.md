@@ -1,6 +1,6 @@
 # 全能创作对话驱动视频复刻方案
 
-日期：2026-10-18。状态：统一产品与开发规格 v4；**S1 / S2 已于 2026-10-18 本地实现（未发布）**，实现记录见 `apps/server/README.md`「Studio 对话 agent、技能与计划执行」、`apps/web-aiavatar/PRODUCT.md`「2026-10-18 · 全能创作」、`specs/BUSINESS_RULES.md` 同名节；S0 付费实测、S3 技能表与后台、自动修正白名单未做（见 `TODO.md`）。本文是本功能唯一方案真源；前序独立工作树方案已作废删除。
+日期：2026-10-18。状态：统一产品与开发规格 v4；**S1 / S2 / S3 已于 2026-10-18 本地实现（未发布）**，实现记录见 `apps/server/README.md`「Studio 对话 agent、技能与计划执行」、`apps/web-aiavatar/PRODUCT.md`「2026-10-18 · 全能创作」、`specs/BUSINESS_RULES.md` 同名节；S0 付费实测与据其决定的 `autoFixChecks` 白名单未做（需单独批预算，见 `TODO.md`）。本文是本功能唯一方案真源；前序独立工作树方案已作废删除。
 
 ## 用户需求
 

@@ -571,7 +571,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 | dev 免密登录 | `aep.dev-auth.enabled` 默认关 | 显式开 |
 | 演示数据 seeder | mysql 默认 `AEP_SEED_DEV_DATA_ENABLED=false` | dev 自动 seed |
 | music 形象锻造成片视频 | v0.60 已随形象锻造入口下线（债务以退役方式清除；遗留数据只读） | — |
-| Studio 对话 agent / 技能规划 / 原生检查（2026-10-18） | 文本端点未配按量售价 → 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`；看图能力未声明 → `STUDIO_VISION_UNAVAILABLE`；技能不在架 → 404 `STUDIO_SKILL_NOT_FOUND`；端点未声明流式就一次给出完整正文、**禁止拆字假流式**；未声明工具调用走 JSON 动作协议、不换端点；检查缺依据判 `unknown` 不判通过；父 / 子 run 费用不重复相加；模型输出永不等于付款或执行授权 | `StudioFixtureProvider` 测试响应（既有口径：零成本、`mock=true`，不冒充供应商流式） |
+| Studio 对话 agent / 技能规划 / 原生检查（2026-10-18） | 文本端点未配按量售价 → 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`；看图能力未声明 → `STUDIO_VISION_UNAVAILABLE`；技能不在架 → 404 `STUDIO_SKILL_NOT_FOUND`；端点未声明流式就一次给出完整正文、**禁止拆字假流式**；未声明工具调用走 JSON 动作协议、不换端点；检查缺依据判 `unknown` 不判通过；父 / 子 run 费用不重复相加；模型输出永不等于付款或执行授权；后台技能试跑未配端点 → 503、不产假计划；蒸馏草稿不看提示词 / 原话 / key 且不自动生效 | `StudioFixtureProvider` 测试响应（既有口径：零成本、`mock=true`，不冒充供应商流式） |
 
 ### 8.0.1 排障与验证纪律（v0.184 起强制，2026-10-05 补到 13 条 —— 都是本仓真栽过、而且多数**栽过不止一次**的）
 
