@@ -148,6 +148,14 @@ describe('restore from execution state', () => {
     'IPR-v2': run('IPR-v2', `${E}-p-v2`, 'studio-video', {}, 'running'),
   };
   const restore = (doc: ProjectionDoc, list = executionRestoreUpserts(execution, runs)) => projectCanvasOps(doc, list.map(data => ({ kind: 'node' as const, data, executionId: E, turnId: E, restore: true })));
+
+  it('restoring only an upstream node also restores its edge to the downstream node already on the canvas (Codex R7-01)', () => {
+    const list = executionRestoreUpserts(execution, runs, new Set([`${E}-a-facts`]));
+    expect(list.filter(d => d.op !== 'connect').map(d => d.nodeId)).toEqual([`${E}-a-facts`]);
+    const edge = list.find(d => d.op === 'connect' && d.connection?.fromNodeId === `${E}-a-facts` && d.connection?.toNodeId === `${E}-a-limits`);
+    expect(edge).toBeTruthy();
+    expect(list.filter(d => d.op === 'connect' && d.connection?.toNodeId === `${E}-a-limits`)).toHaveLength(1);
+  });
   beforeEach(() => localStorage.clear());
 
   test('rebuilds exactly the commands the executor sends for a finished text step', () => {

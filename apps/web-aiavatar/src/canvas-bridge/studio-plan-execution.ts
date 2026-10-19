@@ -361,6 +361,21 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
       out.push({ ...clip, connection: { fromNodeId: nodeId, toNodeId: segmentId } });
     }
   }
+  // Restoring only some nodes must also restore their edges toward steps that are already on the canvas: the loop
+  // above emits a step's input edges only when that step itself is restored, so an upstream brought back next to an
+  // existing downstream lost its dependency edge (Codex R7-01). Both ends exist afterwards; projection keeps it idempotent.
+  if (only) for (const step of execution.steps) {
+    const nodeId = stepNodeId(execution, step);
+    if (step.status !== 'done' || only.has(nodeId)) continue;
+    const upstreams = step.operation === 'check'
+      ? [stageSteps(step.stage).find(s => s.id === step.dependsOn[0])]
+      : step.dependsOn.map(d => stageSteps(step.stage).find(s => s.id === d)).filter(u => u && u.operation !== 'check');
+    for (const upstream of upstreams) {
+      if (!upstream) continue;
+      const upstreamId = stepNodeId(execution, upstream);
+      if (only.has(upstreamId)) out.push({ nodeId, op: 'connect', executionId: execution.id, stepId: step.id, connection: { fromNodeId: upstreamId, toNodeId: nodeId } });
+    }
+  }
   return out;
 }
 
