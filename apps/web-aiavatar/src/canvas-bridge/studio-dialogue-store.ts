@@ -456,5 +456,7 @@ export function messageQueueLabel(store: DialogueStore, message: StudioDialogueM
   if (message.role !== 'user') return undefined;
   const local = store.queueStates[message.id];
   const state = message.status === 'queued' ? 'queued' : message.status === 'applied' ? 'applied' : local;
-  return state === 'queued' ? '排队中，下一步应用' : state === 'applied' ? '已应用' : state === 'accepted' ? '已收到' : undefined;
+  // 「已收到」只在回复开始之前有意义；回复一出来气泡就恢复干净（画布页改版设计稿：你的话只是一个气泡）。
+  const answered = state === 'accepted' && store.messages.some(m => m.role !== 'user' && m.seq > message.seq);
+  return state === 'queued' ? '排队中，下一步应用' : state === 'applied' ? '已应用' : state === 'accepted' && !answered ? '已收到' : undefined;
 }

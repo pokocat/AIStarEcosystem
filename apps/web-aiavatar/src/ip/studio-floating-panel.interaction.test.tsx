@@ -63,3 +63,27 @@ test('a dockable panel remembers docked / floating and its docked width per brow
   fireEvent.click(screen.getByRole('button',{name:'停靠到右侧'}));
   expect(again.style.width).toBe('580px');
 });
+
+// 2026-10-19 walkthrough: Escape used to throw away a panel you were writing in, close the docked assistant when it was
+// meant for the canvas, and close the assistant together with an Antd menu.
+test('Escape from a filled field only leaves the field; a docked panel ignores an Escape aimed at the canvas',()=>{
+  localStorage.clear();
+  const onClose=vi.fn();
+  render(<StudioFloatingPanel open title="助手" dockable defaultDocked layoutKey="esc" onClose={onClose}><textarea aria-label="消息"/></StudioFloatingPanel>);
+  const field=screen.getByRole('textbox',{name:'消息'}) as HTMLTextAreaElement;
+  field.focus();fireEvent.change(field,{target:{value:'写到一半'}});
+  fireEvent.keyDown(field,{key:'Escape'});
+  expect(onClose).not.toHaveBeenCalled();expect(document.activeElement).not.toBe(field);
+  // focus is now outside the docked panel (on the canvas): its Escape belongs to the canvas
+  fireEvent.keyDown(document.body,{key:'Escape'});expect(onClose).not.toHaveBeenCalled();
+  // with focus inside and nothing typed, Escape still closes it
+  field.focus();fireEvent.change(field,{target:{value:''}});fireEvent.keyDown(field,{key:'Escape'});expect(onClose).toHaveBeenCalledTimes(1);
+});
+test('an Escape that closes an Antd menu does not also close the panel, even when the menu hides first',()=>{
+  render(<Host/>);fireEvent.focus(screen.getByRole('textbox',{name:'助手提示'}));
+  const menu=document.createElement('div');menu.className='ant-dropdown';document.body.append(menu);
+  // Antd hides its menu before document listeners run: hide it during the event's propagation.
+  screen.getByRole('textbox',{name:'助手提示'}).addEventListener('keydown',()=>menu.classList.add('ant-dropdown-hidden'),{once:true});
+  fireEvent.keyDown(screen.getByRole('textbox',{name:'助手提示'}),{key:'Escape'});
+  expect(screen.getAllByRole('dialog')).toHaveLength(2);menu.remove();
+});

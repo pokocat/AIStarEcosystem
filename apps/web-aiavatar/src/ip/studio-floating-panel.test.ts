@@ -14,7 +14,8 @@ test('a large right-edge node falls above when neither side has room',()=>{
  const p=floatingPosition(stage,{left:700,top:570,width:550,height:200},{width:660,height:260});
  expect(p).toEqual({left:642,top:238});
 });
-test('node actions stay above their anchor and utility windows respect the tool margins',()=>{
- expect(floatingPosition(stage,{left:500,top:260,width:320,height:200},{width:660,height:48},true)).toEqual({left:330,top:140});
+test('a node action bar sits right under its node, flush left (canvas redesign), and above it only without room; utility windows respect the tool margins',()=>{
+ expect(floatingPosition(stage,{left:500,top:260,width:320,height:200},{width:380,height:48},true)).toEqual({left:500,top:412});
+ expect(floatingPosition(stage,{left:500,top:600,width:320,height:200},{width:380,height:48},true)).toEqual({left:500,top:480});
  expect(floatingPosition(stage,undefined,{width:420,height:620})).toEqual({left:874,top:72});
 });

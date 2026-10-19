@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, useReactFlow, useViewport, useNodesInitialized } from '@xyflow/react';
+import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, useReactFlow, useViewport } from '@xyflow/react';
 import { Maximize, ZoomIn, ZoomOut } from 'lucide-react';
 import type { IpProjectDoc } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -14,13 +14,14 @@ function Preview({ doc }: { doc: IpProjectDoc }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [inspecting, setInspecting] = useState<CanvasNodeData>();
   const viewport = useViewport(), flow = useReactFlow();
-  const initialized = useNodesInitialized();
+  // Nodes are controlled with explicit sizes, so React Flow never fills `measured` and its nodes-initialized hook stays false
+  // (AGENTS §8.0.1 ⑭): wait for the viewport instead, then fit once the fullscreen container has laid out.
+  const ready = flow.viewportInitialized;
   useEffect(() => {
-    if (!initialized) return;
-    // The fullscreen container must be measured before fitting its published graph.
+    if (!ready) return;
     const frame = requestAnimationFrame(() => void flow.fitView({ padding: .2, maxZoom: 1 }));
     return () => cancelAnimationFrame(frame);
-  }, [initialized, flow]);
+  }, [ready, flow, doc]);
   const nodes = useMemo(() => flowNodes(doc.nodes as CanvasNodeData[], new Set(inspecting ? [inspecting.id] : []))
     .map(n => ({ ...n, data: { ...n.data, readOnly: true, onInspect: setInspecting } })), [doc, inspecting]);
   const edges = useMemo(() => flowEdges(doc.connections), [doc]);

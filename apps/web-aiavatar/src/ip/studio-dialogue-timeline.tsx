@@ -1,7 +1,7 @@
 'use client';
 // The thread timeline: earlier pages, the branch note, every message in order and the
 // messages still on their way to the server.
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { StudioDialogueMessage } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
@@ -24,8 +24,10 @@ function ParentThread({ store, nodes, handlers, readThread }: { store: DialogueS
   </details>;
 }
 
-export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoadOlder, readThread }: {
+export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoadOlder, readThread, progress }: {
   store: DialogueStore; nodes: CanvasNodeData[]; handlers: DialogueMessageHandlers;
+  /** The running plan's step list; it reads as part of the latest reply (before its suggestions), as in the canvas redesign. */
+  progress?: ReactNode;
   onRetry: (clientMessageId: string) => void; onLoadOlder: () => Promise<void>; readThread: (id: string) => Promise<StudioDialogueMessage[]>;
 }) {
   const { current } = dialogueSections(store);
@@ -61,6 +63,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     <ParentThread store={store} nodes={nodes} handlers={handlers} readThread={readThread}/>
     {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueLabel={messageQueueLabel(store, m)}
+      progress={m.id === last?.id ? progress : undefined}
       suggestions={m.id === last?.id && store.activeTurnId !== m.turnId ? messageSuggestions(store, m) : undefined}
       handlers={isPlaceholderMessage(m.id) ? { ...handlers, onBranch: undefined } : handlers}/> : item && <article key={item.clientMessageId} className="studio-dialogue-message is-user" data-status={item.state} aria-label="你的消息">
       <small className="studio-dialogue-author">你</small>
@@ -69,5 +72,6 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
         : <small className="studio-dialogue-queue is-failed" role="status">没有确认送达{item.error ? `：${item.error}` : ''}
           <button type="button" className="studio-dialogue-link" title="用同一条消息重发，服务端只会处理一次" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
     </article>)}
+    {!last && progress}
   </div>;
 }

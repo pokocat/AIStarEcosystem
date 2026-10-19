@@ -96,6 +96,8 @@ function messageBody(message: StudioDialogueMessage, props: MessageProps): React
 type MessageProps = {
   message: StudioDialogueMessage; layout?: DialogueLayout; nodes: CanvasNodeData[]; readOnly?: boolean;
   queueLabel?: string; suggestions?: string[]; shortfalls: Record<string, number>; handlers: DialogueMessageHandlers;
+  /** The running plan's step list, shown under the latest reply. */
+  progress?: ReactNode;
 };
 
 export function StudioDialogueMessageView(props: MessageProps) {
@@ -119,15 +121,19 @@ export function StudioDialogueMessageView(props: MessageProps) {
     {user && queueLabel && <small className="studio-dialogue-queue" role="status">{queueLabel}</small>}
     {!user && message.status === 'interrupted' && <small className="studio-dialogue-note">这一轮已停止</small>}
     {!user && message.status === 'failed' && <small className="studio-dialogue-warning">这一轮没有完成，可以换个说法再发一次</small>}
-    {!user && (message.billing || message.settling) && <footer className="studio-dialogue-footer">
-      <span>{message.settling ? '本轮积分待结算' : `本轮回复 ${formatCredits(message.billing!.credits)} 积分`}</span>
-      {!!tools.length && <details><summary>另有 {tools.length} 项工作记录，共 {formatCredits(tools.reduce((sum, t) => sum + (t.creditsActual || 0), 0))} 积分</summary>
-        <ul>{tools.map(t => <li key={t.toolCallId}><span>{toolTitle(t)}</span><span>{formatCredits(t.creditsActual || 0)} 积分</span></li>)}</ul></details>}
-    </footer>}
+    {/* 设计稿 Main 画板：回复正文 → 逐步清单 → 建议；积分与「从这里重新开始」收成最后一行小灰字。 */}
+    {!user && props.progress}
     {!!suggestions?.length && !readOnly && <StudioDialogueSuggestions items={suggestions} onUse={handlers.onCompose}/>}
     {!user && !readOnly && handlers.completionActions?.(message)}
-    {!readOnly && handlers.onBranch && finished && <div className="studio-dialogue-message-actions">
-      <button type="button" className="studio-dialogue-link" disabled={branching} title="从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}><GitBranch size={13} aria-hidden="true"/>{branching ? '正在新建' : '从这里重新开始'}</button>
+    {((!user && (message.billing || message.settling)) || (!readOnly && handlers.onBranch && finished)) && <div className="studio-dialogue-meta">
+      {!user && (message.billing || message.settling) && <footer className="studio-dialogue-footer">
+        <span>{message.settling ? '本轮积分待结算' : `本轮回复 ${formatCredits(message.billing!.credits)} 积分`}</span>
+        {!!tools.length && <details><summary>另有 {tools.length} 项工作记录，共 {formatCredits(tools.reduce((sum, t) => sum + (t.creditsActual || 0), 0))} 积分</summary>
+          <ul>{tools.map(t => <li key={t.toolCallId}><span>{toolTitle(t)}</span><span>{formatCredits(t.creditsActual || 0)} 积分</span></li>)}</ul></details>}
+      </footer>}
+      {!readOnly && handlers.onBranch && finished && <div className="studio-dialogue-message-actions">
+        <button type="button" className="studio-dialogue-link" disabled={branching} title="从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}><GitBranch size={13} aria-hidden="true"/>{branching ? '正在新建' : '从这里重新开始'}</button>
+      </div>}
     </div>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
   </article>;

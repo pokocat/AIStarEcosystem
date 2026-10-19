@@ -2,9 +2,10 @@
 import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-errors';
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
-  BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, useNodesInitialized, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
+  BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal } from 'antd';
-import { ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, Images, LayoutGrid, Library, Maximize, MousePointer2, Music2, PanelsTopLeft, Plus, Redo2, Scissors, Search, Sparkles, Trash2, Undo2, Upload, Video, Wand2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import { AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, Scissors, Search, ShoppingBag, Trash2, Upload, Video, X } from 'lucide-react';
+import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
 import { WalletBadge } from '@/shell/wallet-badge';
@@ -62,13 +63,15 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   // AI 做的 / 正在做的节点带记号；没有记号 = 用户自己放的。
   const aiMade = !!meta?.studio && !!(meta.studio.runId || meta.studio.execution || meta.studio.request || meta.studio.speechRequest || meta.studio.lipSyncRequest);
   const generating = meta?.status === 'loading' && !data.uploading;
+  // 设计稿 · Language 画板：媒体是你自己传上来的就标「你上传的」；从素材库引用的、空白占位和文字都不标（没有记号 = 你自己放的）。
+  const uploaded = !aiMade && node.type !== CanvasNodeType.Text && !!meta?.storageKey && !meta?.studio?.libraryReference;
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
   return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     {port('target')}{port('source')}
-    <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade && <span className="studio-flow-ai-badge" title={generating ? 'AI 正在生成' : 'AI 生成的'}><Sparkles size={10} aria-hidden="true"/>{generating ? '生成中' : 'AI'}</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
+    <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade ? <span className="studio-flow-ai-badge" title={generating ? 'AI 正在生成' : 'AI 生成的'}><AiMark size={10}/>{generating ? '生成中' : 'AI'}</span> : uploaded && <span className="studio-flow-origin">你上传的</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
     <div className={`studio-flow-media${studioText ? ' studio-flow-business' : ''}${mediaGenerating ? ' is-generating-media' : ''}`}>
       {studioText ? <div className="nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : mediaGenerating ?
         <>{meta?.content && (node.type===CanvasNodeType.Video ? <SignedVideo src={meta.content} storageKey={meta.storageKey} preload="metadata"/> : <SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title}/>)}<StudioMediaGenerationState media={node.type===CanvasNodeType.Video?'video':'image'} task={meta?.studio?.task} confirmed={!!(meta?.studio?.runId||meta?.runId||meta?.videoTaskId||meta?.images?.some(t=>t.runId))}/></> : node.type === CanvasNodeType.Image && (meta?.content||meta?.storageKey) ?
@@ -96,13 +99,24 @@ function ReferenceEdge(props:EdgeProps) {
   </g>;
 }
 const edgeTypes={reference:ReferenceEdge};
+/**
+ * Fit into the part of the stage the user can actually see: the view switch on top, the zoom bar below, the rail on the
+ * left (desktop) and a docked panel on the right. Fitting to the whole stage put 「在画布上看」 targets and nodes the assistant
+ * had just placed behind the docked assistant (2026-10-19 walkthrough).
+ */
+export function visibleFitPadding(shell: HTMLElement | null, room = 24) {
+  const dock = shell?.classList.contains('has-docked-panel') ? parseFloat(shell.style.getPropertyValue('--studio-docked-panel')) || 0 : 0;
+  const rail = document.documentElement.dataset.layout === 'desktop' ? 56 : 0;
+  const px = (n: number) => `${Math.round(n)}px` as const;
+  return { top: px(64 + room), bottom: px(64 + room), left: px(rail + room), right: px(dock + room) };
+}
 type Snapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 
 function FlowWorkspace({ projectId }: { projectId: string }) {
   const identity = useIdentity();
   const project = useCanvasStore(s => s.projects.find(p => p.id === projectId));
   const flow = useReactFlow<StudioFlowNode>(), viewport = useViewport(), { zoom } = viewport, { message } = useStudioApp();
-  const picker = useRef<AttachmentPickerActions>(null);
+  const picker = useRef<AttachmentPickerActions>(null), shellRef = useRef<HTMLDivElement>(null);
   // Nodes the assistant just put on the canvas glow for a moment (studio-command: reveal).
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
   const freshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -117,7 +131,6 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const [pendingConnection,setPendingConnection]=useState<PendingStudioConnection>();
   const [pendingCreator,setPendingCreator]=useState<{id:string;sourceId?:string;operation:string}>();
   const closeConnectionMenu=useCallback(()=>setPendingConnection(undefined),[]);
-  const initialized = useNodesInitialized();
   const [reading, setReading] = useState(false), [historyRevision, refreshHistory] = useState(0);
   const [uploadingImageId, setUploadingImageId] = useState<string>();
   const videoUploadInput = useRef<HTMLInputElement>(null), videoUploadTarget = useRef<string | undefined>(undefined), videoUploadBusy = useRef(false);
@@ -198,12 +211,17 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     setSelected(new Set([result.node.id]));setSelectedEdges(new Set());closeConnectionMenu();
     setPendingCreator({id:result.node.id,sourceId:pendingConnection.sourceId,operation:result.operation});
   };
+  // Wait only for React Flow to know the target node. Nodes are controlled with explicit width/height, so React Flow's own
+  // `measured` stays empty and React Flow's nodes-initialized hook is never true — gating on it meant focusing (「在画布上看」, new results,
+  // task links) silently never moved the view (2026-10-19 walkthrough). Bounds come from the explicit size.
+  const [focusTick, setFocusTick] = useState(0);
   useEffect(() => {
-    if (!pendingFocus || !initialized || !flow.viewportInitialized) return;
+    if (!pendingFocus || !flow.viewportInitialized) return;
     const node = project?.nodes.find(n => n.id === pendingFocus); if (!node) return;
-    void flow.fitView({ nodes: [{ id: node.id }], padding: .65, maxZoom: 1, duration: 260 });
+    if (!flow.getInternalNode(node.id)) { const frame = requestAnimationFrame(() => setFocusTick(t => t + 1)); return () => cancelAnimationFrame(frame); }
+    void flow.fitView({ nodes: [{ id: node.id }], padding: visibleFitPadding(shellRef.current, 80), maxZoom: 1, duration: 260 });
     setPendingFocus(undefined);
-  }, [pendingFocus, initialized, flow, project?.nodes]);
+  }, [pendingFocus, flow, flow.viewportInitialized, project?.nodes, focusTick]);
   const closePanel = useCallback(() => { setTextId(undefined); setRenameId(undefined); setContext(undefined); }, []);
   const modalContainer = () => document.querySelector<HTMLElement>('.studio-flow-shell')?.closest<HTMLElement>('.ip-surface') || document.body;
   const placeVisibleNode = (node: CanvasNodeData, existing: CanvasNodeData[], at?: {x:number;y:number}) => {
@@ -238,7 +256,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     const result = release ? applyUngroupSelection(selected, p.nodes, p.connections) : applyGroupSelection(selected, p.nodes, p.connections, frame);
     if (!result) return; checkpoint(); useCanvasStore.getState().updateProject(projectId, { nodes: result.nodes, connections: result.connections }); setSelected(new Set(result.selectedIds)); setContext(undefined);
   }, [current, selected, checkpoint, projectId]);
-  const arrange = useCallback(() => { checkpoint(); setNodes(old => arrangeFlowNodes(old, selected.size > 1 ? selected : undefined)); setContext(undefined); requestAnimationFrame(() => void flow.fitView({ padding: .2, duration: 260 })); }, [checkpoint, setNodes, selected, flow]);
+  const arrange = useCallback(() => { checkpoint(); setNodes(old => arrangeFlowNodes(old, selected.size > 1 ? selected : undefined)); setContext(undefined); requestAnimationFrame(() => void flow.fitView({ padding: visibleFitPadding(shellRef.current), duration: 260 })); }, [checkpoint, setNodes, selected, flow]);
   const remove = useCallback(() => {
     const p = current(), blocked = p.nodes.filter(n => selected.has(n.id) && studioGenerationPending(n));
     const ids = new Set(p.nodes.filter(n => selected.has(n.id) && !studioGenerationPending(n)).map(n => n.id));
@@ -268,7 +286,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
       else if (detail.action === 'focus') { if (detail.nodeId && current().nodes.some(n => n.id === detail.nodeId)) focusNode(detail.nodeId); }
       // 'reveal' only brings nodes into view (the assistant following its own work); the selection is left alone.
-      else if (detail.action === 'reveal') { const ids = (detail.nodeId || '').split(',').filter(id => current().nodes.some(n => n.id === id)); if (ids.length) { void flow.fitView({ nodes: ids.map(id => ({ id })), padding: .45, maxZoom: 1, duration: 320 }); setFresh(new Set(ids)); clearTimeout(freshTimer.current); freshTimer.current = setTimeout(() => setFresh(new Set()), 2400); } }
+      else if (detail.action === 'reveal') { const ids = (detail.nodeId || '').split(',').filter(id => current().nodes.some(n => n.id === id)); if (ids.length) { void flow.fitView({ nodes: ids.map(id => ({ id })), padding: visibleFitPadding(shellRef.current, 48), maxZoom: 1, duration: 320 }); setFresh(new Set(ids)); clearTimeout(freshTimer.current); freshTimer.current = setTimeout(() => setFresh(new Set()), 2400); } }
       else setTextId(undefined);
     };
     const keydown = (e: KeyboardEvent) => {
@@ -364,8 +382,12 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'image',label:'添加图片',onClick:()=>add(CanvasNodeType.Image,context)},
     {key:'video',label:'添加视频',onClick:()=>add(CanvasNodeType.Video,context)},
     {key:'templates',label:'套用画布模板',onClick:()=>dispatchStudioCommand('templates')},
+    // 画布页改版：缩放条只留缩放和适应（设计稿 Main 画板），撤销 / 重做 / 小地图挪到这里；快捷键 Ctrl/Cmd+Z、Shift+Ctrl/Cmd+Z 照旧。
+    ...(history.current.past.length?[{key:'undo',label:'撤销',onClick:()=>travel('past')}]:[]),
+    ...(history.current.future.length?[{key:'redo',label:'重做',onClick:()=>travel('future')}]:[]),
+    {key:'minimap',label:minimap?'隐藏小地图':'显示小地图',onClick:()=>setMinimap(v=>!v)},
   ];
-  return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div className="studio-flow-shell" data-history={historyRevision}>
+  return <StudioFloatingContext.Provider value={{viewport,nodes:project.nodes}}><div ref={shellRef} className="studio-flow-shell" data-history={historyRevision}>
     <header className="studio-flow-header"><a href="/projects" aria-label="返回项目"><ArrowLeft size={18}/></a>
       <Input aria-label="画布名称" variant="borderless" value={project.title} maxLength={80} onChange={e => useCanvasStore.getState().renameProject(projectId, e.target.value)}/>
       <HostActionsSlot/>
@@ -392,35 +414,30 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         panOnDrag={hand ? true : [1, 2]} panOnScroll selectionOnDrag={!hand} selectionMode={SelectionMode.Partial}
         zoomOnScroll={false} zoomOnPinch zoomOnDoubleClick={false} minZoom={.15} maxZoom={2.5} deleteKeyCode={null}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null} panActivationKeyCode={null} snapToGrid snapGrid={[8, 8]}
-        nodesDraggable={!spaceHeld /* Pan the background with the hand tool; reserve whole-canvas panning for Space. */} defaultEdgeOptions={{ style: { stroke: 'var(--ink-3)', strokeWidth: 1.5 } }}>
+        nodesDraggable={!spaceHeld /* Pan the background with the hand tool; reserve whole-canvas panning for Space. */}>
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--line-3)"/>
         {minimap && <MiniMap pannable zoomable position="bottom-right" nodeColor="var(--paper-2)" maskColor="var(--canvas-mask)"/>}
       </ReactFlow>
       {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
-        <button aria-label="拖动画布" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19}/><span className="studio-flow-tool-label" aria-hidden>拖动画布</span></button>
-        <button aria-label="选择工具" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19}/><span className="studio-flow-tool-label" aria-hidden>选择工具</span></button><hr/>
-        {/* 画布页改版（2026-10-19）：十三个图标收成七个。加内容进一个「添加」菜单，素材库 / 模板 / 专项创作从第二排搬来；
-            复制、删除、更多节点操作只留在右键菜单和多选条里。 */}
-        <Dropdown trigger={['click']} getPopupContainer={modalContainer} menu={{ items: [
+        <button aria-label="拖动画布" title="平移" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19} strokeWidth={1.75}/></button>
+        <button aria-label="选择工具" title="选择" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19} strokeWidth={1.75}/></button><hr/>
+        {/* 画布页改版（2026-10-19，设计稿 Main 画板）：贴边通高的一列，七个工具 —— 平移、选择、＋添加、素材库、模板、查找、整理；
+            创作任务在这列最底下（工作台渲染，见 studio-tasks-launch）。复制、删除、更多节点操作只在右键菜单和多选条里。
+            原第二排「更多」里的四项都有去处：商品 / 数字人视频模板在「模板」里，解析视频、口型同步在视频节点的「⋯」里，
+            从资产库添加在「素材库 → 素材」里。 */}
+        <Dropdown trigger={['click']} placement="rightTop" getPopupContainer={modalContainer} classNames={{ root: 'studio-flow-add-menu' }} menu={{ items: [
           { key: 'text', label: '文字', icon: <FileText size={16}/>, onClick: () => add(CanvasNodeType.Text) },
           { key: 'image', label: '图片', icon: <ImagePlus size={16}/>, onClick: () => add(CanvasNodeType.Image) },
           { key: 'video', label: '视频', icon: <Video size={16}/>, onClick: () => add(CanvasNodeType.Video) },
-          { key: 'speech', label: '配音', icon: <Music2 size={16}/>, onClick: () => dispatchStudioCommand('speech') },
+          { key: 'speech', label: '声音', icon: <Music2 size={16}/>, onClick: () => dispatchStudioCommand('speech') },
           { type: 'divider' },
           { key: 'upload', label: '上传文件', icon: <Upload size={16}/>, onClick: () => picker.current?.upload() },
-          { key: 'library', label: '从资产库添加', icon: <Library size={16}/>, onClick: () => picker.current?.library() },
-        ] }}><button aria-label="添加内容" className="studio-flow-add"><Plus size={19}/><span className="studio-flow-tool-label" aria-hidden>添加</span></button></Dropdown>
-        <button aria-label="素材库" onClick={() => dispatchStudioCommand('library')}><Images size={19}/><span className="studio-flow-tool-label" aria-hidden>素材库</span></button>
-        <button aria-label="画布模板" onClick={() => dispatchStudioCommand('templates')}><PanelsTopLeft size={19}/><span className="studio-flow-tool-label" aria-hidden>模板</span></button>
-        <Dropdown trigger={['click']} getPopupContainer={modalContainer} menu={{ items: [
-          { key: 'recreation', label: '解析视频', onClick: () => dispatchStudioCommand('recreation', [...selected].find(id => current().nodes.find(n => n.id === id)?.type === CanvasNodeType.Video)) },
-          { key: 'commerce', label: '商品视频模板', onClick: () => dispatchStudioCommand('commerce') },
-          { key: 'digital', label: '数字人视频模板', onClick: () => dispatchStudioCommand('digital') },
-          { key: 'lip', label: '口型同步', onClick: () => dispatchStudioCommand('lip', [...selected][0]) },
-        ] }}><button aria-label="专项创作"><Wand2 size={19}/><span className="studio-flow-tool-label" aria-hidden>专项创作</span></button></Dropdown><hr/>
-        <button aria-label="查找节点" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19}/><span className="studio-flow-tool-label" aria-hidden>查找节点</span></button>
-        <button aria-label="整理画布" onClick={arrange}><LayoutGrid size={19}/><span className="studio-flow-tool-label" aria-hidden>整理画布</span></button>
+        ] }}><button aria-label="添加内容" title="添加" className="studio-flow-add"><Plus size={20} strokeWidth={2}/></button></Dropdown>
+        <button aria-label="素材库" title="素材库" onClick={() => dispatchStudioCommand('library')}><ShoppingBag size={19} strokeWidth={1.75}/></button>
+        <button aria-label="画布模板" title="模板" onClick={() => dispatchStudioCommand('templates')}><LayoutGrid size={19} strokeWidth={1.75}/></button><hr/>
+        <button aria-label="查找节点" title="查找" aria-pressed={find} onClick={() => setFind(v => !v)}><Search size={19} strokeWidth={1.75}/></button>
+        <button aria-label="整理画布" title="整理" onClick={arrange}><AlignLeft size={19} strokeWidth={1.75}/></button>
         <div hidden><StudioAttachmentPicker projectId={projectId} variant="canvas" locked={reading} reading={reading} actions={picker} onFiles={files => void importFiles(files)} onAssets={async assets => {
           checkpoint(); let last: string | undefined; for (const asset of assets) { const n = attachmentNode(savedAssetPayload(asset), current().nodes); setNodes(old => old.some(x => x.id === n.id) ? old : [...old, placeVisibleNode(n, old)]); last = n.id; }
           await saveStudioDocument(projectId); if (last) focusNode(last);
@@ -428,11 +445,12 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       </nav>
       <input ref={videoUploadInput} type="file" hidden accept={STUDIO_VIDEO_UPLOAD_ACCEPT} aria-label="上传节点视频" onChange={e => { const file=e.target.files?.[0]; e.target.value=''; if(file)void uploadVideoIntoNode(file); }}/>
       <input ref={imageUploadInput} type="file" hidden accept={STUDIO_IMAGE_UPLOAD_ACCEPT} aria-label="上传节点图片" onChange={e => { const file=e.target.files?.[0]; e.target.value=''; if(file)void uploadImageIntoNode(file); }}/>
-      <div className="studio-flow-controls" aria-label="视图控制"><button title="撤销" aria-label="撤销" disabled={!history.current.past.length} onClick={() => travel('past')}><Undo2 size={17}/></button><button title="重做" aria-label="重做" disabled={!history.current.future.length} onClick={() => travel('future')}><Redo2 size={17}/></button><hr/>
-        <button title="缩小画布" aria-label="缩小画布" onClick={() => void flow.zoomOut()}><ZoomOut size={17}/></button><span>{Math.round(zoom * 100)}%</span><button title="放大画布" aria-label="放大画布" onClick={() => void flow.zoomIn()}><ZoomIn size={17}/></button>
-        <button title="适应全部节点" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: .2, duration: 260 })}><Maximize size={17}/></button><button aria-pressed={minimap} onClick={() => setMinimap(v => !v)}>小地图</button>
+      {/* 设计稿 Main 画板：缩放条只有 − 百分比 + 适应；撤销 / 重做 / 小地图在画布空白处的右键菜单里。 */}
+      <div className="studio-flow-controls" aria-label="视图控制">
+        <button title="缩小画布" aria-label="缩小画布" onClick={() => void flow.zoomOut()}><Minus size={15} strokeWidth={1.75}/></button><span>{Math.round(zoom * 100)}%</span><button title="放大画布" aria-label="放大画布" onClick={() => void flow.zoomIn()}><Plus size={15} strokeWidth={1.75}/></button>
+        <button title="适应全部节点" aria-label="适应全部节点" onClick={() => void flow.fitView({ padding: visibleFitPadding(shellRef.current), duration: 260 })}><Maximize size={15} strokeWidth={1.75}/></button>
       </div>
-      {selected.size > 1 && <div className="studio-flow-selection"><span>已选择 {selected.size} 个节点</span><button title="建立分组" aria-label="建立分组" disabled={!canGroupSelectedNodes(selected,project.nodes)} onClick={() => group()}><Group size={16}/></button><button title="整理选中节点" aria-label="整理选中节点" onClick={arrange}><LayoutGrid size={16}/></button><button title="复制选中节点" aria-label="复制选中节点" onClick={() => paste(true)}><Copy size={16}/></button><button title="删除选中节点" aria-label="删除选中节点" onClick={remove}><Trash2 size={16}/></button></div>}
+      {selected.size > 1 && <div className="studio-flow-selection"><span>已选择 {selected.size} 个节点</span><button title="建立分组" aria-label="建立分组" disabled={!canGroupSelectedNodes(selected,project.nodes)} onClick={() => group()}><Group size={16}/></button><button title="整理选中节点" aria-label="整理选中节点" onClick={arrange}><AlignLeft size={16}/></button><button title="复制选中节点" aria-label="复制选中节点" onClick={() => paste(true)}><Copy size={16}/></button><button title="删除选中节点" aria-label="删除选中节点" onClick={remove}><Trash2 size={16}/></button></div>}
       {context && <div className="studio-flow-context" style={{ left: Math.min(context.x, window.innerWidth - 200), top: Math.min(context.y, window.innerHeight - 330) }}>{(context.nodeId?nodeMenu:paneMenu).map(item => <button key={item.key} onClick={() => { item.onClick(); setContext(undefined); }}>{item.label}</button>)}</div>}
       {find && <aside className="studio-flow-find"><header><strong>查找节点</strong><button title="关闭节点查找" aria-label="关闭节点查找" onClick={() => setFind(false)}><X size={16}/></button></header><Input autoFocus aria-label="搜索画布节点" placeholder="搜索名称或提示词" value={query} onChange={e => setQuery(e.target.value)}/>{project.nodes.filter(n => `${n.title} ${n.metadata?.prompt || ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase())).map(n => <button key={n.id} onClick={() => focusNode(n.id)}>{n.title}</button>)}</aside>}
     </div>

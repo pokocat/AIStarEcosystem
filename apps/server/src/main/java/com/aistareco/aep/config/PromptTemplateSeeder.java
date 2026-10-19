@@ -36,7 +36,7 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      不要整批放弃、通常 4-8 条」，并说明丢弃规则只针对那件事本身、不是放弃整批热词。
     // v13：画布提示词（drama.canvas_script_setting / outline / episode / extract / storyboard）按线上实测改写：
     //      示例名换成人物甲 / 乙、人物小传列全想法里的人且不撞字、台词不加 △、相邻集不重复、拆角色看大纲、片段下限。
-    private static final String SEED_VERSION = "v13-2026-10-03-canvas-prompts";
+    private static final String SEED_VERSION = "v14-2026-10-19-dialogue-short-approvals";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

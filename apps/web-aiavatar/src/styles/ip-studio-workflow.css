@@ -772,3 +772,110 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-
 .ip-surface .studio-assistant-status.is-hint { background:var(--ai-soft); }
 html[data-layout="mobile"] .studio-ai-orb { right:12px; top:68px; width:40px; height:40px; }
 html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:84px; }
+
+/* ── 画布页改版 · 照设计稿 Main 画板补齐（2026-10-19 第二遍） ── */
+/* 创作任务：桌面上就是左栏最底下那一格（左栏本身在 studio-flow.css），角标是 AI 渐变数字。 */
+html[data-layout="desktop"] .ip-surface .studio-tasks-launch { left:8px; bottom:12px; z-index:81; width:40px; height:40px; border:0; border-radius:10px; background:transparent; color:var(--ink-2); }
+html[data-layout="desktop"] .ip-surface .studio-tasks-launch:hover,html[data-layout="desktop"] .ip-surface .studio-tasks-launch[aria-pressed="true"] { background:var(--surface-2); color:var(--ink); }
+html[data-layout="desktop"] .ip-surface .studio-tasks-count { top:5px; right:5px; min-width:16px; height:16px; padding:0 4px; border-radius:8px; line-height:16px; box-shadow:none; }
+/* 视图切换：顶部 14px，居中在左栏和助手之间的画布区；当前项灰底深字。 */
+html[data-layout="desktop"] .studio-flow-shell .studio-view-switch { top:74px; left:calc((100% + 56px) / 2); padding:4px; border-radius:12px; box-shadow:0 4px 14px rgba(20, 24, 40, 0.06); }
+.ip-surface .studio-view-switch button { min-height:32px; height:32px; padding:0 14px; border-radius:9px; font-size:13px; }
+.ip-surface .studio-view-switch button[aria-pressed="true"] { font-weight:600; }
+/* 选中节点的操作条：节点正下方、左对齐，按钮是白底细边的小按钮；「问助手」是唯一的紫，其余灰，「⋯」收起其余操作。 */
+.ip-surface .studio-floating-panel.is-context-toolbar { border:1px solid var(--line); border-radius:12px; box-shadow:0 8px 24px rgba(20, 24, 40, 0.08); }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-context-actions { flex-wrap:nowrap; gap:6px; padding:6px; }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-selected-name { padding:0 8px; font-size:12px; color:var(--ink-2); max-width:160px; }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-context-actions>button:not(.studio-ask-assistant) { height:32px; min-height:32px; padding:0 12px; gap:6px; border:1px solid var(--line); border-radius:9px; background:var(--surface); color:var(--ink); font-size:12px; }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-context-actions>button:not(.studio-ask-assistant):hover:not(:disabled) { background:var(--surface-2); }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-context-actions>.studio-ask-assistant { height:32px; min-height:32px; padding:0 12px; gap:6px; border-radius:9px; font-size:12px; }
+.ip-surface .studio-floating-panel.is-context-toolbar .studio-context-actions>.studio-context-more-button { width:32px; padding:0; color:var(--ink-2); }
+.ip-surface .studio-context-more { display:flex; flex-direction:column; align-items:stretch; gap:2px; min-width:168px; }
+.ip-surface .studio-context-more>button { display:flex; align-items:center; gap:8px; height:36px; padding:0 10px; border:0; border-radius:8px; background:transparent; color:var(--ink); font:inherit; font-size:13px; text-align:left; cursor:pointer; white-space:nowrap; }
+.ip-surface .studio-context-more>button:hover:not(:disabled) { background:var(--surface-2); }
+.ip-surface .studio-context-more>button:disabled { opacity:.45; cursor:not-allowed; }
+.ip-surface .studio-context-more>.ant-select { width:100%; margin-top:4px; }
+/* 助手关着时的 AI 圆钮：实心四角星。 */
+.studio-ai-orb .studio-ai-mark { display:block; }
+/* 助手头部（设计稿 Main 画板）：52px 高，26px 的四角星标，标题 14px，当前技能是可点的紫色小胶囊（点开看使用说明）。 */
+.ip-surface .studio-assistant-panel>.studio-floating-header { min-height:52px; padding:0 12px 0 18px; }
+.ip-surface .studio-assistant-panel>.studio-floating-header strong { font-size:14px; font-weight:600; }
+.ip-surface .studio-assistant-mark { width:26px; height:26px; border-radius:8px; }
+.ip-surface button.studio-assistant-mode { border:0; font:inherit; font-size:12px; font-weight:500; line-height:20px; cursor:pointer; }
+.ip-surface button.studio-assistant-mode:hover { filter:brightness(.97); }
+.ip-surface button.studio-assistant-mode:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+/* 进度条三行：标题 + 已用积分 / 6px 渐变条 / 现在在做什么 + 暂停 停止。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-execution { gap:8px; padding:12px 20px; background:color-mix(in srgb, var(--surface-2) 40%, var(--surface)); }
+.ip-surface .studio-assistant-panel .studio-dialogue-execution-head { flex-wrap:nowrap; align-items:center; font-size:13px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-execution-head strong { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
+.ip-surface .studio-assistant-panel .studio-dialogue-execution-head .studio-dialogue-execution-budget { flex:none; font-size:12px; }
+.ip-surface .studio-dialogue-execution-now { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; }
+.ip-surface .studio-dialogue-execution-now>.studio-dialogue-note { flex:1; min-width:0; margin:0; font-size:12px; color:var(--ink-2); overflow-wrap:anywhere; }
+.ip-surface .studio-dialogue-execution-now .studio-dialogue-execution-actions { flex:none; flex-wrap:nowrap; }
+.ip-surface .studio-dialogue-execution-actions .ant-btn { height:28px; padding:0 10px; border-radius:8px; font-size:12px; }
+/* 对话里的逐步清单：打勾 / 转圈 / 空圈，右边「在画布上看」。 */
+.ip-surface .studio-dialogue-steps { margin:2px 0 0; padding:0; list-style:none; display:grid; gap:10px; }
+.ip-surface .studio-dialogue-steps li { display:grid; grid-template-columns:20px minmax(0, 1fr) auto; gap:10px; align-items:center; font-size:13px; min-width:0; }
+.ip-surface .studio-dialogue-step-title { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ip-surface .studio-dialogue-step-title small { font-size:13px; color:var(--ink-2); }
+.ip-surface .studio-dialogue-steps .studio-dialogue-link { font-size:12px; white-space:nowrap; }
+.ip-surface .studio-dialogue-step-mark { display:grid; place-items:center; width:20px; height:20px; box-sizing:border-box; border-radius:50%; border:1.5px solid var(--line-2); color:#fff; }
+.ip-surface .studio-dialogue-steps li[data-status="done"] .studio-dialogue-step-mark { border:0; background:var(--ok); }
+.ip-surface .studio-dialogue-steps li:is([data-status="running"],[data-status="submitted"]) .studio-dialogue-step-mark { border:2px solid var(--ai); border-right-color:transparent; animation:studio-flow-generation-spin 1s linear infinite; }
+.ip-surface .studio-dialogue-steps li[data-status="needs_user"] .studio-dialogue-step-mark { border:2px solid var(--warn); }
+.ip-surface .studio-dialogue-steps li[data-status="failed"] .studio-dialogue-step-mark { border:0; background:var(--err); }
+.ip-surface .studio-dialogue-steps li[data-status="skipped"] .studio-dialogue-step-mark { border:0; background:var(--surface-3); }
+@keyframes studio-flow-generation-spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .ip-surface .studio-dialogue-steps .studio-dialogue-step-mark { animation:none; } }
+/* 消息：不写「你 / Studio」（读屏仍读 article 的名字）；你的话是靠右的灰气泡，助手的话就是正文。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-author { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+.ip-surface .studio-assistant-panel .studio-dialogue-message.is-user { align-self:flex-end; width:fit-content; max-width:86%; margin-left:auto; padding:10px 14px; border-radius:14px 14px 4px 14px; background:var(--surface-2); }
+.ip-surface .studio-assistant-panel .studio-dialogue-timeline { gap:14px; }
+.ip-surface .studio-dialogue-steps .studio-dialogue-link { text-decoration:none; }
+/* ── 对话框与按钮区（设计稿 Main 画板，第三遍） ── */
+/* 输入框：浅灰底、细边，获得焦点时边框只略深一点（不是深色粗线）。 */
+.ip-surface .studio-assistant-panel .studio-assistant-composer { border-color:var(--line); background:color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
+.ip-surface .studio-assistant-panel .studio-assistant-composer:focus-within { border-color:var(--line-3); }
+/* 技能 / 模型 chip：30px 高、无边框的实心小胶囊，没有下拉箭头（antd 6 的 Select 是 .ant-select-content / .ant-select-suffix）。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-chip { gap:4px; height:30px; padding:0 12px; border:0; background:var(--surface-3); color:var(--ink-2); cursor:pointer; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip.is-skill { background:var(--ai-soft); color:var(--ai-ink); }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip.is-static { cursor:default; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select { height:30px; min-height:0; padding:0; background:transparent; color:inherit; font-size:12px; cursor:pointer; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-content { padding:0; color:inherit; font-weight:500; line-height:30px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-suffix { display:none; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-disabled .ant-select-content { color:inherit; cursor:default; }
+.ip-surface .studio-assistant-panel .studio-dialogue-chip:focus-within { outline:2px solid var(--primary); outline-offset:2px; }
+/* 发送：始终是 AI 渐变；不能发的时候只是变淡。 */
+.ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:disabled { background:var(--ai-gradient); color:#fff; opacity:.4; }
+.ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button svg { stroke-width:2.4; }
+/* 建议：30px 高、12px 字、无图标的白底细边胶囊。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-suggestions { margin-top:4px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-suggestions button { min-height:30px; padding:0 12px; border-color:var(--line); border-radius:999px; font-size:12px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-suggestions button svg { display:none; }
+/* 工具记录：和逐步清单一样是无边框的一行，不再是一张张卡片。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-tool { border:0; border-radius:0; background:transparent; }
+.ip-surface .studio-assistant-panel .studio-dialogue-tool > summary { min-height:24px; padding:0; font-size:13px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-tool-title { font-weight:400; }
+.ip-surface .studio-assistant-panel .studio-dialogue-tool-body { padding:6px 0 0 24px; }
+/* 每条回复的最后一行小灰字：本轮积分、工作记录、从这里重新开始，都在这一行。 */
+.ip-surface .studio-dialogue-meta { display:flex; align-items:baseline; flex-wrap:wrap; gap:4px 12px; min-width:0; }
+.ip-surface .studio-assistant-panel .studio-dialogue-footer { flex-direction:row; flex-wrap:wrap; align-items:baseline; gap:4px 10px; padding-top:0; border-top:0; color:var(--ink-3); }
+.ip-surface .studio-assistant-panel .studio-dialogue-footer details[open] { flex-basis:100%; }
+.ip-surface .studio-assistant-panel .studio-dialogue-meta .studio-dialogue-message-actions { margin-left:auto; }
+.ip-surface .studio-assistant-panel .studio-dialogue-meta .studio-dialogue-link { font-size:11px; color:var(--ink-3); text-decoration:none; }
+.ip-surface .studio-assistant-panel .studio-dialogue-meta .studio-dialogue-link:hover:not(:disabled) { color:var(--ink); text-decoration:underline; }
+/* 你的话是干净的气泡：「从这里重新开始」只在悬停或键盘移到这条消息上时出现。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-message.is-user:not(:hover):not(:focus-within) .studio-dialogue-meta { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
+/* 「在画布上看」是群青链接。 */
+.ip-surface .studio-dialogue-steps .studio-dialogue-link { color:var(--primary); }
+.ip-surface .studio-dialogue-steps .studio-dialogue-link:hover:not(:disabled) { color:var(--primary-700); text-decoration:underline; }
+/* 停止：红字、浅粉边（危险动作，但不是一块红）。 */
+.ip-surface .studio-dialogue-execution-actions .ant-btn-dangerous:not(:disabled) { border-color:color-mix(in srgb, var(--err) 30%, var(--surface)); background:var(--surface); color:var(--err); }
+.ip-surface .studio-dialogue-execution-actions .ant-btn:not(.ant-btn-dangerous):not(.ant-btn-primary) { border-color:var(--line); color:var(--ink); }
+/* 已确认的确认卡：一行「已确认 · 总上限 … · 重做上限 …」，细边、无底色，点开看做什么和确认时间。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-approval[data-status="approved"] { gap:4px; padding:8px 12px; border-color:var(--line); border-radius:10px; background:transparent; }
+.ip-surface .studio-assistant-panel .studio-dialogue-approval[data-status="approved"] h4 { font-size:13px; font-weight:500; }
+.ip-surface .studio-dialogue-approval-done > summary { cursor:pointer; font-size:12px; color:var(--ink-2); }
+.ip-surface .studio-dialogue-approval-done[open] { display:flex; flex-direction:column; gap:6px; }
+/* 运营专用的「整理成技能草稿」和建议一样是小胶囊。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-skill-draft .ant-btn { height:30px; padding:0 12px; border-color:var(--line); border-radius:999px; font-size:12px; box-shadow:none; }
