@@ -44,6 +44,10 @@ export function subscribeStudioErrors(handler: (error: StudioError) => void) {
 export function reportStudioError(input: ErrorInput, options: { once?: string; fallback?: string } = {}) {
   const error = normalizeStudioError(input, options.fallback);
   if (error.code === "IP_RUN_CANCELLED") return error;
+  // 画布的保存冲突由顶栏的冲突弹窗负责（canvas-conflict-dialog.tsx）。冲突之后每一条经过
+  // saveStudioDocument 的保存都会再抛一次它 —— 助手面板的自动保存、任务轮询回写、脚本编辑器……
+  // 逐条弹通知就是用户说的「页面一直在报错」。这里只回传给调用方做内联状态，不弹。
+  if (error.code === "IP_PROJECT_STALE") return error;
   if (options.once) {
     const fingerprint = studioErrorText(error);
     if (shown.get(options.once) === fingerprint) return error;

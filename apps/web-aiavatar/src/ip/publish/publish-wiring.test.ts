@@ -94,9 +94,9 @@ describe("发布前先保存", () => {
     expect(form).not.toMatch(/await\s+saveNow\(\)/);
   });
 
-  it("撞上别处的编辑同样不发布，并指出要刷新", async () => {
+  it("撞上别处的编辑同样不发布，并把人指向顶栏的「处理冲突」（不是让人去刷新：F5 会被「离开页面？」拦住）", async () => {
     const publish = vi.fn();
-    await expect(publishWithLatestDoc(async () => "conflict", publish)).rejects.toThrow(/刷新/);
+    await expect(publishWithLatestDoc(async () => "conflict", publish)).rejects.toMatchObject({ code: "IP_PROJECT_STALE", message: expect.stringContaining("处理冲突") });
     expect(publish).not.toHaveBeenCalled();
   });
 

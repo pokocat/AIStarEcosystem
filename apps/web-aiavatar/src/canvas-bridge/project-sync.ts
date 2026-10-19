@@ -19,6 +19,7 @@ import { IpStudioApi } from "@/ip/api";
 import { setCurrentProjectId } from "./api";
 import { recordRun, useLastRun } from "./last-run";
 import { loadServerModels } from "./models";
+import { announceSave, onRemoteSave } from "./project-channel";
 
 import { splitStudioConversations } from "./studio-conversations";
 
@@ -152,6 +153,20 @@ export type SaveState = "idle" | "dirty" | "saving" | "saved" | "failed" | "conf
 /** 一次保存的结果。`conflict` 之后不再自动保存（见下面的注释）。 */
 export type SaveOutcome = "saved" | "nothing-to-save" | "failed" | "conflict";
 
+/**
+ * 撞上别处的编辑之后，用户的三条出路（弹窗见 ip/canvas-conflict-dialog.tsx）：
+ *   · take-theirs —— 用别处存好的那份，这里没存上的改动丢掉；
+ *   · save-copy   —— 先把这里的改动另存成一张新画布，再换成别处那份（什么都不丢）；
+ *   · keep-mine   —— 以这里为准，覆盖别处刚存的那份（用户看过说明之后的明确选择）。
+ */
+export type ConflictResolution = "take-theirs" | "save-copy" | "keep-mine";
+export type ConflictResolutionResult = {
+  /** `conflict`：keep-mine 的那一瞬间别处又存了一版，还是冲突，弹窗继续开着。 */
+  outcome: "resolved" | "failed" | "conflict";
+  /** save-copy 建出来的那张新画布。 */
+  copyId?: string;
+};
+
 /** 一次 PUT 的结果：结论 + 服务端给的新指纹（下一次保存的基线）。 */
 type SaveResult = { outcome: SaveOutcome; docVersion?: string };
 
@@ -209,10 +224,30 @@ export function useProjectSync(projectId: string) {
   const epochRef = React.useRef(0);
   /** 有没有还没存上的改动 —— 顶栏据此显示「未保存」，离开时据此决定要不要拦一下。 */
   const dirtyRef = React.useRef(false);
+  /**
+   * 没存上的改动里有没有**内容**改动（节点 / 连线 / 标题 / 对话）。
+   *
+   * 只拖过视口也算 dirty（下次打开要回到原位），但别的标签页存了新版时，
+   * 仅仅因为这里拖过视口就让用户二选一太扰人 —— 这种情况直接换成最新内容，视口保留。
+   */
+  const contentDirtyRef = React.useRef(false);
+  /** 正在把服务端的内容灌进 store（换最新内容那一步）：这段时间 store 的变化不算用户改动。 */
+  const applyingRef = React.useRef(false);
+  /** 别的标签页存了新版、这里悄悄换成了最新内容的次数 —— 宿主据此给一句轻提示。 */
+  const [remoteRefreshes, setRemoteRefreshes] = React.useState(0);
 
   const markDirty = React.useCallback(() => {
     dirtyRef.current = true;
     setSaveState((s) => (s === "conflict" ? s : "dirty"));
+  }, []);
+
+  /** 进入冲突态：停掉自动保存，等用户在弹窗里做选择。 */
+  const enterConflict = React.useCallback(() => {
+    conflictRef.current = true;
+    loadedRef.current = false;
+    dirtyRef.current = true;   // 没存上，改动还在本地
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    setSaveState("conflict");
   }, []);
 
   /**
@@ -243,6 +278,7 @@ export function useProjectSync(projectId: string) {
     const epoch = ++epochRef.current;
     loadedRef.current = false;
     dirtyRef.current = false;
+    contentDirtyRef.current = false;
     conflictRef.current = false;
     inFlightRef.current = null;
     baseRef.current = null;
@@ -275,11 +311,19 @@ export function useProjectSync(projectId: string) {
       })
       .then((p) => {
         if (!p || !alive || epoch !== epochRef.current) return;
-        useCanvasStore.setState({
-          projects: [toCanvasProject(p.id, p.name, p.doc as IpDoc, p.updatedAt)],
-          deletedProjects: [],
-          hydrated: true,
-        });
+        // 灌进 store 的这一下不是用户改动（否则「有内容改动」会从一打开就是 true，
+        // 别的标签页一存这里就进冲突态，而用户什么都没动）
+        applyingRef.current = true;
+        try {
+          useCanvasStore.setState({
+            projects: [toCanvasProject(p.id, p.name, p.doc as IpDoc, p.updatedAt)],
+            deletedProjects: [],
+            hydrated: true,
+          });
+        } finally {
+          applyingRef.current = false;
+        }
+        contentDirtyRef.current = false;
         const last = Object.values(p.runsById ?? p.runs ?? {}).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
         if (last) recordRun(last);
         baseRef.current = p.docVersion ?? null;
@@ -334,24 +378,26 @@ export function useProjectSync(projectId: string) {
       .then((saved): SaveResult => {
         if (epoch === epochRef.current) {
           baseRef.current = saved.docVersion ?? baseRef.current;
+          if (!dirtyRef.current) contentDirtyRef.current = false;
           setSaveState(dirtyRef.current ? "dirty" : "saved");
         }
+        // 告诉同一个浏览器里开着这张画布的其它标签页：没改过东西的那边会悄悄换成这一版
+        if (saved.docVersion) announceSave(snap.id, saved.docVersion);
         return { outcome: "saved", docVersion: saved.docVersion ?? undefined };
       })
       .catch((e: unknown): SaveResult => {
         const stale = Boolean(e && typeof e === "object" && "code" in e && (e as { code?: string }).code === "IP_PROJECT_STALE");
         if (epoch === epochRef.current) {
-          reportStudioError(e, { fallback: "画布保存失败，改动仍保留在本地" });
           dirtyRef.current = true;   // 没存上，改动还在本地
           if (stale) {
-            // 冲突不能重试（重试就是覆盖别处的改动，而画布是整存整取的 —— 覆盖掉的
+            // 冲突不能自动重试（重试就是覆盖别处的改动，而画布是整存整取的 —— 覆盖掉的
             // 不是一个字段，是那边一整份工作）。也不能继续自动保存，否则用户越改越远，
-            // 最后只能二选一丢一边。
-            conflictRef.current = true;
-            loadedRef.current = false;
-            setSaveState("conflict");
+            // 最后只能二选一丢一边。交给冲突弹窗让用户自己选（resolveConflict）。
+            // 不弹通知：弹窗会说；而且冲突之后每一条经过 saveStudioDocument 的保存都会再报一次。
+            enterConflict();
           } else {
             // 不吞：存不上就明说，别让用户以为改动落盘了
+            reportStudioError(e, { fallback: "画布保存失败，改动仍保留在本地" });
             setSaveState("failed");
           }
         }
@@ -364,7 +410,7 @@ export function useProjectSync(projectId: string) {
     // 登记到模块级：这次可能在组件卸载之后才落地，而那时用户也许已经把同一个项目又打开了
     trackPendingSave(snap.id, task);
     return task;
-  }, []);
+  }, [enterConflict]);
 
   /**
    * 存一次，并**如实回报结果**（发布之前要据此决定发不发，见 publish-gate.ts）。
@@ -414,18 +460,126 @@ export function useProjectSync(projectId: string) {
 
   React.useEffect(() => {
     const unsub = useCanvasStore.subscribe((cur, prev) => {
-      if (!loadedRef.current) return;
+      if (applyingRef.current) return;
       const a = cur.projects.find((p) => p.id === projectId);
       const b = prev.projects.find((p) => p.id === projectId);
+      if (!a) return;
+      const contentChanged = !b || a.assistantConversations !== b.assistantConversations || a.nodes !== b.nodes
+        || a.connections !== b.connections || a.title !== b.title;
+      // 冲突态下自动保存已经停了，但用户还可能接着改 —— 记下来「有内容改动」，
+      // 弹窗里「另存一份」/「以这里为准」带走的是这些改动
+      if (contentChanged) contentDirtyRef.current = true;
+      if (!loadedRef.current) return;
       // 只认内容变化：拖动视口也算（用户下次打开希望还在原来那个位置）
-      if (!a || (b && a.assistantConversations === b.assistantConversations && a.nodes === b.nodes && a.connections === b.connections
-                 && a.viewport === b.viewport && a.title === b.title)) return;
+      if (!contentChanged && a.viewport === b.viewport) return;
       markDirty();
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(() => { void flush(); }, SAVE_DEBOUNCE_MS);
     });
     return unsub;
   }, [flush, markDirty, projectId]);
+
+  // ── 换成服务端上的最新内容（不重新挂载画布）────────────
+  /**
+   * 把服务端这一刻的文档灌进 store，基线跟着换；视口保留当前的（别让画布突然跳走）。
+   *
+   * 两处用：别的标签页存了新版而这里没改过东西（悄悄换）；冲突弹窗里选「用最新内容」。
+   * 不走整页 loading：画布重新挂载会闪一下，而且正在打开的面板、选中的节点全没了。
+   */
+  const refreshFromServer = React.useCallback(async (opts: { unlessEdited?: boolean } = {}): Promise<boolean> => {
+    const epoch = epochRef.current;
+    const p = await IpStudioApi.getProject(projectId);
+    if (epoch !== epochRef.current) return false;
+    // 悄悄换那条路：拉的这一会儿用户要是改了内容，不能拿服务端那份把它盖掉 —— 转成冲突让他选
+    if (opts.unlessEdited && (contentDirtyRef.current || inFlightRef.current)) { enterConflict(); return false; }
+    const current = useCanvasStore.getState().projects.find((x) => x.id === projectId);
+    const next = toCanvasProject(p.id, p.name, p.doc as IpDoc, p.updatedAt);
+    applyingRef.current = true;
+    try {
+      useCanvasStore.setState({ projects: [{ ...next, viewport: current?.viewport ?? next.viewport }], deletedProjects: [], hydrated: true });
+    } finally {
+      applyingRef.current = false;
+    }
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    baseRef.current = p.docVersion ?? null;
+    setPublishedAvatarId(p.publishedAvatarId ?? null);
+    conflictRef.current = false;
+    dirtyRef.current = false;
+    contentDirtyRef.current = false;
+    loadedRef.current = true;
+    setSaveState("saved");
+    return true;
+  }, [projectId, enterConflict]);
+
+  // ── 别的标签页存了新版 ────────────────────────────────
+  //
+  // 同一个浏览器里把这张画布开了两个标签页，A 存了，B 这边：
+  //   · 没改过东西 → 悄悄换成最新内容，用户什么都不用做；
+  //   · 只拖过视口 → 同上，视口保留，然后把视口存到新版上；
+  //   · 改过内容   → 立刻进冲突态让用户选，不等防抖到点白发一次必然 409 的 PUT。
+  // 在途有一次保存时不动：它的结果（存上了 / 409）会说明一切。
+  React.useEffect(() => {
+    return onRemoteSave((save) => {
+      if (save.projectId !== projectId) return;
+      if (conflictRef.current || !loadedRef.current || inFlightRef.current) return;
+      if (baseRef.current === save.docVersion) return;
+      if (contentDirtyRef.current) { enterConflict(); return; }
+      const viewportOnly = dirtyRef.current;
+      void refreshFromServer({ unlessEdited: true })
+        .then((ok) => {
+          if (!ok) return;
+          setRemoteRefreshes((n) => n + 1);
+          if (viewportOnly) {
+            markDirty();
+            if (timerRef.current) clearTimeout(timerRef.current);
+            timerRef.current = setTimeout(() => { void flush(); }, SAVE_DEBOUNCE_MS);
+          }
+        })
+        // 拉不到就什么都不改：下一次保存会撞 409，走弹窗那条路
+        .catch((e: unknown) => console.warn("[ipstudio] 同步别处的改动失败", e));
+    });
+  }, [projectId, enterConflict, refreshFromServer, markDirty, flush]);
+
+  // ── 冲突的三条出路 ────────────────────────────────────
+  const resolveConflict = React.useCallback(async (choice: ConflictResolution): Promise<ConflictResolutionResult> => {
+    const epoch = epochRef.current;
+    const fail = (e: unknown, fallback: string): ConflictResolutionResult => {
+      if (epoch === epochRef.current) reportStudioError(e, { fallback });
+      return { outcome: "failed" };
+    };
+    if (choice === "take-theirs") {
+      try {
+        return { outcome: (await refreshFromServer()) ? "resolved" : "failed" };
+      } catch (e) { return fail(e, "没拿到最新内容，稍后再试"); }
+    }
+    const snap = snapshot();
+    if (!snap) return { outcome: "failed" };
+    if (choice === "save-copy") {
+      let copyId: string;
+      try {
+        const copy = await IpStudioApi.createProject({ name: `${snap.title} · 另一份` });
+        copyId = copy.id;
+        await IpStudioApi.updateProject(copy.id, { name: `${snap.title} · 另一份`, doc: snap.doc });
+      } catch (e) { return fail(e, "另存没成功，这里的改动还在"); }
+      try {
+        return { outcome: (await refreshFromServer()) ? "resolved" : "failed", copyId };
+      } catch (e) { return { ...fail(e, "已另存一份，但没拿到这张画布的最新内容，稍后再试"), copyId }; }
+    }
+    // keep-mine：拿服务端**此刻**的版本号当基线重存一次。这是用户看过说明之后的明确选择，
+    // 不是自动重试 —— 自动重试在 put() 里被刻意禁掉了（覆盖的是别处一整份工作）。
+    let base: string | null;
+    try {
+      base = (await IpStudioApi.getProject(projectId)).docVersion ?? null;
+    } catch (e) { return fail(e, "没拿到画布的当前版本，稍后再试"); }
+    if (epoch !== epochRef.current) return { outcome: "failed" };
+    conflictRef.current = false;
+    loadedRef.current = true;
+    dirtyRef.current = false;
+    setSaveState("saving");
+    const result = await put({ ...snap, base }, epoch);
+    if (result.outcome === "saved") { contentDirtyRef.current = dirtyRef.current; return { outcome: "resolved" }; }
+    return { outcome: result.outcome === "conflict" ? "conflict" : "failed" };
+  }, [projectId, refreshFromServer, snapshot, put]);
 
   // 关标签页 / 刷新那一半：这时候发请求不可靠（fetch 会被中断），所以不假装能存上，
   // 就是让浏览器问一句，让用户自己决定（文案由浏览器决定，我们改不了）。
@@ -447,8 +601,12 @@ export function useProjectSync(projectId: string) {
     setPublishedAvatarId,
     /** 立刻存一次并等它结束 —— 发布前用（发布读的是库里那份文档）。 */
     saveNow: flush,
-    /** 保存失败后的重试入口。冲突不给重试（那只能刷新，见上面的注释）。 */
+    /** 保存失败后的重试入口。冲突不走这里（走 resolveConflict，由用户选）。 */
     retrySave: flush,
+    /** 撞上别处的编辑之后，用户在弹窗里选的那条出路。 */
+    resolveConflict,
+    /** 别的标签页存了新版、这里悄悄换成了最新内容的次数（宿主据此轻提示一句）。 */
+    remoteRefreshes,
   };
 }
 

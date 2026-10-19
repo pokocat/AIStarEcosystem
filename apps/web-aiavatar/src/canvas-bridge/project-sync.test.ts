@@ -9,11 +9,13 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 
 const getProjectMock = vi.fn();
 const updateProjectMock = vi.fn();
+const createProjectMock = vi.fn();
 
 vi.mock("@/ip/api", () => ({
   IpStudioApi: {
     getProject: (...a: unknown[]) => getProjectMock(...a),
     updateProject: (...a: unknown[]) => updateProjectMock(...a),
+    createProject: (...a: unknown[]) => createProjectMock(...a),
   },
 }));
 // fetchModels 也从 ./api 出去：不补进 mock 的话 loadServerModels 会走异常分支，
@@ -26,6 +28,7 @@ vi.mock("./api", () => ({
 
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { useProjectSync } from "./project-sync";
+import { receiveRemoteSave } from "./project-channel";
 import { subscribeStudioErrors } from "@/ip/studio-errors";
 
 const serverDoc = {
@@ -37,6 +40,7 @@ const serverDoc = {
 beforeEach(() => {
   getProjectMock.mockReset();
   updateProjectMock.mockReset().mockResolvedValue({});
+  createProjectMock.mockReset();
   useCanvasStore.setState({ projects: [], deletedProjects: [], hydrated: false });
 });
 
@@ -457,4 +461,144 @@ it('loads legacy conversation nodes into separate history and persists history-o
   const payload=updateProjectMock.mock.calls.at(-1)![1];
   expect(payload.doc.nodes.map((n:{id:string})=>n.id)).toEqual(['n-1']);expect(payload.doc.assistantConversations[0].title).toBe('更新后的对话');
   view.unmount();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 同一个浏览器里把这张画布开了两个标签页（用户反馈：「画布已有修改的情况下页面持续报错」）。
+// 真实形状：A 存了，B 的下一次保存撞 409 → 进冲突态；此前 B 只有一个不能点的徽标，
+// 而冲突之后每一条经过保存的操作都再报一次同一句话。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("别的标签页存了新版", () => {
+  const otherTab = (docVersion: string) => receiveRemoteSave({ projectId: "IPP-1", docVersion, tabId: "tab-other" });
+  const theirs = { ...serverDoc, nodes: [{ ...serverDoc.nodes[0]!, id: "n-theirs" }] };
+
+  it("这里没改过东西：悄悄换成最新内容，不发 PUT、不进冲突，视口保留", async () => {
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
+    const { result } = renderHook(() => useProjectSync("IPP-1"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+    act(() => { useCanvasStore.getState().updateProject("IPP-1", { viewport: { x: 50, y: 60, k: 2 } }); });
+
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A 改过", doc: { ...theirs, viewport: { x: 0, y: 0, k: 1 } }, docVersion: "v2" });
+    await act(async () => { otherTab("v2"); });
+    await waitFor(() => expect(result.current.remoteRefreshes).toBe(1));
+    const p = useCanvasStore.getState().projects[0]!;
+    expect(p.nodes.map((n) => n.id)).toEqual(["n-theirs"]);
+    expect(p.title).toBe("A 改过");
+    expect(p.viewport).toEqual({ x: 50, y: 60, k: 2 });   // 别让画布突然跳走
+    expect(result.current.saveState).not.toBe("conflict");
+
+    // 只拖过视口那一笔，补存到新基线上（而不是丢掉或撞 409）
+    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { viewport: { x: 50, y: 60, k: 2 } } });
+  });
+
+  it("这里改过内容：立刻进冲突态，不白发一次必然 409 的 PUT，也不弹通知", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
+    const { result } = renderHook(() => useProjectSync("IPP-1"));
+    try {
+      await waitFor(() => expect(result.current.state).toBe("ready"));
+      act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
+      await act(async () => { otherTab("v2"); });
+      await waitFor(() => expect(result.current.saveState).toBe("conflict"));
+      await new Promise((r) => setTimeout(r, 1200));
+      expect(updateProjectMock).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
+      expect(useCanvasStore.getState().projects[0]!.nodes).toEqual([]);   // 本地改动还在
+      await expect(result.current.saveNow()).resolves.toBe("conflict");
+    } finally { unsubscribe(); }
+  });
+
+  it("自己这一页的保存不算「别处」，同版本号的消息也不动", async () => {
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
+    const { result } = renderHook(() => useProjectSync("IPP-1"));
+    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await act(async () => { otherTab("v1"); });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(getProjectMock).toHaveBeenCalledTimes(1);
+    expect(result.current.remoteRefreshes).toBe(0);
+  });
+});
+
+describe("撞上冲突之后的三条出路", () => {
+  const stale = Object.assign(new Error("stale"), { code: "IP_PROJECT_STALE" });
+  const theirs = { ...serverDoc, nodes: [{ ...serverDoc.nodes[0]!, id: "n-theirs" }] };
+  const mine = [{ ...serverDoc.nodes[0]!, id: "n-mine" }];
+
+  async function openInConflict() {
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
+    updateProjectMock.mockRejectedValueOnce(stale);
+    const view = renderHook(() => useProjectSync("IPP-1"));
+    await waitFor(() => expect(view.result.current.state).toBe("ready"));
+    act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: mine }); });
+    await expect(view.result.current.saveNow()).resolves.toBe("conflict");
+    await waitFor(() => expect(view.result.current.saveState).toBe("conflict"));
+    updateProjectMock.mockClear(); getProjectMock.mockClear();
+    return view;
+  }
+
+  it("冲突本身不弹通知 —— 弹窗负责说，通知层逐条弹就是「页面一直在报错」", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    try { await openInConflict(); expect(notify).not.toHaveBeenCalled(); }
+    finally { unsubscribe(); }
+  });
+
+  it("换成最新内容：画布变成服务端那份，冲突解除，自动保存恢复且带新基线", async () => {
+    const { result } = await openInConflict();
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
+    updateProjectMock.mockResolvedValue({ docVersion: "v3" });
+    await act(async () => { await expect(result.current.resolveConflict("take-theirs")).resolves.toEqual({ outcome: "resolved" }); });
+    expect(useCanvasStore.getState().projects[0]!.nodes.map((n) => n.id)).toEqual(["n-theirs"]);
+    expect(result.current.saveState).toBe("saved");
+    expect(updateProjectMock).not.toHaveBeenCalled();
+
+    act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
+    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { nodes: [] } });
+    await expect(result.current.saveNow()).resolves.not.toBe("conflict");
+  });
+
+  it("以这里为准：拿服务端此刻的版本号重存本地内容，不是拿旧基线再撞一次", async () => {
+    const { result } = await openInConflict();
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
+    updateProjectMock.mockResolvedValueOnce({ docVersion: "v3" });
+    await act(async () => { await expect(result.current.resolveConflict("keep-mine")).resolves.toEqual({ outcome: "resolved" }); });
+    expect(updateProjectMock).toHaveBeenCalledTimes(1);
+    expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { nodes: [{ id: "n-mine" }] } });
+    expect(useCanvasStore.getState().projects[0]!.nodes.map((n) => n.id)).toEqual(["n-mine"]);
+    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+    await expect(result.current.saveNow()).resolves.toBe("nothing-to-save");
+  });
+
+  it("以这里为准时别处又存了一版：还是冲突，如实回报，弹窗继续开着", async () => {
+    const { result } = await openInConflict();
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
+    updateProjectMock.mockRejectedValueOnce(stale);
+    await act(async () => { await expect(result.current.resolveConflict("keep-mine")).resolves.toEqual({ outcome: "conflict" }); });
+    expect(result.current.saveState).toBe("conflict");
+    await expect(result.current.saveNow()).resolves.toBe("conflict");
+  });
+
+  it("另存一份：本地内容进新画布（不带基线），这张换成最新内容，什么都不丢", async () => {
+    const { result } = await openInConflict();
+    createProjectMock.mockResolvedValueOnce({ id: "IPP-copy" });
+    updateProjectMock.mockResolvedValueOnce({ docVersion: "c1" });
+    getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: theirs, docVersion: "v2" });
+    await act(async () => { await expect(result.current.resolveConflict("save-copy")).resolves.toEqual({ outcome: "resolved", copyId: "IPP-copy" }); });
+    expect(createProjectMock).toHaveBeenCalledWith({ name: "A · 另一份" });
+    expect(updateProjectMock).toHaveBeenCalledTimes(1);
+    expect(updateProjectMock.mock.calls[0]![0]).toBe("IPP-copy");
+    expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ doc: { nodes: [{ id: "n-mine" }] } });
+    expect(updateProjectMock.mock.calls[0]![1].baseDocVersion).toBeUndefined();
+    expect(useCanvasStore.getState().projects[0]!.nodes.map((n) => n.id)).toEqual(["n-theirs"]);
+    expect(result.current.saveState).toBe("saved");
+  });
+
+  it("另存没成功：本地改动原样留着，还是冲突态，用户可以再选", async () => {
+    const { result } = await openInConflict();
+    createProjectMock.mockRejectedValueOnce(new Error("网络断了"));
+    await act(async () => { await expect(result.current.resolveConflict("save-copy")).resolves.toEqual({ outcome: "failed" }); });
+    expect(useCanvasStore.getState().projects[0]!.nodes.map((n) => n.id)).toEqual(["n-mine"]);
+    expect(result.current.saveState).toBe("conflict");
+  });
 });

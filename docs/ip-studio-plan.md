@@ -265,6 +265,7 @@ H2 dev 下 `ddl-auto=update` 也会建表，迁移需与 H2 方言兼容（LONGT
 - 属性面板：按节点类型渲染表单；`generate` 面板显示候选网格（点选=选定，「设为主形象」）、本次实际提示词（可折叠）、参考图生效列表（未生效的给中文原因）、花费；`identity` 面板「用照片重新抽取」/「锁定」；`look` 四栏文案与截图一致（服装 / 姿势 / 表情 / 细节 + 道具）。
 - 运行：单节点「运行」；顶栏「运行全部生成」= 按拓扑序依次运行所有 generate（主形象先跑并等用户选图？——**P1 简化：主形象若已有选中图则连跑其余，否则只跑主形象并提示先选图**）。运行前把最新 doc 一起 PUT（`IpRunNodeRequest.doc`）。
 - 保存：doc 变化防抖 1.2s PUT；顶栏「已自动保存 / 保存中 / 保存失败重试」；离开前 beforeunload 兜底。
+  - 撞上别处的编辑（409 `IP_PROJECT_STALE`，典型是同一张画布开了两个窗口，2026-10-19）：自动保存停掉，顶栏「处理冲突」打开弹窗选一条：另存一份再换最新（推荐）/ 换成最新内容 / 以这里为准；冲突不逐条弹通知。同一浏览器的多标签页经 BroadcastChannel 互通：没改过内容的那边悄悄换成最新。细节见 `apps/web-aiavatar/src/canvas-bridge/README.md`。
 - 发布对话框：选主形象节点（默认 isMaster）+ 勾选 look 节点 + 资产名 → 成功后展示 `DH-` 编号与「去 AiAvatar 查看」链接（`NEXT_PUBLIC_AIAVATAR_URL`，dev 默认 `http://localhost:3013`）。
 - 文案红线：全部中文；不暴露 `runId`/`errorCode` 原文给主可视文案（放 hover）；可变长文字做省略。禁止原生 `confirm/alert`，用 `@ai-star-eco/ui` 的 AlertDialog。
 - ~~工程登记（B 负责）：…~~ **v0.190 全部反向清除**（并入 aiavatar 后这些登记不再需要）；`packages/types/src/index.ts` 的 ip-studio 导出**保留**（类型契约仍在用）。`check-api-contract.mjs` 改为给 aiavatar 那一项加 `exclude`，并为 `canvas-bridge` / `ip` 两棵子树单列扫描根 —— 它们的字面量写全 `/v1/...`，混在补前缀的根里会被算成 `/v1/v1/...`。
