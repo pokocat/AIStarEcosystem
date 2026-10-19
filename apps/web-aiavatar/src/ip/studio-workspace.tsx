@@ -11,7 +11,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, InputNumber, Modal, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowDown, ArrowUp, BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Images, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
+import { BookOpen, ChevronDown, Clapperboard, Download, FileText, ImagePlus, Images, Layers, ListChecks, PanelsTopLeft, Play, Plus, RefreshCw, Sparkles, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -56,6 +56,8 @@ import { StudioAssistant } from "./studio-assistant";
 import { useStudioConversations } from "@/canvas-bridge/studio-conversations";
 import { StudioBatchPanel } from "./studio-batch-panel";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
+import { StudioWorkEditor } from "./studio-work-editor";
+import { studioClipEpisode, studioClipIncluded, studioSourceClipIds } from "@/canvas-bridge/studio-work-clips";
 import { StudioIpLibrary } from "./studio-ip-library";
 import { StudioMaterialLibrary } from './studio-material-library';
 import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/studio-ip-library";
@@ -205,8 +207,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     .sort((a,b)=>(studioNodeEpisode(a)||1)-(studioNodeEpisode(b)||1)||(a.metadata?.studio?.order||0)-(b.metadata?.studio?.order||0));
   const shots=allShots.filter(n=>episodeFilter==="all"||(studioNodeEpisode(n)||1)===episodeFilter);
   const allClips = nodes.filter(n => n.type === CanvasNodeType.Video && n.metadata?.storageKey && n.metadata?.studio?.kind !== "work" && (!n.metadata.templateStepId || n.metadata.studio?.templateAccepted===true))
-    .sort((a,b) => (a.metadata?.studio?.order || 0) - (b.metadata?.studio?.order || 0));
-  const clips=allClips.filter(n=>episodeFilter==="all"||(n.metadata?.studio?.episodeNo||1)===episodeFilter);
+    .sort((a,b) => studioClipEpisode(a)-studioClipEpisode(b) || (a.metadata?.studio?.order || 0) - (b.metadata?.studio?.order || 0));
+  const clips=allClips.filter(n=>episodeFilter==="all"||studioClipEpisode(n)===episodeFilter);
+  // The original a recreation copies is an input, not a cut: one rule decides inclusion for the editor and the request.
+  const sourceClipIds=useMemo(()=>studioSourceClipIds(nodes,connections),[nodes,connections]);
   const work = nodes.filter(n => n.metadata?.studio?.kind === "work"&&!n.metadata.studio.workDraft&&(episodeFilter==="all"||n.metadata.studio.episodeNo===episodeFilter||n.metadata.studio.episodeNo===undefined&&new Set(allShots.map(s=>s.metadata?.studio?.episodeNo||s.metadata?.studio?.shot?.episodeNo||1)).size<=1));
   const referenceOptions = nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.storageKey || n.metadata?.studio?.adoption || (operation==="video"||n.type===CanvasNodeType.Image)&&referenceIds.includes(n.id));
   const patch = useCallback((id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setNodes(current => current.map(n => n.id === id ? update(n) : n)), [setNodes]);
@@ -672,7 +676,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const assemble = async () => {
     if(workVoiceMissing){message.error('原配音已移出画布，请重新选择配音或保留原音轨');return;}
     if(packagingEnabled){try{parseStudioCaptions(captionText);if(!brand.trim()&&!workTitle.trim()&&!cta.trim()&&!captionText.trim())throw new Error("请填写品牌文字或字幕");}catch(e){message.error(e);return;}}
-    const selectedClips = clips.filter(n => n.metadata?.studio?.includeInWork !== false);
+    const selectedClips = clips.filter(n => studioClipIncluded(n,sourceClipIds));
     if (!selectedClips.length || busy) return;
     setBusy(true);const submissionEpoch=epoch.current;let posted=false; const target = makeStudioNode("assemble",selectedClips[selectedClips.length-1]);
     const request: StudioRunRequest={ clientRequestId:nanoid(),nodeId:target.id,operation:"assemble",prompt:"按选定片段顺序合成",
@@ -692,10 +696,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       message.error(e);
     } finally{if(epoch.current===submissionEpoch)setBusy(false);}
   };
-  const reorder = (node: CanvasNodeData, offset: number) => {
-    const index=clips.findIndex(n => n.id===node.id);const other=clips[index+offset];if(!other)return;
-    setNodes(current => reorderStudioClips(current, clips.map(n=>n.id), index, index+offset));
-  };
+  const moveClip = (from: number, to: number) => setNodes(current => reorderStudioClips(current, clips.map(n=>n.id), from, to));
+  const includeClip = (id: string, includeInWork: boolean) => patch(id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork}}}));
   const loadIpAssets = () => {
     setAssetsLoading(true);setAssetError("");
     void listStudioIpAssets().then(setIpAssets).catch(e=>setAssetError(e)).finally(()=>setAssetsLoading(false));
@@ -1020,7 +1022,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
     {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
       <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
-      {mode==="work"&&!!episodeNumbers.length&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
+      {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
       {mode==="storyboard" ? <StudioStoryboard nodes={nodes} connections={connections}
         selectedNodeId={storyboardNodeId} changing={storyboardChanging||directorSaving||busy}
         composer={director&&originId===storyboardNodeId?directorPanel:(
@@ -1038,20 +1040,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           const available=node.type===CanvasNodeType.Image?models.image:node.type===CanvasNodeType.Video?models.video:capabilities?.textModels||[];
           return (id?available.find(m=>m.endpointId===id||m.endpointId===endpointIdFor(id)):available.find(m=>m.isDefault)||available[0])?.name;
         }}/>
-      : <>
-        <div className="studio-view-intro"><p>选择片段并调整顺序，可保留原音轨或采用画布配音。</p><Select aria-label="作品画幅" value={workDraft.aspectRatio} onChange={aspectRatio=>changeWorkDraft({aspectRatio})} options={[{value:"9:16",label:"竖屏 9:16"},{value:"16:9",label:"横屏 16:9"}]}/></div>
-        {!clips.length && <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布中上传视频，或先生成片段，再排序、配音和合成。</p><Button onClick={() => setMode("canvas")}>前往画布添加片段</Button><Button onClick={() => openDirector("video")}>创作视频片段</Button><Button onClick={() => setMode("storyboard")}>前往故事板</Button></div>}
-        <div className="studio-clip-list">{clips.map((node,index) => <article key={node.id} className="studio-clip-row">
-          <Checkbox aria-label={`采用片段 ${index+1}`} checked={node.metadata?.studio?.includeInWork!==false} onChange={e => patch(node.id,n => ({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:e.target.checked}}}))}/>
-          <SignedVideo src={node.metadata?.content} storageKey={node.metadata?.storageKey} controls preload="metadata"/><div><strong>第 {node.metadata?.studio?.episodeNo||1} 集 · {index+1}. {node.title}</strong><p>{node.metadata?.prompt}</p></div>
-          <Button aria-label={`片段 ${index+1} 上移`} disabled={!index} onClick={() => reorder(node,-1)}><ArrowUp size={15}/></Button>
-          <Button aria-label={`片段 ${index+1} 下移`} disabled={index===clips.length-1} onClick={() => reorder(node,1)}><ArrowDown size={15}/></Button></article>)}</div>
-        {!!clips.length&&<label className="studio-packaging-editor">成片音轨<Select aria-label="成片音轨" allowClear value={voiceoverKey} onChange={voiceoverStorageKey=>changeWorkDraft({voiceoverStorageKey})} placeholder="保留片段原音轨" options={nodes.filter(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey&&n.metadata.status==="success").map(n=>({value:n.metadata!.storageKey!,label:n.title}))}/>{workVoiceMissing&&<StudioErrorNotice error="原音频已移出画布，请重新选择或清除。"/>}<small>可选择画布中的音频替换成片声音。音频不能长于成片，替换不会重新匹配口型。</small></label>}
-        {!!clips.length&&<div className="studio-packaging-editor"><Checkbox checked={packagingEnabled} onChange={e=>changeWorkDraft({packagingEnabled:e.target.checked})}>添加品牌文字与字幕</Checkbox>{packagingEnabled&&<><div className="studio-settings-grid"><label>品牌<Input aria-label="成片品牌" value={brand} onChange={e=>changeWorkDraft({brand:e.target.value})} maxLength={60}/></label><label>作品标题<Input aria-label="成片标题文字" value={workTitle} onChange={e=>changeWorkDraft({title:e.target.value})} maxLength={120}/></label></div><label>结尾提示<Input aria-label="成片结尾提示" value={cta} onChange={e=>changeWorkDraft({cta:e.target.value})} maxLength={100}/></label><label>字幕（秒）<Input.TextArea aria-label="成片字幕时间与文字" value={captionText} onChange={e=>changeWorkDraft({captionText:e.target.value})} rows={4} placeholder={"0-3: 你要显示的字幕\n3-5: 下一条字幕"}/></label><p>字幕按你确认的时间烧录，当前不自动转写音轨。</p></>}</div>}
-        {!!clips.length && <div className="studio-assembly-actions"><Button loading={workSaving} onClick={()=>void saveWork()}>保存成片配置</Button><Button type="primary" loading={busy} disabled={workSaving||workVoiceMissing} onClick={() => void assemble()}>合成作品</Button><span>{capabilities?.mock?"合成已选片段；测试响应不产生模型费用":"合成已选片段，不额外收取模型积分"}</span></div>}
-        {work.map(node => <article key={node.id} className="studio-work-result"><h3>{node.title}</h3>{node.metadata?.status==="loading"?<p>合成中，可返回画布继续编辑</p>:node.metadata?.content?<><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
-          <Button onClick={() => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}><Download size={15}/>下载作品</Button></>:<>{node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`} autoReport={false}/> : <p>作品待合成</p>}</>}</article>)}
-      </>}
+      : <StudioWorkEditor nodes={nodes} connections={connections} clips={clips} multiEpisode={episodeNumbers.length>1}
+          draft={workDraft} onDraftChange={changeWorkDraft} onIncludeClip={includeClip} onMoveClip={moveClip} works={work}
+          busy={busy} locked={workSaving} mock={capabilities?.mock} onAssemble={() => void assemble()}
+          onDownload={node => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}
+          onAddClips={() => setMode("canvas")} onCreateVideo={() => openDirector("video")} onOpenStoryboard={() => setMode("storyboard")}
+          onMakeVoice={() => {setMode("canvas");openSpeech();}}/>}
     </section>}
     {mode!=="storyboard"&&directorPanel}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>

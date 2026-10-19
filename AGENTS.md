@@ -1065,3 +1065,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 AI 的视觉身份：`.ip-surface` 新增 `--ai / --ai-2 / --ai-gradient / --ai-soft / --ai-ink / --ai-ring / --ai-glow`（群青紫 #4F5BD5 → #8B6CF0），**只给 AI 做过 / 正在做的东西**：节点头部的 AI 记号（`studio.runId / execution / request / speechRequest / lipSyncRequest` 任一存在即 AI 做的；`status=loading` 显示「生成中」并呼吸一圈 `is-generating`）、助手刚放进画布的节点亮 2.4 秒（`is-fresh`，由 `studio-command: reveal` 触发）、助手头部的星形记号与底纹、发送按钮、进度条、技能 chip、「问助手」的渐变描边、任务角标。麦黄仍只给要付钱 / 要发布的动作（开始制作、发布），群青给选中与链接，灰给普通操作；四角星只代表 AI，别处不再用星形。无后端 / API 改动。证据：`studio-dialogue-wiring.test.ts` 钉住顶栏「⋯」、左栏七项、无第二排、AI 记号与圆钮；演示模式在 1440 与 375 宽实测。
 
+
+### 成片编辑器改版 · 2026-10-19（本地，未发布，仅 web-aiavatar）
+
+成片页是 `src/ip/studio-work-editor.tsx`（工作台只传数据、提交 `assemble()`）；片段规则在 `src/canvas-bridge/studio-work-clips.ts`。**片段进不进成片只有一个判断** `studioClipIncluded`：节点上显式的 `includeInWork` 为准，否则凡是被别的视频引用过的（连线指向非 work 视频，或出现在它的 `references` / `request.references` / `request.video.references` 里）算原片素材、默认不进。勾选框和 `assemble()` 的请求都走它，别再写 `includeInWork !== false`（爆款复刻曾因此把原片拼进成片）。时长以浏览器读到的文件为准（`loadedmetadata`），`seconds` / `durationMs` 只是读到之前的估计；配音过长、字幕超时、空字幕在合成按钮旁就地拦下，判定与 `StudioPackagingService` 一致，服务端仍是最终裁判。整片预览是前端连放（配音按成片时钟同步，文字按服务端位置叠加），界面注明以成片为准。片段按集再按 `order` 排，`reorderStudioClips` 是「移动」不是「交换」，跨集不能拖动或用箭头互换。`.studio-focused-view` 是名为 `studio-view` 的容器（`@container studio-view`），助手停靠时它让出 `--studio-docked-panel`；任务按钮在故事板 / 成片视图移到左上角。证据：`studio-work-clips.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（复刻画布合成不带原片）。

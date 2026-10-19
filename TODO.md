@@ -31,6 +31,12 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-19 · 成片编辑器改版后续（前端已改，本地未发布）
+
+- [ ] **服务端把「配音过长 / 字幕超时」挪到拼接之前判**：`DramaAssembleService.assembleKeys` 先下载、拼接（可能整段重编码）完，`StudioPackagingService.decorate` 才判 `STUDIO_SPEECH_TOO_LONG` / 「字幕时间超过成片时长」，用户白等一次。各段 `probeMedia` 的时长之和在拼接前就有了，可以先判再拼。前端（`studio-work-clips.ts` 的 `studioCaptionProblem` 与 `StudioWorkEditor` 的配音判定）已按同一规则提前拦，服务端仍是最终裁判。
+- [ ] **成片编辑器只支持整段拼接**：没有单段裁剪、转场、单段音量。用户要掐头去尾目前只能回画布重生成或换素材；要不要做先看真实使用。
+- [ ] **整片预览是前端连放**：画面比例按成片画幅加黑边、文字按服务端位置近似叠加，和成片可能有细微差别（字体、换行）；界面已注明「合成后以成片为准」。
+
 ### 2026-10-18 · 全能创作对话驱动视频复刻（S1/S2 本地实现，未发布）
 
 - [x] ~~上线后第一次真对话卡在动作协议与整理方案~~ **2026-10-18 已修并上线**（`20261018-studio-toolcall-tag` / `-plan-contract` / `-plan-structure`）：`<tool_call>` 写法、规划输入共用 `StudioWorkflowService.skillPlanConstraints`、`ModelJson` 去围栏、questions 两种写法、分析阶段顺序与 `videoModel` 端点 id 校验；测试 `DialogueActionProtocolTest`、`ProposePlanToolTest`、`StudioPlanValidatorSkillTest`。
