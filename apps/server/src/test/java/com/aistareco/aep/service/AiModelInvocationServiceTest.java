@@ -379,6 +379,16 @@ class AiModelInvocationServiceTest {
     }
 
     @Test
+    void visualMemoryRecoverySignalComesFromTheActualStructuredHttpResponse() throws Exception {
+        StubServer bad=stub(400,"{\"error\":{\"code\":\"unsupported_geometry\",\"message\":\"visual activation/HBM headroom budget\"}}");
+        var ep=endpoint("vision",bad.baseUrl(),AiModelProviderType.OPENAI,"vision","test-key",true);
+        var error=assertThrows(com.aistareco.aep.service.ai.AiChatHttpException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
+                .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","image request")),null));
+        assertTrue(error.isVisualMemoryRejection());assertEquals("AI_CALL_FAILED",error.getCode());
+        assertEquals("AI 生成失败，请稍后重试",error.getMessage());assertEquals(1,bad.requests.size());
+    }
+
+    @Test
     void throwsDirectlyOn4xx() throws Exception {
         StubServer bad = stub(400, "{\"error\":\"bad request\"}");
         AiModelEndpoint ep = endpoint("ep1", bad.baseUrl(),

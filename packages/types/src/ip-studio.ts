@@ -228,5 +228,6 @@ export type IpVideoAsset = IpSavedAssetBase<"video"> & { data: { url: string; st
 export type IpAudioAsset = IpSavedAssetBase<"audio"> & { data: { url: string; storageKey?: string; bytes: number; mimeType: string } };
 export type IpSavedAsset = IpTextAsset | IpImageAsset | IpVideoAsset | IpAudioAsset;
 
+/** Shared project/template cover management; URLs are signed on read. */
 export type IpCanvasCoverTarget = "project" | "template";
 export interface IpCanvasCover { coverUrl: string | null }

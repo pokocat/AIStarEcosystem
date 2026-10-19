@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.ai.AiChatHttpException;
 import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -22,11 +23,13 @@ class StudioVisualBudgetTest {
     static final String BODY = "status=400 body={\"code\":\"unsupported_geometry\",\"error\":{\"message\":\"visual activation/HBM headroom budget\",\"retryable\":false}}";
 
     @Test void onlyTheVendorsGeometryRefusalIsTreatedAsOverBudget() {
-        var refused = BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试", "endpoint=x " + BODY);
+        var refused = new AiChatHttpException(400, "{\"code\":\"unsupported_geometry\",\"error\":{\"code\":\"unsupported_geometry\",\"message\":\"visual activation/HBM headroom budget\",\"retryable\":false}}",
+                "AI 生成失败，请稍后重试", "endpoint=x status=400");
         assertTrue(StudioVisualContext.isVisualBudgetRejection(refused));
         assertTrue(StudioVisualContext.isVisualBudgetRejection(new RuntimeException(refused)));
-        assertFalse(StudioVisualContext.isVisualBudgetRejection(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "x", "status=429 body={}")));
-        assertFalse(StudioVisualContext.isVisualBudgetRejection(new IllegalStateException("unsupported_geometry")), "only the upstream detail counts");
+        assertFalse(StudioVisualContext.isVisualBudgetRejection(new AiChatHttpException(400, "{\"error\":{\"code\":\"unsupported_geometry\",\"message\":\"other reason\"}}", "x", "d")), "another geometry reason");
+        assertFalse(StudioVisualContext.isVisualBudgetRejection(new AiChatHttpException(429, "{}", "x", "d")));
+        assertFalse(StudioVisualContext.isVisualBudgetRejection(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "x", BODY)), "log text is not evidence");
     }
 
     @Test void shrinkKeepsEveryPartInOrderAndOnlyReducesLargeImages() throws Exception {

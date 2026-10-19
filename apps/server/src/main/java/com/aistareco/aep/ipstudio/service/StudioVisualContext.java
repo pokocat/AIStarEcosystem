@@ -125,10 +125,14 @@ public final class StudioVisualContext {
     /** Smaller long edges tried, in order, when a vision endpoint refuses a request as over its visual budget. */
     public static final int[] BUDGET_EDGES={1600,1024,640};
 
-    /** The vendor refused the request's image geometry (e.g. Jusuan Qwen: 400 unsupported_geometry, "visual activation/HBM headroom budget"). */
+    /**
+     * The vendor refused the request's image geometry (Jusuan Qwen: 400 unsupported_geometry, "visual activation/HBM headroom
+     * budget"). One rule: {@link com.aistareco.aep.service.ai.AiChatHttpException#isVisualMemoryRejection}, which reads the
+     * structured upstream status, code and reason; text matching on log details is not evidence.
+     */
     public static boolean isVisualBudgetRejection(Throwable error) {
         for(Throwable e=error;e!=null;e=e.getCause())
-            if(e instanceof BusinessException b&&b.getInternalDetail()!=null&&b.getInternalDetail().contains("unsupported_geometry"))return true;
+            if(e instanceof com.aistareco.aep.service.ai.AiChatHttpException h)return h.isVisualMemoryRejection();
         return false;
     }
 

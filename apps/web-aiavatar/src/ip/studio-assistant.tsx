@@ -461,6 +461,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     <div className="studio-assistant studio-dialogue">
       <div className="studio-assistant-toolbar"><span>全能创作{demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}</span>
         <div>{streamNote && <small className="studio-dialogue-stream" role="status">{streamNote}</small>}
+          {/* A single or fixed model is shown without opening settings (ported from the old composer, 2026-10-18). */}
+          {!selectable && selectedModel && <Select aria-label="助手模型" className="studio-dialogue-model" size="small" disabled value={selectedModel.endpointId} title={selectedModel.name}
+            options={[{ value: selectedModel.endpointId, label: selectedModel.name }]}/>}
           <Button aria-label="对话设置" aria-expanded={settingsOpen} icon={<SlidersHorizontal size={16}/>} onClick={() => setSettingsOpen(v => !v)}/></div></div>
       {settingsOpen && <section className="studio-assistant-tools studio-dialogue-settings" aria-label="对话设置">
         {selectable && <label className="studio-dialogue-setting"><span>回复用的模型</span><Select aria-label="助手模型" value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></label>}

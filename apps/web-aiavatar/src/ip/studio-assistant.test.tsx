@@ -675,3 +675,14 @@ test('the draft entry is only for operators, only under a summary of finished wo
   fireEvent.click(screen.getByRole('button', { name: '把这次制作整理成技能草稿' }));
   await waitFor(() => expect(screen.getByText('只有运营账号可以把制作整理成技能草稿。')).toBeDefined());
 });
+
+
+// Ported from the old composer (Codex, 2026-10-18): a single or fixed model is visible without opening the settings.
+test.each(['fixed', 'selectable'] as const)('assistant shows its single %s model without opening settings', async policy => {
+  await ready(<Host capabilities={{ ...capabilities, textModelMode: policy, textModels: [capabilities.textModels[0]] }}/>);
+  const select = screen.getByRole('combobox', { name: '助手模型' }) as HTMLSelectElement;
+  expect(select.value).toBe('one');
+  expect(select.disabled).toBe(true);
+  expect(screen.getByRole('button', { name: '对话设置' }).getAttribute('aria-expanded')).toBe('false');
+  expect(api.post).not.toHaveBeenCalled();
+});

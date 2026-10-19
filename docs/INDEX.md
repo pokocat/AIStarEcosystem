@@ -96,6 +96,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [Studio 品牌邀请页设计](prototypes/studio-invitation-design.md) | 品牌、创作能力、朋友邀请、认证后返回 Studio；独立交互原型及桌面/手机截图 | 设计审阅稿，尚未替换线上（2026-10-17） |
 | [Studio 企业主子账号与积分管理方案](ip-studio-team-accounts-plan.md) | **v0.4 已生产发布** | 单企业归属、固定 RBAC、人工充值和积分批量分配/回收；分配积分归企业，开通沿用现有逻辑、不做企业席位（last-reviewed 2026-10-15） |
 | [后台测试账号](test-accounts-plan.md) | **已生产发布** | 超管创建独立测试身份、两分钟一次性正常 OIDC 登录、停用及业务边界（last-reviewed 2026-10-17） |
+| [企业积分第一批验收](ip-studio-enterprise-foundation-validation.md) | **E01–E04 测试与边界** | 企业权限、V56、钱包兼容的 H2/MySQL 验收、编译契约门及后续边界（last-reviewed 2026-10-15） |
 | [企业积分前端规划](ip-studio-enterprise-ui-plan.md) | **完整管理/付款/财务界面** | Studio及财务页沿用平台组件的设计、预览确认与权限动线（last-reviewed 2026-10-15） |
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
@@ -225,6 +226,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [项目与灵感统一封面验收](releases/studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
 - [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
+- [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
 - [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
