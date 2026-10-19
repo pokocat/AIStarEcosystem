@@ -524,9 +524,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
   // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
   const tools = <>
-    {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能 ·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
+    {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
       options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></span>}
-    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」`}><span>技能 · {modeSkill.name}</span></span>}
+    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><span>{modeSkill.name}</span></span>}
     {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
     {/* A single or fixed model stays visible, just not changeable (ported from the old composer, Codex 2026-10-18). */}
     {!selectable && selectedModel && <span className="studio-dialogue-chip is-fixed"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" disabled value={selectedModel.endpointId} title={selectedModel.name}

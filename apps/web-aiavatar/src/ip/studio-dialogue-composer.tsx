@@ -92,14 +92,14 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     </div>}
     <div className="studio-assistant-composer-toolbar">
       <div className="studio-assistant-context-actions">
-        <Button icon={<AtSign size={16}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
+        <Button icon={<AtSign size={17}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
         <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets} iconOnly actions={picker}/>
         {tools}
       </div>
       <div className="studio-dialogue-send">
         {sendDisabledReason && text.trim() && <span className="studio-dialogue-send-reason" role="status" title={sendDisabledReason}>{sendDisabledReason}</span>}
         {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}/>}
-        <Button aria-label="发送" aria-keyshortcuts="Enter" title={sendDisabledReason || '发送（Enter；Shift+Enter 换行）；回复按实际用量扣积分'} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
+        <Button aria-label="发送" aria-keyshortcuts="Enter" title={sendDisabledReason || `发送（Enter；Shift+Enter 换行）。${costHint || '回复按实际用量扣积分'}`} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
           icon={<ArrowUp size={18}/>} loading={sending} disabled={!!sendDisabledReason} onClick={onSend}/>
       </div>
     </div>
@@ -110,6 +110,6 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       libraryMention.current = undefined;
     }}/>
     {attachmentsUnsaved && <Button onClick={onRetrySave}>重试保存附件</Button>}
-    {costHint && <p className="studio-assistant-send-hint">{costHint}</p>}
+    {/* The reply's cost note rides on the send button's tooltip: the design's box ends at the buttons. Each reply's actual cost still shows under it. */}
   </div>;
 });
