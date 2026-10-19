@@ -734,3 +734,31 @@ test('the checklist can be dismissed and the plain composer rules take over', as
   expect(screen.queryByLabelText('复刻需要的素材')).toBeNull();
   expect(sendButton().disabled).toBe(false);
 });
+
+test('a dialogue-first start sends the prefilled brief once the thread is ready, exactly once, and never into a thread that already talked', async () => {
+  const onAutoSent = vi.fn();
+  await ready(<Host initial={[character]} initialPrompt="照这条视频的拍法，把商品换成我的" autoSend onAutoSent={onAutoSent}/>);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '照这条视频的拍法，把商品换成我的' });
+  expect(onAutoSent).toHaveBeenCalled();
+  expect(composer().value).toBe('');
+  cleanup(); vi.clearAllMocks();
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 1, messages: [{ id: 'm0', threadId: 'th', seq: 1, role: 'assistant', turnId: 't0', status: 'done', text: '之前聊过', blocks: [], createdAt: at }] });
+  api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
+  await ready(<Host initial={[character]} initialPrompt="再来一次" autoSend onAutoSent={onAutoSent}/>);
+  await screen.findByText('之前聊过');
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+test('nodes the assistant creates are brought into view and the first time shows a one-time hint about the canvas', async () => {
+  localStorage.clear();
+  const reveal = vi.fn();
+  window.addEventListener('studio-command', e => { const d = (e as CustomEvent).detail; if (d.action === 'reveal') reveal(d.nodeId); });
+  await ready(<Host initial={[character]}/>);
+  emit(ev('node.upsert', { nodeId: 'new-1', op: 'create', node: { id: 'new-1', type: 'text', title: '口播稿', position: { x: 0, y: 0 }, width: 320, height: 200, metadata: { content: '第一版' } } }));
+  await waitFor(() => expect(reveal).toHaveBeenCalledWith('new-1'));
+  expect(screen.getByText(/结果放进画布了/)).toBeDefined();
+  fireEvent.click(screen.getByRole('button', { name: '知道了' }));
+  expect(screen.queryByText(/结果放进画布了/)).toBeNull();
+  expect(localStorage.getItem('studio-assistant:canvas-hint')).toBe('1');
+});

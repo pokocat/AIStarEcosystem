@@ -88,7 +88,7 @@ describe("Creation catalogue", () => {
   it("opens a workflow template read-only without creating a canvas", async () => {
     render(<StudioCreateHome />);
     expect(screen.queryByRole("group", { name: "创作工作区" })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "创作想法" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "想做什么" })).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
     expect(mocks.projects).not.toHaveBeenCalled();
@@ -116,7 +116,7 @@ describe("Creation catalogue", () => {
     expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
     expect(screen.getByRole("link", { name: "新建创作" }).getAttribute("href")).toBe("/create");
     expect(mocks.templates).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: "创作想法" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
   });
   it("keeps a failed delete reviewable and removes the card only after a successful retry", async () => {
     mocks.remove.mockRejectedValueOnce(new Error("删除未成功"));
@@ -184,13 +184,14 @@ describe("Creation idea moved from home", () => {
   it("retains a failed idea save and retries the same created workspace", async () => {
     mocks.update.mockRejectedValueOnce(new Error('保存失败'));
     render(<StudioCreateHome/>);
-    fireEvent.change(screen.getByRole('textbox', { name:'创作想法' }), { target:{value:'保留这段创作想法'} });
-    fireEvent.click(screen.getByRole('button', { name:'创建并打开画布' }));
+    fireEvent.change(screen.getByRole('textbox', { name:'想做什么' }), { target:{value:'保留这段创作想法'} });
+    fireEvent.click(screen.getByRole('button', { name:'开始对话' }));
     await screen.findByText(/画布已创建，重试/);
-    expect((screen.getByRole('textbox', { name:'创作想法' }) as HTMLTextAreaElement).value).toBe('保留这段创作想法');
-    expect(screen.getByRole('textbox', { name:'创作想法' }).hasAttribute('disabled')).toBe(true);
+    expect((screen.getByRole('textbox', { name:'想做什么' }) as HTMLTextAreaElement).value).toBe('保留这段创作想法');
+    expect(screen.getByRole('textbox', { name:'想做什么' }).hasAttribute('disabled')).toBe(true);
     fireEvent.click(screen.getByRole('button', { name:'继续保存并打开' }));
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=assistant'));
+    // A brief typed here is sent by the canvas as the first message (dialogue-first start).
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=assistant&send=1'));
     expect(mocks.create).toHaveBeenCalledOnce();
   });
 });

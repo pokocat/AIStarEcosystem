@@ -60,7 +60,7 @@
 .studio-creation-modes button[aria-pressed="true"] { background: var(--ip-selected); color: var(--ip-ink); border-color: #c4cbd0; }
 .studio-creation-brief > label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 600; }
 .studio-creation-brief textarea { display: block; width: 100%; resize: vertical; border: 1px solid var(--ip-line); border-radius: 8px; padding: 12px; font-size: 13px; line-height: 1.8; }
-.studio-creation-brief > div:last-child { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 12px; }
+.studio-creation-brief form > div:last-child { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 12px; }
 .studio-creation-brief p { font-size: 12px; color: var(--ip-muted); line-height: 1.8; }
 .studio-page .studio-quick-start button:last-child { background: var(--ip-paper); color: var(--ip-ink); border-color: var(--ip-line); }
 .studio-page .studio-gallery-action-error a { margin-left: 12px; text-decoration: underline; }
@@ -98,7 +98,7 @@ html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-ope
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-gallery-preview { width: 72px; height: 64px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-info { gap: 8px; padding: 8px; }
 html[data-layout="mobile"] .studio-page .studio-project-list .studio-project-open h3 { font-size: 14px; }
-html[data-layout="mobile"] .studio-creation-brief > div:last-child { align-items: stretch; flex-direction: column; }
+html[data-layout="mobile"] .studio-creation-brief form > div:last-child { align-items: stretch; flex-direction: column; }
 html[data-layout="mobile"] .studio-creation-brief .ip-brand-button { justify-content: center; }
 html[data-layout="mobile"] .studio-page .hub-tabbar { --primary: var(--ip-ink); }
 html[data-layout="mobile"] .studio-page .hub-tabbar .wx-fab .fab-visual { background: var(--ip-ink); }

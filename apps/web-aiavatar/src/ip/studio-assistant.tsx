@@ -57,6 +57,8 @@ type Props = {
   /** The canvas lacks output of an execution (it finished while the canvas was closed): read the thread now, panel open or not. */
   restorePending?: boolean;
   onClose: () => void; selectedIds: string[]; onUseStep: (step: StudioPlan["steps"][number]) => string | void;
+  /** Dialogue-first start: send the prefilled brief as the first message once the thread is ready and still empty. */
+  autoSend?: boolean; onAutoSent?: () => void;
 };
 type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[] };
 /** Contract limit for pinnedNodeIds / attachmentNodeIds (specs/openapi.yaml StudioPostMessageRequest). */
@@ -68,6 +70,10 @@ const AUTO_SKILL = "__auto__";
 /** The seeded recreation skill (resources/studio/skills/reference-video-recreation.md); the 「复刻」 start picks it when it is on the shelf. */
 const RECREATION_SKILL = "reference-video-recreation";
 type Starter = "recreation";
+/** Per-browser memory of the one-time 「结果放进画布了」 hint; losing it only means seeing the hint again. */
+const CANVAS_HINT_KEY = "studio-assistant:canvas-hint";
+const readCanvasHintSeen = () => { try { return localStorage.getItem(CANVAS_HINT_KEY) === "1"; } catch { return false; } };
+const markCanvasHintSeen = () => { try { localStorage.setItem(CANVAS_HINT_KEY, "1"); } catch { /* not remembered */ } };
 type SkillChoice = StudioSkillRequiredDetails["skills"][number];
 /**
  * 400 STUDIO_SKILL_REQUIRED is a question, not a failure: say which skills fit, keep the draft and open the choice.
@@ -88,13 +94,14 @@ function budgetExceededError(error: unknown) {
   return Object.assign(new Error(text), { code: error.code, logId: error.logId });
 }
 
-export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep }: Props) {
+export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep, autoSend = false, onAutoSent }: Props) {
   const { message } = useStudioApp();
   const session = useStudioDialogueSession({ projectId, open, autoload: !!restorePending });
   const { store } = session;
   const [text, setText] = useState(""), [pinnedIds, setPinnedIds] = useState<string[]>([]), [attachmentIds, setAttachmentIds] = useState<string[]>([]);
   const [model, setModel] = useState<string>();
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
+  const [canvasHint, setCanvasHint] = useState(false);
   const [reading, setReading] = useState(false), [attachmentsUnsaved, setAttachmentsUnsaved] = useState(false);
   const [sending, setSending] = useState(false), [stopping, setStopping] = useState(false), [recovering, setRecovering] = useState<string>();
   const [composerError, setComposerError] = useStudioErrorState();
@@ -279,7 +286,22 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     }
     rememberProjectedNodes(projectId, result.projected);
     session.dispatch({ type: "canvas.ack", seq: ops[ops.length - 1].seq });
+    // The assistant's new nodes come into view (no selection change), and the first time this browser sees
+    // the assistant put something on the canvas, say how the two sides relate.
+    if (result.created.length && !ops.every(op => op.restore)) {
+      dispatchStudioCommand("reveal", result.created.join(","));
+      if (!readCanvasHintSeen()) setCanvasHint(true);
+    }
   }, [store.canvasOps]);
+  // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
+  const autoSent = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!open || !autoSend || autoSent.current === projectId || session.status !== "ready" || sending) return;
+    if (store.messages.length || store.outbox.length || !text.trim()) { if (store.messages.length) onAutoSent?.(); return; }
+    autoSent.current = projectId;
+    onAutoSent?.();
+    void send();
+  }, [open, autoSend, session.status, text, store.messages.length, store.outbox.length, sending]);
 
   // ── Work an execution finished while this canvas was closed ─────────────
   // The execution and its native runs are the record of what was made; events may be pruned and a new browser
@@ -383,7 +405,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const legacyGroups: LegacyGroup[] = useMemo(() => {
     const server = dialogueSections(store).legacy;
     const ids = [...new Set([...conversations.map(c => c.id), ...server.map(m => m.legacyNodeId!)])];
-    return ids.map(id => ({ id, node: conversations.find(c => c.id === id), messages: server.filter(m => m.legacyNodeId === id) }));
+    // A brief saved by the home page is a conversation stub with no turns, not a past conversation.
+    return ids.filter(id => server.some(m => m.legacyNodeId === id) || conversations.find(c => c.id === id)?.metadata?.studio?.conversation?.turns?.length)
+      .map(id => ({ id, node: conversations.find(c => c.id === id), messages: server.filter(m => m.legacyNodeId === id) }));
   }, [store.messages, conversations]);
   const patchConversation = (id: string, update: (node: CanvasNodeData) => CanvasNodeData) => setConversations(list => list.map(n => n.id === id ? update(n) : n));
   const editLegacyStep = (id: string, step: StudioPlan["steps"][number]) => patchConversation(id, n => ({ ...n, metadata: { ...n.metadata, studio: { ...n.metadata!.studio!,
@@ -500,8 +524,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     {demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}
     <Button aria-label="使用说明" aria-expanded={guideOpen} title="它是怎么工作的" size="small" type="text" icon={<CircleHelp size={16}/>} onClick={() => setGuideOpen(v => !v)}/>
   </>;
-  const subheader = streamNote || execution ? <>
+  const subheader = streamNote || execution || canvasHint ? <>
     {streamNote && <div className="studio-assistant-status" role="status">{streamNote}</div>}
+    {canvasHint && <div className="studio-assistant-status is-hint" role="status"><span>结果放进画布了。想改就在这里说；想自己动手，选中节点后点「问助手」或用它旁边的操作。</span>
+      <button type="button" className="studio-dialogue-link" onClick={() => { markCanvasHintSeen(); setCanvasHint(false); }}>知道了</button></div>}
     {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution}
       locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}
   </> : undefined;

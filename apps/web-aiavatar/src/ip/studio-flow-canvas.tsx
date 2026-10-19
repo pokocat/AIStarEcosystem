@@ -260,6 +260,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         imageUploadTarget.current = node.id; imageUploadInput.current?.click();
       } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
       else if (detail.action === 'focus') { if (detail.nodeId && current().nodes.some(n => n.id === detail.nodeId)) focusNode(detail.nodeId); }
+      // 'reveal' only brings nodes into view (the assistant following its own work); the selection is left alone.
+      else if (detail.action === 'reveal') { const ids = (detail.nodeId || '').split(',').filter(id => current().nodes.some(n => n.id === id)); if (ids.length) void flow.fitView({ nodes: ids.map(id => ({ id })), padding: .45, maxZoom: 1, duration: 320 }); }
       else setTextId(undefined);
     };
     const keydown = (e: KeyboardEvent) => {
@@ -282,7 +284,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     const blur = () => setSpaceHeld(false);
     window.addEventListener('studio-command', command); window.addEventListener('studio-canvas-checkpoint', checkpoint); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('studio-reference-mode',referenceMode); window.removeEventListener('studio-command', command); window.removeEventListener('studio-canvas-checkpoint', checkpoint); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); };
-  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading]);
+  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading, flow]);
   const uploadImageIntoNode = async (file: File) => {
     const nodeId = imageUploadTarget.current;
     if (!nodeId || reading) return;

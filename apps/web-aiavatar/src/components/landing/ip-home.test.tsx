@@ -12,13 +12,22 @@ vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects } }));
 vi.mock('@/ip/studio-entry', () => ({ createStudioEntry: api.create, studioEntryHref: vi.fn() }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
-test.each([false, true])('home start routes to creation without writes, authenticated=%s', async authed => {
-  api.authed = authed;
+test('a signed-out visitor who starts a conversation is sent to sign in; nothing is created', async () => {
+  api.authed = false;
   await act(async () => { render(<IpHome header={false}/>); });
-  const link = screen.getByRole('link', { name: '开始创作' });
-  expect(link.getAttribute('href')).toBe('/create');
-  link.addEventListener('click', e => e.preventDefault());
-  fireEvent.click(link);
+  fireEvent.change(screen.getByRole('textbox', { name: '想做什么' }), { target: { value: '把商品换成我的保温杯' } });
+  fireEvent.click(screen.getByRole('button', { name: '开始对话' }));
+  expect(api.push).toHaveBeenCalledWith('/login?next=%2Fdashboard');
   expect(api.create).not.toHaveBeenCalled();
-  expect(api.push).not.toHaveBeenCalled();
+});
+
+test('a signed-in visitor\'s brief creates one canvas with the assistant start; an empty box starts nothing', async () => {
+  api.authed = true;
+  api.create.mockResolvedValue({ id: 'p1' });
+  await act(async () => { render(<IpHome header={false}/>); });
+  expect((screen.getByRole('button', { name: '开始对话' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByRole('textbox', { name: '想做什么' }), { target: { value: '把商品换成我的保温杯' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '开始对话' })); });
+  expect(api.create).toHaveBeenCalledWith('assistant', '把商品换成我的保温杯');
+  expect(api.push).toHaveBeenCalledTimes(1);
 });

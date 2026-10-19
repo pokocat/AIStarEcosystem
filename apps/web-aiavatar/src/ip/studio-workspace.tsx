@@ -145,7 +145,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [templateLibraryOpen,setTemplateLibraryOpen]=useState(false),[assistantOpen,setAssistantOpen]=useState(false),[batchOpen,setBatchOpen]=useState(false);
   const [templateScope,setTemplateScope]=useState<"all"|"commerce"|"digital">("all");
   const openTemplates=async(scope:typeof templateScope="all")=>{try {await saveStudioDocument(projectId);setTemplateScope(scope);setTemplateLibraryOpen(true);onClosePanel();}catch(e){message.error(e);}};
-  const [entryBrief,setEntryBrief]=useState("");
+  const [entryBrief,setEntryBrief]=useState(""),[entryAutoSend,setEntryAutoSend]=useState(false);
   const [entryAssistantMode,setEntryAssistantMode]=useState<"general"|"director">();
   const [lipSyncOpen,setLipSyncOpen]=useState(false);
   const [lipOriginId,setLipOriginId]=useState<string>();
@@ -702,7 +702,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if(nodesRef.current.length && (nodesRef.current.length!==1||!source))return;
     startOpened.current=projectId;
     if(start==="image"||start==="video"||start==="script")openDirector(start,source);
-    else if(start==="assistant"||start==="director"){setEntryAssistantMode(start==="director"?"director":"general");setEntryBrief(source?.metadata?.prompt||"");setAssistantNodeId(source?.id);setAssistantOpen(true);onClosePanel();}
+    else if(start==="assistant"||start==="director"){setEntryAssistantMode(start==="director"?"director":"general");setEntryBrief(source?.metadata?.prompt||"");setEntryAutoSend(start==="assistant"&&new URLSearchParams(window.location.search).get("send")==="1"&&!!source?.metadata?.prompt);setAssistantNodeId(source?.id);setAssistantOpen(true);onClosePanel();}
     else if(start==="work"){setMode("work");onClosePanel();}
     else if(start==="commerce")openTemplates("commerce");
     else if(start==="speech")openSpeech(source);
@@ -892,6 +892,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
   const contextualActions=selected && selectedNodeIds.size===1 && mode==="canvas" && !referencePicking && !pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
       <span className="studio-selected-name">{selected.title}</span>
+      <button type="button" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><Sparkles size={15}/>问助手</button>
       {selected.type===CanvasNodeType.Image && <><button data-studio-command="image" type="button" onClick={() => {
           openDirector("image",selected);
           if(selectedStudio?.libraryAssetRole==="sheet"){
@@ -1003,8 +1004,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
     {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
-    {!nodes.length&&mode==="canvas"&&<section className="studio-start" aria-label="开始创作"><h2>从一个 IP，开始创作</h2><p>先打造形象，也可以直接写剧本或引用已有 IP。</p>
-      <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>打造 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>制作 IP 短视频</button></div></section>}
+    {!nodes.length&&mode==="canvas"&&!assistantOpen&&<section className="studio-start studio-canvas-empty" aria-label="开始创作"><h2>画布还是空的</h2><p>跟助手说想做什么，它会把每一步放进这里。想自己动手也行，左边工具栏能加文字、图片和视频。</p>
+      <button type="button" className="studio-start-primary" onClick={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}><Sparkles size={16}/>和助手开始</button>
+      <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>做一个 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>写剧本做短视频</button></div></section>}
     {/* Plain text actions and editing share one screen-space surface. */}
     {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
       : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} above width={660}>{contextualActions}</StudioFloatingPanel>}
@@ -1071,7 +1073,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
       if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}；未再次扣积分`);
     }}/>;})()}
-    <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} connections={connections} capabilities={capabilities} open={assistantOpen} restorePending={executionRestorePending} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
+    <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} connections={connections} capabilities={capabilities} open={assistantOpen} restorePending={executionRestorePending} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} autoSend={entryAutoSend} onAutoSent={()=>setEntryAutoSend(false)} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);setEntryAutoSend(false);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
     <StudioBatchPanel projectId={projectId} nodes={nodes} shots={shots} setNodes={setNodes} setConnections={setConnections} models={models} capabilities={capabilities} open={batchOpen} initialNodeId={batchNodeId} onClose={()=>setBatchOpen(false)} ratio={ratio} episodeNo={episodeFilter==="all"?undefined:episodeFilter}/>
     <Modal title="比较并采用版本" open={!!takePicker} onCancel={()=>setTakePicker(undefined)} footer={null} width={720} getContainer={containers}>
       <div className="studio-take-grid">{(()=>{const node=nodes.find(n=>n.id===takePicker);const adopted=node?.type===CanvasNodeType.Image?node.metadata?.primaryImageId:node?.metadata?.primaryVideoId;return (node?.type===CanvasNodeType.Image?node.metadata?.images:node?.metadata?.videos)?.map((take,index)=><article className="studio-take" key={take.id}>

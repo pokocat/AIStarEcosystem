@@ -746,3 +746,10 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-send-row>span { visibil
 .ip-surface .studio-assistant-checklist .studio-dialogue-link { margin-left: 6px; }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }
+.ip-surface .studio-assistant-status.is-hint { align-items:flex-start; justify-content:space-between; padding:10px 20px; background:var(--action-tint); color:var(--ink); line-height:1.6; }
+.ip-surface .studio-assistant-status.is-hint>span { min-width:0; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-status.is-hint .studio-dialogue-link { flex-shrink:0; }
+/* 空画布：对话优先的起点提示（助手打开后不显示） */
+.ip-surface .studio-start.studio-canvas-empty .studio-start-primary { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:0 20px; border:0; border-radius:10px; background:var(--action); color:var(--on-action); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
+.ip-surface .studio-start.studio-canvas-empty .studio-start-primary:hover { background:var(--action-600); }
+.ip-surface .studio-start.studio-canvas-empty > div { margin-top:16px; }
