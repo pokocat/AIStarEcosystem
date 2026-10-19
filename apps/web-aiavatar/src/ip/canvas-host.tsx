@@ -25,6 +25,7 @@ import { publishWithLatestDoc } from "@/canvas-bridge/publish-gate";
 import { registerStudioSave } from "@/canvas-bridge/studio-save";
 import { PublishDialog } from "@/ip/publish/publish-dialog";
 import { ProjectHistory } from "@/ip/project-history";
+import { CanvasConflictDialog } from "@/ip/canvas-conflict-dialog";
 import { StudioTemplatePublish } from "@/ip/studio-template-publish";
 import { StudioTemplateSource } from "@/ip/studio-template-source";
 import { USE_MOCK } from "@ai-star-eco/api-client";
@@ -39,16 +40,22 @@ const SAVE_LABEL: Record<string, string> = {
   saving: "保存中",
   saved: "已保存",
   failed: "没保存上，改动还在本地",
-  conflict: "这张画布有更新的版本 · 刷新后再改",
+  conflict: "别处改过了，这里的改动没存上",
 };
 
 function Host({ projectId }: { projectId: string }) {
-  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave } = useProjectSync(projectId);
+  const { state, error, saveState, publishedAvatarId, setPublishedAvatarId, saveNow, retrySave, resolveConflict, remoteRefreshes } = useProjectSync(projectId);
   React.useEffect(() => registerStudioSave(projectId, saveNow), [projectId, saveNow]);
   const [publishOpen, setPublishOpen] = React.useState(false);
   const [templateOpen, setTemplateOpen] = React.useState(false);
   const [templateVisibility, setTemplateVisibility] = React.useState<'personal'|'official'>('personal');
   const { message } = useStudioApp();
+
+  // 撞上别处的编辑：弹窗自动开一次让用户选；关掉之后顶栏徽标变成「处理冲突」能再打开。
+  const [conflictOpen, setConflictOpen] = React.useState(false);
+  React.useEffect(() => { setConflictOpen(saveState === "conflict"); }, [saveState]);
+  // 别的标签页存了新版、这里没改过东西 → 已经悄悄换成最新内容了，轻轻说一声就够
+  React.useEffect(() => { if (remoteRefreshes > 0) message.info("这张画布在别的窗口改过了，已经换成最新内容"); }, [remoteRefreshes, message]);
 
   // 「存为官方内容」只给超级管理员看 —— 普通用户/运营看到一个点了必然 403 的按钮更糟。
   // operatorRole 是账号上的内嵌运营角色（InAppOperatorGuard 判的也是它）。
@@ -76,7 +83,9 @@ function Host({ projectId }: { projectId: string }) {
       if (leaving) return;
       leaving = true;
       void saveNow().then((outcome) => {
-        if (outcome === "failed" || outcome === "conflict") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
+        // 冲突：直接把选出路的弹窗打开，别再弹一条「请先处理保存问题」让人自己找
+        if (outcome === "conflict") { setConflictOpen(true); leaving = false; }
+        else if (outcome === "failed") { message.error("画布尚未保存，已留在当前页面，请先处理保存问题"); leaving = false; }
         else window.location.assign(dest.href);
       }).catch((e) => { message.error(e); leaving = false; });
     };
@@ -153,6 +162,19 @@ function Host({ projectId }: { projectId: string }) {
           {SAVE_LABEL[saveState]}
         </span>
       )}
+      {/* 冲突不给「重试」（自动重试就是覆盖别处的改动），给的是一个能打开弹窗选出路的按钮 ——
+          此前只有徽标上一句「刷新后再改」，而 F5 还会被「离开页面？」拦住。 */}
+      {saveState === "conflict" && (
+        <button
+          onClick={() => setConflictOpen(true)}
+          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          style={{ background: "var(--err)", color: "var(--on-action)" }}
+          title="选一种处理方式：另存一份 / 换成最新内容 / 以这里为准"
+        >
+          <AlertCircle className="w-3.5 h-3.5" />
+          处理冲突
+        </button>
+      )}
       {/* 存不上时给一个真的能点的重试 —— 此前只有那个小徽标，用户唯一的办法是
           「再随便改一下」去触发下一次防抖（冲突不给重试：重试就是覆盖别处的改动）。 */}
       {saveState === "failed" && (
@@ -222,6 +244,12 @@ function Host({ projectId }: { projectId: string }) {
   return (
     <div className="h-full relative">
       <StudioFlowCanvas projectId={projectId}/>
+      <CanvasConflictDialog
+        open={conflictOpen}
+        onClose={() => setConflictOpen(false)}
+        resolve={resolveConflict}
+        onCopySaved={(copyId) => message.success({ content: <span>这里的改动已另存为新画布，<a href={`/projects/${copyId}`} target="_blank" rel="noreferrer">打开看看</a></span>, duration: 8 })}
+      />
       {templateOpen && <StudioTemplatePublish projectId={projectId} superAdmin={isOperator} initialVisibility={templateVisibility} saveNow={saveNow} onClose={()=>setTemplateOpen(false)}/>}
 
       <PublishDialog
