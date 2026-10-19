@@ -15,7 +15,7 @@ import * as React from "react";
 import { App as AntdApp, ConfigProvider, Popover, theme } from "antd";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import zhCN from "antd/locale/zh_CN";
-import { AlertCircle, CheckCircle2, Ellipsis, Loader2, RefreshCw, Send, Star } from "lucide-react";
+import { AlertCircle, BadgeCheck, CheckCircle2, Ellipsis, Loader2, RefreshCw, Send } from "lucide-react";
 import StudioFlowCanvas from "./studio-flow-canvas";
 import { useProjectSync } from "@/canvas-bridge/project-sync";
 import { setModelsUnavailableHandler } from "@/canvas-bridge/config-store";
@@ -138,21 +138,17 @@ function Host({ projectId }: { projectId: string }) {
             style={{ background: "var(--surface-2)", color: "var(--ink-2)" }}
             title="完整保存画布和素材，所有用户都能查看"
           >
-            <Star className="w-3.5 h-3.5 shrink-0" />
+            <BadgeCheck className="w-3.5 h-3.5 shrink-0" />
             存为官方内容
           </button>
         )}
       </div>}>
         <button type="button" aria-label="更多" title="历史记录、上次发给模型、模板" className="studio-host-more-button"><Ellipsis className="w-4 h-4" /></button>
       </Popover>
+      {/* 设计稿 Main 画板：保存状态是标题旁的一行灰字，不是胶囊；顶栏右侧依次是「⋯」、积分、发布（顺序由 studio-flow.css 排）。 */}
       {saveState !== "idle" && (
         <span
-          className="px-2.5 py-1 rounded-full text-[11.5px] font-semibold whitespace-nowrap"
-          style={
-            saveState === "failed" || saveState === "conflict"
-              ? { background: "var(--err-soft)", color: "var(--err)" }
-              : { background: "var(--surface-2)", color: "var(--ink-3)" }
-          }
+          className={`studio-host-save${saveState === "failed" || saveState === "conflict" ? " is-error" : ""}`}
           title={SAVE_LABEL[saveState]}
         >
           {SAVE_LABEL[saveState]}
@@ -163,7 +159,7 @@ function Host({ projectId }: { projectId: string }) {
       {saveState === "failed" && (
         <button
           onClick={() => void retrySave()}
-          className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          className="studio-host-save h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--err-soft)", color: "var(--err)" }}
           title="再存一次。改动还在这个页面上，先别关"
         >
@@ -175,7 +171,7 @@ function Host({ projectId }: { projectId: string }) {
         // 已发布就别再给一个会 409 的按钮 —— 直接给能用的那条路：去资产库看它
         <a
           href={`/assets/${publishedAvatarId}`}
-                    className="h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
+          className="studio-host-publish h-8 px-3 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 max-w-[220px]"
           style={{ background: "var(--ok-soft)", color: "var(--ok)" }}
           title={`已发布为 ${publishedAvatarId}，点开去资产库看`}
         >
@@ -185,7 +181,7 @@ function Host({ projectId }: { projectId: string }) {
       ) : (
         <button
           onClick={() => setPublishOpen(true)}
-          className="h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
+          className="studio-host-publish h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--action)", color: "var(--on-action)" }}
         >
           <Send className="w-3.5 h-3.5" />

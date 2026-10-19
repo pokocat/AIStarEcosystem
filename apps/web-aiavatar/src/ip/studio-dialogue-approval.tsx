@@ -64,6 +64,13 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
   const approvedWhen = status === 'approved' ? [approved?.approvedAt && `确认于 ${formatDateTime(approved.approvedAt)}`, approved?.planRevision && `第 ${approved.planRevision} 版方案`].filter(Boolean).join(' · ') : '';
   return <section className="studio-dialogue-approval" data-status={status} aria-label={analysis ? '确认分析' : '确认制作'}>
     <header><ShieldCheck size={16} aria-hidden="true"/><h4>{analysis ? '开始分析前确认' : '开始制作前确认'}</h4><span>{STATUS_LABEL[status]}</span></header>
+    {/* 已确认的卡收成一行（设计稿 Main 画板里，开始制作之后对话里只剩回复和步骤）；做什么、报价、确认时间点开再看。 */}
+    {status === 'approved' ? <details className="studio-dialogue-approval-done">
+      <summary>{confirmed || '查看确认内容'}</summary>
+      {!!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>}
+      <p className="studio-dialogue-approval-quote">报价 {formatCredits(block.quotedCost)} 积分。</p>
+      {approvedWhen && <p className="studio-dialogue-note">{approvedWhen}</p>}
+    </details> : <>
     {!!block.scope.length && <ul className="studio-dialogue-approval-scope" aria-label="这次会做">{block.scope.map((item, i) => <li key={i}>{item}</li>)}</ul>}
     {actionable ? <>
       <p className="studio-dialogue-approval-price"><strong>{formatCredits(block.quotedCost)}</strong><span>积分，按实际用量结算</span></p>
@@ -77,8 +84,7 @@ export function StudioDialogueApprovalCard({ block, approved, shortfall, planRea
     {actionable && capsOpen && <p className="studio-dialogue-note">改上限只是草稿，点「{label}」才生效。超出上限不会再提交新任务。</p>}
     {actionable && !!shortfall && shortfall > 0 && <p className="studio-dialogue-warning" role="status">本阶段预算还差 {formatCredits(shortfall)} 积分，确认新的上限后继续。</p>}
     {actionable && block.expiresAt && <p className="studio-dialogue-note">请在 {formatDateTime(block.expiresAt)} 前确认，过期后需要重新报价。</p>}
-    {confirmed && <p className="studio-dialogue-note" role="status">{confirmed}</p>}
-    {approvedWhen && <p className="studio-dialogue-note">{approvedWhen}</p>}
+    </>}
     {status === 'expired' && <p className="studio-dialogue-note">这张确认卡已过期，请让我重新报价。</p>}
     {status === 'superseded' && <p className="studio-dialogue-note">方案已经更新，请看下面最新的报价。</p>}
     {actionable && !planReady && <p className="studio-dialogue-warning">还没收到这次报价对应的方案，请稍等或刷新后再确认。</p>}

@@ -343,6 +343,42 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
   ]);
 }
 
+// Like the server's guard (StudioNaturalApprovals): a reply that says to go ahead confirms the pending card; a question,
+// hesitation or edit never does. The demo used to answer every reply with 「确认没问题就点…」, so the card's
+// 「直接回复「开始」也行」 could not be tried here.
+const HESITATION = ["？", "?", "吗", "先别", "别开始", "不要开始", "不开始", "暂不", "暂时不", "不确认", "不同意", "等一下", "等等", "再想想", "考虑一下", "再看看", "算了", "不用了", "不行",
+  "等我通知", "等通知", "等我说", "再通知", "等我确认", "稍后", "以后再", "先修改", "只修改", "先改", "改一下", "改成", "不生成", "别生成", "不要生成", "先不", "暂停", "停一下", "不急", "等一等", "晚点", "过会"];
+const APPROVAL = ["确认", "开始", "按这个", "按此", "按你", "按推荐", "按方案", "就这样", "就这个", "同意", "批准", "可以做", "可以开始", "做吧", "开工", "执行", "通过", "没问题", "就按", "照这个",
+  "ok", "OK", "Ok", "好的", "行，", "行。"];
+// A reply made only of short affirmatives (「可以」「好」「嗯，可以」「好吧」) also confirms: every piece between punctuation,
+// after its trailing particles, must be one of these (StudioNaturalApprovals.SHORT_AFFIRMATIVES).
+const SHORT_AFFIRMATIVES = new Set(["可以", "可", "好", "好好", "行", "行行", "嗯", "嗯嗯", "对", "对的", "是", "是的", "没错", "可以可以", "好嘞", "妥"]);
+function onlyAffirmatives(text: string) {
+  const pieces = text.trim().split(/[\s,，。.!！、;；~～…]+/).filter(Boolean);
+  return pieces.length > 0 && pieces.every(p => SHORT_AFFIRMATIVES.has(p.replace(/[吧啊呀啦哈哦呢嘛了]+$/, "")));
+}
+export function mockSaysApprove(text: string) {
+  const said = text.trim();
+  return !!said && !HESITATION.some(h => said.includes(h)) && (APPROVAL.some(a => said.includes(a)) || onlyAffirmatives(said));
+}
+function naturalApproval(projectId: string, p: MockProject, t: MockThread, text: string, messageId: string): boolean {
+  if ((p.stage !== "analysis-proposed" && p.stage !== "production-proposed") || !mockSaysApprove(text)) return false;
+  const stage = p.stage === "analysis-proposed" ? "analysis" as const : "production" as const;
+  const blocks = t.view.messages.flatMap(m => m.blocks);
+  const card = blocks.filter((b): b is Extract<StudioMessageBlock, { type: "approval" }> => b.type === "approval" && b.status === "pending" && b.stage === stage).at(-1);
+  if (!card) return false;
+  const plan = blocks.filter((b): b is Extract<StudioMessageBlock, { type: "plan" }> => b.type === "plan" && b.plan.stage === stage).at(-1);
+  try {
+    void mockExecutionCreate(projectId, { clientRequestId: nextId("said"), stage, planRunId: plan?.planRunId || `mock-plan-${stage}`, planFingerprint: card.planFingerprint,
+      budgetCap: card.budgetCap, autoFixCap: card.autoFixCap, approvalId: card.approvalId, confirmationMessageId: messageId,
+      ...(stage === "production" ? { executionId: p.execution?.id, expectedRevision: plan?.revision ?? 2 } : {}) });
+  } catch { return false; }
+  const holder = t.view.messages.find(m => m.blocks.some(b => b.type === "approval" && b.approvalId === card.approvalId));
+  const approved = holder?.blocks.find(b => b.type === "approval" && b.approvalId === card.approvalId);
+  if (holder && approved) emit(t, "approval.required", { messageId: holder.id, block: approved }, p.execution?.id);
+  return true;
+}
+
 function replyTurn(p: MockProject, t: MockThread, request: StudioPostMessageRequest) {
   const messageId = startTurn(t);
   const pinnedText = mockStore().projects.get(t.thread.projectId)?.doc.nodes.find(n => request.pinnedNodeIds?.includes(n.id) && n.type === "text" && typeof n.metadata?.content === "string" && n.metadata.content.trim());
@@ -384,7 +420,8 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   let result: StudioPostMessageResult;
   if (busy) { t.queued.push(message.id); result = { messageId: message.id, turnId: t.turnId, queueState: "queued" }; }
   else {
-    if (p.stage === "idle") firstTurn(projectId, p, t, request); else replyTurn(p, t, request);
+    if (p.stage === "idle") firstTurn(projectId, p, t, request);
+    else if (!naturalApproval(projectId, p, t, request.text, message.id)) replyTurn(p, t, request);
     result = { messageId: message.id, turnId: t.turnId, runId: t.runId, queueState: "accepted" };
     patchViewMessage(t, message.id, m => ({ ...m, turnId: t.turnId }));
   }

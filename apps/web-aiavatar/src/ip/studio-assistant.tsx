@@ -10,10 +10,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button, Select } from "antd";
-import { ChevronRight, CircleHelp, FileText, Image, PenLine, Sparkles, Video, Workflow } from "lucide-react";
+import { ChevronRight, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
+import { AiMark } from "./studio-ai-icon";
 import { nanoid } from "nanoid";
 import type { IpRun, IpSavedAsset } from "@ai-star-eco/types";
-import type { StudioAssistantMode, StudioCapabilities, StudioDialogueMessage, StudioPlan, StudioPlanExecution, StudioSkillRequiredDetails, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioAssistantMode, StudioCapabilities, StudioDialogueMessage, StudioPlan, StudioPlanExecution, StudioPlanExecutionStep, StudioSkillRequiredDetails, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
+import { studioTaskQueued } from "@/canvas-bridge/studio-task-status";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
 import { isOperatorRole, useIdentity } from "@/proto/api";
@@ -38,7 +40,7 @@ import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useStudioDialogueSession } from "./studio-dialogue-session";
 import { StudioDialogueComposer, type DialogueComposerHandle } from "./studio-dialogue-composer";
 import { StudioDialogueTimeline } from "./studio-dialogue-timeline";
-import { StudioDialogueExecution } from "./studio-dialogue-execution";
+import { StudioDialogueExecution, StudioDialogueSteps } from "./studio-dialogue-execution";
 import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy";
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
@@ -141,6 +143,23 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     setText(initialPrompt || (entry?.metadata?.studioStart === "assistant" ? entry.metadata?.prompt || "" : ""));
   }, [open, projectId, initialNodeId]);
   useEffect(() => { if (open && !skills.length) loadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined); }, [open]);
+  // 「问助手」 (node bar, context menu): the node joins this message's references and the cursor lands in the input —
+  // whether the assistant was open or closed, with or without a saved draft. The open effect above restores a saved draft
+  // and returns early, and the assistant opens by default, so before this the node was never added (2026-10-19 walkthrough).
+  useEffect(() => {
+    const ask = (event: Event) => {
+      const { action, nodeId } = (event as CustomEvent<{ action?: string; nodeId?: string }>).detail || {};
+      if (action !== "assistant") return;
+      const node = nodeId ? assistantContextNodes(live.current.nodes).find(n => n.id === nodeId) : undefined;
+      if (node) {
+        setStarter(undefined);
+        setPinnedIds(ids => ids.includes(node.id) || ids.length >= MAX_REFERENCES ? ids : [...ids, node.id]);
+      }
+      requestAnimationFrame(() => requestAnimationFrame(() => composer.current?.focus()));
+    };
+    window.addEventListener("studio-command", ask);
+    return () => window.removeEventListener("studio-command", ask);
+  }, []);
 
   // ── Model ceiling (the reply's own cost; production budgets are approved separately) ──
   const textModels = capabilities?.textModels || [];
@@ -502,15 +521,18 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     { title: "写一段文字", prepare: "说清写给谁、写什么。", result: "一份能直接用的初稿，放进画布继续改。", Icon: FileText, tone: "text", run: () => startWith("生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。") },
     { title: "搭一套创作流程", prepare: "说清最后要什么，比如一个 IP 的设定图到场景视频。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。") },
   ];
+  // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
+  // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
   const tools = <>
-    {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
+    {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能 ·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
       options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></span>}
+    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」`}><span>技能 · {modeSkill.name}</span></span>}
     {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
     {/* A single or fixed model stays visible, just not changeable (ported from the old composer, Codex 2026-10-18). */}
     {!selectable && selectedModel && <span className="studio-dialogue-chip is-fixed"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" disabled value={selectedModel.endpointId} title={selectedModel.name}
       options={[{ value: selectedModel.endpointId, label: selectedModel.name }]}/></span>}
   </>;
-  const guide = <section className="studio-assistant-guide" aria-label="使用说明">
+  const guide = <section id="studio-assistant-guide" className="studio-assistant-guide" aria-label="使用说明">
     <ol>
       <li><strong>说想法</strong>一句话说清要做什么。用 @ 指定画布上的素材；附件会先进画布，再被引用。</li>
       <li><strong>看方案和报价</strong>我先看素材，列出每一步做什么、大概花多少积分，然后停在确认卡上。</li>
@@ -522,19 +544,26 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     <p className="studio-helper-note">整张画布都会作为参考，需要时我会读取图片和视频画面，读取过程记在工作记录里。用 @ 指定的内容一定会读。</p>
     <details className="studio-helper-note"><summary>附件说明</summary><p>{ATTACHMENT_NOTE}</p></details>
   </section>;
+  // 设计稿 Main 画板的头部：四角星标、标题、当前技能（紫色小胶囊），右边只有停靠和关闭。使用说明不再单占一个「?」：
+  // 点这个技能胶囊展开（它本来就在说「这段对话怎么做」），空白开场里还有「第一次用？」。
   const titleExtra = <>
-    <span className={`studio-assistant-mode${modeSkill ? " is-skill" : ""}`} title={modeSkill ? `这段对话按「${modeSkill.name}」做` : "按你的消息和素材决定怎么做"}>{modeSkill ? modeSkill.name : "全能创作"}</span>
+    <button type="button" className={`studio-assistant-mode${modeSkill ? " is-skill" : ""}`} aria-expanded={guideOpen} aria-controls="studio-assistant-guide"
+      title={`${modeSkill ? `这段对话按「${modeSkill.name}」做` : "按你的消息和素材决定怎么做"}，点开看它怎么工作`} onClick={() => setGuideOpen(v => !v)}>{modeSkill ? modeSkill.name : "全能创作"}</button>
     {demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}
-    <Button aria-label="使用说明" aria-expanded={guideOpen} title="它是怎么工作的" size="small" type="text" icon={<CircleHelp size={16}/>} onClick={() => setGuideOpen(v => !v)}/>
   </>;
+  // The real queue position of a step's task (the node's own queue ticket), never an estimate.
+  const stepQueue = (step: StudioPlanExecutionStep) => {
+    if (!execution) return undefined;
+    const task = nodes.find(n => n.id === stepNodeId(execution, step))?.metadata?.studio?.task;
+    return studioTaskQueued(task) && task?.queue && task.queue.position > 0 ? task.queue.position : undefined;
+  };
   const subheader = streamNote || execution || canvasHint ? <>
     {streamNote && <div className="studio-assistant-status" role="status">{streamNote}</div>}
     {canvasHint && <div className="studio-assistant-status is-hint" role="status"><span>结果放进画布了。想改就在这里说；想自己动手，选中节点后点「问助手」或用它旁边的操作。</span>
       <button type="button" className="studio-dialogue-link" onClick={() => { markCanvasHintSeen(); setCanvasHint(false); }}>知道了</button></div>}
-    {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution}
-      locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}
+    {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution} queueOf={stepQueue}/>}
   </> : undefined;
-  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><Sparkles size={13}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }}
+  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }}
     width={480} utility dockable defaultDocked resizable layoutKey="assistant" footer={<>
       <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
@@ -568,7 +597,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         {legacyGroups.map(group => <StudioDialogueLegacy key={group.id} group={group} projectId={projectId} nodes={nodes} selectedIds={selectedIds} recovering={recovering === group.id}
           onEditStep={editLegacyStep} onApplyStep={applyLegacyStep} onRecover={id => void recoverLegacy(id)} onCompose={compose}/>)}
       </details>}
-      <StudioDialogueTimeline store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}/>
+      <StudioDialogueTimeline store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}
+        progress={execution && <StudioDialogueSteps execution={execution} queueOf={stepQueue}
+          locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}/>
     </div>
   </StudioFloatingPanel>;
 }

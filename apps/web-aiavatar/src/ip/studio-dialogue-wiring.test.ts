@@ -55,12 +55,30 @@ test('the dialogue is actually mounted and wired', () => {
   expect(workspace).toContain('className="studio-ai-orb"');
   expect(workspace).toContain('className="studio-tasks-launch"');
   const rail = canvas.slice(canvas.indexOf('<nav className="studio-flow-tools"'), canvas.indexOf('</nav>', canvas.indexOf('<nav className="studio-flow-tools"')));
-  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '专项创作', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
+  // Design Main board: seven tools. 专项创作 is not one of them (its items live in 模板, the video node's 「⋯」 and 素材库).
+  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
+  expect(rail).not.toContain('aria-label="专项创作"');
+  expect(rail).not.toContain("label: '从资产库添加'");
   // Node operations left the rail for the context menu and the multi-select bar.
   for (const label of ['删除选中节点', '复制选中节点', '更多节点操作']) expect(rail).not.toContain(`aria-label="${label}"`);
   expect(canvas).toContain('className="studio-flow-ai-badge"');
   expect(read('ip/canvas-host.tsx')).toContain('className="studio-host-more-button"');
   expect(read('styles/ip-desktop.css')).toContain('--ai-gradient:');
+  // Second pass against the design's Main board (2026-10-19): what the first pass left out.
+  expect(canvas).toContain('className="studio-flow-origin">你上传的</span>');
+  expect(canvas).not.toContain('>小地图</button>');
+  expect(workspace).toContain('className="studio-context-more-button"');
+  expect(workspace).toContain('toolbar width="auto"');
+  expect(workspace).toContain('<AiMark size={18}/></button>}');
+  expect(assistant).toContain('progress={execution && <StudioDialogueSteps');
+  expect(assistant).toContain('aria-controls="studio-assistant-guide"');
+  expect(read('styles/studio-flow.css')).toContain('.studio-flow-drag>.studio-flow-ai-badge,.studio-flow-drag>.studio-flow-origin { flex:none;');
+  // Third pass: the dialogue and its button area (design Main board). The skill pill stays visible once a thread is bound;
+  // a reply ends in one meta line; a confirmed card collapses to one line; antd 6 Select parts are styled (not v5's .ant-select-selector).
+  expect(assistant).toContain('studio-dialogue-chip is-skill is-static');
+  expect(read('ip/studio-dialogue-message.tsx')).toContain('className="studio-dialogue-meta"');
+  expect(read('ip/studio-dialogue-approval.tsx')).toContain('className="studio-dialogue-approval-done"');
+  expect(read('styles/ip-studio-workflow.css')).toContain('.studio-dialogue-chip .ant-select-suffix { display:none; }');
 });
 
 test('the composer is never disabled as a whole', () => {
@@ -99,4 +117,15 @@ test('visible copy follows the product rules', () => {
     expect(source, file).not.toMatch(/window\.(confirm|alert|prompt)\(|[^.\w](confirm|alert|prompt)\(/);
     expect(source, file).not.toMatch(/\.slice\(0, ?10\)/);
   }
+});
+
+// The confirmation card tells people what to type; that word must be one the server's natural-approval guard accepts
+// (StudioNaturalApprovals, mirrored by the demo's mockSaysApprove). It said 「可以」, which the guard does not accept.
+test('the word the confirmation card suggests actually confirms', async () => {
+  const { mockSaysApprove } = await import('./mocks/studio-dialogue');
+  const word = read('ip/studio-dialogue-approval.tsx').match(/直接回复「(.+?)」也行/)?.[1];
+  expect(word).toBeDefined();
+  expect(mockSaysApprove(word!)).toBe(true);
+  for (const yes of ['可以', '好', '行吧', '嗯，可以', '好的，开始制作']) expect(mockSaysApprove(yes)).toBe(true);
+  for (const no of ['可以吗？', '先别开始', '再想想', '改成横屏', '可以把第 2 段换成横屏', '行不行', '不可以']) expect(mockSaysApprove(no)).toBe(false);
 });

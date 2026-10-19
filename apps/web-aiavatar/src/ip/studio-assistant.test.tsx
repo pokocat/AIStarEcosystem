@@ -328,9 +328,11 @@ test('the production strip pauses or stops through the execution endpoints, each
   api.cancel.mockResolvedValue({ ...execution, status: 'canceled', updatedAt: '2026-10-18T01:00:09Z' });
   await ready();
   const strip = screen.getByLabelText('制作进度');
-  expect(within(strip).getByText('已完成 1/2 项')).toBeDefined();
+  // Canvas redesign (design Main board): the strip says which step of how many; the step list itself is in the conversation.
+  expect(within(strip).getByText('制作中 · 第 2 步，共 2 步')).toBeDefined();
   expect(within(strip).getByText(/已用 40 \/ 120 积分/)).toBeDefined();
-  fireEvent.click(within(strip).getByRole('button', { name: '暂停后续' }));
+  expect(within(screen.getByRole('list', { name: '各步进度' })).getAllByRole('listitem').map(li => li.getAttribute('data-status'))).toEqual(['done', 'running']);
+  fireEvent.click(within(strip).getByRole('button', { name: '暂停' }));
   await waitFor(() => expect(api.pause).toHaveBeenCalledWith('p', 'e1', { clientRequestId: expect.any(String), expectedStatus: 'running' }));
   await waitFor(() => expect(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '继续制作' })).toBeDefined());
   fireEvent.click(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '停止' }));
@@ -381,7 +383,7 @@ test('(a) a canvas opened after its execution finished gets the produced nodes b
   await waitFor(() => expect(edges.map(e => `${e.fromNodeId}>${e.toNodeId}`).sort()).toEqual([`${E}-a-facts>${E}-a-limits`, `${E}-p-v1>${E}-p-c1`]));
   await waitFor(() => expect(api.save).toHaveBeenCalled());
   // The finished execution is shown again, and canvas commands are replayed from the start of the thread.
-  expect(within(screen.getByLabelText('制作进度')).getByText('制作 · 已完成')).toBeDefined();
+  expect(within(screen.getByLabelText('制作进度')).getByText(/^制作 · 已完成/)).toBeDefined();
   expect(streams.at(-1)!.cursor()).toBe(0);
   expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL);
 });
@@ -497,10 +499,10 @@ test('the progress strip breaks out the dialogue share of the stage budget', asy
   api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, activeExecutionId: E }, execution });
   await ready();
   const strip = screen.getByLabelText('制作进度');
-  expect(within(strip).getByText(/已用 43 \/ 260 积分/)).toBeDefined();
-  expect(within(strip).getByText('其中对话 3 积分，对话进行中占用 20 积分')).toBeDefined();
+  // The strip shows only 「已用 / 上限」 (design Main board); the in-flight and dialogue breakdown rides on its tooltip.
+  expect(within(strip).getByText(/已用 43 \/ 260 积分/).getAttribute('title')).toContain('其中对话 3 积分，对话进行中占用 20 积分');
   emit(ev('budget.update', { executionId: E, stage: 'production', approvedCap: 260, spent: 45, inFlight: 0, remaining: 215, source: 'actual', dialogueSpent: 5, dialogueInFlight: 0 }, { executionId: E }));
-  expect(within(screen.getByLabelText('制作进度')).getByText('其中对话 5 积分')).toBeDefined();
+  expect(within(screen.getByLabelText('制作进度')).getByText(/已用 45 \/ 260 积分/).getAttribute('title')).toBe('其中对话 5 积分');
 });
 
 test('follow-ups saved on the completion summary show after a reload, and once when turn.done repeats them', async () => {
@@ -554,7 +556,8 @@ const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {
   methodExamples: [], operations: { analysis: ['text'], production: ['text', 'video'] }, limits: { maxSourceSec: 60, maxSegments: 4, maxSegmentSec: 'model', maxSteps: 16, maxAutoFixPerSegment: 1 },
   checks: [], autoFixChecks: [], requiredCapabilities: [], ...extra });
 const recreation = skill('video-recreation', '短视频复刻', { version: 2 }), seeding = skill('talking-head-seeding', '口播种草');
-const openGuide = () => fireEvent.click(screen.getByRole('button', { name: '使用说明' }));
+// The guide opens from the skill chip in the header (the design has no separate 「?」).
+const openGuide = () => fireEvent.click(screen.getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!);
 
 test('with several active skills the settings offer 「技能」 (default 自动 = no skillKey); a chosen one rides on the message and its retry', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
@@ -771,4 +774,27 @@ test('nodes the assistant creates are brought into view and the first time shows
   fireEvent.click(screen.getByRole('button', { name: '知道了' }));
   expect(screen.queryByText(/结果放进画布了/)).toBeNull();
   expect(localStorage.getItem('studio-assistant:canvas-hint')).toBe('1');
+});
+
+// 2026-10-19 walkthrough: Enter only added a line (the home page's box sends on Enter), and 「问助手」 did nothing once a
+// draft existed — the assistant opens by default, so a draft always existed.
+test('Enter sends and Shift+Enter starts a new line', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '第一行' } });
+  fireEvent.keyDown(composer(), { key: 'Enter', shiftKey: true });
+  expect(api.post).not.toHaveBeenCalled();
+  fireEvent.keyDown(composer(), { key: 'Enter' });
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第一行' });
+});
+
+test('「问助手」 adds the node to this message and keeps what was already typed', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '写到一半' } });
+  act(() => { window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'assistant', nodeId: 't' } })); });
+  expect(await screen.findByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
+  expect(composer().value).toBe('写到一半');
+  act(() => { window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'assistant', nodeId: 'c' } })); });
+  expect(await screen.findByRole('button', { name: '移除引用 角色 A' })).toBeDefined();
+  expect(screen.getByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
 });
