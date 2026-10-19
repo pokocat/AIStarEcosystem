@@ -10,6 +10,7 @@ import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "@/shell/desktop-top-bar";
 import { IpStudioApi } from "@/ip/api";
 import { createStudioEntry, studioEntryHref, type StudioEntry } from "@/ip/studio-entry";
+import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { formatDateTime } from "@/lib/datetime";
 
 const features: { title: string; description: string; entry: StudioEntry; art: string; icon: typeof Sparkles }[] = [
@@ -46,6 +47,15 @@ export function IpHome({ header = true }: { header?: boolean }) {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [authed, revision]);
+  /** Dialogue-first start: the brief is saved into a new canvas and sent as the first message there. */
+  const startConversation = async (brief: string) => {
+    if (createLock.current) return;
+    if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
+    createLock.current = true;
+    setCreating("assistant"); setError("");
+    try { const project = await createStudioEntry("assistant", brief); router.push(studioEntryHref(project.id, "assistant", { send: !!brief.trim() })); }
+    catch (e) { setError(e instanceof Error ? e.message : "画布没有创建成功，请重试"); setCreating(undefined); createLock.current = false; }
+  };
   const start = async (entry: StudioEntry) => {
     if (createLock.current) return;
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
@@ -62,7 +72,7 @@ export function IpHome({ header = true }: { header?: boolean }) {
         <div className="ip-home-hero-copy">
           <h1>让灵感成形<br />让 IP 出圈</h1>
           <p>从一个灵感开始，创造数字人、图片、视频与故事。<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
-          <Link className="ip-brand-button ip-home-start" href="/create">开始创作<ArrowRight size={22} aria-hidden="true"/></Link>
+          <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
           <div className="ip-home-paths" aria-label="创作方向">{features.map(f => <button key={f.title} disabled={!!creating} onClick={() => void start(f.entry)}><f.icon size={18} aria-hidden="true" /><strong>{f.title.replace("AI ", "")}</strong><span>{f.entry === "image" ? "创造形象" : f.entry === "video" ? "让角色动起来" : "编写新故事"}</span></button>)}</div>
         </div>
         <span className="ip-home-hero-note">一个角色，无限可能</span>

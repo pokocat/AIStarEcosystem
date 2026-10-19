@@ -84,3 +84,6 @@ html[data-layout="mobile"] .studio-home-tools { column-gap:8px; }
 html[data-layout="mobile"] .studio-home-tools button { padding-inline:0;gap:4px 7px; }
 html[data-layout="mobile"] .studio-home-tools small { font-size:11px; }
 html[data-layout="mobile"] .studio-home-template h3 { font-size:15px; }
+
+.studio-home-more { margin:10px 0 0; font-size:13px; }
+.studio-home-more a { display:inline-flex; align-items:center; gap:6px; color:var(--ink-2); text-decoration:none; }

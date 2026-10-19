@@ -10,14 +10,18 @@ vi.mock('@/ip/canvas-thumb',()=>({CanvasThumb:()=> <div>工作流预览</div>}))
 const empty={id:'p',name:'新画布',status:'draft',docVersion:'v1',doc:{nodes:[],connections:[],viewport:{x:0,y:0,k:1}},runs:{},runsById:{}};
 afterEach(cleanup);
 beforeEach(()=>{vi.clearAllMocks();api.listProjects.mockResolvedValue([]);api.listTemplates.mockResolvedValue([]);api.listDemoExamples.mockResolvedValue([]);api.createProject.mockResolvedValue(empty);api.getProject.mockResolvedValue(empty);api.updateProject.mockImplementation(async(_id,body)=>({...empty,doc:body.doc}));});
-test('home primary action links to the creation tab without creating a workspace',async()=>{
+test('the home opens on the conversation box: a brief creates a canvas that sends it as the first message; nothing is created until then',async()=>{
   render(<StudioHome ready/>);
-  const link=screen.getByRole('link',{name:'开始创作'});
-  expect(link.getAttribute('href')).toBe('/create');
+  expect(screen.getByRole('link',{name:/更多创作方式/}).getAttribute('href')).toBe('/create');
   expect(screen.getByRole('link',{name:'我的画布'}).getAttribute('href')).toBe('/projects');
   expect(screen.getByRole('link',{name:'全部画布'}).getAttribute('href')).toBe('/projects');
-  link.addEventListener('click',e=>e.preventDefault());fireEvent.click(link);
-  expect(api.createProject).not.toHaveBeenCalled();expect(api.updateProject).not.toHaveBeenCalled();
+  expect((screen.getByRole('button',{name:'开始对话'}) as HTMLButtonElement).disabled).toBe(true);
+  expect(api.createProject).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByRole('textbox',{name:'想做什么'}),{target:{value:'把商品换成我的保温杯'}});
+  fireEvent.click(screen.getByRole('button',{name:'开始对话'}));
+  await waitFor(()=>expect(api.push).toHaveBeenCalledWith('/projects/p?start=assistant&send=1'));
+  expect(api.createProject).toHaveBeenCalledOnce();
+  expect(api.updateProject.mock.calls[0][1].doc.assistantConversations.at(-1).metadata.prompt).toBe('把商品换成我的保温杯');
 });
 test('a specific home tool still opens its intended workflow on explicit selection',async()=>{
   render(<StudioHome ready/>);fireEvent.click(screen.getByRole('button',{name:/视频创作/}));

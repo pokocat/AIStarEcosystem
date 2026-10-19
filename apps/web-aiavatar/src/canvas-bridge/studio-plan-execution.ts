@@ -271,7 +271,7 @@ export function projectCanvasOps(doc: ProjectionDoc, ops: CanvasProjectionOp[], 
     const result = projectStudioNodeUpsert(next, data, { ...opts, missingOnly: !!op?.restore, created });
     if (result.outcome === 'applied') { changed = true; next = { nodes: result.nodes, connections: result.connections }; }
   }
-  return { doc: next, conflicts, proposals, changed, projected: [...projected] };
+  return { doc: next, conflicts, proposals, changed, projected: [...projected], created: [...created] };
 }
 
 // ── Restore from execution state ──────────────────────────────────────────

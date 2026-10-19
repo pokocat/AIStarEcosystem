@@ -39,7 +39,7 @@ export function StudioCreateHome() {
       const text = pendingStart?.brief ?? brief;
       const project = await createStudioEntry(target, text, pendingStart?.project);
       setPendingStart(undefined);
-      router.push(studioEntryHref(project.id, target));
+      router.push(studioEntryHref(project.id, target, { send: target === "assistant" && !!text.trim() }));
     } catch (e) {
       if (e instanceof StudioEntrySaveError) setPendingStart({ project: e.project, entry: pendingStart?.entry ?? entry, brief: pendingStart?.brief ?? brief });
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);

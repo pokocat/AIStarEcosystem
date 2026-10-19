@@ -7,6 +7,7 @@ import { ArrowRight, BookOpen, Clapperboard, Film, ImagePlus, Layers, Loader2, M
 import type { IpProjectSummary, IpTemplate } from '@ai-star-eco/types';
 import { IpStudioApi } from '@/ip/api';
 import { createStudioEntry, studioEntries, studioEntryHref, type StudioEntry } from '@/ip/studio-entry';
+import { StudioConversationStart } from '@/ip/studio-conversation-start';
 import { StudioTemplateUse } from '@/ip/studio-template-use';
 import { CanvasThumb } from '@/ip/canvas-thumb';
 import { formatDateTime } from '@/lib/datetime';
@@ -42,6 +43,18 @@ export function StudioHome({ ready }: { ready: boolean }) {
       setCreating(undefined); inFlight.current = false;
     }
   };
+  const startConversation = async (brief: string) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setError(''); setCreating('assistant');
+    try {
+      const project = await createStudioEntry('assistant', brief);
+      router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
+      setCreating(undefined); inFlight.current = false;
+    }
+  };
   const useTemplate = (template: IpTemplate) => {
     if (inFlight.current || template.enabled === false) return;
     setUsingTemplate(template);
@@ -56,7 +69,8 @@ export function StudioHome({ ready }: { ready: boolean }) {
       <Link className="studio-home-text-link" href="/projects">我的画布 <ArrowRight size={16}/></Link>
     </header>
 
-    <div className="studio-home-composer studio-home-entry"><h2>让灵感开始成形</h2><p>进入创作页，写下想法，选择适合的创作方式。</p><Link href="/create" className="studio-home-primary">开始创作<ArrowRight size={17}/></Link></div>
+    <StudioConversationStart compact heading="想做什么，直接说" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
+    <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
     {error && <div className="studio-home-error" role="alert"><p>{error}</p></div>}
 
     <nav className="studio-home-tools" aria-label="主要创作功能">{quickEntries.map(([entry, Icon]) => <button key={entry} type="button" disabled={creating !== undefined} onClick={() => void start(entry)}>

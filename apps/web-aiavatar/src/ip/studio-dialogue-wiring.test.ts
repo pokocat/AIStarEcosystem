@@ -35,6 +35,16 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('aria-label="使用说明"');
   expect(read('ip/studio-dialogue-execution.tsx')).toContain('role="progressbar"');
   expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'focus'");
+  // Dialogue-first start: the home hero, the mobile home and the creation page all open on the conversation box,
+  // the canvas sends the brief by itself, and the assistant's new nodes come into view.
+  expect(read('components/landing/ip-home.tsx')).toContain('<StudioConversationStart ');
+  expect(read('components/hub/studio-home.tsx')).toContain('<StudioConversationStart ');
+  expect(read('ip/studio-creation-brief.tsx')).toContain('<StudioConversationStart ');
+  expect(read('ip/studio-workspace.tsx')).toContain('autoSend={entryAutoSend}');
+  expect(read('ip/studio-workspace.tsx')).toContain('>问助手</button>');
+  expect(read('ip/studio-workspace.tsx')).toContain('className="studio-start studio-canvas-empty"');
+  expect(assistant).toContain('dispatchStudioCommand("reveal"');
+  expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'reveal'");
 });
 
 test('the composer is never disabled as a whole', () => {

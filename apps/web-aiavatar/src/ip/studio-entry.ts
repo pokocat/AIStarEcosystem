@@ -20,8 +20,9 @@ export type StudioEntry = keyof typeof studioEntries;
 export function parseStudioEntry(value: string | null): StudioEntry | undefined {
   return value && Object.hasOwn(studioEntries, value) ? value as StudioEntry : undefined;
 }
-export const studioEntryHref = (projectId: string, entry: StudioEntry) =>
-  `/projects/${encodeURIComponent(projectId)}${entry === 'blank' ? '' : `?start=${entry}`}`;
+/** `send` asks the canvas to send the saved brief as the first message as soon as the assistant is ready (dialogue-first start). */
+export const studioEntryHref = (projectId: string, entry: StudioEntry, options: { send?: boolean } = {}) =>
+  `/projects/${encodeURIComponent(projectId)}${entry === 'blank' ? '' : `?start=${entry}${options.send && entry === 'assistant' ? '&send=1' : ''}`}`;
 
 export class StudioEntrySaveError extends Error {
   constructor(public project: IpProject, message: string) { super(message); }
