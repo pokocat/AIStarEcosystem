@@ -232,8 +232,21 @@ public class StudioWorkflowWorker {
                 var params=new HashMap<String,Object>();params.put("timeout_seconds",300);params.put("max_tokens",tokens);params.put("temperature",.3);
                 if(json)params.put("response_format",Map.of("type","json_object"));
                 String focus=input.path("prompt").asText("").strip();
-                var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)),Map.of("role","user","content",parts)),params);
-                used[0]=consumeUsage(reply,used[0],rate);return reply.content();
+                var messages=new ArrayList<Map<String,Object>>();
+                messages.add(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)));
+                List<Map<String,Object>> content=parts;
+                for(int rung=0;;rung++) {
+                    try {
+                        var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(messages.get(0),Map.of("role","user","content",content)),params);
+                        used[0]=consumeUsage(reply,used[0],rate);return reply.content();
+                    } catch(BusinessException e) {
+                        // Over the vendor's visual budget: the same real frames, smaller. Never fewer or invented frames.
+                        if(!StudioVisualContext.isVisualBudgetRejection(e)||rung>=StudioVisualContext.BUDGET_EDGES.length)throw e;
+                        int edge=StudioVisualContext.BUDGET_EDGES[rung];
+                        log.info("[studio] film study images over the visual budget run={} endpoint={} retry maxEdge={}",id,endpoint.endpoint().getId(),edge);
+                        content=StudioVisualContext.shrink(parts,edge);
+                    }
+                }
             },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")),cap);
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
