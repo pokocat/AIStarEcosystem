@@ -67,6 +67,7 @@ DataInitializer 默认 seed 两个账号：
 - **分发**：分发渠道、发行队列
 - ~~基础数据~~（v0.59 起整组隐藏：积分包页已删 —— 与「财务 · 充值套餐」重复；其余子项本就隐藏）
 - **平台与配置**：**AI 模型与 Key**（v0.41 合并）、**Prompt 管理**（v0.40 新增）、**Agent 平台**、平台配置、石榴AI 供应商、**统一登录接入**（v0.195 新增，只读）
+- **AI 中台**：AI 总览、LLM API 与用量、租户 / 用户用量、子应用审计、Prompt 模板、**Studio 技能**（2026-10-18 S3 新增，`/platform/studio-skills`，超管与运营可见，财务看不到，与后端 `AdminStudioSkillController` 的 SUPER_ADMIN / OPERATOR 同口径）、Agent 平台
 - **消息与日志**：消息中心（v0.58 起为真实运营收件箱：充值下单/取消、新用户激活等业务事件实时入箱）、审计日志
 
 ## 隐藏的菜单（v0.5 sidebar enabled = false，URL 直访仍可用）
@@ -95,6 +96,8 @@ DataInitializer 默认 seed 两个账号：
 - Endpoint 全集：`specs/openapi.yaml`，`pnpm check:api-contract` 守门
 
 ## 版本日志
+
+- **Studio 技能（S3）/ 2026-10-18**：新页 `/platform/studio-skills`（AI 中台组「Studio 技能」，排在 Prompt 模板后面）。管理全能创作对话用的技能：左侧列表（名称 / 状态 / 当前版本 / 待审阅草稿数 / 路由提示摘要 / 更新时间）；详情是头部表单（名称、用途、两个阶段能用的操作、上限、检查项、允许自动修正的检查项必须是检查项的子集、方法示例、能力要求、路由提示的素材类型 / 关键词 / 默认）+ Markdown 正文，「发布新版本」必须写说明（`POST …/versions`，带 `expectedVersion`，表单合并回这一版原来的头部对象再发 JSON，表单不管的字段原样保留）；状态三段切换（`PUT …/status`），停用最后一个启用的技能时把 409 `STUDIO_SKILL_LAST_ACTIVE` 的原因写在切换下面；版本记录表（来源：仓内文件 / 后台发布 / 回滚 / 对话整理），「回滚到此版本」先确认（`useConfirm`，不用原生 confirm），对话整理出来的草稿「审阅后发布」弹窗里看改了哪些部分和正文，基于的版本不是当前版本时不能直接发布（对齐服务端 409 `STUDIO_SKILL_DRAFT_STALE`），可以载入编辑器手动合并；「试跑」贴分析结论 + 需求 + 阶段，可选编辑器里没发布的内容 / 当前版本 / 任一历史版本或草稿，显示返回的计划（做法、步骤、报价）和校验错误；「新建技能」贴一整份技能文件。同时只能有一个启用的默认技能，表单先拦。`types/studio-skills.ts` 照 `packages/types/src/ip-studio-workflow.ts` S3 段复制；`api/studio-skills.ts` 带 `USE_MOCK` 分支（`mocks/studio-skills.ts` 内存实现）；表单换算在 `lib/studio-skill-form.ts`。测试：`lib/studio-skill-form.test.tsx`、`app/platform/studio-skills/page.test.tsx`。
 
 - **v0.199 / 2026-09-30**：`/celebrity/engine-pricing` 加第三个页签「视频生成」，给明星带货「AI 创作 → 视频生成」定价：4 种模式（文生 / 首帧 / 首尾帧 / 全能参考）× 2 档清晰度（768p / 544p）的每秒价，空着的格子占位写「按模型单价」（用户端按该模型在「AI 模型与 Key」里配的每秒价算，两边都没有就不能提交）；下面三个数：全能参考前几张图不加价、之后每张每秒加价、智能优化每次的价（0 = 不收费）。保存是整份替换（`PUT /api/admin/celebrity/video-studio-pricing`，平台配置 key `celebrity.video-studio-pricing`），约 1 分钟内生效。**没读到线上配置时不给编辑也不给保存**（只显示「重试」）：整份替换的接口拿一张空表去存，等于把线上价格全清掉（Codex 评审补）。类型 `types/video-studio.ts` 照 `packages/types` 复制。详见 `docs/video-studio-plan.md` §11、VERSION_HISTORY.md v0.199。
 - **v0.195 / 2026-09-09**：新页 `/platform/identity-clients`（平台与配置组「统一登录接入」）。回答「统一登录到底接了哪些系统、哪些还活着」—— 客户端注册表在账号中心（独立仓 `pokocat/aibuzz-id`），我方库里查不到，产品侧只知道自己那一个 client_id，此前只能 ssh 上生产 cat 清单。按 productCode 分组列全部接入端（含已退役的），每行给授权方式 / scope / 回跳地址 / 最近一次发令牌 / 近 7 天授权数。**只读**：加一个接入端是改账号中心的配置并重启，给这页开写入口等于让库和配置各说一套。「读不到」与「一个都没接」分开渲染（`error` / `configured` / `activityAvailable` 三个标志位），活跃度取不到时那两列显示「暂不可用」而不是「从没用过」。对应 server `AdminIdentityImportController#identityClients`（GET `/api/admin/identity/clients`）+ 新组件 `IdentityAdminClient`（走账号中心的 `admin-server` 客户端，scope `clients.read`——与回报产品链接用的 `aistar-server` 是两个不同客户端）。详见 VERSION_HISTORY.md v0.195。

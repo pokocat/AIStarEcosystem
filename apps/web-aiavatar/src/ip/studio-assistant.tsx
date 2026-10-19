@@ -13,9 +13,10 @@ import { Button, Select } from "antd";
 import { ArrowUp, FileText, Image, SlidersHorizontal, Video, Workflow } from "lucide-react";
 import { nanoid } from "nanoid";
 import type { IpRun, IpSavedAsset } from "@ai-star-eco/types";
-import type { StudioAssistantMode, StudioCapabilities, StudioPlan, StudioPlanExecution, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioAssistantMode, StudioCapabilities, StudioDialogueMessage, StudioPlan, StudioPlanExecution, StudioSkillRequiredDetails, StudioSkillSummary } from "@ai-star-eco/types/ip-studio-workflow";
 import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
+import { isOperatorRole, useIdentity } from "@/proto/api";
 import { getRun } from "@/ip/api/ip-studio";
 import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
@@ -31,7 +32,7 @@ import {
   STUDIO_CHECK_COMMAND, checkSubject, checkedStep, executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, projectStudioExecution, proposalFieldValue,
   readProjectedNodes, rememberProjectedNodes, stepNodeId, stepRunCandidates, type CanvasProjectionOp, type StudioCheckCommand,
 } from "@/canvas-bridge/studio-plan-execution";
-import { loadStudioSkills, studioSkillNotes } from "@/canvas-bridge/studio-skills";
+import { activeStudioSkills, completionExecutionId, loadStudioSkills, reloadStudioSkills, skillRequiredChoices, studioSkillBadge, studioSkillNotes } from "@/canvas-bridge/studio-skills";
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from "./studio-errors";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useStudioDialogueSession } from "./studio-dialogue-session";
@@ -40,6 +41,7 @@ import { StudioDialogueTimeline } from "./studio-dialogue-timeline";
 import { StudioDialogueExecution } from "./studio-dialogue-execution";
 import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy";
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
+import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
 
 type Props = {
   projectId: string; conversations: CanvasNodeData[]; setConversations: Dispatch<SetStateAction<CanvasNodeData[]>>;
@@ -60,6 +62,20 @@ type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[
 const MAX_REFERENCES = 64;
 const ATTACHMENT_NOTE = "可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。";
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+/** The settings' 「自动」 choice: no skillKey on the message, the server routes by intent. */
+const AUTO_SKILL = "__auto__";
+type SkillChoice = StudioSkillRequiredDetails["skills"][number];
+/**
+ * 400 STUDIO_SKILL_REQUIRED is a question, not a failure: say which skills fit, keep the draft and open the choice.
+ * It is shown inline only (no error notification).
+ */
+function skillRequiredNotice(error: unknown, fallback: SkillChoice[]) {
+  const choices = skillRequiredChoices(error);
+  if (!choices) return undefined;
+  const names = (choices.length ? choices : fallback).map(s => `「${s.name}」`);
+  const text = names.length ? `这条消息用${names.join("或")}都能做，选一个技能再发，消息已经放回输入框` : "这条消息要先选一个技能再发，消息已经放回输入框";
+  return { choices, text };
+}
 /** 402 while an execution runs: this turn would not fit the stage budget. Say by how much; the draft stays. */
 function budgetExceededError(error: unknown) {
   if (!(error instanceof ApiError) || error.code !== "STUDIO_PLAN_BUDGET_EXCEEDED") return undefined;
@@ -80,6 +96,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const [composerError, setComposerError] = useStudioErrorState();
   const [canvasNotice, setCanvasNotice] = useState("");
   const [skills, setSkills] = useState<StudioSkillSummary[]>([]);
+  const [skillKey, setSkillKey] = useState<string>(), [skillChoices, setSkillChoices] = useState<SkillChoice[]>(), [skillNotice, setSkillNotice] = useState("");
+  const identity = useIdentity();
   const composer = useRef<DialogueComposerHandle>(null);
   const live = useRef({ nodes, conversations, projectId, connections: connections || [] });
   live.current = { nodes, conversations, projectId, connections: connections || [] };
@@ -92,7 +110,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const draft = useRef<ComposerDraft>({ text, pinnedIds, attachmentIds });
   draft.current = { text, pinnedIds, attachmentIds };
   const opened = useRef<{ projectId: string; initialNodeId?: string } | undefined>(undefined);
-  useEffect(() => { setText(""); setPinnedIds([]); setAttachmentIds([]); setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); }, [projectId]);
+  useEffect(() => { setText(""); setPinnedIds([]); setAttachmentIds([]); setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); }, [projectId]);
   useEffect(() => {
     if (!open) return;
     if (opened.current?.projectId === projectId && opened.current.initialNodeId === initialNodeId) return;
@@ -119,6 +137,18 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
   const demo = USE_MOCK || !!capabilities?.mock;
   const maxCost = demo ? 0 : selectedModel?.tokenPricing ? Math.ceil(selectedModel.tokenPricing.maxCost) : undefined;
+  // ── Skill choice: only while the thread has none yet (a bound thread changes method by starting over from a message) ──
+  const activeSkills = activeStudioSkills(skills);
+  const skillOptions: SkillChoice[] = [...activeSkills.map(s => ({ key: s.key, name: s.name, summary: s.summary })), ...(skillChoices || []).filter(c => !activeSkills.some(s => s.key === c.key))];
+  const boundSkillKey = store.thread?.skillKey;
+  const boundSkill = boundSkillKey ? skills.find(s => s.key === boundSkillKey) : undefined;
+  const chosenSkill = boundSkillKey ? undefined : skillOptions.find(s => s.key === skillKey);
+  const pickSkill = !boundSkillKey && skillOptions.length > 1;
+  const chooseSkill = (value?: string) => { setSkillKey(!value || value === AUTO_SKILL ? undefined : value); setSkillNotice(""); };
+  // The skill-draft run is a text run on the scene's default model; its ceiling is that model's.
+  const draftModel = textModels.find(m => m.isDefault) || textModels[0];
+  const draftCost = demo ? 0 : draftModel?.tokenPricing ? Math.ceil(draftModel.tokenPricing.maxCost) : draftModel?.creditCost ?? undefined;
+  const operator = USE_MOCK || isOperatorRole(identity?.operatorRole);
   const costHint = demo ? "演示模式，回复和制作都不扣积分" : maxCost !== undefined ? `每轮回复最多 ${maxCost} 积分，按实际用量结算；制作另行报价，确认后才开始` : "回复按实际用量结算；制作另行报价，确认后才开始";
 
   // ── References ─────────────────────────────────────────────────────────
@@ -176,8 +206,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const send = async () => {
     if (sendDisabledReason || sending) return;
     const project = projectId;
-    const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}) };
-    setSending(true); setComposerError("");
+    const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}),
+      ...(chosenSkill ? { skillKey: chosenSkill.key } : {}) };
+    setSending(true); setComposerError(""); setSkillNotice("");
     try {
       // Pinned and attached nodes must exist in the saved document before the server reads them.
       await saveStudioDocument(project);
@@ -192,8 +223,14 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         setText(current => current.trim() ? current : input.text);
         setPinnedIds(current => current.length ? current : input.pinnedNodeIds);
         setAttachmentIds(current => current.length ? current : input.attachmentNodeIds);
-        setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
-      } else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
+        const required = skillRequiredNotice(outcome.error, skillOptions);
+        if (required) {
+          setSkillChoices(required.choices.length ? required.choices : undefined); setSettingsOpen(true); setSkillNotice(required.text);
+          // The server may know skills this page has not loaded yet.
+          void reloadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined);
+        } else setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
+      } else if (outcome.state === "sent") setSkillChoices(undefined);
+      else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
     } finally { if (same(project)) setSending(false); }
   };
   const stop = async () => {
@@ -322,9 +359,18 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       throw e;
     }
   };
+  /** Operators: 「整理成技能草稿」 under the completion summary of an execution that finished with work to learn from. */
+  const completionActions = (message: StudioDialogueMessage) => {
+    const executionId = completionExecutionId(message);
+    if (!executionId) return null;
+    const known = session.executions.find(e => e.id === executionId);
+    if (known && !["done", "partial"].includes(known.status)) return null;
+    return <StudioDialogueSkillDraft key={executionId} projectId={projectId} executionId={executionId} maxCost={draftCost} demo={demo}/>;
+  };
   const handlers: DialogueMessageHandlers = {
     onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt,
     planReady: block => !!planForApproval(store, block), onBranch: session.branch, approvedCaps: block => approvedCaps(block, session.executions),
+    skillLabel: plan => studioSkillBadge(skills, plan), completionActions: operator ? completionActions : undefined,
   };
 
   // ── Old four-mode conversations (read-only history with adoption) ──────────
@@ -409,6 +455,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
         onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
         sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} costHint={costHint}/>
+      {skillNotice && <p className="studio-dialogue-note" role="status">{skillNotice}</p>}
       {(composerError || missing.length > 0) && <p className="studio-assistant-error" role="alert"><span>{missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError}</span> <StudioErrorNotice error={missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError} autoReport={false} label="查看详情"/></p>}
     </>}>
     <div className="studio-assistant studio-dialogue">
@@ -417,6 +464,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           <Button aria-label="对话设置" aria-expanded={settingsOpen} icon={<SlidersHorizontal size={16}/>} onClick={() => setSettingsOpen(v => !v)}/></div></div>
       {settingsOpen && <section className="studio-assistant-tools studio-dialogue-settings" aria-label="对话设置">
         {selectable && <label className="studio-dialogue-setting"><span>回复用的模型</span><Select aria-label="助手模型" value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></label>}
+        {pickSkill && <label className="studio-dialogue-setting"><span>技能</span><Select aria-label="技能" value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
+          options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></label>}
+        {pickSkill && <p className="studio-helper-note">{chosenSkill ? chosenSkill.summary : "自动：按你的消息和素材挑一个合适的技能。第一次回复之后，这段对话就一直用它"}</p>}
+        {boundSkill && activeSkills.length > 1 && <p className="studio-helper-note">这段对话在按「{boundSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」。</p>}
         {studioSkillNotes(skills).map(note => <p key={note} className="studio-helper-note">{note}</p>)}
         <p className="studio-helper-note">整张画布都会作为参考，需要时我会读取图片和视频画面，读取过程记在工作记录里。用 @ 指定的内容一定会读。</p>
         <details className="studio-helper-note"><summary>附件说明</summary><p>{ATTACHMENT_NOTE}</p></details>

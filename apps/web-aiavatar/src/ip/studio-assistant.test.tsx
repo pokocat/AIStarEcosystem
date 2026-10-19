@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client';
 import type { IpRun } from '@ai-star-eco/types';
-import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, StudioPlanExecution } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, StudioPlanExecution, StudioSkillSummary } from '@ai-star-eco/types/ip-studio-workflow';
 import { formatDateTime } from '@/lib/datetime';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
@@ -15,13 +15,16 @@ const api = vi.hoisted(() => ({
   getConversation: vi.fn(), post: vi.fn(), subscribe: vi.fn(), control: vi.fn(), branch: vi.fn(), list: vi.fn(),
   createExecution: vi.fn(), getExecution: vi.fn(), pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(), accept: vi.fn(),
   save: vi.fn(), importStudioStory: vi.fn(), importStudioMedia: vi.fn(), submitStudioRun: vi.fn(), readRun: vi.fn(), getRun: vi.fn(), success: vi.fn(), error: vi.fn(),
+  skills: vi.fn(), reloadSkills: vi.fn(), draft: vi.fn(), confirm: vi.fn(), role: null as string | null,
 }));
 vi.mock('@/canvas-bridge/studio-dialogue', () => ({ getStudioConversation: api.getConversation, postStudioDialogueMessage: api.post, subscribeStudioDialogue: api.subscribe,
   controlStudioDialogue: api.control, branchStudioDialogue: api.branch, listStudioDialogueMessages: api.list }));
 vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-plan-execution')>()),
   createStudioPlanExecution: api.createExecution, getStudioPlanExecution: api.getExecution, pauseStudioPlanExecution: api.pause, resumeStudioPlanExecution: api.resume,
   cancelStudioPlanExecution: api.cancel, acceptStudioPlanExecutionStep: api.accept }));
-vi.mock('@/canvas-bridge/studio-skills', () => ({ loadStudioSkills: async () => [], studioSkillNotes: () => [] }));
+vi.mock('@/canvas-bridge/studio-skills', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-skills')>()),
+  loadStudioSkills: () => api.skills(), reloadStudioSkills: () => api.reloadSkills(), createStudioSkillDraft: api.draft }));
+vi.mock('@/proto/api', () => ({ useIdentity: () => ({ operatorRole: api.role }), isOperatorRole: (role?: string | null) => role === 'operator' || role === 'super_admin' }));
 vi.mock('@/canvas-bridge/studio-save', () => ({ saveStudioDocument: api.save }));
 vi.mock('@/canvas-bridge/studio-api', () => ({ importStudioStory: api.importStudioStory, importStudioMedia: api.importStudioMedia, submitStudioRun: api.submitStudioRun }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun }));
@@ -30,7 +33,7 @@ vi.mock('./studio-floating-panel', () => ({ StudioFloatingPanel: ({ open, title,
 vi.mock('./studio-conversation-share', () => ({ StudioConversationShare: () => null }));
 vi.mock('./studio-attachment-picker', () => ({ StudioAttachmentPicker: ({ locked, reading, onFiles }: any) => <div><button disabled={locked}>{reading ? '正在导入附件' : '添加附件'}</button><input type="file" aria-label="上传创作附件" multiple onChange={e => onFiles(Array.from(e.target.files || []))}/></div> }));
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: () => null }));
-vi.mock('antd', () => ({ App: { useApp: () => ({ message: { success: api.success, error: api.error }, modal: { confirm: ({ onOk }: any) => onOk?.() } }) },
+vi.mock('antd', () => ({ App: { useApp: () => ({ message: { success: api.success, error: api.error }, modal: { confirm: (options: any) => { api.confirm(options); return options.onOk?.(); } } }) },
   Button: ({ loading, icon, danger: _danger, size: _size, ...p }: any) => <button {...p} disabled={p.disabled || loading}>{icon}{p.children}</button>,
   Input: { TextArea: forwardRef(({ autoSize: _autoSize, ...p }: any, ref) => { const el = useRef<HTMLTextAreaElement>(null); useImperativeHandle(ref, () => ({ focus: () => el.current?.focus() })); return <textarea ref={el} {...p}/>; }) },
   Select: ({ options, value, onChange, ...p }: any) => <select {...p} value={value || ''} onChange={e => onChange(e.target.value || undefined)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
@@ -75,6 +78,7 @@ beforeEach(() => {
   api.save.mockResolvedValue(undefined);
   api.post.mockResolvedValue({ messageId: 'u1', turnId: 't1', runId: 'r1', queueState: 'accepted' });
   api.getRun.mockRejectedValue(new Error('没有这次运行'));
+  api.skills.mockResolvedValue([]); api.reloadSkills.mockResolvedValue([]); api.role = null;
 });
 
 test('one continuous thread: no mode tabs, history picker, new-conversation, canvas-sense or visual toggle', async () => {
@@ -535,4 +539,139 @@ test('confirming a card, then the server closing its synthetic turn, leaves noth
   expect(screen.getAllByRole('button', { name: '停止' }).filter(b => !b.closest('[aria-label="制作进度"]'))).toHaveLength(0);
   expect(screen.queryByText('正在准备回复')).toBeNull();
   expect(screen.getAllByLabelText('Studio 的回复')).toHaveLength(1);
+});
+
+// ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
+
+const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {}): StudioSkillSummary => ({ key, name, version: 1, status: 'active', planning: 'dynamic', summary: `${name}的说明`,
+  methodExamples: [], operations: { analysis: ['text'], production: ['text', 'video'] }, limits: { maxSourceSec: 60, maxSegments: 4, maxSegmentSec: 'model', maxSteps: 16, maxAutoFixPerSegment: 1 },
+  checks: [], autoFixChecks: [], requiredCapabilities: [], ...extra });
+const recreation = skill('video-recreation', '短视频复刻', { version: 2 }), seeding = skill('talking-head-seeding', '口播种草');
+const openSettings = () => fireEvent.click(screen.getByRole('button', { name: '对话设置' }));
+
+test('with several active skills the settings offer 「技能」 (default 自动 = no skillKey); a chosen one rides on the message and its retry', async () => {
+  api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
+  await ready();
+  openSettings();
+  const picker = await screen.findByRole('combobox', { name: '技能' }) as HTMLSelectElement;
+  expect([...picker.options].map(o => o.textContent)).toEqual(['自动', '短视频复刻', '口播种草']);
+  expect(screen.getByText(/自动：按你的消息和素材挑一个合适的技能/)).toBeDefined();
+  fireEvent.change(composer(), { target: { value: '做一条种草视频' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
+
+  fireEvent.change(screen.getByRole('combobox', { name: '技能' }), { target: { value: 'talking-head-seeding' } });
+  expect(screen.getByText('口播种草的说明')).toBeDefined();
+  api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  fireEvent.change(composer(), { target: { value: '换成口播' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
+  expect(api.post.mock.calls[1][2]).toMatchObject({ text: '换成口播', skillKey: 'talking-head-seeding' });
+  fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
+  expect(api.post.mock.calls[2][2]).toMatchObject({ clientMessageId: api.post.mock.calls[1][2].clientMessageId, skillKey: 'talking-head-seeding' });
+});
+
+test('one active skill, or a thread already bound to a skill, shows no choice', async () => {
+  api.skills.mockResolvedValue([recreation]);
+  const view = await ready();
+  openSettings();
+  await waitFor(() => expect(api.skills).toHaveBeenCalled());
+  expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
+  view.unmount();
+
+  api.skills.mockResolvedValue([recreation, seeding]);
+  api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, skillKey: 'video-recreation', skillVersion: 2 } });
+  await ready();
+  openSettings();
+  await screen.findByText('这段对话在按「短视频复刻」做。要换技能，在某条消息上点「从这里重新开始」。');
+  expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
+  fireEvent.change(composer(), { target: { value: '继续' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
+});
+
+test('a plan card names the skill version it was planned with', async () => {
+  api.skills.mockResolvedValue([recreation, seeding]);
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([{ ...planBlock, plan: { ...planBlock.plan, skillKey: 'video-recreation', skillVersion: 2 } }])] });
+  await ready();
+  const plan = screen.getByLabelText('制作计划');
+  await waitFor(() => expect(within(plan).getByText('按技能：短视频复刻 v2')).toBeDefined());
+  // A skill this page does not list (stopped since) still shows its version, never the raw key.
+  seq = 3;
+  emit(ev('plan.proposed', { messageId: 'm3', block: { ...planBlock, revision: 3, fingerprint: 'f3', plan: { ...planBlock.plan, skillKey: 'retired-skill', skillVersion: 4 } } }, { turnId: 't3' }));
+  expect(screen.getByText('按技能 v4')).toBeDefined();
+  expect(document.body.textContent).not.toContain('retired-skill');
+});
+
+test('400 STUDIO_SKILL_REQUIRED names the skills that fit, keeps the draft and opens the choice', async () => {
+  api.skills.mockResolvedValue([recreation]);
+  api.reloadSkills.mockResolvedValue([recreation, seeding]);
+  await ready();
+  api.post.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_SKILL_REQUIRED', message: '有几种做法', details: { skills: [
+    { key: 'video-recreation', name: '短视频复刻', summary: '照着原片做' }, { key: 'talking-head-seeding', name: '口播种草', summary: '写口播配画面' }] } }, 400));
+  fireEvent.change(composer(), { target: { value: '照着这条复刻一条口播' } });
+  fireEvent.click(sendButton());
+  // A question, not a failure: shown inline, never as an error notification.
+  await screen.findByText('这条消息用「短视频复刻」或「口播种草」都能做，选一个技能再发，消息已经放回输入框');
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(composer().value).toBe('照着这条复刻一条口播');
+  expect(api.reloadSkills).toHaveBeenCalled();
+  const picker = await screen.findByRole('combobox', { name: '技能' }) as HTMLSelectElement;
+  expect([...picker.options].map(o => o.textContent)).toEqual(['自动', '短视频复刻', '口播种草']);
+  fireEvent.change(picker, { target: { value: 'talking-head-seeding' } });
+  expect(screen.queryByText(/这条消息用「短视频复刻」或「口播种草」都能做/)).toBeNull();
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][2]).toMatchObject({ text: '照着这条复刻一条口播', skillKey: 'talking-head-seeding' });
+});
+
+const summaryMessage: StudioDialogueMessage = { id: 'm-sum', threadId: 'th', seq: 4, turnId: 'EXS-1', role: 'assistant', text: '两段都做好了。', blocks: [], status: 'done', createdAt: at,
+  clientMessageId: 'exec-summary-X1', suggestions: ['改成横屏'] };
+const draftRun = (over: Partial<IpRun> = {}): IpRun => ({ id: 'IPR-d', projectId: 'p', nodeId: 'X1', kind: 'studio-text', status: 'running', stage: 'queued', pct: 0, cost: 0, inputs: {}, output: {}, createdAt: at, ...over });
+
+test('operators get 「把这次制作整理成技能草稿」 under a completion summary: cost confirmed, one request key, the draft waits for an admin', async () => {
+  const { SKILL_DRAFT_POLL_MS } = await import('./studio-dialogue-skill-draft');
+  SKILL_DRAFT_POLL_MS.value = 5;
+  api.role = 'operator';
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [summaryMessage] });
+  api.draft.mockResolvedValue(draftRun());
+  api.getRun.mockImplementation(async (id: string) => id === 'IPR-d'
+    ? draftRun({ status: 'done', stage: 'done', pct: 100, cost: 6, output: { skillDraft: { skillKey: 'video-recreation', version: 3, baseVersion: 2, changeNote: '口播段只换商品', strippedReferences: 2 } } as IpRun['output'] })
+    : Promise.reject(new Error('没有这次运行')));
+  await ready();
+  const action = within(screen.getByRole('group', { name: '整理成技能草稿' }));
+  fireEvent.click(action.getByRole('button', { name: '把这次制作整理成技能草稿' }));
+  expect(api.confirm.mock.calls[0][0].content).toContain('最多 21 积分');
+  expect(api.confirm.mock.calls[0][0].content).toContain('管理员在后台审阅');
+  await waitFor(() => expect(api.draft).toHaveBeenCalledOnce());
+  expect(api.draft.mock.calls[0][0]).toBe('p');
+  expect(api.draft.mock.calls[0][1]).toMatchObject({ executionId: 'X1', maxCost: 21 });
+  expect(api.draft.mock.calls[0][1].clientRequestId).toEqual(expect.any(String));
+  await waitFor(() => expect(screen.getByText(/已存成技能草稿 v3，去掉了 2 处素材引用/)).toBeDefined());
+  expect(screen.getByText(/要管理员在后台审阅、发布后才会生效/)).toBeDefined();
+  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  SKILL_DRAFT_POLL_MS.value = 1500;
+});
+
+test('the draft entry is only for operators, only under a summary of finished work, and a 403 says why', async () => {
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [summaryMessage] });
+  const view = await ready();
+  expect(screen.getByRole('group', { name: '接下来可以' })).toBeDefined();
+  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  view.unmount();
+
+  api.role = 'super_admin';
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [{ ...summaryMessage, clientMessageId: 'c-1' }] });
+  const plain = await ready();
+  expect(screen.queryByRole('button', { name: '把这次制作整理成技能草稿' })).toBeNull();
+  plain.unmount();
+
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [summaryMessage] });
+  api.draft.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_SKILL_DRAFT_FORBIDDEN', message: '没有权限' }, 403));
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: '把这次制作整理成技能草稿' }));
+  await waitFor(() => expect(screen.getByText('只有运营账号可以把制作整理成技能草稿。')).toBeDefined());
 });

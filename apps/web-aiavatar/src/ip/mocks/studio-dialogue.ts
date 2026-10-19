@@ -19,20 +19,50 @@
 import type {
   StudioBranchRequest, StudioCheckResultData, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage,
   StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
-  StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillSummary, StudioTokenBilling,
+  StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillDraftOutput, StudioSkillDraftRequest,
+  StudioSkillRequiredDetails, StudioSkillSummary, StudioTokenBilling,
 } from "@ai-star-eco/types/ip-studio-workflow";
 import type { IpRun, IpRunOutput } from "@ai-star-eco/types";
+import { ApiError } from "@ai-star-eco/api-client";
 import { dialogueReducer, emptyDialogueStore, isPlaceholderMessage, type DialogueStore } from "@/canvas-bridge/studio-dialogue-store";
-import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockRegisterRun, mockStore } from "./ip-studio";
+import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockReadRun, mockRegisterRun, mockStore } from "./ip-studio";
 
 export const MOCK_STUDIO_SKILLS: StudioSkillSummary[] = [{
-  key: "video-recreation", name: "短视频复刻", version: 1, status: "active", planning: "dynamic",
+  key: "video-recreation", name: "短视频复刻", version: 2, status: "active", planning: "dynamic",
   summary: "参考一条短视频的节奏和反转，换成你的商品和人物重新做一版。",
   methodExamples: ["保留原片动作，换商品和台词", "关键画面重做"],
   operations: { analysis: ["recreation", "text"], production: ["text", "image", "video", "check", "assemble"] },
   limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 28, maxAutoFixPerSegment: 1 },
   checks: ["subject", "caption"], autoFixChecks: [], requiredCapabilities: ["video"],
+  triggers: { media: ["video"], keywords: ["复刻", "照着"], default: true },
+}, {
+  key: "talking-head-seeding", name: "口播种草", version: 1, status: "active", planning: "dynamic",
+  summary: "按商品卖点写口播，配商品特写和字幕，做一条 30 秒以内的种草视频。",
+  methodExamples: ["先写口播再配画面"],
+  operations: { analysis: ["text"], production: ["text", "image", "video", "check", "assemble"] },
+  limits: { maxSourceSec: 30, maxSegments: 4, maxSegmentSec: 10, maxSteps: 16, maxAutoFixPerSegment: 1 },
+  checks: ["caption"], autoFixChecks: [], requiredCapabilities: ["video"],
+  triggers: { media: ["image"], keywords: ["口播", "种草"] },
 }];
+const mockSkill = (key?: string) => MOCK_STUDIO_SKILLS.find(s => s.key === key && s.status === "active");
+/** Like the server's intent routing on a thread's first turn: an explicit choice wins, a tie asks the user. */
+function routeSkill(t: MockThread, request: StudioPostMessageRequest): StudioSkillSummary {
+  if (request.skillKey && t.thread.skillKey && request.skillKey !== t.thread.skillKey)
+    throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这条对话已经在按另一种方法制作；要换方法，请从某条消息重新开始" }, 400);
+  if (request.skillKey) {
+    const chosen = mockSkill(request.skillKey);
+    if (!chosen) throw new ApiError({ code: "STUDIO_SKILL_NOT_FOUND", message: "这个技能已经停用了，换一个再发" }, 404);
+    return chosen;
+  }
+  const bound = mockSkill(t.thread.skillKey);
+  if (bound) return bound;
+  const hits = MOCK_STUDIO_SKILLS.filter(s => s.status === "active" && s.triggers?.keywords?.some(k => request.text.includes(k)));
+  if (hits.length > 1) {
+    const details: StudioSkillRequiredDetails = { skills: hits.map(s => ({ key: s.key, name: s.name, summary: s.summary })) };
+    throw new ApiError({ code: "STUDIO_SKILL_REQUIRED", message: "这条消息有几种做法都说得通，请选一个", details }, 400);
+  }
+  return hits[0] || MOCK_STUDIO_SKILLS.find(s => s.status === "active" && s.triggers?.default) || MOCK_STUDIO_SKILLS[0];
+}
 
 /** Delay between streamed pieces of the canned answer. Tests may lower it. */
 export const mockDialogueTiming = { tickMs: 90 };
@@ -211,7 +241,7 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
   const messageId = startTurn(t), canvas = canvasSize(projectId), tool = nextId("tool");
   const fingerprint = "mock-analysis-v1";
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-analysis", revision: 1, fingerprint, plan: {
-    summary: "先拉片，弄清原片每一段在做什么，再给你制作方案。", questions: [], skillKey: "video-recreation", skillVersion: 1, stage: "analysis", revision: 1, fingerprint,
+    summary: "先拉片，弄清原片每一段在做什么，再给你制作方案。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "analysis", revision: 1, fingerprint,
     steps: [
       { id: "s1", operation: "recreation", title: "拉片：切成 2 段", prompt: "", referenceNodeIds: [], quotedCost: 20 },
       { id: "s2", operation: "text", title: "整理每段的画面和节奏", prompt: "", referenceNodeIds: [], quotedCost: 6, dependsOn: ["s1"] },
@@ -237,7 +267,7 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
 function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
   const e = p.execution!, messageId = startTurn(t), tool = nextId("tool"), fingerprint = "mock-production-v2";
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint, plan: {
-    summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: "video-recreation", skillVersion: 1, stage: "production", revision: 2, fingerprint,
+    summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "production", revision: 2, fingerprint,
     recommendedApproachId: "keep-motion",
     approaches: [
       { id: "keep-motion", title: "保留动作，换商品和台词", summary: "两段都参考原片的动作和机位，只换商品和台词。", rationale: "原片的笑点在动作和反转，保留它们最稳。",
@@ -306,8 +336,8 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
     { run: () => {
       const suggestions = ["给第 1 段加字幕再检查", "第 2 段换成横屏", "保存成模板"];
       emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
-      // Like the server's completion summary: the follow-ups stay on the message across reloads.
-      patchViewMessage(t, messageId, m => ({ ...m, suggestions }));
+      // Like the server's completion summary: one per execution (keyed by it), follow-ups kept across reloads.
+      patchViewMessage(t, messageId, m => ({ ...m, suggestions, clientMessageId: `exec-summary-${e.id}` }));
       p.stage = "done";
     } },
   ]);
@@ -345,6 +375,9 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   const known = t.results.get(request.clientMessageId);
   if (known) return later(known);
   const busy = t.running;
+  let skill: StudioSkillSummary;
+  try { skill = routeSkill(t, request); } catch (error) { return Promise.reject(error); }
+  if (!t.thread.skillKey) { t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; }
   const message: StudioDialogueMessage = { id: nextId("msg"), threadId, seq: ++t.thread.lastSeq, role: "user", text: request.text, blocks: [],
     pinnedNodeIds: request.pinnedNodeIds, attachmentNodeIds: request.attachmentNodeIds, clientMessageId: request.clientMessageId, status: busy ? "queued" : "done", createdAt: now() };
   t.view = { ...t.view, messages: [...t.view.messages, message] };
@@ -409,7 +442,7 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
   if (request.stage === "analysis") {
     if (p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) && p.execution.stage === "analysis") return later(p.execution);
     const id = nextId("exec");
-    p.execution = { id, projectId, threadId: t.thread.id, skillKey: "video-recreation", skillVersion: 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
+    p.execution = { id, projectId, threadId: t.thread.id, skillKey: t.thread.skillKey || "video-recreation", skillVersion: t.thread.skillVersion || 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
       planFingerprint: request.planFingerprint, status: "running", steps: withNodeIds(id, [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"])]),
       budgets: [{ stage: "analysis", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }],
       startedAt: at, deadlineAt: new Date(Date.now() + 90 * 60_000).toISOString(), updatedAt: at };
@@ -505,5 +538,28 @@ function seedCompleted(projectId: string, p: MockProject, t: MockThread): Studio
   return clone(execution);
 }
 
+/**
+ * 「整理成技能草稿」: like the server, a paid text run (free here) reads the finished execution and saves a draft
+ * version that an admin has to review and publish. Same clientRequestId → the same run.
+ */
+const draftRuns = new Map<string, string>();
+export async function mockCreateSkillDraft(projectId: string, request: StudioSkillDraftRequest): Promise<IpRun> {
+  const known = draftRuns.get(request.clientRequestId);
+  if (known) return later(mockReadRun(known), 60);
+  const p = project(projectId);
+  const e = p.execution?.id === request.executionId ? p.execution : undefined;
+  if (!e) throw new ApiError({ code: "STUDIO_PLAN_EXECUTION_NOT_FOUND", message: "找不到这次制作，刷新后再试" }, 404);
+  if (!["done", "partial"].includes(e.status)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这次制作还没做完，做完再整理" }, 400);
+  const skill = MOCK_STUDIO_SKILLS.find(s => s.key === e.skillKey) || MOCK_STUDIO_SKILLS[0];
+  const skillDraft: StudioSkillDraftOutput = { skillKey: skill.key, version: skill.version + 1, baseVersion: skill.version, changeNote: "口播段只换手里的商品，合并 2 秒内的碎段", strippedReferences: 3 };
+  const at = now(), id = nextId("IPR-draft");
+  const run: IpRun = { id, projectId, nodeId: e.id, kind: "studio-text", status: "running", stage: "queued", pct: 0, cost: 0, inputs: {}, output: { skillDraft, mock: true } as IpRunOutput, createdAt: at };
+  mockRegisterRun(run);
+  const entry = mockStore().runs.get(id);
+  if (entry) entry.durationMs = mockDialogueTiming.tickMs * 20;
+  draftRuns.set(request.clientRequestId, id);
+  return later({ ...run, output: {} }, 60);
+}
+
 /** Tests only: drop all mock threads. */
-export function resetMockDialogue() { projects.clear(); }
+export function resetMockDialogue() { projects.clear(); draftRuns.clear(); }

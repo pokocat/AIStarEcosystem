@@ -27,6 +27,8 @@ export type DialogueQueueState = StudioPostMessageResult['queueState'];
 /** A user message that has not been accepted yet. Accepted messages become ordinary thread messages. */
 export interface DialogueOutboxItem {
   clientMessageId: string; text: string; pinnedNodeIds: string[]; attachmentNodeIds: string[]; maxCost?: number;
+  /** The skill the user picked for this message; a retry sends the same choice. Absent = the server routes. */
+  skillKey?: string;
   createdAt: string; state: 'sending' | 'failed'; error?: string;
   /** The applied seq when the user pressed send; the accepted message sorts right after it, before any reply. */
   afterSeq?: number;

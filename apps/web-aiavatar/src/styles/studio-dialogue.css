@@ -55,6 +55,10 @@
 .ip-surface .studio-dialogue-plan > header span, .ip-surface .studio-dialogue-approval > header span { flex-shrink: 0; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; }
 .ip-surface .studio-dialogue-plan > header small { flex-shrink: 0; color: var(--ink-3); font-size: 11px; }
 .ip-surface .studio-dialogue-plan-summary { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.ip-surface .studio-dialogue-plan-skill { align-self: flex-start; max-width: 100%; margin: -4px 0 0; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-surface .studio-dialogue-skill-draft { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
+.ip-surface .studio-dialogue-skill-draft p { margin: 0; }
+.ip-surface .studio-dialogue-skill-draft .ant-btn { max-width: 100%; white-space: normal; height: auto; min-height: 28px; text-align: left; }
 .ip-surface .studio-dialogue-approaches { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .ip-surface .studio-dialogue-approaches article { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); min-width: 0; }
 .ip-surface .studio-dialogue-approaches article[data-recommended] { border-color: var(--ink-3); background: var(--surface); }

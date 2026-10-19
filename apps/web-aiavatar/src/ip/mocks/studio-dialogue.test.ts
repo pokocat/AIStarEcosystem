@@ -7,8 +7,9 @@ import { approvedCaps, approvedExecutionIds, dialogueReducer, emptyDialogueStore
 import { executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
 import { mockReadRun } from './ip-studio';
 import {
-  mockDialogueConversation, mockDialoguePost, mockDialogueSubscribe, mockDialogueTiming, mockExecutionCreate, mockExecutionGet, mockSeedCompletedExecution, resetMockDialogue,
+  mockCreateSkillDraft, mockDialogueConversation, mockDialoguePost, mockDialogueSubscribe, mockDialogueTiming, mockExecutionCreate, mockExecutionGet, mockSeedCompletedExecution, resetMockDialogue,
 } from './studio-dialogue';
+import { completionExecutionId, skillDraftOutput, skillRequiredChoices } from '@/canvas-bridge/studio-skills';
 
 beforeEach(() => { resetMockDialogue(); mockDialogueTiming.tickMs = 0; });
 
@@ -69,7 +70,28 @@ test('message → streamed text, a work record, a plan and a confirmation; appro
   const restore = projectCanvasOps(live.doc, executionRestoreUpserts(done, runs).map(data => ({ kind: 'node' as const, data, turnId: done.id, restore: true })));
   expect(live.doc.nodes.filter(n => n.metadata?.studio?.kind === 'check')).toHaveLength(1);
   expect(restore.changed).toBe(false);
+  // The plans name the skill the thread was routed to, and the completion summary is keyed by its execution.
+  expect(productionPlan.plan).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
+  expect(snapshot.thread).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
+  const summary = snapshot.messages.at(-1)!;
+  expect(completionExecutionId(summary)).toBe(execution.id);
+  expect(summary.suggestions?.length).toBeGreaterThan(1);
+  // 「整理成技能草稿」: one run per request key, done with the saved draft version.
+  const draft = await mockCreateSkillDraft('p', { clientRequestId: 'd1', executionId: execution.id, maxCost: 0 });
+  expect((await mockCreateSkillDraft('p', { clientRequestId: 'd1', executionId: execution.id, maxCost: 0 })).id).toBe(draft.id);
+  expect(skillDraftOutput(mockReadRun(draft.id))).toMatchObject({ skillKey: 'video-recreation', version: 3, baseVersion: 2 });
 }, 20000);
+
+test('skill routing: a tie asks the user, an explicit choice binds the thread, and a bound thread cannot switch', async () => {
+  const state = await mockDialogueConversation('route');
+  const tie = await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x1', text: '照着这条复刻一条口播' }).catch(e => e);
+  expect(skillRequiredChoices(tie)?.map(s => s.name)).toEqual(['短视频复刻', '口播种草']);
+  expect(tie.status).toBe(400);
+  expect((await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x2', text: '照着这条复刻一条口播', skillKey: 'talking-head-seeding' })).queueState).toBe('accepted');
+  expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'talking-head-seeding', skillVersion: 1 });
+  const switched = await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'video-recreation' }).catch(e => e);
+  expect(switched).toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
+});
 
 test('a canvas whose recreation finished while it was closed: nodes come back from the execution, not from pruned events', async () => {
   const seeded = mockSeedCompletedExecution('closed');

@@ -20,6 +20,13 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('<StudioDialogueComposer');
   expect(assistant).toContain('window.addEventListener(STUDIO_CHECK_COMMAND');
   expect(read('ip/studio-dialogue-session.tsx')).toContain('subscribeStudioDialogue(');
+  // S3: the skill choice, the plan badge and the operator draft action are reachable from the panel.
+  expect(assistant).toMatch(/<Select aria-label="技能"/);
+  expect(assistant).toContain('<StudioDialogueSkillDraft');
+  expect(assistant).toMatch(/completionActions: operator \? completionActions : undefined/);
+  expect(read('ip/studio-dialogue-message.tsx')).toContain('handlers.completionActions?.(message)');
+  expect(read('ip/studio-dialogue-message.tsx')).toContain('skillLabel={handlers.skillLabel?.(block.plan)}');
+  expect(read('ip/studio-dialogue-session.tsx')).toContain('skillKey: input.skillKey');
 });
 
 test('the composer is never disabled as a whole', () => {

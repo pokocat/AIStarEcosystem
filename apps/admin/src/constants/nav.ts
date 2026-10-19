@@ -41,6 +41,7 @@ import {
   Scale,
   CreditCard,
   Boxes,
+  BookMarked,
 } from "lucide-react";
 
 export interface NavItem {
@@ -95,6 +96,8 @@ export const NAV_GROUPS: NavGroup[] = [
       { href: "/ai/usage", label: "租户 / 用户用量", icon: BarChart3, description: "按租户、用户、子产品查看 AI 调用归属与明细接入状态" },
       { href: "/ai/audit", label: "子应用审计", icon: FileSearch, description: "按 web 子应用 / 小程序 / 后台拆分审计与登录事件" },
       { href: "/platform/prompts", label: "Prompt 模板", icon: MessageSquareText, description: "平台级 Prompt 模板、灰度与回滚" },
+      // 服务端 AdminStudioSkillController 只放 SUPER_ADMIN / OPERATOR（不含 FINANCE_ADMIN），菜单同口径，免得财务看到一个必然 403 的页面。
+      { href: "/platform/studio-skills", label: "Studio 技能", icon: BookMarked, roles: ["OPERATOR"], description: "全能创作对话的制作方法：版本、试跑、草稿审阅与回滚" },
       { href: "/platform/agent-bots", label: "Agent 平台", icon: Bot, description: "Coze / Dify 等 Agent Bot 配置与 token 加密存储" },
     ],
   },

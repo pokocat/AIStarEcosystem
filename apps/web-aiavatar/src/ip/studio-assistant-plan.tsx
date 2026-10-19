@@ -96,7 +96,7 @@ export function studioPlanApproaches(plan: StudioPlan) {
   const chosen = plan.confirmedApproachId || plan.recommendedApproachId;
   return [...list].sort((a, b) => Number(b.id === chosen) - Number(a.id === chosen));
 }
-export function StudioPlanCard({ block, onChooseApproach }: { block: DialoguePlanBlock; onChooseApproach?: (title: string) => void }) {
+export function StudioPlanCard({ block, skillLabel, onChooseApproach }: { block: DialoguePlanBlock; skillLabel?: string; onChooseApproach?: (title: string) => void }) {
   const plan = block.plan;
   const approaches = studioPlanApproaches(plan);
   const stage = plan.stage === 'analysis' ? '分析' : plan.stage === 'production' ? '制作' : undefined;
@@ -104,6 +104,7 @@ export function StudioPlanCard({ block, onChooseApproach }: { block: DialoguePla
   const list = (label: string, items: string[]) => items.length ? <p className="studio-dialogue-plan-list"><b>{label}</b><span>{items.join('；')}</span></p> : null;
   return <section className="studio-dialogue-plan" aria-label="制作计划">
     <header><ClipboardList size={16} aria-hidden="true"/><h4>制作计划</h4>{stage && <span>{stage}</span>}{!!block.revision && <small>第 {block.revision} 版</small>}</header>
+    {skillLabel && <p className="studio-dialogue-plan-skill" title={skillLabel}>{skillLabel}</p>}
     {!!plan.summary && <p className="studio-dialogue-plan-summary">{plan.summary}</p>}
     {!!approaches.length && <div className="studio-dialogue-approaches">{approaches.map(a => {
       const recommended = a.id === plan.recommendedApproachId, confirmed = a.id === plan.confirmedApproachId;

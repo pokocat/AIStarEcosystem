@@ -38,7 +38,9 @@ function writeCanvasCursor(threadId: string, seq: number) {
 /** Statuses that prove the message was not accepted; anything else may have reached the server. */
 const DEFINITE_REJECTION = new Set([400, 402, 403, 404, 409, 413, 422, 503]);
 export type DialogueSendOutcome = { state: 'sent' } | { state: 'rejected' | 'unknown'; error: unknown };
-export type DialogueSendInput = { text: string; pinnedNodeIds: string[]; attachmentNodeIds: string[]; maxCost?: number };
+export type DialogueSendInput = { text: string; pinnedNodeIds: string[]; attachmentNodeIds: string[]; maxCost?: number;
+  /** Skill chosen in the settings; omitted = 「自动」 (the server routes by intent). */
+  skillKey?: string };
 
 /** How many earlier executions of this thread are read back for restoring their canvas nodes. */
 const LINKED_EXECUTIONS = 5;
@@ -161,7 +163,8 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     try {
       const result = await postStudioDialogueMessage(projectId, s.thread.id, { clientMessageId, text: input.text,
         ...(input.pinnedNodeIds.length ? { pinnedNodeIds: input.pinnedNodeIds } : {}), ...(input.attachmentNodeIds.length ? { attachmentNodeIds: input.attachmentNodeIds } : {}),
-        ...(revision?.type === 'plan' ? { expectedPlanRevision: revision.revision } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}) });
+        ...(revision?.type === 'plan' ? { expectedPlanRevision: revision.revision } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}),
+        ...(input.skillKey ? { skillKey: input.skillKey } : {}) });
       dispatch({ type: 'outbox.sent', clientMessageId, result, createdAt: new Date().toISOString() });
       return { state: 'sent' };
     } catch (error) {

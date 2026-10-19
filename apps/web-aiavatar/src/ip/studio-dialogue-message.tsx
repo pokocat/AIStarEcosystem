@@ -6,7 +6,7 @@ import { useState, type ReactNode } from 'react';
 import { Button } from 'antd';
 import { GitBranch } from 'lucide-react';
 import { formatCredits } from '@ai-star-eco/api-client';
-import type { StudioDialogueMessage, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioDialogueMessage, StudioMessageBlock, StudioPlan } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { blockKey, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialogueToolBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { proposalFieldValue } from '@/canvas-bridge/studio-plan-execution';
@@ -27,6 +27,10 @@ export type DialogueMessageHandlers = {
   approvedCaps?: (block: DialogueApprovalBlock) => ApprovedCaps | undefined;
   onAdopt: (block: DialogueAdoptionBlock) => Promise<void>;
   onBranch?: (messageId: string) => Promise<void>;
+  /** 「按技能：名称 v2」 for a plan planned with a skill version; undefined hides the badge. */
+  skillLabel?: (plan: StudioPlan) => string | undefined;
+  /** Extra actions under an execution's completion summary (operators: 「整理成技能草稿」); null when none. */
+  completionActions?: (message: StudioDialogueMessage) => ReactNode;
 };
 
 function AdoptionProposal({ block, nodes, readOnly, onAdopt }: { block: DialogueAdoptionBlock; nodes: CanvasNodeData[]; readOnly?: boolean; onAdopt: (block: DialogueAdoptionBlock) => Promise<void> }) {
@@ -55,7 +59,7 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
   const { handlers, nodes, readOnly, shortfalls } = props;
   switch (block.type) {
     case 'tool_call': return <StudioDialogueToolCard key={blockKey(block)} block={block}/>;
-    case 'plan': return <StudioPlanCard key={blockKey(block)} block={block} onChooseApproach={readOnly ? undefined : title => handlers.onCompose(`改用「${title}」这个做法，重新报价`)}/>;
+    case 'plan': return <StudioPlanCard key={blockKey(block)} block={block} skillLabel={handlers.skillLabel?.(block.plan)} onChooseApproach={readOnly ? undefined : title => handlers.onCompose(`改用「${title}」这个做法，重新报价`)}/>;
     case 'approval': return readOnly
       ? <p key={blockKey(block)} className="studio-dialogue-note">确认卡（{block.status === 'approved' ? '已确认' : '没有确认'}）</p>
       : <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId] ?? block.shortfall} planReady={handlers.planReady(block)}
@@ -121,6 +125,7 @@ export function StudioDialogueMessageView(props: MessageProps) {
         <ul>{tools.map(t => <li key={t.toolCallId}><span>{toolTitle(t)}</span><span>{formatCredits(t.creditsActual || 0)} 积分</span></li>)}</ul></details>}
     </footer>}
     {!!suggestions?.length && !readOnly && <StudioDialogueSuggestions items={suggestions} onUse={handlers.onCompose}/>}
+    {!user && !readOnly && handlers.completionActions?.(message)}
     {!readOnly && handlers.onBranch && finished && <div className="studio-dialogue-message-actions">
       <button type="button" className="studio-dialogue-link" disabled={branching} title="从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}><GitBranch size={13} aria-hidden="true"/>{branching ? '正在新建' : '从这里重新开始'}</button>
     </div>}
