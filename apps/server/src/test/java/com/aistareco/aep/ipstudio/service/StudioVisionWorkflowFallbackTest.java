@@ -47,9 +47,15 @@ class StudioVisionWorkflowFallbackTest {
         var endpoint=AiModelEndpoint.builder().id("vision").model("v").modelsJson("[{\"id\":\"v\",\"supportsVision\":true}]").enabled(true).build();
         var candidate=AiAppEndpointCandidate.builder().maxRefImages(9).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"vision","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
+        // The worker resolves the accepted endpoint (accept and run share one rule since the S1–S3 merge).
+        when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"vision","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,candidate,true)));
         var calls=new AtomicInteger();var successes=new AtomicInteger();
         when(models.invokeChatOnEndpoint(eq(endpoint),any(),anyList(),anyMap())).thenAnswer(call->{
-            int n=calls.getAndIncrement();if(n==0){if(unrelated!=null)throw unrelated;throw StudioVisionFallbackTest.memory();}
+            // Layered recovery (2026-10-19): the worker first retries the same frames smaller (BUDGET_EDGES); the vendor here
+            // refuses the original and every smaller size, so only then does the native-size batch fallback run.
+            int n=calls.getAndIncrement();
+            if(n==0&&unrelated!=null)throw unrelated;
+            if(n<=StudioVisualContext.BUDGET_EDGES.length)throw StudioVisionFallbackTest.memory();
             List<Map<String,Object>> messages=call.getArgument(2);String system=messages.get(0).get("content").toString();
             @SuppressWarnings("unchecked") var parts=(List<Map<String,Object>>)messages.get(1).get("content");
             int images=(int)parts.stream().filter(p->"image_url".equals(p.get("type"))).count();String content;
