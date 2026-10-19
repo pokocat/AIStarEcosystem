@@ -7,3 +7,16 @@
 - 方案与实现：`docs/ip-studio-conversational-video-recreation-plan.md`；实现说明 `apps/server/README.md`「Studio 对话 agent、技能与计划执行」、`apps/web-aiavatar/PRODUCT.md`「2026-10-18 · 全能创作」、`specs/BUSINESS_RULES.md` 同名节。本地 Codex 七轮验收报告与脚本在工作树 `.studio-e2e/`（gitignored）。
 - **上线后要做的配置**（后台「AI 模型与 Key」）：给 Studio 文本端点按实际能力勾「支持工具调用 / 支持流式」（默认都按不支持：对话走 JSON 动作协议、整段一次给出，不假流式）；确认 Studio 文本端点有按量售价（否则对话 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`）。
 - **未验证**：S0 付费实测（真实供应商换主体 / 创意重写效果、检查可靠性）尚未做，`autoFixChecks` 保持为空；真实供应商流式延迟、企业付款、跨节点租约竞争未在生产验证。
+
+## 上线后第一次真对话暴露的问题与热修（2026-10-18 晚，仅 server）
+
+线上对话模型是聚算 `ai-studio-jusuan-qwen38`（Qwen3.8 27B）：已声明看图，**未**声明流式、工具调用和 `response_format`。S1–S3 此前只用确定性假响应验收，真模型第一次对话连撞三处格式问题，每一处都发生在「要求模型按我们的格式输出」的地方：
+
+| 现象 | 根因 | 热修 |
+|---|---|---|
+| 助手回复里直接露出 `<tool_call>{...}</tool_call>`，没有执行任何动作 | 解析器只认 `<<<studio-actions>>>` 分隔行，Qwen 习惯写标签形式 | 发布 `20261018-studio-toolcall-tag`（`adb30018`）：同一套回退协议也接受 `<tool_call>` 块（`tool`/`name`、`args`/`arguments`），流式过滤器同样在标签处截断，写不完整的块整批不执行 |
+| 「整理制作方案」连续失败，助手最终如实说明方案工具没通过 | 对话里的 `propose_plan` 另写了一份规划输入，只列操作名，漏了各操作 `settings` 字段契约，模型给 recreation 步骤编了 `videoId`/`analysisType`；回复还裹着 ```json 围栏；`questions` 写成 `{question, default}` 对象，校验器只收字符串 | 发布 `20261018-studio-plan-contract`（`237c1134`）：规划输入与执行侧、后台试跑共用 `StudioWorkflowService.skillPlanStageText/skillPlanConstraints/planCapabilities`；新增 `ModelJson` 去围栏解析（执行侧文字任务与后台试跑同样使用）；`questions` 两种写法都收。校验仍然严格，猜错键名照旧被拒并带可操作的原因 |
+
+- 提示词文件**没有改**。`prompt_template` 行首次启动入库后，只有 `PromptTemplateSeeder.SEED_VERSION` 变更才会刷新「没人改过」的行；生产库里 Studio 的 8 条提示词与文件长度一致，`dap.ip_canvas_image` 是运营改过的版本 3，刷新也不会碰它。
+- 测试：`ProposePlanToolTest`（用真实回复形状：围栏 + 问题对象 + 正确/猜错的 settings）、`ModelJsonTest`、`StudioPlanValidatorSkillTest` 新增 2 项、`DialogueActionProtocolTest` 新增 4 项。整个 `ipstudio` 包 623 项里只有 3 项失败（`IpVideoModelChoiceWiringTest` 2 项、`StudioAssetCatalogPricingTest` 1 项），在未改动的开发分支上同样失败，与本次无关。
+- 两次发布都只动 server，`verify.sh` ALL GREEN，重启后 `-ERROR` 0 条（该 grep 先在近三天日志里验证能命中 13 条）。
