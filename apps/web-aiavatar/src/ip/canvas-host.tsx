@@ -182,7 +182,7 @@ function Host({ projectId }: { projectId: string }) {
         <button
           onClick={() => setPublishOpen(true)}
           className="studio-host-publish h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
-          style={{ background: "var(--action)", color: "var(--on-action)" }}
+          style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
           <Send className="w-3.5 h-3.5" />
           发布
@@ -209,7 +209,7 @@ function Host({ projectId }: { projectId: string }) {
         <button
           onClick={() => window.location.reload()}
           className="px-4 py-2 rounded-xl text-[12.5px] font-bold transition hover:brightness-95"
-          style={{ background: "var(--action)", color: "var(--on-action)" }}
+          style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
           重新加载
         </button>
