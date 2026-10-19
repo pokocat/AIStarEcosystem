@@ -54,8 +54,10 @@ test('the dialogue is actually mounted and wired', () => {
   expect(workspace).not.toContain('className="studio-command-strip"');
   expect(workspace).toContain('className="studio-ai-orb"');
   expect(workspace).toContain('className="studio-tasks-launch"');
-  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '专项创作', '查找节点', '整理画布']) expect(canvas).toContain(`aria-label="${label}"`);
-  expect(canvas).not.toContain('aria-label="删除选中节点" onClick');
+  const rail = canvas.slice(canvas.indexOf('<nav className="studio-flow-tools"'), canvas.indexOf('</nav>', canvas.indexOf('<nav className="studio-flow-tools"')));
+  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '专项创作', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
+  // Node operations left the rail for the context menu and the multi-select bar.
+  for (const label of ['删除选中节点', '复制选中节点', '更多节点操作']) expect(rail).not.toContain(`aria-label="${label}"`);
   expect(canvas).toContain('className="studio-flow-ai-badge"');
   expect(read('ip/canvas-host.tsx')).toContain('className="studio-host-more-button"');
   expect(read('styles/ip-desktop.css')).toContain('--ai-gradient:');
