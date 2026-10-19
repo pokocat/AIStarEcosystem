@@ -29,8 +29,10 @@
 
 ### 2026-10-19 · 成片编辑器改版后续（前端已改，本地未发布）
 
-- [ ] **服务端把「配音过长 / 字幕超时」挪到拼接之前判**：`DramaAssembleService.assembleKeys` 先下载、拼接（可能整段重编码）完，`StudioPackagingService.decorate` 才判 `STUDIO_SPEECH_TOO_LONG` / 「字幕时间超过成片时长」，用户白等一次。各段 `probeMedia` 的时长之和在拼接前就有了，可以先判再拼。前端（`studio-work-clips.ts` 的 `studioCaptionProblem` 与 `StudioWorkEditor` 的配音判定）已按同一规则提前拦，服务端仍是最终裁判。
-- [ ] **成片编辑器只支持整段拼接**：没有单段裁剪、转场、单段音量。用户要掐头去尾目前只能回画布重生成或换素材；要不要做先看真实使用。
+- [x] ~~**服务端把「配音过长 / 字幕超时」挪到拼接之前判**~~ **2026-10-19 完成**：`DramaAssembleService.assembleKeys` 在下载完各段、拼接之前调 `StudioPackagingService.precheck`（各段时长之和 + 拼接容差），与 `decorate` 共用 `checkCaptions` / `checkSpeech`，配音只下载一次；测试 `DramaAssembleStudioPrecheckTest`。原描述：`DramaAssembleService.assembleKeys` 先下载、拼接（可能整段重编码）完，`StudioPackagingService.decorate` 才判 `STUDIO_SPEECH_TOO_LONG` / 「字幕时间超过成片时长」，用户白等一次。各段 `probeMedia` 的时长之和在拼接前就有了，可以先判再拼。前端（`studio-work-clips.ts` 的 `studioCaptionProblem` 与 `StudioWorkEditor` 的配音判定）已按同一规则提前拦，服务端仍是最终裁判。
+- [x] ~~**成片编辑器只支持整段拼接**~~ **2026-10-19 完成（高级编辑）**：成片页加「高级编辑」（Twick），可掐头去尾、切开、删段自动补位、加文字和字幕、两条音轨各调音量；导出交服务端 `StudioEditGraph` 用 FFmpeg 合成。转场、变速、画中画不做。
+- [ ] **高级编辑的成片不做响度归一**：一键成片的包装链也没有统一响度，高级编辑按素材原音量混音（多路相加不压低）。真用户反馈「忽大忽小」再加两遍 loudnorm（`ClipLoudnessNormalizer` 的做法）。
+- [ ] **Twick 是打了补丁的固定版本 0.15.31**：`patches/@twick__media-utils@0.15.31.patch`、`patches/@twick__timeline@0.15.31.patch` 修「清空 video.src 触发 onerror 后无限重试」（原版 2 秒内建出 3 万个 video）。升级前先看上游是否已修；升级后重跑 `node apps/web-aiavatar/scripts/scope-twick-css.mjs` 重新生成 `twick-scoped.css`，并在浏览器里开关一次高级编辑，确认 `<body>` 下没有遗留的屏幕外 `<video>`。
 - [ ] **整片预览是前端连放**：画面比例按成片画幅加黑边、文字按服务端位置近似叠加，和成片可能有细微差别（字体、换行）；界面已注明「合成后以成片为准」。
 
 ### 2026-10-18 · 全能创作对话驱动视频复刻（S1/S2 本地实现，未发布）

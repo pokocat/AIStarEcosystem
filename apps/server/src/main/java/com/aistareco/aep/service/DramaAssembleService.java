@@ -269,6 +269,18 @@ public class DramaAssembleService {
 
             Path out = workDir.resolve("episode.mp4");
             double tolerance = durationTolerance(expected);
+            Path speech = null;
+            if (studio && packaging != null) {
+                if (studioPackaging == null) throw new IllegalStateException("Studio packaging renderer unavailable");
+                if (packaging.voiceoverStorageKey() != null) {
+                    String speechUrl = signer.signKey(packaging.voiceoverStorageKey());
+                    if (speechUrl == null || speechUrl.isBlank()) throw new IllegalStateException("Speech URL unavailable");
+                    speech = download(speechUrl, workDir.resolve("speech.media"));
+                }
+                // 拼接前先按各段时长之和判一次配音 / 字幕（2026-10-19）：注定超长的不再等整段拼接、重编码完才失败。
+                // 放宽 tolerance 是因为成片在质量门内可以比各段之和长这么多 —— 这里只拒绝拼完也一定会被拒的。
+                studioPackaging.precheck(packaging, speech, expected, tolerance);
+            }
             double actual = -1;
             // Studio lets users choose an output ratio after selecting clips. A uniform input
             // must still be normalized when it does not match that explicit choice.
@@ -317,13 +329,7 @@ public class DramaAssembleService {
             }
 
             if(studio && packaging!=null) {
-                if(studioPackaging==null)throw new IllegalStateException("Studio packaging renderer unavailable");
-                Path speech=null;
-                if(packaging.voiceoverStorageKey()!=null) {
-                    String speechUrl=signer.signKey(packaging.voiceoverStorageKey());
-                    if(speechUrl==null||speechUrl.isBlank())throw new IllegalStateException("Speech URL unavailable");
-                    speech=download(speechUrl,workDir.resolve("speech.media"));
-                }
+                // 配音在拼接前已下载并预检过；这里按成片实际时长做最终裁判。
                 out=studioPackaging.decorate(out,workDir,packaging,speech);
                 actual=gatedDuration(out);
                 if(actual<0 || Math.abs(actual-expected)>tolerance)throw new IllegalStateException("包装后成片时长不匹配");
@@ -346,6 +352,77 @@ public class DramaAssembleService {
             // 技术细节（下载 HTTP 码 / ffmpeg 报错）只进日志，不直出给用户（§8.0.1 ①：5xx 笼统）。
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_FAILED",
                     "成片没合成出来，稍后再试一次。", e.toString());
+        } finally {
+            cleanup(workDir);
+        }
+    }
+
+    /**
+     * 成片高级编辑（2026-10-19）：按编辑器导出的时间线合成。合成图见 {@link com.aistareco.aep.ipstudio.service.StudioEditGraph}；
+     * 素材按 key 取（调用方已校验归属），文字和字幕先画成整幅透明 PNG 再叠，用户文字不进滤镜语法。
+     * 产物和一键合成一样落 Studio 的成片前缀、记存储用量。
+     */
+    public AssembledVideo renderStudioEdit(String userId, String projectId, com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline edit) {
+        com.aistareco.aep.ipstudio.service.StudioEditGraph.validate(edit);
+        if (studioPackaging == null) throw new IllegalStateException("Studio packaging renderer unavailable");
+        Path workDir = null;
+        try {
+            workDir = Files.createTempDirectory("studio-edit-");
+            int width = edit.width(), height = edit.height();
+            double total = com.aistareco.aep.ipstudio.service.StudioEditGraph.total(edit);
+            var clips = com.aistareco.aep.ipstudio.service.StudioEditGraph.sequence(edit.clips());
+            var audios = edit.audios() == null ? List.<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditMedia>of() : edit.audios();
+            Map<String, Path> files = new LinkedHashMap<>();
+            Map<String, FfmpegRunner.MediaProbe> probes = new LinkedHashMap<>();
+            List<com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditMedia> all = new ArrayList<>(clips);
+            all.addAll(audios);
+            for (var media : all) {
+                String key = media.storageKey();
+                if (files.containsKey(key)) continue;
+                String url = signer.signKey(key);
+                if (url == null || url.isBlank()) url = signer.publicUrlFor(key);
+                if (url == null || url.isBlank()) throw new IllegalStateException("素材没有可读地址 key=" + key);
+                Path local = download(url, workDir.resolve("media_" + files.size() + ".bin"));
+                FfmpegRunner.MediaProbe probe = ffmpeg.probeMedia(local.toFile());
+                if (!probe.readable() || probe.durationSec() <= 0) throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "STUDIO_EDIT_BAD_MEDIA",
+                        "有一段素材读不出来，换一段再导出。", "key=" + key + " readable=" + probe.readable() + " dur=" + probe.durationSec());
+                files.put(key, local);
+                probes.put(key, probe);
+            }
+            for (var clip : clips) if (!probes.get(clip.storageKey()).hasVideo()) throw BusinessException.badRequest("STUDIO_EDIT_INVALID", "有一段视频读不出画面，换一段再导出");
+            for (var audio : audios) if (!probes.get(audio.storageKey()).hasAudio()) throw BusinessException.badRequest("STUDIO_EDIT_INVALID", "有一条音频没有声音，换一条再导出");
+            List<com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay> overlays = new ArrayList<>();
+            int n = 0;
+            if (edit.texts() != null) for (var text : edit.texts()) {
+                Path png = workDir.resolve("text_" + (n++) + ".png");
+                javax.imageio.ImageIO.write(studioPackaging.editText(width, height, text.text(), text.x(), text.y(), text.fontSize(), text.color()), "png", png.toFile());
+                overlays.add(new com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay(png, text.start(), text.end()));
+            }
+            if (edit.captions() != null) for (var caption : edit.captions()) {
+                Path png = workDir.resolve("caption_" + (n++) + ".png");
+                javax.imageio.ImageIO.write(studioPackaging.editCaption(width, height, caption.text()), "png", png.toFile());
+                overlays.add(new com.aistareco.aep.ipstudio.service.StudioEditGraph.Overlay(png, caption.start(), caption.end()));
+            }
+            Path out = workDir.resolve("edit.mp4");
+            ffmpeg.runFfmpeg(com.aistareco.aep.ipstudio.service.StudioEditGraph.args(width, height, total, clips,
+                    clips.stream().map(c -> files.get(c.storageKey())).toList(), clips.stream().map(c -> probes.get(c.storageKey()).hasAudio()).toList(),
+                    audios, audios.stream().map(a -> files.get(a.storageKey())).toList(), overlays, out), 600_000);
+            double actual = gatedDuration(out);
+            if (actual < 0 || Math.abs(actual - total) > durationTolerance(total))
+                throw new IllegalStateException("剪辑成片时长不对 expected=" + total + " actual=" + actual);
+            String key = studioAssemblyPrefix(userId) + safeSegment(projectId) + "_edit_"
+                    + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
+            key = cdnUploader.upload(out, key, "video/mp4").key();
+            long bytes = Files.size(out);
+            storage.record("aiavatar", userId, "成片", projectId, key, bytes);
+            log.info("[studio-edit] ok user={} project={} clips={} audios={} overlays={} dur={}s key={}",
+                    userId, projectId, clips.size(), audios.size(), overlays.size(), Math.round(actual), key);
+            return new AssembledVideo(key, Math.round(actual), bytes);
+        } catch (BusinessException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("[studio-edit] failed user={} project={}: {}", userId, projectId, e.toString());
+            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "DRAMA_ASSEMBLE_FAILED", "成片没合成出来，稍后再试一次。", e.toString());
         } finally {
             cleanup(workDir);
         }

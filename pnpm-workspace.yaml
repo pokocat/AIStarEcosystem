@@ -7,3 +7,6 @@ packages:
   - "apps/web-aiavatar"
   - "apps/web-star"
   - "apps/admin"
+patchedDependencies:
+  '@twick/media-utils@0.15.31': patches/@twick__media-utils@0.15.31.patch
+  '@twick/timeline@0.15.31': patches/@twick__timeline@0.15.31.patch

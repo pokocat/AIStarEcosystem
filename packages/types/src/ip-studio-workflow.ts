@@ -103,6 +103,8 @@ export interface StudioRunRequest {
   /** A ceiling, never a caller-defined price. Rejected before any freeze if the price increases. */
   maxCost?: number;
   packaging?: StudioPackaging;
+  /** assemble only: 成片高级编辑的时间线；有它时按时间线合成，packaging 不用。 */
+  edit?: StudioEditTimeline;
   video?: StudioVideoSettings;
   /** recreation(mode=segments) only: segment length cap; "model" reads the selected video model contract. */
   recreation?: { maxSegmentSec: number | "model"; videoModel: string };
@@ -124,7 +126,32 @@ export interface StudioWorkDraft {
   cta: string;
   captionText: string;
   voiceoverStorageKey?: string;
+  /** 高级编辑（Twick）的工程；有它时成片以它为准。素材只存 storageKey，打开时再取。 */
+  advanced?: StudioAdvancedEdit;
 }
+/** 高级编辑工程：Twick 的 ProjectJSON，媒体元素的 `metadata.storageKey` 是真值，`props.src` 不落库。 */
+export interface StudioAdvancedEdit {
+  engine: "twick";
+  savedAt: string;
+  project: { tracks: unknown[]; version: number; [key: string]: unknown };
+}
+/**
+ * 交给服务端合成的剪辑清单（由高级编辑的工程转出来，时间单位秒）。
+ * 视频按开始时间排成一条主轨，空隙补黑；音频、文字、字幕按时间叠上去。
+ */
+export interface StudioEditTimeline {
+  width: number;
+  height: number;
+  clips: StudioEditMedia[];
+  audios: StudioEditMedia[];
+  texts: StudioEditText[];
+  captions: StudioEditCaption[];
+}
+/** start / end 是在成片里的位置；from 是从素材的第几秒开始取；volume 0–2。 */
+export interface StudioEditMedia { storageKey: string; start: number; end: number; from: number; volume: number }
+/** x / y 是相对画面中心的偏移（像素）；color 为 #RRGGBB。 */
+export interface StudioEditText { text: string; start: number; end: number; x: number; y: number; fontSize: number; color: string }
+export interface StudioEditCaption { text: string; start: number; end: number }
 export interface StudioShot {
   id: string;
   title: string;

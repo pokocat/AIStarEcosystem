@@ -1,0 +1,32 @@
+diff --git a/dist/index.js b/dist/index.js
+index 0e235664b0e233e42f76259a1d28f105c5fbe1fd..29cba0db0107edc93d9291c9cf5ede954633f297 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -126,7 +126,10 @@ const getVideoMeta = (videoSrc) => {
+       };
+       video.onerror = () => {
+         if (useCors) {
+-          video.src = "";
++          // patched (AIStarEco): detach the handler first, clearing src fires error again and looped forever
++          video.onerror = null;
++          video.removeAttribute("src");
++          video.load();
+           tryLoadVideo(false);
+         } else {
+           reject(new Error("Failed to load video metadata. This may be due to CORS restrictions or an invalid video URL."));
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 56dad94c4f2f7e4a54d580ce258d4b29575c9127..90a1f5566d5eeec75f3c779cbccd1f3377763456 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -122,7 +122,10 @@ const getVideoMeta = (videoSrc) => {
+       };
+       video.onerror = () => {
+         if (useCors) {
+-          video.src = "";
++          // patched (AIStarEco): detach the handler first, clearing src fires error again and looped forever
++          video.onerror = null;
++          video.removeAttribute("src");
++          video.load();
+           tryLoadVideo(false);
+         } else {
+           reject(new Error("Failed to load video metadata. This may be due to CORS restrictions or an invalid video URL."));

@@ -207,7 +207,10 @@ public class StudioWorkflowWorker {
                 case "assemble" -> {
                     if(!progress(id,30,"studio.assemble")) return;
                     List<String> keys=new ArrayList<>();input.path("references").forEach(r->keys.add(r.path("storageKey").asText()));
-                    var file=assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null);
+                    // 成片高级编辑带着时间线来，按时间线合成；否则是一键合成（按顺序拼）。
+                    var file=input.hasNonNull("edit")
+                            ?assembly.renderStudioEdit(run.getOwnerUserId(),run.getProjectId(),mapper.treeToValue(input.path("edit"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.EditTimeline.class))
+                            :assembly.assembleStudioKeys(run.getOwnerUserId(),run.getProjectId(),keys,input.path("aspectRatio").asText("9:16"),input.hasNonNull("packaging")?mapper.treeToValue(input.path("packaging"),com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Packaging.class):null);
                     output.put("storageKey",file.key());output.put("durationSec",file.durationSec());
                 }
                 default -> throw new IllegalArgumentException("Unknown Studio operation");

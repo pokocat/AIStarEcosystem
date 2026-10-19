@@ -1193,7 +1193,8 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 - `speech-runs` 复用 IpRun，不另建任务；项目归属/同键指纹、DAP_AUDIO 白名单、当前开放 speaker、600字/160字上限与明确单次 price + maxCost 都在 hold 前检查。
 - 同键同内容返回原运行，同键改内容 409；平台单次积分与供应商按音频秒成本分开。派发 afterCommit，原 Job 与原正文持久化，Idempotency-Key=runId；已受理不再创建，网络超时不自动当失败退款。active 音频 hold 由 durable worker 拥有。
 - 供应商 URL 先验同主机、正确资源路径和 model 作用域后携同 Key 下载，真实音频探测后转存 key；signed URL 不落库，浏览器无厂商 Key。
-- `packaging.voiceoverStorageKey` 只能合成使用本人音频，替换原轨。音频长于视频拒绝 STUDIO_SPEECH_TOO_LONG，不裁掉台词，不冒称口型同步。预设声音与个人克隆/人物驱动保持独立状态。
+- `packaging.voiceoverStorageKey` 只能合成使用本人音频，替换原轨。音频长于视频拒绝 STUDIO_SPEECH_TOO_LONG，不裁掉台词，不冒称口型同步。预设声音与个人克隆/人物驱动保持独立状态。配音过长与字幕超过成片在下载完各段、拼接之前就判（按各段时长之和加拼接容差），合成后仍按真实时长复核。
+- 成片高级编辑（2026-10-19）：`edit`（StudioEditTimeline）只许 `operation=assemble`，非 assemble 带它报 STUDIO_EDIT_ASSEMBLE_ONLY；有它时按时间线合成、不用 `packaging`。视频按 start 排成一条主轨，后开始的截断前一段，空隙补黑；音频、文字、字幕按时间叠加。画幅 320–1920 偶数，视频 1–60 段、音频 ≤20、文字 ≤30（≤120 字、字号 12–200、颜色 #RRGGBB）、字幕 ≤200（≤80 字），音量 0–2，总长 ≤600 秒，越界报 STUDIO_EDIT_INVALID；clips 与 audios 的 key 必须是本人素材。读不出的素材报 STUDIO_EDIT_BAD_MEDIA。不扣积分。
 
 
 ### Studio 同音频口型同步（v0.202 增量，2026-10-08）

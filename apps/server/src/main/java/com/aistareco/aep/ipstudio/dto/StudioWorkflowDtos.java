@@ -15,7 +15,16 @@ public final class StudioWorkflowDtos {
                              List<Reference> references, String model, String size, Integer durationSec,
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
                              String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
-                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue) {
+                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
+                             EditTimeline edit) {
+        /** 29-arg shape before 成片高级编辑 (2026-10-19). */
+        public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
+                          List<Reference> references, String model, String size, Integer durationSec,
+                          String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
+                          String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
+                          RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,textEdit,billing,recreation,check,skillKey,skillVersion,stage,executionId,dialogue,null);
+        }
         /** Legacy 22-arg canonical shape (all requests before the skill additions). */
         public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                           List<Reference> references, String model, String size, Integer durationSec,
@@ -58,6 +67,14 @@ public final class StudioWorkflowDtos {
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
             List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references) {}
     public record Caption(Double start,Double end,String text) {}
+    /**
+     * 成片高级编辑的时间线（2026-10-19）：前端把编辑器里的工程压成这几样交给服务端用 FFmpeg 合成。
+     * 时间都是成片里的秒；from 是素材里的起点（掐头）；x / y 是相对画面中心的像素偏移。
+     */
+    public record EditTimeline(Integer width, Integer height, List<EditMedia> clips, List<EditMedia> audios, List<EditText> texts, List<EditCaption> captions) {}
+    public record EditMedia(String storageKey, Double start, Double end, Double from, Double volume) {}
+    public record EditText(String text, Double start, Double end, Double x, Double y, Integer fontSize, String color) {}
+    public record EditCaption(String text, Double start, Double end) {}
     public record Packaging(String brand,String title,String cta,List<Caption> captions,String voiceoverStorageKey) {
         public Packaging(String brand,String title,String cta,List<Caption> captions){this(brand,title,cta,captions,null);}
     }

@@ -36,7 +36,8 @@ function Host({ nodes, connections = [], clips, works = [], draft: initial = bas
     onIncludeClip={(id, includeInWork) => setAll(current => current.map(n => n.id === id ? { ...n, metadata: { ...n.metadata, studio: { ...n.metadata!.studio!, includeInWork } } } : n))}
     onMoveClip={spies.move || (() => undefined)} works={works} busy={false} locked={false}
     onAssemble={spies.assemble || (() => undefined)} onDownload={() => undefined} onAddClips={() => undefined} onCreateVideo={() => undefined}
-    onOpenStoryboard={() => undefined} onMakeVoice={spies.voice || (() => undefined)}/>;
+    onOpenStoryboard={() => undefined} onMakeVoice={spies.voice || (() => undefined)}
+    onOpenAdvanced={spies.openAdvanced || (() => undefined)} onDropAdvanced={spies.dropAdvanced || (() => undefined)} advancedAvailable={spies.advancedAvailable ?? true}/>;
 }
 const assembleButton = () => screen.getByRole("button", { name: "合成作品" }) as HTMLButtonElement;
 
@@ -148,4 +149,28 @@ test("finished works are listed newest first", () => {
   render(<Host nodes={[take("t1", "5")]} clips={[take("t1", "5")]} works={[work("w1", "第一次合成"), work("w2", "第二次合成")]}/>);
   const titles = [...document.querySelectorAll(".studio-work-result h4")].map(h => h.textContent);
   expect(titles).toEqual(["第二次合成", "第一次合成"]);
+});
+
+// 2026-10-19：一键成片之外可以打开高级编辑（Twick）；改过之后以高级编辑为准，一键成片的按钮让位。
+test("advanced editing opens from the cut page, and once used it takes over until the user drops it", () => {
+  const openAdvanced = vi.fn(), dropAdvanced = vi.fn();
+  const { unmount } = render(<Host nodes={[take("t1", "5")]} spies={{ openAdvanced }}/>);
+  fireEvent.click(screen.getByRole("button", { name: "高级编辑" }));
+  expect(openAdvanced).toHaveBeenCalledOnce();
+  unmount();
+  render(<Host nodes={[take("t1", "5")]} spies={{ openAdvanced, dropAdvanced }}
+    draft={{ ...baseDraft, advanced: { engine: "twick", savedAt: "2026-10-19T03:04:05Z", project: { tracks: [], version: 1 } } }}/>);
+  expect(screen.queryByRole("button", { name: "合成作品" })).toBeNull();
+  expect(screen.getByText("这里播的是一键成片的顺序。高级编辑里剪过的版本，请在高级编辑里播放。")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "继续高级编辑" }));
+  expect(openAdvanced).toHaveBeenCalledTimes(2);
+  fireEvent.click(screen.getByRole("button", { name: "改回一键成片" }));
+  expect(dropAdvanced).toHaveBeenCalledOnce();
+});
+
+test("on a phone the advanced editor is offered but says it needs a computer", () => {
+  render(<Host nodes={[take("t1", "5")]} spies={{ advancedAvailable: false }}/>);
+  const button = screen.getByRole("button", { name: "高级编辑" }) as HTMLButtonElement;
+  expect(button.disabled).toBe(true);
+  expect(button.title).toBe("高级编辑要在电脑上打开");
 });
