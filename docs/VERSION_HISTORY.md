@@ -4,7 +4,7 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 画布页改版 · 2026-10-19 · 本地实现，未发布
+### Studio 画布页改版 · 2026-10-19 · 同日已生产发布（仅 web-aiavatar，`20261019-studio-canvas-redesign`，GIT_SHA f7b414b9；同包含助手默认打开与停靠通高）
 
 按设计稿（画布页改版：现状标注 / 改版布局 / AI 视觉语言）实现：顶栏低频项进「⋯」（`canvas-host.tsx` Popover）；第二排工具条取消，视图切换居中悬浮，素材库 / 模板 / 专项创作进左栏（`studio-flow-canvas.tsx` 13 → 7，「＋添加」菜单），任务到左下角带角标，助手关闭时右上角 AI 圆钮；`.ip-surface` 新增 AI 群青紫令牌，节点 AI 记号 / 生成中呼吸 / 刚放进来的光晕（`is-ai / is-generating / is-fresh`），助手头部、发送、进度条、问助手改用 AI 渐变。工作台新增 `studio-command: library`。无后端 / API / 迁移改动。web-aiavatar vitest 904/904，tsc 绿；演示模式 1440 / 375 宽实测。
 
