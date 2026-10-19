@@ -34,3 +34,26 @@ test('inner editor consumes its first Escape and visible menus and expanded moda
     expect(screen.getAllByRole('dialog')).toHaveLength(2);popup.remove();
   }
 });
+
+test('a dockable panel remembers docked / floating and its docked width per browser, and shows the strip above the body',()=>{
+  localStorage.clear();
+  const Panel=()=><StudioFloatingPanel open title="助手" titleExtra={<span>全能</span>} subheader={<p>进度条</p>} dockable defaultDocked resizable layoutKey="t" width={480}><input aria-label="助手提示"/></StudioFloatingPanel>;
+  const view=render(<Panel/>);
+  const dialog=screen.getByRole('dialog',{name:'助手'});
+  expect(dialog.classList.contains('is-docked')).toBe(true);
+  expect(dialog.style.width).toBe('480px');
+  expect(screen.getByText('全能')).toBeDefined();
+  expect(screen.getByText('进度条').closest('.studio-floating-subheader')).not.toBeNull();
+  const handle=screen.getByRole('separator',{name:'调整宽度'});
+  fireEvent.pointerDown(handle,{clientX:800,pointerId:1});fireEvent.pointerMove(handle,{clientX:700,pointerId:1});fireEvent.pointerUp(handle,{pointerId:1});
+  expect(dialog.style.width).toBe('580px');
+  fireEvent.click(screen.getByRole('button',{name:'改成浮窗'}));
+  expect(dialog.classList.contains('is-docked')).toBe(false);
+  expect(screen.queryByRole('separator',{name:'调整宽度'})).toBeNull();
+  view.unmount();
+  render(<Panel/>);
+  const again=screen.getByRole('dialog',{name:'助手'});
+  expect(again.classList.contains('is-docked')).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'停靠到右侧'}));
+  expect(again.style.width).toBe('580px');
+});

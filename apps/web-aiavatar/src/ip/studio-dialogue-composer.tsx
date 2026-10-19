@@ -2,17 +2,18 @@
 // The always-editable composer. Typing is never locked by streaming, tools or a running
 // production; only the send button waits for attachments to finish saving. `@` pins a
 // canvas object for this message, attachments are added as ordinary canvas nodes first.
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ComponentRef } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode } from 'react';
 import { gsap } from 'gsap';
 import { Button, Input } from 'antd';
-import { AtSign, Square, X } from 'lucide-react';
+import { ArrowUp, AtSign, Square, X } from 'lucide-react';
 import type { IpSavedAsset } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { assistantMentionQuery, insertAssistantMention } from '@/canvas-bridge/studio-assistant-context';
 import { LibraryReferencePicker } from './library-reference-picker';
-import { StudioAttachmentPicker } from './studio-attachment-picker';
+import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 
-export type DialogueComposerHandle = { focus: () => void; compose: (text: string) => void };
+/** `mention` opens the @ list at the caret; `attach` / `library` start the same flows as the paperclip (used by guides). */
+export type DialogueComposerHandle = { focus: () => void; compose: (text: string) => void; mention: () => void; attach: () => void; library: () => void };
 type Props = {
   projectId: string; text: string; onText: (value: string) => void;
   contextNodes: CanvasNodeData[]; pinnedIds: string[]; attachmentIds: string[];
@@ -21,20 +22,31 @@ type Props = {
   reading: boolean; attachmentsUnsaved: boolean; onRetrySave: () => void;
   sendDisabledReason?: string; sending: boolean; onSend: () => void;
   canStop: boolean; stopping: boolean; onStop: () => void; costHint?: string;
+  /** Chips after the @ and attachment buttons (the skill and model choices live here, not in a hidden settings pane). */
+  tools?: ReactNode;
+  /** One starting row while a conversation is on screen; two on an empty canvas so the invitation reads as a place to write. */
+  compact?: boolean; placeholder?: string;
 };
 
 export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(function StudioDialogueComposer(props, handle) {
   const { projectId, text, onText, contextNodes, pinnedIds, attachmentIds, onPin, onUnpin, onRemoveAttachment, onFiles, onAssets, reading, attachmentsUnsaved, onRetrySave,
-    sendDisabledReason, sending, onSend, canStop, stopping, onStop, costHint } = props;
-  const area = useRef<ComponentRef<typeof Input.TextArea>>(null), frame = useRef<HTMLDivElement>(null);
+    sendDisabledReason, sending, onSend, canStop, stopping, onStop, costHint, tools, compact = false, placeholder } = props;
+  const area = useRef<ComponentRef<typeof Input.TextArea>>(null), frame = useRef<HTMLDivElement>(null), picker = useRef<AttachmentPickerActions>(null);
   const [caret, setCaret] = useState(0), [mentionOpen, setMentionOpen] = useState(false), [mentionIndex, setMentionIndex] = useState(0);
   const [libraryQuery, setLibraryQuery] = useState<string>();
   const libraryMention = useRef<ReturnType<typeof assistantMentionQuery>>(undefined);
   const [shortcut, setShortcut] = useState('Ctrl Enter');
   useEffect(() => { if (/Mac|iPhone|iPad|iPod/.test(navigator.platform)) setShortcut('⌘ Enter'); }, []);
   const latest = useRef(text); latest.current = text;
+  const openMention = () => {
+    const current = latest.current, value = current + (current && !/\s$/.test(current) ? ' ' : '') + '@';
+    onText(value); setCaret(value.length); setMentionOpen(true); setMentionIndex(0); area.current?.focus();
+  };
   useImperativeHandle(handle, () => ({
     focus: () => area.current?.focus({ cursor: 'end' }),
+    mention: openMention,
+    attach: () => picker.current?.upload(),
+    library: () => picker.current?.library(),
     compose: (value: string) => {
       const current = latest.current, line = value.trim();
       const next = current.includes(line) ? current : current.trim() ? `${current}${current.endsWith('\n') ? '' : '\n'}${line}` : line;
@@ -63,7 +75,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     <div className="studio-assistant-references" aria-label="本次引用">{pinnedIds.map(id => chip(id, 'pin'))}{attachmentIds.filter(id => !pinnedIds.includes(id)).map(id => chip(id, 'attachment'))}</div>
     <Input.TextArea ref={area} aria-label="给创作助手的消息" aria-autocomplete="list" aria-controls={query ? 'studio-dialogue-mentions' : undefined}
       aria-activedescendant={query && suggestions.length ? `studio-dialogue-mention-${suggestions[mentionIndex % suggestions.length].id}` : undefined}
-      placeholder="想做什么？可以随时补充或改主意，输入 @ 指定画布内容" value={text}
+      placeholder={placeholder || '说说要做什么。比如：照这条视频的拍法，把商品换成我的。输入 @ 指定画布内容'} value={text}
       onChange={e => { const value = e.target.value; onText(value); setCaret(e.target.selectionStart); setMentionOpen(mentionOpen || (value.match(/@/g)?.length || 0) > (text.match(/@/g)?.length || 0)); setMentionIndex(0); }}
       onSelect={e => setCaret(e.currentTarget.selectionStart)}
       onKeyDown={e => {
@@ -72,7 +84,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
         if (query && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setMentionOpen(false); }
         else if (query && suggestions.length && ['ArrowDown', 'ArrowUp'].includes(e.key)) { e.preventDefault(); setMentionIndex(i => (i + (e.key === 'ArrowDown' ? 1 : -1) + suggestions.length) % suggestions.length); }
         else if (query && suggestions.length && e.key === 'Enter') { e.preventDefault(); choose(suggestions[mentionIndex % suggestions.length]); }
-      }} autoSize={{ minRows: 2, maxRows: 6 }} maxLength={4000}/>
+      }} autoSize={{ minRows: compact ? 1 : 2, maxRows: 6 }} maxLength={4000}/>
     {query && <div id="studio-dialogue-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">
       {suggestions.length ? suggestions.map((node, index) => <button key={node.id} id={`studio-dialogue-mention-${node.id}`} type="button" role="option" aria-selected={index === mentionIndex % suggestions.length}
         onMouseDown={e => e.preventDefault()} onClick={() => choose(node)}><span>{node.title}</span><small>{node.type === 'text' ? '文字' : '素材设定'}</small></button>) : <p>当前画布没有匹配节点</p>}
@@ -80,13 +92,15 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     </div>}
     <div className="studio-assistant-composer-toolbar">
       <div className="studio-assistant-context-actions">
-        <Button icon={<AtSign size={16}/>} onClick={() => { const value = text + (text && !/\s$/.test(text) ? ' ' : '') + '@'; onText(value); setCaret(value.length); setMentionOpen(true); setMentionIndex(0); area.current?.focus(); }}>引用节点</Button>
-        <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets}/>
+        <Button icon={<AtSign size={16}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
+        <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets} iconOnly actions={picker}/>
+        {tools}
       </div>
       <div className="studio-dialogue-send">
-        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}>停止</Button>}
-        <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title={sendDisabledReason || '发送（⌘ / Ctrl + Enter）；回复按实际用量扣积分'} className="studio-assistant-primary" type="primary"
-          loading={sending} disabled={!!sendDisabledReason} onClick={onSend}><span className="studio-assistant-send-label">发送<kbd className="studio-assistant-send-shortcut" aria-hidden="true">{shortcut}</kbd></span></Button>
+        {sendDisabledReason && text.trim() && <span className="studio-dialogue-send-reason" role="status" title={sendDisabledReason}>{sendDisabledReason}</span>}
+        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}/>}
+        <Button aria-label="发送" aria-keyshortcuts="Control+Enter Meta+Enter" title={sendDisabledReason || `发送（${shortcut}）；回复按实际用量扣积分`} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
+          icon={<ArrowUp size={18}/>} loading={sending} disabled={!!sendDisabledReason} onClick={onSend}/>
       </div>
     </div>
     <LibraryReferencePicker open={libraryQuery !== undefined} query={libraryQuery || ''} projectId={projectId} onClose={() => setLibraryQuery(undefined)} onAssets={async assets => {
@@ -96,7 +110,6 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       libraryMention.current = undefined;
     }}/>
     {attachmentsUnsaved && <Button onClick={onRetrySave}>重试保存附件</Button>}
-    {sendDisabledReason && text.trim() && <p className="studio-dialogue-note" role="status">{sendDisabledReason}</p>}
     {costHint && <p className="studio-assistant-send-hint">{costHint}</p>}
   </div>;
 });

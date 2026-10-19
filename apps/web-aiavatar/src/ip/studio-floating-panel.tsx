@@ -23,7 +23,26 @@ export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width
   return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
 }
 type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number;children:ReactNode;footer?:ReactNode;
-  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean};
+  onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;above?:boolean;className?:string;container?:HTMLElement|null;embedded?:boolean;
+  /** Chips next to the title (a mode, a demo mark); the title itself stays a plain string so the dialog keeps its name. */
+  titleExtra?:ReactNode;
+  /** A strip between the header and the scrolling body: progress, status. Never scrolls away. */
+  subheader?:ReactNode;
+  /** Remember docked / floating and the docked width per viewer under this key (a per-browser convenience, not state). */
+  layoutKey?:string;
+  /** Where a panel opens the first time on this browser; a remembered choice wins. */
+  defaultDocked?:boolean;
+  /** Docked panels can be dragged wider or narrower at their left edge. */
+  resizable?:boolean;minWidth?:number;maxWidth?:number};
+type PanelLayout={docked?:boolean;width?:number};
+function readLayout(key?:string):PanelLayout {
+  if(!key)return {};
+  try{const raw=localStorage.getItem(`studio-floating:${key}`);const parsed=raw?JSON.parse(raw) as PanelLayout:{};return typeof parsed==='object'&&parsed?parsed:{};}catch{return {};}
+}
+function writeLayout(key:string|undefined,patch:PanelLayout) {
+  if(!key)return;
+  try{localStorage.setItem(`studio-floating:${key}`,JSON.stringify({...readLayout(key),...patch}));}catch{/* private window or blocked storage: the layout just is not remembered */}
+}
 type FloatingEntry={id:symbol;root:HTMLElement;update:(layer:number,active:boolean)=>void};
 // One bounded stack per canvas stage. Popups remain above it; closed entries are removed.
 const floatingStack:FloatingEntry[]=[];
@@ -38,10 +57,15 @@ function raiseFloating(id:symbol) {
   if(floatingStack.filter(item=>item.root===entry.root).at(-1)===entry)return;
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
-export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container,embedded=false}:Props) {
+export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,above=false,className='',container,embedded=false,
+  titleExtra,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
-  const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0}),[docked,setDocked]=useState(false);
+  const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0});
+  const [docked,setDocked]=useState(()=>dockable&&(readLayout(layoutKey).docked??defaultDocked));
+  const [dockedWidth,setDockedWidth]=useState(()=>{const saved=readLayout(layoutKey).width;return saved&&saved>=minWidth&&saved<=maxWidth?saved:width;});
+  const toggleDocked=()=>setDocked(v=>{writeLayout(layoutKey,{docked:!v});return !v;});
+  const resize=useRef<{x:number;width:number}|undefined>(undefined);
   const [manual,setManual]=useState<{left:number;top:number}>(),drag=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
   useLayoutEffect(()=>{if(open&&!embedded)setRoot(container||document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open,container,embedded]);
   useLayoutEffect(()=>{
@@ -91,15 +115,21 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
   return createPortal(<section ref={ref} className={`studio-floating-panel nodrag nopan nowheel${utility?' is-utility':''}${docked?' is-docked':''}${above?' is-context-toolbar':''} ${className}`}
     role={title?'dialog':undefined} aria-modal={title?false:undefined} aria-label={typeof title==='string'?title:undefined} data-anchor-id={anchorId} data-active={title?layer.active:undefined}
     onPointerDownCapture={()=>raiseFloating(identity.current)} onFocusCapture={()=>raiseFloating(identity.current)}
-    style={{width,left:docked?undefined:position.left,top:docked?undefined:position.top,zIndex:title?layer.z:undefined}}>
+    style={{width:docked?dockedWidth:width,left:docked?undefined:position.left,top:docked?undefined:position.top,zIndex:title?layer.z:undefined}}>
+    {docked&&resizable&&<div className="studio-floating-resize" role="separator" aria-orientation="vertical" aria-label="调整宽度" title="拖动调整宽度" onPointerDown={e=>{
+      resize.current={x:e.clientX,width:dockedWidth};e.currentTarget.setPointerCapture?.(e.pointerId);
+    }} onPointerMove={e=>{if(resize.current)setDockedWidth(Math.max(minWidth,Math.min(maxWidth,resize.current.width+resize.current.x-e.clientX)));}}
+    onPointerUp={()=>{if(resize.current)writeLayout(layoutKey,{width:dockedWidth});resize.current=undefined;}}
+    onPointerCancel={()=>{resize.current=undefined;}}/>}
     {title&&<header className={`studio-floating-header${utility?' is-draggable':''}`} onPointerDown={e=>{
       if(!utility||docked||(e.target as HTMLElement).closest('button'))return;
-      drag.current={x:e.clientX,y:e.clientY,...position};e.currentTarget.setPointerCapture(e.pointerId);
+      drag.current={x:e.clientX,y:e.clientY,...position};e.currentTarget.setPointerCapture?.(e.pointerId);
     }} onPointerMove={e=>{if(drag.current)setManual({left:drag.current.left+e.clientX-drag.current.x,top:drag.current.top+e.clientY-drag.current.y});}}
     onPointerUp={()=>{drag.current=undefined;}} onPointerCancel={()=>{drag.current=undefined;}}>
-      <strong>{title}</strong><div>{dockable&&<button type="button" aria-label={docked?'返回浮窗':'停靠到右侧'} title={docked?'返回浮窗':'停靠到右侧'} onClick={()=>setDocked(v=>!v)}>{docked?<PanelRightClose size={17}/>:<PanelRight size={17}/>}</button>}
+      <div className="studio-floating-title"><strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRightClose size={17}/>:<PanelRight size={17}/>}</button>}
       {onClose&&<button type="button" aria-label={`关闭${typeof title==='string'?title:'浮层'}`} disabled={!closable} onClick={onClose}><X size={17}/></button>}</div>
     </header>}
+    {subheader&&<div className="studio-floating-subheader">{subheader}</div>}
     <div className="studio-floating-body">{children}</div>{footer&&<footer className="studio-floating-footer">{footer}</footer>}
   </section>,root);
 }

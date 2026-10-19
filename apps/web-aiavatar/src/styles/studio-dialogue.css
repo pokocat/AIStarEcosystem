@@ -84,6 +84,12 @@
 .ip-surface .studio-dialogue-approval-scope { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; line-height: 1.6; }
 .ip-surface .studio-dialogue-approval-scope li { overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-approval-quote { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.ip-surface .studio-dialogue-approval-price { display: flex; align-items: baseline; gap: 8px; margin: 0; min-width: 0; }
+.ip-surface .studio-dialogue-approval-price strong { font-size: 30px; font-weight: 650; line-height: 1; letter-spacing: -.6px; }
+.ip-surface .studio-dialogue-approval-price span { font-size: 13px; color: var(--ink-2); }
+.ip-surface .studio-dialogue-approval-cap { margin: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); overflow-wrap: anywhere; }
+.ip-surface .studio-dialogue-approval-cap .studio-dialogue-link { margin-left: 6px; }
+.ip-surface .studio-dialogue-approval-actions .studio-assistant-primary { flex: 1; min-width: 120px; }
 .ip-surface .studio-dialogue-caps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .ip-surface .studio-dialogue-caps label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 11px; color: var(--ink-2); min-width: 0; }
 .ip-surface .studio-dialogue-caps input { width: 100%; min-width: 0; box-sizing: border-box; height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
@@ -116,6 +122,15 @@
 .ip-surface .studio-dialogue-execution-budget b { color: var(--warn); font-weight: 500; }
 .ip-surface .studio-dialogue-execution-checks { margin: 0; padding: 0; list-style: none; font-size: 12px; color: var(--ink-2); }
 .ip-surface .studio-dialogue-execution-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.ip-surface .studio-dialogue-execution-track { height: 6px; border-radius: 99px; background: var(--line-2); overflow: hidden; }
+.ip-surface .studio-dialogue-execution-track > span { display: block; height: 100%; border-radius: inherit; background: var(--primary); transition: width 320ms ease-out; }
+.ip-surface .studio-dialogue-execution-steps > summary { cursor: pointer; font-size: 12px; color: var(--ink-2); }
+.ip-surface .studio-dialogue-execution-steps ol { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.ip-surface .studio-dialogue-execution-steps li { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; font-size: 12px; min-width: 0; }
+.ip-surface .studio-dialogue-execution-steps li > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ip-surface .studio-dialogue-execution-steps li small { color: var(--ink-3); white-space: nowrap; }
+.ip-surface .studio-dialogue-execution-steps li[data-status="done"] small { color: var(--ok); }
+.ip-surface .studio-dialogue-execution-steps li[data-status="failed"] small { color: var(--err); }
 
 /* 之前的对话 / 分支 */
 .ip-surface .studio-dialogue-legacy, .ip-surface .studio-dialogue-branch { border: 1px solid var(--line); border-radius: 10px; padding: 0 12px; background: var(--surface); min-width: 0; }

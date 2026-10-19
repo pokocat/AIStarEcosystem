@@ -5,10 +5,12 @@
 import { useState } from 'react';
 import { Button } from 'antd';
 import { formatCredits } from '@ai-star-eco/api-client';
-import type { StudioCheckResultData, StudioPlanExecution, StudioPlanExecutionBudget } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioCheckResultData, StudioPlanExecution, StudioPlanExecutionBudget, StudioPlanExecutionStep } from '@ai-star-eco/types/ip-studio-workflow';
+import { dispatchStudioCommand } from '@/canvas-bridge/studio-nodes';
 import { StudioErrorNotice, useStudioApp, useStudioErrorState } from './studio-errors';
 
 const STATUS = { running: '进行中', paused: '已暂停', needs_user: '等你确认', done: '已完成', partial: '部分完成', failed: '没有完成', canceled: '已停止' } as const;
+const STEP_STATUS: Record<StudioPlanExecutionStep['status'], string> = { pending: '等前面做完', submitted: '已提交', running: '进行中', needs_user: '等你确认', done: '已完成', skipped: '已跳过', failed: '没有完成' };
 
 export function checkSummary(check: StudioCheckResultData) {
   const count = (status: string) => check.result.items.filter(i => i.status === status).length;
@@ -21,14 +23,18 @@ export function dialogueShare(budget: Partial<StudioPlanExecutionBudget>) {
   return `其中对话 ${formatCredits(budget.dialogueSpent || 0)} 积分${budget.dialogueInFlight ? `，对话进行中占用 ${formatCredits(budget.dialogueInFlight)} 积分` : ''}`;
 }
 
-export function StudioDialogueExecution({ execution, budget, checks, notice, onControl }: {
+export function StudioDialogueExecution({ execution, budget, checks, notice, onControl, locate }: {
   execution: StudioPlanExecution; budget?: Partial<StudioPlanExecutionBudget>; checks: StudioCheckResultData[]; notice?: string;
   onControl: (action: 'pause' | 'resume' | 'cancel') => Promise<void>;
+  /** The canvas node a step's result lives in, when the canvas has it; 「在画布上看」 selects and scrolls to it. */
+  locate?: (step: StudioPlanExecutionStep) => string | undefined;
 }) {
   const { modal } = useStudioApp();
   const [busy, setBusy] = useState<string>(), [error, setError] = useStudioErrorState();
   const stageSteps = execution.steps.filter(s => s.stage === execution.stage);
   const done = stageSteps.filter(s => s.status === 'done' || s.status === 'skipped').length;
+  const active = stageSteps.find(s => s.status === 'running' || s.status === 'submitted') || stageSteps.find(s => s.status === 'needs_user' || s.status === 'failed');
+  const progress = stageSteps.length ? Math.round(done / stageSteps.length * 100) : 0;
   const run = async (action: 'pause' | 'resume' | 'cancel') => {
     if (busy) return;
     setBusy(action); setError('');
@@ -45,12 +51,21 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
       <strong>{execution.stage === 'analysis' ? '分析' : '制作'} · {STATUS[execution.status]}</strong>
       <span>已完成 {done}/{stageSteps.length} 项</span>
     </div>
+    <div className="studio-dialogue-execution-track" role="progressbar" aria-label="已完成的步骤" aria-valuemin={0} aria-valuemax={stageSteps.length} aria-valuenow={done}><span style={{ width: `${progress}%` }}/></div>
+    {active && live && <p className="studio-dialogue-note">{active.title} · {STEP_STATUS[active.status]}</p>}
     {budget && budget.approvedCap !== undefined && <p className="studio-dialogue-execution-budget">
       已用 {formatCredits(budget.spent || 0)} / {formatCredits(budget.approvedCap)} 积分{budget.inFlight ? `，进行中的任务占用 ${formatCredits(budget.inFlight)} 积分` : ''}
       {budget.shortfall ? <b>，还差 {formatCredits(budget.shortfall)} 积分</b> : null}
     </p>}
     {budget && (!!budget.dialogueSpent || !!budget.dialogueInFlight) && <p className="studio-dialogue-note">{dialogueShare(budget)}</p>}
     {execution.needsUserReason && waiting && <p className="studio-dialogue-note">{execution.needsUserReason}</p>}
+    {!!stageSteps.length && <details className="studio-dialogue-execution-steps">
+      <summary>各步进度</summary>
+      <ol>{stageSteps.map(step => { const nodeId = locate?.(step); return <li key={step.id} data-status={step.status}>
+        <span title={step.title}>{step.title}</span><small>{STEP_STATUS[step.status]}</small>
+        {nodeId && <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', nodeId)}>在画布上看</button>}
+      </li>; })}</ol>
+    </details>}
     {!!checks.length && <ul className="studio-dialogue-execution-checks" aria-label="检查结果">{checks.map(c => <li key={c.runId}>检查：{checkSummary(c)}</li>)}</ul>}
     {notice && <p className="studio-dialogue-warning" role="status">{notice}</p>}
     {(live || waiting) && <div className="studio-dialogue-execution-actions">

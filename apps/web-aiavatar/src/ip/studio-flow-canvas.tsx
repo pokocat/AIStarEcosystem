@@ -258,7 +258,9 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         if (!node || node.type !== CanvasNodeType.Image) return;
         if (studioGenerationPending(node)) { message.info('当前节点正在生成，请等待任务完成后再替换图片'); return; }
         imageUploadTarget.current = node.id; imageUploadInput.current?.click();
-      } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); } else setTextId(undefined);
+      } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
+      else if (detail.action === 'focus') { if (detail.nodeId && current().nodes.some(n => n.id === detail.nodeId)) focusNode(detail.nodeId); }
+      else setTextId(undefined);
     };
     const keydown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.closest('input,textarea,select,[contenteditable="true"],.ant-modal,.ant-drawer,.studio-floating-panel,.studio-flow-reference-menu')) return;

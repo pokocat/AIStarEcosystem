@@ -29,7 +29,7 @@ vi.mock('@/canvas-bridge/studio-save', () => ({ saveStudioDocument: api.save }))
 vi.mock('@/canvas-bridge/studio-api', () => ({ importStudioStory: api.importStudioStory, importStudioMedia: api.importStudioMedia, submitStudioRun: api.submitStudioRun }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun }));
 vi.mock('@/ip/api/ip-studio', async original => ({ ...(await original<typeof import('@/ip/api/ip-studio')>()), getRun: api.getRun }));
-vi.mock('./studio-floating-panel', () => ({ StudioFloatingPanel: ({ open, title, children, onClose, footer }: any) => open ? <section role="dialog" aria-label={title}><button aria-label={`关闭${title}`} onClick={onClose}>关闭</button>{children}{footer}</section> : null }));
+vi.mock('./studio-floating-panel', () => ({ StudioFloatingPanel: ({ open, title, titleExtra, subheader, children, onClose, footer }: any) => open ? <section role="dialog" aria-label={title}><header>{title}{titleExtra}<button aria-label={`关闭${title}`} onClick={onClose}>关闭</button></header>{subheader}{children}{footer}</section> : null }));
 vi.mock('./studio-conversation-share', () => ({ StudioConversationShare: () => null }));
 vi.mock('./studio-attachment-picker', () => ({ StudioAttachmentPicker: ({ locked, reading, onFiles }: any) => <div><button disabled={locked}>{reading ? '正在导入附件' : '添加附件'}</button><input type="file" aria-label="上传创作附件" multiple onChange={e => onFiles(Array.from(e.target.files || []))}/></div> }));
 vi.mock('./library-reference-picker', () => ({ LibraryReferencePicker: () => null }));
@@ -84,14 +84,14 @@ beforeEach(() => {
 test('one continuous thread: no mode tabs, history picker, new-conversation, canvas-sense or visual toggle', async () => {
   await ready();
   expect(screen.getByText('全能创作')).toBeDefined();
-  fireEvent.click(screen.getByRole('button', { name: '对话设置' }));
   expect(screen.queryByRole('group', { name: '助手模式' })).toBeNull();
   expect(screen.queryByRole('combobox', { name: '对话历史' })).toBeNull();
   expect(screen.queryByRole('button', { name: '新对话' })).toBeNull();
   expect(screen.queryByText('感知画布')).toBeNull();
   expect(screen.queryByRole('checkbox')).toBeNull();
-  // The model choice survives, folded into settings, only because the account may choose.
+  // The model choice survives as a chip in the composer, only because the account may choose.
   expect(screen.getByRole('combobox', { name: '助手模型' })).toBeDefined();
+  expect(screen.queryByRole('button', { name: '对话设置' })).toBeNull();
   expect(api.getConversation).toHaveBeenCalledWith('p');
 });
 
@@ -188,6 +188,10 @@ test('confirming production posts the execution, approach, plan revision, approv
   api.createExecution.mockResolvedValue({ id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production', planRunId: 'plan-2', planRevision: 2, planFingerprint: 'f2', status: 'running', steps: [], budgets: [], startedAt: at, deadlineAt: at, updatedAt: at });
   await ready();
   const card = screen.getByLabelText('确认制作');
+  // The quote is the headline; the two cap fields stay folded until 「调整上限」.
+  expect(within(card).getByText('82')).toBeDefined();
+  expect(within(card).queryByLabelText('总上限（积分）')).toBeNull();
+  fireEvent.click(within(card).getByRole('button', { name: '调整上限' }));
   fireEvent.change(within(card).getByLabelText('总上限（积分）'), { target: { value: '80' } });
   expect((within(card).getByRole('button', { name: '开始制作' }) as HTMLButtonElement).disabled).toBe(true);
   expect(within(card).getByText(/总上限至少要 82 积分/)).toBeDefined();
@@ -521,7 +525,10 @@ test('a card shows its own shortfall and dialogue reserve; a replaced card says 
   const [old, current] = screen.getAllByLabelText('确认制作');
   expect(within(old).getByText('已被新方案替代')).toBeDefined();
   expect(within(old).queryByRole('button', { name: '开始制作' })).toBeNull();
-  expect(within(current).getByText('当前报价 50 积分，总上限 150 积分（含一轮对话预留 20 积分）。')).toBeDefined();
+  expect(within(current).getByText('50')).toBeDefined();
+  expect(within(current).getByText(/最多花到 150 积分，含一轮对话预留 20 积分。超过会停下来问你/)).toBeDefined();
+  // A shortfall card opens the cap fields by itself: raising the cap is what it is for.
+  expect(within(current).getByLabelText('总上限（积分）')).toBeDefined();
   expect(within(current).getByText('本阶段预算还差 30 积分，确认新的上限后继续。')).toBeDefined();
 });
 
@@ -547,12 +554,12 @@ const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {
   methodExamples: [], operations: { analysis: ['text'], production: ['text', 'video'] }, limits: { maxSourceSec: 60, maxSegments: 4, maxSegmentSec: 'model', maxSteps: 16, maxAutoFixPerSegment: 1 },
   checks: [], autoFixChecks: [], requiredCapabilities: [], ...extra });
 const recreation = skill('video-recreation', '短视频复刻', { version: 2 }), seeding = skill('talking-head-seeding', '口播种草');
-const openSettings = () => fireEvent.click(screen.getByRole('button', { name: '对话设置' }));
+const openGuide = () => fireEvent.click(screen.getByRole('button', { name: '使用说明' }));
 
 test('with several active skills the settings offer 「技能」 (default 自动 = no skillKey); a chosen one rides on the message and its retry', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
   await ready();
-  openSettings();
+  openGuide();
   const picker = await screen.findByRole('combobox', { name: '技能' }) as HTMLSelectElement;
   expect([...picker.options].map(o => o.textContent)).toEqual(['自动', '短视频复刻', '口播种草']);
   expect(screen.getByText(/自动：按你的消息和素材挑一个合适的技能/)).toBeDefined();
@@ -576,7 +583,7 @@ test('with several active skills the settings offer 「技能」 (default 自动
 test('one active skill, or a thread already bound to a skill, shows no choice', async () => {
   api.skills.mockResolvedValue([recreation]);
   const view = await ready();
-  openSettings();
+  openGuide();
   await waitFor(() => expect(api.skills).toHaveBeenCalled());
   expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
   view.unmount();
@@ -584,7 +591,7 @@ test('one active skill, or a thread already bound to a skill, shows no choice', 
   api.skills.mockResolvedValue([recreation, seeding]);
   api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, skillKey: 'video-recreation', skillVersion: 2 } });
   await ready();
-  openSettings();
+  openGuide();
   await screen.findByText('这段对话在按「短视频复刻」做。要换技能，在某条消息上点「从这里重新开始」。');
   expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
   fireEvent.change(composer(), { target: { value: '继续' } });
@@ -674,4 +681,56 @@ test('the draft entry is only for operators, only under a summary of finished wo
   await ready();
   fireEvent.click(screen.getByRole('button', { name: '把这次制作整理成技能草稿' }));
   await waitFor(() => expect(screen.getByText('只有运营账号可以把制作整理成技能草稿。')).toBeDefined());
+});
+
+// ── Opening guidance: inventory chips, task cards and the recreation checklist ──────────────────────────────
+const clip = { ...character, id: 'clip', type: 'video', title: '带货样片', metadata: { storageKey: 'k/clip' } } as CanvasNodeData;
+
+test('an empty canvas opens on task cards and what the canvas holds; a chip pins every node of that type', async () => {
+  await ready(<Host initial={[character, text, clip]}/>);
+  expect(screen.getByRole('heading', { name: '想做点什么？' })).toBeDefined();
+  expect(screen.getByText('画布上现在有')).toBeDefined();
+  for (const title of ['复刻一条短视频', '做一张图', '写一段文字', '搭一套创作流程']) expect(screen.getByRole('button', { name: new RegExp(`^${title}`) })).toBeDefined();
+  expect(screen.getByRole('button', { name: /^复刻一条短视频/ }).textContent).toContain('要准备：一条参考视频');
+  fireEvent.click(screen.getByRole('button', { name: '1 张图片' }));
+  expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
+  expect((screen.getByRole('button', { name: '1 张图片' }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+  // The guide is one click away and holds the notes that used to hide behind a settings icon.
+  fireEvent.click(screen.getByRole('button', { name: '第一次用？花 30 秒看它怎么工作' }));
+  expect(within(screen.getByRole('region', { name: '使用说明' })).getByText(/整张画布都会作为参考/)).toBeDefined();
+});
+
+test('「复刻一条短视频」 pins the only video, drafts the request with blanks and holds the send until the pieces are there', async () => {
+  api.skills.mockResolvedValue([skill('reference-video-recreation', '短视频复刻'), seeding]);
+  await ready(<Host initial={[character, text, clip]}/>);
+  await screen.findByRole('combobox', { name: '技能' });
+  fireEvent.click(screen.getByRole('button', { name: /^复刻一条短视频/ }));
+  const list = screen.getByLabelText('复刻需要的素材');
+  expect(within(list).getByText('带货样片 · 画布上已有')).toBeDefined();
+  expect(composer().value).toContain('@带货样片');
+  expect((screen.getByRole('combobox', { name: '技能' }) as HTMLSelectElement).value).toBe('reference-video-recreation');
+  // Blanks and a missing replacement keep the button off, with the reason beside it.
+  expect(sendButton().disabled).toBe(true);
+  expect(screen.getByText('先补上替换素材')).toBeDefined();
+  expect(screen.queryByRole('heading', { name: '想做点什么？' })).toBeNull();
+  fireEvent.click(within(list).getByRole('button', { name: '从画布选' }));
+  fireEvent.click(screen.getByRole('option', { name: /角色 A/ }));
+  expect(within(list).getByText('角色 A')).toBeDefined();
+  expect(screen.getByText('把输入框里的空位补上')).toBeDefined();
+  fireEvent.change(composer(), { target: { value: '照 @带货样片 的拍法，把里面的商品换成 @角色 A，保留节奏。' } });
+  expect(sendButton().disabled).toBe(false);
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ skillKey: 'reference-video-recreation', pinnedNodeIds: ['clip', 'c'] });
+  // Once sent, the checklist is gone.
+  await waitFor(() => expect(screen.queryByLabelText('复刻需要的素材')).toBeNull());
+});
+
+test('the checklist can be dismissed and the plain composer rules take over', async () => {
+  await ready(<Host initial={[character, clip]}/>);
+  fireEvent.click(screen.getByRole('button', { name: /^复刻一条短视频/ }));
+  expect(sendButton().disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: '不用清单，直接说' }));
+  expect(screen.queryByLabelText('复刻需要的素材')).toBeNull();
+  expect(sendButton().disabled).toBe(false);
 });
