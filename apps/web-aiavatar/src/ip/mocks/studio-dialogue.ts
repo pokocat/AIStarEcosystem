@@ -365,6 +365,17 @@ export function mockSaysApprove(text: string) {
   const said = text.trim();
   return !!said && !HESITATION.some(h => said.includes(h)) && (APPROVAL.some(a => said.includes(a)) || onlyAffirmatives(said));
 }
+// A typed stop or pause (StudioStopIntent): the whole message, after punctuation, a polite opener and trailing particles,
+// must be one of these. 「不要停」「要停吗？」 and longer sentences stay ordinary messages.
+const STOP_PHRASES = new Set(["停", "停止", "停下", "停下来", "停掉", "先停", "先停下", "先停下来", "先停止", "停止制作", "停止生成", "全部停止", "都停下", "都停",
+  "别做", "先别做", "不做", "不要做", "不用做", "取消", "取消制作", "结束制作"]);
+const PAUSE_PHRASES = new Set(["暂停", "先暂停", "暂停一下", "先暂停一下", "暂停制作", "暂停生成", "停一下", "先停一下", "暂停后续"]);
+export function mockStopIntent(text: string): "stop" | "pause" | undefined {
+  const said = text.trim();
+  if (!said || said.length > 24 || /[?？吗么]/.test(said)) return undefined;
+  const core = said.replace(/[\s,，。.!！、;；~～…]+/g, "").replace(/^(?:请|麻烦你|麻烦|帮我|你|好的?|行|嗯)+/, "").replace(/[吧啊呀啦哈哦嘛了]+$/, "");
+  return STOP_PHRASES.has(core) ? "stop" : PAUSE_PHRASES.has(core) ? "pause" : undefined;
+}
 function naturalApproval(projectId: string, p: MockProject, t: MockThread, text: string, messageId: string): boolean {
   if ((p.stage !== "analysis-proposed" && p.stage !== "production-proposed") || !mockSaysApprove(text)) return false;
   const stage = p.stage === "analysis-proposed" ? "analysis" as const : "production" as const;
@@ -418,6 +429,23 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   let skill: StudioSkillSummary;
   try { skill = routeSkill(t, request); } catch (error) { return Promise.reject(error); }
   if (!t.thread.skillKey) { t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; }
+  // Same as the server: a typed stop / pause while something is working is a priority control, not queued steering.
+  const said = mockStopIntent(request.text);
+  const working = p.execution && ["running", "paused", "needs_user"].includes(p.execution.status);
+  if (said && (busy || working) && !request.pinnedNodeIds?.length && !request.attachmentNodeIds?.length) {
+    const action = said === "pause" && working ? "pause" as const : "stop" as const;
+    void mockDialogueControl(projectId, threadId, { controlId: nextId("say"), action });
+    const message: StudioDialogueMessage = { id: nextId("msg"), threadId, seq: ++t.thread.lastSeq, role: "user", text: request.text, blocks: [],
+      clientMessageId: request.clientMessageId, status: "done", createdAt: now() };
+    t.view = { ...t.view, messages: [...t.view.messages, message] };
+    const reply = action === "pause" ? "好，先暂停：不会再提交新的步骤，已经开始的任务会照常做完。要接着做，点进度条上的「继续制作」。"
+      : working ? "好，停下了：不会再提交新的步骤，还在排队的任务会取消；已经交给生成引擎的任务会照原样做完并结算。" : "好，这条回复停下了。";
+    const ack = startTurn(t);
+    play(p, t, [...say(t, ack, "r1", reply), { run: () => emit(t, "turn.done", { reason: "completed", messageId: ack, billing: MOCK_BILLING, settling: false }) }]);
+    const result: StudioPostMessageResult = { messageId: message.id, queueState: "applied" };
+    t.results.set(request.clientMessageId, result);
+    return later(result);
+  }
   const message: StudioDialogueMessage = { id: nextId("msg"), threadId, seq: ++t.thread.lastSeq, role: "user", text: request.text, blocks: [],
     pinnedNodeIds: request.pinnedNodeIds, attachmentNodeIds: request.attachmentNodeIds, clientMessageId: request.clientMessageId, status: busy ? "queued" : "done", createdAt: now() };
   t.view = { ...t.view, messages: [...t.view.messages, message] };

@@ -323,4 +323,129 @@ class StudioPlanExecutionServiceTest {
         assertEquals("fail",om.readTree(rows.get(created.id()).getStepsJson()).path("steps").get(0).path("checkStatus").asText(),"the AI verdict is kept");
         assertEquals("canceled",service.cancel("u","p",created.id(),new PlanExecutionControlRequest("x-1",null)).status());
     }
+
+    /** An execution in its production stage: analysis done, the production plan IPR-b (v1 40 + check c1 5) confirmed. */
+    String production() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());var state=(ObjectNode)om.readTree(row.getStepsJson());
+        state.path("steps").forEach(s->((ObjectNode)s).put("status","done"));row.setStepsJson(state.toString());row.setStatus("needs_user");
+        String pf=currentPlan("IPR-b","production",PRODUCTION,40,5);
+        service.create("u","p",new PlanExecutionCreateRequest("c-prod","production","IPR-b",pf,"rewrite",45L,0L,null,created.id(),3,"APV-IPR-b","msg-IPR-b"));
+        return created.id();
+    }
+    /** Mark a step of the execution with a status (and a run), like the executor would. */
+    void step(String id,String stepId,String status,String run) throws Exception {
+        var row=rows.get(id);var state=(ObjectNode)om.readTree(row.getStepsJson());
+        for(JsonNode raw:state.path("steps"))if(stepId.equals(raw.path("id").asText())&&"production".equals(raw.path("stage").asText())) {
+            ((ObjectNode)raw).put("status",status);if(run!=null)((ObjectNode)raw).withArray("runIds").add(run);
+        }
+        row.setStepsJson(state.toString());
+    }
+    JsonNode stepNode(String id,String stepId) throws Exception {
+        for(JsonNode raw:om.readTree(rows.get(id).getStepsJson()).path("steps"))
+            if(stepId.equals(raw.path("id").asText())&&"production".equals(raw.path("stage").asText()))return raw;
+        return null;
+    }
+    static final String V2=",{\"id\":\"v2\",\"operation\":\"video\",\"title\":\"第二段\",\"prompt\":\"收尾\",\"settings\":{\"video\":{\"mode\":\"omni\",\"resolutionTier\":\"768p\"},\"durationSec\":8,\"aspectRatio\":\"9:16\",\"count\":1,"
+            +"\"referenceBindings\":[{\"nodeId\":\"product\",\"role\":\"product\",\"order\":0}]}}";
+    static String withV2(String plan){return plan.replace("]}},{\"id\":\"c1\"","]}}"+V2+",{\"id\":\"c1\"");}
+
+    /**
+     * Codex 2026-10-19 (P1): 「第 3 段换个人物」 paused the execution, the dialogue proposed a revised production plan, and
+     * confirming its card was refused as 「同阶段不能换计划」. Now the revision replaces the remaining work on the same
+     * execution: unchanged finished steps keep their results, a new step is added, nothing already done is paid twice.
+     */
+    @Test void aRevisedPlanForTheRunningStageKeepsUnchangedResultsAndAddsTheNewSteps() throws Exception {
+        String id=production();
+        step(id,"v1","done","IPR-v1");step(id,"c1","done","IPR-c1");
+        var row=rows.get(id);row.setStatus("needs_user");
+        var budget=(ObjectNode)om.readTree(row.getBudgetJson());((ObjectNode)budget.path("production")).put("spent",45);row.setBudgetJson(budget.toString());
+        String revised=currentPlan("IPR-c","production",withV2(PRODUCTION),40,30,5);
+        cards.put("msg-rev","APV-rev","production",revised,75,80);
+        var confirmed=service.create("u","p",new PlanExecutionCreateRequest("c-rev","production","IPR-c",revised,"rewrite",80L,0L,null,id,3,"APV-rev","msg-rev"));
+        assertEquals(id,confirmed.id(),"same execution, same payer");
+        assertEquals("running",confirmed.status());assertEquals("IPR-c",confirmed.planRunId());
+        assertEquals("done",stepNode(id,"v1").path("status").asText(),"unchanged and finished: kept, not run again");
+        assertEquals("[\"IPR-v1\"]",stepNode(id,"v1").path("runIds").toString());
+        assertEquals("pending",stepNode(id,"v2").path("status").asText());
+        assertEquals("done",stepNode(id,"c1").path("status").asText());
+        assertEquals(80,confirmed.budgets().get(1).approvedCap());assertEquals(45,confirmed.budgets().get(1).spent(),"what was spent stays spent");
+        assertTrue(cards.approvedCards.contains("msg-rev|APV-rev"));
+        verify(executor,atLeastOnce()).wake(id);
+        assertEquals(id,service.create("u","p",new PlanExecutionCreateRequest("c-rev","production","IPR-c",revised,"rewrite",80L,0L,null,id,3,"APV-rev","msg-rev")).id(),
+                "the same confirmation replays");
+    }
+
+    /** A changed step is redone as a new attempt (earlier run kept for the record and the budget), and so is its check. */
+    @Test void aRevisedPlanRedoesTheChangedStepAndEverythingDownstreamOfIt() throws Exception {
+        String id=production();
+        step(id,"v1","done","IPR-v1");step(id,"c1","done","IPR-c1");
+        var row=rows.get(id);row.setStatus("needs_user");
+        var budget=(ObjectNode)om.readTree(row.getBudgetJson());((ObjectNode)budget.path("production")).put("spent",45);row.setBudgetJson(budget.toString());
+        String revised=currentPlan("IPR-c","production",PRODUCTION.replace("开播","开播，主播换成短发女生"),40,5);
+        var tooLow=new PlanExecutionCreateRequest("c-low","production","IPR-c",revised,"rewrite",45L,0L,null,id,3,"APV-IPR-c","msg-IPR-c");
+        var refused=assertThrows(BusinessException.class,()->service.create("u","p",tooLow));
+        assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",refused.getCode(),"45 spent + 45 to redo does not fit 45");
+        assertEquals(45,((JsonNode)refused.getDetails()).path("shortfall").asLong());
+        assertEquals("needs_user",rows.get(id).getStatus(),"a refused revision changes nothing");
+        cards.put("msg-more","APV-more","production",revised,45,90);
+        var confirmed=service.create("u","p",new PlanExecutionCreateRequest("c-more","production","IPR-c",revised,"rewrite",90L,0L,null,id,3,"APV-more","msg-more"));
+        assertEquals("running",confirmed.status());
+        var v1=stepNode(id,"v1");
+        assertEquals("pending",v1.path("status").asText());assertEquals(2,v1.path("attempt").asInt(),"a new request identity");
+        assertEquals("[\"IPR-v1\"]",v1.path("previousRunIds").toString());assertEquals(0,v1.path("runIds").size());
+        assertTrue(v1.path("definition").path("prompt").asText().contains("短发女生"));
+        assertEquals("pending",stepNode(id,"c1").path("status").asText(),"the check of a redone video runs again");
+        assertEquals("[\"IPR-c1\"]",stepNode(id,"c1").path("previousRunIds").toString());
+    }
+
+    /** Work already handed to a provider is never rewritten: changing a step that is still generating waits for it. */
+    @Test void aRevisionCannotChangeAStepThatIsStillGenerating() throws Exception {
+        String id=production();
+        step(id,"v1","running","IPR-v1");
+        String revised=currentPlan("IPR-c","production",PRODUCTION.replace("开播","开播，换个人物"),40,5);
+        cards.put("msg-more","APV-more","production",revised,45,200);
+        var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("c-run","production","IPR-c",revised,"rewrite",200L,0L,null,id,3,"APV-more","msg-more")));
+        assertEquals("STUDIO_PLAN_STALE",e.getCode());assertTrue(e.getMessage().contains("还在生成中"));
+        assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
+    }
+
+    /**
+     * Codex 2026-10-19 (P2): the raise card says 「确认把上限提高到 X 积分后，我接着做」, but confirming it only moved the cap;
+     * the execution stayed needs_user until the user clicked 「继续」 too. A raise now releases the steps stopped for budget.
+     */
+    @Test void aRaiseTheExecutorAskedForContinuesWithoutAnotherClick() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());
+        var state=(ObjectNode)om.readTree(row.getStepsJson());
+        ((ObjectNode)state.path("steps").get(0)).put("status","needs_user").put("reason","本阶段预算还差 5 积分").put("budgetBlocked",true);
+        state.put("needsUserReason","预算不够");row.setStepsJson(state.toString());row.setStatus("needs_user");
+        var budget=(ObjectNode)om.readTree(row.getBudgetJson());((ObjectNode)budget.path("analysis")).put("spent",15).put("shortfall",5);row.setBudgetJson(budget.toString());
+        cards.put("msg-raise","APV-raise","analysis",fp,30,35);
+        var raised=service.create("u","p",new PlanExecutionCreateRequest("raise-1","analysis","IPR-a",fp,null,35L,0L,null,created.id(),null,"APV-raise","msg-raise"));
+        assertEquals("running",raised.status());assertEquals("pending",raised.steps().get(0).status());assertNull(raised.needsUserReason());
+        assertEquals(35,raised.budgets().get(0).approvedCap());assertNull(raised.budgets().get(0).shortfall());
+        assertFalse(om.readTree(rows.get(created.id()).getStepsJson()).path("steps").get(0).has("budgetBlocked"));
+    }
+
+    /** A raise never overrides the user's own pause, and never unblocks a step that waits for something else. */
+    @Test void aRaiseLeavesAPauseAndOtherWaitsAlone() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());
+        var state=(ObjectNode)om.readTree(row.getStepsJson());
+        ((ObjectNode)state.path("steps").get(0)).put("status","needs_user").put("reason","「拉片」需要你确认后再继续");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");
+        cards.put("msg-raise","APV-raise","analysis",fp,30,40);
+        var raised=service.create("u","p",new PlanExecutionCreateRequest("raise-1","analysis","IPR-a",fp,null,40L,0L,null,created.id(),null,"APV-raise","msg-raise"));
+        assertEquals("needs_user",raised.status(),"not a budget stop");assertEquals("needs_user",raised.steps().get(0).status());
+        state=(ObjectNode)om.readTree(rows.get(created.id()).getStepsJson());
+        ((ObjectNode)state.path("steps").get(0)).put("reason","本阶段预算还差 5 积分").put("budgetBlocked",true);
+        rows.get(created.id()).setStepsJson(state.toString());rows.get(created.id()).setStatus("paused");
+        cards.put("msg-raise2","APV-raise2","analysis",fp,30,50);
+        var paused=service.create("u","p",new PlanExecutionCreateRequest("raise-2","analysis","IPR-a",fp,null,50L,0L,null,created.id(),null,"APV-raise2","msg-raise2"));
+        assertEquals("paused",paused.status(),"the user's pause stays");assertEquals("pending",paused.steps().get(0).status(),"its 「继续制作」 will go on");
+    }
 }

@@ -201,6 +201,17 @@ describe('canvas cursor', () => {
     expect(s2.canvasAckSeq).toBe(7);
     expect(dialogueReducer(s2, { type: 'canvas.ack', seq: 8 }).canvasAckSeq).toBe(9);
   });
+  test('commands projected but not saved keep the persisted cursor below them until the save lands', () => {
+    const s0 = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state(), mode: 'replace', canvasAckSeq: 5 });
+    const s1 = dialogueReducer(fold(s0, ev(6, 'node.upsert', { nodeId: 'n1', op: 'create' }), ev(7, 'node.upsert', { nodeId: 'n2', op: 'create' })), { type: 'canvas.ack', seq: 7 });
+    expect(persistableCanvasCursor(s1)).toBe(7);
+    const unsaved = dialogueReducer(s1, { type: 'canvas.unsaved', fromSeq: 6 });
+    expect(unsaved.canvasAckSeq).toBe(7);
+    expect(persistableCanvasCursor(unsaved)).toBe(5);
+    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: undefined }))).toBe(7);
+    // Nothing below the first unsaved command: no cursor rather than 0 (the next open replays them).
+    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: 1 }))).toBeUndefined();
+  });
 });
 
 describe('outbox and snapshots', () => {

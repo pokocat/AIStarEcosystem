@@ -49,6 +49,11 @@ export interface DialogueStore {
   canvasSeq: number;
   /** Highest canvas seq actually projected onto the canvas (persisted per viewer). */
   canvasAckSeq: number;
+  /**
+   * Lowest canvas seq projected onto the canvas but not saved to the server yet. The persisted cursor stays below it:
+   * a reopen after a failed save replays those commands instead of skipping nodes the server never got (Codex 2026-10-19).
+   */
+  canvasUnsavedFrom?: number;
   /** Replaying history for a viewer without a canvas cursor: commands at or below this seq are restores. 0 = none. */
   restoreThroughSeq: number;
   nextCursor?: string;
@@ -87,6 +92,8 @@ export type DialogueAction =
       approved?: { budgetCap: number; autoFixCap: number } }
   | { type: 'adoption.add'; messageId: string; block: DialogueAdoptionBlock }
   | { type: 'canvas.ack'; seq: number }
+  /** The lowest projected-but-unsaved canvas seq, or undefined once everything projected has been saved. */
+  | { type: 'canvas.unsaved'; fromSeq?: number }
   | { type: 'older'; messages: StudioDialogueMessage[]; limit: number };
 
 export const emptyDialogueStore = (): DialogueStore => ({
@@ -373,6 +380,8 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
       // Nothing left to project: everything seen so far is on the canvas.
       return { ...store, canvasOps, canvasAckSeq: Math.max(store.canvasAckSeq, action.seq, canvasOps.length ? 0 : store.canvasSeq) };
     }
+    case 'canvas.unsaved':
+      return store.canvasUnsavedFrom === action.fromSeq ? store : { ...store, canvasUnsavedFrom: action.fromSeq };
     case 'older': {
       const ids = new Set(store.messages.map(m => m.id));
       const fresh = action.messages.filter(m => !ids.has(m.id));
@@ -393,7 +402,12 @@ export const canvasRestoring = (store: DialogueStore) => store.restoreThroughSeq
  * The canvas cursor worth saving for this viewer. Nothing while a restore replay is unfinished: a partial cursor
  * would make the next open replay the rest as ordinary commands instead of restores.
  */
-export const persistableCanvasCursor = (store: DialogueStore) => !store.thread || canvasRestoring(store) || !store.canvasAckSeq ? undefined : store.canvasAckSeq;
+export const persistableCanvasCursor = (store: DialogueStore) => {
+  if (!store.thread || canvasRestoring(store) || !store.canvasAckSeq) return undefined;
+  // Commands projected but not saved yet must replay on the next open: keep the cursor just below the first of them.
+  const cursor = store.canvasUnsavedFrom === undefined ? store.canvasAckSeq : Math.min(store.canvasAckSeq, store.canvasUnsavedFrom - 1);
+  return cursor > 0 ? cursor : undefined;
+};
 
 /** Executions this thread started, newest first, from the approval cards that started them. */
 export function approvedExecutionIds(store: DialogueStore): string[] {

@@ -112,7 +112,7 @@ test('the composer stays editable while a reply streams, and a tool event render
   api.post.mockResolvedValueOnce({ messageId: 'u2', turnId: 't1', queueState: 'queued' });
   fireEvent.click(sendButton());
   await waitFor(() => expect(screen.getByText('排队中，下一步应用')).toBeDefined());
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21, model: 'one' });
   emit(ev('tool.finished', { toolCallId: 'x', toolName: 'read_canvas', status: 'done', result: { summary: '找到 1 条视频' }, creditsActual: 0, settling: false }));
   expect(within(card).getByText('找到 1 条视频')).toBeDefined();
   expect(within(card).getByText('0 积分')).toBeDefined();
@@ -255,7 +255,32 @@ test('server canvas commands create nodes once, even when replayed, and save the
   emit(upsert);
   await waitFor(() => expect(canvas.filter(n => n.id === 'e1-seg-1')).toHaveLength(1));
   await waitFor(() => expect(api.save).toHaveBeenCalled());
-  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(upsert.seq);
+  await waitFor(() => expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(upsert.seq));
+});
+
+// Codex 2026-10-19 (P1): the node was recorded as projected and the event acknowledged before the canvas was saved. When
+// that save failed, reopening on the same browser skipped the node for good (a recorded node reads as one the user
+// deleted) while its video task kept running. Both records now wait for the save.
+test('a canvas command whose save failed is neither recorded as projected nor skipped on the next open', async () => {
+  let canvas: CanvasNodeData[] = [];
+  api.save.mockRejectedValue(new Error('画布保存失败，请先重试保存'));
+  await ready(<Host onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  emit(ev('message.delta', { messageId: 'm1', partId: 'a', delta: '好的' }));
+  const seen = seq;
+  const upsert = ev('node.upsert', { nodeId: 'e1-seg-1', op: 'create', executionId: 'e1', stepId: 'v1', runId: 'run-v1',
+    node: { id: 'e1-seg-1', type: 'video', title: '第 1 段', position: { x: 0, y: 0 }, width: 360, height: 640, metadata: { status: 'success', storageKey: 'k/v1' } } }, { executionId: 'e1' });
+  emit(upsert);
+  await waitFor(() => expect(canvas.some(n => n.id === 'e1-seg-1')).toBe(true));
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  await settle();
+  expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).not.toContain('e1-seg-1');
+  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th') || 0)).toBeLessThan(upsert.seq);
+  expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th') || 0)).toBeLessThanOrEqual(seen);
+  // The next successful save records it and moves the cursor past it.
+  api.save.mockResolvedValue(undefined);
+  emit(ev('node.upsert', { nodeId: 'new-2', op: 'create', node: { id: 'new-2', type: 'text', title: '口播稿', position: { x: 0, y: 0 }, width: 320, height: 200, metadata: { content: '第一版' } } }));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toEqual(expect.arrayContaining(['e1-seg-1', 'new-2'])));
+  await waitFor(() => expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(seq));
 });
 
 test('a text proposal is adopted only while the node still holds the text it was written against', async () => {
@@ -388,11 +413,31 @@ test('(a) a canvas opened after its execution finished gets the produced nodes b
   expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL);
 });
 
+test('(a2) a restore whose save failed is restored again on the next open', async () => {
+  closedCanvas();
+  api.save.mockRejectedValue(new Error('画布保存失败，请先重试保存'));
+  let canvas: CanvasNodeData[] = [];
+  const first = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  await waitFor(() => expect(canvas).toHaveLength(4));
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  await settle();
+  expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toEqual([]);
+  first.unmount();
+  // The server never got those nodes: the canvas opens without them, and they come back.
+  api.save.mockResolvedValue(undefined);
+  let again: CanvasNodeData[] = [];
+  await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { again = nodes; }}/>);
+  await waitFor(() => expect(again.map(n => n.id).sort()).toEqual(ALL));
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]').sort()).toEqual(ALL));
+});
+
 test('(b) opening it again adds nothing and reads no runs; a node deleted here is not rebuilt', async () => {
   closedCanvas();
   let canvas: CanvasNodeData[] = [];
   const first = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
   await waitFor(() => expect(canvas).toHaveLength(4));
+  // Recorded once the restore is saved (a save that never happened leaves them restorable, see (a2)).
+  await waitFor(() => expect(JSON.parse(localStorage.getItem('studio-projected-nodes:p') || '[]')).toHaveLength(4));
   first.unmount();
   const reads = api.getRun.mock.calls.length, saves = api.save.mock.calls.length;
   let again: CanvasNodeData[] = [];
@@ -550,6 +595,19 @@ test('confirming a card, then the server closing its synthetic turn, leaves noth
   expect(screen.getAllByLabelText('Studio 的回复')).toHaveLength(1);
 });
 
+// Codex 2026-10-19 (P2): an analysis-stage card the running execution posted (a budget raise) was sent without its
+// execution, so the server tried to start a second analysis and refused it as busy.
+test('a raise card of the running analysis confirms that same execution', async () => {
+  const analysisPlan = { ...planBlock, planRunId: 'plan-1', fingerprint: 'f1', plan: { ...planBlock.plan, stage: 'analysis' as const } };
+  const raise = { ...approvalBlock, approvalId: 'a9', stage: 'analysis' as const, planFingerprint: 'f1', budgetCap: 45, quotedCost: 40, autoFixCap: 0, shortfall: 5, executionId: 'PEX-9' };
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([analysisPlan, raise])] });
+  api.createExecution.mockResolvedValue({ ...doneExecution, id: 'PEX-9', stage: 'analysis', status: 'running', budgets: [{ stage: 'analysis', approvedCap: 45, autoFixCap: 0, spent: 40, inFlight: 0, remaining: 5 }] });
+  await ready();
+  fireEvent.click(within(screen.getByLabelText('确认分析')).getByRole('button', { name: '开始分析' }));
+  await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
+  expect(api.createExecution.mock.calls[0][1]).toMatchObject({ stage: 'analysis', executionId: 'PEX-9', approvalId: 'a9', budgetCap: 45, expectedRevision: 2 });
+});
+
 // ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
 
 const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {}): StudioSkillSummary => ({ key, name, version: 1, status: 'active', planning: 'dynamic', summary: `${name}的说明`,
@@ -694,6 +752,25 @@ test.each(['fixed', 'selectable'] as const)('assistant shows its single %s model
   expect(select.value).toBe('one');
   expect(select.disabled).toBe(true);
   expect(api.post).not.toHaveBeenCalled();
+});
+
+// Codex 2026-10-19 (P2): the request carried the picked model's ceiling but not the model, so the server ran the default
+// one (and a cheaper pick looked like a price change). The model now goes with its ceiling; a fixed scene sends none.
+test('the picked model goes with its own ceiling', async () => {
+  await ready();
+  fireEvent.change(screen.getByRole('combobox', { name: '助手模型' }), { target: { value: 'two' } });
+  fireEvent.change(composer(), { target: { value: '写一段口播' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 8 });
+});
+test('a fixed model is not sent', async () => {
+  await ready(<Host capabilities={{ ...capabilities, textModelMode: 'fixed' }}/>);
+  fireEvent.change(composer(), { target: { value: '写一段口播' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  expect(api.post.mock.calls[0][2].model).toBeUndefined();
+  expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 21 });
 });
 
 // ── Opening guidance: inventory chips, task cards and the recreation checklist ──────────────────────────────

@@ -239,7 +239,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     if (sendDisabledReason || sending) return;
     const project = projectId;
     const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}),
-      ...(chosenSkill ? { skillKey: chosenSkill.key } : {}) };
+      ...(chosenSkill ? { skillKey: chosenSkill.key } : {}),
+      // The ceiling above is the picked model's, so the model goes with it; a fixed or single-model scene sends none.
+      ...(selectable && selectedModel ? { model: selectedModel.endpointId } : {}) };
     setSending(true); setComposerError(""); setSkillNotice("");
     try {
       // Pinned and attached nodes must exist in the saved document before the server reads them.
@@ -273,13 +275,46 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const compose = useCallback((value: string) => composer.current?.compose(value), []);
 
   // ── Canvas projection of server commands ─────────────────────────────────
+  // Nodes (and the canvas commands that made them) projected but not on the server yet. The per-browser projection
+  // record and the persisted canvas cursor only move past them once a save succeeds: a node recorded as projected is
+  // never rebuilt (that record is how a deletion is remembered), so recording it before the save landed lost the node
+  // for good when the save failed, while its task kept running (Codex 2026-10-19).
+  const unsaved = useRef<{ project: string; ids: Set<string>; fromSeq?: number }>({ project: projectId, ids: new Set() });
+  const unsavedFor = (project: string) => {
+    if (unsaved.current.project !== project) unsaved.current = { project, ids: new Set() };
+    return unsaved.current;
+  };
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scheduleSave = useCallback(() => {
     const project = projectId;
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { if (same(project)) void saveStudioDocument(project).catch(e => message.error(e)); }, 300);
+    saveTimer.current = setTimeout(() => {
+      if (!same(project)) return;
+      const batch = unsavedFor(project);
+      unsaved.current = { project, ids: new Set() };
+      void saveStudioDocument(project).then(() => {
+        rememberProjectedNodes(project, [...batch.ids]);
+        if (same(project)) session.dispatch({ type: "canvas.unsaved", fromSeq: unsavedFor(project).fromSeq });
+      }).catch(e => {
+        // Not saved: the batch waits for the next successful save, and the cursor stays below it.
+        const pending = unsavedFor(project);
+        batch.ids.forEach(id => pending.ids.add(id));
+        if (batch.fromSeq !== undefined) pending.fromSeq = Math.min(pending.fromSeq ?? batch.fromSeq, batch.fromSeq);
+        message.error(e);
+      });
+    }, 300);
   }, [projectId, message]);
   useEffect(() => () => clearTimeout(saveTimer.current), []);
+  /** After a projection: what changed is recorded once saved; what was already on the canvas is recorded now. */
+  const recordProjection = (project: string, result: { projected: string[]; changed: boolean }, fromSeq?: number) => {
+    const pending = unsavedFor(project);
+    if (!result.changed) { rememberProjectedNodes(project, result.projected.filter(id => !pending.ids.has(id))); return; }
+    result.projected.forEach(id => pending.ids.add(id));
+    if (fromSeq !== undefined) {
+      pending.fromSeq = Math.min(pending.fromSeq ?? fromSeq, fromSeq);
+      session.dispatch({ type: "canvas.unsaved", fromSeq: pending.fromSeq });
+    }
+  };
   /** Project a batch onto the canvas through its two setters and the ordinary save chain. */
   const applyCanvasOps = (ops: CanvasProjectionOp[], opts: { docVersion?: string } = {}) => {
     const base = { nodes: live.current.nodes, connections: live.current.connections };
@@ -303,7 +338,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       const messageId = store.turnMessages[p.turnId] || fallback;
       if (messageId) session.dispatch({ type: "adoption.add", messageId, block: { type: "adoption", nodeId: p.nodeId, field: p.field, content: p.content, snapshot: p.snapshot, status: "proposed" } });
     }
-    rememberProjectedNodes(projectId, result.projected);
+    recordProjection(projectId, result, ops[0].seq);
     session.dispatch({ type: "canvas.ack", seq: ops[ops.length - 1].seq });
     // The assistant's new nodes come into view (no selection change), and the first time this browser sees
     // the assistant put something on the canvas, say how the two sides relate.
@@ -341,7 +376,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const ops = executionRestoreUpserts(execution, runs, new Set(steps.map(step => stepNodeId(execution, step))))
       .map(data => ({ kind: "node" as const, data, executionId: execution.id, turnId: execution.id, restore: true }));
     if (!ops.length) return;
-    rememberProjectedNodes(project, applyCanvasOps(ops).projected);
+    recordProjection(project, applyCanvasOps(ops));
   };
   useEffect(() => {
     const project = projectId;
