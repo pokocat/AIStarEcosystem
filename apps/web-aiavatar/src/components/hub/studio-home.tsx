@@ -69,7 +69,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
       <Link className="studio-home-text-link" href="/projects">我的画布 <ArrowRight size={16}/></Link>
     </header>
 
-    <StudioConversationStart compact heading="想做什么，直接说" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
+    <StudioConversationStart compact heading="今天想做点什么？" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
     <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
     {error && <div className="studio-home-error" role="alert"><p>{error}</p></div>}
 

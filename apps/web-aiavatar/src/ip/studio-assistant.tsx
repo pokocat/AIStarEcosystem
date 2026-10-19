@@ -514,12 +514,12 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     { title: "修改节点内容", prepare: "已指定 1 个节点，核心设定会保留。", result: "一版可以写回原节点的完整修改稿。", Icon: PenLine, tone: "text", run: () => startWith("修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。") },
     { title: "优化节点提示词", prepare: "只改提示词，不生成新素材。", result: "完整的新提示词，一键写回。", Icon: Image, tone: "image", run: () => startWith("优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。") },
     { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: startRecreation },
-    { title: "搭一套创作流程", prepare: "说清最后要什么就行。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。") },
+    { title: "搭一套创作流程", prepare: "说清最后要什么就行。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ] : [
     { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: startRecreation },
-    { title: "做一张图", prepare: "一句描述就够，有参考图更好。", result: "几张候选，选一张放进画布。", Icon: Image, tone: "image", run: () => startWith("设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。") },
+    { title: "做一张图", prepare: "一句描述就够，有参考图更好。", result: "几张候选，选一张放进画布。", Icon: Image, tone: "image", run: () => startWith("帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。") },
     { title: "写一段文字", prepare: "说清写给谁、写什么。", result: "一份能直接用的初稿，放进画布继续改。", Icon: FileText, tone: "text", run: () => startWith("生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。") },
-    { title: "搭一套创作流程", prepare: "说清最后要什么，比如一个 IP 的设定图到场景视频。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我搭建从角色描述、多视角设定图、细节参考图到场景视频的创作流程。") },
+    { title: "搭一套创作流程", prepare: "说清最后要什么，比如一个 IP 的设定图到场景视频。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ];
   // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
   // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
