@@ -174,6 +174,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | `infra/scripts/update-and-deploy.sh` · `install-host-deps.sh` · `check-runtime-env.sh` · `install-cjk-fonts.sh` | ECS 一键更新、宿主依赖、runtime env 预检、中文字体 |
 | [`docs/runbooks/alipay-sandbox.md`](runbooks/alipay-sandbox.md) | 支付宝直连沙箱本地联调：拿凭证 → 配置 → 查单兜底 / 公网回调 → 上生产换 4 项 |
 | [`docs/runbooks/impersonation.md`](runbooks/impersonation.md) | 附身登录：管理员以用户身份进五个产品的工作台 |
+| [`docs/runbooks/studio-e2e-cases.md`](runbooks/studio-e2e-cases.md) | Studio 端到端测试用例：发布前按真实路径逐步读 DOM 状态；含待随下次发布一起测的场景（last-reviewed 2026-10-19） |
 | [`infra/vendor/platform-sdk/README.md`](../infra/vendor/platform-sdk/README.md) | Java SDK 固定 release 的制品来源、SHA256 和 CI/部署安装路径；新 runner 无需跨私有仓认证（last-reviewed 2026-10-10） |
 
 ## 6. 审计 / 调研（带日期的一次性报告，写完不再改）
