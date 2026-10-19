@@ -36,6 +36,10 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   };
   const cancel = () => modal.confirm({ title: '停止这次制作？', content: '还没开始的任务会取消；已经交给厂商的任务会照常完成并结算。', okText: '停止制作', cancelText: '再想想', okButtonProps: { danger: true }, onOk: () => run('cancel') });
   const live = execution.status === 'running', waiting = execution.status === 'paused' || execution.status === 'needs_user';
+  // Waiting on the user because a step failed or needs a go-ahead: the same 「继续」 the server already supports
+  // (a failed step gets a new attempt). A budget shortfall goes through the raise card instead, so no button here.
+  const failed = stageSteps.some(s => s.status === 'failed');
+  const canContinue = execution.status === 'needs_user' && !budget?.shortfall && (failed || stageSteps.some(s => s.status === 'needs_user'));
   return <section className="studio-dialogue-execution" aria-label="制作进度" data-status={execution.status}>
     <div className="studio-dialogue-execution-head">
       <strong>{execution.stage === 'analysis' ? '分析' : '制作'} · {STATUS[execution.status]}</strong>
@@ -52,6 +56,7 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
     {(live || waiting) && <div className="studio-dialogue-execution-actions">
       {live && <Button size="small" loading={busy === 'pause'} disabled={!!busy} title="已经提交的任务会做完，之后不再提交新的" onClick={() => void run('pause')}>暂停后续</Button>}
       {execution.status === 'paused' && <Button size="small" loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>继续制作</Button>}
+      {canContinue && <Button size="small" type="primary" loading={busy === 'resume'} disabled={!!busy} title={failed ? '重新提交没完成的那一步，按实际用量结算' : '确认后继续往下做'} onClick={() => void run('resume')}>{failed ? '重试这一步' : '继续制作'}</Button>}
       <Button size="small" danger loading={busy === 'cancel'} disabled={!!busy} title="取消还没开始的任务，已交给厂商的会照常完成并结算" onClick={cancel}>停止</Button>
     </div>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
