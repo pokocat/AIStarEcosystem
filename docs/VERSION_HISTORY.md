@@ -4,9 +4,9 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 创作助手改版 · 2026-10-18 · 本地实现，未发布
+### Studio 创作助手改版 · 2026-10-18 · 2026-10-19 已生产发布（仅 web-aiavatar）
 
-按设计稿（Studio 创作助手改版，四个状态）实现：面板默认停靠右侧、占满画布高度、可拖宽，停靠与宽度按浏览器记忆（`StudioFloatingPanel` 新增 `layoutKey / defaultDocked / resizable / subheader / titleExtra`）；进度条固定在头部下方（`StudioDialogueExecution` 加进度条、各步列表与「在画布上看」→ 画布 `studio-command: focus`）；技能 / 模型 chip 进输入区，发送原因内联；开场任务卡 + 画布素材 chip + 使用说明；「复刻一条短视频」素材清单（`studio-assistant-checklist.tsx`，纯前端引导）；确认卡改为报价大数字 + 折叠的上限输入。无后端 / API / 迁移改动。web-aiavatar vitest 899/899，typecheck 绿，mock 模式在 1440 与 375 宽实测。
+按设计稿（Studio 创作助手改版，四个状态）实现：面板默认停靠右侧、占满画布高度、可拖宽，停靠与宽度按浏览器记忆（`StudioFloatingPanel` 新增 `layoutKey / defaultDocked / resizable / subheader / titleExtra`）；进度条固定在头部下方（`StudioDialogueExecution` 加进度条、各步列表与「在画布上看」→ 画布 `studio-command: focus`）；技能 / 模型 chip 进输入区，发送原因内联；开场任务卡 + 画布素材 chip + 使用说明；「复刻一条短视频」素材清单（`studio-assistant-checklist.tsx`，纯前端引导）；确认卡改为报价大数字 + 折叠的上限输入。无后端 / API / 迁移改动。web-aiavatar vitest 899/899，typecheck 绿，mock 模式在 1440 与 375 宽实测。发布 `20261018-studio-assistant-redesign`（GIT_SHA e9bbca2d，`release/studio-recreation-20261018`），verify ALL GREEN，线上包已含新界面；真实后端下的用户旅程由用户自行走一遍，记录见 `docs/studio-recreation-release-20261018.md`。
 
 ### Studio 全能创作 · 对话驱动视频复刻 S1/S2 · 2026-10-18 · 本地实现，未发布
 

@@ -34,3 +34,19 @@
 
 - 结果：整条流程在线上走通。分析阶段实际 10 积分（上限 63）；制作方案 7 步（三段 H3 全能参考视频各接一次检查，最后合成），报价 663、实际 604；三段检查都判通过，合成 16 秒成片在画布上正常加载播放，主角已换成婴儿。本次会话账本：冻结 915、结算 649（视频 600、对话 / 拉片 / 规划 / 检查 49）、释放 266，无残留冻结。
 - 实测还发现：步骤失败不会在对话线程里发消息；`IpLibraryCollector` 对两条旧合成任务每 5 秒无限重试刷 WARN；对话端点未声明工具 / 流式。均已记入 `TODO.md`。
+
+## 追加发布 · 2026-10-19 · 创作助手改版（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261018-studio-assistant-redesign` |
+| GIT_SHA | `e9bbca2d`（`release/studio-recreation-20261018`，与 `dev/ai-video-replacement-skill-27b923` 的 `ea3ff018` 同树） |
+| 服务 | web-aiavatar（server / admin 不动，无迁移、无 API 变化） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id` `NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn` `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`（与上一版 web-aiavatar `20261018-studio-retry-step` 一致） |
+| 发布前基线 | web-aiavatar = `8124cc89`（`20261018-studio-retry-step`）；release 分支在它之后只有 server / 文档改动 |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；`aistareco-web-aiavatar` 14:19:26 CST 重启，5 分钟内 0 条错误；线上 chunk `7203.*.js` 含「想做点什么」「复刻需要的素材」等新界面字符串 |
+
+内容：助手默认右侧停靠、占满高度、可拖宽；开场任务卡与「画布上现在有」；「复刻一条短视频」素材清单；确认卡报价大数字 + 折叠上限；固定在顶部的进度条与「在画布上看」。详见 `AGENTS.md`「创作助手改版」与 `docs/VERSION_HISTORY.md`。
+
+**未验证**：真实后端下的完整对话流程（本地只在 mock 模式实测界面）；用户自行走一遍。回滚：按 `8124cc89` 重建 web-aiavatar（`deploy-release.sh dist/deploy/20261018-studio-retry-step web-aiavatar`）。
+
