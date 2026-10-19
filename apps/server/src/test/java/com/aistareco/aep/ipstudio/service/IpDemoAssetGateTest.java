@@ -59,4 +59,15 @@ class IpDemoAssetGateTest {
         assertFalse(svc.ownsAssetKey(USER, other),
                 "放行示例前缀不能顺带放行别人的私有素材");
     }
+
+    @Test
+    void 带_OSS_前缀的本人成片也是本人的_别人的照旧不是() {
+        // 2026-10-18 线上：合成成片按上传结果落库，key 带 media/ 前缀，被判成非本人、画布里看不到成片。
+        String gen = storage.allocateKey(IpProjectService.CATEGORY_GEN, USER, "IPP-1_ep1_ab.mp4");
+        assertTrue(svc.ownsAssetKey(USER, "media/" + gen), "media/" + gen);
+        assertTrue(svc.ownsAssetKey(USER, gen));
+        String others = storage.allocateKey(IpProjectService.CATEGORY_GEN, "someone-else", "x.mp4");
+        assertFalse(svc.ownsAssetKey(USER, "media/" + others), "前缀段不能把别人的文件变成本人的");
+        assertFalse(svc.ownsAssetKey(USER, "media/extra/" + gen), "只收一段前缀");
+    }
 }

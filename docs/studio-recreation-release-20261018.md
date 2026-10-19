@@ -20,3 +20,17 @@
 - 提示词文件**没有改**。`prompt_template` 行首次启动入库后，只有 `PromptTemplateSeeder.SEED_VERSION` 变更才会刷新「没人改过」的行；生产库里 Studio 的 8 条提示词与文件长度一致，`dap.ip_canvas_image` 是运营改过的版本 3，刷新也不会碰它。
 - 测试：`ProposePlanToolTest`（用真实回复形状：围栏 + 问题对象 + 正确/猜错的 settings）、`ModelJsonTest`、`StudioPlanValidatorSkillTest` 新增 2 项、`DialogueActionProtocolTest` 新增 4 项。整个 `ipstudio` 包 623 项里只有 3 项失败（`IpVideoModelChoiceWiringTest` 2 项、`StudioAssetCatalogPricingTest` 1 项），在未改动的开发分支上同样失败，与本次无关。
 - 两次发布都只动 server，`verify.sh` ALL GREEN，重启后 `-ERROR` 0 条（该 grep 先在近三天日志里验证能命中 13 条）。
+
+### 继续走到制作阶段时的后续热修（同晚）
+
+| 现象 | 根因 | 热修 |
+|---|---|---|
+| 分析方案被接受后，第三次规划仍可能把「编排制作计划」放在拉片之前、把步骤编号写进素材引用、把 `videoModel` 写成模型别名 | 规划输入没说明分析阶段的固定顺序、referenceNodeIds 能放什么、videoModel 是端点 id | `20261018-studio-plan-structure`：契约补阶段结构、引用规则与端点 id；校验器拒绝 plan-compile 之后的拉片、丢掉 plan-compile 上多余的 editTarget；propose_plan 拒绝不在可用列表里的视频模型并列出可选 id |
+| 拉片第一次调用被聚算 Qwen 400 `unsupported_geometry`（visual activation/HBM headroom budget） | 总览图最长边 2800 像素，超出该视觉端点预算 | `20261018-studio-vision-budget`：同一批画面按 1600 → 1024 → 640 缩小重试，不丢帧、不换帧；实测 640 通过，分段分析的 960 帧原样通过 |
+| 拉片失败后进度条只有「停止」，原因里却写「可以继续重试这一步」 | 前端只在「已暂停」时显示继续按钮 | web `20261018-studio-retry-step`：失败步骤显示「重试这一步」，待确认步骤显示「继续制作」，调用既有 resume |
+| 「编排制作计划」被拒：引用了不存在的素材（用户的婴儿图） | 分析方案在一轮没有附件的对话里确认，执行记录的画布素材为空 | `20261018-studio-plan-context`：确认的步骤里引用过的画布素材（拉片原片、referenceNodeIds、绑定、改稿对象）一并作为后续规划的可用素材；契约列出校验器接受的参考用途；同一次拉片记住端点接受的图片尺寸 |
+| 「编排制作计划」再被拒：只能引用更早步骤的产物 | 模型把画布素材 id 写在绑定的 `stepId` 里 | `20261018-studio-binding-ids`：该值恰好是可用画布素材且不是更早步骤时，按 `nodeId` 绑定；其余照旧拒绝；契约说明素材一律写 nodeId |
+| 合成成片做出来了，但画布里拿不到签名地址（日志「文档里出现非本人资产 key，不重签」） | 合成成片按上传结果落库，key 带 OSS 前缀 `media/`，归属检查只认不带前缀的 `ipstudio_gen/<用户>/`；资产库收录对同类旧 key 每 5 秒无限重试也是这个原因 | `20261018-studio-owned-prefix`：归属检查接受恰好一段前缀，属主段仍须是本人（与视频 key 的既有规则一致）；`IpDemoAssetGateTest` |
+
+- 结果：第二版分析方案（拉片 + 编排制作计划）实际花费 10 积分（上限 63）；制作方案 7 步（三段视频各接一次检查，最后合成），报价 663 积分、总上限 684，已确认并开始出片。
+- 实测还发现：步骤失败不会在对话线程里发消息；`IpLibraryCollector` 对两条旧合成任务每 5 秒无限重试刷 WARN；对话端点未声明工具 / 流式。均已记入 `TODO.md`。

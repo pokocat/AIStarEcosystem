@@ -33,7 +33,7 @@
 - [x] ~~拉片被聚算 Qwen 视觉模型 400 `unsupported_geometry` 拒绝~~ **2026-10-18 已修并上线**（`20261018-studio-vision-budget`）：总览图（最长边 2800）超出该端点视觉预算，同一批画面按 1600 → 1024 → 640 缩小重试，实测 640 通过、分段分析的 960 帧原样通过；`StudioVisualBudgetTest`。
 - [x] ~~分析步骤失败后进度条只有「停止」~~ **2026-10-18 已修并上线**（web `20261018-studio-retry-step`）：`needs_user` 下失败步骤显示「重试这一步」、待确认步骤显示「继续制作」，调用既有 resume；`studio-dialogue-execution.test.tsx`。
 - [ ] 步骤失败只改执行状态、不往对话线程发消息（`StudioPlanExecutor.needsUser`）：用户只能在进度条看到原因，助手也不会主动说明；考虑在失败 / 待确认时发一条执行消息（沿用 `postExecutionMessage`，按原因去重）。
-- [ ] `[asset-library] retry indexing` 无限重试刷 WARN（`IpLibraryCollector.collect`，每 5 秒）：`IPR-2420e04be24a497ca9e7`、`IPR-01a00a8f4b1e4eb995b6` 的旧合成成片 key（`IPP-*_ep1_*.mp4`）被 `IpProjectService` 归属闸拒绝，永远收不进去，一天约 7 万行；应在确定性失败后标记跳过并记一次原因。
+- [ ] `[asset-library] retry indexing` 无限重试刷 WARN（2026-10-18 根因已定位并随 `20261018-studio-owned-prefix` 修正归属检查：key 带 `media/` 前缀；上线后确认 WARN 是否停止；确定性失败仍应标记跳过而不是永远重试）（`IpLibraryCollector.collect`，每 5 秒）：`IPR-2420e04be24a497ca9e7`、`IPR-01a00a8f4b1e4eb995b6` 的旧合成成片 key（`IPP-*_ep1_*.mp4`）被 `IpProjectService` 归属闸拒绝，永远收不进去，一天约 7 万行；应在确定性失败后标记跳过并记一次原因。
 - [ ] 线上对话端点 `ai-studio-jusuan-qwen38` 未声明流式 / 工具调用 / response_format：当前走 JSON 动作协议与整段回复。若供应商实际支持原生工具调用，在后台勾选后可省掉标签解析这一层（需先用真实请求核实）。
 
 - [x] ~~接入前产品问题：全画布模板复制后视频模式回退首尾帧~~ **2026-10-18 已修**：`IpDemoTemplateService.snapshotForTemplate` 保留 `videoMode/vquality/videoCount`，并从剥掉的 request 派生 `studio.videoPreset`；测试 `IpDemoTemplateStripTest.fullCanvasSnapshotKeepsNativeVideoModeAsPreset`。
