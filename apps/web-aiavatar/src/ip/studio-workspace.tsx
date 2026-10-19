@@ -73,6 +73,13 @@ const containers = () => document.querySelector<HTMLElement>(".ip-surface") || d
 const labels = { recreation: "解析视频", text: "AI 修改文本", script: "创作剧本", storyboard: "拆分镜头", image: "生成图片", video: "生成视频", assemble: "合成作品", assistant: "导演对话" };
 const legacyBatchCounts=[1,2,4];
 
+/** Per-browser memory of whether the assistant panel was last open; desktop canvases default to open. */
+const ASSISTANT_OPEN_KEY="studio-assistant:open";
+function readAssistantOpenPreference(){
+  // Only an explicit desktop shell opens it by itself (tests and the mobile shell start closed).
+  if(typeof document==="undefined"||document.documentElement.dataset.layout!=="desktop")return false;
+  try{return localStorage.getItem(ASSISTANT_OPEN_KEY)!=="0";}catch{return true;}
+}
 export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds, setNodes, setConnections, onFocusNode, onClosePanel, onRestorePanel, activeComposerId, referencePicking, textEditingNodeId, renderTextEditor }: Props) {
   const { message } = useStudioApp();
   const {conversations,setConversations}=useStudioConversations(projectId);
@@ -142,7 +149,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [videoCount,setVideoCount]=useState(1);
   const [rewriteScope,setRewriteScope]=useState<{field:"outline"|"episode";episodeNo?:number}>();
   const [assistantNodeId,setAssistantNodeId]=useState<string>(),[batchNodeId,setBatchNodeId]=useState<string>();
-  const [templateLibraryOpen,setTemplateLibraryOpen]=useState(false),[assistantOpen,setAssistantOpen]=useState(false),[batchOpen,setBatchOpen]=useState(false);
+  const [templateLibraryOpen,setTemplateLibraryOpen]=useState(false),[assistantOpen,setAssistantOpen]=useState(readAssistantOpenPreference),[batchOpen,setBatchOpen]=useState(false);
+  // The assistant is the default way in: open on every desktop canvas until the user closes it; closing (or opening) is remembered per browser.
+  useEffect(()=>{if(typeof document==="undefined"||document.documentElement.dataset.layout!=="desktop")return;try{localStorage.setItem(ASSISTANT_OPEN_KEY,assistantOpen?"1":"0");}catch{/* not remembered */}},[assistantOpen]);
   const [templateScope,setTemplateScope]=useState<"all"|"commerce"|"digital">("all");
   const openTemplates=async(scope:typeof templateScope="all")=>{try {await saveStudioDocument(projectId);setTemplateScope(scope);setTemplateLibraryOpen(true);onClosePanel();}catch(e){message.error(e);}};
   const [entryBrief,setEntryBrief]=useState(""),[entryAutoSend,setEntryAutoSend]=useState(false);
