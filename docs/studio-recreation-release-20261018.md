@@ -50,3 +50,18 @@
 
 **未验证**：真实后端下的完整对话流程（本地只在 mock 模式实测界面）；用户自行走一遍。回滚：按 `8124cc89` 重建 web-aiavatar（`deploy-release.sh dist/deploy/20261018-studio-retry-step web-aiavatar`）。
 
+## 追加发布 · 2026-10-19 · 对话优先的创作入口（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-dialogue-first` |
+| GIT_SHA | `44c7fa22`（`release/studio-recreation-20261018`，与 dev 的 `ee0b1a5a`、main 的 `432b1637` 同树） |
+| 服务 | web-aiavatar（server / admin 不动，无迁移、无 API 变化） |
+| 构建参数 | 与上一版 web-aiavatar 相同（`AUTH_MODE=id`、`ID_ISSUER=https://id.aibuzz.cn`、`ENTERPRISE_ENABLED=1`） |
+| 发布前基线 | web-aiavatar = `e9bbca2d`（`20261018-studio-assistant-redesign`） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；服务 15:30:52 CST 重启，5 分钟内 0 条错误；`/dashboard`、`/create` 200；线上 chunk 含「想做什么，直接说」等新入口字符串与 `studio-conversation-start` 样式 |
+
+内容：首页英雄区 / 手机首页 / 创作页的对话框入口，进画布自动发出第一句；新节点自动进视野与一次性提示；节点操作条「问助手」；空画布「和助手开始」。详见 `AGENTS.md`「对话优先的创作入口」。
+
+**未验证**：真模型下首页一句话 → 自动发送 → 方案的完整链（本地只在演示模式实测），由用户走一遍。回滚：`deploy-release.sh dist/deploy/20261018-studio-assistant-redesign web-aiavatar`。
+
