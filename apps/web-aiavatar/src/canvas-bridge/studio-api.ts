@@ -2,6 +2,8 @@ import { prepareStudioImageUpload } from './studio-image-file';
 import { withStudioBilling } from "./studio-billing";
 import type { StudioVoiceCatalog,StudioVoiceProfile,StudioAdoptVoiceRequest,StudioBindVoiceRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { apiFetch } from "@ai-star-eco/api-client";
+import { USE_MOCK } from "@/ip/api/_client";
+import { getProject } from "@/ip/api/ip-studio";
 import type { IpProject, IpRun, StudioMediaImportResult } from "@ai-star-eco/types";
 import type { StudioAssetCatalog, StudioAdoptRequest, StudioAdoptResult, StudioCapabilities, StudioIpAsset, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import type { StudioSpeechCatalog, StudioSpeechRequest } from "@ai-star-eco/types/ip-studio-workflow";
@@ -33,7 +35,9 @@ export const submitStudioRun = async (projectId: string, request: StudioRunReque
   apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`, { method: "POST", body: await withStudioBilling(projectId, request) });
 export const adoptStudioImage = (projectId: string, request: StudioAdoptRequest) =>
   apiFetch<StudioAdoptResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/adopt`, { method: "POST", body: request });
-export const readStudioProject = (projectId: string) => apiFetch<IpProject>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}`);
+// Mock-aware: the workspace reads the run list through this helper to decide whether finished execution outputs must be
+// restored; USE_MOCK=1 must see the same runs the mock-aware IpStudioApi.getProject returns (Codex R3-02).
+export const readStudioProject = (projectId: string) => USE_MOCK ? getProject(projectId) : apiFetch<IpProject>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}`);
 export const listStudioIps = () => apiFetch<{ id: string; name: string }[]>("/v1/assets/ips");
 export const listStudioIpAssets = () => apiFetch<StudioIpAsset[]>("/v1/ip-studio/studio/ip-assets");
 export const classifyStudioIpAsset = (avatarId:string,lookId:string,assetRole:string) => apiFetch<StudioIpAsset>(`/v1/ip-studio/studio/performers/${encodeURIComponent(avatarId)}/looks/${encodeURIComponent(lookId)}/role`,{method:"PUT",body:{assetRole}});

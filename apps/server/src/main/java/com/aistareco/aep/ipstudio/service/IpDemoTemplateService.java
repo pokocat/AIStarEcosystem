@@ -112,8 +112,11 @@ public class IpDemoTemplateService {
             ObjectNode metadata = node.path("metadata") instanceof ObjectNode original ? original : om.createObjectNode();
             stripStudioExecution(metadata);
             ObjectNode clean = om.createObjectNode();
+            // videoMode / vquality / videoCount are authored node controls, not run traces: without them a copied
+            // universal-reference node fell back to "first/last frame" by reference count (S0 product issue, plan §当前基础与实现缺口).
             for (String field : List.of("prompt", "storageKey", "images", "videos", "primaryImageId", "primaryVideoId",
-                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio", "groupId"))
+                    "size", "aspectRatio", "seconds", "model", "mimeType", "bytes", "durationMs", "naturalWidth", "naturalHeight", "studio", "groupId",
+                    "videoMode", "vquality", "videoCount"))
                 if (metadata.has(field)) clean.set(field, metadata.get(field).deepCopy());
             if ("group".equals(IpDocs.typeOf(node)) && metadata.has("groupDescription"))
                 clean.set("groupDescription", metadata.get("groupDescription").deepCopy());
@@ -337,8 +340,17 @@ public class IpDemoTemplateService {
         if(Set.of("assistant","batch","recreation").contains(source.path("kind").asText())) {metadata.remove("studio");return;}
         ObjectNode clean=source.objectNode();
         for(String field:List.of("kind","settings","episodeNo","script","shot","parentNodeId","assetRole","order",
-                "libraryCharacterId","libraryCharacterName","libraryAssetRole"))
+                "libraryCharacterId","libraryCharacterName","libraryAssetRole","videoPreset"))
             if(source.has(field))clean.set(field,source.get(field).deepCopy());
+        // The accepted request is owner-bound and dropped, but its native video geometry is authored structure:
+        // keep mode / resolutionTier / seed as videoPreset so a copy reopens in the same mode (no keys, no task identity).
+        JsonNode video=source.path("request").path("video");
+        if(!clean.has("videoPreset") && video.isObject() && video.path("mode").isTextual()) {
+            ObjectNode preset=clean.putObject("videoPreset");
+            preset.put("mode",video.path("mode").asText());
+            if(video.path("resolutionTier").isTextual())preset.put("resolutionTier",video.path("resolutionTier").asText());
+            if(video.path("seed").isNumber())preset.put("seed",video.path("seed").asLong());
+        }
         metadata.set("studio",clean);
     }
     /** Group public character copies before removing owner-bound adoption/reference records. */

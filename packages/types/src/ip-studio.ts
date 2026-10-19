@@ -82,7 +82,7 @@ export interface IpProjectDoc {
 }
 
 export type IpRunStatus = "running" | "done" | "failed";
-export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio" | "studio-lip-sync" | "studio-asset-extract" | `studio-${import("./ip-studio-workflow").StudioOperation}`;
+export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio" | "studio-lip-sync" | "studio-asset-extract" | "studio-dialogue" | `studio-${import("./ip-studio-workflow").StudioOperation}`;
 
 // width / height 是**出图的真实像素**（服务端从文件头读，不整图解码）。
 // 画布拿它算节点尺寸；缺了只能按上限铺成正方形，竖图会被撑成方框。
@@ -102,6 +102,8 @@ export interface IpRunOutput {
   plan?: import("./ip-studio-workflow").StudioPlan;
   recreation?: import("./ip-studio-workflow").StudioRecreationReport;
   filmStudy?: import("./ip-studio-workflow").StudioFilmStudy;
+  /** Native check run: verdicts on the target run's real media. */
+  check?: import("./ip-studio-workflow").StudioCheckResult;
   sourceAudio?: import("./ip-studio-workflow").StudioSourceAudio;
   scriptRevision?: { markdown: string; summary: string };
   textRevision?: { content: string; summary: string };

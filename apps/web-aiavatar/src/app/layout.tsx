@@ -12,6 +12,7 @@ import "../styles/studio-home.css";
 import "@xyflow/react/dist/style.css";
 import "../styles/studio-flow.css";
 import "../styles/studio-recreation.css";
+import "../styles/studio-dialogue.css";
 import "../styles/account-workspace.css";
 import "../styles/ip-display-font.css";
 import "../styles/ip-brand.css";

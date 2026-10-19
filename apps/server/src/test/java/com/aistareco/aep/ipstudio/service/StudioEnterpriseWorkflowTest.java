@@ -35,7 +35,7 @@ class StudioEnterpriseWorkflowTest {
         when(runs.save(any())).thenAnswer(i->{saved.set(i.getArgument(0));return saved.get();});
         when(prices.ipIdentity()).thenReturn(2L);
         var endpoint=AiModelEndpoint.builder().id("final-text").enabled(true).build();
-        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("创作","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var tokenPrices=mock(AiChatTokenPricing.class);var rate=new AiChatTokenPricing.Rate(new BigDecimal("0.18"),new BigDecimal("1.08"),65536,8192);
         when(tokenPrices.find("final-text")).thenReturn(rate);

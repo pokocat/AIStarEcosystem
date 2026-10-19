@@ -27,6 +27,12 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private StudioHypitMedia hypitMedia;
     @org.springframework.beans.factory.annotation.Autowired private StudioRunErrorLog errorLog;
     @org.springframework.beans.factory.annotation.Autowired private AiGenerationQueueService queue;
+    // Plan quoting, executor wake-up and dialogue events; all optional so the native run never depends on them.
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.execution.StudioPlanQuoter> planQuoter;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.execution.StudioPlanExecutor> planExecutor;
+    // S3: a finished distill run's draft is saved in the run's settlement transaction (optional so the worker never depends on it).
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.skill.StudioSkillDraftSink> skillDrafts;
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
@@ -78,14 +84,14 @@ public class StudioWorkflowWorker {
                 filmStudy(id,run,input,output);return;
             }
             switch(operation) {
-                case "text","script","storyboard","assistant","asset-extract","recreation" -> {
+                case "text","script","storyboard","assistant","asset-extract","recreation","check" -> {
                     JsonNode script;StudioRecreation.Study recreationStudy=null;
                     if(mock) script=fixtureScript(input);
                     else {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
-                        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用"));
+                        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
                         int finalTokens=input.path("_exec").path("maxTokens").asInt(8192);
@@ -117,6 +123,14 @@ public class StudioWorkflowWorker {
                             if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","创作模型的图片读取能力已停用");
                             userContent=new StudioVisualContext(storage).parts(user,visual);
                         }
+                        if("check".equals(operation)) {
+                            // The frames the model may cite were fixed at acceptance; sample exactly those from the target media.
+                            if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","检查模型的图片读取能力已停用");
+                            if(!progress(id,20,"check.frames"))return;
+                            JsonNode target=input.path("_exec").path("check");
+                            userContent=new StudioVisualContext(storage).targetParts(user,target.path("targetStorageKey").asText(),
+                                    "video".equals(target.path("mediaType").asText()),sampledTimes(target));
+                        }
                         if(enterpriseBilling!=null) enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
                         var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
@@ -141,6 +155,19 @@ public class StudioWorkflowWorker {
                             script=extracted;
                         }
                         var validated=StudioAssetExtraction.validate(script,source);var extraction=mapper.createObjectNode();extraction.set("items",mapper.valueToTree(validated));int omitted=script.path("items").size()-validated.size();if(omitted>0)extraction.putArray("warnings").add("有 "+omitted+" 项缺少可靠的原文依据，未加入建议列表，请在剧本中补充设定后重新整理。");output.set("assetExtraction",extraction);
+                    } else if("check".equals(operation)) {
+                        JsonNode target=input.path("_exec").path("check");
+                        List<String> ids=new ArrayList<>();target.path("checkIds").forEach(v->ids.add(v.asText()));
+                        var result=com.aistareco.aep.ipstudio.execution.StudioCheckOutcome.normalize(script,ids,sampledTimes(target),
+                                "image".equals(target.path("mediaType").asText()),target.path("mediaFacts").size()>0,
+                                target.path("targetRunId").asText(),target.path("targetStorageKey").asText(null));
+                        output.set("check",result);output.put("text",checkSummary(result));
+                    } else if("text".equals(operation)&&input.path("_exec").path("skillDistill").isObject()) {
+                        // S3 distill: the draft body is normalized here (keys / URLs / verbatim case text stripped) and saved
+                        // by StudioSkillDraftSink inside the settlement transaction. Not output.text: the asset library would file it.
+                        output.set("skillDraft",com.aistareco.aep.ipstudio.skill.StudioSkillDistill.normalize(script,input.path("_exec").path("skillDistill")));
+                    } else if("text".equals(operation)&&input.path("_exec").path("skillPlan").asBoolean(false)) {
+                        output.set("plan",skillPlan(run,input,script));output.put("text",output.path("plan").path("summary").asText());
                     } else if("text".equals(operation)) {
                         if(mock)script=mapper.createObjectNode().put("summary","测试响应：保留原文，不调用真实模型。")
                                 .put("content",input.path("textEdit").path("content").asText().isBlank()?"测试文本样例":input.path("textEdit").path("content").asText());
@@ -191,12 +218,14 @@ public class StudioWorkflowWorker {
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
-        var endpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow();
+        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,exec.path("endpointId").asText(null),"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
         if(!StudioVisualContext.supportsVision(endpoint.endpoint()))throw BusinessException.badRequest("STUDIO_VISION_UNAVAILABLE","所选模型不能读取画面");
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
+        var capNode=exec.path("segmentCap");
+        var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
         var study=StudioFilmStudy.run(source,exec.path("fullFilmContext").asText(),exec.path("resumeFilmStudy"),evidence,storage,run.getOwnerUserId(),exec.path("maxTokens").asInt(8192),endpoint.candidate().getMaxRefImages()==null?6:endpoint.candidate().getMaxRefImages(),
             (system,parts,tokens,json)->{
                 if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
@@ -205,7 +234,7 @@ public class StudioWorkflowWorker {
                 String focus=input.path("prompt").asText("").strip();
                 var reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system+(focus.isBlank()?"":"\n用户补充分析重点："+focus)),Map.of("role","user","content",parts)),params);
                 used[0]=consumeUsage(reply,used[0],rate);return reply.content();
-            },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")));
+            },(pct,stage,partial)->checkpointFilmStudy(id,pct,stage,partial,output.path("sourceAudio")),cap);
         if(study==null)return;
         output.set("filmStudy",study);output.put("text",StudioFilmStudy.summary(study));
         output.putObject("billing").put("inputTokens",used[0][0]).put("outputTokens",used[0][1]).put("credits",rate.settle(used[0][0],used[0][1])).put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
@@ -296,8 +325,68 @@ public class StudioWorkflowWorker {
         transactions.executeWithoutResult(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+            // A distill run commits its credits only together with its saved draft; if saving fails this transaction rolls
+            // back and the caller's catch fails the run with a full refund.
+            if(error==null&&output!=null&&output.path("skillDraft").isObject()&&!run.isCancelRequested())saveSkillDraft(run,(ObjectNode)output.path("skillDraft"));
             terminal(run,output,error);
         });
+        afterTerminal(id);
+    }
+    private void saveSkillDraft(IpRun run,ObjectNode draft) {
+        var sink=skillDrafts==null?null:skillDrafts.getIfAvailable();
+        if(sink==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_SKILL_DRAFT_UNAVAILABLE","暂时无法保存方法草稿，本次未扣积分");
+        sink.save(run,draft);
+    }
+
+    /** Normalized two-stage skill plan: whitelisted, server-quoted and fingerprinted; the model never sets prices or approvals. */
+    private ObjectNode skillPlan(IpRun run,JsonNode input,JsonNode answer) {
+        var exec=input.path("_exec");
+        var rules=com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(exec.path("skill"));
+        String stage=exec.path("planStage").asText();
+        List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
+        ObjectNode plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);
+        plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",exec.path("planRevision").asInt(1));
+        var quoter=planQuoter==null?null:planQuoter.getIfAvailable();
+        if(quoter==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLAN_QUOTE_UNAVAILABLE","暂时无法为制作计划报价，本次未扣积分");
+        quoter.quote(run.getOwnerUserId(),plan);
+        plan.put("fingerprint",StudioPlanValidator.fingerprint(plan));
+        return plan;
+    }
+    private static List<Double> sampledTimes(JsonNode target) {
+        List<Double> times=new ArrayList<>();target.path("sampledTimesSec").forEach(v->times.add(v.asDouble()));return times;
+    }
+    private static String checkSummary(JsonNode result) {
+        long fail=0,unknown=0;
+        for(JsonNode item:result.path("items")){if("fail".equals(item.path("status").asText()))fail++;else if("unknown".equals(item.path("status").asText()))unknown++;}
+        String verdict=switch(result.path("status").asText()){case "pass" -> "AI 判断：各项都通过";case "fail" -> "AI 判断：有 "+fail+" 项没通过";default -> "AI 判断：有 "+unknown+" 项无法判断";};
+        return verdict+"（检查结论是建议，可以采用当前版本、修改后重做或暂停）";
+    }
+
+    /**
+     * After the terminal state is committed: publish the check result to the bound thread and wake the bound plan
+     * execution. Best-effort side channels only; the scheduler recovers a missed wake and the event store is a projection.
+     */
+    private void afterTerminal(String id) {
+        try {
+            IpRun run=runs.findById(id).orElse(null);
+            if(run==null||IpRun.STATUS_RUNNING.equals(run.getStatus()))return;
+            JsonNode input=mapper.readTree(run.getInputJson());
+            JsonNode binding=input.path("_exec").path("execution");
+            String executionId=binding.path("executionId").asText(null);
+            var events=dialogueEvents==null?null:dialogueEvents.getIfAvailable();
+            if(events!=null&&"studio-check".equals(run.getKind())&&IpRun.STATUS_DONE.equals(run.getStatus())) {
+                String thread=binding.path("threadId").asText(input.path("dialogue").path("threadId").asText(null));
+                String turn=executionId!=null?executionId:input.path("dialogue").path("messageId").asText(null);
+                if(thread!=null&&turn!=null) {
+                    var data=mapper.createObjectNode().put("runId",run.getId());
+                    if(binding.hasNonNull("stepId"))data.put("stepId",binding.path("stepId").asText());
+                    data.set("result",mapper.readTree(run.getOutputJson()).path("check"));
+                    events.publish(thread,turn,run.getId(),executionId,"check.result",data);
+                }
+            }
+            var executor=planExecutor==null?null:planExecutor.getIfAvailable();
+            if(executor!=null&&executionId!=null)executor.wake(executionId);
+        } catch(Exception e) {log.warn("[studio] post-terminal notify failed id={} reason={}",id,e.toString());}
     }
     private void terminal(IpRun run,ObjectNode output,Exception error) {
         boolean cancelled=run.isCancelRequested();

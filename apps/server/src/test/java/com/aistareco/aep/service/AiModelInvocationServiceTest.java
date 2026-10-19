@@ -85,6 +85,41 @@ class AiModelInvocationServiceTest {
         assertTrue(service.listCandidates(AiModelPurpose.DAP_IMAGE, "drama").isEmpty());
     }
 
+    /**
+     * D08 (2026-10-18): a turn accepted on the default binding (no candidate) must also resolve in the worker from its
+     * stored endpointId; any other endpoint still needs an enabled candidate, and a rebound default is not followed.
+     */
+    @Test
+    void acceptedEndpointRuleMatchesAcceptanceForTheDefaultBindingWithoutACandidate() {
+        var endpoints = mock(AiModelEndpointRepository.class);
+        var bindings = mock(AiAppBindingRepository.class);
+        var candidates = mock(AiAppEndpointCandidateRepository.class);
+        var bound = AiModelEndpoint.builder().id("dialogue-default").enabled(true).build();
+        var other = AiModelEndpoint.builder().id("other-text").enabled(true).build();
+        var binding = new AiAppBinding();
+        binding.setPurpose(AiModelPurpose.DAP_PERSONA);
+        binding.setEndpointId(bound.getId());
+        when(bindings.findById(AiModelPurpose.DAP_PERSONA)).thenReturn(Optional.of(binding));
+        when(endpoints.findById(bound.getId())).thenReturn(Optional.of(bound));
+        when(endpoints.findById(other.getId())).thenReturn(Optional.of(other));
+        when(candidates.findByPurposeAndEndpointId(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString())).thenReturn(Optional.empty());
+        var service = new AiModelInvocationService(endpoints, bindings, candidates,
+                mock(AiModelUsageService.class), mock(AiModelGuardService.class),
+                new com.aistareco.aep.service.ai.UpstreamModelHttp(mock(AiModelUsageService.class)), allowAllAccess());
+
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_PERSONA, null, "studio").isPresent(), "acceptance: the default needs no candidate");
+        assertTrue(service.resolveEndpoint(AiModelPurpose.DAP_PERSONA, bound.getId(), "studio").isEmpty(), "the old worker rule refused it (the defect)");
+        var accepted = service.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, bound.getId(), "studio");
+        assertTrue(accepted.isPresent());
+        assertEquals(bound.getId(), accepted.get().endpoint().getId());
+        assertTrue(service.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, other.getId(), "studio").isEmpty(), "a non-default endpoint still needs a candidate");
+        bound.setEnabled(false);
+        assertTrue(service.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, bound.getId(), "studio").isEmpty(), "a disabled default is refused");
+        bound.setEnabled(true);
+        binding.setEndpointId(other.getId());
+        assertTrue(service.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, bound.getId(), "studio").isEmpty(), "no silent switch after a rebinding");
+    }
+
     private static AiModelAccessPolicyService allowAllAccess() {
         var policy = mock(AiModelAccessPolicyService.class);
         when(policy.allows(org.mockito.ArgumentMatchers.any(AiModelEndpoint.class),

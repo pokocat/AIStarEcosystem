@@ -301,4 +301,32 @@ class IpDemoTemplateStripTest {
                 "模板不带素材，还挂着上一版示例的封面就是卡片和内容对不上");
         assertEquals(IpDemoTemplate.KIND_TEMPLATE, existing.getKind());
     }
+    /** S0 产品问题：全画布模板复制后视频节点回到首尾帧 —— 作者的原生模式与清晰度是结构，不是运行痕迹，必须留下。 */
+    @Test
+    void fullCanvasSnapshotKeepsNativeVideoModeAsPreset() throws Exception {
+        ObjectNode doc = busyDoc();
+        ObjectNode vm = (ObjectNode) ((ArrayNode) doc.path("nodes")).get(2).path("metadata");
+        vm.put("videoMode", "universal_reference_video").put("vquality", "768p").put("videoCount", 2);
+        // busyDoc 的成片 key 走 MaterialVideoJob 归属回查；这里的默认替身没有任务，换成本人前缀的 key，测的是模式保留而不是归属。
+        vm.put("storageKey", "ipstudio_gen/" + OWNER + "/clip.mp4");
+        ((ObjectNode) vm.path("videos").get(0)).put("storageKey", "ipstudio_gen/" + OWNER + "/clip0.mp4");
+        ObjectNode studio = vm.putObject("studio");
+        studio.put("kind", "shot").put("runId", "IPR-private");
+        ObjectNode request = studio.putObject("request");
+        request.put("clientRequestId", "private-req").put("operation", "video").put("maxCost", 640);
+        request.putObject("video").put("mode", "universal_reference_video").put("resolutionTier", "768p").put("seed", 42)
+                .putArray("references").addObject().put("mediaType", "video").put("key", "ipstudio_source/" + OWNER + "/private.mp4");
+        JsonNode snapshot = svcWith(doc).snapshotForTemplate(OWNER, "ver-1", false, doc);
+        JsonNode md = byId(snapshot).get("n-vid");
+        assertEquals("universal_reference_video", md.path("videoMode").asText());
+        assertEquals("768p", md.path("vquality").asText());
+        assertEquals(2, md.path("videoCount").asInt());
+        JsonNode preset = md.path("studio").path("videoPreset");
+        assertEquals("universal_reference_video", preset.path("mode").asText());
+        assertEquals("768p", preset.path("resolutionTier").asText());
+        assertEquals(42, preset.path("seed").asLong());
+        assertFalse(md.path("studio").has("request"), "owner-bound request must not survive");
+        assertFalse(md.path("studio").has("runId"));
+        assertFalse(snapshot.toString().contains("private.mp4"));
+    }
 }

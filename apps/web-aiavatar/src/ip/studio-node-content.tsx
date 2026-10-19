@@ -4,10 +4,13 @@ import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { dispatchStudioCommand } from "@/canvas-bridge/studio-nodes";
 import { StudioScriptRichEditor } from './studio-script-rich-editor';
 import { studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
+import { StudioCheckVerdict } from './studio-dialogue-check';
 
 /** Only business summaries are inside scaled nodes; editors remain on the screen layer. */
 export function StudioNodeContent({ node, readOnly=false }: { node: CanvasNodeData; readOnly?:boolean }) {
   const studio = node.metadata?.studio;
+  // A native check run's verdict (「AI 判断」); also covers a check node that is still waiting for its result.
+  if(studio?.check||studio?.kind==='check')return <StudioCheckVerdict node={node} readOnly={readOnly}/>;
   if(studio?.kind==='recreation') {
     const task=studio.task,pending=node.metadata?.status==='loading',failed=node.metadata?.status==='error';
     const label=pending?studio.runId?studioTaskLabel(task).replace('生成','拆解'):node.metadata?.errorDetails?'提交结果待确认':'正在提交分析…':node.metadata?.status==='error'?'拆解失败':'全片创作拆解';

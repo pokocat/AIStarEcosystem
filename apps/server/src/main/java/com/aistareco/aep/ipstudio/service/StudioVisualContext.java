@@ -74,6 +74,30 @@ public final class StudioVisualContext {
         }
         return result;
     }
+    /**
+     * Native check input: the target run's real output sampled at the server-recorded times (video) or the image itself.
+     * The times are saved at acceptance so the evidence the model may cite is fixed before the provider call.
+     */
+    public List<Map<String,Object>> targetParts(String prompt,String storageKey,boolean video,List<Double> times) {
+        List<Map<String,Object>> result=new ArrayList<>();result.add(text(prompt));
+        Path file;
+        try {file=storage.openForRead(storageKey);}
+        catch(Exception e){throw bad("STUDIO_VISUAL_UNREADABLE","要检查的成片无法读取，请确认它仍然存在");}
+        try {
+            if(video) {
+                result.add(text("以下为要检查的成片按时间顺序的真实采样画面，不包含音轨或全部连续动作。"));
+                for(int i=0;i<times.size();i++) {
+                    result.add(text(String.format(Locale.ROOT,"成片采样 %d/%d，时间 %.2f 秒",i+1,times.size(),times.get(i))));
+                    result.add(image(frame(file,times.get(i))));
+                }
+            } else {
+                if(Files.size(file)>8L*1024*1024)throw bad("STUDIO_VISUAL_LIMIT","单张图片最多 8 MB，请压缩后重新上传");
+                result.add(text("以下为要检查的图片。"));result.add(image(Files.readAllBytes(file)));
+            }
+        }catch(BusinessException e){throw e;}
+        catch(Exception e){throw bad("STUDIO_VISUAL_UNREADABLE","要检查的成片无法解码，请确认文件完整");}
+        return result;
+    }
     private static byte[] frame(Path video,double at) throws Exception {
         Path output=Files.createTempFile("studio-visual-",".jpg");
         try {

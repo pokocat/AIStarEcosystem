@@ -30,6 +30,9 @@ public record AiModelEndpointDto(
         Boolean chatSupportsTopP,
         Boolean chatSupportsResponseFormat,
         Integer chatMaxOutputTokens,
+        /** Null-safe false when unknown: tools / streaming are only used when explicitly declared. */
+        boolean chatSupportsTools,
+        boolean chatSupportsStreaming,
         com.aistareco.aep.model.AiImageRequestSpec imageRequestSpec,
         com.aistareco.aep.model.AiVideoRequestSpec videoRequestSpec,
         Integer rpmLimit,
@@ -78,6 +81,8 @@ public record AiModelEndpointDto(
                 e.getChatSupportsTopP() == null ? true : e.getChatSupportsTopP(),
                 e.getChatSupportsResponseFormat() == null ? true : e.getChatSupportsResponseFormat(),
                 e.getChatMaxOutputTokens(),
+                Boolean.TRUE.equals(e.getChatSupportsTools()),
+                Boolean.TRUE.equals(e.getChatSupportsStreaming()),
                 com.aistareco.aep.model.AiImageRequestSpec.read(e.getImageRequestSpecJson()),
                 com.aistareco.aep.model.AiVideoRequestSpec.read(e.getVideoRequestSpecJson()),
                 e.getRpmLimit(),

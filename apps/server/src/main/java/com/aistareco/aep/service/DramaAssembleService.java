@@ -328,7 +328,7 @@ public class DramaAssembleService {
                 actual=gatedDuration(out);
                 if(actual<0 || Math.abs(actual-expected)>tolerance)throw new IllegalStateException("包装后成片时长不匹配");
             }
-            String prefix = studio ? "ipstudio_gen/" + safeSegment(userId) + "/" : "drama/canvas/assemblies/";
+            String prefix = studio ? studioAssemblyPrefix(userId) : "drama/canvas/assemblies/";
             String key = prefix + safeSegment(refId) + "_ep" + episodeNo + "_"
                     + UUID.randomUUID().toString().replace("-", "").substring(0, 8) + ".mp4";
             var uploaded = cdnUploader.upload(out, key, "video/mp4");
@@ -531,6 +531,17 @@ public class DramaAssembleService {
                     .append('/').append(p.hasAudio() ? p.audioCodec() + "@" + p.sampleRate() : "noaudio");
         }
         return sb.append(']').toString();
+    }
+
+    /**
+     * Studio 成片的 key 前缀必须与 {@code IpProjectService.ownsAssetKey} 的归属判定同源：那边用
+     * {@code FileStorageService.ownedKeyPrefix} 推导 {@code ipstudio_gen/<uid>/}（非法字符换 `_`），
+     * 这里此前手拼 {@code safeSegment(uid)}（非法字符删掉）—— uid 带 `.`/`@` 等字符时两边形状不同，
+     * 用户把合成成片存为模板 / 加入资产就撞 IP_ASSET_KEY_INVALID（S0 产品问题）。
+     */
+    static String studioAssemblyPrefix(String userId) {
+        return com.aistareco.aep.service.storage.FileStorageService.ownedKeyPrefix(
+                com.aistareco.aep.ipstudio.service.IpProjectService.CATEGORY_GEN, userId);
     }
 
     private static String safeSegment(String s) {

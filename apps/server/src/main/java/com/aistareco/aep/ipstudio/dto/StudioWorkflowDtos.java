@@ -7,10 +7,22 @@ import java.util.Map;
 public final class StudioWorkflowDtos {
     private StudioWorkflowDtos() {}
     public record Reference(String ipId, String avatarId, Integer version, String storageKey, String role, String lookId) {}
+    /** Skill / dialogue additions (docs/ip-studio-conversational-video-recreation-plan.md): recreation segment cap, native check target, skill planning binding, dialogue parent binding. */
+    public record RecreationSettings(String maxSegmentSec, String videoModel) {}
+    public record CheckSettings(String targetRunId, String targetStorageKey, List<String> checkIds) {}
+    public record DialogueBinding(String threadId, String messageId) {}
     public record RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                              List<Reference> references, String model, String size, Integer durationSec,
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
-                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
+                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue) {
+        /** Legacy 22-arg canonical shape (all requests before the skill additions). */
+        public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
+                          List<Reference> references, String model, String size, Integer durationSec,
+                          String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
+                          String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,textEdit,billing,null,null,null,null,null,null,null);
+        }
         public RunRequest(String clientRequestId,String nodeId,String operation,String prompt,List<Reference> references,String model,
                           String size,Integer durationSec,String aspectRatio,Integer count,ScriptSettings settings,Integer episodeNo,
                           String mode,List<String> contextNodeIds,List<Turn> history,Long maxCost,Packaging packaging,VideoSettings video,Boolean readVisuals,ScriptEdit scriptEdit,TextEdit textEdit) {
@@ -56,7 +68,11 @@ public final class StudioWorkflowDtos {
     public record VoiceAsset(String id,String name,String avatarId,String status,String demoUrl) {}
     public record PerformerAsset(String avatarId,String ipId,String name,boolean imageReady,String driverStatus,String voiceId) {}
     public record AssetCatalog(List<ProductAsset> products,List<PerformerAsset> performers,List<VoiceAsset> voices,boolean voiceEngineReady,boolean videoLipSyncReady) {}
-    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost, com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing) {
+    public record TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost, com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing,
+                            boolean supportsTools,boolean supportsStreaming) {
+        public TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost,com.aistareco.aep.service.AiChatTokenPricing.Rate tokenPricing){
+            this(endpointId,name,isDefault,supportsVision,creditCost,tokenPricing,false,false);
+        }
         public TextModel(String endpointId,String name,boolean isDefault,boolean supportsVision,Long creditCost){this(endpointId,name,isDefault,supportsVision,creditCost,null);}
     }
     public record Capabilities(boolean mock, List<String> operations, long imageCost, long textCost, Long videoCost,List<TextModel> textModels,String textModelMode,String imageModelMode) {}

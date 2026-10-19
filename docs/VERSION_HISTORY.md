@@ -4,6 +4,14 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 全能创作 · 对话驱动视频复刻 S1/S2 · 2026-10-18 · 本地实现，未发布
+
+按 `docs/ip-studio-conversational-video-recreation-plan.md`（v4）实现：仓内技能 `reference-video-recreation`；每画布一条连续线程、真流式正文与工作记录卡、输入不锁与转向队列、优先停止、分支、旧四模式对话兼容导入（V61）；父 run `studio-dialogue` 的有界 agent 循环（原生 tool_calls 或 JSON 动作协议，端点能力 V60 后台声明）；两阶段计划（approaches / 类型化 settings / 技能白名单 / 28 步上限 / 服务端报价）；`check` 原生三态检查；拉片 `maxSegmentSec`；`ip_plan_execution` 执行器（V62：提交前预算、付款绑定、租约、暂停只查、90 分钟 partial、同键恢复）；前端线程 UI（SSE 续播 / 轮询回落、确认卡、执行进度条、`node.upsert` 幂等投影、「AI 判断」检查节点）。顺带修接入前两项产品问题（全画布模板丢视频模式；成片 key 前缀与归属闸不一致）。S0 付费实测与自动修正白名单未做。
+
+**S3（同日）**：技能注册表 `ip_skill` / `ip_skill_version`（V63，文件种子 → 库为真值、不可变版本、60 秒缓存）、后台「Studio 技能」页与 API（查看 / 编辑 / 发版 / 回滚 / 停用 / 试跑 / 建新技能 / 审阅发布草稿）、多技能意图路由（素材类型 + 关键词 + 默认技能，挑不出 400 `STUDIO_SKILL_REQUIRED`）、助手技能选择与计划卡技能标、运营「把这次制作整理成技能草稿」（蒸馏为 draft 版本，不看提示词 / 原话 / key，后台审阅后发布）。38 项服务端新测试、admin 13 项、web 889 项。
+
+**验收**（同日，本地 Codex CLI `gpt-6.1-sol`，报告在 `.studio-e2e/report*.md`，证据 `.studio-e2e/round*/`，均为本地 H2 + 本地假模型 + 隔离端口，未调用付费供应商）：首轮 11 项中 7 项通过、列 10 项缺陷（6 项 P1：旧确认卡仍可启动旧计划、可省略确认卡、后台制作中新消息不生效、自然语言批准没接、离线完成的画布首开不恢复产物、父对话不计阶段预算）；按轮修复后复验 —— 第二轮剩 4 项（授权词与数字规则、mock 首开、两份旧测试在满负载下抖动）、第三轮剩 2 项（重做额度顶替总上限、mock 刷新归零）、第四轮剩 2 项（总/重做同值、错误码优先级），第五轮定向复验见报告。基线对照：全量服务端测试 2392 项里 96 项失败在基线提交 7649dd42 上原样复现（15 个 Drama*/MaterialAi*/DapModelink* 等类），非本次引入；前端全量 880 项在空闲机器上全绿。Codex 明确无法验证的范围：真实供应商的流式 / 语义理解 / 成片效果、真实企业付款、生产 Flyway 全量升级、跨节点租约竞争。
+
 ### 统一账号邀请 · 2026-10-17 · 首版发布，线上闭环待完成
 
 ID `e473022` 与 Studio `d88e94a5` 已发布，V12 成功；本人邀请查询、链接生成和匿名邀请上下文已实测。用户指出通用 ID 邀请页脱离 Studio，现先提供 Studio 品牌邀请页设计，应用入口/回跳修正及首次注册线上闭环尚未完成，不宣称整体验收通过。见[首版发布记录](releases/unified-account-referral-production-release-20261017.md)与[设计稿](prototypes/studio-invitation-design.md)。

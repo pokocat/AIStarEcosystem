@@ -131,6 +131,8 @@ public class AiModelEndpointAdminService {
                 .chatSupportsTopP(req.chatSupportsTopP())
                 .chatSupportsResponseFormat(req.chatSupportsResponseFormat())
                 .chatMaxOutputTokens(req.chatMaxOutputTokens() != null && req.chatMaxOutputTokens() > 0 ? req.chatMaxOutputTokens() : null)
+                .chatSupportsTools(req.chatSupportsTools())
+                .chatSupportsStreaming(req.chatSupportsStreaming())
                 .imageRequestSpecJson(req.imageRequestSpec() == null ? null : req.imageRequestSpec().json())
                 .videoRequestSpecJson(req.videoRequestSpec() == null ? null : req.videoRequestSpec().json())
                 .concurrencyLimit(req.concurrencyLimit() != null && req.concurrencyLimit() > 0 ? req.concurrencyLimit() : null)
@@ -183,6 +185,8 @@ public class AiModelEndpointAdminService {
         if (req.chatSupportsTopP() != null) entity.setChatSupportsTopP(req.chatSupportsTopP());
         if (req.chatSupportsResponseFormat() != null) entity.setChatSupportsResponseFormat(req.chatSupportsResponseFormat());
         if (req.chatMaxOutputTokens() != null) entity.setChatMaxOutputTokens(req.chatMaxOutputTokens() == 0 ? null : req.chatMaxOutputTokens());
+        if (req.chatSupportsTools() != null) entity.setChatSupportsTools(req.chatSupportsTools());
+        if (req.chatSupportsStreaming() != null) entity.setChatSupportsStreaming(req.chatSupportsStreaming());
         if (req.imageRequestSpec() != null) entity.setImageRequestSpecJson(req.imageRequestSpec().json());
         if (Boolean.TRUE.equals(req.clearImageRequestSpec())) entity.setImageRequestSpecJson(null);
         if (req.videoRequestSpec() != null) entity.setVideoRequestSpecJson(req.videoRequestSpec().json());

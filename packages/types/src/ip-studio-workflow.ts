@@ -9,7 +9,7 @@ export interface StudioVideoSettings {
   lastFrameKey?: string;
   references?: VideoStudioReferenceInput[];
 }
-export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation";
+export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
 /** Free document text extraction; the imported canvas node owns the resulting text. */
@@ -17,10 +17,48 @@ export interface StudioStoryImportResult { text: string; format: "pdf" | "doc" |
 export interface StudioTokenPricing { inputCreditsPerK:number; outputCreditsPerK:number; maxInputTokens:number; maxOutputTokens:number; maxCost:number }
 export interface StudioTokenBilling { inputTokens:number; outputTokens:number; credits:number; inputCreditsPerK:number; outputCreditsPerK:number }
 export interface StudioTurn { billing?:StudioTokenBilling; role: "user" | "assistant"; content: string }
+/** Two-stage skill plans (docs/ip-studio-conversational-video-recreation-plan.md §两阶段计划契约). Legacy fields stay for old records. */
+export type StudioPlanStage = "analysis" | "production";
+export type StudioPlanOperation = "text" | "script" | "storyboard" | "image" | "video" | "recreation" | "check" | "assemble";
+export interface StudioProductionApproach {
+  id: string; title: string; summary: string; rationale: string;
+  preserve: string[]; change: string[]; tradeoffs: string[]; requiredCapabilities: string[];
+}
+/** Typed per-operation step settings; the server rejects untyped JSON. referenceBindings resolve to canvas nodes or earlier steps. */
+export interface StudioStepReferenceBinding { stepId?: string; nodeId?: string; role: "character" | "scene" | "product" | "frame" | "clip" | "reference-image" | "reference-video" | "reference-audio"; order: number }
+export type StudioSkillStepSettings =
+  | { operation: "recreation"; sourceNodeId: string; mode: "segments"; maxSegmentSec: number | "model"; videoModel: string }
+  | { operation: "image"; size?: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "video"; video: StudioVideoSettings; durationSec: number; aspectRatio: string; count: 1 | 2 | 4; referenceBindings: StudioStepReferenceBinding[] }
+  | { operation: "check"; targetStepId: string; targetRunId?: string; candidateIndex?: number; checkIds: string[] }
+  | { operation: "assemble"; clipOrder: { stepId: string; runId?: string; candidateIndex?: number }[]; audioStrategy: "generated" | "source-audio" | "none" }
+  | { operation: "text"; purpose: "script" | "prompt-revision" | "plan-compile" | "note"; editTarget?: { nodeId: string; field: "content" | "prompt" | "script"; snapshot: string } };
+export interface StudioPlanBudget {
+  /** Server-computed quote total of this stage's base steps. */
+  estimated: number;
+  /** Auto-fix sub-cap inside the stage cap. */
+  autoFixCap: number;
+  /** Bound by the server after the user confirms; never supplied by the model. */
+  approvedCap?: number;
+}
 export interface StudioPlan {
-  notes?:string[]; summary: string; steps: StudioPlanStep[]; questions: string[] }
+  notes?:string[]; summary: string; steps: StudioPlanStep[]; questions: string[];
+  skillKey?: string; skillVersion?: number; stage?: StudioPlanStage;
+  /** Monotonic per thread; every content change of the plan creates a new revision and fingerprint. */
+  revision?: number; fingerprint?: string;
+  approaches?: StudioProductionApproach[]; recommendedApproachId?: string;
+  /** Server-bound from the user's confirmation; never supplied by the model. */
+  confirmedApproachId?: string;
+  budget?: StudioPlanBudget;
+}
 export interface StudioPlanStep {
-  id:string; operation:"text"|"script"|"storyboard"|"image"|"video"; title:string; prompt:string;
+  id:string; operation:StudioPlanOperation; title:string; prompt:string;
+  strategy?: { approachId: string; method: string; reason: string };
+  /** auto = executor proceeds inside the approved scope; confirm = stop at this step for the user. */
+  execution?: "auto" | "confirm";
+  /** Server quote; never supplied by the model. */
+  quotedCost?: number;
+  settings?: StudioSkillStepSettings;
   /** Ready-to-adopt text, generated in the assistant's existing paid turn. */
   content?:string;
   /** An editable proposal for a referenced node; applying it still requires user adoption. */
@@ -66,6 +104,14 @@ export interface StudioRunRequest {
   maxCost?: number;
   packaging?: StudioPackaging;
   video?: StudioVideoSettings;
+  /** recreation(mode=segments) only: segment length cap; "model" reads the selected video model contract. */
+  recreation?: { maxSegmentSec: number | "model"; videoModel: string };
+  /** check only: target run output to inspect against skill checks. Visual snapshot is built server-side. */
+  check?: { targetRunId: string; targetStorageKey?: string; checkIds: string[] };
+  /** Skill planning binding; selects method/scope, never payment or execution authority. */
+  skillKey?: string; skillVersion?: number; stage?: StudioPlanStage; executionId?: string;
+  /** Parent dialogue binding for the server-side agent loop (new entry); legacy assistant requests omit it. */
+  dialogue?: { threadId: string; messageId: string };
 }
 
 export interface StudioPackaging { brand?:string;title?:string;cta?:string;captions?:{start:number;end:number;text:string}[];voiceoverStorageKey?:string }
@@ -105,7 +151,7 @@ export interface StudioCapabilities {
   videoCost: number | null;
   imageModelMode?: "fixed" | "selectable";
   textModelMode?: "fixed" | "selectable";
-  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing }[];
+  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; supportsTools?: boolean; supportsStreaming?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing }[];
 }
 export interface StudioAdoptRequest {
   nodeId: string;
@@ -159,7 +205,11 @@ export interface StudioNodeMetadata {
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
-  kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio";
+  kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
+  /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */
+  execution?: { executionId: string; stepId: string; runId?: string };
+  /** Display projection of the latest native check run on this node. */
+  check?: StudioCheckResult;
   speechRequest?: StudioSpeechRequest;
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
@@ -295,3 +345,171 @@ export interface StudioFilmStudy {
  strategy: "model" | "visual-changes";
  segments: {no:number;title:string;startSec:number;endSec:number;durationSec?:number;storageKey?:string;url?:string;coverStorageKey?:string;coverUrl?:string;width?:number;height?:number;markdown?:string;status:"pending"|"done";error?:string}[];
 }
+
+// ─── Skill catalog, native check, dialogue thread/events, plan execution (docs/ip-studio-conversational-video-recreation-plan.md) ───
+export interface StudioSkillLimits { maxSourceSec: number; maxSegments: number; maxSegmentSec: number | "model"; maxSteps: number; maxAutoFixPerSegment: number }
+export interface StudioSkillSummary {
+  key: string; name: string; version: number; status: "active" | "draft" | "withdrawn"; planning: "dynamic";
+  summary: string; methodExamples: string[]; operations: Record<StudioPlanStage, StudioPlanOperation[]>;
+  limits: StudioSkillLimits; checks: string[]; autoFixChecks: string[]; requiredCapabilities: string[];
+  /** S3: optional routing hints from the front matter (absent = no triggers). Only used to pick a skill for a thread that has none yet. */
+  triggers?: StudioSkillTriggers;
+}
+export type StudioCheckVerdict = "pass" | "fail" | "unknown";
+export interface StudioCheckEvidence { kind: "frame" | "media" | "text"; timeSec?: number; observation: string }
+export interface StudioCheckItem { id: string; status: StudioCheckVerdict; evidence: StudioCheckEvidence[]; reason: string; suggestion?: string }
+/** output.check of a native check run. Evidence frames/keys come from the real target media, never from the model. */
+export interface StudioCheckResult { status: StudioCheckVerdict; targetRunId: string; targetStorageKey?: string; sampledTimesSec?: number[]; items: StudioCheckItem[] }
+
+export type StudioMessageBlock =
+  | { type: "plan"; planRunId: string; revision: number; fingerprint: string; plan: StudioPlan }
+  | { type: "approval"; approvalId: string; stage: StudioPlanStage; planFingerprint: string; scope: string[]; quotedCost: number; budgetCap: number; autoFixCap: number;
+      billingSelection?: EnterpriseBillingSelection; status: "pending" | "approved" | "expired" | "superseded"; approvedMessageId?: string; executionId?: string; expiresAt?: string;
+      /** What the server actually authorized (immutable once approved); the proposal fields above stay the quote. */
+      approvedBudgetCap?: number; approvedAutoFixCap?: number; approvedAt?: string; approvedByMessageId?: string;
+      /** Plan revision the approval bound (the thread's revision at confirmation). */
+      approvedPlanRevision?: number;
+      /** Set when a newer plan revision or a newer card replaced this pending card. */
+      supersededAt?: string;
+      /** Part of the default budgetCap kept for dialogue turns during the stage (turns count against the stage budget). */
+      dialogueReserve?: number;
+      /** Budget-raise cards posted by the executor: how much the next step was short. */
+      shortfall?: number }
+  | { type: "tool_call"; toolCallId: string; toolName: string; title: string; safeInputSummary: string; status: "running" | "done" | "failed"; childRunId?: string;
+      startedAt: string; finishedAt?: string; durationMs?: number; progress?: string; result?: { summary: string; nodeIds?: string[]; storageKeys?: string[] };
+      creditsActual?: number; settling?: boolean; errorCode?: string; errorMessage?: string }
+  | { type: "question"; questionId: string; text: string; options?: string[]; answeredMessageId?: string }
+  | { type: "adoption"; nodeId: string; field: "content" | "prompt" | "script"; content: string; snapshot: string; status: "proposed" | "adopted" | "rejected" };
+export type StudioDialogueMessageStatus = "queued" | "applied" | "streaming" | "done" | "failed" | "interrupted";
+export interface StudioDialogueMessage {
+  id: string; threadId: string; seq: number; turnId?: string; runId?: string; role: "user" | "assistant" | "system";
+  text: string; blocks: StudioMessageBlock[]; pinnedNodeIds?: string[]; attachmentNodeIds?: string[]; clientMessageId?: string;
+  billing?: StudioTokenBilling; settling?: boolean; status: StudioDialogueMessageStatus; createdAt: string;
+  /** Set when imported from the legacy four-mode conversation nodes. */
+  legacyNodeId?: string;
+  /** Follow-ups offered under an assistant message (an execution's completion summary keeps them across reloads). */
+  suggestions?: string[];
+}
+export interface StudioDialogueThread {
+  id: string; projectId: string; parentThreadId?: string; branchFromMessageId?: string; title?: string;
+  lastSeq: number; activeTurnId?: string; activeExecutionId?: string; createdAt: string; updatedAt: string;
+  /** S3: the skill this thread is bound to (explicit choice or intent routing on its first turn); absent until a turn picks one. */
+  skillKey?: string; skillVersion?: number;
+}
+export interface StudioDialogueState { thread: StudioDialogueThread; messages: StudioDialogueMessage[]; nextCursor?: string; latestSeq: number; execution?: StudioPlanExecution }
+export interface StudioPostMessageRequest { clientMessageId: string; text: string; pinnedNodeIds?: string[]; attachmentNodeIds?: string[]; expectedPlanRevision?: number; skillKey?: string; billing?: EnterpriseBillingSelection; maxCost?: number;
+  /** Text endpoint for this turn when the account may choose; omitted = scene default. Never a payment authority. */
+  model?: string }
+export interface StudioPostMessageResult { messageId: string; turnId?: string; runId?: string; queueState: "accepted" | "queued" | "applied" }
+export interface StudioDialogueControlRequest { controlId: string; action: "stop" | "pause" | "resume"; executionId?: string }
+export interface StudioBranchRequest { clientRequestId: string; fromMessageId: string }
+
+export type StudioDialogueEventType = "message.delta" | "tool.started" | "tool.progress" | "tool.finished" | "plan.proposed" | "approval.required" | "node.upsert" | "check.result" | "budget.update" | "turn.done";
+export interface StudioDialogueEvent<T = unknown> { eventId: string; seq: number; threadId: string; turnId: string; runId?: string; executionId?: string; createdAt: string; type: StudioDialogueEventType; data: T }
+export interface StudioMessageDeltaData { messageId: string; partId: string; delta: string }
+export interface StudioToolEventData { toolCallId: string; toolName: string; /** Assistant message the work-record card belongs to. */ messageId?: string; title?: string; safeInputSummary?: string; childRunId?: string; status?: "running" | "done" | "failed"; progress?: string;
+  result?: { summary: string; nodeIds?: string[]; storageKeys?: string[] }; creditsActual?: number; settling?: boolean; durationMs?: number; errorCode?: string; errorMessage?: string }
+export interface StudioPlanProposedData { messageId: string; block: Extract<StudioMessageBlock, { type: "plan" }> }
+export interface StudioApprovalRequiredData { messageId: string; block: Extract<StudioMessageBlock, { type: "approval" }>; shortfall?: number }
+export interface StudioNodeUpsertData { nodeId: string; op: "create" | "update" | "connect" | "propose"; node?: import("./ip-studio").IpNode; connection?: { fromNodeId: string; toNodeId: string };
+  executionId?: string; stepId?: string; runId?: string; expectedDocVersion?: string; proposal?: { field: "content" | "prompt" | "script"; content: string } }
+export interface StudioCheckResultData { stepId?: string; runId: string; result: StudioCheckResult }
+export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote";
+  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
+  dialogueSpent?: number; dialogueInFlight?: number }
+export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[] }
+
+export type StudioPlanExecutionStatus = "running" | "paused" | "needs_user" | "done" | "partial" | "failed" | "canceled";
+export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" | "done" | "failed" | "skipped" | "needs_user";
+export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
+  runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number; nodeId?: string; reason?: string }
+export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number;
+  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
+  dialogueSpent?: number; dialogueInFlight?: number }
+export interface StudioPlanExecution {
+  id: string; projectId: string; threadId?: string; skillKey: string; skillVersion: number; stage: StudioPlanStage; planRunId: string; planRevision: number; planFingerprint: string;
+  status: StudioPlanExecutionStatus; steps: StudioPlanExecutionStep[]; budgets: StudioPlanExecutionBudget[]; billing?: EnterpriseBillingSelection; needsUserReason?: string;
+  startedAt: string; deadlineAt: string; updatedAt: string; finishedAt?: string;
+}
+/** Create an analysis execution, or confirm a new stage on the same execution (executionId + approachId + expectedRevision). */
+export interface StudioPlanExecutionCreateRequest { clientRequestId: string; stage: StudioPlanStage; planRunId: string; planFingerprint: string; approachId?: string; budgetCap: number; autoFixCap: number;
+  billing?: EnterpriseBillingSelection; executionId?: string; expectedRevision?: number; approvalId?: string; confirmationMessageId?: string }
+export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus }
+export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
+
+// ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───
+// (docs/ip-studio-conversational-video-recreation-plan.md §第三阶段 S3; server: ipstudio/skill/**, V63 ip_skill / ip_skill_version)
+/** Routing hints in a skill's front matter. media = attachment/pinned node types that suggest this skill; default = fallback on ties / no hits. */
+export interface StudioSkillTriggers { media?: ("video" | "image" | "audio" | "text")[]; keywords?: string[]; default?: boolean }
+export type StudioSkillStatus = "active" | "draft" | "withdrawn";
+export type StudioSkillVersionSource = "seed" | "admin" | "rollback" | "distilled";
+/** published = in effect now or earlier; draft = distilled from a canvas, waiting for an admin to publish (never in effect by itself). */
+export type StudioSkillVersionStatus = "published" | "draft";
+/** One immutable skill version: front matter + body (and digest) never change after insert; publishing a draft only flips its status, sets publishedAt and appends the publish note. */
+export interface StudioSkillVersion {
+  id: string; skillKey: string; version: number; status?: StudioSkillVersionStatus; source: StudioSkillVersionSource;
+  author: string; note?: string; createdAt: string;
+  /** Parsed YAML front matter (the server-side execution boundary) as JSON. */
+  frontmatter: Record<string, unknown>;
+  bodyMd: string;
+  /** true for the version currently in effect (ip_skill.current_version). */
+  current?: boolean;
+  /** Drafts: the version they were distilled from. A draft at or below the current version can no longer be published as is. */
+  baseVersion?: number;
+  /** Drafts: where they came from (ids only, never content). */
+  sourceProjectId?: string; sourceExecutionId?: string; sourceRunId?: string;
+  publishedAt?: string;
+}
+/** GET /admin/studio/skills item. */
+export interface StudioSkillAdminItem {
+  key: string; name: string; status: StudioSkillStatus; currentVersion: number; summary: string;
+  updatedBy?: string; createdAt: string; updatedAt: string;
+  /** Drafts newer than the current version, waiting for review. */
+  pendingDrafts: number;
+  /** The current version as the runtime sees it (status = ip_skill.status, limits evaluated, triggers parsed). */
+  skill: StudioSkillSummary;
+  /** Repository seed file name when this skill is seeded from resources/studio/skills/*.md. */
+  seedFile?: string;
+}
+/** GET /admin/studio/skills/{key}: the item plus the current version's full content. */
+export interface StudioSkillAdminDetail extends StudioSkillAdminItem { current: StudioSkillVersion }
+/** POST /admin/studio/skills: a whole skill file (YAML front matter + Markdown body); the key comes from the front matter. */
+export interface StudioSkillCreateRequest { markdown: string; note?: string }
+/** POST /admin/studio/skills/{key}/versions: publish a new immutable version (becomes current). */
+export interface StudioSkillPublishRequest {
+  /** YAML text (without the --- fences) or the JSON object. key must equal the path key; version and status are set by the server. */
+  frontmatter: string | Record<string, unknown>;
+  bodyMd: string; note?: string;
+  /** Current version the admin edited from; mismatch → 409 STUDIO_SKILL_VERSION_CONFLICT. Omitted = no check. */
+  expectedVersion?: number;
+}
+/** PUT /admin/studio/skills/{key}/status. Withdrawing the only active skill → 409 STUDIO_SKILL_LAST_ACTIVE. */
+export interface StudioSkillStatusRequest { status: StudioSkillStatus }
+/** POST /admin/studio/skills/{key}/rollback/{version} and POST /admin/studio/skills/{key}/versions/{version}/publish. */
+export interface StudioSkillVersionActionRequest { note?: string; expectedVersion?: number }
+export interface StudioSkillDryRunAsset { id?: string; type: "video" | "image" | "audio" | "text"; title?: string; description?: string; durationSec?: number }
+/** POST /admin/studio/skills/{key}/dry-run: one skill_plan call, no user billing, nothing saved. */
+export interface StudioSkillDryRunRequest {
+  analysisMarkdown: string; brief: string; stage?: StudioPlanStage; assets?: StudioSkillDryRunAsset[];
+  /** Admin-chosen text endpoint; omitted = the default planning endpoint. */
+  endpointId?: string;
+  /** Try a stored version (drafts included) instead of the current one. */
+  version?: number;
+  /** Try an unsaved edit before publishing (send both together; validated like a publish). */
+  frontmatter?: string | Record<string, unknown>; bodyMd?: string;
+}
+export interface StudioSkillDryRunResult {
+  /** The normalized plan when the reply passed validation (not quoted, not fingerprinted); null otherwise. */
+  plan: StudioPlan | null;
+  validation: { ok: boolean; errors: string[] };
+  usage: { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+  skillKey: string; skillVersion?: number; stage: StudioPlanStage; endpointId: string; model?: string; finishReason?: string;
+  /** Start of the model reply when it did not validate (truncated, for debugging the skill). */
+  rawExcerpt?: string;
+}
+/** POST /v1/ip-studio/projects/{id}/skill-drafts (operators only): distill a finished execution into a draft version. Returns the text run (IpRun). */
+export interface StudioSkillDraftRequest { clientRequestId: string; executionId: string; note?: string; maxCost: number; billing?: EnterpriseBillingSelection }
+/** output.skillDraft of a finished distill run: the draft was saved; publishing is an admin action. */
+export interface StudioSkillDraftOutput { skillKey: string; version: number; baseVersion: number; changeNote: string; strippedReferences: number }
+/** error.details of 400 STUDIO_SKILL_REQUIRED: several skills fit (or none clearly), so the UI should ask which one. */
+export interface StudioSkillRequiredDetails { skills: { key: string; name: string; summary: string }[] }
