@@ -126,3 +126,13 @@
 - 输入框提示「想做什么，直接说。比如：……」→「说说你的想法，比如：……」；手机首页标题「想做什么，直接说」→「今天想做点什么？」
 - 两个示例开头（首页与助手开场卡同步）：「设计一个有辨识度的原创 IP 形象，先给出可生成图片的方案。」→「帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。」；「帮我搭建从角色描述……到场景视频的创作流程。」→「帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。」
 - 无障碍名「想做什么」与按钮「开始对话」未改。回滚：焦点热修那一版的本地 dist 没保留（只在 ECS 的 `/opt/ai-star-eco/releases/20261019-studio-home-dialog-focus`），本地可直接用 `deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue web-aiavatar` 退回热修之前。
+
+## 追加发布 · 2026-10-19 晚 · 首页对话框去掉说明句、改指向灵感与专项（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-home-dialog-links` |
+| GIT_SHA | `e75f5659`（只改 `studio-conversation-start.tsx` / `.css` / `.test.tsx`） |
+| 结果 | `verify.sh` ALL GREEN；线上 chunk 含「还没想好？逛逛」，不再含「画布免费建」 |
+
+用户反馈说明句多余、「先进画布看看」进的是空画布对没想法的人没用：删掉计费说明句；底部改为「还没想好？逛逛 灵感（`/templates`）或 专项创作（`/scenes`）」。首页、手机首页、「画布·自由创作」页三处共用此组件，同时生效；空白画布仍可从各页已有的「新建空白画布」入口进。回滚：`deploy-release.sh dist/deploy/20261019-studio-home-dialog-copy web-aiavatar`。
