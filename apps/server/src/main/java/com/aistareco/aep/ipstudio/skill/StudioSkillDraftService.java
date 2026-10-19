@@ -217,39 +217,50 @@ public class StudioSkillDraftService {
             if (plan == null) { item.put("plan", "方案原文不可用"); continue; }
             item.put("recommendedApproachId", plan.path("recommendedApproachId").asText(""));
             if (b.hasNonNull("approachId")) item.put("confirmedApproachId", b.path("approachId").asText());
+            // Only abstract, case-free signals reach the distill model (Codex R6-01): titles, summaries, rationale,
+            // preserve / change / tradeoff sentences all carry the user's own words (the plan quotes the brief back) and
+            // are never forwarded, not even clipped. Their text still joins the private-fragment list so a model that
+            // somehow echoes them is stripped before anything is stored.
             fragments.add(plan.path("summary").asText(""));
             ArrayNode approaches = item.putArray("approaches");
             for (JsonNode a : plan.path("approaches")) {
-                ObjectNode approach = approaches.addObject().put("id", a.path("id").asText()).put("title", clip(a.path("title").asText(""), 60))
-                        .put("summary", clip(a.path("summary").asText(""), 300)).put("rationale", clip(a.path("rationale").asText(""), 300));
-                for (String field : List.of("preserve", "change", "tradeoffs")) {
-                    ArrayNode list = approach.putArray(field);
-                    for (JsonNode v : a.path(field)) if (list.size() < 8) list.add(clip(v.asText(""), 120));
-                }
-                fragments.add(a.path("summary").asText(""));
-                fragments.add(a.path("rationale").asText(""));
+                ObjectNode approach = approaches.addObject().put("id", a.path("id").asText())
+                        .put("recommended", a.path("id").asText().equals(plan.path("recommendedApproachId").asText("")))
+                        .put("confirmed", b.hasNonNull("approachId") && a.path("id").asText().equals(b.path("approachId").asText()))
+                        .put("preserveCount", a.path("preserve").size()).put("changeCount", a.path("change").size())
+                        .put("tradeoffCount", a.path("tradeoffs").size());
+                ArrayNode caps = approach.putArray("requiredCapabilities");
+                for (JsonNode v : a.path("requiredCapabilities")) if (caps.size() < 8 && v.asText("").matches("[A-Za-z0-9_.:-]{1,64}")) caps.add(v.asText());
+                for (String field : List.of("title", "summary", "rationale")) fragments.add(a.path(field).asText(""));
+                for (String field : List.of("preserve", "change", "tradeoffs")) for (JsonNode v : a.path(field)) fragments.add(v.asText(""));
             }
         }
         ArrayNode steps = out.putArray("steps");
         for (JsonNode step : state.path("steps")) {
             JsonNode strategy = step.path("definition").path("strategy");
+            // Step titles / reasons / notes are authored from the brief as well: structure only (R6-01).
+            String method = strategy.path("method").asText("");
             ObjectNode item = steps.addObject().put("id", step.path("id").asText()).put("stage", step.path("stage").asText())
-                    .put("operation", step.path("operation").asText()).put("title", clip(step.path("title").asText(""), 60))
-                    .put("method", strategy.path("method").asText("")).put("approachId", strategy.path("approachId").asText(""))
-                    .put("why", clip(strategy.path("reason").asText(""), 200)).put("status", step.path("status").asText())
+                    .put("operation", step.path("operation").asText())
+                    .put("method", method.matches("[A-Za-z0-9_.:-]{1,64}") ? method : "")
+                    .put("approachId", strategy.path("approachId").asText("")).put("status", step.path("status").asText())
                     .put("attempts", step.path("attempt").asInt(1)).put("runs", step.path("runIds").size())
                     .put("adopted", step.hasNonNull("acceptedRunId"));
+            fragments.add(step.path("title").asText(""));
             fragments.add(strategy.path("reason").asText(""));
-            if (step.hasNonNull("reason")) item.put("note", clip(step.path("reason").asText(), 160));
+            if (step.hasNonNull("reason")) { item.put("stoppedByUser", true); fragments.add(step.path("reason").asText("")); }
             if ("check".equals(step.path("operation").asText()) && "done".equals(step.path("status").asText())) {
                 item.put("verdict", step.path("checkStatus").asText("unknown"));
                 JsonNode check = checkResult(userId, e.getProjectId(), step.path("runIds"));
                 if (check != null) {
                     ArrayNode items = item.putArray("items");
                     for (JsonNode c : check.path("items")) {
+                        // Check reasons are model prose about the frames (they name products, people and segments):
+                        // id + verdict only; the prose joins the private fragments (R6-01).
                         items.addObject().put("id", c.path("id").asText()).put("status", c.path("status").asText())
-                                .put("reason", clip(c.path("reason").asText(""), 200));
+                                .put("evidenceCount", c.path("evidence").size());
                         fragments.add(c.path("reason").asText(""));
+                        fragments.add(c.path("suggestion").asText(""));
                     }
                 }
             }

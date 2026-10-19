@@ -169,9 +169,14 @@ class StudioSkillDraftServiceTest {
         assertTrue(prompt.contains("\"adopted\":true") && prompt.contains("\"attempts\":2"));
         assertFalse(prompt.contains("SECRET-PROMPT"), "step prompts never reach the model");
         assertFalse(prompt.contains("ipstudio_gen/"), "storage keys never reach the model");
+        // Codex R6-01: titles / summaries / rationale quote the user's brief back; only abstract signals may reach the model.
+        for (String quoted : new String[]{"第一段", "改写剧情", "保留首播骨架与反转"}) // 「检查」 is template vocabulary, not case text
+            assertFalse(prompt.contains(quoted), "authored text must not reach the distill model: " + quoted);
+        assertTrue(prompt.contains("\"preserveCount\"") && prompt.contains("\"recommended\""), "approaches are described by counts and flags only");
         List<String> fragments = new ArrayList<>();
         distill.path("privateFragments").forEach(f -> fragments.add(f.asText()));
         assertTrue(fragments.contains("第二段人物发型与第一段不同，像换了人"), "case text is remembered so a verbatim copy can be stripped");
+        assertTrue(fragments.contains("改写剧情") && fragments.contains("第一段"), "titles join the private fragments so an echo is stripped before storing");
         verify(worker, never()).execute(anyString());
         TransactionSynchronizationManager.getSynchronizations().forEach(TransactionSynchronization::afterCommit);
         verify(worker).execute(run.getId());

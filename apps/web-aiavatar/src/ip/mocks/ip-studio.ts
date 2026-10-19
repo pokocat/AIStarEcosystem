@@ -244,6 +244,9 @@ function seedStore(): MockStore {
 
   // 样例三：关着页面时「短视频复刻」已经做完的画布，画布上还没有产物，
   // 打开创作助手后按那次制作补回节点（对话与制作见 mocks/studio-dialogue.ts）。
+  // The in-memory store resets on every page load; the browser's projected-node record would otherwise read as
+  // "the user deleted everything" and block the restore demo (Codex R2-03 / R6-02). Real servers persist documents.
+  try { localStorage.removeItem(`studio-projected-nodes:${MOCK_CLOSED_EXECUTION_PROJECT_ID}`); } catch { /* no storage */ }
   const closed: IpProject = {
     id: MOCK_CLOSED_EXECUTION_PROJECT_ID,
     name: "洗衣液复刻 · 离开期间已做完",
