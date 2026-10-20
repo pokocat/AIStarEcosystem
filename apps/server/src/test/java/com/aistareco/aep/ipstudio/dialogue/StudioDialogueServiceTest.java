@@ -80,6 +80,18 @@ class StudioDialogueServiceTest {
 
     private PostMessageRequest request(String id, String text, Long maxCost) { return new PostMessageRequest(id, text, null, null, null, null, null, maxCost, null); }
 
+    // Codex real-environment retest 2026-10-19: the home page brief (a conversation record with no turns) was imported as
+    // 「之前的对话「创作想法」」, the thread was no longer empty, and the brief was never sent as the first message.
+    @Test void aHomepageBriefWithNoTurnsIsNotHistoryButARealOldConversationIs() throws Exception {
+        var om = new com.fasterxml.jackson.databind.ObjectMapper();
+        assertFalse(StudioDialogueService.hasHistory(om.readTree(
+                "{\"id\":\"P-brief\",\"metadata\":{\"studioStart\":\"assistant\",\"studio\":{\"kind\":\"assistant\",\"conversation\":{\"mode\":\"general\",\"turns\":[]}}}}")));
+        assertTrue(StudioDialogueService.hasHistory(om.readTree(
+                "{\"id\":\"old\",\"metadata\":{\"studio\":{\"conversation\":{\"turns\":[{\"role\":\"user\",\"content\":\"讨论\"}]}}}}")));
+        assertTrue(StudioDialogueService.hasHistory(om.readTree(
+                "{\"id\":\"planned\",\"metadata\":{\"studio\":{\"conversation\":{\"turns\":[],\"plan\":{\"summary\":\"s\"}}}}}")));
+    }
+
     @Test void busyThreadQueuesTheMessageAsSteeringAndStartsNoSecondTurn() {
         thread.setActiveTurnId("TRN-1"); thread.setActiveRunId("IPR-1");
         when(runs.findById("IPR-1")).thenReturn(Optional.of(IpRun.builder().id("IPR-1").status("running").heartbeatAt(Instant.now()).build()));

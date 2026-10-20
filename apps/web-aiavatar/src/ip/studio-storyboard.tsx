@@ -45,7 +45,8 @@ export function StudioStoryboard({ nodes, connections, selectedNodeId, changing,
   const back = () => { setExpanded(undefined); onCloseDetail?.(); };
   const preview = (node: CanvasNodeData, detail = false) => {
     const metadata = node.metadata, Icon = icons[(groups.find(g => g.nodes.includes(node))?.type || 'other') as keyof typeof icons];
-    const ready = !!(metadata?.content && metadata.storageKey);
+    // The key is the record; a node restored from a finished run has no URL yet and the signed players sign it.
+    const ready = !!metadata?.storageKey;
     if(node.type === CanvasNodeType.Text) {
       const script = metadata?.studio?.script;
       return script ? <div className="studio-storyboard-document"><StudioScriptRichEditor markdown={metadata.studio?.scriptMarkdown ?? scriptToMarkdown(script)} readOnly toolbarHidden ariaLabel="剧本预览"/></div>
