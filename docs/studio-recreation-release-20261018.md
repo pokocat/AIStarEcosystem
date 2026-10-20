@@ -237,3 +237,23 @@
 
 **未验证**：真模型下的对话（中途改方案、追加卡自动继续、打字停止、所选模型生效、v17 提示词的说法）没有在线上用真账号走过；生产上没有发起任何付费调用、没有发布、没有建测试数据。回滚：
 `deploy-release.sh dist/deploy/20261019-studio-acceptance-fixes server,web-aiavatar`（两个服务都回到 `8b0774e2`；旧 jar 启动时看到 seed 版本 v17 ≠ 自己的 v16，会把没人改过的提示词行刷回 v16 文本，不用手动处理；无迁移，无数据要回退）。
+
+## 追加发布 · 2026-10-20 · 像素超限的图片上传前先缩图（仅 web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261020-studio-image-pixel-limit` |
+| GIT_SHA | `5bcfbc1f`（release 分支上 cherry-pick 的 main `b8e3c3a4`；三个代码文件在 main 父提交与 release 头上逐字节相同，无冲突；`TODO.md` 自动合并，只带这个提交自己的改动） |
+| 服务 | **仅 web-aiavatar**（server 不动，仍是 `eb2f5259` / `20261020-studio-dialogue-fixes`；无迁移、无 API 路径变化） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`（manifest 里 `SERVICES='web-aiavatar'`） |
+| 发布前基线 | server 与 web-aiavatar 都是 `eb2f5259`（`20261020-studio-dialogue-fixes`；web BUILD_ID `j6QIOIHEs87flqHQETVsR`） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；web-aiavatar 15:58:21 CST 重启（旧进程收到 SIGTERM 退出码 143，与上次发布相同），`NRestarts=0`；线上 BUILD_ID `zVt3VAXlZ5wrhGil6oY-k`（旧 build 的 `_buildManifest.js` 已 404）；`/dashboard`、`/projects`、`/create`、`/scenes` 200；公网 chunk `7350-cf02f8d623bf1684.js` 与 `app/enterprise/page-4d42d1e2d8127700.js` 都含 `t.width<=8e3&&t.height<=8e3&&t.width*t.height<=24e6`。**server 没有重启**：`aistareco-server` 的 `ActiveEnterTimestamp` 仍是 15:40:26 CST，MainPID 1046164 未变，`NRestarts=0` |
+
+内容：
+- 上传前的图片处理 `prepareStudioImageUpload` 原来只在文件超过 8 MB 时缩图，8 MB 以内但像素超限的图（长截图、高像素照片）原样上传，被服务端以「图片最长边不能超过 8000 像素，总像素不能超过 2400 万」拒掉（2026-10-20 线上报错）。现在每张图都先解码，在字节和像素两条上限之内才原样上传，否则沿用已有的缩图（最长边 4096）；浏览器解不了的小文件仍原样上传，交给服务端判断。
+- 上传到节点失败时，`studio-flow-canvas.tsx` 的两处 `message.error` 把原错误对象交给提示，服务端的错误码和日志号不再显示成 `CLIENT_ERROR`。
+
+门禁（release 树）：web-aiavatar `typecheck` 通过；`pnpm check:api-contract` OK；指定的 3 个文件（`studio-image-file`、`studio-media-upload-api`、`studio-flow-card`）15 条全过；web-aiavatar 全量 vitest 127 个文件 974 条一次全过（机器负载约 6）。server 未改动，未跑 Maven。
+
+**未验证**：线上没有用真账号实传一张超像素的图（本地浏览器实测 9000×2000、168 KB 的 JPEG 传出去是 4096×910，见 main 的提交说明）；生产上没有发起任何付费调用、没有建测试数据。回滚：
+`deploy-release.sh dist/deploy/20261020-studio-dialogue-fixes web-aiavatar`（web-aiavatar 回到 `eb2f5259`；server 不动；无迁移，无数据要回退）。
