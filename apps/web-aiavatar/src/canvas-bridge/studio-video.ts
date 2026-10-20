@@ -38,7 +38,8 @@ export function studioVideoCanvasForConfig(model:VideoStudioModel,tier:string,si
   return canvas;
 }
 export type StudioVideoAsset = {mediaType:VideoStudioMediaType;storageKey?:string};
-export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firstId?:string;lastId?:string};
+/** keepPrompt：「按原文生成」，请厂商出片前不改写描述（只对 supportsPromptOptimization 的模型生效）。 */
+export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firstId?:string;lastId?:string;keepPrompt?:boolean};
 
 /** Current node controls and connected references own a reopened editor, including edits made after a run. */
 export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:CanvasNodeData[],referenceIds:string[]) {
@@ -58,7 +59,8 @@ export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:Can
   const videoRatio=metadata?.videoMode||saved?.mode||["9:16","16:9","1:1"].includes(requestedRatio)
     ?requestedRatio:"9:16";
   return {
-    draft:{mode,tier:saved?.resolutionTier||(metadata?.vquality?(customMode?metadata.vquality:`${metadata.vquality.replace(/p$/,"")}p`):"768p"),seed:saved?.seed,firstId:images[0],lastId:images[1]} satisfies StudioVideoDraft,
+    draft:{mode,tier:saved?.resolutionTier||(metadata?.vquality?(customMode?metadata.vquality:`${metadata.vquality.replace(/p$/,"")}p`):"768p"),seed:saved?.seed,firstId:images[0],lastId:images[1],
+      ...(request?.video?.optimizePrompt===false?{keepPrompt:true}:{})} satisfies StudioVideoDraft,
     count:metadata?.videoCount?Number(metadata.videoCount):request?.count||1,
     seconds:metadata?.seconds?Number(metadata.seconds):request?.durationSec||node?.metadata?.studio?.shot?.durationSec||8,
     ratio:videoRatio,
@@ -107,8 +109,15 @@ export function studioVideoQuote(model:VideoStudioModel,video:StudioVideoSetting
   return Number.isSafeInteger(total)&&total>=0?total:null;
 }
 
-/** The order is explicit: first/last in frame mode, numbered per media type in reference mode. */
-export function studioVideoSettings(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec):StudioVideoSettings {
+/**
+ * The order is explicit: first/last in frame mode, numbered per media type in reference mode.
+ * keepPrompt only applies to models that rewrite the description before encoding; others ignore the choice.
+ */
+export function studioVideoSettings(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec,keepPrompt?:boolean):StudioVideoSettings {
+  const settings=studioVideoInputs(mode,tier,assets,seed,spec);
+  return keepPrompt?{...settings,optimizePrompt:false}:settings;
+}
+function studioVideoInputs(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec):StudioVideoSettings {
   if(assets.some(a=>!a.storageKey))throw new Error("有一份参考素材尚未上传完成，请重新选择");
   if(spec) {
     if(spec.mode!==mode)throw new Error("这个模型不支持所选视频模式，请重新选择");

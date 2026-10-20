@@ -171,6 +171,7 @@ public class MaterialVideoWorker {
                 job.getExternalTaskId(), endpointId, job.getProviderUsed(), job.getModelUsed(), appCodeOf(job),
                 job.getUpstreamBaseUrlSnapshot(), job.getVideoRequestSpecSnapshotJson());
         MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
+        recordPromptRewrite(jobId, poll.promptRewrite());
         if (!poll.succeeded()) {
             throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM",
                     "上游任务当前不是成功状态（" + safe(poll.rawStatus()) + "），暂不能恢复");
@@ -287,6 +288,7 @@ public class MaterialVideoWorker {
             if(queue!=null)queue.touch(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
             MaterialVideoModelClient.PollResult poll = modelClient.poll(submit);
             terminal[0]=poll.succeeded()||poll.failed();
+            recordPromptRewrite(jobId, poll.promptRewrite());
             if (poll.succeeded()) {
                 boolean hasVideoUrl = poll.videoUrl() != null && !poll.videoUrl().isBlank();
                 boolean hasProtectedAsset = poll.outputAssetId() != null && !poll.outputAssetId().isBlank();
@@ -512,6 +514,34 @@ public class MaterialVideoWorker {
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });
+    }
+
+    /**
+     * 厂商出片前改写提示词的结果（{@link VideoPromptRewrite}）：状态变了才写，存进 payload_json。
+     * 只读旁路 —— 写不进去只丢这份说明，不影响出片、结算与轮询（§8.0 观测类例外）。
+     */
+    void recordPromptRewrite(String jobId, VideoPromptRewrite rewrite) {
+        if (rewrite == null) return;
+        try {
+            jobRepo.findById(jobId).ifPresent(j -> {
+                com.fasterxml.jackson.databind.node.ObjectNode payload;
+                try {
+                    JsonNode parsed = j.getPayloadJson() == null || j.getPayloadJson().isBlank()
+                            ? OM.createObjectNode() : OM.readTree(j.getPayloadJson());
+                    payload = parsed.isObject() ? (com.fasterxml.jackson.databind.node.ObjectNode) parsed : OM.createObjectNode();
+                } catch (IOException unreadable) {
+                    return; // 原记录读不出来就不碰，别为了旁路信息把它覆盖掉
+                }
+                var next = rewrite.toJson(OM);
+                if (next.equals(payload.get(VideoPromptRewrite.PAYLOAD_KEY))) return;
+                payload.set(VideoPromptRewrite.PAYLOAD_KEY, next);
+                j.setPayloadJson(payload.toString());
+                j.setUpdatedAt(OffsetDateTime.now());
+                jobRepo.save(j);
+            });
+        } catch (RuntimeException e) {
+            log.warn("[material-video] job {} 记录厂商改写后的提示词失败（不影响出片）err={}", jobId, e.toString());
+        }
     }
 
     private void markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {

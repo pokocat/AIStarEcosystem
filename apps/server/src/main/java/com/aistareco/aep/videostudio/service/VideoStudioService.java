@@ -439,7 +439,10 @@ public class VideoStudioService {
         // 能按编号选的模型把端点钉死在任务上：报价用的是这个候选的单价，worker 就必须跑在它上面，
         // 不能随「默认绑定」在提交与派发之间漂走。合成的默认项没有候选行，写了编号会被白名单拒，所以不写。
         if (v.model().selectableById()) vc.put("endpoint_id", v.model().endpointId());
-        v.spec().writeTo(vc);
+        // 用了智能优化的提示词不再让厂商出片前改写一遍（公开契约：已手动优化的 prompt 应传 optimizePrompt=false）。
+        // 此前两边都改：用户审过、可能还改过的那份描述会被厂商再改写一次，还多一次厂商的改写费用。
+        // 优化完换成了不会改写的模型：那个模型本来就原文出片，不带这个开关。
+        (optimization != null && v.model().supportsPromptOptimization() ? v.spec().withOptimizePrompt(false) : v.spec()).writeTo(vc);
         VideoStudioCanvas selectedCanvas = v.model().contract().tiers().stream()
                 .filter(t -> t.tier().equals(v.tier()))
                 .flatMap(t -> t.canvases().stream())

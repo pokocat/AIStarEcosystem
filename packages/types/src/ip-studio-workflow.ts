@@ -8,6 +8,8 @@ export interface StudioVideoSettings {
   firstFrameKey?: string;
   lastFrameKey?: string;
   references?: VideoStudioReferenceInput[];
+  /** false =「按原文生成」：请厂商出片前不改写描述；不填 = 模型默认（H3 默认会改写）。只对 supportsPromptOptimization 的模型开放。 */
+  optimizePrompt?: boolean;
 }
 export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }

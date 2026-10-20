@@ -300,6 +300,55 @@ class MaterialVideoModelClientWireTest {
                 + "\"outputSizeCode\":\"h3-768-1x1\",\"seconds\":5}", create().text());
     }
 
+    // 2026-10-20 线上：H3 受理后先把提示词改写成英文再出片，原文里的整句中文对白只剩两个字。
+    // 下面两条用同样的结构（台词里有一句、表情说明里又引用了开头那个词）构造，不用用户原文。
+    @Test
+    @DisplayName("按原文生成：请求体真的带上 optimizePrompt=false；不选就不发这个字段（厂商默认改写）")
+    void originalPromptSwitchIsSentOnlyWhenChosen() throws Exception {
+        useJusuan();
+        client.submit("老周：等等？你说这片地要拆了，我怎么一点风声都没听到。", 8, "16:9", "u1", "celebrity", null,
+                new VideoGenSpec("t2v", "768p", null, null, null, List.of()).withOptimizePrompt(false));
+        JsonNode body = createJson();
+        assertTrue(body.has("optimizePrompt"));
+        assertFalse(body.path("optimizePrompt").asBoolean(true));
+        assertEquals("老周：等等？你说这片地要拆了，我怎么一点风声都没听到。", body.path("prompt").asText());
+
+        requests.clear();
+        client.submit("一只猫在窗台上打盹", 5, "1:1", "u1", "celebrity", null,
+                new VideoGenSpec("t2v", "768p", null, null, null, List.of()));
+        assertFalse(createJson().has("optimizePrompt"));
+    }
+
+    @Test
+    @DisplayName("查询响应里的 promptOptimization：读出厂商实际用的描述与来源，没有这个对象就是 null")
+    void pollCarriesTheVendorsRewrittenPrompt() throws Exception {
+        useJusuan();
+        var accepted = client.submit("老周：等等？你说这片地要拆了。表情：“等等”时愣住。", 8, "16:9", "u1", "celebrity", null,
+                new VideoGenSpec("t2v", "768p", null, null, null, List.of()));
+        createBody = "{\"jobId\":\"job_1\",\"status\":\"queued\",\"phase\":\"prompt_optimization\","
+                + "\"promptOptimization\":{\"attempt\":1,\"enabled\":true,\"status\":\"processing\",\"preparationStatus\":\"processing\","
+                + "\"originalPrompt\":\"老周：等等？你说这片地要拆了。\"}}";
+        var preparing = client.poll(accepted);
+        assertEquals("processing", preparing.status());
+        assertEquals("processing", preparing.promptRewrite().status());
+        assertNull(preparing.promptRewrite().prompt());
+
+        createBody = "{\"jobId\":\"job_1\",\"status\":\"running\",\"promptOptimization\":{\"attempt\":1,\"enabled\":true,"
+                + "\"status\":\"succeeded\",\"preparationStatus\":\"succeeded\",\"promptSource\":\"optimized\","
+                + "\"optimizationId\":\"popt_1\",\"optimizationVersion\":\"v8\","
+                + "\"effectivePrompt\":\"Lao Zhou freezes and says (S1) <d>[Chinese]等等</d>.\","
+                + "\"optimizedPrompt\":\"Lao Zhou freezes and says (S1) <d>[Chinese]等等</d>.\"}}";
+        var rewritten = client.poll(accepted).promptRewrite();
+        assertEquals("succeeded", rewritten.status());
+        assertEquals("optimized", rewritten.source());
+        assertEquals("Lao Zhou freezes and says (S1) <d>[Chinese]等等</d>.", rewritten.prompt());
+        assertEquals("popt_1", rewritten.optimizationId());
+        assertEquals("v8", rewritten.version());
+
+        createBody = "{\"jobId\":\"job_1\",\"status\":\"running\"}";
+        assertNull(client.poll(accepted).promptRewrite());
+    }
+
     @Test
     @DisplayName("老路径（画布首帧）：上传一张图 → i2v；竖屏带上 aspectRatio + outputSizeCode")
     void legacyCanvasFirstFrameStillWorks() throws Exception {

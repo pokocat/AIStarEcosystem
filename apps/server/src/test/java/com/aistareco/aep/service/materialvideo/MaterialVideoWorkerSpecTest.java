@@ -141,6 +141,43 @@ class MaterialVideoWorkerSpecTest {
     }
 
     @Test
+    @DisplayName("厂商改写过提示词：实际用的描述存进 payload（原有键不丢），出片与结算照旧；任务卡不外露这份记录")
+    void vendorRewriteIsKeptBesideThePayload() throws Exception {
+        var submit = new MaterialVideoModelClient.SubmitResult("job_h3", null, "MiniMax H3", "minimax-h3",
+                "jusuan-media", "ep-h3");
+        when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenReturn(submit);
+        var rewrite = new VideoPromptRewrite("succeeded", "optimized", "She dances (S1) <d>[Chinese]走吧</d>", "popt_9", "v8");
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("succeeded", null, null, "succeeded", 100, null, null, "asset_out", rewrite));
+        @SuppressWarnings("unchecked")
+        HttpResponse<Path> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("content-type", List.of("video/mp4")), (a, b) -> true));
+        when(modelClient.downloadOutputAsset(eq(submit), eq("asset_out"), any(Path.class))).thenAnswer(inv -> {
+            Files.write(inv.getArgument(2), new byte[]{1, 2, 3, 4});
+            return response;
+        });
+
+        worker().generateAsync("mvj_studio");
+
+        assertEquals("succeeded", job.getStatus());
+        var payload = new com.fasterxml.jackson.databind.ObjectMapper().readTree(job.getPayloadJson());
+        assertEquals("视频生成", payload.path("credit_label").asText());
+        assertEquals("She dances (S1) <d>[Chinese]走吧</d>", payload.path(VideoPromptRewrite.PAYLOAD_KEY).path("prompt").asText());
+        assertEquals("popt_9", payload.path(VideoPromptRewrite.PAYLOAD_KEY).path("optimizationId").asText());
+        verify(creditService).commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, "mvj_studio", 200L,
+                "视频生成 · 全能参考 · 768p · 9:16 · 5 秒");
+    }
+
+    @Test
+    @DisplayName("记录改写结果写不进去（存储异常）：只丢这份说明，不抛、不影响任务")
+    void rewriteRecordFailureIsSwallowed() {
+        when(jobRepo.save(any())).thenThrow(new IllegalStateException("db down"));
+        worker().recordPromptRewrite("mvj_studio", new VideoPromptRewrite("processing", null, null, null, null));
+        assertEquals("queued", job.getStatus());
+    }
+
+    @Test
     @DisplayName("提交被厂商拒（4xx）：任务失败原因是给用户看的那句，退款文案用 credit_label")
     void submitRejectionReleasesWithCreditLabel() {
         when(modelClient.submit(any(), anyInt(), any(), any(), any(), any(), any(), any())).thenThrow(

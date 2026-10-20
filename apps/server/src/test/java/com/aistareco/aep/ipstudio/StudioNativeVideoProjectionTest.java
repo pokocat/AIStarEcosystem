@@ -54,5 +54,27 @@ class StudioNativeVideoProjectionTest {
         verify(repository,never()).save(any());assertEquals(0,binding.getCost());
         c.setOwnerUserId("other");assertThrows(BusinessException.class,()->service.toRunDto(binding));
     }
+    /** 厂商出片前改写的描述跟着候选出 wire（只读、受理之后才有）；内部记录号不出；按原文生成的任务标 off。 */
+    @Test void projectsTheVendorsRewrittenPromptPerCandidate() {
+        var repository=mock(MaterialVideoJobRepository.class);var storage=IpStudioFixtures.storage();
+        var service=new IpProjectService(new IpStudioFixtures.Projects().repo,new IpStudioFixtures.Runs().repo,
+                new IpCatalogService(IpStudioFixtures.OM),IpStudioFixtures.templateResolver(),storage,IpStudioFixtures.props(),repository,IpStudioFixtures.OM,null);
+        var binding=IpRun.builder().id("binding").projectId("p").ownerUserId("owner").nodeId("n").kind("studio-video")
+                .status("done").cost(0).inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"a\",\"b\",\"c\"]}}").outputJson("{}").build();
+        var a=MaterialVideoJob.builder().id("a").ownerUserId("owner").app("ipstudio").status("generating").durationSec(8).progress(20).creditsHeld(320)
+                .payloadJson("{\"credit_label\":\"Studio 视频生成\",\"vendor_prompt\":{\"status\":\"succeeded\",\"source\":\"optimized\","
+                        + "\"prompt\":\"He says (S1) <d>[Chinese]等等</d>\",\"optimizationId\":\"popt_1\",\"version\":\"v8\"}}").build();
+        var b=MaterialVideoJob.builder().id("b").ownerUserId("owner").app("ipstudio").status("generating").durationSec(8).progress(5).creditsHeld(320)
+                .variantConfigJson("{\"generation_mode\":\"t2v\",\"resolution_tier\":\"768p\",\"optimize_prompt\":false}").build();
+        var c=MaterialVideoJob.builder().id("c").ownerUserId("owner").app("ipstudio").status("generating").durationSec(8).progress(5).creditsHeld(320).build();
+        when(repository.findById("a")).thenReturn(Optional.of(a));when(repository.findById("b")).thenReturn(Optional.of(b));when(repository.findById("c")).thenReturn(Optional.of(c));
+        var candidates=service.toRunDto(binding).output().path("videoCandidates");
+        assertEquals("done",candidates.get(0).path("promptRewrite").path("state").asText());
+        assertEquals("He says (S1) <d>[Chinese]等等</d>",candidates.get(0).path("promptRewrite").path("prompt").asText());
+        assertFalse(candidates.get(0).path("promptRewrite").has("optimizationId"));
+        assertEquals("off",candidates.get(1).path("promptRewrite").path("state").asText());
+        assertFalse(candidates.get(2).has("promptRewrite"));
+        verify(repository,never()).save(any());
+    }
 
 }

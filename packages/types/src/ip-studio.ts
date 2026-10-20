@@ -87,10 +87,16 @@ export type IpRunKind = "identity" | "generate" | "studio-adopt" | "studio-audio
 // width / height 是**出图的真实像素**（服务端从文件头读，不整图解码）。
 // 画布拿它算节点尺寸；缺了只能按上限铺成正方形，竖图会被撑成方框。
 export interface IpCandidate { key: string; url: string; width?: number; height?: number }
+/**
+ * 厂商出片前改写描述的结果（只读，任务受理之后才有）。off = 提交时选了按原文生成；
+ * done 时 prompt 是厂商实际照着出片的描述（用的是原文时不带）。用来解释成片和原文的差异，不是生成前的检查。
+ */
+export interface IpVideoPromptRewrite { state: 'off' | 'running' | 'done' | 'failed'; prompt?: string }
 export interface IpVideoCandidate {
   index: number; jobId: string; status: 'running' | 'done' | 'failed'; pct: number;
   storageKey?: string; url?: string; durationSec: number; errorMessage?: string; errorCode?: string; logId?: string;
   queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null;
+  promptRewrite?: IpVideoPromptRewrite;
 }
 export interface IpRunOutput {
   /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */

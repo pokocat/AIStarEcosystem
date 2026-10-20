@@ -1050,8 +1050,14 @@ ffprobe 求和（读不出 → 400 `VIDEO_STUDIO_ASSET_INVALID`）。
 - 聚算 + 完整原生规格：素材先 `POST {base}/v1/assets/input?model=<别名>` 逐个换 assetId（multipart 字段名 =
   `image` / `video` / `audio`，Content-Type 与文件名后缀按字节判；上限帧图 16MB、参考图 30MB、视频 50MB、音频 15MB），
   再按 Portal 示例的字段集与顺序组包：`model, generationMode, prompt, resolutionTier, orientation, aspectRatio,
-  outputSizeCode, seconds, [seed], [input_image_asset_id], [end_image_asset_id], [referenceInputs[{role, mediaType, assetId}]]`。
+  outputSizeCode, seconds, [seed], [optimizePrompt], [input_image_asset_id], [end_image_asset_id], [referenceInputs[{role, mediaType, assetId}]]`。
   不传 fps / frames / width / height / steps。
+- **出片前的提示词改写**（2026-10-20）：H3 四种模式默认先改写提示词再出片（厂商契约 `optimizePrompt` 缺省开启，受理之后才改写）。
+  规格里写了 `optimize_prompt` 才发 `optimizePrompt`：Studio 用户选「按原文生成」→ false；视频生成区带 optimizationId 的生成 → false；
+  其余不发（厂商默认）。非聚算协议或没有清晰度的老路径带着它 → 400 `VIDEO_MODE_UNSUPPORTED`；Studio 选了不会改写的模型 →
+  400 `STUDIO_VIDEO_OPTION_UNSUPPORTED`。不影响价格。轮询拿到的 `promptOptimization`（状态、来源、实际用的描述）写进任务
+  `payload_json.vendor_prompt`（只读旁路，写失败只 WARN），由 `VideoPromptRewrite` 投影成画布候选的 `promptRewrite`，
+  任务卡不外露；它只用于成片后解释差异，不能当作生成前的检查。
 - 老路径（没有清晰度：画布、脚本视频、短剧）组出来的聚算请求体与改动前逐字段一致。
 - 非聚算协议（seedance / agnes / 通用）收到任何原生参数 → 400 `VIDEO_MODE_UNSUPPORTED`，不静默丢；只带首帧 key 时，
   key 换成厂商自己去抓的 URL（`FileStorageService.upstreamFetchUrl`：**先签名 URL**，签不出来才退公开 URL。
@@ -1167,7 +1173,8 @@ dev 关）；别的分区的老任务不补。
 | `VIDEO_STUDIO_TEMPLATE_FORBIDDEN` | 403 | 不是运营却要发布官方模板 |
 | `VIDEO_STUDIO_TEMPLATE_INVALID` | 400 | 存模板：任务不是本人的 / 不是本区的 / 没成功；标题或说明长度不对 |
 | `VIDEO_STUDIO_OPTIMIZATION_REJECTED` / `VIDEO_STUDIO_OPTIMIZATION_TIMEOUT` / `VIDEO_STUDIO_OPTIMIZATION_FAILED` | —（落在优化记录上） | 厂商 4xx（带原话）/ 重试预算用完 / 2xx 但没有优化结果；已退回冻结 |
-| `VIDEO_MODE_UNSUPPORTED` | 400 | 非聚算协议收到原生参数；`video-studio` 以外的分区带了原生规格；`ipstudio` / `video-studio` / `drama` 以外的分区带了首帧 key |
+| `VIDEO_MODE_UNSUPPORTED` | 400 | 非聚算协议收到原生参数（含 `optimize_prompt`）；`video-studio` 以外的分区带了原生规格；`ipstudio` / `video-studio` / `drama` 以外的分区带了首帧 key |
+| `STUDIO_VIDEO_OPTION_UNSUPPORTED` | 400 | Studio 视频请求带了「按原文生成」（`optimizePrompt`），但所选模型出片前不会改写描述 |
 | `VIDEO_REF_UNREADABLE` / `VIDEO_REF_TOO_LARGE` / `VIDEO_REF_FORMAT_UNSUPPORTED` / `VIDEO_REF_UPLOAD_FAILED` | —（落在任务上） | worker 把素材交给厂商前后失败；已退回冻结 |
 | `VIDEO_SUBMIT_FAILED` | —（落在任务上） | 创建被拒：4xx 带厂商原话，5xx 只给状态码；已退回冻结 |
 | 复用 | 503 `VIDEO_NOT_CONFIGURED`（一个可用模型都没有）/ `ENDPOINT_NOT_ALLOWED`、402 `PAYMENT_REQUIRED`、402 `STORAGE_QUOTA_EXCEEDED`、400 `VIDEO_PRICE_OVERFLOW` |

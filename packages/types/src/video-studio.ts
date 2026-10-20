@@ -129,7 +129,7 @@ export interface VideoStudioModel {
   isDefault: boolean;
   /** false = 合成的默认项（无候选行），提交时必须省略 endpointId。 */
   selectableById: boolean;
-  /** 当前端点的供应商协议是否支持提交前的提示词智能优化。 */
+  /** 当前端点的供应商协议是否支持提交前的提示词智能优化。这类模型（聚算 H3）出片前默认也会改写描述，Studio 据此开放「按原文生成」。 */
   supportsPromptOptimization: boolean;
   batchCounts: number[];
   contract: VideoStudioContract;
