@@ -17,7 +17,7 @@ export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanv
   const close=()=>{setOpen(false);trigger.current?.focus();};
   useEffect(()=>{if(!open)return;const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};window.addEventListener('keydown',escape,true);return()=>window.removeEventListener('keydown',escape,true);},[open]);
   const usable=nodes.filter(n=>n.metadata?.storageKey&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType));
-  return <Popover trigger="click" placement="topLeft" arrow={false} open={open} onOpenChange={setOpen} destroyOnHidden afterOpenChange={visible=>{if(visible)(panel.current?.querySelector<HTMLButtonElement>('[role="checkbox"][aria-checked="true"]')||panel.current?.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();}}
+  return <Popover trigger="click" placement="topLeft" arrow={false} open={open} onOpenChange={visible=>setOpen(!picking&&visible)} destroyOnHidden afterOpenChange={visible=>{if(visible)(panel.current?.querySelector<HTMLButtonElement>('[role="checkbox"][aria-checked="true"]')||panel.current?.querySelector<HTMLButtonElement>('[role="checkbox"]:not(:disabled)')||panel.current?.querySelector<HTMLButtonElement>('button:not(:disabled)'))?.focus();}}
     getPopupContainer={trigger=>trigger.closest<HTMLElement>('.ip-surface')||document.body} classNames={{root:'studio-reference-overlay'}}
     content={<div ref={panel} className="studio-reference-picker" role="region" aria-label="选择参考素材">
       <header><strong>画布素材</strong><button type="button" aria-label="关闭素材选择" onClick={close}><X size={15}/></button></header>

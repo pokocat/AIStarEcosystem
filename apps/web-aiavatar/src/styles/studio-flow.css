@@ -581,3 +581,12 @@ html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-model-trig
 html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-mode-trigger { grid-column:2; justify-self:end; }
 html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-settings-trigger { grid-column:1; grid-row:2; text-align:left; padding-left:6px; border-left:0; }
 html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-creator-footer { grid-column:2; grid-row:2; }
+
+/* 同一组工具占一行，首尾交换不再单独撑高；编辑框自身已有可访问名称。 */
+.ip-surface .studio-media-composer .studio-reference-strip { order:1; }
+.ip-surface .studio-media-composer .studio-prompt-field>span,.ip-surface .studio-media-composer .studio-motion-tools>span { display:none; }
+.ip-surface .studio-media-composer .studio-motion-tools { padding:0 0 6px; gap:6px; }
+.ip-surface .studio-media-composer .studio-motion-drawer-editor { min-height:100px; max-height:180px; }
+.ip-surface .studio-mode-trigger-overlay .studio-model-menu { width:min(220px,calc(100vw - 32px)); }
+.ip-surface .studio-mode-trigger-overlay .studio-option>small { display:none; }
+html[data-layout="mobile"] .ip-surface .studio-reference-tile>button { width:32px; height:32px; }

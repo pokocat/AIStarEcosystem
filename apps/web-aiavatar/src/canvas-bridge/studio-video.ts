@@ -4,9 +4,9 @@ import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
 
 const legacyModeNames: Record<string,string> = {
-  t2v:"文生视频", i2v:"首帧", first_last_frame_video:"首尾帧", universal_reference_video:"全能参考",
+  t2v:"文生视频", i2v:"图生视频", first_last_frame_video:"首尾帧", universal_reference_video:"全能参考",
 };
-export const studioVideoModeName = (mode:VideoStudioModeSpec):string => mode.label || legacyModeNames[mode.mode] || mode.mode;
+export const studioVideoModeName = (mode:VideoStudioModeSpec):string => mode.mode==="i2v"&&mode.label==="首帧"?"图生视频":mode.label || legacyModeNames[mode.mode] || mode.mode;
 /** Legacy frame/reference selections resolve through the current contract; an explicit mode stays exact. */
 export function studioVideoModeForAssets(model:VideoStudioModel,selected:string|undefined,assets:StudioVideoAsset[]):VideoStudioModeSpec {
   const value=selected||"frames";
