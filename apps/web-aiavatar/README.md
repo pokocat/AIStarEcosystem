@@ -1034,3 +1034,8 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 数量使用紧凑分段选择；原生视频时长用合同内常用值与整数输入，离散模型保留自身列表。随机种子默认收在高级设置，保留已填值（0 也是固定种子），可一键恢复随机。
 
 视频模式在底栏独立切换，并根据所选图片、视频、音频及模型合同自动适配；不兼容模式禁用，素材始终完整保留。参考菜单和编号缩略图条取代重复表单，首尾帧可交换。桌面底栏单行显示模型、模式、规格、总积分与箭头提交，手机有序分两行。
+
+### 2026-10-20 · Studio 生产问题五项修复
+
+`canvas-bridge/studio-composer-spec.ts`（描述与设置不一致、时长超出模型范围的判定，纯函数）、`canvas-bridge/studio-node-failure.ts`（失败节点、不可再用的模型、一行原因）；`studio-plan-execution.ts` 的投影接受助手写的 `studio.spec` 并同步打开中的草稿；`studio-reply-actions.ts` 折叠 `<studio-actions>`；`studio-dialogue-session.tsx` 制作阶段确认卡只复用进行中的执行。测试：`studio-failure-recovery.test.tsx`、`studio-flow-card-failure.test.tsx` 与上述纯函数的单测。类型 `StudioNodeSpec` 在 `packages/types/src/ip-studio-workflow.ts`。
+

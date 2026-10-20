@@ -27,6 +27,8 @@ public class StudioSkillRules {
                         List<String> autoFixChecks,List<String> requiredCapabilities,String body,String digest) {
         public boolean active() {return !"withdrawn".equals(status);}
         public List<String> stageOperations(String stage) {return operations.getOrDefault(stage,List.of());}
+        /** {@link StudioSkill#firstStage()}: production-only skills start (and stay) in production. */
+        public String firstStage() {return StudioSkill.firstStage(operations);}
         /** The section of the body that explains how each check is judged; empty when the file has none. */
         public String checkGuide() {
             int start=body.indexOf("## 检查依据");

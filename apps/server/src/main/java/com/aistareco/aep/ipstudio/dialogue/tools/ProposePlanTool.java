@@ -51,12 +51,12 @@ public class ProposePlanTool implements StudioDialogueTool {
 
     public String name() { return "propose_plan"; }
     public String title() { return "整理制作方案"; }
-    public String description() { return "按已选制作方法为当前阶段整理制作方案：推荐方案、必要的替代方案、每一步做法与依赖。方案会显示给用户，不会自动执行；报价由服务端计算。"; }
+    public String description() { return "按已选制作方法为当前阶段整理制作方案：推荐方案、必要的替代方案、每一步做法与依赖。方案会显示给用户，不会自动执行；报价由服务端计算。没有参考视频的出图、出片（原创三视图、海报、原创短片）用「原创创作」方法，直接整理制作方案，不需要分析阶段。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "brief");
         DialogueTools.prop(s, "brief", "string", "用户目标、保留与替换范围、已知事实的整理，≤4000 字");
         DialogueTools.prop(s, "feedback", "string", "用户对上一版方案的反馈，≤2000 字");
-        DialogueTools.prop(s, "stage", "string", "analysis（分析方案）| production（分析完成后的制作方案）；省略为当前阶段").putArray("enum").add("analysis").add("production");
+        DialogueTools.prop(s, "stage", "string", "analysis（分析方案）| production（制作方案）；省略为当前阶段。只有带分析阶段的方法（参考视频复刻）才需要先分析").putArray("enum").add("analysis").add("production");
         return s;
     }
     public String validate(JsonNode args, ToolContext ctx) {
@@ -66,7 +66,10 @@ public class ProposePlanTool implements StudioDialogueTool {
         if (args.path("feedback").asText("").length() > 2000) return "feedback 不超过 2000 字";
         String stage = DialogueTools.text(args, "stage");
         if (stage != null && !java.util.Set.of("analysis", "production").contains(stage)) return "stage 只能是 analysis 或 production";
-        if ("production".equals(stage) && ctx.executionId == null) return "还没有进行中的分析，先整理并确认分析方案";
+        String first = ctx.skill().firstStage();
+        if ("analysis".equals(stage) && ctx.skill().stageOperations(StudioSkill.ANALYSIS).isEmpty())
+            return "「" + ctx.skill().name() + "」没有分析阶段，直接整理制作方案（stage 写 production 或省略）";
+        if ("production".equals(stage) && ctx.executionId == null && !"production".equals(first)) return "还没有进行中的分析，先整理并确认分析方案";
         return null;
     }
     public String safeInputSummary(JsonNode args, ToolContext ctx) {
@@ -77,7 +80,7 @@ public class ProposePlanTool implements StudioDialogueTool {
     public ToolRun run(JsonNode args, ToolContext ctx, ToolHandle handle) throws Exception {
         if (ctx.mock) return ToolRun.failed("STUDIO_FIXTURE_UNAVAILABLE", "测试响应不生成制作方案", DialogueTools.fail("测试响应模式不生成制作方案，请如实告诉用户"));
         StudioSkill skill = ctx.skill();
-        String stage = DialogueTools.text(args, "stage") != null ? DialogueTools.text(args, "stage") : ctx.stage() == null ? StudioSkill.ANALYSIS : ctx.stage();
+        String stage = DialogueTools.text(args, "stage") != null ? DialogueTools.text(args, "stage") : ctx.stage() == null ? skill.firstStage() : ctx.stage();
         var resolved = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN);
         if ("code".equals(resolved.origin()))
             return ToolRun.failed("PROMPT_NOT_CONFIGURED", "尚未配置制作方案提示词", DialogueTools.fail("制作方案提示词尚未配置，暂时不能整理方案"));

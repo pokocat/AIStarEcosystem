@@ -81,6 +81,26 @@ describe('node.upsert projection', () => {
   });
 });
 
+describe('assistant settings (update_nodes, 2026-10-20 IPP-45bead91)', () => {
+  const clip: CanvasNodeData = { id: 'clip', type: 'video', title: '视频片段', position: { x: 400, y: 0 }, width: 360, height: 240,
+    metadata: { prompt: '画幅 16:9，时长 4 秒', size: '720x1280', seconds: '8', studio: { kind: 'shot',
+      composerDraft: { operation: 'video', prompt: '画幅 16:9，时长 4 秒', referenceNodeIds: ['male'], aspectRatio: '9:16', count: 1, durationSec: 8,
+        settings: {} as never, video: { mode: 'i2v', tier: '720p' } } } } as CanvasNodeData['metadata'] };
+  const images = ['male', 'female', 'room'].map((id, i): CanvasNodeData => ({ id, type: 'image', title: id, position: { x: 0, y: i * 300 }, width: 300, height: 300, metadata: { storageKey: `k/${id}`, status: 'success' } }));
+  const doc: ProjectionDoc = { nodes: [...images, clip], connections: [{ id: 'e0', fromNodeId: 'male', toNodeId: 'clip' }] };
+  const spec = { aspectRatio: '16:9', durationSec: 4, references: [{ nodeId: 'female', role: 'character' as const }, { nodeId: 'room', role: 'scene' as const }], source: 'assistant' as const, updatedAt: '2026-10-20T15:11:27Z' };
+
+  test('the spec lands on the node, the open draft follows it, the user prompt is untouched and the material is connected', () => {
+    let next = projectStudioNodeUpsert(doc, { nodeId: 'clip', op: 'update', node: { id: 'clip', type: 'video', title: '视频片段', metadata: { studio: { spec } } } as never });
+    for (const r of spec.references) next = projectStudioNodeUpsert(next, { nodeId: 'clip', op: 'connect', connection: { fromNodeId: r.nodeId, toNodeId: 'clip' } });
+    const node = next.nodes.find(n => n.id === 'clip')!;
+    expect(node.metadata?.studio?.spec).toEqual(spec);
+    expect(node.metadata?.studio?.composerDraft).toMatchObject({ aspectRatio: '16:9', durationSec: 4, referenceNodeIds: ['male', 'female', 'room'] });
+    expect(node.metadata?.prompt).toBe('画幅 16:9，时长 4 秒');
+    expect(next.connections.filter(c => c.toNodeId === 'clip').map(c => c.fromNodeId).sort()).toEqual(['female', 'male', 'room']);
+  });
+});
+
 describe('check.result projection', () => {
   const check: StudioCheckResultData = { stepId: 'c1', runId: 'run-c1', result: { status: 'unknown', targetRunId: 'run-v1', items: [
     { id: 'subject', status: 'pass', evidence: [{ kind: 'frame', timeSec: 2.5, observation: '主体是洗衣液' }], reason: '一致' },

@@ -213,7 +213,9 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const request: StudioPlanExecutionCreateRequest = { clientRequestId, stage: block.stage, planRunId: plan.planRunId, planFingerprint: block.planFingerprint,
       budgetCap: caps.budgetCap, autoFixCap: caps.autoFixCap, approvalId: block.approvalId, confirmationMessageId: messageId,
       ...(block.billingSelection ? { billing: block.billingSelection } : {}),
-      ...(block.stage === 'production' ? { executionId: block.executionId || s.execution?.id, approachId: plan.plan.confirmedApproachId || plan.plan.recommendedApproachId, expectedRevision: plan.revision }
+      // A production card of a production-only method (原创创作) starts its own execution: only a running one is reused,
+      // never a finished execution left in the session state.
+      ...(block.stage === 'production' ? { executionId: block.executionId || (executionActive(s.execution) ? s.execution!.id : undefined), approachId: plan.plan.confirmedApproachId || plan.plan.recommendedApproachId, expectedRevision: plan.revision }
         // A card the running analysis posted (a budget raise, a revised plan) confirms that same execution, not a new one.
         : block.executionId ? { executionId: block.executionId, expectedRevision: plan.revision } : {}) };
     const execution = await createStudioPlanExecution(projectId, request);

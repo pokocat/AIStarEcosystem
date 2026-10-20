@@ -2,6 +2,8 @@
 
 日期：2026-10-18。状态：统一产品与开发规格 v4；**S1 / S2 / S3 已于 2026-10-18 实现并上线**（`20261018-studio-recreation-s1s3` 及当晚热修，见 `docs/releases/studio-recreation-release-20261018.md`），实现记录见 `apps/server/README.md`「Studio 对话 agent、技能与计划执行」、`apps/web-aiavatar/PRODUCT.md`「2026-10-18 · 全能创作」、`specs/BUSINESS_RULES.md` 同名节；S0 付费实测与据其决定的 `autoFixChecks` 白名单未做（需单独批预算，见 `TODO.md`）。本文是本功能唯一方案真源；前序独立工作树方案已作废删除。
 
+> **2026-10-20 补充**：技能库新增内置「原创创作」（`original-creation`，`operations.analysis` 为空，只有制作阶段），用于没有参考视频的出图出片；执行起始阶段由 `StudioSkill.firstStage()` 决定，复刻技能仍先分析。助手描述图片内容须经 `view_images` 真实看图；用户说的规格写进节点 `studio.spec`；`<studio-actions>` 标签按动作协议解析。规则见 `specs/BUSINESS_RULES.md` 全能创作节 22–25，发布记录 `docs/releases/studio-prod-fixes-20261020.md`。
+
 ## 用户需求
 
 在「AI全能创作」对话入口中，用户上传参考视频并说明要替换的商品、人物等，AI就能理解原片的主体创意、脚本和表现手法，结合新素材动态编写提示词、搭建并操作画布，完成生成、检查和局部调整，最终交付视频；将这套制作方法沉淀为可复用的Skill，具体方案每次由AI按素材动态决定。

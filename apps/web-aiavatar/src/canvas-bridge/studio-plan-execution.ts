@@ -112,6 +112,17 @@ function mergeServerNode(existing: CanvasNodeData, incoming: CanvasNodeData, exe
       ...(execution ? { execution } : {}) } as NonNullable<CanvasNodeData['metadata']>['studio']
     : undefined;
   if (studio) metadata.studio = studio;
+  // Settings the assistant wrote (update_nodes) replace the node's earlier ones, and an open composer draft follows them,
+  // so the panel opens with what the user said in the conversation instead of the draft's stale 9:16 / 8 s.
+  const spec = incomingStudio?.spec;
+  if (spec && metadata.studio) {
+    const draft = metadata.studio.composerDraft;
+    metadata.studio = { ...metadata.studio, spec, ...(draft ? { composerDraft: {
+      ...draft, ...(spec.aspectRatio ? { aspectRatio: spec.aspectRatio } : {}), ...(spec.durationSec ? { durationSec: spec.durationSec } : {}),
+      ...(spec.count ? { count: spec.count } : {}),
+      referenceNodeIds: [...new Set([...draft.referenceNodeIds, ...(spec.references || []).map(r => r.nodeId)])],
+    } } : {}) };
+  }
   return { node: { ...existing, title: existing.title || incoming.title, metadata }, proposals };
 }
 

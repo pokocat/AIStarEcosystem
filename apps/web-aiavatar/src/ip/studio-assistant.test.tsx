@@ -996,7 +996,7 @@ test('older replies show their raw action blocks folded, not as the assistant ta
   await ready();
   const reply = await screen.findByText('我先看看画布。');
   expect(reply.textContent).not.toContain('<tool_call>');
-  const raw = screen.getByText('这一轮的操作原文').closest('details') as HTMLDetailsElement;
+  const raw = screen.getByText('这一轮没有执行的操作原文').closest('details') as HTMLDetailsElement;
   expect(raw.open).toBe(false);
   expect(raw.textContent).toContain('read_canvas');
   expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();

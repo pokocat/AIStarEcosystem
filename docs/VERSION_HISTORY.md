@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 生产问题五项修复 · 2026-10-20（server + web-aiavatar）
+
+原创出图出片有了只含制作阶段的「原创创作」技能（`StudioSkill.firstStage`，执行可从 production 起步，无进行中执行时可换技能）；`create_nodes` 写节点规格、新工具 `update_nodes` 改已有节点（`studio.spec` + 参考连线），生成面板按规格打开、不再静默改时长、描述与设置不一致先询问；动作协议接受 `<studio-actions>` 标签并在流式中隐藏、闭合后续推、模仿工作记录按格式错误、连续两次纠正失败即停；新工具 `view_images` 用对话端点真实看图（本人 key、计入本轮预算）；失败节点显示原因与单一恢复入口，`400 model_delisted` → `VIDEO_MODEL_RETIRED` 且冻结前拒绝。提示词 seed v18。无迁移、无 HTTP 路径变化。发布与线上验收见 [记录](releases/studio-prod-fixes-20261020.md)。
+
 ### Studio 节点配置交互统一 · 2026-10-20 · 已生产发布（仅 web-aiavatar）
 
 模型菜单、参数摘要与生成动作集中到底栏；图片/视频及剧本、配音、口型、解析共用分组浮层和直接点选控件，比例可视化、清晰度附实际像素。选项按模型能力生成，切比例保留清晰度档位；支持手机边界、键盘焦点与嵌套菜单 Esc 顺序。94 项相关回归通过；图片/视频/配音线上交互及实际手机画布通过，未新增收费生成。最终发布 `20261020-studio-node-settings-focus`；见 [发布与验收记录](releases/studio-node-settings-20261020.md)。同日增量 `20261020-studio-video-settings-compact` 将数量收为分段、时长收为常用值与整数输入，种子移到可恢复随机的高级设置；100 项相关回归及桌面/手机实际参数验收通过。同日 `20261020-studio-adaptive-composer-compact` 将视频模式独立为菜单，素材按合同自动适配且完整保留；底栏收紧、参考合并为编号缩略图条；106 项回归及桌面/手机/实际视口验收通过，未新增收费生成。 随后合入本地 main，以 `2ebbd795` 构建并发布 `20261020-studio-main-adaptive`，保留 H3 与保存冲突功能，220 项相关检查及线上 UI 验收通过。

@@ -77,7 +77,7 @@ function replyText(key: string, text: string): ReactNode[] {
   const { prose, actions } = splitReplyActions(text);
   return [
     ...(prose ? [<p key={key} className="studio-dialogue-text">{prose}</p>] : []),
-    ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>这一轮的操作原文</summary><pre>{actions}</pre></details>] : []),
+    ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>这一轮没有执行的操作原文</summary><pre>{actions}</pre></details>] : []),
   ];
 }
 

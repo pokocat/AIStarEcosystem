@@ -280,6 +280,7 @@ public class StudioDialogueTurnWorker {
             case "calls" -> "这一轮已经想了很多步，先停在这里。回复「继续」我接着做。";
             case "time" -> "这一轮用时已到上限，先停在这里。回复「继续」我接着做。";
             case "tokens" -> "这一轮的模型额度用完了，先停在这里。回复「继续」我接着做。";
+            case "protocol" -> "这一轮整理出的操作格式不对，没有执行任何操作。回复「继续」我重新整理。";
             default -> "这一轮的动作次数用完了，先停在这里。回复「继续」我接着做。";
         };
     }
@@ -423,7 +424,17 @@ public class StudioDialogueTurnWorker {
         }
 
         String skillText(StudioSkill skill) {
-            if (skill != null) return "「" + skill.name() + "」v" + skill.version() + "\n" + skill.body();
+            if (skill != null) {
+                StringBuilder out = new StringBuilder("「").append(skill.name()).append("」v").append(skill.version()).append('\n').append(skill.body());
+                // The other methods stay visible: a thread bound to the wrong one (原创三视图 under 参考视频复刻) can switch
+                // with read_skill while nothing runs, instead of bending the user's job into an unrelated whitelist.
+                var others = catalog.available().stream().filter(s -> !s.key().equals(skill.key())).toList();
+                if (!others.isEmpty() && executionId == null) {
+                    out.append("\n\n其他制作方法（用户要做的事和上面的方法对不上、且没有进行中的制作时，用 read_skill 给出 key 换过去）：\n");
+                    for (var s : others) out.append("- ").append(s.key()).append("：").append(s.name()).append(" — ").append(s.summary()).append('\n');
+                }
+                return out.toString();
+            }
             StringBuilder out = new StringBuilder("还没有选定制作方法。普通创作问题直接回答；需要按下面某个方法制作时，先调用 read_skill 选定：\n");
             for (var s : catalog.available()) out.append("- ").append(s.key()).append("：").append(s.name()).append(" — ").append(s.summary()).append('\n');
             return out.toString();
@@ -629,12 +640,18 @@ public class StudioDialogueTurnWorker {
                 store.write(threadId, t -> upserts.stream().map(u -> pending(StudioDialogueEventTypes.NODE_UPSERT, u)).toList());
             }
             @Override public void bindSkill(StudioSkill skill) {
+                // Binding a first skill, or switching to another one while nothing is running on this thread (read_skill
+                // refuses a switch during an execution). A switch drops the old method's stage and supersedes its pending
+                // cards: a plan for 「参考视频复刻」 must not stay confirmable once the thread is making an original image set.
+                boolean switching = context.skill() != null && !context.skill().key().equals(skill.key());
                 store.write(threadId, t -> {
-                    if (t.getSkillKey() == null) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); }
-                    if (t.getStage() == null) t.setStage(StudioSkill.ANALYSIS);
-                    return List.of();
+                    List<StudioDialogueStore.Pending> out = new ArrayList<>();
+                    if (t.getSkillKey() == null || switching) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); t.setStage(skill.firstStage()); }
+                    else if (t.getStage() == null) t.setStage(skill.firstStage());
+                    if (switching) out.addAll(store.supersedePendingApprovals(t, null, turnId, runId, executionId));
+                    return out;
                 });
-                context.bindSkill(skill, context.stage() == null ? StudioSkill.ANALYSIS : context.stage());
+                context.bindSkill(skill, switching || context.stage() == null ? skill.firstStage() : context.stage());
                 // The parent run carries the skill snapshot the plan executor reads back (plans proposed in this turn).
                 tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
                     ObjectNode input = (ObjectNode) parse(run.getInputJson());
