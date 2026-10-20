@@ -197,3 +197,43 @@
 
 **未验证**：真模型下的对话（首页一句话自动发出、「放进画布」、检查口径）没有在线上用真账号走过，生产上没有发起任何付费调用、没有建测试数据；SSE 响应头只能从外部确认接口在线（未登录 401，路由前就鉴权，不能区分路径），头本身由 `StudioDialogueControllerTest` 覆盖，并确认线上 jar 的 `StudioDialogueController` 里有这两个头。回滚：
 `deploy-release.sh dist/deploy/20261019-studio-advanced-editor server,web-aiavatar`（两个服务都回到 `7dbf8028`；旧 jar 启动时看到 seed 版本 v16 ≠ 自己的 v14，会把没人改过的提示词行刷回 v14 文本，不用手动处理；无迁移，无数据要回退）。
+
+## 追加发布 · 2026-10-20 · 对话 / 执行六项修复 + 复测 R2/R3/R5（server + web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261020-studio-dialogue-fixes` |
+| GIT_SHA | `eb2f5259`（release 分支上 `c95aaf6d` ← main `b7861a4b`、`cac90f06` 撤回只改测试的 `8b0774e2`、`eb2f5259` ← main `bde5956c` 去掉 R4；main 上 Codex 的看图记忆回退 `c6a0f71ea`、三选一冲突框 `6e9e7b3a` 等不带） |
+| 服务 | server + web-aiavatar（admin 等不动；无迁移、无 API 路径变化、无 FFmpeg 改动） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1` |
+| 发布前基线 | server 与 web-aiavatar 都是 `8b0774e2`（`20261019-studio-acceptance-fixes`；jar sha256 与 web BUILD_ID `qJuR_AhltgsS8gK8JSxRr` 对上发布目录） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；15:40:26 / 15:40:27 CST 重启，server 15.7 秒起来，`NRestarts=0`；新进程 0 条 ERROR（同一 grep 在此前两天命中 235 条，确认能命中）；WARN 只有启动时的 Hibernate 方言 / Spring Security 默认提示，以及旧进程退出时视频线程池等待超时（见下）；`PromptTemplateSeeder` 刷新 54 个未改动的提示词 → `v17-2026-10-19-dialogue-charging-words`（`aep_platform_configs` 行已是 v17，`dap.ip_studio_skill_dialogue` 行 version=1、含「不要说「不确认不会花钱」「聊天免费」」）；线上 BUILD_ID `j6QIOIHEs87flqHQETVsR`，`/dashboard`、`/projects`、`/create`、`/scenes` 200，公网 chunk 含「没看到追加卡就点进度条上的「继续制作」」 |
+
+内容：
+- 制作中途改方案：确认当前阶段的修订方案会替换同一个执行里剩下的步骤（`replanStage`）；没改的已完成步骤保留结果，改了的和下游重做，旧运行记进 `previousRunIds`；还在生成的那一步要等它结束才能改。
+- 画布游标：节点只有保存成功后才算放进画布、游标才往后移（`canvasUnsavedFrom`）；游标 0 也持久化，重开时按正常命令重放（R2：新线程第一个没存上的助手节点重开后丢失）。
+- 付款方固定：绑定了进行中执行的对话轮次由执行的付款方付，换付款方报 `BILLING_SELECTION_CONFLICT`。
+- 预算：执行器因预算停下的步骤标 `budgetBlocked`，确认追加卡后自动继续（用户自己的暂停不动）；分析阶段的追加卡带上执行 id；恢复不再直接回 402，交给执行器发追加卡；等用户时进度条一律给「继续制作」；聊天被预算拦下时提示去哪儿追加（R3）。
+- 只写「停 / 暂停」的消息（`StudioStopIntent`）走优先控制，不进插话队列；演示模式同一规则。
+- 助手发消息时带上所选模型和它的上限（`cac90f06` 恢复了 main 上「刷新后记住所选模型」那条断言：发送体带 `model: 'two'` 和 `maxCost: 8`）。
+- 对话提示词把「聊天每轮按用量扣少量积分」和「制作要确认报价才开始」分开说，不许先报数再改口、不许说「不确认不会花钱」（R5，seed v17）。
+
+**R4 未上线**（冲突态下点「发布」改为打开三选一）：这一处（`canvas-host.tsx` 发布按钮的 `onClick`）和它在 `canvas-conflict-wiring.test.ts` 里的测试依赖 main 上未发布的三选一冲突框 `6e9e7b3a`（`setConflictOpen`、`CanvasConflictDialog`、project-sync 的冲突处理），release 线没有这些代码。线上冲突态点「发布」仍先打开发布弹窗，随后 `publish-gate` 拒绝并提示「这张画布在别处被改过了。刷新页面看到最新内容之后再发布。」，不会把旧内容发出去。**等 `6e9e7b3a` 上线时要连同 R4 一起发。** 本分支 `TODO.md` 里 R4 一行照 main 原样写「已修」，在 release 线上以本节为准。
+
+冲突处理：
+- `b7861a4b`：`studio-assistant.test.tsx` 只取这个提交新增的两条模型测试（main 上紧挨着的「固定模型也显示」测试来自未上线的 `c6a0f71ea`，不带）；`docs/runbooks/studio-e2e-cases.md` 只在 main 上有，不带。
+- `bde5956c`：去掉 R4（见上）；`docs/INDEX.md` 保留 release 线结构，只更新那份验收报告的一行（报告在 `docs/` 根下）；runbook 不带。
+
+剩余代码块核对（release 树对 main，限四个提交 `b7861a4b` `74987f67` `f47bf68a` `bde5956c` 动过的代码文件，共 64 个）：58 个文件与 main 一致，剩下 6 个文件的差异都能归到不发的提交：
+- `canvas-host.tsx`、`canvas-conflict-wiring.test.ts`：三选一冲突框 `6e9e7b3a` 加 R4，预期留下。
+- `studio-assistant.tsx` / `studio-assistant.test.tsx`：「固定模型也显示」的模型胶囊和测试，来自 Codex 的 `c6a0f71ea`（经 `8ee5badf` 挪位）。
+- `studio-workspace.tsx`：`chosenTextModel` / 剧本模型选择框，来自 Codex 快照 `a164482b`。
+- `PromptTemplateSeeder.java`：一行注释里的文档路径，来自 main 的文档分目录 `2b6c3e63a`。
+- 没有归不了属的代码块。
+
+门禁（release 树）：`./mvnw compile -q -o` 通过；指定的 16 个 Studio 对话 / 方案 / 执行测试类 125 条全过；`com/aistareco/aep/ipstudio/**` 共 661 条，3 条失败均为既有问题（`IpVideoModelChoiceWiringTest` 2 条、`StudioAssetCatalogPricingTest` 1 条），5 条跳过；web-aiavatar `typecheck` 通过；`pnpm check:api-contract` OK；web-aiavatar 全量 vitest 127 个文件 971 条一次全过（机器负载约 7）。
+
+旧进程退出时有一个用户的 H3 视频任务（`mvj_…734773`，已有供应商任务号）正在轮询，`ThreadPoolTaskExecutor` 等待超时后退出；新进程在派发租约到期后（15:43:21）按原任务号接着轮询（`recoverQueuedGeneration`，没有重新提交），15:43:30 成片镜像到 OSS、截好封面、任务 `succeeded`，队列票据 `finished`。
+
+**未验证**：真模型下的对话（中途改方案、追加卡自动继续、打字停止、所选模型生效、v17 提示词的说法）没有在线上用真账号走过；生产上没有发起任何付费调用、没有发布、没有建测试数据。回滚：
+`deploy-release.sh dist/deploy/20261019-studio-acceptance-fixes server,web-aiavatar`（两个服务都回到 `8b0774e2`；旧 jar 启动时看到 seed 版本 v17 ≠ 自己的 v16，会把没人改过的提示词行刷回 v16 文本，不用手动处理；无迁移，无数据要回退）。
