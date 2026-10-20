@@ -33,6 +33,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -150,6 +151,7 @@ public class MaterialVideoModelClient {
     public void validateRequest(String endpointId, int durationSec, String appCode) {
         AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
         requireKey(endpoint);
+        requireNotRetired(endpoint, modelOf(endpoint));
         if (durationSec <= 0) {
             throw new BusinessException(HttpStatus.BAD_REQUEST, "VIDEO_DURATION_REQUIRED",
                     "请提供视频时长（整数秒）后再提交生成。");
@@ -334,6 +336,7 @@ public class MaterialVideoModelClient {
         AiModelEndpoint p = requireEndpoint(endpointId, appCode);
         String apiKey = requireKey(p);
         String model = modelOf(p);
+        requireNotRetired(p, model);
         String protocol = protocolFor(p, model);
         AiVideoRequestSpec configured = AiVideoRequestSpec.read(p.getVideoRequestSpecJson());
         if (configured != null && !genSpec.isExplicit()) {
@@ -420,6 +423,8 @@ public class MaterialVideoModelClient {
             // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
             if(resp.statusCode()>=500 && mappedError.isEmpty())
                 throw new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode());
+            if(mappedError.filter(m->VideoProviderErrorMapper.VIDEO_MODEL_RETIRED.equals(m.code())).isPresent())
+                markRetired(p,model);
             throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                     mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
                     mappedError.map(VideoProviderErrorMapper.MappedError::message)
@@ -649,6 +654,28 @@ public class MaterialVideoModelClient {
 
     private AiModelEndpoint requireEndpoint(String endpointId) {
         return requireEndpoint(endpointId, "celebrity");
+    }
+
+    /**
+     * Models the provider has told us are retired ({@code 400 model_delisted}), keyed by endpoint and model. Until an
+     * operator rebinds or removes the endpoint, a new submission is refused before any credit is held instead of being
+     * sent again: 2026-10-20 the same canvas node was resubmitted to a retired model three times (640 credits held and
+     * released each time). Kept in memory for {@link #RETIRED_TTL}; after a restart the first submission learns it again.
+     * Accepted tasks are never affected (queries resolve through {@link #acceptedEndpoint}).
+     */
+    private final Map<String, Instant> retired = new java.util.concurrent.ConcurrentHashMap<>();
+    static final Duration RETIRED_TTL = Duration.ofHours(24);
+
+    private static String retiredKey(AiModelEndpoint p, String model) { return p.getId() + "\n" + model; }
+
+    void markRetired(AiModelEndpoint p, String model) { retired.put(retiredKey(p, model), Instant.now()); }
+
+    void requireNotRetired(AiModelEndpoint p, String model) {
+        Instant at = retired.get(retiredKey(p, model));
+        if (at == null) return;
+        if (at.plus(RETIRED_TTL).isBefore(Instant.now())) { retired.remove(retiredKey(p, model)); return; }
+        throw new BusinessException(HttpStatus.CONFLICT, VideoProviderErrorMapper.VIDEO_MODEL_RETIRED,
+                "这个视频模型已被提供方下架，不能再用它生成，请换一个模型");
     }
 
     /** Resolve once before billing so queued enterprise jobs retain their exact approved model. */

@@ -94,9 +94,10 @@ public class StudioPlanExecutionService {
         var active=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(x->userId.equals(x.getOwnerUserId())).findFirst().orElse(null);
         String executionId=null,approachId=null;
         if("production".equals(stage)) {
-            if(active==null)throw stale("还没有进行中的分析，不能直接确认制作方案");
-            executionId=active.getId();
             var loaded=loadPlan(userId,projectId,card.cardPlanRunId(),card.planFingerprint(),"production");
+            // A production-only skill (原创创作) starts its execution with this card; the reference-video skill needs its analysis first.
+            if(active==null&&!"production".equals(loaded.rules().firstStage()))throw stale("还没有进行中的分析，不能直接确认制作方案");
+            executionId=active==null?null:active.getId();
             approachId=loaded.plan().path("confirmedApproachId").asText(loaded.plan().path("recommendedApproachId").asText(null));
         } else if(active!=null&&stage.equals(active.getStage())) {
             executionId=active.getId(); // a raise of the running stage's cap, or a revised plan for it (replanStage)
@@ -118,16 +119,23 @@ public class StudioPlanExecutionService {
             if(!projectId.equals(prior.getProjectId())||!fingerprint.equals(stored))throw changed();
             return toDto(prior);
         }
-        if(!"analysis".equals(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
+        if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE);
         if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已经有一项连续制作在进行，请先结束它",
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
-        var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),"analysis");
+        // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
+        // production-only skill (原创创作 has nothing to study first). Starting anywhere else is the old stage-order error.
+        String stage=req.stage();
+        var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),null);
+        if(!stage.equals(loaded.rules().firstStage())||!stage.equals(loaded.plan().path("stage").asText()))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         skills.requireActive(loaded.rules().key());
+        if("production".equals(stage)&&(req.approachId()==null||!req.approachId().equals(loaded.plan().path("recommendedApproachId").asText(""))))
+            throw stale("确认的方案与当前计划不一致，请按所选方案重新生成计划后再确认");
         Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
         String confirmedThread=confirmation.threadId();
         if(req.approachId()!=null&&!approachIds(loaded.plan()).contains(req.approachId()))throw stale("所选方案不在这份计划里，请刷新后再确认");
-        long quoted=requireWithinBudget(loaded,req.budgetCap(),"analysis");
+        long quoted=requireWithinBudget(loaded,req.budgetCap(),stage);
         String id="PEX-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
         Instant now=Instant.now();
         ObjectNode state=mapper.createObjectNode();
@@ -136,18 +144,20 @@ public class StudioPlanExecutionService {
         ArrayNode canvas=state.putArray("canvasContextIds");
         loaded.contextNodeIds().forEach(canvas::add);
         ArrayNode steps=state.putArray("steps");
-        appendSteps(steps,loaded,"analysis");
+        appendSteps(steps,loaded,stage);
         ObjectNode budget=mapper.createObjectNode();
-        budget.set("analysis",stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now));
+        ObjectNode first=stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now);
+        if("production".equals(stage))first.put("approachId",req.approachId());
+        budget.set(stage,first);
         String threadId=confirmedThread!=null?confirmedThread:loaded.threadId();
         var row=IpPlanExecution.builder().id(id).projectId(projectId).ownerUserId(userId).threadId(threadId)
-                .skillKey(loaded.rules().key()).skillVersion(loaded.rules().version()).stage("analysis")
+                .skillKey(loaded.rules().key()).skillVersion(loaded.rules().version()).stage(stage)
                 .planRunId(loaded.planRunId()).planRevision(confirmation.card().cardPlanRevision()).planFingerprint(req.planFingerprint())
                 .status(IpPlanExecution.RUNNING).stepsJson(write(state)).budgetJson(write(budget)).billingJson(write(billingSnapshot(userId,billing,now)))
                 .clientRequestId(req.clientRequestId()).startedAt(now).deadlineAt(now.plus(StudioPlanExecutor.WINDOW))
                 .createdAt(now).updatedAt(now).build();
         executions.saveAndFlush(row);
-        markApproved(userId,projectId,confirmation,id,"analysis",req,now);
+        markApproved(userId,projectId,confirmation,id,stage,req,now);
         wakeAfterCommit(id);
         return toDto(row);
     }
@@ -542,7 +552,8 @@ public class StudioPlanExecutionService {
      * The plan must belong to the caller and this project and be unmodified since the server fingerprinted it: either a
      * native skill-planning run ({@code output.plan}) or a plan block a {@link StudioPlanSource} (the dialogue) returns.
      */
-    private LoadedPlan loadPlan(String userId,String projectId,String planRunId,String fingerprint,String stage) {
+    /** {@code stage} null: any stage (the caller compares it); otherwise the plan must belong to that stage. */
+    private LoadedPlan loadPlan(String userId,String projectId,String planRunId,String fingerprint,String expectedStage) {
         LoadedPlan loaded=nativePlan(userId,projectId,planRunId);
         // A dialogue run's output.plan is only the turn's latest plan; an earlier revision is read from its plan block.
         if(loaded!=null&&!fingerprint.equals(StudioPlanValidator.fingerprint(loaded.plan())))loaded=null;
@@ -557,7 +568,8 @@ public class StudioPlanExecutionService {
         if(loaded==null)throw stale("找不到这份计划，请刷新后再确认");
         JsonNode plan=loaded.plan();
         if(!StudioPlanValidator.isSkillPlan(plan))throw stale("这份计划不是可以连续执行的制作计划");
-        if(!stage.equals(plan.path("stage").asText()))throw stale("这份计划属于另一个阶段");
+        String stage=expectedStage==null?plan.path("stage").asText():expectedStage;
+        if(!StudioSkillRules.STAGES.contains(stage)||!stage.equals(plan.path("stage").asText()))throw stale("这份计划属于另一个阶段");
         String recomputed=StudioPlanValidator.fingerprint(plan);
         String stored=plan.path("fingerprint").asText(recomputed);
         if(!recomputed.equals(fingerprint)||!stored.equals(recomputed))throw stale("计划已经变化，请看最新的计划后再确认");

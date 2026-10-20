@@ -55,6 +55,17 @@ public record StudioSkill(String key, String name, int version, String status, S
     public List<String> stageOperations(String stage) { return operations.getOrDefault(stage, List.of()); }
     public boolean allows(String stage, String operation) { return stageOperations(stage).contains(operation); }
 
+    /**
+     * The stage a new plan of this skill starts in. A skill with no analysis operations (原创创作: nothing to study before
+     * making) starts in production; the reference-video skill starts with its analysis. One rule for the dialogue, the
+     * planner and the executor, so a production-only skill is never pushed through an analysis it cannot do.
+     */
+    public String firstStage() { return firstStage(operations); }
+
+    public static String firstStage(Map<String, List<String>> operations) {
+        return operations == null || operations.getOrDefault(ANALYSIS, List.of()).isEmpty() ? PRODUCTION : ANALYSIS;
+    }
+
     public SkillSummary summaryDto() {
         return new SkillSummary(key, name, version, status, planning, summary, methodExamples, operations,
                 new SkillLimits(maxSourceSec, maxSegments, maxSegmentSec, maxSteps, maxAutoFixPerSegment),

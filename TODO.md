@@ -31,6 +31,21 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-20 · 线上五项（原创方法、规格贯通、动作协议、看图、失败态）
+
+- [x] ~~原创三视图被「参考视频复刻」流程卡死（IPP-51a92043，IPR-ad518c2e09c64c759182：8 次模型调用、12 积分，没有可执行方案）~~ **2026-10-20 已修**：新技能「原创创作」只有制作阶段，执行可从 production 开始（`StudioSkill.firstStage`）；无进行中执行时 `read_skill` 可换技能并作废旧卡；预算与确认保护不变。
+- [x] ~~助手意图没落到节点规格与素材（IPP-45bead91，IPR-fde32da6c2cc4664974f 发了 9:16 / 8 秒、只带男主）~~ **2026-10-20 已修**：`create_nodes` / `update_nodes` 写 `studio.spec` 并连参考边；面板按 spec 打开；时长超出模型范围不再静默改，给阻断提示与「改成 N 秒」；描述与设置不一致付费前询问。
+- [x] ~~`<studio-actions>…</studio-actions>` 漏成正文、方案没提出（IPT-2f13c2ed42994624907d seq 10）；模型模仿工作记录（seq 12）~~ **2026-10-20 已修**：解析 + 流式过滤认这种写法，闭合后正文继续推送；残缺 / 无效整批不执行；模仿记录按格式错误；连续 2 次纠正失败停在 `protocol`。
+- [x] ~~助手没看图却说读到三视图、按文件名猜男女主、编名字~~ **2026-10-20 已修**：新工具 `view_images`（本人 key、内联字节、对话端点须声明看图、计入本轮预算）；素材清单注明不含画面；提示词规则 11。
+- [x] ~~失败节点仍显示初始空态，生成按钮重复；已下架模型能反复重投~~ **2026-10-20 已修**：失败面板 + 单一恢复动作；`VIDEO_MODEL_RETIRED` 映射与冻结前拒绝。
+- [ ] 下架模型的拒绝是进程内记忆（24h，单机）：服务重启后第一次提交会再向供应商发一次（400、积分释放）。要跨重启 / 多节点就落库，或者让运营在后台停用端点（根治在配置）。
+- [ ] `view_images` 只用当前对话端点看图；对话模型没有看图能力时如实拒绝，没有自动换一个看图模型（需要单独定价与授权，未做）。
+- [ ] 图片上游 503「生图队列已满」（Agnes，logId PSQ8YXAAJLVD）仍显示通用「模型服务暂时不可用（上游 503）」，没有像视频那样映射成队列已满；Agnes 已不用于生产用户，换模型后再看是否需要。
+- [ ] **Agnes 下架后的默认绑定（待运营决定）**：`DAP_IMAGE` / `DAP_PERSONA` / `IMAGE_GENERATION` / `VIDEO_REF_ANALYSIS` 没有默认绑定，数字资产 `/studio` 资产任务、数字名片人设、短剧定妆照 / 场景图 / 三视图、带货爆款雷达现在都报「未配置」（冻结前拒绝）。只能绑定用同一 JSON `images/generations` / chat 协议验证过的端点，不恢复 Agnes，未适配旧协议前不能直接指向 GPT Image 2。核对表见 `docs/releases/studio-prod-fixes-20261020.md` §2.1。
+- [ ] `DapWorkflowService` 无事务：`generate` / 衍生 / 造型 / 待机循环在 `DapJobService.submit` 拒绝（如 `DAP_ENGINE_NOT_CONFIGURED`）前已保存「生成中」状态，拒绝后不回滚（代码推断，未在线上复现）。
+- [ ] 对话事件流 `/conversations/{id}/events` 客户端断开（`IOException: Broken pipe`）记成 `INTERNAL_ERROR`，近 3 天 157 条，淹没真错误；应识别为正常断开不记错误日志。
+- [ ] `studio-conversation-share.test.tsx`「failed save does not preview or publish…」全量跑时偶发失败、单独跑通过（2026-10-20 观察，与本次改动无关），待查时序。
+
 ### 2026-10-20 · H3 视频台词被厂商改写删掉、首尾帧只写在文字里（本地实现，未发布；说明见 `docs/ip-studio-video-modes.md` 末节）
 
 - [x] ~~**看不到厂商实际用的描述**~~ **2026-10-20 本地完成**：worker 把查询响应的 `promptOptimization` 存进任务 `payload_json.vendor_prompt`，画布候选投影 `promptRewrite`，创作面板 / 任务列表 / 「本次创作输入」三处显示实际描述和没保留的台词（`VideoPromptRewrite`、`studio-video-prompt.ts`）。只是成片后的解释。
@@ -60,7 +75,7 @@
   - 复刻检查把与方案冲突的画面判通过：执行器把「被检查那一步的指令 + 已确认方案的改变 / 保留」写进检查目标（`StudioPlanSteps.checkTarget`），检查提示词要求以替换对象为准、依据与结论不许矛盾。**真模型未重测**。
   - 成片默认勾上原片：拉片片段（`studio.sourceRange`）与拉片分析的参考原片（执行器出拉片节点时连过去；手动解析靠 `recreation.sourceNodeId`）默认不勾。已有画布上执行器早先建的拉片节点没有那条连线，参考原片仍会勾上，片段不会。
   - 首页「复刻一条短视频」直接发出收费首轮：复刻类想法（`studioBriefNeedsReference`）不自动发，进画布打开素材清单、保留原话；首页对话框说明回复按用量扣少量积分。
-  - 历史回复裸露 `<tool_call>`：显示时折叠成「这一轮的操作原文」（`studio-reply-actions.ts`），原文保留。
+  - 历史回复裸露 `<tool_call>`：显示时折叠成「这一轮没有执行的操作原文」（`studio-reply-actions.ts`，2026-10-20 起也折叠 `<studio-actions>`），原文保留。
   - 画布同名：首页想法直接当画布名；没起过名的画布在第一条消息时按消息起名，用户改过的不动。
 - [ ] **上面两轮修复都要真模型复验**：Agnes / 线上对话端点上看一次「写一段文字」是否自己建了文字节点、复刻检查遇到旧主体是否判 fail；配好视频模型后从首页一句复刻请求走完整链。
 - [ ] `ForgeController` 的两个 SSE 接口（形象锻造，v0.60 已下线入口）没有加 `no-transform`；若重新启用，照对话事件流补上。

@@ -669,6 +669,7 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   是后来另写的一份、漏了字段契约，而同一份契约在执行侧早就写全了（§8.0.1 ④ 又犯一次）。判据：提示词里有字段名的完整契约且只有一个来源，
   解析容忍围栏与常见变体、校验仍然严格，并且至少真调用过一次。另：`prompt_template` 行首次启动入库，之后只有 `PromptTemplateSeeder.SEED_VERSION`
   变更才会刷新「没人改过」（version=1）的行 —— 只改提示词文件，线上不会生效。
+  2026-10-20 又一次：模型把动作写成 `<studio-actions>[…]</studio-actions>`（第三种写法），被当正文显示、方案从没提出；下一轮它干脆照着近期对话里内联的「[查看画布：done，…]」在正文里**假装**调用了工具。判据补充：解析器认真实出现过的每种写法并配用例；近期对话里的服务端记录不要写成模型能照抄的格式；正文里出现执行记录而没有真的调用，按格式错误处理。
 
 **⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
 2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是
@@ -1075,7 +1076,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（要准备什么 / 会得到什么）+「第一次用？花 30 秒看它怎么工作」。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
 
-写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` 原文折叠成「这一轮的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
+写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
 
 ### 对话优先的创作入口 · 2026-10-19（同日已生产发布 `20261019-studio-dialogue-first`，仅 web-aiavatar）
 
@@ -1108,3 +1109,11 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### 成片高级编辑 · 2026-10-19（本地，未发布；web-aiavatar + server）
 
 成片页的「高级编辑」用 **Twick 0.15.31**（`@twick/studio` 等四个包，固定版本 + `patches/` 下两个 pnpm 补丁修无限重试），组件是 `src/ip/studio-advanced-editor.tsx`，经 `next/dynamic` 只在打开时加载、`createPortal` 到 body，手机端不开放。**Twick 只负责编辑和预览，不在浏览器里导出**：导出时 `toEditTimeline`（`src/canvas-bridge/studio-edit-timeline.ts`，纯函数）把工程转成 `StudioEditTimeline`（视频 / 音频 / 文字 / 字幕 + 起止秒），工作台 `assemble(edit)` 照常建 work 节点、提交 `operation:"assemble"` 带 `edit`，服务端 `StudioEditGraph`（纯函数生成 FFmpeg 参数）+ `DramaAssembleService.renderStudioEdit` 合成：视频按开始时间排一条主轨、后开始的截断前一段、空隙补黑；音频按时间延后补静音再混（amix 后乘回路数）；文字和字幕由 `StudioPackagingService` 画成整幅 PNG 按时间叠加，用户文字不进滤镜语法。`edit` 只许 assemble，clips / audios 的 key 逐个过 `requireOwnedAssetKey`，校验错误码 `STUDIO_EDIT_INVALID`。工程存在成片方案 `workDraft.advanced`（Twick ProjectJSON，媒体只存 `metadata.storageKey`，`props.src` 不落库）。**素材一律用 `fetchAssetBlob` 取成 Blob 再给 Twick**：线上 OSS 没配 CORS 而 Twick 播放时设了 crossOrigin，别改成直接给签名地址。Twick 的样式会改全局（`body`、`:root` 变量、和 Tailwind 同名的工具类），所以不直接引入，用 `scripts/scope-twick-css.mjs` 生成只在 `.twick-scope` 生效的 `twick-scoped.css`，升级 Twick 后重跑。Twick 取缩略图时往 `<body>` 挂屏幕外 `<video>` 不收，编辑器卸载时按我们的 blob 地址移走。同批服务端把「配音过长 / 字幕超时」挪到拼接之前判（`StudioPackagingService.precheck`）。证据：`StudioEditGraphTest`（真 ffmpeg）、`DramaAssembleStudioPrecheckTest`、`studio-edit-timeline.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（导出带时间线、不带包装）；本地真服务端 + 浏览器走过「切开、删段、加文字、导出、刷新后继续编辑、改回一键成片」。
+
+### Studio 生产问题五项 · 2026-10-20（server + web-aiavatar）
+
+- **方法要对得上事**：没有参考视频的出图出片走「原创创作」（`original-creation`，只有制作阶段，`StudioSkill.firstStage()` 是唯一判定）；不要为了过流程给对话挂不相关的技能。无进行中执行时 `read_skill` 可换技能。
+- **规格不能只写在提示词里**：助手用 `create_nodes` / `update_nodes` 的 `aspectRatio / durationSec / count / references` 写到节点（`metadata.studio.spec`，参考同时连边）；生成面板**不许静默钳制**时长或画幅，做不到就阻断并给修正按钮（`studio-composer-spec.ts`）。
+- **看图要真看**：素材清单不含画面；描述图片内容只能经 `view_images`（本人 key、内联字节、对话端点须声明 `supportsVision`、计入本轮预算）。
+- **失败节点只有一个恢复入口**；`VIDEO_MODEL_RETIRED` 的模型不再被预选或重投（服务端冻结前也拒绝）。
+

@@ -1035,6 +1035,10 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 
 视频模式在底栏独立切换，并根据所选图片、视频、音频及模型合同自动适配；不兼容模式禁用，素材始终完整保留。参考菜单和编号缩略图条取代重复表单，首尾帧可交换。桌面底栏单行显示模型、模式、规格、总积分与箭头提交，手机有序分两行。
 
+### 2026-10-20 · Studio 生产问题五项修复
+
+`canvas-bridge/studio-composer-spec.ts`（描述与设置不一致、时长超出模型范围的判定，纯函数）、`canvas-bridge/studio-node-failure.ts`（失败节点、不可再用的模型、一行原因）；`studio-plan-execution.ts` 的投影接受助手写的 `studio.spec` 并同步打开中的草稿；`studio-reply-actions.ts` 折叠 `<studio-actions>`；`studio-dialogue-session.tsx` 制作阶段确认卡只复用进行中的执行。测试：`studio-failure-recovery.test.tsx`、`studio-flow-card-failure.test.tsx` 与上述纯函数的单测。类型 `StudioNodeSpec` 在 `packages/types/src/ip-studio-workflow.ts`。
+
 ### 创作助手对话动静与快捷答复（2026-10-20，已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`））
 
 回合进行中显示「正在思考 / 正在回复」（`studio-dialogue-activity.tsx`，阶段来自 `dialogueActivity`），流式正文闪光标；工作记录改为一行过程记录，小箭头展开、失败写原因；问题选项和后续建议单击直接发送，不动草稿；「放进画布 / 从这里重新开始」改为小图标按钮，旧回复悬停或聚焦才显示。测试：`studio-assistant.test.tsx`（直接发送、连点只发一次、拒收回填、阶段切换）、`studio-dialogue-store.test.ts`（`dialogueActivity` / `answeredAfter`）。

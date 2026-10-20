@@ -154,3 +154,20 @@ test('changing paragraph style through the page menu returns the caret to the ed
  expect(doc.querySelector('h2')?.textContent).toBe('对白');
  expect(doc.contains(window.getSelection()?.anchorNode||null)).toBe(true);
 });
+
+test('leaving a document with its paragraph menu open does not focus a destroyed editor',async()=>{
+ const outline=vi.fn(), errors:ErrorEvent[]=[];
+ const capture=(event:ErrorEvent)=>errors.push(event);
+ window.addEventListener('error',capture);
+ try {
+  const {unmount}=render(<StudioScriptRichEditor markdown="# 原稿" onOutline={outline}/>);
+  await screen.findByRole('textbox',{name:'剧本文档'});
+  await waitFor(()=>expect(outline.mock.calls.at(-1)?.[0]?.[0]?.editor).toBeDefined());
+  const editor:Editor=outline.mock.calls.at(-1)![0][0].editor;
+  fireEvent.keyDown(screen.getByRole('combobox',{name:'段落样式'}),{key:'ArrowDown'});
+  await screen.findByRole('listbox');
+  await act(async()=>{unmount();editor.destroy();await new Promise(resolve=>setTimeout(resolve,20));});
+  expect(editor.isDestroyed).toBe(true);
+  expect(errors).toEqual([]);
+ } finally { window.removeEventListener('error',capture); }
+});

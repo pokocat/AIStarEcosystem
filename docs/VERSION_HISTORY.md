@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 生产问题五项修复 · 2026-10-20（server + web-aiavatar）
+
+原创出图出片有了只含制作阶段的「原创创作」技能（`StudioSkill.firstStage`，执行可从 production 起步，无进行中执行时可换技能）；`create_nodes` 写节点规格、新工具 `update_nodes` 改已有节点（`studio.spec` + 参考连线），生成面板按规格打开、不再静默改时长、描述与设置不一致先询问；动作协议接受 `<studio-actions>` 标签并在流式中隐藏、闭合后续推、模仿工作记录按格式错误、连续两次纠正失败即停；新工具 `view_images` 用对话端点真实看图（本人 key、计入本轮预算）；失败节点显示原因与单一恢复入口，`400 model_delisted` → `VIDEO_MODEL_RETIRED` 且冻结前拒绝。提示词 seed v18。无迁移、无 HTTP 路径变化。发布与线上验收见 [记录](releases/studio-prod-fixes-20261020.md)。
+
 ### Studio 创作助手对话动静与快捷答复 · 2026-10-20 · 已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`）（仅 web-aiavatar）
 
 用户反馈四条：对话没有动效、回复下两个文字按钮常驻、快捷答复只填输入框、工作记录像按钮。改为：`dialogueActivity`（`studio-dialogue-store.ts`）只按事件流推出「正在思考 / 正在回复」，`studio-dialogue-activity.tsx` 显示呼吸的四角星、流光文字和跳点，久等补真实秒数，流式正文末尾闪光标；运行中的工具由工作记录那一行自己转圈。工作记录（`studio-dialogue-tool.tsx`）从 `<details>` 卡改成左侧细线的一行，只有小箭头（`aria-expanded`）展开，失败直接写原因。问题选项、后续建议、「改用这个做法」走 `send(quick)` 直接发送：同一条链路（先存画布、outbox、重试键、拒收处理），不带草稿引用、不清草稿，ref 锁防连点，`answeredAfter` 判问题已回答。回复操作改为图标按钮（`studio-dialogue-action`），最新一条常显、旧的悬停或聚焦显示、手机常显；带卡片的回复不给「放进画布」，已在画布上显示「在画布上查看」。无后端 / API 改动。

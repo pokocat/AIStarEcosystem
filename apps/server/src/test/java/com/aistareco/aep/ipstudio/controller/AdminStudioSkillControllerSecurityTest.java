@@ -56,16 +56,24 @@ class AdminStudioSkillControllerSecurityTest {
 
     @Test @WithMockUser(roles = "SUPER_ADMIN")
     void superAdminCannotWithdrawTheOnlyActiveSkill() throws Exception {
-        mvc.perform(put("/api/admin/studio/skills/reference-video-recreation/status").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"withdrawn\"}"))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_LAST_ACTIVE"));
+        // Two seeded skills are active (参考视频复刻 and 原创创作): withdrawing one leaves the other as the last one.
+        mvc.perform(put("/api/admin/studio/skills/original-creation/status").contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"withdrawn\"}")).andExpect(status().isOk());
+        try {
+            mvc.perform(put("/api/admin/studio/skills/reference-video-recreation/status").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"withdrawn\"}"))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_LAST_ACTIVE"));
+        } finally {
+            mvc.perform(put("/api/admin/studio/skills/original-creation/status").contentType(MediaType.APPLICATION_JSON)
+                    .content("{\"status\":\"active\"}")).andExpect(status().isOk());
+        }
     }
 
     @Test @WithMockUser(username = "plain-user", roles = "USER")
     void usersSeeActiveSkillsWithTriggersButCannotDistill() throws Exception {
         mvc.perform(get("/api/v1/ip-studio/studio/skills")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].key").value("reference-video-recreation"))
-                .andExpect(jsonPath("$.data[0].triggers.default").value(true));
+                .andExpect(jsonPath("$.data[?(@.key=='reference-video-recreation')].triggers.default").value(true))
+                .andExpect(jsonPath("$.data[?(@.key=='original-creation')].operations.production[0]").value("text"));
         mvc.perform(post("/api/v1/ip-studio/projects/IPP-x/skill-drafts").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"clientRequestId\":\"d-1\",\"executionId\":\"PEX-x\",\"maxCost\":10}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_DRAFT_FORBIDDEN"));

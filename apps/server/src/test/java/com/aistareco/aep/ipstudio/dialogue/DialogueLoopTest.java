@@ -215,4 +215,24 @@ class DialogueLoopTest {
         @Override public Clock withZone(java.time.ZoneId zone) { return this; }
         @Override public Instant instant() { return now; }
     }
+
+    @Test void repeatedProtocolErrorsStopTheTurnInsteadOfPayingForMoreTries() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).broken("a").broken("b").broken("c").reply("不该到这里");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
+        assertEquals("protocol", outcome.limit());
+        assertEquals(3, outcome.modelCalls(), "two corrections, then stop");
+        assertTrue(tools.ran.isEmpty(), "a malformed batch never runs");
+    }
+
+    @Test void aCorrectedReplyResetsTheProtocolCounter() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).broken("a").broken("b").reply("看", act("read_canvas")).broken("c").reply("好了");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(List.of("read_canvas"), tools.ran);
+    }
 }

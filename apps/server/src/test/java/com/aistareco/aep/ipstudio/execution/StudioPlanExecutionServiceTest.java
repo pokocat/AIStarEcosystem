@@ -31,6 +31,7 @@ class StudioPlanExecutionServiceTest {
     final Map<String,IpRun> runs=new HashMap<>();
     IpProjectService projects;StudioPlanOutputs outputs;StudioPlanExecutor executor;StudioPlanExecutionService service;StudioSkillRules.Rules rules;
     FakeCards cards;
+    com.aistareco.aep.ipstudio.skill.StudioSkill originalSkill;
 
     /**
      * The dialogue's card store as the execution service sees it: cards by (message, approvalId), the thread's current
@@ -88,6 +89,10 @@ class StudioPlanExecutionServiceTest {
         String file;
         try(var in=getClass().getResourceAsStream("/studio/skills/reference-video-recreation.md")){file=new String(in.readAllBytes(),StandardCharsets.UTF_8);}
         var catalog=mock(StudioSkillCatalog.class);var skill=StudioSkillCatalog.parse(file);
+        String original;
+        try(var in=getClass().getResourceAsStream("/studio/skills/original-creation.md")){original=new String(in.readAllBytes(),StandardCharsets.UTF_8);}
+        originalSkill=StudioSkillCatalog.parse(original);
+        when(catalog.requireForNewWork("original-creation")).thenReturn(originalSkill);when(catalog.find("original-creation")).thenReturn(Optional.of(originalSkill));
         when(catalog.requireForNewWork("reference-video-recreation")).thenReturn(skill);when(catalog.find("reference-video-recreation")).thenReturn(Optional.of(skill));
         @SuppressWarnings("unchecked") ObjectProvider<StudioSkillCatalog> catalogs=mock(ObjectProvider.class);when(catalogs.getIfAvailable()).thenReturn(catalog);
         var skills=new StudioSkillRules(catalogs);rules=StudioSkillRules.rules(skill);
@@ -451,5 +456,47 @@ class StudioPlanExecutionServiceTest {
         cards.put("msg-raise2","APV-raise2","analysis",fp,30,50);
         var paused=service.create("u","p",new PlanExecutionCreateRequest("raise-2","analysis","IPR-a",fp,null,50L,0L,null,created.id(),null,"APV-raise2","msg-raise2"));
         assertEquals("paused",paused.status(),"the user's pause stays");assertEquals("pending",paused.steps().get(0).status(),"its 「继续制作」 will go on");
+    }
+
+    // ── 原创创作: a production-only skill (IPP-51a92043, 2026-10-20) ─────────────────────────────────────────────────
+    static final String ORIGINAL_IMAGES="{\"summary\":\"三视图\",\"recommendedApproachId\":\"sheet\",\"approaches\":[{\"id\":\"sheet\",\"title\":\"三张视角图\",\"summary\":\"正侧背各一张\",\"rationale\":\"用户要三视图\"}],"
+            +"\"steps\":[{\"id\":\"front\",\"operation\":\"image\",\"title\":\"正面\",\"prompt\":\"原创女性角色正面全身\",\"settings\":{\"count\":1}},"
+            +"{\"id\":\"side\",\"operation\":\"image\",\"title\":\"侧面\",\"prompt\":\"同一角色侧面全身\",\"settings\":{\"count\":1,\"referenceBindings\":[{\"stepId\":\"front\",\"role\":\"character\",\"order\":0}]},\"dependsOn\":[\"front\"]},"
+            +"{\"id\":\"back\",\"operation\":\"image\",\"title\":\"背面\",\"prompt\":\"同一角色背面全身\",\"settings\":{\"count\":1,\"referenceBindings\":[{\"stepId\":\"front\",\"role\":\"character\",\"order\":0}]},\"dependsOn\":[\"front\"]}],\"questions\":[]}";
+
+    @Test void aProductionOnlySkillStartsItsExecutionInProductionWithTheConfirmedQuoteAndApproach() throws Exception {
+        rules=StudioSkillRules.rules(originalSkill);
+        assertEquals("production",rules.firstStage());
+        String fp=currentPlan("IPR-o","production",ORIGINAL_IMAGES,30,30,30);
+        var created=service.create("u","p",new PlanExecutionCreateRequest("orig-1","production","IPR-o",fp,"sheet",90L,0L,null,null,3,"APV-IPR-o","msg-IPR-o"));
+        assertEquals("running",created.status());assertEquals("production",created.stage());assertEquals("original-creation",created.skillKey());
+        assertEquals(3,created.steps().size());assertEquals(90,created.budgets().get(0).approvedCap());assertEquals("production",created.budgets().get(0).stage());
+        verify(executor).wake(created.id());
+        // replay is idempotent; a wrong approach and a cap under the quote are refused like any confirmation
+        assertEquals(created.id(),service.create("u","p",new PlanExecutionCreateRequest("orig-1","production","IPR-o",fp,"sheet",90L,0L,null,null,3,"APV-IPR-o","msg-IPR-o")).id());
+    }
+
+    @Test void aProductionOnlyPlanNeedsTheRecommendedApproachAndTheQuoteWithinTheCap() throws Exception {
+        rules=StudioSkillRules.rules(originalSkill);
+        String fp=currentPlan("IPR-o","production",ORIGINAL_IMAGES,30,30,30);
+        assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("orig-x","production","IPR-o",fp,"other",90L,0L,null,null,3,"APV-IPR-o","msg-IPR-o")));
+        var low=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("orig-y","production","IPR-o",fp,"sheet",60L,0L,null,null,3,"APV-IPR-o","msg-IPR-o")));
+        assertNotEquals("STUDIO_INPUT_INVALID",low.getCode(),"the budget guard, not the stage order, refuses it");
+        assertTrue(rows.isEmpty(),"nothing started");
+    }
+
+    @Test void theReferenceVideoSkillStillCannotStartInProduction() throws Exception {
+        String fp=currentPlan("IPR-p","production",PRODUCTION,40,5);
+        var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("prod-0","production","IPR-p",fp,"rewrite",45L,0L,null,null,3,"APV-IPR-p","msg-IPR-p")));
+        assertEquals("STUDIO_INPUT_INVALID",e.getCode());
+        assertTrue(rows.isEmpty());
+    }
+
+    @Test void aProductionOnlyCardConfirmedInWordsStartsTheExecution() throws Exception {
+        rules=StudioSkillRules.rules(originalSkill);
+        currentPlan("IPR-o","production",ORIGINAL_IMAGES,30,30,30);
+        cards.userTexts.put("IDM-ok","可以，按这个出图");
+        var created=service.confirmNatural("u","p",new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-o","IDM-ok",null,null,"nl-o"));
+        assertEquals("production",created.stage());assertEquals("running",created.status());
     }
 }
