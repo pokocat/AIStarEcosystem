@@ -6,6 +6,7 @@
 //   · a duration the chosen model cannot do is a blocking message with a fix, never a silent clamp.
 // Material is covered elsewhere: the assistant's references become edges into the node (studio.spec), native video sends
 // every connected input and refuses a mode that cannot carry them, and the legacy path refuses more than one picture.
+import type { StudioNodeSpec } from "@ai-star-eco/types/ip-studio-workflow";
 
 const RATIOS = new Set(["9:16", "16:9", "1:1", "3:4", "4:3", "2:3", "3:2", "21:9"]);
 const RATIO = /(?<![\d.])(21|16|9|4|3|2|1)\s*[:：]\s*(16|9|4|3|2|1)(?![\d.])/g;
@@ -55,4 +56,24 @@ export function studioDurationIssue(seconds: number, limits: { min?: number; max
   if (!options.length || options.includes(seconds)) return undefined;
   const fix = options.reduce((best, n) => Math.abs(n - seconds) < Math.abs(best - seconds) ? n : best, options[0]);
   return { message: `所选模型可选 ${options.join(" / ")} 秒，没有 ${seconds} 秒。`, fix };
+}
+
+/**
+ * The video draft an assistant spec asks for. Roles decide how material is used, not its order on the canvas: pictures
+ * marked `frame` are the first / last frame; any person / scene / product / style material makes it a reference set.
+ * Without references the draft is returned as is. A mode the chosen model lacks is then refused by the composer
+ * (「这个模型不支持所选视频模式」), never swapped silently.
+ */
+export function studioSpecVideoDraft<T extends { mode: string; firstId?: string; lastId?: string }>(spec: StudioNodeSpec | undefined, draft: T): T {
+  const refs = spec?.references;
+  if (!refs) return draft;
+  const frames = refs.filter(r => r.role === "frame").map(r => r.nodeId);
+  const others = refs.filter(r => r.role !== "frame");
+  const mode = !refs.length ? "t2v" : others.length ? "universal_reference_video" : frames.length > 1 ? "first_last_frame_video" : "i2v";
+  return { ...draft, mode, firstId: frames[0], lastId: frames[1] };
+}
+
+/** Partial spec updates keep what they do not mention; `references`, when given, is the complete new list. */
+export function mergeStudioSpec(prior: StudioNodeSpec | undefined, next: StudioNodeSpec): StudioNodeSpec {
+  return { ...prior, ...next, ...(next.references ? {} : prior?.references ? { references: prior.references } : {}) };
 }

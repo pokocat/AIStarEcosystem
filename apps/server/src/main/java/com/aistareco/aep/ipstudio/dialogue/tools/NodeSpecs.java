@@ -29,7 +29,8 @@ final class NodeSpecs {
         properties.putObject("durationSec").put("type", "integer").put("description", "视频时长（秒），用户说了就照写");
         properties.putObject("count").put("type", "integer").put("description", "生成几张 / 几条：1、2 或 4");
         var refs = properties.putObject("references").put("type", "array")
-                .put("description", "用作参考的画布素材（已有画面的图片 / 视频），按用途标 role：character 人物、scene 场景、product 商品、frame 首帧、style 风格。会连线到这个对象，生成时一起提交");
+                .put("description", "这个对象要用的全部参考素材（已有画面的图片 / 视频），按用途标 role：character 人物、scene 场景、product 商品、frame 首帧（两张 frame 依次是首帧、尾帧）、style 风格。"
+                        + "这是完整清单：写了就替换原来连着的素材（换成别的人就只写新的那张，[] 表示不用参考）；不写就保持不变。会连线到这个对象，生成时一起提交");
         var item = refs.putObject("items").put("type", "object");
         item.putObject("properties").putObject("nodeId").put("type", "string");
         ((ObjectNode) item.path("properties")).putObject("role").put("type", "string").putArray("enum").add("character").add("scene").add("product").add("frame").add("style");
@@ -48,13 +49,14 @@ final class NodeSpecs {
         if (n.has("aspectRatio") && !RATIOS.contains(n.path("aspectRatio").asText(""))) return "画幅只能是 " + String.join("、", new TreeSet<>(RATIOS));
         if (n.has("durationSec")) {
             if (!video) return "只有视频对象有时长";
-            if (!n.path("durationSec").canConvertToInt() || n.path("durationSec").asInt() < 1 || n.path("durationSec").asInt() > 60) return "视频时长写 1 到 60 之间的整数秒";
+            if (!n.path("durationSec").isIntegralNumber() || !n.path("durationSec").canConvertToInt() || n.path("durationSec").asInt() < 1 || n.path("durationSec").asInt() > 60) return "视频时长写 1 到 60 之间的整数秒";
         }
-        if (n.has("count") && !Set.of(1, 2, 4).contains(n.path("count").asInt(-1))) return "数量只能是 1、2 或 4";
+        if (n.has("count") && (!n.path("count").isIntegralNumber() || !Set.of(1, 2, 4).contains(n.path("count").asInt(-1)))) return "数量只能是 1、2 或 4";
         JsonNode refs = n.path("references");
         if (n.has("references")) {
             if (!refs.isArray() || refs.size() > MAX_REFERENCES) return "参考素材最多 " + MAX_REFERENCES + " 份";
             Set<String> seen = new HashSet<>();
+            if (refs.findValuesAsText("role").stream().filter("frame"::equals).count() > 2) return "首帧 / 尾帧最多两张";
             for (JsonNode r : refs) {
                 String id = DialogueTools.text(r, "nodeId"), role = DialogueTools.text(r, "role");
                 if (id == null || !seen.add(id)) return "参考素材需要不重复的 nodeId";

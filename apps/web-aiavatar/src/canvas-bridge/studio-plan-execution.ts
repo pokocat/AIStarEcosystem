@@ -20,6 +20,7 @@ import { USE_MOCK, apiFetch } from '@/ip/api/_client';
 import { placeStudioNode } from './flow-document';
 import { withStudioBilling } from './studio-billing';
 import { assistantFieldValue } from './studio-assistant-plan';
+import { mergeStudioSpec, studioSpecVideoDraft } from './studio-composer-spec';
 import { mockExecutionAccept, mockExecutionControl, mockExecutionCreate, mockExecutionGet } from '@/ip/mocks/studio-dialogue';
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -114,13 +115,17 @@ function mergeServerNode(existing: CanvasNodeData, incoming: CanvasNodeData, exe
   if (studio) metadata.studio = studio;
   // Settings the assistant wrote (update_nodes) replace the node's earlier ones, and an open composer draft follows them,
   // so the panel opens with what the user said in the conversation instead of the draft's stale 9:16 / 8 s.
-  const spec = incomingStudio?.spec;
-  if (spec && metadata.studio) {
+  // A partial update keeps the fields it does not mention; `references`, when present, is the complete list (「换成 B」
+  // drops A, `[]` clears it; Codex review 2026-10-20). The open draft and its video frames follow the same rule.
+  const incomingSpec = incomingStudio?.spec;
+  if (incomingSpec && metadata.studio) {
+    const spec = mergeStudioSpec(existing.metadata?.studio?.spec, incomingSpec);
     const draft = metadata.studio.composerDraft;
+    const ids = incomingSpec.references?.map(r => r.nodeId);
     metadata.studio = { ...metadata.studio, spec, ...(draft ? { composerDraft: {
-      ...draft, ...(spec.aspectRatio ? { aspectRatio: spec.aspectRatio } : {}), ...(spec.durationSec ? { durationSec: spec.durationSec } : {}),
-      ...(spec.count ? { count: spec.count } : {}),
-      referenceNodeIds: [...new Set([...draft.referenceNodeIds, ...(spec.references || []).map(r => r.nodeId)])],
+      ...draft, ...(incomingSpec.aspectRatio ? { aspectRatio: incomingSpec.aspectRatio } : {}), ...(incomingSpec.durationSec ? { durationSec: incomingSpec.durationSec } : {}),
+      ...(incomingSpec.count ? { count: incomingSpec.count } : {}),
+      ...(ids ? { referenceNodeIds: ids, connectedReferenceNodeIds: ids, video: studioSpecVideoDraft(incomingSpec, draft.video) } : {}),
     } } : {}) };
   }
   return { node: { ...existing, title: existing.title || incoming.title, metadata }, proposals };
@@ -174,6 +179,13 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
     const merged = mergeServerNode(existing, incoming, execution);
     proposals = merged.proposals;
     if (!sameJson(merged.node, existing)) { next = { ...doc, nodes: doc.nodes.map(n => n.id === existing.id ? merged.node : n) }; changed = true; }
+    // Assistant references are the node's complete media inputs: other picture / video / audio edges into it go.
+    const refs = incoming.metadata?.studio?.spec?.references;
+    if (refs) {
+      const keep = new Set(refs.map(r => r.nodeId)), media = new Set([CanvasNodeType.Image, CanvasNodeType.Video, CanvasNodeType.Audio] as string[]);
+      const connections = next.connections.filter(c => c.toNodeId !== existing.id || keep.has(c.fromNodeId) || !media.has(String(next.nodes.find(n => n.id === c.fromNodeId)?.type)));
+      if (connections.length !== next.connections.length) { next = { ...next, connections }; changed = true; }
+    }
   }
   if (data.connection) {
     // Edges name the stable id; a check node merged under another id keeps its own.

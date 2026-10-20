@@ -69,6 +69,7 @@ describe("Creation catalogue", () => {
     fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
     await screen.findByText('封面保存失败');
     expect(screen.getByRole('dialog')).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole('button', {name:'设为封面：图 1'}) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(mocks.selectCover).toHaveBeenLastCalledWith('project', 'P0', 'owned/image.png');

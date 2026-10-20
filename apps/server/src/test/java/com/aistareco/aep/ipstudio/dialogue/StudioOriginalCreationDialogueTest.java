@@ -117,6 +117,15 @@ class StudioOriginalCreationDialogueTest {
         assertNotNull(tool.validate(args, ctx(recreation, "production", "PEX-1", null)), "an execution keeps its method");
     }
 
+    @Test void aMethodSwitchIsRefusedUnderTheThreadLockOnceAnExecutionIsBoundEvenInTheSameTurn() {
+        var thread = IpDialogueThread.builder().id("IPT-P1").skillKey("reference-video-recreation").build();
+        StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, true);
+        thread.setActiveExecutionId("PEX-confirmed-this-turn");
+        var e = assertThrows(BusinessException.class, () -> StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, true));
+        assertEquals("STUDIO_SKILL_LOCKED", e.getCode());
+        StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, false); // re-reading the bound method is fine
+    }
+
     // ── 2. specs land on nodes as structured settings and edges ─────────────────────────────────────────────────────
 
     @Test void createNodesWritesRatioDurationCountAndEveryReferenceAsSettingsAndEdges() {
@@ -141,6 +150,14 @@ class StudioOriginalCreationDialogueTest {
         assertEquals(List.of("male>" + created.nodeId(), "female>" + created.nodeId(), "room>" + created.nodeId()), edges);
     }
 
+    @Test void moreThanTwoFramesAreRefused() {
+        var tool = new CreateNodesTool();
+        var args = om.createObjectNode();
+        var refs = args.putArray("nodes").addObject().put("key", "a").put("type", "video").put("title", "t").putArray("references");
+        for (String id : List.of("male", "female", "room")) refs.addObject().put("nodeId", id).put("role", "frame");
+        assertNotNull(tool.validate(args, ctx(original, "production", null, null)));
+    }
+
     @Test void specsThatCannotBeHonestlyAppliedAreRefusedNotRewritten() {
         var tool = new CreateNodesTool();
         var context = ctx(original, "production", null, null);
@@ -154,6 +171,9 @@ class StudioOriginalCreationDialogueTest {
                 "the incident's invented node id is refused instead of silently dropped");
         assertNotNull(refuse.apply("{\"key\":\"a\",\"type\":\"video\",\"title\":\"t\",\"references\":[{\"nodeId\":\"empty\",\"role\":\"character\"}]}"), "no picture yet");
         assertNotNull(refuse.apply("{\"key\":\"a\",\"type\":\"video\",\"title\":\"t\",\"count\":3}"));
+        assertNotNull(refuse.apply("{\"key\":\"a\",\"type\":\"video\",\"title\":\"t\",\"durationSec\":4.5}"), "seconds must not be silently truncated");
+        assertNotNull(refuse.apply("{\"key\":\"a\",\"type\":\"video\",\"title\":\"t\",\"count\":1.9}"), "count must not be silently truncated");
+        assertNotNull(refuse.apply("{\"key\":\"a\",\"type\":\"video\",\"title\":\"t\",\"durationSec\":\"4\"}"), "the tool contract requires numeric seconds");
     }
 
     @Test void updateNodesPutsTheSpokenSpecOnTheUsersExistingNodeAndConnectsTheMissingMaterial() {

@@ -27,9 +27,6 @@ public final class DialogueActionProtocol {
     public static final String TAG_OPEN = "<tool_call>";
     /** Tag names accepted as an action envelope (lower case, compared case-insensitively). */
     static final List<String> TAGS = List.of("tool_call", "studio-actions", "studio_actions");
-    /** {@code (?<!<<)}: the marker {@value #MARKER} contains the tag spelling and is never a tag. */
-    private static final Pattern TAG_BLOCK = Pattern.compile("(?is)(?<!<<)<(tool_call|studio-actions|studio_actions)>(.*?)</\\1>");
-    private static final Pattern TAG_START = Pattern.compile("(?i)(?<!<<)<(tool_call|studio-actions|studio_actions)>");
     /**
      * A line that imitates the server's own work record ({@link DialogueHistory#line}) instead of calling the tool: the
      * model wrote 「[查看画布：done，已读取 3 个对象] [提问：……]」 as prose (same thread, seq 12) and no tool ran. The user then
@@ -38,72 +35,83 @@ public final class DialogueActionProtocol {
     private static final Pattern IMITATED_RECORD = Pattern.compile(
             "\\[(?:查看画布|看图|读取制作方法|整理制作方案|请你确认|搭建画布|调整画布对象|提交生成|提问|方案第\\s*\\d+\\s*版|确认卡)[：:][^\\]]{0,400}\\]"
                     + "|\\[[^\\[\\]：:]{1,16}[：:]\\s*(?:done|failed|running|waiting_user)\\b");
-    private static final ObjectMapper OM = new ObjectMapper();
+    /** Strict: a block with anything after its JSON value ({@code [..] [..}) is not a complete action batch. */
+    private static final ObjectMapper OM = new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     static final int MAX_ACTIONS_PER_REPLY = 8;
 
     private DialogueActionProtocol() {}
 
     public record Parsed(String visibleText, List<DialogueLoop.Action> actions, String parseError) {}
 
-    /** Split a complete reply into visible prose and fallback actions. */
+    /**
+     * Split a complete reply into visible prose and fallback actions. One left-to-right scan, the same one the streaming
+     * {@link MarkerFilter} does: prose up to the next envelope opening is visible; a tag envelope must close with its own
+     * tag and contain no other opening (otherwise the outer one never closed); the marker takes the rest of the reply.
+     * Any defect rejects the whole batch.
+     */
     public static Parsed parse(String text) {
         String full = text == null ? "" : text;
-        int at = full.indexOf(MARKER);
-        Parsed parsed = at < 0 ? parseTagForm(full) : parseMarker(full, at);
-        if (parsed.parseError() == null && parsed.actions().isEmpty() && IMITATED_RECORD.matcher(parsed.visibleText()).find())
-            return new Parsed(parsed.visibleText(), List.of(), "正文里写了工具记录的样子，但没有真正调用工具；要做事就按动作格式调用，不要在正文里模仿记录");
-        return parsed;
-    }
-
-    private static Parsed parseMarker(String full, int at) {
-        String visible = full.substring(0, at).strip();
-        String block = stripFence(full.substring(at + MARKER.length()).strip());
-        if (block.isEmpty()) return new Parsed(visible, List.of(), null);
-        JsonNode array;
-        try { array = OM.readTree(block); }
-        catch (Exception e) { return new Parsed(visible, List.of(), "不是有效的 JSON 数组"); }
-        if (array == null || !array.isArray()) return new Parsed(visible, List.of(), "动作必须是 JSON 数组");
-        if (array.size() > MAX_ACTIONS_PER_REPLY) return new Parsed(visible, List.of(), "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作");
+        StringBuilder visible = new StringBuilder();
         List<DialogueLoop.Action> actions = new ArrayList<>();
-        String error = collect(array, actions, 0);
-        return error != null ? new Parsed(visible, List.of(), error) : new Parsed(visible, List.copyOf(actions), null);
+        String error = null;
+        int pos = 0;
+        while (true) {
+            int[] open = nextOpening(full, pos);
+            if (open == null) { visible.append(full, pos, full.length()); break; }
+            visible.append(full, pos, open[0]);
+            if (open[1] < 0) { // the marker: everything after it is the action array
+                String block = stripFence(full.substring(open[0] + MARKER.length()).strip());
+                if (block.isEmpty()) break;
+                JsonNode array;
+                try { array = OM.readTree(block); } catch (Exception e) { array = null; }
+                if (array == null || !array.isArray()) { error = error != null ? error : "不是有效的 JSON 数组"; break; }
+                String e = collect(array, actions, actions.size());
+                if (error == null) error = e;
+                break;
+            }
+            String tag = TAGS.get(open[1]);
+            int bodyStart = open[0] + tag.length() + 2;
+            int end = indexIgnoreCase(full, "</" + tag + ">", bodyStart);
+            if (end < 0) { if (error == null) error = "动作没有写完整"; break; } // never shown, never run
+            String body = full.substring(bodyStart, end);
+            pos = end + tag.length() + 3;
+            if (error != null) continue;
+            if (nextOpening(body, 0) != null) { error = "动作没有写完整"; continue; } // an outer envelope that never closed
+            JsonNode item;
+            try { item = OM.readTree(stripFence(body.strip())); } catch (Exception e) { error = "第 " + (actions.size() + 1) + " 个动作不是有效 JSON"; continue; }
+            if (item == null || !(item.isObject() || item.isArray())) { error = "第 " + (actions.size() + 1) + " 个动作必须是对象或数组"; continue; }
+            error = collect(item, actions, actions.size());
+        }
+        String shown = visible.toString().strip();
+        if (error == null && actions.size() > MAX_ACTIONS_PER_REPLY) error = "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作";
+        if (error != null) return new Parsed(shown, List.of(), error);
+        if (actions.isEmpty() && IMITATED_RECORD.matcher(shown).find())
+            return new Parsed(shown, List.of(), "正文里写了工具记录的样子，但没有真正调用工具；要做事就按动作格式调用，不要在正文里模仿记录");
+        return new Parsed(shown, List.copyOf(actions), null);
     }
 
     /**
-     * The tag spellings. Prose outside the tags stays visible; the tags themselves never do. A block that is unterminated
-     * or does not parse rejects the whole batch (nothing half-executes), exactly like the marker form.
+     * {start, tagIndex} of the earliest envelope opening at or after {@code from}, tagIndex -1 for the marker; null when
+     * none. A tag spelling preceded by 「<<」 is the start of the marker (complete or not) and is skipped, and the search
+     * goes on past it: the marker contains the tag spelling.
      */
-    private static Parsed parseTagForm(String full) {
-        if (!TAG_START.matcher(full).find()) return new Parsed(full.strip(), List.of(), null);
-        Matcher m = TAG_BLOCK.matcher(full);
-        StringBuilder visible = new StringBuilder();
-        List<DialogueLoop.Action> actions = new ArrayList<>();
-        int last = 0, blocks = 0;
-        String error = null;
-        while (m.find()) {
-            visible.append(full, last, m.start());
-            last = m.end();
-            blocks++;
-            if (error != null) continue;
-            JsonNode item;
-            try { item = OM.readTree(stripFence(m.group(2).strip())); }
-            catch (Exception e) { error = "第 " + blocks + " 段动作不是有效 JSON"; continue; }
-            if (item == null || !(item.isObject() || item.isArray())) { error = "第 " + blocks + " 段动作必须是对象或数组"; continue; }
-            error = collect(item, actions, actions.size());
+    static int[] nextOpening(CharSequence text, int from) {
+        String lower = text.toString().toLowerCase(java.util.Locale.ROOT);
+        int marker = lower.indexOf(MARKER, from);
+        int best = marker, which = marker < 0 ? -2 : -1;
+        for (int t = 0; t < TAGS.size(); t++) {
+            String opening = "<" + TAGS.get(t) + ">";
+            for (int at = lower.indexOf(opening, from); at >= 0; at = lower.indexOf(opening, at + 1)) {
+                if (at >= 2 && lower.charAt(at - 1) == '<' && lower.charAt(at - 2) == '<') continue;
+                if (best < 0 || at < best) { best = at; which = t; }
+                break;
+            }
         }
-        String rest = full.substring(last);
-        Matcher dangling = TAG_START.matcher(rest);
-        if (dangling.find()) {
-            // an opened block that never closed: the text before it is prose, the block itself is never shown or run
-            visible.append(rest, 0, dangling.start());
-            if (error == null) error = "动作没有写完整";
-        } else {
-            visible.append(rest);
-        }
-        String shown = visible.toString().strip();
-        if (actions.size() > MAX_ACTIONS_PER_REPLY) return new Parsed(shown, List.of(), "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作");
-        if (error != null) return new Parsed(shown, List.of(), error);
-        return new Parsed(shown, List.copyOf(actions), null);
+        return best < 0 ? null : new int[] {best, which};
+    }
+
+    static int indexIgnoreCase(CharSequence text, String needle, int from) {
+        return text.toString().toLowerCase(java.util.Locale.ROOT).indexOf(needle.toLowerCase(java.util.Locale.ROOT), from);
     }
 
     /** One object or an array of them → actions (numbered from {@code offset + 1}); the first bad item rejects the batch. */
@@ -212,17 +220,7 @@ public final class DialogueActionProtocol {
         /** True once any action envelope (the marker or a tag) has started in this reply. */
         public boolean markerSeen() { return envelopeSeen; }
 
-        /** {start, tagIndex} of the earliest envelope opening, tagIndex -1 for the marker; null when none. */
-        private static int[] firstOpening(CharSequence text) {
-            int best = text.toString().indexOf(MARKER), which = best < 0 ? -2 : -1;
-            for (int t = 0; t < TAGS.size(); t++) {
-                int at = indexIgnoreCase(text, "<" + TAGS.get(t) + ">");
-                // inside an unfinished marker (「<<<studio-actions>」 so far): not a tag; the marker prefix stays withheld
-                if (at >= 2 && text.charAt(at - 1) == '<' && text.charAt(at - 2) == '<') continue;
-                if (at >= 0 && (best < 0 || at < best)) { best = at; which = t; }
-            }
-            return best < 0 ? null : new int[] {best, which};
-        }
+        private static int[] firstOpening(CharSequence text) { return nextOpening(text, 0); }
 
         private static int longestOpeningPrefixSuffix(CharSequence text) {
             int keep = 0;
@@ -241,8 +239,6 @@ public final class DialogueActionProtocol {
             return keep;
         }
 
-        private static int indexIgnoreCase(CharSequence text, String needle) {
-            return text.toString().toLowerCase(java.util.Locale.ROOT).indexOf(needle.toLowerCase(java.util.Locale.ROOT));
-        }
+        private static int indexIgnoreCase(CharSequence text, String needle) { return DialogueActionProtocol.indexIgnoreCase(text, needle, 0); }
     }
 }

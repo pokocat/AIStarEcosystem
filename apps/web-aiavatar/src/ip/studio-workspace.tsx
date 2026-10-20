@@ -37,7 +37,7 @@ import { StudioDurationControl } from "./studio-duration-control";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
 import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
 import { studioFrameIntent, studioFrameTarget, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
-import { studioDurationIssue, studioSpecConflict, studioSpecConflictText, type StudioSpecConflict } from "@/canvas-bridge/studio-composer-spec";
+import { studioDurationIssue, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft, type StudioSpecConflict } from "@/canvas-bridge/studio-composer-spec";
 import { studioFailedWithoutMedia, studioUnusableModel } from "@/canvas-bridge/studio-node-failure";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
@@ -423,7 +423,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       // What the assistant wrote from the conversation (studio.spec) wins over the node's defaults; its references are
       // already edges into the node, so they are in `ids`.
       const spec=node?.metadata?.studio?.spec;
-      setVideoCount(spec?.count||selection.count);setDuration(spec?.durationSec||selection.seconds);setRatio(spec?.aspectRatio||selection.ratio);setVideoDraft(selection.draft);setReferenceIds(ids);
+      setVideoCount(spec?.count||selection.count);setDuration(spec?.durationSec||selection.seconds);setRatio(spec?.aspectRatio||selection.ratio);
+      // Roles decide frames vs references (a person picture is never taken as the first frame because it came first).
+      setVideoDraft(studioSpecVideoDraft(spec,selection.draft));setReferenceIds(ids);
       setModel(node?.type===CanvasNodeType.Video?node.metadata?.studio?.request?.model||(node.metadata?.model?endpointIdFor(node.metadata.model)||node.metadata.model:undefined):undefined);
     } else {
       const connected=node?studioLinkedNodes(node.id,nodesRef.current,connectionsRef.current).filter(ref=>ref.type===CanvasNodeType.Image).map(ref=>ref.id):[];

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { studioDurationIssue, studioPromptSpec, studioSpecConflict, studioSpecConflictText } from './studio-composer-spec';
+import { mergeStudioSpec, studioDurationIssue, studioPromptSpec, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft } from './studio-composer-spec';
 
 // IPR-fde32da6c2cc4664974f (2026-10-20): the description as submitted, with the settings it was sent with.
 const INCIDENT = '用我给你的人物和客厅图片来做视频，画幅 16:9，低饱和冷色调。\n\n镜 1（中景）：固定中全景，两人分坐在沙发两侧。无台词，仅安静底噪。时长 4 秒。';
@@ -29,4 +29,18 @@ test('a duration the model cannot do is a message with the nearest fix, never a 
   expect(studioDurationIssue(4, { options: [5, 6, 8] })).toEqual({ message: '所选模型可选 5 / 6 / 8 秒，没有 4 秒。', fix: 5 });
   expect(studioDurationIssue(7, { options: [5, 6, 8] })?.fix).toBe(6);
   expect(studioDurationIssue(4, { options: [] })).toBeUndefined();
+});
+
+test('roles, not canvas order, decide frames and reference sets', () => {
+  const base = { mode: 'first_last_frame_video', firstId: 'male', lastId: 'female' };
+  const spec = (references: { nodeId: string; role: 'character' | 'scene' | 'frame' }[]) => ({ references, source: 'assistant' as const, updatedAt: '' });
+  // IPP-45bead91: two leads and a room are references, not first / last frames.
+  expect(studioSpecVideoDraft(spec([{ nodeId: 'male', role: 'character' }, { nodeId: 'female', role: 'character' }, { nodeId: 'room', role: 'scene' }]), base))
+    .toEqual({ mode: 'universal_reference_video', firstId: undefined, lastId: undefined });
+  expect(studioSpecVideoDraft(spec([{ nodeId: 'room', role: 'frame' }]), base)).toEqual({ mode: 'i2v', firstId: 'room', lastId: undefined });
+  expect(studioSpecVideoDraft(spec([{ nodeId: 'a', role: 'frame' }, { nodeId: 'b', role: 'frame' }]), base)).toEqual({ mode: 'first_last_frame_video', firstId: 'a', lastId: 'b' });
+  expect(studioSpecVideoDraft(spec([]), base)).toEqual({ mode: 't2v', firstId: undefined, lastId: undefined });
+  expect(studioSpecVideoDraft(undefined, base)).toBe(base);
+  expect(mergeStudioSpec({ aspectRatio: '16:9', count: 4, source: 'assistant', updatedAt: '1' }, { durationSec: 8, source: 'assistant', updatedAt: '2' }))
+    .toEqual({ aspectRatio: '16:9', count: 4, durationSec: 8, source: 'assistant', updatedAt: '2' });
 });

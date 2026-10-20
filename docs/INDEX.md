@@ -241,6 +241,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [视频节点暖白配色发布](releases/studio-video-node-warm-production-20261017.md)：2011deda 上线记录（2026-10-17）。
 - [助手正文字体统一](releases/studio-body-font-release-20261017.md)：助手面板改用共享正文字体；已发布（2026-10-17）。
 - [官方内容管理页展示修复](releases/studio-demos-layout-release-20261018.md)：`/projects/demos` 手机布局修复，仅发布 web-aiavatar（2026-10-18）。
+- [Studio 生产问题五项修复](releases/studio-prod-fixes-20261020.md)：原创创作技能、节点规格贯通、`<studio-actions>` 协议、真实看图、失败节点恢复；含 Agnes 下架后六个用途的兼容性检查（2026-10-20）。
 - [创作助手对话动静与快捷答复](releases/studio-assistant-dialogue-ux-validation-20261020.md)：进行中提示、快捷答复直接发送、图标化回复操作、工作记录改为过程行；本地验收，未发布（2026-10-20）。
 
 ## 8. 待办与归档

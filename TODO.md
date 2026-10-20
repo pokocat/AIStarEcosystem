@@ -41,6 +41,9 @@
 - [ ] 下架模型的拒绝是进程内记忆（24h，单机）：服务重启后第一次提交会再向供应商发一次（400、积分释放）。要跨重启 / 多节点就落库，或者让运营在后台停用端点（根治在配置）。
 - [ ] `view_images` 只用当前对话端点看图；对话模型没有看图能力时如实拒绝，没有自动换一个看图模型（需要单独定价与授权，未做）。
 - [ ] 图片上游 503「生图队列已满」（Agnes，logId PSQ8YXAAJLVD）仍显示通用「模型服务暂时不可用（上游 503）」，没有像视频那样映射成队列已满；Agnes 已不用于生产用户，换模型后再看是否需要。
+- [ ] **Agnes 下架后的默认绑定（待运营决定）**：`DAP_IMAGE` / `DAP_PERSONA` / `IMAGE_GENERATION` / `VIDEO_REF_ANALYSIS` 没有默认绑定，数字资产 `/studio` 资产任务、数字名片人设、短剧定妆照 / 场景图 / 三视图、带货爆款雷达现在都报「未配置」（冻结前拒绝）。只能绑定用同一 JSON `images/generations` / chat 协议验证过的端点，不恢复 Agnes，未适配旧协议前不能直接指向 GPT Image 2。核对表见 `docs/releases/studio-prod-fixes-20261020.md` §2.1。
+- [ ] `DapWorkflowService` 无事务：`generate` / 衍生 / 造型 / 待机循环在 `DapJobService.submit` 拒绝（如 `DAP_ENGINE_NOT_CONFIGURED`）前已保存「生成中」状态，拒绝后不回滚（代码推断，未在线上复现）。
+- [ ] 对话事件流 `/conversations/{id}/events` 客户端断开（`IOException: Broken pipe`）记成 `INTERNAL_ERROR`，近 3 天 157 条，淹没真错误；应识别为正常断开不记错误日志。
 - [ ] `studio-conversation-share.test.tsx`「failed save does not preview or publish…」全量跑时偶发失败、单独跑通过（2026-10-20 观察，与本次改动无关），待查时序。
 
 ### 2026-10-20 · H3 视频台词被厂商改写删掉、首尾帧只写在文字里（本地实现，未发布；说明见 `docs/ip-studio-video-modes.md` 末节）

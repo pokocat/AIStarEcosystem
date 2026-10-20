@@ -275,6 +275,16 @@ public class StudioDialogueTurnWorker {
         };
     }
 
+    /**
+     * A thread may change method only while no execution is bound to it, checked under the thread lock: an execution
+     * confirmed earlier in the same turn (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
+     * Same rule as turn start (StudioDialogueService.startTurn): a thread pointer to an execution means bound.
+     */
+    static void requireSkillSwitchAllowed(IpDialogueThread locked, boolean switching) {
+        if (switching && locked.getActiveExecutionId() != null)
+            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LOCKED", "这条对话正在制作，制作结束前不能换方法");
+    }
+
     static String limitNote(String limit) {
         return switch (String.valueOf(limit)) {
             case "calls" -> "这一轮已经想了很多步，先停在这里。回复「继续」我接着做。";
@@ -645,6 +655,9 @@ public class StudioDialogueTurnWorker {
                 // cards: a plan for 「参考视频复刻」 must not stay confirmable once the thread is making an original image set.
                 boolean switching = context.skill() != null && !context.skill().key().equals(skill.key());
                 store.write(threadId, t -> {
+                    // Checked again under the thread lock: an execution confirmed earlier in this same turn
+                    // (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
+                    requireSkillSwitchAllowed(t, switching);
                     List<StudioDialogueStore.Pending> out = new ArrayList<>();
                     if (t.getSkillKey() == null || switching) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); t.setStage(skill.firstStage()); }
                     else if (t.getStage() == null) t.setStage(skill.firstStage());

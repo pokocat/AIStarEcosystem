@@ -189,4 +189,54 @@ class DialogueActionProtocolTest {
         assertEquals(List.of("propose_plan"), parsed.actions().stream().map(DialogueLoop.Action::tool).toList());
         assertEquals("方案整理好了。", parsed.visibleText());
     }
+
+    // ── Codex review of 39ca9218: the four probes, verbatim ─────────────────────────────────────────────────────────
+
+    static String streamed(String reply) {
+        var f = new DialogueActionProtocol.MarkerFilter();
+        StringBuilder out = new StringBuilder();
+        for (char c : reply.toCharArray()) out.append(f.accept(String.valueOf(c)));
+        return out.append(f.finish()).toString();
+    }
+
+    @Test void anOuterEnvelopeThatNeverClosesRunsNothingEvenWithACompleteInnerBlock() {
+        var parsed = DialogueActionProtocol.parse("<studio-actions>broken<tool_call>{\"tool\":\"read_canvas\"}</tool_call>");
+        assertNotNull(parsed.parseError());
+        assertTrue(parsed.actions().isEmpty());
+        assertEquals("", parsed.visibleText());
+        var closedButNested = DialogueActionProtocol.parse("好<studio-actions>x<tool_call>{\"tool\":\"stop\"}</tool_call></studio-actions>");
+        assertNotNull(closedButNested.parseError());
+        assertTrue(closedButNested.actions().isEmpty());
+    }
+
+    @Test void trailingJsonAfterTheBatchIsNotAcceptedAsComplete() {
+        var parsed = DialogueActionProtocol.parse("<studio-actions>[{\"tool\":\"read_canvas\"}] [{\"tool\":</studio-actions>");
+        assertNotNull(parsed.parseError());
+        assertTrue(parsed.actions().isEmpty());
+        var marker = DialogueActionProtocol.parse("好\n<<<studio-actions>>>\n[{\"tool\":\"stop\"}] 还有");
+        assertNotNull(marker.parseError());
+        assertTrue(marker.actions().isEmpty());
+    }
+
+    @Test void aTagThenTheMarkerRunsBothAndStreamsExactlyWhatParseShows() {
+        String reply = "before<studio-actions>[{\"tool\":\"read_canvas\"}]</studio-actions>middle\n<<<studio-actions>>>\n[{\"tool\":\"stop\"}]";
+        var parsed = DialogueActionProtocol.parse(reply);
+        assertNull(parsed.parseError());
+        assertEquals(List.of("read_canvas", "stop"), parsed.actions().stream().map(DialogueLoop.Action::tool).toList());
+        assertEquals("beforemiddle", parsed.visibleText());
+        assertEquals("beforemiddle", streamed(reply).strip());
+    }
+
+    @Test void anUnfinishedMarkerFollowedByATagNeverLeaksTheTagWhileStreaming() {
+        String reply = "<<<studio-actions>bad<studio-actions>[{\"tool\":\"read_canvas\"}]</studio-actions>after";
+        var parsed = DialogueActionProtocol.parse(reply);
+        String shown = streamed(reply);
+        assertFalse(shown.contains("read_canvas"), shown);
+        assertEquals(parsed.visibleText(), shown.strip());
+        for (int cut = 0; cut <= reply.length(); cut++) {
+            var f = new DialogueActionProtocol.MarkerFilter();
+            String two = f.accept(reply.substring(0, cut)) + f.accept(reply.substring(cut)) + f.finish();
+            assertFalse(two.contains("read_canvas"), "cut at " + cut + ": " + two);
+        }
+    }
 }
