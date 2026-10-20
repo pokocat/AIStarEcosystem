@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
 import {
-  approvedCaps, approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, messageSuggestions, persistableCanvasCursor, planForApproval,
+  answeredAfter, approvedCaps, approvedExecutionIds, canvasRestoring, dialogueActivity, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, messageSuggestions, persistableCanvasCursor, planForApproval,
   type DialogueApprovalBlock, type DialogueStore,
 } from './studio-dialogue-store';
 
@@ -328,5 +328,60 @@ describe('execution messages, dialogue budget share and queued steering', () => 
     expect(queued).toMatchObject({ status: 'queued', turnId: undefined });
     expect(s.activeTurnId).toBeUndefined();
     expect(messageQueueLabel(s, queued)).toBe('排队中，下一步应用');
+  });
+});
+
+// User feedback 2026-10-20: nothing showed whether the assistant was thinking or doing something.
+describe('dialogueActivity', () => {
+  const accepted = () => dialogueReducer(loaded(), { type: 'outbox.sent', clientMessageId: 'c9', result: { messageId: 'u9', turnId: 't1', queueState: 'accepted' } });
+  test('waiting until something comes back, then the running tool, then continuing, then writing', () => {
+    expect(dialogueActivity(loaded())).toBeUndefined();
+    let s = accepted();
+    expect(dialogueActivity(s)).toEqual({ phase: 'waiting' });
+    s = fold(s, ev(6, 'tool.started', { toolCallId: 'x', toolName: 'read_canvas', title: '查看画布' }));
+    expect(dialogueActivity(s)).toMatchObject({ phase: 'tool', tool: { toolCallId: 'x', title: '查看画布' } });
+    s = fold(s, ev(7, 'tool.finished', { toolCallId: 'x', toolName: 'read_canvas', status: 'done', creditsActual: 0 }));
+    expect(dialogueActivity(s)).toMatchObject({ phase: 'continuing' });
+    s = fold(s, delta(8, '画布是空的'));
+    expect(dialogueActivity(s)).toEqual({ phase: 'writing', messageId: 'm1' });
+  });
+  test.each(['completed', 'failed', 'interrupted'] as const)('a turn that ends (%s) ends it', reason => {
+    const s = fold(accepted(), delta(6, '我先看'), ev(7, 'turn.done', { reason, messageId: 'm1' }));
+    expect(dialogueActivity(s)).toBeUndefined();
+  });
+  test('a card at the end of the turn is the state itself', () => {
+    const s = fold(accepted(), delta(6, '有个问题'), ev(7, 'plan.proposed', { messageId: 'm1', block: { type: 'plan', planRunId: 'p1', revision: 1, fingerprint: 'f', plan: { summary: 's', questions: [], steps: [] } } }));
+    expect(dialogueActivity(s)).toBeUndefined();
+  });
+  // Codex review 2026-10-20.
+  test('a background production summary ending does not hide the reply the user is waiting for', () => {
+    let s = fold(accepted(), delta(6, '我先看'));
+    s = fold(s, ev(7, 'message.delta', { messageId: 'sum', partId: 'a', delta: '两段做好了' }, { turnId: 'EXS-1' }),
+      ev(8, 'turn.done', { reason: 'completed', messageId: 'sum' }, { turnId: 'EXS-1' }));
+    expect(s.activeTurnId).toBeUndefined();
+    expect(dialogueActivity(s)).toEqual({ phase: 'writing', messageId: 'm1' });
+  });
+  test('a reply only seen in a snapshot as 「streaming」 does not spin unless its turn is the active one', () => {
+    const stuck: StudioDialogueMessage = { id: 'm0', threadId: 'th', seq: 6, turnId: 't0', role: 'assistant', text: '写到一半', blocks: [], status: 'streaming', createdAt: thread.createdAt };
+    expect(dialogueActivity(loaded({ messages: [userMessage, stuck], latestSeq: 6 }))).toBeUndefined();
+    expect(dialogueActivity(loaded({ thread: { ...thread, activeTurnId: 't0' }, messages: [userMessage, stuck], latestSeq: 6 }))).toEqual({ phase: 'writing', messageId: 'm0' });
+  });
+  test('steering sent while the turn ran, or an old unconfirmed message, does not answer a question asked later', () => {
+    const question: StudioDialogueMessage = { id: 'm1', threadId: 'th', seq: 6, turnId: 't1', role: 'assistant', text: '哪一款？', status: 'done', createdAt: thread.createdAt,
+      blocks: [{ type: 'question', questionId: 'q', text: '哪一款？', options: ['洗衣液'] }] as StudioMessageBlock[] };
+    const steering: StudioDialogueMessage = { ...userMessage, id: 'u2', seq: 7, text: '改成竖屏', status: 'applied' };
+    expect(answeredAfter(loaded({ messages: [userMessage, question, steering], latestSeq: 9 }), question)).toBeUndefined();
+    const failed = dialogueReducer(loaded({ messages: [userMessage, question], latestSeq: 40 }),
+      { type: 'outbox.add', item: { clientMessageId: 'c0', text: '早先没送达的', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: thread.createdAt, state: 'failed', afterSeq: 30 } });
+    expect(answeredAfter(failed, question)).toBeUndefined();
+  });
+  test('a question is answered by any later user message, or one still on its way', () => {
+    const question: StudioDialogueMessage = { id: 'm1', threadId: 'th', seq: 6, turnId: 't1', role: 'assistant', text: '哪一款？', status: 'done', createdAt: thread.createdAt,
+      blocks: [{ type: 'question', questionId: 'q', text: '哪一款？', options: ['洗衣液'] }] as StudioMessageBlock[] };
+    const s = loaded({ messages: [userMessage, question], latestSeq: 6 });
+    expect(answeredAfter(s, question)).toBeUndefined();
+    const sending = dialogueReducer(s, { type: 'outbox.add', item: { clientMessageId: 'c2', text: '洗衣液', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: thread.createdAt, state: 'sending' } });
+    expect(answeredAfter(sending, question)).toMatchObject({ text: '洗衣液' });
+    expect(answeredAfter(dialogueReducer(sending, { type: 'outbox.remove', clientMessageId: 'c2' }), question)).toBeUndefined();
   });
 });

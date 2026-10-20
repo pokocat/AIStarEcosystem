@@ -101,9 +101,17 @@ test('the composer stays editable while a reply streams, and a tool event render
   emit(ev('message.delta', { messageId: 'm1', partId: 'a', delta: '我先看一下' }), ev('message.delta', { messageId: 'm1', partId: 'a', delta: '素材' }),
     ev('tool.started', { toolCallId: 'x', toolName: 'read_canvas', title: '读取画布素材', safeInputSummary: '画布上 3 个节点' }));
   expect(screen.getByText('我先看一下素材')).toBeDefined();
-  const card = screen.getByLabelText('工作记录：读取画布素材') as HTMLDetailsElement;
-  expect(card.open).toBe(false);
+  const card = screen.getByLabelText('工作记录：读取画布素材');
+  // A log line, not a button: only the small chevron opens the details, and they start closed.
+  const toggle = within(card).getByRole('button', { name: '展开详情：读取画布素材' });
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(within(card).getAllByRole('button')).toHaveLength(1);
   expect(within(card).getByText(/进行中/)).toBeDefined();
+  // A running tool says so on its own line; no second 「正在…」 row repeats it.
+  expect(card.getAttribute('data-status')).toBe('running');
+  expect(screen.queryByText('正在读取画布素材')).toBeNull();
+  fireEvent.click(toggle);
+  expect(within(card).getByRole('button', { name: '收起详情：读取画布素材' }).getAttribute('aria-expanded')).toBe('true');
   expect(within(card).getByText('待结算')).toBeDefined();
   expect(card.textContent).not.toContain('read_canvas');
   expect(composer().disabled).toBe(false);
@@ -171,7 +179,7 @@ const planBlock: Extract<StudioMessageBlock, { type: 'plan' }> = { type: 'plan',
 const approvalBlock: Extract<StudioMessageBlock, { type: 'approval' }> = { type: 'approval', approvalId: 'a2', stage: 'production', planFingerprint: 'f2', scope: ['第 1 段视频', '第 2 段视频'], quotedCost: 82, budgetCap: 122, autoFixCap: 40, status: 'pending', executionId: 'e1' };
 const planMessage = (blocks: StudioMessageBlock[]): StudioDialogueMessage => ({ id: 'm2', threadId: 'th', seq: 3, turnId: 't2', role: 'assistant', text: '推荐保留原片动作。', blocks, status: 'done', createdAt: at });
 
-test('the plan shows the recommended approach first; choosing another only prepares a message', async () => {
+test('the plan shows the recommended approach first; choosing another sends that choice', async () => {
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([planBlock])] });
   await ready();
   const plan = screen.getByLabelText('制作计划');
@@ -179,9 +187,12 @@ test('the plan shows the recommended approach first; choosing another only prepa
   expect(within(plan).getByText('推荐')).toBeDefined();
   expect(within(plan).getAllByText('40 积分').length).toBeGreaterThan(0);
   expect(within(plan).getByText('第 1 段视频')).toBeDefined();
+  fireEvent.change(composer(), { target: { value: '我自己写到一半的话' } });
   fireEvent.click(within(plan).getByRole('button', { name: '改用这个做法' }));
-  expect(composer().value).toBe('改用「关键画面重做」这个做法，重新报价');
-  expect(api.post).not.toHaveBeenCalled();
+  await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '改用「关键画面重做」这个做法，重新报价' });
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('pinnedNodeIds');
+  expect(composer().value).toBe('我自己写到一半的话');
 });
 
 test('confirming production posts the execution, approach, plan revision, approval and the confirming message', async () => {
@@ -337,17 +348,78 @@ test('a text proposal is adopted only while the node still holds the text it was
   expect(canvas.find(n => n.id === 't')?.metadata?.content).toBe('我刚手改的台词');
 });
 
-test('question options and follow-up suggestions only fill the composer', async () => {
+// User feedback 2026-10-20: chips only filled the composer, so two clicks stacked two answers there. A click now sends.
+test('a question option and a follow-up suggestion each send at once, keep the draft and its pins, and cannot answer twice', async () => {
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 2, messages: [{ ...planMessage([{ type: 'question', questionId: 'q', text: '新商品是哪一款？', options: ['洗衣液', '护手霜'] }]), seq: 2 }] });
-  await ready();
-  fireEvent.click(screen.getByRole('button', { name: '洗衣液' }));
-  expect(composer().value).toBe('洗衣液');
+  await ready(<Host selectedIds={['c']}/>);
+  fireEvent.change(composer(), { target: { value: '草稿还没写完' } });
+  let accept!: (value: unknown) => void;
+  api.post.mockImplementationOnce(() => new Promise(resolve => { accept = resolve; }));
+  const question = screen.getByRole('group', { name: '问题：新商品是哪一款？' });
+  fireEvent.click(within(question).getByRole('button', { name: '洗衣液' }));
+  // A second click (the same option or the other one) while the first is on its way sends nothing more.
+  fireEvent.click(within(question).getByRole('button', { name: '洗衣液' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledOnce());
+  expect(screen.queryByRole('button', { name: '护手霜' })).toBeNull();
+  expect(within(question).getByText(/已回答/)).toBeDefined();
+  // The draft's pin (角色 A) stays with the draft: the quick reply carries no references.
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '洗衣液' });
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('pinnedNodeIds');
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('attachmentNodeIds');
+  expect(composer().value).toBe('草稿还没写完');
+  expect(screen.getByRole('button', { name: '移除引用 角色 A' })).toBeDefined();
+  await act(async () => { accept({ messageId: 'u3', turnId: 't3', queueState: 'accepted' }); });
+  // Accepted, nothing back yet: the turn says it is thinking.
+  expect(screen.getByText('正在思考')).toBeDefined();
   seq = 2;
-  emit(ev('message.delta', { messageId: 'm3', partId: 'a', delta: '做好了' }), ev('turn.done', { reason: 'completed', messageId: 'm3', suggestions: ['改成横屏', '保存成模板'] }));
+  emit(ev('message.delta', { messageId: 'm3', partId: 'a', delta: '做好了' }, { turnId: 't3' }));
+  expect(screen.queryByText('正在思考')).toBeNull();
+  expect(screen.getByText('正在回复')).toBeDefined();
+  emit(ev('turn.done', { reason: 'completed', messageId: 'm3', suggestions: ['改成横屏', '保存成模板'] }, { turnId: 't3' }));
+  expect(screen.queryByText('正在回复')).toBeNull();
   const suggestions = screen.getByRole('group', { name: '接下来可以' });
   fireEvent.click(within(suggestions).getByRole('button', { name: /保存成模板/ }));
-  expect(composer().value).toBe('洗衣液\n保存成模板');
-  expect(api.post).not.toHaveBeenCalled();
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][2]).toMatchObject({ text: '保存成模板' });
+  expect(api.post.mock.calls[1][2]).not.toHaveProperty('pinnedNodeIds');
+  expect(api.post.mock.calls[1][2].clientMessageId).not.toBe(api.post.mock.calls[0][2].clientMessageId);
+  expect(composer().value).toBe('草稿还没写完');
+  // Accepted: the follow-ups are closed, so a second click after the first one returned cannot send it again.
+  await waitFor(() => expect(screen.queryByRole('group', { name: '接下来可以' })).toBeNull());
+  expect(api.post).toHaveBeenCalledTimes(2);
+});
+
+// Codex review 2026-10-20: a second click on 「改用这个做法」 after the first was accepted got a new message key.
+test('the same quick reply is not sent again while nothing has come back for it', async () => {
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 3, messages: [planMessage([planBlock])] });
+  await ready();
+  const choose = () => fireEvent.click(within(screen.getByLabelText('制作计划')).getByRole('button', { name: '改用这个做法' }));
+  choose();
+  await waitFor(() => expect(screen.getByText('改用「关键画面重做」这个做法，重新报价')).toBeDefined());
+  choose();
+  await act(async () => { await Promise.resolve(); });
+  expect(api.post).toHaveBeenCalledOnce();
+});
+
+test('a tool the turn never closed stops spinning when the turn fails', async () => {
+  await ready();
+  emit(ev('tool.started', { toolCallId: 'x', toolName: 'read_canvas', title: '查看画布' }), ev('turn.done', { reason: 'failed', messageId: 'm1' }));
+  const card = screen.getByLabelText('工作记录：查看画布');
+  expect(card.getAttribute('data-status')).toBe('failed');
+  expect(within(card).getByText('没有完成')).toBeDefined();
+  expect(within(card).queryByText(/进行中/)).toBeNull();
+  expect(screen.queryByText('正在思考')).toBeNull();
+});
+
+test('a quick reply the server refuses lands in an empty composer to edit, and never overwrites a draft', async () => {
+  api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 2, messages: [{ ...planMessage([{ type: 'question', questionId: 'q', text: '新商品是哪一款？', options: ['洗衣液'] }]), seq: 2 }] });
+  api.post.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_DIALOGUE_BUSY', message: '上一条还在处理' }, 409));
+  await ready();
+  fireEvent.click(screen.getByRole('button', { name: '洗衣液' }));
+  await waitFor(() => expect(screen.getAllByRole('alert').map(e => e.textContent).join(' ')).toContain('上一条还在处理'));
+  expect(composer().value).toBe('洗衣液');
+  // Not answered after all: the option is offered again.
+  expect(screen.getByRole('button', { name: '洗衣液' })).toBeDefined();
 });
 
 test('「从这里重新开始」 branches from that message and shows the new thread', async () => {
@@ -598,7 +670,8 @@ test('follow-ups saved on the completion summary show after a reload, and once w
   expect(screen.getAllByRole('group', { name: '接下来可以' })).toHaveLength(1);
   expect(within(group()).getAllByRole('button')).toHaveLength(2);
   fireEvent.click(within(group()).getByRole('button', { name: /保存成模板/ }));
-  expect(composer().value).toBe('保存成模板');
+  await waitFor(() => expect(api.post.mock.calls[0]?.[2]).toMatchObject({ text: '保存成模板' }));
+  expect(composer().value).toBe('');
 });
 
 test('a card shows its own shortfall and dialogue reserve; a replaced card says so and cannot start anything', async () => {
@@ -986,7 +1059,9 @@ test('「放进画布」 turns a finished reply into a text node once, and shows
   await waitFor(() => expect(latest.some(n => n.type === 'text' && n.metadata?.content === longReply)).toBe(true));
   expect(api.save).toHaveBeenCalled();
   expect(latest.find(n => n.metadata?.content === longReply)?.title).toBe('末世英雄·林烬');
-  fireEvent.click(screen.getByRole('button', { name: '放进画布' }));
+  // Placed: the action now shows where it is instead of offering to place it again.
+  expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '在画布上查看' }));
   await waitFor(() => expect(api.success).toHaveBeenLastCalledWith('画布上已经有这段文字'));
   expect(latest.filter(n => n.metadata?.content === longReply)).toHaveLength(1);
 });

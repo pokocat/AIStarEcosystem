@@ -477,3 +477,59 @@ export function messageQueueLabel(store: DialogueStore, message: StudioDialogueM
   const answered = state === 'accepted' && store.messages.some(m => m.role !== 'user' && m.seq > message.seq);
   return state === 'queued' ? '排队中，下一步应用' : state === 'applied' ? '已应用' : state === 'accepted' && !answered ? '已收到' : undefined;
 }
+
+/**
+ * What the assistant is doing right now, read only from the stream (never invented):
+ * - `waiting`: the turn is accepted but nothing has come back yet;
+ * - `tool`: a reported tool call is running (`tool` is that block);
+ * - `writing`: reply text is streaming in;
+ * - `continuing`: a tool finished and the turn is still open, so the model is working on what comes next.
+ * Undefined when no turn is active, or when the turn's last item is a card (plan / confirmation / question): the card
+ * itself is the state then. A finished, failed or stopped message ends it.
+ */
+export type DialogueActivity =
+  | { phase: 'waiting'; messageId?: string }
+  | { phase: 'tool'; messageId: string; tool: DialogueToolBlock }
+  | { phase: 'writing' | 'continuing'; messageId: string };
+
+export function dialogueActivity(store: DialogueStore): DialogueActivity | undefined {
+  // Every reply still open, newest first. Not only the active turn's: a background production summary (EXS-) takes over
+  // activeTurnId while it streams and clears it when it ends, which would hide the reply the user is waiting for (Codex
+  // review 2026-10-20). A reply only seen in a snapshot counts when its turn is the thread's active one, so a message the
+  // server left 「streaming」 after a crash does not spin forever.
+  const open = store.messages.filter(m => m.role === 'assistant' && !m.legacyNodeId && m.status === 'streaming'
+    && !(m.turnId && store.doneTurns.includes(m.turnId)) && (m.turnId === store.activeTurnId || !!store.layouts[m.id]));
+  for (const message of [...open].reverse()) {
+    const activity = messageActivity(store, message);
+    if (activity) return activity;
+  }
+  // Accepted, and nothing of that turn has come back yet.
+  const waiting = (turnId?: string) => !!turnId && !store.doneTurns.includes(turnId) && !store.turnMessages[turnId];
+  if (waiting(store.activeTurnId) || store.messages.some(m => m.role === 'user' && store.queueStates[m.id] === 'accepted' && waiting(m.turnId))) return { phase: 'waiting' };
+  return undefined;
+}
+
+function messageActivity(store: DialogueStore, message: StudioDialogueMessage): DialogueActivity | undefined {
+  const running = [...message.blocks].reverse().find((b): b is DialogueToolBlock => b.type === 'tool_call' && b.status === 'running');
+  if (running) return { phase: 'tool', messageId: message.id, tool: running };
+  // A message read from a snapshot has no live layout yet: its text comes first, then its blocks.
+  const order = store.layouts[message.id]?.order ?? [...(message.text ? ['t:__base'] : []), ...message.blocks.map(b => `b:${blockKey(b)}`)];
+  const lastKey = order[order.length - 1];
+  if (!lastKey) return { phase: 'waiting', messageId: message.id };
+  if (lastKey.startsWith('t:')) return { phase: 'writing', messageId: message.id };
+  const block = message.blocks.find(b => `b:${blockKey(b)}` === lastKey);
+  return block?.type === 'tool_call' ? { phase: 'continuing', messageId: message.id } : undefined;
+}
+
+/**
+ * A question (and the follow-ups under a reply) is closed once the user said something after it: a later message in the
+ * thread, or one on its way now. The server does not mark questions itself, and a chip must not answer twice.
+ * - A message sent while that turn was still running is queued / applied into the turn; it is steering, not an answer
+ *   to a question the turn only asks later.
+ * - Outbox entries carry an event cursor, not a message number, so they are not compared with `seq` (Codex review
+ *   2026-10-20): only a message being sent now, after this reply finished, counts.
+ */
+export function answeredAfter(store: DialogueStore, message: StudioDialogueMessage): StudioDialogueMessage | DialogueOutboxItem | undefined {
+  return store.messages.find(m => m.role === 'user' && !m.legacyNodeId && m.seq > message.seq && m.status !== 'queued' && m.status !== 'applied')
+    || (message.status === 'streaming' ? undefined : store.outbox.find(o => o.state === 'sending'));
+}
