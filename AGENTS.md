@@ -1112,6 +1112,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### Studio 生产问题五项 · 2026-10-20（server + web-aiavatar）
 
+已从干净 main `14260eea` 构建并发布 `20261021-studio-prod-fixes`；GPT 默认生图、视频仅 H3，Qwen 看图能力经合成图验证并声明。真实生图 / 视频未重跑；旧产品默认用途解绑的影响与验收边界见 `docs/releases/studio-prod-fixes-20261020.md`。
+
 - **方法要对得上事**：没有参考视频的出图出片走「原创创作」（`original-creation`，只有制作阶段，`StudioSkill.firstStage()` 是唯一判定）；不要为了过流程给对话挂不相关的技能。无进行中执行时 `read_skill` 可换技能。
 - **规格不能只写在提示词里**：助手用 `create_nodes` / `update_nodes` 的 `aspectRatio / durationSec / count / references` 写到节点（`metadata.studio.spec`，参考同时连边）；生成面板**不许静默钳制**时长或画幅，做不到就阻断并给修正按钮（`studio-composer-spec.ts`）。
 - **看图要真看**：素材清单不含画面；描述图片内容只能经 `view_images`（本人 key、内联字节、对话端点须声明 `supportsVision`、计入本轮预算）。

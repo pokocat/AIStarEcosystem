@@ -58,4 +58,12 @@ Codex 接手工作树 `/Users/donis/dev/AIStarEcosystem-prodfix`，保留 Claude
 
 ## 4. 发布与线上验收
 
-（发布后补）
+- 发布编号：`20261021-studio-prod-fixes`；2026-10-20 18:16 UTC（北京时间 2026-10-21 02:16）重启服务，范围仅 `server web-aiavatar`。
+- 源码：已先合入本地 `main` 的 `14260eea1105147b650369e2b3bfe2ef675479c6`（含 Claude `39ca9218`、接手修复 `aacb7778`）；合并仅三份文档有冲突，保留主线已有发布记录，应用代码与已验证分支一致。构建前后工作区干净。未执行远端推送。
+- 构建：`infra/scripts/build-release.sh server,web-aiavatar` 成功，生产 `id` 登录、issuer `https://id.aibuzz.cn`、企业开关开启，mock / dev login 关闭。制品校验全通过。
+- 部署：`infra/scripts/deploy-release.sh` 完成，内置 `verify.sh ALL GREEN`；全栈服务 active，nginx 配置、API、字体及 sau-service 健康检查通过。server PID `1187713`、web PID `1187763`，两者 `NRestarts=0`。
+- 实际制品：线上 JAR SHA-256 `b89b3d46a3a123dedab70cde11b4cba584a45d0750e4e36e8fc7b6bf0b4cd7d2` 与发布包一致；线上前端 `BUILD_ID=EhqxSLR9tG1OWrfIopy_U`、app 路由清单哈希与本地主线构建一致。公开新失败界面 chunk `/_next/static/chunks/1121.2e153d5c2be68ad2.js` 返回 200，SHA-256 `0a3f432358c523bb1b07c6b3c3fa74a6979d376bf0bf24a3a053e71bc88aadca` 与本地一致。安装器未更新的旧 `release-id/sha` 标记在核对制品后回填，原值保存在远端该发布目录 `runtime-markers-before.json`。
+- 生产业务接口：`/models` 默认且唯一生图 `GPT Image 2`，30 积分/张；`studio/video-models` 仅 H3；`studio/capabilities.mock=false`。Agnes 三端点和已下架 Seedance 仍禁用。`studio/skills` 中原创创作 v1 生效，analysis 为空、production 含 image/video；Qwen 看图声明保留。对话模板 v1 / seed 内容已刷新，包含 `view_images`、`update_nodes`、原创创作规则；启动日志确认提示词 seed v18 刷新 54 个未改模板。
+- 验收证据：本地 `.studio-e2e/takeover-20261021/` 的 `web-verified.json/log`（140 文件、1089 项、退出 0）、`server-targeted.log`、`server-spec-final.log`、四道编译门日志、`build-release.log`、`deploy-release.log`、`online-api-acceptance.json`、`public-asset-acceptance.json`、`runtime-final.json`（新 server 进程 ERROR=0）。
+
+验收边界：没有重试旧失败任务、没有修改旧账本，没有新做真实生图或视频。生产 Qwen 仅做上述自制图片识别协议验证；本地 UI 走隔离 fixture。生产浏览器直达项目页可正常跳转统一账号登录，本轮没有用户登录会话，未宣称完成生产付费创作闭环。§2.1 的旧产品默认绑定仍未配置，未恢复测试模型。

@@ -4,7 +4,7 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 生产问题五项修复 · 2026-10-20（server + web-aiavatar）
+### Studio 生产问题五项修复 · 2026-10-20（server + web-aiavatar，已生产发布 `20261021-studio-prod-fixes`，main `14260eea`）
 
 原创出图出片有了只含制作阶段的「原创创作」技能（`StudioSkill.firstStage`，执行可从 production 起步，无进行中执行时可换技能）；`create_nodes` 写节点规格、新工具 `update_nodes` 改已有节点（`studio.spec` + 参考连线），生成面板按规格打开、不再静默改时长、描述与设置不一致先询问；动作协议接受 `<studio-actions>` 标签并在流式中隐藏、闭合后续推、模仿工作记录按格式错误、连续两次纠正失败即停；新工具 `view_images` 用对话端点真实看图（本人 key、计入本轮预算）；失败节点显示原因与单一恢复入口，`400 model_delisted` → `VIDEO_MODEL_RETIRED` 且冻结前拒绝。提示词 seed v18。无迁移、无 HTTP 路径变化。发布与线上验收见 [记录](releases/studio-prod-fixes-20261020.md)。
 
