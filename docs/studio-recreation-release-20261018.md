@@ -169,3 +169,31 @@
 发布前核对：用新代码生成的 FFmpeg 命令在生产主机的 `/usr/local/bin/ffmpeg`（2018 静态版）上用测试素材跑通（5.5 秒、720×1280、有声、空隙为黑），临时目录已删。release 树上 web-aiavatar 全量 124 个测试文件 938 条通过；server 的 Studio / 合成测试里 `IpVideoModelChoiceWiringTest`（2 条）与 `StudioAssetCatalogPricingTest`（1 条）在未加本次提交的 `343105e0` 上同样失败，属既有问题，与本次无关。本地真服务端 + 浏览器验收：切开、删段、加文字、导出、刷新后继续编辑、改回一键成片均通过，产物逐帧与编辑器一致。生产上没有用真账号点一遍导出。
 
 回滚：`deploy-release.sh dist/deploy/20261019-studio-canvas-polish web-aiavatar` 与 `deploy-release.sh dist/deploy/20261019-studio-canvas-dialogue server`（server 那个包同时含 web-aiavatar，只传 `server`）。无数据库迁移；已存的 `workDraft.advanced` 在旧前端里会被忽略，不影响一键成片。
+
+## 追加发布 · 2026-10-20 · 两份 Codex 验收报告的修复（server + web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261019-studio-acceptance-fixes` |
+| GIT_SHA | `8b0774e2`（release 分支上 cherry-pick 的 `bbcbf329` ← main `74987f67`、`cf19aed0` ← main `f47bf68a`，加一个只改测试的 `8b0774e2`；main 上 Codex 的看图记忆回退 `c6a0f71ea`、对话 / 执行六项修复 `b7861a4b` 等不带） |
+| 服务 | server + web-aiavatar（admin 等不动；无迁移、无 API 路径变化、无新 FFmpeg 滤镜） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1` |
+| 发布前基线 | server 与 web-aiavatar 都是 `7dbf8028`（`20261019-studio-advanced-editor`；jar sha256 与 web BUILD_ID 对上发布目录） |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；14:32:19 / 14:32:20 CST 重启，server 16.4 秒起来，新进程 0 条 ERROR（同一 grep 在旧进程 11 小时里命中 93 条，确认能命中；重启时那 2 条来自旧进程退出）；`PromptTemplateSeeder` 刷新 54 个未改动的提示词 → `v16-2026-10-19-text-to-canvas-and-check-targets`，`dap.ip_studio_skill_dialogue / plan / check` 三行内容已更新；线上 BUILD_ID `qJuR_AhltgsS8gK8JSxRr`，`/dashboard`、`/projects`、`/create`、`/scenes` 200，公网 chunk 含「助手每轮回复按实际用量扣少量积分」 |
+
+内容：
+- 首页的一句话重新会发出去：默认打开的助手不再把空草稿盖掉首页那句话；没有回合的想法记录不再算「之前的对话」，线程是否为空按它自己的消息判断；发出后去掉 `send=1`。复刻类的一句话改为打开素材清单，不自动发送；首页对话框写明每轮回复会扣少量积分。
+- 技能路由：没有匹配到任何技能的消息不绑定技能（全能创作），只上架一个技能时也一样。
+- 方案：`questions` 接受 `{id,text,defaultAnswer}`；方案需要视频而没有可用视频模型时报 `VIDEO_NOT_CONFIGURED`；检查目标带上被检查的那一步和确认方案里的「改什么 / 保留什么」；执行器把参考视频连到它的分析结果。
+- 对话 SSE 带 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`（Next 代理会把事件流 gzip 住，回合结束了按钮还停在「停止」）。
+- 画布：「你上传的」只给真正上传的文件（`metadata.origin`）；回复上有「放进画布」；旧的 `<tool_call>` 原文折叠；画布按首页那句话或第一条消息命名（用户自己起过名的不动）；助手草稿与所选模型按画布记在本浏览器。
+- 成片：拉片切出来的片段（`sourceRange`）和被分析的参考视频默认不进成片。
+- 关掉画布期间跑完的视频 / 音频只带存储 key，现在直接按 key 签名播放，不用刷新。
+- 提示词 seed 到 v16（对话提示词要求可直接用的文字初稿放进画布，检查提示词按替换对象判定）。
+
+冲突处理：`studio-assistant.tsx` 保留 release 线的模型选择框，只把 `onChange` 换成 `chooseModel`（main 上「固定模型也显示」的那段来自未上线的提交，不带）；`docs/INDEX.md` 保留 release 线的结构，加两行；两份验收报告按 release 线的目录放在 `docs/` 根下（`studio-local-full-e2e-20261019.md`、`studio-user-journey-acceptance-20261019.md`）；`docs/runbooks/studio-e2e-cases.md` 只在 main 上有，不带。新测试「所选模型刷新后还在」最后一句断言发送体里带 `model`，这个字段是 main 的 `b7861a4b` 加的，release 线没有：`8b0774e2` 改为断言本轮上限按记住的那个模型算（8，不是模型一的 21），没有把 `b7861a4b` 的代码带进来。也就是说，release 线上选模型仍然只决定每轮上限的报价，发消息时不带模型，和发布前一样。
+
+门禁（release 树）：`./mvnw compile -q -o` 通过；指定的 13 个 Studio 对话 / 方案 / 执行测试类 101 条全过；`com/aistareco/aep/ipstudio/**` 共 646 条，3 条失败均为既有问题（`IpVideoModelChoiceWiringTest` 2 条、`StudioAssetCatalogPricingTest` 1 条，自 `343105e0` 起就红），5 条跳过；web-aiavatar `typecheck` 通过；`pnpm check:api-contract` OK；web-aiavatar 全量 vitest 127 个文件 962 条：第一遍 2 条失败（模型那条是真失败，已由 `8b0774e2` 修；`studio-attachment-picker` 单独重跑通过），修后第二遍在机器负载约 43 时 `studio-create-home`（4 条）与 `studio-material-library`（1 条）超时失败，两个文件单独重跑 16/16 通过，`studio-assistant` 与 `studio-attachment-picker` 单独重跑 56/56 通过。
+
+**未验证**：真模型下的对话（首页一句话自动发出、「放进画布」、检查口径）没有在线上用真账号走过，生产上没有发起任何付费调用、没有建测试数据；SSE 响应头只能从外部确认接口在线（未登录 401，路由前就鉴权，不能区分路径），头本身由 `StudioDialogueControllerTest` 覆盖，并确认线上 jar 的 `StudioDialogueController` 里有这两个头。回滚：
+`deploy-release.sh dist/deploy/20261019-studio-advanced-editor server,web-aiavatar`（两个服务都回到 `7dbf8028`；旧 jar 启动时看到 seed 版本 v16 ≠ 自己的 v14，会把没人改过的提示词行刷回 v14 文本，不用手动处理；无迁移，无数据要回退）。
