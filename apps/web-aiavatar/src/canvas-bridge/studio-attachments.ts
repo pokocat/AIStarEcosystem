@@ -45,6 +45,6 @@ export async function readAssistantAttachment(file: File, nodes: CanvasNodeData[
   const result = await media(file, type);
   const node = attachmentNode(type === 'image' ? { kind: 'image', dataUrl: result.url, storageKey: result.key, title: result.fileName } :
     { kind: type, url: result.url, storageKey: result.key, title: result.fileName, width: result.width, height: result.height, mimeType: result.mimeType }, nodes);
-  return { ...node, metadata: { ...node.metadata, mimeType: result.mimeType, bytes: result.bytes,
+  return { ...node, metadata: { ...node.metadata, origin: 'upload' as const, mimeType: result.mimeType, bytes: result.bytes,
     naturalWidth: result.width, naturalHeight: result.height, durationMs: result.durationSec ? Math.round(result.durationSec * 1000) : undefined } };
 }

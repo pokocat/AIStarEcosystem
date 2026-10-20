@@ -88,14 +88,22 @@ class StudioDialogueRoutingTest {
         return mapper.readTree(run.getValue().getInputJson()).path("_exec").path("skill").path("key").asText(null);
     }
 
-    @Test void theOnlyActiveSkillIsBoundOnTheFirstTurn() throws Exception {
+    @Test void theOnlyActiveSkillIsNotBoundToAMessageThatDoesNotAskForIt() throws Exception {
+        // Local e2e 2026-10-19: with only 参考视频复刻 on the shelf, 「生成商品宣传图」 was bound to it and kept it.
         when(catalog.available()).thenReturn(List.of(video));
-        service.post("u1", "P1", "IPT-P1", message("c-1", "你好", null, null));
+        service.post("u1", "P1", "IPT-P1", message("c-1", "生成一张商品宣传图，9:16", null, null));
+        assertNull(thread.getSkillKey(), "a message that matches no skill stays in 全能创作");
+        assertNull(routedSkill());
+        assertNull(service.toDto(thread).skillKey());
+    }
+
+    @Test void theOnlyActiveSkillIsBoundWhenTheFirstMessageAsksForIt() throws Exception {
+        when(catalog.available()).thenReturn(List.of(video));
+        service.post("u1", "P1", "IPT-P1", message("c-1b", "复刻这条视频", List.of("v1"), null));
         assertEquals("video-recreation", thread.getSkillKey());
         assertEquals("analysis", thread.getStage());
         assertEquals("video-recreation", routedSkill());
         assertEquals("video-recreation", service.toDto(thread).skillKey(), "the routing result is on the thread state");
-        verify(projects, times(1)).readDoc(any()); // the context check only: with one skill there is nothing to route
     }
 
     @Test void anAttachedVideoRoutesToTheVideoSkill() throws Exception {
@@ -111,9 +119,17 @@ class StudioDialogueRoutingTest {
         assertEquals("script-rewrite", thread.getSkillKey());
     }
 
-    @Test void anAmbiguousFirstMessageWithoutADefaultAsksWhichSkill() {
+    @Test void aGreetingMatchesNoSkillAndIsAnsweredWithoutOne() throws Exception {
         when(catalog.available()).thenReturn(List.of(video, script));
-        var e = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", message("c-4", "你好", null, null)));
+        service.post("u1", "P1", "IPT-P1", message("c-4", "你好", null, null));
+        assertNull(thread.getSkillKey());
+        assertNull(routedSkill());
+    }
+
+    @Test void aTieWithoutADefaultAsksWhichSkill() throws Exception {
+        var cut = skill("clip-cut", "triggers:\n  media: [video]\n  keywords: [剪]");
+        when(catalog.available()).thenReturn(List.of(cut, video));
+        var e = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", message("c-4b", "看看这条", List.of("v1"), null)));
         assertEquals("STUDIO_SKILL_REQUIRED", e.getCode());
         assertEquals(400, e.getStatus().value());
         assertNull(thread.getSkillKey());

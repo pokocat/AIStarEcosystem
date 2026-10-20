@@ -116,11 +116,14 @@ class StudioPlanValidatorSkillTest {
         assertNotEquals(base,StudioPlanValidator.fingerprint(repriced));
     }
 
-    @Test void questionsMayBeStringsOrQuestionAndDefaultObjectsAndBothBecomeOneLine() throws Exception {
+    @Test void questionsMayBeStringsOrObjectsInTheCommonSpellingsAndAllBecomeOneLine() throws Exception {
         var raw=analysis();
         ((ObjectNode)raw).set("questions",om.readTree("[\"是否保留原声？默认保留\",{\"id\":\"q2\",\"question\":\"主角是成人吗？\",\"default\":\"看分析结果\"},{\"question\":\"没有默认的问题\"}]"));
         var questions=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context).path("questions");
         assertEquals("[\"是否保留原声？默认保留\",\"主角是成人吗？（默认：看分析结果）\",\"没有默认的问题\"]",questions.toString());
+        // Agnes (local e2e 2026-10-19) wrote {id, text, defaultAnswer}; the whole paid plan used to be rejected over it.
+        var agnes=analysis();((ObjectNode)agnes).set("questions",om.readTree("[{\"id\":\"q1\",\"text\":\"新视频保留原片配乐吗？\",\"defaultAnswer\":\"保留\"}]"));
+        assertEquals("[\"新视频保留原片配乐吗？（默认：保留）\"]",StudioPlanValidator.validateSkillPlan(agnes,rules(),"analysis",context).path("questions").toString());
         var bad=analysis();((ObjectNode)bad).set("questions",om.readTree("[{\"default\":\"没有问题文字\"}]"));
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(bad,rules(),"analysis",context));
         var tooMany=analysis();((ObjectNode)tooMany).set("questions",om.readTree("[\"1\",\"2\",\"3\",\"4\",\"5\"]"));

@@ -353,25 +353,30 @@ public final class StudioPlanValidator {
         return value.asText();
     }
     /**
-     * Questions are display text only. Asked for "a default for each question", models often answer with
-     * {@code {question, default}} objects instead of strings; both spellings become the same single line, nothing else is read.
+     * Questions are display text only. Asked for "a default for each question", models often answer with objects instead of
+     * strings, and the field names vary: {@code {question, default}} (Qwen), {@code {id, text, defaultAnswer}} (Agnes,
+     * local e2e 2026-10-19 — the whole plan was rejected over it). Every spelling becomes the same single line; ids and any
+     * other field are never read.
      */
+    private static final List<String> QUESTION_TEXT=List.of("question","text","title","content");
+    private static final List<String> QUESTION_DEFAULT=List.of("default","defaultAnswer","default_answer","defaultValue","suggestion");
     private static ArrayNode questions(JsonNode value) {
         ArrayNode out=OM.createArrayNode();
         if(value.isMissingNode()||value.isNull())return out;
         if(!value.isArray()||value.size()>4)fail();
         for(JsonNode item:value) {
-            String text;
-            if(item.isTextual())text=item.asText();
-            else if(item.isObject()&&item.path("question").isTextual()) {
-                text=item.path("question").asText();
-                JsonNode fallback=item.path("default");
-                if(fallback.isTextual()&&!fallback.asText().isBlank())text=text+"（默认："+fallback.asText().strip()+"）";
-            } else {fail();return out;}
+            String text=item.isTextual()?item.asText():item.isObject()?firstText(item,QUESTION_TEXT):null;
+            if(text==null){fail();return out;}
+            String fallback=item.isObject()?firstText(item,QUESTION_DEFAULT):null;
+            if(fallback!=null&&!fallback.isBlank())text=text+"（默认："+fallback.strip()+"）";
             if(text.isBlank()||text.length()>1000)fail();
             out.add(text);
         }
         return out;
+    }
+    private static String firstText(JsonNode item,List<String> fields) {
+        for(String field:fields)if(item.path(field).isTextual())return item.path(field).asText();
+        return null;
     }
     private static ArrayNode strings(JsonNode value,int maxItems,int maxLength) {
         ArrayNode out=OM.createArrayNode();

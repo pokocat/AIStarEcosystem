@@ -27,6 +27,26 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-19 · Codex 本地全量验收（`docs/audits/studio-local-full-e2e-20261019.md`）复核与修复（本地，未发布）
+
+- [x] ~~首页带话进画布不自动发送~~ **2026-10-19 已修**：助手默认打开后，首页那句话晚一步到达，`studio-assistant.tsx` 把空输入框当草稿存下又立刻恢复，盖掉了它。改为线程读完且为空时再填入（`briefApplied`），发出后去掉地址里的 `send=1`。用例 `the homepage brief still goes out when it reaches a panel that was already open`；演示模式实测首页 → 画布只发一次。
+- [x] ~~普通创作被绑成「参考视频复刻」~~ **2026-10-19 已修（含 server）**：`StudioSkillRouter` 去掉「只有一个技能就用它」，无命中不绑技能（全能创作），`default` 只用于平手；`BUSINESS_RULES` §19 同步。用例 `StudioSkillRouterTest` / `StudioDialogueRoutingTest`。
+- [x] ~~复刻分析方案因 questions 写法被整份拒绝~~ **2026-10-19 已修（含 server + 提示词）**：`StudioPlanValidator.questions` 认 `{id,text,defaultAnswer}` 等常见写法；没有可用视频模型时 `ProposePlanTool` 回 `VIDEO_NOT_CONFIGURED` 并让模型如实告诉用户（此前编出 `sora-2`）；方案提示词把 questions 写成字符串，对话提示词不在正文写素材编号、不把没说过的金额说成用户说的（示例里的「上限 300 积分」曾被当成用户原话）；`SEED_VERSION` → v15。
+- [x] ~~回复已结算、页面一直停在「停止」~~ **2026-10-19 已修（server）**：Next 的代理对 `text/event-stream` 做 gzip，压缩缓冲把事件攒到连接结束（30 分钟）才吐出。事件流响应改带 `Cache-Control: no-cache, no-transform` 与 `X-Accel-Buffering: no`（`StudioDialogueController#events`）。经真实 Next 代理实测事件即时到达；生产 nginx 直连后端，也加了禁止缓冲。
+- [x] ~~素材库里的 AI 生成素材、裁剪图标成「你上传的」~~ **2026-10-19 已修**：上传入口写 `metadata.origin='upload'`，裁剪 / 拆图写 `'derived'`，判断收在 `canvas-bridge/studio-node-origin.ts`；老节点没有记号时只认存储在上传区（`ipstudio_source/`）且不属于任何 Studio 来源的。
+- [x] ~~未发送草稿刷新丢失 / 选的对话模型刷新回默认~~ **2026-10-19 已修**：`canvas-bridge/studio-assistant-memory.ts`，按画布存在本浏览器（只是便利，不是真值）。第一版在卸载时写草稿，开发模式 StrictMode 双跑时把刚恢复的草稿抹掉了，改为初始化读取、改动即写回；补了 StrictMode 用例。
+- [ ] **两个模型都显示「未命名模型」**（判定：配置问题，不改代码）：`PRODUCT.md` 规定未配 `modelAlias` 就显示「未命名模型」，本地验收库的端点都没配别名。可做的防呆：后台在「用户可选」的场景候选缺别名时提示；上线前核对生产各候选端点的别名是否齐全。
+- [ ] **复刻端到端仍未验收**：本地 Agnes 视频候选没有制作合同，视频生成显示「尚未配置模型」；修完上面几条后需要配好视频模型，从首页一句复刻请求重跑「分析报价 → 确认 → 生成 / 检查 → 成片 → 刷新恢复 → 账本」。
+- [x] ~~**同日另一份用户视角验收**（`docs/audits/studio-user-journey-acceptance-20261019.md`）的剩余条目~~ **2026-10-19 已修（本地，含 server + 提示词 v16）**：
+  - 「写一段文字」只回在对话里：对话提示词要求可直接用的文字用 `create_nodes` 放进画布；回复下面加「放进画布」（不依赖模型调用工具，同内容不重复建）。
+  - 复刻检查把与方案冲突的画面判通过：执行器把「被检查那一步的指令 + 已确认方案的改变 / 保留」写进检查目标（`StudioPlanSteps.checkTarget`），检查提示词要求以替换对象为准、依据与结论不许矛盾。**真模型未重测**。
+  - 成片默认勾上原片：拉片片段（`studio.sourceRange`）与拉片分析的参考原片（执行器出拉片节点时连过去；手动解析靠 `recreation.sourceNodeId`）默认不勾。已有画布上执行器早先建的拉片节点没有那条连线，参考原片仍会勾上，片段不会。
+  - 首页「复刻一条短视频」直接发出收费首轮：复刻类想法（`studioBriefNeedsReference`）不自动发，进画布打开素材清单、保留原话；首页对话框说明回复按用量扣少量积分。
+  - 历史回复裸露 `<tool_call>`：显示时折叠成「这一轮的操作原文」（`studio-reply-actions.ts`），原文保留。
+  - 画布同名：首页想法直接当画布名；没起过名的画布在第一条消息时按消息起名，用户改过的不动。
+- [ ] **上面两轮修复都要真模型复验**：Agnes / 线上对话端点上看一次「写一段文字」是否自己建了文字节点、复刻检查遇到旧主体是否判 fail；配好视频模型后从首页一句复刻请求走完整链。
+- [ ] `ForgeController` 的两个 SSE 接口（形象锻造，v0.60 已下线入口）没有加 `no-transform`；若重新启用，照对话事件流补上。
+
 ### 2026-10-19 · 成片编辑器改版后续（前端已改，本地未发布）
 
 - [x] ~~**服务端把「配音过长 / 字幕超时」挪到拼接之前判**~~ **2026-10-19 完成**：`DramaAssembleService.assembleKeys` 在下载完各段、拼接之前调 `StudioPackagingService.precheck`（各段时长之和 + 拼接容差），与 `decorate` 共用 `checkCaptions` / `checkSpeech`，配音只下载一次；测试 `DramaAssembleStudioPrecheckTest`。原描述：`DramaAssembleService.assembleKeys` 先下载、拼接（可能整段重编码）完，`StudioPackagingService.decorate` 才判 `STUDIO_SPEECH_TOO_LONG` / 「字幕时间超过成片时长」，用户白等一次。各段 `probeMedia` 的时长之和在拼接前就有了，可以先判再拼。前端（`studio-work-clips.ts` 的 `studioCaptionProblem` 与 `StudioWorkEditor` 的配音判定）已按同一规则提前拦，服务端仍是最终裁判。

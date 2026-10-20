@@ -89,6 +89,8 @@
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
 | [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（last-reviewed 2026-10-18） |
 | [`docs/studio-recreation-release-20261018.md`](studio-recreation-release-20261018.md) | 全能创作复刻 S1/S2/S3 生产发布记录 | 发布 `20261018-studio-recreation-s1s3`（c6f40808）：基线核对与合并、V60–V63 迁移、技能 seed、verify 全绿、上线后配置项与未验证范围（last-reviewed 2026-10-18） |
+| [`docs/studio-local-full-e2e-20261019.md`](studio-local-full-e2e-20261019.md) | Codex 本地全量端到端验收 | 对话、画布、成片、限流及复核修复结论：8 条中 7 条修复、1 条为别名配置（last-reviewed 2026-10-19） |
+| [`docs/studio-user-journey-acceptance-20261019.md`](studio-user-journey-acceptance-20261019.md) | 线上只读的用户视角验收 | 文字落画布、复刻检查口径、成片默认片段等待办（last-reviewed 2026-10-19，后续见 TODO） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [`docs/ip-studio-ui-audit.md`](ip-studio-ui-audit.md) | **Studio 界面与交互审查** | impeccable审查、画布区域分离、统一人物选择与响应式验收；本地未发布（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { StrictMode, forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client';
@@ -9,6 +9,7 @@ import { formatDateTime } from '@/lib/datetime';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import { StudioAssistant } from './studio-assistant';
+import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { STUDIO_CHECK_COMMAND } from '@/canvas-bridge/studio-plan-execution';
 
 const api = vi.hoisted(() => ({
@@ -746,9 +747,9 @@ test('the checklist can be dismissed and the plain composer rules take over', as
 
 test('a dialogue-first start sends the prefilled brief once the thread is ready, exactly once, and never into a thread that already talked', async () => {
   const onAutoSent = vi.fn();
-  await ready(<Host initial={[character]} initialPrompt="照这条视频的拍法，把商品换成我的" autoSend onAutoSent={onAutoSent}/>);
+  await ready(<Host initial={[character]} initialPrompt="给星桥保温杯写三句广告语" autoSend onAutoSent={onAutoSent}/>);
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '照这条视频的拍法，把商品换成我的' });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '给星桥保温杯写三句广告语' });
   expect(onAutoSent).toHaveBeenCalled();
   expect(composer().value).toBe('');
   cleanup(); vi.clearAllMocks();
@@ -757,6 +758,142 @@ test('a dialogue-first start sends the prefilled brief once the thread is ready,
   await ready(<Host initial={[character]} initialPrompt="再来一次" autoSend onAutoSent={onAutoSent}/>);
   await screen.findByText('之前聊过');
   expect(api.post).not.toHaveBeenCalled();
+});
+
+// Local e2e 2026-10-19: the assistant opens by default, so the home page brief arrives at a panel that is already open.
+// The panel used to stash its (empty) composer for that canvas and restore it at once, and the brief never got in.
+test('the homepage brief still goes out when it reaches a panel that was already open', async () => {
+  const brief = { id: 'p-brief', type: 'text', title: '创作想法', position: { x: 0, y: 0 }, width: 480, height: 260,
+    metadata: { content: '做一张 9:16 宣传图', prompt: '做一张 9:16 宣传图', studioStart: 'assistant', studio: { kind: 'assistant', conversation: { mode: 'general', turns: [] } } } } as CanvasNodeData;
+  const onAutoSent = vi.fn();
+  const view = await ready(<Host initial={[character]} conversations={[brief]}/>);
+  expect(composer().value).toBe('');
+  view.rerender(<Host initial={[character]} conversations={[brief]} initialNodeId="p-brief" initialPrompt="做一张 9:16 宣传图" autoSend onAutoSent={onAutoSent}/>);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '做一张 9:16 宣传图' });
+  expect(onAutoSent).toHaveBeenCalled();
+});
+
+test('without auto-send the brief fills the composer of an empty thread and leaves a typed draft alone', async () => {
+  const view = await ready(<Host/>);
+  view.rerender(<Host initialNodeId="p-brief" initialPrompt="首页写的那句"/>);
+  await waitFor(() => expect(composer().value).toBe('首页写的那句'));
+  expect(api.post).not.toHaveBeenCalled();
+  cleanup();
+  localStorage.setItem('studio-assistant:draft:p', JSON.stringify({ text: '我自己改过的', pinnedIds: [], attachmentIds: [] }));
+  await ready(<Host initialNodeId="p-brief" initialPrompt="首页写的那句"/>);
+  await waitFor(() => expect(composer().value).toBe('我自己改过的'));
+});
+
+test('an unsent draft and its references survive a refresh, and a sent message does not come back', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '写到一半的话' } });
+  act(() => { window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'assistant', nodeId: 't' } })); });
+  await screen.findByRole('button', { name: '移除引用 台词 B' });
+  cleanup();
+  await ready();
+  await waitFor(() => expect(composer().value).toBe('写到一半的话'));
+  expect(screen.getByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '写到一半的话', pinnedNodeIds: ['t'] });
+  cleanup();
+  await ready();
+  expect(composer().value).toBe('');
+});
+
+// Browser walkthrough 2026-10-19 (dev runs StrictMode): the panel wrote its draft from an unmount, the double-run unmount
+// saw the composer before the restored draft reached state, and wiped the draft it had just restored.
+test('under StrictMode a saved draft is restored and stays saved', async () => {
+  localStorage.setItem('studio-assistant:draft:p', JSON.stringify({ text: '刷新前写的', pinnedIds: ['t'], attachmentIds: [] }));
+  await ready(<StrictMode><Host/></StrictMode>);
+  await waitFor(() => expect(composer().value).toBe('刷新前写的'));
+  expect(screen.getByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
+  expect(JSON.parse(localStorage.getItem('studio-assistant:draft:p')!)).toMatchObject({ text: '刷新前写的', pinnedIds: ['t'] });
+  fireEvent.change(composer(), { target: { value: '刷新前写的，又补了一句' } });
+  expect(JSON.parse(localStorage.getItem('studio-assistant:draft:p')!).text).toBe('刷新前写的，又补了一句');
+});
+
+test('a restored draft drops references to nodes that left the canvas', async () => {
+  localStorage.setItem('studio-assistant:draft:p', JSON.stringify({ text: '继续', pinnedIds: ['gone', 't'], attachmentIds: ['gone-too'] }));
+  await ready();
+  await waitFor(() => expect(composer().value).toBe('继续'));
+  expect(screen.getByRole('button', { name: '移除引用 台词 B' })).toBeDefined();
+  expect(sendButton().disabled).toBe(false);
+});
+
+test('the chosen reply model is remembered for this canvas after a refresh', async () => {
+  await ready();
+  fireEvent.change(screen.getByRole('combobox', { name: '助手模型' }), { target: { value: 'two' } });
+  cleanup();
+  await ready();
+  expect((screen.getByRole('combobox', { name: '助手模型' }) as HTMLSelectElement).value).toBe('two');
+  fireEvent.change(composer(), { target: { value: '用便宜的那个回答' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 8 });
+});
+
+const longReply = '末世英雄·林烬：三十岁出头，左眼有一道旧疤，穿改装过的防化服，背一把自制弩。外冷内热，嘴上不饶人，遇到孩子会先把干粮分出去。';
+const replied = (text: string): StudioDialogueState => ({ thread: { ...thread, lastSeq: 2 }, latestSeq: 2, messages: [
+  { id: 'u0', threadId: 'th', seq: 1, role: 'user', status: 'done', text: '写一个末世英雄的角色描述', blocks: [], createdAt: at },
+  { id: 'a0', threadId: 'th', seq: 2, role: 'assistant', turnId: 't0', status: 'done', text, blocks: [], createdAt: at },
+] } as StudioDialogueState);
+
+// Production 2026-10-19: 「写一段文字」 promises the draft lands on the canvas; a paid character description stayed in the chat.
+test('「放进画布」 turns a finished reply into a text node once, and shows the existing one after that', async () => {
+  api.getConversation.mockResolvedValue(replied(longReply));
+  let latest: CanvasNodeData[] = [];
+  await ready(<Host initial={[character]} onCanvas={(nodes: CanvasNodeData[]) => { latest = nodes; }}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '放进画布' }));
+  await waitFor(() => expect(latest.some(n => n.type === 'text' && n.metadata?.content === longReply)).toBe(true));
+  expect(api.save).toHaveBeenCalled();
+  expect(latest.find(n => n.metadata?.content === longReply)?.title).toBe('末世英雄·林烬');
+  fireEvent.click(screen.getByRole('button', { name: '放进画布' }));
+  await waitFor(() => expect(api.success).toHaveBeenLastCalledWith('画布上已经有这段文字'));
+  expect(latest.filter(n => n.metadata?.content === longReply)).toHaveLength(1);
+});
+
+test('older replies show their raw action blocks folded, not as the assistant talking', async () => {
+  api.getConversation.mockResolvedValue(replied('我先看看画布。\n<tool_call>{"tool":"read_canvas","args":{}}</tool_call>'));
+  await ready();
+  const reply = await screen.findByText('我先看看画布。');
+  expect(reply.textContent).not.toContain('<tool_call>');
+  const raw = screen.getByText('这一轮的操作原文').closest('details') as HTMLDetailsElement;
+  expect(raw.open).toBe(false);
+  expect(raw.textContent).toContain('read_canvas');
+  expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
+});
+
+test('a homepage brief that copies a reference video opens the checklist and waits instead of sending', async () => {
+  const view = await ready(<Host initial={[character]}/>);
+  view.rerender(<Host initial={[character]} initialNodeId="p-brief" initialPrompt="照这条视频的拍法，把里面的商品换成我的" autoSend/>);
+  expect(await screen.findByLabelText('复刻需要的素材')).toBeDefined();
+  expect(composer().value).toBe('照这条视频的拍法，把里面的商品换成我的');
+  expect(sendButton().disabled).toBe(true);
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+test('the first message names a canvas nobody named; a name the user gave is kept', async () => {
+  useCanvasStore.setState({ projects: [{ id: 'p', title: '全能创作 · 新画布', nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } as never] });
+  await ready();
+  fireEvent.change(composer(), { target: { value: '给星桥保温杯写一句广告语' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(useCanvasStore.getState().projects[0].title).toBe('给星桥保温杯写一句广告语');
+  cleanup(); vi.clearAllMocks(); streams = [];
+  api.getConversation.mockResolvedValue(emptyState); api.save.mockResolvedValue(undefined);
+  api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
+  api.post.mockResolvedValue({ messageId: 'u1', turnId: 't1', runId: 'r1', queueState: 'accepted' });
+  api.skills.mockResolvedValue([]);
+  useCanvasStore.setState({ projects: [{ id: 'p', title: '我的保温杯广告', nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } as never] });
+  await ready();
+  fireEvent.change(composer(), { target: { value: '再来一句' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(useCanvasStore.getState().projects[0].title).toBe('我的保温杯广告');
+  useCanvasStore.setState({ projects: [] });
 });
 
 test('nodes the assistant creates are brought into view and the first time shows a one-time hint about the canvas', async () => {

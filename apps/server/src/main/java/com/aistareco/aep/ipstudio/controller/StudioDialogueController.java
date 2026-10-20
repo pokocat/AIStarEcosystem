@@ -6,6 +6,7 @@ import com.aistareco.aep.ipstudio.dto.StudioDialogueDtos.*;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import jakarta.servlet.http.HttpServletResponse;
 import java.security.Principal;
 import java.util.List;
 
@@ -42,7 +43,13 @@ public class StudioDialogueController {
     @GetMapping("/conversations/{threadId}/events")
     public SseEmitter events(Principal principal, @PathVariable String id, @PathVariable String threadId,
                              @RequestParam(required = false) Long afterSeq,
-                             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId) {
+                             @RequestHeader(value = "Last-Event-ID", required = false) String lastEventId,
+                             HttpServletResponse response) {
+        // Proxies must pass each event through as it is written. Next's rewrite proxy gzips text/event-stream unless the
+        // response says no-transform, and gzip holds small events until the stream closes (30 minutes), so a finished turn
+        // stayed on 「停止」 until the page was refreshed (local e2e 2026-10-19). nginx buffers proxied responses the same way.
+        response.setHeader("Cache-Control", "no-cache, no-transform");
+        response.setHeader("X-Accel-Buffering", "no");
         return stream.open(principal.getName(), id, threadId, afterSeq, lastEventId);
     }
 

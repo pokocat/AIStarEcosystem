@@ -135,6 +135,7 @@ class StudioPlanExecutorTest {
 
     @Test void budgetExactlyEnoughSubmitsAndRepeatedWakesNeverDoubleSubmit() throws Exception {
         execution("running",45,videoStep("v1",40),checkStep("c1","v1",5));
+        dtos.put("IPR-plan",dto("IPR-plan","done",0,om.readTree("{\"plan\":{\"recommendedApproachId\":\"a\",\"approaches\":[{\"id\":\"a\",\"change\":[\"三位老人换成三个婴儿\"],\"preserve\":[\"客厅场景\"]}]}}")));
         executor.advance("PEX-1");
         assertEquals(1,submitted.size());
         var request=submitted.get(0);
@@ -148,6 +149,9 @@ class StudioPlanExecutorTest {
         assertEquals(2,submitted.size(),"40 spent + 0 in flight + 5 = 45 ≤ 45");
         assertEquals("check",submitted.get(1).operation());assertEquals("IPR-PEX-1-p-v1",submitted.get(1).check().targetRunId());
         assertEquals("v1.mp4",submitted.get(1).check().targetStorageKey());
+        // The checker is told who is replaced by whom (production 2026-10-19: three adult men still passed 「no old subject」).
+        String target=submitted.get(1).prompt();
+        assertTrue(target.contains("这一段应当呈现：出片")&&target.contains("三位老人换成三个婴儿")&&target.contains("客厅场景"),target);
         assertTrue(published.contains("node.upsert"));assertTrue(published.contains("budget.update"));
         assertNull(row.getLeaseOwner(),"lease released after each advance");
     }
@@ -274,6 +278,28 @@ class StudioPlanExecutorTest {
         assertEquals("片段 v1 · 检查",check.path("node").path("title").asText());
         assertEquals("PEX-1-p-v1",check.path("connection").path("fromNodeId").asText(),"connected from the inspected video");
         assertEquals("IPR-PEX-1-p-c1",check.path("node").path("metadata").path("studio").path("execution").path("runId").asText());
+    }
+
+    @Test void aFilmStudyLinksTheReferenceFilmToItsAnalysisAndMarksEachCutAsSourceMaterial() throws Exception {
+        var step=om.createObjectNode().put("id","r1").put("stage","production").put("title","拉片").put("operation","recreation").put("execution","auto")
+                .put("status","pending").put("attempt",1).put("quotedCost",5).put("maxCost",5);
+        step.putArray("dependsOn");step.putArray("runIds");
+        step.putObject("definition").put("id","r1").put("operation","recreation").put("prompt","分段拉片").putObject("settings").put("operation","recreation")
+                .put("sourceNodeId","vid-ref").put("mode","segments").put("maxSegmentSec","model").put("videoModel","ep-h3");
+        execution("running",100,step);
+        executor.advance("PEX-1");
+        dtos.put("IPR-PEX-1-p-r1",dto("IPR-PEX-1-p-r1","done",5,om.readTree(
+                "{\"text\":\"分析\",\"filmStudy\":{\"segments\":[{\"no\":1,\"title\":\"开场\",\"storageKey\":\"cut1.mp4\",\"startSec\":0,\"endSec\":5}]}}")));
+        executor.advance("PEX-1");
+        JsonNode link=null,cut=null;
+        for(int i=0;i<published.size();i++)if("node.upsert".equals(published.get(i))) {
+            JsonNode data=publishedData.get(i);
+            if("vid-ref".equals(data.path("connection").path("fromNodeId").asText()))link=data;
+            if(data.path("node").path("metadata").path("studio").has("sourceRange"))cut=data;
+        }
+        assertNotNull(link,"the reference film is linked to its analysis");
+        assertEquals("PEX-1-p-r1",link.path("connection").path("toNodeId").asText());
+        assertEquals("cut1.mp4",cut.path("node").path("metadata").path("studio").path("sourceRange").path("storageKey").asText());
     }
 
     // ── D03: steering at the safe boundary ──────────────────────────────────────────────────────────────────

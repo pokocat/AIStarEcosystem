@@ -58,7 +58,8 @@ export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilitie
    try {
      const media=await importStudioMedia(projectId,file,'video');
      if(!alive.current)return;
-     const node=attachmentNode({kind:'video',url:media.url,storageKey:media.key,width:media.width,height:media.height,title:file.name.replace(/\.[^.]+$/,'')},currentNodes());
+     const picked=attachmentNode({kind:'video',url:media.url,storageKey:media.key,width:media.width,height:media.height,title:file.name.replace(/\.[^.]+$/,'')},currentNodes());
+     const node:CanvasNodeData={...picked,metadata:{...picked.metadata,origin:picked.metadata?.origin??'upload'}};
      imported.current=node.id;setNodes(list=>list.some(n=>n.id===node.id)?list:[...list,placeStudioNode(node,list)]);setSourceId(node.id);
      await save();imported.current=undefined;onFocus(node.id);
    }catch(e){if(alive.current)setError(e);}finally{guard.current=false;if(alive.current)setImporting(false);}

@@ -1,6 +1,6 @@
 import {beforeEach,expect,test,vi} from 'vitest';
 import type {IpProject} from '@ai-star-eco/types';
-import {createStudioEntry,parseStudioEntry,StudioEntrySaveError,studioEntryHref} from './studio-entry';
+import {createStudioEntry,parseStudioEntry,StudioEntrySaveError,studioBriefNeedsReference,studioCanvasHasDefaultTitle,studioEntryHref,studioTitleFromBrief} from './studio-entry';
 const api=vi.hoisted(()=>({createProject:vi.fn(),updateProject:vi.fn(),getProject:vi.fn()}));
 vi.mock('./api',()=>({IpStudioApi:api}));
 const empty:IpProject={id:'p',name:'新画布',status:'draft',createdAt:'',updatedAt:'',docVersion:'v1',doc:{nodes:[],connections:[],viewport:{x:0,y:0,k:1}},runs:{},runsById:{}};
@@ -36,4 +36,20 @@ test.each(['assistant','director'] as const)('a %s brief is saved in assistant h
   expect(saved.doc.assistantConversations![0].metadata).toMatchObject({prompt:'角色的想法',studioStart:entry,studio:{kind:'assistant',conversation:{turns:[]}}});
   api.getProject.mockResolvedValue(saved);api.updateProject.mockClear();
   expect(await createStudioEntry(entry,'角色的想法',empty)).toBe(saved);expect(api.updateProject).not.toHaveBeenCalled();
+});
+// Production 2026-10-19: three canvases in a row were all 「全能创作 · 新画布」.
+test('a brief names the new canvas; without one the default name stays and only default names count as unnamed',async()=>{
+  await createStudioEntry('assistant','请帮我为星桥保温杯做一张 9:16 宣传图，先说方案');
+  expect(api.createProject).toHaveBeenLastCalledWith({name:'为星桥保温杯做一张 9:16 宣传图'});
+  await createStudioEntry('assistant');
+  expect(api.createProject).toHaveBeenLastCalledWith({name:'全能创作 · 新画布'});
+  expect(studioTitleFromBrief('给一个超级超级超级超级长的商品名称写一句广告语吧')).toBe('给一个超级超级超级超级长的商品名称写一句…');
+  expect(studioTitleFromBrief('照 @原片 的拍法，把商品换成 [你的商品图]')).toBe('照  的拍法');
+  expect(studioTitleFromBrief('？')).toBeUndefined();
+  for(const t of ['全能创作 · 新画布','空白画布 · 新画布','未命名画布',''])expect(studioCanvasHasDefaultTitle(t)).toBe(true);
+  expect(studioCanvasHasDefaultTitle('我的保温杯广告')).toBe(false);
+});
+test('a brief that copies a reference video waits for the video instead of being sent at once',()=>{
+  for(const t of ['照这条视频的拍法，把里面的商品换成我的','复刻一下这个','帮我做同款','先拉片'])expect(studioBriefNeedsReference(t)).toBe(true);
+  for(const t of ['做一张宣传图','写一段广告语','设计一个 IP 形象'])expect(studioBriefNeedsReference(t)).toBe(false);
 });

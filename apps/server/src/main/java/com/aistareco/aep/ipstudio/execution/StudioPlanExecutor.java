@@ -485,11 +485,23 @@ public class StudioPlanExecutor {
             check=new CheckSettings(targetRun,key,ids);
             step.put("checkTargetRunId",targetRun);
         }
+        JsonNode compiled=definition;
+        if(check!=null) {
+            // The checker is told who is replaced by whom: the confirmed approach and what the checked step was asked to show.
+            var target=PlanState.step(state,stage,definition.path("settings").path("targetStepId").asText());
+            JsonNode plan=e.getPlanRunId()==null?null:outputs.run(e.getOwnerUserId(),e.getProjectId(),e.getPlanRunId())
+                    .map(dto->dto.output()==null?null:dto.output().path("plan")).filter(JsonNode::isObject).orElse(null);
+            String approach=PlanState.parse(mapper,e.getBudgetJson()).path(stage).path("approachId")
+                    .asText(plan==null?"":plan.path("confirmedApproachId").asText(plan.path("recommendedApproachId").asText("")));
+            ObjectNode withTarget=definition.deepCopy();
+            withTarget.put("prompt",StudioPlanSteps.checkTarget(plan,approach,target==null?null:target.path("definition"),definition.path("prompt").asText("")));
+            compiled=withTarget;
+        }
         List<String> canvas=PlanState.canvasContext(state);
         BillingSelection billing=billing(e);
         String nodeId=StudioPlanExecutionIds.nodeId(e.getId(),stage,step.path("id").asText());
         var binding=new StudioPlanSteps.Binding(requestId,nodeId,step.path("quotedCost").asLong(),billing,e.getId(),e.getSkillKey(),e.getSkillVersion(),stage,canvas,check);
-        return StudioPlanSteps.request(definition,keys,quoter.modes(),binding);
+        return StudioPlanSteps.request(compiled,keys,quoter.modes(),binding);
     }
 
     private String stepKey(IpPlanExecution e,ObjectNode state,String stage,String stepId,Integer candidate) {
@@ -560,6 +572,17 @@ public class StudioPlanExecutor {
             var connect=mapper.createObjectNode().put("nodeId",nodeId).put("op","connect").put("executionId",e.getId()).put("stepId",stepId).put("runId",run.id());
             connect.putObject("connection").put("fromNodeId",StudioPlanExecutionIds.nodeId(e.getId(),stage,dependency.asText())).put("toNodeId",nodeId);
             out.add(new Event("node.upsert",connect));
+        }
+        if("recreation".equals(operation)) {
+            // The reference film links to its analysis, so the final cut can tell it is source material and leave it out by
+            // default (production 2026-10-19: the reference and its cuts were ticked next to the new clips). A reference no
+            // longer on the canvas is dropped by the client projection.
+            String source=step.path("definition").path("settings").path("sourceNodeId").asText("");
+            if(!source.isEmpty()) {
+                var link=mapper.createObjectNode().put("nodeId",nodeId).put("op","connect").put("executionId",e.getId()).put("stepId",stepId).put("runId",run.id());
+                link.putObject("connection").put("fromNodeId",source).put("toNodeId",nodeId);
+                out.add(new Event("node.upsert",link));
+            }
         }
         if("recreation".equals(operation))for(JsonNode segment:output.path("filmStudy").path("segments")) {
             if(!segment.hasNonNull("storageKey"))continue;

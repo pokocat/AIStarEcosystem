@@ -248,7 +248,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         } else if (thread.getSkillKey() != null) {
             skill = catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
         } else {
-            skill = routeSkill(userId, thread, inputs); // S3: one active skill → it; several → triggers / default / 400 STUDIO_SKILL_REQUIRED
+            skill = routeSkill(userId, thread, inputs); // S3: triggers → the best match; no match → none; a tie → default / 400 STUDIO_SKILL_REQUIRED
         }
         var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
         String stage = bound != null && bound.stage() != null ? bound.stage()
@@ -347,12 +347,12 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
 
     /**
      * Intent routing for a thread that has no skill yet ({@link StudioSkillRouter}): the media types of the pinned and
-     * attached nodes and the message text against each active skill's triggers. The canvas is read only when there is
-     * more than one active skill to choose from. The caller persists the choice on the thread.
+     * attached nodes and the message text against each active skill's triggers. A message that matches no skill stays
+     * unbound (「全能创作」) and the next one is routed again. The caller persists a choice on the thread.
      */
     private StudioSkill routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs) {
         List<StudioSkill> active = catalog.available();
-        if (active.size() <= 1) return active.isEmpty() ? null : active.get(0);
+        if (active.isEmpty()) return null;
         Set<String> media = new LinkedHashSet<>();
         StringBuilder text = new StringBuilder();
         JsonNode doc = projects.readDoc(projects.required(userId, thread.getProjectId()));

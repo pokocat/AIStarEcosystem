@@ -732,6 +732,14 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
   每一步读 DOM 状态（焦点在哪、面板开没开、引用里有没有那个节点、节点是否在可见区域里），别只看最后一张截图。
 - 受控节点不要用 `useNodesInitialized()` 当门：`git grep -n useNodesInitialized -- apps/web-aiavatar/src` 应 0 命中。
 
+**⑮ 流式响应（SSE）要声明 `no-transform`，否则代理会把事件攒起来。**
+2026-10-19 本地验收：对话回复已结算扣费，页面却一直停在「停止」，刷新才看到结果。根因是 Next 的 rewrite 代理对所有响应套 gzip（`router-server` 里的 `compression`），
+`text/event-stream` 也被压，小事件全积在压缩缓冲里，直到连接关闭（30 分钟）才吐出来；服务端和前端各自的单测都是绿的，因为都不经过代理。
+- 做法：SSE 接口的响应头带 `Cache-Control: no-cache, no-transform`（压缩中间件见到 `no-transform` 就跳过）和 `X-Accel-Buffering: no`（nginx 不缓冲），范式 `StudioDialogueController#events`。
+- 判据：「服务端日志 / 库里已完成，页面没反应、刷新就好」→ 先怀疑中间层缓冲，抓一次经过代理的响应看 `content-encoding` 和事件到达时间，别先改前端状态机。
+- 同一轮的前端教训：**持久化不要在卸载 / 页面隐藏时写**。助手草稿第一版在卸载时写本地存储，开发模式 StrictMode 双跑副作用时，卸载那一下读到的是还没恢复的空状态，把刚恢复的草稿抹了；改成初始化读取、改动即写回。
+- Review reject：新增 `SseEmitter` / `text/event-stream` 接口不带 `no-transform` → reject。`git grep -n "new SseEmitter" -- apps/server/src/main` 的每一处都要能在同一条链路上找到这两个头（现存例外：已下线的 `ForgeController`，见 TODO）。
+
 ### 跨 app 约定
 
 - **UI 文案：用户友好 + 不溢出** ⚠️（v0.98 起强制，全前端适用；所有将来变更都要遵守）。
@@ -1053,11 +1061,11 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（要准备什么 / 会得到什么）+「第一次用？花 30 秒看它怎么工作」。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
 
-确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
+写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` 原文折叠成「这一轮的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
 
 ### 对话优先的创作入口 · 2026-10-19（同日已生产发布 `20261019-studio-dialogue-first`，仅 web-aiavatar）
 
-用户从第一屏就按「跟助手说」来做：桌面首页英雄区、手机首页和「画布·自由创作」页的默认入口都是同一个对话框（`src/ip/studio-conversation-start.tsx`：一句话 + 四个示例开头 + 「开始对话」，Enter 发送、Shift+Enter 换行）。提交先免费建画布并把这句话存成想法，再以 `?start=assistant&send=1` 打开画布；画布的助手在线程就绪、且**线程为空**时把这句话自动发出一次（`StudioAssistant.autoSend`，按 projectId 只发一次，刷新后线程非空就不再发）。「先进画布看看」仍可不带话进画布。图片 / 视频 / 剧本专项入口保留在对话框下方，旧的「创作想法」文本框只在这三种模式下出现（不再嵌套 form）。
+用户从第一屏就按「跟助手说」来做：桌面首页英雄区、手机首页和「画布·自由创作」页的默认入口都是同一个对话框（`src/ip/studio-conversation-start.tsx`：一句话 + 四个示例开头 + 「开始对话」，Enter 发送、Shift+Enter 换行）。提交先免费建画布并把这句话存成想法，再以 `?start=assistant&send=1` 打开画布；画布的助手在线程就绪、且**线程为空**时把这句话自动发出一次（`StudioAssistant.autoSend`，按 projectId 只发一次，刷新后线程非空就不再发；发出后去掉地址里的 `send=1`）。那句话可能晚于默认打开的助手到达，所以由单独的副作用在线程读完后填入，不走「打开时恢复草稿」那条路（2026-10-19 曾因此一直不发）。未发出的草稿和选的对话模型按画布存在本浏览器（`canvas-bridge/studio-assistant-memory.ts`）。「先进画布看看」仍可不带话进画布。要照着参考视频做的话（复刻 / 照这条 / 拉片…，`studioBriefNeedsReference`）不自动发：进画布后打开复刻素材清单、保留用户原话，素材齐了由用户自己发（2026-10-19 线上验收：先扣一轮积分只换来「请上传视频」）。首页那句话同时用作画布名（`studioTitleFromBrief`）；没名字的画布（「· 新画布」/「未命名画布」）在第一条消息时按消息起名，用户改过的名字不动。图片 / 视频 / 剧本专项入口保留在对话框下方，旧的「创作想法」文本框只在这三种模式下出现（不再嵌套 form）。
 
 对话开始之后画布由对话驱动：服务端新建的节点通过 `studio-command: reveal` 进视野（只移视口不改选中），第一次看到结果时助手顶部出现一次性提示「结果放进画布了…」（`localStorage studio-assistant:canvas-hint`）；选中任何节点的操作条第一项是「问助手」（把节点带进对话）；空画布的空态改为「画布还是空的 → 和助手开始」，助手打开时不显示；首页存的想法占位（没有任何回合的旧式对话节点）不再出现在「之前的对话」里。**助手在桌面画布默认打开**（同日追加）：`studio-assistant:open` 按浏览器记住用户最后一次开/关，只有 `html[data-layout="desktop"]` 才默认打开；停靠面板改为**通高**（舞台顶到底，去掉 72/16 的留白和 140px 的通用上限），并把 `has-docked-panel` 类与 `--studio-docked-panel` 宽度发布到 `.studio-flow-shell`（工作台覆盖层是舞台的兄弟层，不是子层），顶部工具条、视图切换、右侧入口按钮据此让位，其它浮层按剩余宽度定位。专业的画布操作照旧可用，只是不再是起点。证据：`studio-conversation-start.test.tsx`、`studio-assistant.test.tsx`（自动发送、进视野与提示）、两个首页测试、`studio-dialogue-wiring.test.ts`；演示模式下从首页一句话走到方案与确认卡已实测。
 
@@ -1079,7 +1087,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### 成片编辑器改版 · 2026-10-19（本地，未发布，仅 web-aiavatar）
 
-成片页是 `src/ip/studio-work-editor.tsx`（工作台只传数据、提交 `assemble()`）；片段规则在 `src/canvas-bridge/studio-work-clips.ts`。**片段进不进成片只有一个判断** `studioClipIncluded`：节点上显式的 `includeInWork` 为准，否则凡是被别的视频引用过的（连线指向非 work 视频，或出现在它的 `references` / `request.references` / `request.video.references` 里）算原片素材、默认不进。勾选框和 `assemble()` 的请求都走它，别再写 `includeInWork !== false`（爆款复刻曾因此把原片拼进成片）。时长以浏览器读到的文件为准（`loadedmetadata`），`seconds` / `durationMs` 只是读到之前的估计；配音过长、字幕超时、空字幕在合成按钮旁就地拦下，判定与 `StudioPackagingService` 一致，服务端仍是最终裁判。整片预览是前端连放（配音按成片时钟同步，文字按服务端位置叠加），界面注明以成片为准。片段按集再按 `order` 排，`reorderStudioClips` 是「移动」不是「交换」，跨集不能拖动或用箭头互换。`.studio-focused-view` 是名为 `studio-view` 的容器（`@container studio-view`），助手停靠时它让出 `--studio-docked-panel`；任务按钮在故事板 / 成片视图移到左上角。证据：`studio-work-clips.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（复刻画布合成不带原片）。
+成片页是 `src/ip/studio-work-editor.tsx`（工作台只传数据、提交 `assemble()`）；片段规则在 `src/canvas-bridge/studio-work-clips.ts`。**片段进不进成片只有一个判断** `studioClipIncluded`：节点上显式的 `includeInWork` 为准，否则凡是被别的视频引用过的（连线指向非 work 视频，或出现在它的 `references` / `request.references` / `request.video.references` 里）、拉片切出来的片段（`studio.sourceRange`）、以及拉片分析的参考原片（连向 `kind=recreation` 的节点或被它的 `recreation.sourceNodeId` 点名；执行器出拉片节点时会把参考原片连过去）都算原片素材、默认不进。勾选框和 `assemble()` 的请求都走它，别再写 `includeInWork !== false`（爆款复刻曾因此把原片拼进成片）。时长以浏览器读到的文件为准（`loadedmetadata`），`seconds` / `durationMs` 只是读到之前的估计；配音过长、字幕超时、空字幕在合成按钮旁就地拦下，判定与 `StudioPackagingService` 一致，服务端仍是最终裁判。整片预览是前端连放（配音按成片时钟同步，文字按服务端位置叠加），界面注明以成片为准。片段按集再按 `order` 排，`reorderStudioClips` 是「移动」不是「交换」，跨集不能拖动或用箭头互换。`.studio-focused-view` 是名为 `studio-view` 的容器（`@container studio-view`），助手停靠时它让出 `--studio-docked-panel`；任务按钮在故事板 / 成片视图移到左上角。证据：`studio-work-clips.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（复刻画布合成不带原片）。
 
 ### 成片高级编辑 · 2026-10-19（本地，未发布；web-aiavatar + server）
 

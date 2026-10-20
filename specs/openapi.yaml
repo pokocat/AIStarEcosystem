@@ -12981,11 +12981,11 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPostMessage
-      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。S3 意图路由：线程还没有技能时，带 skillKey 则必须是启用中的技能；不带则只有一个启用中的技能就用它，多个时按钉住 / 附件节点的媒体类型（每命中一种 2 分）与消息关键词（每个 1 分）打分取唯一最高分，平局或都没命中用 default 方法，仍定不下来返回 400 STUDIO_SKILL_REQUIRED；选定结果写到线程（thread.skillKey / skillVersion），之后不再改。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。S3 意图路由：线程还没有技能时，带 skillKey 则必须是启用中的技能；不带则按钉住 / 附件节点的媒体类型（每命中一种 2 分）与消息关键词（每个 1 分）给每个启用中的技能打分取唯一最高分；一个都没命中就不绑技能（全能创作，下一条消息再路由；只有一个启用技能也一样），最高分平局用其中的 default 方法，仍定不下来返回 400 STUDIO_SKILL_REQUIRED；选定结果写到线程（thread.skillKey / skillVersion），之后不再改。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
-        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）/ STUDIO_SKILL_REQUIRED（S3：线程还没有技能、启用中的技能不止一个，按附件媒体类型与关键词打分没有唯一最高分且没有默认方法；error.details.skills=[{key,name,summary}]，界面据此请用户选一个后带 skillKey 重发）' }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）/ STUDIO_SKILL_REQUIRED（S3：线程还没有技能，按附件媒体类型与关键词打分有几个技能并列最高、其中没有默认方法；error.details.skills=[{key,name,summary}] 只列并列的几个，界面据此请用户选一个后带 skillKey 重发）' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（线程绑定的后台制作本阶段预算放不下这一轮对话；带 stage, spent, inFlight, quotedCost=本轮上限, approvedCap, shortfall）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
         '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND（显式 skillKey 不存在、已停用，或在还没有技能的线程上选了非启用的方法）/ IP_PROJECT_NOT_FOUND' }

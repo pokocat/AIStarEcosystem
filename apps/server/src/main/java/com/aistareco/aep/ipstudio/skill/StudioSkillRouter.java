@@ -12,10 +12,13 @@ import java.util.*;
  *
  * <ol>
  *   <li>no active skill → none (the dialogue answers without a method, as before S3);</li>
- *   <li>exactly one active skill → that one;</li>
  *   <li>score = 2 × matching media types + matching keywords (case-insensitive substring); a unique best score above zero wins;</li>
- *   <li>a tie or no hit at all → the single active {@code default: true} skill;</li>
- *   <li>otherwise 400 {@code STUDIO_SKILL_REQUIRED} with the active skills, so the UI can ask which one.</li>
+ *   <li>no hit at all → none: 「全能创作」 answers by the general rules. A skill is a method for one kind of job, and binding it
+ *       to a message that never asked for that job is wrong even when it is the only skill on the shelf: with the recreation
+ *       skill alone (and {@code default: true}), 「做一张宣传图」 used to bind 「参考视频复刻」, and the thread kept it
+ *       (local e2e 2026-10-19);</li>
+ *   <li>a tie among the best → the {@code default: true} skill when it is one of them;</li>
+ *   <li>otherwise 400 {@code STUDIO_SKILL_REQUIRED} with the tied skills, so the UI can ask which one.</li>
  * </ol>
  */
 public final class StudioSkillRouter {
@@ -23,7 +26,6 @@ public final class StudioSkillRouter {
 
     public static Optional<StudioSkill> route(List<StudioSkill> active, Set<String> media, String text) {
         if (active == null || active.isEmpty()) return Optional.empty();
-        if (active.size() == 1) return Optional.of(active.get(0));
         String haystack = text == null ? "" : text.toLowerCase(Locale.ROOT);
         Set<String> types = media == null ? Set.of() : media;
         int best = 0;
@@ -33,10 +35,11 @@ public final class StudioSkillRouter {
             if (score > best) { best = score; leaders.clear(); leaders.add(skill); }
             else if (score == best && score > 0) leaders.add(skill);
         }
-        if (best > 0 && leaders.size() == 1) return Optional.of(leaders.get(0));
-        List<StudioSkill> defaults = active.stream().filter(s -> s.triggers().defaultSkill()).toList();
+        if (best == 0) return Optional.empty();
+        if (leaders.size() == 1) return Optional.of(leaders.get(0));
+        List<StudioSkill> defaults = leaders.stream().filter(s -> s.triggers().defaultSkill()).toList();
         if (defaults.size() == 1) return Optional.of(defaults.get(0));
-        throw required(active);
+        throw required(leaders);
     }
 
     static int score(StudioSkill.Triggers triggers, Set<String> media, String lowerText) {

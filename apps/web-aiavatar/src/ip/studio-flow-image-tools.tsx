@@ -46,7 +46,7 @@ export function StudioFlowImageTools({ nodes, onInsert }: { nodes: CanvasNodeDat
   const imageNode = async (url: string, title: string, x: number, y: number, width: number): Promise<CanvasNodeData> => {
     const image = await uploadImage(url);
     return { id: nanoid(), type: CanvasNodeType.Image, title, position: { x, y }, width,
-      height: Math.max(140, width * image.height / Math.max(1, image.width) + 36), metadata: { ...imageMetadata(image), prompt: edit?.source.metadata?.prompt } };
+      height: Math.max(140, width * image.height / Math.max(1, image.width) + 36), metadata: { ...imageMetadata(image), origin: 'derived', prompt: edit?.source.metadata?.prompt } };
   };
   const crop = (rect: CanvasImageCropRect) => void run(async () => {
     const { source, url } = edit!;

@@ -11,7 +11,7 @@ import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Intent routing for a thread without a skill: single, scored, tie / no hit → default, none → STUDIO_SKILL_REQUIRED. */
+/** Intent routing for a thread without a skill: scored best wins, no hit → none (全能创作), tie → default, else STUDIO_SKILL_REQUIRED. */
 class StudioSkillRouterTest {
     static final Path FILE = Path.of("src/main/resources/studio/skills/reference-video-recreation.md");
 
@@ -28,9 +28,13 @@ class StudioSkillRouterTest {
         plain = skill("poster", "triggers:\n  media: [image]\n  keywords: [海报]");
     }
 
-    @Test void noActiveSkillMeansNoSkillAndASingleOneIsAlwaysChosen() {
+    @Test void noActiveSkillMeansNoSkillAndASingleOneOnlyWhenTheMessageAsksForIt() {
         assertTrue(StudioSkillRouter.route(List.of(), Set.of("video"), "随便").isEmpty());
-        assertEquals("script-rewrite", StudioSkillRouter.route(List.of(script), Set.of("video"), "复刻").orElseThrow().key());
+        assertEquals("script-rewrite", StudioSkillRouter.route(List.of(script), Set.of(), "帮我改脚本").orElseThrow().key());
+        // The only skill on the shelf is still a method for one kind of job (local e2e 2026-10-19: 「生成商品宣传图」 bound 参考视频复刻).
+        assertTrue(StudioSkillRouter.route(List.of(video), Set.of(), "生成商品宣传图，9:16").isEmpty());
+        assertTrue(StudioSkillRouter.route(List.of(video), Set.of("image"), "做一张海报").isEmpty());
+        assertEquals("video-recreation", StudioSkillRouter.route(List.of(video), Set.of("video", "image"), "照这条视频做").orElseThrow().key());
     }
 
     @Test void mediaAndKeywordsScoreAndAUniqueBestWins() {
@@ -41,14 +45,16 @@ class StudioSkillRouterTest {
         assertEquals("script-rewrite", StudioSkillRouter.route(List.of(video, script), Set.of(), "改脚本 TEXT").orElseThrow().key());
     }
 
-    @Test void tiesAndNoHitsFallBackToTheDefault() {
-        assertEquals("video-recreation", StudioSkillRouter.route(List.of(video, script), Set.of(), "你好").orElseThrow().key());
-        assertEquals("video-recreation", StudioSkillRouter.route(List.of(script, plain, video), Set.of("text", "image"), "").orElseThrow().key(),
-                "a tie between two others still goes to the default");
+    @Test void noHitIsTheGeneralDialogueNotTheDefault() {
+        assertTrue(StudioSkillRouter.route(List.of(video, script), Set.of(), "你好").isEmpty());
+        assertTrue(StudioSkillRouter.route(List.of(script, plain), Set.of(), "你好").isEmpty());
     }
 
-    @Test void withoutADefaultTheUserIsAskedWithTheList() {
-        var e = assertThrows(BusinessException.class, () -> StudioSkillRouter.route(List.of(script, plain), Set.of(), "你好"));
+    @Test void aTieGoesToTheDefaultOnlyWhenTheDefaultIsAmongTheBest() throws Exception {
+        var both = skill("poster-recreation", "triggers:\n  media: [image]\n  keywords: [复刻]");
+        assertEquals("video-recreation", StudioSkillRouter.route(List.of(both, video), Set.of(), "复刻一下").orElseThrow().key());
+        var e = assertThrows(BusinessException.class, () -> StudioSkillRouter.route(List.of(script, plain, video), Set.of("text", "image"), ""),
+                "a tie between two others is asked, not handed to an unrelated default");
         assertEquals("STUDIO_SKILL_REQUIRED", e.getCode());
         assertEquals(400, e.getStatus().value());
         @SuppressWarnings("unchecked") var skills = (List<Map<String, String>>) ((Map<String, Object>) e.getDetails()).get("skills");

@@ -17,6 +17,10 @@
 .ip-surface .studio-dialogue-message.is-system { color: var(--ink-2); }
 .ip-surface .studio-dialogue-author { color: var(--ink-3); font-size: 11px; }
 .ip-surface .studio-dialogue-text { margin: 0; font-size: 13px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }
+/* Older replies kept the model's raw action blocks in their text; they are folded here, closed, for audit only. */
+.ip-surface .studio-dialogue-raw-actions { min-width: 0; font-size: 12px; color: var(--ink-3); }
+.ip-surface .studio-dialogue-raw-actions summary { cursor: pointer; }
+.ip-surface .studio-dialogue-raw-actions pre { margin: 6px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
 .ip-surface .studio-dialogue-waiting { margin: 0; color: var(--ink-2); font-size: 12px; }
 .ip-surface .studio-dialogue-refs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; min-width: 0; }
 .ip-surface .studio-dialogue-refs span { max-width: 100%; padding: 2px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

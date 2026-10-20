@@ -45,6 +45,10 @@ import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
 import { StudioAssistantChecklist, hasBlanks, recreationBlocker } from "./studio-assistant-checklist";
+import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft, writeAssistantModel } from "@/canvas-bridge/studio-assistant-memory";
+import { studioBriefNeedsReference, studioCanvasHasDefaultTitle, studioTitleFromBrief } from "./studio-entry";
+import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
+import { splitReplyActions } from "@/canvas-bridge/studio-reply-actions";
 
 type Props = {
   projectId: string; conversations: CanvasNodeData[]; setConversations: Dispatch<SetStateAction<CanvasNodeData[]>>;
@@ -100,8 +104,14 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const { message } = useStudioApp();
   const session = useStudioDialogueSession({ projectId, open, autoload: !!restorePending });
   const { store } = session;
-  const [text, setText] = useState(""), [pinnedIds, setPinnedIds] = useState<string[]>([]), [attachmentIds, setAttachmentIds] = useState<string[]>([]);
-  const [model, setModel] = useState<string>();
+  // The composer starts from this canvas's saved draft (a refresh keeps what was typed, runbook 2.7).
+  const [initialDraft] = useState(() => readAssistantDraft(projectId, new Set(assistantContextNodes(nodes).map(n => n.id))));
+  const [text, setText] = useState(initialDraft?.text ?? ""), [pinnedIds, setPinnedIds] = useState<string[]>(initialDraft?.pinnedIds ?? []), [attachmentIds, setAttachmentIds] = useState<string[]>(initialDraft?.attachmentIds ?? []);
+  const [model, setModel] = useState<string>(() => readAssistantModel(projectId));
+  useEffect(() => { setModel(readAssistantModel(projectId)); }, [projectId]);
+  // The chosen reply model is remembered per canvas in this browser: after a refresh the next message used to go to the
+  // default model while the picker could not show the difference (local e2e 2026-10-19).
+  const chooseModel = (value: string) => { setModel(value); writeAssistantModel(projectId, value); };
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
   const [canvasHint, setCanvasHint] = useState(false);
   const [reading, setReading] = useState(false), [attachmentsUnsaved, setAttachmentsUnsaved] = useState(false);
@@ -118,29 +128,45 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const same = (project: string) => mounted.current && live.current.projectId === project;
 
-  // ── Drafts: each canvas keeps its own unsent text and references ──────────
-  const drafts = useRef(new Map<string, ComposerDraft>());
+  // ── Drafts: each canvas keeps its own unsent text and references, in this browser, across a refresh ──────────
+  // The state is read from storage when the composer is created and when the canvas changes, and every change is written
+  // back to the canvas the state belongs to. Nothing is written from an unmount or a page-hide: those see whatever the
+  // state was at that moment, and React (StrictMode, remounts) can run them before a restored draft has reached state —
+  // that once wiped the draft it had just restored.
   const draft = useRef<ComposerDraft>({ text, pinnedIds, attachmentIds });
   draft.current = { text, pinnedIds, attachmentIds };
+  const draftOwner = useRef(projectId);
   const opened = useRef<{ projectId: string; initialNodeId?: string } | undefined>(undefined);
-  useEffect(() => { setText(""); setPinnedIds([]); setAttachmentIds([]); setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false); }, [projectId]);
+  useEffect(() => {
+    if (draftOwner.current === projectId) return;
+    writeAssistantDraft(draftOwner.current, draft.current);
+    draftOwner.current = projectId;
+    const saved = readAssistantDraft(projectId, new Set(assistantContextNodes(live.current.nodes).map(n => n.id)));
+    setText(saved?.text ?? ""); setPinnedIds(saved?.pinnedIds ?? []); setAttachmentIds(saved?.attachmentIds ?? []);
+    setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false);
+  }, [projectId]);
+  // Runs after the switch above in the same commit only if the composer itself changed, so it never files the old
+  // canvas's text under the new one.
+  useEffect(() => { writeAssistantDraft(draftOwner.current, draft.current); }, [text, pinnedIds, attachmentIds]);
   useEffect(() => {
     if (!open) return;
-    if (opened.current?.projectId === projectId && opened.current.initialNodeId === initialNodeId) return;
-    if (opened.current) drafts.current.set(opened.current.projectId, draft.current);
+    const previous = opened.current;
+    if (previous?.projectId === projectId && previous.initialNodeId === initialNodeId) return;
     opened.current = { projectId, initialNodeId };
-    const saved = drafts.current.get(projectId);
     const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
-    if (entry && live.current.conversations.some(c => c.id === entry.id)) {
+    if (entry && live.current.conversations.some(c => c.id === entry.id) && entry.metadata?.studioStart !== "assistant") {
       setLegacyOpen(true);
       requestAnimationFrame(() => [...document.querySelectorAll<HTMLElement>("[data-node-id]")].find(el => el.dataset.nodeId === entry.id)?.scrollIntoView?.({ block: "start" }));
     }
-    if (saved) { setText(saved.text); setPinnedIds(saved.pinnedIds); setAttachmentIds(saved.attachmentIds); return; }
+    // Same canvas, another way in (the homepage brief arriving after the panel opened by default, a task row): what is
+    // typed stays. This used to stash the composer and restore it at once — the panel opens by default, so the stash was
+    // the empty composer and the homepage brief never reached it (local e2e 2026-10-19). The brief has its own effect below.
+    if (previous?.projectId === projectId) return;
+    // First open of a canvas without a saved draft: a selection becomes visible, removable pins; nothing is pinned silently.
     const referenceable = assistantContextNodes(live.current.nodes);
-    // A selection or the homepage brief becomes visible, removable pins; nothing is pinned silently.
-    const pins = entry?.metadata?.studioStart === "assistant" && referenceable.some(n => n.id === entry.id) ? [entry.id] : referenceable.filter(n => selectedIds.includes(n.id)).map(n => n.id);
-    setPinnedIds(pins.slice(0, MAX_REFERENCES));
-    setText(initialPrompt || (entry?.metadata?.studioStart === "assistant" ? entry.metadata?.prompt || "" : ""));
+    if (readAssistantDraft(projectId, new Set(referenceable.map(n => n.id)))) return;
+    const pins = referenceable.filter(n => selectedIds.includes(n.id)).map(n => n.id).slice(0, MAX_REFERENCES);
+    if (pins.length) setPinnedIds(pins);
   }, [open, projectId, initialNodeId]);
   useEffect(() => { if (open && !skills.length) loadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined); }, [open]);
   // 「问助手」 (node bar, context menu): the node joins this message's references and the cursor lands in the input —
@@ -241,12 +267,16 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}),
       ...(chosenSkill ? { skillKey: chosenSkill.key } : {}) };
     setSending(true); setComposerError(""); setSkillNotice("");
+    // The first message names a canvas nobody named yet, so the list shows what each one is for; a name the user gave stays.
+    const canvas = useCanvasStore.getState().projects.find(p => p.id === project);
+    const suggested = !store.messages.length && canvas && studioCanvasHasDefaultTitle(canvas.title) ? studioTitleFromBrief(input.text) : undefined;
+    if (suggested) useCanvasStore.getState().renameProject(project, suggested);
     try {
       // Pinned and attached nodes must exist in the saved document before the server reads them.
       await saveStudioDocument(project);
     } catch (e) { if (same(project)) { setComposerError(e); setSending(false); } return; }
     if (!same(project)) return;
-    setText(""); setPinnedIds([]); setAttachmentIds([]); drafts.current.delete(project);
+    setText(""); setPinnedIds([]); setAttachmentIds([]); clearAssistantDraft(project);
     try {
       const outcome = await session.send(input);
       if (!same(project)) return;
@@ -312,6 +342,22 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       if (!readCanvasHintSeen()) setCanvasHint(true);
     }
   }, [store.canvasOps]);
+  // The homepage brief fills the composer once the thread has been read and is still empty — it can arrive after the
+  // panel opened (the assistant opens by default), and a refresh after it was sent must not put it back.
+  const briefApplied = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!open || session.status !== "ready" || briefApplied.current === projectId) return;
+    const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
+    const brief = initialPrompt || (entry?.metadata?.studioStart === "assistant" ? entry.metadata?.prompt || "" : "");
+    if (!brief.trim()) return;
+    briefApplied.current = projectId;
+    if (store.messages.length || store.outbox.length) return;
+    setText(current => current.trim() ? current : brief);
+    // 「照这条视频…」 needs the video first: the checklist says what is missing and holds the send until it is there.
+    if (studioBriefNeedsReference(brief)) startRecreation(true);
+    // A brief saved as a canvas node (older home page) is a visible, removable pin; one kept with the conversation is not on the canvas.
+    if (entry && assistantContextNodes(live.current.nodes).some(n => n.id === entry.id)) setPinnedIds(ids => ids.includes(entry.id) ? ids : [...ids, entry.id].slice(0, MAX_REFERENCES));
+  }, [open, session.status, projectId, initialNodeId, initialPrompt, store.messages.length, store.outbox.length]);
   // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
   const autoSent = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -414,8 +460,22 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     if (known && !["done", "partial"].includes(known.status)) return null;
     return <StudioDialogueSkillDraft key={executionId} projectId={projectId} executionId={executionId} maxCost={draftCost} demo={demo}/>;
   };
+  /** 「放进画布」 on a reply: a plain text node holding the reply; one already holding the same text is shown instead. */
+  const placeText = async (reply: StudioDialogueMessage) => {
+    const content = splitReplyActions(reply.text || "").prose.trim();
+    if (!content) return;
+    const title = studioTitleFromBrief(content.replace(/^[#>*\-\s]+/gm, "")) || "助手写的文字";
+    const node = attachmentNode({ kind: "text", content, title }, live.current.nodes);
+    const created = !live.current.nodes.some(n => n.id === node.id);
+    if (created) {
+      setNodes(list => list.some(n => n.id === node.id) ? list : [...list, placeStudioNode(node, list)]);
+      await saveStudioDocument(projectId);
+    }
+    dispatchStudioCommand("reveal", node.id);
+    message.success(created ? "已放进画布，可以在画布上接着改" : "画布上已经有这段文字");
+  };
   const handlers: DialogueMessageHandlers = {
-    onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt,
+    onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt, onPlaceText: placeText,
     planReady: block => !!planForApproval(store, block), onBranch: session.branch, approvedCaps: block => approvedCaps(block, session.executions),
     skillLabel: plan => studioSkillBadge(skills, plan), completionActions: operator ? completionActions : undefined,
   };
@@ -483,12 +543,13 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   };
 
   // ── Starts: the empty-canvas cards and the recreation checklist ───────────
-  const startRecreation = () => {
+  /** `keepText`: the user's own words (a homepage brief) stay; otherwise the composer gets the fill-in-the-blanks start. */
+  const startRecreation = (keepText = false) => {
     const videos = contextNodes.filter(n => n.type === "video"), video = videos.length === 1 ? videos[0] : undefined;
     if (video) pin(video);
     const skill = skillOptions.find(s => s.key === RECREATION_SKILL);
     if (pickSkill && skill) chooseSkill(skill.key);
-    setText(`照 ${video ? `@${video.title}` : "[参考视频]"} 的拍法，把里面的商品换成 [你的商品图]，保留原片的节奏和反转，口播改成介绍 [商品名]。`);
+    if (!keepText) setText(`照 ${video ? `@${video.title}` : "[参考视频]"} 的拍法，把里面的商品换成 [你的商品图]，保留原片的节奏和反转，口播改成介绍 [商品名]。`);
     setStarter("recreation"); setGuideOpen(false);
     composer.current?.focus();
   };
@@ -513,10 +574,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   ] : pinnedIds.length ? [
     { title: "修改节点内容", prepare: "已指定 1 个节点，核心设定会保留。", result: "一版可以写回原节点的完整修改稿。", Icon: PenLine, tone: "text", run: () => startWith("修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。") },
     { title: "优化节点提示词", prepare: "只改提示词，不生成新素材。", result: "完整的新提示词，一键写回。", Icon: Image, tone: "image", run: () => startWith("优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。") },
-    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: startRecreation },
+    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: () => startRecreation() },
     { title: "搭一套创作流程", prepare: "说清最后要什么就行。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ] : [
-    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: startRecreation },
+    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: () => startRecreation() },
     { title: "做一张图", prepare: "一句描述就够，有参考图更好。", result: "几张候选，选一张放进画布。", Icon: Image, tone: "image", run: () => startWith("帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。") },
     { title: "写一段文字", prepare: "说清写给谁、写什么。", result: "一份能直接用的初稿，放进画布继续改。", Icon: FileText, tone: "text", run: () => startWith("生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。") },
     { title: "搭一套创作流程", prepare: "说清最后要什么，比如一个 IP 的设定图到场景视频。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
@@ -527,7 +588,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
       options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></span>}
     {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><span>{modeSkill.name}</span></span>}
-    {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={setModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
+    {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={chooseModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
   </>;
   const guide = <section id="studio-assistant-guide" className="studio-assistant-guide" aria-label="使用说明">
     <ol>
@@ -560,7 +621,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       <button type="button" className="studio-dialogue-link" onClick={() => { markCanvasHintSeen(); setCanvasHint(false); }}>知道了</button></div>}
     {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution} queueOf={stepQueue}/>}
   </> : undefined;
-  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={() => { drafts.current.set(projectId, draft.current); onClose(); }}
+  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={onClose}
     width={480} utility dockable defaultDocked resizable layoutKey="assistant" footer={<>
       <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}

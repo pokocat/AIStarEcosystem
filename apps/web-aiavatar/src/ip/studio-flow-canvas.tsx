@@ -24,6 +24,7 @@ import { useFlowLegacyTasks } from '@/canvas-bridge/flow-legacy-tasks';
 import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { attachmentNode, readAssistantAttachment, savedAssetPayload } from '@/canvas-bridge/studio-attachments';
 import { importStudioMedia, importStudioStory } from '@/canvas-bridge/studio-api';
+import { studioAiMade, studioUploadedByUser } from '@/canvas-bridge/studio-node-origin';
 import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 import { StudioNodeContent } from './studio-node-content';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
@@ -61,10 +62,10 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const imageLocked = data.uploading || studioGenerationPending(node);
   const mediaGenerating = (node.type===CanvasNodeType.Image||node.type===CanvasNodeType.Video) && meta?.status === 'loading';
   // AI 做的 / 正在做的节点带记号；没有记号 = 用户自己放的。
-  const aiMade = !!meta?.studio && !!(meta.studio.runId || meta.studio.execution || meta.studio.request || meta.studio.speechRequest || meta.studio.lipSyncRequest);
+  const aiMade = studioAiMade(node);
   const generating = meta?.status === 'loading' && !data.uploading;
-  // 设计稿 · Language 画板：媒体是你自己传上来的就标「你上传的」；从素材库引用的、空白占位和文字都不标（没有记号 = 你自己放的）。
-  const uploaded = !aiMade && node.type !== CanvasNodeType.Text && !!meta?.storageKey && !meta?.studio?.libraryReference;
+  // 设计稿 · Language 画板：媒体是你自己传上来的就标「你上传的」；从素材库、人物库引用的，裁剪出来的，空白占位和文字都不标。
+  const uploaded = studioUploadedByUser(node);
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };

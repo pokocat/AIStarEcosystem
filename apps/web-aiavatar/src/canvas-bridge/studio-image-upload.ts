@@ -28,7 +28,7 @@ export function replaceStudioImage(nodes: CanvasNodeData[], connections: CanvasC
     }
   }
   return marked.map(n => n.id === nodeId ? { ...n, metadata: { ...n.metadata,
-    content: image.url, storageKey: image.key, status: 'success', errorDetails: undefined,
+    content: image.url, storageKey: image.key, status: 'success', errorDetails: undefined, origin: 'upload',
     mimeType: image.mimeType, bytes: image.bytes, naturalWidth: image.width, naturalHeight: image.height,
     primaryImageId: imageId, runId: undefined,
     images: [...(n.metadata?.images || []), { id: imageId, content: image.url, storageKey: image.key,

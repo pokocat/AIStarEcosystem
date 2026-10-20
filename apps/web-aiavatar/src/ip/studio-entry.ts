@@ -20,9 +20,28 @@ export type StudioEntry = keyof typeof studioEntries;
 export function parseStudioEntry(value: string | null): StudioEntry | undefined {
   return value && Object.hasOwn(studioEntries, value) ? value as StudioEntry : undefined;
 }
+/**
+ * A brief that asks to copy a reference video cannot be answered before the video is on the canvas: sent at once, the
+ * first paid reply only asks for the material (production 2026-10-19, 「复刻一条短视频」 example). Such a brief opens the
+ * canvas with the recreation checklist and waits for the user to send.
+ */
+export const studioBriefNeedsReference = (text: string) => /复刻|翻拍|拉片|做同款|照这条|参考视频|这条视频|原片/.test(text);
 /** `send` asks the canvas to send the saved brief as the first message as soon as the assistant is ready (dialogue-first start). */
 export const studioEntryHref = (projectId: string, entry: StudioEntry, options: { send?: boolean } = {}) =>
   `/projects/${encodeURIComponent(projectId)}${entry === 'blank' ? '' : `?start=${entry}${options.send && entry === 'assistant' ? '&send=1' : ''}`}`;
+
+/** Names nobody chose: what 「新建」 and the entries call a fresh canvas. Only these are ever replaced by a suggested name. */
+export const studioCanvasHasDefaultTitle = (title?: string) => { const t = title?.trim() || ""; return !t || / · 新画布$/.test(t) || t === "未命名画布"; };
+/**
+ * A recognisable name from what the user asked for: its first clause, without the polite lead-in, at most 20 characters.
+ * Every canvas used to be 「全能创作 · 新画布」, and three of them in a row could not be told apart (production 2026-10-19).
+ */
+export function studioTitleFromBrief(text: string): string | undefined {
+  const clause = text.replace(/@\S+/g, "").replace(/[\[［][^\]］]*[\]］]/g, "").split(/[。！？!?\n；;，,：]/)
+    .map(part => part.trim().replace(/^(请你?|麻烦你?)?(帮我|给我|帮忙)?/, "").trim()).find(part => part.length >= 2);
+  if (!clause) return undefined;
+  return clause.length > 20 ? `${clause.slice(0, 20)}…` : clause;
+}
 
 export class StudioEntrySaveError extends Error {
   constructor(public project: IpProject, message: string) { super(message); }
@@ -30,8 +49,8 @@ export class StudioEntrySaveError extends Error {
 
 /** Creating a workspace is free. A brief is an ordinary saved text node, never a generation request. */
 export async function createStudioEntry(entry: StudioEntry, brief = '', existing?: IpProject): Promise<IpProject> {
-  let project = existing ?? await IpStudioApi.createProject({ name: `${studioEntries[entry].title} · 新画布` });
   const text = brief.trim();
+  let project = existing ?? await IpStudioApi.createProject({ name: (text && studioTitleFromBrief(text)) || `${studioEntries[entry].title} · 新画布` });
   if (!text) return project;
   try {
     if (existing) {

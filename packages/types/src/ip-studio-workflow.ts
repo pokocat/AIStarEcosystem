@@ -466,7 +466,7 @@ export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; run
 
 // ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───
 // (docs/ip-studio-conversational-video-recreation-plan.md §第三阶段 S3; server: ipstudio/skill/**, V63 ip_skill / ip_skill_version)
-/** Routing hints in a skill's front matter. media = attachment/pinned node types that suggest this skill; default = fallback on ties / no hits. */
+/** Routing hints in a skill's front matter. media = attachment/pinned node types that suggest this skill; default = tie-breaker among the best matches (a message matching no skill binds none). */
 export interface StudioSkillTriggers { media?: ("video" | "image" | "audio" | "text")[]; keywords?: string[]; default?: boolean }
 export type StudioSkillStatus = "active" | "draft" | "withdrawn";
 export type StudioSkillVersionSource = "seed" | "admin" | "rollback" | "distilled";

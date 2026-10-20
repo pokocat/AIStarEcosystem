@@ -31,6 +31,35 @@ public final class StudioPlanSteps {
     public record Binding(String clientRequestId,String nodeId,Long maxCost,BillingSelection billing,String executionId,
                           String skillKey,Integer skillVersion,String stage,List<String> canvasContextIds,CheckSettings check) {}
 
+    /**
+     * What a check judges against. The planner's check prompt alone often said nothing about who is replaced by whom, and a
+     * checker that saw 「三位成年男性」 in a segment meant to replace three old men with babies still reported no old subject
+     * (production, 2026-10-19). The confirmed approach's 改变 / 保留 and the checked step's own instruction go first, then
+     * the planner's words. Deterministic, so a resubmission after a restart sends the same request.
+     */
+    public static String checkTarget(JsonNode plan,String approachId,JsonNode targetDefinition,String checkPrompt) {
+        StringBuilder out=new StringBuilder();
+        String shown=targetDefinition==null?"":targetDefinition.path("prompt").asText("").strip();
+        if(!shown.isEmpty())out.append("这一段应当呈现：").append(clip(shown,1500)).append('\n');
+        JsonNode approach=null;
+        if(plan!=null)for(JsonNode a:plan.path("approaches"))if(a.path("id").asText("").equals(approachId))approach=a;
+        if(approach!=null) {
+            String change=joined(approach.path("change")),keep=joined(approach.path("preserve"));
+            if(!change.isEmpty())out.append("这次制作要改变的（旧的不应再出现）：").append(change).append('\n');
+            if(!keep.isEmpty())out.append("要保留的：").append(keep).append('\n');
+        }
+        if(out.length()>0)out.append("画面里仍是要被替换掉的旧主体，或新主体与上面写的不符，subject-replaced 和 old-subject-residue 判 fail；看不清是不是同一批人或物判 unknown，不判 pass。\n");
+        String own=checkPrompt==null?"":checkPrompt.strip();
+        if(!own.isEmpty())out.append(out.length()>0?"检查要点：":"").append(own);
+        return out.toString().strip();
+    }
+    private static String joined(JsonNode list) {
+        List<String> out=new ArrayList<>();
+        for(JsonNode v:list)if(v.isTextual()&&!v.asText().isBlank())out.add(v.asText().strip());
+        return clip(String.join("；",out),1500);
+    }
+    private static String clip(String text,int max){return text.length()<=max?text:text.substring(0,max);}
+
     public static RunRequest request(JsonNode step,Keys keys,Modes modes,Binding binding) {
         String operation=step.path("operation").asText();
         JsonNode settings=step.path("settings");
