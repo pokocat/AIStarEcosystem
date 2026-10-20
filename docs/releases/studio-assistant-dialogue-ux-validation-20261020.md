@@ -1,6 +1,6 @@
 # 创作助手对话动静与快捷答复 · 本地验收（2026-10-20）
 
-> 状态：**本地实现与验收，未发布**（仅 web-aiavatar，无后端 / API 改动）。分支 `dev/studio-assistant-dialogue-ux-20261020`，基于 main `7b4aedc6`。
+> 状态：**已生产发布**（仅 web-aiavatar，无后端 / API 改动）。分支 `dev/studio-assistant-dialogue-ux-20261020` 合入 main 为 `8b408533`，发布记录见 [studio-assistant-activity-release-20261020.md](studio-assistant-activity-release-20261020.md)。
 
 ## 用户反馈（改前）
 

@@ -4,7 +4,7 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 创作助手对话动静与快捷答复 · 2026-10-20 · 本地未发布（仅 web-aiavatar）
+### Studio 创作助手对话动静与快捷答复 · 2026-10-20 · 已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`）（仅 web-aiavatar）
 
 用户反馈四条：对话没有动效、回复下两个文字按钮常驻、快捷答复只填输入框、工作记录像按钮。改为：`dialogueActivity`（`studio-dialogue-store.ts`）只按事件流推出「正在思考 / 正在回复」，`studio-dialogue-activity.tsx` 显示呼吸的四角星、流光文字和跳点，久等补真实秒数，流式正文末尾闪光标；运行中的工具由工作记录那一行自己转圈。工作记录（`studio-dialogue-tool.tsx`）从 `<details>` 卡改成左侧细线的一行，只有小箭头（`aria-expanded`）展开，失败直接写原因。问题选项、后续建议、「改用这个做法」走 `send(quick)` 直接发送：同一条链路（先存画布、outbox、重试键、拒收处理），不带草稿引用、不清草稿，ref 锁防连点，`answeredAfter` 判问题已回答。回复操作改为图标按钮（`studio-dialogue-action`），最新一条常显、旧的悬停或聚焦显示、手机常显；带卡片的回复不给「放进画布」，已在画布上显示「在画布上查看」。无后端 / API 改动。
 
