@@ -257,3 +257,24 @@
 
 **未验证**：线上没有用真账号实传一张超像素的图（本地浏览器实测 9000×2000、168 KB 的 JPEG 传出去是 4096×910，见 main 的提交说明）；生产上没有发起任何付费调用、没有建测试数据。回滚：
 `deploy-release.sh dist/deploy/20261020-studio-dialogue-fixes web-aiavatar`（web-aiavatar 回到 `eb2f5259`；server 不动；无迁移，无数据要回退）。
+
+## 追加发布 · 2026-10-20 · H3 视频台词保护、厂商实际描述与首尾帧确认（server + web-aiavatar）
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261020-h3-video-dialogue` |
+| GIT_SHA | `1376a4e0`（release 分支：先把线上已发布的 Codex 三个提交 `7d4ffcaa` `61c3dcc3` `348656c7` 原样 cherry-pick 为 `65b95523` `a7bfea72` `f7a3f040`，代码与 `348656c7` 逐字节一致、只多本文件里早先的发布记录；再 cherry-pick `dev/h3-video-dialogue-frames-20261020` 的 `47c057ea` → `7980dfba`、`1ba9d344` → `1376a4e0`，都自动合并、无冲突） |
+| 服务 | server、web-aiavatar（无迁移；接口只新增可空字段 `StudioVideoSettings.optimizePrompt`、视频候选 `promptRewrite`） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`（manifest `SERVICES='server web-aiavatar'`、`USE_MOCK=0`、`ENABLE_DEV_LOGIN=0`） |
+| 发布前基线 | server `61c3dcc3`（`20261020-studio-gpt-image-size-gate`），web-aiavatar `7d4ffcaa`（`20261020-studio-gpt-image-native`）；发布前线上没有排队或生成中的视频任务、没有运行中的创作任务 |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；server 18:52:12 CST、web-aiavatar 18:52:13 CST 重启，`NRestarts=0`；Flyway「Schema is up to date」，15 秒启动，重启后 0 条 ERROR；线上 BUILD_ID `Qz1J754h81OaAHTyliuHf`（`_buildManifest.js` 200），公网 chunk `6212.017365a3c3261c7a.js` 含「按原文生成」与 `optimizePrompt`；`/dashboard` `/projects` `/create` `/scenes` 200 |
+
+内容（详见 `docs/ip-studio-video-modes.md` 末节）：
+- Studio 视频参数「按原文生成」→ 请求带 H3 公开契约的 `optimizePrompt:false`，默认不勾、价格不变；视频生成区用了智能优化的生成也发 `false`。
+- worker 把厂商查询响应里的 `promptOptimization`（实际用的描述、状态）存进任务 `payload_json.vendor_prompt`：锁行后只更新这一列，不整行保存。画布候选投影 `promptRewrite`，面板 / 任务列表 / 「本次创作输入」说明哪些台词没保留（成片后的解释，不是生成前拦截）。
+- 描述写了图1 / 首帧 / 尾帧而请求没带图时，提交前问一次；推荐的模式按首尾帧语义和容量选，不替用户挑图。
+
+门禁（release 树）：`pnpm typecheck:all`、`typecheck:admin`、`./mvnw compile -q -o`、`pnpm check:api-contract` 通过；server `materialvideo` / `videostudio` / `ipstudio` 共 980 条，3 条失败均为既有问题（`IpVideoModelChoiceWiringTest` 2 条、`StudioAssetCatalogPricingTest` 1 条，在 cherry-pick 前的 `f7a3f040` 上复跑同样失败）；web-aiavatar 受影响的 20 个测试文件 307 条全过。
+
+**未验证**：线上没有用真账号生成视频，「按原文生成」的出片效果（台词是否完整、画面是否变差）仍待付费对比验收；没有发起任何付费调用、没有建测试数据。默认行为不变：不勾选时请求与发布前逐字段相同。回滚（发布包在 Codex 工作区 `/Users/donis/.codex/worktrees/studio-gpt-image-native/AIStarEcosystem/dist/deploy/`）：
+`deploy-release.sh <上述目录>/20261020-studio-gpt-image-size-gate server` 与 `deploy-release.sh <上述目录>/20261020-studio-gpt-image-native web-aiavatar`（无迁移；回滚后旧代码不再读 `vendor_prompt`，留在 payload 里无害）。
