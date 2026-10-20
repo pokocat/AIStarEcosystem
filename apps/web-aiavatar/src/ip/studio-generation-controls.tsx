@@ -4,6 +4,12 @@ import { Popover } from "antd";
 import { ChevronDown, SlidersHorizontal, Sparkles, X } from "lucide-react";
 
 const SettingsDisabled=createContext(false);
+function focusPopup(panel:HTMLDivElement|null){
+  const selected=panel?.querySelector<HTMLElement>('[role="radio"][tabindex="0"]:not(:disabled)');
+  const field=panel?.querySelector<HTMLElement>('input:not(:disabled),textarea:not(:disabled)');
+  const action=panel?.querySelector<HTMLElement>('button:not(:disabled)');
+  (selected||field||action)?.focus();
+}
 const popupContainer=(trigger:HTMLElement)=>trigger.closest<HTMLElement>(".ip-surface")||document.body;
 function usePopupBounds(open:boolean,trigger:{current:HTMLButtonElement|null}){
   const [bounds,setBounds]=useState<{placement:"top"|"bottom";height:number}>({placement:"top",height:620});
@@ -57,12 +63,12 @@ export function studioImageSizeLabel(size?:string){
 export function StudioSettingsPopover({summary,label="生成参数",children,disabled=false,open:controlled,onOpenChange}:{
   summary:ReactNode;label?:string;children:ReactNode;disabled?:boolean;open?:boolean;onOpenChange?:(open:boolean)=>void;
 }) {
-  const [local,setLocal]=useState(false),open=controlled??local,trigger=useRef<HTMLButtonElement>(null),id=useId();
+  const [local,setLocal]=useState(false),open=controlled??local,trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null),id=useId();
   const bounds=usePopupBounds(open,trigger);
   const change=(value:boolean)=>{setLocal(value);onOpenChange?.(value);};
-  useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();change(false);trigger.current?.focus();}};window.addEventListener('keydown',close,true);return()=>window.removeEventListener('keydown',close,true);},[open]);
-  return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={change} getPopupContainer={popupContainer} destroyOnHidden
-    classNames={{root:"studio-settings-overlay"}} styles={{container:{padding:0}}} content={<SettingsDisabled.Provider value={disabled}><div id={id} style={{maxHeight:bounds.height}} className="studio-settings-popover nodrag nopan nowheel" role="region" aria-label={label}>
+  useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){if(document.querySelector('.ant-select-dropdown:not(.ant-select-dropdown-hidden)'))return;e.preventDefault();e.stopPropagation();change(false);trigger.current?.focus();}};window.addEventListener('keydown',close,true);return()=>window.removeEventListener('keydown',close,true);},[open]);
+  return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={change} afterOpenChange={visible=>{if(visible)focusPopup(panel.current);}} getPopupContainer={popupContainer} destroyOnHidden
+    classNames={{root:"studio-settings-overlay"}} styles={{container:{padding:0}}} content={<SettingsDisabled.Provider value={disabled}><div ref={panel} id={id} style={{maxHeight:bounds.height}} className="studio-settings-popover nodrag nopan nowheel" role="region" aria-label={label}>
       <header><strong>{label}</strong><button type="button" aria-label={`收起${label}`} onClick={()=>{change(false);trigger.current?.focus();}}><X size={16}/></button></header>
       <fieldset disabled={disabled}>{children}</fieldset>
     </div></SettingsDisabled.Provider>}>
@@ -74,12 +80,12 @@ export function StudioSettingsPopover({summary,label="生成参数",children,dis
 export function StudioModelPicker({label="生成模型",value,options,onChange,disabled=false,loading=false}:{
   label?:string;value?:string;options:StudioChoice<string>[];onChange:(value:string)=>void;disabled?:boolean;loading?:boolean;
 }) {
-  const [open,setOpen]=useState(false),trigger=useRef<HTMLButtonElement>(null);
+  const [open,setOpen]=useState(false),trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null);
   const bounds=usePopupBounds(open,trigger);
   const selected=options.find(o=>o.value===value);
   useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setOpen(false);trigger.current?.focus();}};window.addEventListener('keydown',close,true);return()=>window.removeEventListener('keydown',close,true);},[open]);
-  return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={setOpen} getPopupContainer={popupContainer} destroyOnHidden
-    classNames={{root:"studio-model-overlay"}} styles={{container:{padding:0}}} content={<div style={{maxHeight:Math.min(480,bounds.height)}} className="studio-model-menu"><StudioChoiceGroup label={label} value={value} options={options} onChange={next=>{onChange(next);setOpen(false);trigger.current?.focus();}}/></div>}>
+  return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={setOpen} afterOpenChange={visible=>{if(visible)focusPopup(panel.current);}} getPopupContainer={popupContainer} destroyOnHidden
+    classNames={{root:"studio-model-overlay"}} styles={{container:{padding:0}}} content={<div ref={panel} style={{maxHeight:Math.min(480,bounds.height)}} className="studio-model-menu"><StudioChoiceGroup label={label} value={value} options={options} onChange={next=>{onChange(next);setOpen(false);trigger.current?.focus();}}/></div>}>
     <button ref={trigger} type="button" className="studio-model-trigger" aria-label={label} aria-expanded={open&&!disabled} disabled={disabled||loading||!options.length} title={typeof selected?.label==='string'?selected.label:undefined}>
       <Sparkles size={16}/><span>{loading?'正在读取模型…':selected?.label||'尚未配置模型'}</span><ChevronDown size={14}/>
     </button>
