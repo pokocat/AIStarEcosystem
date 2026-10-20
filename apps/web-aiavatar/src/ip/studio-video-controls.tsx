@@ -1,5 +1,5 @@
 "use client";
-import { Button, InputNumber, Select } from "antd";
+import { Button, Checkbox, InputNumber, Select } from "antd";
 import { ArrowLeftRight } from "lucide-react";
 import type { Ref } from "react";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
@@ -37,5 +37,10 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
       onChange={tier=>onChange({...draft,tier})} options={model.contract.tiers.map(t=>({value:t.tier,label:t.tier}))}/></label>
       <label>随机种子<InputNumber aria-label="视频随机种子" min={0} max={model.contract.seedMax} precision={0} value={draft.seed}
         placeholder="随机" onChange={seed=>onChange({...draft,seed:seed??undefined})}/></label></div>
+    {/* 只有出片前会改写描述的模型（聚算 H3，厂商契约 optimizePrompt）才有这个选择；价格不变。 */}
+    {model.supportsPromptOptimization&&<div className="studio-video-prompt-mode">
+      <Checkbox checked={!!draft.keepPrompt} onChange={e=>onChange({...draft,keepPrompt:e.target.checked})}>按原文生成</Checkbox>
+      <p>{draft.keepPrompt?"描述和台词原样交给模型，不再改写。画面细节要靠你自己写清楚。":"不勾选时，模型出片前会先改写一遍你的描述，台词偶尔会被删掉。"}</p>
+    </div>}
   </>;
 }

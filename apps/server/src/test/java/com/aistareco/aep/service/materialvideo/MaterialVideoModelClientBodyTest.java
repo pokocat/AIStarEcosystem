@@ -286,6 +286,27 @@ class MaterialVideoModelClientBodyTest {
         MaterialVideoModelClient.requireProtocolSupports(JUSUAN, VideoGenSpec.firstFrameOnly("k"), "9:16");
     }
 
+    @Test
+    @DisplayName("按原文生成：H3 组包把 optimizePrompt 放在种子之后、素材之前；别的协议带着它 → 400，老路径带着它也 400")
+    void optimizePromptSwitchIsH3Only() {
+        VideoGenSpec spec = new VideoGenSpec("i2v", "768p", 3L, "k", null, List.of()).withOptimizePrompt(false);
+        Map<String, Object> body = client.buildSubmitBody(JUSUAN, "minimax-h3", "她回头一笑", 8, "9:16", spec,
+                MaterialVideoModelClient.UpstreamInputs.firstFrameAsset("asset_1"));
+        assertEquals(List.of("model", "generationMode", "prompt", "resolutionTier", "orientation", "aspectRatio",
+                "outputSizeCode", "seconds", "seed", "optimizePrompt", "input_image_asset_id"), List.copyOf(body.keySet()));
+        assertEquals(false, body.get("optimizePrompt"));
+
+        for (String protocol : List.of("seedance", "agnes", "generic")) {
+            assertEquals("VIDEO_MODE_UNSUPPORTED", assertThrows(BusinessException.class,
+                    () -> MaterialVideoModelClient.requireProtocolSupports(protocol,
+                            new VideoGenSpec(null, null, null, null, null, List.of()).withOptimizePrompt(false), "9:16")).getCode());
+        }
+        // 没有清晰度的老路径（画布旧链 / 短剧）不会组 H3 原生包，开关送不出去 → 明确拒绝而不是悄悄丢掉
+        assertEquals("VIDEO_MODE_UNSUPPORTED", assertThrows(BusinessException.class,
+                () -> MaterialVideoModelClient.requireProtocolSupports(JUSUAN,
+                        VideoGenSpec.firstFrameOnly("k").withOptimizePrompt(false), "9:16")).getCode());
+    }
+
     // ── 上游拒绝时给用户看的话 ──────────────────────────────────────────────
 
     @Test

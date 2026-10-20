@@ -598,6 +598,8 @@ public class MaterialVideoJobService {
         card.remove(PAYLOAD_CREDIT_LABEL);
         card.remove(PAYLOAD_CALLER_PRICED);
         card.remove(PAYLOAD_NOT_ACCEPTED_PROOF);
+        // 厂商改写后的提示词：画布经 IpRun 投影读（VideoPromptRewrite.wire），不属于 MaterialVideo 契约。
+        card.remove(VideoPromptRewrite.PAYLOAD_KEY);
         card.put("id", job.getId());
         card.put("script_id", nz(job.getScriptId()));
         if (job.getProductId() != null) card.put("product_id", job.getProductId());

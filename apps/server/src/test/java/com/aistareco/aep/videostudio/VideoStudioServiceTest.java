@@ -618,6 +618,15 @@ class VideoStudioServiceTest {
             assertEquals("一只橘猫打盹（我改过）", item.path("prompt").asText());
             assertEquals("vso_1", item.path("variant_config").path("optimization_id").asText());
             assertEquals("一只猫", item.path("variant_config").path("original_prompt").asText());
+            // 已经优化过的提示词不让厂商出片前再改写一遍（公开契约：已手动优化的 prompt 应传 optimizePrompt=false）
+            assertFalse(item.path("variant_config").path("optimize_prompt").asBoolean(true));
+        }
+
+        @Test
+        @DisplayName("没用智能优化：不带改写开关，由厂商按默认处理（与此前一致）")
+        void noOptimizationLeavesVendorDefault() {
+            JsonNode item = submittedItem(t2v());
+            assertFalse(item.path("variant_config").has("optimize_prompt"));
         }
 
         @Test

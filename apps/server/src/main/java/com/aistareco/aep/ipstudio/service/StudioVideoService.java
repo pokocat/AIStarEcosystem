@@ -34,11 +34,17 @@ public class StudioVideoService {
         String endpointId=model(request.model());
         var nativeRequest=new VideoStudioJobRequest(endpointId,v.mode(),request.prompt(),v.resolutionTier(),
                 request.aspectRatio(),request.durationSec(),v.seed(),v.firstFrameKey(),v.lastFrameKey(),v.references(),null,null);
-        VideoStudioModeSpec modeSpec=models().stream().filter(m->endpointId.equals(m.endpointId()))
-                .flatMap(m->m.contract().modes().stream()).filter(m->m.mode().equals(v.mode()))
+        VideoStudioModel model=models().stream().filter(m->endpointId.equals(m.endpointId())).findFirst()
+                .orElseThrow(()->invalid("所选模型不支持该视频模式"));
+        VideoStudioModeSpec modeSpec=model.contract().modes().stream().filter(m->m.mode().equals(v.mode()))
                 .findFirst().orElseThrow(()->invalid("所选模型不支持该视频模式"));
-        return videos.prepareCanvas(userId,nativeRequest,
+        // 「按原文生成」只对出片前会改写描述的模型有意义（同视频生成区的「智能优化」能力判定）；别的模型带着它就明确拒绝。
+        if(v.optimizePrompt()!=null && !model.supportsPromptOptimization())
+            throw BusinessException.badRequest("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不会改写描述，不需要选择「按原文生成」");
+        var prepared=videos.prepareCanvas(userId,nativeRequest,
                 (type,key,frame)->requireMedia(userId,type,key,frame,modeSpec),"studio");
+        return v.optimizePrompt()==null?prepared
+                :new VideoStudioService.CanvasPreparation(prepared.spec().withOptimizePrompt(v.optimizePrompt()),prepared.credits(),prepared.seedMax());
     }
     /** Quote a recipe's declared geometry/mode/count before dependency outputs exist.
      * Asset bytes and ownership are verified by prepare() at actual submission, never bypassed there. */

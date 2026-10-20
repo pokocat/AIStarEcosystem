@@ -448,6 +448,10 @@ Codex 对二版（定价配置 / 智能优化 / 模板）做了一轮只读评�
 - 生成请求带 `optimizationId`：必须是本人的、succeeded 的，否则 400 `VIDEO_STUDIO_OPTIMIZATION_INVALID`；任务的
   `variant_config` 记 `optimization_id` + `original_prompt`（worker 不读这两个键），`VideoStudioJob.originalPrompt` 由此出 wire。
   不要求生成时的模式 / 规格与优化时一致（用户可以优化完再改）。
+- **2026-10-20 起**，带 `optimizationId` 且模型会改写（`supportsPromptOptimization`）时，任务再写 `optimize_prompt=false`，
+  请求体带 `optimizePrompt:false`。厂商生成接口默认会在出片前再改写一遍提示词（公开契约：已手动优化的 prompt 应传 false，
+  显式 false 不收优化费）；此前用户审过、可能改过的那份描述会被厂商再改写一次，还多一次厂商的优化费用。
+  厂商实际用的描述记在任务 `payload_json.vendor_prompt`（见 `docs/ip-studio-video-modes.md` 末节），这一区的界面暂未展示。
 
 ## 10. 模板 / 做同款（用户第二轮要求：「对生成的作品要能提供模板化的功能，给别人直接复刻」）
 

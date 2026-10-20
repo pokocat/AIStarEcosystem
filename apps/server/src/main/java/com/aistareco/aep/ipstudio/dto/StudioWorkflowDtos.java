@@ -64,8 +64,14 @@ public final class StudioWorkflowDtos {
     }
     public record ScriptEdit(String markdown) {}
     public record TextEdit(String content) {}
+    /** optimizePrompt：false = 「按原文生成」，不让厂商在出片前改写描述；null = 模型默认（H3 默认改写）。 */
     public record VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
-            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references) {}
+            List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references,Boolean optimizePrompt) {
+        public VideoSettings(String mode,String resolutionTier,Long seed,String firstFrameKey,String lastFrameKey,
+                List<com.aistareco.aep.videostudio.dto.VideoStudioDtos.VideoStudioReferenceInput> references) {
+            this(mode,resolutionTier,seed,firstFrameKey,lastFrameKey,references,null);
+        }
+    }
     public record Caption(Double start,Double end,String text) {}
     /**
      * 成片高级编辑的时间线（2026-10-19）：前端把编辑器里的工程压成这几样交给服务端用 FFmpeg 合成。

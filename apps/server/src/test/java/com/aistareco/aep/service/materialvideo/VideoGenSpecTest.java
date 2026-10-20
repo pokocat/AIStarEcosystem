@@ -90,6 +90,21 @@ class VideoGenSpecTest {
     }
 
     @Test
+    @DisplayName("提示词改写开关：只认布尔值；写出去读回来一致；单独带它也算原生参数（别的分区不许夹带）")
+    void optimizePromptRoundTripsAndCountsAsNative() {
+        VideoGenSpec spec = new VideoGenSpec("t2v", "768p", null, null, null, List.of()).withOptimizePrompt(false);
+        ObjectNode vc = new ObjectMapper().createObjectNode();
+        spec.writeTo(vc);
+        assertFalse(vc.path(VideoGenSpec.KEY_OPTIMIZE_PROMPT).asBoolean(true));
+        assertEquals(spec, VideoGenSpec.fromVariantConfig(vc));
+
+        assertNull(VideoGenSpec.fromVariantConfigJson("{\"optimize_prompt\":\"false\"}").optimizePrompt());
+        assertNull(VideoGenSpec.fromVariantConfigJson("{\"generation_mode\":\"t2v\"}").optimizePrompt());
+        assertTrue(VideoGenSpec.fromVariantConfigJson("{\"optimize_prompt\":false}").hasNativeOptions());
+        assertFalse(new VideoGenSpec("t2v", "768p", null, null, null, List.of()).equals(spec));
+    }
+
+    @Test
     @DisplayName("参考素材编号：同类按出现顺序数（图1 图2 … 视频1 音频1 …）")
     void referenceLabelsNumberPerType() {
         List<String> labels = VideoGenSpec.referenceLabels(List.of(

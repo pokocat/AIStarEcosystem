@@ -628,6 +628,9 @@ public class IpProjectService {
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
                     .put("durationSec",job.getDurationSec());
+            // 厂商出片前改写提示词的结果（只读；受理后才知道，只用来解释成片与原文的差异）。
+            var rewrite=com.aistareco.aep.service.materialvideo.VideoPromptRewrite.wire(om,job.getVariantConfigJson(),job.getPayloadJson());
+            if(rewrite!=null)candidate.set("promptRewrite",rewrite);
             if(!done&&!failed&&generationQueue!=null) {
                 var queue=generationQueue.position(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,id);
                 if(queue!=null) {

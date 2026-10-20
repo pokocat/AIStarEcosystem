@@ -30,6 +30,8 @@ import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/stud
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,type StudioVideoDraft } from "./studio-video-controls";
+import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, studioFrameModeFor, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
+import { studioFrameIntent, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
 import { StudioAssetMentionInput } from "./studio-asset-mention-input";
@@ -152,6 +154,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [models, setModels] = useState<IpModels>({image:[],video:[]});
   const [nativeVideoModels,setNativeVideoModels]=useState<VideoStudioModel[]>([]);
   const [videoDraft,setVideoDraft]=useState<StudioVideoDraft>({mode:"t2v",tier:"768p"});
+  // 描述里写了图1 / 首帧 / 尾帧、请求里却没有那些图：提交前问一次（同一段描述 + 模式答过「仍按文字生成」就不再问）。
+  const [frameIntent,setFrameIntent]=useState<{intent:StudioFrameIntent;resolve:(choice:StudioFrameIntentChoice)=>void}>();
+  const frameIntentAnswered=useRef(new Set<string>()),focusFrameSlot=useRef(false);
+  const composerSettings=useRef<HTMLDetailsElement>(null);
   const [model, setModel] = useState<string>();
   const [duration, setDuration] = useState(8);
   const [imageCount,setImageCount]=useState(1);
@@ -540,6 +546,16 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       const promptLength=nativeVideo||imagePromptMaxChars!=null?Array.from(requestPrompt).length:requestPrompt.length;
       if(promptLength>promptLimit)throw new Error(`创作要求与引用文本合计超过 ${promptLimit} 字，请减少引用内容`);}
     catch(e){message.error(e);return;}
+    // Writing 图1 / 尾帧 in the text binds nothing. Ask before a paid request; never pick pictures or switch modes unasked.
+    const intent=operation==="video"&&nativeVideo&&videoSettings?studioFrameIntent(requestPrompt,videoSettings,nativeModeSpec):undefined;
+    const intentKey=`${originId}\n${videoDraft.mode}\n${requestPrompt}`;
+    if(intent&&!frameIntentAnswered.current.has(intentKey)) {
+      const choice=await new Promise<StudioFrameIntentChoice>(resolve=>setFrameIntent({intent,resolve}));
+      setFrameIntent(undefined);
+      if(choice==="cancel")return;
+      if(choice==="bind"){bindFramesFor(intent);return;}
+      frameIntentAnswered.current.add(intentKey);
+    }
     setBusy(true);
     const submissionEpoch=epoch.current,session=panelSession.current;
     let posted=false;
@@ -842,6 +858,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const selection=changeStudioVideoDraft(videoDraft,next,referenceIds,imageIds);
     setVideoDraft(selection.draft);setReferenceIds(selection.referenceIds);
   };
+  // The user's answer to the frame question: switch to the mode that takes those pictures and open the settings
+  // with the picture slots empty. Pictures already connected to this node fill slots as any mode change does.
+  const bindFramesFor=(intent:StudioFrameIntent)=>{
+    const target=nativeVideo?studioFrameModeFor(nativeVideo,intent):undefined;
+    if(target&&target.mode!==videoDraft.mode)changeVideoDraft({...videoDraft,mode:target.mode});
+    if(composerSettings.current)composerSettings.current.open=true;
+    focusFrameSlot.current=true; // focused once the dialog has closed and handed focus back
+  };
   const addNativeVideoReference=(nodeId:string,type:CanvasNodeData["type"])=>{
     if(!nativeModeSpec){message.info("请先选择视频模式");return;}
     const firstMissing=nativeModeSpec.needsFirstFrame&&!videoDraft.firstId;
@@ -898,7 +922,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const videoAssets=studioVideoReferenceIds(videoDraft,referenceIds,nativeModeSpec)
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
   let videoSettings:StudioRunRequest["video"],videoValidationError:string|undefined;
-  if(nativeVideo)try {if(!nativeModeSpec)throw new Error("这个模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec);videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
+  if(nativeVideo)try {if(!nativeModeSpec)throw new Error("这个模型不支持所选视频模式，请重新选择");videoSettings=studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,!!videoDraft.keepPrompt&&nativeVideo.supportsPromptOptimization);videoValidationError=studioVideoError(nativeVideo,videoSettings,prompt,ratio,duration);}catch(e){videoValidationError=e instanceof Error?e.message:"请确认视频参考素材";}
   const durationOptions=capabilities?.mock?[8]:nativeVideo?[]:[5,6,8,10,12,15].filter(v=>(!chosenModel?.capability?.minDurationSec||v>=chosenModel.capability.minDurationSec)&&(!chosenModel?.capability?.maxDurationSec||v<=chosenModel.capability.maxDurationSec));
   useEffect(()=>{
     if(operation!=="video")return;
@@ -932,6 +956,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     return node.id;
   };
   const directorOrigin=nodes.find(n=>n.id===originId);
+  // The last finished take of this video node, for what the vendor actually used (read-only, after acceptance).
+  const composerRun=operation==="video"&&directorOrigin?.type===CanvasNodeType.Video?runs.find(r=>r.id===directorOrigin.metadata?.studio?.runId):undefined;
+  const composerTake=studioComposerTake(composerRun,directorOrigin?.metadata?.primaryVideoId);
   const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
   // 设计稿 Main 画板 · 选中节点的操作条：名字、「问助手」、最多两个主操作，其余进「⋯」（更少的按钮，一个焦点）。
@@ -1033,7 +1060,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       {pickingReferences&&<p className="studio-reference-pick-note" role="status">点击画布素材添加参考，完成后点击“完成参考选择”。</p>}
         {operation==="video"?<div className="studio-prompt-field"><span>创作要求</span><StudioMotionPrompt onLibraryRequest={openLibrary} videoModel={chosenModel?.endpointId} effectPreviews={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).map(n=>({storageKey:n.metadata!.storageKey!,name:n.title}))} ariaLabel="创作要求" references={videoPromptReferences} value={prompt} onChange={setPrompt} disabled={busy} className="studio-motion-drawer-editor" placeholder="描述画面或动作，输入 @ 引用素材"/></div>:<label>创作要求<StudioAssetMentionInput nodes={nodes} onLibraryRequest={openLibrary} onCanvasReference={id=>setReferenceIds(ids=>[...new Set([...ids,id])])} placeholder={operation==="script"?"描述故事、人物、风格和目标时长，也可以粘贴已有剧本":"描述希望生成的画面或动作"} value={prompt} onChange={setPrompt}/></label>}
       {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。"/>}
-      <details className="studio-composer-settings" key={`${originId}-${operation}`}><summary>{ratio}{operation==="image"?` · ${imageCount} 张`:operation==="video"?` · ${duration} 秒 · ${videoCount} 条`:" · 创作设定"}<span>参数设置</span></summary>
+      <details ref={composerSettings} className="studio-composer-settings" key={`${originId}-${operation}`}><summary>{ratio}{operation==="image"?` · ${imageCount} 张`:operation==="video"?` · ${duration} 秒 · ${videoCount} 条${nativeVideo?.supportsPromptOptimization&&videoDraft.keepPrompt?" · 按原文":""}`:" · 创作设定"}<span>参数设置</span></summary>
       <div className="studio-director-form">
 
         {!nativeVideo&&<label>画布参考素材<Select mode="multiple" aria-label="参考素材" value={referenceIds} onChange={setReferenceIds} options={referenceOptions.map(n => ({value:n.id,label:n.title}))} placeholder="选择已在画布上的参考素材"/></label>}
@@ -1063,6 +1090,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       </div>
 
       </details>
+      {nativeVideo&&<StudioVideoPromptNote model={nativeVideo} prompt={prompt} keepPrompt={!!videoDraft.keepPrompt} lastTake={composerTake}
+        onShowRewrite={composerRun?()=>setRunDetail(composerRun):undefined}/>}
       {nativeVideo&&videoValidationError&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
     </StudioFloatingPanel>;
   const activeRunCount=runs.filter(run=>run.status==="running").length;
@@ -1180,7 +1209,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     <Modal title="本次创作输入" open={!!runDetail} onCancel={()=>setRunDetail(undefined)} footer={null} width={720} getContainer={containers}>
       {runDetail&&<div className="studio-director-form"><p>{runDetail.output.mock||Boolean((runDetail.inputs as unknown as {mock?:boolean}).mock)?"测试响应：使用已有样例，本次未向模型发送请求。":"此处保留提交时的输入快照。"}</p>
         {runDetail.kind==="studio-lip-sync"?<p>本次采用人物视频与配音驱动，具体素材和时长保存在下方快照中。</p>:<label>{runDetail.kind==="studio-audio"?"配音文案":"创作要求"}<Input.TextArea readOnly rows={8} value={(runDetail.inputs as unknown as {text?:string}).text||(runDetail.inputs as unknown as {prompt?:string}).prompt||""}/></label>}
+        {runDetail.kind==="studio-video"&&<StudioVideoRewriteDetail run={runDetail}/>}
         <details><summary>查看参考、版本与参数快照</summary><pre style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere",fontSize:12}}>{JSON.stringify(runDetail.inputs,null,2)}</pre></details></div>}
     </Modal>
+    <StudioFrameIntentDialog intent={frameIntent?.intent} model={nativeVideo} getContainer={containers}
+      onClosed={()=>{if(!focusFrameSlot.current)return;focusFrameSlot.current=false;
+        const slot=["首帧图片","视频参考素材","视频模式"].map(label=>composerSettings.current?.querySelector<HTMLElement>(`[aria-label="${label}"]`)).find(Boolean);
+        slot?.focus();}}
+      canvasImages={nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey).length} onChoose={choice=>frameIntent?.resolve(choice)}/>
   </div>;
 }

@@ -47,6 +47,21 @@ describe("video modes preserve every chosen reference",()=>{
   });
 });
 
+describe("「按原文生成」asks the vendor not to rewrite the description",()=>{
+  it("adds optimizePrompt=false only when chosen; the inputs and price are unchanged",()=>{
+    const plain=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7);
+    const kept=studioVideoSettings("i2v","768p",[{mediaType:"image",storageKey:"first"}],7,undefined,true);
+    expect(plain).not.toHaveProperty("optimizePrompt");
+    expect(kept).toEqual({...plain,optimizePrompt:false});
+    expect(studioVideoQuote(model,kept,8)).toBe(studioVideoQuote(model,plain,8));
+  });
+  it("a reopened node restores the choice from its accepted request, not from a template preset",()=>{
+    const accepted={type:CanvasNodeType.Video,metadata:{videoMode:"t2v",studio:{request:{video:{mode:"t2v",resolutionTier:"768p",optimizePrompt:false}}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(accepted,[],[]).draft.keepPrompt).toBe(true);
+    const preset={type:CanvasNodeType.Video,metadata:{studio:{videoPreset:{mode:"t2v",resolutionTier:"768p"}}}} as CanvasNodeData;
+    expect(studioVideoNodeSelection(preset,[],[]).draft).not.toHaveProperty("keepPrompt");
+  });
+});
 describe("reopening a native video node in Studio",()=>{
   const nodes=[{id:"first",type:CanvasNodeType.Image},{id:"last",type:CanvasNodeType.Image},{id:"audio",type:CanvasNodeType.Audio}] as CanvasNodeData[];
   it("inherits unsent frame selection, native geometry and quantity rather than the drawer defaults",()=>{

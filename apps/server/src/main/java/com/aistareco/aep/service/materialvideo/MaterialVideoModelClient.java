@@ -597,6 +597,7 @@ public class MaterialVideoModelClient {
             String lastFrameUrl = extractLastFrameUrl(root);
             String outputAssetId = extractOutputAssetId(root);
             Integer progressPct = extractProgressPct(root);
+            VideoPromptRewrite promptRewrite = VideoPromptRewrite.fromVendor(root);
             String failReason = "failed".equals(status)
                     ? responseSpec != null && responseSpec.error() != null
                         ? pointerText(root, responseSpec.error()) : extractFailReason(root)
@@ -607,12 +608,14 @@ public class MaterialVideoModelClient {
                         p.getName(), submit.protocol(), idForLog, rawStatus, progressPct, failReason,
                         elapsedMs(startNanos), snippet(resp.body()));
             } else if (!"processing".equals(status)) {
-                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} durationMs={}",
+                log.info("[material-video] poll terminal endpoint={} protocol={} taskId={} status={} rawStatus={} progress={} hasVideo={} promptRewrite={}/{} durationMs={}",
                         p.getName(), submit.protocol(), idForLog, status, rawStatus, progressPct,
-                        videoUrl != null && !videoUrl.isBlank(), elapsedMs(startNanos));
+                        videoUrl != null && !videoUrl.isBlank(),
+                        promptRewrite == null ? null : promptRewrite.status(), promptRewrite == null ? null : promptRewrite.source(),
+                        elapsedMs(startNanos));
             }
             return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl,
-                    outputAssetId);
+                    outputAssetId, promptRewrite);
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -760,6 +763,10 @@ public class MaterialVideoModelClient {
 
     static void requireProtocolSupports(String protocol, VideoGenSpec spec, String aspectRatio,
                                         AiVideoRequestSpec configured) {
+        // 「出片前改写提示词」只有聚算 H3 有；别的协议没有这一步，带着开关提交就是请求和实际不符（§8.0）。
+        if (spec.optimizePrompt() != null && !PROTOCOL_JUSUAN_MEDIA.equals(protocol)) {
+            throw BusinessException.badRequest("VIDEO_MODE_UNSUPPORTED", "所选视频模型不会改写描述，不需要选择「按原文生成」");
+        }
         if (configured != null && spec.isExplicit()) {
             var mode = configured.contract().modes().stream()
                     .filter(m -> m.mode().equals(spec.generationMode())).findFirst().orElse(null);
@@ -1192,8 +1199,11 @@ public class MaterialVideoModelClient {
     /**
      * H3 原生请求体。字段集与顺序照抄 Portal「API 接入」生成的示例：
      * {@code model, generationMode, prompt, resolutionTier, orientation, aspectRatio, outputSizeCode, seconds,
-     * [seed], [input_image_asset_id], [end_image_asset_id], [referenceInputs]}。
+     * [seed], [optimizePrompt], [input_image_asset_id], [end_image_asset_id], [referenceInputs]}。
      * 厂商明确不许传的 fps / frames / width / height / steps 一个都不带。
+     *
+     * <p>{@code optimizePrompt} 只在规格里写了才发（公开契约：H3 四种模式缺省先改写提示词再出片，
+     * 显式 false 完全跳过改写；已手动优化过的提示词应传 false）。不写 = 厂商默认，与此前一致。
      */
     private static Map<String, Object> jusuanNativeBody(Map<String, Object> body, String prompt, int durationSec,
                                                         String aspectRatio, VideoGenSpec spec, UpstreamInputs in,
@@ -1217,6 +1227,7 @@ public class MaterialVideoModelClient {
                 : canvas.outputSizeCode());
         body.put("seconds", configured == null ? requireJusuanDuration(durationSec) : durationSec);
         if (spec.seed() != null) body.put("seed", spec.seed());
+        if (spec.optimizePrompt() != null) body.put("optimizePrompt", spec.optimizePrompt());
         switch (spec.generationMode()) {
             case JusuanH3Contract.MODE_I2V ->
                     body.put("input_image_asset_id", requireAsset(in.firstFrameAssetId(), "首帧图"));
@@ -1756,12 +1767,18 @@ public class MaterialVideoModelClient {
         }
     }
 
+    /** @param promptRewrite 厂商出片前改写提示词的结果（只有会改写的模型才有，见 {@link VideoPromptRewrite}） */
     public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
-                             Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId) {
+                             Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId,
+                             VideoPromptRewrite promptRewrite) {
         /** 兼容既有测试与 mock 构造。 */
         public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
                           Integer progressPct, String failReason, String lastFrameUrl) {
-            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, null);
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, null, null);
+        }
+        public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
+                          Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId) {
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, outputAssetId, null);
         }
         public boolean succeeded() { return "succeeded".equals(status); }
         public boolean failed() { return "failed".equals(status); }

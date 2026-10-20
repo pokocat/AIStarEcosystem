@@ -31,6 +31,18 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-20 · H3 视频台词被厂商改写删掉、首尾帧只写在文字里（本地实现，未发布；说明见 `docs/ip-studio-video-modes.md` 末节）
+
+- [x] ~~**看不到厂商实际用的描述**~~ **2026-10-20 本地完成**：worker 把查询响应的 `promptOptimization` 存进任务 `payload_json.vendor_prompt`，画布候选投影 `promptRewrite`，创作面板 / 任务列表 / 「本次创作输入」三处显示实际描述和没保留的台词（`VideoPromptRewrite`、`studio-video-prompt.ts`）。只是成片后的解释。
+- [x] ~~**台词没有办法要求原样交给模型**~~ **2026-10-20 本地完成**：Studio 视频参数加「按原文生成」→ 请求体 `optimizePrompt:false`（厂商公开契约字段），仅聚算 H3 显示，价格不变。
+- [x] ~~**视频生成区优化过的提示词又被厂商改写一遍**~~ **2026-10-20 本地完成**：带 optimizationId 且模型会改写时发 `optimizePrompt:false`（契约：已手动优化的 prompt 应传 false），省一次厂商优化费。
+- [x] ~~**描述写了图1 / 尾帧但请求里没有图**~~ **2026-10-20 本地完成**：提交前确认一次（仍按文字生成 / 改用首尾帧选图片 / 关闭），不替用户挑图、不悄悄改模式。
+- [ ] **付费验收：按原文生成的效果**：同一段带中文对白的描述，H3 `optimizePrompt=true/false` 各出一条，逐句听台词是否完整、口型与画面是否明显变差；再试把台词放进引号能否让厂商改写器保留整句。结论决定要不要改默认值，以及面板提示怎么写。需要用户授权付费调用。
+- [ ] **反馈给聚算**：自动改写把整句中文对白改成只剩开头两个字（线上 2026-10-20 15:39 `job_bbfdab24e8b4427219a1c734`，`optimizationVersion=v8`），表情说明里引用的同一个词疑似被当成了全部台词。这是厂商侧行为，我们只能事后核对或选择不改写。
+- [ ] **助手制作计划里的视频步骤还不能选「按原文生成」**：`StudioPlanSteps` 组出的视频请求走厂商默认改写；要支持需在计划步骤的 video 设置里加这个开关并让确认卡显示。
+- [ ] **视频生成区（带货）界面没展示厂商实际用的描述**：数据已存在任务 `payload_json.vendor_prompt`，`VideoStudioJob` 还没投影。
+- [ ] **提交前整体检查只看「视频生成」默认端点有没有 Key**（`MaterialVideoJobService.submit` → `ensureConfigured(app)`）：选了别的已配好模型、默认端点没 Key 时也 503 `VIDEO_NOT_CONFIGURED`，前端还会把这个 503 当成「待确认原任务」。2026-10-20 本地库副本验证时遇到；线上默认端点是 H3，暂不受影响。
+
 ### 2026-10-19 · Codex 本地全量验收（`docs/audits/studio-local-full-e2e-20261019.md`）复核与修复（本地，未发布）
 
 - [x] ~~首页带话进画布不自动发送~~ **2026-10-19 已修**：助手默认打开后，首页那句话晚一步到达，`studio-assistant.tsx` 把空输入框当草稿存下又立刻恢复，盖掉了它。改为线程读完且为空时再填入（`briefApplied`），发出后去掉地址里的 `send=1`。用例 `the homepage brief still goes out when it reaches a panel that was already open`；演示模式实测首页 → 画布只发一次。

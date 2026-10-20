@@ -84,6 +84,8 @@ class MaterialVideoJobServiceStudioTest {
             assertRejected("{\"seed\":1}", app);
             assertRejected("{\"last_frame_key\":\"video-studio-image/u2/x.png\"}", app);
             assertRejected("{\"reference_inputs\":[{\"media_type\":\"image\",\"key\":\"video-studio-image/u2/x.png\"}]}", app);
+            // 「按原文生成」也是原生规格：素材运营透传客户端的 variant_config，不许夹带
+            assertRejected("{\"optimize_prompt\":false}", app);
         }
         verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
         verify(jobRepo, never()).save(any());

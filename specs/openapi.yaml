@@ -95,6 +95,10 @@ components:
         firstFrameKey: { type: string, nullable: true }
         lastFrameKey: { type: string, nullable: true }
         references: { type: array, items: { $ref: '#/components/schemas/VideoStudioReferenceInput' } }
+        optimizePrompt:
+          type: boolean
+          nullable: true
+          description: 'false =「按原文生成」，请厂商出片前不改写描述（聚算 H3 公开契约 optimizePrompt）；省略 = 模型默认。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED。不改变价格。'
     StudioRunRequest:
       type: object
       required: [clientRequestId, nodeId, operation, prompt]
@@ -4241,6 +4245,14 @@ components:
                   queue:
                     allOf: [{ $ref: '#/components/schemas/AiGenerationQueuePosition' }]
                     nullable: true
+                  promptRewrite:
+                    type: object
+                    nullable: true
+                    description: '厂商出片前改写描述的结果（只读，任务受理之后才有；用来解释成片与原文的差异，不是生成前的检查）。模型不改写或老任务不带这个字段。'
+                    required: [state]
+                    properties:
+                      state: { type: string, enum: [off, running, done, failed], description: 'off = 提交时选了按原文生成' }
+                      prompt: { type: string, maxLength: 8000, description: '厂商实际照着出片的描述；厂商用的是原文时不带' }
             candidates:
               type: array
               description: 'generate 的候选图。key 是 DB 真值，url 是出 wire 时派生的短期签名地址（不落库）。'
@@ -4892,7 +4904,7 @@ components:
         name: { type: string, description: 展示名（后台端点名） }
         isDefault: { type: boolean }
         selectableById: { type: boolean, description: false = 合成的默认项（无候选行），提交时必须省略 endpointId }
-        supportsPromptOptimization: { type: boolean, description: 当前端点协议是否支持提交前提示词智能优化 }
+        supportsPromptOptimization: { type: boolean, description: '当前端点协议是否支持提交前提示词智能优化；这类模型（聚算 H3）出片前默认也会改写描述，Studio 据此开放「按原文生成」' }
         batchCounts: { type: array, items: { type: integer, minimum: 1 }, description: 当前端点每次生成可选候选数 }
         contract: { $ref: '#/components/schemas/VideoStudioContract' }
         pricing: { $ref: '#/components/schemas/VideoStudioPricing' }

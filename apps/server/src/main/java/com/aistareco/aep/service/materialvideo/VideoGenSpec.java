@@ -24,9 +24,13 @@ import java.util.Map;
  *   <li><b>视频生成区 / Studio 完整规格</b>：{@code resolutionTier != null}，按端点的视频协议组包（{@link #isExplicit()}）。</li>
  * </ul>
  * 解析失败 / 空 JSON = {@link #EMPTY}：与此前「读不出首帧就当文生视频」的行为一致。
+ *
+ * <p>{@code optimizePrompt}：出片前要不要让厂商先改写提示词（聚算 H3 公开契约的 {@code optimizePrompt}）。
+ * null = 不发这个字段，由厂商按默认处理（H3 默认改写）；false = 原文直接出片。只有视频生成区 / Studio 会写它。
  */
 public record VideoGenSpec(String generationMode, String resolutionTier, Long seed,
-                           String firstFrameKey, String lastFrameKey, List<Reference> references) {
+                           String firstFrameKey, String lastFrameKey, List<Reference> references,
+                           Boolean optimizePrompt) {
 
     public static final String KEY_GENERATION_MODE = "generation_mode";
     public static final String KEY_RESOLUTION_TIER = "resolution_tier";
@@ -36,6 +40,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     public static final String KEY_REFERENCE_INPUTS = "reference_inputs";
     public static final String KEY_REFERENCE_MEDIA_TYPE = "media_type";
     public static final String KEY_REFERENCE_KEY = "key";
+    public static final String KEY_OPTIMIZE_PROMPT = "optimize_prompt";
 
     private static final ObjectMapper OM = new ObjectMapper();
 
@@ -48,6 +53,12 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     }
 
     public static final VideoGenSpec EMPTY = new VideoGenSpec(null, null, null, null, null, List.of());
+
+    /** 不指定提示词改写（厂商默认）。 */
+    public VideoGenSpec(String generationMode, String resolutionTier, Long seed,
+                        String firstFrameKey, String lastFrameKey, List<Reference> references) {
+        this(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, null);
+    }
 
     public VideoGenSpec {
         generationMode = blankToNull(generationMode);
@@ -83,8 +94,15 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
                 refs.add(new Reference(text(r, KEY_REFERENCE_MEDIA_TYPE), text(r, KEY_REFERENCE_KEY)));
             }
         }
+        JsonNode optimize = vc.get(KEY_OPTIMIZE_PROMPT);
         return new VideoGenSpec(text(vc, KEY_GENERATION_MODE), text(vc, KEY_RESOLUTION_TIER), longOrNull(vc.get(KEY_SEED)),
-                text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs);
+                text(vc, KEY_FIRST_FRAME), text(vc, KEY_LAST_FRAME), refs,
+                optimize != null && optimize.isBoolean() ? optimize.booleanValue() : null);
+    }
+
+    /** 同一份规格，只改「出片前要不要让厂商改写提示词」。 */
+    public VideoGenSpec withOptimizePrompt(Boolean value) {
+        return new VideoGenSpec(generationMode, resolutionTier, seed, firstFrameKey, lastFrameKey, references, value);
     }
 
     /** 视频生成区与 Studio 写出的完整规格（有清晰度）。 */
@@ -93,12 +111,12 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
     }
 
     /**
-     * 带了完整视频规格的参数（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）。
+     * 带了完整视频规格的参数（模式 / 清晰度 / 种子 / 尾帧 / 参考素材 / 提示词改写）。
      * 首帧参考图不算：老路径的画布出视频也会带它。
      */
     public boolean hasNativeOptions() {
         return generationMode != null || resolutionTier != null || seed != null
-                || lastFrameKey != null || !references.isEmpty();
+                || lastFrameKey != null || !references.isEmpty() || optimizePrompt != null;
     }
 
     /**
@@ -123,6 +141,7 @@ public record VideoGenSpec(String generationMode, String resolutionTier, Long se
         if (seed != null) vc.put(KEY_SEED, seed);
         if (firstFrameKey != null) vc.put(KEY_FIRST_FRAME, firstFrameKey);
         if (lastFrameKey != null) vc.put(KEY_LAST_FRAME, lastFrameKey);
+        if (optimizePrompt != null) vc.put(KEY_OPTIMIZE_PROMPT, optimizePrompt);
         if (!references.isEmpty()) {
             ArrayNode arr = vc.putArray(KEY_REFERENCE_INPUTS);
             for (Reference r : references) {
