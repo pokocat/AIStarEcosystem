@@ -539,3 +539,54 @@ html[data-layout="mobile"] .ip-surface .studio-option-grid.is-ratios { grid-temp
 .ip-surface .studio-option-grid.is-compact>.studio-option[aria-checked="true"] { border-color:var(--ink); background:var(--surface); }
 .ip-surface .studio-option-grid.is-compact>.studio-option:hover:not(:disabled):not([aria-checked="true"]) { background:var(--surface-3); }
 html[data-layout="mobile"] .ip-surface .studio-option-grid.is-compact>.studio-option { min-height:40px; }
+
+/* 创作底栏按“模型 / 模式 / 规格 / 总价与提交”排列；素材只有一处可编辑真值。 */
+.ip-surface .studio-media-composer>.studio-floating-footer { flex-wrap:nowrap; gap:8px; padding:10px 12px; }
+.ip-surface .studio-media-composer .studio-generation-toolbar { flex-wrap:nowrap; gap:2px; }
+.ip-surface .studio-media-composer .studio-model-trigger { min-width:0; max-width:140px; flex:0 1 auto; padding:7px 6px; gap:5px; }
+.ip-surface .studio-media-composer .studio-mode-trigger { max-width:112px; flex-shrink:0; }
+.ip-surface .studio-media-composer .studio-settings-trigger { flex:1; min-width:0; padding:7px 8px; gap:5px; background:transparent; }
+.ip-surface .studio-media-composer .studio-generation-toolbar .studio-settings-trigger { border-left:1px solid var(--line); border-radius:0; }
+.ip-surface .studio-media-composer .studio-settings-trigger>svg:first-child { display:none; }
+.ip-surface .studio-media-composer .studio-creator-footer { flex-wrap:nowrap; gap:8px; }
+.ip-surface .studio-media-composer .studio-composer-send.ant-btn { width:36px; height:36px; min-height:36px; padding:0; border-radius:10px; }
+.ip-surface .studio-media-composer .studio-composer-send:not(:disabled) { background:var(--ink); color:var(--surface); }
+.ip-surface .studio-composer-inputs:empty { display:none; }
+.ip-surface .studio-composer-references>.ant-btn,.ip-surface .studio-reference-add { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:30px; padding:4px 9px; border:0; border-radius:7px; background:var(--surface-2); color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
+.ip-surface .studio-composer-references>.ant-btn:hover,.ip-surface .studio-reference-add:hover { color:var(--ink); background:var(--surface-3); }
+.ip-surface .studio-reference-strip { display:flex; align-items:center; gap:8px; width:100%; overflow:auto; padding:4px 0 2px; scrollbar-width:thin; }
+.ip-surface .studio-reference-tile { position:relative; display:flex; align-items:center; justify-content:center; flex:0 0 64px; height:64px; overflow:hidden; border-radius:8px; background:var(--surface-2); color:var(--ink-2); }
+.ip-surface .studio-reference-tile>img { width:100%; height:100%; object-fit:cover; }
+.ip-surface .studio-reference-number { position:absolute; top:4px; left:4px; min-width:16px; padding:1px 3px; border-radius:4px; background:var(--ink); color:var(--surface); font-size:10px; text-align:center; }
+.ip-surface .studio-reference-role { position:absolute; bottom:0; left:0; right:0; padding:3px 5px; background:var(--ink); color:var(--surface); font-size:10px; text-align:center; }
+.ip-surface .studio-reference-tile>button { position:absolute; top:3px; right:3px; display:grid; place-items:center; width:20px; height:20px; padding:0; border:0; border-radius:50%; background:var(--surface); color:var(--ink); cursor:pointer; }
+.ip-surface .studio-frame-swap { display:inline-flex; align-items:center; gap:5px; margin-left:auto; border:0; padding:4px 0; background:transparent; color:var(--ink-2); font:inherit; font-size:11px; cursor:pointer; }
+.ip-surface .studio-reference-overlay .ant-popover-container { padding:0; background:var(--surface); color:var(--ink); border-radius:12px; box-shadow:var(--shadow-lift); }
+.ip-surface .studio-reference-picker { width:min(300px,calc(100vw - 32px)); padding:12px; }
+.ip-surface .studio-reference-picker>header { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; font-size:12px; }
+.ip-surface .studio-reference-picker>header>button { display:grid; place-items:center; padding:6px; border:0; border-radius:5px; background:transparent; color:var(--ink-2); cursor:pointer; }
+.ip-surface .studio-reference-options { max-height:min(260px,40dvh); overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+.ip-surface .studio-reference-options>button { display:flex; align-items:center; gap:8px; width:100%; padding:6px; border:0; border-radius:7px; background:transparent; color:var(--ink); font:inherit; font-size:12px; text-align:left; cursor:pointer; }
+.ip-surface .studio-reference-options>button>span:nth-child(2) { flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.ip-surface .studio-reference-options>button:hover,.ip-surface .studio-reference-options>button[aria-checked="true"] { background:var(--surface-2); }
+.ip-surface .studio-reference-options>button:disabled { opacity:.45; cursor:default; }
+.ip-surface .studio-reference-option-image { display:grid; place-items:center; width:32px; height:32px; flex:none; overflow:hidden; border-radius:5px; background:var(--surface-2); }
+.ip-surface .studio-reference-option-image>img { width:100%; height:100%; object-fit:cover; }
+.ip-surface .studio-reference-options>p { margin:12px 4px; font-size:12px; color:var(--ink-2); }
+.ip-surface .studio-canvas-reference-action { width:100%; margin-top:8px; padding:9px; border:0; border-top:1px solid var(--line); background:transparent; color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
+.ip-surface .studio-reference-add:focus-visible,.ip-surface .studio-reference-picker button:focus-visible,.ip-surface .studio-reference-tile>button:focus-visible,.ip-surface .studio-frame-swap:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer>.studio-floating-footer { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-generation-toolbar { display:contents; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-model-trigger { max-width:100%; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-mode-trigger { grid-column:2; justify-self:end; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-settings-trigger { grid-column:1; grid-row:2; text-align:left; padding-left:6px; border-left:0; }
+html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-creator-footer { grid-column:2; grid-row:2; }
+
+/* 同一组工具占一行，首尾交换不再单独撑高；编辑框自身已有可访问名称。 */
+.ip-surface .studio-media-composer .studio-reference-strip { order:1; }
+.ip-surface .studio-media-composer .studio-prompt-field>span,.ip-surface .studio-media-composer .studio-motion-tools>span { display:none; }
+.ip-surface .studio-media-composer .studio-motion-tools { padding:0 0 6px; gap:6px; }
+.ip-surface .studio-media-composer .studio-motion-drawer-editor { min-height:100px; max-height:180px; }
+.ip-surface .studio-mode-trigger-overlay .studio-model-menu { width:min(220px,calc(100vw - 32px)); }
+.ip-surface .studio-mode-trigger-overlay .studio-option>small { display:none; }
+html[data-layout="mobile"] .ip-surface .studio-reference-tile>button { width:32px; height:32px; }

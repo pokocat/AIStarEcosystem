@@ -77,17 +77,17 @@ export function StudioSettingsPopover({summary,label="生成参数",children,dis
     </button>
   </Popover>;
 }
-export function StudioModelPicker({label="生成模型",value,options,onChange,disabled=false,loading=false}:{
-  label?:string;value?:string;options:StudioChoice<string>[];onChange:(value:string)=>void;disabled?:boolean;loading?:boolean;
+export function StudioModelPicker({label="生成模型",value,options,onChange,disabled=false,loading=false,icon,className}:{
+  label?:string;value?:string;options:StudioChoice<string>[];onChange:(value:string)=>void;disabled?:boolean;loading?:boolean;icon?:ReactNode;className?:string;
 }) {
   const [open,setOpen]=useState(false),trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null);
   const bounds=usePopupBounds(open,trigger);
   const selected=options.find(o=>o.value===value);
   useEffect(()=>{if(!open)return;const close=(e:KeyboardEvent)=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();setOpen(false);trigger.current?.focus();}};window.addEventListener('keydown',close,true);return()=>window.removeEventListener('keydown',close,true);},[open]);
   return <Popover trigger="click" placement={bounds.placement} arrow={false} open={open&&!disabled} onOpenChange={setOpen} afterOpenChange={visible=>{if(visible)focusPopup(panel.current);}} getPopupContainer={popupContainer} destroyOnHidden
-    classNames={{root:"studio-model-overlay"}} styles={{container:{padding:0}}} content={<div ref={panel} style={{maxHeight:Math.min(480,bounds.height)}} className="studio-model-menu"><StudioChoiceGroup label={label} value={value} options={options} onChange={next=>{onChange(next);setOpen(false);trigger.current?.focus();}}/></div>}>
-    <button ref={trigger} type="button" className="studio-model-trigger" aria-label={label} aria-expanded={open&&!disabled} disabled={disabled||loading||!options.length} title={typeof selected?.label==='string'?selected.label:undefined}>
-      <Sparkles size={16}/><span>{loading?'正在读取模型…':selected?.label||'尚未配置模型'}</span><ChevronDown size={14}/>
+    classNames={{root:`studio-model-overlay${className?` ${className}-overlay`:""}`}} styles={{container:{padding:0}}} content={<div ref={panel} style={{maxHeight:Math.min(480,bounds.height)}} className="studio-model-menu"><StudioChoiceGroup label={label} value={value} options={options} onChange={next=>{onChange(next);setOpen(false);trigger.current?.focus();}}/></div>}>
+    <button ref={trigger} type="button" className={`studio-model-trigger${className?` ${className}`:""}`} aria-label={label} aria-expanded={open&&!disabled} disabled={disabled||loading||!options.length} title={typeof selected?.label==='string'?selected.label:undefined}>
+      {icon??<Sparkles size={16}/>}<span>{loading?'正在读取模型…':selected?.label||(label==='视频模式'?'请选择模式':'尚未配置模型')}</span><ChevronDown size={14}/>
     </button>
   </Popover>;
 }
