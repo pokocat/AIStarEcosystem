@@ -49,3 +49,23 @@
 最终截图覆盖 1440×900、用户实际 1040×569 与手机 390×844。桌面底栏同一行、手机按两行排列；手机参数浮层宽 358、高 620、范围 y=103..723，独立滚动（内容高 721），所有设置仍可达。交换首尾帧与添加参考在同一工具行，去掉重复提示词标签和通用说明。证据在本机 `.studio-e2e/aiprox/adaptive-composer-final-desktop.png`、`adaptive-composer-final-modes.png`、`adaptive-composer-final-user-1040.png`、`adaptive-composer-final-mobile.png` 和 `adaptive-composer-final-mobile-settings.png`。浏览器视口测试覆盖已恢复默认。
 
 独立 fresh finish reviewer 已对用户原始截图、五张最终证据和当前代码完成新一轮审查，disposition=ship，material_fixes 为空；确认原错行和重复说明在本轮证据中已解决。评价仅覆盖本轮视频配置与底栏的 Operate 改进，不代表所有模型的收费生成能力验收。
+
+## 合入 main 后重新发布（2026-10-20）
+
+用户明确要求“改完要合入 main 再发”。本次在干净的 `AIStarEcosystem-main-release` 工作区先把 `codex/studio-gpt-image-native` 合入本地 `main`，合并提交 `2ebbd7958f86e9bd273f8d81cc8b5bff80333012`（父提交 `7b4aedc6`、`be8ce25c`），再从该 main 提交构建、部署。没有推送远端；沿用现有本地 main 发布工作区，原开发工作区的其他修改保留。已把“先合 main、检查、再从干净 main 构建发布”写进 `AGENTS.md`。
+
+合并保留主线 H3 的“按原文生成”、供应商实际提示词记录、图片意图确认，以及主线已有的保存冲突处理。确认补选首尾帧后改为打开新的统一参考菜单，并固定用户选择的两帧模式，第一张图选好时仍等待尾帧；不会自动降成单帧。规格摘要保留“按原文”状态。不恢复已经删除的重复素材表单。
+
+| 项目 | 结果 |
+|---|---|
+| 发布 | `20261020-studio-main-adaptive`，仅 `web-aiavatar` |
+| 制品 GIT_SHA | `2ebbd7958f86e9bd273f8d81cc8b5bff80333012`，来自 main |
+| web SHA256 | `22f2f7ac6058fc145b5810256be2823ff75b232730c65065c854dd5395770a36`，远端一致 |
+| BUILD_ID | `3MzpdPYVaSatafofdT3vi`，本地与线上一致 |
+| 发布前检查 | 全工作区/后台类型、Java 离线编译、API 契约通过；14 个受影响测试文件 220 项通过 |
+| 服务验证 | runtime/env 与 verify ALL GREEN，web active/running、NRestarts=0 |
+| 后端 | 未部署、未重启；MainPID 1090828，启动时间仍为 2026-10-20 18:52:12 CST |
+
+初轮广泛回归出现一处测试样本错误和一次 storyboard 测试超时，该轮未跑完，不宣称全量通过。样本此前把“按原文”设在模板 preset，而主线规则只继承已受理请求的选择；改为真实请求来源后，包含该例及超时项的上述 220 项全部通过。测试样本修正提交 `d7298c94` 仅改测试文件，与制品源提交之间没有生产代码差异，因此不重新打包产品。
+
+实际线上独立画布 `IPP-47f7f9e8`：两张参考图、首尾帧、9:16/768p/8秒/1条和320积分摘要正常；打开参数可见“按原文生成”，勾选后摘要增加“按原文”，取消后恢复，参考图和模式不变。未提交生成，余额仍为 6,335。截图 `main-composer.png` 和 `main-h3-settings.png` 保存在 `apps/web-aiavatar/.impeccable/review/adaptive/`（后者展示验收时勾选状态，随后已恢复）。本轮 UI 验收不代表厂商收费出片已验证。
