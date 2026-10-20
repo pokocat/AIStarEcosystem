@@ -20,3 +20,13 @@
 ## 原生扩展发布与 Studio 验收
 
 后端原生协议/规格回归 19 项、Studio 创作面板回归 74 项通过；全工作区/后台类型检查及 API 契约检查通过。工作区类型检查串行执行以控制资源占用。准备发布 `server,web-aiavatar`，发布编号 `20261020-studio-gpt-image-native`；代码基于已核对的线上 server `eb2f5259` / web `5bcfbc1f` 合并基线，不包含后续 H3 本地变更。正式制品和线上 2K 图生图终态发布后补记。
+
+## 正式 Studio 2K 验收发现尺寸不一致
+
+首轮发布 `20261020-studio-gpt-image-native`，代码 `7d4ffcaa3ad4f450146f8842e49183cc769b13e4`；server JAR SHA256 为 `c38367680610af39ddc7f3b3298b534ca3d7080e128b81dee47cd341c981f452`，web 包为 `ac74e26ba590a14504ca5265c27236c7e99bc2e8a4a6583d56cd314218d227e4`。发布验证 ALL GREEN，两服务 active/running、NRestarts=0。
+
+正式页面提交 `IPR-5ad762b4`：`size=2048x2048`、目标端点、1 张原图参考，实际 `/images/edits` multipart 请求包含正确参数。供应商 182 秒后 HTTP 200，**原始 PNG 头即为 1254×1254**；落库候选同为 1254×1254，因此不是 Studio 或 OSS 缩图。前述供应商直接测试返回过真实 2048×2048，两次不一致，不能宣称该渠道 2K 已稳定验收。
+
+该次先前已结算的 30 积分经既有运营补偿接口补回原用户赠送桶，工单 `studio-image-size:IPR-5ad762b4`，账本 `f595a96d-c2a9-424f-9143-16d842e367e5`；原消费、产物和审计保留，未直接修改钱包或旧账本。新端点在增加防护期间暂时停用。
+
+补充 `wire.requireExactOutputSize`：开启时，必须按原始图片字节得到与请求完全一致的宽高，之后才允许保存候选和 commit；尺寸不符是已知无效结果（ProviderRejected），不能停成未知受理，也不自动重投。未来此类失败释放本张冻结积分，不能以缩图或放大冒充原生 2K。该渠道的 2K 参数/专用模型需供应商文档确认；模型列表当前只有 1K 和 4K 别名。

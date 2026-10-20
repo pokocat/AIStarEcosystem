@@ -242,6 +242,24 @@ class JusuanImageClientTest {
             verify(storage,never()).upstreamFetchUrl(any());
         }finally{Files.deleteIfExists(first);Files.deleteIfExists(second);}
     }
+    @Test void completedWrongSizeIsRejectedBeforeSettlementRatherThanParkedAsUnknown() {
+        var ep=endpoint("gpt-image-2-1k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"2048x2048","aspectRatio":"1:1","providerFields":{"size":"2048x2048"}}],
+                 "wire":{"submitPath":"/images/generations","resultMode":"sync-base64","outputPointer":"/data/0/b64_json","requireExactOutputSize":true}}
+                """);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        String image="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=";
+        var reply=json("{\"data\":[{\"b64_json\":\""+image+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,state::set));
+        assertTrue(error.getMessage().contains("1x1"));assertTrue(error.getMessage().contains("2048x2048"));
+        assertTrue(state.get().path("submitAttempted").asBoolean());
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
     @Test void urlReferencesAndAsyncUrlResultFollowEndpointModes() throws Exception {
         var ep=endpoint("image-model");
         ep.setImageRequestSpecJson("""
