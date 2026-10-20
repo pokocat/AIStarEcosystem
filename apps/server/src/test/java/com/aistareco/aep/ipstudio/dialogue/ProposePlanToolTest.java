@@ -45,13 +45,14 @@ class ProposePlanToolTest {
     ProposePlanTool tool;
     ToolContext ctx;
     ObjectNode appended;
+    StudioWorkflowService planner;
 
     @BeforeEach void setUp() throws Exception {
         models = mock(AiModelInvocationService.class);
         var prompts = mock(PromptService.class);
         String[] file = planPrompt();
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN)).thenReturn(new PromptService.ResolvedPrompt(file[0], file[1], new PromptParamsDto(null, null, null), "resource"));
-        var planner = mock(StudioWorkflowService.class);
+        planner = mock(StudioWorkflowService.class);
         when(planner.planCapabilities()).thenReturn("{\"videoModels\":[{\"endpointId\":\"ep-h3\",\"name\":\"H3\",\"isDefault\":true,\"minSeconds\":5,\"maxSeconds\":15}]}");
         @SuppressWarnings("unchecked") ObjectProvider<StudioWorkflowService> workflow = mock(ObjectProvider.class);
         when(workflow.getIfAvailable()).thenReturn(planner);
@@ -180,5 +181,23 @@ class ProposePlanToolTest {
         assertEquals("failed", run.status());
         assertTrue(run.forModel().contains("minimax-h3") && run.forModel().contains("ep-h3"), run.forModel());
         verify(effects, never()).appendPlan(any(), any());
+    }
+
+    @Test void withNoVideoModelConfiguredAPlanThatNeedsVideoIsRefusedAsNotConfigured() throws Exception {
+        // Local e2e 2026-10-19: no video candidate had a contract, the offer was empty, and the plan named 「sora-2」.
+        when(planner.planCapabilities()).thenReturn("{\"videoModels\":[]}");
+        modelReplies(FOLLOWS_THE_CONTRACT.replace("\"videoModel\":\"ep-h3\"", "\"videoModel\":\"sora-2\""));
+        var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
+        assertEquals("failed", run.status());
+        assertEquals("VIDEO_NOT_CONFIGURED", run.errorCode());
+        assertTrue(run.forModel().contains("不要换一个模型名重试"), run.forModel());
+        verify(effects, never()).appendPlan(any(), any());
+    }
+
+    @Test void anUnreadableOfferIsLeftToTheQuoteRatherThanCalledUnconfigured() throws Exception {
+        when(planner.planCapabilities()).thenReturn("{\"videoModels\":[],\"videoModelsUnavailable\":true}");
+        modelReplies(FOLLOWS_THE_CONTRACT);
+        var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
+        assertEquals("done", run.status(), run.forModel());
     }
 }

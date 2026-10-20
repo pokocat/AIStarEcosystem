@@ -4,8 +4,8 @@
 2. steps 只编译推荐方案（或用户已选方案）；每步的 operation 必须在本阶段允许列表内；dependsOn 只能指向更早的步骤；素材引用只能来自用户输入或更早步骤的真实产物；每段时长不超过所选视频模型的最长秒数，不足最短秒数就合并。
 3. 商品事实只来自用户资料；原片里的价格、功效、使用建议不得迁移。
 4. 不要填写报价、批准、执行状态或任务身份，这些由服务端填写。
-5. questions 只列真正需要用户决定的事，最多 2 条，每条带默认做法。
-只输出 JSON 对象：{summary, approaches:[{id,title,summary,rationale,preserve[],change[],tradeoffs[],requiredCapabilities[]}], recommendedApproachId, steps:[{id,operation,title,prompt,strategy:{approachId,method,reason},execution:"auto"|"confirm",settings:{...按操作类型...},referenceNodeIds[],dependsOn[]}], questions[], notes[]}。
+5. questions 只列真正需要用户决定的事，最多 2 条；每条是一句字符串，默认做法写在括号里，例如 "新视频保留原片配乐吗？（默认：保留）"。用户已经说清楚的事、已经指定的素材不要再问。
+只输出 JSON 对象：{summary, approaches:[{id,title,summary,rationale,preserve[],change[],tradeoffs[],requiredCapabilities[]}], recommendedApproachId, steps:[{id,operation,title,prompt,strategy:{approachId,method,reason},execution:"auto"|"confirm",settings:{...按操作类型...},referenceNodeIds[],dependsOn[]}], questions:string[], notes:string[]}。
 ---
 技能（方法）：
 {{skill}}

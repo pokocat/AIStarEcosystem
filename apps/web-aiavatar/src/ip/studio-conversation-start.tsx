@@ -1,8 +1,10 @@
 "use client";
 // The dialogue-first start shared by the desktop home hero, the mobile home and the creation page:
 // one box to say what you want, a few example openers, and 「开始对话」. Submitting creates a canvas
-// (free) with the brief and opens it with the assistant already talking; nothing is generated and
-// nothing is charged until the assistant quotes and the user confirms inside the canvas.
+// (free) with the brief and opens it with the assistant already talking. Each reply is charged by
+// actual usage (a few credits, the ceiling shows next to the canvas composer); images and videos are
+// quoted and start only after the user confirms. A brief that needs a reference video is not sent
+// until the video is there (studioBriefNeedsReference).
 import { useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { ArrowUp, Loader2 } from "lucide-react";
@@ -44,7 +46,7 @@ export function StudioConversationStart({ onStart, creating, pending = false, co
           {creating ? <Loader2 size={18} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowUp size={18} aria-hidden="true"/>}<span>{pending ? "继续保存并打开" : "开始对话"}</span>
         </button>
       </div>
-      <p className="studio-conversation-start-note">还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></p>
+      <p className="studio-conversation-start-note">助手每轮回复按实际用量扣少量积分；出图、出片先报价，你确认了才开始。还没想好？逛逛<Link href="/templates" className="studio-conversation-start-link">灵感</Link>或<Link href="/scenes" className="studio-conversation-start-link">专项创作</Link></p>
     </div>
   </form>;
 }

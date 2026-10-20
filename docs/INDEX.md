@@ -191,6 +191,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/unified-account-referral-astra-review-2026-10.md`](audits/unified-account-referral-astra-review-2026-10.md) | `gpt-6-astra` 对统一账号邀请链 v0.2 方案的独立评审与风险记录；v0.3 未复审（2026-10-17） |
 | [`docs/audits/unified-identity-sop-audit-2026-10.md`](audits/unified-identity-sop-audit-2026-10.md) | 统一认证发布与跨应用 SOP 复核：资料、后台、竞态修复与既有缺口（2026-10-10） |
 | [`docs/audits/studio-film-study-technical-sharing-2026-10.md`](audits/studio-film-study-technical-sharing-2026-10.md) | 视频拉片技术分享：媒体工程、模型理解、成本与音频补全，程序和大模型各管什么（2026-10-17） |
+| [`docs/audits/studio-local-full-e2e-20261019.md`](audits/studio-local-full-e2e-20261019.md) | Codex 本地全量端到端验收（对话、画布、成片、限流）及复核修复结论：8 条中 7 条修复、1 条为别名配置（2026-10-19） |
+| [`docs/audits/studio-user-journey-acceptance-20261019.md`](audits/studio-user-journey-acceptance-20261019.md) | 线上只读的用户视角验收：文字落画布、复刻检查口径、成片默认片段等待办（2026-10-19，后续见 TODO） |
 
 ## 7. 发布与验收记录（`docs/releases/`）
 

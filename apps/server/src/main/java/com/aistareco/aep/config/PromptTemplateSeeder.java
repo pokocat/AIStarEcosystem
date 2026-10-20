@@ -36,7 +36,12 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      不要整批放弃、通常 4-8 条」，并说明丢弃规则只针对那件事本身、不是放弃整批热词。
     // v13：画布提示词（drama.canvas_script_setting / outline / episode / extract / storyboard）按线上实测改写：
     //      示例名换成人物甲 / 乙、人物小传列全想法里的人且不撞字、台词不加 △、相邻集不重复、拆角色看大纲、片段下限。
-    private static final String SEED_VERSION = "v14-2026-10-19-dialogue-short-approvals";
+    // v14：对话提示词放行「可以」这类短肯定回复。
+    // v15：方案提示词把 questions 写成字符串数组（Agnes 写成 {id,text,defaultAnswer}，整份方案被拒）；对话提示词
+    //      不在正文写素材编号、不把没说过的金额说成用户说的（示例里的「上限 300 积分」曾被模型当成用户原话）。
+    // v16：对话提示词要求可直接用的文字初稿用 create_nodes 放进画布；检查提示词以目标说明里的替换对象为准、依据与结论不许矛盾
+    //      （线上复刻检查看到「三位成年男性」仍判「没有旧人物」）。
+    private static final String SEED_VERSION = "v16-2026-10-19-text-to-canvas-and-check-targets";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

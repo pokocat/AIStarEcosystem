@@ -81,6 +81,9 @@ export type CanvasNodeMetadata = {
     studioStart?: import("@/ip/studio-entry").StudioEntry;
     // Studio business metadata is owned by the bridge, not the vendored engine.
     studio?: import("@ai-star-eco/types/ip-studio-workflow").StudioNodeMetadata;
+    // 本仓：where the media came from when no AI run made it — the user's own file, or cut from another node (crop / split).
+    // Absent on older nodes; the canvas then judges by the storage key (studio-node-origin.ts).
+    origin?: "upload" | "derived";
     // 本仓：template nodes open the locked execution plan rather than a separate generator.
     templateStepId?: string;
     batchExpanded?: boolean; // 本仓：重新打开保留候选组展开状态。

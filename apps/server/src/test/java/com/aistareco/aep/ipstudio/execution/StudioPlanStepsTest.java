@@ -67,4 +67,16 @@ class StudioPlanStepsTest {
         assertTrue(first.length()<=64);
         assertTrue(StudioPlanExecutionIds.segmentNodeId("PEX-"+"a".repeat(20),"analysis","b".repeat(32),8).length()<=64);
     }
+
+    @Test void aCheckIsToldWhatTheConfirmedApproachReplacesAndWhatTheStepShouldShow() throws Exception {
+        var plan=om.readTree("{\"approaches\":[{\"id\":\"other\",\"change\":[\"别的方案\"]},{\"id\":\"remap\",\"change\":[\"三位老人换成三个婴儿\",\"包装换成星桥保温杯\"],\"preserve\":[\"客厅场景\"]}]}");
+        var video=om.readTree("{\"prompt\":\"三个婴儿坐在沙发上举起星桥保温杯\"}");
+        String target=StudioPlanSteps.checkTarget(plan,"remap",video,"重点看主体");
+        assertTrue(target.startsWith("这一段应当呈现：三个婴儿坐在沙发上举起星桥保温杯"),target);
+        assertTrue(target.contains("三位老人换成三个婴儿；包装换成星桥保温杯")&&target.contains("要保留的：客厅场景"),target);
+        assertFalse(target.contains("别的方案"),"only the confirmed approach");
+        assertTrue(target.endsWith("检查要点：重点看主体"),target);
+        assertEquals("只看字幕",StudioPlanSteps.checkTarget(null,null,null,"只看字幕"),"nothing to add: the planner's words stand alone");
+        assertEquals(target,StudioPlanSteps.checkTarget(plan,"remap",video,"重点看主体"),"deterministic for resubmission");
+    }
 }

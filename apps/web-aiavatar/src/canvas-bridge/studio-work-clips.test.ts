@@ -30,6 +30,22 @@ describe("which clips go into the cut", () => {
     expect(studioSourceClipIds([source, take], []).has("src")).toBe(true);
   });
 
+  // Production 2026-10-19 (IPP-6658ccda): the reference film and the three film-study cuts were ticked next to the three new clips.
+  test("a recreation's reference film and its film-study cuts stay out of the cut by default", () => {
+    const reference = video("ref", {}, "06 H3第2段｜商品与质疑");
+    const analysis: CanvasNodeData = { id: "analysis", type: "text" as never, title: "拉片", position: { x: 0, y: 0 }, width: 380, height: 320,
+      metadata: { status: "success", studio: { kind: "recreation", runId: "r0" } } };
+    const cut = video("cut1", { studio: { kind: "shot", runId: "r0", sourceRange: { startSec: 0, endSec: 5, storageKey: "cut1.mp4" } } }, "第 1 段 · 片段");
+    const made = video("new1", { studio: { kind: "shot", runId: "r1" } });
+    const ids = studioSourceClipIds([reference, analysis, cut, made], [edge("ref", "analysis"), edge("analysis", "cut1")]);
+    expect(studioClipIncluded(reference, ids)).toBe(false);
+    expect(studioClipIncluded(cut, ids)).toBe(false);
+    expect(studioClipIncluded(made, ids)).toBe(true);
+    // A manual analysis names its reference instead of linking it.
+    const named: CanvasNodeData = { ...analysis, metadata: { status: "success", studio: { kind: "recreation", recreation: { mode: "segments", sourceNodeId: "ref" } as never } } };
+    expect(studioSourceClipIds([reference, named, made], []).has("ref")).toBe(true);
+  });
+
   test("being inside an assembled work does not make a clip source material", () => {
     const clip = video("clip"), work = video("work", { studio: { kind: "work", references: [{ storageKey: "clip.mp4", role: "clip" }] } });
     expect(studioSourceClipIds([clip, work], [edge("clip", "work")]).size).toBe(0);

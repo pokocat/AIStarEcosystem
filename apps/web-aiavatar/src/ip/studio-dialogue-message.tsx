@@ -4,12 +4,13 @@
 // order they arrived (a reloaded message shows its text first, then its blocks).
 import { useState, type ReactNode } from 'react';
 import { Button } from 'antd';
-import { GitBranch } from 'lucide-react';
+import { FileText, GitBranch } from 'lucide-react';
 import { formatCredits } from '@ai-star-eco/api-client';
 import type { StudioDialogueMessage, StudioMessageBlock, StudioPlan } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { blockKey, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialogueToolBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { proposalFieldValue } from '@/canvas-bridge/studio-plan-execution';
+import { splitReplyActions } from '@/canvas-bridge/studio-reply-actions';
 import { StudioDialogueToolCard, toolTitle } from './studio-dialogue-tool';
 import { StudioDialogueApprovalCard, type ApprovedCaps } from './studio-dialogue-approval';
 import { StudioDialogueQuestion, StudioDialogueSuggestions } from './studio-dialogue-question';
@@ -27,6 +28,8 @@ export type DialogueMessageHandlers = {
   approvedCaps?: (block: DialogueApprovalBlock) => ApprovedCaps | undefined;
   onAdopt: (block: DialogueAdoptionBlock) => Promise<void>;
   onBranch?: (messageId: string) => Promise<void>;
+  /** 「放进画布」: the reply's text becomes a text node (or the one already holding it comes into view). */
+  onPlaceText?: (message: StudioDialogueMessage) => Promise<void>;
   /** 「按技能：名称 v2」 for a plan planned with a skill version; undefined hides the badge. */
   skillLabel?: (plan: StudioPlan) => string | undefined;
   /** Extra actions under an execution's completion summary (operators: 「整理成技能草稿」); null when none. */
@@ -69,18 +72,27 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
   }
 }
 
+/** Reply prose, with raw action blocks from older replies folded into a closed record instead of read as text. */
+function replyText(key: string, text: string): ReactNode[] {
+  const { prose, actions } = splitReplyActions(text);
+  return [
+    ...(prose ? [<p key={key} className="studio-dialogue-text">{prose}</p>] : []),
+    ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>这一轮的操作原文</summary><pre>{actions}</pre></details>] : []),
+  ];
+}
+
 /** Text parts and blocks in arrival order; consecutive text parts read as one paragraph. */
 function messageBody(message: StudioDialogueMessage, props: MessageProps): ReactNode[] {
   const { layout } = props;
   const out: ReactNode[] = [];
   const blocks = new Map(message.blocks.map(b => [`b:${blockKey(b)}`, b]));
   if (!layout) {
-    if (message.text) out.push(<p key="text" className="studio-dialogue-text">{message.text}</p>);
+    if (message.text) out.push(...replyText("text", message.text));
     for (const b of message.blocks) out.push(renderBlock(b, message, props));
     return out;
   }
   let text = '', index = 0;
-  const flush = () => { if (text) out.push(<p key={`text-${index++}`} className="studio-dialogue-text">{text}</p>); text = ''; };
+  const flush = () => { if (text) out.push(...replyText(`text-${index++}`, text)); text = ''; };
   const seen = new Set<string>();
   for (const key of layout.order) {
     if (key.startsWith('t:')) { text += layout.parts[key.slice(2)] || ''; continue; }
@@ -102,7 +114,7 @@ type MessageProps = {
 
 export function StudioDialogueMessageView(props: MessageProps) {
   const { message, nodes, readOnly, queueLabel, suggestions, handlers } = props;
-  const [branching, setBranching] = useState(false), [error, setError] = useStudioErrorState();
+  const [branching, setBranching] = useState(false), [placing, setPlacing] = useState(false), [error, setError] = useStudioErrorState();
   const user = message.role === 'user';
   const refs = [...(message.pinnedNodeIds || []), ...(message.attachmentNodeIds || [])];
   const tools = message.blocks.filter((b): b is DialogueToolBlock => b.type === 'tool_call' && !!b.creditsActual);
@@ -111,6 +123,14 @@ export function StudioDialogueMessageView(props: MessageProps) {
     if (!handlers.onBranch || branching) return;
     setBranching(true); setError('');
     try { await handlers.onBranch(message.id); } catch (e) { setError(e); } finally { setBranching(false); }
+  };
+  // A reply worth keeping as text (a draft, a description, copy): the start card promises it lands on the canvas, and the
+  // model does not always call create_nodes (production 2026-10-19: a paid character description stayed in the chat).
+  const placeable = !user && !readOnly && !!handlers.onPlaceText && message.role === 'assistant' && message.status === 'done' && splitReplyActions(message.text || '').prose.trim().length >= 40;
+  const place = async () => {
+    if (!handlers.onPlaceText || placing) return;
+    setPlacing(true); setError('');
+    try { await handlers.onPlaceText(message); } catch (e) { setError(e); } finally { setPlacing(false); }
   };
   const body = user ? [] : messageBody(message, props);
   return <article className={`studio-dialogue-message is-${message.role}`} data-status={message.status} aria-label={user ? '你的消息' : message.role === 'assistant' ? 'Studio 的回复' : '系统消息'}>
@@ -125,14 +145,15 @@ export function StudioDialogueMessageView(props: MessageProps) {
     {!user && props.progress}
     {!!suggestions?.length && !readOnly && <StudioDialogueSuggestions items={suggestions} onUse={handlers.onCompose}/>}
     {!user && !readOnly && handlers.completionActions?.(message)}
-    {((!user && (message.billing || message.settling)) || (!readOnly && handlers.onBranch && finished)) && <div className="studio-dialogue-meta">
+    {((!user && (message.billing || message.settling)) || (!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-meta">
       {!user && (message.billing || message.settling) && <footer className="studio-dialogue-footer">
         <span>{message.settling ? '本轮积分待结算' : `本轮回复 ${formatCredits(message.billing!.credits)} 积分`}</span>
         {!!tools.length && <details><summary>另有 {tools.length} 项工作记录，共 {formatCredits(tools.reduce((sum, t) => sum + (t.creditsActual || 0), 0))} 积分</summary>
           <ul>{tools.map(t => <li key={t.toolCallId}><span>{toolTitle(t)}</span><span>{formatCredits(t.creditsActual || 0)} 积分</span></li>)}</ul></details>}
       </footer>}
-      {!readOnly && handlers.onBranch && finished && <div className="studio-dialogue-message-actions">
-        <button type="button" className="studio-dialogue-link" disabled={branching} title="从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}><GitBranch size={13} aria-hidden="true"/>{branching ? '正在新建' : '从这里重新开始'}</button>
+      {((!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-message-actions">
+        {placeable && <button type="button" className="studio-dialogue-link" disabled={placing} title="把这段回复建成画布上的文字，之后在画布上改，不另扣积分" onClick={() => void place()}><FileText size={13} aria-hidden="true"/>{placing ? '正在放进画布' : '放进画布'}</button>}
+        {!readOnly && handlers.onBranch && finished && <button type="button" className="studio-dialogue-link" disabled={branching} title="从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}><GitBranch size={13} aria-hidden="true"/>{branching ? '正在新建' : '从这里重新开始'}</button>}
       </div>}
     </div>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}

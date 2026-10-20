@@ -27,7 +27,7 @@ export function replaceStudioVideo(nodes: CanvasNodeData[], connections: CanvasC
     }
   }
   return nodes.map(n => n.id === nodeId ? { ...n, metadata: { ...n.metadata,
-    content: video.url, storageKey: video.key, status: 'success', errorDetails: undefined,
+    content: video.url, storageKey: video.key, status: 'success', errorDetails: undefined, origin: 'upload',
     mimeType: video.mimeType, bytes: video.bytes, naturalWidth: video.width, naturalHeight: video.height,
     durationMs: video.durationSec ? Math.round(video.durationSec * 1000) : undefined,
     runId: undefined, videoTaskId: undefined, primaryVideoId: id,

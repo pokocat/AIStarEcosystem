@@ -23,6 +23,15 @@ test('the home opens on the conversation box: a brief creates a canvas that send
   expect(api.createProject).toHaveBeenCalledOnce();
   expect(api.updateProject.mock.calls[0][1].doc.assistantConversations.at(-1).metadata.prompt).toBe('把商品换成我的保温杯');
 });
+// Production 2026-10-19: the 「复刻一条短视频」 example was sent at once, and the first paid reply could only ask for the video.
+test('a brief that copies a reference video opens the canvas without sending, and the box says replies are charged',async()=>{
+  render(<StudioHome ready/>);
+  expect(screen.getByText(/助手每轮回复按实际用量扣少量积分/)).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'复刻一条短视频'}));
+  fireEvent.click(screen.getByRole('button',{name:'开始对话'}));
+  await waitFor(()=>expect(api.push).toHaveBeenCalledWith('/projects/p?start=assistant'));
+  expect(api.createProject).toHaveBeenCalledWith({name:'照这条视频的拍法'});
+});
 test('a specific home tool still opens its intended workflow on explicit selection',async()=>{
   render(<StudioHome ready/>);fireEvent.click(screen.getByRole('button',{name:/视频创作/}));
   await waitFor(()=>expect(api.push).toHaveBeenCalledWith('/projects/p?start=video'));

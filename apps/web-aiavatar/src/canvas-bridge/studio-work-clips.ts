@@ -5,8 +5,11 @@ import { parseStudioCaptions } from "./studio-packaging";
 export const studioClipEpisode = (node: CanvasNodeData) => node.metadata?.studio?.episodeNo || 1;
 
 /**
- * Videos that other videos were made from (e.g. the original a recreation copies).
- * They are inputs, not cuts: the work editor leaves them out unless the user puts them in.
+ * Videos that other videos were made from (e.g. the original a recreation copies), and the cuts a film study made of it.
+ * They are inputs, not cuts: the work editor leaves them out unless the user puts them in. A reference is often used only
+ * through its analysis, never by a new clip, so it is also known by what points at it: a film-study cut carries its
+ * `sourceRange`, the analysis names or links its reference (production 2026-10-19: the reference and three cuts were
+ * ticked next to the three new clips).
  */
 export function studioSourceClipIds(nodes: CanvasNodeData[], connections: CanvasConnection[]): Set<string> {
   const videos = new Map(nodes.filter(n => n.type === CanvasNodeType.Video).map(n => [n.id, n]));
@@ -23,6 +26,13 @@ export function studioSourceClipIds(nodes: CanvasNodeData[], connections: Canvas
     for (const ref of studio?.request?.video?.references || []) if (ref.key !== own) keys.add(ref.key);
   }
   for (const node of videos.values()) if (node.metadata?.storageKey && keys.has(node.metadata.storageKey)) ids.add(node.id);
+  const analyses = new Set(nodes.filter(n => n.metadata?.studio?.kind === "recreation").map(n => n.id));
+  for (const node of nodes) {
+    const named = node.metadata?.studio?.recreation?.sourceNodeId;
+    if (named && videos.has(named)) ids.add(named);
+  }
+  for (const edge of connections) if (videos.has(edge.fromNodeId) && analyses.has(edge.toNodeId)) ids.add(edge.fromNodeId);
+  for (const node of videos.values()) if (node.metadata?.studio?.sourceRange) ids.add(node.id);
   return ids;
 }
 

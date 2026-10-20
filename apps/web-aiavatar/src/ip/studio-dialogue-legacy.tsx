@@ -9,6 +9,7 @@ import type { AssistantReplacement } from '@/canvas-bridge/studio-assistant-plan
 import { StudioAssistantPlan } from './studio-assistant-plan';
 import { StudioConversationShare } from './studio-conversation-share';
 import { StudioErrorNotice, studioNodeError } from './studio-errors';
+import { splitReplyActions } from '@/canvas-bridge/studio-reply-actions';
 
 export type LegacyGroup = { id: string; node?: CanvasNodeData; messages: StudioDialogueMessage[] };
 
@@ -26,7 +27,7 @@ export function StudioDialogueLegacy({ group, projectId, nodes, selectedIds, rec
     <header><strong title={group.node?.title}>{group.node?.title || '之前的对话'}</strong>
       {group.node && <StudioConversationShare key={`${projectId}-${group.id}`} projectId={projectId} nodeId={group.id} disabled={pending || conversation?.turns.at(-1)?.role !== 'assistant'}/>}</header>
     <div className="studio-conversation">{turns.map(t => <div key={t.key} className={`studio-turn studio-turn-${t.role}`}>
-      <small>{t.role === 'user' ? '你' : 'Studio'}</small><p>{t.text}</p>{t.credits !== undefined && <small>已消耗 {formatCredits(t.credits)} 积分</small>}
+      <small>{t.role === 'user' ? '你' : 'Studio'}</small><p>{t.role === 'user' ? t.text : splitReplyActions(t.text || '').prose}</p>{t.credits !== undefined && <small>已消耗 {formatCredits(t.credits)} 积分</small>}
     </div>)}</div>
     {conversation?.plan && !pending && group.node && <>
       <StudioAssistantPlan key={`${group.id}-${studio?.runId || 'draft'}`} plan={conversation.plan} nodes={nodes} contextIds={studio?.request?.contextNodeIds || []} selectedIds={selectedIds}

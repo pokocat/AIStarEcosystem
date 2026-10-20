@@ -10,7 +10,7 @@ import type { IpProject, IpTemplate } from "@ai-star-eco/types";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { IpStudioApi } from "./api";
-import { createStudioEntry, studioEntries, studioEntryHref, StudioEntrySaveError, type StudioEntry } from "./studio-entry";
+import { createStudioEntry, studioBriefNeedsReference, studioEntries, studioEntryHref, StudioEntrySaveError, type StudioEntry } from "./studio-entry";
 import { StudioTemplateUse } from "./studio-template-use";
 import { GalleryState, TemplateCard, useStudioList } from "./studio-gallery";
 import { StudioPage } from "./studio-page";
@@ -39,7 +39,7 @@ export function StudioCreateHome() {
       const text = pendingStart?.brief ?? brief;
       const project = await createStudioEntry(target, text, pendingStart?.project);
       setPendingStart(undefined);
-      router.push(studioEntryHref(project.id, target, { send: target === "assistant" && !!text.trim() }));
+      router.push(studioEntryHref(project.id, target, { send: target === "assistant" && !!text.trim() && !studioBriefNeedsReference(text) }));
     } catch (e) {
       if (e instanceof StudioEntrySaveError) setPendingStart({ project: e.project, entry: pendingStart?.entry ?? entry, brief: pendingStart?.brief ?? brief });
       if (isProductNotEnrolledError(e)) setNotEnrolled(true);

@@ -126,6 +126,13 @@ public class ProposePlanTool implements StudioDialogueTool {
             log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
             return ToolRun.failed(e.getCode(), e.getMessage(), DialogueTools.fail(e.getMessage() + "。请按允许的操作和参数重新整理方案。")).settlingInTurn();
         }
+        Set<String> offered = needsVideo(plan) ? offeredVideoModels() : null;
+        if (offered != null && offered.isEmpty()) {
+            log.info("[dialogue] plan needs a video model but none is offered run={}", ctx.runId);
+            return ToolRun.failed("VIDEO_NOT_CONFIGURED", "现在没有可用的视频模型",
+                    DialogueTools.fail("现在没有可用的视频模型（后台还没有为视频生成配置模型），含拉片或出片的方案暂时做不了。"
+                            + "如实告诉用户，不要换一个模型名重试，也不要估算价格")).settlingInTurn();
+        }
         String unknown = unknownVideoModel(plan);
         if (unknown != null) {
             log.info("[dialogue] plan names a video model that is not offered run={} {}", ctx.runId, unknown);
@@ -191,13 +198,8 @@ public class ProposePlanTool implements StudioDialogueTool {
      * which case the quote reports it).
      */
     private String unknownVideoModel(ObjectNode plan) {
-        String json = capabilitiesJson();
-        if (json == null) return null;
-        Set<String> offered = new LinkedHashSet<>();
-        try {
-            for (JsonNode model : mapper.readTree(json).path("videoModels")) if (model.path("endpointId").isTextual()) offered.add(model.path("endpointId").asText());
-        } catch (Exception e) { return null; }
-        if (offered.isEmpty()) return null;
+        Set<String> offered = offeredVideoModels();
+        if (offered == null || offered.isEmpty()) return null;
         int index = 0;
         for (JsonNode step : plan.path("steps")) {
             index++;
@@ -207,6 +209,28 @@ public class ProposePlanTool implements StudioDialogueTool {
                 return "第 " + index + " 步的视频模型「" + named + "」不在可用列表里，videoModel 必须原样填写 videoModels 里的 endpointId，可选：" + String.join("、", offered);
         }
         return null;
+    }
+
+    /**
+     * The video endpoints the planner was shown; null when the offer could not be read (the quote reports that). Empty means
+     * none is configured: a plan with a recreation or video step cannot run, and the model once named one it made up
+     * (「sora-2」, local e2e 2026-10-19) because the list it was told to copy from was empty.
+     */
+    private Set<String> offeredVideoModels() {
+        String json = capabilitiesJson();
+        if (json == null) return null;
+        Set<String> offered = new LinkedHashSet<>();
+        try {
+            JsonNode caps = mapper.readTree(json);
+            if (caps.path("videoModelsUnavailable").asBoolean(false)) return null;
+            for (JsonNode model : caps.path("videoModels")) if (model.path("endpointId").isTextual()) offered.add(model.path("endpointId").asText());
+        } catch (Exception e) { return null; }
+        return offered;
+    }
+
+    static boolean needsVideo(JsonNode plan) {
+        for (JsonNode step : plan.path("steps")) if (Set.of("recreation", "video").contains(step.path("operation").asText())) return true;
+        return false;
     }
 
     static long estimate(List<Map<String, Object>> messages) {

@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpen, Clapperboard, Film, ImagePlus, Layers, Loader2, Mic, Plus, ShoppingBag, UserRound, Video } from 'lucide-react';
 import type { IpProjectSummary, IpTemplate } from '@ai-star-eco/types';
 import { IpStudioApi } from '@/ip/api';
-import { createStudioEntry, studioEntries, studioEntryHref, type StudioEntry } from '@/ip/studio-entry';
+import { createStudioEntry, studioBriefNeedsReference, studioEntries, studioEntryHref, type StudioEntry } from '@/ip/studio-entry';
 import { StudioConversationStart } from '@/ip/studio-conversation-start';
 import { StudioTemplateUse } from '@/ip/studio-template-use';
 import { CanvasThumb } from '@/ip/canvas-thumb';
@@ -49,7 +49,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
     setError(''); setCreating('assistant');
     try {
       const project = await createStudioEntry('assistant', brief);
-      router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() }));
+      router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() && !studioBriefNeedsReference(brief) }));
     } catch (e) {
       setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
       setCreating(undefined); inFlight.current = false;
