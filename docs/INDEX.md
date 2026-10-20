@@ -272,4 +272,5 @@ sudo yum install -y ffmpeg ffmpeg-devel
 - [项目与灵感统一封面验收](studio-shared-covers-validation-20261017.md)：共用优先级、独立上传、恢复自动、权限与本地检查；已发布 a4092626（last-reviewed: 2026-10-17）。
 - [统一画布封面生产发布](studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 
+- [Studio 节点配置交互统一](releases/studio-node-settings-20261020.md) — 底栏摘要、分组浮层、可视比例与各创作节点统一；last-reviewed: 2026-10-20。
 - [Studio GPT Image 2 原生接入与验收](releases/studio-gpt-image-native-20261020.md) — 2K、参考图 multipart、尺寸选择与 30 积分定价；last-reviewed: 2026-10-20。
