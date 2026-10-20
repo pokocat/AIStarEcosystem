@@ -95,6 +95,7 @@ public class JusuanImageClient {
         var spec=snapshot==null?requiredSpec(endpoint):snapshot;
         var wire=spec.wire();
         boolean urlInput=wire!=null && "url".equals(wire.inputMode());
+        boolean multipartInput=wire!=null && "multipart".equals(wire.inputMode());
         String resultMode=configured(wire==null?null:wire.resultMode(),"async-asset");
         ObjectNode body;
         String id=state.path("jobId").asText("");
@@ -103,20 +104,27 @@ public class JusuanImageClient {
             try{body=(ObjectNode)mapper.readTree(state.path("requestBody").asText("{}"));}catch(Exception e){throw new Pending(true,e);}
         } else {
             List<String> references=new ArrayList<>();
-            for(int i=0;i<keys.size();i++)references.add(urlInput?referenceUrl(wire,keys.get(i)):upload(endpoint,wire,keys.get(i),requestId+"-ref-"+i,owner));
+            if(!multipartInput)for(int i=0;i<keys.size();i++)references.add(urlInput?referenceUrl(wire,keys.get(i)):upload(endpoint,wire,keys.get(i),requestId+"-ref-"+i,owner));
             body=requestBody(endpoint,spec,size,prompt,references,requestId);
-            String submitPath=fillPath(configured(wire==null?null:wire.submitPath(),"/images/generations"),"",endpoint.getModel());
+            String path=multipartInput&&!keys.isEmpty()?configured(wire.referenceSubmitPath(),wire.submitPath()):wire==null?null:wire.submitPath();
+            String submitPath=fillPath(configured(path,"/images/generations"),"",endpoint.getModel());
+            // Read and validate local files before recording that a supplier submission was attempted.
+            HttpRequest multipart=multipartInput&&!keys.isEmpty()?multipartRequest(endpoint,spec,submitPath,body,keys,requestId):null;
             state.put("submitAttempted",true).put("baseUrl",endpoint.getBaseUrl()).put("model",endpoint.getModel()).put("requestBody",body.toString()).put("imageRequestSpec",spec.json());
             if(durable)checkpoint.accept(state.deepCopy());
             JsonNode accepted;
-            try{accepted=json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true);}
+            try{accepted=multipart==null?json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true)
+                    :checkedSubmit(upstream.sendJson(multipart,context(endpoint,requestId,owner,
+                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys)).toString(),true)));}
             catch(ProviderRejected error){throw error;}
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             if(resultMode.startsWith("sync-")) {
                 try {
                     byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
+                    requireOutputSize(spec,size,bytes);
                     recordSuccess(endpoint,owner,requestId,null,body);return bytes;
-                } catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+                } catch(ProviderRejected error){throw error;}
+                catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             }
             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
             try{requireId(id);}catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
@@ -139,6 +147,7 @@ public class JusuanImageClient {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
                     else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
+                    requireOutputSize(spec,size,bytes);
                     recordSuccess(endpoint,owner,requestId,id,body);return bytes;
                 }
                 progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
@@ -153,12 +162,13 @@ public class JusuanImageClient {
         var output=spec.output(size);
         var wire=spec.wire();
         boolean urlInput=wire!=null && "url".equals(wire.inputMode());
+        boolean multipartInput=wire!=null && "multipart".equals(wire.inputMode());
         if(wire==null || wire.submitTemplate()==null) {
             ObjectNode body=mapper.createObjectNode().put("model",endpoint.getModel()).put("prompt",prompt);
             output.providerFields().forEach((field,value)->body.set(field,mapper.valueToTree(value)));
-            if("multiple".equals(spec.referenceField())&&!references.isEmpty())
+            if(!multipartInput&&"multiple".equals(spec.referenceField())&&!references.isEmpty())
                 references.forEach(body.putArray(urlInput?"input_image_urls":"input_image_asset_ids")::add);
-            if("single".equals(spec.referenceField()))body.put(urlInput?"input_image_url":"input_image_asset_id",references.get(0));
+            if(!multipartInput&&"single".equals(spec.referenceField()))body.put(urlInput?"input_image_url":"input_image_asset_id",references.get(0));
             return body;
         }
         Map<String,Object> variables=new HashMap<>();
@@ -209,6 +219,37 @@ public class JusuanImageClient {
             requireId(asset);return asset;
         }catch(BusinessException e){throw e;}catch(Exception e){throw failure("参考图上传失败，请稍后重试");}
     }
+
+    /** Native image edits send source bytes as multipart files; generation without references stays JSON. */
+    private HttpRequest multipartRequest(AiModelEndpoint endpoint,AiImageRequestSpec spec,String path,
+                                         ObjectNode fields,List<String> keys,String id) {
+        var wire=spec.wire();
+        String boundary="studio-image-"+UUID.randomUUID();
+        List<HttpRequest.BodyPublisher> parts=new ArrayList<>();
+        fields.fields().forEachRemaining(field->{
+            if(!field.getKey().matches("[A-Za-z][A-Za-z0-9_]{0,63}") || !field.getValue().isValueNode())
+                throw failure("图片编辑的表单参数必须是简单字段");
+            if(!field.getValue().isNull())parts.add(HttpRequest.BodyPublishers.ofString("--"+boundary+
+                    "\r\nContent-Disposition: form-data; name=\""+field.getKey()+"\"\r\n\r\n"+field.getValue().asText()+"\r\n"));
+        });
+        String field=configured(wire.uploadFieldName(),"image");
+        if("multiple".equals(spec.referenceField()))field+="[]";
+        for(int i=0;i<keys.size();i++)try {
+            var file=storage.openForRead(keys.get(i));
+            int maxBytes=setting(wire.maxReferenceBytes(),50*1024*1024);
+            if(Files.size(file)<1 || Files.size(file)>maxBytes)throw failure("参考图超过端点配置的大小上限");
+            byte[] bytes=Files.readAllBytes(file);var format=MediaBytes.sniff("image",bytes);
+            if(format==null || bytes.length>maxBytes)throw failure("参考图格式不支持或超过端点配置的大小上限");
+            parts.add(HttpRequest.BodyPublishers.ofString("--"+boundary+"\r\nContent-Disposition: form-data; name=\""+
+                    field+"\"; filename=\"reference-"+i+"."+format.ext()+"\"\r\nContent-Type: "+format.mime()+"\r\n\r\n"));
+            parts.add(HttpRequest.BodyPublishers.ofByteArray(bytes));parts.add(HttpRequest.BodyPublishers.ofString("\r\n"));
+        }catch(BusinessException e){throw e;}catch(Exception e){throw failure("参考图读取失败，请检查图片后重试");}
+        parts.add(HttpRequest.BodyPublishers.ofString("--"+boundary+"--\r\n"));
+        var request=request(endpoint,wire,path).header("Content-Type","multipart/form-data; boundary="+boundary);
+        String header=configured(wire.idempotencyHeaderName(),"Idempotency-Key");
+        if(!header.isEmpty())request.header(header,id);
+        return request.POST(HttpRequest.BodyPublishers.concat(parts.toArray(HttpRequest.BodyPublisher[]::new))).build();
+    }
     private String referenceUrl(AiImageRequestSpec.Wire wire,String key) {
         try {
             int maxBytes=setting(wire.maxReferenceBytes(),16*1024*1024);
@@ -241,6 +282,15 @@ public class JusuanImageClient {
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
         return downloadUrl(endpoint,wire,value);
+    }
+
+    /** A completed but wrong-size image is a known bad result, never an unknown submission to replay. */
+    private void requireOutputSize(AiImageRequestSpec spec,String size,byte[] bytes) {
+        if(spec.wire()==null || !Boolean.TRUE.equals(spec.wire().requireExactOutputSize()))return;
+        int[] actual=IpProjectService.readDimensions(bytes);
+        if(actual==null)throw new ProviderRejected("图片引擎返回的图片尺寸无法读取，请联系运营核对模型规格");
+        String received=actual[0]+"x"+actual[1];
+        if(!received.equals(size))throw new ProviderRejected("图片引擎返回 "+received+"，与所选 "+size+" 不符，请联系运营核对模型规格");
     }
 
     private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value) {
@@ -302,7 +352,10 @@ public class JusuanImageClient {
             request.POST(body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
         }
         var response=upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit));
-        if(submit && response.statusCode()>=400 && response.statusCode()<500)
+        return submit?checkedSubmit(response):checked(response);
+    }
+    private JsonNode checkedSubmit(HttpResponse<String> response) {
+        if(response.statusCode()>=400 && response.statusCode()<500)
             throw new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）");
         return checked(response);
     }

@@ -114,6 +114,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [originId, setOriginId] = useState<string>();
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [ratio, setRatio] = useState("9:16");
+  const [imageSize,setImageSize]=useState<string>();
   const [busy, setBusy] = useState(false);
   const [directorSaving,setDirectorSaving]=useState(false);
   const [editorId, setEditorId] = useState<string>();
@@ -386,6 +387,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const parent=nodesRef.current.find(n=>n.id===node?.metadata?.studio?.parentNodeId);
     setScriptMode(node?.metadata?.studio?.scriptMode||"original");setScriptSourceNodeId(node?.metadata?.studio?.scriptSourceNodeId);
     setOperation(action); setOriginId(node?.id);setPasteScript(false);setModel(["text","script","storyboard"].includes(action)?node?.metadata?.studio?.request?.model:undefined);setRewriteScope(undefined);setMissingPlanRefs([]);setEpisodeNo(undefined);setSettings(node?.metadata?.studio?.settings||{genre:"都市治愈",episodeCount:node?.metadata?.studio?.script?.episodes.length||1,episodeDurationSec:30});setRatio(action==="image"?node?.metadata?.studio?.shot?parent?.metadata?.studio?.request?.aspectRatio||"9:16":"3:4":"9:16");
+    setImageSize(undefined);
     const script = node?.metadata?.studio?.script;
     const scriptInstruction=action==="storyboard"?"根据当前已编辑的剧本拆分镜头。保留人物设定、台词和顺序。":"改写当前剧本，保留选定的人物设定。";
     setPrompt(script && (action === "script" || action === "storyboard") ? presentation==="storyboard"?scriptInstruction:studioScriptPrompt(script,scriptInstruction) : action==="video"&&node?.type===CanvasNodeType.Image ? node.metadata?.studio?.shot?.description || "以选中的图片作为首帧，保持主体、服饰和场景。请描述人物动作、镜头运动和节奏，动作自然连贯。" : node?.metadata?.studio?.shot?.description || node?.metadata?.prompt || "");
@@ -408,6 +410,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setReferenceIds([...new Set([...inheritedIds,...connected])]);
       if(action==="image") {
         const saved=node?.metadata?.studio?.request;
+        setImageSize(saved?.size||node?.metadata?.size);
         setImageCount(saved?.count||node?.metadata?.count||1);
         if(node?.metadata?.size)setRatio(inferMediaRatio(node.metadata.size,"3:4"));
         setModel(saved?.model||(node?.metadata?.model?endpointIdFor(node.metadata.model)||node.metadata.model:undefined));
@@ -425,16 +428,16 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       });
       const disconnected=new Set((draft.connectedReferenceNodeIds||[]).filter(id=>!incoming.includes(id)));
       setReferenceIds([...new Set([...draft.referenceNodeIds.filter(id=>!disconnected.has(id)&&nodesRef.current.some(n=>n.id===id)),...incoming])]);
-      if(action==="image")setImageCount(draft.count);if(action==="video"){setVideoCount(draft.count);setVideoDraft(draft.video);}
+      if(action==="image"){setImageCount(draft.count);setImageSize(draft.size);}if(action==="video"){setVideoCount(draft.count);setVideoDraft(draft.video);}
     }
     onClosePanel(); setDirector(true);
   }, [onClosePanel,projectId,addNode,onFocusNode]);
   useEffect(()=>{
     if(!director||!originId)return;
     const connectedReferenceNodeIds=connectionsRef.current.filter(c=>c.toNodeId===originId&&nodesRef.current.some(n=>n.id===c.fromNodeId&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType))).map(c=>c.fromNodeId);
-    const draft={operation,prompt,referenceNodeIds:referenceIds,connectedReferenceNodeIds,aspectRatio:ratio,model,count:operation==="video"?videoCount:imageCount,durationSec:duration,settings,video:videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId};
+    const draft={operation,prompt,referenceNodeIds:referenceIds,connectedReferenceNodeIds,aspectRatio:ratio,model,size:operation==="image"?imageSize:undefined,count:operation==="video"?videoCount:imageCount,durationSec:duration,settings,video:videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId};
     patch(originId,n=>({...n,metadata:{...n.metadata,studio:{kind:n.metadata?.studio?.kind||(operation==="text"?"text":"shot"),...n.metadata?.studio,composerDraft:draft}}}));
-  },[director,originId,operation,prompt,referenceIds,ratio,model,videoCount,imageCount,duration,settings,videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId,patch]);
+  },[director,originId,operation,prompt,referenceIds,ratio,model,imageSize,videoCount,imageCount,duration,settings,videoDraft,pasteScript,episodeNo,rewriteScope,scriptMode,scriptSourceNodeId,patch]);
   const closeDirector=async()=>{
     if(busy||directorSaving)return false;
     setPickingReferences(false);
@@ -569,7 +572,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const selectedCanvas=nativeVideo?.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.find(c=>c.aspectRatio===ratio);
     const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation, prompt: requestPrompt, references:operation==="video"&&nativeVideo?[]:references,video:operation==="video"&&nativeVideo?videoSettings:undefined, aspectRatio: ratio, durationSec: duration, count:operation==="image"?imageCount:operation==="video"?videoCount:undefined,model:capabilities.mock?undefined:(["text","script","storyboard"].includes(operation)?chosenTextModel?.endpointId:selectedModel?.endpointId),
       ...(operation==="text"?{textEdit:{content:origin?.metadata?.content||""},history:origin?.metadata?.studio?.textEditor?.turns}:{}),
-      episodeNo:requestEpisodeNo,...(operation==="script"||operation==="storyboard"?{settings}:{}),...(operation==="script"?{mode:scriptMode}:{}),maxCost:quote??undefined };
+      episodeNo:requestEpisodeNo,...(operation==="image"&&selectedImageSize?{size:selectedImageSize}:{}),...(operation==="script"||operation==="storyboard"?{settings}:{}),...(operation==="script"?{mode:scriptMode}:{}),maxCost:quote??undefined };
     const retainedTarget=retainStudioMediaVersions(target);
     const pending = { ...retainedTarget, metadata: { ...retainedTarget.metadata, prompt: request.prompt, ...(operation==="video"?{videoCount:String(videoCount)}:{}), ...(operation==="video"&&nativeVideo?{videoMode:videoDraft.mode,seconds:String(duration),vquality:videoDraft.tier,size:selectedCanvas?`${selectedCanvas.width}x${selectedCanvas.height}`:computeVideoSize(videoDraft.tier.replace(/p$/,""),ratio),model:encodeChannelModel(SERVER_CHANNEL_ID,selectedModel!.endpointId)}:{}),status: "loading" as const,
       studio: { ...target.metadata!.studio!, request, references, runId:undefined, upstreamChanged:false,...(operation==="script"?{scriptMode,scriptSourceNodeId:scriptMode==="adapt"?scriptSourceNodeId:undefined}:{}),settings:operation==="script"||operation==="storyboard"?settings:undefined,episodeNo:requestEpisodeNo,parentNodeId:target===origin?target.metadata?.studio?.parentNodeId:origin?.id,
@@ -805,6 +808,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const imageBatchCounts=chosenModel?.capability?.imageBatchCounts?.length?chosenModel.capability.imageBatchCounts:legacyBatchCounts;
   const imageRatioChoices=[{value:"3:4",label:"竖图 3:4"},{value:"9:16",label:"竖屏首帧 9:16"},{value:"16:9",label:"横图 16:9"},{value:"1:1",label:"方图 1:1"}];
   const allowedImageRatios=chosenModel?.capability?.imageRatios;
+  const imageSizeOptions=chosenModel?.capability?.imageSizes?.filter(output=>output.aspectRatio===ratio)||[];
+  const selectedImageSize=imageSizeOptions.some(output=>output.size===imageSize)?imageSize:imageSizeOptions[0]?.size;
   const imageRatioUnsupported=operation==="image"&&!!allowedImageRatios?.length&&!allowedImageRatios.includes(ratio);
   const imageRatioOptions:{value:string;label:string;disabled?:boolean}[]=allowedImageRatios?.length
     ? allowedImageRatios.map(value=>({value,label:imageRatioChoices.find(option=>option.value===value)?.label??value}))
@@ -1078,6 +1083,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           {operation==="storyboard"&&originId&&<label>拆分范围<Select aria-label="拆分分集" allowClear value={episodeNo} placeholder="全部分集" onChange={setEpisodeNo} options={(nodes.find(n=>n.id===originId)?.metadata?.studio?.script?.episodes||[]).map(e=>({value:e.no,label:`第 ${e.no} 集 · ${e.title}`}))}/></label>}
           </>}
         <label>画幅<Select aria-label="创作画幅" value={ratio} onChange={setRatio} options={nativeVideo?nativeVideo.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.map(c=>({value:c.aspectRatio,label:`${c.aspectRatio} · ${c.width}×${c.height}`})):operation==="image"?imageRatioOptions:[{value:"9:16",label:"竖屏 9:16"},{value:"16:9",label:"横屏 16:9"},{value:"1:1",label:"方图 1:1"}]}/></label>{imageRatioUnsupported&&<p role="status">当前模型不支持 {ratio}，请在画幅中选择可用比例。</p>}
+        {operation==="image"&&imageSizeOptions.length>0&&<label>输出尺寸<Select aria-label="图片输出尺寸" value={selectedImageSize} onChange={setImageSize} options={imageSizeOptions.map(output=>({value:output.size,label:output.size.replace('x',' × ')}))}/></label>}
         {operation==="image"&&<label>候选数量<Select aria-label="候选数量" value={imageCount} onChange={setImageCount} options={imageBatchCounts.map(value=>({value,label:`${value} 张`}))}/></label>}
         {operation==="video"&&<label>候选数量<Select aria-label="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/></label>}
         {operation==="video" && <label>片段时长{nativeVideo?<><InputNumber aria-label="片段时长" min={nativeVideo.contract.minSeconds} max={nativeVideo.contract.maxSeconds} precision={0} value={duration} onChange={value=>setDuration(value??nativeVideo.contract.minSeconds)}/> 秒</>:<Select aria-label="片段时长" value={duration} onChange={setDuration} options={durationOptions.map(v=>({value:v,label:`${v} 秒`}))}/>}</label>}

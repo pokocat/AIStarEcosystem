@@ -104,6 +104,23 @@ test('image composer only offers ratios stored on the selected model and blocks 
  expect(within(panel).queryByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeNull();
  expect(api.submit).not.toHaveBeenCalled();
 });
+test('image composer submits the exact chosen resolution and retains it in the saved draft',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'gpt',name:'GPT Image',isDefault:true,creditCost:30,capability:{imageRatios:['1:1'],imageSizes:[{size:'1024x1024',aspectRatio:'1:1'},{size:'2048x2048',aspectRatio:'1:1'},{size:'2048x1152',aspectRatio:'16:9'}]}}],video:[]});
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,prompt:'画一只猫',studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ await waitFor(()=>expect(within(panel).getByRole('combobox',{name:'生成模型'})).toHaveProperty('value','gpt'));
+ fireEvent.change(within(panel).getByRole('combobox',{name:'创作画幅'}),{target:{value:'1:1'}});
+ const sizes=within(panel).getByRole('combobox',{name:'图片输出尺寸'}) as HTMLSelectElement;
+ expect([...sizes.options].map(option=>option.value)).toEqual(['1024x1024','2048x2048']);
+ fireEvent.change(sizes,{target:{value:'2048x2048'}});
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.size).toBe('2048x2048'));
+ fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ expect(api.submit.mock.calls[0][1]).toMatchObject({model:'gpt',size:'2048x2048',aspectRatio:'1:1',count:1,maxCost:30});
+});
 test('image composer uses the selected endpoint prompt limit instead of the legacy 16000 characters',async()=>{
  api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
  api.models.mockResolvedValue({image:[{endpointId:'image',name:'图片模型',isDefault:true,creditCost:30,capability:{imageRatios:['3:4'],imagePromptMaxChars:20000}}],video:[]});

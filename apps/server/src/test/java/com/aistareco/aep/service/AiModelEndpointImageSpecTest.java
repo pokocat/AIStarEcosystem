@@ -79,6 +79,7 @@ class AiModelEndpointImageSpecTest {
         var capability=com.aistareco.aep.dto.EndpointCapabilityDto.image(null,spec);
         assertEquals(2048,capability.imagePromptMaxChars());
         assertEquals(0,capability.maxRefImages());
+        assertEquals(List.of(new com.aistareco.aep.dto.EndpointCapabilityDto.ImageSize("1024x1024","1:1")),capability.imageSizes());
 
         var legacyCapability=com.aistareco.aep.dto.EndpointCapabilityDto.image(null,null);
         assertNull(legacyCapability.maxRefImages());

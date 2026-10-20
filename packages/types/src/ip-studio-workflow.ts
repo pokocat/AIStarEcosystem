@@ -227,7 +227,7 @@ export interface StudioNodeMetadata {
   workDraft?: StudioWorkDraft;
   speechDraft?: Omit<StudioSpeechRequest,'clientRequestId'|'nodeId'|'maxCost'>;
   /** Client-owned editor draft, separate from the immutable accepted run request. */
-  composerDraft?: { operation: StudioOperation; prompt: string; referenceNodeIds: string[]; connectedReferenceNodeIds?: string[]; aspectRatio: string; model?: string;
+  composerDraft?: { operation: StudioOperation; prompt: string; referenceNodeIds: string[]; connectedReferenceNodeIds?: string[]; aspectRatio: string; model?: string; size?: string;
     count: number; durationSec: number; settings: StudioScriptSettings; pasteScript?: boolean;
     episodeNo?: number; rewriteScope?: StudioNodeMetadata['rewriteScope'];
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;

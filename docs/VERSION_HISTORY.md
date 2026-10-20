@@ -4,6 +4,10 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio GPT Image 2 · 2026-10-20
+
+图片协议新增可配置原生 multipart 编辑路径，目录投影精确输出尺寸，Studio 保存尺寸选择；供应商实测同一模型可出 2048×2048 并参考原图编辑。售价沿用 30 积分/张。渠道正式回包出现尺寸不符，已上线结算前尺寸校验并补偿该验收任务，2K 稳定性待渠道文档确认；发布与验收见 [记录](releases/studio-gpt-image-native-20261020.md)。
+
 ### Studio 对话与制作修复（Codex 2026-10-19 六项）· 2026-10-19 · 本地未发布（server + web-aiavatar）
 
 制作中确认同阶段新方案时在原执行上替换剩余工作（`StudioPlanExecutionService.replanStage`：未变且已完成的步骤保留，改动及下游重做，原 run 进 `previousRunIds` 继续计费，在途步骤不改写）；执行器预算停下的步骤标 `budgetBlocked`，追加预算确认后自动继续（用户暂停除外）；绑定执行的对话轮次用执行的固定付款人，消息带别的付款人 409（`StudioExecutionGate.executionPayer`）；整句停止 / 暂停的消息走优先控制（`StudioStopIntent`），不进转向队列；前端助手把所选模型随消息发出，分析阶段的追加卡带上执行 id；画布投影只有保存成功才记「已投影」和画布游标（`canvasUnsavedFrom`）。无迁移、无 API 路径变化。server ipstudio 659 项、web-aiavatar 970 项通过。

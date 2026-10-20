@@ -31,6 +31,7 @@ export type IpModelOption = {
     imageRatios?: string[] | null;
     imagePromptMaxChars?: number | null;
     imageBatchCounts?: number[] | null;
+    imageSizes?: {size: string; aspectRatio: string}[] | null;
   } | null;
   creditCost: number;
   billingUnit: string;
