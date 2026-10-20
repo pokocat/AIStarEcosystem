@@ -978,7 +978,7 @@ test('frame-intent confirmation opens the compact picker, preserves the requeste
  const native={endpointId:'model',supportsPromptOptimization:true,batchCounts:[1],contract:{modes:[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'first_last_frame_video',label:'首尾帧',needsFirstFrame:true,needsLastFrame:true}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},first_last_frame_video:{'768p':40}},freeRefImages:1,extraRefImagePerSecond:2}};
  api.videoModels.mockResolvedValue([native]);
  const first={...node,id:'first',type:'image' as never,title:'起始图片',metadata:{storageKey:'first.png',content:'/first.png'}},last={...first,id:'last',title:'结束图片',metadata:{storageKey:'last.png',content:'/last.png'}};
- render(<Host initialNodes={[{...node,metadata:{prompt:'从首帧图过渡到尾帧图',status:'idle',videoCount:'1',studio:{videoPreset:{mode:'t2v',resolutionTier:'768p',optimizePrompt:false}}}},first,last]}/>);
+ render(<Host initialNodes={[{...node,metadata:{prompt:'从首帧图过渡到尾帧图',status:'idle',videoCount:'1',studio:{request:{...request,video:{mode:'t2v',resolutionTier:'768p',optimizePrompt:false}}}}},first,last]}/>);
  await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();await screen.findByRole('button',{name:'视频模式'});
  const generate=()=>within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!;
  fireEvent.click(generate());
