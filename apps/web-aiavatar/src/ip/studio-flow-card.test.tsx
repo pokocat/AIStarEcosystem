@@ -46,3 +46,12 @@ test('a completed video can be replaced in place',()=>{
   render(<StudioFlowCard {...({data:{document:node},selected:true} as any)}/>);
   expect(screen.getByRole('button',{name:'替换视频'})).toBeDefined();
 });
+// Codex retest 2026-10-19 (R1): a video the assistant finished while the canvas was closed is restored with its key only;
+// it showed as an empty 「上传视频」 card until a reload.
+test('a finished video restored with only its key shows the video, not an upload placeholder',()=>{
+  const node:CanvasNodeData={id:'take',type:CanvasNodeType.Video,title:'片段 1',position:{x:0,y:0},width:320,height:240,
+    metadata:{status:'success',storageKey:'ipstudio_gen/u1/take.mp4',studio:{kind:'shot',runId:'r1',execution:{executionId:'PEX-1',stepId:'v1',runId:'r1'}}}};
+  const view=render(<StudioFlowCard {...({data:{document:node},selected:false} as any)}/>);
+  expect(view.container.querySelector('video')).not.toBeNull();
+  expect(screen.queryByRole('button',{name:'上传视频'})).toBeNull();
+});

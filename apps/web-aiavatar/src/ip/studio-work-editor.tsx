@@ -212,7 +212,7 @@ function StudioWorkResults({ works, onDownload, anchor }: { works: CanvasNodeDat
   return <section className="studio-work-results" ref={anchor} aria-label="合成好的作品"><h3>合成好的作品</h3>
     {[...works].reverse().map(node => <article key={node.id} className="studio-work-result"><h4>{node.title}</h4>
       {node.metadata?.status === "loading" ? <p>正在合成，可以先回画布继续做。</p>
-        : node.metadata?.content ? <><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
+        : node.metadata?.content || node.metadata?.storageKey ? <><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
           <Button onClick={() => onDownload(node)}><Download size={15}/>下载作品</Button></>
         : node.metadata?.status === "error" ? <StudioErrorNotice error={studioNodeError(node)} once={`run:${node.metadata.studio?.runId || node.id}`} autoReport={false}/>
         : <p>作品待合成</p>}

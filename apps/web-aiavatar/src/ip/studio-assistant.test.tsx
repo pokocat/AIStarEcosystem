@@ -774,6 +774,20 @@ test('the homepage brief still goes out when it reaches a panel that was already
   expect(onAutoSent).toHaveBeenCalled();
 });
 
+// Codex real-environment retest 2026-10-19: the server had imported the brief record as an old-conversation message, the
+// thread did not look empty, and the brief was neither filled in nor sent.
+test('history imported from the old assistant does not stop the homepage brief from going out', async () => {
+  api.getConversation.mockResolvedValue({ thread, latestSeq: 1, messages: [
+    { id: 'legacy-1', threadId: 'th', seq: 1, role: 'system', status: 'done', text: '之前的对话「创作想法」', blocks: [], createdAt: at, legacyNodeId: 'p-brief' },
+  ] } as StudioDialogueState);
+  const onAutoSent = vi.fn();
+  const view = await ready(<Host initial={[character]}/>);
+  view.rerender(<Host initial={[character]} initialNodeId="p-brief" initialPrompt="给星桥保温杯写三句广告语" autoSend onAutoSent={onAutoSent}/>);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '给星桥保温杯写三句广告语' });
+  expect(onAutoSent).toHaveBeenCalled();
+});
+
 test('without auto-send the brief fills the composer of an empty thread and leaves a typed draft alone', async () => {
   const view = await ready(<Host/>);
   view.rerender(<Host initialNodeId="p-brief" initialPrompt="首页写的那句"/>);

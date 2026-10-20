@@ -269,7 +269,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     setSending(true); setComposerError(""); setSkillNotice("");
     // The first message names a canvas nobody named yet, so the list shows what each one is for; a name the user gave stays.
     const canvas = useCanvasStore.getState().projects.find(p => p.id === project);
-    const suggested = !store.messages.length && canvas && studioCanvasHasDefaultTitle(canvas.title) ? studioTitleFromBrief(input.text) : undefined;
+    const suggested = !dialogueSections(store).current.length && canvas && studioCanvasHasDefaultTitle(canvas.title) ? studioTitleFromBrief(input.text) : undefined;
     if (suggested) useCanvasStore.getState().renameProject(project, suggested);
     try {
       // Pinned and attached nodes must exist in the saved document before the server reads them.
@@ -344,6 +344,11 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   }, [store.canvasOps]);
   // The homepage brief fills the composer once the thread has been read and is still empty — it can arrive after the
   // panel opened (the assistant opens by default), and a refresh after it was sent must not put it back.
+  // 「Empty」 means no message of this thread's own: history imported from the old assistant (legacyNodeId) does not
+  // count. The server used to import the homepage brief itself as 「之前的对话「创作想法」」, so every canvas started
+  // from the home page looked like it had already talked and the brief was never sent (Codex real-environment retest
+  // 2026-10-19; the demo mode has no such import).
+  const talked = dialogueSections(store).current.length > 0;
   const briefApplied = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!open || session.status !== "ready" || briefApplied.current === projectId) return;
@@ -351,22 +356,22 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const brief = initialPrompt || (entry?.metadata?.studioStart === "assistant" ? entry.metadata?.prompt || "" : "");
     if (!brief.trim()) return;
     briefApplied.current = projectId;
-    if (store.messages.length || store.outbox.length) return;
+    if (talked || store.outbox.length) return;
     setText(current => current.trim() ? current : brief);
     // 「照这条视频…」 needs the video first: the checklist says what is missing and holds the send until it is there.
     if (studioBriefNeedsReference(brief)) startRecreation(true);
     // A brief saved as a canvas node (older home page) is a visible, removable pin; one kept with the conversation is not on the canvas.
     if (entry && assistantContextNodes(live.current.nodes).some(n => n.id === entry.id)) setPinnedIds(ids => ids.includes(entry.id) ? ids : [...ids, entry.id].slice(0, MAX_REFERENCES));
-  }, [open, session.status, projectId, initialNodeId, initialPrompt, store.messages.length, store.outbox.length]);
+  }, [open, session.status, projectId, initialNodeId, initialPrompt, talked, store.outbox.length]);
   // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
   const autoSent = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!open || !autoSend || autoSent.current === projectId || session.status !== "ready" || sending) return;
-    if (store.messages.length || store.outbox.length || !text.trim()) { if (store.messages.length) onAutoSent?.(); return; }
+    if (talked || store.outbox.length || !text.trim()) { if (talked) onAutoSent?.(); return; }
     autoSent.current = projectId;
     onAutoSent?.();
     void send();
-  }, [open, autoSend, session.status, text, store.messages.length, store.outbox.length, sending]);
+  }, [open, autoSend, session.status, text, talked, store.outbox.length, sending]);
 
   // ── Work an execution finished while this canvas was closed ─────────────
   // The execution and its native runs are the record of what was made; events may be pruned and a new browser

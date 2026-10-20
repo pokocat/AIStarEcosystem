@@ -768,8 +768,18 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         for (JsonNode n : doc.path("assistantConversations")) if (n.path("metadata").path("studio").has("conversation")) records.putIfAbsent(n.path("id").asText(), n);
         for (JsonNode n : IpDocs.nodes(doc)) if (n.path("metadata").path("studio").has("conversation")) records.putIfAbsent(n.path("id").asText(), n);
         List<JsonNode> out = new ArrayList<>();
-        records.forEach((id, n) -> { if (!id.isBlank() && !imported.contains(id)) out.add(n); });
+        records.forEach((id, n) -> { if (!id.isBlank() && !imported.contains(id) && hasHistory(n)) out.add(n); });
         return out;
+    }
+
+    /**
+     * A record with no turns and no plan is not history. The home page saves its brief as exactly such a record; imported, it
+     * became a 「之前的对话「创作想法」」 message, the thread was no longer empty, and the brief was never sent as the first
+     * message (Codex real-environment retest 2026-10-19).
+     */
+    static boolean hasHistory(JsonNode record) {
+        JsonNode conversation = record.path("metadata").path("studio").path("conversation");
+        return conversation.path("turns").size() > 0 || conversation.path("plan").isObject();
     }
 
     /** Legacy turns become messages with legacyNodeId; their plan is attached as a plan block. Nothing runs or bills. */
