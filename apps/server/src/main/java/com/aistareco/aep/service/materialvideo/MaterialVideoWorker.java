@@ -517,31 +517,44 @@ public class MaterialVideoWorker {
     }
 
     /**
-     * 厂商出片前改写提示词的结果（{@link VideoPromptRewrite}）：状态变了才写，存进 payload_json。
+     * 厂商出片前改写提示词的结果（{@link VideoPromptRewrite}）：变了才写，存进 payload_json。
      * 只读旁路 —— 写不进去只丢这份说明，不影响出片、结算与轮询（§8.0 观测类例外）。
+     *
+     * <p>同一事务里锁行、刷新后读当前 payload，再只更新 payload_json 一列（{@code updatePayloadJson}）。
+     * 不能 findById 后整行 save：管理端对账可能正持锁把同一任务结成 succeeded，旧实体一 save 就把状态、成片、
+     * 完成时间盖回 generating（2026-10-20 Codex 评审，{@code MaterialVideoPromptRewriteRaceTest} 用真 H2 复现过）。
+     * 只锁任务这一行、不碰企业账户锁，与结算的加锁顺序（企业 → 任务）不会成环。
      */
     void recordPromptRewrite(String jobId, VideoPromptRewrite rewrite) {
         if (rewrite == null) return;
         try {
-            jobRepo.findById(jobId).ifPresent(j -> {
-                com.fasterxml.jackson.databind.node.ObjectNode payload;
-                try {
-                    JsonNode parsed = j.getPayloadJson() == null || j.getPayloadJson().isBlank()
-                            ? OM.createObjectNode() : OM.readTree(j.getPayloadJson());
-                    payload = parsed.isObject() ? (com.fasterxml.jackson.databind.node.ObjectNode) parsed : OM.createObjectNode();
-                } catch (IOException unreadable) {
-                    return; // 原记录读不出来就不碰，别为了旁路信息把它覆盖掉
-                }
-                var next = rewrite.toJson(OM);
-                if (next.equals(payload.get(VideoPromptRewrite.PAYLOAD_KEY))) return;
-                payload.set(VideoPromptRewrite.PAYLOAD_KEY, next);
-                j.setPayloadJson(payload.toString());
-                j.setUpdatedAt(OffsetDateTime.now());
-                jobRepo.save(j);
+            inTransaction(() -> {
+                var found = transactions == null ? jobRepo.findById(jobId) : jobRepo.lockById(jobId);
+                found.ifPresent(j -> {
+                    if (entityManager != null) entityManager.refresh(j);
+                    String next = withPromptRewrite(j.getPayloadJson(), rewrite);
+                    if (next != null) jobRepo.updatePayloadJson(jobId, next);
+                });
             });
         } catch (RuntimeException e) {
             log.warn("[material-video] job {} 记录厂商改写后的提示词失败（不影响出片）err={}", jobId, e.toString());
         }
+    }
+
+    /** payload 里加上 / 换成这份改写记录，其余键原样保留；没有变化或原记录读不出 → null（不写，别把它覆盖掉）。 */
+    static String withPromptRewrite(String payloadJson, VideoPromptRewrite rewrite) {
+        com.fasterxml.jackson.databind.node.ObjectNode payload;
+        try {
+            JsonNode parsed = payloadJson == null || payloadJson.isBlank() ? OM.createObjectNode() : OM.readTree(payloadJson);
+            if (!parsed.isObject()) return null;
+            payload = (com.fasterxml.jackson.databind.node.ObjectNode) parsed;
+        } catch (IOException unreadable) {
+            return null;
+        }
+        var next = rewrite.toJson(OM);
+        if (next.equals(payload.get(VideoPromptRewrite.PAYLOAD_KEY))) return null;
+        payload.set(VideoPromptRewrite.PAYLOAD_KEY, next);
+        return payload.toString();
     }
 
     private void markGenerating(String jobId, MaterialVideoModelClient.SubmitResult submit) {

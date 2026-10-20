@@ -24,6 +24,8 @@ import { createProjectOnServer, deleteProjectOnServer } from "@/canvas-bridge/pr
 import { isRunEnded, requestEdit, requestGeneration, requestImageQuestion, resumeRun } from "@/canvas-bridge/generation";
 import { requestAudioGeneration, storeGeneratedAudio } from "@/canvas-bridge/audio";
 import { createVideoGenerationTask, isVideoTaskFailed, storeGeneratedVideo, waitForVideoGenerationTask } from "@/canvas-bridge/video";
+import { studioVideoKeepPrompt } from "@/canvas-bridge/studio-video";
+import { confirmStudioFrames } from "@/canvas-bridge/studio-frame-confirm";
 import { defaultConfig, useConfigStore, useEffectiveConfig } from "@/canvas-bridge/config-store";
 import { uploadImage, type UploadedImage } from "@/canvas-bridge/image-storage";
 import type { UploadedFile } from "@/canvas-bridge/file-storage";
@@ -388,7 +390,12 @@ function InfiniteCanvasPage() {
                 setNodes(prev=>prev.map(item=>item.id===nodeId?applyStudioRun(item,run):item));
                 window.dispatchEvent(new CustomEvent('studio-native-run',{detail:run}));
             };
+            // Studio（2026-10-20）：沿用这个节点上次的「按原文生成」；描述点名的图片没带上时先问，与 Studio 面板同一套规则。
+            const node=nodesRef.current.find(item=>item.id===nodeId);
             const task = await createVideoGenerationTask(config, prompt, images, { signal, videos, audios, nodeId, onRun,
+                keepPrompt:studioVideoKeepPrompt(node),
+                confirmFrames:(intent,model)=>confirmStudioFrames(modal,intent,model,
+                    nodesRef.current.filter(item=>item.type===CanvasNodeType.Image&&item.metadata?.storageKey).length),
                 beforeSubmit:async request=>{
                     setNodes(prev=>prev.map(item=>item.id===nodeId?{...item,metadata:{...item.metadata,...extra,prompt,videoCount:String(request.count),videoTaskId:undefined,status:'loading',
                         studio:{...item.metadata?.studio,kind:item.metadata?.studio?.kind||'shot',request,runId:undefined}}}:item));
@@ -406,7 +413,7 @@ function InfiniteCanvasPage() {
             if(projectId)await saveStudioDocument(projectId);
 
         },
-        [],
+        [modal],
     );
 
     const pollVideoNodeTask = useCallback(

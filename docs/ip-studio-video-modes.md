@@ -59,4 +59,9 @@ Studio 视频抽屉与原生画布视频参数面板均选择 1、2、4 条候�
 
 验证（本地，库副本 + 模拟聚算，不连真厂商、不花钱）：服务端 `VideoGenSpecTest`、`VideoPromptRewriteTest`、`MaterialVideoModelClientBodyTest` / `WireTest`（真实 HTTP 层请求体与查询响应）、`MaterialVideoWorkerSpecTest`、`MaterialVideoJobServiceStudioTest`、`StudioNativeVideoProjectionTest`、`StudioVideoPromptRewriteTest`、`VideoStudioServiceTest`；前端 `studio-video-prompt.test.ts`、`studio-video.test.ts`、`studio-video-prompt-notes.test.tsx`、`studio-video-prompt-wiring.test.ts`。浏览器走了三条路径：默认生成（先弹首尾帧确认 → 仍按文字生成 → 请求与线上同形、成片后三处显示丢失的台词）、勾选按原文生成（请求带 `optimizePrompt:false`、候选标「按原文生成」）、自己选好首尾两张图（不再弹问，请求带两个 assetId）；测试账号 3 条共扣 960，价格不变。
 
+Codex 复审（2026-10-20，提交 47c057ea 之后）修了三处：
+- **共用视频胶水也认这两件事**：`canvas-bridge/video.ts` 的 `createVideoGenerationTask` 接 `keepPrompt`（调用方用 `studioVideoKeepPrompt(node)` 从节点上次已受理的请求取，与重开面板同一条规则）和 `confirmFrames`（描述点名的图片没带上时问用户；没给回调就不提交，抛 `VideoFramesNotBound`，不保存、不扣费）。搬来的旧画布页（`canvas/pages/canvas/project.tsx`，目前没挂到任何路由）的生成与重试都经 `completeVideoNodeTask` 传入这两项，问法走 `confirmStudioFrames`（只有「仍按文字生成」才提交，关闭算返回）。Studio 面板的「重新生成」原样重发节点上保存的请求，`optimizePrompt` 跟着走。
+- **记录改写结果不再整行保存**：同一事务里锁行、刷新后读当前 payload，只更新 `payload_json` 一列（`MaterialVideoJobRepository.updatePayloadJson`）。旧写法 findById 后 save，会把管理端对账同时写好的 succeeded、成片地址、完成时间盖回 generating —— `MaterialVideoPromptRewriteRaceTest` 用真 H2 和门闩复现过（旧实现失败、新实现通过）。只锁任务这一行，不碰企业账户锁，与结算的加锁顺序不成环。
+- **建议的模式按首尾帧语义和容量选**（`studioFrameTarget`）：写了首帧 / 尾帧就只在带对应槽位、又放得下这些图的模式里选；只写尾帧推荐「首尾帧」并提示还要一张首帧，绝不把尾帧当首帧；没写首尾帧的「图1…图3」推荐能放下的参考模式（全能参考），不再推荐只有两个槽的首尾帧；要锁首尾帧却放不下这么多图时，改用参考模式并明说这些图只作参考；哪个模式都放不下就不推荐，说清最多几张。
+
 还没验证的（需要真实付费）：`optimizePrompt=false` 时 H3 是否把中文台词完整说出来、口型与画面质量是否下降；把台词写进引号能否让厂商改写器保留整句。默认值是否改成按原文，要等这组付费对比之后再定。厂商改写器丢台词是厂商侧行为，需要反馈给聚算。

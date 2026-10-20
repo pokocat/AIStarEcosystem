@@ -237,6 +237,17 @@ test('refresh restores cancelled queue semantics without replaying adopted resul
  expect(snapshot[0].metadata).toMatchObject({storageKey:'old.mp4',content:'/old.mp4',primaryVideoId:'old'});
  expect(api.submit).not.toHaveBeenCalled();expect(api.read).not.toHaveBeenCalled();
 });
+// Codex review of 47c057ea: retrying a failed take resubmits the saved request, so 「按原文生成」 must survive it.
+test('retrying a failed native video keeps 按原文生成 from the saved request under a new request key',async()=>{
+ const kept={...request,video:{mode:'t2v' as const,resolutionTier:'768p',optimizePrompt:false}};
+ render(<Host initial={{...node,metadata:{...node.metadata,status:'error',errorDetails:'生成失败',studio:{...node.metadata!.studio,request:kept}}}}/>);
+ await waitFor(()=>expect(api.capabilities).toHaveBeenCalled());
+ fireEvent.click(screen.getAllByRole('button',{name:'重新生成'})[0]);
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ const sent=api.submit.mock.calls[0][1];
+ expect(sent.video).toEqual({mode:'t2v',resolutionTier:'768p',optimizePrompt:false});
+ expect(sent.clientRequestId).not.toBe('original-key');expect(sent.prompt).toBe('original prompt');
+});
 test('refresh with an active accepted batch offers its existing task rather than a new submit',async()=>{
  render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();
  expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();fireEvent.click(screen.getByRole('button',{name:'查看原任务'}));await waitFor(()=>expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined());expect(api.submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.studio?.request).toEqual(request);

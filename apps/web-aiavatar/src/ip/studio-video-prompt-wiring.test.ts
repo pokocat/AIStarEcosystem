@@ -27,3 +27,11 @@ test("the frame question is asked before saving the document or submitting, and 
   expect(submit).toMatch(/if\(choice==="cancel"\)return;\s*if\(choice==="bind"\)\{bindFramesFor\(intent\);return;\}/);
   expect(workspace).toContain("studioVideoSettings(videoDraft.mode,videoDraft.tier,videoAssets,videoDraft.seed,nativeModeSpec,!!videoDraft.keepPrompt&&nativeVideo.supportsPromptOptimization)");
 });
+
+// Supplementary to the behaviour tests in canvas-bridge/video.test.ts: the vendored node panel (not routed in Studio
+// today) hands the bridge the node's saved choice and a way to ask, so it cannot fall back to the vendor rewrite.
+test("the node panel passes the saved text choice and the frame question to the shared bridge", () => {
+  const page = read("canvas/pages/canvas/project.tsx");
+  expect(page).toContain("keepPrompt:studioVideoKeepPrompt(node),");
+  expect(page).toMatch(/confirmFrames:\(intent,model\)=>confirmStudioFrames\(modal,intent,model,/);
+});

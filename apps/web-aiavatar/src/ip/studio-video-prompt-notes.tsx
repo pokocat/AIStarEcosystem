@@ -5,9 +5,8 @@
 // paid job, so the "after" part only explains a finished take; nothing here blocks or changes a request by itself.
 import { Button, Modal } from "antd";
 import type { IpRun } from "@ai-star-eco/types";
-import type { VideoStudioModel, VideoStudioModeSpec } from "@ai-star-eco/types/video-studio";
-import { studioVideoModeName } from "@/canvas-bridge/studio-video";
-import { studioPromptLines, studioRunRewrites, type StudioFrameIntent, type StudioLostLine, type StudioTakeRewrite } from "@/canvas-bridge/studio-video-prompt";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
+import { studioFrameIntentCopy, studioPromptLines, studioRunRewrites, type StudioFrameIntent, type StudioLostLine, type StudioTakeRewrite } from "@/canvas-bridge/studio-video-prompt";
 
 const quoted = (parts: string[]) => parts.map(part => `「${part}」`).join("");
 const lineText = (line: { speaker: string; text: string }) => `${line.speaker}${line.speaker ? "：" : ""}${line.text}`;
@@ -42,14 +41,6 @@ export function StudioVideoPromptNote({ model, prompt, keepPrompt, lastTake, onS
   </p>;
 }
 
-/** The mode a "bind pictures" answer switches to; undefined when the model has none that takes that many frames. */
-export function studioFrameModeFor(model: VideoStudioModel, intent: StudioFrameIntent): VideoStudioModeSpec | undefined {
-  const modes = model.contract.modes;
-  if (intent.needed >= 2 || intent.lastFrameIgnored) return modes.find(mode => mode.needsFirstFrame && mode.needsLastFrame)
-    || modes.find(mode => !!mode.references && !mode.needsFirstFrame && !mode.needsLastFrame);
-  return modes.find(mode => mode.needsFirstFrame && !mode.needsLastFrame && !mode.references);
-}
-
 export type StudioFrameIntentChoice = "bind" | "text" | "cancel";
 
 /** Asked once per prompt and mode when the text names pictures the request does not carry. Never picks pictures. */
@@ -57,17 +48,11 @@ export function StudioFrameIntentDialog({ intent, model, canvasImages, onChoose,
   intent?: StudioFrameIntent; model?: VideoStudioModel; canvasImages: number;
   onChoose: (choice: StudioFrameIntentChoice) => void; onClosed?: () => void; getContainer?: () => HTMLElement;
 }) {
-  const target = intent && model ? studioFrameModeFor(model, intent) : undefined;
-  const title = !intent ? "" : intent.bound === 0 ? "描述里提到了图片，这次没有用上图片"
-    : intent.lastFrameIgnored ? "描述里提到了尾帧，当前模式只用首帧" : `描述里提到了 ${intent.needed} 张图，这次只用了 ${intent.bound} 张`;
-  return <Modal open={!!intent} title={title} onCancel={() => onChoose("cancel")} afterClose={onClosed} getContainer={getContainer} width={460}
+  const copy = intent ? studioFrameIntentCopy(intent, model?.contract.modes || [], canvasImages) : undefined;
+  return <Modal open={!!intent} title={copy?.title} onCancel={() => onChoose("cancel")} afterClose={onClosed} getContainer={getContainer} width={460}
     footer={[<Button key="text" onClick={() => onChoose("text")}>仍按文字生成</Button>,
-      <Button key="bind" type="primary" onClick={() => onChoose("bind")}>{target ? `改用「${studioVideoModeName(target)}」选图片` : "去选择视频模式"}</Button>]}>
-    {intent && <div className="studio-director-form">
-      <p>{quoted(intent.mentions)}写在描述里只是文字，模型看不到画布上的图片。{target ? `要照着图片出片，改用「${studioVideoModeName(target)}」，再选好要用的图片。` : "要照着图片出片，请换一个能用图片的视频模式。"}</p>
-      {canvasImages === 0 && <p>画布上还没有图片，可以先上传，或从人物库里选。</p>}
-      <p>只想按文字出片，可以直接生成。</p>
-    </div>}
+      <Button key="bind" type="primary" onClick={() => onChoose("bind")}>{copy?.bindLabel}</Button>]}>
+    {copy && <div className="studio-director-form">{copy.lines.map(line => <p key={line}>{line}</p>)}</div>}
   </Modal>;
 }
 

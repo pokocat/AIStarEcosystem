@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { studioFrameIntent, studioLostLines, studioPromptLines } from "./studio-video-prompt";
+import type { VideoStudioModeSpec } from "@ai-star-eco/types/video-studio";
+import { studioFrameIntent, studioFrameIntentCopy, studioFrameTarget, studioLostLines, studioPromptLines } from "./studio-video-prompt";
 
 // Same structure as the 2026-10-20 production prompt (a direction label with 图1, one spoken line, an expression
 // note that quotes the line's first word, 图2 as the last frame), with different words.
@@ -47,7 +48,7 @@ describe("what the vendor's rewrite kept", () => {
 describe("pictures named in the text", () => {
   test("a text-only request that names 图1/图2 and both frames asks for two pictures it does not carry", () => {
     expect(studioFrameIntent(SHOT, { mode: "t2v", resolutionTier: "768p" })).toEqual({
-      mentions: ["图1", "图2", "首帧", "尾帧"], needed: 2, bound: 0, lastFrameIgnored: false });
+      mentions: ["图1", "图2", "首帧", "尾帧"], pictures: 2, first: true, last: true, needed: 2, bound: 0, hasFirst: false, lastFrameIgnored: false });
   });
 
   test("first and last frames bound: nothing to ask", () => {
@@ -66,5 +67,58 @@ describe("pictures named in the text", () => {
       references: [{ mediaType: "image", key: "a" }, { mediaType: "image", key: "b" }] })).toBeUndefined();
     expect(studioFrameIntent("桌上摊着地图，截图2里的路线，图片很亮", { mode: "t2v", resolutionTier: "768p" })).toBeUndefined();
     expect(studioFrameIntent("一只猫在窗台上打盹", { mode: "t2v", resolutionTier: "768p" })).toBeUndefined();
+  });
+});
+
+// H3's open modes; a reference mode holds up to 9 images.
+const T2V = { mode: "t2v", label: "文生视频" } as VideoStudioModeSpec;
+const I2V = { mode: "i2v", label: "首帧", needsFirstFrame: true } as VideoStudioModeSpec;
+const FIRST_LAST = { mode: "first_last_frame_video", label: "首尾帧", needsFirstFrame: true, needsLastFrame: true } as VideoStudioModeSpec;
+const REFERENCE = { mode: "universal_reference_video", label: "全能参考",
+  references: { image: { maxCount: 9 }, video: { maxCount: 1 }, audio: { maxCount: 3 }, maxTotal: 12, maxImagesWithVideo: 8, minVisual: 1, maxAudioTotalSec: 15 } } as unknown as VideoStudioModeSpec;
+const H3 = [T2V, I2V, FIRST_LAST, REFERENCE];
+const textOnly = (prompt: string) => studioFrameIntent(prompt, { mode: "t2v", resolutionTier: "768p" })!;
+
+// Codex review of 47c057ea (P2): the suggested mode must hold the pictures and keep a named last frame a last frame.
+describe("which mode the frame question suggests", () => {
+  test("named first and last frames: the first-and-last-frame mode", () => {
+    expect(studioFrameTarget(H3, textOnly(SHOT))).toEqual({ mode: FIRST_LAST, kind: "frames" });
+    expect(studioFrameTarget(H3, textOnly("图1作为首帧，镜头推近"))).toEqual({ mode: I2V, kind: "frames" });
+  });
+
+  test("three pictures without frame words: a reference mode that holds all three, not a two-slot frame mode", () => {
+    const intent = textOnly("图1的人走到图2的房子前，拿起图3的商品");
+    expect(intent).toMatchObject({ pictures: 3, needed: 3, first: false, last: false });
+    expect(studioFrameTarget(H3, intent)).toEqual({ mode: REFERENCE, kind: "references" });
+    expect(studioFrameTarget(H3, textOnly("图1里的女孩在跳舞"))).toEqual({ mode: REFERENCE, kind: "references" });
+  });
+
+  test("a picture meant as the last frame is never offered as a first frame", () => {
+    const intent = textOnly("图1用作尾帧");
+    expect(intent).toMatchObject({ needed: 1, first: false, last: true, lastFrameIgnored: false });
+    expect(studioFrameTarget(H3, intent)).toEqual({ mode: FIRST_LAST, kind: "frames-need-first" });
+    expect(studioFrameIntentCopy(intent, H3, 2).lines[0]).toContain("还需要再选一张首帧图");
+    // A first frame already in the request stays; only the last frame is missing.
+    const kept = studioFrameIntent("尾帧停在他的手上", { mode: "i2v", resolutionTier: "768p", firstFrameKey: "a" })!;
+    expect(studioFrameTarget(H3, kept)).toEqual({ mode: FIRST_LAST, kind: "frames" });
+    // A model without any last-frame mode: no frame mode is suggested for it.
+    expect(studioFrameTarget([T2V, I2V], intent)).toBeUndefined();
+    expect(studioFrameIntentCopy(intent, [T2V, I2V], 2).lines[0]).toContain("没有能用尾帧的模式");
+  });
+
+  test("frames plus more pictures than any frame mode holds: carried as references, and said so", () => {
+    const intent = textOnly("图1作为首帧，图2和图3是人物参考");
+    expect(studioFrameTarget(H3, intent)).toEqual({ mode: REFERENCE, kind: "references-not-frames" });
+    expect(studioFrameIntentCopy(intent, H3, 3).lines[0]).toContain("只作参考，不会锁定首帧或尾帧");
+  });
+
+  test("models without a reference mode use pictures as frames only when they fit; otherwise nothing is suggested", () => {
+    expect(studioFrameTarget([T2V, I2V, FIRST_LAST], textOnly("图1的人走向图2的房子"))).toEqual({ mode: FIRST_LAST, kind: "as-frames" });
+    const tooMany = textOnly("图1的人走到图2的房子前，拿起图3的商品");
+    expect(studioFrameTarget([T2V, I2V, FIRST_LAST], tooMany)).toBeUndefined();
+    const copy = studioFrameIntentCopy(tooMany, [T2V, I2V, FIRST_LAST], 3);
+    expect(copy.bindLabel).toBe("去选择视频模式");
+    expect(copy.lines[0]).toContain("最多用 2 张图");
+    expect(studioFrameIntentCopy(tooMany, [T2V], 3).lines[0]).toContain("只能按文字生成");
   });
 });

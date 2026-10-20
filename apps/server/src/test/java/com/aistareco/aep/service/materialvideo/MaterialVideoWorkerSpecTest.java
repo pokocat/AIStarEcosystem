@@ -141,7 +141,7 @@ class MaterialVideoWorkerSpecTest {
     }
 
     @Test
-    @DisplayName("厂商改写过提示词：实际用的描述存进 payload（原有键不丢），出片与结算照旧；任务卡不外露这份记录")
+    @DisplayName("厂商改写过提示词：实际用的描述只经 payload 单列更新写入（原有键不丢），出片与结算照旧")
     void vendorRewriteIsKeptBesideThePayload() throws Exception {
         var submit = new MaterialVideoModelClient.SubmitResult("job_h3", null, "MiniMax H3", "minimax-h3",
                 "jusuan-media", "ep-h3");
@@ -149,6 +149,11 @@ class MaterialVideoWorkerSpecTest {
         var rewrite = new VideoPromptRewrite("succeeded", "optimized", "She dances (S1) <d>[Chinese]走吧</d>", "popt_9", "v8");
         when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
                 new MaterialVideoModelClient.PollResult("succeeded", null, null, "succeeded", 100, null, null, "asset_out", rewrite));
+        // 模拟数据库那一列：只有 updatePayloadJson 能改 payload（整行 save 不负责这份记录）
+        when(jobRepo.updatePayloadJson(eq("mvj_studio"), anyString())).thenAnswer(inv -> {
+            job.setPayloadJson(inv.getArgument(1));
+            return 1;
+        });
         @SuppressWarnings("unchecked")
         HttpResponse<Path> response = mock(HttpResponse.class);
         when(response.statusCode()).thenReturn(200);
@@ -170,11 +175,26 @@ class MaterialVideoWorkerSpecTest {
     }
 
     @Test
-    @DisplayName("记录改写结果写不进去（存储异常）：只丢这份说明，不抛、不影响任务")
+    @DisplayName("记录改写结果写不进去（存储异常）：只丢这份说明，不抛、不整行保存任务")
     void rewriteRecordFailureIsSwallowed() {
-        when(jobRepo.save(any())).thenThrow(new IllegalStateException("db down"));
+        when(jobRepo.updatePayloadJson(any(), any())).thenThrow(new IllegalStateException("db down"));
         worker().recordPromptRewrite("mvj_studio", new VideoPromptRewrite("processing", null, null, null, null));
         assertEquals("queued", job.getStatus());
+        verify(jobRepo, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("payload 合并：换上新的改写记录，其余键原样；记录没变或原 payload 读不出 → 不写")
+    void payloadMergeKeepsOtherKeys() throws Exception {
+        var rewrite = new VideoPromptRewrite("processing", null, null, null, null);
+        String merged = MaterialVideoWorker.withPromptRewrite("{\"credit_label\":\"视频生成\",\"caller_priced\":true}", rewrite);
+        var node = new com.fasterxml.jackson.databind.ObjectMapper().readTree(merged);
+        assertEquals("视频生成", node.path("credit_label").asText());
+        assertEquals(true, node.path("caller_priced").asBoolean());
+        assertEquals("processing", node.path(VideoPromptRewrite.PAYLOAD_KEY).path("status").asText());
+        assertEquals(null, MaterialVideoWorker.withPromptRewrite(merged, rewrite));
+        assertEquals(null, MaterialVideoWorker.withPromptRewrite("not json", rewrite));
+        assertEquals(null, MaterialVideoWorker.withPromptRewrite("[1]", rewrite));
     }
 
     @Test

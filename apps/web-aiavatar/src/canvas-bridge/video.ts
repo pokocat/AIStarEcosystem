@@ -11,6 +11,8 @@
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
 import { endpointIdFor, videoDurationBoundsFor, nativeVideoModelFor, legacyVideoQuoteFor } from "./models";
 import { studioVideoSettings, studioVideoError, studioVideoQuote, studioVideoModeForAssets, studioVideoTierForConfig, studioVideoCanvasForConfig } from "./studio-video";
+import { studioFrameIntent, type StudioFrameIntent } from "./studio-video-prompt";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
 import { submitStudioRun } from './studio-api';
 import { ApiError } from '@ai-star-eco/api-client';
@@ -43,7 +45,24 @@ export type VideoMediaOptions = {
   videos?: Array<{storageKey?:string}>;
   audios?: Array<{storageKey?:string}>;
   signal?: AbortSignal;
+  /**
+   * 「按原文生成」：调用方从节点上次已受理的请求取（`studioVideoKeepPrompt(node)`），只对出片前会改写描述的模型生效。
+   * 2026-10-20 Codex 评审：此前只有 Studio 面板传它，这条路再生成或重试会悄悄回到厂商默认改写。
+   */
+  keepPrompt?: boolean;
+  /**
+   * 描述里写了图1 / 首帧 / 尾帧、请求却没带那些图时问用户，返回 true 才按文字提交。原生视频没给这个回调就不提交：
+   * 这一层不替用户决定（`VideoFramesNotBound`），也不替用户挑图。
+   */
+  confirmFrames?: (intent:StudioFrameIntent, model:VideoStudioModel)=>Promise<boolean>;
 };
+
+/** 描述点名的图片没有带上，用户也没确认按文字生成：这次不提交、不扣费。 */
+export class VideoFramesNotBound extends Error {
+  constructor(intent:StudioFrameIntent) {
+    super(`这次没有提交：描述里提到了${intent.mentions.map(m=>`「${m}」`).join("")}，但请求里没有这些图片。先把图片连到这个视频节点并选好视频模式，或者确认按文字生成。`);
+  }
+}
 
 const POLL_MS = 4000;
 /** 视频比出图久得多；上限只防前端无限等，服务端那头有自己的收尾。 */
@@ -126,9 +145,12 @@ export async function createVideoGenerationTask(
     const mode=studioVideoModeForAssets(nativeModel,config?.videoMode,assets);
     const tier=studioVideoTierForConfig(nativeModel,config?.vquality);
     params.aspectRatio=studioVideoCanvasForConfig(nativeModel,tier,options?.aspectRatio||config?.size).aspectRatio;
-    video=studioVideoSettings(mode.mode,tier,assets,config?.videoSeed,mode);
+    video=studioVideoSettings(mode.mode,tier,assets,config?.videoSeed,mode,!!options?.keepPrompt&&nativeModel.supportsPromptOptimization);
     const error=studioVideoError(nativeModel,video,prompt,params.aspectRatio||"",params.durationSec);
     if(error)throw new Error(error);
+    // Same question as the Studio panel, before anything is saved or charged.
+    const intent=studioFrameIntent(prompt,video,mode);
+    if(intent&&!(await options?.confirmFrames?.(intent,nativeModel)))throw new VideoFramesNotBound(intent);
   }
   const count=Number(config?.videoCount||1);
   const allowedCounts=nativeModel?.batchCounts?.length?nativeModel.batchCounts:[1,2,4];
