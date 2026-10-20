@@ -34,7 +34,7 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
                        Integer requestTimeoutMillis,
                        String inputMode, String resultMode, String outputPointer,
                        List<String> outputHosts,
-                       String referenceSubmitPath) {}
+                       String referenceSubmitPath, Boolean requireExactOutputSize) {}
 
     public AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int maxReferenceImages,
                               String referenceField, List<Output> outputs) {

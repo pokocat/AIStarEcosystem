@@ -121,8 +121,10 @@ public class JusuanImageClient {
             if(resultMode.startsWith("sync-")) {
                 try {
                     byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
+                    requireOutputSize(spec,size,bytes);
                     recordSuccess(endpoint,owner,requestId,null,body);return bytes;
-                } catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
+                } catch(ProviderRejected error){throw error;}
+                catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             }
             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
             try{requireId(id);}catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
@@ -145,6 +147,7 @@ public class JusuanImageClient {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
                     else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
+                    requireOutputSize(spec,size,bytes);
                     recordSuccess(endpoint,owner,requestId,id,body);return bytes;
                 }
                 progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
@@ -279,6 +282,15 @@ public class JusuanImageClient {
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
         return downloadUrl(endpoint,wire,value);
+    }
+
+    /** A completed but wrong-size image is a known bad result, never an unknown submission to replay. */
+    private void requireOutputSize(AiImageRequestSpec spec,String size,byte[] bytes) {
+        if(spec.wire()==null || !Boolean.TRUE.equals(spec.wire().requireExactOutputSize()))return;
+        int[] actual=IpProjectService.readDimensions(bytes);
+        if(actual==null)throw new ProviderRejected("图片引擎返回的图片尺寸无法读取，请联系运营核对模型规格");
+        String received=actual[0]+"x"+actual[1];
+        if(!received.equals(size))throw new ProviderRejected("图片引擎返回 "+received+"，与所选 "+size+" 不符，请联系运营核对模型规格");
     }
 
     private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value) {
