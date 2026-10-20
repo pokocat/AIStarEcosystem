@@ -2,13 +2,13 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { prepareStudioImageUpload, STUDIO_IMAGE_UPLOAD_MAX_BYTES } from './studio-image-file';
 
 afterEach(() => vi.unstubAllGlobals());
-function renderer(mime: string, sizes: number[]) {
+function renderer(mime: string, sizes: number[], { width = 6000, height = 4000, bytes = 9 * 1024 * 1024 } = {}) {
   const close = vi.fn(), drawImage = vi.fn();
   const canvas = { width: 0, height: 0, getContext: () => ({ drawImage }),
     toBlob: vi.fn((callback: BlobCallback, type: string) => callback(new Blob([new Uint8Array(sizes.shift() ?? 100)], { type }))) };
-  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 6000, height: 4000, close })));
+  vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width, height, close })));
   vi.stubGlobal('document', { createElement: () => canvas });
-  const file = new File([new Uint8Array(9 * 1024 * 1024)], mime === 'image/png' ? '透明原图.png' : '相机照片.jpg', { type: mime, lastModified: 123 });
+  const file = new File([new Uint8Array(bytes)], mime === 'image/png' ? '透明原图.png' : '相机照片.jpg', { type: mime, lastModified: 123 });
   return { file, canvas, close, drawImage };
 }
 
@@ -45,4 +45,22 @@ test('invalid and excessive originals are rejected before decoding', async () =>
   await expect(prepareStudioImageUpload({ name: 'large.png', size: 51 * 1024 * 1024 } as File)).rejects.toThrow('50 MB');
   await expect(prepareStudioImageUpload({ name: 'fake.exe', size: 9 * 1024 * 1024 } as File)).rejects.toThrow('JPG');
   expect(decode).not.toHaveBeenCalled();
+});
+
+// Production 2026-10-20: an image under 8 MB but over the server's pixel limits went up as it was and was refused with
+// 「图片最长边不能超过 8000 像素，总像素不能超过 2400 万」.
+test.each([['a long edge over 8000', 9000, 3000], ['more than 24 million pixels', 6000, 5000]])('a small file with %s is reduced before upload', async (_label, width, height) => {
+  const { file, drawImage, close } = renderer('image/jpeg', [1024], { width, height, bytes: 2 * 1024 * 1024 });
+  const result = await prepareStudioImageUpload(file);
+  expect(result).not.toBe(file);
+  const [, , , w, h] = drawImage.mock.calls[0];
+  expect(Math.max(w, h)).toBeLessThanOrEqual(8000);
+  expect(w * h).toBeLessThanOrEqual(24_000_000);
+  expect(result.name).toBe(file.name); expect(close).toHaveBeenCalledOnce();
+});
+
+test('a small file within the pixel limits keeps its original bytes', async () => {
+  const { file, drawImage, close } = renderer('image/jpeg', [], { width: 8000, height: 3000, bytes: 2 * 1024 * 1024 });
+  expect(await prepareStudioImageUpload(file)).toBe(file);
+  expect(drawImage).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledOnce();
 });

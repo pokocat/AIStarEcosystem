@@ -324,7 +324,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       await saveStudioDocument(projectId); focusNode(nodeId); message.success('图片已添加');
     } catch (e) {
       const reason = e instanceof Error ? e.message : '图片上传失败，请重试';
-      message.error(inserted ? `图片已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : reason);
+      // The error itself keeps the server's code and log id; a plain string was reported as CLIENT_ERROR.
+      message.error(inserted ? `图片已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : e);
     } finally { setReading(false); setUploadingImageId(undefined); }
   };
   const uploadVideoIntoNode = async (file: File) => {
@@ -339,7 +340,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       await saveStudioDocument(projectId); focusNode(nodeId); message.success('视频已添加，可开始解析或拉片');
     } catch (e) {
       const reason = e instanceof Error ? e.message : '视频上传失败，请重试';
-      message.error(inserted ? `视频已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : reason);
+      message.error(inserted ? `视频已添加；${reason}，可按 Ctrl/Cmd+S 重试保存画布` : e);
     } finally { videoUploadBusy.current = false; setReading(false); setUploadingImageId(undefined); }
   };
   const importFiles = async (files: File[]) => {

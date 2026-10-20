@@ -1,6 +1,9 @@
 /** Keep the server's bounded image input while accepting ordinary camera originals. */
 export const STUDIO_IMAGE_SOURCE_MAX_BYTES = 50 * 1024 * 1024;
 export const STUDIO_IMAGE_UPLOAD_MAX_BYTES = 8 * 1024 * 1024;
+/** The server's pixel limits for an imported image (StudioMediaImportService): longest edge and total pixels. */
+export const STUDIO_IMAGE_UPLOAD_MAX_EDGE = 8000;
+export const STUDIO_IMAGE_UPLOAD_MAX_PIXELS = 24_000_000;
 
 export function validateStudioImageUpload(file: File) {
   if (!/\.(jpe?g|png)$/i.test(file.name)) throw new Error('请选择 JPG 或 PNG 图片');
@@ -21,16 +24,28 @@ async function decodeImage(file: File): Promise<{ source: CanvasImageSource; wid
   } catch (error) { URL.revokeObjectURL(url); throw error; }
 }
 
-/** Small files keep their original bytes. Large PNGs retain transparency; originals stay on the device. */
+/**
+ * Files within the server's limits keep their original bytes. Anything over them — bytes, longest edge or total pixels —
+ * is re-encoded smaller; large PNGs retain transparency, and originals stay on the device. Only the byte size used to be
+ * checked, so a long screenshot or a high-resolution photo under 8 MB went up as it was and the server refused it with
+ * 「图片最长边不能超过 8000 像素，总像素不能超过 2400 万」 (production, 2026-10-20).
+ */
 export async function prepareStudioImageUpload(file: File): Promise<File> {
   validateStudioImageUpload(file);
-  if (file.size <= STUDIO_IMAGE_UPLOAD_MAX_BYTES) return file;
+  const small = file.size <= STUDIO_IMAGE_UPLOAD_MAX_BYTES;
   let image: Awaited<ReturnType<typeof decodeImage>>;
   try { image = await decodeImage(file); }
-  catch { throw new Error('图片无法读取，请重新选择 JPG 或 PNG 图片'); }
+  catch {
+    // A small file this browser cannot decode still goes up as it is: the server reads it and gives its own answer.
+    if (small) return file;
+    throw new Error('图片无法读取，请重新选择 JPG 或 PNG 图片');
+  }
   try {
     if (!image.width || !image.height || image.width * image.height > 100_000_000)
       throw new Error('图片尺寸过大，请选择不超过 1 亿像素的图片');
+    const withinPixels = image.width <= STUDIO_IMAGE_UPLOAD_MAX_EDGE && image.height <= STUDIO_IMAGE_UPLOAD_MAX_EDGE
+      && image.width * image.height <= STUDIO_IMAGE_UPLOAD_MAX_PIXELS;
+    if (small && withinPixels) return file;
     const mime = /\.png$/i.test(file.name) ? 'image/png' : 'image/jpeg';
     let ratio = Math.min(1, 4096 / Math.max(image.width, image.height));
     const canvas = document.createElement('canvas');
