@@ -209,8 +209,11 @@ describe('canvas cursor', () => {
     expect(unsaved.canvasAckSeq).toBe(7);
     expect(persistableCanvasCursor(unsaved)).toBe(5);
     expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: undefined }))).toBe(7);
-    // Nothing below the first unsaved command: no cursor rather than 0 (the next open replays them).
-    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: 1 }))).toBeUndefined();
+    // Nothing below the first unsaved command: cursor 0, so the next open replays everything as live commands. "No
+    // cursor" would mean a first open on this browser, whose restore replay skips the assistant's own nodes (R2).
+    expect(persistableCanvasCursor(dialogueReducer(unsaved, { type: 'canvas.unsaved', fromSeq: 1 }))).toBe(0);
+    // Before anything was acknowledged there is still nothing worth saving.
+    expect(persistableCanvasCursor(dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state: state({ latestSeq: 0, messages: [] }), mode: 'replace' }))).toBeUndefined();
   });
 });
 

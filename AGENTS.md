@@ -745,6 +745,8 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 - 判据：「服务端日志 / 库里已完成，页面没反应、刷新就好」→ 先怀疑中间层缓冲，抓一次经过代理的响应看 `content-encoding` 和事件到达时间，别先改前端状态机。
 - 同一轮的前端教训：**持久化不要在卸载 / 页面隐藏时写**。助手草稿第一版在卸载时写本地存储，开发模式 StrictMode 双跑副作用时，卸载那一下读到的是还没恢复的空状态，把刚恢复的草稿抹了；改成初始化读取、改动即写回。
 - Review reject：新增 `SseEmitter` / `text/event-stream` 接口不带 `no-transform` → reject。`git grep -n "new SseEmitter" -- apps/server/src/main` 的每一处都要能在同一条链路上找到这两个头（现存例外：已下线的 `ForgeController`，见 TODO）。
+- 「没有」和「0」别混用（同日复测 R2）：画布游标 0 本来表示「从头按正常命令重放」，代码里写成 `cursor > 0 ? cursor : undefined` 当「没有」处理，重开就落进只重建执行产物的恢复回放，新线程里第一个没存上的节点永远回不来。持久化的序号、计数、金额，判断有没有值用 `!== undefined`，别用真值判断。
+- 浏览器面板收起时页面不跑 `requestAnimationFrame`：`saveStudioDocument` 等两帧，面板隐藏时会一直等，看起来像「发送卡住」。用浏览器面板验收交互前先把面板显示出来（`show_pane preview`），这不是产品问题。
 
 ### 跨 app 约定
 

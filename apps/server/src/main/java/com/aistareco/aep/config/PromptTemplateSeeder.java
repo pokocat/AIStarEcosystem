@@ -41,7 +41,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      不在正文写素材编号、不把没说过的金额说成用户说的（示例里的「上限 300 积分」曾被模型当成用户原话）。
     // v16：对话提示词要求可直接用的文字初稿用 create_nodes 放进画布；检查提示词以目标说明里的替换对象为准、依据与结论不许矛盾
     //      （线上复刻检查看到「三位成年男性」仍判「没有旧人物」）。
-    private static final String SEED_VERSION = "v16-2026-10-19-text-to-canvas-and-check-targets";
+    // v17：对话提示词把「聊天按用量扣少量积分」与「制作确认报价后才开始」分开说，禁止先报数再改口、禁止「不确认不会花钱」
+    //      （Codex 真 Agnes 复测：先说「费用 12 积分」，服务端报价 98，末尾还说「不确认不会花钱」而本轮已扣 5）。
+    private static final String SEED_VERSION = "v17-2026-10-19-dialogue-charging-words";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

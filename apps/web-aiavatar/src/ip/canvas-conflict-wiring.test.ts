@@ -26,6 +26,10 @@ describe("冲突弹窗挂在画布宿主上", () => {
     // 徽标文案不再是「刷新后再改」（注释里提到旧文案不算）
     expect(host).not.toMatch(/conflict:\s*"[^"]*刷新后再改/);
   });
+  // Codex 复测 2026-10-19（R4）：冲突态下点「发布」照样进了发布弹窗，用户以为能发
+  it("冲突态下点「发布」打开的是三选一，不是发布弹窗", () => {
+    expect(host).toMatch(/onClick=\{\(\) => saveState === "conflict" \? setConflictOpen\(true\) : setPublishOpen\(true\)\}/);
+  });
   it("别的标签页存了新版、这里悄悄换过内容之后，轻轻说一声", () => {
     expect(host).toContain("remoteRefreshes");
     expect(host).toContain("已经换成最新内容");

@@ -32,3 +32,13 @@ test('a step waiting for a go-ahead offers 「继续制作」; a budget shortfal
   expect(screen.queryByRole('button', { name: '继续制作' })).toBeNull();
   expect(screen.getByRole('button', { name: /停\s*止/ })).toBeDefined();
 });
+
+// Codex retest 2026-10-19 (R3): stopped for a new instruction after the last credits went on steering, no step was
+// needs_user or failed, so the strip offered nothing and the run could not go on.
+test('a run stopped for a new instruction can be continued from the strip', async () => {
+  const onControl = vi.fn(async () => {});
+  const steered = { ...failedAnalysis, needsUserReason: '收到新指令，等待重新确认', steps: failedAnalysis.steps.map(s => ({ ...s, status: s.id === 'cut' ? 'done' as const : 'pending' as const })) };
+  render(<StudioDialogueExecution execution={steered} budget={{ approvedCap: 61, spent: 13 }} checks={[]} onControl={onControl}/>);
+  fireEvent.click(screen.getByRole('button', { name: '继续制作' }));
+  await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume'));
+});

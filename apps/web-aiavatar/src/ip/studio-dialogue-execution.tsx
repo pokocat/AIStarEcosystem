@@ -52,10 +52,12 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   };
   const cancel = () => modal.confirm({ title: '停止这次制作？', content: '还没开始的任务会取消；已经交给厂商的任务会照常完成并结算。', okText: '停止制作', cancelText: '再想想', okButtonProps: { danger: true }, onOk: () => run('cancel') });
   const live = execution.status === 'running', waiting = execution.status === 'paused' || execution.status === 'needs_user';
-  // Waiting on the user because a step failed or needs a go-ahead: the same 「继续」 the server already supports
-  // (a failed step gets a new attempt). A budget shortfall goes through the raise card instead, so no button here.
+  // Waiting on the user (a failed step, a go-ahead, or a stop for a new instruction): the same 「继续」 the server already
+  // supports (a failed step gets a new attempt; a next step over budget comes back as a raise card). An open shortfall
+  // goes through its raise card, so no button then. Without a needs_user / failed step there used to be no button at all,
+  // and a run stopped for steering that had used the last credits could not go on (Codex retest 2026-10-19, R3).
   const failed = steps.some(s => s.status === 'failed');
-  const canContinue = execution.status === 'needs_user' && !budget?.shortfall && (failed || steps.some(s => s.status === 'needs_user'));
+  const canContinue = execution.status === 'needs_user' && !budget?.shortfall;
   const stage = execution.stage === 'analysis' ? '分析' : '制作';
   const position = active ? steps.indexOf(active) + 1 : Math.min(done + 1, steps.length);
   const where = steps.length ? `第 ${position} 步，共 ${steps.length} 步` : '';

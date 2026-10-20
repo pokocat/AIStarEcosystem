@@ -80,7 +80,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
 
   const threadId = store.thread?.id;
   const savedCursor = persistableCanvasCursor(store);
-  useEffect(() => { if (threadId && savedCursor) writeCanvasCursor(threadId, savedCursor); }, [threadId, savedCursor]);
+  useEffect(() => { if (threadId && savedCursor !== undefined) writeCanvasCursor(threadId, savedCursor); }, [threadId, savedCursor]);
 
   const working = !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending');
   // A history replay onto a canvas that had no record here runs to the end even with the panel closed.

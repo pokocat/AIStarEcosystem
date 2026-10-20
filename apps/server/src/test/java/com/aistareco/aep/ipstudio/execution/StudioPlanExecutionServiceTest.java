@@ -293,16 +293,20 @@ class StudioPlanExecutionServiceTest {
         verify(steering).openTurn("thread-1");
     }
 
-    @Test void resumeChecksTheNextStepBudgetAndAcceptNeverRewritesTheVerdict() throws Exception {
+    // Codex retest 2026-10-19 (R3): after steering used the last credits, resume answered 402 and no raise card ever
+    // appeared. Resume now hands the over-budget step to the executor, which stops there and posts the card.
+    @Test void resumeOverBudgetGoesToTheExecutorForARaiseCardAndAcceptNeverRewritesTheVerdict() throws Exception {
         String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var created=service.create("u","p",analysisRequest(fp,30));
         var row=rows.get(created.id());
         var state=(ObjectNode)om.readTree(row.getStepsJson());((ObjectNode)state.path("steps").get(0)).put("status","needs_user").put("reason","预算不够");
         row.setStepsJson(state.toString());row.setStatus("needs_user");
         var budget=(ObjectNode)om.readTree(row.getBudgetJson());((ObjectNode)budget.path("analysis")).put("spent",15);row.setBudgetJson(budget.toString());
-        var refused=assertThrows(BusinessException.class,()->service.resume("u","p",created.id(),new PlanExecutionControlRequest("r-1",null)));
-        assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",refused.getCode());assertEquals(5,((JsonNode)refused.getDetails()).path("shortfall").asLong());
-        assertEquals("needs_user",rows.get(created.id()).getStatus(),"refused resume changes nothing");
+        var overBudget=service.resume("u","p",created.id(),new PlanExecutionControlRequest("r-1",null));
+        assertEquals("running",overBudget.status(),"not refused: the executor stops at the step and posts the raise card");
+        assertEquals("pending",overBudget.steps().get(0).status());
+        verify(executor,atLeastOnce()).wake(created.id());
+        row.setStatus("needs_user"); // what the executor leaves behind, with its card on the thread
         cards.put("msg-3","APV-raise","analysis",fp,10,40);
         var raised=new PlanExecutionCreateRequest("raise-1","analysis","IPR-a",fp,null,40L,0L,null,created.id(),null,"APV-raise","msg-3");
         assertEquals(40,service.create("u","p",raised).budgets().get(0).approvedCap());

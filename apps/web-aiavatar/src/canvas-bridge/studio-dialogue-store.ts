@@ -405,8 +405,11 @@ export const canvasRestoring = (store: DialogueStore) => store.restoreThroughSeq
 export const persistableCanvasCursor = (store: DialogueStore) => {
   if (!store.thread || canvasRestoring(store) || !store.canvasAckSeq) return undefined;
   // Commands projected but not saved yet must replay on the next open: keep the cursor just below the first of them.
+  // 0 is a real cursor ("replay everything as live commands"), not "none": "none" means a first open on this browser,
+  // which replays in restore mode, and restore mode only rebuilds execution output. An unsaved node from the thread's
+  // first events was therefore lost for good once the tab closed (Codex retest 2026-10-19, R2).
   const cursor = store.canvasUnsavedFrom === undefined ? store.canvasAckSeq : Math.min(store.canvasAckSeq, store.canvasUnsavedFrom - 1);
-  return cursor > 0 ? cursor : undefined;
+  return cursor >= 0 ? cursor : undefined;
 };
 
 /** Executions this thread started, newest first, from the approval cards that started them. */

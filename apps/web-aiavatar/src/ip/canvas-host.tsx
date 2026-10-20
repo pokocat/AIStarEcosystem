@@ -202,7 +202,8 @@ function Host({ projectId }: { projectId: string }) {
         </a>
       ) : (
         <button
-          onClick={() => setPublishOpen(true)}
+          // 冲突没处理时，发布会拿库里的旧内容发出去（publish-gate 也会拒）：直接把三选一摆出来，不先进发布弹窗（Codex 复测 R4）
+          onClick={() => saveState === "conflict" ? setConflictOpen(true) : setPublishOpen(true)}
           className="studio-host-publish h-8 px-3.5 rounded-full inline-flex items-center gap-1.5 text-[12px] font-bold transition hover:brightness-95 whitespace-nowrap"
           style={{ background: "var(--ink)", color: "var(--surface)" }}
         >
