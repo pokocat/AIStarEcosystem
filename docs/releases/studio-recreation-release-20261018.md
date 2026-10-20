@@ -278,3 +278,27 @@
 
 **未验证**：线上没有用真账号生成视频，「按原文生成」的出片效果（台词是否完整、画面是否变差）仍待付费对比验收；没有发起任何付费调用、没有建测试数据。默认行为不变：不勾选时请求与发布前逐字段相同。回滚（发布包在 Codex 工作区 `/Users/donis/.codex/worktrees/studio-gpt-image-native/AIStarEcosystem/dist/deploy/`）：
 `deploy-release.sh <上述目录>/20261020-studio-gpt-image-size-gate server` 与 `deploy-release.sh <上述目录>/20261020-studio-gpt-image-native web-aiavatar`（无迁移；回滚后旧代码不再读 `vendor_prompt`，留在 payload 里无害）。
+
+## 追加发布 · 2026-10-20 · 第一次从 main 发 web-aiavatar：补回 H3 前端，带上保存冲突三选一
+
+| 项 | 值 |
+|---|---|
+| 发布号 | `20261020-studio-main-h3-conflict` |
+| GIT_SHA | `790d85a3`（本地 main，未推远端；在仓库同级的干净工作区 `AIStarEcosystem-main-release` 里构建）。main 已合齐 release 线（到 `77d35b82`，含线上 server `1376a4e0`）、Codex 分支 `codex/studio-gpt-image-native`（到 `183106af`，含线上 web `190ccd03`）和 H3 两个提交 |
+| 服务 | **仅 web-aiavatar**（server 不动，仍是 `1376a4e0` / `20261020-h3-video-dialogue`；main 的前端没有新增或改动接口，`specs/openapi.yaml` 与线上 server 相同） |
+| 构建参数 | `NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`（manifest `SERVICES='web-aiavatar'`、`USE_MOCK=0`、`ENABLE_DEV_LOGIN=0`） |
+| 发布前基线 | web-aiavatar `190ccd03`（Codex 从自己分支发的 `20261020-studio-video-settings-compact`，没有 H3 前端）；server `1376a4e0` |
+| 结果 | `env-check` 与 `verify.sh` ALL GREEN；web-aiavatar 20:14:24 CST 重启（旧进程 SIGTERM 退出码 143，与以往相同），`NRestarts=0`；线上 BUILD_ID `ZwgrcsEQExwCRWnFOzV6V`；公网 chunk `1760.89d9f1a2ba09d104.js` 含「按原文生成」、`1183.7f66b99e029e7f15.js` 含「另存一份，再换成最新内容」；**server 没有重启**（`ActiveEnterTimestamp` 仍是 18:52:12 CST），近 10 分钟 0 条 ERROR |
+
+比线上多出的前端内容：
+- H3 前端回到线上：「创作参数」里的「按原文生成」、素材区下方的台词提醒、描述写了图1 / 首帧 / 尾帧但没带图时的确认（这三处在 `20261020-h3-video-dialogue` 上过线，随后被 Codex 从自己分支发的三版前端覆盖掉）。
+- 保存冲突三选一（`6e9e7b3a`，此前从未上线）与「冲突时点发布先打开三选一」（`bde5956c` 的 R4，release 线当时去掉了，等的就是这一项）：同一张画布在别处存过之后，不再连串报错，顶栏出现能点的「处理冲突」，弹窗给「另存一份，再换成最新内容 / 换成最新内容 / 以这里为准」；同一浏览器里没改过的标签页悄悄换成最新内容。
+
+发布前验证：
+- 门禁（main 干净工作区）：`pnpm typecheck:all`、`typecheck:admin`、`pnpm check:api-contract` 通过；web-aiavatar 全量 vitest 135 个文件 1049 条全过。server 本次不发；合并 main 时跑过的 server 全量 992 条 0 失败。
+- 保存冲突按真实路径走了一遍（本地 main 后端 + main 前端，无头浏览器两个标签页 + 用接口模拟另一台设备）：① A 加文字，B 没改过 → B 自动换成最新并提示一句；② 另一台设备存过、A 再改 → 409 后只弹一个三选一、不刷错误；选「另存一份」→ 新画布含 A 的改动、A 换成服务端版本、提示里的链接指向新画布；③ 关掉弹窗 → 顶栏「处理冲突」，点「发布」先打开三选一；选「以这里为准」→ 服务端等于 A、另一台设备那次被覆盖；④ 处理完继续编辑正常自动保存；⑤ 两个标签页都有没存的改动 → 后改的那页直接弹窗、没发出注定 409 的保存，选「换成最新内容」不新建画布、画面与服务端一致。
+
+**未验证**：线上没有用真账号操作画布或生成视频；「按原文生成」的出片效果仍待付费对比验收。回滚：
+`deploy-release.sh /Users/donis/.codex/worktrees/studio-gpt-image-native/AIStarEcosystem/dist/deploy/20261020-studio-video-settings-compact web-aiavatar`（回到 `190ccd03`；无迁移，无数据要回退；server 不动）。
+
+以后 Studio 从 main 起版本：main 同时包含 release 线和 Codex 分支的线上内容，从它发不会回退任何一方；但 Codex 若继续从 `codex/studio-gpt-image-native` 直接发，会把这次的 H3 前端和冲突弹窗再次覆盖掉。
