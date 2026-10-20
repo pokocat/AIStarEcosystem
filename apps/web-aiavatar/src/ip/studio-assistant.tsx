@@ -262,10 +262,25 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // ── Send / stop ────────────────────────────────────────────────────────
   const sendDisabledReason = !text.trim() ? "先写下你想做的" : session.status !== "ready" ? "对话还在加载，请稍等" : reading ? "附件还在导入" :
     attachmentsUnsaved ? "附件还没保存好，保存后才能发送" : missing.length ? "有引用已从画布删除，请先移除" : starter === "recreation" ? recreationBlocker(recreation) : "";
-  const send = async () => {
-    if (sendDisabledReason || sending) return;
+  // One message at a time: a ref, because two clicks in the same tick both see `sending` still false.
+  const sendLock = useRef(false);
+  /**
+   * `quick`: a question option or follow-up suggestion sent as it is (user feedback 2026-10-20: chips that only filled the
+   * composer piled up there). It goes through the same chain as a typed message (save, outbox, retry key, rejection
+   * handling) but carries no references and never touches the draft, its pins or its attachments.
+   */
+  const send = async (quick?: string) => {
+    const draft = quick === undefined;
+    if (sending || sendLock.current || (draft ? sendDisabledReason : session.status !== "ready" || !quick.trim())) return;
+    // A second click after the first one was already accepted gets a new message key, so the server could not tell them
+    // apart: the same quick reply still on its way, or the last thing said with nothing back yet, is not sent again.
+    if (!draft) {
+      const said = quick.trim(), latestSaid = dialogueSections(store).current.at(-1);
+      if (store.outbox.some(o => o.text === said) || (latestSaid?.role === "user" && latestSaid.text === said)) return;
+    }
+    sendLock.current = true;
     const project = projectId;
-    const input = { text: text.trim(), pinnedNodeIds: pinnedIds, attachmentNodeIds: attachmentIds.filter(id => !pinnedIds.includes(id)), ...(maxCost !== undefined ? { maxCost } : {}),
+    const input = { text: draft ? text.trim() : quick.trim(), pinnedNodeIds: draft ? pinnedIds : [], attachmentNodeIds: draft ? attachmentIds.filter(id => !pinnedIds.includes(id)) : [], ...(maxCost !== undefined ? { maxCost } : {}),
       ...(chosenSkill ? { skillKey: chosenSkill.key } : {}),
       // The ceiling above is the picked model's, so the model goes with it; a fixed or single-model scene sends none.
       ...(selectable && selectedModel ? { model: selectedModel.endpointId } : {}) };
@@ -277,26 +292,28 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     try {
       // Pinned and attached nodes must exist in the saved document before the server reads them.
       await saveStudioDocument(project);
-    } catch (e) { if (same(project)) { setComposerError(e); setSending(false); } return; }
-    if (!same(project)) return;
-    setText(""); setPinnedIds([]); setAttachmentIds([]); clearAssistantDraft(project);
+    } catch (e) { sendLock.current = false; if (same(project)) { setComposerError(e); setSending(false); } return; }
+    if (!same(project)) { sendLock.current = false; return; }
+    if (draft) { setText(""); setPinnedIds([]); setAttachmentIds([]); clearAssistantDraft(project); }
     try {
       const outcome = await session.send(input);
       if (!same(project)) return;
       if (outcome.state === "rejected") {
-        // Definitely not accepted: give the draft back for editing.
+        // Definitely not accepted: give the draft back for editing (a quick reply only lands in an empty composer).
         setText(current => current.trim() ? current : input.text);
-        setPinnedIds(current => current.length ? current : input.pinnedNodeIds);
-        setAttachmentIds(current => current.length ? current : input.attachmentNodeIds);
+        if (draft) {
+          setPinnedIds(current => current.length ? current : input.pinnedNodeIds);
+          setAttachmentIds(current => current.length ? current : input.attachmentNodeIds);
+        }
         const required = skillRequiredNotice(outcome.error, skillOptions);
         if (required) {
           setSkillChoices(required.choices.length ? required.choices : undefined); setSkillNotice(required.text);
           // The server may know skills this page has not loaded yet.
           void reloadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined);
         } else setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
-      } else if (outcome.state === "sent") { setSkillChoices(undefined); setStarter(undefined); }
+      } else if (outcome.state === "sent") { setSkillChoices(undefined); if (draft) setStarter(undefined); }
       else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
-    } finally { if (same(project)) setSending(false); }
+    } finally { sendLock.current = false; if (same(project)) setSending(false); }
   };
   const stop = async () => {
     if (stopping) return;
@@ -516,7 +533,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     message.success(created ? "已放进画布，可以在画布上接着改" : "画布上已经有这段文字");
   };
   const handlers: DialogueMessageHandlers = {
-    onCompose: compose, onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt, onPlaceText: placeText,
+    onCompose: compose, onQuickReply: value => void send(value), quickReplyBusy: sending || session.status !== "ready",
+    onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt, onPlaceText: placeText,
     planReady: block => !!planForApproval(store, block), onBranch: session.branch, approvedCaps: block => approvedCaps(block, session.executions),
     skillLabel: plan => studioSkillBadge(skills, plan), completionActions: operator ? completionActions : undefined,
   };
