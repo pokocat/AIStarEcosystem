@@ -96,7 +96,8 @@ function skillRequiredNotice(error: unknown, fallback: SkillChoice[]) {
 function budgetExceededError(error: unknown) {
   if (!(error instanceof ApiError) || error.code !== "STUDIO_PLAN_BUDGET_EXCEEDED") return undefined;
   const shortfall = Number((error.details as { shortfall?: unknown } | undefined)?.shortfall);
-  const text = Number.isFinite(shortfall) && shortfall > 0 ? `本阶段预算还差 ${formatCredits(shortfall)} 积分，提高上限后再发` : "本阶段预算不够了，提高上限后再发";
+  const text = Number.isFinite(shortfall) && shortfall > 0 ? `本阶段预算还差 ${formatCredits(shortfall)} 积分，追加预算后再发（没看到追加卡就点进度条上的「继续制作」）`
+    : "本阶段预算不够了，追加预算后再发（没看到追加卡就点进度条上的「继续制作」）";
   return Object.assign(new Error(text), { code: error.code, logId: error.logId });
 }
 

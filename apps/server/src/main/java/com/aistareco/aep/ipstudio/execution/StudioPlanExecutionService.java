@@ -416,7 +416,9 @@ public class StudioPlanExecutionService {
                         default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
                     }
                 }
-                requireNextStepBudget(e,next,budget);
+                // No budget pre-check here: a next step that does not fit is stopped by the executor, which posts the
+                // 「追加预算」 card the user can confirm. Refusing with 402 here left no card at all — after steering had
+                // used the last credits, 「继续」 was a dead end (Codex retest 2026-10-19, R3).
                 markSteeringSeen(e,next); // the explicit continue supersedes messages sent before it
                 state=next;
                 e.setStatus(IpPlanExecution.RUNNING);state.remove("needsUserReason");
@@ -586,17 +588,6 @@ public class StudioPlanExecutionService {
         for(JsonNode step:loaded.plan().path("steps"))quoted=Math.addExact(quoted,step.path("quotedCost").asLong());
         if(quoted>cap)throw budgetExceeded(stage,0,0,quoted,cap);
         return quoted;
-    }
-
-    /** Resume pre-check: the next step that would be submitted must fit into the stage cap; nothing changes otherwise. */
-    private void requireNextStepBudget(IpPlanExecution e,ObjectNode state,ObjectNode budget) {
-        JsonNode stageBudget=budget.path(e.getStage());
-        for(JsonNode step:PlanState.stageSteps(state,e.getStage())) {
-            if(!"pending".equals(step.path("status").asText())||!PlanState.dependenciesDone(state,step))continue;
-            long spent=stageBudget.path("spent").asLong(),inFlight=stageBudget.path("inFlight").asLong(),quoted=step.path("quotedCost").asLong(),cap=stageBudget.path("approvedCap").asLong();
-            if(spent+inFlight+quoted>cap)throw budgetExceeded(e.getStage(),spent,inFlight,quoted,cap);
-            return;
-        }
     }
 
     static BusinessException budgetExceeded(String stage,long spent,long inFlight,long quoted,long cap) {

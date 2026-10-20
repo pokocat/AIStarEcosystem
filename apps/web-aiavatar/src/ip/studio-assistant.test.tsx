@@ -284,6 +284,42 @@ test('a canvas command whose save failed is neither recorded as projected nor sk
   await waitFor(() => expect(Number(localStorage.getItem('studio-dialogue-canvas-seq:th'))).toBe(seq));
 });
 
+// Codex retest 2026-10-19 (R2): the assistant made a node, the save answered 500, the tab was closed and reopened —
+// the conversation was back but the node was not. Brand-new thread, events exactly as a create_nodes turn sends them.
+test.each([['after some prose', true], ['as the first event of a new thread', false]])('an assistant node whose save failed comes back when the canvas is closed and opened again (%s)', async (_label, prose) => {
+  let canvas: CanvasNodeData[] = [];
+  api.save.mockRejectedValue(new Error('画布保存失败，请先重试保存'));
+  const view = await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  const turn = [
+    ...(prose ? [ev('message.delta', { messageId: 'm1', partId: 'a', delta: '开始搭建。' }), ev('tool.started', { toolCallId: 'x', toolName: 'create_nodes', title: '搭建画布' })] : []),
+    ev('node.upsert', { nodeId: 'dlg-1', op: 'create', node: { id: 'dlg-1', type: 'text', title: '测试节点', position: { x: 0, y: 0 }, width: 320, height: 200, metadata: { content: '正文' } } }),
+    ev('tool.finished', { toolCallId: 'x', toolName: 'create_nodes', status: 'done', result: { summary: '建了 1 个' }, creditsActual: 0, settling: false }),
+    ev('message.delta', { messageId: 'm1', partId: 'b', delta: '放进画布了。' }),
+    ev('turn.done', { reason: 'completed', messageId: 'm1' }),
+  ];
+  emit(...turn);
+  await waitFor(() => expect(canvas.some(n => n.id === 'dlg-1')).toBe(true), { timeout: 5000 });
+  await waitFor(() => expect(api.save).toHaveBeenCalled(), { timeout: 5000 });
+  await new Promise(resolve => setTimeout(resolve, 600));
+  const upsert = turn.find(e => e.type === 'node.upsert')!;
+  const stored = localStorage.getItem('studio-dialogue-canvas-seq:th');
+  expect(stored).not.toBeNull();
+  expect(Number(stored)).toBeLessThan(upsert.seq);
+  view.unmount();
+  // Reopen: the server has the conversation (latestSeq = the whole turn) and a document without the node.
+  api.save.mockResolvedValue(undefined); streams = []; api.subscribe.mockClear();
+  api.getConversation.mockResolvedValue({ thread: { ...thread, lastSeq: seq }, latestSeq: seq, messages: [
+    { id: 'u1', threadId: 'th', seq: 1, role: 'user', status: 'done', text: '建一个测试节点', blocks: [], createdAt: at },
+    { id: 'm1', threadId: 'th', seq: 2, role: 'assistant', turnId: 't1', status: 'done', text: '开始搭建。放进画布了。', blocks: [], createdAt: at },
+  ] } as StudioDialogueState);
+  canvas = [];
+  await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  const after = streams.at(-1)!.cursor();
+  expect(after).toBeLessThan(upsert.seq);
+  act(() => { for (const e of turn) if (e.seq > after) streams.at(-1)!.onEvent(e); });
+  await waitFor(() => expect(canvas.some(n => n.id === 'dlg-1')).toBe(true), { timeout: 5000 });
+});
+
 test('a text proposal is adopted only while the node still holds the text it was written against', async () => {
   let canvas: CanvasNodeData[] = [], setCanvas!: (update: (list: CanvasNodeData[]) => CanvasNodeData[]) => void;
   await ready(<Host onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }} expose={(set: typeof setCanvas) => { setCanvas = set; }}/>);
@@ -525,7 +561,7 @@ test('a message that would not fit the stage budget says by how much and keeps t
     details: { stage: 'production', spent: 100, inFlight: 10, quotedCost: 20, approvedCap: 100, shortfall: 30 } }, 402));
   fireEvent.change(composer(), { target: { value: '第 2 段换成横屏' } });
   fireEvent.click(sendButton());
-  await waitFor(() => expect(screen.getAllByRole('alert').map(e => e.textContent).join(' ')).toContain('本阶段预算还差 30 积分，提高上限后再发'));
+  await waitFor(() => expect(screen.getAllByRole('alert').map(e => e.textContent).join(' ')).toContain('本阶段预算还差 30 积分'));
   expect(composer().value).toBe('第 2 段换成横屏');
   expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
 });
