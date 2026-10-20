@@ -1131,3 +1131,7 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 错误码（S3 新增）：`STUDIO_SKILL_INVALID`(400) · `STUDIO_SKILL_REQUIRED`(400) · `STUDIO_SKILL_EXISTS`(409) · `STUDIO_SKILL_VERSION_CONFLICT`(409) · `STUDIO_SKILL_VERSION_NOT_FOUND`(404) · `STUDIO_SKILL_LAST_ACTIVE`(409) · `STUDIO_SKILL_DEFAULT_CONFLICT`(409) · `STUDIO_SKILL_DRAFT_STALE`(409) · `STUDIO_SKILL_DRAFT_FORBIDDEN`(403) · `STUDIO_SKILL_DRAFT_NOT_READY`(409) · `STUDIO_SKILL_DRAFT_UNAVAILABLE`(400；worker 侧草稿服务缺失时 503)。
 
 已知边界：缓存按节点，跨节点最多 60 秒才看到后台改动；版本号由技能行锁内 `max(version)+1` 分配；草稿只修订正文，改 YAML 头（含 `autoFixChecks`）只能由管理员发布新版本；`autoFixChecks` 仍为空，要等检查项实测与版本评审。
+
+### Studio 原生 GPT 图片接入（2026-10-20）
+
+图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
