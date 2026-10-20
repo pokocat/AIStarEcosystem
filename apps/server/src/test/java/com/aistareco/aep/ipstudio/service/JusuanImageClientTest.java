@@ -200,6 +200,48 @@ class JusuanImageClientTest {
         verify(upstream).sendJson(any(),any());
         verifyNoInteractions(http,storage);
     }
+    @Test void nativeEditsSendOrderedSourceFilesAndExactSizeWhileTextGenerationRemainsJson() throws Exception {
+        var ep=endpoint("gpt-image-2-1k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":16,"referenceField":"multiple",
+                 "outputs":[{"canvasSize":"2048x2048","aspectRatio":"1:1","providerFields":{"size":"2048x2048","n":1}}],
+                 "wire":{"submitPath":"/images/generations","referenceSubmitPath":"/images/edits",
+                         "modelQueryParam":"","inputMode":"multipart","resultMode":"sync-base64","outputPointer":"/data/0/b64_json"}}
+                """);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
+        Path first=Files.createTempFile("native-edit-one-",".png"),second=Files.createTempFile("native-edit-two-",".png");
+        try {
+            Files.write(first,bytes);Files.write(second,bytes);
+            when(storage.openForRead("first")).thenReturn(first);when(storage.openForRead("second")).thenReturn(second);
+            var reply=json("{\"data\":[{\"b64_json\":\""+Base64.getEncoder().encodeToString(bytes)+"\"}]}");
+            when(upstream.sendJson(any(),any())).thenReturn(reply);
+            assertArrayEquals(bytes,client.generate("ep","preserve the subject","2048x2048",List.of("first","second"),"edit-once","owner",s->{}));
+            assertArrayEquals(bytes,client.generate("ep","draw a subject","2048x2048",List.of(),"generate-once","owner",s->{}));
+            var requests=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+            verify(upstream,times(2)).sendJson(requests.capture(),any());
+            var edit=requests.getAllValues().get(0);var generation=requests.getAllValues().get(1);
+            assertEquals("/v1/images/edits",edit.uri().getPath());assertNull(edit.uri().getQuery());
+            assertTrue(edit.headers().firstValue("Content-Type").orElseThrow().startsWith("multipart/form-data; boundary="));
+            assertEquals("edit-once",edit.headers().firstValue("Idempotency-Key").orElseThrow());
+            var subscriber=HttpResponse.BodySubscribers.ofByteArray();edit.bodyPublisher().orElseThrow().subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+                public void onSubscribe(java.util.concurrent.Flow.Subscription subscription){subscriber.onSubscribe(subscription);}
+                public void onNext(java.nio.ByteBuffer item){subscriber.onNext(List.of(item));}
+                public void onError(Throwable error){subscriber.onError(error);}
+                public void onComplete(){subscriber.onComplete();}
+            });
+            String form=new String(subscriber.getBody().toCompletableFuture().get(),java.nio.charset.StandardCharsets.ISO_8859_1);
+            assertTrue(form.contains("name=\"size\"\r\n\r\n2048x2048"));
+            assertTrue(form.contains("name=\"image[]\"; filename=\"reference-0.png\""));
+            assertTrue(form.indexOf("reference-0.png")<form.indexOf("reference-1.png"));
+            assertTrue(form.contains(new String(bytes,java.nio.charset.StandardCharsets.ISO_8859_1)));
+            assertFalse(form.contains("input_image_asset_ids"));
+            assertEquals("/v1/images/generations",generation.uri().getPath());
+            assertEquals("application/json",generation.headers().firstValue("Content-Type").orElseThrow());
+            verify(storage,never()).upstreamFetchUrl(any());
+        }finally{Files.deleteIfExists(first);Files.deleteIfExists(second);}
+    }
     @Test void urlReferencesAndAsyncUrlResultFollowEndpointModes() throws Exception {
         var ep=endpoint("image-model");
         ep.setImageRequestSpecJson("""
