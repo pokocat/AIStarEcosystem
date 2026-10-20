@@ -11,14 +11,14 @@ import {ApiError} from '@ai-star-eco/api-client';
 import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
 import {StudioWorkspace} from './studio-workspace';
 import {useCanvasStore} from '@/canvas/stores/canvas/use-canvas-store';
-const api=vi.hoisted(()=>({capabilities:vi.fn(),models:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
+const api=vi.hoisted(()=>({capabilities:vi.fn(),models:vi.fn(),videoModels:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer,embedded}:any)=>open?<section role={embedded?"region":"dialog"} aria-label={title}>{!embedded&&<button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>}{children}{footer}</section>:null}));
 vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('./api',()=>({IpStudioApi:{listProjectRuns:api.history}}));
 vi.mock('./studio-template-library',()=>({StudioTemplateLibrary:({open,scope}:any)=>open?<section role="dialog" aria-label="画布模板">{scope}</section>:null}));
 vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:api.capabilities,readStudioProject:api.project,submitStudioRun:api.submit,submitStudioSpeech:api.speech,submitStudioLipSync:api.lip,listStudioIps:async()=>[],listStudioIpAssets:async()=>[]}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
-vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:api.models,fetchStudioVideoModels:async()=>[]}));
+vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:api.models,fetchStudioVideoModels:api.videoModels}));
 vi.mock('@/canvas-bridge/models',()=>({SERVER_CHANNEL_ID:'server',endpointIdFor:()=> 'model'}));
 vi.mock('@/canvas-bridge/config-store',()=>({encodeChannelModel:(_:string,m:string)=>m}));
 vi.mock('./studio-script-rich-editor',async()=>{
@@ -28,7 +28,7 @@ vi.mock('./studio-script-rich-editor',async()=>{
 vi.mock('antd',()=>{
  const Input=({children,...p}:any)=><input {...p}/>;Input.TextArea=({autoSize,...p}:any)=><textarea {...p}/>;
  const message={error:api.error,info:api.info,success:api.success};
- return {App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
+ return {InputNumber:({value,onChange,min,max,precision,controls,suffix,...p}:any)=><input type="number" {...p} min={min} max={max} value={value??''} onChange={e=>onChange(e.target.value?Number(e.target.value):null)}/>,App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
  Button:({loading,block,type,icon,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel}:any)=>open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}</section>:null,
@@ -44,7 +44,7 @@ vi.mock('./studio-lip-sync',()=>({StudioLipSync:({open,initialNodeId}:any)=>open
 vi.mock('./studio-assistant',()=>({StudioAssistant:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="AI 创作助手">{initialNodeId}</section>:null}));
 vi.mock('./studio-batch-panel',()=>({StudioBatchPanel:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="制作计划">{initialNodeId}</section>:null}));
 vi.mock('./studio-ip-library',()=>({StudioIpLibrary:()=>null}));
-vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null}));
+vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null,StudioVideoSeedControl:()=>null}));
 vi.mock('./studio-motion-prompt',()=>({StudioMotionPrompt:({value,onChange,references}:any)=><textarea data-references={JSON.stringify(references.map((r:any)=>[r.nodeId,r.label]))} aria-label="创作要求" value={value} onChange={e=>onChange(e.target.value)}/>}));
 vi.mock('@/canvas-bridge/signed-image',()=>({SignedImage:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:()=>null}));
@@ -61,7 +61,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
-beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+beforeEach(()=>{vi.resetAllMocks();api.videoModels.mockResolvedValue([]);api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
  const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
  render(<Host initial={text} textEditingNodeId="v" renderTextEditor={(actions:any)=><section role="dialog" aria-label="编辑文字">{actions}<textarea aria-label="节点文字" defaultValue="原文"/></section>}/>);
@@ -878,4 +878,36 @@ test('a completed video exposes recreation from its own composer and opens the s
  const reportPanel=await screen.findByRole('dialog',{name:'解析视频'});
  expect(within(reportPanel).queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(within(reportPanel).queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(within(reportPanel).getByLabelText('当前参考视频').textContent).toContain('old adopted');
  expect(api.save).toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('native video adds references from text mode without losing graph inputs, then sends exact frames and price',async()=>{
+ const native={endpointId:'model',batchCounts:[1,2,4],contract:{modes:[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'first_last_frame_video',label:'首尾帧',needsFirstFrame:true,needsLastFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},first_last_frame_video:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}};
+ api.videoModels.mockResolvedValue([native]);
+ const first={...node,id:'first',type:'image' as never,title:'第一张图',metadata:{storageKey:'first.png',content:'/first.png'}},last={...first,id:'last',title:'第二张图',metadata:{storageKey:'last.png',content:'/last.png'}};
+ render(<Host initialNodes={[{...node,metadata:{prompt:'动作自然',status:'idle',videoCount:'1'}},first,last]}/>);
+ await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ await screen.findByRole('button',{name:'视频模式'});
+ const pick=(nodeId:string)=>fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId,targetId:'v'}}));
+ pick('first');await waitFor(()=>expect(screen.getByRole('radio',{name:'图生视频'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);
+ expect(screen.getByRole('radio',{name:/文生视频/})).toHaveProperty('disabled',true);
+ pick('last');await waitFor(()=>expect(screen.getByRole('radio',{name:'首尾帧'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first','last']);
+ expect(screen.getByRole('radio',{name:/图生视频/})).toHaveProperty('disabled',true);
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ const sent=api.submit.mock.calls[0][1];expect(sent.video).toMatchObject({mode:'first_last_frame_video',firstFrameKey:'first.png',lastFrameKey:'last.png'});expect(sent.maxCost).toBe(320);expect(sent.references).toEqual([]);
+});
+
+test('native video removes the last reference back to text and retains an explicit compatible reference mode',async()=>{
+ const modes=[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}];
+ api.videoModels.mockResolvedValue([{endpointId:'model',contract:{modes,tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16'}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}}]);
+ const image={...node,id:'first',type:'image' as never,title:'参考图片',metadata:{storageKey:'first.png',content:'/first.png'}};
+ render(<Host initialNodes={[{...node,metadata:{prompt:'动作自然',status:'idle'}},image]}/>);await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ await screen.findByRole('button',{name:'视频模式'});
+ fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));await screen.findByRole('button',{name:'移除参考 参考图片'});
+ fireEvent.click(screen.getByRole('button',{name:'移除参考 参考图片'}));await waitFor(()=>expect(screen.getByRole('radio',{name:'文生视频'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot).toHaveLength(0);
+ fireEvent.click(screen.getByRole('radio',{name:'全能参考'}));
+ fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));
+ await waitFor(()=>expect(screen.getByRole('radio',{name:'全能参考'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);expect(api.submit).not.toHaveBeenCalled();
 });

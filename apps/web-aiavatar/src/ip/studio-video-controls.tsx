@@ -23,7 +23,7 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     onChange={value=>onChange({...draft,[field]:value})} options={images.map(n=>({value:n.id,label:n.title}))} placeholder={`选择画布中的${label}`}/>
     {(()=>{const n=images.find(n=>n.id===draft[field]);return n?<div className="studio-video-frame"><SignedImage src={n.metadata!.content!} storageKey={n.metadata!.storageKey} alt={label}/><span>{n.title}</span></div>:null;})()}</label>;
   return <>
-    {section!=="references"&&<StudioChoiceGroup<typeof draft.mode> label="视频模式" value={draft.mode} onChange={mode=>onChange({...draft,mode})}
+    {section==="all"&&<StudioChoiceGroup<typeof draft.mode> label="视频模式" value={draft.mode} onChange={mode=>onChange({...draft,mode})}
       options={model.contract.modes.map(m=>({value:m.mode,label:studioVideoModeName(m)}))}/>}
     {section!=="settings"&&<>
     {(spec?.needsFirstFrame||spec?.needsLastFrame)&&<div className="studio-video-frame-grid">
