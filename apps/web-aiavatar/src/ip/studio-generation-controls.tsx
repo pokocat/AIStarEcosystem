@@ -28,12 +28,12 @@ function usePopupBounds(open:boolean,trigger:{current:HTMLButtonElement|null}){
 }
 export type StudioChoice<T extends string|number>={value:T;label:ReactNode;description?:string;disabled?:boolean};
 /** A short, visible set of choices. Arrow keys follow the same order as the screen. */
-export function StudioChoiceGroup<T extends string|number>({label,ariaLabel=label,value,options,onChange,ratios=false,disabled=false}:{
-  label:string;ariaLabel?:string;value?:T;options:StudioChoice<T>[];onChange:(value:T)=>void;ratios?:boolean;disabled?:boolean;
+export function StudioChoiceGroup<T extends string|number>({label,ariaLabel=label,value,options,onChange,ratios=false,compact=false,disabled=false}:{
+  label:string;ariaLabel?:string;value?:T;options:StudioChoice<T>[];onChange:(value:T)=>void;ratios?:boolean;compact?:boolean;disabled?:boolean;
 }) {
   const locked=useContext(SettingsDisabled)||disabled,id=useId();
   return <section className="studio-option-section" aria-labelledby={id}><h3 id={id}>{label}</h3>
-    <div className={`studio-option-grid${ratios?' is-ratios':''}`} role="radiogroup" aria-label={ariaLabel} aria-disabled={locked||undefined}
+    <div className={`studio-option-grid${ratios?' is-ratios':''}${compact?' is-compact':''}`} role="radiogroup" aria-label={ariaLabel} aria-disabled={locked||undefined}
       onKeyDown={e=>{
         if(locked||!["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key))return;
         const choices=options.filter(o=>!o.disabled);if(!choices.length)return;e.preventDefault();

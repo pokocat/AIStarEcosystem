@@ -29,8 +29,9 @@ import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-b
 import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/studio-plan-execution';
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection } from "@/canvas-bridge/studio-video";
-import { StudioVideoControls,type StudioVideoDraft } from "./studio-video-controls";
+import { StudioVideoControls,StudioVideoSeedControl,type StudioVideoDraft } from "./studio-video-controls";
 import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover, studioImageSizeLabel } from "./studio-generation-controls";
+import { StudioDurationControl } from "./studio-duration-control";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
@@ -1038,10 +1039,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           {operation==="storyboard"&&originId&&<label>拆分范围<Select aria-label="拆分分集" allowClear value={episodeNo} placeholder="全部分集" onChange={setEpisodeNo} options={(nodes.find(n=>n.id===originId)?.metadata?.studio?.script?.episodes||[]).map(e=>({value:e.no,label:`第 ${e.no} 集 · ${e.title}`}))}/></label>}</>}
         <StudioChoiceGroup<string> label="比例" ariaLabel="创作画幅" value={ratio} onChange={changeComposerRatio} ratios options={nativeVideo?nativeVideo.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.map(c=>({value:c.aspectRatio,label:c.aspectRatio,description:`${c.width} × ${c.height}`}))||[]:operation==="image"?imageRatioOptions.map(o=>({...o,label:o.value})):['9:16','16:9','1:1'].map(value=>({value,label:value}))}/>
         {imageRatioUnsupported&&<p role="status">当前模型不支持 {ratio}，请选择可用比例。</p>}
-        {operation==="image"&&<StudioChoiceGroup<number> label="生成数量" ariaLabel="候选数量" value={imageCount} onChange={setImageCount} options={imageBatchCounts.map(value=>({value,label:`${value} 张`}))}/>}
-        {operation==="video"&&<StudioChoiceGroup<number> label="生成数量" ariaLabel="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/>}
-        {operation==="video"&&<StudioChoiceGroup<number> label="时长" ariaLabel="片段时长" value={duration} onChange={setDuration} options={(nativeVideo?Array.from({length:nativeVideo.contract.maxSeconds-nativeVideo.contract.minSeconds+1},(_,i)=>nativeVideo.contract.minSeconds+i):durationOptions).map(value=>({value,label:`${value} 秒`}))}/>}
-        {operation==="video"&&videoCount>1&&videoDraft.seed!=null&&<p>第一条使用所填种子，后续候选依次递增；超过上限从 0 继续。</p>}
+        {operation==="image"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="候选数量" value={imageCount} onChange={setImageCount} options={imageBatchCounts.map(value=>({value,label:`${value} 张`}))}/>}
+        {operation==="video"&&<StudioChoiceGroup<number> compact label="生成数量" ariaLabel="视频候选数量" value={videoCount} onChange={setVideoCount} options={videoBatchCounts.map(value=>({value,label:`${value} 条`}))}/>}
+        {operation==="video"&&<StudioDurationControl value={duration} onChange={setDuration} min={nativeVideo?.contract.minSeconds} max={nativeVideo?.contract.maxSeconds} options={durationOptions}/>}
+        {nativeVideo&&<StudioVideoSeedControl seed={videoDraft.seed} max={nativeVideo.contract.seedMax} count={videoCount} onChange={seed=>changeVideoDraft({...videoDraft,seed})}/>}
         {nativeVideo&&videoValidationError&&<p role="status">{videoValidationError}</p>}
         {legacyVideoError&&<p role="status">{legacyVideoError}</p>}
         {operation==="script" && <Checkbox checked={pasteScript} onChange={e=>setPasteScript(e.target.checked)}>直接保存已有剧本</Checkbox>}

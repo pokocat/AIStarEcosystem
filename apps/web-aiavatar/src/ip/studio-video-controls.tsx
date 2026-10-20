@@ -2,7 +2,7 @@
 import { Button, InputNumber, Select } from "antd";
 import { StudioChoiceGroup } from "./studio-generation-controls";
 import { ArrowLeftRight } from "lucide-react";
-import type { Ref } from "react";
+import { useId, type Ref } from "react";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { SignedImage } from "@/canvas-bridge/signed-image";
@@ -38,9 +38,22 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     </>}
     {section!=="references"&&<>
     <StudioChoiceGroup<string> label="清晰度" ariaLabel="视频清晰度" value={draft.tier} onChange={tier=>onChange({...draft,tier})} options={model.contract.tiers.map(t=>({value:t.tier,label:t.tier}))}/>
-    <div className="studio-settings-grid">
-      <label>随机种子<InputNumber aria-label="视频随机种子" min={0} max={model.contract.seedMax} precision={0} value={draft.seed}
-        placeholder="随机" onChange={seed=>onChange({...draft,seed:seed??undefined})}/></label></div>
+    {section==="all"&&<StudioVideoSeedControl seed={draft.seed} max={model.contract.seedMax} onChange={seed=>onChange({...draft,seed})}/>}
     </>}
   </>;
+}
+
+/** Seed is optional: never replace an existing fixed value until the author clears it. */
+export function StudioVideoSeedControl({seed,max,onChange,count=1}:{seed?:number;max:number;onChange:(seed?:number)=>void;count?:number}) {
+  const id=useId();
+  return <details className="studio-video-advanced">
+    <summary><span>高级设置</span><span>{seed==null?'每次随机':`固定种子 ${seed}`}</span></summary>
+    <div className="studio-seed-control">
+      <div className="studio-seed-heading"><label htmlFor={id}>随机种子</label><button type="button" disabled={seed==null} onClick={()=>onChange(undefined)}>恢复随机</button></div>
+      <InputNumber id={id} aria-label="视频随机种子" aria-describedby={`${id}-hint`} min={0} max={max} precision={0} controls={false} value={seed??null}
+        placeholder="留空，每次随机" onChange={value=>onChange(value??undefined)}/>
+      <p id={`${id}-hint`}>留空让每次生成有所变化；固定数值有助于复现相近结果，效果也受提示词、素材和模型影响。</p>
+      {count>1&&seed!=null&&<p>第一条使用此种子，后续结果依次递增；超过上限从 0 继续。</p>}
+    </div>
+  </details>;
 }

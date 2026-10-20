@@ -515,3 +515,27 @@ html[data-layout="desktop"] .studio-flow-controls span { min-width:44px; color:v
 html[data-layout="mobile"] .ip-surface .studio-settings-popover { box-sizing:border-box; width:min(360px,calc(100vw - 32px)); padding:16px; max-height:calc(100dvh - 120px); }
 html[data-layout="mobile"] .ip-surface .studio-generation-toolbar { flex-basis:100%; }
 html[data-layout="mobile"] .ip-surface .studio-option-grid.is-ratios { grid-template-columns:repeat(4,minmax(0,1fr)); }
+
+/* 时长用常用值配合精确输入；种子是可选的高级控制，不挤占常用参数。 */
+.ip-surface .studio-duration-control>header,.ip-surface .studio-seed-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.ip-surface .studio-duration-control>header>h3 { margin:0; color:var(--ink-2); font-size:13px; font-weight:500; }
+.ip-surface .studio-duration-control>header .ant-input-number { width:92px; font-size:13px; }
+.ip-surface .studio-duration-control .studio-option-section>h3 { display:none; }
+.ip-surface .studio-duration-control>.studio-duration-range { margin-top:8px; font-size:11px; }
+.ip-surface .studio-video-advanced { border-top:1px solid var(--line); padding-top:14px; }
+.ip-surface .studio-video-advanced>summary { display:flex; align-items:center; justify-content:space-between; gap:12px; min-height:32px; color:var(--ink-2); font-size:12px; cursor:pointer; }
+.ip-surface .studio-video-advanced>summary::after { content:""; flex:none; width:7px; height:7px; border-right:1px solid currentColor; border-bottom:1px solid currentColor; transform:rotate(45deg); margin:0 3px 4px 0; }
+.ip-surface .studio-video-advanced[open]>summary::after { transform:rotate(225deg); margin-top:6px; }
+.ip-surface .studio-video-advanced>summary>span:last-of-type { margin-left:auto; font-size:11px; font-variant-numeric:tabular-nums; }
+.ip-surface .studio-seed-control { padding-top:14px; display:flex; flex-direction:column; gap:10px; }
+.ip-surface .studio-seed-heading { margin:0; }
+.ip-surface .studio-seed-heading>button { padding:4px 0 4px 8px; border:0; background:transparent; color:var(--ink); font:inherit; font-size:12px; cursor:pointer; text-decoration:underline; text-underline-offset:3px; }
+.ip-surface .studio-seed-heading>button:disabled { color:var(--ink-2); opacity:.5; text-decoration:none; cursor:default; }
+.ip-surface .studio-seed-control>.ant-input-number { width:100%; }
+.ip-surface .studio-video-advanced>summary:focus-visible,.ip-surface .studio-seed-heading>button:focus-visible { outline:2px solid var(--ink); outline-offset:3px; }
+
+.ip-surface .studio-option-grid.is-compact { grid-template-columns:none; grid-auto-flow:column; grid-auto-columns:minmax(0,1fr); gap:4px; padding:4px; border-radius:10px; background:var(--surface-2); }
+.ip-surface .studio-option-grid.is-compact>.studio-option { min-height:36px; padding:6px 8px; border-color:transparent; border-radius:6px; background:transparent; }
+.ip-surface .studio-option-grid.is-compact>.studio-option[aria-checked="true"] { border-color:var(--ink); background:var(--surface); }
+.ip-surface .studio-option-grid.is-compact>.studio-option:hover:not(:disabled):not([aria-checked="true"]) { background:var(--surface-3); }
+html[data-layout="mobile"] .ip-surface .studio-option-grid.is-compact>.studio-option { min-height:40px; }
