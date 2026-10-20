@@ -845,7 +845,9 @@ test('the chosen reply model is remembered for this canvas after a refresh', asy
   fireEvent.change(composer(), { target: { value: '用便宜的那个回答' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 8 });
+  // Release line: the turn ceiling is the remembered model's (8, not model one's 21). Sending the model itself
+  // comes from main's b7861a4b, which is not on this release line, so it is not asserted here.
+  expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 8 });
 });
 
 const longReply = '末世英雄·林烬：三十岁出头，左眼有一道旧疤，穿改装过的防化服，背一把自制弩。外冷内热，嘴上不饶人，遇到孩子会先把干粮分出去。';
