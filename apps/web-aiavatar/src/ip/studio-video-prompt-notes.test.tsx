@@ -3,13 +3,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { IpRun } from "@ai-star-eco/types";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, studioFrameModeFor } from "./studio-video-prompt-notes";
+import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake } from "./studio-video-prompt-notes";
 import { StudioTaskList } from "./studio-task-list";
 vi.mock("./studio-errors", () => ({ reportStudioError: vi.fn(), studioRunError: (r: IpRun) => r.errorMessage }));
 afterEach(cleanup);
 
 const modes = [{ mode: "t2v", label: "文生视频" }, { mode: "i2v", label: "首帧", needsFirstFrame: true },
-  { mode: "first_last_frame_video", label: "首尾帧", needsFirstFrame: true, needsLastFrame: true }];
+  { mode: "first_last_frame_video", label: "首尾帧", needsFirstFrame: true, needsLastFrame: true },
+  { mode: "universal_reference_video", label: "全能参考", references: { image: { maxCount: 9 }, video: { maxCount: 1 }, audio: { maxCount: 3 }, maxTotal: 12 } }];
 const h3 = { endpointId: "h3", supportsPromptOptimization: true, contract: { modes } } as unknown as VideoStudioModel;
 const other = { ...h3, endpointId: "other", supportsPromptOptimization: false } as VideoStudioModel;
 const PROMPT = "老周：等等？你说这片地要拆了，我怎么一点风声都没听到。表情：“等等”时愣住。";
@@ -69,10 +70,10 @@ test("the task list points out a take that lost lines", () => {
   expect(screen.getByText("出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照")).toBeDefined();
 });
 
-test("frame question: three explicit answers, and the switch target never invents a mode", () => {
+test("frame question: three explicit answers; the offer names the mode that holds the pictures", () => {
   const onChoose = vi.fn();
-  const intent = { mentions: ["图1", "图2", "首帧", "尾帧"], needed: 2, bound: 0, lastFrameIgnored: false };
-  render(<StudioFrameIntentDialog intent={intent} model={h3} canvasImages={0} onChoose={onChoose}/>);
+  const intent = { mentions: ["图1", "图2", "首帧", "尾帧"], pictures: 2, first: true, last: true, needed: 2, bound: 0, hasFirst: false, lastFrameIgnored: false };
+  const { rerender } = render(<StudioFrameIntentDialog intent={intent} model={h3} canvasImages={0} onChoose={onChoose}/>);
   expect(screen.getByText("描述里提到了图片，这次没有用上图片")).toBeDefined();
   expect(screen.getByText(/「图1」「图2」「首帧」「尾帧」写在描述里只是文字/)).toBeDefined();
   expect(screen.getByText("画布上还没有图片，可以先上传，或从人物库里选。")).toBeDefined();
@@ -81,7 +82,11 @@ test("frame question: three explicit answers, and the switch target never invent
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(onChoose.mock.calls.map(call => call[0])).toEqual(["bind", "text", "cancel"]);
 
-  expect(studioFrameModeFor(h3, { ...intent, needed: 1 })?.mode).toBe("i2v");
-  const textOnly = { ...h3, contract: { modes: [modes[0]] } } as unknown as VideoStudioModel;
-  expect(studioFrameModeFor(textOnly, intent)).toBeUndefined();
+  const three = { mentions: ["图1", "图2", "图3"], pictures: 3, first: false, last: false, needed: 3, bound: 0, hasFirst: false, lastFrameIgnored: false };
+  rerender(<StudioFrameIntentDialog intent={three} model={h3} canvasImages={3} onChoose={onChoose}/>);
+  expect(screen.getByRole("button", { name: "改用「全能参考」选图片" })).toBeDefined();
+  const onlyLast = { mentions: ["图1", "尾帧"], pictures: 1, first: false, last: true, needed: 1, bound: 0, hasFirst: false, lastFrameIgnored: false };
+  rerender(<StudioFrameIntentDialog intent={onlyLast} model={h3} canvasImages={3} onChoose={onChoose}/>);
+  expect(screen.getByRole("button", { name: "改用「首尾帧」选图片" })).toBeDefined();
+  expect(screen.getByText(/还需要再选一张首帧图/)).toBeDefined();
 });

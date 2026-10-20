@@ -30,8 +30,8 @@ import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/stud
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,type StudioVideoDraft } from "./studio-video-controls";
-import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, studioFrameModeFor, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
-import { studioFrameIntent, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
+import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
+import { studioFrameIntent, studioFrameTarget, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
 import { studioNodeCommand } from './studio-node-command';
 import { studioVideoPromptReferences, rebindStudioVideoMentions } from '@/canvas-bridge/studio-video-references';
 import { StudioAssetMentionInput } from "./studio-asset-mention-input";
@@ -864,7 +864,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   // The user's answer to the frame question: switch to the mode that takes those pictures and open the settings
   // with the picture slots empty. Pictures already connected to this node fill slots as any mode change does.
   const bindFramesFor=(intent:StudioFrameIntent)=>{
-    const target=nativeVideo?studioFrameModeFor(nativeVideo,intent):undefined;
+    const target=nativeVideo?studioFrameTarget(nativeVideo.contract.modes,intent)?.mode:undefined;
     if(target&&target.mode!==videoDraft.mode)changeVideoDraft({...videoDraft,mode:target.mode});
     if(composerSettings.current)composerSettings.current.open=true;
     focusFrameSlot.current=true; // focused once the dialog has closed and handed focus back

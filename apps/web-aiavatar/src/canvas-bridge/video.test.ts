@@ -28,7 +28,9 @@ vi.mock("./models", () => ({
 }));
 
 import { GenerationCanceled } from "./generation";
-import { createVideoGenerationTask, isVideoTaskFailed, VideoTaskFailed, VideoSubmissionUnconfirmed } from "./video";
+import { createVideoGenerationTask, isVideoTaskFailed, VideoFramesNotBound, VideoTaskFailed, VideoSubmissionUnconfirmed } from "./video";
+import { studioVideoKeepPrompt } from "./studio-video";
+import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 
 const cfg = {
   videoSeconds: "8",
@@ -97,6 +99,56 @@ describe("画布视频提交", () => {
       createVideoGenerationTask({ ...cfg, videoMode: "reference" } as never, "x", []),
     ).rejects.toThrow(/首帧/);
     expect(generateVideoMock).not.toHaveBeenCalled();
+  });
+});
+
+// Codex review of 47c057ea (P1-2 of 3): every way to generate from a node goes through this bridge too, so the
+// 「按原文生成」 choice and the frame question cannot depend on which panel the user started from.
+describe("native video from a node: the user's text choice and the frame question",()=>{
+  const h3={supportsPromptOptimization:true,batchCounts:[1,2,4],contract:{modes:[{mode:"t2v"},{mode:"i2v",needsFirstFrame:true},
+    {mode:"first_last_frame_video",needsFirstFrame:true,needsLastFrame:true}],tiers:[{tier:"768p",canvases:[{aspectRatio:"9:16"}]}],
+    minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:2147483647},
+    pricing:{perSecond:{t2v:{"768p":40},i2v:{"768p":40},first_last_frame_video:{"768p":40}},freeRefImages:0,extraRefImagePerSecond:0}};
+  const t2v={...cfg,vquality:"768",videoMode:"t2v"} as never;
+  beforeEach(()=>submitStudioMock.mockResolvedValue({id:"IPR-1",status:"running",output:{}}));
+
+  it("generating again or retrying keeps the node's 「按原文生成」 from its accepted request",async()=>{
+    nativeModelMock.mockReturnValue(h3);
+    const node={id:"v",type:CanvasNodeType.Video,metadata:{studio:{request:{video:{mode:"t2v",resolutionTier:"768p",optimizePrompt:false}}}}} as unknown as CanvasNodeData;
+    await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",keepPrompt:studioVideoKeepPrompt(node)});
+    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p",optimizePrompt:false});
+    submitStudioMock.mockClear();
+    await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",keepPrompt:studioVideoKeepPrompt({...node,metadata:{}} as CanvasNodeData)});
+    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p"});
+  });
+
+  it("a model that does not rewrite never receives the switch",async()=>{
+    nativeModelMock.mockReturnValue({...h3,supportsPromptOptimization:false});
+    await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",keepPrompt:true});
+    expect(submitStudioMock.mock.calls[0][1].video).not.toHaveProperty("optimizePrompt");
+  });
+
+  it("Codex's repro: text names a first and last frame with no picture; nothing is saved or sent unless the user confirms",async()=>{
+    nativeModelMock.mockReturnValue(h3);
+    const beforeSubmit=vi.fn(async()=>{});
+    await expect(createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit})).rejects.toBeInstanceOf(VideoFramesNotBound);
+    const declined=vi.fn(async()=>false);
+    await expect(createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit,confirmFrames:declined})).rejects.toThrow("这次没有提交");
+    expect(declined.mock.calls[0][0]).toMatchObject({mentions:["图1","图2","首帧","尾帧"],first:true,last:true,needed:2,bound:0});
+    expect(beforeSubmit).not.toHaveBeenCalled();expect(submitStudioMock).not.toHaveBeenCalled();expect(generateVideoMock).not.toHaveBeenCalled();
+    const confirmed=vi.fn(async()=>true);
+    await createVideoGenerationTask(t2v,"图1作为首帧，图2作为尾帧",[],{nodeId:"v",beforeSubmit,confirmFrames:confirmed,keepPrompt:true});
+    expect(beforeSubmit).toHaveBeenCalledOnce();
+    expect(submitStudioMock.mock.calls[0][1].video).toEqual({mode:"t2v",resolutionTier:"768p",optimizePrompt:false});
+  });
+
+  it("pictures that are actually carried are not asked about; plain text never is",async()=>{
+    nativeModelMock.mockReturnValue(h3);
+    const confirmFrames=vi.fn(async()=>true);
+    await createVideoGenerationTask({...cfg,vquality:"768",videoMode:"first_last_frame_video"} as never,"图1作为首帧，图2作为尾帧",
+      [{storageKey:"a"},{storageKey:"b"}],{nodeId:"v",confirmFrames});
+    await createVideoGenerationTask(t2v,"一只猫在窗台上打盹",[],{nodeId:"v",confirmFrames});
+    expect(confirmFrames).not.toHaveBeenCalled();expect(submitStudioMock).toHaveBeenCalledTimes(2);
   });
 });
 

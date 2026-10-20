@@ -41,6 +41,13 @@ export type StudioVideoAsset = {mediaType:VideoStudioMediaType;storageKey?:strin
 /** keepPrompt：「按原文生成」，请厂商出片前不改写描述（只对 supportsPromptOptimization 的模型生效）。 */
 export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firstId?:string;lastId?:string;keepPrompt?:boolean};
 
+/**
+ * 「按原文生成」 chosen on this node's last accepted request. Every way back to the node (reopening the panel,
+ * retrying, generating again from the node) keeps it; a template preset never sets it.
+ */
+export const studioVideoKeepPrompt = (node:CanvasNodeData|undefined):boolean =>
+  node?.type===CanvasNodeType.Video&&node.metadata?.studio?.request?.video?.optimizePrompt===false;
+
 /** Current node controls and connected references own a reopened editor, including edits made after a run. */
 export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:CanvasNodeData[],referenceIds:string[]) {
   const metadata=node?.type===CanvasNodeType.Video?node.metadata:undefined,request=metadata?.studio?.request,saved=request?.video??metadata?.studio?.videoPreset;
@@ -60,7 +67,7 @@ export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:Can
     ?requestedRatio:"9:16";
   return {
     draft:{mode,tier:saved?.resolutionTier||(metadata?.vquality?(customMode?metadata.vquality:`${metadata.vquality.replace(/p$/,"")}p`):"768p"),seed:saved?.seed,firstId:images[0],lastId:images[1],
-      ...(request?.video?.optimizePrompt===false?{keepPrompt:true}:{})} satisfies StudioVideoDraft,
+      ...(studioVideoKeepPrompt(node)?{keepPrompt:true}:{})} satisfies StudioVideoDraft,
     count:metadata?.videoCount?Number(metadata.videoCount):request?.count||1,
     seconds:metadata?.seconds?Number(metadata.seconds):request?.durationSec||node?.metadata?.studio?.shot?.durationSec||8,
     ratio:videoRatio,

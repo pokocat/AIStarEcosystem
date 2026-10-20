@@ -105,6 +105,16 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
                               @Param("now") java.time.OffsetDateTime now);
 
     /**
+     * 只写 payload_json 这一列（厂商改写记录这类旁路信息，见 {@code MaterialVideoWorker#recordPromptRewrite}）。
+     * 调用方须在同一事务里先 {@link #lockById} 锁行、拿当前 payload 算出新值再写；状态、成片、结算等列一律不碰 ——
+     * 整行 save 一个先前读到的实体，会把同一时刻对账 / 结算刚写好的结果盖回旧值。
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("update MaterialVideoJob j set j.payloadJson = :payload where j.id = :id")
+    int updatePayloadJson(@Param("id") String id, @Param("payload") String payload);
+
+    /**
      * 老数据一次性回填 app（本列 v0.108 才加）：判定同 {@link #APP_EXPR}。
      * 幂等：只改 app is null 的行。回填只为让查询走 (owner_user_id, app) 索引，
      * 列表正确性不依赖它。

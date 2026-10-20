@@ -12,6 +12,7 @@
 import type { IpRun, IpVideoPromptRewrite } from "@ai-star-eco/types";
 import type { StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModeSpec } from "@ai-star-eco/types/video-studio";
+import { studioVideoModeName } from "./studio-video";
 
 /** A line someone should say, as written in the prompt. speaker is empty for 「台词：」 / 「旁白：」 style labels. */
 export type StudioPromptLine = { speaker: string; text: string };
@@ -78,29 +79,91 @@ export function studioRunRewrites(run: IpRun): StudioTakeRewrite[] {
   });
 }
 
-/** Pictures the text names (图1…, 首帧, 尾帧) against those the request carries. */
-export type StudioFrameIntent = { mentions: string[]; needed: number; bound: number; lastFrameIgnored: boolean };
+/**
+ * Pictures the text names against those the request carries. `pictures` is the highest 图N; `first` / `last` keep the
+ * explicit frame meaning (「图1用作尾帧」 asks for a last frame, never a first frame); `needed` is what a mode must hold.
+ */
+export type StudioFrameIntent = {
+  mentions: string[]; pictures: number; first: boolean; last: boolean; needed: number; bound: number;
+  /** The request already has a first frame (a mode switch keeps it). */
+  hasFirst: boolean;
+  /** A first-frame-only request whose text also names a last frame. */
+  lastFrameIgnored: boolean;
+};
 
 // 图N inside common words (地图1、截图2、构图3…) is not a picture reference.
 const PICTURE = /(?<![地截试构意企草插蓝拼示附配果脑])图\s*([1-9])(?!\d)/gu;
 
 export function studioFrameIntent(prompt: string, video: StudioVideoSettings, spec?: VideoStudioModeSpec): StudioFrameIntent | undefined {
   const mentions: string[] = [];
-  let needed = 0;
+  let pictures = 0;
   for (const match of prompt.matchAll(PICTURE)) {
     const label = `图${match[1]}`;
     if (!mentions.includes(label)) mentions.push(label);
-    needed = Math.max(needed, Number(match[1]));
+    pictures = Math.max(pictures, Number(match[1]));
   }
   const first = /首帧|第一帧/.test(prompt), last = /尾帧|末帧|最后一帧/.test(prompt);
   if (first) mentions.push("首帧");
   if (last) mentions.push("尾帧");
-  needed = Math.max(needed, Number(first) + Number(last));
+  const needed = Math.max(pictures, Number(first) + Number(last));
   const bound = Number(!!video.firstFrameKey) + Number(!!video.lastFrameKey) + (video.references || []).filter(ref => ref.mediaType === "image").length;
   // A model can only treat a picture as the last frame in a mode that takes one; references are not frames.
   const lastFrameIgnored = last && !!video.firstFrameKey && !(spec ? spec.needsLastFrame : video.mode === "first_last_frame_video") && !video.references?.length;
   if (!mentions.length || bound >= needed && !lastFrameIgnored) return undefined;
-  return { mentions, needed, bound, lastFrameIgnored };
+  return { mentions, pictures, first, last, needed, bound, hasFirst: !!video.firstFrameKey, lastFrameIgnored };
+}
+
+/**
+ * How a suggested mode serves the text: `frames` keeps the named first / last frames; `frames-need-first` keeps a
+ * named last frame but the mode also needs a first frame; `references` carries pictures named without frame words;
+ * `references-not-frames` carries every picture but only as references, because no mode can hold them as frames;
+ * `as-frames` turns pictures named without frame words into frames, the only way this model can use them.
+ */
+export type StudioFrameTargetKind = "frames" | "frames-need-first" | "references" | "references-not-frames" | "as-frames";
+export type StudioFrameTarget = { mode: VideoStudioModeSpec; kind: StudioFrameTargetKind };
+
+const frameSlots = (mode: VideoStudioModeSpec) => Number(!!mode.needsFirstFrame) + Number(!!mode.needsLastFrame);
+/** Pictures one request in this mode can carry: its frame slots plus its reference images. */
+export const studioModeImageCapacity = (mode: VideoStudioModeSpec) =>
+  frameSlots(mode) + (mode.references ? Math.min(mode.references.image.maxCount, mode.references.maxTotal) : 0);
+
+/** The mode to suggest: never one that cannot hold the pictures, never a first frame for a picture meant as the last. */
+export function studioFrameTarget(modes: VideoStudioModeSpec[], intent: StudioFrameIntent): StudioFrameTarget | undefined {
+  const closest = (list: VideoStudioModeSpec[]) => [...list].sort((a, b) => studioModeImageCapacity(a) - studioModeImageCapacity(b))[0];
+  const fits = modes.filter(mode => studioModeImageCapacity(mode) >= intent.needed);
+  const referenceOnly = closest(fits.filter(mode => !!mode.references && mode.references.image.maxCount > 0 && !mode.needsFirstFrame && !mode.needsLastFrame));
+  if (intent.first || intent.last) {
+    const frames = closest(fits.filter(mode => (!intent.first || mode.needsFirstFrame) && (!intent.last || mode.needsLastFrame)));
+    if (frames) return { mode: frames, kind: intent.last && !intent.first && frames.needsFirstFrame && !intent.hasFirst ? "frames-need-first" : "frames" };
+    return referenceOnly && { mode: referenceOnly, kind: "references-not-frames" };
+  }
+  if (referenceOnly) return { mode: referenceOnly, kind: "references" };
+  const asFrames = closest(fits.filter(mode => frameSlots(mode) > 0 && !mode.references));
+  return asFrames && { mode: asFrames, kind: "as-frames" };
+}
+
+/** The words of the frame question, shared by the Studio panel and any other place that asks it. */
+export function studioFrameIntentCopy(intent: StudioFrameIntent, modes: VideoStudioModeSpec[], canvasImages: number) {
+  const target = studioFrameTarget(modes, intent);
+  const name = target ? `「${studioVideoModeName(target.mode)}」` : "";
+  const title = intent.bound === 0 ? "描述里提到了图片，这次没有用上图片"
+    : intent.lastFrameIgnored ? "描述里提到了尾帧，当前模式只用首帧" : `描述里提到了 ${intent.needed} 张图，这次只用了 ${intent.bound} 张`;
+  const most = Math.max(0, ...modes.map(studioModeImageCapacity));
+  const advice = !target ? most === 0 ? "这个模型只能按文字生成，要用图片请换一个模型。"
+      : most < intent.needed ? `这个模型一次最多用 ${most} 张图，放不下描述里的 ${intent.needed} 张。可以少用几张，或者换一个模型。`
+      : intent.last ? "这个模型没有能用尾帧的模式，可以换一个支持首尾帧的模型，或者去掉描述里的尾帧。"
+      : "这个模型没有能按描述使用这些图片的模式，可以换一个模型。"
+    : target.kind === "frames" ? `要照着图片出片，改用${name}，再选好要用的图片。`
+    : target.kind === "frames-need-first" ? `要用上尾帧，改用${name}；这个模式还需要再选一张首帧图。`
+    : target.kind === "references" ? `要照着图片出片，改用${name}，再选好这 ${intent.needed} 张图片。`
+    : target.kind === "references-not-frames" ? `这个模型没有能放下 ${intent.needed} 张图、又锁定首帧尾帧的模式。改用${name}能用上这些图，但它们只作参考，不会锁定首帧或尾帧。`
+    : `这个模型只能把图片当作${target.mode.needsLastFrame ? "首帧和尾帧" : "首帧"}用。改用${name}后，图片会成为视频的${target.mode.needsLastFrame ? "开头和结尾" : "第一帧"}。`;
+  return {
+    target, title,
+    lines: [`${intent.mentions.map(mention => `「${mention}」`).join("")}写在描述里只是文字，模型看不到画布上的图片。${advice}`,
+      ...(canvasImages === 0 ? ["画布上还没有图片，可以先上传，或从人物库里选。"] : []), "只想按文字出片，可以直接生成。"],
+    bindLabel: target ? `改用${name}选图片` : "去选择视频模式",
+  };
 }
 
 function squash(value: string): string {

@@ -37,6 +37,8 @@
 - [ ] **反馈给聚算**：自动改写把整句中文对白改成只剩开头两个字（线上 2026-10-20 15:39 `job_bbfdab24e8b4427219a1c734`，`optimizationVersion=v8`），表情说明里引用的同一个词疑似被当成了全部台词。这是厂商侧行为，我们只能事后核对或选择不改写。
 - [ ] **助手制作计划里的视频步骤还不能选「按原文生成」**：`StudioPlanSteps` 组出的视频请求走厂商默认改写；要支持需在计划步骤的 video 设置里加这个开关并让确认卡显示。
 - [ ] **视频生成区（带货）界面没展示厂商实际用的描述**：数据已存在任务 `payload_json.vendor_prompt`，`VideoStudioJob` 还没投影。
+- [x] ~~**Codex 复审 47c057ea 三项**~~ **2026-10-20 本地完成**：共用视频胶水（含旧画布页生成 / 重试）沿用按原文生成并先问首尾帧；记录改写结果改为锁行后只更新 payload_json 一列（真 H2 交错测试）；推荐模式按首尾帧语义与容量选。说明见 `docs/ip-studio-video-modes.md` 末节。
+- [ ] **搬来的旧画布页 `canvas/pages/canvas/project.tsx` 没挂到任何路由**：Studio 画布走 `StudioFlowCanvas`。它的视频生成 / 重试已接上同一套按原文生成与首尾帧确认，但页面本身是否保留、何时删，需要单独决定（删前确认没有隐藏入口）。
 - [ ] **提交前整体检查只看「视频生成」默认端点有没有 Key**（`MaterialVideoJobService.submit` → `ensureConfigured(app)`）：选了别的已配好模型、默认端点没 Key 时也 503 `VIDEO_NOT_CONFIGURED`，前端还会把这个 503 当成「待确认原任务」。2026-10-20 本地库副本验证时遇到；线上默认端点是 H3，暂不受影响。
 
 ### 2026-10-19 · Codex 本地全量验收（`docs/audits/studio-local-full-e2e-20261019.md`）复核与修复（本地，未发布）
