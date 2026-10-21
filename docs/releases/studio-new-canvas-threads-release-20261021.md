@@ -420,3 +420,56 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 只回 web-aiavatar，server 不动；回滚后输入框下的模型与技能胶囊恢复。
+
+## 热修 `20261021-studio-dialogue-steps`（2026-10-21 18:34 CST，只发 server）
+
+### 现象
+
+17:38 CST，画布 `IPP-655ea55a`，用户说「用这张图做一段视频」（run `IPR-472ed89b5c174a95808f`）。这一轮一共 8 次模型调用后停下，界面最后一行是「这一轮已经想了很多步，先停在这里。回复「继续」我接着做。」，确认卡没发出去：
+
+1. 对话：`view_images`；2. `view_images` 内部看图调用；3. 对话：`read_skill` + `create_nodes`（视频对象）；4. 对话：`propose_plan` + `request_approval`；5. `propose_plan` 内部规划调用 → 报价失败 `STUDIO_VIDEO_FIRST_FRAME_REQUIRED`（三视图是拼版，不能当首帧）；6. 对话：`create_nodes`（先出一张单人首帧图）；7. 对话：`connect_nodes` + `propose_plan`；8. `propose_plan` 内部规划调用成功 → 下一次对话调用前 `TurnBudget.blockReason` 返回 `calls`（`MAX_MODEL_CALLS = 8` 到顶）。
+
+用户意见：不需要用户介入时应该尽量把任务做完。
+
+### 原因
+
+`DialogueLoop.TurnBudget` 只有一个调用计数，循环自己调对话模型和工具内部调模型（看图、规划、历史摘要）都走 `beginCall()`，8 次上限把 3 次工具内部调用也算成了「步」。真正约束花费的是每轮积分上限（`rate.maxCost` 换算的 Token 总额）和 10 分钟墙钟，8 步只是防死循环的保险，却比这两项先到。另外停下的说明教用户打字「回复「继续」」，没有按钮。
+
+### 修法（main `8e772145`，分支 `fix/studio-dialogue-steps-20261021` 快进）
+
+- **两种调用分开算**：`TurnBudget.beginStep()` 只给 `DialogueLoop.run` 里的 `model.call` 用，算一步，上限 `MAX_DIALOGUE_STEPS = 16`（`stepBlockReason`，到顶原因 `steps`）；`beginSubCall()` 给不算步的调用，逐一归类：`ViewImagesTool.look`（看图）、`ProposePlanTool` 规划调用、`StudioDialogueTurnWorker.summarize`（历史摘要，在循环开始前）。两种都计入总调用保险 `MAX_MODEL_CALLS = 40`（到顶原因 `calls`）、本轮 Token 总额与 10 分钟；子调用只查 `blockReason`（calls / time / tokens），不受步数限制。原 `beginCall()` 改名删除，编译器保证没有漏归类的调用点（全仓只有这四处）。传给模型的 `callIndex`（流式分段 id `p<N>`）改为步序号。
+- **工具上限** `MAX_TOOL_CALLS` 12 → 24：`DialogueLoop` 里按真正运行的工具计数（被拒的动作不算），到顶时这一批剩下的动作回「本轮动作次数已用完，本动作未执行」，之后以 `tools` 停下。
+- **原地打转**：连续两步给出的动作批次规范化后完全相同（`DialogueLoop.batchSignature`：工具名 + 参数，键排序、去掉 null 字段、文字去首尾空白、数字按值、调用 id 不算；无参数等于空参数），中间没有用户插话，就在第二批执行前停下，原因 `loop`，重复的那批不执行。只读的 `view_images` / `read_canvas` 也算；中间被判格式错误的那次不算隔开；用户插话（steering）清空比较。
+- **停下的说明与按钮**：`limitNote` 只写一句，不教用户打字：steps / calls / tools →「这一轮步骤太多，先停在这里。」、time →「这一轮用时到上限了，先停在这里。」、tokens →「这一轮的用量到上限了，先停在这里。」、loop →「这一步重复了，先停在这里。」；protocol 不变（「这一轮没能执行，请再说一次。」）。除 protocol 外，回复上附快捷答复「继续」（`limitSuggestions`）：写进这轮助手消息的 `requestJson.suggestions` 并随 `turn.done.suggestions` 下发，和完成总结（`StudioExecutionSummary`）同一套，前端已有的快捷答复点了就直接发「继续」开新一轮。说明仍是单独一条 system 消息，所以界面上「继续」在回复下面、说明在它下面一行。run 输出另记 `steps` 与 `limit`。
+- 演示 mock（`apps/web-aiavatar/src/ip/mocks/studio-dialogue.ts`）没有模拟这些停止文案，前端未改。
+- 文档：AGENTS.md「新建画布、多段对话与卡片精简」末尾一条、`specs/BUSINESS_RULES.md` Studio 对话第 29 条、`apps/server/README.md` 对话段的上限描述（原写 8 次 / 12 次）。无迁移、无新接口、提示词与技能文件未改（`SEED_VERSION` 不变）。
+
+### 门禁与测试
+
+- `DialogueLoopTest` 28 条（原 17 条，改写 1 条）：16 步到顶以 `steps` 停、工具内部调用不算步但计入调用数与 Token、线上那一轮（5 步 + 3 次子调用后第 6 步发出确认卡，`WAITING_USER`，共 9 次调用）、同一轮在总调用上限 8 时恰好停在线上那一步（`calls`，5 步 / 8 次，卡没发出）、24 次工具上限；打转：同一批连续两次即停且不执行、只读重复也算、键序 / null / 空白 / 数字写法 / 调用 id 不同仍算重复、多动作批次、参数不同不算、不相邻不算、中间有用户插话不算、中间夹格式错误仍算。`StudioDialogueSettlementTest` 10 条（原 6 条，改写 1 条）：停下的说明逐字、不含「回复」「「」「——」，助手消息与 `turn.done` 带 `["继续"]`，`loop` 也给「继续」，protocol 与正常完成不给，run 输出带 `steps` / `limit`。
+- `./mvnw -o -Dtest='DialogueLoop*,StudioDialogue*,DialogueRetry*,DialogueActionProtocol*' test`：136 条 0 失败；`com.aistareco.aep.ipstudio.**` 116 个类 798 条，0 失败，5 跳过（rebase 到 main `af75dbb3` 后再跑目标集仍 136 条全过；main 期间只多了 web-aiavatar 与文档提交，`apps/server` / `specs` / `packages` 无改动）。`./mvnw compile -q -o` 通过，`pnpm check:api-contract`：`OK.`。
+- **没做**：没用真模型跑一轮看它在 16 步内是否真把确认卡发出来；没在浏览器里看「继续」按钮（停下这条路演示模式造不出来，按钮走的是完成总结已在用的同一套建议机制）。
+
+### 制品与发布
+
+- 发布前核对：线上 server 最新为 `20261021-studio-exec-node`（`GIT_SHA='d3a55b7d…'`，PID 1378623，17:28:34 起，`server/app.jar` sha256 `f8fa8b28…` 与本地 `dist/deploy/20261021-studio-exec-node` 一致）；web-aiavatar 最新为 `20261021-studio-composer-chips`（`cf9050f0…`）；三个提交都在 main 历史里。`AIStarEcosystem-main-release` 工作区干净、没有构建 / 发布进程；功能分支先 rebase 到 main `af75dbb3`，再快进到 `8e772145`，`./mvnw compile -q -o` 通过。
+- 构建 `RELEASE_ID=20261021-studio-dialogue-steps ./infra/scripts/build-release.sh server`：`manifest.env` 为 `SERVICES='server'`、`GIT_SHA='8e7721456cd818227bba64f7fb88985955362c3f'`；`checksums.sha256` 两项通过；`server/app.jar` sha256 `a4095f3a40368e71390ff7bc232edfcd7dd6a83e133d7d15570060bc81ba19d7`。jar 内 `DialogueLoop` 常量 `MAX_DIALOGUE_STEPS = 16`、`MAX_MODEL_CALLS = 40`、`MAX_TOOL_CALLS = 24`，`TurnBudget` 有 `beginStep` / `beginSubCall` / `standard`，`StudioDialogueTurnWorker` 含五句新说明、不含「接着做」；迁移最高仍是 V63。
+- `deploy-release.sh dist/deploy/20261021-studio-dialogue-steps server`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- 新进程 PID 1394779 于 **18:34:51 CST** 启动，`Successfully validated 63 migrations`、`Current version of schema aistareco: 63`（无新迁移），`Started AiStarEcoApplication in 15.617 seconds`（18:35:07），`NRestarts=0`；线上 jar sha256 `a4095f3a…` 与制品一致，`/opt/ai-star-eco/releases` 最新为 `20261021-studio-dialogue-steps`（`GIT_SHA='8e772145…'`）。提示词和技能文件没变，启动时没有刷新或追加版本。
+- 日志 ERROR：grep `' -ERROR | ERROR [0-9]+ ---'` 对今天 00:00–18:34:00 计数 231 条（旧进程），证明 grep 能命中；18:34 之后只有 1 条，是旧进程 PID 1378623 停机时 18:34:50 打的（`Cannot render error page … response has already been committed`）。按新进程 PID 过滤至 18:35:43：**0 条 ERROR**，2 条 WARN（Hibernate 方言弃用提示、UserDetailsServiceAutoConfiguration，常规启动提示）。
+- `https://aiavatar.aibuzz.cn/projects` → 200。
+- **没做**：没用生产账号在线上真跑一轮（需要用户登录，且每轮会扣积分）。建议在 `IPP-655ea55a` 那张画布上再说一次「用这张图做一段视频」：这一轮应一直做到发出确认卡；若中途因上限停下，最后一行是一句短说明，上面那条回复下有「继续」按钮。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-exec-node/server/app.jar` 的 sha256 `f8fa8b28…` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-exec-node server
+```
+
+无迁移、提示词与技能文件未变，回滚不触发刷新或追加版本。回滚后恢复 8 次调用上限与旧说明；新版本已写进助手消息的 `requestJson.suggestions`（「继续」）旧版本照样读出显示（完成总结同一套），run 输出多出的 `steps` / `limit` 旧版本忽略。web-aiavatar 不涉及。
