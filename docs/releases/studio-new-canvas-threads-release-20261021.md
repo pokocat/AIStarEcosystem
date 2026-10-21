@@ -275,3 +275,67 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 只回 web-aiavatar，server 不动；回滚后新对话开场恢复为原来的四张卡和复刻清单。
+
+## 发布 `20261021-studio-exec-node`（2026-10-21 17:28 CST server、17:30 CST web-aiavatar）
+
+### 现象与取证
+
+线上画布 `IPP-655ea55a`，用户原话：对话生成视频后不是附到之前的节点上，而是新增了一个分离的节点，且这个节点没有提示词；视频比例看着有问题。
+
+- 助手先用 `create_nodes` 建了视频节点 `dlg-924c749ca1f7`（提示词、9:16 / 5 秒、首帧连线都在），确认执行后执行器按 `<执行>-p-<步骤>` 另建 `PEX-79c7…-p-s1` 放结果，没有提示词也没有连线；前面两张图片的结果节点同样没有提示词。
+- 成片 768×1344（9:16），首帧 1024×1024（1:1）：太阳、高楼的相对位置与首帧相同，厂商把正方形首帧非等比拉伸成竖屏，纵向拉长约 1.78 倍。9:16 是助手按技能默认写的，没看首帧比例；画布结果节点是 320×240 的 4:3 框。
+
+### 修法（main `d3a55b7d`，分支 `fix/studio-exec-node-aspect-20261021` 快进；设计真源 `docs/ip-studio-new-canvas-and-threads.md` §6，实现说明 §6.3）
+
+- **服务端**：计划步骤可带 `targetNodeId`（规划提示词规则 8 与 JSON 形状、`skillPlanConstraints` 的 `targets`）；规划时只做形状检查，确认时（建执行 / 确认制作阶段 / 确认改过的方案）由 `StudioPlanValidator.bindTargets` 按已保存画布绑定：在画布上、类型对应、还空着、没被占用；模型没填时只在「本对话 `create_nodes` 建的同类空对象唯一、同类步骤唯一」时自动绑定，有歧义不绑，不合格丢弃并写日志。读步骤节点统一经 `StudioPlanExecutionIds.stepNodeId`：任务 `node_id`、`node.upsert`（绑定对象用 `op=update`）、依赖连线、检查节点来源、`StudioPlanOutputs` 的输出与引用解析（画布还没保存时从 run 读产物）、`StudioWorkflowService` 步骤校验、执行接口 `steps[].nodeId`。每个结果节点带这一步实际发出的提示词和 `studio.mediaFit`（任务画幅）。
+- **首帧**：`StudioVideoService.alignFrame`——首帧 / 尾帧与请求画幅相差超过 2%，先验本人归属，再居中等比裁剪成本人派生图交给厂商（WebP 先 ffmpeg 转 PNG），记 `_exec.firstFrameAdjusted {from,to,mode:"crop",sourceKey,croppedKey,sourceSize,croppedSize}`，日志 `[studio-video] frame cropped`；读不了就 400 `STUDIO_VIDEO_FRAME_CROP_FAILED`，不拉伸。对话执行、手动面板（原生模式与单首帧旧协议）都经它。
+- **规划模型看得到的**：素材清单写出画布记录的真实尺寸「1024×1024（1:1）」和草稿上的「设定 9:16、5 秒」；同一轮刚建、画布还没保存的对象另列；`view_images` 结果带每张图的 `size` / `aspectRatio`。
+- **提示词**：`video-generation.md`（有首帧图时画幅跟首帧、准备好的对象填 `targetNodeId`）与对话提示词规则 11 补句；`PromptTemplateSeeder.SEED_VERSION` → `v23-2026-10-21-exec-target-node`。
+- **web-aiavatar**：绑定步骤的结果合并进那个对象（保留标题、尺寸、规格、连线；空提示词填上，已有的照 keepText 作为可采纳建议），恢复不补重复节点；`canvas-bridge/studio-media-fit.ts` 让结果节点宽度不变、高度按产物比例（先任务画幅，媒体加载后按真实尺寸，媒体区上限 640），卡片记下所显示媒体的真实尺寸；出视频面板「首帧图是 1:1，会按 9:16 居中裁剪」+「改成 1:1」（模型支持时），不挡发送。演示 mock 照服务端补（先建对象、步骤带 `targetNodeId`、结果 `op=update` 落进同一个对象）。
+- 文档：`specs/openapi.yaml`（`targetNodeId`、`steps[].nodeId` 说明）、`specs/BUSINESS_RULES.md` Studio 执行 27 / 28 条、AGENTS.md（「新建画布、多段对话与卡片精简」末尾一条、§8.0.1 ⑦ 一句事故）、TODO.md、`docs/INDEX.md`、`apps/web-aiavatar/README.md`。无迁移、无新接口。
+
+### 真模型验证（本机，没有用生产密钥）
+
+本机开发库副本里的聚算凭据（`studio-live-jusuan-audio` 端点，本地开发密钥加密），直连 `https://api.jusuanhub.com/v1/chat/completions`，`model=qwen38-27b`、`temperature=0.4`、`max_tokens=8192`、非流式、不带 `response_format`（该端点拒绝 `json_object`，生产按端点声明也不带）。请求按 `ProposePlanTool` 的拼法用服务端自己的类生成（技能正文、`skillPlanConstraints`、`DialogueCanvasDigest`、H3 合同），画布：一张 1024×1024 的「末日英雄设定图」+ 助手建好的空视频对象 `dlg-924c749ca1f7`（首帧连线、设定 5 秒），用户目标「用这张图做一段视频，没说画幅和时长」。回复用 `StudioPlanValidator.validateSkillPlan` 校验：
+
+| 场景 | 调用 | 有回复 | `targetNodeId` | 画幅 |
+|---|---|---|---|---|
+| v23 提示词 + 新素材清单 | 7 | 5（2 次厂商 503） | 5 次都指向 `dlg-924c749ca1f7` | 5 次都是 1:1，i2v，首帧绑那张图 |
+| main 上的旧提示词 + 旧素材清单（对照） | 5 | 3（2 次 503） | 3 次都没填 | 3 次都是 9:16（即线上那次） |
+
+旧提示词下服务端的自动绑定仍会把结果放进那个对象（单测覆盖）。每次输入约 3.2k–3.6k token、输出 438–538 token。只验了规划这一步；对话模型在 `create_nodes` 里是否按首帧写画幅没有真调（TODO.md）。
+
+### 门禁与测试
+
+- 功能分支：`com.aistareco.aep.ipstudio.**` 116 个测试类 783 条，0 失败，5 跳过（新增 `StudioPlanTargetBindingTest`、`StudioFrameCropTest`、`PlannerAssetCatalogTest`，`StudioPlanExecutorTest` / `StudioPlanExecutionServiceTest` / `StudioVideoBatchBindingTest` / `StudioDialoguePromptWiringTest` 加用例）；web-aiavatar vitest 145 个文件 1103 条全过（新增 `studio-media-fit.test.ts`、`studio-frame-crop-hint.test.tsx`，`studio-plan-execution.test.ts`、`studio-composer-spec.test.ts`、`mocks/studio-dialogue.test.ts`、`studio-dialogue-wiring.test.ts` 加用例）；`pnpm typecheck:all`、`pnpm typecheck:admin`、`pnpm check:api-contract`（`OK.`）、`./mvnw compile -q -o` 通过。
+- main（快进后，代码相同）：`pnpm typecheck:all`、`pnpm check:api-contract`、`./mvnw compile -q -o` 通过。
+- 演示模式浏览器走查（`NEXT_PUBLIC_USE_MOCK=1`，`--webpack`，3921 端口，`AEP_NEXT_DIST_DIR=.next-execnode`，验完还原 `tsconfig.json`、删目录）：新画布对助手说「做一段 5 秒的视频…」→ 助手先建视频对象（360×240）再出确认卡 → 开始制作 → 结果落进同一个对象（画布上仍只有它一个节点），高度变成 678（9:16），面板里提示词还在；`IPP-0001mock` 引用「你的照片」说「用这张图做一段 5 秒的视频」→ 草稿带首帧连线、按首帧画幅 → 确认后同一对象、连线在、变成正方形；手动出视频面板选那张图作首帧、画幅 9:16 时出现「首帧图是 3:4，会按 9:16 居中裁剪」（尺寸是卡片加载图片时记下的真实 384×512），模拟 1:1 时出现「改成 1:1」，点了画幅变 1:1、提示消失。截图在会话临时目录 `exec-node/`（`1440-01…08`）。控制台只有演示模式没起后端的 500。
+
+### 制品与发布
+
+- 发布前核对：线上 server 最新为 `20261021-studio-action-marker`（`1ebcaea6…`，`server/app.jar` sha256 `f580d294…` 与制品一致），web-aiavatar 最新为 `20261021-studio-starters`（`658c38cc…`，`BUILD_ID` `JRQEOd39WIzPrBzrZsCWL` 与制品一致），都在 main 历史里；`AIStarEcosystem-main-release` 工作区干净、没有构建 / 发布进程，main `ae74c7a4` 快进到 `d3a55b7d`。
+- 构建 `RELEASE_ID=20261021-studio-exec-node NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh server,web-aiavatar`：`manifest.env` 为 `SERVICES='server web-aiavatar'`、`GIT_SHA='d3a55b7d65bdf232cc2d7c56c377898466346ddb'`、`NEXT_PUBLIC_USE_MOCK='0'`、`NEXT_PUBLIC_ENABLE_DEV_LOGIN='0'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；`checksums.sha256` 三项通过。`server/app.jar` sha256 `f8fa8b28a57bb20ab087df75c40f5eb5f3bcaa96d710a0495da152469ce0093f`，jar 内 `PromptTemplateSeeder` 版本串 `v23-2026-10-21-exec-target-node`，规划提示词含 `targetNodeId`，对话提示词含「视频画幅跟首帧图一致」，`studio/skills/video-generation.md` 与仓库逐字节一致，有 `StudioFrameCrop`，迁移最高仍 V63（与线上 jar 一致）。`web-aiavatar.tar.gz` sha256 `96f89012c48cac66f9af2f22da49c7141c0b7b3581bebe80a3e33f9bf0d8475d`，包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `06hvybdGyqt0ZNIWn8i0t`，chunk 能搜到「居中裁剪」与 `mediaFit`。
+- `deploy-release.sh … server`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`；之后 `deploy-release.sh … web-aiavatar`：`[verify] ALL GREEN`。
+
+### 线上验收
+
+- server 新进程 PID 1378623 于 **17:28:34 CST** 启动，`Successfully validated 63 migrations`、`Current version of schema aistareco: 63`，`Started AiStarEcoApplication in 15.619 seconds`（17:28:50），`NRestarts=0`；线上 jar sha256 `f8fa8b28…` 与制品一致。
+- 启动日志：`[studio-skill] repository file key=video-generation version=1 status=active digest=302102a4fb4d`，紧接着 `[studio-skill] re-seeded video-generation as v3 from changed file video-generation.md`；其余四个技能文件摘要不变。`PromptTemplateSeeder: 刷新 54 个未改动的 prompt 基线 → v23-2026-10-21-exec-target-node`（17:28:50）。
+- 库（只读查询，客户端 utf8mb4）：`prompt_template` 的 `dap.ip_studio_skill_plan` / `dap.ip_studio_skill_dialogue` 均 `version=1, updated_by=seed`，更新于 09:28:50Z；规划提示词含「在这一步填 targetNodeId」「targetNodeId?}」「aspectRatio 跟首帧图一致」，对话提示词含「视频画幅跟首帧图一致」。`ip_skill` 的 `video-generation` 为 `current_version=3, updated_by=seed`；`ip_skill_version` v3（`seed`、`published`、摘要 `302102a4fb4d`）正文含「有首帧图时跟首帧图一致」与 `targetNodeId`，v1 / v2 仍在。
+- 日志 ERROR：grep `' -ERROR | ERROR [0-9]+ ---'` 对今天 00:00–17:28:00 计数 218 条（旧进程），证明 grep 能命中；17:28 之后的 3 条是旧进程 PID 1342495 停机时 17:28:33 打的（`Cannot render error page … response has already been committed`）。按新进程 PID 过滤至 17:31：**0 条 ERROR**，2 条 WARN（Hibernate 方言弃用提示、UserDetailsServiceAutoConfiguration，常规启动提示）。
+- web-aiavatar 新进程 PID 1380192 于 **17:30:50 CST** 启动，`Ready`，`NRestarts=0`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，`BUILD_ID` 与制品一致；`/opt/ai-star-eco/releases` 最新为 `20261021-studio-exec-node`（`GIT_SHA='d3a55b7d…'`）。
+- `https://aiavatar.aibuzz.cn/projects` → 200，`/create` → 200；公网取 `_next/static/chunks/9526.5199feb6bdbbd663.js` 含「居中裁剪」。
+- **没做**：没用生产账号在线上真跑一次对话出视频（需要用户登录，且图生视频要花积分）。建议用户在 `IPP-655ea55a` 那张画布上说「用这张图做一段视频」：确认后结果应落进助手建的那个视频对象、提示词和首帧连线都在、对象是首帧的比例；日志里能看到 `[plan-exec] step bound … node=dlg-…`。已经生成的那条变形视频不会被改，重新生成即可。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-action-marker` 的 jar 与 `dist/deploy/20261021-studio-starters` 的 `BUILD_ID` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-starters web-aiavatar
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-action-marker server
+```
+
+无迁移。server 回滚后提示词按 v22 刷回（只刷没人改过的行）；`video-generation` 文件摘要又变，库里没被后台改过，会把旧文件追加为 v4，v3 留在历史里。已绑定的执行状态里多了 `steps[].nodeId`，旧版本读不到它，正在跑的绑定步骤在旧版本下会按旧规则另建节点（回包里的 `node_id` 仍是绑定对象），刚发布无存量。web 回滚后结果节点不再按产物比例、面板没有裁剪提示，已写进画布的 `mediaFit` / `naturalWidth` 字段旧版本忽略。
