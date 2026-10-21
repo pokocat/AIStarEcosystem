@@ -8,6 +8,8 @@
 **/.DS_Store
 **/.mvn
 **/.next
+# Isolated Next.js acceptance build/cache directories
+**/.next-*/
 **/.vite
 **/.vitepress
 **/.worktree
@@ -50,4 +52,8 @@ apps/web-drama/public/recipes/home/
 
 # Local Studio acceptance screenshots and transient logs
 .impeccable/review/
+**/.impeccable/review/
 .studio-e2e-floating-tests.log
+
+# Nested local checkout; managed independently as a Git worktree
+/AIStarEcosystem-homefix/

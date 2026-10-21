@@ -7,6 +7,7 @@ vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,childre
 vi.mock("@/canvas-bridge/studio-api",()=>api);
 vi.mock("@/canvas-bridge/signed-audio",()=>({SignedAudio:()=>null}));
 vi.mock("antd",()=>({
+  Popover:({children,content}:any)=><>{children}{content}</>,
   Drawer:({open,children}:any)=>open?<div>{children}</div>:null,
   Button:({children,onClick,disabled}:any)=><button disabled={disabled} onClick={onClick}>{children}</button>,
   Select:({value,onChange,options,disabled,...props}:any)=><select aria-label={props["aria-label"]} disabled={disabled} value={value||""} onChange={e=>onChange(e.target.value)}>{options?.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>,
@@ -20,7 +21,7 @@ beforeEach(()=>{
 test("a selected historical audio retains its version after the person default changes",async()=>{
   const submit=vi.fn().mockResolvedValue(undefined);render(<StudioSpeech open onClose={()=>{}} initialText="原台词" initialAvatarId="a" initialVoiceId="v1" busy={false} onSubmit={submit}/>);
   await waitFor(()=>expect((screen.getByRole("combobox",{name:"声音版本"}) as HTMLSelectElement).value).toBe("v1"));
-  expect((screen.getByRole("combobox",{name:"固定音色"}) as HTMLSelectElement).disabled).toBe(true);
+  expect(screen.getByRole("radiogroup",{name:"固定音色"}).querySelectorAll("button:disabled").length).toBe(2);
   expect((screen.getByRole("textbox",{name:"声音风格"}) as HTMLTextAreaElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole("button",{name:"生成配音 · 8 积分"}));
   expect(submit).toHaveBeenCalledWith({model:"tts",text:"原台词",speaker:"Vivian",instruct:"自然",maxCost:8,avatarId:"a",voiceId:"v1"});

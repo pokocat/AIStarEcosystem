@@ -281,4 +281,6 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - **大版本迭代**：同 commit 更新 `product_spec*.md` 版本节、受影响 `apps/*/README.md` + `PRODUCT.md`、`docs/VERSION_HISTORY.md`（`AGENTS.md` §7 只留最近 5 版速览）、本 INDEX 的 last-reviewed。详 [`AGENTS.md` §9](../AGENTS.md)。
 - **CLAUDE.md ↔ AGENTS.md**：CLAUDE.md 是 symlink，改 AGENTS.md 即同步两者。
 
+- [Studio 节点配置交互统一](releases/studio-node-settings-20261020.md) — 底栏摘要、分组浮层、可视比例与各创作节点统一；last-reviewed: 2026-10-20。
+- [Studio GPT Image 2 原生接入与验收](releases/studio-gpt-image-native-20261020.md) — 2K、参考图 multipart、尺寸选择与 30 积分定价；last-reviewed: 2026-10-20。
 - [Studio 对话意图直达真模型验收](releases/studio-dialogue-intents-validation-20261020.md) — §7 评测集用聚算 Qwen3.8 27B / Agnes 2.5 Flash 真跑，图片画幅契约修复，未确认出图；last-reviewed: 2026-10-20。

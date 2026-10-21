@@ -17,6 +17,14 @@
 - **演示 mock**（`apps/web-aiavatar/src/ip/mocks/studio-dialogue.ts`）：`MOCK_STUDIO_SKILLS` 补上三个直达技能（YAML 头照抄，`maxSteps` 表达式按服务端算成 28）；`mockRouteSkill` 逐行照 `StudioSkillRouter`，`pickSkill` 照 `startTurn`（显式选择、活跃执行不换、每条消息重新路由）；出图 / 出视频首轮发方案 + 不带 `executionId` 的制作卡，确认后以 production 建执行跑完一步（确定性、零积分、节点带 `studio.mock`）；写剧本与文案当轮放一个文字节点；没命中任何技能直接回答。计划版本号改为按线程递增（照服务端 `thread.planRevision`），否则新任务的卡会被前端当成被旧方案替代。测试：`mocks/studio-dialogue.test.ts` 路由（平手不 400、显式选择、活跃执行禁止切换、词优先于素材、素材单独计分、出图线程沿用）、直达流程、写稿流程。
 - **未做**：真模型端到端（按真源 §7 触发评测集）；配音 / 口型技能接入对话（待对话工具开放这些操作）。
 
+### Studio 节点配置交互统一 · 2026-10-20 · 已生产发布（仅 web-aiavatar）
+
+模型菜单、参数摘要与生成动作集中到底栏；图片/视频及剧本、配音、口型、解析共用分组浮层和直接点选控件，比例可视化、清晰度附实际像素。选项按模型能力生成，切比例保留清晰度档位；支持手机边界、键盘焦点与嵌套菜单 Esc 顺序。94 项相关回归通过；图片/视频/配音线上交互及实际手机画布通过，未新增收费生成。最终发布 `20261020-studio-node-settings-focus`；见 [发布与验收记录](releases/studio-node-settings-20261020.md)。同日增量 `20261020-studio-video-settings-compact` 将数量收为分段、时长收为常用值与整数输入，种子移到可恢复随机的高级设置；100 项相关回归及桌面/手机实际参数验收通过。同日 `20261020-studio-adaptive-composer-compact` 将视频模式独立为菜单，素材按合同自动适配且完整保留；底栏收紧、参考合并为编号缩略图条；106 项回归及桌面/手机/实际视口验收通过，未新增收费生成。
+
+### Studio GPT Image 2 · 2026-10-20
+
+图片协议新增可配置原生 multipart 编辑路径，目录投影精确输出尺寸，Studio 保存尺寸选择；供应商实测同一模型可出 2048×2048 并参考原图编辑。售价沿用 30 积分/张。渠道正式回包出现尺寸不符，已上线结算前尺寸校验并补偿该验收任务，2K 稳定性待渠道文档确认；发布与验收见 [记录](releases/studio-gpt-image-native-20261020.md)。
+
 ### Studio 对话与制作修复（Codex 2026-10-19 六项）· 2026-10-19 · 本地未发布（server + web-aiavatar）
 
 制作中确认同阶段新方案时在原执行上替换剩余工作（`StudioPlanExecutionService.replanStage`：未变且已完成的步骤保留，改动及下游重做，原 run 进 `previousRunIds` 继续计费，在途步骤不改写）；执行器预算停下的步骤标 `budgetBlocked`，追加预算确认后自动继续（用户暂停除外）；绑定执行的对话轮次用执行的固定付款人，消息带别的付款人 409（`StudioExecutionGate.executionPayer`）；整句停止 / 暂停的消息走优先控制（`StudioStopIntent`），不进转向队列；前端助手把所选模型随消息发出，分析阶段的追加卡带上执行 id；画布投影只有保存成功才记「已投影」和画布游标（`canvasUnsavedFrom`）。无迁移、无 API 路径变化。server ipstudio 659 项、web-aiavatar 970 项通过。

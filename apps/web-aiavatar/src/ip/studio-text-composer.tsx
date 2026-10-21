@@ -1,6 +1,7 @@
 "use client";
 
-import { Input, Select } from 'antd';
+import { StudioModelPicker } from './studio-generation-controls';
+import { Input } from 'antd';
 import { LoaderCircle } from 'lucide-react';
 import type { StudioCapabilities, StudioTokenBilling } from '@ai-star-eco/types/ip-studio-workflow';
 import { StudioAiIcon } from './studio-ai-icon';
@@ -20,7 +21,7 @@ export function StudioTextComposer({open,embedded,nodeId,value,onChange,model,on
   const disabled=busy||!!pending||!value.trim()||value.length>16000||!capabilities||!capabilities.mock&&(!selected||!selected.tokenPricing);
   return <StudioFloatingPanel open={open} embedded={embedded} anchorId={nodeId} title="AI 修改文本" onClose={onClose} closable={!busy} className="studio-text-node-composer"
     footer={<>
-      <Select aria-label="文本模型" value={selected?.endpointId} disabled={busy||!!pending||capabilities?.textModelMode==='fixed'||options.length<=1} title={selected?.name} onChange={onModelChange} options={options.map(m=>({value:m.endpointId,label:m.name}))} placeholder="尚未配置文本模型"/>
+      <StudioModelPicker label="文本模型" value={selected?.endpointId} disabled={busy||!!pending||capabilities?.textModelMode==='fixed'||options.length<=1} onChange={onModelChange} options={options.map(m=>({value:m.endpointId,label:m.name}))}/>
       <div className="studio-text-submit-controls">
         {unknownTask?<button type="button" className="studio-text-confirm" disabled={busy} onClick={onConfirm}>确认原任务</button>
           :<button type="button" className="studio-text-send" aria-label="发送修改要求" title="AI 处理，会消耗积分" disabled={disabled} onClick={onSubmit}>{busy||pending?<LoaderCircle size={21} className="studio-text-spinner"/>:<StudioAiIcon/>}</button>}

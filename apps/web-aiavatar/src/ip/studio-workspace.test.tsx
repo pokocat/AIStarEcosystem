@@ -11,14 +11,14 @@ import {ApiError} from '@ai-star-eco/api-client';
 import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
 import {StudioWorkspace} from './studio-workspace';
 import {useCanvasStore} from '@/canvas/stores/canvas/use-canvas-store';
-const api=vi.hoisted(()=>({capabilities:vi.fn(),models:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
+const api=vi.hoisted(()=>({capabilities:vi.fn(),models:vi.fn(),videoModels:vi.fn(),submit:vi.fn(),speech:vi.fn(),lip:vi.fn(),save:vi.fn(),read:vi.fn(),project:vi.fn(),history:vi.fn(),error:vi.fn(),info:vi.fn(),success:vi.fn(),download:vi.fn(),cancel:vi.fn()}));
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,title,children,onClose,footer,embedded}:any)=>open?<section role={embedded?"region":"dialog"} aria-label={title}>{!embedded&&<button aria-label={title==='生成视频'||title==='生成图片'||title==='创作剧本'||title==='拆分镜头'?'关闭创作面板':`关闭${title}`} onClick={onClose}>关闭</button>}{children}{footer}</section>:null}));
 vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('./api',()=>({IpStudioApi:{listProjectRuns:api.history}}));
 vi.mock('./studio-template-library',()=>({StudioTemplateLibrary:({open,scope}:any)=>open?<section role="dialog" aria-label="画布模板">{scope}</section>:null}));
 vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:api.capabilities,readStudioProject:api.project,submitStudioRun:api.submit,submitStudioSpeech:api.speech,submitStudioLipSync:api.lip,listStudioIps:async()=>[],listStudioIpAssets:async()=>[]}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
-vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:api.models,fetchStudioVideoModels:async()=>[]}));
+vi.mock('@/canvas-bridge/api',()=>({readRun:api.read,cancelRun:api.cancel,fetchModels:api.models,fetchStudioVideoModels:api.videoModels}));
 vi.mock('@/canvas-bridge/models',()=>({SERVER_CHANNEL_ID:'server',endpointIdFor:()=> 'model'}));
 vi.mock('@/canvas-bridge/config-store',()=>({encodeChannelModel:(_:string,m:string)=>m}));
 vi.mock('./studio-script-rich-editor',async()=>{
@@ -28,7 +28,7 @@ vi.mock('./studio-script-rich-editor',async()=>{
 vi.mock('antd',()=>{
  const Input=({children,...p}:any)=><input {...p}/>;Input.TextArea=({autoSize,...p}:any)=><textarea {...p}/>;
  const message={error:api.error,info:api.info,success:api.success};
- return {App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
+ return {InputNumber:({value,onChange,min,max,precision,controls,suffix,...p}:any)=><input type="number" {...p} min={min} max={max} value={value??''} onChange={e=>onChange(e.target.value?Number(e.target.value):null)}/>,App:{useApp:()=>({message})},Input, Segmented:({options,value,onChange}:any)=><div>{options.map((o:string)=><button key={o} aria-pressed={o===value} onClick={()=>onChange(o)}>{o}</button>)}</div>,
  Button:({loading,block,type,icon,size,...p}:any)=><button {...p} disabled={loading||p.disabled}>{p.children}</button>,
  Drawer:({open,title,children,onClose,footer}:any)=>open?<section role="dialog" aria-label={title}><button aria-label="关闭创作面板" onClick={onClose}>关闭</button>{children}{footer}</section>:null,
  Modal:({open,title,children,onCancel}:any)=>open?<section role="dialog" aria-label={title||'剧本编辑器'}>{onCancel&&<button aria-label={`关闭${title}`} onClick={onCancel}>关闭</button>}{children}</section>:null,
@@ -44,7 +44,7 @@ vi.mock('./studio-lip-sync',()=>({StudioLipSync:({open,initialNodeId}:any)=>open
 vi.mock('./studio-assistant',()=>({StudioAssistant:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="AI 创作助手">{initialNodeId}</section>:null}));
 vi.mock('./studio-batch-panel',()=>({StudioBatchPanel:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="制作计划">{initialNodeId}</section>:null}));
 vi.mock('./studio-ip-library',()=>({StudioIpLibrary:()=>null}));
-vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null}));
+vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null,StudioVideoSeedControl:()=>null}));
 vi.mock('./studio-motion-prompt',()=>({StudioMotionPrompt:({value,onChange,references}:any)=><textarea data-references={JSON.stringify(references.map((r:any)=>[r.nodeId,r.label]))} aria-label="创作要求" value={value} onChange={e=>onChange(e.target.value)}/>}));
 vi.mock('@/canvas-bridge/signed-image',()=>({SignedImage:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:()=>null}));
@@ -61,7 +61,7 @@ let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
 afterEach(cleanup);
-beforeEach(()=>{vi.resetAllMocks();api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
+beforeEach(()=>{vi.resetAllMocks();api.videoModels.mockResolvedValue([]);api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
  const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
  render(<Host initial={text} textEditingNodeId="v" renderTextEditor={(actions:any)=><section role="dialog" aria-label="编辑文字">{actions}<textarea aria-label="节点文字" defaultValue="原文"/></section>}/>);
@@ -95,14 +95,34 @@ test('image composer only offers ratios stored on the selected model and blocks 
  render(<Host initial={image}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- await waitFor(()=>expect(within(panel).getByRole('combobox',{name:'生成模型'})).toHaveProperty('value','ernie'));
- const ratio=within(panel).getByRole('combobox',{name:'创作画幅'}) as HTMLSelectElement;
- expect(ratio.value).toBe('3:4');
- expect(within(panel).getByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeDefined();
- expect([...ratio.options].map(option=>option.value)).toEqual(['3:4','1:1','9:16','16:9']);
- fireEvent.change(ratio,{target:{value:'1:1'}});
- expect(within(panel).queryByText('当前模型不支持 3:4，请在画幅中选择可用比例。')).toBeNull();
+ await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'})).toHaveProperty('textContent',expect.stringContaining('ERNIE')));
+ const ratio=within(panel).getByRole('radiogroup',{name:'创作画幅'});
+ expect(within(ratio).getByRole('radio',{name:'3:4'}).getAttribute('aria-checked')).toBe('true');
+ expect(within(panel).getByText('当前模型不支持 3:4，请选择可用比例。')).toBeDefined();
+ expect(within(ratio).getAllByRole('radio').map(option=>option.textContent)).toEqual(['3:4','1:1','9:16','16:9']);
+ fireEvent.click(within(ratio).getByRole('radio',{name:'1:1'}));
+ expect(within(panel).queryByText('当前模型不支持 3:4，请选择可用比例。')).toBeNull();
  expect(api.submit).not.toHaveBeenCalled();
+});
+test('image composer submits the exact chosen resolution and retains it in the saved draft',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'gpt',name:'GPT Image',isDefault:true,creditCost:30,capability:{imageRatios:['1:1','16:9'],imageSizes:[{size:'1024x1024',aspectRatio:'1:1'},{size:'2048x2048',aspectRatio:'1:1'},{size:'2048x1152',aspectRatio:'16:9'}]}}],video:[]});
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,prompt:'画一只猫',studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'})).toHaveProperty('textContent',expect.stringContaining('GPT Image')));
+ fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'1:1'}));
+ const sizes=within(panel).getByRole('radiogroup',{name:'图片输出尺寸'});
+ expect(within(sizes).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1K1024 × 1024','2K2048 × 2048']);
+ fireEvent.click(within(sizes).getByRole('radio',{name:'2K 2048 × 2048'}));
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.size).toBe('2048x2048'));
+ fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'16:9'}));
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.size).toBe('2048x1152'));
+ fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'1:1'}));
+ fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ expect(api.submit.mock.calls[0][1]).toMatchObject({model:'gpt',size:'2048x2048',aspectRatio:'1:1',count:1,maxCost:30});
 });
 test('image composer uses the selected endpoint prompt limit instead of the legacy 16000 characters',async()=>{
  api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
@@ -111,7 +131,7 @@ test('image composer uses the selected endpoint prompt limit instead of the lega
  render(<Host initial={image}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- await waitFor(()=>expect(within(panel).getByRole('combobox',{name:'生成模型'})).toHaveProperty('value','image'));
+ await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'})).toHaveProperty('textContent',expect.stringContaining('图片模型')));
  const prompt=within(panel).getByRole('textbox',{name:'创作要求'});
  fireEvent.change(prompt,{target:{value:'a'.repeat(16001)}});
  expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false);
@@ -125,8 +145,8 @@ test('image composer lists only batch sizes returned for the selected endpoint',
  render(<Host initial={image}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- const count=within(panel).getByRole('combobox',{name:'候选数量'}) as HTMLSelectElement;
- await waitFor(()=>expect([...count.options].map(option=>option.value)).toEqual(['1','3','5']));
+ const count=within(panel).getByRole('radiogroup',{name:'候选数量'});
+ await waitFor(()=>expect(within(count).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1 张','3 张','5 张']));
 });
 test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};
@@ -555,14 +575,14 @@ test('an adaptation draft restores its mode, chosen story and settings, then sna
  const story={id:'story',type:'text',title:'原故事',width:360,height:240,position:{x:0,y:0},metadata:{content:'小紫在花园发现一株花。'}};
  render(<Host initialNodes={[story]}/>);fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script'}}));
  fireEvent.change(await screen.findByRole('textbox',{name:'创作要求'}),{target:{value:'保留发现花朵的情节，改成两集。'}});
- fireEvent.change(screen.getByRole('combobox',{name:'剧本创作模式'}),{target:{value:'adapt'}});
+ fireEvent.click(within(screen.getByRole('radiogroup',{name:'剧本创作模式'})).getByRole('radio',{name:'故事改编'}));
  fireEvent.change(screen.getByRole('combobox',{name:'改编素材'}),{target:{value:'story'}});
  fireEvent.change(screen.getByRole('textbox',{name:'人物与关系'}),{target:{value:'小紫，喜欢照顾花草。'}});
  fireEvent.change(screen.getByRole('textbox',{name:'叙事结构'}),{target:{value:'发现—照顾—回馈。'}});
  const id=snapshot[1].id;fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
  await waitFor(()=>expect(screen.queryByRole('dialog',{name:'创作剧本'})).toBeNull());
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:id}}));
- expect((await screen.findByRole('combobox',{name:'剧本创作模式'}) as HTMLSelectElement).value).toBe('adapt');
+ expect(within(await screen.findByRole('radiogroup',{name:'剧本创作模式'})).getByRole('radio',{name:'故事改编'}).getAttribute('aria-checked')).toBe('true');
  expect((screen.getByRole('combobox',{name:'改编素材'}) as HTMLSelectElement).value).toBe('story');
  expect((screen.getByRole('textbox',{name:'人物与关系'}) as HTMLTextAreaElement).value).toBe('小紫，喜欢照顾花草。');
  fireEvent.click(screen.getByRole('button',{name:'创作剧本',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
@@ -841,7 +861,7 @@ test('text intent uses the chosen model and rewrites the original node without r
  api.submit.mockImplementation(async(_:string,request:any)=>({...done,id:'text-run',nodeId:'text',kind:'studio-text',cost:3,inputs:request,output:{textRevision:{summary:'添加了标题',content:'便携好物\n原商品卖点'}}}));
  render(<Host initialNodes={[text]}/>);fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));fireEvent.click(screen.getByRole('button',{name:'打开节点 商品卖点'}));
  const input=await screen.findByRole('textbox',{name:'AI 修改要求'});expect(input).toHaveProperty('value','');
- fireEvent.change(input,{target:{value:'起一个标题'}});fireEvent.change(screen.getByRole('combobox',{name:'文本模型'}),{target:{value:'b'}});
+ fireEvent.change(input,{target:{value:'起一个标题'}});fireEvent.click(screen.getByRole('button',{name:'文本模型'}));fireEvent.click(within(screen.getByRole('radiogroup',{name:'文本模型'})).getByRole('radio',{name:'文本 B'}));
  expect(snapshot[0].metadata?.content).toBe('原商品卖点');
  fireEvent.click(screen.getByRole('button',{name:'发送修改要求'}));await waitFor(()=>expect(snapshot[0].metadata?.content).toBe('便携好物\n原商品卖点'));
  expect(api.submit.mock.calls[0][1]).toMatchObject({nodeId:'text',operation:'text',prompt:'起一个标题',textEdit:{content:'原商品卖点'},model:'b',maxCost:21});
@@ -880,10 +900,10 @@ test.each(['fixed','selectable'])('image composer displays its single configured
  render(<Host initial={image}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- const select=within(panel).getByRole('combobox',{name:'生成模型'});
- await waitFor(()=>expect(select).toHaveProperty('value','image-one'));
+ const select=within(panel).getByRole('button',{name:'生成模型'});
+ await waitFor(()=>expect(select).toHaveProperty('textContent',expect.stringContaining('图片模型一')));
  expect(select).toHaveProperty('disabled',true);
- expect(within(select).getByRole('option',{name:'图片模型一'})).toBeDefined();
+ expect(select.textContent).toContain('图片模型一');
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('image model switching submits the selected endpoint and its price',async()=>{
@@ -892,10 +912,10 @@ test('image model switching submits the selected endpoint and its price',async()
  render(<Host initial={{...node,type:'image' as never,metadata:{status:'idle' as const}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- const select=within(panel).getByRole('combobox',{name:'生成模型'});
- await waitFor(()=>expect(select).toHaveProperty('value','image-one'));
+ const select=within(panel).getByRole('button',{name:'生成模型'});
+ await waitFor(()=>expect(select).toHaveProperty('textContent',expect.stringContaining('图片模型一')));
  expect(select).toHaveProperty('disabled',false);
- fireEvent.change(select,{target:{value:'image-two'}});
+ fireEvent.click(select);fireEvent.click(within(screen.getByRole('radiogroup',{name:'生成模型'})).getByRole('radio',{name:'图片模型二'}));
  fireEvent.change(within(panel).getByRole('textbox',{name:'创作要求'}),{target:{value:'画一棵树'}});
  fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
  await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
@@ -905,20 +925,52 @@ test.each(['fixed','selectable'])('text composer keeps its single configured mod
  api.capabilities.mockResolvedValue({mock:false,operations:['text'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'文本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
  render(<Host initial={{...node,type:'text' as never,metadata:{content:'原文'}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'text',nodeId:'v'}}));
- const select=await screen.findByRole('combobox',{name:'文本模型'});
- await waitFor(()=>expect(select).toHaveProperty('value','text-one'));
+ const select=await screen.findByRole('button',{name:'文本模型'});
+ await waitFor(()=>expect(select).toHaveProperty('textContent',expect.stringContaining('文本模型一')));
  expect(select).toHaveProperty('disabled',true);
- expect(within(select).getByRole('option',{name:'文本模型一'})).toBeDefined();
+ expect(select.textContent).toContain('文本模型一');
  expect(api.submit).not.toHaveBeenCalled();
 });
 test.each(['fixed','selectable'])('script composer shows its single %s model outside collapsed settings',async policy=>{
  api.capabilities.mockResolvedValue({mock:false,operations:['script'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'剧本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
  render(<Host initial={{...node,type:'text' as never,metadata:{status:'idle',studio:{kind:'script'}}}}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
- const select=await screen.findByRole('combobox',{name:'剧本模型'});
- await waitFor(()=>expect(select).toHaveProperty('value','text-one'));
+ const select=await screen.findByRole('button',{name:'剧本模型'});
+ await waitFor(()=>expect(select).toHaveProperty('textContent',expect.stringContaining('剧本模型一')));
  expect(select).toHaveProperty('disabled',true);
  expect(select.closest('details')).toBeNull();
- expect(within(select).getByRole('option',{name:'剧本模型一'})).toBeDefined();
+ expect(select.textContent).toContain('剧本模型一');
  expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('native video adds references from text mode without losing graph inputs, then sends exact frames and price',async()=>{
+ const native={endpointId:'model',batchCounts:[1,2,4],contract:{modes:[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'first_last_frame_video',label:'首尾帧',needsFirstFrame:true,needsLastFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},first_last_frame_video:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}};
+ api.videoModels.mockResolvedValue([native]);
+ const first={...node,id:'first',type:'image' as never,title:'第一张图',metadata:{storageKey:'first.png',content:'/first.png'}},last={...first,id:'last',title:'第二张图',metadata:{storageKey:'last.png',content:'/last.png'}};
+ render(<Host initialNodes={[{...node,metadata:{prompt:'动作自然',status:'idle',videoCount:'1'}},first,last]}/>);
+ await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ await screen.findByRole('button',{name:'视频模式'});
+ const pick=(nodeId:string)=>fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId,targetId:'v'}}));
+ pick('first');await waitFor(()=>expect(screen.getByRole('radio',{name:'图生视频'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);
+ expect(screen.getByRole('radio',{name:/文生视频/})).toHaveProperty('disabled',true);
+ pick('last');await waitFor(()=>expect(screen.getByRole('radio',{name:'首尾帧'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first','last']);
+ expect(screen.getByRole('radio',{name:/图生视频/})).toHaveProperty('disabled',true);
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ const sent=api.submit.mock.calls[0][1];expect(sent.video).toMatchObject({mode:'first_last_frame_video',firstFrameKey:'first.png',lastFrameKey:'last.png'});expect(sent.maxCost).toBe(320);expect(sent.references).toEqual([]);
+});
+
+test('native video removes the last reference back to text and retains an explicit compatible reference mode',async()=>{
+ const modes=[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}];
+ api.videoModels.mockResolvedValue([{endpointId:'model',contract:{modes,tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16'}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}}]);
+ const image={...node,id:'first',type:'image' as never,title:'参考图片',metadata:{storageKey:'first.png',content:'/first.png'}};
+ render(<Host initialNodes={[{...node,metadata:{prompt:'动作自然',status:'idle'}},image]}/>);await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
+ await screen.findByRole('button',{name:'视频模式'});
+ fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));await screen.findByRole('button',{name:'移除参考 参考图片'});
+ fireEvent.click(screen.getByRole('button',{name:'移除参考 参考图片'}));await waitFor(()=>expect(screen.getByRole('radio',{name:'文生视频'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot).toHaveLength(0);
+ fireEvent.click(screen.getByRole('radio',{name:'全能参考'}));
+ fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));
+ await waitFor(()=>expect(screen.getByRole('radio',{name:'全能参考'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);expect(api.submit).not.toHaveBeenCalled();
 });

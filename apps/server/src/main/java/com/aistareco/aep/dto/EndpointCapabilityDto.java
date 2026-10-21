@@ -34,8 +34,20 @@ public record EndpointCapabilityDto(
         /** 当前图片端点的提示词上限；null 表示沿用旧生成链的上限。 */
         Integer imagePromptMaxChars,
         /** 当前图片端点允许的一次生成候选数；null 表示旧链路。 */
-        java.util.List<Integer> imageBatchCounts
+        java.util.List<Integer> imageBatchCounts,
+        /** Exact selectable output sizes, without supplier request fields. */
+        java.util.List<ImageSize> imageSizes
 ) {
+    public record ImageSize(String size,String aspectRatio) {}
+    public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
+                                 Boolean supportsSubjectReference, Integer maxDurationSec,
+                                 Integer minDurationSec, Integer minImagePixels,
+                                 java.util.List<String> videoResolutions, java.util.List<String> videoRatios,
+                                 java.util.List<String> imageRatios, Integer imagePromptMaxChars,
+                                 java.util.List<Integer> imageBatchCounts) {
+        this(maxRefImages,supportsFirstLastFrame,supportsSubjectReference,maxDurationSec,minDurationSec,
+                minImagePixels,videoResolutions,videoRatios,imageRatios,imagePromptMaxChars,imageBatchCounts,null);
+    }
     public EndpointCapabilityDto(Integer maxRefImages, Boolean supportsFirstLastFrame,
                                  Boolean supportsSubjectReference, Integer maxDurationSec,
                                  Integer minDurationSec, Integer minImagePixels,
@@ -70,7 +82,8 @@ public record EndpointCapabilityDto(
         return new EndpointCapabilityDto(maxRefImages,base.supportsFirstLastFrame(),
                 base.supportsSubjectReference(),base.maxDurationSec(),base.minDurationSec(),
                 base.minImagePixels(),base.videoResolutions(),base.videoRatios(),spec==null?null:spec.ratios(),
-                spec==null?null:spec.promptMaxChars(),spec==null?null:spec.allowedBatchCounts());
+                spec==null?null:spec.promptMaxChars(),spec==null?null:spec.allowedBatchCounts(),
+                spec==null?null:spec.outputs().stream().map(output->new ImageSize(output.canvasSize(),output.aspectRatio())).toList());
     }
 
     /** 带**有效**时长区间（协议硬边界 ∩ 候选配置）+ 可出画幅的版本；视频用途用它。 */
