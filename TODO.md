@@ -31,6 +31,12 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-20 · web-aiavatar 测试集精简时顺手发现（见 `docs/audits/web-aiavatar-test-suite-audit-2026-10.md`）
+
+- [ ] **剧本面板的模型选择器显示值不看 fixed 模式**：`studio-workspace.tsx` 剧本设置里 `<Select value=…>` 自己又写了一遍「用户选的 ?? 默认 ?? 第一个」，不经 `studioChosenTextModel`（`canvas-bridge/studio-text-model.ts`，这次已把另外两份收成它），fixed 模式下可能显示用户旧选的模型、提交却用默认模型（§8.0.1 ④）。改成调用 `studioChosenTextModel` 会改变显示，需要单独确认后再改。
+- [ ] **`studioComposerTake` 与对话框写在同一个 .tsx 里**：node 测试引用它会连带加载 antd（多约 6 秒），现在测试里 mock 了 antd 顶着；把这个纯函数挪到 `canvas-bridge/` 就能去掉 mock。
+- [ ] **`studio-video-prompt-wiring.test.ts` 第 3 条只读 `canvas/pages/canvas/project.tsx`**：那个页面全仓无人引用，Studio 打不开；随页面一起处置（删页面时删这条）。
+
 ### 2026-10-20 · H3 视频台词被厂商改写删掉、首尾帧只写在文字里（本地实现，未发布；说明见 `docs/ip-studio-video-modes.md` 末节）
 
 - [x] ~~**看不到厂商实际用的描述**~~ **2026-10-20 本地完成**：worker 把查询响应的 `promptOptimization` 存进任务 `payload_json.vendor_prompt`，画布候选投影 `promptRewrite`，创作面板 / 任务列表 / 「本次创作输入」三处显示实际描述和没保留的台词（`VideoPromptRewrite`、`studio-video-prompt.ts`）。只是成片后的解释。

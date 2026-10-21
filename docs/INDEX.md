@@ -193,6 +193,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/studio-film-study-technical-sharing-2026-10.md`](audits/studio-film-study-technical-sharing-2026-10.md) | 视频拉片技术分享：媒体工程、模型理解、成本与音频补全，程序和大模型各管什么（2026-10-17） |
 | [`docs/audits/studio-local-full-e2e-20261019.md`](audits/studio-local-full-e2e-20261019.md) | 本地全站验收与逐项复测：Agnes真实拉片/流式、受控制作与企业账本；10-20补过本机上传、双浏览器三种冲突恢复及任务回写，保留其余失败/待复测和真实视频队列阻塞 |
 | [`docs/audits/studio-user-journey-acceptance-20261019.md`](audits/studio-user-journey-acceptance-20261019.md) | 线上只读的用户视角验收：文字落画布、复刻检查口径、成片默认片段等待办（2026-10-19，后续见 TODO） |
+| [`docs/audits/web-aiavatar-test-suite-audit-2026-10.md`](audits/web-aiavatar-test-suite-audit-2026-10.md) | web-aiavatar vitest 审计：耗时来自 jsdom 并发争用而非条数；限并发 + 假计时器 + 1056→963 条（2026-10-20，已实施） |
 
 ## 7. 发布与验收记录（`docs/releases/`）
 

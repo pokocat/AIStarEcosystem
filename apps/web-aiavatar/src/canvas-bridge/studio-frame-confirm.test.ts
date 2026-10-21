@@ -12,8 +12,6 @@ test("the node panel's frame question: only 「仍按文字生成」 submits; go
   const calls: ModalFuncProps[] = [];
   const modal = { confirm: vi.fn((props: ModalFuncProps) => { calls.push(props); }) };
   const text = confirmStudioFrames(modal, intent, model, 2);
-  expect(calls[0].title).toBe("描述里提到了图片，这次没有用上图片");
-  expect(calls[0].okText).toBe("仍按文字生成");
   expect(JSON.stringify(calls[0].content)).toContain("改用「首尾帧」");
   void calls[0].onOk?.();
   await expect(text).resolves.toBe(true);

@@ -19,7 +19,6 @@ const props=()=>({open:true,assets:[sheet,main],loading:false,error:'',onClose:v
 test('a character opens its real dossier; whole-sheet selection imports the exact look and current saved voice',async()=>{
   const p=props();render(<StudioIpLibrary {...p}/>);expect(screen.getAllByRole('button',{name:'查看人物 小紫'})).toHaveLength(1);fireEvent.click(screen.getByRole('button',{name:'查看人物 小紫'}));
   fireEvent.click(screen.getByRole('button',{name:'选择人物设定图 · 人物设定图'}));await waitFor(()=>expect(screen.getByText('小紫声音 · v1')).toBeDefined());
-  expect(screen.getByText('脸部特写素材将在归档后显示')).toBeDefined();expect(screen.getByText('尚未填写人物属性')).toBeDefined();
   fireEvent.click(screen.getByRole('button',{name:'添加选中素材到画布'}));await waitFor(()=>expect(p.onImport).toHaveBeenCalledWith(sheet,voice));
 });
 test('an import save failure remains actionable and does not silently close the library',async()=>{

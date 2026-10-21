@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { StudioMediaImportResult } from '@ai-star-eco/types';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
-import { replaceStudioImage, validateStudioImageUpload } from './studio-image-upload';
+import { replaceStudioImage } from './studio-image-upload';
 import { studioLinkedInputError, studioLinkedNodes } from './studio-linked-inputs';
 import { studioNodeReferences } from './studio-script';
 
@@ -38,11 +38,5 @@ describe('upload into a workflow image slot', () => {
     expect(next.metadata?.images).toHaveLength(2);
     expect(next.metadata?.primaryImageId).toBe(next.metadata?.images?.[1].id);
     expect(() => replaceStudioImage([], [], slot.id, uploaded)).toThrow('移出画布');
-  });
-
-  it('rejects unsupported or oversized files before making an upload request', () => {
-    expect(() => validateStudioImageUpload({ name: 'product.jpg', size: 8 * 1024 * 1024 } as File)).not.toThrow();
-    expect(() => validateStudioImageUpload({ name: 'product.webp', size: 10 } as File)).toThrow('JPG 或 PNG');
-    expect(() => validateStudioImageUpload({ name: 'product.png', size: 50 * 1024 * 1024 + 1 } as File)).toThrow('50 MB');
   });
 });

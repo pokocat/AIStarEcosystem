@@ -52,6 +52,7 @@ import { parseStudioCaptions, studioWorkDraft, updateStudioWorkDraft } from "@/c
 import { StudioScriptSettingsForm } from "./studio-script-settings";
 import { StudioScriptEditor } from "./studio-script-editor";
 import { StudioTextComposer } from "./studio-text-composer";
+import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { scriptToMarkdown } from "@/canvas-bridge/studio-script-markdown";
 import { StudioTemplateLibrary } from "./studio-template-library";
 import { StudioSpeech } from "./studio-speech";
@@ -815,8 +816,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const unconfirmed = nodes.filter(n => n.metadata?.status==="loading" && (n.metadata.studio?.request||n.metadata.studio?.speechRequest||n.metadata.studio?.lipSyncRequest) && !runs.some(r=>r.id===n.metadata?.studio?.runId));
   const candidates=operation==="video"?models.video:models.image;
   const chosenModel=(operation!=="image"||capabilities?.imageModelMode!=="fixed")&&model&&candidates.some(m=>m.endpointId===model)?candidates.find(m=>m.endpointId===model):candidates.find(m=>m.isDefault) || candidates[0];
-  const textCandidates=capabilities?.textModels||[];
-  const chosenTextModel=(capabilities?.textModelMode!=="fixed"?textCandidates.find(m=>m.endpointId===model):undefined)||textCandidates.find(m=>m.isDefault)||textCandidates[0];
+  const chosenTextModel=studioChosenTextModel(capabilities,model);
   const imagePromptMaxChars=operation==="image"?chosenModel?.capability?.imagePromptMaxChars??null:null;
   const imageBatchCounts=chosenModel?.capability?.imageBatchCounts?.length?chosenModel.capability.imageBatchCounts:legacyBatchCounts;
   const imageRatioChoices=["3:4","9:16","16:9","1:1"].map(value=>({value,label:imageRatioLabel(value)}));

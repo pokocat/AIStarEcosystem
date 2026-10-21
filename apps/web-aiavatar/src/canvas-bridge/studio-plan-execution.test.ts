@@ -244,8 +244,7 @@ describe('the per-browser projected record is a deletion tombstone, even on an e
     inputs: { executionId: 'PEX-1' }, output: {}, createdAt: '2026-10-18T00:00:00Z' } as unknown as import('@ai-star-eco/types').IpRun;
   it('does not restore outputs this browser already projected, even when the user deleted every node', () => {
     expect(executionOutputMissing([run], [], new Set(['PEX-1-p-v1']))).toBe(false);
-  });
-  it('restores outputs on a browser that never projected them', () => {
+    // 反面：从没投影过的浏览器照常恢复
     expect(executionOutputMissing([run], [], new Set())).toBe(true);
   });
 });

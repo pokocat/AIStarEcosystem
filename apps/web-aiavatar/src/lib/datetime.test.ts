@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { formatDateTime } from "./datetime";
 
 describe("时间戳显示", () => {
-  it("统一成 年-月-日 时:分:秒", () => {
+  // 这个正则同时排除了 AM/PM 与「上午/下午」（24 小时制）
+  it("统一成 年-月-日 时:分:秒，24 小时制", () => {
     expect(formatDateTime("2026-09-09T06:49:36Z")).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+    expect(formatDateTime("2026-09-09T14:05:09Z")).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   });
 
   it("按本地时区算，不是把 ISO 前十位切下来", () => {
@@ -14,11 +16,6 @@ describe("时间戳显示", () => {
     expect(s.slice(0, 10)).toBe(
       `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, "0")}-${String(local.getDate()).padStart(2, "0")}`,
     );
-  });
-
-  it("24 小时制，不出现 AM/PM 也不出现「下午」", () => {
-    const s = formatDateTime("2026-09-09T14:05:09Z");
-    expect(s).not.toMatch(/[上下]午|AM|PM/i);
   });
 
   it("空值与坏值给占位，不显示 Invalid Date", () => {

@@ -5,7 +5,7 @@ const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import {useEffect,useState} from 'react';
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
-import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
+import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {ApiError} from '@ai-star-eco/api-client';
 import type {CanvasNodeData,CanvasConnection} from '@/canvas/types/canvas';
@@ -60,7 +60,8 @@ let snapshot:CanvasNodeData[]=[];
 let connectionSnapshot:CanvasConnection[]=[];
 function Host({initial=node,initialNodes,initialConnections=[],textEditingNodeId,renderTextEditor}:any){const[nodes,setNodes]=useState<CanvasNodeData[]>(initialNodes||[initial]);snapshot=nodes;const[connections,setConnections]=useState<CanvasConnection[]>(initialConnections);connectionSnapshot=connections;return <StudioWorkspace projectId="p" nodes={nodes} connections={connections} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={setConnections} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}} textEditingNodeId={textEditingNodeId} renderTextEditor={renderTextEditor}/>;}
 const openVideo=()=>{fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'v'}}));const summary=document.querySelector('.studio-composer-settings summary');if(summary)fireEvent.click(summary);};
-afterEach(cleanup);
+// If a fake-timer test times out under load its finally never runs; never leak fake timers into the next test.
+afterEach(()=>{vi.useRealTimers();cleanup();});
 beforeEach(()=>{vi.resetAllMocks();api.videoModels.mockResolvedValue([]);api.capabilities.mockResolvedValue({mock:false,operations:['video'],videoCost:80,textModels:[{endpointId:'a',name:'文本 A',isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]});api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});api.download.mockResolvedValue(undefined);api.save.mockResolvedValue('saved');api.project.mockResolvedValue({runsById:{}});api.history.mockResolvedValue({items:[],hasMore:false});api.submit.mockResolvedValue(done);api.read.mockResolvedValue(done);});
 test('plain text editing keeps extraction and body in one panel without a second context toolbar',async()=>{
  const text={...node,type:'text' as never,title:'文字',metadata:{content:'原文',status:'idle' as const}};
@@ -89,8 +90,10 @@ test('image composer targets its own upload slot and retains the draft while a p
  expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull();
  window.removeEventListener('studio-command',listener);
 });
-test('image composer only offers ratios stored on the selected model and blocks an old unsupported draft',async()=>{
- api.models.mockResolvedValue({image:[{endpointId:'ernie',name:'ERNIE',isDefault:true,creditCost:30,capability:{imageRatios:['1:1','9:16','16:9']}}],video:[]});
+// Ratios, batch sizes and the prompt limit all come from the selected endpoint (one render; the derivations are inline in the workspace).
+test('image composer offers only the ratios, batch sizes and prompt limit of the selected model and blocks an old unsupported draft',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'ernie',name:'ERNIE',isDefault:true,creditCost:30,capability:{imageRatios:['1:1','9:16','16:9'],imagePromptMaxChars:20000,imageBatchCounts:[1,3,5]}}],video:[]});
  const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
  render(<Host initial={image}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
@@ -102,6 +105,14 @@ test('image composer only offers ratios stored on the selected model and blocks 
  expect(within(ratio).getAllByRole('radio').map(option=>option.textContent)).toEqual(['3:4','1:1','9:16','16:9']);
  fireEvent.click(within(ratio).getByRole('radio',{name:'1:1'}));
  expect(within(panel).queryByText('当前模型不支持 3:4，请选择可用比例。')).toBeNull();
+ expect(within(within(panel).getByRole('radiogroup',{name:'候选数量'})).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1 张','3 张','5 张']);
+ // The endpoint's own limit (20000) replaces the legacy 16000 characters.
+ const prompt=within(panel).getByRole('textbox',{name:'创作要求'});
+ fireEvent.change(prompt,{target:{value:'a'.repeat(16001)}});
+ expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false);
+ fireEvent.change(prompt,{target:{value:'a'.repeat(20001)}});
+ expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(true);
+ expect(within(panel).getByRole('button',{name:'查看错误详情'})).toBeDefined();
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('image composer submits the exact chosen resolution and retains it in the saved draft',async()=>{
@@ -123,30 +134,6 @@ test('image composer submits the exact chosen resolution and retains it in the s
  fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
  await waitFor(()=>expect(api.submit).toHaveBeenCalled());
  expect(api.submit.mock.calls[0][1]).toMatchObject({model:'gpt',size:'2048x2048',aspectRatio:'1:1',count:1,maxCost:30});
-});
-test('image composer uses the selected endpoint prompt limit instead of the legacy 16000 characters',async()=>{
- api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
- api.models.mockResolvedValue({image:[{endpointId:'image',name:'图片模型',isDefault:true,creditCost:30,capability:{imageRatios:['3:4'],imagePromptMaxChars:20000}}],video:[]});
- const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
- render(<Host initial={image}/>);
- fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
- const panel=await screen.findByRole('dialog',{name:'生成图片'});
- await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'})).toHaveProperty('textContent',expect.stringContaining('图片模型')));
- const prompt=within(panel).getByRole('textbox',{name:'创作要求'});
- fireEvent.change(prompt,{target:{value:'a'.repeat(16001)}});
- expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(false);
- fireEvent.change(prompt,{target:{value:'a'.repeat(20001)}});
- expect(within(panel).getByRole('button',{name:'生成图片'}).disabled).toBe(true);
- expect(within(panel).getByRole('button',{name:'查看错误详情'})).toBeDefined();
-});
-test('image composer lists only batch sizes returned for the selected endpoint',async()=>{
- api.models.mockResolvedValue({image:[{endpointId:'image',name:'图片模型',isDefault:true,creditCost:30,capability:{imageBatchCounts:[1,3,5]}}],video:[]});
- const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
- render(<Host initial={image}/>);
- fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
- const panel=await screen.findByRole('dialog',{name:'生成图片'});
- const count=within(panel).getByRole('radiogroup',{name:'候选数量'});
- await waitFor(()=>expect(within(count).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1 张','3 张','5 张']));
 });
 test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};
@@ -183,15 +170,6 @@ test('editing reference images on an existing image generates in that node witho
  expect(snapshot.find(n=>n.id==='v')?.metadata?.images?.map(t=>t.storageKey)).toEqual(['old.jpg','new.jpg']);
  expect(snapshot.find(n=>n.id==='next-video')?.metadata?.studio?.upstreamChanged).toBe(true);
 });
-test('video generation shows video controls without result or image-upload actions',async()=>{
- render(<Host/>);openVideo();
- const panel=await screen.findByRole('dialog',{name:'生成视频'});
- expect(within(panel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
- expect(within(panel).queryByRole('button',{name:'加入成片'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'替换图片'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'下载视频'})).toBeNull();
-});
 test.each(['shot','work',undefined] as const)('regenerating an existing %s video keeps its node, connections and old version',async kind=>{
  const video={...node,metadata:{...node.metadata,prompt:'旧动作',seconds:'8',videos:undefined,primaryVideoId:undefined,studio:kind?{...node.metadata!.studio!,kind}:undefined}};
  const reference={...node,id:'ref',type:'image' as never,title:'新参考素材',metadata:{status:'success' as const,storageKey:'new-reference.jpg',content:'/reference.jpg'}};
@@ -206,18 +184,6 @@ test.each(['shot','work',undefined] as const)('regenerating an existing %s video
  expect(snapshot.find(n=>n.id==='v')?.metadata?.videos?.map(t=>t.storageKey)).toEqual(['old.mp4','new.mp4']);
  expect(snapshot.find(n=>n.id==='v')?.metadata?.videos?.[0]).toMatchObject({prompt:'旧动作',seconds:'8'});
  expect(snapshot.find(n=>n.id==='v')?.metadata?.status).toBe('success');
-});
-test('script creation can reference characters without image or video result actions',async()=>{
- const text={...node,type:'text' as never,title:'剧本',metadata:{status:'idle' as const,studio:{kind:'script' as const}}};
- render(<Host initial={text}/>);
- fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
- const panel=await screen.findByRole('dialog',{name:'创作剧本'});
- expect(within(panel).getByRole('textbox',{name:'创作要求'})).toBeDefined();
- expect(within(panel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
- expect(within(panel).getByRole('button',{name:'IP 人物库'})).toBeDefined();
- expect(within(panel).queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'上传图片'})).toBeNull();
 });
 test('storyboard script creation stays in detail and canvas reference picking returns with a saved graph edge without generating',async()=>{
  const image={...node,id:'product',type:'image' as never,title:'商品参考',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png'}};
@@ -279,12 +245,18 @@ test.each([['STUDIO_PRICE_CHANGED',409],['ENDPOINT_NOT_ALLOWED',503]] as const)(
  api.submit.mockRejectedValueOnce(new ApiError({code,message:'price changed'},status));render(<Host/>);openVideo();await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.error).toHaveBeenCalledWith('price changed'));const old=api.submit.mock.calls[0][1];fireEvent.change(screen.getByRole('textbox'),{target:{value:'edited after rejection'}});fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));await waitFor(()=>expect(api.submit).toHaveBeenCalledTimes(2));expect(api.submit.mock.calls[1][1].clientRequestId).not.toBe(old.clientRequestId);expect(api.submit.mock.calls[1][1].prompt).toBe('edited after rejection');
 });
 test('polling failure on an accepted batch keeps the original task locked without posting a replacement',async()=>{
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
+ try {
  const active={...done,status:'running',pct:20,output:{videoCandidates:[{index:0,jobId:'job',status:'running',pct:20,durationSec:8}]}};
  api.project.mockResolvedValue({runsById:{accepted:active}});api.read.mockRejectedValue(new TypeError('polling network failure'));
  render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();
- await waitFor(()=>expect(api.read).toHaveBeenCalledWith('accepted'),{timeout:3500});expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(screen.getByRole('button',{name:'查看原任务'})).toBeDefined();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(api.submit).not.toHaveBeenCalled();
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1300);});
+ expect(api.read).toHaveBeenCalledWith('accepted');expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(screen.getByRole('button',{name:'查看原任务'})).toBeDefined();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(api.submit).not.toHaveBeenCalled();
+ } finally {vi.useRealTimers();}
 });
-test.each(['save offline','document conflict'])('a local %s during unknown-task recovery retains the saved request and keeps ordinary generation locked',failure=>{
+// A local document conflict currently fails the same way (plain Error from save); add a case if it ever gets its own branch.
+test('a local save failure during unknown-task recovery retains the saved request and keeps ordinary generation locked',()=>{
+ const failure='save offline';
  return (async()=>{
   api.save.mockRejectedValueOnce(new Error(failure));render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request}}}}/>);openVideo();fireEvent.click(screen.getAllByRole('button',{name:'确认原任务'})[0]);await waitFor(()=>expect(api.error).toHaveBeenCalledWith(failure));
   expect(api.submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
@@ -320,7 +292,15 @@ test('video generation persists and submits the full edited camera instruction a
 
 test('closing and reopening the unified editor preserves an editable draft without changing or submitting the accepted request',async()=>{
  render(<Host/>);
+ // The task utility stays visible when a node composer opens.
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'tasks'}}));
+ await screen.findByRole('dialog',{name:'创作任务'});
  openVideo();
+ const videoPanel=await screen.findByRole('dialog',{name:'生成视频'});
+ expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined();
+ // Video generation shows video controls without result or image-upload actions.
+ expect(within(videoPanel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
+ for(const label of ['加入成片','加入 IP','替换图片','下载视频'])expect(within(videoPanel).queryByRole('button',{name:label})).toBeNull();
  await screen.findByRole('textbox',{name:'创作要求'});
  fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'镜头缓慢推进，保留人物服装'}});
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
@@ -329,6 +309,12 @@ test('closing and reopening the unified editor preserves an editable draft witho
  await waitFor(()=>expect((screen.getByRole('textbox',{name:'创作要求'}) as HTMLTextAreaElement).value).toBe('镜头缓慢推进，保留人物服装'));
  expect(snapshot[0].metadata?.studio?.composerDraft?.prompt).toBe('镜头缓慢推进，保留人物服装');
  expect(api.submit).not.toHaveBeenCalled();expect(snapshot[0].metadata?.storageKey).toBe('old.mp4');
+ // A completed video exposes recreation from its own composer: it saves first and opens the selected source without calling a model.
+ api.save.mockClear();
+ fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getByRole('button',{name:'解析视频'}));
+ const reportPanel=await screen.findByRole('dialog',{name:'解析视频'});
+ expect(within(reportPanel).queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(within(reportPanel).queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(within(reportPanel).getByLabelText('当前参考视频').textContent).toContain('old adopted');
+ expect(api.save).toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();
 });
 
 test('opening immediately after adding a node resolves the new document node before React props catch up',async()=>{
@@ -360,6 +346,11 @@ test('a new canvas script resumes its saved draft and generation fills that same
  render(<Host initialNodes={[]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script'}}));
  const input=await screen.findByRole('textbox',{name:'创作要求'});
+ // Script creation can reference characters without image or video result actions.
+ const scriptPanel=screen.getByRole('dialog',{name:'创作剧本'});
+ expect(within(scriptPanel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
+ expect(within(scriptPanel).getByRole('button',{name:'IP 人物库'})).toBeDefined();
+ for(const label of ['生成视频','加入 IP','上传图片'])expect(within(scriptPanel).queryByRole('button',{name:label,exact:true})).toBeNull();
  fireEvent.change(input,{target:{value:'小紫给花浇水，两个镜头。'}});
  await waitFor(()=>expect(snapshot).toHaveLength(1));const id=snapshot[0].id;
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
@@ -590,11 +581,10 @@ test('an adaptation draft restores its mode, chosen story and settings, then sna
  expect(api.submit.mock.calls[0][1].prompt).toContain('小紫在花园发现一株花。');expect(snapshot[0].metadata).toEqual(story.metadata);expect(connectionSnapshot).toEqual(expect.arrayContaining([expect.objectContaining({fromNodeId:'story',toNodeId:id})]));
 });
 
-test.each([
- {policy:'selectable',available:true,expectedModel:'model'},
- {policy:'fixed',available:true,expectedModel:'default-text'},
- {policy:'selectable',available:false,expectedModel:'default-text'},
-])('completed-script edits preserve the accepted request while the next split respects $policy models (previous model available: $available)',async({policy,available,expectedModel})=>{
+// The fixed / unavailable model cases are the rule itself and live in canvas-bridge/studio-text-model.test.ts;
+// this case pins that the split request is actually wired to studioChosenTextModel.
+test('completed-script edits preserve the accepted request while the next split keeps the previously chosen selectable model',async()=>{
+ const policy='selectable',available=true,expectedModel='model';
  api.capabilities.mockResolvedValue({mock:false,operations:['script','storyboard'],textCost:2,textModelMode:policy,textModels:[{endpointId:'default-text',name:'默认剧本模型',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},creditCost:2,isDefault:true},...(available?[{endpointId:'model',name:'原剧本模型',tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21},creditCost:2}]:[])]});
  const script={title:'花园故事',outline:'发现花朵',characters:[],scenes:[],props:[],episodes:[{no:1,title:'清晨',content:'小紫浇花。'}],shots:[]};
  const accepted={...request,operation:'script',settings:{genre:'都市治愈',core:'old'}};
@@ -651,29 +641,27 @@ test('a selected video with two takes keeps 问助手, 重新生成视频 and �
  expect(within(more).getByRole('combobox',{name:'采用版本'})).toBeDefined();
 });
 
-test('a queued video shows waiting instead of fake progress and can be stopped without a new submission',async()=>{
- const waiting={...done,status:'running',stage:'endpoint.queued',pct:0,output:{}};
- api.history.mockResolvedValue({items:[waiting],hasMore:false});api.cancel.mockResolvedValue({...waiting,status:'failed',errorCode:'IP_RUN_CANCELLED',cost:0});
- render(<Host/>);fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
- expect(await screen.findByText('排队中')).toBeDefined();
- expect(screen.queryByText('生成中 0%')).toBeNull();fireEvent.click(screen.getByRole('button',{name:'停止排队'}));
- await waitFor(()=>expect(api.cancel).toHaveBeenCalledWith('accepted'));expect(api.submit).not.toHaveBeenCalled();
-});
-
 test('queue polling advances the displayed position and stops after the original task is cancelled',async()=>{
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
+ try {
  const queued={...done,status:'running',stage:'endpoint.queued',pct:0,output:{},queue:{position:3,waiting:3,running:1,concurrencyLimit:1}};
  api.history.mockResolvedValue({items:[queued],hasMore:false});
  api.read.mockResolvedValue({...queued,queue:{...queued.queue,position:1,waiting:1}});
  api.cancel.mockResolvedValue({...queued,status:'failed',errorCode:'IP_RUN_CANCELLED',cost:0,queue:null});
  const pendingNode={...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,runId:'accepted'}}};
  render(<Host initial={pendingNode}/>);fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
- expect(await screen.findByText('排队第 3 位')).toBeDefined();
- expect(await screen.findByText('排队第 1 位',{}, {timeout:3000})).toBeDefined();
+ await act(async()=>{await vi.advanceTimersByTimeAsync(0);});
+ expect(screen.getByText('排队第 3 位')).toBeDefined();
+ expect(screen.queryByText('生成中 0%')).toBeNull();
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1300);});
+ expect(screen.getByText('排队第 1 位')).toBeDefined();
  expect(snapshot[0].metadata?.studio?.task?.queue?.position).toBe(1);
  fireEvent.click(screen.getByRole('button',{name:'停止排队'}));
- expect(await screen.findByText('已停止')).toBeDefined();
+ await act(async()=>{await vi.advanceTimersByTimeAsync(0);});
+ expect(screen.getByText('已停止')).toBeDefined();
  expect(snapshot[0].metadata?.studio?.task?.queue).toBeNull();
  expect(api.cancel).toHaveBeenCalledWith('accepted');expect(api.submit).not.toHaveBeenCalled();
+ } finally {vi.useRealTimers();}
 });
 
 test('canvas reference picking keeps the original draft and creates one real upstream connection without submitting',async()=>{
@@ -709,12 +697,6 @@ test('a previous panel save cannot close a newly selected node composer',async()
  saved();await waitFor(()=>expect((screen.getByRole('textbox',{name:'创作要求'}) as HTMLTextAreaElement).value).toBe('second prompt'));
  expect(screen.getByRole('dialog',{name:'生成视频'})).toBeDefined();expect(api.submit).not.toHaveBeenCalled();
 });
-test('task utility stays visible when a node composer opens',async()=>{
- render(<Host/>);fireEvent(window,new CustomEvent('studio-command',{detail:{action:'tasks'}}));
- await screen.findByRole('dialog',{name:'创作任务'});openVideo();
- expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined();expect(screen.getByRole('dialog',{name:'生成视频'})).toBeDefined();expect(api.submit).not.toHaveBeenCalled();
-});
-
  test.each(['assistant','batch'])('legacy editor entry opens the %s business node without the script editor',async kind=>{
   render(<Host initial={{...node,id:'special',type:'text',metadata:{studio:{kind}}}}/>);
   fireEvent(window,new CustomEvent('studio-command',{detail:{action:'editor',nodeId:'special'}}));
@@ -882,28 +864,37 @@ test('queued text edits keep the body, show queue position and prohibit duplicat
 
 beforeEach(() => { mountStudioErrorNotifications(api.error); });
 
-test('a completed video exposes recreation from its own composer and opens the selected source without calling a model',async()=>{
- render(<Host/>);openVideo();
- const videoPanel=await screen.findByRole('dialog',{name:'生成视频'});
- fireEvent.click(within(videoPanel).getByRole('button',{name:'解析视频'}));
- const reportPanel=await screen.findByRole('dialog',{name:'解析视频'});
- expect(within(reportPanel).queryByRole('combobox',{name:'复刻参考视频'})).toBeNull();expect(within(reportPanel).queryByRole('button',{name:'上传参考视频'})).toBeNull();expect(within(reportPanel).getByLabelText('当前参考视频').textContent).toContain('old adopted');
- expect(api.save).toHaveBeenCalled();expect(api.submit).not.toHaveBeenCalled();
-});
 
 
 // Model names and single-option visibility are the user-facing contract here. Since Codex's node settings (2026-10-20)
 // the model is a picker button showing the chosen name; a single option leaves it visible but not changeable.
-test.each(['fixed','selectable'])('image composer displays its single configured model in %s mode',async policy=>{
- api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageModelMode:policy,imageCost:8});
- api.models.mockResolvedValue({image:[{endpointId:'image-one',name:'图片模型一',isDefault:true,creditCost:8}],video:[]});
+// Single option (any mode) and fixed mode with several options both leave the picker visible but not changeable,
+// for the image, text and script composers alike. The fixed + several case had no coverage before 2026-10-20.
+test.each([
+ {policy:'selectable',count:1},
+ {policy:'fixed',count:2},
+] as const)('image, text and script composers show their model but disable picking in $policy mode with $count option(s)',async({policy,count})=>{
+ const textModels=[{endpointId:'text-one',name:'文本模型一',isDefault:true,tokenPricing:{maxCost:21}},{endpointId:'text-two',name:'文本模型二',isDefault:false,tokenPricing:{maxCost:21}}].slice(0,count);
+ api.capabilities.mockResolvedValue({mock:false,operations:['image','text','script'],imageModelMode:policy,textModelMode:policy,imageCost:8,textModels});
+ api.models.mockResolvedValue({image:[{endpointId:'image-one',name:'图片模型一',isDefault:true,creditCost:8},{endpointId:'image-two',name:'图片模型二',creditCost:12}].slice(0,count),video:[]});
  const image={...node,type:'image' as never,metadata:{status:'idle' as const}};
- render(<Host initial={image}/>);
+ const text={...node,id:'t',type:'text' as never,title:'文字',metadata:{content:'原文'}};
+ const script={...node,id:'s',type:'text' as never,title:'剧本',metadata:{status:'idle' as const,studio:{kind:'script' as const}}};
+ render(<Host initialNodes={[image,text,script]}/>);
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
- const picker=within(panel).getByRole('button',{name:'生成模型'});
- await waitFor(()=>expect(picker.textContent).toContain('图片模型一'));
- expect(picker).toHaveProperty('disabled',true);
+ const imagePicker=within(panel).getByRole('button',{name:'生成模型'});
+ await waitFor(()=>expect(imagePicker.textContent).toContain('图片模型一'));
+ expect(imagePicker).toHaveProperty('disabled',true);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'text',nodeId:'t'}}));
+ const textPicker=await screen.findByRole('button',{name:'文本模型'});
+ await waitFor(()=>expect(textPicker.textContent).toContain('文本模型一'));
+ expect(textPicker).toHaveProperty('disabled',true);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'s'}}));
+ const scriptPicker=await screen.findByRole('button',{name:'剧本模型'});
+ await waitFor(()=>expect(scriptPicker.textContent).toContain('文本模型一'));
+ expect(scriptPicker).toHaveProperty('disabled',true);
+ expect(scriptPicker.closest('details')).toBeNull();
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('image model switching submits the selected endpoint and its price',async()=>{
@@ -922,27 +913,8 @@ test('image model switching submits the selected endpoint and its price',async()
  await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1]).toMatchObject({model:'image-two',maxCost:12});
 });
-test.each(['fixed','selectable'])('text composer keeps its single configured model visible in %s mode',async policy=>{
- api.capabilities.mockResolvedValue({mock:false,operations:['text'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'文本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
- render(<Host initial={{...node,type:'text' as never,metadata:{content:'原文'}}}/>);
- fireEvent(window,new CustomEvent('studio-command',{detail:{action:'text',nodeId:'v'}}));
- const picker=await screen.findByRole('button',{name:'文本模型'});
- await waitFor(()=>expect(picker.textContent).toContain('文本模型一'));
- expect(picker).toHaveProperty('disabled',true);
- expect(api.submit).not.toHaveBeenCalled();
-});
-test.each(['fixed','selectable'])('script composer shows its single %s model outside collapsed settings',async policy=>{
- api.capabilities.mockResolvedValue({mock:false,operations:['script'],textModelMode:policy,textModels:[{endpointId:'text-one',name:'剧本模型一',isDefault:true,tokenPricing:{maxCost:21}}]});
- render(<Host initial={{...node,type:'text' as never,metadata:{status:'idle',studio:{kind:'script'}}}}/>);
- fireEvent(window,new CustomEvent('studio-command',{detail:{action:'script',nodeId:'v'}}));
- const picker=await screen.findByRole('button',{name:'剧本模型'});
- await waitFor(()=>expect(picker.textContent).toContain('剧本模型一'));
- expect(picker).toHaveProperty('disabled',true);
- expect(picker.closest('details')).toBeNull();
- expect(api.submit).not.toHaveBeenCalled();
-});
 
-test('native video adds references from text mode without losing graph inputs, then sends exact frames and price',async()=>{
+test('native video adds and removes references without losing graph inputs, keeps an explicit compatible mode, then sends exact frames and price',async()=>{
  const native={endpointId:'model',batchCounts:[1,2,4],contract:{modes:[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'first_last_frame_video',label:'首尾帧',needsFirstFrame:true,needsLastFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}],tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16',width:768,height:1365}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},first_last_frame_video:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}};
  api.videoModels.mockResolvedValue([native]);
  const first={...node,id:'first',type:'image' as never,title:'第一张图',metadata:{storageKey:'first.png',content:'/first.png'}},last={...first,id:'last',title:'第二张图',metadata:{storageKey:'last.png',content:'/last.png'}};
@@ -956,22 +928,27 @@ test('native video adds references from text mode without losing graph inputs, t
  pick('last');await waitFor(()=>expect(screen.getByRole('radio',{name:'首尾帧'}).getAttribute('aria-checked')).toBe('true'));
  expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first','last']);
  expect(screen.getByRole('radio',{name:/图生视频/})).toHaveProperty('disabled',true);
+ // Removing inputs walks the mode back (首尾帧 -> 图生视频 -> 文生视频) and deletes the real edges.
+ fireEvent.click(screen.getByRole('button',{name:'移除参考 第二张图'}));
+ await waitFor(()=>expect(screen.getByRole('radio',{name:'图生视频'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);
+ fireEvent.click(screen.getByRole('button',{name:'移除参考 第一张图'}));
+ await waitFor(()=>expect(screen.getByRole('radio',{name:'文生视频'}).getAttribute('aria-checked')).toBe('true'));
+ expect(connectionSnapshot).toHaveLength(0);
+ // An explicit compatible mode survives adding a reference.
+ fireEvent.click(screen.getByRole('radio',{name:'全能参考'}));
+ pick('first');
+ await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']));
+ expect(screen.getByRole('radio',{name:'全能参考'}).getAttribute('aria-checked')).toBe('true');
+ pick('last');
+ await waitFor(()=>expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first','last']));
+ expect(screen.getByRole('radio',{name:'全能参考'}).getAttribute('aria-checked')).toBe('true');
+ fireEvent.click(screen.getByRole('radio',{name:'首尾帧'}));
+ await waitFor(()=>expect(screen.getByRole('radio',{name:'首尾帧'}).getAttribute('aria-checked')).toBe('true'));
+ expect(api.submit).not.toHaveBeenCalled();
  fireEvent.click(within(screen.getByRole('dialog',{name:'生成视频'})).getAllByRole('button',{name:'生成视频',exact:true}).at(-1)!);
  await waitFor(()=>expect(api.submit).toHaveBeenCalled());
  const sent=api.submit.mock.calls[0][1];expect(sent.video).toMatchObject({mode:'first_last_frame_video',firstFrameKey:'first.png',lastFrameKey:'last.png'});expect(sent.maxCost).toBe(320);expect(sent.references).toEqual([]);
-});
-
-test('native video removes the last reference back to text and retains an explicit compatible reference mode',async()=>{
- const modes=[{mode:'t2v',label:'文生视频'},{mode:'i2v',label:'图生视频',needsFirstFrame:true},{mode:'universal_reference_video',label:'全能参考',references:{image:{maxCount:3},video:{maxCount:1},audio:{maxCount:1},maxTotal:4,maxImagesWithVideo:2,minVisual:1,maxAudioTotalSec:15}}];
- api.videoModels.mockResolvedValue([{endpointId:'model',contract:{modes,tiers:[{tier:'768p',canvases:[{aspectRatio:'9:16'}]}],minSeconds:5,maxSeconds:15,promptMaxChars:7000,seedMax:100},pricing:{perSecond:{t2v:{'768p':40},i2v:{'768p':40},universal_reference_video:{'768p':45}},freeRefImages:1,extraRefImagePerSecond:2}}]);
- const image={...node,id:'first',type:'image' as never,title:'参考图片',metadata:{storageKey:'first.png',content:'/first.png'}};
- render(<Host initialNodes={[{...node,metadata:{prompt:'动作自然',status:'idle'}},image]}/>);await waitFor(()=>expect(api.videoModels).toHaveBeenCalled());openVideo();
- await screen.findByRole('button',{name:'视频模式'});
- fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));await screen.findByRole('button',{name:'移除参考 参考图片'});
- fireEvent.click(screen.getByRole('button',{name:'移除参考 参考图片'}));await waitFor(()=>expect(screen.getByRole('radio',{name:'文生视频'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot).toHaveLength(0);
- fireEvent.click(screen.getByRole('radio',{name:'全能参考'}));
- fireEvent(window,new CustomEvent('studio-reference-selected',{detail:{nodeId:'first',targetId:'v'}}));
- await waitFor(()=>expect(screen.getByRole('radio',{name:'全能参考'}).getAttribute('aria-checked')).toBe('true'));expect(connectionSnapshot.map(c=>c.fromNodeId)).toEqual(['first']);expect(api.submit).not.toHaveBeenCalled();
 });
 
 test('frame-intent confirmation opens the compact picker, preserves the requested two-frame mode and does not submit early',async()=>{

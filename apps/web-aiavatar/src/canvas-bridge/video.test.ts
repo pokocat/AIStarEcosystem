@@ -62,12 +62,11 @@ describe("画布视频提交", () => {
 
   // 与出图同一个缺陷（v0.179 修）：`videoModel` 是全局默认，排在 `config.model` 前面
   // 就等于「节点上选了个模型，跑的还是默认那个」，而界面按选中的那个标价。
-  it("节点上选的视频模型（config.model）胜过全局默认（config.videoModel）", async () => {
+  // 同一条优先级链：config.model → videoModel → 不传（服务端走默认端点）。
+  it("节点上选的视频模型（config.model）胜过全局默认（config.videoModel）；没有才回落，都空就不传", async () => {
     await createVideoGenerationTask({ ...cfg, model: "节点选的", videoModel: "全局默认" } as never, "x", []);
     expect(generateVideoMock.mock.calls[0][1].model).toBe("ep-节点选的");
-  });
-
-  it("没有 model 时才回落 videoModel；两个都空就不传（服务端走默认端点）", async () => {
+    generateVideoMock.mockClear();
     await createVideoGenerationTask({ ...cfg, model: "", videoModel: "全局默认" } as never, "x", []);
     expect(generateVideoMock.mock.calls[0][1].model).toBe("ep-全局默认");
     generateVideoMock.mockClear();
@@ -226,19 +225,12 @@ describe("一键建数字名片", () => {
 // 接回来的凭据。所以这个判断必须站在「还没结束」那一边：抹早了，用户只能重新出一次片、
 // 再付一次钱。上游是「除了取消都算失败」，那个默认方向在本仓会把一次网络抖动变成一次重复付费。
 describe("哪些错误代表「这条任务已经结束了」", () => {
-  it("服务端明确说失败 = 是（任务号可以丢）", () => {
+  // 服务端明确说失败 = 是（任务号可以丢）；前端等超时（任务还在服务端跑）、网络抖动
+  // （轮询这一下没成功）、用户取消 = 不是，任务号要留着。
+  it("只有服务端明确说失败才算结束", () => {
     expect(isVideoTaskFailed(new VideoTaskFailed("视频生成失败，积分已退回"))).toBe(true);
-  });
-
-  it("前端等超时 = 不是（任务还在服务端跑，任务号要留着）", () => {
     expect(isVideoTaskFailed(new Error("等太久了（任务号 mvj_1）"))).toBe(false);
-  });
-
-  it("网络抖动 = 不是（轮询这一下没成功，不代表任务失败）", () => {
     expect(isVideoTaskFailed(new TypeError("Failed to fetch"))).toBe(false);
-  });
-
-  it("用户取消 = 不是", () => {
     expect(isVideoTaskFailed(new GenerationCanceled())).toBe(false);
   });
 });

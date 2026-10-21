@@ -73,7 +73,8 @@ test("the browser's reading of the file replaces the stored length", () => {
   Object.defineProperty(thumb, "duration", { value: 5.04 }); Object.defineProperty(thumb, "videoWidth", { value: 1280 }); Object.defineProperty(thumb, "videoHeight", { value: 720 });
   fireEvent.loadedMetadata(thumb);
   expect(screen.getByText("已选 1/1 段 · 共 5 秒")).toBeTruthy();
-  expect(screen.getByText("横屏画面，成片里上下会留黑边")).toBeTruthy();
+  // 提示的措辞在 studio-work-clips.test.ts「letterbox hints」里测；这里只钉「读到画面尺寸后提示出现」
+  expect(screen.getByText(/留黑边/)).toBeTruthy();
 });
 
 test("captions get times from the clips, and a caption past the end is caught", () => {
@@ -82,9 +83,9 @@ test("captions get times from the clips, and a caption past the end is caught", 
   fireEvent.click(screen.getByRole("button", { name: "按片段填好时间" }));
   const box = screen.getByRole("textbox", { name: "成片字幕时间与文字" }) as HTMLTextAreaElement;
   expect(box.value).toBe("0-5: \n5-9: ");
-  expect(screen.getAllByText("第 1 条字幕还没写内容").length).toBeGreaterThan(0);
+  // 字幕问题的判定与措辞在 studio-work-clips.test.ts「caption problems match」；这里只钉合成按钮被它拦住
+  expect(assembleButton().disabled).toBe(true);
   fireEvent.change(box, { target: { value: "0-5: 第一句\n5-12: 第二句" } });
-  expect(screen.getAllByText("第 2 条字幕结束在 12 秒，成片只有 9 秒").length).toBeGreaterThan(0);
   expect(assembleButton().disabled).toBe(true);
   fireEvent.change(box, { target: { value: "0-5: 第一句\n5-9: 第二句" } });
   expect(assembleButton().disabled).toBe(false);

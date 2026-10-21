@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { prepareStudioImageUpload, STUDIO_IMAGE_UPLOAD_MAX_BYTES } from './studio-image-file';
+import { prepareStudioImageUpload, STUDIO_IMAGE_UPLOAD_MAX_BYTES, validateStudioImageUpload } from './studio-image-file';
 
 afterEach(() => vi.unstubAllGlobals());
 function renderer(mime: string, sizes: number[], { width = 6000, height = 4000, bytes = 9 * 1024 * 1024 } = {}) {
@@ -45,6 +45,10 @@ test('invalid and excessive originals are rejected before decoding', async () =>
   await expect(prepareStudioImageUpload({ name: 'large.png', size: 51 * 1024 * 1024 } as File)).rejects.toThrow('50 MB');
   await expect(prepareStudioImageUpload({ name: 'fake.exe', size: 9 * 1024 * 1024 } as File)).rejects.toThrow('JPG');
   expect(decode).not.toHaveBeenCalled();
+  // 边界（原 studio-image-upload.test.ts）：8 MB 的 JPG 照收，webp 不收，50 MB 多 1 字节不收
+  expect(() => validateStudioImageUpload({ name: 'product.jpg', size: 8 * 1024 * 1024 } as File)).not.toThrow();
+  expect(() => validateStudioImageUpload({ name: 'product.webp', size: 10 } as File)).toThrow('JPG 或 PNG');
+  expect(() => validateStudioImageUpload({ name: 'product.png', size: 50 * 1024 * 1024 + 1 } as File)).toThrow('50 MB');
 });
 
 // Production 2026-10-20: an image under 8 MB but over the server's pixel limits went up as it was and was refused with
