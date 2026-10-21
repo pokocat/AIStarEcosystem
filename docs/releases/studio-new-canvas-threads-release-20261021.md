@@ -63,3 +63,65 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 - 核对中如果事件流快照已经显示该卡已确认、制作已结束，核对锁仍要等下一次重发成功才释放。
 - 确认请求明确返回 401 时仍按「结果不明」重试（登录跳转会卸载页面兜底）。
 - `GlobalExceptionHandler.isClientDisconnect` 在响应已开始写出时，把消息含 `Connection reset by peer` 的上游断连也当成客户端断开，只记 DEBUG（已下线的 Forge 流可触发）。
+
+## 热修 `20261021-studio-action-format`（2026-10-21 14:11 CST，只发 server）
+
+### 现象
+
+13:50 CST，一张画布上只有一张图片「生成末日英雄IP设定图」，用户对助手说「做个ip形象三视图」。对话端点「聚算 · Qwen3.8 27B」（`qwen38-27b`，没声明原生工具调用，走 JSON 动作协议、非流式）整条回复只有 `[调用工具 view_images]`（7 个 token，toolCalls=0）。`DialogueActionProtocol` 没认出这是一次想调用工具，当正文显示，回合结束，扣 2 积分，什么都没做。
+
+### 原因
+
+本次发布（v20 提示词）把 `dap.ip_studio_skill_dialogue.md` 第 3 行从「调用前先用一两句话告诉用户你准备看什么、做什么」改成「调用前不用预告…」。模型没有正文可写，提示词里又只有格式描述、没有完整的动作示例，于是自己编了一种写法。解析器只认分隔行、`<tool_call>` / `<studio-actions>` 标签、裸 JSON 和模仿工作记录这几种，不认这一种。
+
+用同一份线上请求（日志里 13:50:25 那条 `[ai-chat-io] REQUEST`，system 与 v20 提示词逐字一致）在本机真调旧提示词 5 次：3 次正常给出 `view_images`，1 次整条回复是 `[用户已确认]`（6 token），1 次只写「画布上有一张「分镜」图，我先看看它的内容。」没有动作。线上那种写法没有复现，但同一类「什么都没做」5 次里出了 2 次。
+
+### 修法（main `6b089c8b`，分支 `fix/studio-action-format-20261021` 快进）
+
+- **解析器**：`DialogueActionProtocol.ProseCallFilter` 按已注册的工具名（`StudioDialogueToolRegistry.names()`）认出写成正文的调用：带括号加「调用工具 / 使用工具 / 工具」的任意位置（`[调用工具 view_images]`、`[调用工具：view_images]`、`[使用工具 read_canvas]`、`[工具 view_images]`，也认 【】），不带括号的整行（`调用工具 view_images`），只有工具名的整条回复（`[view_images]`、`view_images()`）。没有真正的动作时按格式错误走 `DialogueLoop` 的纠正重试；这段文字流式、非流式都不显示（流式与 `parse` 用同一个过滤器，切在哪里结果都一样）。带括号的模仿工作记录也一并不显示（此前会显示）。正文里只是谈到「工具」、或工具名不在注册表里的，照常显示。
+- **纠正提示**：`DialogueLoop.correctionText` 在原因后面带一个完整动作示例（分隔行 + `[{"tool":"view_images","args":{"nodeIds":["对象 id"],"question":"想确认什么"}}]`，参数名就是 `view_images` 的真实参数）。
+- **提示词**：第 3 行改为「调用工具时，正文可以只写一句在做什么……但动作必须按文末的格式发出，不要在正文里写「[调用工具 xxx]」这类文字」；「动作输出方式」后补一个完整示例（一句正文 + 分隔行 + 一个 `view_images` 动作）。`PromptTemplateSeeder.SEED_VERSION` → `v21-2026-10-21-action-format-example`。
+- **测试**：每种写法各有用例（含切成两段的每个位置与逐字流式都等于 `parse` 的结果）、谈到工具的正文不误判、纠正提示里的示例能被解析器认出、提示词里的示例能被解析为 `view_images` 且参数都是它声明过的。
+
+### 真模型验证（本机，没有用生产密钥）
+
+用本机开发库副本里已有的聚算凭据（`.studio-e2e` 开发库的 `studio-live-jusuan-audio` 端点，本地开发密钥加密），直连 `https://api.jusuanhub.com/v1/chat/completions`，`model=qwen38-27b`、`temperature=0.7`、`max_tokens=4096`、非流式；消息就是线上 13:50 那条请求，只换 system。回复用服务端自己的 `DialogueActionProtocol.parse` 解析：
+
+| 场景 | 次数 | 可解析的动作 |
+|---|---|---|
+| 新提示词（含 1 次探测） | 6 | 6 次都是一句正文 + `view_images`，`nodeIds` 填的是画布里真实的对象 id，不是示例里的「对象 id」 |
+| 旧提示词（对照） | 5 | 3 次；另 2 次见上「原因」 |
+| 上一条回复是 `[调用工具 view_images]`，接新纠正提示（system 用旧提示词 3 次、新提示词 2 次） | 5 | 5 次 |
+
+每次输入约 6.2k–6.5k token、输出 6–108 token。这里只验到「第一步能不能正确发出看图动作」；之后看图、出方案、发卡在真模型上的效果没有再走。
+
+### 门禁
+
+- `(cd apps/server && ./mvnw compile -q -o)`：退出码 0。
+- `./mvnw -o -q -Dtest='DialogueActionProtocol*,DialogueLoop*,StudioDialogue*,PromptTemplate*' test`：13 个测试类 110 条，0 失败（没有名为 `PromptTemplate*` 的测试类）；`com.aistareco.aep.ipstudio.**` 全部 111 个类 748 条，0 失败，5 条跳过。
+- `pnpm check:api-contract`：`OK.`。没有新接口、没有迁移。
+
+### 制品与发布
+
+- 发布前核对：`/opt/ai-star-eco/releases` 最新为 `20261021-studio-new-canvas-threads`（GIT_SHA `c6f67b7b…`），线上 `server/app.jar` sha256 `51750131…` 与该制品一致，没有更新的发布。
+- 在 `AIStarEcosystem-main-release` 的 `main`（`6b089c8b`）构建 `RELEASE_ID=20261021-studio-action-format ./infra/scripts/build-release.sh server`：`manifest.env` 的 `SERVICES='server'`、`GIT_SHA='6b089c8bce48703cc8bb310b6f4c37bd6544fab7'`，`checksums.sha256` 两项校验通过；`server/app.jar` sha256 `cb9ede3e75fc7623b2954a358a2fcaa063744ab1526f0088d3e60785237a747c`。jar 内 `PromptTemplateSeeder` 的版本串为 `v21-2026-10-21-action-format-example`，`dap.ip_studio_skill_dialogue.md` 含新示例、不含「调用前不用预告」；迁移最高仍是 V63。
+- `deploy-release.sh … server`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- 新进程 PID 1335942 于 **14:11:26 CST** 启动，`Successfully validated 63 migrations`、`Current version of schema aistareco: 63`，`Started AiStarEcoApplication in 15.209 seconds`（14:11:42），`NRestarts=0`；线上 jar sha256 `cb9ede3e…` 与制品一致。
+- 启动日志：`PromptTemplateSeeder: 刷新 54 个未改动的 prompt 基线 → v21-2026-10-21-action-format-example`（14:11:43）。
+- 库 `prompt_template`（只读查询）：`dap.ip_studio_skill_dialogue` 为 `version=1, updated_by=seed`，更新于 06:11:43Z；含「完整示例（一句正文」与 `[{"tool":"view_images","args":{"nodeIds"` 那一行、含新第 3 行，不含「调用前不用预告」。
+- 日志 ERROR：grep `' -ERROR | ERROR [0-9]+ ---'` 对今天 00:00–14:11:00 计数 187 条（旧进程），证明 grep 能命中；14:11:00 之后的 2 条是旧进程 PID 1323856 停机时 14:11:07 打的（`AccessDeniedException … response is already committed`）。按新进程 PID 过滤至 14:12:10：**0 条 ERROR**，2 条 WARN（Hibernate 方言弃用提示、UserDetailsServiceAutoConfiguration，常规启动提示）。
+- **没做**：没用生产账号在线上真发一条对话（需要用户登录，且每轮会扣积分）。建议用户在那张画布上再说一次「做个ip形象三视图」，确认第一步是「先看一下……」并真的看了图。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-new-canvas-threads/server/app.jar` 的 sha256 `51750131…` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-new-canvas-threads server
+```
+
+无迁移；回滚后提示词按 v20 刷回（只刷没人改过的行），web-aiavatar 不涉及。
