@@ -164,3 +164,71 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 只回 web-aiavatar，server 不动；回滚后桌面 `/create` 恢复为进来即建画布。
+
+## 热修 `20261021-studio-action-marker`（2026-10-21 14:36 CST，只发 server）
+
+### 现象
+
+14:10 CST（旧进程 PID 1323856，还是 v20 提示词；14:11 的 `20261021-studio-action-format` 不覆盖这一次），一张画布上有两张图（「生成末日英雄IP设定图」「生成末日英雄三视图」），上一轮出图刚做完，用户说「用这张图做一段视频」。对话端点「聚算 · Qwen3.8 27B」（`qwen38-27b`，JSON 动作协议、非流式）三次都回了同样内容：一句「我先把两张图都看一下，确认用哪张、画面里有什么。」+ 分隔行 + 正确的 `view_images` 动作（两个真实对象 id），但数组后面又写了一行 `<<<studio-actions>>>`。`DialogueActionProtocol` 要求分隔行后只有一个 JSON 值，三次都判格式错误，`DialogueLoop` 重试两次后停下，界面上同一句正文显示了三遍，最后一行「这一轮整理出的操作格式不对，没有执行任何操作。回复「继续」我重新整理。」，扣 5 积分。三次原始回复已从线上日志 `[upstream-io] RESPONSE`（requestId `aic-dd2ed2a1…` / `aic-1f50e7bb…` / `aic-5a39d8c7…`）核对，两次紧凑写法、一次带空格。
+
+另：线程技能一直是「出图」。`video-generation.md` 的关键词没有「做一段视频」这类说法，消息里没有词命中，画布上的图片让出图和出视频各得 1 分，平手沿用当前技能「出图」；而「用这张图做一段视频」正是 `StudioExecutionSummary` 在出图完成后自己给的建议。
+
+### 原因
+
+- 解析器对分隔行后的内容严格到「只能有一个 JSON 值」，没有容忍模型把分隔行当成成对标记、在数组后面再写一遍。
+- `DialogueModels.Real` 对非流式端点在解析之前就把每次回复的正文发给用户，格式错误重试时每次的正文都会追加一遍。
+- 自己给的完成后建议没有路由测试，出视频的关键词覆盖不到建议里的说法。
+
+### 修法（main `1ebcaea6`，分支 `fix/studio-action-marker-20261021` 快进）
+
+- **解析器**：`DialogueActionProtocol.stripClosing` 只看动作块的末尾，去掉最多两行明显的收尾：分隔行再写一次、`<<</studio-actions>>>`、`<<<end>>>`、`<<<end-studio-actions>>>`（`-` / `_` 都认）、`</studio-actions>`、代码围栏收尾，大小写不敏感；之后仍按原来的严格规则解析。数组后面还有正文、第二个数组、收尾后又跟了文字，都照旧判格式错误、一个都不执行。分隔行之后的内容流式时本来就不显示，结束标记不会出现在正文里。
+- **正文只显示一次**（`DialogueModels.Real` + `DialogueLoop.Model.endTurn`）：被判格式错误的那次回复先不显示；重试那次不再流式，解析完再决定显示什么。重试成功显示成功那次的正文；成功那次没写正文（纠正提示里说了「正文不必重复」）就显示之前压着的那句；全部失败在回合结束时只显示最后一次的正文一次，再加失败说明。流式端点第一次被判错的正文已经实时出去了，重试只显示比已显示内容多出来的部分（开头相同的去掉）。选「重试不流式」而不是「每次都流再去重」：已经发出去的 `message.delta` 收不回来。
+- **失败说明**：`limitNote("protocol")` 改为「这一轮没能执行，请再说一次。」
+- **纠正提示**（`DialogueLoop.correctionText`）与**对话提示词**「动作输出方式」各补一句「分隔行 `<<<studio-actions>>>` 只写一次，数组后面不要再写」，其余不动；`PromptTemplateSeeder.SEED_VERSION` → `v22-2026-10-21-single-action-marker`。
+- **路由**：`video-generation.md` 的 `triggers.keywords` 补「做一段视频 / 做段视频 / 做个视频 / 做一个视频 / 生成一段视频 / 做成一段视频」。没有单独加「一段视频」「生成一段」「做成一段」：路由按命中词数计分，这三个裸词会让「写一段视频脚本」「生成一段口播文案」与写稿平手或抢走，「照这条做一段视频」（附参考视频）落到出视频而不是复刻。技能文件内容变了，启动时按文件摘要追加为新的种子版本（库里这一行没被后台改过才会追加），不需要另外升版本。
+- **测试**：线上这条回复的三种空格写法（紧凑、带空格、换行缩进）都解析为 `view_images` 且正文只剩那一句，每一种收尾 × 数组 / 单个对象 × 有无换行，逐字流式和任意切两段都等于 `parse` 的结果、不含 `<<`；数组后面还有正文、第二个数组、收尾后又有文字、三行收尾、`<<<stop>>>` 都仍判错。`DialogueRetryDisplayTest` 用真的 `DialogueModels.Real` 跑真的循环（模拟供应商），流式和非流式各验：重试 1 次后成功正文只出现一次、重试没写正文时显示原来那句、三次都失败只显示一次、流式重试只补多出来的部分、没有格式错误时显示与之前一致、线上原样回复第一次就执行。`StudioSuggestionRoutingTest` 用仓库里的技能文件，把 `StudioExecutionSummary.suggestions` 能产出的 13 条建议逐条钉住：「用这张图 / 这些图做一段视频」在任何当前技能、有无图片引用时都去出视频，「换个风格再出一张 / 一组」去出图，其余（合成成片、存为模板、换横竖屏再出一版、重做第 N 段、接着做、改精炼、再试一次）都不切换；另验新词不抢写稿、复刻和意图文档 §7 的几条。`StudioDialoguePromptWiringTest` 钉住提示词与纠正提示里的这句、示例里只有一行分隔行且数组后面没东西。本地确认过：换回旧的 `DialogueModels` 时 `DialogueRetryDisplayTest` 6 条里 3 条失败（正文出现两次），去掉新关键词时 `StudioSuggestionRoutingTest` 2 条失败。
+
+### 真模型验证（本机，没有用生产密钥）
+
+用本机开发库副本里的聚算凭据（`studio-live-jusuan-audio` 端点，本地开发密钥加密），直连 `https://api.jusuanhub.com/v1/chat/completions`，`model=qwen38-27b`、`temperature=0.7`、`max_tokens=4096`、非流式。消息取线上 14:09:59 那条 `[ai-chat-io] REQUEST`（requestId `aic-dd2ed2a1…`，system 与 v20 逐字一致，user 里技能是「出图」），只换 system；第二组再把技能段换成修复后路由会选的「出视频」（按 `skillText` / `stageText` 的写法拼出）。回复用服务端自己的 `DialogueActionProtocol.parse` 解析：
+
+| 场景 | 次数 | 可解析 | 分隔行写了几次 | 动作 |
+|---|---|---|---|---|
+| v22 提示词 + 线上原请求（出图） | 5 | 5 | 每次 1 次 | `read_skill`（换到 video-generation）2 次、`view_images` 2 次（真实对象 id）、`read_canvas` 1 次 |
+| v22 提示词 + 技能段换成出视频 | 5 | 4 | 可解析的每次 1 次 | `view_images` 2、`create_nodes`（9:16、5 秒、以三视图为首帧）2；另 1 次整条回复是「[调用工具 view_images]」（上一个热修认的写法，按格式错误重试） |
+| 上一行那条「[调用工具 view_images]」+ 新纠正提示 | 3 | 3 | 每次 1 次 | `view_images` 3 次，各带一句正文 |
+| 线上当前的 v21 提示词 + 线上原请求（对照） | 3 | 3 | 每次 1 次 | `read_skill`（video-generation）3 次 |
+
+16 次里没有一次在数组后面再写分隔行（线上 v20 那次是 3/3），所以「v22 那句话本身有没有用」没有直接证据；有直接作用的是解析器容忍和测试。每次输入约 7.5k–7.8k token、输出 7–293 token。只验到第一步能不能正确发出动作，之后看图、出方案、发卡在真模型上没有再走。
+
+### 门禁
+
+- `(cd apps/server && ./mvnw compile -q -o)`：退出码 0。
+- `./mvnw -o -Dtest='DialogueActionProtocol*,DialogueLoop*,DialogueRetry*,StudioDialogue*,StudioSkill*,StudioExecutionSummary*,StudioSuggestion*,PromptTemplate*' test`：164 条，0 失败（没有名为 `PromptTemplate*` 的测试类）。`com.aistareco.aep.ipstudio.**` 全部 113 个类 762 条，0 失败，5 条跳过。
+- `pnpm check:api-contract`：`OK.`。没有新接口、没有迁移。
+
+### 制品与发布
+
+- 发布前核对：`/opt/ai-star-eco/releases` 最新为 `20261021-studio-create-page`（web-aiavatar，`0222df1a`）与 `20261021-studio-action-format`（server，`6b089c8b…`），两个提交都在 main 历史里；线上 `server/app.jar` sha256 `cb9ede3e…` 与 `20261021-studio-action-format` 制品一致。`AIStarEcosystem-main-release` 工作区干净、没有构建 / 发布进程在跑，main `34f71485` 快进到 `1ebcaea6`。
+- 在 `AIStarEcosystem-main-release` 的 `main`（`1ebcaea6f8e208578cc8c0220c473852d3f2d27f`）构建 `RELEASE_ID=20261021-studio-action-marker ./infra/scripts/build-release.sh server`：`manifest.env` 为 `SERVICES='server'`、`GIT_SHA='1ebcaea6…'`，`checksums.sha256` 两项校验通过；`server/app.jar` sha256 `f580d29464b9c689dea4bec6904a6c4964b8c6dfb32d1a40a49f3dee87511dc6`。jar 内 `PromptTemplateSeeder` 版本串为 `v22-2026-10-21-single-action-marker`，`dap.ip_studio_skill_dialogue.md` 含新句，`studio/skills/video-generation.md` 与仓库文件逐字节一致（含六个新词），`StudioDialogueTurnWorker` 含新失败说明；迁移最高仍是 V63。
+- `deploy-release.sh … server`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- 新进程 PID 1342495 于 **14:36:42 CST** 启动，`Successfully validated 63 migrations`、`Current version of schema aistareco: 63`，`Started AiStarEcoApplication in 15.827 seconds`（14:36:59），`NRestarts=0`；线上 jar sha256 `f580d294…` 与制品一致。
+- 启动日志：`[studio-skill] repository file key=video-generation version=1 status=active digest=4fb7e32efe7e`（原来 `6a201f6650cb`），紧接着 `[studio-skill] re-seeded video-generation as v2 from changed file video-generation.md (digest 4fb7e32efe7e)`；其余四个技能文件摘要不变。`PromptTemplateSeeder: 刷新 54 个未改动的 prompt 基线 → v22-2026-10-21-single-action-marker`（14:36:59）。
+- 库（只读查询）：`prompt_template` 的 `dap.ip_studio_skill_dialogue` 为 `version=1, updated_by=seed`，更新于 06:36:59Z，含新句「只写一次，数组后面不要再写」，仍含 v21 的完整示例；`ip_skill` 的 `video-generation` 为 `current_version=2, updated_by=seed`，`ip_skill_version` v2（`source=seed`、`published`、摘要 `4fb7e32efe7e`）的 front matter 含「做一段视频」「做成一段视频」，v1 仍在。
+- 日志 ERROR：grep `' -ERROR | ERROR [0-9]+ ---'` 对今天 00:00–14:36:00 计数 189 条（旧进程），证明 grep 能命中；14:36:00 之后 **0 条 ERROR**（含旧进程停机，至 14:37:20）。新进程 2 条 WARN（Hibernate 方言弃用提示、UserDetailsServiceAutoConfiguration，常规启动提示）。
+- `https://aiavatar.aibuzz.cn/projects` → 200。
+- **没做**：没用生产账号在线上真发一条对话（需要用户登录，且每轮会扣积分）。建议用户在那张画布上再说一次「用这张图做一段视频」，确认线程换到「出视频」、正文只出现一次、第一步真的看了图。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-action-format/server/app.jar` 的 sha256 `cb9ede3e…` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-action-format server
+```
+
+无迁移。回滚后提示词按 v21 刷回（只刷没人改过的行）；`video-generation` 的文件摘要又变了，库里没被后台改过，会把旧文件追加为 v3（旧关键词），v2 留在历史里。web-aiavatar 不涉及。
