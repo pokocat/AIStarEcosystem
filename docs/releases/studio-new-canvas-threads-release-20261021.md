@@ -379,3 +379,44 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 只回 web-aiavatar，server 不动；回滚后气泡里的送达状态恢复为文字。
+
+## web 发布 `20261021-studio-composer-chips`（2026-10-21 18:29 CST，只发 web-aiavatar）
+
+### 改了什么
+
+用户反馈：对话框上的模型切换点不动，还会让人以为做视频也用这个千问（Qwen）模型，干脆隐藏；技能为什么不能选，不能选就换个交互，不然也困惑。
+
+- 输入框下面只剩 @ 和附件（以及发送 / 停止）。模型胶囊（可选、不可选两种）和技能胶囊（「自动」下拉、对话绑定技能后的静态胶囊）都去掉，`.studio-dialogue-chip*` 样式删掉，输入框的 `tools` 属性没人用了也删掉。
+- 模型：发送照旧带默认模型的 `maxCost`；可选场景且多于一个模型时才带 `model`（与原来一致）。本浏览器以前存过的选择（`studio-assistant:model:<画布>`）继续沿用，已下架就回落默认，只是不再显示控件。
+- 技能：当前做法只在助手头部标签（`studio-assistant-mode`，技能名或「全能创作」）。悬停提示：有技能时「现在按「X」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。」，没有时「按你说的话自动选择做法。」；点它仍展开使用说明，说明里没技能时那一行改为「全能创作：按你说的话和素材自动选择做法。」。四张填空卡照旧显式带 `skillKey`。
+- 依赖那个下拉的只有 400 `STUDIO_SKILL_REQUIRED`（路由现在不再抛，前端处理保留）：原来提示「…都能做，选一个技能再发」并指向下拉，现在在输入框上方给一组做法按钮（`role="group"`，`aria-label="选一种做法"`，样式同建议），文案「「A」和「B」都能做，选一个就按它发送」，点一个就以该技能把草稿重发一次。
+- 文件：`src/ip/studio-assistant.tsx`、`src/ip/studio-dialogue-composer.tsx`、`src/styles/ip-studio-workflow.css`；测试 `studio-assistant.test.tsx`、`studio-dialogue-threads.test.tsx`、`studio-dialogue-wiring.test.ts`；AGENTS.md 三处补说明、「新建画布、多段对话与卡片精简」加一条当前态规则，`docs/ip-studio-new-canvas-and-threads.md` §5.3 补一条。只改前端：没有接口、没有迁移。
+
+### 门禁
+
+- web-aiavatar vitest 全量（rebase 到含 queue-icons 的 main 之后）145 个文件 1106 条全过；改到的四个文件（含 `studio-assistant-starters.test.ts`）单独 88 条全过。新增 / 改写的断言：输入框下没有「技能」「助手模型」下拉也没有 `.studio-dialogue-chip`，按钮区只有「引用节点」「添加附件」；单模型（固定 / 可选）发送带 `maxCost: 21` 不带 `model`；两个可选模型时默认带 `model: 'one', maxCost: 21`，存过 `two` 时带 `model: 'two', maxCost: 8`，存的已下架回落 `one`；填空卡发送与重发都带 `skillKey`；头部标签两种 `title` 文案；`STUDIO_SKILL_REQUIRED` 点做法按钮以该技能重发；新对话后头部回到「全能创作」、存过的模型照旧带上。
+- `pnpm --filter @ai-star-eco/web-aiavatar typecheck`、`pnpm typecheck:all`、`pnpm check:api-contract`（`OK.`）通过。
+- 没在浏览器里点：改动是删控件加一组按钮，交互由上面的 jsdom 用例覆盖。
+
+### 制品与发布
+
+- 发布前核对：线上 web-aiavatar 最新为 `20261021-studio-queue-icons`（`GIT_SHA='87089561…'`，`BUILD_ID` `ld7hjNUOQXnDSHncYm06e`，在 main 历史里）；本工作区干净、没有构建 / 发布进程；main `c87fdc5c` 快进到 `cf9050f0`（分支 `fix/studio-composer-chips-20261021`，已 rebase 到 queue-icons 之后，AGENTS.md 第三遍同一行两边的补充都保留）。
+- 构建 `RELEASE_ID=20261021-studio-composer-chips NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh web-aiavatar`：`manifest.env` 为 `SERVICES='web-aiavatar'`、`GIT_SHA='cf9050f043c541839f9ba9ede905260af68afb3d'`、`NEXT_PUBLIC_USE_MOCK='0'`、`NEXT_PUBLIC_ENABLE_DEV_LOGIN='0'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；`checksums.sha256` 两项通过。`web-aiavatar.tar.gz` sha256 `fddd135a498ec481e7f0391267892a3a05b12c720d07fdfb6193e4b201b7b20f`，包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `y7Q6PWirR5fG3bhpZ4i1b`；包内静态文件搜不到「助手模型」和 `studio-dialogue-chip`，`chunks/5780.703a8ae03780c2fb.js` 含「选一种做法」「按你说的话自动选择做法」。
+- `deploy-release.sh dist/deploy/20261021-studio-composer-chips web-aiavatar`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- `aistareco-web-aiavatar` 新进程 PID 1393204 于 **18:29:28 CST** 启动，`Ready`，`NRestarts=0`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，线上 `BUILD_ID` `y7Q6PWirR5fG3bhpZ4i1b` 与制品一致；`/opt/ai-star-eco/releases` 最新为 `20261021-studio-composer-chips`（`GIT_SHA='cf9050f0…'`）。
+- `https://aiavatar.aibuzz.cn/projects` → 200，`/create` → 200；公网取 `_next/static/chunks/5780.703a8ae03780c2fb.js`：「选一种做法」「按你说的话自动选择做法」各 1 处，「助手模型」0 处；`/projects` 引用的 9 个 CSS 里 `studio-dialogue-chip` 0 处，`studio-dialogue-skill-choice` 在 `8213be8e3bb85375.css`。
+- **没做**：没用生产账号登录看助手输入框（需要用户自己登录，发消息会扣积分）。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-queue-icons` 的 `BUILD_ID` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-queue-icons web-aiavatar
+```
+
+只回 web-aiavatar，server 不动；回滚后输入框下的模型与技能胶囊恢复。
