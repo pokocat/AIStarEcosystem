@@ -59,8 +59,58 @@ class DialogueLoopTest {
 
     static DialogueLoop.Action act(String tool) { return new DialogueLoop.Action("a-" + tool, tool, OM.createObjectNode()); }
 
+    /** Every run makes one tool-internal model call, the way view_images and propose_plan do. */
+    static final class SubCallingTools implements DialogueLoop.Tools {
+        final DialogueLoop.TurnBudget budget;
+        final List<String> ran = new ArrayList<>();
+        SubCallingTools(DialogueLoop.TurnBudget budget) { this.budget = budget; }
+        public Optional<String> reject(DialogueLoop.Action action) { return Optional.empty(); }
+        public DialogueLoop.ToolOutcome run(DialogueLoop.Action action) {
+            ran.add(action.tool());
+            budget.beginSubCall();
+            budget.record(100, 100);
+            return DialogueLoop.ToolOutcome.of("{\"ok\":true}");
+        }
+    }
+
+    /**
+     * The production turn's tools: view_images looks (one internal call), propose_plan plans (one internal call; the first
+     * plan is refused because the three-view sheet cannot be a first frame), request_approval sends the card only once a
+     * plan exists and then waits for the user.
+     */
+    static final class IncidentTools implements DialogueLoop.Tools {
+        final DialogueLoop.TurnBudget budget;
+        final List<String> ran = new ArrayList<>();
+        int plans;
+        boolean planReady;
+        IncidentTools(DialogueLoop.TurnBudget budget) { this.budget = budget; }
+        public Optional<String> reject(DialogueLoop.Action action) { return Optional.empty(); }
+        public DialogueLoop.ToolOutcome run(DialogueLoop.Action action) {
+            ran.add(action.tool());
+            switch (action.tool()) {
+                case "view_images" -> { budget.beginSubCall(); budget.record(100, 100); }
+                case "propose_plan" -> {
+                    budget.beginSubCall(); budget.record(100, 100);
+                    if (++plans == 1) return DialogueLoop.ToolOutcome.of("{\"ok\":false,\"code\":\"STUDIO_VIDEO_FIRST_FRAME_REQUIRED\"}");
+                    planReady = true;
+                }
+                case "request_approval" -> {
+                    if (!planReady) return DialogueLoop.ToolOutcome.of("{\"ok\":false,\"summary\":\"还没有方案\"}");
+                    return new DialogueLoop.ToolOutcome("{\"ok\":true}", DialogueLoop.Reason.WAITING_USER);
+                }
+                default -> { }
+            }
+            return DialogueLoop.ToolOutcome.of("{\"ok\":true}");
+        }
+    }
+
+    /** An action with JSON arguments (distinct arguments keep consecutive batches from reading as a loop). */
+    static DialogueLoop.Action act(String tool, String args) {
+        try { return new DialogueLoop.Action("a-" + tool, tool, OM.readTree(args)); } catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
     private DialogueLoop.TurnBudget budget(long maxIn, long maxOut) {
-        return new DialogueLoop.TurnBudget(DialogueLoop.MAX_MODEL_CALLS, maxIn, maxOut, 1024, DialogueLoop.MAX_DURATION, Clock.systemUTC());
+        return DialogueLoop.TurnBudget.standard(maxIn, maxOut, 1024, Clock.systemUTC());
     }
 
     @Test void completesWhenTheModelRequestsNoAction() throws Exception {
@@ -127,31 +177,91 @@ class DialogueLoopTest {
         assertEquals(1, outcome.modelCalls());
     }
 
-    @Test void modelCallLimitStopsTheLoop() throws Exception {
+    @Test void dialogueStepLimitStopsTheLoopAfterSixteenSteps() throws Exception {
         var budget = budget(100_000, 100_000);
         var model = new ScriptedModel(budget);
-        for (int i = 0; i < 20; i++) model.reply("再看一次", act("read_canvas"));
-        var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget, 100).run(new ArrayList<>());
+        for (int i = 0; i < 30; i++) model.reply("再看一处", act("view_images", "{\"nodeIds\":[\"n" + i + "\"]}"));
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget, 100).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
+        assertEquals("steps", outcome.limit());
+        assertEquals(16, DialogueLoop.MAX_DIALOGUE_STEPS);
+        assertEquals(DialogueLoop.MAX_DIALOGUE_STEPS, outcome.steps());
+        assertEquals(DialogueLoop.MAX_DIALOGUE_STEPS, outcome.modelCalls());
+        assertEquals(DialogueLoop.MAX_DIALOGUE_STEPS, tools.ran.size(), "every step before the limit ran its action");
+    }
+
+    /** A tool's own model call (view_images' look, propose_plan's planner) spends tokens but is not a dialogue step. */
+    @Test void toolInternalCallsCountAsModelCallsNotSteps() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget);
+        for (int i = 0; i < 30; i++) model.reply("再看一处", act("view_images", "{\"nodeIds\":[\"n" + i + "\"]}"));
+        var tools = new SubCallingTools(budget);
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget, 100).run(new ArrayList<>());
+        assertEquals("steps", outcome.limit(), "the step limit, not the call limit, ends it");
+        assertEquals(DialogueLoop.MAX_DIALOGUE_STEPS, outcome.steps());
+        assertEquals(2 * DialogueLoop.MAX_DIALOGUE_STEPS, outcome.modelCalls(), "16 steps plus 16 looks");
+        assertEquals(2 * DialogueLoop.MAX_DIALOGUE_STEPS * 100L, budget.inputTokens(), "the looks' tokens are in the turn budget");
+    }
+
+    /**
+     * Production 2026-10-21 17:38 CST (run IPR-472ed89b5c174a95808f, canvas IPP-655ea55a): 「用这张图做一段视频」 took five
+     * dialogue steps and three tool-internal calls (look, plan, plan), and stopped at the old 8-call cap one step before the
+     * confirmation card. Steps now count only the loop's own calls, so the sixth step sends the card.
+     */
+    @Test void theProductionTurnNowReachesItsConfirmationCard() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = incidentScript(budget);
+        var tools = new IncidentTools(budget);
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.WAITING_USER, outcome.reason(), "the card went out and the turn waits for the user");
+        assertEquals(6, outcome.steps());
+        assertEquals(9, outcome.modelCalls(), "six steps plus look, plan, plan");
+        assertEquals(List.of("view_images", "read_skill", "create_nodes", "propose_plan", "request_approval", "create_nodes",
+                "connect_nodes", "propose_plan", "request_approval"), tools.ran);
+    }
+
+    /** The same turn under a total cap of 8 calls stops exactly where production did: the total cap still sees every call. */
+    @Test void theTotalCallSafetyNetStillCountsToolInternalCalls() throws Exception {
+        var budget = new DialogueLoop.TurnBudget(DialogueLoop.MAX_DIALOGUE_STEPS, 8, 100_000, 100_000, 1024, DialogueLoop.MAX_DURATION, Clock.systemUTC());
+        var tools = new IncidentTools(budget);
+        var outcome = new DialogueLoop(incidentScript(budget), tools, new Hooks(), budget).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
         assertEquals("calls", outcome.limit());
-        assertEquals(DialogueLoop.MAX_MODEL_CALLS, outcome.modelCalls());
+        assertEquals(5, outcome.steps());
+        assertEquals(8, outcome.modelCalls());
+        assertEquals(1, Collections.frequency(tools.ran, "request_approval"), "only the early, refused card request ran; the card never went out");
+    }
+
+    private static ScriptedModel incidentScript(DialogueLoop.TurnBudget budget) {
+        return new ScriptedModel(budget)
+                .reply("我先看一下这张图。", act("view_images", "{\"nodeIds\":[\"img-sheet\"],\"question\":\"画面里有什么\"}"))
+                .reply("用出视频的方法，先建一个视频对象。", act("read_skill", "{\"key\":\"video-generation\"}"),
+                        act("create_nodes", "{\"nodes\":[{\"type\":\"video\",\"aspectRatio\":\"9:16\"}]}"))
+                .reply("整理方案。", act("propose_plan", "{\"brief\":\"用三视图做视频\"}"), act("request_approval", "{}"))
+                .reply("三视图是拼版，先出一张单人首帧。", act("create_nodes", "{\"nodes\":[{\"type\":\"image\"}]}"))
+                .reply("连上首帧，再整理方案。", act("connect_nodes", "{\"from\":\"img-frame\",\"to\":\"dlg-video\"}"),
+                        act("propose_plan", "{\"brief\":\"用单人首帧做视频\"}"))
+                .reply("方案好了，请确认。", act("request_approval", "{\"scope\":\"production\"}"));
     }
 
     @Test void toolCallLimitStopsTheLoop() throws Exception {
         var budget = budget(100_000, 100_000);
         var model = new ScriptedModel(budget);
-        for (int i = 0; i < 5; i++) model.reply("多做几步", act("read_canvas"), act("read_canvas"), act("read_canvas"));
+        for (int i = 0; i < 12; i++) model.reply("多做几步", act("read_canvas", "{\"page\":" + (3 * i) + "}"),
+                act("read_canvas", "{\"page\":" + (3 * i + 1) + "}"), act("read_canvas", "{\"page\":" + (3 * i + 2) + "}"));
         var tools = new RecordingTools();
         var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
         assertEquals("tools", outcome.limit());
+        assertEquals(24, DialogueLoop.MAX_TOOL_CALLS);
         assertEquals(DialogueLoop.MAX_TOOL_CALLS, tools.ran.size());
     }
 
     @Test void tokenBudgetStopsBeforeACallThatCannotFit() throws Exception {
         var budget = budget(250, 100_000);
         var model = new ScriptedModel(budget);
-        for (int i = 0; i < 5; i++) model.reply("继续", act("read_canvas"));
+        for (int i = 0; i < 5; i++) model.reply("继续", act("read_canvas", "{\"page\":" + i + "}"));
         var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
         assertEquals("tokens", outcome.limit());
@@ -161,7 +271,7 @@ class DialogueLoopTest {
 
     @Test void wallClockLimitStopsTheLoop() throws Exception {
         var clock = new MutableClock();
-        var budget = new DialogueLoop.TurnBudget(8, 100_000, 100_000, 1024, Duration.ofMinutes(10), clock);
+        var budget = new DialogueLoop.TurnBudget(DialogueLoop.MAX_DIALOGUE_STEPS, DialogueLoop.MAX_MODEL_CALLS, 100_000, 100_000, 1024, Duration.ofMinutes(10), clock);
         var model = new ScriptedModel(budget).reply("拉片中", act("analyze_video")).reply("x");
         model.duringCall = () -> clock.advance(Duration.ofMinutes(11));
         var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
@@ -249,5 +359,92 @@ class DialogueLoopTest {
         var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
         assertEquals(List.of("read_canvas"), tools.ran);
+    }
+
+    // ── Going round in circles ───────────────────────────────────────────────────────────────────────────────────
+
+    @Test void theSameBatchTwiceInARowStopsWithoutRunningItAgain() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("看一下", act("view_images", "{\"nodeIds\":[\"a\"]}"))
+                .reply("再看一下", act("view_images", "{\"nodeIds\":[\"a\"]}")).reply("不该到这里");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
+        assertEquals("loop", outcome.limit());
+        assertEquals(List.of("view_images"), tools.ran, "the repeated batch never runs");
+        assertEquals(2, outcome.steps());
+    }
+
+    @Test void aRepeatedReadOnlyLookIsALoopToo() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("看画布", act("read_canvas")).reply("再看画布", act("read_canvas"));
+        var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
+        assertEquals("loop", outcome.limit());
+    }
+
+    /** Key order, null fields, surrounding spaces, number spelling and the action id do not make a batch different. */
+    @Test void argumentsAreComparedAfterNormalizing() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var first = act("view_images", "{\"nodeIds\":[\"a\",\"b\"],\"question\":\"画面里有什么\",\"max\":2}");
+        var second = new DialogueLoop.Action("call_9f3", "view_images",
+                OM.readTree("{\"question\":\" 画面里有什么 \",\"max\":2.0,\"nodeIds\":[\"a\",\"b\"],\"extra\":null}"));
+        var model = new ScriptedModel(budget).reply("看", first).reply("再看", second);
+        var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
+        assertEquals("loop", outcome.limit());
+        assertEquals(DialogueLoop.batchSignature(List.of(first)), DialogueLoop.batchSignature(List.of(second)));
+    }
+
+    @Test void aMultiActionBatchRepeatedIsALoop() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("建好再连", act("create_nodes", "{\"nodes\":[{\"type\":\"image\"}]}"), act("connect_nodes", "{\"from\":\"a\",\"to\":\"b\"}"))
+                .reply("建好再连", act("create_nodes", "{\"nodes\":[{\"type\":\"image\"}]}"), act("connect_nodes", "{\"from\":\"a\",\"to\":\"b\"}"));
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals("loop", outcome.limit());
+        assertEquals(List.of("create_nodes", "connect_nodes"), tools.ran);
+    }
+
+    @Test void differentArgumentsAreNotALoop() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("看 a", act("view_images", "{\"nodeIds\":[\"a\"]}"))
+                .reply("看 b", act("view_images", "{\"nodeIds\":[\"b\"]}")).reply("看完了");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(2, tools.ran.size());
+    }
+
+    @Test void onlyConsecutiveRepeatsCount() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("看画布", act("read_canvas")).reply("看图", act("view_images", "{\"nodeIds\":[\"a\"]}"))
+                .reply("再看画布", act("read_canvas")).reply("好了");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(List.of("read_canvas", "view_images", "read_canvas"), tools.ran);
+    }
+
+    /** A user message in between is new information: the same batch may run again. */
+    @Test void steeringBetweenTwoIdenticalBatchesIsNotALoop() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var hooks = new Hooks();
+        hooks.steering.add(List.of("我刚换了一张图，再看一下"));
+        var model = new ScriptedModel(budget).reply("看图", act("view_images", "{\"nodeIds\":[\"a\"]}"))
+                .reply("再看一下", act("view_images", "{\"nodeIds\":[\"a\"]}")).reply("看完了");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, hooks, budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(List.of("view_images", "view_images"), tools.ran);
+    }
+
+    /** A reply rejected for its format in between is not a different step: repeating the batch after it is still a loop. */
+    @Test void aFormatCorrectionInBetweenDoesNotHideARepeat() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).reply("看图", act("view_images", "{\"nodeIds\":[\"a\"]}")).broken("[调用工具 view_images]")
+                .reply("看图", act("view_images", "{\"nodeIds\":[\"a\"]}"));
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals("loop", outcome.limit());
+        assertEquals(List.of("view_images"), tools.ran);
     }
 }

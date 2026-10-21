@@ -134,7 +134,7 @@ public class ViewImagesTool implements StudioDialogueTool {
         long estimate = chars + (long) images * TOKENS_PER_IMAGE + 64;
         if (ctx.budget.blockReason(estimate, MIN_OUTPUT) != null) return null;
         ctx.effects.beforeModelCall();
-        ctx.budget.beginCall();
+        ctx.budget.beginSubCall();
         Map<String, Object> options = new HashMap<>();
         options.put("timeout_seconds", 180);
         options.put("max_tokens", ctx.budget.outputAllowance(DESIRED_OUTPUT));

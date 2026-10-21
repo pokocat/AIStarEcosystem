@@ -208,7 +208,8 @@ public class StudioDialogueTurnWorker {
             }
             if (result != null) {
                 output.put("modelCalls", result.modelCalls());
-                if (outcome != null) output.put("toolCalls", outcome.toolCalls());
+                if (outcome != null) output.put("steps", outcome.steps()).put("toolCalls", outcome.toolCalls());
+                if (outcome != null && outcome.limit() != null) output.put("limit", outcome.limit());
                 if (result.latestPlan() != null) output.set("plan", result.latestPlan());
                 var plans = output.putArray("plans");
                 result.plans().forEach(p -> plans.addObject().put("revision", p.path("revision").asInt()).put("fingerprint", p.path("fingerprint").asText()));
@@ -218,6 +219,10 @@ public class StudioDialogueTurnWorker {
             String assistantId = input.path("_exec").path("assistantMessageId").asText();
             IpDialogueThread thread = threads.lockById(threadId).orElse(null);
             List<Event> events = List.of();
+            boolean limited = finalError == null && outcome != null && outcome.reason() == DialogueLoop.Reason.LIMIT;
+            // A turn stopped by a limit offers 「继续」 as a one-tap reply (the same follow-up mechanism as an execution's
+            // completion summary: saved on the reply, sent in turn.done), instead of telling the user what to type.
+            List<String> followUps = limited ? limitSuggestions(outcome.limit()) : List.of();
             if (thread != null) {
                 IpDialogueMessage message = messages.findById(assistantId).orElse(null);
                 List<StudioDialogueStore.Pending> pending = new ArrayList<>();
@@ -228,20 +233,21 @@ public class StudioDialogueTurnWorker {
                     message.setStatus(finalError != null ? IpDialogueMessage.FAILED : "interrupted".equals(reason) ? IpDialogueMessage.INTERRUPTED : IpDialogueMessage.DONE);
                     message.setSettling(false);
                     if (billing != null) message.setBillingJson(billing.toString());
+                    if (!followUps.isEmpty()) message.setRequestJson(mapper.createObjectNode().set("suggestions", mapper.valueToTree(followUps)).toString());
                     ArrayNode blocks = store.blocks(message);
                     for (JsonNode b : blocks) if (b instanceof ObjectNode o && "tool_call".equals(b.path("type").asText())
                             && b.path("settling").asBoolean(false) && !b.hasNonNull("childRunId")) o.put("settling", false);
                     store.saveBlocks(message, blocks);
                 }
-                String note = finalError != null ? "本轮没有完成：" + friendly(finalError)
-                        : outcome != null && outcome.reason() == DialogueLoop.Reason.LIMIT ? limitNote(outcome.limit()) : null;
+                String note = finalError != null ? "本轮没有完成：" + friendly(finalError) : limited ? limitNote(outcome.limit()) : null;
                 if (note != null) {
                     messages.save(IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(threadId)
                             .seq(StudioDialogueStore.nextMessageSeq(thread)).turnId(turnId).runId(runId).role("system").text(note)
                             .blocksJson("[]").status(finalError != null ? IpDialogueMessage.FAILED : IpDialogueMessage.DONE).createdAt(Instant.now()).build());
                 }
                 if (turnId.equals(thread.getActiveTurnId())) { thread.setActiveTurnId(null); thread.setActiveRunId(null); }
-                TurnDoneData done = new TurnDoneData(reason, assistantId, billing == null ? null : mapper.convertValue(billing, TokenBilling.class), false, null);
+                TurnDoneData done = new TurnDoneData(reason, assistantId, billing == null ? null : mapper.convertValue(billing, TokenBilling.class), false,
+                        followUps.isEmpty() || message == null ? null : followUps);
                 pending.add(new StudioDialogueStore.Pending(turnId, runId, thread.getActiveExecutionId(), StudioDialogueEventTypes.TURN_DONE, mapper.valueToTree(done)));
                 events = store.appendLocked(thread, pending);
             }
@@ -285,14 +291,26 @@ public class StudioDialogueTurnWorker {
             throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LOCKED", "这条对话正在制作，制作结束前不能换方法");
     }
 
+    /** The one-tap reply offered under a turn that stopped at a limit. */
+    static final String CONTINUE = "继续";
+
+    /**
+     * The note after a turn stopped at a limit. It says why, in one line; what to do next is the 「继续」 button
+     * ({@link #limitSuggestions}), not an instruction to type something.
+     */
     static String limitNote(String limit) {
         return switch (String.valueOf(limit)) {
-            case "calls" -> "这一轮已经想了很多步，先停在这里。回复「继续」我接着做。";
-            case "time" -> "这一轮用时已到上限，先停在这里。回复「继续」我接着做。";
-            case "tokens" -> "这一轮的模型额度用完了，先停在这里。回复「继续」我接着做。";
+            case "time" -> "这一轮用时到上限了，先停在这里。";
+            case "tokens" -> "这一轮的用量到上限了，先停在这里。";
+            case "loop" -> "这一步重复了，先停在这里。";
             case "protocol" -> "这一轮没能执行，请再说一次。";
-            default -> "这一轮的动作次数用完了，先停在这里。回复「继续」我接着做。";
+            default -> "这一轮步骤太多，先停在这里。"; // steps, calls (all model calls), tools
         };
+    }
+
+    /** 「继续」 for every limit except a format failure, where continuing would repeat the same unparseable reply. */
+    static List<String> limitSuggestions(String limit) {
+        return "protocol".equals(limit) ? List.of() : List.of(CONTINUE);
     }
 
     static String friendly(Exception error) {
@@ -348,7 +366,7 @@ public class StudioDialogueTurnWorker {
             this.rate = exec.hasNonNull("tokenPricing") ? mapper.treeToValue(exec.path("tokenPricing"), AiChatTokenPricing.Rate.class) : null;
             int perCall = exec.path("maxTokens").asInt(4096);
             this.budget = mock || rate == null ? DialogueLoop.TurnBudget.unmetered(perCall, clock)
-                    : new DialogueLoop.TurnBudget(DialogueLoop.MAX_MODEL_CALLS, rate.maxInputTokens(), rate.maxOutputTokens(), perCall, DialogueLoop.MAX_DURATION, clock);
+                    : DialogueLoop.TurnBudget.standard(rate.maxInputTokens(), rate.maxOutputTokens(), perCall, clock);
             if (mock) this.endpoint = null;
             // D08: the rule acceptance used (default binding, or an enabled candidate), so an accepted turn is runnable.
             else this.endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, exec.path("endpointId").asText(null), "studio")
@@ -423,7 +441,7 @@ public class StudioDialogueTurnWorker {
                     Map.of("role", "user", "content", text));
             if (budget.blockReason(DialogueModels.estimate(request, 0), 256) != null) return null;
             beforeModelCall();
-            budget.beginCall();
+            budget.beginSubCall();
             var reply = models.invokeChatTurnOnEndpoint(endpoint, AiModelPurpose.DAP_PERSONA, request,
                     Map.of("timeout_seconds", 120, "max_tokens", budget.outputAllowance(800), "temperature", 0.2), null, null);
             if (reply.promptTokens() == null || reply.completionTokens() == null)

@@ -101,7 +101,7 @@ public class ProposePlanTool implements StudioDialogueTool {
         String blocked = ctx.budget.blockReason(estimate, MIN_OUTPUT);
         if (blocked != null) return ToolRun.failed("STUDIO_TURN_BUDGET", "本轮额度不够整理方案", DialogueTools.fail("本轮的模型额度不足以整理完整方案，请告诉用户回复后继续"));
         ctx.effects.beforeModelCall();
-        ctx.budget.beginCall();
+        ctx.budget.beginSubCall();
         var options = new HashMap<String, Object>();
         options.put("timeout_seconds", 300);
         options.put("max_tokens", ctx.budget.outputAllowance(DESIRED_OUTPUT));

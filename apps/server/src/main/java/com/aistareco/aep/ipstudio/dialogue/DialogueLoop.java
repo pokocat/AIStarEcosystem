@@ -15,12 +15,23 @@ import java.util.Optional;
  *
  * <p>Pure state machine: no Spring, no repositories. The model, tools and side channels are injected so the ordering,
  * limits, stop priority and steering rules are unit-testable. It ends when the model returns no actions (and no steering
- * is pending), when a tool needs a user decision, when a limit is hit (model calls, tool calls, wall time, token budget),
- * or when a stop arrived. Actions from a reply are only executed after that reply finished and parsed completely.
+ * is pending), when a tool needs a user decision, when a limit is hit (dialogue steps, model calls, tool calls, wall time,
+ * token budget), when the model repeats its previous action batch, or when a stop arrived. Actions from a reply are only
+ * executed after that reply finished and parsed completely.
+ *
+ * <p>What bounds the spend of a turn is the token budget (the user-approved per-turn ceiling) and {@link #MAX_DURATION};
+ * the step and call counts only guard against a runaway loop. Production 2026-10-21 (IPR-472ed89b5c174a95808f): a turn
+ * stopped at 8 model calls one step before its confirmation card, because the cap also counted the calls tools make
+ * themselves (looking at images, planning). Steps now count only the loop's own model calls; tool-internal calls still
+ * spend tokens and time, and a looser total cap catches anything abnormal.
  */
 public final class DialogueLoop {
-    public static final int MAX_MODEL_CALLS = 8;
-    public static final int MAX_TOOL_CALLS = 12;
+    /** Calls of the loop's model (dialogue steps) per turn. */
+    public static final int MAX_DIALOGUE_STEPS = 16;
+    /** Every model call of a turn: dialogue steps plus tool-internal calls and the history summary. A safety net only. */
+    public static final int MAX_MODEL_CALLS = 40;
+    /** Tool runs per turn (rejected actions are not runs). The batch that reaches it is cut there and the turn stops. */
+    public static final int MAX_TOOL_CALLS = 24;
     public static final Duration MAX_DURATION = Duration.ofMinutes(10);
     /** Smallest output budget worth another model call. */
     public static final int MIN_OUTPUT_TOKENS = 256;
@@ -45,7 +56,11 @@ public final class DialogueLoop {
 
     public record ToolResult(Action action, String content) {}
 
-    public record Outcome(Reason reason, String limit, int modelCalls, int toolCalls) {}
+    /**
+     * {@code limit} is set for {@link Reason#LIMIT}: steps | calls | tools | time | tokens | loop | protocol.
+     * {@code modelCalls} counts every model call of the turn (steps plus tool-internal calls); {@code steps} the loop's own.
+     */
+    public record Outcome(Reason reason, String limit, int modelCalls, int steps, int toolCalls) {}
 
     /** Model side. Implementations stream text to the user, record real usage in the shared {@link TurnBudget}. */
     public interface Model {
@@ -103,12 +118,14 @@ public final class DialogueLoop {
 
     private Outcome loop(List<Map<String, Object>> messages) throws Exception {
         int toolCalls = 0, protocolErrors = 0;
+        // The previous step's action batch, normalized; cleared when user steering is added (new information).
+        String lastBatch = null;
         while (true) {
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
-            String limit = budget.blockReason(model.estimateInputTokens(messages), MIN_OUTPUT_TOKENS);
+            String limit = budget.stepBlockReason(model.estimateInputTokens(messages), MIN_OUTPUT_TOKENS);
             if (limit != null) return outcome(Reason.LIMIT, limit, toolCalls);
-            budget.beginCall();
-            Reply reply = model.call(messages, budget.modelCalls(), budget.outputAllowance());
+            budget.beginStep();
+            Reply reply = model.call(messages, budget.steps(), budget.outputAllowance());
             hooks.heartbeat();
             // A stop that arrived while the model was answering wins over the reply's actions.
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
@@ -126,8 +143,15 @@ public final class DialogueLoop {
                 if (steering.isEmpty()) return outcome(Reason.COMPLETED, null, toolCalls);
                 model.appendExchange(messages, reply, List.of());
                 model.appendUser(messages, steeringText(steering));
+                lastBatch = null;
                 continue;
             }
+            // The same batch as the previous step, with no user message in between: the model is going round in circles
+            // (also for read-only tools: another identical look at the canvas tells it nothing new). A reply rejected for
+            // its format in between does not count as a different step. Nothing of the repeated batch runs.
+            String batch = batchSignature(reply.actions());
+            if (batch.equals(lastBatch)) return outcome(Reason.LIMIT, "loop", toolCalls);
+            lastBatch = batch;
             List<ToolResult> results = new ArrayList<>();
             Reason end = null;
             boolean toolLimit = false, interrupted = false;
@@ -164,15 +188,52 @@ public final class DialogueLoop {
             // Steering is only taken (and marked applied) when another model call can actually answer it in this turn;
             // otherwise it stays queued and opens the next turn.
             List<String> steering = canContinue(messages) ? hooks.drainSteering() : List.of();
-            if (!steering.isEmpty()) model.appendUser(messages, steeringText(steering));
+            if (!steering.isEmpty()) { model.appendUser(messages, steeringText(steering)); lastBatch = null; }
         }
     }
 
     private boolean canContinue(List<Map<String, Object>> messages) {
-        return !hooks.stopRequested() && budget.blockReason(model.estimateInputTokens(messages) + 200, MIN_OUTPUT_TOKENS) == null;
+        return !hooks.stopRequested() && budget.stepBlockReason(model.estimateInputTokens(messages) + 200, MIN_OUTPUT_TOKENS) == null;
     }
 
-    private Outcome outcome(Reason reason, String limit, int toolCalls) { return new Outcome(reason, limit, budget.modelCalls(), toolCalls); }
+    private Outcome outcome(Reason reason, String limit, int toolCalls) {
+        return new Outcome(reason, limit, budget.modelCalls(), budget.steps(), toolCalls);
+    }
+
+    /**
+     * An action batch in a form that compares equal when it asks for the same work: tool names and arguments in order,
+     * object keys sorted, null fields dropped, text trimmed, numbers by value. The action id is left out (a native
+     * tool_call id differs on every reply).
+     */
+    static String batchSignature(List<Action> actions) {
+        StringBuilder out = new StringBuilder();
+        for (Action a : actions) {
+            out.append(a.tool() == null ? "" : a.tool().strip()).append('(');
+            if (a.args() == null || a.args().isNull() || a.args().isMissingNode()) out.append("{}"); // no arguments = empty arguments
+            else canonical(a.args(), out);
+            out.append(");");
+        }
+        return out.toString();
+    }
+
+    private static void canonical(JsonNode node, StringBuilder out) {
+        if (node == null || node.isNull() || node.isMissingNode()) { out.append("null"); return; }
+        if (node.isObject()) {
+            java.util.TreeMap<String, JsonNode> fields = new java.util.TreeMap<>();
+            node.fields().forEachRemaining(e -> { if (!e.getValue().isNull() && !e.getValue().isMissingNode()) fields.put(e.getKey().strip(), e.getValue()); });
+            out.append('{');
+            fields.forEach((k, v) -> { out.append(quote(k)).append(':'); canonical(v, out); out.append(','); });
+            out.append('}');
+        } else if (node.isArray()) {
+            out.append('[');
+            for (JsonNode v : node) { canonical(v, out); out.append(','); }
+            out.append(']');
+        } else if (node.isNumber()) {
+            out.append(node.decimalValue().stripTrailingZeros().toPlainString());
+        } else if (node.isTextual()) {
+            out.append(quote(node.asText().strip()));
+        } else out.append(node.asText());
+    }
 
     /** A complete, minimal action the correction shows; the argument names are view_images' real parameters. */
     static final String ACTION_EXAMPLE = "[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"对象 id\"],\"question\":\"想确认什么\"}}]";
@@ -212,39 +273,61 @@ public final class DialogueLoop {
     }
 
     /**
-     * Shared per-turn budget: model calls (loop calls plus any tool-internal model call), wall time and the token ceiling
-     * the user approved (the endpoint rate's maxInputTokens / maxOutputTokens, summed over every call of the turn).
+     * Shared per-turn budget: dialogue steps (the loop's own model calls), all model calls (steps plus tool-internal calls
+     * and the history summary), wall time and the token ceiling the user approved (the endpoint rate's maxInputTokens /
+     * maxOutputTokens, summed over every call of the turn).
+     *
+     * <p>Every model call goes through exactly one of {@link #beginStep()} (the loop) or {@link #beginSubCall()} (anything
+     * else); both count toward {@link #modelCalls()}, tokens and time, only steps toward the step limit.
      */
     public static final class TurnBudget {
-        private final int maxModelCalls;
+        private final int maxSteps, maxModelCalls;
         private final long maxInputTokens, maxOutputTokens;
         private final int desiredOutputTokens;
         private final Instant deadline;
         private final Clock clock;
-        private int modelCalls;
+        private int steps, modelCalls;
         private long inputTokens, outputTokens;
 
-        public TurnBudget(int maxModelCalls, long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Duration maxDuration, Clock clock) {
-            this.maxModelCalls = maxModelCalls; this.maxInputTokens = maxInputTokens; this.maxOutputTokens = maxOutputTokens;
+        public TurnBudget(int maxSteps, int maxModelCalls, long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Duration maxDuration, Clock clock) {
+            this.maxSteps = maxSteps; this.maxModelCalls = maxModelCalls; this.maxInputTokens = maxInputTokens; this.maxOutputTokens = maxOutputTokens;
             this.desiredOutputTokens = desiredOutputTokens; this.clock = clock; this.deadline = clock.instant().plus(maxDuration);
         }
 
-        /** Unlimited token budget (fixture mode: no vendor, zero cost); call and time limits still apply. */
-        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) {
-            return new TurnBudget(MAX_MODEL_CALLS, Long.MAX_VALUE / 4, Long.MAX_VALUE / 4, desiredOutputTokens, MAX_DURATION, clock);
+        /** The standard limits with the token ceiling of the turn's rate. */
+        public static TurnBudget standard(long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Clock clock) {
+            return new TurnBudget(MAX_DIALOGUE_STEPS, MAX_MODEL_CALLS, maxInputTokens, maxOutputTokens, desiredOutputTokens, MAX_DURATION, clock);
         }
 
-        /** Null when another model call fits; otherwise calls | time | tokens. */
+        /** Unlimited token budget (fixture mode: no vendor, zero cost); step, call and time limits still apply. */
+        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) {
+            return standard(Long.MAX_VALUE / 4, Long.MAX_VALUE / 4, desiredOutputTokens, clock);
+        }
+
+        /** Null when another dialogue step (a call of the loop's model) fits; otherwise steps | calls | time | tokens. */
+        public synchronized String stepBlockReason(long estimatedInput, int minOutput) {
+            if (steps >= maxSteps) return "steps";
+            return blockReason(estimatedInput, minOutput);
+        }
+
+        /**
+         * Null when another model call fits; otherwise calls | time | tokens. A tool's own model call and the history
+         * summary check only this: they are part of a step, not steps of their own.
+         */
         public synchronized String blockReason(long estimatedInput, int minOutput) {
             if (modelCalls >= maxModelCalls) return "calls";
             if (!clock.instant().isBefore(deadline)) return "time";
             if (inputTokens + Math.max(0, estimatedInput) > maxInputTokens || outputTokens + minOutput > maxOutputTokens) return "tokens";
             return null;
         }
-        public synchronized void beginCall() { modelCalls++; }
+        /** The loop calls its model: one dialogue step, and one model call. */
+        public synchronized void beginStep() { steps++; modelCalls++; }
+        /** A model call that is not a dialogue step (view_images' look, propose_plan's planner, the history summary). */
+        public synchronized void beginSubCall() { modelCalls++; }
         public synchronized int outputAllowance() { return (int) Math.max(0, Math.min(desiredOutputTokens, maxOutputTokens - outputTokens)); }
         public synchronized int outputAllowance(int desired) { return (int) Math.max(0, Math.min(desired, maxOutputTokens - outputTokens)); }
         public synchronized void record(long input, long output) { inputTokens = Math.addExact(inputTokens, input); outputTokens = Math.addExact(outputTokens, output); }
+        public synchronized int steps() { return steps; }
         public synchronized int modelCalls() { return modelCalls; }
         public synchronized long inputTokens() { return inputTokens; }
         public synchronized long outputTokens() { return outputTokens; }
