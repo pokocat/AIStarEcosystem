@@ -10,7 +10,7 @@ import type { StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, St
 import { ApiError } from '@ai-star-eco/api-client';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import type { DialogueApprovalBlock } from '@/canvas-bridge/studio-dialogue-store';
-import { DIALOGUE_SWITCHING, DIALOGUE_THREAD_BUSY, dialogueThreadBusy, useStudioDialogueSession } from './studio-dialogue-session';
+import { DIALOGUE_SWITCHING, DIALOGUE_THREAD_BUSY, dialogueThreadBusy, dialogueVerifyTiming, useStudioDialogueSession } from './studio-dialogue-session';
 
 const api = vi.hoisted(() => ({
   getConversation: vi.fn(), getThread: vi.fn(), openThread: vi.fn(), createThread: vi.fn(), threads: vi.fn(), list: vi.fn(), post: vi.fn(), control: vi.fn(),
@@ -46,7 +46,9 @@ const stateB: StudioDialogueState = { thread: thread('B', { lastSeq: 1 }), lates
 const olderOfA = [message('A', 'old-a', 0, 'user', '更早的一句')];
 
 let streams: DialogueStreamOptions[] = [];
+const timing = { ...dialogueVerifyTiming };
 beforeEach(() => {
+  Object.assign(dialogueVerifyTiming, timing);
   for (const fn of Object.values(api)) fn.mockReset();
   streams = [];
   api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
@@ -97,20 +99,101 @@ test('a confirmation that was refused releases the guard', async () => {
   expect(result.current.store.thread?.id).toBe('B');
 });
 
-test('a confirmation whose answer was lost reads this conversation before letting go, so an execution that did start keeps it', async () => {
+/**
+ * A stand-in for the server's create: idempotent by clientRequestId (StudioPlanExecutionService#create finds the prior row
+ * by it), so a resend of a request it took answers with that execution and one it never saw is taken now. `network` decides,
+ * per call, whether the request was lost on the way there, the answer was lost on the way back, or both arrive.
+ */
+function idempotentServer(network: ('lost-request' | 'lost-answer' | 'ok')[]) {
+  const taken = new Map<string, StudioPlanExecution>();
+  api.createExecution.mockImplementation(async (_project: string, request: { clientRequestId: string }) => {
+    const fate = network.shift() ?? 'ok';
+    if (fate === 'lost-request') throw new TypeError('Failed to fetch');
+    if (!taken.has(request.clientRequestId)) taken.set(request.clientRequestId, execution(`E${taken.size + 1}`, 'A'));
+    if (fate === 'lost-answer') throw new TypeError('Failed to fetch');
+    return taken.get(request.clientRequestId)!;
+  });
+  return taken;
+}
+
+// Codex review 2026-10-20 (P1): the server took the confirmation, its answer was lost and the catch-up read failed too; the
+// guard let go, the user switched, and the paid execution's nodes went to a conversation no longer shown.
+test('a confirmation the server took, whose answer and the next resend were lost, holds the conversation until the answer is known', async () => {
+  // Long waits, driven by 「现在再查一次」, so each in-between state can be looked at.
+  dialogueVerifyTiming.firstMs = 60_000; dialogueVerifyTiming.maxMs = 60_000;
   const { result } = await ready();
-  const reading = deferred<StudioDialogueState>();
-  api.createExecution.mockRejectedValue(new TypeError('Failed to fetch'));
-  api.getThread.mockReturnValue(reading.promise);
+  const taken = idempotentServer(['lost-answer', 'lost-request']);
   let approving!: Promise<unknown>;
-  act(() => { approving = result.current.approve(approval, caps, 'a1', async () => {}).catch(e => e); });
-  await waitFor(() => expect(api.getThread).toHaveBeenCalledWith('p', 'A'));
+  act(() => { approving = result.current.approve(approval, caps, 'a1', async () => {}); });
+  await waitFor(() => expect(result.current.verifying).toBe('ap1'));
+  expect(taken.size).toBe(1);
+  expect(result.current.store.execution).toBeUndefined();
   expect(result.current.confirming).toBe(true);
   await expect(result.current.newThread()).rejects.toThrow(DIALOGUE_THREAD_BUSY);
-  await act(async () => { reading.resolve({ ...stateA, thread: thread('A', { activeExecutionId: 'E1' }), execution: execution('E1', 'A') }); expect(await approving).toBeInstanceOf(TypeError); });
+  await expect(result.current.openThread('B')).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+  // The first resend is lost as well: still unknown, still held.
+  act(() => result.current.recheck());
+  await waitFor(() => expect(api.createExecution).toHaveBeenCalledTimes(2));
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.verifying).toBe('ap1');
+  await expect(result.current.openThread('B')).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+  expect(api.openThread).not.toHaveBeenCalled();
+  // The network comes back: the resend gets the execution that was taken the first time.
+  act(() => result.current.recheck());
+  await act(async () => { expect(await approving).toMatchObject({ id: 'E1' }); });
+  expect(api.createExecution).toHaveBeenCalledTimes(3);
+  expect(new Set(api.createExecution.mock.calls.map(([, request]) => request.clientRequestId)).size).toBe(1);
+  expect(taken.size).toBe(1);
+  expect(api.getThread).not.toHaveBeenCalled();
+  expect(result.current.verifying).toBeUndefined();
   expect(result.current.confirming).toBe(false);
   expect(result.current.store.execution?.id).toBe('E1');
+  expect(result.current.store.messages[1].blocks.find(b => b.type === 'approval')).toMatchObject({ status: 'approved', executionId: 'E1' });
+  // Now it is the execution that keeps the conversation (its nodes arrive on this stream).
   expect(dialogueThreadBusy(result.current.store)).toBe(true);
+});
+
+test('a confirmation that never reached the server is taken by the resend, once; 「现在再查一次」 skips the wait', async () => {
+  dialogueVerifyTiming.firstMs = 60_000; dialogueVerifyTiming.maxMs = 60_000;
+  const { result } = await ready();
+  const taken = idempotentServer(['lost-request']);
+  let approving!: Promise<unknown>;
+  act(() => { approving = result.current.approve(approval, caps, 'a1', async () => {}); });
+  await waitFor(() => expect(result.current.verifying).toBe('ap1'));
+  expect(taken.size).toBe(0);
+  expect(api.createExecution).toHaveBeenCalledTimes(1);
+  act(() => result.current.recheck());
+  await act(async () => { expect(await approving).toMatchObject({ id: 'E1' }); });
+  expect(api.createExecution).toHaveBeenCalledTimes(2);
+  expect(taken.size).toBe(1);
+  expect(result.current.confirming).toBe(false);
+  expect(result.current.store.execution?.id).toBe('E1');
+});
+
+test('a resend the server refuses lets go with that refusal for the card, and the conversation can be left', async () => {
+  dialogueVerifyTiming.firstMs = 5; dialogueVerifyTiming.maxMs = 20;
+  const { result } = await ready();
+  api.createExecution.mockRejectedValueOnce(new ApiError({ code: 'BAD_GATEWAY', message: '网关超时' }, 504))
+    .mockRejectedValueOnce(new ApiError({ code: 'STUDIO_APPROVAL_EXPIRED', message: '报价已过期' }, 409));
+  await act(async () => { await expect(result.current.approve(approval, caps, 'a1', async () => {})).rejects.toMatchObject({ code: 'STUDIO_APPROVAL_EXPIRED' }); });
+  expect(api.createExecution).toHaveBeenCalledTimes(2);
+  expect(result.current.verifying).toBeUndefined();
+  expect(result.current.confirming).toBe(false);
+  expect(result.current.store.execution).toBeUndefined();
+  api.openThread.mockResolvedValue(stateB);
+  await act(async () => { expect(await result.current.openThread('B')).toBe(true); });
+});
+
+test('closing the panel stops the resends', async () => {
+  dialogueVerifyTiming.firstMs = 60_000; dialogueVerifyTiming.maxMs = 60_000;
+  const { result, unmount } = await ready();
+  api.createExecution.mockRejectedValue(new TypeError('Failed to fetch'));
+  let approving!: Promise<unknown>;
+  act(() => { approving = result.current.approve(approval, caps, 'a1', async () => {}).catch(e => e); });
+  await waitFor(() => expect(result.current.verifying).toBe('ap1'));
+  unmount();
+  expect(await approving).toBeInstanceOf(Error);
+  expect(api.createExecution).toHaveBeenCalledTimes(1);
 });
 
 test('while a switch is on its way, a confirmation card cannot start anything', async () => {

@@ -14,6 +14,10 @@
 // (`generation` moves on every switch, so A → B → A still drops what the first visit of A asked for). A confirmation
 // (「开始制作」 and the like, from saving the canvas to the execution's answer) and a switch exclude each other. Catch-up
 // reads (stream rebuilds, polls, refreshes) use the read-only snapshot by id; only the user's own pick opens a conversation.
+//
+// A confirmation whose answer was lost (Codex review 2026-10-20, P1): the request has ended but whether the server took it
+// has not been settled. The guard is not let go on the request ending; the same request (same clientRequestId) is sent again
+// with backoff until the server gives a definite answer: the execution (taken then or now, exactly once) or a refusal.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
@@ -63,6 +67,12 @@ export const DIALOGUE_THREAD_BUSY = '这段对话还在进行，等它做完或�
 export const dialogueThreadBusy = (store: DialogueStore) => !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending');
 /** Why a confirmation card waits: the panel is moving to another conversation, and the card belongs to the one it leaves. */
 export const DIALOGUE_SWITCHING = '正在切换对话，请稍等';
+/** Why the conversation still waits after a confirmation's answer was lost: it is being sent again until the answer is known. */
+export const DIALOGUE_VERIFYING = '正在核对确认结果，请稍等';
+/** Backoff between resends of a confirmation whose answer was lost: 2s, 4s, 8s… up to 30s. Tests shorten it. */
+export const dialogueVerifyTiming = { firstMs: 2000, maxMs: 30000 };
+const verifyDelay = (attempt: number) => Math.min(dialogueVerifyTiming.firstMs * 2 ** (attempt - 1), dialogueVerifyTiming.maxMs);
+const definitelyRefused = (error: unknown) => error instanceof ApiError && !!error.status && DEFINITE_REJECTION.has(error.status);
 
 /** What a thread-owned request was asked for; its answer only lands while this is still what the panel shows. */
 type DialogueScope = { projectId: string; threadId?: string; generation: number };
@@ -96,9 +106,15 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
   // A confirmation on its way, counted (a card and a check node may overlap). See `confirmation` below.
   const confirmations = useRef(0);
   const [confirming, setConfirming] = useState(false);
+  // The card whose lost answer is being settled (see `settle` in approve), and how to cut its current wait short.
+  const [verifying, setVerifying] = useState<string>();
+  const wakeVerify = useRef<(() => void) | undefined>(undefined);
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; wakeVerify.current?.(); }; }, []);
   useEffect(() => {
     dispatch({ type: 'reset' }); loaded.current = undefined; setStatus('idle'); setLoadError(undefined); setLinked({}); linkedRequested.current = new Set();
     generation.current++; switchSeq.current++; createKey.current = undefined; setSwitching(undefined);
+    wakeVerify.current?.(); // a settle of the canvas left ends now instead of after its wait
   }, [projectId]);
   const load = useCallback(async () => {
     const id = projectId, visit = ++generation.current;
@@ -320,6 +336,33 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     finally { if (--confirmations.current === 0) setConfirming(false); }
   }, []);
 
+  /** Waits `ms`, or less when 「现在再查一次」, leaving the canvas or unmounting cuts it short. */
+  const pause = (ms: number) => new Promise<void>(resolve => {
+    const done = () => { clearTimeout(timer); if (wakeVerify.current === done) wakeVerify.current = undefined; resolve(); };
+    const timer = setTimeout(done, ms);
+    wakeVerify.current = done;
+  });
+  /**
+   * Settles a confirmation whose answer was lost by sending the same request again (same clientRequestId) with backoff. The
+   * server answers a request it already took with that execution and takes one it never saw, so the outcome is known, and
+   * exactly one execution exists, either way; a definite refusal ends it with that error for the card. A catch-up read could
+   * not tell 「not taken」 from 「still being taken」 (a 504 whose request is still running), and letting go on 「not taken」
+   * left that execution running behind another conversation. Stops when the canvas is left or the panel unmounts.
+   */
+  const settle = async (at: DialogueScope, approvalId: string, request: StudioPlanExecutionCreateRequest): Promise<StudioPlanExecution> => {
+    setVerifying(approvalId);
+    try {
+      for (let attempt = 1; ; attempt++) {
+        await pause(verifyDelay(attempt));
+        if (!alive.current || project.current !== at.projectId || generation.current !== at.generation) throw new Error('已离开这段对话，确认结果没有核对完');
+        try { return await createStudioPlanExecution(at.projectId, request); }
+        catch (error) { if (definitelyRefused(error)) throw error; }
+      }
+    } finally { if (alive.current) setVerifying(undefined); }
+  };
+  /** 「现在再查一次」: the next resend goes now instead of after its wait. */
+  const recheck = useCallback(() => { wakeVerify.current?.(); }, []);
+
   /** `prepare`: work that must finish first and is already guarded, such as saving the canvas the execution reads. */
   const approve = useCallback((block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string,
     prepare?: () => Promise<unknown>): Promise<StudioPlanExecution> => confirmation(async () => {
@@ -345,13 +388,10 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     let execution: StudioPlanExecution;
     try { execution = await createStudioPlanExecution(at.projectId, request); }
     catch (error) {
-      // Not a definite refusal: the execution may have started. Read this conversation once before the guard lets go, so a
-      // started execution shows (and keeps the conversation from being left) instead of a free 「新对话」.
-      if (!(error instanceof ApiError && error.status && DEFINITE_REJECTION.has(error.status)) && at.threadId) {
-        try { const state = await getStudioDialogueThread(at.projectId, at.threadId); if (stillShown(at)) dispatch({ type: 'snapshot', state, mode: 'merge' }); }
-        catch { /* the stream remains the source of updates */ }
-      }
-      throw error;
+      if (definitelyRefused(error)) throw error;
+      // Not a definite refusal: the execution may have started, and its nodes arrive on this conversation's stream. The guard
+      // holds until the answer is known (one failed catch-up read used to let it go, Codex review 2026-10-20 P1).
+      execution = await settle(at, block.approvalId, request);
     }
     if (!stillShown(at)) return execution;
     dispatch({ type: 'execution', execution });
@@ -398,6 +438,9 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
 
   return { store, dispatch, status, loadError, reload: load, stream, send, retry, stop, branch, newThread, openThread, listThreads, switching,
     /** A confirmation is on its way: no new conversation, no switch (same reason as a conversation still going). */
-    confirming, approve, controlExecution, ensureExecution, acceptStep, loadOlder, readThread, executions };
+    confirming,
+    /** The card whose confirmation's answer was lost and is being settled (still `confirming`); see DIALOGUE_VERIFYING. */
+    verifying, recheck,
+    approve, controlExecution, ensureExecution, acceptStep, loadOlder, readThread, executions };
 }
 export type StudioDialogueSession = ReturnType<typeof useStudioDialogueSession>;

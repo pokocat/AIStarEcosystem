@@ -11,6 +11,7 @@ import { formatDateTime } from '@/lib/datetime';
 import type { DialogueApprovalBlock, DialoguePlanBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { StudioPlanContent } from './studio-assistant-plan';
+import { DIALOGUE_VERIFYING } from './studio-dialogue-session';
 
 const TAG: Partial<Record<DialogueApprovalBlock['status'], string>> = { expired: '已过期', superseded: '已更新' };
 export const approvalStatus = (block: DialogueApprovalBlock, now = Date.now()): DialogueApprovalBlock['status'] =>
@@ -20,7 +21,7 @@ const whole = (value: string) => { const n = Number(value); return Number.isFini
 
 export type ApprovedCaps = { budgetCap?: number; autoFixCap?: number; approvedAt?: string; planRevision?: number };
 
-export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, planReady, skillLabel, onStart, onRevise, onRequote, onChooseApproach }: {
+export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, planReady, skillLabel, onStart, onRevise, onRequote, onChooseApproach, verifying, onRecheck }: {
   block: DialogueApprovalBlock;
   /** The plan this card was quoted for, when it came in the same reply: it is shown on the card instead of the scope. */
   plan?: DialoguePlanBlock;
@@ -32,6 +33,8 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
   /** 「重新报价」 on an expired card: sent as the user's message. */
   onRequote?: () => void;
   onChooseApproach?: (title: string) => void;
+  /** The answer to 「开始制作」 was lost and the same request is being sent again until it is known (studio-dialogue-session). */
+  verifying?: boolean; onRecheck?: () => void;
 }) {
   // A raise card already proposes the cap it needs: the approved cap plus the shortfall (StudioPlanExecutor.raiseCard).
   const [cap, setCap] = useState(String(block.budgetCap)), capId = useId();
@@ -85,6 +88,7 @@ export function StudioDialogueApprovalCard({ block, plan, approved, shortfall, p
         {!raise && <Button className="studio-dialogue-secondary" disabled={busy} onClick={onRevise}>先改改</Button>}
       </div>
       {invalid && <p className="studio-dialogue-warning" role="alert">{invalid}</p>}
+      {busy && verifying && <p className="studio-dialogue-note" role="status">{DIALOGUE_VERIFYING}{onRecheck && <button type="button" className="studio-dialogue-link" onClick={onRecheck}>现在再查一次</button>}</p>}
     </>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
   </section>;

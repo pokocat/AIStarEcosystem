@@ -383,7 +383,7 @@ class StudioDialogueServiceTest {
         verify(runs, never()).save(any());
         verifyNoInteractions(credits);
         assertEquals("done", stored.get(result.messageId()).getStatus());
-        assertTrue(stored.values().stream().anyMatch(m -> "assistant".equals(m.getRole()) && m.getText().startsWith("好，停下了")), "answered with what happened");
+        assertTrue(stored.values().stream().anyMatch(m -> "assistant".equals(m.getRole()) && m.getText().contains("已停止")), "answered with what happened");
         assertEquals(result.messageId(), service.post("u1", "P1", "IPT-P1", request("c-stop", "先停", 5L)).messageId(), "a resend is the same message");
         verify(control, times(1)).stop(anyString(), anyString(), anyString(), anyString());
     }
@@ -396,6 +396,7 @@ class StudioDialogueServiceTest {
         assertEquals("applied", service.post("u1", "P1", "IPT-P1", request("c-pause", "暂停一下", 5L)).queueState());
         verify(control).pause(eq("u1"), eq("P1"), eq("PEX-1"), startsWith("say-"));
         verify(control, never()).stop(anyString(), anyString(), anyString(), anyString());
+        assertTrue(stored.values().stream().anyMatch(m -> "assistant".equals(m.getRole()) && m.getText().contains("已暂停")), "answered with what happened");
         for (String text : List.of("不要停", "要停吗？", "先停一下第 3 段，换个人物"))
             assertEquals("queued", service.post("u1", "P1", "IPT-P1", request("c-" + text.hashCode(), text, 5L)).queueState(), text);
         verify(control, times(1)).pause(anyString(), anyString(), anyString(), anyString());

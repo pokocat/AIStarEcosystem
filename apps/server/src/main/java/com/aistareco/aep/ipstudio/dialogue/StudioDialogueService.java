@@ -368,9 +368,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             t.setLastOpenedAt(now);
             return List.of();
         });
-        String reply = "pause".equals(action) ? "好，先暂停：不会再提交新的步骤，已经开始的任务会照常做完。要接着做，点进度条上的「继续制作」。"
-                : bound != null ? "好，停下了：不会再提交新的步骤，还在排队的任务会取消；已经交给生成引擎的任务会照原样做完并结算。"
-                : "好，这条回复停下了。";
+        String reply = "pause".equals(action) ? "已暂停，已经提交的任务会照常做完。"
+                : bound != null ? "已停止，已经开始生成的任务会照常做完。"
+                : "已停止。";
         postExecutionMessage(threadId, bound == null ? null : bound.id(), "ack-" + key, reply, null, null);
         return new PostMessageResult(id[0], null, null, "applied");
     }

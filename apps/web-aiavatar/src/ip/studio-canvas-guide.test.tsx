@@ -27,9 +27,10 @@ vi.mock('./studio-attachment-picker', () => ({ StudioAttachmentPicker: ({ action
 // The workspace overlay is where the guide lives; a stand-in mounts the real guide under the same rule the workspace uses.
 vi.mock('./studio-workspace', async () => {
   const guide = await import('./studio-canvas-guide');
-  return { StudioWorkspace: ({ nodes, textEditingNodeId }: any) => <>
+  return { StudioWorkspace: ({ nodes, textEditingNodeId, renderTextEditor }: any) => <>
     {guide.studioCanvasGuideVisible({ nodeCount: nodes.length, mode: 'canvas', panelOpen: !!textEditingNodeId }) && <guide.StudioCanvasGuide assistantOpen onStartAssistant={() => {}}/>}
     <output aria-label="正在编辑的文字节点">{textEditingNodeId || ''}</output>
+    {textEditingNodeId && renderTextEditor?.(null)}
   </> };
 });
 vi.mock('@xyflow/react', () => {
@@ -43,10 +44,13 @@ const commands: { action: string; nodeId?: string }[] = [];
 const record = (e: Event) => commands.push((e as CustomEvent).detail);
 beforeEach(() => {
   vi.clearAllMocks(); commands.length = 0; api.save.mockResolvedValue('saved');
+  // The real text editor is a floating panel: it measures with ResizeObserver and finds its node with CSS.escape.
+  vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
+  if (typeof globalThis.CSS?.escape !== 'function') vi.stubGlobal('CSS', { escape: (value: string) => value });
   window.addEventListener('studio-command', record);
   useCanvasStore.setState({ projects: [{ id: 'p', title: '空白画布 · 新画布', nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } as any] });
 });
-afterEach(() => { window.removeEventListener('studio-command', record); cleanup(); });
+afterEach(() => { window.removeEventListener('studio-command', record); cleanup(); vi.unstubAllGlobals(); });
 const nodes = () => useCanvasStore.getState().projects[0].nodes;
 
 describe('when the guide shows', () => {
@@ -112,6 +116,38 @@ describe('on the canvas', () => {
     await waitFor(() => expect(nodes()).toHaveLength(1));
     expect(nodes()[0]).toMatchObject({ type: 'text', title: '文字', metadata: { content: '' } });
     expect(screen.getByRole('status', { name: '正在编辑的文字节点' }).textContent).toBe(nodes()[0].id);
+  });
+  // User feedback 2026-10-20: after 「文字」 the editor opened but the caret was not in it, so typing went nowhere.
+  test('「文字」 puts the caret in the new node\'s text, from the guide and from the rail\'s 「＋添加」', async () => {
+    render(<StudioFlowCanvas projectId="p"/>);
+    fireEvent.click(screen.getByRole('button', { name: '文字' }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '节点文字' })));
+    fireEvent.change(screen.getByRole('textbox', { name: '节点文字' }), { target: { value: '人物设定' } });
+    expect(nodes()[0].metadata?.content).toBe('人物设定');
+    fireEvent.click(screen.getByRole('button', { name: /^完 ?成$/ }));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '节点文字' })).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: '添加内容' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /文字/ }));
+    await waitFor(() => expect(nodes()).toHaveLength(2));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('textbox', { name: '节点文字' })));
+    expect((document.activeElement as HTMLTextAreaElement).value).toBe('');
+  });
+  test('a new text node never takes the caret from a field the user is typing in, and reopening a node does not move focus', async () => {
+    const other = document.createElement('textarea'); other.setAttribute('aria-label', '助手输入'); document.body.append(other);
+    try {
+      render(<StudioFlowCanvas projectId="p"/>);
+      other.focus();
+      fireEvent.click(screen.getByRole('button', { name: '文字' }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: '节点文字' })).toBeTruthy());
+      expect(document.activeElement).toBe(other);
+      const id = nodes()[0].id;
+      fireEvent.click(screen.getByRole('button', { name: /^完 ?成$/ }));
+      await waitFor(() => expect(screen.queryByRole('textbox', { name: '节点文字' })).toBeNull());
+      other.blur();
+      window.dispatchEvent(new CustomEvent('studio-command', { detail: { action: 'edit-text', nodeId: id } }));
+      await waitFor(() => expect(screen.getByRole('textbox', { name: '节点文字' })).toBeTruthy());
+      expect(document.activeElement).toBe(document.body);
+    } finally { other.remove(); }
   });
   test('「上传素材」 opens the same file picker as the rail and adds nothing by itself', () => {
     render(<StudioFlowCanvas projectId="p"/>);

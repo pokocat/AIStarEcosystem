@@ -38,7 +38,7 @@ import {
 import { activeStudioSkills, completionExecutionId, loadStudioSkills, reloadStudioSkills, skillRequiredChoices, studioSkillBadge } from "@/canvas-bridge/studio-skills";
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from "./studio-errors";
 import { StudioFloatingPanel } from "./studio-floating-panel";
-import { DIALOGUE_THREAD_BUSY, dialogueThreadBusy, useStudioDialogueSession } from "./studio-dialogue-session";
+import { DIALOGUE_THREAD_BUSY, DIALOGUE_VERIFYING, dialogueThreadBusy, useStudioDialogueSession } from "./studio-dialogue-session";
 import { StudioDialogueThreads } from "./studio-dialogue-threads";
 import { StudioDialogueComposer, type DialogueComposerHandle } from "./studio-dialogue-composer";
 import { StudioDialogueTimeline } from "./studio-dialogue-timeline";
@@ -531,6 +531,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     onCompose: compose, onQuickReply: value => void send(value), quickReplyBusy: sending || session.status !== "ready",
     onRevise: () => composer.current?.focus(), onApprove: approve, onAdopt: adopt, onPlaceText: placeText,
     planReady: block => !!planForApproval(store, block), onBranch: session.branch, approvedCaps: block => approvedCaps(block, session.executions),
+    verifyingApprovalId: session.verifying, onRecheck: session.recheck,
     skillLabel: plan => studioSkillBadge(skills, plan), completionActions: operator ? completionActions : undefined,
   };
 
@@ -632,7 +633,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const empty = !current.length && !store.outbox.length;
   // The canvas gets its nodes from this conversation's events: no new one and no switch while it is still going.
   const threadBusyReason = session.status === "idle" || session.status === "loading" ? "对话还在加载，请稍等" : session.switching ? "正在切换对话，请稍等"
-    : sending || session.confirming || dialogueThreadBusy(store) ? DIALOGUE_THREAD_BUSY : "";
+    : session.verifying ? DIALOGUE_VERIFYING : sending || session.confirming || dialogueThreadBusy(store) ? DIALOGUE_THREAD_BUSY : "";
   const threadActions = <StudioDialogueThreads currentThreadId={store.thread?.id} busyReason={threadBusyReason} empty={empty} listThreads={session.listThreads}
     onNew={() => switchThread(session.newThread)} onOpen={threadId => switchThread(() => session.openThread(threadId))}/>;
   const execution = store.execution && (executionActive(store.execution) || store.execution.threadId === store.thread?.id) ? store.execution : undefined;

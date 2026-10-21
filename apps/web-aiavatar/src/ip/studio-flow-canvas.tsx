@@ -3,7 +3,7 @@ import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-error
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
-import { App, Button, Dropdown, Input, Modal } from 'antd';
+import { App, Button, Dropdown, Input, Modal, type GetRef } from 'antd';
 import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, RotateCcw, Scissors, Search, ShoppingBag, Trash2, Upload, Video, X } from 'lucide-react';
 import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
@@ -133,6 +133,17 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const [find, setFind] = useState(false), [query, setQuery] = useState(''), [textId, setTextId] = useState<string>(), [renameId, setRenameId] = useState<string>();
   const [textExpanded,setTextExpanded]=useState(false);
   useEffect(()=>{setTextExpanded(false);},[textId]);
+  // A text node made from a 「文字」 entry (empty-canvas guide, the rail's 「＋添加」, the pane menu) is made to be typed in:
+  // the caret lands in its editor as soon as the editor mounts. Only once per new node, and never taken from another field
+  // the user is typing in; opening an existing node's editor leaves focus where it is.
+  const focusNewText = useRef<string | undefined>(undefined);
+  const textEditorRef = useCallback((editor: GetRef<typeof Input.TextArea> | null) => {
+    if (!editor || !textId || focusNewText.current !== textId) return;
+    focusNewText.current = undefined;
+    const active = document.activeElement as HTMLElement | null;
+    if (active?.closest?.('input,textarea,select,[contenteditable="true"]') && !active.closest('.studio-plain-text-editor')) return;
+    editor.focus({ preventScroll: true, cursor: 'end' });
+  }, [textId]);
   const [referencePick,setReferencePick]=useState(false),referenceOrigin=useRef<string|undefined>(undefined);
   const [pendingFocus, setPendingFocus] = useState<string>(), [selectedEdges, setSelectedEdges] = useState(new Set<string>());
   const [context, setContext] = useState<{ x: number; y: number; nodeId?: string }>();
@@ -247,7 +258,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     if (type === CanvasNodeType.Text) node.metadata = { content: '', status: 'idle' };
     setNodes(old => [...old, placeVisibleNode(node, old, at)]);
     setSelected(new Set([node.id])); setSelectedEdges(new Set()); setPendingFocus(undefined);
-    if (type === CanvasNodeType.Text) setTextId(node.id); else setPendingCreator({ id: node.id, operation: type });
+    if (type === CanvasNodeType.Text) { focusNewText.current = node.id; setTextId(node.id); } else setPendingCreator({ id: node.id, operation: type });
   };
   const addRef = useRef(add); addRef.current = add;
   const copy = useCallback(() => {
@@ -477,7 +488,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       textEditingNodeId={text?.id} renderTextEditor={actions => <>
         <StudioFloatingPanel title="编辑文字" anchorId={textId} open={!!text&&!textExpanded} className="studio-plain-text-editor" footer={<><Button onClick={()=>setTextExpanded(true)}>展开编辑</Button><Button type="primary" onClick={() => setTextId(undefined)}>完成</Button></>} onClose={() => setTextId(undefined)}>
           {actions}
-          <Input.TextArea aria-label="节点文字" rows={5} value={text?.metadata?.content || ''} onChange={e => setNodes(old => old.map(n => n.id === textId ? { ...n, metadata: { ...n.metadata, content: e.target.value } } : n))}/>
+          <Input.TextArea ref={textEditorRef} aria-label="节点文字" rows={5} value={text?.metadata?.content || ''} onChange={e => setNodes(old => old.map(n => n.id === textId ? { ...n, metadata: { ...n.metadata, content: e.target.value } } : n))}/>
         </StudioFloatingPanel>
         <Modal title="展开文字编辑" open={!!text&&textExpanded} width={960} onCancel={()=>setTextExpanded(false)} footer={<Button type="primary" onClick={()=>setTextExpanded(false)}>收起编辑</Button>} getContainer={modalContainer}>
           <Input.TextArea aria-label="展开节点文字" rows={18} value={text?.metadata?.content||''} onChange={e=>setNodes(old=>old.map(n=>n.id===textId?{...n,metadata:{...n.metadata,content:e.target.value}}:n))}/>

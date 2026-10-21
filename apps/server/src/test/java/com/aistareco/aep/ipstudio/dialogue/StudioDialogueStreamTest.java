@@ -46,4 +46,32 @@ class StudioDialogueStreamTest {
         session.live(five);                          // already sent: dropped
         assertEquals(List.of("2", "3", "4", "5", "6"), sent);
     }
+
+    /**
+     * 2026-10-20: switching or starting a conversation closes the old stream; the next write fails with a broken pipe. The
+     * session must close itself and leave the hub at once (not keep a dead subscriber and a heartbeat for 30 minutes).
+     */
+    @Test void aWriteToAGoneClientClosesTheSessionAndLeavesTheHub() throws Exception {
+        when(events.findByThreadIdAndSeqGreaterThanOrderBySeqAsc(eq("T"), anyLong(), any(Pageable.class))).thenReturn(List.of());
+        var hub = new StudioDialogueEventHub();
+        var store = new StudioDialogueStore(mock(IpDialogueThreadRepository.class), mock(IpDialogueMessageRepository.class), events,
+                hub, new ObjectMapper(), mock(PlatformTransactionManager.class));
+        var service = mock(StudioDialogueService.class);
+        when(service.requireThread("u1", "P1", "T")).thenReturn(IpDialogueThread.builder().id("T").lastSeq(0).build());
+        int[] attempts = {0};
+        SseEmitter gone = new SseEmitter() {
+            @Override public void send(SseEventBuilder builder) throws java.io.IOException { attempts[0]++; throw new java.io.IOException("Broken pipe"); }
+        };
+        StudioDialogueStream[] holder = new StudioDialogueStream[1];
+        holder[0] = new StudioDialogueStream(service, events, hub, store) {
+            @Override Session session(String threadId, SseEmitter emitter, long cursor) { return holder[0].new Session(threadId, gone, cursor); }
+        };
+        holder[0].open("u1", "P1", "T", 0L, null);
+        assertEquals(1, hub.subscriberCount("T"));
+        hub.broadcast(store.toDto(row(1)));
+        for (int i = 0; i < 200 && hub.subscriberCount("T") > 0; i++) Thread.sleep(10); // the replay runs on its own thread
+        assertEquals(0, hub.subscriberCount("T"), "a gone client leaves the hub right away");
+        hub.broadcast(store.toDto(row(2)));
+        assertEquals(1, attempts[0], "nothing more is written to a closed session");
+    }
 }

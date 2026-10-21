@@ -501,10 +501,11 @@ function directProductionTurn(projectId: string, p: MockProject, t: MockThread) 
       finishStep(projectId, p, t, s.id, {}, runId); budget(p, t, s.quotedCost, 0, "actual");
       updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() }));
     } },
-    // The server's completion summary and follow-ups (StudioExecutionSummary) for a run of one finished step.
+    // The server's completion summary and follow-ups (StudioExecutionSummary) for a run of one finished step. One clip is
+    // already the whole video, so there is nothing to join (the server offers that only from two finished clips).
     ...say(t, messageId, "e2", `做好了，花了 ${s.quotedCost} 积分。`),
     { run: () => {
-      const suggestions = s.operation === "video" ? ["把做好的片段合成一条成片", "把这张画布存为模板"] : ["用这张图做一段视频", "换个风格再出一张"];
+      const suggestions = s.operation === "video" ? ["把这张画布存为模板"] : ["用这张图做一段视频", "换个风格再出一张"];
       emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
       patchViewMessage(t, messageId, m => ({ ...m, suggestions, clientMessageId: `exec-summary-${e.id}` }));
       p.stage = "done";
@@ -601,8 +602,8 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
     const message: StudioDialogueMessage = { id: nextId("msg"), threadId, seq: ++t.thread.lastSeq, role: "user", text: request.text, blocks: [],
       clientMessageId: request.clientMessageId, status: "done", createdAt: now() };
     t.view = { ...t.view, messages: [...t.view.messages, message] };
-    const reply = action === "pause" ? "好，先暂停：不会再提交新的步骤，已经开始的任务会照常做完。要接着做，点进度条上的「继续制作」。"
-      : working ? "好，停下了：不会再提交新的步骤，还在排队的任务会取消；已经交给生成引擎的任务会照原样做完并结算。" : "好，这条回复停下了。";
+    const reply = action === "pause" ? "已暂停，已经提交的任务会照常做完。"
+      : working ? "已停止，已经开始生成的任务会照常做完。" : "已停止。";
     const ack = startTurn(t);
     play(p, t, [...say(t, ack, "r1", reply), { run: () => emit(t, "turn.done", { reason: "completed", messageId: ack, billing: MOCK_BILLING, settling: false }) }]);
     const result: StudioPostMessageResult = { messageId: message.id, queueState: "applied" };

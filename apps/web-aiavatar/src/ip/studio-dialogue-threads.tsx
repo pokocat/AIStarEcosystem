@@ -31,6 +31,11 @@ type Props = {
 };
 
 const popupContainer = (trigger: HTMLElement) => trigger.closest<HTMLElement>(".ip-surface") || document.body;
+// The list opens under a button near the panel's right edge: when it would run past the window it slides back into view
+// (shiftX) instead of flipping to the other side, and still flips up or down (adjustY). antd 6.6 types autoAdjustOverflow
+// as adjustX / adjustY only, but getOverflowOptions (antd/es/_util/placements.js) hands the whole object to the trigger,
+// which honours shiftX. A non-literal object with a shared key passes the type; the CSS width cap stays as the fallback.
+const THREADS_OVERFLOW = { adjustY: 1 as const, shiftX: true };
 
 export function StudioDialogueThreads({ currentThreadId, busyReason, empty, listThreads, onNew, onOpen }: Props) {
   const [open, setOpen] = useState(false);
@@ -104,7 +109,7 @@ export function StudioDialogueThreads({ currentThreadId, busyReason, empty, list
   return <>
     <button type="button" className="studio-dialogue-thread-action" aria-label="新对话" title={newReason || "新对话"} disabled={!!newReason} onClick={() => void startNew()}>
       <SquarePen size={17} aria-hidden="true"/></button>
-    <Popover trigger="click" placement="bottomRight" arrow={false} open={open} onOpenChange={change} destroyOnHidden getPopupContainer={popupContainer}
+    <Popover trigger="click" placement="bottomRight" arrow={false} autoAdjustOverflow={THREADS_OVERFLOW} open={open} onOpenChange={change} destroyOnHidden getPopupContainer={popupContainer}
       classNames={{ root: "studio-dialogue-threads-overlay" }} styles={{ container: { padding: 0 } }} content={content}
       afterOpenChange={visible => { if (visible) (panel.current?.querySelector<HTMLButtonElement>(".studio-dialogue-thread.is-current") || panel.current?.querySelector<HTMLButtonElement>("button:not(:disabled)"))?.focus(); }}>
       <button ref={trigger} type="button" className="studio-dialogue-thread-action" aria-label="历史对话" title={busyReason || "历史对话"} aria-expanded={open} aria-haspopup="dialog" disabled={!!busyReason && !open}>

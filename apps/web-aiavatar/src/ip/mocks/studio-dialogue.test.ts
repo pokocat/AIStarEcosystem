@@ -185,6 +185,22 @@ test('a direct skill: plan and production card in one reply, the card names no e
   expect(completionExecutionId((await mockDialogueConversation('img')).messages.at(-1)!)).toBe(execution.id);
 }, 20000);
 
+test('one finished clip is already the whole video: no 「合成一条成片」 follow-up (StudioExecutionSummary offers it from two clips)', async () => {
+  const state = await mockDialogueConversation('clip');
+  let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace' });
+  const events: StudioDialogueEvent[] = [];
+  const stop = mockDialogueSubscribe('clip', state.thread.id, 0, e => { events.push(e); store = dialogueReducer(store, { type: 'event', event: e }); });
+  await mockDialoguePost('clip', state.thread.id, { clientMessageId: 'c1', text: '做一条 5 秒的产品短片' });
+  await until(events, e => e.type === 'turn.done');
+  expect(store.messages.find(m => m.role === 'assistant')!.blocks.map(b => b.type)).toEqual(['plan', 'approval']);
+  await mockDialoguePost('clip', state.thread.id, { clientMessageId: 'c2', text: '可以' });
+  await until(events, e => e.type === 'turn.done' && (e.data as { reason: string }).reason === 'completed');
+  stop();
+  const summary = (await mockDialogueConversation('clip')).messages.at(-1)!;
+  expect(completionExecutionId(summary)).toBeTruthy();
+  expect(summary.suggestions).toEqual(['把这张画布存为模板']);
+}, 20000);
+
 test('写剧本与文案 writes a short draft straight onto the canvas: one text node, no plan, no card', async () => {
   const state = await mockDialogueConversation('copy');
   const events: StudioDialogueEvent[] = [];

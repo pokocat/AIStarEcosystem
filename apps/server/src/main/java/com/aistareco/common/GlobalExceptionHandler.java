@@ -3,6 +3,7 @@ package com.aistareco.common;
 import com.aistareco.aep.service.ErrorLogService;
 import com.aistareco.aep.service.mixcut.MissingAssetsException;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import org.apache.catalina.connector.ClientAbortException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,11 +14,17 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestNotUsableException;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.IOException;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -79,12 +86,15 @@ public class GlobalExceptionHandler {
      * 写错误体也写不出去；不能让它进 handleGeneric 的 ERROR 日志，否则真 bug 被日志淹没。
      *
      * 仅 DEBUG 记一行供排查；返回 void 让 Spring 知道这个异常已被处理（不要继续向 servlet container 抛）。
+     *
+     * <p>2026-10-20：SSE（Studio 对话事件流）每次切换 / 新建对话都会断开旧的流，Spring 6.1 把随后的写失败包成
+     * {@link AsyncRequestNotUsableException} 派发回来，原先落进 handleGeneric 刷 ERROR + 写 ErrorLog，还试图往
+     * text/event-stream 里写 JSON。两种类型都在这里按同一口径处理；被别的异常包住的断开见 {@link #isClientDisconnect}。
+     * 选 DEBUG 不选 WARN：它是每次切换对话都会发生的正常行为，WARN 也会把真问题淹掉。
      */
-    @ExceptionHandler(ClientAbortException.class)
-    public void handleClientAbort(ClientAbortException ex) {
-        if (log.isDebugEnabled()) {
-            log.debug("客户端中止连接（视频快进 / 关 tab / 网络抖动）：{}", ex.getMessage());
-        }
+    @ExceptionHandler({ClientAbortException.class, AsyncRequestNotUsableException.class})
+    public void handleClientAbort(Exception ex) {
+        logClientGone(ex);
     }
 
     /**
@@ -109,12 +119,48 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex, HttpServletRequest request) {
+    public ResponseEntity<Map<String, Object>> handleGeneric(Exception ex, HttpServletRequest request, HttpServletResponse response) {
+        // 客户端已经走了（断开被别的异常包住）：不是 bug，不记 ERROR、不写 ErrorLog、不写响应体（返回 null = 已处理、无 body）。
+        if (isClientDisconnect(ex, response != null && response.isCommitted())) {
+            logClientGone(ex);
+            return null;
+        }
         // 这是真正的未处理异常 = 系统 bug，必落 ErrorLog
         log.error("未处理异常被 GlobalExceptionHandler 兜底", ex);
         String logId = errorLogService.record(ex, "INTERNAL_ERROR", 500, request);
         return json(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR",
                 appendLogId("服务器处理请求失败，请稍后重试", logId), null, logId);
+    }
+
+    private static final int MAX_CAUSE_DEPTH = 16;
+
+    /**
+     * 客户端已断开：cause 链上任一环是 {@link ClientAbortException}（Tomcat 写响应时发现对端走了）或
+     * {@link AsyncRequestNotUsableException}（Spring 6.1 异步请求 / SSE 的同一件事），即为断开。
+     *
+     * <p>只看消息的那一类（{@link IOException} 含「Broken pipe」「Connection reset by peer」）还要求<b>响应已提交</b>：
+     * 同样的字眼也会出现在我们<b>调上游</b>（大模型、存储、厂商接口）被对方掐断时，那是上游故障，必须照常 ERROR
+     * 留痕（AGENTS.md §8.0.1 ①）；而写给客户端的失败一定发生在响应已经开始往外写之后。
+     * 不直接用 Spring 的 {@code DisconnectedClientHelper}：它把 EOFException 也算断开（业务里读截断文件也会抛），
+     * 「connection reset」不分方向，且只看最外层的类型。
+     */
+    static boolean isClientDisconnect(Throwable ex, boolean responseCommitted) {
+        Set<Throwable> seen = Collections.newSetFromMap(new IdentityHashMap<>());
+        for (Throwable t = ex; t != null && seen.add(t) && seen.size() <= MAX_CAUSE_DEPTH; t = t.getCause()) {
+            if (t instanceof ClientAbortException || t instanceof AsyncRequestNotUsableException) return true;
+            if (responseCommitted && t instanceof IOException && t.getMessage() != null) {
+                String message = t.getMessage().toLowerCase(Locale.ROOT);
+                if (message.contains("broken pipe") || message.contains("connection reset by peer")) return true;
+            }
+        }
+        return false;
+    }
+
+    /** 一行、不带堆栈；生产默认级别下不出现。 */
+    private static void logClientGone(Throwable ex) {
+        if (log.isDebugEnabled()) {
+            log.debug("客户端已断开（关页面 / 切换对话 / 视频快进 / 网络抖动）：{}", ex.toString());
+        }
     }
 
     /**

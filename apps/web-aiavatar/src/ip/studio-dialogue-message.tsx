@@ -30,6 +30,8 @@ export type DialogueMessageHandlers = {
   quickReplyBusy?: boolean;
   onRevise: () => void;
   onApprove: (block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string) => Promise<unknown>;
+  /** The card whose confirmation's answer was lost and is being sent again; `onRecheck` sends it now. */
+  verifyingApprovalId?: string; onRecheck?: () => void;
   planReady: (block: DialogueApprovalBlock) => boolean;
   /** What a confirmed card actually authorized (never the proposal); see approvedCaps in the store. */
   approvedCaps?: (block: DialogueApprovalBlock) => ApprovedCaps | undefined;
@@ -89,6 +91,7 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
       const plan = quotedPlan(message, block);
       return <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} plan={plan} skillLabel={plan && handlers.skillLabel?.(plan.plan)}
         approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId] ?? block.shortfall} planReady={handlers.planReady(block)}
+        verifying={!!handlers.verifyingApprovalId && handlers.verifyingApprovalId === block.approvalId} onRecheck={handlers.onRecheck}
         onStart={caps => handlers.onApprove(block, caps, message.id)} onRevise={handlers.onRevise} onRequote={() => say('重新报价')} onChooseApproach={chooseApproach}/>;
     }
     case 'question': return <StudioDialogueQuestion key={blockKey(block)} block={block} answered={props.answered} busy={handlers.quickReplyBusy}
@@ -152,8 +155,10 @@ export function StudioDialogueMessageView(props: MessageProps) {
   const refs = [...(message.pinnedNodeIds || []), ...(message.attachmentNodeIds || [])];
   // One number per reply: the reply and its work records together (§4.3).
   const credits = (message.billing?.credits || 0) + message.blocks.reduce((sum, b) => sum + (b.type === 'tool_call' ? b.creditsActual || 0 : 0), 0);
-  // A free reply (the demo) says nothing about credits.
-  const costShown = !!message.settling || (!!message.billing && credits > 0);
+  // A free reply (the demo) says nothing about credits, and neither does the summary closing an execution: its text
+  // already says 「花了 N 积分」 (StudioExecutionSummary), a second number under it only repeats it.
+  const summary = !user && !!completionExecutionId(message);
+  const costShown = !summary && (!!message.settling || (!!message.billing && credits > 0));
   const finished = ['done', 'failed', 'interrupted', 'applied', 'queued'].includes(message.status);
   const branch = async () => {
     if (!handlers.onBranch || branching) return;
@@ -167,7 +172,7 @@ export function StudioDialogueMessageView(props: MessageProps) {
   // tools already put or changed nodes on the canvas (user feedback 2026-10-20).
   const prose = user ? '' : splitReplyActions(message.text || '').prose.trim();
   const placeable = !user && !readOnly && !!handlers.onPlaceText && message.role === 'assistant' && message.status === 'done' && prose.length >= 80
-    && !completionExecutionId(message) && message.blocks.every(b => b.type === 'tool_call' && !touchesCanvas(b));
+    && !summary && message.blocks.every(b => b.type === 'tool_call' && !touchesCanvas(b));
   // Already on the canvas (placed before, or written there by hand): the action shows it instead of placing it again.
   const placed = placeable && nodes.some(n => n.type === 'text' && n.metadata?.content === prose);
   const place = async () => {

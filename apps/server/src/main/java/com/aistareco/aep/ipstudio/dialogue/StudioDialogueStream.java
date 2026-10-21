@@ -55,6 +55,7 @@ public class StudioDialogueStream {
         Runnable unsubscribe = hub.subscribe(threadId, session::live);
         ScheduledFuture<?> ping = HEARTBEAT.scheduleAtFixedRate(session::ping, 15, 15, TimeUnit.SECONDS);
         Runnable close = () -> { unsubscribe.run(); ping.cancel(false); session.closed = true; };
+        session.onGone = close;
         emitter.onCompletion(close);
         emitter.onTimeout(() -> { close.run(); emitter.complete(); });
         emitter.onError(e -> close.run());
@@ -79,6 +80,8 @@ public class StudioDialogueStream {
         private boolean replaying = true;
         private final List<Event> pending = new ArrayList<>();
         volatile boolean closed;
+        /** Leaves the hub and stops the heartbeat; run as soon as a write finds the client gone. */
+        volatile Runnable onGone;
 
         Session(String threadId, SseEmitter emitter, long cursor) { this.threadId = threadId; this.emitter = emitter; this.lastSent = cursor; }
 
@@ -121,15 +124,28 @@ public class StudioDialogueStream {
                 emitter.send(SseEmitter.event().id(String.valueOf(event.seq())).data(event, MediaType.APPLICATION_JSON));
                 lastSent = event.seq();
             } catch (IOException | IllegalStateException e) {
-                closed = true;
-                log.debug("[dialogue-sse] client gone thread={}: {}", threadId, e.toString());
+                gone(e);
             }
         }
 
         synchronized void ping() {
             if (closed) return;
             try { emitter.send(SseEmitter.event().comment("ping")); }
-            catch (IOException | IllegalStateException e) { closed = true; }
+            catch (IOException | IllegalStateException e) { gone(e); }
+        }
+
+        /**
+         * The client went away (switching or starting a conversation closes the old stream every time). Not an error:
+         * one DEBUG line, and the session leaves the hub and stops its heartbeat now instead of at the container's error
+         * dispatch or the 30-minute timeout. The emitter is not completed here: after a failed send Spring ignores it and
+         * the container ends the request (its error is a client disconnect, see GlobalExceptionHandler#isClientDisconnect).
+         */
+        private void gone(Exception e) {
+            if (closed) return;
+            closed = true;
+            log.debug("[dialogue-sse] client gone thread={}: {}", threadId, e.toString());
+            Runnable release = onGone;
+            if (release != null) release.run();
         }
     }
 
