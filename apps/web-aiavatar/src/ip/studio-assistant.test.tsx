@@ -846,20 +846,24 @@ test.each(['fixed', 'selectable'] as const)('assistant shows its single %s model
   if (policy === 'fixed') expect(api.post.mock.calls[0][2].model).toBeUndefined();
 });
 
-// ── Opening guidance: inventory chips, task cards and the recreation checklist ──────────────────────────────
+// ── Opening guidance: inventory chips, the four cards and their fill-in cards (docs/ip-studio-new-canvas-and-threads.md §5) ──
 const clip = { ...character, id: 'clip', type: 'video', title: '带货样片', metadata: { storageKey: 'k/clip' } } as CanvasNodeData;
+const starterSkills = () => [skill('image-generation', '出图'), skill('script-writing', '写剧本与文案'), skill('video-generation', '出视频'), skill('reference-video-recreation', '参考视频复刻')];
+const card = (title: string) => screen.getByRole('button', { name: new RegExp(`^${title}`) });
+const starterForm = (title: string) => screen.getByRole('region', { name: title });
+const skillPicker = () => screen.getByRole('combobox', { name: '技能' }) as HTMLSelectElement;
+const IP_DEFAULT = (photo: string) => `用${photo}做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。`;
 
-test('an empty canvas opens on task cards and what the canvas holds; a chip pins every node of that type', async () => {
+test('an empty conversation opens on four cards and what the canvas holds; with a node referenced the cards work on it', async () => {
   await ready(<Host initial={[character, text, clip]}/>);
   expect(screen.getByRole('heading', { name: '想做点什么？' })).toBeDefined();
   expect(screen.getByText('画布上有')).toBeDefined();
-  for (const title of ['复刻一条短视频', '做一张图', '写一段文字', '搭一套创作流程']) expect(screen.getByRole('button', { name: new RegExp(`^${title}`) })).toBeDefined();
-  // A title and one line each; no 「要准备 / 会得到」, no opening paragraph, no 「第一次用？」 link.
-  expect(screen.getByRole('button', { name: /^复刻一条短视频/ }).textContent).toBe('复刻一条短视频照参考视频的节奏，换成你的商品');
-  expect(document.body.textContent).not.toMatch(/要准备|会得到|选一件事开始|第一次用/);
-  fireEvent.click(screen.getByRole('button', { name: '1 张图片' }));
-  expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
-  expect((screen.getByRole('button', { name: '1 张图片' }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+  // Icon, title, what you get, one small line of what it needs.
+  expect(card('制作个人 IP').textContent).toBe('制作个人 IP真人照片变成数字形象，出多角度设定图需要：1–3 张照片');
+  expect(card('写剧本').textContent).toBe('写剧本一句梗概写成能拍的分场剧本需要：一句梗概');
+  expect(card('做个短视频').textContent).toBe('做个短视频一句描述出视频，也可以从一张图动起来需要：画面描述');
+  expect(card('复刻视频').textContent).toBe('复刻视频照爆款的节奏和镜头，换成你的商品或人物需要：参考视频 + 你的素材');
+  expect(document.body.textContent).not.toMatch(/要准备|会得到|选一件事开始|第一次用|做一张图|写一段文字/);
   // The guide opens from the skill chip: three steps and one line about the current skill, nothing about credits or attachments.
   openGuide();
   const guide = screen.getByRole('region', { name: '使用说明' });
@@ -867,42 +871,177 @@ test('an empty canvas opens on task cards and what the canvas holds; a chip pins
   expect(guide.textContent).not.toMatch(/附件|上限|整张画布/);
   // Each step is a two-column grid (number + text). A bare text node beside <strong> becomes a third grid item and
   // drops into the 24px number column, one character per line; title and text must share one element.
-  for (const li of screen.getByRole('region', { name: '使用说明' }).querySelectorAll('ol > li')) {
+  for (const li of guide.querySelectorAll('ol > li')) {
     expect(li.children.length).toBe(1);
     expect([...li.childNodes].every(n => n.nodeType === Node.ELEMENT_NODE)).toBe(true);
   }
-  // The recreation checklist can be dismissed and the plain composer rules take over.
-  fireEvent.click(screen.getByRole('button', { name: /^复刻一条短视频/ }));
-  expect(sendButton().disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: '不用清单，直接说' }));
-  expect(screen.queryByLabelText('复刻需要的素材')).toBeNull();
-  expect(sendButton().disabled).toBe(false);
+  // A chip references every node of its type; with a reference the cards are the ones that work on it (unchanged by §5).
+  fireEvent.click(screen.getByRole('button', { name: '1 张图片' }));
+  expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
+  expect((screen.getByRole('button', { name: '1 张图片' }) as HTMLButtonElement).getAttribute('aria-pressed')).toBe('true');
+  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭一套创作流程']) expect(card(title)).toBeDefined();
+  expect(screen.queryByRole('button', { name: /^制作个人 IP/ })).toBeNull();
 });
 
-test('「复刻一条短视频」 pins the only video, drafts the request with blanks and holds the send until the pieces are there', async () => {
-  api.skills.mockResolvedValue([skill('reference-video-recreation', '短视频复刻'), seeding]);
+test('制作个人 IP picks the only photo, writes the default sentence, follows the options and sends with its skill', async () => {
+  api.skills.mockResolvedValue(starterSkills());
   await ready(<Host initial={[character, text, clip]}/>);
   await screen.findByRole('combobox', { name: '技能' });
-  fireEvent.click(screen.getByRole('button', { name: /^复刻一条短视频/ }));
-  const list = screen.getByLabelText('复刻需要的素材');
-  expect(within(list).getByText('带货样片 · 画布上已有')).toBeDefined();
-  expect(composer().value).toContain('@带货样片');
-  expect((screen.getByRole('combobox', { name: '技能' }) as HTMLSelectElement).value).toBe('reference-video-recreation');
-  // Blanks and a missing replacement keep the button off, with the reason beside it.
-  expect(sendButton().disabled).toBe(true);
-  expect(screen.getByText('先补上替换素材')).toBeDefined();
+  fireEvent.click(card('制作个人 IP'));
+  const form = starterForm('制作个人 IP');
   expect(screen.queryByRole('heading', { name: '想做点什么？' })).toBeNull();
-  fireEvent.click(within(list).getByRole('button', { name: '从画布选' }));
-  fireEvent.click(screen.getByRole('option', { name: /角色 A/ }));
-  expect(within(list).getByText('角色 A')).toBeDefined();
-  expect(screen.getByText('把输入框里的空位补上')).toBeDefined();
-  fireEvent.change(composer(), { target: { value: '照 @带货样片 的拍法，把里面的商品换成 @角色 A，保留节奏。' } });
+  expect(within(form).getByRole('group', { name: '你的照片' }).textContent).toContain('角色 A');
+  expect(within(form).getByText('正脸清晰、光线均匀、只有一个人，效果最好。只用本人或已获授权的照片。')).toBeDefined();
+  expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
+  expect(within(form).getByRole('button', { name: '写实' }).getAttribute('aria-pressed')).toBe('true');
+  expect(within(form).getByRole('button', { name: '多视角设定图' }).getAttribute('aria-pressed')).toBe('true');
+  expect(skillPicker().value).toBe('image-generation');
+  fireEvent.click(within(form).getByRole('button', { name: 'Q 版' }));
+  fireEvent.click(within(form).getByRole('button', { name: '头像' }));
+  expect(composer().value).toBe('用 @角色 A 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。');
+  expect(within(form).getByRole('button', { name: 'Q 版' }).getAttribute('aria-pressed')).toBe('true');
+  expect(screen.queryByRole('button', { name: '按选项重写' })).toBeNull();
   expect(sendButton().disabled).toBe(false);
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '用 @角色 A 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。', skillKey: 'image-generation', pinnedNodeIds: ['c'] });
+  // Sent: the card is gone and the cleared composer is not filled again.
+  await waitFor(() => expect(screen.queryByRole('region', { name: '制作个人 IP' })).toBeNull());
+  expect(composer().value).toBe('');
+});
+
+test('a card holds the send until its material is there; 「从画布选」 picks through the @ list and the sentence takes it in', async () => {
+  const second = { ...character, id: 'c2', title: '角色 B' } as CanvasNodeData;
+  await ready(<Host initial={[character, second, text]}/>);
+  fireEvent.click(card('制作个人 IP'));
+  const form = starterForm('制作个人 IP');
+  // Two photos on the canvas: none is picked for the user.
+  expect(within(form).getByText('还缺')).toBeDefined();
+  expect(composer().value).toBe(IP_DEFAULT('我的照片'));
+  expect(sendButton().disabled).toBe(true);
+  expect(screen.getByText('还差照片')).toBeDefined();
+  fireEvent.click(within(form).getByRole('button', { name: '从画布选' }));
+  fireEvent.click(screen.getByRole('option', { name: /角色 B/ }));
+  expect(composer().value).toBe(IP_DEFAULT(' @角色 B '));
+  expect(sendButton().disabled).toBe(false);
+  expect(screen.queryByRole('button', { name: '按选项重写' })).toBeNull();
+  // Taking it out of the slot takes it out of the message and the sentence.
+  fireEvent.click(within(form).getByRole('button', { name: '去掉 角色 B' }));
+  expect(composer().value).toBe(IP_DEFAULT('我的照片'));
+  expect(screen.getByLabelText('本次引用').textContent).not.toContain('角色 B');
+  expect(sendButton().disabled).toBe(true);
+});
+
+test('写剧本: the synopsis feeds the sentence; a hand edit stops the options, 「按选项重写」 brings the sentence back', async () => {
+  api.skills.mockResolvedValue(starterSkills());
+  await ready();
+  await screen.findByRole('combobox', { name: '技能' });
+  fireEvent.click(card('写剧本'));
+  const form = starterForm('写剧本');
+  const synopsis = within(form).getByLabelText('一句梗概');
+  expect(document.activeElement).toBe(synopsis);
+  expect(composer().value).toBe('写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。');
+  expect(sendButton().disabled).toBe(true);
+  expect(screen.getByText('先写一句梗概')).toBeDefined();
+  // The line says it is missing too (on a phone the reason beside the send button has no room).
+  expect(within(form).getByText('还缺')).toBeDefined();
+  fireEvent.change(synopsis, { target: { value: '外卖员送错一单，意外救了老板的女儿' } });
+  expect(within(form).queryByText('还缺')).toBeNull();
+  fireEvent.click(within(form).getByRole('button', { name: '3 分钟' }));
+  expect(composer().value).toBe('写一个 3 分钟的短剧剧本：外卖员送错一单，意外救了老板的女儿。有反转，分场写清画面、台词和时长。');
+  // The user's own words win from here.
+  fireEvent.change(composer(), { target: { value: '写一个 3 分钟的短剧剧本，结尾留个悬念' } });
+  fireEvent.click(within(form).getByRole('button', { name: '搞笑' }));
+  expect(composer().value).toBe('写一个 3 分钟的短剧剧本，结尾留个悬念');
+  fireEvent.click(within(form).getByRole('button', { name: '按选项重写' }));
+  expect(composer().value).toBe('写一个 3 分钟的短剧剧本：外卖员送错一单，意外救了老板的女儿。搞笑，分场写清画面、台词和时长。');
+  expect(within(form).queryByRole('button', { name: '按选项重写' })).toBeNull();
+  // A message written by hand no longer needs the synopsis line (only material would still hold it back).
+  fireEvent.change(synopsis, { target: { value: '' } });
+  expect(sendButton().disabled).toBe(true);
+  fireEvent.change(composer(), { target: { value: '写个三分钟的搞笑短剧，主角是外卖员' } });
+  expect(sendButton().disabled).toBe(false);
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '写个三分钟的搞笑短剧，主角是外卖员', skillKey: 'script-writing' });
+});
+
+test('做个短视频: the first frame is not picked for the user; frame and camera join the sentence only when chosen; Enter in the line sends', async () => {
+  api.skills.mockResolvedValue(starterSkills());
+  await ready();
+  await screen.findByRole('combobox', { name: '技能' });
+  fireEvent.click(card('做个短视频'));
+  const form = starterForm('做个短视频');
+  // The one image on the canvas would turn this into an image-to-video: an optional slot stays empty until chosen.
+  expect(within(form).getByRole('group', { name: '首帧图' }).textContent).toContain('选填');
+  expect(screen.getByLabelText('本次引用').textContent).toBe('');
+  fireEvent.change(within(form).getByLabelText('画面描述'), { target: { value: '女孩在海边回头微笑' } });
+  expect(composer().value).toBe('做一条 5 秒、9:16 的短视频：女孩在海边回头微笑。');
+  fireEvent.click(within(form).getByRole('button', { name: '16:9' }));
+  fireEvent.click(within(form).getByRole('button', { name: '10 秒' }));
+  fireEvent.click(within(form).getByRole('button', { name: '环绕' }));
+  fireEvent.click(within(form).getByRole('button', { name: '从画布选' }));
+  fireEvent.click(screen.getByRole('option', { name: /角色 A/ }));
+  expect(composer().value).toBe('做一条 10 秒、16:9 的短视频：女孩在海边回头微笑。从 @角色 A 开始动起来。镜头环绕。');
+  fireEvent.keyDown(within(form).getByLabelText('画面描述'), { key: 'Enter' });
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '做一条 10 秒、16:9 的短视频：女孩在海边回头微笑。从 @角色 A 开始动起来。镜头环绕。', skillKey: 'video-generation', pinnedNodeIds: ['c'] });
+});
+
+test('复刻视频 picks the only video and the only image, and sends them with the recreation skill', async () => {
+  api.skills.mockResolvedValue(starterSkills());
+  await ready(<Host initial={[character, text, clip]}/>);
+  await screen.findByRole('combobox', { name: '技能' });
+  fireEvent.click(card('复刻视频'));
+  const form = starterForm('复刻视频');
+  expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，保留节奏和镜头。');
+  expect(skillPicker().value).toBe('reference-video-recreation');
+  fireEvent.click(within(form).getByRole('button', { name: '只保留节奏' }));
+  fireEvent.change(within(form).getByLabelText('要讲的卖点'), { target: { value: '保温 12 小时' } });
+  expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，只保留节奏，口播改成介绍：保温 12 小时。');
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
   expect(api.post.mock.calls[0][2]).toMatchObject({ skillKey: 'reference-video-recreation', pinnedNodeIds: ['clip', 'c'] });
-  // Once sent, the checklist is gone.
-  await waitFor(() => expect(screen.queryByLabelText('复刻需要的素材')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('region', { name: '复刻视频' })).toBeNull());
+});
+
+test('「换一个」 goes back to the four cards as before: the card\'s sentence, skill and picks leave the message', async () => {
+  api.skills.mockResolvedValue(starterSkills());
+  await ready();
+  await screen.findByRole('combobox', { name: '技能' });
+  fireEvent.click(card('制作个人 IP'));
+  expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
+  expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
+  fireEvent.click(screen.getByRole('button', { name: '换一个' }));
+  expect(composer().value).toBe('');
+  expect(skillPicker().value).toBe('__auto__');
+  expect(screen.getByLabelText('本次引用').textContent).toBe('');
+  expect(card('写剧本')).toBeDefined();
+  // A picture picked for one card does not ride along into another (the canvas still has it to pick again).
+  fireEvent.click(card('写剧本'));
+  expect(screen.getByLabelText('本次引用').textContent).toBe('');
+  expect(composer().value).toBe('写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。');
+});
+
+test('a card never writes over words already in the composer', async () => {
+  await ready();
+  fireEvent.change(composer(), { target: { value: '我自己想的一句' } });
+  fireEvent.click(card('写剧本'));
+  expect(composer().value).toBe('我自己想的一句');
+  expect(screen.getByRole('button', { name: '按选项重写' })).toBeDefined();
+  // Written by hand, only material could still hold the message back, and 写剧本 needs none.
+  expect(sendButton().disabled).toBe(false);
+  // Going back leaves the user's words where they are.
+  fireEvent.click(screen.getByRole('button', { name: '换一个' }));
+  expect(composer().value).toBe('我自己想的一句');
+});
+
+test('with a node referenced, 「复刻一条短视频」 opens the 复刻视频 card around it', async () => {
+  await ready(<Host initial={[character, text, clip]} selectedIds={['clip']}/>);
+  for (const title of ['修改节点内容', '优化节点提示词', '复刻一条短视频', '搭一套创作流程']) expect(card(title)).toBeDefined();
+  fireEvent.click(card('复刻一条短视频'));
+  expect(starterForm('复刻视频')).toBeDefined();
+  expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，保留节奏和镜头。');
 });
 
 test('a dialogue-first start sends the prefilled brief once the thread is ready, exactly once, and never into a thread that already talked', async () => {
@@ -1049,12 +1188,28 @@ test('older replies show their raw action blocks folded, not as the assistant ta
   expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
 });
 
-test('a homepage brief that copies a reference video opens the checklist and waits instead of sending', async () => {
+test('a homepage brief that copies a reference video opens 复刻视频 with the user\'s own words and never sends by itself', async () => {
+  const onAutoSent = vi.fn();
   const view = await ready(<Host initial={[character]}/>);
-  view.rerender(<Host initial={[character]} initialNodeId="p-brief" initialPrompt="照这条视频的拍法，把里面的商品换成我的" autoSend/>);
-  expect(await screen.findByLabelText('复刻需要的素材')).toBeDefined();
+  view.rerender(<Host initial={[character]} initialNodeId="p-brief" initialPrompt="照这条视频的拍法，把里面的商品换成我的" autoSend onAutoSent={onAutoSent}/>);
+  const form = await screen.findByRole('region', { name: '复刻视频' });
   expect(composer().value).toBe('照这条视频的拍法，把里面的商品换成我的');
   expect(sendButton().disabled).toBe(true);
+  expect(screen.getByText('还差参考视频')).toBeDefined();
+  expect(within(form).getByRole('button', { name: '按选项重写' })).toBeDefined();
+  // The address loses its send flag: the brief waits for the user.
+  expect(onAutoSent).toHaveBeenCalled();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  expect(api.post).not.toHaveBeenCalled();
+});
+
+test('a homepage recreation brief stays unsent even when the canvas fills both slots by itself', async () => {
+  const view = await ready(<Host initial={[character, clip]}/>);
+  view.rerender(<Host initial={[character, clip]} initialNodeId="p-brief" initialPrompt="照这条视频的拍法，把里面的商品换成我的" autoSend/>);
+  await screen.findByRole('region', { name: '复刻视频' });
+  expect(composer().value).toBe('照这条视频的拍法，把里面的商品换成我的');
+  expect(screen.getByLabelText('本次引用').textContent).toContain('带货样片');
+  expect(sendButton().disabled).toBe(false);
   await new Promise(resolve => setTimeout(resolve, 50));
   expect(api.post).not.toHaveBeenCalled();
 });

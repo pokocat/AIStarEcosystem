@@ -8,7 +8,7 @@
 // finished while the canvas was closed is rebuilt from that execution on the next open
 // (missing nodes only, never over the user's own text). Conversations from the
 // old four-mode assistant stay readable (with their adoption bindings) under 「之前的对话」.
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button, Select } from "antd";
 import { ChevronRight, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
@@ -46,7 +46,7 @@ import { StudioDialogueExecution, StudioDialogueSteps } from "./studio-dialogue-
 import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy";
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
-import { StudioAssistantChecklist, hasBlanks, recreationBlocker } from "./studio-assistant-checklist";
+import { StudioAssistantStarterCards, StudioAssistantStarterForm, composeStarter, isMentionResidue, starterDefaults, starterSlotNodes, starterSlots, studioStarter, type StarterKey } from "./studio-assistant-starters";
 import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft, writeAssistantModel } from "@/canvas-bridge/studio-assistant-memory";
 import { studioBriefNeedsReference, studioCanvasHasDefaultTitle, studioTitleFromBrief } from "./studio-entry";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
@@ -74,9 +74,10 @@ const MAX_REFERENCES = 64;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** The settings' 「自动」 choice: no skillKey on the message, the server routes by intent. */
 const AUTO_SKILL = "__auto__";
-/** The seeded recreation skill (resources/studio/skills/reference-video-recreation.md); the 「复刻」 start picks it when it is on the shelf. */
-const RECREATION_SKILL = "reference-video-recreation";
-type Starter = "recreation";
+/** An open fill-in card (docs/ip-studio-new-canvas-and-threads.md §5): its option choices and its lines of text. Material is the message's own references. */
+type Starter = { key: StarterKey; options: Record<string, string>; fields: Record<string, string> };
+/** Layout effects warn during server rendering; the assistant only renders in the browser, but the module may be imported on the server. */
+const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 /** A skill's summary up to its first full stop: the guide says what the skill is for in one line. */
 const firstSentence = (text: string) => text.match(/^[^。！？]*[。！？]/)?.[0] || text;
 type SkillChoice = StudioSkillRequiredDetails["skills"][number];
@@ -112,6 +113,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // default model while the picker could not show the difference (local e2e 2026-10-19).
   const chooseModel = (value: string) => { setModel(value); writeAssistantModel(projectId, value); };
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
+  // References added while a fill-in card is open belong to that card and leave the message with it (「换一个」).
+  // `starterWritten` is the sentence the card last put in the composer; text that is still that sentence (or it plus a
+  // pending @ pick) is the card's to rewrite, anything else is the user's own.
+  const starterHeld = useRef(new Set<string>()), starterWritten = useRef<string | undefined>(undefined);
   const [reading, setReading] = useState(false), [attachmentsUnsaved, setAttachmentsUnsaved] = useState(false);
   const [sending, setSending] = useState(false), [stopping, setStopping] = useState(false), [recovering, setRecovering] = useState<string>();
   const [composerError, setComposerError] = useStudioErrorState();
@@ -142,6 +147,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const saved = readAssistantDraft(projectId, new Set(assistantContextNodes(live.current.nodes).map(n => n.id)));
     setText(saved?.text ?? ""); setPinnedIds(saved?.pinnedIds ?? []); setAttachmentIds(saved?.attachmentIds ?? []);
     setReading(false); setAttachmentsUnsaved(false); setCanvasNotice(""); setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false);
+    starterHeld.current.clear(); starterWritten.current = undefined;
   }, [projectId]);
   // Runs after the switch above in the same commit only if the composer itself changed, so it never files the old
   // canvas's text under the new one.
@@ -208,12 +214,35 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const contextNodes = assistantContextNodes(nodes);
   const missing = [...pinnedIds, ...attachmentIds].filter(id => !contextNodes.some(n => n.id === id));
   const referenced = [...new Set([...pinnedIds, ...attachmentIds])].flatMap(id => contextNodes.filter(n => n.id === id));
-  const recreation = { video: referenced.find(n => n.type === "video"), images: referenced.filter(n => n.type === "image"), textReady: !!text.trim() && !hasBlanks(text) };
   const pin = (node: CanvasNodeData) => {
     if (pinnedIds.includes(node.id)) return true;
     if (pinnedIds.length >= MAX_REFERENCES) { setComposerError(`一次最多引用 ${MAX_REFERENCES} 个节点`); return false; }
+    if (starter) starterHeld.current.add(node.id);
     setPinnedIds(ids => [...ids, node.id]); setComposerError(""); return true;
   };
+
+  // ── Fill-in cards: the sentence they write and what they still need (docs/ip-studio-new-canvas-and-threads.md §5) ──
+  // A card belongs to an empty conversation: once this one has a message of its own, it is gone.
+  const talked = dialogueSections(store).current.length > 0;
+  const starterConfig = starter && !talked ? studioStarter(starter.key) : undefined;
+  const starterNodes = starterConfig ? starterSlotNodes(starterConfig, referenced) : {};
+  const starterResult = starter && starterConfig ? composeStarter(starter.key, { slots: starterNodes, options: starter.options, fields: starter.fields }) : undefined;
+  const starterText = starterResult?.text;
+  const starterEdited = starterText !== undefined && text !== starterText && !isMentionResidue(text, starterText);
+  // The material is what the skill needs whatever the composer says. The lines of text only feed the sentence: once the
+  // user writes the message themselves, they no longer hold it back.
+  const starterBlocker = starterResult?.missing.find(m => m.kind === "slot" || !starterEdited)?.reason ?? "";
+  // One message at a time: a ref, because two clicks in the same tick both see `sending` still false.
+  const sendLock = useRef(false);
+  // The sentence follows the card while the composer still holds the card's text (or nothing). Before paint, so the
+  // 「按选项重写」 link never flashes; not while a send has just cleared the composer.
+  useClientLayoutEffect(() => {
+    if (starterText === undefined || sendLock.current) return;
+    const current = draft.current.text;
+    if (current.trim() && current !== starterWritten.current && !isMentionResidue(current, starterWritten.current)) return;
+    starterWritten.current = starterText;
+    if (current !== starterText) setText(starterText);
+  }, [starterText]);
 
   // ── Attachments: import into the canvas, save, then they can be sent ──────
   const importLock = useRef(false);
@@ -238,7 +267,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
             : attachmentNode(savedAssetPayload(item), staged);
           if (!same(project)) return;
           if (!staged.some(n => n.id === node.id)) { staged = [...staged, node]; setNodes(list => [...list, node]); }
-          if (!ids.includes(node.id)) { ids = [...ids, node.id]; setAttachmentIds(ids); }
+          if (!ids.includes(node.id)) { ids = [...ids, node.id]; setAttachmentIds(ids); if (starter) starterHeld.current.add(node.id); }
           added++;
         } catch (e) { failures.push(`${item instanceof File ? item.name : item.title}：${e instanceof Error ? e.message : "导入失败，请重试"}`); }
       }
@@ -257,9 +286,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
 
   // ── Send / stop ────────────────────────────────────────────────────────
   const sendDisabledReason = !text.trim() ? "先写下你想做的" : session.status !== "ready" ? "对话还在加载，请稍等" : session.switching ? "正在切换对话，请稍等" : reading ? "附件还在导入" :
-    attachmentsUnsaved ? "附件还没保存好，保存后才能发送" : missing.length ? "有引用已从画布删除，请先移除" : starter === "recreation" ? recreationBlocker(recreation) : "";
-  // One message at a time: a ref, because two clicks in the same tick both see `sending` still false.
-  const sendLock = useRef(false);
+    attachmentsUnsaved ? "附件还没保存好，保存后才能发送" : missing.length ? "有引用已从画布删除，请先移除" : starterBlocker;
   /**
    * `quick`: a question option or follow-up suggestion sent as it is (user feedback 2026-10-20: chips that only filled the
    * composer piled up there). It goes through the same chain as a typed message (save, outbox, retry key, rejection
@@ -276,8 +303,11 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     }
     sendLock.current = true;
     const project = projectId;
+    // A fill-in card names its skill (no keyword routing), also on a conversation already bound to another method; the
+    // server refuses that switch only while a production runs there, with its own message (shown like any refusal).
+    const starterSkill = draft && starterConfig && skillKey === starterConfig.skill && skillOptions.some(s => s.key === skillKey) ? skillKey : undefined;
     const input = { text: draft ? text.trim() : quick.trim(), pinnedNodeIds: draft ? pinnedIds : [], attachmentNodeIds: draft ? attachmentIds.filter(id => !pinnedIds.includes(id)) : [], ...(maxCost !== undefined ? { maxCost } : {}),
-      ...(chosenSkill ? { skillKey: chosenSkill.key } : {}),
+      ...(chosenSkill ? { skillKey: chosenSkill.key } : starterSkill ? { skillKey: starterSkill } : {}),
       // The ceiling above is the picked model's, so the model goes with it; a fixed or single-model scene sends none.
       ...(selectable && selectedModel ? { model: selectedModel.endpointId } : {}) };
     setSending(true); setComposerError(""); setSkillNotice("");
@@ -307,7 +337,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           // The server may know skills this page has not loaded yet.
           void reloadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined);
         } else setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
-      } else if (outcome.state === "sent") { setSkillChoices(undefined); if (draft) setStarter(undefined); }
+      } else if (outcome.state === "sent") { setSkillChoices(undefined); if (draft) { setStarter(undefined); starterHeld.current.clear(); starterWritten.current = undefined; } }
       else if (outcome.state === "unknown") setComposerError("消息可能没发出去，点「重新发送」再试，不会重复发送");
     } finally { sendLock.current = false; if (same(project)) setSending(false); }
   };
@@ -396,8 +426,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // count. The server used to import the homepage brief itself as 「之前的对话「创作想法」」, so every canvas started
   // from the home page looked like it had already talked and the brief was never sent (Codex real-environment retest
   // 2026-10-19; the demo mode has no such import).
-  const talked = dialogueSections(store).current.length > 0;
   const briefApplied = useRef<string | undefined>(undefined);
+  const autoSent = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!open || session.status !== "ready" || briefApplied.current === projectId) return;
     const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
@@ -406,13 +436,16 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     briefApplied.current = projectId;
     if (talked || store.outbox.length) return;
     setText(current => current.trim() ? current : brief);
-    // 「照这条视频…」 needs the video first: the checklist says what is missing and holds the send until it is there.
-    if (studioBriefNeedsReference(brief)) startRecreation(true);
+    // 「照这条视频…」 needs the video first: the recreation card says what is missing, keeps the user's words and leaves
+    // the send to them — never the auto-send, even when the canvas fills both slots by itself.
+    if (studioBriefNeedsReference(brief)) {
+      openStarter("recreation");
+      if (autoSent.current !== projectId) { autoSent.current = projectId; if (autoSend) onAutoSent?.(); }
+    }
     // A brief saved as a canvas node (older home page) is a visible, removable pin; one kept with the conversation is not on the canvas.
     if (entry && assistantContextNodes(live.current.nodes).some(n => n.id === entry.id)) setPinnedIds(ids => ids.includes(entry.id) ? ids : [...ids, entry.id].slice(0, MAX_REFERENCES));
   }, [open, session.status, projectId, initialNodeId, initialPrompt, talked, store.outbox.length]);
   // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
-  const autoSent = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!open || !autoSend || autoSent.current === projectId || session.status !== "ready" || sending) return;
     if (talked || store.outbox.length || !text.trim()) { if (talked) onAutoSent?.(); return; }
@@ -597,17 +630,40 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     finally { if (same(project)) setRecovering(undefined); }
   };
 
-  // ── Starts: the empty-canvas cards and the recreation checklist ───────────
-  /** `keepText`: the user's own words (a homepage brief) stay; otherwise the composer gets the fill-in-the-blanks start. */
-  const startRecreation = (keepText = false) => {
-    const videos = contextNodes.filter(n => n.type === "video"), video = videos.length === 1 ? videos[0] : undefined;
-    if (video) pin(video);
-    const skill = skillOptions.find(s => s.key === RECREATION_SKILL);
-    if (pickSkill && skill) chooseSkill(skill.key);
-    if (!keepText) setText(`照 ${video ? `@${video.title}` : "[参考视频]"} 的拍法，把里面的商品换成 [你的商品图]，保留原片的节奏和反转，口播改成介绍 [商品名]。`);
-    setStarter("recreation"); setGuideOpen(false);
+  // ── Starts: the opening cards and their fill-in cards (docs/ip-studio-new-canvas-and-threads.md §5) ─────────
+  /** Opens a fill-in card. What the composer already holds stays (a typed draft, the home page brief); an empty composer gets the card's sentence. */
+  const openStarter = (key: StarterKey) => {
+    const config = studioStarter(key);
+    // A required slot the canvas can fill in exactly one way is filled (the one video, the one photo); an optional one
+    // is not, it would change what gets made.
+    for (const slot of starterSlots(config)) {
+      if (!slot.min || referenced.some(n => n.type === slot.type)) continue;
+      const fit = contextNodes.filter(n => n.type === slot.type);
+      if (fit.length === 1 && pin(fit[0])) starterHeld.current.add(fit[0].id);
+    }
+    // The card names its skill (the chip shows it; the message carries it), not the keywords of its sentence.
+    chooseSkill(config.skill);
+    starterWritten.current = undefined;
+    setStarter({ key, options: starterDefaults(config), fields: {} }); setGuideOpen(false);
+  };
+  /**
+   * 「换一个」: back to the four cards, as before the card. Its sentence, its skill and the material it picked leave the
+   * message (an upload stays on the canvas, ready to be picked again); words the user wrote stay.
+   */
+  const leaveStarter = () => {
+    const current = draft.current.text, held = starterHeld.current;
+    if (current === starterWritten.current || isMentionResidue(current, starterWritten.current)) setText("");
+    if (starter && skillKey === studioStarter(starter.key).skill) setSkillKey(undefined);
+    setPinnedIds(ids => ids.filter(id => !held.has(id))); setAttachmentIds(ids => ids.filter(id => !held.has(id)));
+    starterHeld.current = new Set(); starterWritten.current = undefined;
+    setStarter(undefined);
+  };
+  const rewriteStarter = () => {
+    if (starterText === undefined) return;
+    starterWritten.current = starterText; setText(starterText);
     composer.current?.focus();
   };
+  const unreference = (node: CanvasNodeData) => { setPinnedIds(ids => ids.filter(id => id !== node.id)); setAttachmentIds(ids => ids.filter(id => id !== node.id)); };
   const startWith = (value: string) => { setStarter(undefined); setText(value); composer.current?.focus(); };
   const pinType = (type: CanvasNodeData["type"]) => { for (const node of contextNodes.filter(n => n.type === type)) if (!pin(node)) break; };
 
@@ -621,6 +677,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       const switched = await run();
       if (!switched || !mounted.current) return switched;
       setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false); setCanvasNotice(""); setComposerError("");
+      starterHeld.current.clear(); starterWritten.current = undefined;
       briefApplied.current = projectId;
       if (autoSent.current !== projectId) { autoSent.current = projectId; onAutoSent?.(); }
       requestAnimationFrame(() => composer.current?.focus());
@@ -642,8 +699,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const modeSkill = boundSkill || chosenSkill;
   const inventory = (["video", "image", "audio", "text"] as const).map(type => ({ type, nodes: contextNodes.filter(n => n.type === type) })).filter(entry => entry.nodes.length);
   const typeLabel = { video: "条视频", image: "张图片", audio: "段音频", text: "段文字" } as const;
+  // With nodes referenced the cards work on them (unchanged by §5); without, the four fill-in cards.
   type StarterCard = { title: string; detail: string; Icon: typeof Video; tone: "video" | "image" | "text" | "flow"; run: () => void };
-  const starters: StarterCard[] = pinnedIds.length > 1 ? [
+  const referenceStarters: StarterCard[] | undefined = pinnedIds.length > 1 ? [
     { title: "整理所选内容", detail: "汇总成一份可用的文字", Icon: FileText, tone: "text", run: () => startWith("整理这些节点的内容，汇总成一份可以直接用的文字。") },
     { title: "统一视觉风格", detail: "按所选素材出一张新图", Icon: Image, tone: "image", run: () => startWith("参考所选素材，出一张风格统一的新图。") },
     { title: "规划场景视频", detail: "保留人物和场景，规划一条视频", Icon: Video, tone: "video", run: () => startWith("参考所选素材，规划一条场景视频，保留人物和场景。") },
@@ -651,14 +709,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   ] : pinnedIds.length ? [
     { title: "修改节点内容", detail: "改写所选内容，保留核心设定", Icon: PenLine, tone: "text", run: () => startWith("改写所选节点的内容，保留核心设定，给我一版完整的修改稿。") },
     { title: "优化节点提示词", detail: "只改提示词，不重新生成", Icon: Image, tone: "image", run: () => startWith("优化所选节点的提示词，保留主体和核心设定，只给新提示词，不重新生成。") },
-    { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => startRecreation() },
+    { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => openStarter("recreation") },
     { title: "搭一套创作流程", detail: "从设定图一路做到视频", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
-  ] : [
-    { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => startRecreation() },
-    { title: "做一张图", detail: "一句描述，出几张候选", Icon: Image, tone: "image", run: () => startWith("画一张原创 IP 形象图，让人一眼记住。") },
-    { title: "写一段文字", detail: "人物设定、文案、剧本初稿", Icon: FileText, tone: "text", run: () => startWith("写一个末世英雄的角色描述，补全外貌、服装和性格。") },
-    { title: "搭一套创作流程", detail: "从设定图一路做到视频", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
-  ];
+  ] : undefined;
   // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
   // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
   const tools = <>
@@ -717,13 +770,16 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         {!!inventory.length && <div className="studio-assistant-inventory"><span>画布上有</span><div>
           {inventory.map(({ type, nodes: list }) => <button key={type} type="button" aria-pressed={list.every(n => pinnedIds.includes(n.id))} title={`在这条消息里引用这 ${list.length} ${typeLabel[type]}`} onClick={() => pinType(type)}>{list.length} {typeLabel[type]}</button>)}
         </div></div>}
-        <div className="studio-assistant-starters">{starters.map(({ title, detail, Icon, tone, run }) => <button key={title} type="button" data-tone={tone} onClick={run}>
+        {referenceStarters ? <div className="studio-assistant-starters">{referenceStarters.map(({ title, detail, Icon, tone, run }) => <button key={title} type="button" data-tone={tone} onClick={run}>
           <span className="studio-assistant-starter-icon"><Icon size={20} aria-hidden="true"/></span>
           <span className="studio-assistant-starter-body"><strong>{title}</strong><span>{detail}</span></span>
-          <ChevronRight size={16} aria-hidden="true"/></button>)}</div>
+          <ChevronRight size={16} aria-hidden="true"/></button>)}</div> : <StudioAssistantStarterCards onPick={openStarter}/>}
       </div>}
-      {starter === "recreation" && <StudioAssistantChecklist list={recreation} videoCount={contextNodes.filter(n => n.type === "video").length}
-        onPickVideo={() => composer.current?.mention()} onPickImage={() => composer.current?.mention()} onUpload={() => composer.current?.attach()} onDismiss={() => setStarter(undefined)}/>}
+      {starter && starterConfig && <StudioAssistantStarterForm config={starterConfig} slots={starterNodes} options={starter.options} fields={starter.fields}
+        edited={starterEdited && !sending && !store.outbox.length} onBack={leaveStarter} onRewrite={rewriteStarter}
+        onOption={(id, value) => setStarter(current => current && { ...current, options: { ...current.options, [id]: value } })}
+        onField={(id, value) => setStarter(current => current && { ...current, fields: { ...current.fields, [id]: value } })}
+        onPick={() => composer.current?.mention()} onUpload={() => composer.current?.attach()} onRemove={unreference} onSubmit={() => void send()}/>}
       {!!legacyGroups.length && <details className="studio-dialogue-legacy" open={legacyOpen} onToggle={e => setLegacyOpen(e.currentTarget.open)}>
         <summary>之前的对话（{legacyGroups.length} 段）</summary>
         {legacyGroups.map(group => <StudioDialogueLegacy key={group.id} group={group} projectId={projectId} nodes={nodes} selectedIds={selectedIds} recovering={recovering === group.id}

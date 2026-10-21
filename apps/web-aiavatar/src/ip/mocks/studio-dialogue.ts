@@ -33,17 +33,19 @@ import { ApiError } from "@ai-star-eco/api-client";
 import { dialogueReducer, emptyDialogueStore, isPlaceholderMessage, type DialogueStore } from "@/canvas-bridge/studio-dialogue-store";
 import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockReadRun, mockRegisterRun, mockStore } from "./ip-studio";
 
-// Two demo-only skills, then the three direct skills seeded on the server (resources/studio/skills/{image-generation,
-// script-writing,video-generation}.md): key / name / summary / operations / limits / checks / triggers copied from their
-// YAML front matter (maxSteps "maxSegments * 3 + 4" is resolved to 28 like the server's summary). Keep them in step.
+// The recreation skill and the three direct skills seeded on the server (resources/studio/skills/{reference-video-recreation,
+// image-generation,script-writing,video-generation}.md): key / name / summary / operations / limits / checks / triggers
+// copied from their YAML front matter (maxSteps "maxSegments * 3 + 4" is resolved to 28 like the server's summary), and
+// one demo-only skill (口播种草). Keep them in step: the new conversation's 「复刻视频」 card names the server's key.
 export const MOCK_STUDIO_SKILLS: StudioSkillSummary[] = [{
-  key: "video-recreation", name: "短视频复刻", version: 2, status: "active", planning: "dynamic",
-  summary: "参考一条短视频的节奏和反转，换成你的商品和人物重新做一版。",
-  methodExamples: ["保留原片动作，换商品和台词", "关键画面重做"],
+  key: "reference-video-recreation", name: "参考视频复刻", version: 1, status: "active", planning: "dynamic",
+  summary: "看懂一条参考视频的创意、脚本与手法，结合用户的新商品/新人物素材，现场决定做法并编排制作、检查与合成。",
+  methodExamples: ["remap-subject", "creative-rewrite", "preserve-audio-rebuild-visuals", "keyframe-rebuild"],
   operations: { analysis: ["recreation", "text"], production: ["text", "image", "video", "check", "assemble"] },
-  limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 28, maxAutoFixPerSegment: 1 },
-  checks: ["subject", "caption"], autoFixChecks: [], requiredCapabilities: ["video"],
-  triggers: { media: ["video"], keywords: ["复刻", "照着"], default: true },
+  limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 28, maxAutoFixPerSegment: 2 },
+  checks: ["subject-replaced", "old-subject-residue", "character-consistency", "product-facts", "scene-and-action", "dialogue-and-subtitles", "duration-and-order"],
+  autoFixChecks: [], requiredCapabilities: ["vision-text-model", "video-generation", "film-study"],
+  triggers: { media: ["video"], keywords: ["复刻", "拉片", "参考视频", "参考这条", "照着这条", "照这条", "照着做", "照这个做", "做同款", "同款视频", "翻拍", "仿一条", "仿拍"], default: true },
 }, {
   key: "talking-head-seeding", name: "口播种草", version: 1, status: "active", planning: "dynamic",
   summary: "按商品卖点写口播，配商品特写和字幕，做一条 30 秒以内的种草视频。",
@@ -441,18 +443,28 @@ function generalTurn(p: MockProject, t: MockThread) {
 // with the filled-in defaults inside the sentence; the reply that carries the card is one sentence, with no price or how-to.
 const clip = (text: string, max: number) => { const t = text.replace(/\s+/g, " ").trim(); return Array.from(t).length > max ? `${Array.from(t).slice(0, max).join("")}…` : t; };
 const ratioIn = (text: string, fallback: string) => text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/)?.slice(1, 3).join(":") || fallback;
+const secondsIn = (text: string) => Number(text.match(/(\d{1,2})\s*秒/)?.[1]) || 5;
+/** What kind of picture the request names (the 「制作个人 IP」 card asks for one of these three). */
+const pictureIn = (text: string) => /设定图/.test(text) ? "多视角设定图" : /三视图/.test(text) ? "三视图" : /头像/.test(text) ? "头像" : "图";
 const shape = (ratio: string) => ratio === "9:16" ? "竖屏" : ratio === "16:9" ? "横屏" : ratio;
 const sentence = (text: string) => text.trim().replace(/[。.！!？?，,\s]+$/, "");
-type DirectSpec = { operation: StudioPlanExecutionStep["operation"]; quotedCost: number; title: (text: string) => string; summary: (text: string) => string; prompt: (text: string) => string; said: string };
+type DirectSpec = { operation: StudioPlanExecutionStep["operation"]; quotedCost: (text: string) => number; title: (text: string) => string; summary: (text: string) => string; prompt: (text: string) => string; said: string };
 const DIRECT_STEP: Record<string, DirectSpec> = {
-  "image-generation": { operation: "image", quotedCost: 8, title: text => `一张 ${ratioIn(text, "1:1")} 的图`,
-    summary: text => `一张 ${ratioIn(text, "1:1")} 的图：${clip(text, 24)}`,
+  "image-generation": { operation: "image", quotedCost: () => 8, title: text => `一张 ${ratioIn(text, "1:1")} 的${pictureIn(text)}`,
+    summary: text => `一张 ${ratioIn(text, "1:1")} 的${pictureIn(text)}：${clip(text, 24)}`,
     prompt: text => `${sentence(text)}。${ratioIn(text, "1:1")} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
-  "video-generation": { operation: "video", quotedCost: 40, title: text => `一段 5 秒${shape(ratioIn(text, "9:16"))}视频`,
-    summary: text => `一段 5 秒${shape(ratioIn(text, "9:16"))}视频：${clip(text, 22)}`,
-    prompt: text => `${sentence(text)}。${ratioIn(text, "9:16")}，5 秒，镜头缓慢推近，光线自然。`, said: "按你的描述出一段。" },
+  "video-generation": { operation: "video", quotedCost: text => secondsIn(text) * 8, title: text => `一段 ${secondsIn(text)} 秒${shape(ratioIn(text, "9:16"))}视频`,
+    summary: text => `一段 ${secondsIn(text)} 秒${shape(ratioIn(text, "9:16"))}视频：${clip(text, 22)}`,
+    prompt: text => `${sentence(text)}。${ratioIn(text, "9:16")}，${secondsIn(text)} 秒，${/镜头/.test(text) ? "" : "镜头缓慢推近，"}光线自然。`, said: "按你的描述出一段。" },
 };
 const MOCK_SCRIPT = "【开场】一句话抛出问题：出门一天，水还是烫的吗？\n【卖点】杯身拿在手里，说一个最打动人的点。\n【收尾】只留一个动作：点下面的链接看看。";
+/** A 剧本 request (the 「写剧本」 card) gets a scene-by-scene sample built around its synopsis. */
+const mockDrama = (text: string) => {
+  const synopsis = text.match(/剧本[：:]([^。]+)/)?.[1]?.trim() || "主角遇到一件意外的小事";
+  return `梗概：${synopsis}。\n\n第 1 场 · 街口\n画面：主角匆匆赶路，手里拿着那件关键的东西。\n台词：「来不及了，就差这一单。」\n\n`
+    + "第 2 场 · 门口\n画面：门开了，对方愣住，事情和主角想的不一样。\n台词：「你怎么知道是我？」\n\n"
+    + "第 3 场 · 屋内\n画面：真相揭开，反转落地，两人对视后笑出来。\n台词：「原来是你。」";
+};
 
 /**
  * A direct skill's first turn (StudioSkill.direct()): no analysis. 出图 / 出视频 send the production plan and its card in
@@ -462,30 +474,31 @@ const MOCK_SCRIPT = "【开场】一句话抛出问题：出门一天，水还�
 function directTurn(projectId: string, p: MockProject, t: MockThread, request: StudioPostMessageRequest, skill: StudioSkillSummary) {
   const messageId = startTurn(t);
   if (skill.key === "script-writing") {
-    const tool = nextId("tool"), nodeId = nextId("dlg"), canvas = canvasSize(projectId);
-    const node = { id: nodeId, type: "text", title: "口播稿 · 示例", width: 380, height: 320, position: { x: canvas.right + 40, y: 40 },
-      metadata: { content: MOCK_SCRIPT, studio: { mock: true } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
+    const tool = nextId("tool"), nodeId = nextId("dlg"), canvas = canvasSize(projectId), drama = /剧本/.test(request.text);
+    const node = { id: nodeId, type: "text", title: drama ? "剧本 · 示例" : "口播稿 · 示例", width: 380, height: drama ? 420 : 320, position: { x: canvas.right + 40, y: 40 },
+      metadata: { content: drama ? mockDrama(request.text) : MOCK_SCRIPT, studio: { mock: true } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
     play(p, t, [
       { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
       { run: () => { emit(t, "node.upsert", { nodeId, op: "create", node } satisfies StudioNodeUpsertData);
         emit(t, "tool.finished", { toolCallId: tool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [nodeId] }, creditsActual: 0, settling: false }); } },
-      ...say(t, messageId, "w1", "口播稿放在画布上了，分开场问题、一个卖点、一个动作三段。"),
-      { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["开头再抓人一点", "缩短到 100 字以内", "按这段出一条视频"] }) },
+      ...say(t, messageId, "w1", drama ? "剧本放在画布上了，分 3 场，每场写了画面和台词。" : "口播稿放在画布上了，分开场问题、一个卖点、一个动作三段。"),
+      { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false,
+        suggestions: drama ? ["反转再提前一点", "改成 3 集", "按这个剧本出分镜图"] : ["开头再抓人一点", "缩短到 100 字以内", "按这段出一条视频"] }) },
     ]);
     return;
   }
-  const spec = DIRECT_STEP[skill.key] || DIRECT_STEP["image-generation"];
+  const spec = DIRECT_STEP[skill.key] || DIRECT_STEP["image-generation"], cost = spec.quotedCost(request.text);
   const n = ++counter, revision = nextPlanRevision(t), fingerprint = `mock-direct-${skill.key}-${n}`, planRunId = `mock-plan-${skill.key}-${n}`;
   const references = mockStore().projects.get(projectId)?.doc.nodes.filter(x => request.attachmentNodeIds?.includes(x.id) || request.pinnedNodeIds?.includes(x.id)).map(x => x.id) || [];
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId, revision, fingerprint, plan: {
     summary: spec.summary(request.text), questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
-    steps: [{ id: "d1", operation: spec.operation, title: spec.title(request.text), prompt: spec.prompt(request.text), referenceNodeIds: references, quotedCost: spec.quotedCost }],
-    budget: { estimated: spec.quotedCost, autoFixCap: 0 } } };
+    steps: [{ id: "d1", operation: spec.operation, title: spec.title(request.text), prompt: spec.prompt(request.text), referenceNodeIds: references, quotedCost: cost }],
+    budget: { estimated: cost, autoFixCap: 0 } } };
   play(p, t, [
     ...say(t, messageId, "d1", spec.said),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: `mock-approval-${skill.key}-${n}`, stage: "production", planFingerprint: fingerprint,
-      scope: [spec.title(request.text)], quotedCost: spec.quotedCost, budgetCap: spec.quotedCost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
+      scope: [spec.title(request.text)], quotedCost: cost, budgetCap: cost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
     { run: () => { emit(t, "turn.done", { reason: "waiting_user", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["可以，开始", "改成 16:9", "多来一版"] }); p.stage = "production-proposed"; } },
   ]);
 }
@@ -494,7 +507,7 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
 function directProductionTurn(projectId: string, p: MockProject, t: MockThread) {
   const e = p.execution!, messageId = startTurn(t), s = e.steps[0], tool = nextId("tool"), runId = `${e.id}-run-${s.id}`;
   play(p, t, [
-    { waitsForExecution: true, run: () => { setStep(p, s.id, "running", runId); emit(t, "tool.started", { toolCallId: tool, toolName: s.operation, title: s.title, safeInputSummary: s.operation === "video" ? "5 秒 · 竖屏" : "1 张 · 1:1", childRunId: runId }, e.id); budget(p, t, 0, s.quotedCost, "quote"); } },
+    { waitsForExecution: true, run: () => { setStep(p, s.id, "running", runId); emit(t, "tool.started", { toolCallId: tool, toolName: s.operation, title: s.title, safeInputSummary: s.title, childRunId: runId }, e.id); budget(p, t, 0, s.quotedCost, "quote"); } },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: s.operation, progress: "已提交，等待结果" }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
       emit(t, "tool.finished", { toolCallId: tool, toolName: s.operation, status: "done", result: { summary: `${s.title}完成`, nodeIds: [stepNodeId(e.id, s)] }, creditsActual: s.quotedCost, settling: false }, e.id);
@@ -754,7 +767,7 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
   if (request.stage === "analysis") {
     if (p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) && p.execution.stage === "analysis") return later(p.execution);
     const id = nextId("exec");
-    p.execution = { id, projectId, threadId: t.thread.id, skillKey: t.thread.skillKey || "video-recreation", skillVersion: t.thread.skillVersion || 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
+    p.execution = { id, projectId, threadId: t.thread.id, skillKey: t.thread.skillKey || "reference-video-recreation", skillVersion: t.thread.skillVersion || 1, stage: "analysis", planRunId: request.planRunId, planRevision: 1,
       planFingerprint: request.planFingerprint, status: "running", steps: withNodeIds(id, [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"])]),
       budgets: [{ stage: "analysis", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }],
       startedAt: at, deadlineAt: new Date(Date.now() + 90 * 60_000).toISOString(), updatedAt: at };
@@ -849,7 +862,7 @@ function seedCompleted(projectId: string, p: MockProject, t: MockThread): Studio
   const steps = withNodeIds(id, [step("s1", "拉片：切成 2 段", "recreation", "analysis", 20), step("s2", "整理每段的画面和节奏", "text", "analysis", 6, ["s1"]),
     step("v1", "第 1 段视频", "video", "production", 40), step("v2", "第 2 段视频", "video", "production", 40), step("c1", "检查第 1 段", "check", "production", 2, ["v1"])])
     .map(s => ({ ...s, status: "done" as const, attempt: 1, runIds: [`${id}-run-${s.id}`] }));
-  const execution: StudioPlanExecution = { id, projectId, threadId: t.thread.id, skillKey: "video-recreation", skillVersion: 1, stage: "production", planRunId: "mock-plan-production",
+  const execution: StudioPlanExecution = { id, projectId, threadId: t.thread.id, skillKey: "reference-video-recreation", skillVersion: 1, stage: "production", planRunId: "mock-plan-production",
     planRevision: 2, planFingerprint: "mock-production-v2", status: "done", steps, startedAt: at, deadlineAt: at, updatedAt: at, finishedAt: at,
     budgets: [{ stage: "analysis", approvedCap: 30, autoFixCap: 0, spent: 24, inFlight: 0, remaining: 6 }, { stage: "production", approvedCap: 100, autoFixCap: 20, spent: 82, inFlight: 0, remaining: 18 }] };
   const outputs: Record<string, IpRunOutput> = { s1: { text: MOCK_RECREATION_TEXT }, s2: { textRevision: { content: MOCK_NOTES, summary: "每段的画面和节奏" } }, v1: {}, v2: {},

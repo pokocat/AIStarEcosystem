@@ -6,7 +6,7 @@ import type { IpSavedAsset } from '@ai-star-eco/types';
 import { ATTACHMENT_ACCEPT } from '@/canvas-bridge/studio-attachments';
 import { LibraryReferencePicker } from './library-reference-picker';
 import { studioOverlayContainer } from './studio-overlay';
-/** Lets a guide elsewhere in the panel (the recreation checklist) open the same upload / library flows. */
+/** Lets a guide elsewhere in the panel (the new conversation's fill-in cards) open the same upload / library flows. */
 export type AttachmentPickerActions = { upload: () => void; library: () => void };
 export function StudioAttachmentPicker({locked,reading,onFiles,onAssets,variant='assistant',projectId,iconOnly=false,actions}: {locked:boolean;reading:boolean;onFiles:(files:File[])=>void;onAssets:(assets:IpSavedAsset[])=>Promise<void>;variant?:'assistant'|'canvas';projectId?:string;
   /** The assistant composer shows the paperclip alone; the label stays as the accessible name. */

@@ -73,15 +73,15 @@ test('message → streamed text, a work record, a plan and a confirmation; appro
   expect(live.doc.nodes.filter(n => n.metadata?.studio?.kind === 'check')).toHaveLength(1);
   expect(restore.changed).toBe(false);
   // The plans name the skill the thread was routed to, and the completion summary is keyed by its execution.
-  expect(productionPlan.plan).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
-  expect(snapshot.thread).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
+  expect(productionPlan.plan).toMatchObject({ skillKey: 'reference-video-recreation', skillVersion: 1 });
+  expect(snapshot.thread).toMatchObject({ skillKey: 'reference-video-recreation', skillVersion: 1 });
   const summary = snapshot.messages.at(-1)!;
   expect(completionExecutionId(summary)).toBe(execution.id);
   expect(summary.suggestions?.length).toBeGreaterThan(1);
   // 「整理成技能草稿」: one run per request key, done with the saved draft version.
   const draft = await mockCreateSkillDraft('p', { clientRequestId: 'd1', executionId: execution.id, maxCost: 0 });
   expect((await mockCreateSkillDraft('p', { clientRequestId: 'd1', executionId: execution.id, maxCost: 0 })).id).toBe(draft.id);
-  expect(skillDraftOutput(mockReadRun(draft.id))).toMatchObject({ skillKey: 'video-recreation', version: 3, baseVersion: 2 });
+  expect(skillDraftOutput(mockReadRun(draft.id))).toMatchObject({ skillKey: 'reference-video-recreation', version: 2, baseVersion: 1 });
 }, 20000);
 
 // Routing follows StudioSkillRouter since 意图直达 (2026-10-20): keywords ×2, media ×1, a unique best wins, no hit keeps the
@@ -107,8 +107,8 @@ test('skill routing: a tie binds nothing and answers without a 400; an explicit 
   expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'talking-head-seeding', skillVersion: 1 });
   await flow.done(2);
   // No execution yet (the analysis card is still pending): an explicit switch is allowed and starts that job.
-  expect(await mockDialoguePost('route', id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'video-recreation' })).toMatchObject({ queueState: 'accepted' });
-  expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
+  expect(await mockDialoguePost('route', id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'reference-video-recreation' })).toMatchObject({ queueState: 'accepted' });
+  expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'reference-video-recreation', skillVersion: 1 });
   await flow.done(3);
   // Once the analysis runs, the method is fixed: an explicit switch is refused, a routed message keeps it.
   const store = (await mockDialogueConversation('route'));
@@ -117,7 +117,7 @@ test('skill routing: a tie binds nothing and answers without a 400; an explicit 
   await flow.done(4);
   expect(await mockDialoguePost('route', id, { clientMessageId: 'x4', text: '画一张海报', skillKey: 'image-generation' }).catch(e => e)).toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
   await mockDialoguePost('route', id, { clientMessageId: 'x5', text: '画一张海报' });
-  expect((await mockDialogueConversation('route')).thread.skillKey).toBe('video-recreation');
+  expect((await mockDialogueConversation('route')).thread.skillKey).toBe('reference-video-recreation');
   flow.stop();
 }, 20000);
 
@@ -131,7 +131,7 @@ test('skill routing: words outrank media, and a message without a hit stays on t
   canvasWith('clip', [{ id: 'ref', type: 'video' }]);
   const c = await mockDialogueConversation('clip');
   await mockDialoguePost('clip', c.thread.id, { clientMessageId: 'v1', text: '照这个来', pinnedNodeIds: ['ref'] });
-  expect((await mockDialogueConversation('clip')).thread.skillKey).toBe('video-recreation');
+  expect((await mockDialogueConversation('clip')).thread.skillKey).toBe('reference-video-recreation');
   // An image job, then follow-ups with and without a keyword: both stay 出图.
   const b = await mockDialogueConversation('again'), flow = await settled('again', b.thread.id);
   await mockDialoguePost('again', b.thread.id, { clientMessageId: 'i1', text: '画一张国风少女海报，9:16' });
@@ -251,4 +251,44 @@ test('a message sent while a turn runs is queued and later marked applied', asyn
   stop();
   const snapshot = await mockDialogueConversation('q');
   expect(snapshot.messages.find(m => m.clientMessageId === 'b')?.status).toBe('applied');
+}, 20000);
+
+// The new conversation's four cards (docs/ip-studio-new-canvas-and-threads.md §5) name their skill; each sentence gets an
+// answer that fits it in the demo, the same shape the server sends.
+test('the four opening cards: each sentence, sent with its skill, gets a fitting demo answer', async () => {
+  canvasWith('cards', [{ id: 'me', type: 'image' }, { id: 'ref', type: 'video' }]);
+  const plans: Record<string, { title: string; cost: number }> = {};
+  for (const [key, text, pinned] of [
+    ['image-generation', '用 @me 做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。', ['me']],
+    ['video-generation', '做一条 10 秒、16:9 的短视频：女孩在海边回头微笑。镜头环绕。', []],
+  ] as const) {
+    const state = await mockDialogueConversation(`cards-${key}`);
+    const events: StudioDialogueEvent[] = [];
+    const stop = mockDialogueSubscribe(`cards-${key}`, state.thread.id, 0, e => events.push(e));
+    await mockDialoguePost(`cards-${key}`, state.thread.id, { clientMessageId: 'c1', text, skillKey: key, pinnedNodeIds: [...pinned] });
+    await until(events, e => e.type === 'turn.done');
+    stop();
+    const plan = events.find(e => e.type === 'plan.proposed')!.data as { block: { plan: { steps: { title: string; quotedCost: number }[] } } };
+    plans[key] = { title: plan.block.plan.steps[0].title, cost: plan.block.plan.steps[0].quotedCost };
+  }
+  expect(plans['image-generation']).toEqual({ title: '一张 1:1 的多视角设定图', cost: 8 });
+  // What the card chose is what the card quotes: 10 seconds, landscape.
+  expect(plans['video-generation']).toEqual({ title: '一段 10 秒横屏视频', cost: 80 });
+
+  const script = await mockDialogueConversation('cards-script'), scriptEvents: StudioDialogueEvent[] = [];
+  const stopScript = mockDialogueSubscribe('cards-script', script.thread.id, 0, e => scriptEvents.push(e));
+  await mockDialoguePost('cards-script', script.thread.id, { clientMessageId: 's1', text: '写一个 60 秒的短剧剧本：外卖员送错一单，意外救了老板的女儿。有反转，分场写清画面、台词和时长。', skillKey: 'script-writing' });
+  await until(scriptEvents, e => e.type === 'turn.done');
+  stopScript();
+  const node = scriptEvents.map(e => e.data as StudioNodeUpsertData).find(d => d.op === 'create')!.node!;
+  expect(node.title).toBe('剧本 · 示例');
+  expect(String(node.metadata?.content)).toContain('梗概：外卖员送错一单，意外救了老板的女儿。');
+
+  // 复刻视频 names the server's recreation skill: the demo starts with its analysis card.
+  const copy = await mockDialogueConversation('cards'), copyEvents: StudioDialogueEvent[] = [];
+  const stopCopy = mockDialogueSubscribe('cards', copy.thread.id, 0, e => copyEvents.push(e));
+  await mockDialoguePost('cards', copy.thread.id, { clientMessageId: 'r1', text: '照 @ref 的拍法，把里面的商品或人物换成 @me，保留节奏和镜头。', skillKey: 'reference-video-recreation', pinnedNodeIds: ['ref', 'me'] });
+  await until(copyEvents, e => e.type === 'turn.done');
+  stopCopy();
+  expect((copyEvents.find(e => e.type === 'plan.proposed')!.data as { block: { plan: { stage: string; skillKey: string } } }).block.plan).toMatchObject({ stage: 'analysis', skillKey: 'reference-video-recreation' });
 }, 20000);

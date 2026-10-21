@@ -31,7 +31,12 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('<StudioFloatingPanel title="创作助手"');
   expect(assistant).toContain('dockable defaultDocked resizable layoutKey="assistant"');
   expect(assistant).toContain('subheader={subheader}');
-  expect(assistant).toContain('<StudioAssistantChecklist');
+  // The new conversation opens on the four cards and their fill-in cards (docs/ip-studio-new-canvas-and-threads.md §5);
+  // the recreation checklist is one of them now, not a second component.
+  expect(assistant).toContain('<StudioAssistantStarterCards onPick={openStarter}/>');
+  expect(assistant).toContain('<StudioAssistantStarterForm ');
+  expect(assistant).not.toContain('StudioAssistantChecklist');
+  expect(read('styles/ip-studio-workflow.css')).toContain('@container studio-welcome (max-width:359px)');
   expect(assistant).toContain('aria-label="使用说明"');
   expect(read('ip/studio-dialogue-execution.tsx')).toContain('role="progressbar"');
   expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'focus'");

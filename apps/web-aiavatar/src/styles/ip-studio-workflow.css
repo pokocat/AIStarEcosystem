@@ -708,25 +708,61 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel>.studio-floating-
 html[data-layout="mobile"] .ip-surface .studio-assistant-starters button { padding:10px; }
 @media (prefers-reduced-motion:reduce) { .ip-surface .studio-assistant-panel * { transition:none!important; scroll-behavior:auto; } }
 .ip-surface .studio-assistant-panel textarea:not(:disabled)::placeholder { color:var(--ink-2); opacity:1; }
-/* 复刻素材清单（开场引导的第二步） */
-.ip-surface .studio-assistant-checklist { display:flex; flex-direction:column; gap:12px; }
-.ip-surface .studio-assistant-checklist>p { margin:0; font-size:13px; line-height:1.75; }
-.ip-surface .studio-assistant-checklist ol { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; border:1px solid var(--line-2); border-radius:14px; overflow:hidden; }
-.ip-surface .studio-assistant-checklist li { display:grid; grid-template-columns:24px minmax(0,1fr); gap:10px 12px; align-items:center; padding:12px 14px; border-bottom:1px solid var(--line); }
-.ip-surface .studio-assistant-checklist li:last-child { border-bottom:0; }
-.ip-surface .studio-assistant-checklist li[data-state="missing"] { background:var(--warn-soft); }
-.ip-surface .studio-assistant-checklist-mark { display:grid; place-items:center; width:24px; height:24px; border-radius:50%; border:2px solid var(--line-3); color:var(--ink-2); font-size:12px; font-weight:600; box-sizing:border-box; }
-.ip-surface .studio-assistant-checklist li[data-state="done"] .studio-assistant-checklist-mark { border:0; background:var(--ok); color:#fff; }
-.ip-surface .studio-assistant-checklist li[data-state="missing"] .studio-assistant-checklist-mark { border:0; background:var(--warn); color:#fff; font-size:14px; font-weight:700; }
-.ip-surface .studio-assistant-checklist-body { display:flex; flex-direction:column; gap:2px; min-width:0; }
-.ip-surface .studio-assistant-checklist-body strong { font-size:13px; font-weight:600; }
-.ip-surface .studio-assistant-checklist-body span { font-size:12px; color:var(--ink-2); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ip-surface .studio-assistant-checklist li[data-state="missing"] .studio-assistant-checklist-body span { color:var(--warn); }
-.ip-surface .studio-assistant-checklist-actions { grid-column:2; display:flex; flex-wrap:wrap; gap:6px; }
-.ip-surface .studio-assistant-checklist-actions button { height:30px; padding:0 10px; border:1px solid var(--line-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
-.ip-surface .studio-assistant-checklist-actions button:hover { background:var(--surface-2); border-color:var(--ink-3); }
-.ip-surface .studio-assistant-checklist .studio-helper-note { margin:0; }
-.ip-surface .studio-assistant-checklist .studio-dialogue-link { margin-left: 6px; }
+/* 新对话的四张卡与填空卡（docs/ip-studio-new-canvas-and-threads.md §5）。2×2，窄于约 360px 单列；选中的选项用群青描边浅底，
+   AI 渐变只留给发送键。 */
+.ip-surface .studio-assistant-panel .studio-assistant-welcome { container:studio-welcome / inline-size; }
+.ip-surface .studio-assistant-starters.is-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.ip-surface .studio-assistant-starters.is-grid button { display:flex; flex-direction:column; align-items:flex-start; gap:6px; padding:14px; min-width:0; }
+.ip-surface .studio-assistant-starters.is-grid .studio-assistant-starter-icon { width:34px; height:34px; border-radius:10px; margin-bottom:4px; }
+.ip-surface .studio-assistant-starters.is-grid strong { font-size:14px; font-weight:600; line-height:1.4; max-width:100%; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-starters.is-grid span:not(.studio-assistant-starter-icon) { font-size:12px; line-height:1.55; color:var(--ink-2); max-width:100%; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-starters.is-grid small { margin-top:auto; padding-top:2px; font-size:11px; line-height:1.5; color:var(--ink-3); max-width:100%; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-starters button[data-tone="ip"] .studio-assistant-starter-icon { background:var(--primary-soft); color:var(--primary-700); }
+.ip-surface .studio-assistant-starters button[data-tone="copy"] .studio-assistant-starter-icon { background:var(--primary-tint); color:var(--primary-700); border:1px solid var(--primary-soft); }
+@container studio-welcome (max-width:359px) {
+  .ip-surface .studio-assistant-starters.is-grid { grid-template-columns:minmax(0,1fr); }
+}
+.ip-surface .studio-assistant-starter-form { container:studio-starter / inline-size; display:flex; flex-direction:column; gap:14px; min-width:0; }
+.ip-surface .studio-assistant-starter-back { align-self:flex-start; display:inline-flex; align-items:center; gap:4px; height:28px; margin:-4px 0 -2px -6px; padding:0 6px; border:0; border-radius:6px; background:transparent; color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
+.ip-surface .studio-assistant-starter-back:hover { background:var(--surface-2); color:var(--ink); }
+.ip-surface .studio-assistant-starter-form>header h3 { margin:0; font-size:18px; font-weight:600; line-height:1.4; }
+.ip-surface .studio-assistant-starter-form>header p { margin:2px 0 0; font-size:13px; line-height:1.6; color:var(--ink-2); }
+.ip-surface .studio-assistant-starter-label { font-size:12px; font-weight:600; color:var(--ink-2); }
+.ip-surface .studio-assistant-starter-label em { margin-left:6px; font-style:normal; font-weight:400; color:var(--ink-3); }
+.ip-surface .studio-assistant-starter-label em.is-missing { color:var(--warn); font-weight:600; }
+.ip-surface .studio-assistant-starter-slot { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; align-items:start; padding:12px 14px; border:1px solid var(--line-2); border-radius:12px; background:var(--surface); }
+.ip-surface .studio-assistant-starter-slot[data-state="missing"],.ip-surface .studio-assistant-starter-slot[data-state="over"] { border-color:var(--warn); background:var(--warn-soft); }
+.ip-surface .studio-assistant-starter-slot-main { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.ip-surface .studio-assistant-starter-slot-head { display:flex; align-items:center; gap:8px; min-width:0; }
+.ip-surface .studio-assistant-starter-slot-head strong { font-size:13px; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ip-surface .studio-assistant-starter-slot-state { display:inline-flex; align-items:center; flex-shrink:0; font-size:12px; color:var(--ink-3); }
+.ip-surface .studio-assistant-starter-slot[data-state="done"] .studio-assistant-starter-slot-state { display:grid; place-items:center; width:18px; height:18px; border-radius:50%; background:var(--ok); color:#fff; }
+.ip-surface .studio-assistant-starter-slot[data-state="missing"] .studio-assistant-starter-slot-state,.ip-surface .studio-assistant-starter-slot[data-state="over"] .studio-assistant-starter-slot-state { color:var(--warn); font-weight:600; }
+.ip-surface .studio-assistant-starter-need { margin:0; font-size:12px; line-height:1.5; color:var(--ink-2); }
+.ip-surface .studio-assistant-starter-chosen { margin:0; padding:0; list-style:none; display:flex; flex-wrap:wrap; gap:6px; min-width:0; }
+.ip-surface .studio-assistant-starter-chosen li { display:inline-flex; align-items:center; gap:2px; max-width:100%; min-width:0; height:26px; padding:0 4px 0 9px; border:1px solid var(--line-2); border-radius:999px; background:var(--surface-2); font-size:12px; }
+.ip-surface .studio-assistant-starter-chosen li span { min-width:0; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ip-surface .studio-assistant-starter-chosen li button { display:grid; place-items:center; flex-shrink:0; width:20px; height:20px; padding:0; border:0; border-radius:50%; background:transparent; color:var(--ink-3); cursor:pointer; }
+.ip-surface .studio-assistant-starter-chosen li button:hover { background:var(--surface-3); color:var(--ink); }
+.ip-surface .studio-assistant-starter-slot-actions { display:flex; flex-wrap:wrap; gap:6px; justify-content:flex-end; }
+.ip-surface .studio-assistant-starter-slot-actions button { height:30px; padding:0 10px; border:1px solid var(--line-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; white-space:nowrap; cursor:pointer; }
+.ip-surface .studio-assistant-starter-slot-actions button:hover { background:var(--surface-2); border-color:var(--ink-3); }
+.ip-surface .studio-assistant-starter-hint { grid-column:1 / -1; margin:0; font-size:12px; line-height:1.6; color:var(--ink-2); }
+@container studio-starter (max-width:340px) {
+  .ip-surface .studio-assistant-starter-slot { grid-template-columns:minmax(0,1fr); }
+  .ip-surface .studio-assistant-starter-slot-actions { justify-content:flex-start; }
+}
+.ip-surface .studio-assistant-starter-option { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.ip-surface .studio-assistant-starter-option>div { display:flex; flex-wrap:wrap; gap:6px; }
+.ip-surface .studio-assistant-starter-option button { height:30px; max-width:100%; padding:0 12px; border:1px solid var(--line-2); border-radius:999px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; transition:background-color 160ms ease-out,border-color 160ms ease-out; }
+.ip-surface .studio-assistant-starter-option button:hover { background:var(--surface-2); border-color:var(--ink-3); }
+.ip-surface .studio-assistant-starter-option button[aria-pressed="true"] { background:var(--primary-soft); border-color:var(--primary); color:var(--primary-700); font-weight:500; }
+.ip-surface .studio-assistant-starter-field { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.ip-surface .studio-assistant-starter-field input { width:100%; height:38px; padding:0 12px; border:1px solid var(--line-2); border-radius:10px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; box-sizing:border-box; }
+.ip-surface .studio-assistant-starter-field input::placeholder { color:var(--ink-3); opacity:1; }
+.ip-surface .studio-assistant-starter-field input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-tint); }
+.ip-surface .studio-assistant-starter-rewrite { margin:-4px 0 0; }
+@media (prefers-reduced-motion:reduce) { .ip-surface .studio-assistant-starter-option button { transition:none; } }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; border:1px solid var(--line-2); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }
 
