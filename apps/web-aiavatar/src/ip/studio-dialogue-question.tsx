@@ -6,7 +6,7 @@
 import { ArrowUp } from 'lucide-react';
 import type { DialogueQuestionBlock } from '@/canvas-bridge/studio-dialogue-store';
 
-const SEND_TITLE = '直接发出这句，输入框里写到一半的话不受影响';
+const SEND_TITLE = '直接发出这句';
 
 /** `answered`: the user already said something after this question (it is then closed, so a chip cannot answer it twice). */
 export function StudioDialogueQuestion({ block, answered: answeredHere, busy, onAnswer }: {

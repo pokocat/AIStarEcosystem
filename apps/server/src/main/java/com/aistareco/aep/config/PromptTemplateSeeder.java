@@ -43,7 +43,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      （线上复刻检查看到「三位成年男性」仍判「没有旧人物」）。
     // v17：对话提示词把「聊天按用量扣少量积分」与「制作确认报价后才开始」分开说，禁止先报数再改口、禁止「不确认不会花钱」
     //      （Codex 真 Agnes 复测：先说「费用 12 积分」，服务端报价 98，末尾还说「不确认不会花钱」而本轮已扣 5）。
-    private static final String SEED_VERSION = "v19-2026-10-20-dialogue-intent-direct-merged";
+    // v20：卡片精简（docs/ip-studio-new-canvas-and-threads.md §4.4）：方案 summary / title 只写要做出什么，不写判断过程、积分和流程；
+    //      对话发卡时正文最多一句、不复述卡片、不报价、不给操作提示。
+    private static final String SEED_VERSION = "v20-2026-10-20-concise-cards";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

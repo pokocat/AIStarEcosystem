@@ -1,22 +1,24 @@
 'use client';
-// One continuous dialogue per canvas: loads the thread, keeps the event stream open while the
-// panel is open or work is in flight, and exposes the user's actions (send, stop, branch,
-// approve, execution controls). Every action carries its own idempotency key; nothing here
-// derives status or cost — those come from the server's events, snapshots and executions.
+// The canvas's current conversation: loads it, keeps the event stream open while the panel is open
+// or work is in flight, and exposes the user's actions (send, stop, branch, new conversation, open an
+// earlier one, approve, execution controls). A canvas can hold several conversations; the server
+// remembers which one was opened last (docs/ip-studio-new-canvas-and-threads.md §3). Every action
+// carries its own idempotency key; nothing here derives status or cost — those come from the
+// server's events, snapshots and executions.
 //
 // It also reads the executions this thread started (from their approval cards), so a canvas
 // that was closed while one ran can rebuild that work's nodes on the next open.
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
-import type { StudioDialogueMessage, StudioPlanExecution, StudioPlanExecutionCreateRequest } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioDialogueMessage, StudioDialogueState, StudioDialogueThreadSummary, StudioPlanExecution, StudioPlanExecutionCreateRequest } from '@ai-star-eco/types/ip-studio-workflow';
 import {
   approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionActive, isPlaceholderMessage, persistableCanvasCursor, planForApproval,
-  type DialogueApprovalBlock,
+  type DialogueApprovalBlock, type DialogueStore,
 } from '@/canvas-bridge/studio-dialogue-store';
 import {
-  branchStudioDialogue, controlStudioDialogue, getStudioConversation, listStudioDialogueMessages, postStudioDialogueMessage, subscribeStudioDialogue,
-  type DialogueStreamMode,
+  branchStudioDialogue, controlStudioDialogue, createStudioDialogueThread, getStudioConversation, listStudioDialogueMessages, listStudioDialogueThreads,
+  openStudioDialogueThread, postStudioDialogueMessage, subscribeStudioDialogue, type DialogueStreamMode,
 } from '@/canvas-bridge/studio-dialogue';
 import {
   acceptStudioPlanExecutionStep, cancelStudioPlanExecution, createStudioPlanExecution, getStudioPlanExecution, pauseStudioPlanExecution, resumeStudioPlanExecution,
@@ -46,6 +48,13 @@ export type DialogueSendInput = { text: string; pinnedNodeIds: string[]; attachm
 
 /** How many earlier executions of this thread are read back for restoring their canvas nodes. */
 const LINKED_EXECUTIONS = 5;
+/**
+ * Why 「新对话」 and 「历史对话」 wait: the canvas gets its nodes from the current conversation's event stream, so leaving
+ * while a reply or an execution is still going would drop nodes that have not arrived yet.
+ */
+export const DIALOGUE_THREAD_BUSY = '这段对话还在进行，等它做完或先停止';
+/** A reply is streaming, an execution is running / paused / waiting, or a message is still on its way. */
+export const dialogueThreadBusy = (store: DialogueStore) => !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending');
 
 /** `autoload`: read the thread even while the panel is closed (the canvas is missing work an execution produced). */
 export function useStudioDialogueSession({ projectId, open, autoload = false }: { projectId: string; open: boolean; autoload?: boolean }) {
@@ -61,7 +70,13 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
   const [linked, setLinked] = useState<Record<string, StudioPlanExecution>>({});
   const linkedRef = useRef(linked); linkedRef.current = linked;
   const linkedRequested = useRef(new Set<string>());
-  useEffect(() => { dispatch({ type: 'reset' }); loaded.current = undefined; setStatus('idle'); setLoadError(undefined); setLinked({}); linkedRequested.current = new Set(); }, [projectId]);
+  // 「新对话」 / 「历史对话」: only the newest switch may land; the create key survives a lost response so a retry is the same request.
+  const switchSeq = useRef(0), createKey = useRef<string | undefined>(undefined);
+  const [switching, setSwitching] = useState<'new' | 'open'>();
+  useEffect(() => {
+    dispatch({ type: 'reset' }); loaded.current = undefined; setStatus('idle'); setLoadError(undefined); setLinked({}); linkedRequested.current = new Set();
+    switchSeq.current++; createKey.current = undefined; setSwitching(undefined);
+  }, [projectId]);
   const load = useCallback(async () => {
     const id = projectId;
     loaded.current = id; setStatus('loading'); setLoadError(undefined);
@@ -82,14 +97,22 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
   const savedCursor = persistableCanvasCursor(store);
   useEffect(() => { if (threadId && savedCursor !== undefined) writeCanvasCursor(threadId, savedCursor); }, [threadId, savedCursor]);
 
-  const working = !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending');
+  const working = dialogueThreadBusy(store);
   // A history replay onto a canvas that had no record here runs to the end even with the panel closed.
   const live = status === 'ready' && !!threadId && (open || working || canvasRestoring(store));
   useEffect(() => {
     if (!live || !threadId) return;
     const stop = subscribeStudioDialogue({ projectId, threadId, cursor: () => dialogueCursor(ref.current),
       onEvent: event => dispatch({ type: 'event', event }),
+      // A snapshot of this conversation. GET /conversation answers with the last opened one, which another tab may have
+      // changed; then this one is read by its id (dropping a snapshot of another thread would 410 again at once).
+      getSnapshot: async () => {
+        const state = await getStudioConversation(projectId);
+        return state.thread.id === threadId ? state : openStudioDialogueThread(projectId, threadId);
+      },
       onSnapshot: (state, reason) => {
+        // A poll that was already on its way when the panel moved to another conversation must not take the timeline back.
+        if (state.thread.id !== ref.current.thread?.id) return;
         const action = { type: 'snapshot' as const, state, mode: reason === 'expired' ? 'replace' as const : 'merge' as const };
         // The stream reconnects right away with cursor(); fold now so it does not read the pre-snapshot cursor.
         ref.current = dialogueReducer(ref.current, action);
@@ -101,7 +124,8 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
 
   const refresh = useCallback(async () => {
     const id = projectId;
-    try { const state = await getStudioConversation(id); if (project.current === id) dispatch({ type: 'snapshot', state, mode: 'merge' }); }
+    // Only for the conversation still shown: the last opened one may be another (a switch here, another tab).
+    try { const state = await getStudioConversation(id); if (project.current === id && state.thread.id === ref.current.thread?.id) dispatch({ type: 'snapshot', state, mode: 'merge' }); }
     catch { /* the stream remains the source of updates */ }
   }, [projectId]);
   // A finished turn may have settled queued messages and structured blocks; read them once.
@@ -192,7 +216,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const s = ref.current;
     if (!s.thread) return;
     const state = await controlStudioDialogue(projectId, s.thread.id, { controlId: nanoid(), action: 'stop', ...(executionActive(s.execution) ? { executionId: s.execution!.id } : {}) });
-    dispatch({ type: 'snapshot', state, mode: 'merge' });
+    if (state.thread.id === ref.current.thread?.id) dispatch({ type: 'snapshot', state, mode: 'merge' });
   }, [projectId]);
 
   const branch = useCallback(async (fromMessageId: string) => {
@@ -201,6 +225,50 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const state = await branchStudioDialogue(projectId, s.thread.id, { clientRequestId: nanoid(), fromMessageId });
     dispatch({ type: 'snapshot', state, mode: 'replace' });
   }, [projectId]);
+
+  // ── Several conversations per canvas (docs/ip-studio-new-canvas-and-threads.md §3) ─────────
+  // Switching works like 「从这里重新开始」 above: the returned snapshot replaces the timeline (another thread starts from a
+  // clean store), and the stream follows the new thread id. Like the first open, the canvas cursor is read for that
+  // thread (absent → its execution output is restored, never re-run). Executions read back for the previous thread
+  // belong to it and are dropped. Nothing here calls a model or spends credits.
+  const enter = useCallback((state: StudioDialogueState) => {
+    const cursor = readCanvasCursor(state.thread.id);
+    dispatch({ type: 'snapshot', state, mode: 'replace', canvasAckSeq: cursor, restoreCanvas: cursor === undefined });
+    setLinked({}); linkedRequested.current = new Set();
+    createKey.current = undefined;
+    loaded.current = project.current; setStatus('ready'); setLoadError(undefined);
+  }, []);
+  /** Resolves true once the new conversation is shown, false when a later switch (or another canvas) took over. */
+  const newThread = useCallback(async (): Promise<boolean> => {
+    if (dialogueThreadBusy(ref.current)) throw new Error(DIALOGUE_THREAD_BUSY);
+    const id = projectId, seq = ++switchSeq.current;
+    // A new key per click; one whose answer was lost is sent again, so the server hands back the same conversation.
+    const clientRequestId = createKey.current || nanoid();
+    createKey.current = clientRequestId;
+    setSwitching('new');
+    try {
+      const state = await createStudioDialogueThread(id, { clientRequestId });
+      if (project.current !== id || switchSeq.current !== seq) return false;
+      enter(state);
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status && DEFINITE_REJECTION.has(error.status) && createKey.current === clientRequestId) createKey.current = undefined;
+      throw error;
+    } finally { if (switchSeq.current === seq) setSwitching(undefined); }
+  }, [projectId, enter]);
+  const openThread = useCallback(async (threadId: string): Promise<boolean> => {
+    if (ref.current.thread?.id === threadId) return true;
+    if (dialogueThreadBusy(ref.current)) throw new Error(DIALOGUE_THREAD_BUSY);
+    const id = projectId, seq = ++switchSeq.current;
+    setSwitching('open');
+    try {
+      const state = await openStudioDialogueThread(id, threadId);
+      if (project.current !== id || switchSeq.current !== seq) return false;
+      enter(state);
+      return true;
+    } finally { if (switchSeq.current === seq) setSwitching(undefined); }
+  }, [projectId, enter]);
+  const listThreads = useCallback((): Promise<StudioDialogueThreadSummary[]> => listStudioDialogueThreads(projectId), [projectId]);
 
   const approve = useCallback(async (block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string): Promise<StudioPlanExecution> => {
     const s = ref.current;
@@ -258,6 +326,7 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
   }, [projectId]);
   const readThread = useCallback((id: string): Promise<StudioDialogueMessage[]> => listStudioDialogueMessages(projectId, id, { limit: 200 }), [projectId]);
 
-  return { store, dispatch, status, loadError, reload: load, stream, send, retry, stop, branch, approve, controlExecution, ensureExecution, acceptStep, loadOlder, readThread, executions };
+  return { store, dispatch, status, loadError, reload: load, stream, send, retry, stop, branch, newThread, openThread, listThreads, switching, approve, controlExecution, ensureExecution, acceptStep,
+    loadOlder, readThread, executions };
 }
 export type StudioDialogueSession = ReturnType<typeof useStudioDialogueSession>;

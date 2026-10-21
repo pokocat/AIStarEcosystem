@@ -75,7 +75,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
       <p className="studio-dialogue-text">{item.text}</p>
       {item.state === 'sending' ? <small className="studio-dialogue-queue" role="status">发送中</small>
         : <small className="studio-dialogue-queue is-failed" role="status">没有确认送达{item.error ? `：${item.error}` : ''}
-          <button type="button" className="studio-dialogue-link" title="用同一条消息重发，服务端只会处理一次" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
+          <button type="button" className="studio-dialogue-link" title="重新发送这条消息，不会重复" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
     </article>)}
     {activity && !activityHost && <div className="studio-dialogue-message is-assistant is-pending"><StudioDialogueActivity activity={activity}/></div>}
     {!last && progress}

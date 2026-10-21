@@ -32,6 +32,8 @@ type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number|'auto';
   titleExtra?:ReactNode;
   /** A mark before the title (the assistant's AI sign). */
   titleIcon?:ReactNode;
+  /** Buttons between the title and the dock / close buttons (the assistant's 新对话 and 历史对话). Never start a drag. */
+  actions?:ReactNode;
   /** A strip between the header and the scrolling body: progress, status. Never scrolls away. */
   subheader?:ReactNode;
   /** Remember docked / floating and the docked width per viewer under this key (a per-browser convenience, not state). */
@@ -71,7 +73,7 @@ function raiseFloating(id:symbol) {
   floatingStack.splice(index,1);floatingStack.push(entry);refreshStack(entry.root);
 }
 export function StudioFloatingPanel({open,title,anchorId,width=660,children,footer,onClose,closable=true,utility=false,dockable=false,toolbar=false,className='',container,embedded=false,
-  titleExtra,titleIcon,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
+  titleExtra,titleIcon,actions,subheader,layoutKey,defaultDocked=false,resizable=false,minWidth=400,maxWidth=760}:Props) {
   const revision=useContext(StudioFloatingContext), ref=useRef<HTMLElement>(null);
   const identity=useRef(Symbol('floating-panel')),[layer,setLayer]=useState({z:90,active:false});
   const [root,setRoot]=useState<HTMLElement|null>(null),[position,setPosition]=useState({left:0,top:0});
@@ -151,11 +153,14 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
     onPointerUp={()=>{if(resize.current)writeLayout(layoutKey,{width:dockedWidth});resize.current=undefined;}}
     onPointerCancel={()=>{resize.current=undefined;}}/>}
     {title&&<header className={`studio-floating-header${utility?' is-draggable':''}`} onPointerDown={e=>{
-      if(!utility||docked||(e.target as HTMLElement).closest('button'))return;
+      // Buttons and the actions strip never drag. Neither does a popup opened from them: it is portaled out of the header,
+      // but React still bubbles its pointer events here, so only a press on the header's own elements counts.
+      const target=e.target as HTMLElement;
+      if(!utility||docked||target.closest?.('button,.studio-floating-actions')||!e.currentTarget.contains(target))return;
       drag.current={x:e.clientX,y:e.clientY,...position};e.currentTarget.setPointerCapture?.(e.pointerId);
     }} onPointerMove={e=>{if(drag.current)setManual({left:drag.current.left+e.clientX-drag.current.x,top:drag.current.top+e.clientY-drag.current.y});}}
     onPointerUp={()=>{drag.current=undefined;}} onPointerCancel={()=>{drag.current=undefined;}}>
-      <div className="studio-floating-title">{titleIcon}<strong>{title}</strong>{titleExtra}</div><div>{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRight size={17}/>:<PanelRightOpen size={17}/>}</button>}
+      <div className="studio-floating-title">{titleIcon}<strong>{title}</strong>{titleExtra}</div><div>{actions&&<div className="studio-floating-actions">{actions}</div>}{dockable&&<button type="button" aria-label={docked?'改成浮窗':'停靠到右侧'} title={docked?'改成浮窗':'停靠到右侧'} onClick={toggleDocked}>{docked?<PanelRight size={17}/>:<PanelRightOpen size={17}/>}</button>}
       {onClose&&<button type="button" aria-label={`关闭${typeof title==='string'?title:'浮层'}`} disabled={!closable} onClick={onClose}><X size={17}/></button>}</div>
     </header>}
     {subheader&&<div className="studio-floating-subheader">{subheader}</div>}

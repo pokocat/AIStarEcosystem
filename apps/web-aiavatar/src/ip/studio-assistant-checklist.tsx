@@ -22,10 +22,10 @@ export function StudioAssistantChecklist({ list, videoCount, onPickVideo, onPick
   list: RecreationChecklist; videoCount: number;
   onPickVideo: () => void; onPickImage: () => void; onUpload: () => void; onDismiss: () => void;
 }) {
-  const videoLabel = list.video ? `${list.video.title} · 画布上已有` : videoCount ? `画布上有 ${videoCount} 条视频，选一条` : "还没有。拖一条视频进画布，或者上传";
-  const imageLabel = list.images.length ? list.images.map(n => n.title).join("、") : "还没有。给我图片就行，1 到 3 张";
+  const videoLabel = list.video ? `${list.video.title} · 画布上已有` : videoCount ? `画布上有 ${videoCount} 条视频，选一条` : "还没有";
+  const imageLabel = list.images.length ? list.images.map(n => n.title).join("、") : "还没有，1 到 3 张图片";
   return <section className="studio-assistant-checklist" aria-label="复刻需要的素材">
-    <p>好，做一条复刻视频。开始前先凑齐三样东西，齐了我再去看片子、出方案。</p>
+    <p>复刻要这三样，齐了就能发。</p>
     <ol>
       <li data-state={list.video ? "done" : "missing"}>
         <span className="studio-assistant-checklist-mark" aria-label={list.video ? "已满足" : "还缺"}>{list.video ? <Check size={14} aria-hidden="true"/> : "!"}</span>
@@ -45,10 +45,9 @@ export function StudioAssistantChecklist({ list, videoCount, onPickVideo, onPick
       </li>
       <li data-state={list.textReady ? "done" : "pending"}>
         <span className="studio-assistant-checklist-mark" aria-label={list.textReady ? "已满足" : "待填写"}>{list.textReady ? <Check size={14} aria-hidden="true"/> : "3"}</span>
-        <span className="studio-assistant-checklist-body"><strong>说清要换什么、留什么</strong><span>{list.textReady ? "写好了，齐了就能发" : "下面已经替你起了个头，把方括号里的空位补上就行"}</span></span>
+        <span className="studio-assistant-checklist-body"><strong>说清要换什么、留什么</strong><span>{list.textReady ? "写好了" : "把输入框里方括号的空位补上"}</span></span>
       </li>
     </ol>
-    <p className="studio-helper-note">看片子和出方案要花几积分，会先告诉你多少再开始。生成视频前还会再确认一次。
-      <button type="button" className="studio-dialogue-link" onClick={onDismiss}>不用清单，直接说</button></p>
+    <p className="studio-helper-note"><button type="button" className="studio-dialogue-link" onClick={onDismiss}>不用清单，直接说</button></p>
   </section>;
 }

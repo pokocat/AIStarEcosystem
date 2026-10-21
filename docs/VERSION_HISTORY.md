@@ -4,6 +4,18 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 新建画布、多段对话与卡片精简 · 2026-10-20 · 本地，未发布（server + web-aiavatar）
+
+背景：用户反馈三件事加一轮文案意见。「新建」各处不一样（项目页「新建创作」先跳 `/create`，那页还要在全能创作 / 图片 / 视频 / 剧本里选一个再填想法）；助手默认打开后旧空态被藏起来，空白画布没有任何提示；助手没有「新对话」和「历史对话」；卡片废话多，把判断过程和计费逻辑都摆给用户看。设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](ip-studio-new-canvas-and-threads.md)，取代 `ip-studio-conversational-video-recreation-plan.md` §对话形态里「每张画布一段对话、没有新对话和历史」那一句。
+
+- **新建画布**（只改前端）：`startNewCanvas()`（`src/ip/studio-entry.ts`）是唯一入口，页面用 `use-start-new-canvas.ts`（锁 + 失败可重试 + 未开通识别）。免费建「空白画布 · 新画布」并进 `/projects/{id}?start=assistant`；最近一张同名、2 小时内建（`STUDIO_NEW_CANVAS_REUSE_MS`）、没有节点也没有 `assistantConversations` 的画布直接复用，读不到就新建。项目页「新建创作」与空态「开始创作」、桌面 / 手机首页的「创建空白画布 / 新建空白画布」都改走它；桌面 `/create` 进来即 `router.replace` 到画布（建的过程中显示「正在打开新画布…」，失败给原因、重试和「去项目页」）；手机 `/create` 保留页面，只留 `StudioConversationStart`、能力入口和模板。`studio-creation-brief.tsx`（四种方式切换 +「创作想法」文本框）及其样式删除；首页「继续创作」旁的「全部画布」改指 `/projects`。
+- **空白画布引导**（`studio-canvas-guide.tsx`）：`studioCanvasGuideVisible` = 无节点 + 画布视图 + 没有创作浮层打开。卡片在可见区域中间（让开左栏与停靠的助手），标题「这张画布还是空的」，五个入口（文字 / 图片生成 / 视频生成 / 配音 / 上传素材）+「从模板开始」，全部 `dispatchStudioCommand`，与左栏「＋添加」同一条路径；助手关着时多一个「和助手开始」。外层 `pointer-events:none`，手机宽度两列。旧的只在助手关着时出现的空态并入，不再保留两套。
+- **多段对话**（server + 前端，无迁移）：`StudioDialogueController` 新增 `GET /conversations`（`StudioDialogueService.threads`：有消息的对话 + 当前那段，按 `lastActivityAt` 倒序，最多 50 段，标题取第一条用户消息 24 字）、`POST /conversations {clientRequestId}`（`createThread`：同人同键幂等，复用本人这张画布最新的空闲空对话，画布行锁串行；键属于别的画布或分支 409 `STUDIO_REQUEST_CHANGED`，不合法 400 `STUDIO_INPUT_INVALID`）、`GET /conversations/{threadId}`（`openThread`：校验 → `markOpened` → `reconcile` → 快照，不存在 404 `STUDIO_THREAD_NOT_FOUND`）。新类型 `StudioDialogueThreadSummary` / `StudioCreateThreadRequest`（`packages/types/src/ip-studio-workflow.ts`，Java `StudioDialogueDtos.ThreadSummary` / `CreateThreadRequest`）；`lastActivityAt` = 最后一条消息与创建时间取较晚（分支复制的消息保留原时间，新分支排在原对话前面）。前端 `studio-dialogue-threads.tsx`：助手头部「新对话 / 历史对话」（`StudioFloatingPanel` 新增 `actions` 插槽），新对话保留输入框里的字、引用、附件和模型，技能回到自动；当前对话在回复或制作（含暂停）时两个按钮都不可点，因为画布节点按当前对话的事件流写入。演示 mock 照服务端补了三个接口。测试 `StudioDialogueThreadsTest`、`studio-dialogue-threads.test.tsx`。
+- **卡片与文案精简**：卡片只回答做什么、花多少、按哪个按钮。同一条回复里的方案与确认卡合成一张（摘要 + 每步标题 / 类型 / 描述 + 一个积分数字 +「开始制作 / 先改改」）；多做法只显示标题、摘要、保留 / 改变，`rationale` / `tradeoffs` 永不显示；不显示每步报价、预计、重做额度、上限、版本号和技能版本；上限输入只在预算不够时出现。已确认收成一行，已过期给「重新报价」，已被替换只写「已有新的报价」。打字「可以」仍能确认（`StudioNaturalApprovals` 不变），界面不再提示。开场段落、「第一次用？」链接、一次性提示「结果放进画布了…」删除；开场卡片只有标题和一行说明；输入框占位、发送键提示、每条回复的积分、进度条（只写「已用 N 积分」）、回复状态与修改建议的文案都收短。
+- **完成总结与「放进画布」**：`StudioExecutionSummary` 只说一句结果和总花费（「做好了，花了 30 积分。」等），不分阶段列花费、不复述步骤；没做完的步骤和检查没通过的原因各一行；建议从实际产物来，兜底是「把这张画布存为模板」或「再试一次」。「放进画布」不给完成总结、system 消息和本条已建 / 改过节点的回复，正文门槛从 40 字提到 80 字。
+- **提示词**：`dap.ip_studio_skill_plan.md`（summary / title 只写要做出什么、一句话、限长；rationale 必填但不展示）、`dap.ip_studio_skill_dialogue.md`（调工具前不预告、不主动讲计费、发卡时正文最多一句、不用「好的 / 收到」开头）、`RequestApprovalTool` 的 `scope` 说明（每条一句、不超过 20 字），`PromptTemplateSeeder.SEED_VERSION` 升到 `v20-2026-10-20-concise-cards`。
+- **未做**：真模型验证卡片文案（§8.0.1 ⑦）；两个标签页各开一段对话时的断线补拉、切换对话后上一段失败消息不再显示、复用空线程的请求编号边界，均记在 `TODO.md`。
+
 ### Studio 对话意图直达 · 2026-10-20 · 本地，未发布（server + web-aiavatar）
 
 背景：用户反馈「AI 对话里问太多」。改版前对话链只为参考视频复刻设计：技能只有一个，没命中就落进全能创作、做不了收费生成而反复追问；哪怕只出一张图也要「分析确认 + 制作确认」两张卡；线程一旦绑定技能就不能换；路由平手回 400 让界面问「用哪种方法」。设计真源 [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md)。

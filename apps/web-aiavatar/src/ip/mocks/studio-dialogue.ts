@@ -18,11 +18,13 @@
 // 快照只带进行中的制作，做完的制作要从确认卡上的 executionId 读回来；
 // 事件可以被裁掉（eventFloorSeq），游标低于它就要求重新读快照。
 // mockSeedCompletedExecution 造一张「关着页面时制作已经做完」的画布，用来验收重新打开后补节点。
+// 一张画布可以有多段对话（新对话 / 历史对话，docs/ip-studio-new-canvas-and-threads.md §3）：列表、新建（复用没说过话的空对话）、
+// 打开都照服务端语义；演示流程走到哪一步按对话各记各的，切回来接着走。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  StudioBranchRequest, StudioCheckResultData, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage,
-  StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
+  StudioBranchRequest, StudioCheckResultData, StudioCreateThreadRequest, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage,
+  StudioDialogueState, StudioDialogueThread, StudioDialogueThreadSummary, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
   StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillDraftOutput, StudioSkillDraftRequest,
   StudioSkillSummary, StudioTokenBilling,
 } from "@ai-star-eco/types/ip-studio-workflow";
@@ -144,12 +146,16 @@ type Listener = (event: StudioDialogueEvent) => void;
 type Step = { run: () => void; delay?: number; waitsForExecution?: boolean };
 interface MockThread {
   thread: StudioDialogueThread; view: DialogueStore; events: StudioDialogueEvent[]; listeners: Set<Listener>;
+  /** Where this thread's demo flow stood when another conversation was opened; restored when it is opened again. */
+  stage?: Stage;
   /** Events at or below this seq were pruned; a cursor below it must rebuild from the snapshot (410 on the server). */
   eventFloorSeq: number;
   generation: number; running: boolean; turnId?: string; runId?: string; queued: string[]; results: Map<string, StudioPostMessageResult>;
 }
 type Stage = "idle" | "analysis-proposed" | "analysis-running" | "production-proposed" | "production-running" | "done";
-interface MockProject { threads: Map<string, MockThread>; currentThreadId: string; execution?: StudioPlanExecution; stage: Stage }
+interface MockProject { threads: Map<string, MockThread>; currentThreadId: string; execution?: StudioPlanExecution; stage: Stage;
+  /** POST /conversations idempotency: clientRequestId → the thread it created or reused. */
+  createdThreads: Map<string, string> }
 
 const projects = new Map<string, MockProject>();
 let counter = 0;
@@ -170,7 +176,7 @@ function project(projectId: string): MockProject {
   let p = projects.get(projectId);
   if (!p) {
     const main = createThread(projectId);
-    p = { threads: new Map([[main.thread.id, main]]), currentThreadId: main.thread.id, stage: "idle" };
+    p = { threads: new Map([[main.thread.id, main]]), currentThreadId: main.thread.id, stage: "idle", createdThreads: new Map() };
     projects.set(projectId, p);
     if (projectId === MOCK_CLOSED_EXECUTION_PROJECT_ID) seedCompleted(projectId, p, main);
   }
@@ -182,9 +188,9 @@ function thread(p: MockProject, threadId: string) {
   return t;
 }
 
-/** Like the server: only an execution still in progress rides along; a finished one is read back by its id. */
+/** Like the server: only an execution still in progress rides along (on the thread that started it); a finished one is read back by its id. */
 function snapshot(p: MockProject, t: MockThread): StudioDialogueState {
-  const active = p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) ? p.execution.id : undefined;
+  const active = p.execution && ["running", "paused", "needs_user"].includes(p.execution.status) && (!p.execution.threadId || p.execution.threadId === t.thread.id) ? p.execution.id : undefined;
   return clone({ thread: { ...t.thread, activeTurnId: t.running ? t.turnId : undefined, activeExecutionId: active },
     messages: t.view.messages.filter(m => !isPlaceholderMessage(m.id)), latestSeq: t.thread.lastSeq, ...(active ? { execution: p.execution } : {}) });
 }
@@ -238,7 +244,7 @@ function applyQueued(p: MockProject, t: MockThread) {
   const approving = [...ids].reverse().map(id => t.view.messages.find(m => m.id === id)).find(m => m && mockSaysApprove(m.text));
   if (approving && naturalApproval(t.thread.projectId, p, t, approving.text, approving.id)) return;
   const messageId = startTurn(t);
-  play(p, t, [...say(t, messageId, "ack", "收到，后面的步骤会按你刚才说的来。已经交给厂商的任务保持原样。"),
+  play(p, t, [...say(t, messageId, "ack", "后面的步骤按你刚才说的来，已经在生成的不受影响。"),
     { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false }) }]);
 }
 
@@ -322,17 +328,16 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
   const messageId = startTurn(t), canvas = canvasSize(projectId), tool = nextId("tool");
   const revision = nextPlanRevision(t), fingerprint = `mock-analysis-v${revision}`;
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-analysis", revision, fingerprint, plan: {
-    summary: "先拉片，弄清原片每一段在做什么，再给你制作方案。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "analysis", revision, fingerprint,
+    summary: "拉片看清原片两段的画面和节奏", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "analysis", revision, fingerprint,
     steps: [
       { id: "s1", operation: "recreation", title: "拉片：切成 2 段", prompt: "", referenceNodeIds: [], quotedCost: 20 },
       { id: "s2", operation: "text", title: "整理每段的画面和节奏", prompt: "", referenceNodeIds: [], quotedCost: 6, dependsOn: ["s1"] },
     ], budget: { estimated: 26, autoFixCap: 0 } } };
   play(p, t, [
-    ...say(t, messageId, "p1", "我先看一下画布上的素材和你的要求，再说怎么做。"),
     { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "read_canvas", title: "读取画布素材", safeInputSummary: `画布上 ${canvas.count} 个节点${request.pinnedNodeIds?.length ? `，你指定了 ${request.pinnedNodeIds.length} 个` : ""}` }) },
     { delay: mockDialogueTiming.tickMs * 4, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "read_canvas", progress: `已读取 ${canvas.count} 个节点` }) },
     { delay: mockDialogueTiming.tickMs * 4, run: () => emit(t, "tool.finished", { toolCallId: tool, toolName: "read_canvas", status: "done", result: { summary: `找到 ${canvas.videos} 条视频、${canvas.images} 张图片` }, creditsActual: 0, settling: false }) },
-    ...say(t, messageId, "p2", "原片可以按两段来做：前段交代场景，后段做反转。先拉片确认每段的画面和节奏，这一步不超过 30 积分。"),
+    ...say(t, messageId, "p2", "原片可以分成两段：前段交代场景，后段做反转。"),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: "mock-approval-analysis", stage: "analysis", planFingerprint: fingerprint,
       scope: ["拉片，切成 2 段", "整理每段的画面和节奏"], quotedCost: 26, budgetCap: 30, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
@@ -348,7 +353,7 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
 function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
   const e = p.execution!, messageId = startTurn(t), tool = nextId("tool"), revision = nextPlanRevision(t), fingerprint = `mock-production-v${revision}`;
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-production", revision, fingerprint, plan: {
-    summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "production", revision, fingerprint,
+    summary: "两段 5 秒竖屏视频，保留原片动作和反转，换成你的商品", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "production", revision, fingerprint,
     recommendedApproachId: "keep-motion",
     approaches: [
       { id: "keep-motion", title: "保留动作，换商品和台词", summary: "两段都参考原片的动作和机位，只换商品和台词。", rationale: "原片的笑点在动作和反转，保留它们最稳。",
@@ -357,14 +362,13 @@ function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
         preserve: ["故事走向"], change: ["第 2 段的画面和机位"], tradeoffs: ["报价更高", "反转的效果要重新验证"], requiredCapabilities: ["video", "image"] },
     ],
     steps: [
-      { id: "v1", operation: "video", title: "第 1 段视频", prompt: "参考原片第 1 段的动作，主体换成新商品。", referenceNodeIds: [], quotedCost: 40, strategy: { approachId: "keep-motion", method: "参考原片动作", reason: "保留节奏" } },
-      { id: "v2", operation: "video", title: "第 2 段视频", prompt: "参考原片第 2 段的反转，台词按新商品重写。", referenceNodeIds: [], quotedCost: 40, strategy: { approachId: "keep-motion", method: "参考原片动作", reason: "保留反转" } },
+      { id: "v1", operation: "video", title: "第 1 段视频", prompt: "竖屏 5 秒，中景。人物从画面左侧走进厨房，拿起台面上的商品看向镜头，动作和机位照原片第 1 段，暖色室内光，节奏放慢，先交代场景。", referenceNodeIds: [], quotedCost: 40, strategy: { approachId: "keep-motion", method: "参考原片动作", reason: "保留节奏" } },
+      { id: "v2", operation: "video", title: "第 2 段视频", prompt: "竖屏 5 秒，商品特写，镜头快速推近，照原片第 2 段的反转节奏，台词换成介绍你的商品。", referenceNodeIds: [], quotedCost: 40, strategy: { approachId: "keep-motion", method: "参考原片动作", reason: "保留反转" } },
       { id: "c1", operation: "check", title: "检查第 1 段", prompt: "", referenceNodeIds: [], quotedCost: 2, dependsOn: ["v1"] },
       { id: "m1", operation: "assemble", title: "合成成片", prompt: "", referenceNodeIds: [], quotedCost: 0, dependsOn: ["v1", "v2"] },
     ], budget: { estimated: 82, autoFixCap: 40 } } };
   play(p, t, [
     { run: () => { setStep(p, "s1", "running", `${e.id}-run-recreation`); budget(p, t, 0, 20, "quote"); } },
-    ...say(t, messageId, "b1", "开始拉片。"),
     { waitsForExecution: true, run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "recreation", title: "拉片", safeInputSummary: "原片，最多切成 2 段", childRunId: `${e.id}-run-recreation` }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 5, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "recreation", progress: "已切成 2 段" }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 5, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: "recreation", progress: "正在读取第 2 段" }, e.id) },
@@ -374,10 +378,10 @@ function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
       finishStep(projectId, p, t, "s2", { textRevision: { content: MOCK_NOTES, summary: "每段的画面和节奏" } }, `${e.id}-run-notes`);
       budget(p, t, 24, 0, "actual");
     } },
-    ...say(t, messageId, "b2", "拉片完成。前段交代场景，后段靠水杯做反转。推荐保留原片动作，把水杯换成你的商品、台词重写；也可以重做第 2 段的画面，商品更醒目，但节奏和原片差得多一些。"),
+    ...say(t, messageId, "b2", "拉片好了：前段交代场景，后段靠水杯做反转。"),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => {
-      updateExecution(p, x => ({ ...x, status: "needs_user", needsUserReason: "等你确认制作方案和预算" }));
+      updateExecution(p, x => ({ ...x, status: "needs_user", needsUserReason: "等你确认制作方案" }));
       emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: "mock-approval-production", stage: "production", planFingerprint: fingerprint,
         scope: ["第 1 段视频", "第 2 段视频", "检查第 1 段", "合成成片"], quotedCost: 82, budgetCap: 122, autoFixCap: 40, status: "pending", executionId: e.id,
         expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } });
@@ -402,9 +406,7 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
   const checkTool = nextId("tool");
   const check: StudioCheckResultData = { stepId: "c1", runId: `${e.id}-run-c1`, result: MOCK_CHECK_ITEMS(`${e.id}-run-v1`) };
   play(p, t, [
-    ...say(t, messageId, "c1", "开始制作，先做第 1 段。"),
     ...video(1),
-    ...say(t, messageId, "c2", "第 1 段好了，接着做第 2 段，同时检查第 1 段。"),
     ...video(2),
     { waitsForExecution: true, run: () => { setStep(p, "c1", "running", `${e.id}-run-c1`); emit(t, "tool.started", { toolCallId: checkTool, toolName: "check", title: "检查第 1 段", safeInputSummary: "主体、字幕", childRunId: `${e.id}-run-c1` }, e.id); } },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
@@ -413,9 +415,11 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
       emit(t, "check.result", check, e.id); finishStep(projectId, p, t, "c1", { check: check.result }); budget(p, t, 82, 0, "actual");
     } },
     { run: () => { setStep(p, "m1", "skipped", undefined, "演示模式不合成成片"); updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() })); } },
-    ...say(t, messageId, "c3", "两段都做好了，一共用了 82 积分。第 1 段有一项检查无法判断：这一段没有字幕，看不出台词是否完整。演示模式不合成成片。"),
+    // The server's completion summary (StudioExecutionSummary): how it ended and the real total, then only the check
+    // that could not judge; the skipped assemble step of a finished run is not listed.
+    ...say(t, messageId, "c3", "做好了，花了 82 积分。\n「第 1 段视频」没法判断：没有字幕，看不出台词是否完整。"),
     { run: () => {
-      const suggestions = ["给第 1 段加字幕再检查", "第 2 段换成横屏", "保存成模板"];
+      const suggestions = ["重做第 1 段「第 1 段视频」", "把做好的片段合成一条成片"];
       emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
       // Like the server's completion summary: one per execution (keyed by it), follow-ups kept across reloads.
       patchViewMessage(t, messageId, m => ({ ...m, suggestions, clientMessageId: `exec-summary-${e.id}` }));
@@ -428,16 +432,25 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
 function generalTurn(p: MockProject, t: MockThread) {
   const messageId = startTurn(t);
   play(p, t, [
-    ...say(t, messageId, "g1", "这条我先直接回答。要出图、写文案、出视频，或者照着一条视频做一版，直接说要做什么，我按那件事来。"),
+    ...say(t, messageId, "g1", "我可以出图、写文案、出视频，或者照着一条视频做一版，说说要做哪件事。"),
     { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["画一张国风海报，9:16", "写一段保温杯的口播", "做一条 5 秒的商品展示视频"] }) },
   ]);
 }
 
-const DIRECT_STEP: Record<string, { operation: StudioPlanExecutionStep["operation"]; title: string; quotedCost: number; summary: string; said: string }> = {
-  "image-generation": { operation: "image", title: "出图 1 张", quotedCost: 8, summary: "按你说的出 1 张图，画幅 1:1，风格按用途补的默认。",
-    said: "按你说的出 1 张图。画幅 1:1 和风格是我补的默认，要改直接说。这一张 8 积分，确认就开始。" },
-  "video-generation": { operation: "video", title: "出视频 1 段", quotedCost: 40, summary: "按你说的出 1 段 5 秒竖屏视频，时长和画幅是补的默认。",
-    said: "按你说的出 1 段 5 秒的竖屏视频。时长和画幅是我补的默认，要改直接说。这一段 40 积分，确认就开始。" },
+// What the plan prompt asks for since v20 (dap.ip_studio_skill_plan.md rule 7): the summary and titles say what will be made,
+// with the filled-in defaults inside the sentence; the reply that carries the card is one sentence, with no price or how-to.
+const clip = (text: string, max: number) => { const t = text.replace(/\s+/g, " ").trim(); return Array.from(t).length > max ? `${Array.from(t).slice(0, max).join("")}…` : t; };
+const ratioIn = (text: string, fallback: string) => text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/)?.slice(1, 3).join(":") || fallback;
+const shape = (ratio: string) => ratio === "9:16" ? "竖屏" : ratio === "16:9" ? "横屏" : ratio;
+const sentence = (text: string) => text.trim().replace(/[。.！!？?，,\s]+$/, "");
+type DirectSpec = { operation: StudioPlanExecutionStep["operation"]; quotedCost: number; title: (text: string) => string; summary: (text: string) => string; prompt: (text: string) => string; said: string };
+const DIRECT_STEP: Record<string, DirectSpec> = {
+  "image-generation": { operation: "image", quotedCost: 8, title: text => `一张 ${ratioIn(text, "1:1")} 的图`,
+    summary: text => `一张 ${ratioIn(text, "1:1")} 的图：${clip(text, 24)}`,
+    prompt: text => `${sentence(text)}。${ratioIn(text, "1:1")} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
+  "video-generation": { operation: "video", quotedCost: 40, title: text => `一段 5 秒${shape(ratioIn(text, "9:16"))}视频`,
+    summary: text => `一段 5 秒${shape(ratioIn(text, "9:16"))}视频：${clip(text, 22)}`,
+    prompt: text => `${sentence(text)}。${ratioIn(text, "9:16")}，5 秒，镜头缓慢推近，光线自然。`, said: "按你的描述出一段。" },
 };
 const MOCK_SCRIPT = "【开场】一句话抛出问题：出门一天，水还是烫的吗？\n【卖点】杯身拿在手里，说一个最打动人的点。\n【收尾】只留一个动作：点下面的链接看看。";
 
@@ -456,7 +469,7 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
       { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
       { run: () => { emit(t, "node.upsert", { nodeId, op: "create", node } satisfies StudioNodeUpsertData);
         emit(t, "tool.finished", { toolCallId: tool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [nodeId] }, creditsActual: 0, settling: false }); } },
-      ...say(t, messageId, "w1", "口播稿放在画布上了，三段：开场问题、一个卖点、一个动作。想换开头或者再短一点，直接说。"),
+      ...say(t, messageId, "w1", "口播稿放在画布上了，分开场问题、一个卖点、一个动作三段。"),
       { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["开头再抓人一点", "缩短到 100 字以内", "按这段出一条视频"] }) },
     ]);
     return;
@@ -465,14 +478,14 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
   const n = ++counter, revision = nextPlanRevision(t), fingerprint = `mock-direct-${skill.key}-${n}`, planRunId = `mock-plan-${skill.key}-${n}`;
   const references = mockStore().projects.get(projectId)?.doc.nodes.filter(x => request.attachmentNodeIds?.includes(x.id) || request.pinnedNodeIds?.includes(x.id)).map(x => x.id) || [];
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId, revision, fingerprint, plan: {
-    summary: spec.summary, questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
-    steps: [{ id: "d1", operation: spec.operation, title: spec.title, prompt: request.text, referenceNodeIds: references, quotedCost: spec.quotedCost }],
+    summary: spec.summary(request.text), questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
+    steps: [{ id: "d1", operation: spec.operation, title: spec.title(request.text), prompt: spec.prompt(request.text), referenceNodeIds: references, quotedCost: spec.quotedCost }],
     budget: { estimated: spec.quotedCost, autoFixCap: 0 } } };
   play(p, t, [
     ...say(t, messageId, "d1", spec.said),
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: `mock-approval-${skill.key}-${n}`, stage: "production", planFingerprint: fingerprint,
-      scope: [spec.title], quotedCost: spec.quotedCost, budgetCap: spec.quotedCost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
+      scope: [spec.title(request.text)], quotedCost: spec.quotedCost, budgetCap: spec.quotedCost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
     { run: () => { emit(t, "turn.done", { reason: "waiting_user", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["可以，开始", "改成 16:9", "多来一版"] }); p.stage = "production-proposed"; } },
   ]);
 }
@@ -480,9 +493,7 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
 /** A confirmed direct card: its execution starts in production and runs the one step, like productionTurn does. */
 function directProductionTurn(projectId: string, p: MockProject, t: MockThread) {
   const e = p.execution!, messageId = startTurn(t), s = e.steps[0], tool = nextId("tool"), runId = `${e.id}-run-${s.id}`;
-  const noun = s.operation === "video" ? "视频" : "图";
   play(p, t, [
-    ...say(t, messageId, "e1", `开始出${noun}。`),
     { waitsForExecution: true, run: () => { setStep(p, s.id, "running", runId); emit(t, "tool.started", { toolCallId: tool, toolName: s.operation, title: s.title, safeInputSummary: s.operation === "video" ? "5 秒 · 竖屏" : "1 张 · 1:1", childRunId: runId }, e.id); budget(p, t, 0, s.quotedCost, "quote"); } },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: s.operation, progress: "已提交，等待结果" }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
@@ -490,9 +501,10 @@ function directProductionTurn(projectId: string, p: MockProject, t: MockThread) 
       finishStep(projectId, p, t, s.id, {}, runId); budget(p, t, s.quotedCost, 0, "actual");
       updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() }));
     } },
-    ...say(t, messageId, "e2", `${noun}出好了，在画布上，用了 ${s.quotedCost} 积分。想换个画幅或者再来一版，直接说。`),
+    // The server's completion summary and follow-ups (StudioExecutionSummary) for a run of one finished step.
+    ...say(t, messageId, "e2", `做好了，花了 ${s.quotedCost} 积分。`),
     { run: () => {
-      const suggestions = s.operation === "video" ? ["再来一段", "改成 10 秒"] : ["再来一张，背景亮一点", "把这张动起来"];
+      const suggestions = s.operation === "video" ? ["把做好的片段合成一条成片", "把这张画布存为模板"] : ["用这张图做一段视频", "换个风格再出一张"];
       emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
       patchViewMessage(t, messageId, m => ({ ...m, suggestions, clientMessageId: `exec-summary-${e.id}` }));
       p.stage = "done";
@@ -551,9 +563,9 @@ function naturalApproval(projectId: string, p: MockProject, t: MockThread, text:
 function replyTurn(p: MockProject, t: MockThread, request: StudioPostMessageRequest) {
   const messageId = startTurn(t);
   const pinnedText = mockStore().projects.get(t.thread.projectId)?.doc.nodes.find(n => request.pinnedNodeIds?.includes(n.id) && n.type === "text" && typeof n.metadata?.content === "string" && n.metadata.content.trim());
-  const reply = p.stage === "analysis-proposed" ? "好的，记下了。确认没问题就点「开始分析」，也可以继续告诉我要改什么。"
-    : p.stage === "production-proposed" ? "好的，记下了。看一下最新的报价，没问题就点「开始制作」。"
-      : "好的。需要改哪一段，直接告诉我。";
+  const reply = p.stage === "analysis-proposed" ? "记下了，分析时按这个来。"
+    : p.stage === "production-proposed" ? "记下了，制作时按这个来。"
+      : "记下了。";
   play(p, t, [
     ...say(t, messageId, "r1", reply),
     ...(pinnedText ? [{ run: () => emit(t, "node.upsert", { nodeId: pinnedText.id, op: "propose", proposal: { field: "content", content: `${String(pinnedText.metadata!.content).trim()}\n（示例修改：语气更口语）` } } satisfies StudioNodeUpsertData) }] : []),
@@ -659,10 +671,72 @@ export function mockDialogueBranch(projectId: string, threadId: string, request:
     .map(m => ({ ...clone(m), id: `${m.id}~${branch.thread.id}`, threadId: branch.thread.id, blocks: m.blocks.filter(b => b.type !== "approval") }));
   branch.thread.lastSeq = from.seq;
   branch.view = { ...branch.view, messages: copied, latestSeq: from.seq };
-  p.threads.set(branch.thread.id, branch); p.currentThreadId = branch.thread.id;
+  p.threads.set(branch.thread.id, branch); makeCurrent(p, branch);
   // A branch never inherits approvals or payment: the demo starts its plan again.
   p.stage = "idle";
   return later(snapshot(p, branch));
+}
+
+// ── Conversations of one canvas (docs/ip-studio-new-canvas-and-threads.md §3.2) ─────────────
+// Like StudioDialogueController (specs/openapi.yaml studioConversationList / Create / Open): list (the ones with messages
+// plus the current one, newest activity first, at most 50 with the current one kept), create (an empty conversation
+// becomes current; the newest unused empty one that is not a branch and has no skill is reused; same key → same thread)
+// and open (becomes current). None of them reads a model or spends anything.
+
+const CLIENT_ID = /^[A-Za-z0-9_.:-]{1,64}$/;
+const threadMessages = (t: MockThread) => t.view.messages.filter(m => !isPlaceholderMessage(m.id));
+/** The thread whose turn is replying, or whose execution is running / paused / waiting for the user. */
+const threadActive = (p: MockProject, t: MockThread) => t.running || (workingExecution(p) && p.execution!.threadId === t.thread.id);
+/** The server's display name: the first user message with text, whitespace squeezed, at most 24 code points plus 「…」. */
+function threadTitle(t: MockThread) {
+  const first = threadMessages(t).map(m => m.role === "user" ? m.text.replace(/\s+/g, " ").trim() : "").find(Boolean);
+  if (!first) return "新对话";
+  const chars = Array.from(first);
+  return chars.length > 24 ? `${chars.slice(0, 24).join("")}…` : first;
+}
+/** Opening another conversation keeps where this one's demo flow stood (the project holds one stage at a time). */
+function makeCurrent(p: MockProject, t: MockThread) {
+  if (p.currentThreadId === t.thread.id) return;
+  const previous = p.threads.get(p.currentThreadId);
+  if (previous) previous.stage = p.stage;
+  p.currentThreadId = t.thread.id;
+  p.stage = t.stage ?? "idle";
+}
+
+export function mockDialogueThreads(projectId: string): Promise<StudioDialogueThreadSummary[]> {
+  const p = project(projectId);
+  const list = [...p.threads.values()].filter(t => t.thread.id === p.currentThreadId || threadMessages(t).length).map((t): StudioDialogueThreadSummary => {
+    const messages = threadMessages(t), last = messages.at(-1)?.createdAt;
+    // A branch keeps its copied messages' times, so the later of the last message and the thread's creation counts.
+    return { id: t.thread.id, title: threadTitle(t), ...(t.thread.parentThreadId ? { parentThreadId: t.thread.parentThreadId } : {}), messageCount: messages.length,
+      lastActivityAt: last && last > t.thread.createdAt ? last : t.thread.createdAt, createdAt: t.thread.createdAt, current: t.thread.id === p.currentThreadId, active: threadActive(p, t) };
+  }).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt) || b.createdAt.localeCompare(a.createdAt));
+  const shown = list.slice(0, 50), current = list.find(t => t.current);
+  if (current && !shown.includes(current)) shown.splice(49, 1, current);
+  return later(shown, 60);
+}
+
+export function mockDialogueCreateThread(projectId: string, request: StudioCreateThreadRequest): Promise<StudioDialogueState> {
+  if (!request?.clientRequestId || !CLIENT_ID.test(request.clientRequestId))
+    return Promise.reject(new ApiError({ code: "STUDIO_INPUT_INVALID", message: "请求编号不正确，请刷新后重试" }, 400));
+  const p = project(projectId);
+  const known = p.threads.get(p.createdThreads.get(request.clientRequestId) || "");
+  if (known) { makeCurrent(p, known); return later(snapshot(p, known)); }
+  // The newest conversation nobody has written in yet (nothing running on it, not a branch, no skill) is reused.
+  const reusable = [...p.threads.values()].filter(t => !threadMessages(t).length && !threadActive(p, t) && !t.thread.parentThreadId && !t.thread.skillKey)
+    .sort((a, b) => b.thread.createdAt.localeCompare(a.thread.createdAt))[0];
+  const t = reusable || createThread(projectId);
+  if (!reusable) p.threads.set(t.thread.id, t);
+  p.createdThreads.set(request.clientRequestId, t.thread.id);
+  makeCurrent(p, t);
+  return later(snapshot(p, t));
+}
+
+export function mockDialogueOpenThread(projectId: string, threadId: string): Promise<StudioDialogueState> {
+  const p = project(projectId), t = p.threads.get(threadId);
+  if (!t) return Promise.reject(new ApiError({ code: "STUDIO_THREAD_NOT_FOUND", message: "这条对话不存在，请刷新画布" }, 404));
+  makeCurrent(p, t);
+  return later(snapshot(p, t));
 }
 
 export function mockExecutionCreate(projectId: string, request: StudioPlanExecutionCreateRequest): Promise<StudioPlanExecution> {
@@ -775,15 +849,15 @@ function seedCompleted(projectId: string, p: MockProject, t: MockThread): Studio
     ({ type: "approval", approvalId, stage, planFingerprint: fingerprint, scope, quotedCost, budgetCap, autoFixCap, status: "approved", executionId: id, approvedBudgetCap, approvedAutoFixCap, approvedAt: at });
   const message = (mid: string, seq: number, role: "user" | "assistant", text: string, blocks: StudioMessageBlock[] = []): StudioDialogueMessage =>
     ({ id: mid, threadId: t.thread.id, seq, role, text, blocks, status: "done", createdAt: at });
-  const analysisPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-analysis", revision: 1, fingerprint: "mock-analysis-v1", plan: { summary: "先拉片，再给你制作方案。", questions: [], stage: "analysis", revision: 1, fingerprint: "mock-analysis-v1",
+  const analysisPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-analysis", revision: 1, fingerprint: "mock-analysis-v1", plan: { summary: "拉片看清原片两段的画面和节奏", questions: [], stage: "analysis", revision: 1, fingerprint: "mock-analysis-v1",
     steps: [{ id: "s1", operation: "recreation", title: "拉片：切成 2 段", prompt: "", referenceNodeIds: [], quotedCost: 20 }, { id: "s2", operation: "text", title: "整理每段的画面和节奏", prompt: "", referenceNodeIds: [], quotedCost: 6, dependsOn: ["s1"] }], budget: { estimated: 26, autoFixCap: 0 } } };
-  const productionPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint: "mock-production-v2", plan: { summary: "按两段重做：保留原片动作和反转。", questions: [], stage: "production", revision: 2, fingerprint: "mock-production-v2",
+  const productionPlan: StudioMessageBlock = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint: "mock-production-v2", plan: { summary: "两段 5 秒竖屏视频，保留原片动作和反转，换成你的商品", questions: [], stage: "production", revision: 2, fingerprint: "mock-production-v2",
     steps: [{ id: "v1", operation: "video", title: "第 1 段视频", prompt: "", referenceNodeIds: [], quotedCost: 40 }, { id: "v2", operation: "video", title: "第 2 段视频", prompt: "", referenceNodeIds: [], quotedCost: 40 },
       { id: "c1", operation: "check", title: "检查第 1 段", prompt: "", referenceNodeIds: [], quotedCost: 2, dependsOn: ["v1"] }], budget: { estimated: 82, autoFixCap: 40 } } };
   const messages = [
     message("seed-u1", 1, "user", "换成我的洗衣液，保留最后的反转"),
-    message("seed-m1", 2, "assistant", "先拉片确认每段的画面和节奏，这一步不超过 30 积分。", [analysisPlan, approval("seed-approval-analysis", "analysis", "mock-analysis-v1", ["拉片，切成 2 段", "整理每段的画面和节奏"], 26, 30, 0, 30, 0)]),
-    message("seed-m2", 3, "assistant", "拉片完成。推荐保留原片动作，把水杯换成你的商品。", [productionPlan, approval("seed-approval-production", "production", "mock-production-v2", ["第 1 段视频", "第 2 段视频", "检查第 1 段"], 82, 122, 40, 100, 20)]),
+    message("seed-m1", 2, "assistant", "原片可以分成两段：前段交代场景，后段做反转。", [analysisPlan, approval("seed-approval-analysis", "analysis", "mock-analysis-v1", ["拉片，切成 2 段", "整理每段的画面和节奏"], 26, 30, 0, 30, 0)]),
+    message("seed-m2", 3, "assistant", "拉片好了：前段交代场景，后段靠水杯做反转。", [productionPlan, approval("seed-approval-production", "production", "mock-production-v2", ["第 1 段视频", "第 2 段视频", "检查第 1 段"], 82, 122, 40, 100, 20)]),
   ];
   t.thread.lastSeq = 40; t.eventFloorSeq = 40; t.events = [];
   t.view = { ...t.view, messages, latestSeq: 40 };

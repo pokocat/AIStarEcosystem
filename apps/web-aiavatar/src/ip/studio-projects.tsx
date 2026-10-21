@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Modal } from "antd";
 import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch } from "lucide-react";
@@ -15,6 +15,7 @@ import { GallerySearch, GalleryState, useCanvasPreviews, useStudioList } from ".
 import { StudioPage } from "./studio-page";
 import { StudioSelect } from "./studio-select";
 import { StudioErrorNotice, useStudioErrorState } from "./studio-errors";
+import { useStartNewCanvas } from "./use-start-new-canvas";
 import { formatDateTime } from "@/lib/datetime";
 
 const PAGE_SIZE = 24;
@@ -23,6 +24,8 @@ export function StudioProjects() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
   const projects = useStudioList(IpStudioApi.listProjects, ready);
+  // 「新建创作」 opens a new canvas directly (docs/ip-studio-new-canvas-and-threads.md §2.2), no stop at /create.
+  const newCanvas = useStartNewCanvas();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | "draft" | "published">("all");
   const [sort, setSort] = useState("updated");
@@ -56,10 +59,12 @@ export function StudioProjects() {
     finally { deleteRef.current = false; setDeleting(false); }
   };
 
-  if (authState === "no-platform" || projects.notEnrolled) return <PlatformGateScreen/>;
+  if (authState === "no-platform" || projects.notEnrolled || newCanvas.notEnrolled) return <PlatformGateScreen/>;
+  const newCanvasButton = (className: string, label: ReactNode) => <button type="button" className={className} aria-busy={newCanvas.creating} disabled={newCanvas.creating} onClick={() => void newCanvas.start()}>{label}</button>;
   if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。"><GalleryState loading/></StudioPage>;
 
-  return <StudioPage title="项目" description="管理画布，接续每一次创作。" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={<Link className="ip-brand-button" href="/create"><Plus size={16}/>新建创作</Link>}>
+  return <StudioPage title="项目" description="管理画布，接续每一次创作。" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
+    {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建创作」。</span></div>}
     <section className="studio-gallery-panel studio-canvas-catalogue" aria-label="我的画布">
       <div className="studio-page-toolbar studio-gallery-controls">
         <GallerySearch label="搜索我的画布" placeholder="搜索画布名称…" value={query} onChange={v => { setQuery(v); setPage(1); }} />
@@ -70,7 +75,7 @@ export function StudioProjects() {
       </div>
       <div className="studio-page-result" aria-live="polite">{projects.loading ? '正在读取画布…' : projects.error ? '暂时无法读取画布' : `${filtered.length} 张${query.trim() || status !== 'all' ? '匹配' : ''}画布`}</div>
       {projects.error ? <GalleryState error={projects.error} retry={projects.reload} /> : projects.loading ? <GalleryState loading /> : <>
-        {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "从第一张画布开始"}</h3><p>{projects.data.length ? "换个关键词，或清除当前筛选。" : "开始一次创作，画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : <Link className="ip-brand-text-button" href="/create">开始创作 <ArrowRight size={15}/></Link>}</div>}
+        {!filtered.length && <div className="studio-gallery-empty"><Layers size={24} /><h3>{projects.data.length ? "没有找到符合条件的画布" : "从第一张画布开始"}</h3><p>{projects.data.length ? "换个关键词，或清除当前筛选。" : "开始一次创作，画布会保存在这里。"}</p>{projects.data.length > 0 ? <button type="button" className="ip-brand-text-button" onClick={() => { setQuery(""); setStatus("all"); setPage(1); }}>清除筛选</button> : newCanvasButton("ip-brand-text-button", <>开始创作 {newCanvas.creating ? <Loader2 size={15} className="studio-gallery-spinner" aria-hidden="true"/> : <ArrowRight size={15} aria-hidden="true"/>}</>)}</div>}
         <div className={`studio-project-grid studio-project-${view}`}>{visible.map(project => {
           const preview = previews[`${project.id}:${project.updatedAt}`];
           const content = preview?.doc ? projectPreview(preview.doc) : undefined;

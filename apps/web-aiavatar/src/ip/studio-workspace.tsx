@@ -76,6 +76,7 @@ import { StudioIpLibrary } from "./studio-ip-library";
 import { StudioMaterialLibrary } from './studio-material-library';
 import { editableIpAssetRoles,ipAssetRole,ipAssetRoles } from "@/canvas-bridge/studio-ip-library";
 import { parseStudioEntry } from "./studio-entry";
+import { StudioCanvasGuide, studioCanvasGuideVisible } from "./studio-canvas-guide";
 import { IpStudioApi } from "./api";
 import { studioLinkedInputError, studioLinkedNodes, studioLinkedText, withStudioLinkedText } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioStoryboard } from './studio-storyboard';
@@ -1181,9 +1182,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
     {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
-    {!nodes.length&&mode==="canvas"&&!assistantOpen&&<section className="studio-start studio-canvas-empty" aria-label="开始创作"><h2>画布还是空的</h2><p>跟助手说想做什么，它会把每一步放进这里。想自己动手也行，左边工具栏能加文字、图片和视频。</p>
-      <button type="button" className="studio-start-primary" onClick={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}><AiMark size={14}/>和助手开始</button>
-      <div><button type="button" onClick={()=>openDirector("image")}><ImagePlus size={18}/>做一个 IP 形象</button><button type="button" onClick={()=>openDirector("script")}><BookOpen size={18}/>写剧本做短视频</button></div></section>}
+    {/* Empty canvas: one guide card in the visible middle, with the assistant open or closed (docs/ip-studio-new-canvas-and-threads.md §2.3). */}
+    {studioCanvasGuideVisible({nodeCount:nodes.length,mode,panelOpen:director||speechOpen||lipSyncOpen||recreationOpen||templateLibraryOpen||assetPicker||batchOpen||taskList||libraryQuery!==undefined||!!editorId||!!extractionId||!!textEditingNodeId})
+      &&<StudioCanvasGuide assistantOpen={assistantOpen} onStartAssistant={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}/>}
     {/* Plain text actions and editing share one screen-space surface. */}
     {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
       : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} toolbar width="auto">{contextualActions}</StudioFloatingPanel>}

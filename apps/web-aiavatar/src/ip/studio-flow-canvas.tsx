@@ -234,9 +234,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const modalContainer = () => document.querySelector<HTMLElement>('.studio-flow-shell')?.closest<HTMLElement>('.ip-surface') || document.body;
   const placeVisibleNode = (node: CanvasNodeData, existing: CanvasNodeData[], at?: {x:number;y:number}) => {
     const rect = document.querySelector('.studio-flow-stage')?.getBoundingClientRect();
+    // A docked assistant covers the stage's right edge: new nodes land in the part the user can see (same rule as visibleFitPadding).
+    const shell = shellRef.current, dock = shell?.classList.contains('has-docked-panel') ? parseFloat(shell.style.getPropertyValue('--studio-docked-panel')) || 0 : 0;
     const left = (rect?.left || 0) + 80, top = (rect?.top || 0) + 72;
     const start = flow.screenToFlowPosition({ x: left, y: top });
-    const end = flow.screenToFlowPosition({ x: (rect?.right || 900) - 24, y: (rect?.bottom || 700) - 68 });
+    const end = flow.screenToFlowPosition({ x: Math.max(left, (rect?.right || 900) - 24 - dock), y: (rect?.bottom || 700) - 68 });
     return placeNodeInViewport(node, existing, { ...start, width: Math.max(0, end.x - start.x), height: Math.max(0, end.y - start.y) }, at && flow.screenToFlowPosition(at));
   };
   const add = (type: CanvasNodeType, at?: {x:number;y:number}) => {
@@ -247,6 +249,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     setSelected(new Set([node.id])); setSelectedEdges(new Set()); setPendingFocus(undefined);
     if (type === CanvasNodeType.Text) setTextId(node.id); else setPendingCreator({ id: node.id, operation: type });
   };
+  const addRef = useRef(add); addRef.current = add;
   const copy = useCallback(() => {
     const p = current(), groups = new Set(p.nodes.filter(n => selected.has(n.id) && n.type === CanvasNodeType.Group).map(n => n.id));
     clipboard.current = { nodes: p.nodes.filter(n => selected.has(n.id) || groups.has(n.metadata?.groupId || '')), connections: p.connections };
@@ -291,7 +294,13 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         if (!node || node.type !== CanvasNodeType.Image) return;
         if (studioGenerationPending(node)) { message.info('当前节点正在生成，请等待任务完成后再替换图片'); return; }
         imageUploadTarget.current = node.id; imageUploadInput.current?.click();
-      } else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
+      }
+      // The empty-canvas guide (studio-canvas-guide.tsx) lives in the workspace overlay; its entries run the rail's 「＋添加」 here.
+      else if (detail.action === 'add-text') addRef.current(CanvasNodeType.Text);
+      else if (detail.action === 'add-image') addRef.current(CanvasNodeType.Image);
+      else if (detail.action === 'add-video') addRef.current(CanvasNodeType.Video);
+      else if (detail.action === 'upload') picker.current?.upload();
+      else if (detail.action === 'edit-text') { checkpoint(); setTextId(detail.nodeId); }
       else if (detail.action === 'focus') { if (detail.nodeId && current().nodes.some(n => n.id === detail.nodeId)) focusNode(detail.nodeId); }
       // 'reveal' only brings nodes into view (the assistant following its own work); the selection is left alone.
       else if (detail.action === 'reveal') { const ids = (detail.nodeId || '').split(',').filter(id => current().nodes.some(n => n.id === id)); if (ids.length) { void flow.fitView({ nodes: ids.map(id => ({ id })), padding: visibleFitPadding(shellRef.current, 48), maxZoom: 1, duration: 320 }); setFresh(new Set(ids)); clearTimeout(freshTimer.current); freshTimer.current = setTimeout(() => setFresh(new Set()), 2400); } }

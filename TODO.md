@@ -31,6 +31,13 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-20 · 新建画布、多段对话与卡片精简（本地完成，未发布；真源 `docs/ip-studio-new-canvas-and-threads.md`）
+
+- [ ] **两个标签页各开一段对话时，断线补拉会改掉「最近打开」**：`apps/web-aiavatar/src/ip/studio-dialogue-session.tsx` 事件流订阅的 `getSnapshot` 先读 `GET …/conversation`，发现最近打开的不是本标签页那段，就按 id 调 `GET …/conversations/{threadId}`，而这个接口会 `markOpened`，等于本标签页一断线重连就把「当前对话」抢回来，另一个标签页刷新后会落到这段。时间线本身不会错（`onSnapshot` 只收本线程）。彻底避免需要服务端加一个不改 `last_opened_at` 的只读快照接口，补拉改走它。
+- [ ] **切到别的对话后，上一段里没发出去的失败消息不再显示**：`apps/web-aiavatar/src/canvas-bridge/studio-dialogue-store.ts` 快照换线程时 outbox 置空（`sameThread ? store.outbox : []`），失败消息的文字和重试入口随之消失，切回去也找不回来。前端在有发送中的消息时已拦住切换（`dialogueThreadBusy`），但「失败」状态不拦。待定：有失败消息时是否也拦住新建 / 切换，或者把 outbox 按 threadId 分开保存。
+- [ ] **复用空线程的请求编号边界**：`StudioDialogueService.createThread` 复用空闲空对话时不改它原来的 `client_request_id`，重放按「同人同键 → 否则复用最新空闲空对话」再判一次。若被复用的那段在两次请求之间有了消息，同一个 `clientRequestId` 重放会复用到另一段空对话或新建一段，而不是回到第一次那段。前端正常流程每次点「新对话」都换新键、成功后不重放，不会触发；要严格幂等需把复用关系记下来（例如单独的请求键表）。
+- [ ] **真模型验证卡片文案**：`dap.ip_studio_skill_plan.md` / `dap.ip_studio_skill_dialogue.md` 与 `RequestApprovalTool` 的 `scope` 说明改成「只写要做出什么」（`SEED_VERSION` → `v20-2026-10-20-concise-cards`）后，只有确定性测试和演示 mock。需用线上同款对话端点至少真调一次出图 / 出视频 / 复刻，看 `plan.summary`、`step.title`、`approval.scope` 是否还带判断过程（「用户需求完整且无真实取舍…」）、积分或流程说明，正文是否在发卡时只有一句（§8.0.1 ⑦）。
+
 ### 2026-10-20 · 对话意图直达（本地实现，未发布；真源 `docs/ip-studio-dialogue-intents.md`）
 
 - [ ] **真模型端到端跑触发评测集**：按 `docs/ip-studio-dialogue-intents.md` §7 的 12 条消息（带附件的照表里放），用线上同款对话端点逐条跑，记下实际选中的技能、是否问了问题、是否一轮出卡、短稿是否当轮放进画布；与期望不符的逐条记原话再改提示词或技能触发词（§8.0.1 ⑦：要求模型按我们格式输出的地方上线前至少真调一次）。目前只有确定性测试和演示 mock。

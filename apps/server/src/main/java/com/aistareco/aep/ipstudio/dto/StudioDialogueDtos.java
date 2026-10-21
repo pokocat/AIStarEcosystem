@@ -7,7 +7,7 @@ import java.util.List;
 /**
  * Wire mirror of the dialogue thread / message / event contract in packages/types/src/ip-studio-workflow.ts
  * (StudioDialogueThread, StudioDialogueMessage, StudioDialogueState, StudioPostMessage*, StudioDialogueControlRequest,
- * StudioBranchRequest, StudioDialogueEvent and its typed data). Field names are 1:1 with the TS interfaces; all times
+ * StudioBranchRequest, StudioDialogueThreadSummary, StudioCreateThreadRequest, StudioDialogueEvent and its typed data). Field names are 1:1 with the TS interfaces; all times
  * are ISO-8601 strings. Blocks are typed in TS ({@code StudioMessageBlock}) and carried here as the persisted JSON.
  */
 public final class StudioDialogueDtos {
@@ -37,6 +37,17 @@ public final class StudioDialogueDtos {
     public record ControlRequest(String controlId, String action, String executionId) {}
 
     public record BranchRequest(String clientRequestId, String fromMessageId) {}
+
+    /**
+     * One row of 「历史对话」 (StudioDialogueThreadSummary, docs/ip-studio-new-canvas-and-threads.md §3.2). {@code title} is
+     * derived from the first user message, never the stored thread title; {@code lastActivityAt} is the later of the last
+     * message's time and the thread's creation time (so a fresh branch sorts above its source); {@code current} = what GET /conversation returns now.
+     */
+    public record ThreadSummary(String id, String title, String parentThreadId, long messageCount, String lastActivityAt,
+                                String createdAt, boolean current, boolean active) {}
+
+    /** POST /conversations: idempotent on (owner, clientRequestId). */
+    public record CreateThreadRequest(String clientRequestId) {}
 
     public record Event(String eventId, long seq, String threadId, String turnId, String runId, String executionId,
                         String createdAt, String type, JsonNode data) {}

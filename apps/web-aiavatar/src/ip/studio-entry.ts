@@ -43,6 +43,42 @@ export function studioTitleFromBrief(text: string): string | undefined {
   return clause.length > 20 ? `${clause.slice(0, 20)}…` : clause;
 }
 
+/** What 「新建」 names a canvas; the reuse rule below only ever picks a canvas still carrying exactly this name. */
+export const STUDIO_NEW_CANVAS_NAME = `${studioEntries.blank.title} · 新画布`;
+/** A blank canvas made within this window and never touched is opened again instead of a new one. */
+export const STUDIO_NEW_CANVAS_REUSE_MS = 2 * 60 * 60 * 1000;
+
+/** The newest untouched blank canvas from the last two hours, if any. Any failure to tell means 「none」. */
+async function reusableBlankCanvas(now: number): Promise<string | undefined> {
+  try {
+    const recent = (await IpStudioApi.listProjects())
+      .filter(p => p.name === STUDIO_NEW_CANVAS_NAME)
+      .map(p => ({ id: p.id, created: Date.parse(p.createdAt) }))
+      .filter(p => Number.isFinite(p.created) && now - p.created <= STUDIO_NEW_CANVAS_REUSE_MS)
+      .sort((a, b) => b.created - a.created)[0];
+    if (!recent) return undefined;
+    const { doc } = await IpStudioApi.getProject(recent.id);
+    return !doc.nodes.length && !doc.assistantConversations?.length ? recent.id : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+let newCanvasInFlight: Promise<string> | undefined;
+/**
+ * Every 「新建创作 / 新建画布 / 新建空白画布」: a free blank canvas opened with the assistant
+ * (docs/ip-studio-new-canvas-and-threads.md §2.1). Clicking it again soon after reuses the canvas that was never touched,
+ * so repeated clicks do not pile up empty canvases. Concurrent calls (double click, StrictMode effects) share one creation.
+ * Resolves to the canvas address.
+ */
+export function startNewCanvas(): Promise<string> {
+  newCanvasInFlight ??= (async () => {
+    const id = (await reusableBlankCanvas(Date.now())) ?? (await createStudioEntry('blank')).id;
+    return studioEntryHref(id, 'assistant');
+  })().finally(() => { newCanvasInFlight = undefined; });
+  return newCanvasInFlight;
+}
+
 export class StudioEntrySaveError extends Error {
   constructor(public project: IpProject, message: string) { super(message); }
 }

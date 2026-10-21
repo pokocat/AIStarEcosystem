@@ -448,6 +448,27 @@ export interface StudioPostMessageRequest { clientMessageId: string; text: strin
 export interface StudioPostMessageResult { messageId: string; turnId?: string; runId?: string; queueState: "accepted" | "queued" | "applied" }
 export interface StudioDialogueControlRequest { controlId: string; action: "stop" | "pause" | "resume"; executionId?: string }
 export interface StudioBranchRequest { clientRequestId: string; fromMessageId: string }
+/**
+ * One conversation of this canvas in the assistant's 「历史对话」 (GET /v1/ip-studio/projects/{id}/conversations).
+ * Java StudioDialogueDtos.ThreadSummary uses the same field names (docs/ip-studio-new-canvas-and-threads.md §3.2).
+ */
+export interface StudioDialogueThreadSummary {
+  id: string;
+  /** 显示名：第一条用户消息（压掉空白，最多 24 字，超出加「…」）；还没说过话是「新对话」。 */
+  title: string;
+  /** 从「从这里重新开始」分出来的那段才有。 */
+  parentThreadId?: string;
+  messageCount: number;
+  /** 最后一条消息时间与这段对话创建时间取较晚的那个（刚分出来的分支因此排在原对话前面）；ISO 8601。 */
+  lastActivityAt: string;
+  createdAt: string;
+  /** 是不是 GET /conversation 现在返回的那段（最近打开的）。 */
+  current: boolean;
+  /** 有回合正在回复，或有执行在跑 / 暂停中。 */
+  active: boolean;
+}
+/** POST /v1/ip-studio/projects/{id}/conversations: a new empty conversation (an unused empty one is reused). Same key, same result. */
+export interface StudioCreateThreadRequest { clientRequestId: string }
 
 export type StudioDialogueEventType = "message.delta" | "tool.started" | "tool.progress" | "tool.finished" | "plan.proposed" | "approval.required" | "node.upsert" | "check.result" | "budget.update" | "turn.done";
 export interface StudioDialogueEvent<T = unknown> { eventId: string; seq: number; threadId: string; turnId: string; runId?: string; executionId?: string; createdAt: string; type: StudioDialogueEventType; data: T }

@@ -1,6 +1,7 @@
 "use client";
-// 「全能创作」: one continuous conversation per canvas (docs/ip-studio-conversational-video-recreation-plan.md §对话形态).
-// No modes, no history picker, no 「新对话」. The server streams real reply text, work records,
+// 「全能创作」: the assistant of one canvas (docs/ip-studio-conversational-video-recreation-plan.md §对话形态). A canvas can
+// hold several conversations: 「新对话」 starts one and 「历史对话」 opens an earlier one (docs/ip-studio-new-canvas-and-threads.md
+// §3). There are no modes. The server streams real reply text, work records,
 // plans and confirmation cards into one timeline; the composer stays editable throughout and
 // new messages are queued as steering. Canvas commands from the server are projected into
 // the document idempotently and saved through the ordinary save chain; work an execution
@@ -34,10 +35,11 @@ import {
   STUDIO_CHECK_COMMAND, checkSubject, checkedStep, executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, projectStudioExecution, proposalFieldValue,
   readProjectedNodes, rememberProjectedNodes, stepNodeId, stepRunCandidates, type CanvasProjectionOp, type StudioCheckCommand,
 } from "@/canvas-bridge/studio-plan-execution";
-import { activeStudioSkills, completionExecutionId, loadStudioSkills, reloadStudioSkills, skillRequiredChoices, studioSkillBadge, studioSkillNotes } from "@/canvas-bridge/studio-skills";
+import { activeStudioSkills, completionExecutionId, loadStudioSkills, reloadStudioSkills, skillRequiredChoices, studioSkillBadge } from "@/canvas-bridge/studio-skills";
 import { StudioErrorNotice, studioRunError, useStudioApp, useStudioErrorState } from "./studio-errors";
 import { StudioFloatingPanel } from "./studio-floating-panel";
-import { useStudioDialogueSession } from "./studio-dialogue-session";
+import { DIALOGUE_THREAD_BUSY, dialogueThreadBusy, useStudioDialogueSession } from "./studio-dialogue-session";
+import { StudioDialogueThreads } from "./studio-dialogue-threads";
 import { StudioDialogueComposer, type DialogueComposerHandle } from "./studio-dialogue-composer";
 import { StudioDialogueTimeline } from "./studio-dialogue-timeline";
 import { StudioDialogueExecution, StudioDialogueSteps } from "./studio-dialogue-execution";
@@ -69,17 +71,14 @@ type Props = {
 type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[] };
 /** Contract limit for pinnedNodeIds / attachmentNodeIds (specs/openapi.yaml StudioPostMessageRequest). */
 const MAX_REFERENCES = 64;
-const ATTACHMENT_NOTE = "可多选图片、视频、音频和故事；导入免费，加入画布后可编辑和复用。JPG / PNG 原图最多 50 MB，大图自动优化后上传；MP4 视频 128 MB / 60 秒，音频 25 MB / 10 分钟。TXT / Markdown 256 KB，PDF / Word 8 MB，正文最多 24000 字；扫描件需先识别文字。";
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 /** The settings' 「自动」 choice: no skillKey on the message, the server routes by intent. */
 const AUTO_SKILL = "__auto__";
 /** The seeded recreation skill (resources/studio/skills/reference-video-recreation.md); the 「复刻」 start picks it when it is on the shelf. */
 const RECREATION_SKILL = "reference-video-recreation";
 type Starter = "recreation";
-/** Per-browser memory of the one-time 「结果放进画布了」 hint; losing it only means seeing the hint again. */
-const CANVAS_HINT_KEY = "studio-assistant:canvas-hint";
-const readCanvasHintSeen = () => { try { return localStorage.getItem(CANVAS_HINT_KEY) === "1"; } catch { return false; } };
-const markCanvasHintSeen = () => { try { localStorage.setItem(CANVAS_HINT_KEY, "1"); } catch { /* not remembered */ } };
+/** A skill's summary up to its first full stop: the guide says what the skill is for in one line. */
+const firstSentence = (text: string) => text.match(/^[^。！？]*[。！？]/)?.[0] || text;
 type SkillChoice = StudioSkillRequiredDetails["skills"][number];
 /**
  * 400 STUDIO_SKILL_REQUIRED is a question, not a failure: say which skills fit, keep the draft and open the choice.
@@ -89,15 +88,14 @@ function skillRequiredNotice(error: unknown, fallback: SkillChoice[]) {
   const choices = skillRequiredChoices(error);
   if (!choices) return undefined;
   const names = (choices.length ? choices : fallback).map(s => `「${s.name}」`);
-  const text = names.length ? `这条消息用${names.join("或")}都能做，选一个技能再发，消息已经放回输入框` : "这条消息要先选一个技能再发，消息已经放回输入框";
+  const text = names.length ? `${names.join("和")}都能做，选一个技能再发` : "先选一个技能再发";
   return { choices, text };
 }
 /** 402 while an execution runs: this turn would not fit the stage budget. Say by how much; the draft stays. */
 function budgetExceededError(error: unknown) {
   if (!(error instanceof ApiError) || error.code !== "STUDIO_PLAN_BUDGET_EXCEEDED") return undefined;
   const shortfall = Number((error.details as { shortfall?: unknown } | undefined)?.shortfall);
-  const text = Number.isFinite(shortfall) && shortfall > 0 ? `本阶段预算还差 ${formatCredits(shortfall)} 积分，追加预算后再发（没看到追加卡就点进度条上的「继续制作」）`
-    : "本阶段预算不够了，追加预算后再发（没看到追加卡就点进度条上的「继续制作」）";
+  const text = Number.isFinite(shortfall) && shortfall > 0 ? `积分超出上限，还差 ${formatCredits(shortfall)} 积分，提高上限后再发` : "积分超出上限，提高上限后再发";
   return Object.assign(new Error(text), { code: error.code, logId: error.logId });
 }
 
@@ -114,7 +112,6 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // default model while the picker could not show the difference (local e2e 2026-10-19).
   const chooseModel = (value: string) => { setModel(value); writeAssistantModel(projectId, value); };
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
-  const [canvasHint, setCanvasHint] = useState(false);
   const [reading, setReading] = useState(false), [attachmentsUnsaved, setAttachmentsUnsaved] = useState(false);
   const [sending, setSending] = useState(false), [stopping, setStopping] = useState(false), [recovering, setRecovering] = useState<string>();
   const [composerError, setComposerError] = useStudioErrorState();
@@ -206,7 +203,6 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const draftModel = textModels.find(m => m.isDefault) || textModels[0];
   const draftCost = demo ? 0 : draftModel?.tokenPricing ? Math.ceil(draftModel.tokenPricing.maxCost) : draftModel?.creditCost ?? undefined;
   const operator = USE_MOCK || isOperatorRole(identity?.operatorRole);
-  const costHint = demo ? "演示模式，回复和制作都不扣积分" : maxCost !== undefined ? `每轮回复最多 ${maxCost} 积分，按实际用量结算；制作另行报价，确认后才开始` : "回复按实际用量结算；制作另行报价，确认后才开始";
 
   // ── References ─────────────────────────────────────────────────────────
   const contextNodes = assistantContextNodes(nodes);
@@ -215,7 +211,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const recreation = { video: referenced.find(n => n.type === "video"), images: referenced.filter(n => n.type === "image"), textReady: !!text.trim() && !hasBlanks(text) };
   const pin = (node: CanvasNodeData) => {
     if (pinnedIds.includes(node.id)) return true;
-    if (pinnedIds.length >= MAX_REFERENCES) { setComposerError(`一次最多指定 ${MAX_REFERENCES} 个画布对象`); return false; }
+    if (pinnedIds.length >= MAX_REFERENCES) { setComposerError(`一次最多引用 ${MAX_REFERENCES} 个节点`); return false; }
     setPinnedIds(ids => [...ids, node.id]); setComposerError(""); return true;
   };
 
@@ -246,7 +242,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           added++;
         } catch (e) { failures.push(`${item instanceof File ? item.name : item.title}：${e instanceof Error ? e.message : "导入失败，请重试"}`); }
       }
-      if (added) { await saveAttachments(project); if (same(project)) message.success(`已添加 ${added} 个附件，可以继续写再发送`); }
+      if (added) { await saveAttachments(project); if (same(project)) message.success(`已添加 ${added} 个附件`); }
       if (failures.length) throw new Error(failures.join("；"));
     } catch (e) { if (same(project)) { setComposerError(e); throw e; } }
     finally { importLock.current = false; if (same(project)) setReading(false); }
@@ -260,7 +256,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   };
 
   // ── Send / stop ────────────────────────────────────────────────────────
-  const sendDisabledReason = !text.trim() ? "先写下你想做的" : session.status !== "ready" ? "对话还在加载，请稍等" : reading ? "附件还在导入" :
+  const sendDisabledReason = !text.trim() ? "先写下你想做的" : session.status !== "ready" ? "对话还在加载，请稍等" : session.switching ? "正在切换对话，请稍等" : reading ? "附件还在导入" :
     attachmentsUnsaved ? "附件还没保存好，保存后才能发送" : missing.length ? "有引用已从画布删除，请先移除" : starter === "recreation" ? recreationBlocker(recreation) : "";
   // One message at a time: a ref, because two clicks in the same tick both see `sending` still false.
   const sendLock = useRef(false);
@@ -271,7 +267,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
    */
   const send = async (quick?: string) => {
     const draft = quick === undefined;
-    if (sending || sendLock.current || (draft ? sendDisabledReason : session.status !== "ready" || !quick.trim())) return;
+    if (sending || sendLock.current || (draft ? sendDisabledReason : session.status !== "ready" || !!session.switching || !quick.trim())) return;
     // A second click after the first one was already accepted gets a new message key, so the server could not tell them
     // apart: the same quick reply still on its way, or the last thing said with nothing back yet, is not sent again.
     if (!draft) {
@@ -312,7 +308,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           void reloadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined);
         } else setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
       } else if (outcome.state === "sent") { setSkillChoices(undefined); if (draft) setStarter(undefined); }
-      else if (outcome.state === "unknown") setComposerError("消息没有确认送达。点对话里的「重新发送」，服务端只会处理一次");
+      else if (outcome.state === "unknown") setComposerError("消息可能没发出去，点「重新发送」再试，不会重复发送");
     } finally { sendLock.current = false; if (same(project)) setSending(false); }
   };
   const stop = async () => {
@@ -332,6 +328,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     if (unsaved.current.project !== project) unsaved.current = { project, ids: new Set() };
     return unsaved.current;
   };
+  // A cursor below unsaved commands is counted in the sending conversation's seqs; another conversation starts its own.
+  const shownThreadId = store.thread?.id;
+  useEffect(() => { unsaved.current.fromSeq = undefined; }, [shownThreadId]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const scheduleSave = useCallback(() => {
     const project = projectId;
@@ -388,12 +387,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     }
     recordProjection(projectId, result, ops[0].seq);
     session.dispatch({ type: "canvas.ack", seq: ops[ops.length - 1].seq });
-    // The assistant's new nodes come into view (no selection change), and the first time this browser sees
-    // the assistant put something on the canvas, say how the two sides relate.
-    if (result.created.length && !ops.every(op => op.restore)) {
-      dispatchStudioCommand("reveal", result.created.join(","));
-      if (!readCanvasHintSeen()) setCanvasHint(true);
-    }
+    // The assistant's new nodes come into view (no selection change).
+    if (result.created.length && !ops.every(op => op.restore)) dispatchStudioCommand("reveal", result.created.join(","));
   }, [store.canvasOps]);
   // The homepage brief fills the composer once the thread has been read and is still empty — it can arrive after the
   // panel opened (the assistant opens by default), and a refresh after it was sent must not put it back.
@@ -481,7 +476,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         const stepId = checkedStep(execution, check.targetRunId)?.id || subject?.metadata?.studio?.execution?.stepId;
         if (!stepId) throw new Error("找不到这一段对应的制作步骤，请刷新后重试");
         await session.acceptStep(executionId, stepId, check.targetRunId);
-        message.success("已记下就用这一版，检查结论保持不变");
+        message.success("已采用这一版");
       })().catch(e => message.error(e));
     };
     window.addEventListener(STUDIO_CHECK_COMMAND, listener);
@@ -495,7 +490,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     if (!assistantEditableFields(target).includes(block.field)) throw new Error("这个节点正在生成或不能编辑，请稍后再采用");
     const current = proposalFieldValue(target, block.field);
     if (current === block.content) return;
-    if (current !== block.snapshot) throw new Error("这段内容在回复之后被改过，没有覆盖。可以让我按最新内容重写");
+    if (current !== block.snapshot) throw new Error("你改过这段内容，没有覆盖");
     const node = assistantReplacementNode(target, block.field, block.content);
     setNodes(list => markStudioDescendants(list, target.id).map(n => n.id === target.id ? node : n));
     await saveStudioDocument(projectId);
@@ -506,7 +501,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     await saveStudioDocument(projectId);
     try { await session.approve(block, caps, messageId); }
     catch (e) {
-      if (e instanceof ApiError && e.code === "STUDIO_PLAN_STALE") throw Object.assign(new Error("方案已经更新，请看最新的报价再确认"), { code: e.code, logId: e.logId });
+      if (e instanceof ApiError && e.code === "STUDIO_PLAN_STALE") throw Object.assign(new Error("方案已更新，请看最新的报价"), { code: e.code, logId: e.logId });
       throw e;
     }
   };
@@ -530,7 +525,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       await saveStudioDocument(projectId);
     }
     dispatchStudioCommand("reveal", node.id);
-    message.success(created ? "已放进画布，可以在画布上接着改" : "画布上已经有这段文字");
+    message.success(created ? "已放进画布" : "画布上已经有这段文字");
   };
   const handlers: DialogueMessageHandlers = {
     onCompose: compose, onQuickReply: value => void send(value), quickReplyBusy: sending || session.status !== "ready",
@@ -615,60 +610,79 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const startWith = (value: string) => { setStarter(undefined); setText(value); composer.current?.focus(); };
   const pinType = (type: CanvasNodeData["type"]) => { for (const node of contextNodes.filter(n => n.type === type)) if (!pin(node)) break; };
 
+  // ── 「新对话」 / 「历史对话」 (docs/ip-studio-new-canvas-and-threads.md §3.3) ──────────
+  // What is being written stays: the text, its references and attachments, the model. What belonged to the conversation
+  // that was left goes: the skill choice returns to 「自动」, the checklist and the guide close, its notices clear. An
+  // empty conversation shows the opening cards again. Switching never sends anything: the home page brief and its
+  // auto-send belong to the first open of the canvas only.
+  const switchThread = async (run: () => Promise<boolean>) => {
+    try {
+      const switched = await run();
+      if (!switched || !mounted.current) return switched;
+      setSkillKey(undefined); setSkillChoices(undefined); setSkillNotice(""); setStarter(undefined); setGuideOpen(false); setCanvasNotice(""); setComposerError("");
+      briefApplied.current = projectId;
+      if (autoSent.current !== projectId) { autoSent.current = projectId; onAutoSent?.(); }
+      requestAnimationFrame(() => composer.current?.focus());
+      return true;
+    } catch (e) { message.error(e); return false; }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
   const { current } = dialogueSections(store);
   const empty = !current.length && !store.outbox.length;
+  // The canvas gets its nodes from this conversation's events: no new one and no switch while it is still going.
+  const threadBusyReason = session.status === "idle" || session.status === "loading" ? "对话还在加载，请稍等" : session.switching ? "正在切换对话，请稍等"
+    : sending || dialogueThreadBusy(store) ? DIALOGUE_THREAD_BUSY : "";
+  const threadActions = <StudioDialogueThreads currentThreadId={store.thread?.id} busyReason={threadBusyReason} empty={empty} listThreads={session.listThreads}
+    onNew={() => switchThread(session.newThread)} onOpen={threadId => switchThread(() => session.openThread(threadId))}/>;
   const execution = store.execution && (executionActive(store.execution) || store.execution.threadId === store.thread?.id) ? store.execution : undefined;
   const checks = Object.values(store.checks);
   const streamNote = session.stream === "reconnecting" ? "连接中断，正在重连" : session.stream === "polling" ? "实时更新暂时不可用，每隔几秒刷新一次" : "";
   const modeSkill = boundSkill || chosenSkill;
   const inventory = (["video", "image", "audio", "text"] as const).map(type => ({ type, nodes: contextNodes.filter(n => n.type === type) })).filter(entry => entry.nodes.length);
   const typeLabel = { video: "条视频", image: "张图片", audio: "段音频", text: "段文字" } as const;
-  type StarterCard = { title: string; prepare: string; result: string; Icon: typeof Video; tone: "video" | "image" | "text" | "flow"; run: () => void };
+  type StarterCard = { title: string; detail: string; Icon: typeof Video; tone: "video" | "image" | "text" | "flow"; run: () => void };
   const starters: StarterCard[] = pinnedIds.length > 1 ? [
-    { title: "整理所选内容", prepare: "已指定这几个节点，我直接读它们。", result: "一份可直接使用的文字摘要。", Icon: FileText, tone: "text", run: () => startWith("整理这些节点的内容，生成一份可直接使用的文字摘要。") },
-    { title: "统一视觉风格", prepare: "所选素材就是参考。", result: "一张风格统一的新图片。", Icon: Image, tone: "image", run: () => startWith("基于所选素材，设计一张风格统一的新图片。") },
-    { title: "规划场景视频", prepare: "所选素材里的人物和场景会保留。", result: "一条场景视频的方案和报价。", Icon: Video, tone: "video", run: () => startWith("基于所选素材，规划一条场景视频，保留人物和场景特征。") },
-    { title: "串成创作流程", prepare: "从这些节点出发。", result: "接下来需要的文字、图片、视频节点和引用关系。", Icon: Workflow, tone: "flow", run: () => startWith("根据这些节点，规划接下来需要的文字、图片和视频节点及引用关系。") },
+    { title: "整理所选内容", detail: "汇总成一份可用的文字", Icon: FileText, tone: "text", run: () => startWith("整理这些节点的内容，汇总成一份可以直接用的文字。") },
+    { title: "统一视觉风格", detail: "按所选素材出一张新图", Icon: Image, tone: "image", run: () => startWith("参考所选素材，出一张风格统一的新图。") },
+    { title: "规划场景视频", detail: "保留人物和场景，规划一条视频", Icon: Video, tone: "video", run: () => startWith("参考所选素材，规划一条场景视频，保留人物和场景。") },
+    { title: "串成创作流程", detail: "从这些节点往下搭", Icon: Workflow, tone: "flow", run: () => startWith("从这些节点往下，规划接下来要做的文字、图片和视频。") },
   ] : pinnedIds.length ? [
-    { title: "修改节点内容", prepare: "已指定 1 个节点，核心设定会保留。", result: "一版可以写回原节点的完整修改稿。", Icon: PenLine, tone: "text", run: () => startWith("修改所选节点的内容，保留核心设定，给我一版可以写回原节点的完整修改稿。") },
-    { title: "优化节点提示词", prepare: "只改提示词，不生成新素材。", result: "完整的新提示词，一键写回。", Icon: Image, tone: "image", run: () => startWith("优化所选节点的提示词，保留主体和核心设定，直接给出完整的新提示词供我写回原节点，不生成新素材。") },
-    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: () => startRecreation() },
-    { title: "搭一套创作流程", prepare: "说清最后要什么就行。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
+    { title: "修改节点内容", detail: "改写所选内容，保留核心设定", Icon: PenLine, tone: "text", run: () => startWith("改写所选节点的内容，保留核心设定，给我一版完整的修改稿。") },
+    { title: "优化节点提示词", detail: "只改提示词，不重新生成", Icon: Image, tone: "image", run: () => startWith("优化所选节点的提示词，保留主体和核心设定，只给新提示词，不重新生成。") },
+    { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => startRecreation() },
+    { title: "搭一套创作流程", detail: "从设定图一路做到视频", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ] : [
-    { title: "复刻一条短视频", prepare: "一条参考视频，加上要换进去的商品或人物图。", result: "按原片节奏重拍的新视频，每个镜头都在画布上。", Icon: Video, tone: "video", run: () => startRecreation() },
-    { title: "做一张图", prepare: "一句描述就够，有参考图更好。", result: "几张候选，选一张放进画布。", Icon: Image, tone: "image", run: () => startWith("帮我设计一个原创 IP 形象，要让人一眼记住。先聊思路，再出图。") },
-    { title: "写一段文字", prepare: "说清写给谁、写什么。", result: "一份能直接用的初稿，放进画布继续改。", Icon: FileText, tone: "text", run: () => startWith("生成一个末世英雄的角色描述，补全外貌、服装和性格，直接给我初稿。") },
-    { title: "搭一套创作流程", prepare: "说清最后要什么，比如一个 IP 的设定图到场景视频。", result: "一串连好的节点，确认后逐步生成。", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
+    { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => startRecreation() },
+    { title: "做一张图", detail: "一句描述，出几张候选", Icon: Image, tone: "image", run: () => startWith("画一张原创 IP 形象图，让人一眼记住。") },
+    { title: "写一段文字", detail: "人物设定、文案、剧本初稿", Icon: FileText, tone: "text", run: () => startWith("写一个末世英雄的角色描述，补全外貌、服装和性格。") },
+    { title: "搭一套创作流程", detail: "从设定图一路做到视频", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ];
   // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
   // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
   const tools = <>
     {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
       options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></span>}
-    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><span>{modeSkill.name}</span></span>}
+    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><span>{modeSkill.name}</span></span>}
     {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={chooseModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
     {/* A single or fixed model stays visible, just not changeable (ported from the old composer, Codex 2026-10-18). */}
     {!selectable && selectedModel && <span className="studio-dialogue-chip is-fixed"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" disabled value={selectedModel.endpointId} title={selectedModel.name}
       options={[{ value: selectedModel.endpointId, label: selectedModel.name }]}/></span>}
   </>;
+  // Three steps and one line about the current skill (§4.3); how credits, caps and attachments work is not explained here.
   const guide = <section id="studio-assistant-guide" className="studio-assistant-guide" aria-label="使用说明">
     <ol>
-      <li><span><strong>说想法</strong>一句话说清要做什么。用 @ 指定画布上的素材；附件会先进画布，再被引用。</span></li>
-      <li><span><strong>看方案和报价</strong>我先看素材，列出每一步做什么、大概花多少积分，然后停在确认卡上。</span></li>
-      <li><span><strong>确认后开始做</strong>结果一步步出现在画布上。超过上限会停下来问你；中途随时插话，也随时能停。</span></li>
+      <li><span><strong>说想法</strong>一句话说清要做什么，用 @ 引用画布上的素材。</span></li>
+      <li><span><strong>看方案</strong>我列出要生成的内容和要花的积分，等你确认。</span></li>
+      <li><span><strong>开始做</strong>结果一步步放进画布，中途随时可以插话或停下。</span></li>
     </ol>
-    {pickSkill && <p className="studio-helper-note">{chosenSkill ? chosenSkill.summary : "自动：按你的消息和素材挑一个合适的技能。第一次回复之后，这段对话就一直用它"}</p>}
-    {boundSkill && activeSkills.length > 1 && <p className="studio-helper-note">这段对话在按「{boundSkill.name}」做。要换技能，在某条消息上点「从这里重新开始」。</p>}
-    {studioSkillNotes(skills).map(note => <p key={note} className="studio-helper-note">{note}</p>)}
-    <p className="studio-helper-note">整张画布都会作为参考，需要时我会读取图片和视频画面，读取过程记在工作记录里。用 @ 指定的内容一定会读。</p>
-    <details className="studio-helper-note"><summary>附件说明</summary><p>{ATTACHMENT_NOTE}</p></details>
+    <p className="studio-helper-note">{modeSkill ? `${modeSkill.name}：${firstSentence(modeSkill.summary)}` : "自动：按你说的事和素材选做法。"}</p>
   </section>;
   // 设计稿 Main 画板的头部：四角星标、标题、当前技能（紫色小胶囊），右边只有停靠和关闭。使用说明不再单占一个「?」：
-  // 点这个技能胶囊展开（它本来就在说「这段对话怎么做」），空白开场里还有「第一次用？」。
+  // 点这个技能胶囊展开（它本来就在说「这段对话怎么做」）。
   const titleExtra = <>
     <button type="button" className={`studio-assistant-mode${modeSkill ? " is-skill" : ""}`} aria-expanded={guideOpen} aria-controls="studio-assistant-guide"
-      title={`${modeSkill ? `这段对话按「${modeSkill.name}」做` : "按你的消息和素材决定怎么做"}，点开看它怎么工作`} onClick={() => setGuideOpen(v => !v)}>{modeSkill ? modeSkill.name : "全能创作"}</button>
+      title="怎么用" onClick={() => setGuideOpen(v => !v)}>{modeSkill ? modeSkill.name : "全能创作"}</button>
     {demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}
   </>;
   // The real queue position of a step's task (the node's own queue ticket), never an estimate.
@@ -677,19 +691,17 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     const task = nodes.find(n => n.id === stepNodeId(execution, step))?.metadata?.studio?.task;
     return studioTaskQueued(task) && task?.queue && task.queue.position > 0 ? task.queue.position : undefined;
   };
-  const subheader = streamNote || execution || canvasHint ? <>
+  const subheader = streamNote || execution ? <>
     {streamNote && <div className="studio-assistant-status" role="status">{streamNote}</div>}
-    {canvasHint && <div className="studio-assistant-status is-hint" role="status"><span>结果放进画布了。想改就在这里说；想自己动手，选中节点后点「问助手」或用它旁边的操作。</span>
-      <button type="button" className="studio-dialogue-link" onClick={() => { markCanvasHintSeen(); setCanvasHint(false); }}>知道了</button></div>}
     {execution && <StudioDialogueExecution execution={execution} budget={executionBudget(store)} checks={checks} notice={canvasNotice} onControl={session.controlExecution} queueOf={stepQueue}/>}
   </> : undefined;
-  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} subheader={subheader} className="studio-assistant-panel" open={open} onClose={onClose}
+  return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} actions={threadActions} subheader={subheader} className="studio-assistant-panel" open={open} onClose={onClose}
     width={480} utility dockable defaultDocked resizable layoutKey="assistant" footer={<>
       <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
         onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
-        sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} costHint={costHint}
-        tools={tools} compact={!empty} placeholder={empty ? undefined : "想改哪一步，直接说。做的过程中也可以插话"}/>
+        sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} demo={demo}
+        tools={tools} compact={!empty} placeholder={empty ? undefined : "想改哪里，直接说"}/>
       {skillNotice && <p className="studio-dialogue-note" role="status">{skillNotice}</p>}
       {(composerError || missing.length > 0) && <p className="studio-assistant-error" role="alert"><span>{missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError}</span> <StudioErrorNotice error={missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError} autoReport={false} label="查看详情"/></p>}
     </>}>
@@ -700,15 +712,14 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       {session.status === "error" && <div className="studio-assistant-pending" role="alert"><p>对话没有读取成功。</p><StudioErrorNotice error={session.loadError} autoReport={false}/><Button onClick={() => void session.reload()}>重新读取</Button></div>}
       {empty && session.status !== "error" && !starter && <div className="studio-assistant-welcome">
         <h3 className="w-full max-w-full">想做点什么？</h3>
-        <p>{pinnedIds.length ? `已指定 ${pinnedIds.length} 个节点。可以修改内容和提示词，也可以做新的内容。` : "选一件事开始，或者直接在下面用一句话说。中途想改，随时说。"}</p>
-        {!!inventory.length && <div className="studio-assistant-inventory"><span>画布上现在有</span><div>
-          {inventory.map(({ type, nodes: list }) => <button key={type} type="button" aria-pressed={list.every(n => pinnedIds.includes(n.id))} title={`把这 ${list.length} 个节点加进这条消息的引用`} onClick={() => pinType(type)}>{list.length} {typeLabel[type]}</button>)}
-          <small>点一下就能在这条消息里引用</small></div></div>}
-        <div className="studio-assistant-starters">{starters.map(({ title, prepare, result, Icon, tone, run }) => <button key={title} type="button" data-tone={tone} onClick={run}>
+        {!!pinnedIds.length && <p>已选 {pinnedIds.length} 个节点</p>}
+        {!!inventory.length && <div className="studio-assistant-inventory"><span>画布上有</span><div>
+          {inventory.map(({ type, nodes: list }) => <button key={type} type="button" aria-pressed={list.every(n => pinnedIds.includes(n.id))} title={`在这条消息里引用这 ${list.length} ${typeLabel[type]}`} onClick={() => pinType(type)}>{list.length} {typeLabel[type]}</button>)}
+        </div></div>}
+        <div className="studio-assistant-starters">{starters.map(({ title, detail, Icon, tone, run }) => <button key={title} type="button" data-tone={tone} onClick={run}>
           <span className="studio-assistant-starter-icon"><Icon size={20} aria-hidden="true"/></span>
-          <span className="studio-assistant-starter-body"><strong>{title}</strong><span>要准备：{prepare}</span><span>会得到：{result}</span></span>
+          <span className="studio-assistant-starter-body"><strong>{title}</strong><span>{detail}</span></span>
           <ChevronRight size={16} aria-hidden="true"/></button>)}</div>
-        {!guideOpen && <button type="button" className="studio-dialogue-link" onClick={() => setGuideOpen(true)}>第一次用？花 30 秒看它怎么工作</button>}
       </div>}
       {starter === "recreation" && <StudioAssistantChecklist list={recreation} videoCount={contextNodes.filter(n => n.type === "video").length}
         onPickVideo={() => composer.current?.mention()} onPickImage={() => composer.current?.mention()} onUpload={() => composer.current?.attach()} onDismiss={() => setStarter(undefined)}/>}
@@ -717,7 +728,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         {legacyGroups.map(group => <StudioDialogueLegacy key={group.id} group={group} projectId={projectId} nodes={nodes} selectedIds={selectedIds} recovering={recovering === group.id}
           onEditStep={editLegacyStep} onApplyStep={applyLegacyStep} onRecover={id => void recoverLegacy(id)} onCompose={compose}/>)}
       </details>}
-      <StudioDialogueTimeline store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}
+      {/* Keyed by conversation: its scroll-follow state and the branch note's loaded messages belong to one thread. */}
+      <StudioDialogueTimeline key={store.thread?.id || "loading"} store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}
         progress={execution && <StudioDialogueSteps execution={execution} queueOf={stepQueue}
           locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}/>
     </div>

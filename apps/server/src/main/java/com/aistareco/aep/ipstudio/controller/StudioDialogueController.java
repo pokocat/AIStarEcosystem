@@ -11,7 +11,8 @@ import java.security.Principal;
 import java.util.List;
 
 /**
- * Studio conversation endpoints (specs/openapi.yaml /v1/ip-studio/projects/{id}/conversation*). Owner / project / thread
+ * Studio conversation endpoints (specs/openapi.yaml /v1/ip-studio/projects/{id}/conversation*; thread list / new / open:
+ * docs/ip-studio-new-canvas-and-threads.md §3). Owner / project / thread
  * are checked on every call. The SSE stream uses the same authentication as every other request (Authorization header);
  * no token is ever accepted in the URL, and subscribing never authorizes a write.
  */
@@ -26,6 +27,24 @@ public class StudioDialogueController {
     @GetMapping("/conversation")
     public ApiResponse<State> conversation(Principal principal, @PathVariable String id) {
         return ApiResponse.of(dialogue.conversation(principal.getName(), id));
+    }
+
+    /** 「历史对话」: the user's threads on this canvas with messages, plus the current one; latest activity first, at most 50. */
+    @GetMapping("/conversations")
+    public ApiResponse<List<ThreadSummary>> threads(Principal principal, @PathVariable String id) {
+        return ApiResponse.of(dialogue.threads(principal.getName(), id));
+    }
+
+    /** 「新对话」: an empty thread becomes current (an idle empty one is reused). Idempotent on clientRequestId; never charges. */
+    @PostMapping("/conversations")
+    public ApiResponse<State> createThread(Principal principal, @PathVariable String id, @RequestBody(required = false) CreateThreadRequest request) {
+        return ApiResponse.of(dialogue.createThread(principal.getName(), id, request));
+    }
+
+    /** Open one thread and make it current. */
+    @GetMapping("/conversations/{threadId}")
+    public ApiResponse<State> openThread(Principal principal, @PathVariable String id, @PathVariable String threadId) {
+        return ApiResponse.of(dialogue.openThread(principal.getName(), id, threadId));
     }
 
     @GetMapping("/conversations/{threadId}/messages")

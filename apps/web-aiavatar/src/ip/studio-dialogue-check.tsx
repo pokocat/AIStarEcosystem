@@ -29,8 +29,8 @@ export function StudioCheckVerdict({ node, readOnly = false }: { node: CanvasNod
       </li>;
     })}</ul>
     {!readOnly && <div className="studio-node-actions">
-      <button type="button" onMouseDown={stop} onPointerDown={stop} title="记下你选这一版，检查结论保持不变" onClick={() => dispatchStudioCheckCommand({ action: 'accept', nodeId: node.id })}>就用这版</button>
-      <button type="button" onMouseDown={stop} onPointerDown={stop} title="打开这一段的生成设置，确认费用后重新生成" onClick={() => dispatchStudioCheckCommand({ action: 'redo', nodeId: node.id })}>重做这一段</button>
+      <button type="button" onMouseDown={stop} onPointerDown={stop} title="采用这一版" onClick={() => dispatchStudioCheckCommand({ action: 'accept', nodeId: node.id })}>就用这版</button>
+      <button type="button" onMouseDown={stop} onPointerDown={stop} title="打开这一段的生成设置" onClick={() => dispatchStudioCheckCommand({ action: 'redo', nodeId: node.id })}>重做这一段</button>
     </div>}
   </div>;
 }

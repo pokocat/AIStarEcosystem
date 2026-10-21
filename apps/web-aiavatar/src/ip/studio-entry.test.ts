@@ -1,10 +1,10 @@
-import {beforeEach,expect,test,vi} from 'vitest';
+import {beforeEach,describe,expect,test,vi} from 'vitest';
 import type {IpProject} from '@ai-star-eco/types';
-import {createStudioEntry,parseStudioEntry,StudioEntrySaveError,studioBriefNeedsReference,studioCanvasHasDefaultTitle,studioEntryHref,studioTitleFromBrief} from './studio-entry';
-const api=vi.hoisted(()=>({createProject:vi.fn(),updateProject:vi.fn(),getProject:vi.fn()}));
+import {createStudioEntry,parseStudioEntry,startNewCanvas,StudioEntrySaveError,studioBriefNeedsReference,studioCanvasHasDefaultTitle,studioEntryHref,studioTitleFromBrief} from './studio-entry';
+const api=vi.hoisted(()=>({createProject:vi.fn(),updateProject:vi.fn(),getProject:vi.fn(),listProjects:vi.fn()}));
 vi.mock('./api',()=>({IpStudioApi:api}));
 const empty:IpProject={id:'p',name:'新画布',status:'draft',createdAt:'',updatedAt:'',docVersion:'v1',doc:{nodes:[],connections:[],viewport:{x:0,y:0,k:1}},runs:{},runsById:{}};
-beforeEach(()=>{vi.clearAllMocks();api.createProject.mockResolvedValue(empty);api.getProject.mockResolvedValue(empty);api.updateProject.mockImplementation(async(_id,body)=>({...empty,doc:body.doc,docVersion:'v2'}));});
+beforeEach(()=>{vi.clearAllMocks();api.listProjects.mockResolvedValue([]);api.createProject.mockResolvedValue(empty);api.getProject.mockResolvedValue(empty);api.updateProject.mockImplementation(async(_id,body)=>({...empty,doc:body.doc,docVersion:'v2'}));});
 test('only real Studio destinations are accepted, including video/audio and library',()=>{
   for(const value of ['assistant','image','video','script','director','work','commerce','speech','lip','library','blank'])expect(parseStudioEntry(value)).toBe(value);
   for(const value of [null,'constructor','__proto__','unknown','/studio'])expect(parseStudioEntry(value)).toBeUndefined();
@@ -52,4 +52,57 @@ test('a brief names the new canvas; without one the default name stays and only 
 test('a brief that copies a reference video waits for the video instead of being sent at once',()=>{
   for(const t of ['照这条视频的拍法，把里面的商品换成我的','复刻一下这个','帮我做同款','先拉片'])expect(studioBriefNeedsReference(t)).toBe(true);
   for(const t of ['做一张宣传图','写一段广告语','设计一个 IP 形象'])expect(studioBriefNeedsReference(t)).toBe(false);
+});
+
+// docs/ip-studio-new-canvas-and-threads.md §2.1: every 「新建」 opens a blank canvas with the assistant, reusing an untouched one.
+describe('startNewCanvas',()=>{
+  const ago=(ms:number)=>new Date(Date.now()-ms).toISOString();
+  const summary=(id:string,createdAt:string,name='空白画布 · 新画布')=>({id,name,status:'draft' as const,createdAt,updatedAt:createdAt});
+  const project=(id:string,doc:Partial<IpProject['doc']>={})=>({...empty,id,doc:{...empty.doc,...doc}});
+  test('nothing to reuse: one free blank canvas named 「空白画布 · 新画布」, opened with the assistant',async()=>{
+    api.createProject.mockResolvedValue(project('fresh'));
+    expect(await startNewCanvas()).toBe('/projects/fresh?start=assistant');
+    expect(api.createProject).toHaveBeenCalledWith({name:'空白画布 · 新画布'});expect(api.updateProject).not.toHaveBeenCalled();
+  });
+  test('the newest untouched blank canvas from the last two hours is opened again instead of a new one',async()=>{
+    api.listProjects.mockResolvedValue([summary('older',ago(60*60_000)),summary('newest',ago(5*60_000)),summary('named',ago(60_000),'我的保温杯广告'),summary('other',ago(30_000),'全能创作 · 新画布')]);
+    api.getProject.mockImplementation(async(id:string)=>project(id));
+    expect(await startNewCanvas()).toBe('/projects/newest?start=assistant');
+    expect(api.getProject).toHaveBeenCalledWith('newest');expect(api.createProject).not.toHaveBeenCalled();
+  });
+  test('a blank canvas older than two hours is not reused',async()=>{
+    api.listProjects.mockResolvedValue([summary('stale',ago(2*60*60_000+60_000))]);api.createProject.mockResolvedValue(project('fresh'));
+    expect(await startNewCanvas()).toBe('/projects/fresh?start=assistant');
+    expect(api.getProject).not.toHaveBeenCalled();expect(api.createProject).toHaveBeenCalledOnce();
+  });
+  test.each([
+    ['a node',{nodes:[{id:'n',type:'text',title:'文字',position:{x:0,y:0},width:100,height:100}]}],
+    ['an assistant conversation',{assistantConversations:[{id:'c',type:'text',title:'对话',position:{x:0,y:0},width:100,height:100}]}],
+  ] as const)('a recent blank canvas that already has %s is left alone',async(_label,doc)=>{
+    api.listProjects.mockResolvedValue([summary('used',ago(60_000))]);api.getProject.mockResolvedValue(project('used',doc as never));
+    api.createProject.mockResolvedValue(project('fresh'));
+    expect(await startNewCanvas()).toBe('/projects/fresh?start=assistant');expect(api.createProject).toHaveBeenCalledOnce();
+  });
+  test.each(['list','detail'] as const)('a failed %s read still creates a canvas without surfacing the read error',async which=>{
+    if(which==='list')api.listProjects.mockRejectedValue(new Error('offline'));
+    else{api.listProjects.mockResolvedValue([summary('maybe',ago(60_000))]);api.getProject.mockRejectedValue(new Error('offline'));}
+    api.createProject.mockResolvedValue(project('fresh'));
+    expect(await startNewCanvas()).toBe('/projects/fresh?start=assistant');expect(api.createProject).toHaveBeenCalledOnce();
+  });
+  test('concurrent calls share one creation; a later call starts over',async()=>{
+    let resolve!:(p:IpProject)=>void;api.createProject.mockReturnValueOnce(new Promise(r=>{resolve=r;}));
+    const first=startNewCanvas(),second=startNewCanvas();
+    await vi.waitFor(()=>expect(api.createProject).toHaveBeenCalledOnce());
+    resolve(project('fresh'));
+    expect(await first).toBe('/projects/fresh?start=assistant');expect(await second).toBe('/projects/fresh?start=assistant');
+    expect(api.listProjects).toHaveBeenCalledOnce();
+    api.createProject.mockResolvedValue(project('again'));
+    expect(await startNewCanvas()).toBe('/projects/again?start=assistant');
+  });
+  test('a failed creation reaches the caller and does not block the next attempt',async()=>{
+    api.createProject.mockRejectedValueOnce(new Error('创建失败'));
+    await expect(startNewCanvas()).rejects.toThrow('创建失败');
+    api.createProject.mockResolvedValue(project('retry'));
+    expect(await startNewCanvas()).toBe('/projects/retry?start=assistant');
+  });
 });

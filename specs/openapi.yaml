@@ -714,6 +714,24 @@ components:
       properties:
         clientRequestId: { type: string, minLength: 1, maxLength: 64 }
         fromMessageId: { type: string }
+    StudioDialogueThreadSummary:
+      type: object
+      required: [id, title, messageCount, lastActivityAt, createdAt, current, active]
+      description: 「历史对话」列表一行（docs/ip-studio-new-canvas-and-threads.md §3.2；TS 真源 packages/types/src/ip-studio-workflow.ts）。
+      properties:
+        id: { type: string }
+        title: { type: string, description: 第一条有文字的用户消息（连续空白与换行压成一个空格，最多 24 个字符、按码点计，超出加「…」）；还没说过话是「新对话」。不是线程存的 title 列。 }
+        parentThreadId: { type: string, description: 只有「从这里重新开始」分出来的那段才有；没有时省略。 }
+        messageCount: { type: integer, description: 打开这段时时间线会显示的消息条数（全部角色与状态，含系统提示与排队中的用户消息）。 }
+        lastActivityAt: { type: string, format: date-time, description: 最后一条消息的创建时间与这段对话创建时间取较晚的那个（空对话即创建时间）。分支复制来的消息保留原时间，所以刚分出来的分支按分出的时刻排在原对话前面。 }
+        createdAt: { type: string, format: date-time }
+        current: { type: boolean, description: 是否就是 GET /conversation 现在返回的那段（最近打开的）。 }
+        active: { type: boolean, description: 有回合正在回复，或由这段对话创建的后台制作处于 running / paused / needs_user。 }
+    StudioCreateThreadRequest:
+      type: object
+      required: [clientRequestId]
+      properties:
+        clientRequestId: { type: string, minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_.:-]{1,64}$' }
     StudioDialogueEvent:
       type: object
       required: [eventId, seq, threadId, turnId, createdAt, type, data]
@@ -12977,6 +12995,36 @@ paths:
       responses:
         '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
         '404': { description: IP_PROJECT_NOT_FOUND }
+  /v1/ip-studio/projects/{id}/conversations:
+    parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+    get:
+      tags: [ipstudio]
+      operationId: studioConversationList
+      description: 「历史对话」：本人在这张画布的对话，只列有消息的，加上当前那段（GET /conversation 会返回的那段，即最近打开的，哪怕还没有消息）；按 lastActivityAt（最后一条消息与对话创建时间取较晚）倒序，最多 50 段，超出时当前那段仍保留在末尾。先保证主线程存在并导入旧记录。只读，不创建任务、不计费。
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueThreadSummary[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioDialogueThreadSummary' } } } } }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+    post:
+      tags: [ipstudio]
+      operationId: studioConversationCreate
+      description: 「新对话」：一段空对话成为当前（之后 GET /conversation 返回它），返回它的快照。同人同 clientRequestId 幂等（重放返回那段并再次设为当前）。本人在这张画布已有一段没有消息、没有进行中回合或制作、不是分支、没有技能的对话时直接复用它（取最新创建的），不再建新的；复用不改它原来的请求键，重放按同一规则回到同一段。新对话不继承技能、不复制消息、不调用模型、不计费。同一张画布上的并发新建按画布行锁串行。
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioCreateThreadRequest' } } } }
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
+        '400': { description: 'STUDIO_INPUT_INVALID（clientRequestId 缺失或不合法）' }
+        '404': { description: IP_PROJECT_NOT_FOUND }
+        '409': { description: 'STUDIO_REQUEST_CHANGED（这个 clientRequestId 已用于别的画布或「从这里重新开始」）' }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    get:
+      tags: [ipstudio]
+      operationId: studioConversationOpen
+      description: 打开指定的一段：校验本人与画布，设为当前（之后 GET /conversation 返回它），对齐已失效的回合后返回快照。不创建任务、不计费。
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
+        '404': { description: 'STUDIO_THREAD_NOT_FOUND（对话不存在、不属于本人或不在这张画布）/ IP_PROJECT_NOT_FOUND' }
   /v1/ip-studio/projects/{id}/conversations/{threadId}/messages:
     parameters:
       - { in: path, name: id, required: true, schema: { type: string } }

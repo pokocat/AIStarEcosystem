@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
+import { StrictMode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
+import { ApiError } from "@ai-star-eco/api-client";
 import { setupRadixSelectDom } from './testing/radix-select-dom';
 
 setupRadixSelectDom();
 
-const mocks = vi.hoisted(() => ({ projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none" }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }), usePathname: () => "/create" }));
+const mocks = vi.hoisted(() => ({ projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), replace: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none", layout: "mobile" as "mobile" | "desktop" | null }));
+const router = vi.hoisted(() => ({ push: (href: string) => mocks.push(href), replace: (href: string) => mocks.replace(href) }));
+vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/create" }));
+vi.mock("@/shell/layout-mode", () => ({ useLayoutMode: () => mocks.layout }));
 vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <p>开通产品</p> }));
 vi.mock("@/proto/api", () => ({ useIdentity: () => ({ operatorRole: mocks.identityRole }), isOperatorRole: () => false }));
@@ -28,7 +32,7 @@ const official: IpTemplate = { id: "IPD-studio-commerce", name: "IP 商品视频
 const personal: IpTemplate = { ...official, id: "personal", versionId: "v1", visibility: "personal", mine: true, name: "个人工作流", enabled: false };
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.identityRole = "none";
+  mocks.identityRole = "none"; mocks.layout = "mobile";
   mocks.projects.mockResolvedValue(projects); mocks.templates.mockResolvedValue([official, personal]); mocks.examples.mockResolvedValue([]);
   mocks.get.mockImplementation(async (id: string) => ({ id, docVersion: "v1", ...projects.find(p => p.id === id), doc }));
   mocks.create.mockResolvedValue({ id: "P-new", docVersion: "v1", doc }); mocks.update.mockImplementation(async (id, body) => ({ id, docVersion: "v2", doc: body.doc })); mocks.remove.mockResolvedValue(undefined); mocks.availability.mockResolvedValue({});
@@ -53,7 +57,7 @@ describe("Creation catalogue", () => {
     expect(screen.getByText("没有找到符合条件的画布")).toBeTruthy();
     // 项目页只放已存的画布，不读模板目录（放在列表被筛空之后断言：整棵树小，getByRole 不用扫 24 张卡）
     expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "新建创作" }).getAttribute("href")).toBe("/create");
+    expect(screen.queryByRole("link", { name: "新建创作" })).toBeNull();
     expect(mocks.templates).not.toHaveBeenCalled();
     expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
@@ -106,15 +110,27 @@ describe("Creation catalogue", () => {
     expect(mocks.create).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: "更多模板" }).getAttribute("href")).toBe("/templates");
   });
-  it("guards rapid blank-canvas creation and navigates into the existing canvas route", async () => {
+  // §2.1: the phone page's 「空白画布」 tool is the shared 「新建」 (reuse rule, opened with the assistant).
+  it("guards rapid blank-canvas creation and opens the new canvas with the assistant", async () => {
     let resolve!: (p: any) => void;
     mocks.create.mockReturnValue(new Promise(r => { resolve = r; }));
     render(<StudioCreateHome />);
     const button = await screen.findByRole("button", { name: "空白画布", exact: true });
     fireEvent.click(button); fireEvent.click(button);
-    expect(mocks.create).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    expect(mocks.create).toHaveBeenCalledWith({ name: "空白画布 · 新画布" });
+    expect((screen.getByRole("button", { name: "空白画布", exact: true }) as HTMLButtonElement).disabled).toBe(true);
     resolve({ id: "P-new", doc });
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new"));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("the phone 「空白画布」 tool reuses an untouched blank canvas from the last two hours", async () => {
+    mocks.projects.mockResolvedValue([{ ...projects[0], id: "P-blank", name: "空白画布 · 新画布", createdAt: new Date(Date.now() - 60_000).toISOString() }]);
+    mocks.get.mockResolvedValue({ id: "P-blank", docVersion: "v1", doc: { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } });
+    render(<StudioCreateHome />);
+    fireEvent.click(await screen.findByRole("button", { name: "空白画布", exact: true }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-blank?start=assistant"));
+    expect(mocks.create).not.toHaveBeenCalled();
   });
   it("keeps a failed delete reviewable and removes the card only after a successful retry", async () => {
     mocks.remove.mockRejectedValueOnce(new Error("删除未成功"));
@@ -172,14 +188,16 @@ describe("Template market", () => {
 
 
 describe("Creation idea moved from home", () => {
-  it("saves the selected intent only after an explicit creation action", async () => {
+  it("the phone page has only the conversation box: no mode switch, the brief is sent as the first message", async () => {
     render(<StudioCreateHome/>);
-    fireEvent.click(screen.getByRole('button', { name:'视频', exact:true }));
-    fireEvent.change(screen.getByRole('textbox', { name:'创作想法' }), { target:{value:'让小紫介绍灵感杯'} });
+    expect(screen.queryByRole('group', { name:'创作方式' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name:'创作想法' })).toBeNull();
+    fireEvent.change(screen.getByRole('textbox', { name:'想做什么' }), { target:{value:'让小紫介绍灵感杯'} });
     expect(mocks.create).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name:'创建并打开画布' }));
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=video'));
-    expect(mocks.update.mock.calls[0][1].doc.nodes.at(-1).metadata.prompt).toBe('让小紫介绍灵感杯');
+    fireEvent.click(screen.getByRole('button', { name:'开始对话' }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=assistant&send=1'));
+    expect(mocks.update.mock.calls[0][1].doc.assistantConversations.at(-1).metadata.prompt).toBe('让小紫介绍灵感杯');
+    expect(screen.getByRole("navigation", { name: "快速开始创作" })).toBeTruthy();
   });
   it("retains a failed idea save and retries the same created workspace", async () => {
     mocks.update.mockRejectedValueOnce(new Error('保存失败'));
@@ -197,3 +215,76 @@ describe("Creation idea moved from home", () => {
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });
+
+// docs/ip-studio-new-canvas-and-threads.md §2.2: 「新建」 opens a canvas directly; the desktop /create is that hand-off.
+describe("New canvas entries", () => {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
+  it("项目页「新建创作」 creates one canvas and opens it with the assistant, busy while it runs", async () => {
+    mocks.projects.mockResolvedValue([projects[0]]);
+    let resolve!: (p: any) => void;
+    mocks.create.mockReturnValue(new Promise(r => { resolve = r; }));
+    render(<StudioProjects/>);
+    await screen.findByRole("link", { name: "打开画布 测试画布 0" });
+    const button = screen.getByRole("button", { name: "新建创作" });
+    fireEvent.click(button); fireEvent.click(button);
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
+    expect(mocks.create).toHaveBeenCalledWith({ name: "空白画布 · 新画布" });
+    expect((screen.getByRole("button", { name: "新建创作" }) as HTMLButtonElement).disabled).toBe(true);
+    resolve({ id: "P-new", docVersion: "v1", doc });
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+  it("项目页空态「开始创作」 reuses an untouched blank canvas from the last two hours", async () => {
+    mocks.projects.mockResolvedValueOnce([]).mockResolvedValue([{ ...projects[0], id: "P-blank", name: "空白画布 · 新画布", createdAt: ago(60_000) }]);
+    mocks.get.mockResolvedValue({ id: "P-blank", docVersion: "v1", doc: { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } });
+    render(<StudioProjects/>);
+    fireEvent.click(await screen.findByRole("button", { name: "开始创作" }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-blank?start=assistant"));
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it("项目页 keeps a failed creation on the page and lets the user try again", async () => {
+    mocks.projects.mockResolvedValue([projects[0]]);
+    mocks.create.mockRejectedValueOnce(new Error("网络断开"));
+    render(<StudioProjects/>);
+    await screen.findByRole("link", { name: "打开画布 测试画布 0" });
+    fireEvent.click(screen.getByRole("button", { name: "新建创作" }));
+    await screen.findByText(/新画布没有创建成功/);
+    expect(mocks.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "新建创作" }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+  });
+  it("desktop /create opens a new canvas at once with replace, once even under StrictMode", async () => {
+    mocks.layout = "desktop";
+    render(<StrictMode><StudioCreateHome/></StrictMode>);
+    expect(screen.getByText("正在打开新画布…")).toBeTruthy();
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
+    expect(mocks.templates).not.toHaveBeenCalled();
+  });
+  it("desktop /create shows the reason, a retry and the way to the projects page when it fails", async () => {
+    mocks.layout = "desktop";
+    mocks.create.mockRejectedValueOnce(new Error("服务暂时不可用"));
+    render(<StudioCreateHome/>);
+    await screen.findByText("服务暂时不可用");
+    expect(screen.getByRole("link", { name: "去项目页" }).getAttribute("href")).toBe("/projects");
+    fireEvent.click(screen.getByRole("button", { name: "重试" }));
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    expect(mocks.create).toHaveBeenCalledTimes(2);
+  });
+  it("desktop /create shows the enrolment screen when the product is not enabled", async () => {
+    mocks.layout = "desktop";
+    mocks.create.mockRejectedValueOnce(new ApiError({ code: "PRODUCT_NOT_ENROLLED", message: "未开通" }, 403));
+    render(<StudioCreateHome/>);
+    await screen.findByText("开通产品");
+    expect(mocks.replace).not.toHaveBeenCalled();
+  });
+  it("/create waits for the layout before creating anything", () => {
+    mocks.layout = null;
+    render(<StudioCreateHome/>);
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.projects).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
+  });
+});

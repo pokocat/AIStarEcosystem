@@ -21,16 +21,20 @@ type Props = {
   onFiles: (files: File[]) => void; onAssets: (assets: IpSavedAsset[]) => Promise<void>;
   reading: boolean; attachmentsUnsaved: boolean; onRetrySave: () => void;
   sendDisabledReason?: string; sending: boolean; onSend: () => void;
-  canStop: boolean; stopping: boolean; onStop: () => void; costHint?: string;
+  canStop: boolean; stopping: boolean; onStop: () => void;
+  /** Demo mode: the send button says nothing is charged. */
+  demo?: boolean;
   /** Chips after the @ and attachment buttons (the skill and model choices live here, not in a hidden settings pane). */
   tools?: ReactNode;
   /** One starting row while a conversation is on screen; two on an empty canvas so the invitation reads as a place to write. */
   compact?: boolean; placeholder?: string;
 };
 
+const nodeKind = (node?: CanvasNodeData) => node?.type === 'image' ? '图片' : node?.type === 'video' ? '视频' : node?.type === 'audio' ? '音频' : node ? '文字' : '';
+
 export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(function StudioDialogueComposer(props, handle) {
   const { projectId, text, onText, contextNodes, pinnedIds, attachmentIds, onPin, onUnpin, onRemoveAttachment, onFiles, onAssets, reading, attachmentsUnsaved, onRetrySave,
-    sendDisabledReason, sending, onSend, canStop, stopping, onStop, costHint, tools, compact = false, placeholder } = props;
+    sendDisabledReason, sending, onSend, canStop, stopping, onStop, demo = false, tools, compact = false, placeholder } = props;
   const area = useRef<ComponentRef<typeof Input.TextArea>>(null), frame = useRef<HTMLDivElement>(null), picker = useRef<AttachmentPickerActions>(null);
   const [caret, setCaret] = useState(0), [mentionOpen, setMentionOpen] = useState(false), [mentionIndex, setMentionIndex] = useState(0);
   const [libraryQuery, setLibraryQuery] = useState<string>();
@@ -63,7 +67,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
   };
   const chip = (id: string, kind: 'pin' | 'attachment') => {
     const node = contextNodes.find(n => n.id === id);
-    const type = node?.type === 'image' ? '图片' : node?.type === 'video' ? '视频' : node?.type === 'audio' ? '音频' : node ? '文字' : '';
+    const type = nodeKind(node);
     return <div key={`${kind}-${id}`} className="studio-assistant-reference" data-kind={kind}>
       <span title={node?.title}>{node?.title || '已删除的画布对象'}{node && <small> · {kind === 'attachment' ? `附件 · ${type}` : type}</small>}</span>
       <button type="button" aria-label={`移除引用 ${node?.title || id}`} onClick={() => kind === 'pin' ? onUnpin(id) : onRemoveAttachment(id)}><X size={14}/></button>
@@ -73,7 +77,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
     <div className="studio-assistant-references" aria-label="本次引用">{pinnedIds.map(id => chip(id, 'pin'))}{attachmentIds.filter(id => !pinnedIds.includes(id)).map(id => chip(id, 'attachment'))}</div>
     <Input.TextArea ref={area} aria-label="给创作助手的消息" aria-autocomplete="list" aria-controls={query ? 'studio-dialogue-mentions' : undefined}
       aria-activedescendant={query && suggestions.length ? `studio-dialogue-mention-${suggestions[mentionIndex % suggestions.length].id}` : undefined}
-      placeholder={placeholder || '说说要做什么。比如：照这条视频的拍法，把商品换成我的。输入 @ 指定画布内容'} value={text}
+      placeholder={placeholder || '说说要做什么，输入 @ 引用画布内容'} value={text}
       onChange={e => { const value = e.target.value; onText(value); setCaret(e.target.selectionStart); setMentionOpen(mentionOpen || (value.match(/@/g)?.length || 0) > (text.match(/@/g)?.length || 0)); setMentionIndex(0); }}
       onSelect={e => setCaret(e.currentTarget.selectionStart)}
       onKeyDown={e => {
@@ -87,7 +91,7 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       }} autoSize={{ minRows: compact ? 1 : 2, maxRows: 6 }} maxLength={4000}/>
     {query && <div id="studio-dialogue-mentions" className="studio-assistant-mentions" role="listbox" aria-label="可引用的画布节点">
       {suggestions.length ? suggestions.map((node, index) => <button key={node.id} id={`studio-dialogue-mention-${node.id}`} type="button" role="option" aria-selected={index === mentionIndex % suggestions.length}
-        onMouseDown={e => e.preventDefault()} onClick={() => choose(node)}><span>{node.title}</span><small>{node.type === 'text' ? '文字' : '素材设定'}</small></button>) : <p>当前画布没有匹配节点</p>}
+        onMouseDown={e => e.preventDefault()} onClick={() => choose(node)}><span>{node.title}</span><small>{nodeKind(node)}</small></button>) : <p>画布上没有匹配的节点</p>}
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => { libraryMention.current = query; setLibraryQuery(query.query); setMentionOpen(false); }}>从个人资产库选择</button>
     </div>}
     <div className="studio-assistant-composer-toolbar">
@@ -98,8 +102,8 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       </div>
       <div className="studio-dialogue-send">
         {sendDisabledReason && text.trim() && <span className="studio-dialogue-send-reason" role="status" title={sendDisabledReason}>{sendDisabledReason}</span>}
-        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作，不再提交新任务；已经交给厂商的任务会照常完成并结算" onClick={onStop}/>}
-        <Button aria-label="发送" aria-keyshortcuts="Enter" title={sendDisabledReason || `发送（Enter；Shift+Enter 换行）。${costHint || '回复按实际用量扣积分'}`} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
+        {canStop && <Button aria-label="停止" icon={<Square size={13}/>} loading={stopping} title="停止回复和进行中的制作" onClick={onStop}/>}
+        <Button aria-label="发送" aria-keyshortcuts="Enter" title={sendDisabledReason || (demo ? '发送（演示，不扣积分）' : '发送（Enter）')} className="studio-assistant-primary studio-dialogue-send-button" type="primary"
           icon={<ArrowUp size={18}/>} loading={sending} disabled={!!sendDisabledReason} onClick={onSend}/>
       </div>
     </div>
@@ -110,6 +114,5 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       libraryMention.current = undefined;
     }}/>
     {attachmentsUnsaved && <Button onClick={onRetrySave}>重试保存附件</Button>}
-    {/* The reply's cost note rides on the send button's tooltip: the design's box ends at the buttons. Each reply's actual cost still shows under it. */}
   </div>;
 });

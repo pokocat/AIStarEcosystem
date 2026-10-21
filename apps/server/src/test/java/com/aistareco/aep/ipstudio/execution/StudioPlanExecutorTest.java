@@ -398,10 +398,14 @@ class StudioPlanExecutorTest {
         var summary=posted.get("exec-summary-PEX-1");
         assertNotNull(summary);
         String text=(String)summary[0];
-        assertTrue(text.startsWith("这次制作完成了。"),text);
-        assertTrue(text.contains("实际花费：制作 41 积分"),text);
-        assertTrue(text.contains("「片段 v1」"),text);
-        assertTrue(text.contains("AI 判断无法判断，四帧看不清商品标签"),text);
+        // One sentence with the real total (38 + 3), then only what still needs the user: the check that could not judge.
+        assertTrue(text.startsWith("做好了，花了 41 积分。"),text);
+        assertTrue(text.contains("「片段 v1」没法判断：四帧看不清商品标签。"),text);
+        // What finished is not listed again (the step list in the timeline has it, with 「在画布上看」), and no stage breakdown.
+        assertFalse(text.contains("做完的步骤"),text);
+        assertFalse(text.contains("每一步的结果都在画布上"),text);
+        assertFalse(text.contains("制作 41"),text);
+        assertFalse(text.contains("AI 判断"),text);
         assertFalse(text.contains("——"));
         @SuppressWarnings("unchecked") var suggestions=(List<String>)summary[2];
         assertTrue(suggestions.size()>=2&&suggestions.size()<=3,suggestions.toString());
@@ -419,9 +423,8 @@ class StudioPlanExecutorTest {
         var summary=posted.get("exec-summary-PEX-1");
         assertNotNull(summary);
         String text=(String)summary[0];
-        assertTrue(text.startsWith("这次制作已经停止。"),text);
-        assertTrue(text.contains("还有任务在结算（最多 40 积分）"),text);
-        assertTrue(text.contains("没做完的步骤"),text);
+        assertTrue(text.startsWith("已停止，花了 0 积分。还有部分积分在结算。"),text);
+        assertTrue(text.contains("没做完：「片段 v1」「片段 v2」。"),text);
         assertEquals(1,posted.keySet().stream().filter(k->k.startsWith("exec-summary")).count());
     }
 }

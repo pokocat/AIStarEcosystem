@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { useState } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { createPortal } from 'react-dom';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { StudioFloatingPanel } from './studio-floating-panel';
 beforeEach(()=>{
@@ -86,4 +87,22 @@ test('an Escape that closes an Antd menu does not also close the panel, even whe
   screen.getByRole('textbox',{name:'助手提示'}).addEventListener('keydown',()=>menu.classList.add('ant-dropdown-hidden'),{once:true});
   fireEvent.keyDown(screen.getByRole('textbox',{name:'助手提示'}),{key:'Escape'});
   expect(screen.getAllByRole('dialog')).toHaveLength(2);menu.remove();
+});
+
+// 「新对话」「历史对话」 live in the header's actions strip (docs/ip-studio-new-canvas-and-threads.md §3.3). Pressing them, or
+// anything in a popup opened from them (portaled out of the header, yet React bubbles its events through it), never drags.
+test('the actions strip sits before dock and close, and neither it nor a popup portaled from it starts a drag',()=>{
+  localStorage.clear();
+  const outside=document.createElement('div');document.body.append(outside);
+  render(<StudioFloatingPanel open title="助手" utility dockable layoutKey="actions" onClose={()=>{}}
+    actions={<><button type="button">新对话</button>{createPortal(<div data-testid="popup"><p>历史对话列表</p></div>,outside)}</>}><p>正文</p></StudioFloatingPanel>);
+  const header=screen.getByRole('dialog',{name:'助手'}).querySelector('header')!;
+  expect(within(header).getAllByRole('button').map(b=>b.getAttribute('aria-label')||b.textContent)).toEqual(['新对话','停靠到右侧','关闭助手']);
+  const capture=vi.fn();header.setPointerCapture=capture;
+  for(const target of [screen.getByRole('button',{name:'新对话'}),screen.getByText('历史对话列表'),header.querySelector('.studio-floating-actions')!])
+    fireEvent.pointerDown(target,{clientX:100,clientY:100,pointerId:1});
+  expect(capture).not.toHaveBeenCalled();
+  // The header itself still drags.
+  fireEvent.pointerDown(within(header).getByText('助手'),{clientX:100,clientY:100,pointerId:1});
+  expect(capture).toHaveBeenCalledTimes(1);
 });

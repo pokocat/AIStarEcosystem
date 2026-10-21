@@ -604,3 +604,37 @@ html[data-layout="mobile"] .ip-surface .studio-media-composer .studio-creator-fo
 .ip-surface .studio-mode-trigger-overlay .studio-model-menu { width:min(220px,calc(100vw - 32px)); }
 .ip-surface .studio-mode-trigger-overlay .studio-option>small { display:none; }
 html[data-layout="mobile"] .ip-surface .studio-reference-tile>button { width:32px; height:32px; }
+/* 空白画布引导（docs/ip-studio-new-canvas-and-threads.md §2.3）：卡片居中在用户看得见的那块画布里。
+   外层铺满舞台、指针穿透（画布照样能拖、能双击添加），只有卡片本身可点。
+   让开顶栏（60px）、上方的视图切换与下方的缩放条；桌面再让开左栏（56px）和停靠的助手（壳上的 has-docked-panel 与 --studio-docked-panel）。
+   手机上左栏是浮在画布左上的小卡片，左边多留出它的宽度。入口列数按卡片所在容器的宽度变，不按媒体查询判形态。 */
+.studio-canvas-guide { position:absolute; top:60px; right:0; bottom:0; left:0; display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:56px 24px 72px; pointer-events:none; container:studio-canvas-guide / inline-size; }
+html[data-layout="desktop"] .studio-flow-shell .studio-canvas-guide { left:56px; }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-canvas-guide { right:var(--studio-docked-panel,0px); }
+html[data-layout="mobile"] .studio-flow-shell .studio-canvas-guide { padding:56px 12px 72px 76px; }
+.studio-canvas-guide-card { pointer-events:auto; box-sizing:border-box; width:min(680px,100%); padding:28px 24px 20px; background:var(--surface); color:var(--ink); border:1px solid var(--line); border-radius:16px; box-shadow:0 14px 36px rgb(20 24 40 / 8%); text-align:center; }
+.studio-canvas-guide-card>h2 { margin:0 0 8px; font-size:20px; font-weight:650; line-height:1.4; }
+.studio-canvas-guide-card>p { margin:0; color:var(--ink-2); font-size:13px; line-height:1.7; }
+/* 「和助手开始」是 AI 去做的事：AI 渐变（画布页颜色规则）。 */
+.studio-overlay .studio-canvas-guide-primary { display:inline-flex; align-items:center; gap:8px; min-height:40px; margin-top:16px; padding:0 20px; border:0; border-radius:10px; background:var(--ai-gradient); color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+.studio-overlay .studio-canvas-guide-primary:hover:not(:disabled) { background:var(--ai-gradient); filter:brightness(1.06); }
+.studio-canvas-guide-entries { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; margin-top:20px; text-align:left; }
+/* 五个入口：白底细边、深色字；悬停只换边框。 */
+.studio-overlay .studio-canvas-guide-entry { display:flex; flex-direction:column; align-items:flex-start; gap:6px; min-width:0; padding:14px 12px; border:1px solid var(--line-2); border-radius:12px; background:var(--surface); color:var(--ink); text-align:left; cursor:pointer; transition:border-color 120ms ease-out; }
+.studio-overlay .studio-canvas-guide-entry:hover:not(:disabled) { background:var(--surface); border-color:var(--ai-ring); }
+.studio-canvas-guide-entry>svg { flex-shrink:0; color:var(--ink-2); }
+.studio-canvas-guide-entry>strong { font-size:14px; font-weight:600; line-height:1.4; }
+.studio-canvas-guide-entry>small { color:var(--ink-3); font-size:12px; line-height:1.5; overflow-wrap:anywhere; }
+.studio-canvas-guide-card>.studio-canvas-guide-foot { margin-top:16px; color:var(--ink-3); font-size:12px; }
+.studio-overlay .studio-canvas-guide-foot button { padding:0; border:0; background:transparent; color:var(--primary); font-size:12px; cursor:pointer; }
+.studio-overlay .studio-canvas-guide-foot button:hover:not(:disabled) { background:transparent; text-decoration:underline; text-underline-offset:3px; }
+@container studio-canvas-guide (max-width:680px) { .studio-canvas-guide-entries { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+@container studio-canvas-guide (max-width:440px) {
+  .studio-canvas-guide-card { padding:20px 16px 16px; }
+  .studio-canvas-guide-card>h2 { font-size:18px; }
+  .studio-canvas-guide-entries { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; margin-top:16px; }
+  .studio-canvas-guide-entries>:last-child:nth-child(odd) { grid-column:1 / -1; }
+}
+html[data-layout="mobile"] .studio-canvas-guide-entries { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(odd) { grid-column:1 / -1; }
+@media (prefers-reduced-motion:reduce) { .studio-overlay .studio-canvas-guide-entry { transition:none; } }

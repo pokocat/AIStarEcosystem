@@ -7,14 +7,15 @@
 // (afterSeq + Last-Event-ID), a 410 rebuilds from a fresh snapshot, and repeated failures
 // fall back to polling the snapshot (polling never starts inference or spends credits).
 import type {
-  StudioBranchRequest, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState,
-  StudioPostMessageRequest, StudioPostMessageResult,
+  StudioBranchRequest, StudioCreateThreadRequest, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState,
+  StudioDialogueThreadSummary, StudioPostMessageRequest, StudioPostMessageResult,
 } from '@ai-star-eco/types/ip-studio-workflow';
 import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
 import { API_BASE_URL, USE_MOCK, apiFetch, getAuthToken } from '@/ip/api/_client';
 import { withStudioBilling } from './studio-billing';
 import {
-  mockDialogueBranch, mockDialogueControl, mockDialogueConversation, mockDialogueMessages, mockDialoguePost, mockDialogueSubscribe,
+  mockDialogueBranch, mockDialogueControl, mockDialogueConversation, mockDialogueCreateThread, mockDialogueMessages, mockDialogueOpenThread, mockDialoguePost,
+  mockDialogueSubscribe, mockDialogueThreads,
 } from '@/ip/mocks/studio-dialogue';
 
 const APP_CODE = 'aiavatar';
@@ -22,6 +23,26 @@ const APP_CODE = 'aiavatar';
 export async function getStudioConversation(projectId: string): Promise<StudioDialogueState> {
   if (USE_MOCK) return mockDialogueConversation(projectId);
   return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversation`);
+}
+
+// ── Conversations of one canvas (docs/ip-studio-new-canvas-and-threads.md §3) ──────────
+
+/** This canvas's conversations of the signed-in user, newest activity first: the ones with messages plus the current one. */
+export async function listStudioDialogueThreads(projectId: string): Promise<StudioDialogueThreadSummary[]> {
+  if (USE_MOCK) return mockDialogueThreads(projectId);
+  return apiFetch<StudioDialogueThreadSummary[]>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations`);
+}
+
+/** A new empty conversation becomes the current one (an unused empty one is reused). Free; the same key returns the same one. */
+export async function createStudioDialogueThread(projectId: string, request: StudioCreateThreadRequest): Promise<StudioDialogueState> {
+  if (USE_MOCK) return mockDialogueCreateThread(projectId, request);
+  return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations`, { method: "POST", body: request });
+}
+
+/** Opens one conversation: it becomes the current one and its snapshot comes back. Reading only, never a model call. */
+export async function openStudioDialogueThread(projectId: string, threadId: string): Promise<StudioDialogueState> {
+  if (USE_MOCK) return mockDialogueOpenThread(projectId, threadId);
+  return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(threadId)}`);
 }
 
 export async function listStudioDialogueMessages(projectId: string, threadId: string, opts: { beforeSeq?: number; limit?: number } = {}): Promise<StudioDialogueMessage[]> {

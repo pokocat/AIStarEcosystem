@@ -22,7 +22,7 @@ public class RequestApprovalTool implements StudioDialogueTool {
     public String description() { return "请用户确认最新一版方案的范围与预算（报价来自服务端）。可给出用户提过的总上限 budgetCap（不低于报价）；省略时总上限 = 报价 + 重做额度 + 一轮对话的预留。之后本轮结束，等待用户确认；不要替用户同意。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "scope");
-        DialogueTools.prop(s, "scope", "array", "要用户确认的范围，用用户看得懂的话，最多 8 条").putObject("items").put("type", "string");
+        DialogueTools.prop(s, "scope", "array", "要做出的东西，每条一句、不超过 20 字，写画面、规格、风格，不写计费、上限、流程，最多 8 条").putObject("items").put("type", "string");
         DialogueTools.prop(s, "budgetCap", "integer", "用户提过的总上限（积分）；省略则等于报价");
         return s;
     }

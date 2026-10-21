@@ -143,6 +143,144 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 .orElseThrow(() -> BusinessException.notFound("STUDIO_THREAD_NOT_FOUND", "这条对话不存在，请刷新画布"));
     }
 
+    // ── Threads: 「新对话」 / 「历史对话」 (docs/ip-studio-new-canvas-and-threads.md §3) ─────────────────────────────────
+
+    static final int THREAD_LIST_MAX = 50, THREAD_TITLE_MAX = 24;
+    static final String UNTITLED = "新对话";
+    private static final Pattern BLANKS = Pattern.compile("\\s+", Pattern.UNICODE_CHARACTER_CLASS);
+
+    /**
+     * The user's threads on this canvas, latest activity first, at most {@value #THREAD_LIST_MAX}: those with messages plus
+     * the current one (what GET /conversation returns, even when empty). A fixed number of queries whatever the thread
+     * count: the threads, one grouped count, one batch of first user messages, one active-execution lookup (plus a
+     * reconcile for a thread still pointing at a reply run, as GET /conversation does). Never starts a task.
+     */
+    public List<ThreadSummary> threads(String userId, String projectId) {
+        IpProject project = projects.required(userId, projectId);
+        ensureMainThread(userId, project);
+        List<IpDialogueThread> all = threads.findByProjectIdAndOwnerUserIdOrderByLastOpenedAtDescCreatedAtDesc(projectId, userId);
+        if (all.isEmpty()) return List.of();
+        IpDialogueThread current = all.get(0);
+        Map<String, IpDialogueMessageRepository.ThreadMessageStats> stats = new HashMap<>();
+        for (var row : messages.statsByCanvas(projectId, userId)) stats.put(row.getThreadId(), row);
+        List<IpDialogueThread> listed = new ArrayList<>();
+        for (var t : all) if (t == current || stats.containsKey(t.getId())) listed.add(t);
+        listed.sort(Comparator.comparing((IpDialogueThread t) -> lastActivity(t, stats.get(t.getId())))
+                .thenComparing(IpDialogueThread::getId).reversed());
+        if (listed.size() > THREAD_LIST_MAX) {
+            boolean kept = listed.subList(0, THREAD_LIST_MAX).contains(current);
+            listed = new ArrayList<>(listed.subList(0, THREAD_LIST_MAX));
+            if (!kept) listed.set(THREAD_LIST_MAX - 1, current); // older than every kept row, so the order holds
+        }
+        for (int i = 0; i < listed.size(); i++) {
+            IpDialogueThread t = listed.get(i);
+            if (t.getActiveRunId() == null) continue;
+            reconcile(t.getId()); // a reply run that died must not show 「进行中」 forever
+            listed.set(i, threads.findById(t.getId()).orElse(t));
+        }
+        List<String> withMessages = listed.stream().map(IpDialogueThread::getId).filter(stats::containsKey).toList();
+        Map<String, String> firstTexts = new HashMap<>();
+        if (!withMessages.isEmpty()) for (var row : messages.firstUserTexts(withMessages)) firstTexts.put(row.getThreadId(), row.getText());
+        Map<String, StudioExecutionControl.ExecutionView> running = activeExecutions(userId, projectId, withMessages);
+        List<ThreadSummary> out = new ArrayList<>();
+        for (var t : listed) {
+            var s = stats.get(t.getId());
+            out.add(new ThreadSummary(t.getId(), threadTitle(firstTexts.get(t.getId())), t.getParentThreadId(), s == null ? 0 : s.getMessageCount(),
+                    iso(lastActivity(t, s)), iso(t.getCreatedAt()), t.getId().equals(current.getId()), threadActive(t, running)));
+        }
+        return out;
+    }
+
+    /**
+     * 「新对话」: make an empty thread the current one and return it. Idempotent on (owner, clientRequestId): a replay returns
+     * the thread that key created (made current again). Otherwise an empty idle thread the user already has on this canvas
+     * (no message, no reply or execution, not a branch, no skill; the newest created) is reused instead of piling up empty
+     * ones. The reused thread keeps its own key, so a replay of the same request reaches it again through the same rule.
+     * No message is copied, no skill inherited, no model called, nothing charged.
+     */
+    public State createThread(String userId, String projectId, CreateThreadRequest request) {
+        if (request == null || request.clientRequestId() == null || !CLIENT_ID.matcher(request.clientRequestId()).matches())
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "新对话的请求编号无效");
+        IpProject project = projects.required(userId, projectId);
+        ensureMainThread(userId, project);
+        String threadId = tx.execute(s -> {
+            projects.requiredForUpdate(userId, projectId); // concurrent 「新对话」 on one canvas run one after another: one empty thread, not two
+            var prior = threads.findByOwnerUserIdAndClientRequestId(userId, request.clientRequestId()).orElse(null);
+            if (prior != null) {
+                if (!projectId.equals(prior.getProjectId()) || prior.getBranchFromMessageId() != null)
+                    throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_REQUEST_CHANGED", "同一请求的内容已改变，请重新提交");
+                threads.markOpened(prior.getId(), Instant.now());
+                return prior.getId();
+            }
+            Set<String> withMessages = new HashSet<>();
+            for (var row : messages.statsByCanvas(projectId, userId)) withMessages.add(row.getThreadId());
+            var reusable = threads.findByProjectIdAndOwnerUserIdOrderByLastOpenedAtDescCreatedAtDesc(projectId, userId).stream()
+                    .filter(t -> !withMessages.contains(t.getId()) && t.getActiveTurnId() == null && t.getActiveRunId() == null
+                            && t.getActiveExecutionId() == null && t.getParentThreadId() == null && t.getSkillKey() == null)
+                    .max(Comparator.comparing(IpDialogueThread::getCreatedAt).thenComparing(IpDialogueThread::getId)).orElse(null);
+            if (reusable != null) {
+                threads.markOpened(reusable.getId(), Instant.now());
+                return reusable.getId();
+            }
+            Instant now = Instant.now();
+            String id = "IPT-" + StudioDialogueStore.uuid20();
+            threads.save(IpDialogueThread.builder().id(id).projectId(projectId).ownerUserId(userId).clientRequestId(request.clientRequestId())
+                    .title(DEFAULT_TITLE).lastOpenedAt(now).createdAt(now).updatedAt(now).build());
+            return id;
+        });
+        reconcile(threadId); // a replayed key may point at a thread that has since replied
+        return snapshot(userId, threadId);
+    }
+
+    /** Open one thread: it becomes the current one (GET /conversation returns it from now on). Never starts a task. */
+    public State openThread(String userId, String projectId, String threadId) {
+        IpProject project = projects.required(userId, projectId);
+        ensureMainThread(userId, project);
+        IpDialogueThread thread = requireThread(userId, projectId, threadId);
+        threads.markOpened(thread.getId(), Instant.now());
+        reconcile(thread.getId());
+        return snapshot(userId, thread.getId());
+    }
+
+    /**
+     * Active executions of the listed threads, one lookup; null when the executor is absent or cannot answer, and then a
+     * bound pointer counts as active, as {@link #execution} treats a pointer whose status is unknown.
+     */
+    private Map<String, StudioExecutionControl.ExecutionView> activeExecutions(String userId, String projectId, List<String> threadIds) {
+        if (executionControl == null) return null;
+        if (threadIds.isEmpty()) return Map.of();
+        try { return executionControl.activeByThread(userId, projectId, threadIds); }
+        catch (BusinessException e) {
+            log.info("[dialogue] execution list unavailable project={} code={}", projectId, e.getCode());
+            return null;
+        }
+    }
+
+    /** A reply is running, or an execution created from this thread is running / paused / waiting for the user. */
+    private static boolean threadActive(IpDialogueThread t, Map<String, StudioExecutionControl.ExecutionView> running) {
+        if (t.getActiveTurnId() != null) return true;
+        if (running == null) return t.getActiveExecutionId() != null;
+        var view = running.get(t.getId());
+        return view != null && (view.status() == null || ACTIVE_EXECUTION.contains(view.status()));
+    }
+
+    /**
+     * The later of the last message and the thread's creation: a branch copies its messages with their original times, so
+     * by the last message alone a branch just made would sort below the thread it came from.
+     */
+    private static Instant lastActivity(IpDialogueThread t, IpDialogueMessageRepository.ThreadMessageStats s) {
+        Instant last = s == null ? null : s.getLastAt();
+        return last == null || last.isBefore(t.getCreatedAt()) ? t.getCreatedAt() : last;
+    }
+
+    /** First user message with whitespace runs collapsed, at most {@value #THREAD_TITLE_MAX} code points plus 「…」; 「新对话」 when none. */
+    static String threadTitle(String firstUserText) {
+        String text = firstUserText == null ? "" : BLANKS.matcher(firstUserText).replaceAll(" ").strip();
+        if (text.isEmpty()) return UNTITLED;
+        if (text.codePointCount(0, text.length()) <= THREAD_TITLE_MAX) return text;
+        return text.substring(0, text.offsetByCodePoints(0, THREAD_TITLE_MAX)) + "…";
+    }
+
     /** Consistent snapshot: messages and latestSeq are read under the thread lock that every event write takes. */
     State snapshot(String userId, String threadId) {
         State state = tx.execute(s -> {

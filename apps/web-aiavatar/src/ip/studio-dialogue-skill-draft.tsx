@@ -71,7 +71,7 @@ export function StudioDialogueSkillDraft({ projectId, executionId, maxCost, demo
     if (maxCost === undefined && !demo) { setError('整理要用的模型还没有定价，请联系运营在后台配置后再试'); return; }
     modal.confirm({
       title: '把这次制作整理成技能草稿？',
-      content: `会读这次制作的方案、步骤和检查结果，整理成一份做法草稿，素材和画布内容不会带进去。${demo ? '演示模式不扣积分。' : `最多 ${formatCredits(maxCost!)} 积分，按实际用量结算。`}草稿要管理员在后台审阅、发布后才会生效。`,
+      content: `会读这次制作的方案、步骤和检查结果，整理成一份做法草稿，素材和画布内容不会带进去。${demo ? '演示模式不扣积分。' : `最多 ${formatCredits(maxCost!)} 积分。`}草稿要管理员在后台审阅、发布后才会生效。`,
       okText: '开始整理', cancelText: '再想想', onOk: () => submit(),
     });
   };

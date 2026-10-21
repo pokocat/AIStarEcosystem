@@ -1,17 +1,19 @@
 'use client';
 // One message in the thread. Assistant text streams in by part; typed blocks render as
 // work records, plans, confirmation cards, inline questions and adoption proposals, in the
-// order they arrived (a reloaded message shows its text first, then its blocks).
+// order they arrived (a reloaded message shows its text first, then its blocks). A plan and the
+// card quoted for it in the same reply render as one card (docs/ip-studio-new-canvas-and-threads.md §4.2).
 import { useState, type ReactNode } from 'react';
 import { Button } from 'antd';
 import { FilePlus2, GitBranch, LoaderCircle, LocateFixed } from 'lucide-react';
 import { formatCredits } from '@ai-star-eco/api-client';
 import type { StudioDialogueMessage, StudioMessageBlock, StudioPlan } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { blockKey, type DialogueActivity, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialogueToolBlock } from '@/canvas-bridge/studio-dialogue-store';
+import { blockKey, type DialogueActivity, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialoguePlanBlock } from '@/canvas-bridge/studio-dialogue-store';
 import { proposalFieldValue } from '@/canvas-bridge/studio-plan-execution';
 import { splitReplyActions } from '@/canvas-bridge/studio-reply-actions';
-import { StudioDialogueToolCard, toolTitle } from './studio-dialogue-tool';
+import { completionExecutionId } from '@/canvas-bridge/studio-skills';
+import { StudioDialogueToolCard } from './studio-dialogue-tool';
 import { StudioDialogueApprovalCard, type ApprovedCaps } from './studio-dialogue-approval';
 import { StudioDialogueQuestion, StudioDialogueSuggestions } from './studio-dialogue-question';
 import { StudioPlanCard } from './studio-assistant-plan';
@@ -35,7 +37,7 @@ export type DialogueMessageHandlers = {
   onBranch?: (messageId: string) => Promise<void>;
   /** 「放进画布」: the reply's text becomes a text node (or the one already holding it comes into view). */
   onPlaceText?: (message: StudioDialogueMessage) => Promise<void>;
-  /** 「按技能：名称 v2」 for a plan planned with a skill version; undefined hides the badge. */
+  /** 「按技能：名称 v2」 for a plan planned with a skill version: a hover detail on the card title, never shown as text. */
   skillLabel?: (plan: StudioPlan) => string | undefined;
   /** Extra actions under an execution's completion summary (operators: 「整理成技能草稿」); null when none. */
   completionActions?: (message: StudioDialogueMessage) => ReactNode;
@@ -55,23 +57,40 @@ function AdoptionProposal({ block, nodes, readOnly, onAdopt }: { block: Dialogue
   return <section className="studio-dialogue-adoption" aria-label="修改建议">
     <p>建议修改「{node?.title || '已删除的节点'}」的{FIELD_LABEL[block.field]}</p>
     <details><summary>查看修改稿</summary><p className="studio-dialogue-adoption-text">{block.content}</p></details>
-    {changed && <p className="studio-dialogue-warning" role="status">这段内容在回复之后被你改过，为了不覆盖你的改动，这份修改稿不能直接采用。可以让我按最新内容重写。</p>}
+    {changed && <p className="studio-dialogue-warning" role="status">你改过这段内容，这份修改稿不再适用</p>}
     {!node && <p className="studio-dialogue-note">原节点已从画布删除。</p>}
     {!readOnly && <Button className={adopted ? undefined : 'studio-assistant-primary'} loading={busy} disabled={adopted || changed || !node || block.status === 'rejected'}
-      title="写回原节点，不启动生成，不另扣积分" onClick={() => void adopt()}>{adopted ? '已采用' : '采用'}</Button>}
+      title="写回原节点" onClick={() => void adopt()}>{adopted ? '已采用' : '采用'}</Button>}
     {error && <p className="studio-assistant-error" role="alert"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
   </section>;
 }
 
+/** Tools that put or change nodes on the canvas; a reply that used them has nothing left to place. */
+const CANVAS_TOOLS = new Set(['create_nodes', 'update_nodes', 'propose_text']);
+const touchesCanvas = (block: StudioMessageBlock) => block.type === 'tool_call' && (CANVAS_TOOLS.has(block.toolName) || !!block.result?.nodeIds?.length);
+
+/** The plan a card in the same reply was quoted for (same fingerprint): it is shown on that card, not as a card of its own. */
+function quotedPlan(message: StudioDialogueMessage, approval: DialogueApprovalBlock): DialoguePlanBlock | undefined {
+  return message.blocks.find((b): b is DialoguePlanBlock => b.type === 'plan' && b.fingerprint === approval.planFingerprint);
+}
+
 function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, props: MessageProps): ReactNode {
   const { handlers, nodes, readOnly, shortfalls } = props;
+  const say = handlers.onQuickReply ?? handlers.onCompose;
+  const chooseApproach = readOnly ? undefined : (title: string) => say(`改用「${title}」这个做法，重新报价`);
   switch (block.type) {
     case 'tool_call': return <StudioDialogueToolCard key={blockKey(block)} block={block} turnEnded={message.status === 'failed' ? 'failed' : message.status === 'interrupted' ? 'interrupted' : undefined}/>;
-    case 'plan': return <StudioPlanCard key={blockKey(block)} block={block} skillLabel={handlers.skillLabel?.(block.plan)} onChooseApproach={readOnly ? undefined : title => (handlers.onQuickReply ?? handlers.onCompose)(`改用「${title}」这个做法，重新报价`)}/>;
-    case 'approval': return readOnly
-      ? <p key={blockKey(block)} className="studio-dialogue-note">确认卡（{block.status === 'approved' ? '已确认' : '没有确认'}）</p>
-      : <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId] ?? block.shortfall} planReady={handlers.planReady(block)}
-        onStart={caps => handlers.onApprove(block, caps, message.id)} onRevise={handlers.onRevise}/>;
+    case 'plan':
+      // Its card renders it (an earlier, read-only conversation keeps them apart: there is no card to act on).
+      if (!readOnly && message.blocks.some(b => b.type === 'approval' && b.planFingerprint === block.fingerprint)) return null;
+      return <StudioPlanCard key={blockKey(block)} block={block} skillLabel={handlers.skillLabel?.(block.plan)} onChooseApproach={chooseApproach}/>;
+    case 'approval': {
+      if (readOnly) return <p key={blockKey(block)} className="studio-dialogue-note">{block.status === 'approved' ? `已确认 · ${formatCredits(block.quotedCost)} 积分` : '没有确认'}</p>;
+      const plan = quotedPlan(message, block);
+      return <StudioDialogueApprovalCard key={`${blockKey(block)}:${block.status}`} block={block} plan={plan} skillLabel={plan && handlers.skillLabel?.(plan.plan)}
+        approved={handlers.approvedCaps?.(block)} shortfall={shortfalls[block.approvalId] ?? block.shortfall} planReady={handlers.planReady(block)}
+        onStart={caps => handlers.onApprove(block, caps, message.id)} onRevise={handlers.onRevise} onRequote={() => say('重新报价')} onChooseApproach={chooseApproach}/>;
+    }
     case 'question': return <StudioDialogueQuestion key={blockKey(block)} block={block} answered={props.answered} busy={handlers.quickReplyBusy}
       onAnswer={readOnly ? undefined : handlers.onQuickReply ?? handlers.onCompose}/>;
     case 'adoption': return <AdoptionProposal key={blockKey(block)} block={block} nodes={nodes} readOnly={readOnly} onAdopt={handlers.onAdopt}/>;
@@ -129,7 +148,10 @@ export function StudioDialogueMessageView(props: MessageProps) {
   const [branching, setBranching] = useState(false), [placing, setPlacing] = useState(false), [error, setError] = useStudioErrorState();
   const user = message.role === 'user';
   const refs = [...(message.pinnedNodeIds || []), ...(message.attachmentNodeIds || [])];
-  const tools = message.blocks.filter((b): b is DialogueToolBlock => b.type === 'tool_call' && !!b.creditsActual);
+  // One number per reply: the reply and its work records together (§4.3).
+  const credits = (message.billing?.credits || 0) + message.blocks.reduce((sum, b) => sum + (b.type === 'tool_call' ? b.creditsActual || 0 : 0), 0);
+  // A free reply (the demo) says nothing about credits.
+  const costShown = !!message.settling || (!!message.billing && credits > 0);
   const finished = ['done', 'failed', 'interrupted', 'applied', 'queued'].includes(message.status);
   const branch = async () => {
     if (!handlers.onBranch || branching) return;
@@ -138,10 +160,12 @@ export function StudioDialogueMessageView(props: MessageProps) {
   };
   // A reply worth keeping as text (a draft, a description, copy): the start card promises it lands on the canvas, and the
   // model does not always call create_nodes (production 2026-10-19: a paid character description stayed in the chat).
-  // A reply that asks something, proposes a plan or a change is not a draft to keep: its cards are what it is for.
+  // Not offered where it would only copy talk onto the canvas: a reply that asks something, proposes a plan or a change
+  // (its cards are what it is for), the summary closing an execution (its results are already there), or a reply whose
+  // tools already put or changed nodes on the canvas (user feedback 2026-10-20).
   const prose = user ? '' : splitReplyActions(message.text || '').prose.trim();
-  const placeable = !user && !readOnly && !!handlers.onPlaceText && message.role === 'assistant' && message.status === 'done' && prose.length >= 40
-    && message.blocks.every(b => b.type === 'tool_call');
+  const placeable = !user && !readOnly && !!handlers.onPlaceText && message.role === 'assistant' && message.status === 'done' && prose.length >= 80
+    && !completionExecutionId(message) && message.blocks.every(b => b.type === 'tool_call' && !touchesCanvas(b));
   // Already on the canvas (placed before, or written there by hand): the action shows it instead of placing it again.
   const placed = placeable && nodes.some(n => n.type === 'text' && n.metadata?.content === prose);
   const place = async () => {
@@ -157,28 +181,26 @@ export function StudioDialogueMessageView(props: MessageProps) {
     {user && queueLabel && <small className="studio-dialogue-queue" role="status">{queueLabel}</small>}
     {/* A running tool already says so on its own line (spinner, 「进行中」); the extra row is for thinking and writing. */}
     {!user && activity && activity.phase !== 'tool' && <StudioDialogueActivity activity={activity}/>}
-    {!user && message.status === 'interrupted' && <small className="studio-dialogue-note">这一轮已停止</small>}
-    {!user && message.status === 'failed' && <small className="studio-dialogue-warning">这一轮没有完成，可以换个说法再发一次</small>}
+    {!user && message.status === 'interrupted' && <small className="studio-dialogue-note">已停止</small>}
+    {!user && message.status === 'failed' && <small className="studio-dialogue-warning">没有完成，换个说法再试试</small>}
     {/* 设计稿 Main 画板：回复正文 → 逐步清单 → 建议；积分是最后一行小灰字，「放进画布」「从这里重新开始」是同一行右边的小图标。 */}
     {!user && props.progress}
     {!!suggestions?.length && !readOnly && <StudioDialogueSuggestions items={suggestions} busy={handlers.quickReplyBusy} onUse={handlers.onQuickReply ?? handlers.onCompose}/>}
     {!user && !readOnly && handlers.completionActions?.(message)}
-    {((!user && (message.billing || message.settling)) || (!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-meta">
-      {!user && (message.billing || message.settling) && <footer className="studio-dialogue-footer">
-        <span>{message.settling ? '本轮积分待结算' : `本轮回复 ${formatCredits(message.billing!.credits)} 积分`}</span>
-        {!!tools.length && <details><summary>另有 {tools.length} 项工作记录，共 {formatCredits(tools.reduce((sum, t) => sum + (t.creditsActual || 0), 0))} 积分</summary>
-          <ul>{tools.map(t => <li key={t.toolCallId}><span>{toolTitle(t)}</span><span>{formatCredits(t.creditsActual || 0)} 积分</span></li>)}</ul></details>}
+    {((!user && costShown) || (!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-meta">
+      {!user && costShown && <footer className="studio-dialogue-footer">
+        <span>{message.settling ? '积分结算中' : `${formatCredits(credits)} 积分`}</span>
       </footer>}
       {/* Small icon actions, as in common chat apps: the newest reply keeps them in view, older ones show them on hover
           or keyboard focus (desktop; phones always show them). Each has a name for screen readers and a tooltip. */}
       {((!readOnly && handlers.onBranch && finished) || placeable) && <div className="studio-dialogue-message-actions" role="group" aria-label="这条消息的操作">
         {placeable && <button type="button" className={`studio-dialogue-action${latest && !placed ? ' has-label' : ''}`} disabled={placing} aria-busy={placing || undefined}
           aria-label={placed ? '在画布上查看' : '放进画布'}
-          title={placed ? '画布上已有这段文字，点一下定位过去' : '把这段回复建成画布上的文字节点，之后在画布上改，不另扣积分'} onClick={() => void place()}>
+          title={placed ? '画布上已有这段文字' : '把这段回复放进画布，成为一个文字节点'} onClick={() => void place()}>
           {placing ? <LoaderCircle size={14} className="studio-dialogue-action-spin" aria-hidden="true"/> : placed ? <LocateFixed size={14} aria-hidden="true"/> : <FilePlus2 size={14} aria-hidden="true"/>}
           {latest && !placed && <span>{placing ? '正在放进画布' : '放进画布'}</span>}</button>}
         {!readOnly && handlers.onBranch && finished && <button type="button" className="studio-dialogue-action" disabled={branching} aria-busy={branching || undefined}
-          aria-label="从这里重新开始" title="从这里重新开始：从这条消息另开一条对话，原来的对话保持不变" onClick={() => void branch()}>
+          aria-label="从这里重新开始" title="从这条消息另开一段对话，原来的对话保留" onClick={() => void branch()}>
           {branching ? <LoaderCircle size={14} className="studio-dialogue-action-spin" aria-hidden="true"/> : <GitBranch size={14} aria-hidden="true"/>}</button>}
       </div>}
     </div>}

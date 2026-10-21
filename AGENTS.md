@@ -509,16 +509,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
-| **对话意图直达** | 2026-10-20 本地，未发布 | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
+| **新建画布与多段对话** | 2026-10-20 本地，未发布 | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
+| **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
 | **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
 | **v0.205** | 2026-10-08 | Studio IP 人物库按人物汇总，素材详情/筛选/默认声音与精确版本引用；V45 素材分类与免费整理，浏览器恢复/账本验收通过。设定图系统提示词冲突已修，两次实图均未通过质量，未发布 |
-| **v0.204** | 2026-10-08 | 有限图片模板执行/采用/费用上限/CAS重做与恢复、中文展示板/原图ZIP/归档/本人指标；进阶真实6/8部分输出，默认按用户澄清改为一次设定图，仅报价/免费套用通过，单图质量待验，未发布 |
-| **v0.203** | 2026-10-08 | M7.1 模板输入槽、不可变发布版本、个人/官方范围、当前模型报价与独立套用；V44，两个不同人物输入/v1-v2/停用恢复和零账本变化通过。依赖执行、真实人物资产包及展示板仍待完成，未发布 |
-| **v0.202** | 2026-10-08 | 统一 Studio M0–M4 真实 Agnes 本地验收通过；新增四模式导演助手、分集与有费用上限的连续制作，双集出片及刷新恢复通过；商品脚本/素材与中文包装通过，Qwen3 TTS 配音与 X-Dub 同音频口型短样片真实通过，人物固定声音版本绑定已接，专属声音未接；模板清理作者运行，标准模板 M7 有独立方案；V40–V43，未发布 |
-| **v0.201** | 2026-10-07 | 画布完整生成历史与最近 50 版恢复；加入资产改云端并在顶部资产页显示；V39 文档 LONGTEXT，旧本人素材迁移，切页先保存 |
-| **v0.200** | 2026-10-07 | 接手整合开放修复 PR；名片完整资产归属、混剪下载边界、视频镜像退款、DAP afterCommit；发布 retry_count 走 V38，首次冻结保留裸 jobId 兼容在途任务 |
-| **v0.199.1** | 2026-10-04 | 视频生成区真厂商实测后的修补：厂商不给封面，worker 就从成片截一帧当封面（`MaterialVideoCover`，老任务启动时后台补），模板卡片不再是黑块；智能优化结果是英文时加一句说明，演示数据照真厂商改成英文。1:1 的 `square` 实测通过 |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -1074,15 +1069,15 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 助手默认**停靠右侧、占满画布高度**（顶栏下到底部），宽 480、左边缘可拖到 400–760；「改成浮窗」是显式选择，浮窗也占满高度。停靠 / 浮窗和宽度是每个浏览器的记忆（`studio-floating:assistant`，`localStorage`，不是状态真值）。面板分三段：固定头（标题 + 当前技能 / 全能创作 chip + 演示标 + 使用说明）、**固定进度条**（`subheader`：制作进度 + 预算 + 暂停 / 停止，滚动对话不消失；每步可「在画布上看」，走 `studio-command: focus`）、独立滚动的对话区；输入区在底部，技能 / 模型是输入框下的 chip，不再藏在设置图标后；发送不可用的原因写在按钮旁边。
 
-开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（要准备什么 / 会得到什么）+「第一次用？花 30 秒看它怎么工作」。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
+开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（2026-10-20 起只有标题和一行说明，「第一次用？」链接已去掉，见下「新建画布、多段对话与卡片精简」）。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
 
-写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
+回复下面的「放进画布」把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），不依赖模型是否调用 `create_nodes`，哪些回复显示它见下「新建画布、多段对话与卡片精简」；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡的现行样式见下「新建画布、多段对话与卡片精简」（2026-10-20 起不再有「调整上限」和「直接回复可以也行」）；打字确认仍走服务端 `StudioNaturalApprovals`（2026-10-19 起整句只由短肯定词组成的回复也算确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
 
 ### 对话优先的创作入口 · 2026-10-19（同日已生产发布 `20261019-studio-dialogue-first`，仅 web-aiavatar）
 
-用户从第一屏就按「跟助手说」来做：桌面首页英雄区、手机首页和「画布·自由创作」页的默认入口都是同一个对话框（`src/ip/studio-conversation-start.tsx`：一句话 + 四个示例开头 + 「开始对话」，Enter 发送、Shift+Enter 换行）。提交先免费建画布并把这句话存成想法，再以 `?start=assistant&send=1` 打开画布；画布的助手在线程就绪、且**线程为空**时把这句话自动发出一次（`StudioAssistant.autoSend`，按 projectId 只发一次，刷新后线程非空就不再发；发出后去掉地址里的 `send=1`）。那句话可能晚于默认打开的助手到达，所以由单独的副作用在线程读完后填入，不走「打开时恢复草稿」那条路（2026-10-19 曾因此一直不发）。未发出的草稿和选的对话模型按画布存在本浏览器（`canvas-bridge/studio-assistant-memory.ts`）。「先进画布看看」仍可不带话进画布。要照着参考视频做的话（复刻 / 照这条 / 拉片…，`studioBriefNeedsReference`）不自动发：进画布后打开复刻素材清单、保留用户原话，素材齐了由用户自己发（2026-10-19 线上验收：先扣一轮积分只换来「请上传视频」）。首页那句话同时用作画布名（`studioTitleFromBrief`）；没名字的画布（「· 新画布」/「未命名画布」）在第一条消息时按消息起名，用户改过的名字不动。图片 / 视频 / 剧本专项入口保留在对话框下方，旧的「创作想法」文本框只在这三种模式下出现（不再嵌套 form）。
+用户从第一屏就按「跟助手说」来做：桌面首页英雄区、手机首页和「画布·自由创作」页的默认入口都是同一个对话框（`src/ip/studio-conversation-start.tsx`：一句话 + 四个示例开头 + 「开始对话」，Enter 发送、Shift+Enter 换行）。提交先免费建画布并把这句话存成想法，再以 `?start=assistant&send=1` 打开画布；画布的助手在线程就绪、且**线程为空**时把这句话自动发出一次（`StudioAssistant.autoSend`，按 projectId 只发一次，刷新后线程非空就不再发；发出后去掉地址里的 `send=1`）。那句话可能晚于默认打开的助手到达，所以由单独的副作用在线程读完后填入，不走「打开时恢复草稿」那条路（2026-10-19 曾因此一直不发）。未发出的草稿和选的对话模型按画布存在本浏览器（`canvas-bridge/studio-assistant-memory.ts`）。「先进画布看看」、`/create` 的方式切换框与「创作想法」文本框 2026-10-20 起已取消，新建直接进画布（见下「新建画布、多段对话与卡片精简」）。要照着参考视频做的话（复刻 / 照这条 / 拉片…，`studioBriefNeedsReference`）不自动发：进画布后打开复刻素材清单、保留用户原话，素材齐了由用户自己发（2026-10-19 线上验收：先扣一轮积分只换来「请上传视频」）。首页那句话同时用作画布名（`studioTitleFromBrief`）；没名字的画布（「· 新画布」/「未命名画布」）在第一条消息时按消息起名，用户改过的名字不动。
 
-对话开始之后画布由对话驱动：服务端新建的节点通过 `studio-command: reveal` 进视野（只移视口不改选中），第一次看到结果时助手顶部出现一次性提示「结果放进画布了…」（`localStorage studio-assistant:canvas-hint`）；选中任何节点的操作条第一项是「问助手」（把节点带进对话）；空画布的空态改为「画布还是空的 → 和助手开始」，助手打开时不显示；首页存的想法占位（没有任何回合的旧式对话节点）不再出现在「之前的对话」里。**助手在桌面画布默认打开**（同日追加）：`studio-assistant:open` 按浏览器记住用户最后一次开/关，只有 `html[data-layout="desktop"]` 才默认打开；停靠面板改为**通高**（舞台顶到底，去掉 72/16 的留白和 140px 的通用上限），并把 `has-docked-panel` 类与 `--studio-docked-panel` 宽度发布到 `.studio-flow-shell`（工作台覆盖层是舞台的兄弟层，不是子层），顶部工具条、视图切换、右侧入口按钮据此让位，其它浮层按剩余宽度定位。专业的画布操作照旧可用，只是不再是起点。证据：`studio-conversation-start.test.tsx`、`studio-assistant.test.tsx`（自动发送、进视野与提示）、两个首页测试、`studio-dialogue-wiring.test.ts`；演示模式下从首页一句话走到方案与确认卡已实测。
+对话开始之后画布由对话驱动：服务端新建的节点通过 `studio-command: reveal` 进视野（只移视口不改选中；第一次看到结果时的一次性提示「结果放进画布了…」2026-10-20 起删除）；选中任何节点的操作条第一项是「问助手」（把节点带进对话）；空画布的空态已换成不论助手开关都显示的引导卡（见下「新建画布、多段对话与卡片精简」）；首页存的想法占位（没有任何回合的旧式对话节点）不再出现在「之前的对话」里。**助手在桌面画布默认打开**（同日追加）：`studio-assistant:open` 按浏览器记住用户最后一次开/关，只有 `html[data-layout="desktop"]` 才默认打开；停靠面板改为**通高**（舞台顶到底，去掉 72/16 的留白和 140px 的通用上限），并把 `has-docked-panel` 类与 `--studio-docked-panel` 宽度发布到 `.studio-flow-shell`（工作台覆盖层是舞台的兄弟层，不是子层），顶部工具条、视图切换、右侧入口按钮据此让位，其它浮层按剩余宽度定位。专业的画布操作照旧可用，只是不再是起点。证据：`studio-conversation-start.test.tsx`、`studio-assistant.test.tsx`（自动发送、进视野与提示）、两个首页测试、`studio-dialogue-wiring.test.ts`；演示模式下从首页一句话走到方案与确认卡已实测。
 
 ### 画布页改版 · 2026-10-19（第一遍同日已生产发布 `20261019-studio-canvas-redesign`，仅 web-aiavatar；第二遍照设计稿 Main 画板补齐，本地未发布）
 
@@ -1092,12 +1087,12 @@ AI 的视觉身份：`.ip-surface` 新增 `--ai / --ai-2 / --ai-gradient / --ai-
 
 **第二遍（照设计稿 Main 画板逐块补齐）**：第一遍只照批注文字收了外框，画出来的样子没逐块对照。补齐的是：顶栏「已保存」是标题旁一行灰字、右侧顺序 ⋯ / 积分 / 发布（插槽 `display:contents` + `order`）；视图切换只有文字、居中在左栏与助手之间；节点 AI 记号不再被 `.studio-flow-drag>span{flex:1}` 拉成长条，用户自己传的媒体标「你上传的」，生成中是 44px 渐变圆环 + 一行字；连线是灰色虚线（选中群青）；**选中节点的操作条在节点正下方、左对齐、按钮多宽就多宽**（`StudioFloatingPanel toolbar`），只放「问助手」+ 最多两个主操作（按 rank：任务状态 > 主生成 > 比较版本），其余进「⋯」（antd Popover）；助手头部是 26px 星标 + 标题 + 技能胶囊（点它展开使用说明，不再有单独的「?」）；进度条三行（`制作中 · 第 N 步，共 M 步` + 已用 / 上限 → 渐变条 → 当前一步 + 真实排队位次 + 暂停 停止），进行中 / 对话占用的积分明细在「已用」的提示里；**逐步清单在对话里**（`StudioDialogueSteps`，挂在最新一条回复里、建议之前），打勾 / 转圈 / 空圈 + 在画布上看；消息不写「你 / Studio」，你的话是靠右气泡。设计稿里两处**刻意不照做**：「约 2 分钟」（v0.221 规约不编 ETA，只写真实位次），每步「58 积分」（没有逐步实付数据）。
 
-**第三遍（对话框与按钮区）**：并排截图对设计稿后补齐。按钮区的技能是无边框实心小胶囊「技能 · 名称」（有技能浅紫、自动浅灰、无下拉箭头），对话绑定技能后改为不可点的静态胶囊照样显示；**antd 6 的 Select 是 `.ant-select-content` / `.ant-select-suffix`，旧的 `.ant-select-selector` 规则根本不生效**，chip 一直是白底描边带箭头就是这个原因。发送按钮始终是 AI 渐变、不能发时只变淡；输入框浅灰底细边，焦点时边框只略深。回复的顺序是正文 → 逐步清单 → 建议 → 一行小灰字（本轮积分、工作记录、从这里重新开始，`.studio-dialogue-meta`）；工具记录是无边框的一行；建议 30px 无图标；已确认的确认卡收成一行（`studio-dialogue-approval-done`，点开看做什么、报价和确认时间）；你的气泡里「已收到」在回复开始后消失、「从这里重新开始」只在悬停或键盘聚焦时出现；停靠按钮是普通右侧面板图标；「停止」浅粉边。方案卡（制作计划）保持原样。输入框按设计稿逐像素再对一遍：发送键始终满色渐变（不能发时只换指针，原因写在旁边）；框里不再有费用说明那一行，「每轮回复最多 X 积分…」改到发送键的提示里（每轮实际花费仍在回复下面）；「技能 · 名称」的点两边留白、字重 500；占位字用 --ink-3。双击节点不做任何改动（保持原行为）。
+**第三遍（对话框与按钮区）**：并排截图对设计稿后补齐。按钮区的技能是无边框实心小胶囊「技能 · 名称」（有技能浅紫、自动浅灰、无下拉箭头），对话绑定技能后改为不可点的静态胶囊照样显示；**antd 6 的 Select 是 `.ant-select-content` / `.ant-select-suffix`，旧的 `.ant-select-selector` 规则根本不生效**，chip 一直是白底描边带箭头就是这个原因。发送按钮始终是 AI 渐变、不能发时只变淡；输入框浅灰底细边，焦点时边框只略深。回复的顺序是正文 → 逐步清单 → 建议 → 一行小灰字（本轮积分、工作记录、从这里重新开始，`.studio-dialogue-meta`）；工具记录是无边框的一行；建议 30px 无图标；已确认的确认卡收成一行（`studio-dialogue-approval-done`，点开看做什么、报价和确认时间）；你的气泡里「已收到」在回复开始后消失、「从这里重新开始」只在悬停或键盘聚焦时出现；停靠按钮是普通右侧面板图标；「停止」浅粉边。方案卡（制作计划）保持原样。输入框按设计稿逐像素再对一遍：发送键始终满色渐变（不能发时只换指针，原因写在旁边）；框里不再有费用说明那一行，「每轮回复最多 X 积分…」改到发送键的提示里（每轮实际花费仍在回复下面）；「技能 · 名称」的点两边留白、字重 500；占位字用 --ink-3。双击节点不做任何改动（保持原行为）。2026-10-20 起方案卡与确认卡合成一张、进度条只写「已用 N 积分」、每条回复下只一行合计积分、发送键提示只写「发送（Enter）」，见下「新建画布、多段对话与卡片精简」。
 
 **第四遍（对话交互，端到端走查）**：见 §8.0.1 ⑭。输入框 Enter 发送、Shift+Enter 换行（⌘/Ctrl+Enter 照旧）；「问助手」监听 `studio-command: assistant`，把节点加进这条消息的引用并把光标放进输入框（助手开着、关着、有没有草稿都一样）；
 Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离开输入框、不关面板，停靠的面板不响应焦点在画布上的 Esc，Antd 菜单 / 下拉 / 气泡自己的 Esc 在捕获阶段记下、面板不跟着关；
 「在画布上看」、助手放进新节点、整理和「适应全部节点」都按**可见区域**适配（`visibleFitPadding`：左栏、顶部、缩放条和停靠面板都让开），聚焦只等目标节点被 React Flow 认得；
-打字确认：服务端 `StudioNaturalApprovals` 增加「整句只由短肯定词组成」也放行（可以 / 好 / 行 / 嗯 / 对 / 是的…，逐段去掉句末语气词后判断；疑问、犹豫、改动照旧拒绝），对话提示词同步举例（`PromptTemplateSeeder.SEED_VERSION` 已 bump，否则线上不生效），确认卡保持「直接回复「可以」也行」；演示模式 `mockSaysApprove` 同一套规则。**这一条要发 server**。
+打字确认：服务端 `StudioNaturalApprovals` 增加「整句只由短肯定词组成」也放行（可以 / 好 / 行 / 嗯 / 对 / 是的…，逐段去掉句末语气词后判断；疑问、犹豫、改动照旧拒绝），对话提示词同步举例（`PromptTemplateSeeder.SEED_VERSION` 已 bump，否则线上不生效），确认卡上的这句提示 2026-10-20 起去掉、打字确认照旧（见下「新建画布、多段对话与卡片精简」）；演示模式 `mockSaysApprove` 同一套规则。**这一条要发 server**。
 
 **第五遍（对话的动静与快捷答复，2026-10-20 用户反馈，已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`），仅 web-aiavatar）**：进行中的状态只从事件流推出（`dialogueActivity`）：已受理没回话 →「正在思考」、正文流入 →「正在回复」（正文末尾闪光标）、工具跑完回合未结束 →「正在思考」；跑工具时由那条工作记录自己转圈并写「进行中 · 已用 N 秒」；回合结束、失败、停止即消失，不编思考内容、不编百分比。工作记录是左侧细竖线的一行过程记录（不是带框的按钮），只有右边的小箭头展开详情，失败直接写原因。问题选项、后续建议、「改用这个做法」单击就作为一条用户消息发出（同一条发送链路：先存画布、同 clientMessageId 重试），不带草稿的引用、不动输入框；发送中禁用，发出后问题按「之后有你的消息」判为已回答（`answeredAfter`，服务端不标）。回复下的「放进画布 / 从这里重新开始」是小图标按钮（读屏有名字、悬停有提示），最新一条常显、旧的悬停或键盘聚焦才出现、手机常显；带问题、方案或确认卡的回复不给「放进画布」，已在画布上的显示「在画布上查看」。
 
@@ -1110,7 +1105,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 成片页的「高级编辑」用 **Twick 0.15.31**（`@twick/studio` 等四个包，固定版本 + `patches/` 下两个 pnpm 补丁修无限重试），组件是 `src/ip/studio-advanced-editor.tsx`，经 `next/dynamic` 只在打开时加载、`createPortal` 到 body，手机端不开放。**Twick 只负责编辑和预览，不在浏览器里导出**：导出时 `toEditTimeline`（`src/canvas-bridge/studio-edit-timeline.ts`，纯函数）把工程转成 `StudioEditTimeline`（视频 / 音频 / 文字 / 字幕 + 起止秒），工作台 `assemble(edit)` 照常建 work 节点、提交 `operation:"assemble"` 带 `edit`，服务端 `StudioEditGraph`（纯函数生成 FFmpeg 参数）+ `DramaAssembleService.renderStudioEdit` 合成：视频按开始时间排一条主轨、后开始的截断前一段、空隙补黑；音频按时间延后补静音再混（amix 后乘回路数）；文字和字幕由 `StudioPackagingService` 画成整幅 PNG 按时间叠加，用户文字不进滤镜语法。`edit` 只许 assemble，clips / audios 的 key 逐个过 `requireOwnedAssetKey`，校验错误码 `STUDIO_EDIT_INVALID`。工程存在成片方案 `workDraft.advanced`（Twick ProjectJSON，媒体只存 `metadata.storageKey`，`props.src` 不落库）。**素材一律用 `fetchAssetBlob` 取成 Blob 再给 Twick**：线上 OSS 没配 CORS 而 Twick 播放时设了 crossOrigin，别改成直接给签名地址。Twick 的样式会改全局（`body`、`:root` 变量、和 Tailwind 同名的工具类），所以不直接引入，用 `scripts/scope-twick-css.mjs` 生成只在 `.twick-scope` 生效的 `twick-scoped.css`，升级 Twick 后重跑。Twick 取缩略图时往 `<body>` 挂屏幕外 `<video>` 不收，编辑器卸载时按我们的 blob 地址移走。同批服务端把「配音过长 / 字幕超时」挪到拼接之前判（`StudioPackagingService.precheck`）。证据：`StudioEditGraphTest`（真 ffmpeg）、`DramaAssembleStudioPrecheckTest`、`studio-edit-timeline.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（导出带时间线、不带包装）；本地真服务端 + 浏览器走过「切开、删段、加文字、导出、刷新后继续编辑、改回一键成片」。
 
-### 对话意图直达 · 2026-10-20（本地，未发布；server + web-aiavatar）
+### 对话意图直达 · 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`，main `eea08f72`；server + web-aiavatar）
 
 用户反馈「AI 对话里问太多」。真源 [`docs/ip-studio-dialogue-intents.md`](docs/ip-studio-dialogue-intents.md)。
 - **合并 main 时**：main 同日的「原创创作」`original-creation` 与出图触发词重叠，已改 `status: withdrawn`（文件保留以便下架库里的行）；直达判定统一为 `StudioSkill.firstStage()`，`direct()` 委托给它。
@@ -1130,3 +1125,11 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **看图要真看**：素材清单不含画面；描述图片内容只能经 `view_images`（本人 key、内联字节、对话端点须声明 `supportsVision`、计入本轮预算）。
 - **失败节点只有一个恢复入口**；`VIDEO_MODEL_RETIRED` 的模型不再被预选或重投（服务端冻结前也拒绝）。
 
+### 新建画布、多段对话与卡片精简 · 2026-10-20（本地，未发布；server + web-aiavatar）
+
+真源 [`docs/ip-studio-new-canvas-and-threads.md`](docs/ip-studio-new-canvas-and-threads.md)。上面「创作助手改版」「对话优先的创作入口」「画布页改版」里与此冲突的写法以本节为准。
+- **新建只有一条路**：所有「新建创作 / 新建画布 / 新建空白画布 / 创建空白画布」都调 `startNewCanvas()`（`src/ip/studio-entry.ts`；页面经 `use-start-new-canvas.ts` 加锁，连点、StrictMode 双跑只建一张），进 `/projects/{id}?start=assistant`，桌面助手停靠打开。最近一张仍叫「空白画布 · 新画布」、2 小时内建、没有节点也没有 `assistantConversations` 的画布直接复用，判断失败就新建。桌面 `/create` 进来即 `router.replace` 到画布；手机 `/create` 保留页面，只有 `StudioConversationStart` + 能力入口 + 模板（`studio-creation-brief.tsx` 已删）。形态按 `useLayoutMode()`，不写媒体查询。
+- **空画布引导**（`studio-canvas-guide.tsx`）：无节点、画布视图、没有创作浮层打开时，在可见区域中间（让开左栏和 `--studio-docked-panel`）显示五个入口（文字 / 图片生成 / 视频生成 / 配音 / 上传素材）和「从模板开始」，一律发 `studio-command`，与左栏「＋添加」同一条路径，不另写建节点逻辑；外层 `pointer-events:none`，不挡拖动和双击。旧的「画布还是空的 / 和助手开始」空态已并入，不再有两套。
+- **多段对话**：`GET|POST /api/v1/ip-studio/projects/{id}/conversations` 与 `GET …/conversations/{threadId}`（`StudioDialogueController`），无迁移、不调模型、不扣费。POST `{clientRequestId}` 同人同键幂等，本人在这张画布已有空闲空对话就复用并设为当前；列表 `StudioDialogueThreadSummary` 的 `lastActivityAt` 取最后一条消息与创建时间中较晚的，最多 50 段。前端 `studio-dialogue-threads.tsx`（助手头部「新对话 / 历史对话」）。**当前对话在回复或制作（含暂停）时不能新建也不能切换**：画布节点是前端按当前对话的事件流写进去的，切走会漏节点；服务端不拦。
+- **卡片只回答做什么、花多少、按哪个按钮**：同一条回复里的方案 + 确认卡合成一张；不显示每步报价、上限、预留、过期时间、技能版本；上限输入只在预算不够（shortfall）时出现。打字「可以」仍能确认（`StudioNaturalApprovals` 不变），界面不再提示。`approaches[].rationale` / `tradeoffs` 永不显示（rationale 仍必填）。完成总结（`StudioExecutionSummary`）只一句结果 + 总花费，建议按实际产物给；「放进画布」不给完成总结、system 消息和本条已建 / 改过节点的回复，正文至少 80 字。
+- **提示词改了要升版**：`dap.ip_studio_skill_plan.md`、`dap.ip_studio_skill_dialogue.md`、`RequestApprovalTool` 的 `scope` 说明一起改，`PromptTemplateSeeder.SEED_VERSION` 升到 `v20-2026-10-20-concise-cards`，不升线上不生效；真模型尚未验证（§8.0.1 ⑦，见 TODO.md）。

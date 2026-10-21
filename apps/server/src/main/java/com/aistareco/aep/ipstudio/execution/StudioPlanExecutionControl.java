@@ -43,6 +43,16 @@ public class StudioPlanExecutionControl implements StudioExecutionControl {
                 .map(e->new ExecutionView(e.getId(),e.getStage(),e.getStatus()));
     }
 
+    /** Same filter as {@link #active}, one query for the whole canvas instead of one per thread. */
+    @Override
+    public java.util.Map<String,ExecutionView> activeByThread(String userId,String projectId,java.util.Collection<String> threadIds) {
+        java.util.Map<String,ExecutionView> out=new java.util.HashMap<>();
+        for(var e:executions.findByProjectIdAndStatusIn(projectId,ACTIVE))
+            if(userId.equals(e.getOwnerUserId())&&e.getThreadId()!=null&&threadIds.contains(e.getThreadId()))
+                out.putIfAbsent(e.getThreadId(),new ExecutionView(e.getId(),e.getStage(),e.getStatus()));
+        return out;
+    }
+
     @Override
     public void wake(String executionId) {
         var target=executor.getIfAvailable();

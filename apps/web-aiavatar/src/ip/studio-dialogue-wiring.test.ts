@@ -39,10 +39,12 @@ test('the dialogue is actually mounted and wired', () => {
   // the canvas sends the brief by itself, and the assistant's new nodes come into view.
   expect(read('components/landing/ip-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('components/hub/studio-home.tsx')).toContain('<StudioConversationStart ');
-  expect(read('ip/studio-creation-brief.tsx')).toContain('<StudioConversationStart ');
+  expect(read('ip/studio-create-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('ip/studio-workspace.tsx')).toContain('autoSend={entryAutoSend}');
   expect(read('ip/studio-workspace.tsx')).toContain('>问助手</button>');
-  expect(read('ip/studio-workspace.tsx')).toContain('className="studio-start studio-canvas-empty"');
+  // The empty canvas shows one guide card (docs/ip-studio-new-canvas-and-threads.md §2.3), with the assistant open or closed.
+  expect(read('ip/studio-workspace.tsx')).toMatch(/studioCanvasGuideVisible\(\{nodeCount:nodes\.length,mode,panelOpen:[^}]*\}\)\s*&&<StudioCanvasGuide assistantOpen=\{assistantOpen\}/);
+  expect(read('ip/studio-workspace.tsx')).not.toContain('studio-canvas-empty');
   expect(assistant).toContain('dispatchStudioCommand("reveal"');
   expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'reveal'");
   // The assistant opens by default on desktop canvases; the stage steps its chrome aside for a docked panel.
@@ -121,13 +123,13 @@ test('visible copy follows the product rules', () => {
   }
 });
 
-// The confirmation card tells people what to type; that word must be one the server's natural-approval guard accepts
-// (StudioNaturalApprovals, mirrored by the demo's mockSaysApprove). It said 「可以」, which the guard does not accept.
-test('the word the confirmation card suggests actually confirms', async () => {
+// docs/ip-studio-new-canvas-and-threads.md §4: the card no longer tells people they can type their go-ahead, but typing
+// a go-ahead still confirms it: the server's natural-approval guard (StudioNaturalApprovals, mirrored by the demo's
+// mockSaysApprove) is unchanged, so the rule is pinned here by behaviour rather than by the card's copy.
+test('the card does not teach typed confirmation, and typing a go-ahead still confirms', async () => {
   const { mockSaysApprove } = await import('./mocks/studio-dialogue');
-  const word = read('ip/studio-dialogue-approval.tsx').match(/直接回复「(.+?)」也行/)?.[1];
-  expect(word).toBeDefined();
-  expect(mockSaysApprove(word!)).toBe(true);
+  expect(read('ip/studio-dialogue-approval.tsx')).not.toMatch(/直接回复「.+?」/);
+  expect(read('../../server/src/main/java/com/aistareco/aep/ipstudio/execution/StudioNaturalApprovals.java')).toMatch(/class StudioNaturalApprovals/);
   for (const yes of ['可以', '好', '行吧', '嗯，可以', '好的，开始制作']) expect(mockSaysApprove(yes)).toBe(true);
   for (const no of ['可以吗？', '先别开始', '再想想', '改成横屏', '可以把第 2 段换成横屏', '行不行', '不可以']) expect(mockSaysApprove(no)).toBe(false);
 });

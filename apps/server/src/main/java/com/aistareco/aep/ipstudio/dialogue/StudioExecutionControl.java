@@ -27,6 +27,16 @@ public interface StudioExecutionControl {
      */
     default Optional<ExecutionView> active(String userId, String projectId, String threadId) { return Optional.empty(); }
 
+    /**
+     * {@link #active} for several threads of one canvas at once, keyed by thread id (the 「历史对话」 list). Default: one
+     * {@link #active} lookup per thread; the executor overrides it with a single query.
+     */
+    default java.util.Map<String, ExecutionView> activeByThread(String userId, String projectId, java.util.Collection<String> threadIds) {
+        java.util.Map<String, ExecutionView> out = new java.util.HashMap<>();
+        for (String threadId : threadIds) active(userId, projectId, threadId).ifPresent(v -> out.put(threadId, v));
+        return out;
+    }
+
     /** Wake the shared advance entry (e.g. steering arrived, a bound dialogue turn settled). Best-effort; the scan recovers. */
     default void wake(String executionId) { }
 

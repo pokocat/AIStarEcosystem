@@ -133,11 +133,6 @@ html[data-layout="mobile"] .studio-character-missing { height:56px; }
 .studio-ip-asset-grid > div { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .studio-ip-asset-grid video { width: 100%; height: 210px; object-fit: contain; }
 .studio-ip-asset-grid span { color: var(--ink-2); font-size: 12px; }
-.studio-start { position: absolute; top: 42%; left: 50%; transform: translate(-50%,-50%); pointer-events: auto; width: min(560px,calc(100% - 32px)); text-align: center; }
-.studio-start h2 { font-size: 28px; font-weight: 650; margin: 0 0 14px; }
-.studio-start p { color: var(--ink-2); line-height: 1.7; margin: 0 0 28px; }
-.studio-start > div { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
-.studio-start button { display: inline-flex; align-items: center; gap: 10px; min-height: 48px; padding: 0 20px; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; cursor: pointer; }
 .studio-focused-view { position: absolute; inset: 155px 18px 82px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: auto; padding: 24px; }
 .studio-focused-view > header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 16px; }
 .studio-focused-view h2 { font-size: 22px; margin: 0; font-weight: 650; }
@@ -632,7 +627,6 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 .ip-surface .studio-assistant-inventory button { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 10px; border:1px solid var(--line-2); border-radius:999px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; cursor:pointer; }
 .ip-surface .studio-assistant-inventory button:hover { background:var(--surface-2); border-color:var(--ink-3); }
 .ip-surface .studio-assistant-inventory button[aria-pressed="true"] { background:var(--primary-soft); border-color:var(--primary); color:var(--primary-700); }
-.ip-surface .studio-assistant-inventory small { font-size:12px; color:var(--ink-3); }
 .ip-surface .studio-assistant-starters { display:grid; grid-template-columns:minmax(0,1fr); gap:10px; }
 .ip-surface .studio-assistant-starters button { display:grid; grid-template-columns:40px minmax(0,1fr) 16px; gap:14px; align-items:start; width:100%; padding:14px 14px 14px 12px; border:1px solid var(--line-2); border-radius:14px; background:var(--surface); color:var(--ink); text-align:left; font:inherit; cursor:pointer; transition:background .2s,border-color .2s; }
 .ip-surface .studio-assistant-starters button:hover { background:var(--surface-2); border-color:var(--ink-3); }
@@ -644,7 +638,6 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 .ip-surface .studio-assistant-starter-body strong { font-size:14px; font-weight:600; }
 .ip-surface .studio-assistant-starter-body span { font-size:12px; line-height:1.6; color:var(--ink-2); overflow-wrap:anywhere; }
 .ip-surface .studio-assistant-starters button>svg { margin-top:2px; color:var(--ink-4); }
-.ip-surface .studio-assistant-welcome .studio-dialogue-link { align-self:flex-start; }
 .ip-surface .studio-assistant-panel .studio-turn { padding:0; background:transparent; border-radius:0; }
 .ip-surface .studio-assistant-panel .studio-turn-user { padding:12px 14px; margin-left:36px; background:var(--surface-2); border-radius:12px 12px 3px 12px; }
 .ip-surface .studio-assistant-panel .studio-turn p { margin:5px 0; line-height:1.75; font-size:13px; }
@@ -672,7 +665,6 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 .ip-surface .studio-dialogue-send-reason { font-size:12px; color:var(--warn); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button { width:36px; height:36px; padding:0; border-radius:10px; display:grid; place-items:center; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:disabled { background:var(--line-2); color:var(--surface); border-color:transparent; }
-.ip-surface .studio-assistant-send-hint { margin:0; padding:0 4px; font-size:11px; line-height:1.6; color:var(--ink-3); }
 @container studio-assistant-input (max-width:300px) {
   .ip-surface .studio-dialogue-send-reason { display:none; }
 }
@@ -714,7 +706,6 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel { position:fixed; max-width:calc(100% - 24px); width:calc(100% - 24px)!important; left:12px!important; right:12px; top:112px!important; bottom:72px; height:auto; max-height:calc(100dvh - 184px); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel>.studio-floating-body { padding-inline:14px; }
 html[data-layout="mobile"] .ip-surface .studio-assistant-starters button { padding:10px; }
-html[data-layout="mobile"] .ip-surface .studio-assistant-send-row>span { visibility:hidden; }
 @media (prefers-reduced-motion:reduce) { .ip-surface .studio-assistant-panel * { transition:none!important; scroll-behavior:auto; } }
 .ip-surface .studio-assistant-panel textarea:not(:disabled)::placeholder { color:var(--ink-2); opacity:1; }
 /* 复刻素材清单（开场引导的第二步） */
@@ -738,13 +729,6 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-send-row>span { visibil
 .ip-surface .studio-assistant-checklist .studio-dialogue-link { margin-left: 6px; }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; border:1px solid var(--line-2); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }
-.ip-surface .studio-assistant-status.is-hint { align-items:flex-start; justify-content:space-between; padding:10px 20px; background:var(--action-tint); color:var(--ink); line-height:1.6; }
-.ip-surface .studio-assistant-status.is-hint>span { min-width:0; overflow-wrap:anywhere; }
-.ip-surface .studio-assistant-status.is-hint .studio-dialogue-link { flex-shrink:0; }
-/* 空画布：对话优先的起点提示（助手打开后不显示） */
-.ip-surface .studio-start.studio-canvas-empty .studio-start-primary { display:inline-flex; align-items:center; gap:8px; min-height:42px; padding:0 20px; border:0; border-radius:10px; background:var(--action); color:var(--on-action); font:inherit; font-size:14px; font-weight:600; cursor:pointer; }
-.ip-surface .studio-start.studio-canvas-empty .studio-start-primary:hover { background:var(--action-600); }
-.ip-surface .studio-start.studio-canvas-empty > div { margin-top:16px; }
 
 /* 画布页改版（2026-10-19）：第二排工具条取消后的三个悬浮件 */
 .studio-ai-orb { position:absolute; right:18px; top:72px; z-index:82; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:50%; background:var(--ai-gradient); color:#fff; box-shadow:0 8px 22px rgba(79, 91, 213, 0.35); cursor:pointer; pointer-events:auto; transition:transform 160ms ease-out, box-shadow 160ms ease-out; }
@@ -761,7 +745,6 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-
 .ip-surface .studio-dialogue-chip.is-skill .ant-select .ant-select-selection-item { color:var(--ai-ink); }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled) { background:var(--ai-gradient); color:#fff; border-color:transparent; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled):hover { background:var(--ai-gradient); filter:brightness(1.06); }
-.ip-surface .studio-assistant-status.is-hint { background:var(--ai-soft); }
 html[data-layout="mobile"] .studio-ai-orb { right:12px; top:68px; width:40px; height:40px; }
 html[data-layout="mobile"] .ip-surface .studio-tasks-launch { left:12px; bottom:84px; }
 
@@ -903,6 +886,36 @@ html[data-layout="desktop"] .studio-flow-shell .studio-view-switch { top:74px; l
 .ip-surface button.studio-assistant-mode { border:0; font:inherit; font-size:12px; font-weight:500; line-height:20px; cursor:pointer; }
 .ip-surface button.studio-assistant-mode:hover { filter:brightness(.97); }
 .ip-surface button.studio-assistant-mode:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+/* 头部右边：「新对话」「历史对话」和停靠、关闭是同一套 32px 图标按钮（docs/ip-studio-new-canvas-and-threads.md §3.3）。 */
+.ip-surface .studio-floating-actions { display:flex; align-items:center; gap:2px; }
+.ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child { align-items:center; gap:2px; flex-shrink:0; }
+.ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button { width:32px; height:32px; padding:0; border-radius:8px; color:var(--ink-2); transition:background-color 120ms ease-out, color 120ms ease-out; }
+.ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button:not(:disabled):hover,
+.ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button[aria-expanded="true"] { background:var(--surface-2); color:var(--ink); }
+.ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button:disabled { opacity:.4; cursor:not-allowed; }
+.ip-surface .studio-assistant-panel .studio-floating-title { min-width:0; }
+/* 历史对话列表：当前那段与悬停用群青，不用 AI 渐变（这里不是 AI 在做事）。名称单行省略，全名在提示里。 */
+.ip-surface .studio-dialogue-threads { display:flex; flex-direction:column; gap:8px; width:min(340px, calc(100vw - 32px)); max-height:min(460px, calc(100dvh - 160px)); padding:12px; box-sizing:border-box; font-family:var(--font-ui); color:var(--ink); }
+.ip-surface .studio-dialogue-threads>header { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; padding:0 2px 2px; }
+.ip-surface .studio-dialogue-threads>header strong { font-size:14px; font-weight:600; white-space:nowrap; }
+.ip-surface .studio-dialogue-threads-new { display:inline-flex; align-items:center; gap:6px; height:30px; padding:0 10px; border:1px solid var(--line-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12px; white-space:nowrap; cursor:pointer; flex:none; }
+.ip-surface .studio-dialogue-threads-new:not(:disabled):hover { background:var(--surface-2); border-color:var(--ink-3); }
+.ip-surface .studio-dialogue-threads-new:disabled { opacity:.45; cursor:not-allowed; }
+.ip-surface .studio-dialogue-threads-new:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.ip-surface .studio-dialogue-threads-note { margin:0; padding:0 2px; font-size:12px; line-height:1.6; color:var(--ink-2); overflow-wrap:anywhere; }
+.ip-surface .studio-dialogue-threads-error { display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:0 2px; font-size:12px; line-height:1.6; color:var(--err); }
+.ip-surface .studio-dialogue-threads-list { display:flex; flex-direction:column; gap:2px; min-height:0; margin:0; padding:0; list-style:none; overflow:auto; overscroll-behavior:contain; }
+.ip-surface .studio-dialogue-thread { display:grid; grid-template-columns:minmax(0, 1fr) auto; grid-template-areas:"title tags" "meta tags"; column-gap:10px; row-gap:2px; align-items:center; width:100%; min-width:0; padding:8px 10px; border:0; border-radius:8px; background:transparent; color:var(--ink); font:inherit; text-align:left; cursor:pointer; }
+.ip-surface .studio-dialogue-thread:not(:disabled):hover { background:var(--primary-tint); }
+.ip-surface .studio-dialogue-thread.is-current,.ip-surface .studio-dialogue-thread.is-current:hover { background:var(--primary-soft); }
+.ip-surface .studio-dialogue-thread:disabled { opacity:.5; cursor:not-allowed; }
+.ip-surface .studio-dialogue-thread:focus-visible { outline:2px solid var(--primary); outline-offset:-2px; }
+.ip-surface .studio-dialogue-thread-title { grid-area:title; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:500; line-height:1.5; }
+.ip-surface .studio-dialogue-thread-meta { grid-area:meta; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; line-height:1.5; color:var(--ink-2); font-variant-numeric:tabular-nums; }
+.ip-surface .studio-dialogue-thread-tags { grid-area:tags; display:flex; flex-wrap:wrap; justify-content:flex-end; gap:4px; max-width:112px; }
+.ip-surface .studio-dialogue-thread-tags em { padding:0 6px; border-radius:999px; background:var(--surface-2); color:var(--ink-2); font-size:11px; font-style:normal; line-height:18px; white-space:nowrap; }
+.ip-surface .studio-dialogue-thread-tags em.is-current { background:var(--primary); color:var(--on-primary); }
+.ip-surface .studio-dialogue-thread-tags em.is-active { background:var(--primary-tint); color:var(--primary-700); box-shadow:inset 0 0 0 1px var(--primary-soft); }
 /* 进度条三行：标题 + 已用积分 / 6px 渐变条 / 现在在做什么 + 暂停 停止。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-execution { gap:8px; padding:12px 20px; background:color-mix(in srgb, var(--surface-2) 40%, var(--surface)); }
 .ip-surface .studio-assistant-panel .studio-dialogue-execution-head { flex-wrap:nowrap; align-items:center; font-size:13px; }
@@ -974,11 +987,36 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 /* 停止：红字、浅粉边（危险动作，但不是一块红）。 */
 .ip-surface .studio-dialogue-execution-actions .ant-btn-dangerous:not(:disabled) { border-color:color-mix(in srgb, var(--err) 30%, var(--surface)); background:var(--surface); color:var(--err); }
 .ip-surface .studio-dialogue-execution-actions .ant-btn:not(.ant-btn-dangerous):not(.ant-btn-primary) { border-color:var(--line); color:var(--ink); }
-/* 已确认的确认卡：一行「已确认 · 总上限 … · 重做上限 …」，细边、无底色，点开看做什么和确认时间。 */
+/* 已确认的确认卡：一行「已确认 · 30 积分」，细边、无底色，点开看要做的东西和确认时间。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-approval[data-status="approved"] { gap:4px; padding:8px 12px; border-color:var(--line); border-radius:10px; background:transparent; }
-.ip-surface .studio-assistant-panel .studio-dialogue-approval[data-status="approved"] h4 { font-size:13px; font-weight:500; }
 .ip-surface .studio-dialogue-approval-done > summary { cursor:pointer; font-size:12px; color:var(--ink-2); }
 .ip-surface .studio-dialogue-approval-done[open] { display:flex; flex-direction:column; gap:6px; }
+/* 确认卡与制作计划（2026-10-20，docs/ip-studio-new-canvas-and-threads.md §4.2）：一张卡只回答做什么、花多少、按哪个按钮。
+   方案跟着报价来时画在确认卡里；每一步是标题、类型和要生成的描述（一步时三行，展开看全文；多步时收起，点开看）。
+   主按钮「开始制作 / 开始分析 / 提高上限并继续」是 AI 渐变（.studio-assistant-primary），「先改改」白底细边，状态标签灰底。 */
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-step { display:flex; flex-direction:column; gap:6px; min-width:0; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); }
+.ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header { display:flex; align-items:baseline; gap:8px; min-width:0; }
+.ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header strong { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:600; }
+.ip-surface .studio-assistant-panel :is(.studio-dialogue-plan-step, .studio-dialogue-plan-steps li)>header small { flex-shrink:0; color:var(--ink-3); font-size:11px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-prompt { display:flex; flex-direction:column; align-items:flex-start; gap:2px; min-width:0; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-prompt p { margin:0; font-size:12px; line-height:1.7; color:var(--ink-2); white-space:pre-wrap; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-prompt p[data-clamped] { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps { margin:0; padding:0; list-style:none; display:flex; flex-direction:column; border:1px solid var(--line); border-radius:10px; background:var(--surface-2); overflow:hidden; counter-reset:plan-step; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps li { display:flex; flex-direction:column; gap:4px; min-width:0; padding:8px 12px; border-top:1px solid var(--line); counter-increment:plan-step; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps li:first-child { border-top:0; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps li>header::before { content:counter(plan-step); flex-shrink:0; min-width:14px; color:var(--ink-3); font-size:12px; font-variant-numeric:tabular-nums; }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps details>summary { cursor:pointer; font-size:12px; color:var(--ink-2); }
+.ip-surface .studio-assistant-panel .studio-dialogue-plan-steps details>p { margin:4px 0 0; font-size:12px; line-height:1.7; color:var(--ink-2); white-space:pre-wrap; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-panel .studio-dialogue-approaches article>header span { background:var(--surface-3); color:var(--ink-2); }
+.ip-surface .studio-assistant-panel .studio-dialogue-approaches .studio-dialogue-link { align-self:flex-start; }
+.ip-surface .studio-assistant-panel .studio-dialogue-approval>header span { background:var(--surface-3); color:var(--ink-2); }
+.ip-surface .studio-assistant-panel .studio-dialogue-approval .studio-dialogue-note .studio-dialogue-link { margin-left:8px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-raise { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.ip-surface .studio-assistant-panel .studio-dialogue-raise-field { display:flex; align-items:center; gap:8px; min-width:0; font-size:12px; color:var(--ink-2); }
+.ip-surface .studio-assistant-panel .studio-dialogue-raise input { width:120px; min-width:0; height:36px; padding:0 10px; box-sizing:border-box; border:1px solid var(--line-2); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:13px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-raise input:focus-visible { outline:2px solid var(--primary); outline-offset:1px; }
+.ip-surface .studio-assistant-panel .studio-dialogue-approval-actions .studio-dialogue-secondary { background:var(--surface); border:1px solid var(--line-2); color:var(--ink); box-shadow:none; }
+.ip-surface .studio-assistant-panel .studio-dialogue-approval-actions .studio-dialogue-secondary:not(:disabled):hover { background:var(--surface-2); border-color:var(--ink-3); color:var(--ink); }
 /* 运营专用的「整理成技能草稿」和建议一样是小胶囊。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-skill-draft .ant-btn { height:30px; padding:0 12px; border-color:var(--line); border-radius:999px; font-size:12px; box-shadow:none; }
 /* 输入框按钮区与设计稿逐像素对齐（第五遍）：发送键始终是满色渐变（不能发时只换指针，原因写在旁边 / 提示里）；
@@ -1000,8 +1038,6 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .ip-surface .studio-assistant-panel .studio-assistant-primary:not(:disabled):hover { background:var(--ai-gradient); border-color:transparent; color:#fff; filter:brightness(1.06); }
 .ip-surface .studio-conversation-share .studio-assistant-primary:not(:disabled) { background:var(--ink); border-color:var(--ink); color:var(--surface); }
 .ip-surface .studio-conversation-share .studio-assistant-primary:not(:disabled):hover { background:var(--ink-2); border-color:var(--ink-2); color:var(--surface); filter:none; }
-.ip-surface .studio-start.studio-canvas-empty .studio-start-primary { background:var(--ai-gradient); color:#fff; }
-.ip-surface .studio-start.studio-canvas-empty .studio-start-primary:hover { background:var(--ai-gradient); filter:brightness(1.06); }
 .ip-surface .studio-mode-tabs button[aria-pressed="true"] { color:var(--primary-700); background:var(--primary-soft); border-color:var(--primary); }
 
 /* 成片高级编辑（Twick，2026-10-19）：挂到 body 上的全屏外壳。Twick 自己的样式只在 .twick-scope 内生效（见 twick-scoped.css）。 */
