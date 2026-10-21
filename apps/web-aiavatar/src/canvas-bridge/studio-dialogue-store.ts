@@ -63,6 +63,12 @@ export interface DialogueStore {
   activeTurnId?: string;
   doneTurns: string[];
   execution?: StudioPlanExecution;
+  /**
+   * A card of this thread just turned 「approved」 (typed 「可以」, or seen so in a snapshot) for an execution this store does
+   * not hold yet. Until that execution is read the conversation stays put: its nodes arrive on this thread's stream
+   * (Codex 2026-10-21, P2). The button path holds it by `confirming` and folds the execution itself.
+   */
+  awaitingExecutionId?: string;
   /** Bumped by execution-related events so the session can refresh the execution projection. */
   executionTouchedSeq: number;
   budgets: Record<string, StudioBudgetUpdateData>;
@@ -88,6 +94,8 @@ export type DialogueAction =
   | { type: 'outbox.remove'; clientMessageId: string }
   /** An execution of another conversation (a read still on its way when the user switched) is not shown here. */
   | { type: 'execution'; execution: StudioPlanExecution }
+  /** The awaited execution cannot be read at all (it does not exist for this user): nothing will arrive for it. */
+  | { type: 'execution.unavailable'; executionId: string }
   | { type: 'approval.local'; approvalId: string; status: DialogueApprovalBlock['status']; executionId?: string;
       /** The caps the server accepted (from the execution it returned); a server snapshot of the card wins. */
       approved?: { budgetCap: number; autoFixCap: number } }
@@ -263,6 +271,10 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
       if (!id) [next, id] = ensureAssistantMessage(next, event, d.messageId);
       next = upsertBlock(next, id, d.block);
       if (d.block.status === 'pending') next = supersedeApprovals(next, d.block.approvalId);
+      // Confirmed just now (in words, or by a button whose answer has not come back yet): hold the conversation until
+      // the execution it started is read.
+      if (d.block.status === 'approved' && d.block.executionId && found?.block.status !== 'approved' && next.execution?.id !== d.block.executionId)
+        next = { ...next, awaitingExecutionId: d.block.executionId };
       return d.shortfall === undefined ? next : { ...next, shortfalls: { ...next.shortfalls, [d.block.approvalId]: d.shortfall } };
     }
     case 'budget.update': {
@@ -292,7 +304,9 @@ function applySnapshot(store: DialogueStore, action: Extract<DialogueAction, { t
   const replace = action.mode === 'replace' || !sameThread;
   if (!replace && state.latestSeq < store.latestSeq) {
     // An older poll must not roll streamed text back; it may still carry a newer execution.
-    return { ...store, thread: { ...state.thread, lastSeq: Math.max(state.thread.lastSeq, store.thread?.lastSeq || 0) }, execution: newerExecution(store.execution, state.execution) };
+    const execution = newerExecution(store.execution, state.execution);
+    return { ...store, thread: { ...state.thread, lastSeq: Math.max(state.thread.lastSeq, store.thread?.lastSeq || 0) }, execution,
+      awaitingExecutionId: execution && execution.id === store.awaitingExecutionId ? undefined : store.awaitingExecutionId };
   }
   const incoming = new Map(state.messages.map(m => [m.id, m]));
   const confirmedClientIds = new Set(state.messages.map(m => m.clientMessageId).filter(Boolean));
@@ -324,13 +338,22 @@ function applySnapshot(store: DialogueStore, action: Extract<DialogueAction, { t
   const canvasAckSeq = !sameThread ? (restore ? 0 : action.canvasAckSeq ?? state.latestSeq) : replace ? Math.max(store.canvasAckSeq, state.latestSeq) : store.canvasAckSeq;
   const canvasSeq = !sameThread ? canvasAckSeq : replace ? Math.max(store.canvasSeq, state.latestSeq) : store.canvasSeq;
   const restoreThroughSeq = !sameThread ? (restore ? state.latestSeq : 0) : store.restoreThroughSeq;
+  const execution = replace ? state.execution : newerExecution(store.execution, state.execution);
+  // A card this thread showed as pending that the snapshot reports confirmed (the event may never have reached this tab):
+  // the same hold as for the event. A first read of a thread holds nothing, its cards were confirmed long ago.
+  const before = new Map<string, string>();
+  if (sameThread) for (const m of store.messages) for (const b of m.blocks) if (b.type === 'approval') before.set(b.approvalId, b.status);
+  let confirmed: string | undefined;
+  for (const m of messages) for (const b of m.blocks)
+    if (b.type === 'approval' && b.status === 'approved' && b.executionId && before.get(b.approvalId) === 'pending') confirmed = b.executionId;
+  const awaiting = !sameThread ? undefined : confirmed && confirmed !== execution?.id ? confirmed : store.awaitingExecutionId;
   return {
     // Seqs are per thread: a branch starts from a clean slate, including its canvas cursor.
     ...(sameThread ? store : emptyDialogueStore()),
     thread: state.thread, messages, layouts, turnMessages, doneTurns, activeTurnId: active,
     latestSeq, canvasSeq, canvasAckSeq, restoreThroughSeq,
     nextCursor: state.nextCursor, hasOlder: sameThread && !replace ? store.hasOlder || !!state.nextCursor : !!state.nextCursor,
-    execution: replace ? state.execution : newerExecution(store.execution, state.execution),
+    execution, awaitingExecutionId: awaiting && awaiting !== execution?.id ? awaiting : undefined,
     outbox: (sameThread ? store.outbox : []).filter(o => !confirmedClientIds.has(o.clientMessageId)),
     localMessageIds: (sameThread ? store.localMessageIds : []).filter(id => messages.some(m => m.id === id) && !incoming.has(id)),
   };
@@ -364,12 +387,17 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
         status: result.queueState === 'queued' ? 'queued' : result.queueState === 'applied' ? 'applied' : 'done', createdAt: action.createdAt || item.createdAt };
       return { ...store, outbox, queueStates, activeTurnId, messages: sortMessages([...store.messages, message]), localMessageIds: [...store.localMessageIds, message.id] };
     }
-    case 'execution':
+    case 'execution': {
+      // Read: whatever it says, the conversation no longer waits for it.
+      const settled = store.awaitingExecutionId === action.execution.id ? { ...store, awaitingExecutionId: undefined } : store;
       // The session drops answers of a conversation it left; this is the second check, on the data itself (Codex review
       // 2026-10-20: a late read put the old conversation's execution into the new one and locked it as 「进行中」).
       // An execution without a thread (older records) has nothing to compare and is kept.
-      if (store.thread && action.execution.threadId && action.execution.threadId !== store.thread.id) return store;
-      return { ...store, execution: newerExecution(store.execution, action.execution) };
+      if (store.thread && action.execution.threadId && action.execution.threadId !== store.thread.id) return settled;
+      return { ...settled, execution: newerExecution(settled.execution, action.execution) };
+    }
+    case 'execution.unavailable':
+      return store.awaitingExecutionId === action.executionId ? { ...store, awaitingExecutionId: undefined } : store;
     case 'approval.local': {
       const found = findBlock(store, isApproval(action.approvalId));
       if (!found) return store;

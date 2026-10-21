@@ -298,3 +298,31 @@ test('demo mode: a conversation that is still replying is listed as active and n
   expect((await mockDialogueThreads('busy'))[0]).toMatchObject({ id: main.thread.id, active: false });
   mockDialogueTiming.tickMs = 0;
 });
+
+// Codex 2026-10-21 (P2): replying 「可以」 confirmed the card on the server; the reply ended while the execution's detail was
+// still on its way, and both buttons opened up in between. They stay closed, with the same reason, until it is read.
+test('after a card is confirmed in words both buttons stay closed until the execution is read', async () => {
+  const plan = { type: 'plan', planRunId: 'pr', revision: 1, fingerprint: 'f1', plan: { summary: '出一张海报', steps: [], questions: [] } } as unknown as StudioDialogueMessage['blocks'][number];
+  const card = { type: 'approval', approvalId: 'ap1', stage: 'production', planFingerprint: 'f1', scope: ['海报'], quotedCost: 8, budgetCap: 12, autoFixCap: 0, status: 'pending' } as const;
+  const withCard: StudioDialogueState = { ...talked, messages: [talked.messages[0], { ...talked.messages[1], blocks: [plan, card] }] };
+  api.getConversation.mockResolvedValue(withCard);
+  let read!: (execution: unknown) => void;
+  api.getExecution.mockReturnValue(new Promise(resolve => { read = resolve; }));
+  await ready();
+  expect(headerButton('新对话').disabled).toBe(false);
+  // The reply to 「可以」: the server confirmed the card inside it, then the reply ended.
+  emit(ev('message.delta', { messageId: 'a2', partId: 'p', delta: '好的，开始制作。' }),
+    { ...ev('approval.required', { messageId: 'a1', block: { ...card, status: 'approved', executionId: 'E1', approvedBudgetCap: 12, approvedAutoFixCap: 0, approvedAt: at } }), executionId: 'E1' },
+    ev('turn.done', { reason: 'completed', messageId: 'a2' }));
+  for (const name of ['新对话', '历史对话']) {
+    expect(headerButton(name).disabled).toBe(true);
+    expect(headerButton(name).title).toBe(DIALOGUE_THREAD_BUSY);
+  }
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledWith('p', 'E1'));
+  // A quick one, already finished when read: the conversation can be left now.
+  await act(async () => { read({ id: 'E1', projectId: 'p', threadId: 'th', skillKey: 'image-generation', skillVersion: 1, stage: 'production', planRunId: 'pr', planRevision: 1,
+    planFingerprint: 'f1', status: 'done', steps: [], budgets: [{ stage: 'production', approvedCap: 12, autoFixCap: 0, spent: 8, inFlight: 0, remaining: 4 }],
+    startedAt: at, deadlineAt: at, updatedAt: at, finishedAt: at }); });
+  await waitFor(() => expect(headerButton('新对话').disabled).toBe(false));
+  expect(headerButton('历史对话').disabled).toBe(false);
+});

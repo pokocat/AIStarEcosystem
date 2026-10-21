@@ -10,6 +10,10 @@
 // execution itself (steps + their native runs, executionRestoreUpserts), not only from
 // events: those are pruned after a while and a new browser has no cursor. Restored commands
 // only add what is missing, so reopening never duplicates and never touches user writing.
+// 「Missing」 is decided by whether the result landed, not by whether the node exists: an object
+// the assistant prepared for a step (§6.1) is on the canvas, empty, long before its result
+// arrives (Codex 2026-10-21: closed during the execution, opened on another device, the paid
+// result never showed up). See stepResultLanded / nodeHoldsResult.
 import type { IpRun, IpRunOutput } from '@ai-star-eco/types';
 import type {
   StudioCheckResultData, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
@@ -144,9 +148,33 @@ export type ProjectionOptions = {
    * proposal), proposals are dropped, and an edge is added only next to a node this batch created.
    */
   missingOnly?: boolean;
-  /** Node ids created earlier in the same batch (restore edges may attach to them). */
+  /** Node ids created, or filled by a restore, earlier in the same batch (restore edges may attach to them). */
   created?: ReadonlySet<string>;
 };
+
+/**
+ * Something already in a node that a restore must not replace (StudioPlanValidator.emptyObject on the server, inverted):
+ * media or text of its own, a script, a generation in flight, or an execution's result (a binding is written together
+ * with the result it brings). An object the assistant prepared for a step holds none of these until its result lands.
+ */
+export function nodeHoldsResult(node: CanvasNodeData): boolean {
+  const md = node.metadata;
+  if (!md) return false;
+  if (md.status === 'loading' || md.studio?.execution) return true;
+  const written = (value?: string) => !!value?.trim();
+  if (userTextContent(node)) return written(md.content) || !!md.studio?.script || written(md.studio?.scriptMarkdown);
+  return !!md.storageKey || !!md.images?.some(i => i.storageKey) || !!md.videos?.some(v => v.storageKey) || written(md.content);
+}
+
+/**
+ * A restore command and a node already on the canvas: only an empty, unbound node (the object prepared for the step) is
+ * filled. A node bound to a step already has its result (any attempt: a later manual regeneration in it is the user's and
+ * stays), and anything else in a node is the user's or another step's.
+ */
+function restoreFills(existing: CanvasNodeData, data: StudioNodeUpsertData) {
+  if (!data.executionId || !data.stepId) return false;
+  return !nodeHoldsResult(existing);
+}
 
 /**
  * Apply one node.upsert. `docVersion` is the canvas fingerprint the client currently holds;
@@ -174,7 +202,8 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
   if (!data.node) return unchanged();
   const incoming = { ...(data.node as unknown as CanvasNodeData), id: data.nodeId };
   const existing = projectedNode(doc, data, incoming);
-  if (existing && opts.missingOnly) return unchanged();
+  // A restore leaves a node exactly as it is unless the step's result never reached it (an empty prepared object, §6.1).
+  if (existing && opts.missingOnly && !restoreFills(existing, data)) return unchanged();
   const execution = binding(data, incoming, existing);
   // A result carries the shape its task asked for: the box takes it now, the file's real size refines it when it loads.
   const fitRatio = incoming.metadata?.studio?.mediaFit?.aspectRatio;
@@ -187,7 +216,8 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
     const merged = mergeServerNode(existing, incoming, execution);
     // A prepared object a step filled (§6.1) keeps its width; its height follows the result.
     const node: CanvasNodeData = incoming.metadata?.studio?.mediaFit ? fitStudioNodeToRatio(merged.node, fitRatio) : merged.node;
-    proposals = merged.proposals;
+    // A restore keeps what the user wrote there (keepText) and offers nothing: the sent prompt stays on the run's request.
+    proposals = opts.missingOnly ? [] : merged.proposals;
     if (!sameJson(node, existing)) { next = { ...doc, nodes: doc.nodes.map(n => n.id === existing.id ? node : n) }; changed = true; }
     // Assistant references are the node's complete media inputs: other picture / video / audio edges into it go.
     const refs = incoming.metadata?.studio?.spec?.references;
@@ -282,8 +312,9 @@ export type CanvasProjectionOp =
 export function projectCanvasOps(doc: ProjectionDoc, ops: CanvasProjectionOp[], opts: { docVersion?: string } = {}) {
   let next = doc, conflicts = 0, changed = false;
   const proposals: (ProjectionProposal & { turnId: string })[] = [], missing: StudioNodeUpsertData[] = [];
-  const created = new Set<string>(), projected = new Set<string>();
-  const options = (op: CanvasProjectionOp): ProjectionOptions => ({ ...opts, missingOnly: !!op.restore, created });
+  // `attach`: nodes this batch created, or filled on restore; a restore edge may only attach next to one of them.
+  const created = new Set<string>(), attach = new Set<string>(), projected = new Set<string>();
+  const options = (op: CanvasProjectionOp): ProjectionOptions => ({ ...opts, missingOnly: !!op.restore, created: attach });
   for (const op of ops) {
     const before = next;
     const result = op.kind === 'node' ? projectStudioNodeUpsert(next, op.data, options(op)) : projectStudioCheckResult(next, op.data, op.executionId);
@@ -292,16 +323,18 @@ export function projectCanvasOps(doc: ProjectionDoc, ops: CanvasProjectionOp[], 
     if (result.outcome === 'missing' && op.kind === 'node' && op.data.op === 'connect') missing.push(op.data);
     proposals.push(...result.proposals.map(p => ({ ...p, turnId: op.turnId })));
     next = { nodes: result.nodes, connections: result.connections };
-    for (const n of next.nodes) if (!before.nodes.some(b => b.id === n.id)) created.add(n.id);
+    for (const n of next.nodes) if (!before.nodes.some(b => b.id === n.id)) { created.add(n.id); attach.add(n.id); }
     if (op.kind === 'node' && op.data.op !== 'connect' && op.data.op !== 'propose') {
       const target = projectedNode(next, op.data, op.data.node ? { ...(op.data.node as unknown as CanvasNodeData), id: op.data.nodeId } : undefined);
       if (target) projected.add(target.id);
+      // A prepared object this restore filled never had its result's edges here either.
+      if (target && op.restore && result.outcome === 'applied') attach.add(target.id);
     }
   }
   // A connection may name a node created later in the same batch.
   for (const data of missing) {
     const op = ops.find(o => o.kind === 'node' && o.data === data);
-    const result = projectStudioNodeUpsert(next, data, { ...opts, missingOnly: !!op?.restore, created });
+    const result = projectStudioNodeUpsert(next, data, { ...opts, missingOnly: !!op?.restore, created: attach });
     if (result.outcome === 'applied') { changed = true; next = { nodes: result.nodes, connections: result.connections }; }
   }
   return { doc: next, conflicts, proposals, changed, projected: [...projected], created: [...created] };
@@ -343,10 +376,10 @@ export function runSentPrompt(run: IpRun): string | undefined {
   for (const value of [inputs?.studioRequest?.prompt, inputs?.prompt]) if (typeof value === 'string' && value.trim()) return value;
   return undefined;
 }
-function stepUpsert(execution: StudioPlanExecution, nodeId: string, type: 'text' | 'image' | 'video', title: string, stepId: string, runId: string, mock?: boolean) {
+function stepUpsert(execution: StudioPlanExecution, nodeId: string, type: 'text' | 'image' | 'video', title: string, stepId: string, runId: string, mock?: boolean, op: 'create' | 'update' = 'create') {
   const node = { id: nodeId, type, title, width: type === 'text' ? 380 : 320, height: type === 'text' ? 320 : 240, position: { x: 0, y: 0 },
     metadata: { status: 'success', studio: { runId, execution: { executionId: execution.id, stepId, runId }, ...(mock ? { mock: true } : {}) } } };
-  return { nodeId, op: 'create' as const, executionId: execution.id, stepId, runId, node: node as unknown as UpsertNode };
+  return { nodeId, op, executionId: execution.id, stepId, runId, node: node as unknown as UpsertNode };
 }
 const meta = (data: StudioNodeUpsertData) => (data.node as unknown as CanvasNodeData).metadata!;
 
@@ -367,7 +400,8 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
     if (!run) continue;
     const output = run.output || {}, operation = step.operation;
     const type = operation === 'image' ? 'image' : operation === 'video' || operation === 'assemble' ? 'video' : 'text';
-    const data = stepUpsert(execution, nodeId, type, step.title, step.id, run.id, output.mock);
+    // A step bound to a prepared object fills it (StudioPlanExecutor.nodeEvents: op update).
+    const data = stepUpsert(execution, nodeId, type, step.title, step.id, run.id, output.mock, nodeId === executionNodeId(execution.id, step.stage, step.id) ? 'create' : 'update');
     const metadata = meta(data), studio = metadata.studio!;
     const prompt = runSentPrompt(run);
     if (prompt) metadata.prompt = prompt;
@@ -422,18 +456,24 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
   return out;
 }
 
-/** Step output nodes of an execution that the canvas does not have and this viewer has not projected before. */
+/**
+ * Finished steps whose result is not on the canvas: their node is absent and this viewer never projected it, or their node
+ * is there without the result (the object prepared for the step, §6.1, that a closed canvas never received).
+ */
 export function missingExecutionNodes(execution: StudioPlanExecution, nodes: CanvasNodeData[], projected: ReadonlySet<string>): StudioPlanExecutionStep[] {
-  // A canvas emptied by the user stays empty on this browser: the per-browser record is the deletion tombstone and is
-  // honored even when nothing is left (Codex R6-02). A browser without the record (fresh device) restores once.
   return execution.steps.filter(step => {
     if (step.status !== 'done' || !step.runIds.length && !step.acceptedRunId) return false;
-    const id = stepNodeId(execution, step);
-    if (projected.has(id) || nodes.some(n => n.id === id)) return false;
-    // A node bound to one of this step's runs stands for it under another id (a check.result's own check node).
+    // A node bound to one of this step's runs stands for it, under its id or another (a check.result's own check node).
     // Step ids repeat across stages, so the run decides, not the step id alone.
-    return !nodes.some(n => { const bound = n.metadata?.studio?.execution;
-      return bound?.executionId === execution.id && bound.stepId === step.id && !!bound.runId && (step.runIds.includes(bound.runId) || step.acceptedRunId === bound.runId); });
+    if (nodes.some(n => { const bound = n.metadata?.studio?.execution;
+      return bound?.executionId === execution.id && bound.stepId === step.id && !!bound.runId && (step.runIds.includes(bound.runId) || step.acceptedRunId === bound.runId); })) return false;
+    const id = stepNodeId(execution, step), node = nodes.find(n => n.id === id);
+    // On the canvas: filled when the result has not landed and nothing else is in it. The per-browser record does not
+    // matter here (it remembers deletions, and a prepared object is recorded as soon as the assistant made it).
+    if (node) return !nodeHoldsResult(node);
+    // Not on the canvas: a canvas emptied by the user stays empty on this browser, the per-browser record being the
+    // deletion tombstone even when nothing is left (Codex R6-02). A browser without the record (fresh device) restores once.
+    return !projected.has(id);
   });
 }
 
@@ -443,8 +483,13 @@ export function missingExecutionNodes(execution: StudioPlanExecution, nodes: Can
  * to read the dialogue thread on canvas open so the restore can run without the panel being opened.
  */
 export function executionOutputMissing(runs: IpRun[], nodes: CanvasNodeData[], projected: ReadonlySet<string>): boolean {
-  return runs.some(run => run.status === 'done' && !!(run.inputs as { executionId?: string } | undefined)?.executionId && !projected.has(run.nodeId)
-    && !nodes.some(n => n.id === run.nodeId || n.metadata?.studio?.execution?.runId === run.id || n.metadata?.studio?.runId === run.id));
+  return runs.some(run => {
+    if (run.status !== 'done' || !(run.inputs as { executionId?: string } | undefined)?.executionId) return false;
+    if (nodes.some(n => n.metadata?.studio?.execution?.runId === run.id || n.metadata?.studio?.runId === run.id)) return false;
+    // Same rule as missingExecutionNodes: a node there without its result counts, a deleted one does not.
+    const node = nodes.find(n => n.id === run.nodeId);
+    return node ? !nodeHoldsResult(node) : !projected.has(run.nodeId);
+  });
 }
 
 // Per-viewer record of the nodes this browser already projected, so a node the user deleted is not rebuilt on the

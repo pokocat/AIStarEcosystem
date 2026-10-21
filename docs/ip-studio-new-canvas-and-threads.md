@@ -73,6 +73,9 @@
 > 前端所有线程归属的异步请求（分页、执行查询、快照）都带发起时的线程与切换代次，回包对不上就丢弃；确认制作在途时不能切换，切换在途时不能确认。
 > 确认请求结果不明（断网、网关超时，不是明确拒绝）时，不读快照猜结果，而是用**同一个请求编号**按 2s / 4s / 8s… 封顶 30s 重发确认：服务端按编号幂等，
 > 要么拿回第一次已建的执行，要么现在才建，执行只有一份；期间这段对话不能新建或切换，提示「正在核对确认结果，请稍等」，卡上有「现在再查一次」。明确拒绝才解锁并在卡上报错。重发暂无次数上限（TODO.md）。
+> 2026-10-21 评审修正（Codex P2）：**打字确认**（回复「可以」）是服务端在回复里确认的，回复结束时前端还不知道它建的执行。从收到「确认卡已确认」（`approval.required` 事件，或快照里本来待确认的卡变成已确认，带 `executionId`）起，
+> 到读到这份执行（或读执行明确返回 400 / 403 / 404）之前，这段对话一样不能新建或切换（`DialogueStore.awaitingExecutionId`，计入 `dialogueThreadBusy`，提示沿用「这段对话还在进行，等它做完或先停止」）；
+> 读失败按上面的 2s / 4s / 8s… 封顶 30s 重读，切走画布或卸载就停。第一次打开对话时卡早已确认，不算。按钮确认的路径不变（`confirming`）。
 
 都先 `ensureMainThread`（保证主线程和旧记录导入在前）。新对话不继承技能，`title` 用默认值；不复制任何消息；不触发任何模型调用、不扣费。
 
@@ -313,6 +316,7 @@ export interface StudioCreateThreadRequest { clientRequestId: string }
 - **提示词**：服务端从任务输入取实际发出的提示词（视频绑定 run 的 `prompt`，图片 run 的 `studioRequest.prompt`，取不到用步骤自己的），新节点直接写上；绑定对象上已有提示词时按 keepText 保留，发出的那句作为可采纳建议出现（设计写「照现有 keepText 规则」，原样执行）。
 - **规划模型看得到什么**：素材清单（`DialogueCanvasDigest.line`）在画布记录了真实尺寸时写「1024×1024（1:1）」，在没画面的草稿上写它的设定「设定 9:16、5 秒」；同一轮里刚 `create_nodes`、画布还没保存的对象另列在「本轮刚新建、画布还没保存的对象」下面；`view_images` 的结果给每张图的 `size` 与 `aspectRatio`。规划提示词的 JSON 形状写了 `targetNodeId?`，`skillPlanConstraints` 加了 `targets` 一行。
 - **裁剪**：尾帧同样处理（`lastFrameAdjusted`）；单首帧旧协议（没有视频模式设置的模型）也经 `alignFrame`。JDK 读不了的格式（WebP）先用 ffmpeg 转 PNG 再裁；结果不透明的写 JPEG（质量 0.95），有透明的写 PNG，存储层再按字节判类型。记录字段 `{from, to, mode:"crop", sourceKey, croppedKey, sourceSize, croppedSize}`，在绑定 run 的 `_exec`（出 wire 时 `_exec` 照旧去掉）。
+- **恢复按「是否已回填」判断**（2026-10-21 Codex P1，web-aiavatar）：制作中关页、换设备打开时，绑定的准备对象在画布上但还是空的。`missingExecutionNodes` / `executionOutputMissing` / 恢复回放（`projectStudioNodeUpsert` 的 `missingOnly`）原先只看节点在不在，于是结果永远补不进去（任务成功、积分已结算，画布仍是空的）。现在：节点在画布上时，只要它没有这一步的结果、也没有别的内容（`nodeHoldsResult`：媒体 / 文字 / 剧本、生成中、已带执行绑定，对应服务端 `emptyObject`）就补进去，与本浏览器的投影记录无关（准备对象在助手建它时就记下了）；节点不在画布上时照旧看投影记录（删掉的不重建）。补的方式与实时事件相同（标题、尺寸、规格、连线保留，已有提示词 / 文字按 keepText 保留，恢复不出采纳建议），补进去的对象和新建的一样可以接上这次的依赖连线。已绑定到这一步的节点（哪怕之后用户手动重新生成过）算已回填，不覆盖。
 - **节点比例**：结果落地时打一次性标记 `studio.mediaFit {storageKey, aspectRatio}`（执行投影与手动生成 `applyStudioRun` 都打），先按任务画幅定高度（宽度不变，媒体区 = 宽 × 比例，上限 640，加 38px 卡片头），媒体加载后（图片 `onLoad`、视频 `loadedmetadata`）按真实尺寸再定一次并去掉标记；之后用户自己拉的尺寸不再被改。卡片同时把所显示媒体的真实尺寸记进 `naturalWidth/Height`（旧画布打开时会为此保存一次）。视频元素本来就是 `object-fit: contain`。
 - **面板提示的首帧**：原生视频模式取请求里的首帧（`videoSettings.firstFrameKey` 对应的图），单首帧旧协议取第一张参考图；尺寸用画布记录的真实尺寸，没有就从图片地址量一次；「改成 X」只在所选模型（当前清晰度档）的画幅里有首帧那个比例时出现。
 - **演示模式照服务端补**（§8.0.1 ⑦）：出图 / 出视频的演示先 `create_nodes` 建好对象（写画幅、时长、首帧），方案步骤带 `targetNodeId`，确认时按同样规则绑定，结果以 `op=update` 落进同一个对象，带提示词和 `mediaFit`；有首帧图且用户没说画幅时演示画幅跟首帧。

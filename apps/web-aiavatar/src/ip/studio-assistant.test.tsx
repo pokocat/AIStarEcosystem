@@ -1378,3 +1378,68 @@ test('a short reply is not offered as a canvas text: 「放进画布」 needs 80
   await screen.findByText(/末世英雄·林烬/);
   expect(screen.queryByRole('button', { name: '放进画布' })).toBeNull();
 });
+
+// Codex 2026-10-21 (P1): closed during the execution, opened on another device. The assistant had prepared the video object
+// (§6.1) and the step was bound to it; the restore only asked whether that node exists, so the paid result never landed.
+const PE = 'PEX-prep';
+const preparedVideo = { id: 'dlg-vid', type: 'video', title: '让她转身', position: { x: 400, y: 0 }, width: 360, height: 240,
+  metadata: { prompt: '她缓慢转身', studio: { kind: 'shot', spec: { aspectRatio: '9:16', durationSec: 5, source: 'assistant', updatedAt: at } } } } as CanvasNodeData;
+const preparedExecution: StudioPlanExecution = { ...doneExecution, id: PE,
+  steps: [{ id: 's1', title: '一段 5 秒竖屏视频', operation: 'video', stage: 'production', dependsOn: [], status: 'done', runIds: ['r-prep'], attempt: 1, quotedCost: 40, nodeId: 'dlg-vid' }] };
+const preparedRun: IpRun = { ...doneRun('r-prep', 'dlg-vid', 'studio-video', { videoCandidates: [{ index: 0, jobId: 'j', status: 'done', pct: 100, storageKey: 'material-videos/j/video.mp4', durationSec: 5 }] }),
+  inputs: { executionId: PE, prompt: '她缓慢转身，看向镜头' } as unknown as IpRun['inputs'] };
+/** No canvas cursor on this browser (another device); the projection record names the object (a restore replay records it). */
+const preparedCanvas = () => {
+  api.getConversation.mockResolvedValue(closedState({ ...confirmedCard, executionId: PE }));
+  api.getExecution.mockResolvedValue(preparedExecution);
+  api.getRun.mockImplementation(async (id: string) => { if (id !== 'r-prep') throw new Error('没有这次运行'); return preparedRun; });
+  localStorage.setItem('studio-projected-nodes:p', JSON.stringify(['dlg-vid']));
+};
+
+test('closed during the execution, opened on another device: the result lands in the object prepared for it, once; one deleted here stays deleted', async () => {
+  preparedCanvas();
+  let canvas: CanvasNodeData[] = [];
+  const first = await ready(<Host initial={[preparedVideo]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  await waitFor(() => expect(canvas.find(n => n.id === 'dlg-vid')?.metadata?.storageKey).toBe('material-videos/j/video.mp4'));
+  expect(canvas).toHaveLength(1);
+  expect(canvas[0].title).toBe('让她转身');
+  // The user's prompt stays, and no adoption is offered for a restore.
+  expect(canvas[0].metadata).toMatchObject({ prompt: '她缓慢转身', status: 'success', studio: { spec: { aspectRatio: '9:16' }, execution: { executionId: PE, stepId: 's1', runId: 'r-prep' } } });
+  expect(screen.queryByLabelText('修改建议')).toBeNull();
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+  first.unmount();
+  // Opened again: the result is there, nothing is read or written.
+  const reads = api.getRun.mock.calls.length, saves = api.save.mock.calls.length;
+  let again: CanvasNodeData[] = [];
+  const second = await ready(<Host initial={canvas} onCanvas={(nodes: CanvasNodeData[]) => { again = nodes; }}/>);
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledTimes(2));
+  await settle();
+  expect(again).toEqual(canvas);
+  expect(api.getRun.mock.calls.length).toBe(reads);
+  expect(api.save.mock.calls.length).toBe(saves);
+  second.unmount();
+  // Deleted on this browser: not rebuilt.
+  let third: CanvasNodeData[] = [canvas[0]];
+  await ready(<Host initial={[]} onCanvas={(nodes: CanvasNodeData[]) => { third = nodes; }}/>);
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledTimes(3));
+  await settle();
+  expect(third).toEqual([]);
+});
+
+test('the replayed result event fills the prepared object too, when the execution cannot be read', async () => {
+  preparedCanvas();
+  api.getExecution.mockRejectedValue(new Error('暂时读不到'));
+  let canvas: CanvasNodeData[] = [];
+  await ready(<Host initial={[preparedVideo]} onCanvas={(nodes: CanvasNodeData[]) => { canvas = nodes; }}/>);
+  // No cursor here: the thread replays from the start, and the executor's command is a restore.
+  expect(streams.at(-1)!.cursor()).toBe(0);
+  emit(ev('node.upsert', { nodeId: 'dlg-vid', op: 'update', executionId: PE, stepId: 's1', runId: 'r-prep',
+    node: { id: 'dlg-vid', type: 'video', title: '一段 5 秒竖屏视频', width: 320, height: 240, position: { x: 0, y: 0 },
+      metadata: { status: 'success', storageKey: 'material-videos/j/video.mp4', prompt: '她缓慢转身，看向镜头', studio: { runId: 'r-prep', execution: { executionId: PE, stepId: 's1', runId: 'r-prep' } } } } },
+    { executionId: PE, turnId: 'APR-1' }));
+  await waitFor(() => expect(canvas.find(n => n.id === 'dlg-vid')?.metadata?.storageKey).toBe('material-videos/j/video.mp4'));
+  expect(canvas).toHaveLength(1);
+  expect(canvas[0].title).toBe('让她转身');
+  expect(canvas[0].metadata?.prompt).toBe('她缓慢转身');
+  await waitFor(() => expect(api.save).toHaveBeenCalled());
+});

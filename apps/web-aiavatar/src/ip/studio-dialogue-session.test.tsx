@@ -6,7 +6,7 @@
 // Fixtures follow the server DTOs (AGENTS.md §8.0.1 ⑦).
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, StudioPlanExecution } from '@ai-star-eco/types/ip-studio-workflow';
+import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock, StudioPlanExecution } from '@ai-star-eco/types/ip-studio-workflow';
 import { ApiError } from '@ai-star-eco/api-client';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import type { DialogueApprovalBlock } from '@/canvas-bridge/studio-dialogue-store';
@@ -301,4 +301,99 @@ test('the user picking a conversation is what opens it', async () => {
   expect(api.openThread).toHaveBeenCalledWith('p', 'B');
   expect(api.getThread).not.toHaveBeenCalled();
   expect(result.current.store.thread?.id).toBe('B');
+});
+
+// Codex 2026-10-21 (P2): the card was confirmed by typing 「可以」. The server confirmed it inside the reply (approval.required
+// with the card approved, then turn.done), so the reply ended before the execution's detail was read here; in between the
+// conversation could be left, and the execution's nodes went to a conversation no longer shown.
+const event = (seq: number, type: StudioDialogueEvent['type'], data: unknown, extra: Partial<StudioDialogueEvent> = {}): StudioDialogueEvent =>
+  ({ eventId: `ev${seq}`, seq, threadId: 'A', turnId: 'turn-ok', createdAt: at, type, data, ...extra });
+const confirmedInWords = { ...approval, status: 'approved' as const, executionId: 'E1', approvedBudgetCap: 12, approvedAutoFixCap: 0, approvedAt: at };
+/** The conversation as the server has it after that reply (the catch-up read once the turn is done). */
+const afterReply: StudioDialogueState = { ...stateA, latestSeq: 5, messages: [stateA.messages[0], { ...stateA.messages[1], blocks: [plan, confirmedInWords] },
+  message('A', 'u2', 3, 'user', '可以'), message('A', 'a2', 4, 'assistant', '好的，开始制作。')] };
+/** The reply to 「可以」: a line of text, the card confirmed by the server, the reply done. */
+const replyConfirming = () => act(() => {
+  api.getThread.mockResolvedValue(afterReply);
+  streams[0].onEvent(event(3, 'message.delta', { messageId: 'a2', partId: 'p', delta: '好的，开始制作。' }));
+  streams[0].onEvent(event(4, 'approval.required', { messageId: 'a1', block: confirmedInWords }, { executionId: 'E1' }));
+  streams[0].onEvent(event(5, 'turn.done', { reason: 'completed', messageId: 'a2' }));
+});
+
+test('a card confirmed in words holds the conversation from the confirmed card until its execution is read', async () => {
+  const { result } = await ready();
+  await waitFor(() => expect(streams).toHaveLength(1));
+  const read = deferred<StudioPlanExecution>();
+  api.getExecution.mockReturnValue(read.promise);
+  replyConfirming();
+  // The reply is over and no button confirmation is on its way: only the confirmed card holds it now.
+  expect(result.current.store.activeTurnId).toBeUndefined();
+  expect(result.current.confirming).toBe(false);
+  expect(result.current.store.execution).toBeUndefined();
+  expect(dialogueThreadBusy(result.current.store)).toBe(true);
+  await expect(result.current.newThread()).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+  await expect(result.current.openThread('B')).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+  expect(api.createThread).not.toHaveBeenCalled();
+  expect(api.openThread).not.toHaveBeenCalled();
+  // One read of it, not one more from the approved card's link.
+  await waitFor(() => expect(api.getExecution).toHaveBeenCalledWith('p', 'E1'));
+  expect(api.getExecution).toHaveBeenCalledTimes(1);
+  // Read: it is the execution shown, and while it runs it is what keeps the conversation.
+  await act(async () => { read.resolve(execution('E1', 'A')); });
+  expect(result.current.store.awaitingExecutionId).toBeUndefined();
+  expect(result.current.store.execution?.id).toBe('E1');
+  expect(dialogueThreadBusy(result.current.store)).toBe(true);
+  await expect(result.current.openThread('B')).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+});
+
+test('a failed read of that execution is tried again until it answers; then a finished one lets the conversation go', async () => {
+  dialogueVerifyTiming.firstMs = 5; dialogueVerifyTiming.maxMs = 20;
+  const { result } = await ready();
+  await waitFor(() => expect(streams).toHaveLength(1));
+  api.getExecution.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockRejectedValueOnce(new ApiError({ code: 'BAD_GATEWAY', message: '网关超时' }, 504))
+    .mockResolvedValueOnce(execution('E1', 'A', 'done'));
+  replyConfirming();
+  expect(dialogueThreadBusy(result.current.store)).toBe(true);
+  await waitFor(() => expect(result.current.store.execution?.id).toBe('E1'));
+  expect(api.getExecution).toHaveBeenCalledTimes(3);
+  expect(dialogueThreadBusy(result.current.store)).toBe(false);
+  api.openThread.mockResolvedValue(stateB);
+  await act(async () => { expect(await result.current.openThread('B')).toBe(true); });
+  expect(result.current.store.thread?.id).toBe('B');
+});
+
+test('a snapshot that shows the card confirmed holds it the same way when the event never arrived', async () => {
+  const { result } = await ready();
+  await waitFor(() => expect(streams).toHaveLength(1));
+  const read = deferred<StudioPlanExecution>();
+  api.getExecution.mockReturnValue(read.promise);
+  // A stream rebuild: the snapshot already has the reply and the confirmed card.
+  act(() => streams[0].onSnapshot(afterReply, 'gap'));
+  expect(dialogueThreadBusy(result.current.store)).toBe(true);
+  await expect(result.current.newThread()).rejects.toThrow(DIALOGUE_THREAD_BUSY);
+  await act(async () => { read.resolve(execution('E1', 'A', 'done')); });
+  expect(dialogueThreadBusy(result.current.store)).toBe(false);
+});
+
+test('an execution that cannot be read at all lets the conversation go', async () => {
+  const { result } = await ready();
+  await waitFor(() => expect(streams).toHaveLength(1));
+  api.getExecution.mockRejectedValueOnce(new ApiError({ code: 'STUDIO_PLAN_EXECUTION_NOT_FOUND', message: '找不到' }, 404));
+  replyConfirming();
+  await waitFor(() => expect(dialogueThreadBusy(result.current.store)).toBe(false));
+  expect(api.getExecution).toHaveBeenCalledTimes(1);
+});
+
+test('closing the panel stops the reads of that execution', async () => {
+  dialogueVerifyTiming.firstMs = 10; dialogueVerifyTiming.maxMs = 10;
+  const { unmount } = await ready();
+  await waitFor(() => expect(streams).toHaveLength(1));
+  api.getExecution.mockRejectedValue(new TypeError('Failed to fetch'));
+  replyConfirming();
+  await waitFor(() => expect(api.getExecution.mock.calls.length).toBeGreaterThanOrEqual(2));
+  unmount();
+  const reads = api.getExecution.mock.calls.length;
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+  expect(api.getExecution).toHaveBeenCalledTimes(reads);
 });

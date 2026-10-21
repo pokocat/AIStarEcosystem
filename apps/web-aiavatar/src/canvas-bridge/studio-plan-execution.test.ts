@@ -369,3 +369,109 @@ describe('a step bound to the object prepared for it', () => {
     expect(node.height).toBeGreaterThan(node.width);
   });
 });
+
+// Codex 2026-10-21 (P1): the canvas was closed while the execution ran and opened again on another device. Restore used to
+// ask only whether the step's node exists: the assistant's prepared object does, empty, so the paid result never landed
+// (and the restore replay of the live event skipped it the same way). It now asks whether the result landed.
+describe('restore fills an object prepared for a step when its result never reached it', () => {
+  const E = 'PEX-79c7';
+  const frame: CanvasNodeData = { id: 'img-frame', type: 'image', title: '首帧', position: { x: 0, y: 0 }, width: 320, height: 320, metadata: { storageKey: 'k/frame.png', status: 'success' } };
+  const prepared = (id: string, type: 'image' | 'video' | 'text', meta: Record<string, unknown> = {}): CanvasNodeData => ({ id, type, title: type === 'text' ? '旁白稿' : '让她转身',
+    position: { x: 400, y: 0 }, width: 360, height: 240, metadata: { ...(type === 'text' ? { content: '' } : { prompt: '她缓慢转身' }),
+      ...(type === 'text' ? {} : { studio: { kind: 'shot', spec: { aspectRatio: '9:16', durationSec: 5, source: 'assistant', updatedAt: '2026-10-21T06:00:00Z' } } }), ...meta } } as CanvasNodeData);
+  const step = (id: string, operation: 'image' | 'video' | 'text', nodeId: string, dependsOn: string[] = []) =>
+    ({ id, title: id, operation, stage: 'production' as const, dependsOn, status: 'done' as const, runIds: [`IPR-${id}`], attempt: 1, quotedCost: 40, nodeId });
+  const execution = (steps: StudioPlanExecution['steps']): StudioPlanExecution => ({ id: E, projectId: 'IPP-655ea55a', threadId: 't', skillKey: 'video-generation', skillVersion: 2,
+    stage: 'production', planRunId: 'p', planRevision: 1, planFingerprint: 'f', status: 'done', budgets: [], startedAt: '', deadlineAt: '', updatedAt: '', steps });
+  const run = (id: string, nodeId: string, kind: IpRun['kind'], output: IpRun['output'], inputs: Record<string, unknown> = {}): IpRun =>
+    ({ id, projectId: 'IPP-655ea55a', nodeId, kind, status: 'done', stage: 'done', pct: 100, cost: 40, inputs: { executionId: E, ...inputs } as unknown as IpRun['inputs'], output, createdAt: '' });
+  const videoRun = run('IPR-v1', 'dlg-vid', 'studio-video', { videoCandidates: [{ index: 0, jobId: 'j1', status: 'done', pct: 100, storageKey: 'material-videos/j1/video.mp4', durationSec: 5 }] },
+    { prompt: '她缓慢转身，看向镜头，背景不动', aspectRatio: '9:16' });
+  const one = execution([step('v1', 'video', 'dlg-vid')]);
+  const runs: Record<string, IpRun> = { 'IPR-v1': videoRun };
+  const doc = (node = prepared('dlg-vid', 'video')): ProjectionDoc => ({ nodes: [frame, node], connections: [{ id: 'e-frame', fromNodeId: 'img-frame', toNodeId: node.id }] });
+  const restore = (base: ProjectionDoc, ex = one, list = runs) =>
+    projectCanvasOps(base, executionRestoreUpserts(ex, list).map(data => ({ kind: 'node' as const, data, executionId: E, turnId: E, restore: true })));
+  // The prepared object was recorded on the device where the assistant made it, and by any earlier restore replay.
+  const recorded = new Set(['dlg-vid']);
+
+  test('a fresh device: the empty prepared object gets the result once, its title, prompt, spec and edge kept; reopening writes nothing', () => {
+    expect(missingExecutionNodes(one, doc().nodes, recorded).map(s => s.id)).toEqual(['v1']);
+    expect(executionOutputMissing([videoRun], doc().nodes, recorded)).toBe(true);
+    const r = restore(doc());
+    expect(r.changed).toBe(true);
+    expect(r.doc.nodes).toHaveLength(2);
+    const node = r.doc.nodes.find(n => n.id === 'dlg-vid')!;
+    expect(node.title).toBe('让她转身');
+    expect(node.position).toEqual({ x: 400, y: 0 });
+    expect(node.metadata).toMatchObject({ status: 'success', storageKey: 'material-videos/j1/video.mp4', prompt: '她缓慢转身',
+      studio: { kind: 'shot', spec: { aspectRatio: '9:16' }, execution: { executionId: E, stepId: 'v1', runId: 'IPR-v1' } } });
+    expect(node.height).toBeGreaterThan(node.width);
+    // The user's prompt stays; a restore offers no adoption (the sent prompt is on the run's request).
+    expect(r.proposals).toEqual([]);
+    expect(r.doc.connections).toEqual(doc().connections);
+    // Filled: nothing missing, a second restore and the canvas-open signal see it.
+    expect(missingExecutionNodes(one, r.doc.nodes, recorded)).toEqual([]);
+    expect(executionOutputMissing([videoRun], r.doc.nodes, recorded)).toBe(false);
+    const again = restore(r.doc);
+    expect(again.changed).toBe(false);
+    expect(again.doc).toEqual(r.doc);
+  });
+
+  test('the restore replay of the live event fills it the same way, once', () => {
+    const live = executionRestoreUpserts(one, runs)[0];
+    expect(live).toMatchObject({ nodeId: 'dlg-vid', op: 'update', stepId: 'v1', runId: 'IPR-v1' });
+    const first = projectCanvasOps(doc(), [{ kind: 'node', data: live, executionId: E, turnId: 't-approve', restore: true }]);
+    expect(first.changed).toBe(true);
+    expect(first.doc.nodes.find(n => n.id === 'dlg-vid')!.metadata?.storageKey).toBe('material-videos/j1/video.mp4');
+    expect(first.projected).toEqual(['dlg-vid']);
+    expect(first.created).toEqual([]);
+    expect(projectCanvasOps(first.doc, [{ kind: 'node', data: live, executionId: E, turnId: 't-approve', restore: true }]).changed).toBe(false);
+  });
+
+  test('an empty prompt is filled with the one that was sent', () => {
+    const node = restore(doc(prepared('dlg-vid', 'video', { prompt: '' }))).doc.nodes.find(n => n.id === 'dlg-vid')!;
+    expect(node.metadata?.prompt).toBe('她缓慢转身，看向镜头，背景不动');
+  });
+
+  test('a prepared object deleted on this browser is not rebuilt; one that holds the user\'s own media is left alone', () => {
+    expect(missingExecutionNodes(one, [frame], recorded)).toEqual([]);
+    expect(executionOutputMissing([videoRun], [frame], recorded)).toBe(false);
+    const mine = prepared('dlg-vid', 'video', { storageKey: 'uploads/mine.mp4', status: 'success' });
+    expect(missingExecutionNodes(one, doc(mine).nodes, new Set())).toEqual([]);
+    const r = restore(doc(mine));
+    expect(r.changed).toBe(false);
+    expect(r.doc.nodes.find(n => n.id === 'dlg-vid')).toEqual(mine);
+    // A generation the user started in it is theirs as well.
+    expect(missingExecutionNodes(one, doc(prepared('dlg-vid', 'video', { status: 'loading' })).nodes, new Set())).toEqual([]);
+  });
+
+  test('a node bound to the step is filled already, even after a manual regeneration replaced its media', () => {
+    const regenerated = prepared('dlg-vid', 'video', { storageKey: 'material-videos/manual.mp4', status: 'success',
+      studio: { kind: 'shot', runId: 'IPR-manual', execution: { executionId: E, stepId: 'v1', runId: 'IPR-v1' } } });
+    expect(missingExecutionNodes(one, doc(regenerated).nodes, new Set())).toEqual([]);
+    expect(restore(doc(regenerated)).changed).toBe(false);
+  });
+
+  test('a text step fills its empty prepared text object; a prepared object with the user\'s writing keeps it', () => {
+    const textRun = run('IPR-t1', 'dlg-text', 'studio-text', { textRevision: { summary: '旁白', content: '她转过身，笑了。' }, text: '她转过身，笑了。' });
+    const ex = execution([step('t1', 'text', 'dlg-text')]);
+    const filled = restore({ nodes: [prepared('dlg-text', 'text')], connections: [] }, ex, { 'IPR-t1': textRun });
+    expect(filled.doc.nodes[0].metadata).toMatchObject({ content: '她转过身，笑了。', studio: { kind: 'text', execution: { executionId: E, stepId: 't1', runId: 'IPR-t1' } } });
+    const written = prepared('dlg-text', 'text', { content: '我自己写的旁白' });
+    expect(missingExecutionNodes(ex, [written], new Set())).toEqual([]);
+    expect(restore({ nodes: [written], connections: [] }, ex, { 'IPR-t1': textRun }).changed).toBe(false);
+  });
+
+  test('two prepared objects filled by one restore get the dependency edge between them', () => {
+    const imageRun = run('IPR-i1', 'dlg-img', 'studio-image', { candidates: [{ key: 'ipstudio/i1.png', url: 'u' }] }, { studioRequest: { prompt: '一张海边的图' } });
+    const ex = execution([step('i1', 'image', 'dlg-img'), step('v1', 'video', 'dlg-vid', ['i1'])]);
+    const base: ProjectionDoc = { nodes: [prepared('dlg-img', 'image', { prompt: '' }), prepared('dlg-vid', 'video')], connections: [] };
+    expect(missingExecutionNodes(ex, base.nodes, new Set(['dlg-img', 'dlg-vid'])).map(s => s.id)).toEqual(['i1', 'v1']);
+    const r = restore(base, ex, { 'IPR-i1': imageRun, 'IPR-v1': videoRun });
+    expect(r.doc.nodes.map(n => n.metadata?.storageKey)).toEqual(['ipstudio/i1.png', 'material-videos/j1/video.mp4']);
+    expect(r.doc.connections.map(c => `${c.fromNodeId}>${c.toNodeId}`)).toEqual(['dlg-img>dlg-vid']);
+    // An edge the user later removed between the two filled objects is not put back.
+    expect(restore({ ...r.doc, connections: [] }, ex, { 'IPR-i1': imageRun, 'IPR-v1': videoRun }).changed).toBe(false);
+  });
+});

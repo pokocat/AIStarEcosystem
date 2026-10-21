@@ -18,6 +18,10 @@
 // A confirmation whose answer was lost (Codex review 2026-10-20, P1): the request has ended but whether the server took it
 // has not been settled. The guard is not let go on the request ending; the same request (same clientRequestId) is sent again
 // with backoff until the server gives a definite answer: the execution (taken then or now, exactly once) or a refusal.
+//
+// A card confirmed in words (Codex 2026-10-21, P2): typing 「可以」 confirms on the server inside the reply, and the reply ends
+// before the execution it started is known here. From the 「approved」 card (event or snapshot) until that execution is read,
+// the conversation is held the same way (DialogueStore.awaitingExecutionId; a failed read is retried with the same backoff).
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
@@ -63,8 +67,13 @@ const LINKED_EXECUTIONS = 5;
  * while a reply or an execution is still going would drop nodes that have not arrived yet.
  */
 export const DIALOGUE_THREAD_BUSY = '这段对话还在进行，等它做完或先停止';
-/** A reply is streaming, an execution is running / paused / waiting, or a message is still on its way. */
-export const dialogueThreadBusy = (store: DialogueStore) => !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending');
+/**
+ * A reply is streaming, an execution is running / paused / waiting, a message is still on its way, or a card was just
+ * confirmed and the execution it started has not been read yet (typed 「可以」: the reply ends before the execution is
+ * known here, and leaving in between lost its nodes; Codex 2026-10-21, P2).
+ */
+export const dialogueThreadBusy = (store: DialogueStore) => !!store.activeTurnId || executionActive(store.execution) || store.outbox.some(o => o.state === 'sending')
+  || !!store.awaitingExecutionId;
 /** Why a confirmation card waits: the panel is moving to another conversation, and the card belongs to the one it leaves. */
 export const DIALOGUE_SWITCHING = '正在切换对话，请稍等';
 /** Why the conversation still waits after a confirmation's answer was lost: it is being sent again until the answer is known. */
@@ -73,6 +82,8 @@ export const DIALOGUE_VERIFYING = '正在核对确认结果，请稍等';
 export const dialogueVerifyTiming = { firstMs: 2000, maxMs: 30000 };
 const verifyDelay = (attempt: number) => Math.min(dialogueVerifyTiming.firstMs * 2 ** (attempt - 1), dialogueVerifyTiming.maxMs);
 const definitelyRefused = (error: unknown) => error instanceof ApiError && !!error.status && DEFINITE_REJECTION.has(error.status);
+/** A read of an execution that can never succeed (none such for this user); anything else is tried again. */
+const executionUnreadable = (error: unknown) => error instanceof ApiError && (error.status === 400 || error.status === 403 || error.status === 404);
 
 /** What a thread-owned request was asked for; its answer only lands while this is still what the panel shows. */
 type DialogueScope = { projectId: string; threadId?: string; generation: number };
@@ -187,6 +198,27 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
   }, [executionId, store.executionTouchedSeq, refreshExecution]);
   useEffect(() => { if (status === 'ready' && store.thread?.activeExecutionId && !store.execution) void refreshExecution(store.thread.activeExecutionId); },
     [status, store.thread?.activeExecutionId, !!store.execution, refreshExecution]);
+  // A card confirmed in words (or seen confirmed in a snapshot) names an execution this conversation does not show yet; the
+  // conversation is held (dialogueThreadBusy) until it is read. A failed read is tried again with the confirmation's backoff;
+  // leaving the canvas, a switch or unmounting ends it, and only 「no such execution」 lets go without one.
+  const awaitingExecutionId = store.awaitingExecutionId;
+  useEffect(() => {
+    if (!awaitingExecutionId) return;
+    const at = scope();
+    let stopped = false, timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async (attempt: number) => {
+      try {
+        const execution = await getStudioPlanExecution(at.projectId, awaitingExecutionId);
+        if (!stopped && stillShown(at)) dispatch({ type: 'execution', execution });
+      } catch (error) {
+        if (stopped || !stillShown(at)) return;
+        if (executionUnreadable(error)) { dispatch({ type: 'execution.unavailable', executionId: awaitingExecutionId }); return; }
+        timer = setTimeout(() => void read(attempt + 1), verifyDelay(attempt));
+      }
+    };
+    void read(1);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [awaitingExecutionId, projectId]);
   const executionStatus = store.execution?.status;
   useEffect(() => {
     if (!open || !executionId || executionStatus !== 'running') return;
@@ -205,7 +237,8 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const at = scope(), requested = linkedRequested.current;
     const show = (execution: StudioPlanExecution, index: number) => { if (index === 0 && !ref.current.execution) dispatch({ type: 'execution', execution }); };
     linkedIds.split(',').forEach((executionId, index) => {
-      if (ref.current.execution?.id === executionId) return;
+      // An execution just confirmed is read (and shown) by the hold above.
+      if (ref.current.execution?.id === executionId || ref.current.awaitingExecutionId === executionId) return;
       const known = linkedRef.current[executionId];
       if (known) { show(known, index); return; }
       if (requested.has(executionId)) return;
