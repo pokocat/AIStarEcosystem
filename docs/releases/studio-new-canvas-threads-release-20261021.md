@@ -125,3 +125,42 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 无迁移；回滚后提示词按 v20 刷回（只刷没人改过的行），web-aiavatar 不涉及。
+
+## web 热修 `20261021-studio-create-page`（2026-10-21 14:14 CST，只发 web-aiavatar）
+
+### 改了什么
+
+用户改判：「画布·自由创作」（`/create`）在桌面和手机上都是同一个页面，不再一进来就建画布跳走。
+
+- 最上面一张「新建画布」卡片（「一张空白画布，打开就有助手，直接开始。」），点了才调 `useStartNewCanvas` / `startNewCanvas()`（复用规则不变，进 `/projects/{id}?start=assistant`）；建的时候卡片转圈、其它入口不可点，失败在页面上方说原因，卡片可以再点。
+- 下面是能力入口（去掉了重复的「空白画布」，其余九项照旧各自建画布并带 `?start=xxx`）和「从模板开始」。
+- 没有方式切换框，也没有对话框（`StudioConversationStart` 只在首页）。
+- 删掉了只为「桌面进来就建画布」写的逻辑（`router.replace`、「正在打开新画布…」那一屏、重试 / 去项目页）；`use-start-new-canvas.ts` 的通用能力（含 `navigate: "replace"`）保留。项目页「新建创作」、首页新建不变。
+- 文件：`apps/web-aiavatar/src/ip/studio-create-home.tsx`、`src/app/create/page.tsx`、`src/ip/studio-create-tools.ts`、`src/styles/studio-page.css`；测试 `studio-create-home.test.tsx`、`studio-dialogue-wiring.test.ts`；文档 `docs/ip-studio-new-canvas-and-threads.md` §2.2、AGENTS.md「新建画布、多段对话与卡片精简」、`apps/web-aiavatar/PRODUCT.md`、`apps/web-aiavatar/README.md`。
+
+### 门禁
+
+- `studio-create-home` / `studio-dialogue-wiring` / 首页 / 项目页 / `studio-entry` / `use-start-new-canvas` / `studio-conversation-start` 七个测试文件 61 条全过；引用 `/create` 的三个 shell 测试 13 条全过。
+- `pnpm --filter @ai-star-eco/web-aiavatar typecheck`、`pnpm typecheck:all`、`pnpm check:api-contract`（`OK.`）均通过。没有接口、没有迁移，server 不动。
+- 演示模式（`NEXT_PUBLIC_USE_MOCK=1`，`--webpack`，3913 端口）无头 Chrome 1440 与 375 实看：卡片在最上面，能力入口九项（无「空白画布」）与三份模板在下面，没有切换框和对话框，页面无横向滚动；点卡片进 `/projects/{id}?start=assistant`，桌面上助手停靠在右边、中间是空画布引导，手机上先出现原有的「画布在电脑上更好用」提示。
+
+### 制品与发布
+
+- 发布前核对：线上 web-aiavatar 最新发布为 `20261021-studio-new-canvas-threads`（GIT_SHA `c6f67b7b…`，在 main 历史里）；之后只有 server 热修 `20261021-studio-action-format`。等那次热修部署并记录完（main `01c6d576`）后，分支 `fix/studio-create-page-20261021` 变基到 main 再快进。
+- 在 `AIStarEcosystem-main-release` 的 `main`（`0222df1a5f79b95dfa680f2f339a6be2f639d069`）构建 `RELEASE_ID=20261021-studio-create-page NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh web-aiavatar`：`manifest.env` 为 `SERVICES='web-aiavatar'`、`GIT_SHA='0222df1a…'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `KCvBbTZwJ33ujB0yjRJXz`，`.next` 能搜到新文案、搜不到「正在打开新画布」。
+- `deploy-release.sh dist/deploy/20261021-studio-create-page web-aiavatar`：`[verify] ALL GREEN`。
+
+### 线上验收
+
+- `aistareco-web-aiavatar` 新进程 PID 1337412 于 **14:14:41 CST** 启动，`Ready`，`NRestarts=0`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，`BUILD_ID` 与本地制品一致。
+- `https://aiavatar.aibuzz.cn/create` → 200，`/projects` → 200。运行目录 `.next/server/app/create/page.js` 与 `static/chunks/app/create/page-b6d1b51f3c02fc18.js` 含「打开就有助手，直接开始。」，不含「正在打开新画布」；公网取同名 chunk 200 且含新文案。
+- **没做**：没用生产账号登录点一次「新建画布」（需要用户自己登录）。
+
+### 回滚
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-new-canvas-threads web-aiavatar
+```
+
+只回 web-aiavatar，server 不动；回滚后桌面 `/create` 恢复为进来即建画布。
