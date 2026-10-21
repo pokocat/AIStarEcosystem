@@ -91,6 +91,21 @@ test('image composer targets its own upload slot and retains the draft while a p
  window.removeEventListener('studio-command',listener);
 });
 // Ratios, batch sizes and the prompt limit all come from the selected endpoint (one render; the derivations are inline in the workspace).
+test('deleting the node a generation panel is for closes the panel, so the empty-canvas guide comes back',async()=>{
+ // Browser walk 2026-10-20: 「图片生成」 on the empty-canvas guide, then Delete — the panel stayed open on a node that no longer
+ // existed, and since a panel was open the guide never came back.
+ const image={...node,type:'image' as never,title:'图片',metadata:{status:'idle' as const,studio:{kind:'shot' as const}}};
+ let remove=()=>{};
+ function Deletable(){const[nodes,setNodes]=useState<CanvasNodeData[]>([image]);remove=()=>setNodes([]);return <StudioWorkspace projectId="p" nodes={nodes} connections={[]} selectedNodeIds={new Set(['v'])} setNodes={setNodes} setConnections={()=>{}} onFocusNode={()=>{}} onClosePanel={()=>{}} onRestorePanel={()=>{}}/>;}
+ render(<Deletable/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ await screen.findByRole('dialog',{name:'生成图片'});
+ expect(screen.queryByRole('heading',{name:'这张画布还是空的'})).toBeNull();
+ act(()=>remove());
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成图片'})).toBeNull());
+ expect(screen.getByRole('heading',{name:'这张画布还是空的'})).toBeDefined();
+ expect(api.submit).not.toHaveBeenCalled();
+});
 test('image composer offers only the ratios, batch sizes and prompt limit of the selected model and blocks an old unsupported draft',async()=>{
  api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
  api.models.mockResolvedValue({image:[{endpointId:'ernie',name:'ERNIE',isDefault:true,creditCost:30,capability:{imageRatios:['1:1','9:16','16:9'],imagePromptMaxChars:20000,imageBatchCounts:[1,3,5]}}],video:[]});

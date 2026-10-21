@@ -55,6 +55,18 @@ class StudioExecutionSummaryTest {
         assertFalse(StudioExecutionSummary.suggestions(execution("failed"), state("image", "failed")).contains("换个风格再出一张"));
     }
 
+    @Test void joiningClipsIsOfferedOnlyWhenTwoOrMoreClipsAreDone() {
+        var one = StudioExecutionSummary.suggestions(execution("done"), state("video", "done"));
+        assertFalse(one.contains("把做好的片段合成一条成片"), "one clip is already the whole video: " + one);
+        var oneOfTwo = StudioExecutionSummary.suggestions(execution("failed"), state("video", "done", "video", "failed"));
+        assertFalse(oneOfTwo.contains("把做好的片段合成一条成片"), "only one clip came out: " + oneOfTwo);
+        var two = StudioExecutionSummary.suggestions(execution("done"), state("video", "done", "video", "done"));
+        assertTrue(two.contains("把做好的片段合成一条成片"), two.toString());
+        // Already joined: offer what to do with the result instead.
+        var joined = StudioExecutionSummary.suggestions(execution("done"), state("video", "done", "video", "done", "assemble", "done"));
+        assertFalse(joined.contains("把做好的片段合成一条成片"), joined.toString());
+    }
+
     @Test void theFallbackFitsWhetherAnythingWasMade() {
         var made = StudioExecutionSummary.suggestions(execution("done"), state("video", "done"));
         assertTrue(made.contains("把这张画布存为模板"), made.toString());

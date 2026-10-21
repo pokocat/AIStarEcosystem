@@ -96,7 +96,8 @@ final class StudioExecutionSummary {
             if ("done".equals(status) && !"check".equals(op)) produced = true;
             if (firstUnfinished == null && !"done".equals(status) && !"skipped".equals(status)) firstUnfinished = step.path("title").asText();
         }
-        boolean videoDone = assembled != null || videos.stream().anyMatch(v -> "done".equals(v.path("status").asText()));
+        long clipsDone = videos.stream().filter(v -> "done".equals(v.path("status").asText())).count();
+        boolean videoDone = assembled != null || clipsDone > 0;
         // A check that did not pass points at the clip to redo.
         for (JsonNode step : state.path("steps")) {
             if (!"check".equals(step.path("operation").asText()) || !"done".equals(step.path("status").asText()) || "pass".equals(step.path("checkStatus").asText())) continue;
@@ -109,7 +110,8 @@ final class StudioExecutionSummary {
             out.add("把这条成片存为模板");
             String ratio = videos.isEmpty() ? null : videos.get(0).path("definition").path("settings").path("aspectRatio").asText(null);
             out.add("16:9".equals(ratio) ? "换成 9:16 竖屏再出一版" : "换成 16:9 横屏再出一版");
-        } else if (videoDone) {
+        } else if (clipsDone >= 2) {
+            // Only two or more finished clips make something to join; one clip is already the whole video.
             out.add("把做好的片段合成一条成片");
         }
         // Pictures came out: turn them into a clip (unless this run already made one), or try another look.

@@ -410,7 +410,8 @@ class StudioPlanExecutorTest {
         @SuppressWarnings("unchecked") var suggestions=(List<String>)summary[2];
         assertTrue(suggestions.size()>=2&&suggestions.size()<=3,suggestions.toString());
         assertEquals("重做第 1 段「片段 v1」",suggestions.get(0),"derived from the check that did not pass");
-        assertTrue(suggestions.contains("把做好的片段合成一条成片"),suggestions.toString());
+        assertFalse(suggestions.contains("把做好的片段合成一条成片"),"one clip has nothing to join: "+suggestions);
+        assertTrue(suggestions.contains("把这张画布存为模板"),suggestions.toString());
         executor.advance("PEX-1");
         assertEquals(1,posted.size(),"one summary per execution");
     }

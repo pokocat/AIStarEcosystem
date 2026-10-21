@@ -99,7 +99,9 @@ function renderBlock(block: StudioMessageBlock, message: StudioDialogueMessage, 
 
 /** Reply prose, with raw action blocks from older replies folded into a closed record instead of read as text. */
 function replyText(key: string, text: string): ReactNode[] {
-  const { prose, actions } = splitReplyActions(text);
+  const split = splitReplyActions(text), actions = split.actions;
+  // A text part after a tool record starts with the paragraph break between model calls; under pre-wrap that is a blank gap.
+  const prose = split.prose.trim();
   return [
     ...(prose ? [<p key={key} className="studio-dialogue-text">{prose}</p>] : []),
     ...(actions ? [<details key={`${key}-actions`} className="studio-dialogue-raw-actions"><summary>这一轮没有执行的操作原文</summary><pre>{actions}</pre></details>] : []),

@@ -1158,13 +1158,14 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 ### 一张画布多段对话（2026-10-20，本地实现，未发布）
 
-设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](../../docs/ip-studio-new-canvas-and-threads.md) §3。不加迁移：V61 的 `ip_dialogue_thread` 早就按 `project_id + owner_user_id` 存多段，「当前那段」= `last_opened_at` 最新（`GET …/conversation` 返回它）。`StudioDialogueController` 新增三条，三条都先 `ensureMainThread`，都不调用模型、不冻结、不扣费：
+设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](../../docs/ip-studio-new-canvas-and-threads.md) §3。不加迁移：V61 的 `ip_dialogue_thread` 早就按 `project_id + owner_user_id` 存多段，「当前那段」= `last_opened_at` 最新（`GET …/conversation` 返回它）。`StudioDialogueController` 新增四条（列表、新建、只读快照、打开），都不调用模型、不冻结、不扣费；只有新建、打开、分支会 `markOpened`，读取一律不改当前那段（`messages()` 不带 `beforeSeq` 也不再 `markOpened`，分支的原对话预览靠它读父对话）：
 
 - `GET /api/v1/ip-studio/projects/{id}/conversations` → `ApiResponse<ThreadSummary[]>`（`StudioDialogueService.threads`）：有消息的对话 + 当前那段，按 `lastActivityAt` 倒序（最后一条消息时间与对话创建时间取较晚，分支复制的消息保留原时间，所以新分支排在原对话前面），最多 50 段，超出时当前那段替换掉第 50 段。`title` 由第一条有文字的用户消息派生（`threadTitle`：压空白、24 个码点、「…」，否则「新对话」），不读线程的 `title` 列；`messageCount` 为全部消息（时间线显示什么就数什么，含系统提示和排队中的用户消息）；`active` = `activeTurnId` 或由这段创建的执行处于 running / paused / needs_user（`StudioExecutionControl.activeByThread`，一次查询；没有执行器时退回看执行指针）。查询条数固定：线程列表、`IpDialogueMessageRepository.statsByCanvas`（按线程分组的条数与最后时间）、`firstUserTexts`（相关子查询批量取每段第一条有文字的用户消息）、一次活跃执行；只有仍指着回复 run 的线程会额外 `reconcile`。
 - `POST …/conversations {clientRequestId}` → `ApiResponse<State>`（`createThread`）：键用 `branch()` 同一个正则校验，不合法 400 `STUDIO_INPUT_INVALID`。事务里先锁画布行（`requiredForUpdate`，并发新建串行），同人同键已有 → 设为当前返回（键属于别的画布或分支 → 409 `STUDIO_REQUEST_CHANGED`）；否则复用本人这张画布最新创建的空闲空对话（无消息、无回合 / 回复 run / 执行指针、不是分支、没有技能），不改它的 `client_request_id`（`UNIQUE(owner_user_id, client_request_id)` 不冲突，重放按同一规则回到同一段）；都没有才新建 `IPT-<uuid20>`（标题默认值、技能与阶段为空、记下请求键）。
-- `GET …/conversations/{threadId}` → `ApiResponse<State>`（`openThread`）：`requireThread`（404 `STUDIO_THREAD_NOT_FOUND` / `IP_PROJECT_NOT_FOUND`）→ `markOpened` → `reconcile` → `snapshot`。
+- `GET …/conversations/{threadId}` → `ApiResponse<State>`（`readThread`，只读）：`requireThread`（404 `STUDIO_THREAD_NOT_FOUND` / `IP_PROJECT_NOT_FOUND`）→ `reconcile` → `snapshot`，**不** `markOpened`。前端的断线重连、轮询与补拉都走它：此前补拉调的是「打开」，在途的旧请求会把服务端的当前对话切回去，刷新后落到错误的那段（Codex 评审 2026-10-20）。
+- `POST …/conversations/{threadId}/open`（请求体可为空）→ `ApiResponse<State>`（`openThread`）：`ensureMainThread` → `requireThread` → `markOpened` → `reconcile` → `snapshot`。只有用户在「历史对话」里点一行时调用。与 `…/conversations/{nodeId}/share` 路径末段不同，不冲突。
 
-当前这段在回复或制作时不能新建 / 切换由前端拦，服务端不拒绝（切走后原对话照常进行和结算）。测试：`StudioDialogueThreadsTest`（真持久化：列表范围与排序、50 上限保留当前、标题截断、新建设为当前、空对话复用、同键幂等、跨画布 / 分支键 409、非法键 400、他人线程 404、`active` 判定、路由字段）。
+当前这段在回复或制作时不能新建 / 切换由前端拦，服务端不拒绝（切走后原对话照常进行和结算）。测试：`StudioDialogueThreadsTest`（真持久化：列表范围与排序、50 上限保留当前、标题截断、新建设为当前、空对话复用、同键幂等、跨画布 / 分支键 409、非法键 400、他人线程 404、`active` 判定、路由字段、只读 GET 与读消息不改当前而 `POST …/open` 才改）。
 
 同批卡片精简（真源 §4.4–§4.5，不改接口）：执行完成总结 `StudioExecutionSummary` 只写一句结果和总花费（「做好了，花了 30 积分。」），不分阶段列花费、不复述步骤，没做完的步骤和检查没通过的原因各一行，建议按实际产物给（兜底「把这张画布存为模板」/「再试一次」）；`dap.ip_studio_skill_plan` / `dap.ip_studio_skill_dialogue` 与 `RequestApprovalTool` 的 `scope` 说明收短，`PromptTemplateSeeder.SEED_VERSION` 升到 `v20-2026-10-20-concise-cards`。`StudioNaturalApprovals`、确认卡 24 小时过期与上限提议都不变。
 

@@ -39,7 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * 「新对话」/「历史对话」 (docs/ip-studio-new-canvas-and-threads.md §3.2) on real persistence: the list shows threads with
  * messages plus the current one, newest activity first and capped; a new thread becomes current, an idle empty one is
- * reused, a key is idempotent; opening a thread makes it current; foreign threads get requireThread's codes. Nothing here
+ * reused, a key is idempotent; opening a thread makes it current and reading one does not; foreign threads get requireThread's codes. Nothing here
  * calls a model or touches the ledger. Assertions are on error codes, not wording (AGENTS.md §8.0.1 ⑩).
  */
 @SpringBootTest(properties = {"spring.flyway.enabled=false", "spring.jpa.hibernate.ddl-auto=create-drop",
@@ -311,9 +311,13 @@ class StudioDialogueThreadsTest {
         assertFalse(first.has("parentThreadId"), "absent, not null, when the thread is not a branch");
         Instant.parse(first.path("lastActivityAt").asText()); // ISO 8601
 
-        JsonNode opened = json.readTree(mvc.perform(get(base + "/" + main).with(user(user)).header("X-App-Code", "aiavatar"))
+        JsonNode read = json.readTree(mvc.perform(get(base + "/" + main).with(user(user)).header("X-App-Code", "aiavatar"))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
+        assertEquals(main, read.path("thread").path("id").asText());
+        JsonNode opened = json.readTree(mvc.perform(post(base + "/" + main + "/open").with(user(user)).header("X-App-Code", "aiavatar"))
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString()).path("data");
         assertEquals(main, opened.path("thread").path("id").asText());
+        assertTrue(opened.path("messages").isArray());
 
         String invalid = mvc.perform(post(base).with(user(user)).header("X-App-Code", "aiavatar")
                         .contentType(MediaType.APPLICATION_JSON).content("{\"clientRequestId\":\"bad key\"}"))
@@ -323,5 +327,39 @@ class StudioDialogueThreadsTest {
                 .andExpect(status().isBadRequest()).andReturn().getResponse().getContentAsString();
         assertEquals("STUDIO_INPUT_INVALID", json.readTree(noBody).path("error").path("code").asText());
         mvc.perform(get(base + "/IPT-missing").with(user(user)).header("X-App-Code", "aiavatar")).andExpect(status().isNotFound());
+        mvc.perform(post(base + "/IPT-missing/open").with(user(user)).header("X-App-Code", "aiavatar")).andExpect(status().isNotFound());
+    }
+
+    // A poll or catch-up read still on its way when the user switched conversations used the opening endpoint and took the
+    // server's current thread back: the page showed B, a refresh landed in A (Codex review 2026-10-20). Reads are now read
+    // only; the user's own choice in 「历史对话」 is the one call that makes a thread current.
+    @Test void readingAThreadNeverMakesItCurrentOnlyOpeningDoes() throws Exception {
+        String user = person(), project = canvas(user);
+        String base = "/api/v1/ip-studio/projects/" + project + "/conversations";
+        String main = dialogue.conversation(user, project).thread().id();
+        say(main, "user", "第一段", Instant.now());
+        String second = dialogue.createThread(user, project, new CreateThreadRequest("read-1")).thread().id();
+        assertEquals(second, dialogue.conversation(user, project).thread().id());
+
+        State read = dialogue.readThread(user, project, main);
+        assertEquals(main, read.thread().id());
+        assertEquals("第一段", read.messages().get(0).text());
+        assertEquals(second, dialogue.conversation(user, project).thread().id(), "a read leaves the current thread alone");
+        assertEquals(1, dialogue.messages(user, project, main, null, 200).size());
+        assertEquals(second, dialogue.conversation(user, project).thread().id(), "reading a thread's messages (a branch's parent preview) does too");
+
+        mvc.perform(get(base + "/" + main).with(user(user)).header("X-App-Code", "aiavatar")).andExpect(status().isOk());
+        assertEquals(second, dialogue.conversation(user, project).thread().id(), "GET /conversations/{threadId} is read only");
+        assertTrue(dialogue.threads(user, project).stream().filter(ThreadSummary::current).allMatch(t -> t.id().equals(second)));
+
+        mvc.perform(post(base + "/" + main + "/open").with(user(user)).header("X-App-Code", "aiavatar")).andExpect(status().isOk());
+        assertEquals(main, dialogue.conversation(user, project).thread().id(), "POST …/open makes it current");
+
+        String stranger = person(), strangerCanvas = canvas(stranger);
+        String strangerThread = dialogue.conversation(stranger, strangerCanvas).thread().id();
+        assertEquals("STUDIO_THREAD_NOT_FOUND", code(() -> dialogue.readThread(user, project, strangerThread)), "someone else's thread");
+        assertEquals(code(() -> dialogue.requireThread(user, strangerCanvas, strangerThread)), code(() -> dialogue.readThread(user, strangerCanvas, strangerThread)));
+        assertTrue(runs.findByProjectIdOrderByCreatedAtDesc(project).isEmpty(), "no task is started");
+        assertTrue(ledger.findAll().stream().noneMatch(e -> user.equals(e.getUserId())), "nothing is charged");
     }
 }

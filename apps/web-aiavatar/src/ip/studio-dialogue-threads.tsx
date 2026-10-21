@@ -2,9 +2,11 @@
 // 创作助手头部的「新对话」和「历史对话」（docs/ip-studio-new-canvas-and-threads.md §3.3）。
 //
 // A canvas can hold several conversations. The list is read fresh each time it opens (titles and times change as
-// people talk). While the current conversation is still replying or has an execution running / paused, neither a new
-// one nor a switch is possible: the canvas gets its nodes from the current conversation's event stream, and leaving
-// would drop the ones that have not arrived yet. The caller passes that reason; this component only shows it.
+// people talk). While the current conversation is still replying, has an execution running / paused, or a confirmation
+// card is on its way (from saving the canvas to the execution's answer), neither a new one nor a switch is possible: the
+// canvas gets its nodes from the current conversation's event stream, and leaving would drop the ones that have not
+// arrived yet. The caller passes that reason; this component only shows it. Picking a row opens that conversation
+// (POST …/open, the one call that makes it the server's current one).
 import { useEffect, useRef, useState } from "react";
 import { Popover } from "antd";
 import { History, SquarePen } from "lucide-react";

@@ -15,7 +15,7 @@ import { API_BASE_URL, USE_MOCK, apiFetch, getAuthToken } from '@/ip/api/_client
 import { withStudioBilling } from './studio-billing';
 import {
   mockDialogueBranch, mockDialogueControl, mockDialogueConversation, mockDialogueCreateThread, mockDialogueMessages, mockDialogueOpenThread, mockDialoguePost,
-  mockDialogueSubscribe, mockDialogueThreads,
+  mockDialogueSubscribe, mockDialogueThreadSnapshot, mockDialogueThreads,
 } from '@/ip/mocks/studio-dialogue';
 
 const APP_CODE = 'aiavatar';
@@ -39,10 +39,19 @@ export async function createStudioDialogueThread(projectId: string, request: Stu
   return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations`, { method: "POST", body: request });
 }
 
-/** Opens one conversation: it becomes the current one and its snapshot comes back. Reading only, never a model call. */
+/**
+ * One conversation's snapshot by id, read only: the server's current conversation stays what it was. For reconnects, polls
+ * and catch-up reads, which must never move the user (or another tab) to another conversation. Never a model call.
+ */
+export async function getStudioDialogueThread(projectId: string, threadId: string): Promise<StudioDialogueState> {
+  if (USE_MOCK) return mockDialogueThreadSnapshot(projectId, threadId);
+  return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(threadId)}`);
+}
+
+/** The user opens one conversation (a row of 「历史对话」): it becomes the current one and its snapshot comes back. Never a model call. */
 export async function openStudioDialogueThread(projectId: string, threadId: string): Promise<StudioDialogueState> {
   if (USE_MOCK) return mockDialogueOpenThread(projectId, threadId);
-  return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(threadId)}`);
+  return apiFetch<StudioDialogueState>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/conversations/${encodeURIComponent(threadId)}/open`, { method: "POST" });
 }
 
 export async function listStudioDialogueMessages(projectId: string, threadId: string, opts: { beforeSeq?: number; limit?: number } = {}): Promise<StudioDialogueMessage[]> {
@@ -122,10 +131,11 @@ export interface DialogueStreamOptions {
   /** Read on every (re)connect: the seq the client has already applied. */
   cursor: () => number;
   onEvent: (event: StudioDialogueEvent) => void;
-  /** A fresh snapshot after a cursor expiry (rebuild) or while polling (merge by seq). */
+  /** A fresh snapshot after a cursor expiry (rebuild) or while polling (merge by seq). Never called after unsubscribing. */
   onSnapshot: (state: StudioDialogueState, reason: 'expired' | 'poll') => void;
   onMode?: (mode: DialogueStreamMode) => void;
   fetchImpl?: typeof fetch;
+  /** This thread's snapshot, read only (default: by its id). It must never make the thread the server's current one. */
   getSnapshot?: () => Promise<StudioDialogueState>;
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   maxFailures?: number;
@@ -151,7 +161,7 @@ export function subscribeStudioDialogue(options: DialogueStreamOptions): () => v
     const connect = () => {
       stop = mockDialogueSubscribe(options.projectId, options.threadId, options.cursor(), options.onEvent, () => {
         // Same as a 410: rebuild from a fresh snapshot, then follow from its cursor.
-        void (options.getSnapshot?.() ?? mockDialogueConversation(options.projectId)).then(state => { if (!open) return; options.onSnapshot(state, 'expired'); connect(); });
+        void (options.getSnapshot?.() ?? mockDialogueThreadSnapshot(options.projectId, options.threadId)).then(state => { if (!open) return; options.onSnapshot(state, 'expired'); connect(); });
       });
     };
     connect();
@@ -165,7 +175,7 @@ export function subscribeStudioDialogue(options: DialogueStreamOptions): () => v
 export async function runDialogueStream(options: DialogueStreamOptions, signal: AbortSignal): Promise<void> {
   const {
     projectId, threadId, cursor, onEvent, onSnapshot, onMode = () => {}, fetchImpl = (input: RequestInfo | URL, init?: RequestInit) => fetch(input, init),
-    getSnapshot = () => getStudioConversation(projectId), sleep = abortableSleep, maxFailures = 3, pollIntervalMs = 4000, retryStreamEvery = 5,
+    getSnapshot = () => getStudioDialogueThread(projectId, threadId), sleep = abortableSleep, maxFailures = 3, pollIntervalMs = 4000, retryStreamEvery = 5,
   } = options;
   let failures = 0, polls = 0, idle = 0;
   const connect = async (): Promise<ConnectResult> => {
@@ -212,7 +222,8 @@ export async function runDialogueStream(options: DialogueStreamOptions, signal: 
     const polling = failures >= maxFailures;
     if (polling) {
       onMode('polling');
-      try { onSnapshot(await getSnapshot(), 'poll'); } catch { /* keep polling; the stream retry below may recover */ }
+      // Unsubscribing does not cancel a read already on its way; its answer belongs to a stream nobody follows any more.
+      try { const state = await getSnapshot(); if (signal.aborted) return; onSnapshot(state, 'poll'); } catch { /* keep polling; the stream retry below may recover */ }
       await sleep(pollIntervalMs, signal);
       if (signal.aborted) return;
       polls++;
@@ -221,7 +232,7 @@ export async function runDialogueStream(options: DialogueStreamOptions, signal: 
     const result = await connect();
     if (result === 'aborted' || signal.aborted) return;
     if (result === 'expired') {
-      try { onSnapshot(await getSnapshot(), 'expired'); failures = 0; polls = 0; }
+      try { const state = await getSnapshot(); if (signal.aborted) return; onSnapshot(state, 'expired'); failures = 0; polls = 0; }
       catch { failures++; await sleep(Math.min(8000, 500 * 2 ** failures), signal); }
       continue;
     }

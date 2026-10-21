@@ -13020,8 +13020,19 @@ paths:
       - { in: path, name: threadId, required: true, schema: { type: string } }
     get:
       tags: [ipstudio]
+      operationId: studioConversationRead
+      description: 读取指定一段的快照（只读）：校验本人与画布，对齐已失效的回合后返回快照，**不改变当前那段**（GET /conversation 照旧返回最近打开的那段）。供断线重连、轮询与补拉使用：在途的旧请求或停在另一段的第二个标签页不会把服务端的当前对话切回去。不创建任务、不计费。
+      responses:
+        '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
+        '404': { description: 'STUDIO_THREAD_NOT_FOUND（对话不存在、不属于本人或不在这张画布）/ IP_PROJECT_NOT_FOUND' }
+  /v1/ip-studio/projects/{id}/conversations/{threadId}/open:
+    parameters:
+      - { in: path, name: id, required: true, schema: { type: string } }
+      - { in: path, name: threadId, required: true, schema: { type: string } }
+    post:
+      tags: [ipstudio]
       operationId: studioConversationOpen
-      description: 打开指定的一段：校验本人与画布，设为当前（之后 GET /conversation 返回它），对齐已失效的回合后返回快照。不创建任务、不计费。
+      description: 「历史对话」里点一行：打开指定的一段，校验本人与画布，设为当前（之后 GET /conversation 返回它），对齐已失效的回合后返回快照。只由用户主动切换调用；请求体可为空。先保证主线程存在并导入旧记录。不创建任务、不计费。
       responses:
         '200': { description: 'ApiResponse<StudioDialogueState>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioDialogueState' } } } }
         '404': { description: 'STUDIO_THREAD_NOT_FOUND（对话不存在、不属于本人或不在这张画布）/ IP_PROJECT_NOT_FOUND' }
@@ -13032,7 +13043,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: studioConversationMessages
-      description: 分页回看原始消息与稳定结构块（beforeSeq / limit），用于长历史与断线快照恢复。
+      description: 分页回看原始消息与稳定结构块（beforeSeq / limit），用于长历史、分支的原对话预览与断线快照恢复。只读，不改变当前那段（2026-10-20 起不带 beforeSeq 也不再设为当前）。
       parameters:
         - { in: query, name: beforeSeq, schema: { type: integer } }
         - { in: query, name: limit, schema: { type: integer, default: 50, maximum: 200 } }

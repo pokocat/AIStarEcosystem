@@ -1,8 +1,9 @@
 import { describe, expect, test, vi } from 'vitest';
 import type { StudioDialogueEvent, StudioDialogueState } from '@ai-star-eco/types/ip-studio-workflow';
 
-vi.mock('@/ip/api/_client', async original => ({ ...(await original<typeof import('@/ip/api/_client')>()), USE_MOCK: false, API_BASE_URL: '/api', getAuthToken: () => 'token-1' }));
-const { createSseParser, runDialogueStream } = await import('./studio-dialogue');
+const apiFetch = vi.hoisted(() => vi.fn());
+vi.mock('@/ip/api/_client', async original => ({ ...(await original<typeof import('@/ip/api/_client')>()), USE_MOCK: false, API_BASE_URL: '/api', getAuthToken: () => 'token-1', apiFetch }));
+const { createSseParser, getStudioDialogueThread, openStudioDialogueThread, runDialogueStream } = await import('./studio-dialogue');
 
 const event = (seq: number, type: StudioDialogueEvent['type'] = 'message.delta'): StudioDialogueEvent =>
   ({ eventId: `e${seq}`, seq, threadId: 'th', turnId: 't', createdAt: '2026-10-18T01:00:00Z', type, data: { messageId: 'm', partId: 'a', delta: String(seq) } });
@@ -99,5 +100,31 @@ describe('runDialogueStream', () => {
     await t.run;
     expect(t.getSnapshot).toHaveBeenCalledTimes(1);
     expect(t.events.map(e => e.seq)).toEqual([1]);
+  });
+});
+
+// Reading one conversation and opening it are two calls (Codex review 2026-10-20): catch-up reads must never move the
+// server's current conversation; only the user's pick in 「历史对话」 does.
+describe('one conversation: read versus open', () => {
+  test('the snapshot by id is a GET; opening is a POST to …/open', async () => {
+    apiFetch.mockResolvedValue(snapshot);
+    await getStudioDialogueThread('p 1', 'th/2');
+    expect(apiFetch).toHaveBeenLastCalledWith('/v1/ip-studio/projects/p%201/conversations/th%2F2');
+    await openStudioDialogueThread('p 1', 'th/2');
+    expect(apiFetch).toHaveBeenLastCalledWith('/v1/ip-studio/projects/p%201/conversations/th%2F2/open', { method: 'POST' });
+  });
+
+  test('a stream rebuild reads its own thread by id by default, and nothing lands after unsubscribing', async () => {
+    apiFetch.mockReset();
+    let answer!: (state: StudioDialogueState) => void;
+    apiFetch.mockReturnValue(new Promise<StudioDialogueState>(resolve => { answer = resolve; }));
+    const controller = new AbortController(), snapshots: string[] = [];
+    const run = runDialogueStream({ projectId: 'p', threadId: 'th', cursor: () => 0, onEvent: () => {}, onSnapshot: (_, reason) => snapshots.push(reason),
+      fetchImpl: async () => new Response('{}', { status: 410 }), sleep: async () => {} }, controller.signal);
+    await vi.waitFor(() => expect(apiFetch).toHaveBeenCalledWith('/v1/ip-studio/projects/p/conversations/th'));
+    controller.abort();
+    answer(snapshot);
+    await run;
+    expect(snapshots).toEqual([]);
   });
 });

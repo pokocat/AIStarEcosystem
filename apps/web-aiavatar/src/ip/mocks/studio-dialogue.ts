@@ -678,10 +678,11 @@ export function mockDialogueBranch(projectId: string, threadId: string, request:
 }
 
 // ── Conversations of one canvas (docs/ip-studio-new-canvas-and-threads.md §3.2) ─────────────
-// Like StudioDialogueController (specs/openapi.yaml studioConversationList / Create / Open): list (the ones with messages
+// Like StudioDialogueController (specs/openapi.yaml studioConversationList / Create / Read / Open): list (the ones with messages
 // plus the current one, newest activity first, at most 50 with the current one kept), create (an empty conversation
 // becomes current; the newest unused empty one that is not a branch and has no skill is reused; same key → same thread)
-// and open (becomes current). None of them reads a model or spends anything.
+// read (one conversation's snapshot; the current one stays) and open (becomes current). None of them reads a model or
+// spends anything.
 
 const CLIENT_ID = /^[A-Za-z0-9_.:-]{1,64}$/;
 const threadMessages = (t: MockThread) => t.view.messages.filter(m => !isPlaceholderMessage(m.id));
@@ -732,10 +733,18 @@ export function mockDialogueCreateThread(projectId: string, request: StudioCreat
   return later(snapshot(p, t));
 }
 
+/** POST …/conversations/{threadId}/open: the user picked this conversation, so it becomes the current one. */
 export function mockDialogueOpenThread(projectId: string, threadId: string): Promise<StudioDialogueState> {
   const p = project(projectId), t = p.threads.get(threadId);
   if (!t) return Promise.reject(new ApiError({ code: "STUDIO_THREAD_NOT_FOUND", message: "这条对话不存在，请刷新画布" }, 404));
   makeCurrent(p, t);
+  return later(snapshot(p, t));
+}
+
+/** GET …/conversations/{threadId}: the snapshot only; the current conversation (and its demo flow) stays where it was. */
+export function mockDialogueThreadSnapshot(projectId: string, threadId: string): Promise<StudioDialogueState> {
+  const p = project(projectId), t = p.threads.get(threadId);
+  if (!t) return Promise.reject(new ApiError({ code: "STUDIO_THREAD_NOT_FOUND", message: "这条对话不存在，请刷新画布" }, 404));
   return later(snapshot(p, t));
 }
 

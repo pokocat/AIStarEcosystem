@@ -385,3 +385,22 @@ describe('dialogueActivity', () => {
     expect(answeredAfter(dialogueReducer(sending, { type: 'outbox.remove', clientMessageId: 'c2' }), question)).toBeUndefined();
   });
 });
+
+// The session drops answers of a conversation it left; the reducer checks the data again (Codex review 2026-10-20).
+describe('answers that belong to another conversation', () => {
+  const execution = (threadId?: string) => ({ id: 'e9', projectId: 'p', ...(threadId ? { threadId } : {}), skillKey: 'k', skillVersion: 1, stage: 'production' as const, planRunId: 'pr',
+    planRevision: 1, planFingerprint: 'f', status: 'running' as const, steps: [], budgets: [], startedAt: thread.createdAt, deadlineAt: thread.createdAt, updatedAt: thread.createdAt });
+  test('an older page read for another conversation is not merged, and a page never brings in another conversation\'s messages', () => {
+    const s = loaded({ nextCursor: '5' });
+    const other: StudioDialogueMessage = { ...userMessage, id: 'x1', threadId: 'other', seq: 1, text: '别的对话' };
+    expect(dialogueReducer(s, { type: 'older', threadId: 'other', messages: [other], limit: 50 })).toBe(s);
+    const mixed = dialogueReducer(s, { type: 'older', threadId: 'th', messages: [other, { ...userMessage, id: 'u0', seq: 1, text: '更早' }], limit: 50 });
+    expect(mixed.messages.map(m => m.id)).toEqual(['u0', 'u1']);
+  });
+  test('an execution started from another conversation is not shown here; one without a thread (older records) still is', () => {
+    const s = loaded();
+    expect(dialogueReducer(s, { type: 'execution', execution: execution('other') }).execution).toBeUndefined();
+    expect(dialogueReducer(s, { type: 'execution', execution: execution('th') }).execution?.id).toBe('e9');
+    expect(dialogueReducer(s, { type: 'execution', execution: execution() }).execution?.id).toBe('e9');
+  });
+});

@@ -126,6 +126,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const [operation, setOperation] = useState<StudioOperation>("script");
   const [prompt, setPrompt] = useState("");
   const [originId, setOriginId] = useState<string>();
+  // The node the composer is for was deleted (Delete key, cut, undo): close the composer, like the storyboard detail above.
+  // Only once the node has been on the canvas: a node added together with opening its composer can arrive a render later.
+  const originSeen=useRef<string|undefined>(undefined);
+  useEffect(()=>{
+    if(!director||!originId){originSeen.current=undefined;return;}
+    if(nodes.some(n=>n.id===originId)){originSeen.current=originId;return;}
+    if(originSeen.current===originId){originSeen.current=undefined;setPickingReferences(false);setDirector(false);}
+  },[director,originId,nodes]);
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [ratio, setRatio] = useState("9:16");
   const [composerSettingsOpen,setComposerSettingsOpen]=useState(false);

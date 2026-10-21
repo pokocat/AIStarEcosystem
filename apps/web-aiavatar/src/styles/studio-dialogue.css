@@ -96,7 +96,6 @@ html[data-layout="desktop"] .ip-surface .studio-dialogue-message-actions { trans
 .ip-surface .studio-dialogue-plan > header span, .ip-surface .studio-dialogue-approval > header span { flex-shrink: 0; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; }
 .ip-surface .studio-dialogue-plan > header small { flex-shrink: 0; color: var(--ink-3); font-size: 11px; }
 .ip-surface .studio-dialogue-plan-summary { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
-.ip-surface .studio-dialogue-plan-skill { align-self: flex-start; max-width: 100%; margin: -4px 0 0; padding: 1px 8px; border-radius: 6px; background: var(--surface-2); color: var(--ink-2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-surface .studio-dialogue-skill-draft { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; }
 .ip-surface .studio-dialogue-skill-draft p { margin: 0; }
 .ip-surface .studio-dialogue-skill-draft .ant-btn { max-width: 100%; white-space: normal; height: auto; min-height: 28px; text-align: left; }
@@ -115,26 +114,16 @@ html[data-layout="desktop"] .ip-surface .studio-dialogue-message-actions { trans
 .ip-surface .studio-dialogue-plan-steps li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-surface .studio-dialogue-plan-steps li small { color: var(--ink-3); font-size: 11px; }
 .ip-surface .studio-dialogue-plan-steps li em { font-style: normal; color: var(--ink-2); white-space: nowrap; }
-.ip-surface .studio-dialogue-plan-budget { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 8px; margin: 0; font-size: 11px; }
-.ip-surface .studio-dialogue-plan-budget dt { grid-row: 1; color: var(--ink-3); }
-.ip-surface .studio-dialogue-plan-budget dd { grid-row: 2; margin: 0; color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
 
 /* 确认卡 */
 .ip-surface .studio-dialogue-approval[data-status="pending"] { border-color: var(--ink-3); box-shadow: 0 4px 18px rgb(30 35 45 / 5%); }
 .ip-surface .studio-dialogue-approval:not([data-status="pending"]) { background: var(--surface-2); }
 .ip-surface .studio-dialogue-approval-scope { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; line-height: 1.6; }
 .ip-surface .studio-dialogue-approval-scope li { overflow-wrap: anywhere; }
-.ip-surface .studio-dialogue-approval-quote { margin: 0; font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-approval-price { display: flex; align-items: baseline; gap: 8px; margin: 0; min-width: 0; }
 .ip-surface .studio-dialogue-approval-price strong { font-size: 30px; font-weight: 650; line-height: 1; letter-spacing: -.6px; }
 .ip-surface .studio-dialogue-approval-price span { font-size: 13px; color: var(--ink-2); }
-.ip-surface .studio-dialogue-approval-cap { margin: 0; font-size: 12px; line-height: 1.7; color: var(--ink-2); overflow-wrap: anywhere; }
-.ip-surface .studio-dialogue-approval-cap .studio-dialogue-link { margin-left: 6px; }
 .ip-surface .studio-dialogue-approval-actions .studio-assistant-primary { flex: 1; min-width: 120px; }
-.ip-surface .studio-dialogue-caps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.ip-surface .studio-dialogue-caps label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; font-size: 11px; color: var(--ink-2); min-width: 0; }
-.ip-surface .studio-dialogue-caps input { width: 100%; min-width: 0; box-sizing: border-box; height: 36px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 13px; }
-.ip-surface .studio-dialogue-caps input:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
 .ip-surface .studio-dialogue-approval-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .ip-surface .studio-dialogue-approval-actions .ant-btn { min-height: 36px; }
 
@@ -213,8 +202,6 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-chips button, html[data-
 html[data-layout="mobile"] .ip-surface .studio-dialogue-link { min-height: 36px; }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-action { min-width: 36px; height: 36px; }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-tool-toggle { width: 32px; height: 32px; }
-html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget dt, html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget dd { grid-row: auto; }
 @media (prefers-reduced-motion: reduce) {
   .ip-surface .studio-dialogue-chips button, .ip-surface .studio-dialogue-suggestions button { transition: none; }
   .ip-surface .studio-dialogue-activity-mark, .ip-surface .studio-dialogue-activity-label, .ip-surface .studio-dialogue-activity-dots i,

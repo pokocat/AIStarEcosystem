@@ -894,6 +894,18 @@ html[data-layout="desktop"] .studio-flow-shell .studio-view-switch { top:74px; l
 .ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button[aria-expanded="true"] { background:var(--surface-2); color:var(--ink); }
 .ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child button:disabled { opacity:.4; cursor:not-allowed; }
 .ip-surface .studio-assistant-panel .studio-floating-title { min-width:0; }
+/* With four header buttons the title row is tight: the mark, title and 「演示」 keep their size, only the skill chip shrinks (ellipsis). */
+.ip-surface .studio-assistant-panel .studio-floating-title>* { flex-shrink:0; }
+.ip-surface .studio-assistant-panel .studio-floating-title>.studio-assistant-mode { flex-shrink:1; min-width:0; }
+.ip-surface .studio-assistant-panel .studio-floating-title>.studio-dialogue-mock { white-space:nowrap; }
+/* Mobile: the panel is pinned full width (see above), so 停靠 / 浮窗 changes nothing there; its button gives the room back. */
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel>.studio-floating-header { gap:8px; padding:0 8px 0 12px; }
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-title { gap:6px; }
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-title>.studio-dialogue-mock { margin-left:0; }
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel>.studio-floating-header>div:last-child>button:is([aria-label="改成浮窗"],[aria-label="停靠到右侧"]) { display:none; }
+/* The history list opens right-aligned under its button, about 55px from the screen's right edge on mobile (panel pinned 12px in,
+   then the close button): 340px would start off screen at 375 wide. */
+html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340px, calc(100vw - 72px)); }
 /* 历史对话列表：当前那段与悬停用群青，不用 AI 渐变（这里不是 AI 在做事）。名称单行省略，全名在提示里。 */
 .ip-surface .studio-dialogue-threads { display:flex; flex-direction:column; gap:8px; width:min(340px, calc(100vw - 32px)); max-height:min(460px, calc(100dvh - 160px)); padding:12px; box-sizing:border-box; font-family:var(--font-ui); color:var(--ink); }
 .ip-surface .studio-dialogue-threads>header { display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0; padding:0 2px 2px; }

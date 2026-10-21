@@ -125,8 +125,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     }
 
     public List<Message> messages(String userId, String projectId, String threadId, Long beforeSeq, Integer limit) {
+        // Reading never changes which thread is current: the parent preview of a branch reads its parent's messages, and
+        // that must not send the next GET /conversation there. Only POST /conversations/{threadId}/open does.
         IpDialogueThread thread = requireThread(userId, projectId, threadId);
-        if (beforeSeq == null) threads.markOpened(thread.getId(), Instant.now()); // opening a thread makes it the current one
         int size = limit == null ? PAGE_DEFAULT : Math.max(1, Math.min(PAGE_MAX, limit));
         List<IpDialogueMessage> page = beforeSeq == null
                 ? new ArrayList<>(messages.findByThreadIdOrderBySeqDesc(thread.getId(), PageRequest.of(0, size)))
@@ -232,7 +233,21 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         return snapshot(userId, threadId);
     }
 
-    /** Open one thread: it becomes the current one (GET /conversation returns it from now on). Never starts a task. */
+    /**
+     * One thread's snapshot, by id, without making it current: what reconnects, polls and catch-up reads use. A poll still on
+     * its way when the user moved to another conversation (or a second tab parked on another thread) must not take the
+     * server's current thread back (Codex review 2026-10-20). Aligns a dead reply run like every other read. Never starts a task.
+     */
+    public State readThread(String userId, String projectId, String threadId) {
+        IpDialogueThread thread = requireThread(userId, projectId, threadId);
+        reconcile(thread.getId());
+        return snapshot(userId, thread.getId());
+    }
+
+    /**
+     * Open one thread: it becomes the current one (GET /conversation returns it from now on). Only the user's own choice
+     * (a row of 「历史对话」) calls this; reads go through {@link #readThread}. Never starts a task.
+     */
     public State openThread(String userId, String projectId, String threadId) {
         IpProject project = projects.required(userId, projectId);
         ensureMainThread(userId, project);

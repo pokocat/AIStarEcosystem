@@ -86,6 +86,7 @@ export type DialogueAction =
   | { type: 'outbox.failed'; clientMessageId: string; error: string }
   | { type: 'outbox.retry'; clientMessageId: string }
   | { type: 'outbox.remove'; clientMessageId: string }
+  /** An execution of another conversation (a read still on its way when the user switched) is not shown here. */
   | { type: 'execution'; execution: StudioPlanExecution }
   | { type: 'approval.local'; approvalId: string; status: DialogueApprovalBlock['status']; executionId?: string;
       /** The caps the server accepted (from the execution it returned); a server snapshot of the card wins. */
@@ -94,7 +95,8 @@ export type DialogueAction =
   | { type: 'canvas.ack'; seq: number }
   /** The lowest projected-but-unsaved canvas seq, or undefined once everything projected has been saved. */
   | { type: 'canvas.unsaved'; fromSeq?: number }
-  | { type: 'older'; messages: StudioDialogueMessage[]; limit: number };
+  /** `threadId`: the conversation the page was read for; a page of another one (the user switched meanwhile) is dropped. */
+  | { type: 'older'; messages: StudioDialogueMessage[]; limit: number; threadId?: string };
 
 export const emptyDialogueStore = (): DialogueStore => ({
   messages: [], latestSeq: 0, canvasSeq: 0, canvasAckSeq: 0, restoreThroughSeq: 0, hasOlder: false, layouts: {}, turnMessages: {}, doneTurns: [],
@@ -362,7 +364,12 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
         status: result.queueState === 'queued' ? 'queued' : result.queueState === 'applied' ? 'applied' : 'done', createdAt: action.createdAt || item.createdAt };
       return { ...store, outbox, queueStates, activeTurnId, messages: sortMessages([...store.messages, message]), localMessageIds: [...store.localMessageIds, message.id] };
     }
-    case 'execution': return { ...store, execution: newerExecution(store.execution, action.execution) };
+    case 'execution':
+      // The session drops answers of a conversation it left; this is the second check, on the data itself (Codex review
+      // 2026-10-20: a late read put the old conversation's execution into the new one and locked it as 「进行中」).
+      // An execution without a thread (older records) has nothing to compare and is kept.
+      if (store.thread && action.execution.threadId && action.execution.threadId !== store.thread.id) return store;
+      return { ...store, execution: newerExecution(store.execution, action.execution) };
     case 'approval.local': {
       const found = findBlock(store, isApproval(action.approvalId));
       if (!found) return store;
@@ -383,8 +390,9 @@ export function dialogueReducer(store: DialogueStore, action: DialogueAction): D
     case 'canvas.unsaved':
       return store.canvasUnsavedFrom === action.fromSeq ? store : { ...store, canvasUnsavedFrom: action.fromSeq };
     case 'older': {
+      if (action.threadId && action.threadId !== store.thread?.id) return store;
       const ids = new Set(store.messages.map(m => m.id));
-      const fresh = action.messages.filter(m => !ids.has(m.id));
+      const fresh = action.messages.filter(m => !ids.has(m.id) && (!store.thread || m.threadId === store.thread.id));
       return { ...store, messages: sortMessages([...fresh, ...store.messages]), hasOlder: action.messages.length >= action.limit };
     }
   }

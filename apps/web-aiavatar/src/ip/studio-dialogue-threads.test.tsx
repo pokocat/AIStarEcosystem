@@ -15,7 +15,7 @@ import { StudioAssistant } from './studio-assistant';
 import { DIALOGUE_THREAD_BUSY } from './studio-dialogue-session';
 import { DIALOGUE_ALREADY_NEW } from './studio-dialogue-threads';
 import {
-  mockDialogueControl, mockDialogueConversation, mockDialogueCreateThread, mockDialogueOpenThread, mockDialoguePost, mockDialogueThreads, mockDialogueTiming, resetMockDialogue,
+  mockDialogueControl, mockDialogueConversation, mockDialogueCreateThread, mockDialogueOpenThread, mockDialoguePost, mockDialogueThreadSnapshot, mockDialogueThreads, mockDialogueTiming, resetMockDialogue,
 } from './mocks/studio-dialogue';
 
 const api = vi.hoisted(() => ({
@@ -24,7 +24,9 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/canvas-bridge/studio-dialogue', () => ({ getStudioConversation: api.getConversation, postStudioDialogueMessage: api.post, subscribeStudioDialogue: api.subscribe,
   controlStudioDialogue: api.control, branchStudioDialogue: api.branch, listStudioDialogueMessages: api.list,
-  listStudioDialogueThreads: api.threads, createStudioDialogueThread: api.createThread, openStudioDialogueThread: api.openThread }));
+  listStudioDialogueThreads: api.threads, createStudioDialogueThread: api.createThread, openStudioDialogueThread: api.openThread,
+  // Catch-up reads of the conversation shown (read only, by id) answer like the conversation fixture.
+  getStudioDialogueThread: (projectId: string) => api.getConversation(projectId) }));
 vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-plan-execution')>()), getStudioPlanExecution: api.getExecution }));
 vi.mock('@/canvas-bridge/studio-skills', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-skills')>()),
   loadStudioSkills: () => api.skills(), reloadStudioSkills: () => api.skills() }));
@@ -262,6 +264,11 @@ test('demo mode: list, create (reusing an unused empty one, same key same thread
   expect(Number.isNaN(Date.parse(first.lastActivityAt))).toBe(false);
   expect(listed.find(t => t.id === second.thread.id)).toMatchObject({ title: '新对话', messageCount: 0, current: true });
 
+  // Reading one conversation by its id (reconnects, polls) leaves the current one where it is; opening it moves it.
+  const read = await mockDialogueThreadSnapshot('demo', main.thread.id);
+  expect(read.thread.id).toBe(main.thread.id);
+  expect((await mockDialogueConversation('demo')).thread.id).toBe(second.thread.id);
+  await expect(mockDialogueThreadSnapshot('demo', 'nope')).rejects.toMatchObject({ code: 'STUDIO_THREAD_NOT_FOUND', status: 404 });
   const opened = await mockDialogueOpenThread('demo', main.thread.id);
   expect(opened.messages.some(m => m.role === 'user' && m.text.includes('洗衣液'))).toBe(true);
   expect((await mockDialogueConversation('demo')).thread.id).toBe(main.thread.id);

@@ -20,7 +20,9 @@ const api = vi.hoisted(() => ({
 }));
 vi.mock('@/canvas-bridge/studio-dialogue', () => ({ getStudioConversation: api.getConversation, postStudioDialogueMessage: api.post, subscribeStudioDialogue: api.subscribe,
   controlStudioDialogue: api.control, branchStudioDialogue: api.branch, listStudioDialogueMessages: api.list,
-  listStudioDialogueThreads: api.threads, createStudioDialogueThread: api.createThread, openStudioDialogueThread: api.openThread }));
+  listStudioDialogueThreads: api.threads, createStudioDialogueThread: api.createThread, openStudioDialogueThread: api.openThread,
+  // Catch-up reads of the conversation shown (read only, by id) answer like the conversation fixture.
+  getStudioDialogueThread: (projectId: string) => api.getConversation(projectId) }));
 vi.mock('@/canvas-bridge/studio-plan-execution', async original => ({ ...(await original<typeof import('@/canvas-bridge/studio-plan-execution')>()),
   createStudioPlanExecution: api.createExecution, getStudioPlanExecution: api.getExecution, pauseStudioPlanExecution: api.pause, resumeStudioPlanExecution: api.resume,
   cancelStudioPlanExecution: api.cancel, acceptStudioPlanExecutionStep: api.accept }));

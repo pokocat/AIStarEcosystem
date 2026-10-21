@@ -497,9 +497,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     message.success(block.field === "prompt" ? "已更新节点提示词" : "已更新节点内容");
   };
   const approve = async (block: DialogueApprovalBlock, caps: { budgetCap: number; autoFixCap: number }, messageId: string) => {
-    // The execution reads canvas references from the saved document.
-    await saveStudioDocument(projectId);
-    try { await session.approve(block, caps, messageId); }
+    // The execution reads canvas references from the saved document. The save runs inside the session's confirmation guard,
+    // so no conversation switch starts between it and the execution's answer (and none on its way lets this start).
+    try { await session.approve(block, caps, messageId, () => saveStudioDocument(projectId)); }
     catch (e) {
       if (e instanceof ApiError && e.code === "STUDIO_PLAN_STALE") throw Object.assign(new Error("方案已更新，请看最新的报价"), { code: e.code, logId: e.logId });
       throw e;
@@ -632,7 +632,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const empty = !current.length && !store.outbox.length;
   // The canvas gets its nodes from this conversation's events: no new one and no switch while it is still going.
   const threadBusyReason = session.status === "idle" || session.status === "loading" ? "对话还在加载，请稍等" : session.switching ? "正在切换对话，请稍等"
-    : sending || dialogueThreadBusy(store) ? DIALOGUE_THREAD_BUSY : "";
+    : sending || session.confirming || dialogueThreadBusy(store) ? DIALOGUE_THREAD_BUSY : "";
   const threadActions = <StudioDialogueThreads currentThreadId={store.thread?.id} busyReason={threadBusyReason} empty={empty} listThreads={session.listThreads}
     onNew={() => switchThread(session.newThread)} onOpen={threadId => switchThread(() => session.openThread(threadId))}/>;
   const execution = store.execution && (executionActive(store.execution) || store.execution.threadId === store.thread?.id) ? store.execution : undefined;
