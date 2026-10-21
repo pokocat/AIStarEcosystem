@@ -69,7 +69,7 @@ class ModelOperationsServiceTest {
  }
  @Test void originalRecordsAreFilteredAndRawBodiesRemoved() throws Exception {
   var record=new AiModelUsageRecordDto("r",Instant.now(),"e","Endpoint","m","GENERAL","通用","u","Fixture",null,null,"studio","Studio",1,2,3,"TOKENS",0,0,0,false,0,"request",null,1L,"ERR",null,null,"failure","private prompt","private result",null,null,null,null);
-  when(usage.records(30,"studio",null,null,null,null,false,null,500)).thenReturn(List.of(record));var result=mapper.valueToTree(service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"appCode\":\"studio\",\"success\":false}"))).get(0);assertEquals("r",result.path("id").asText());assertFalse(result.has("requestBodyJson"));assertFalse(result.has("responseBodyJson"));
+  when(usage.records(30,"studio",null,null,null,null,false,null,500,false,false)).thenReturn(List.of(record));var result=mapper.valueToTree(service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"appCode\":\"studio\",\"success\":false}"))).get(0);assertEquals("r",result.path("id").asText());assertFalse(result.has("requestBodyJson"));assertFalse(result.has("responseBodyJson"));
  }
  @Test void malformedFiltersCannotTriggerProviderOrQuery(){assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"size\":501}")));assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointTest\",\"id\":\"e\",\"url\":\"https://arbitrary.example\"}")));assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"UNKNOWN\",\"baseUrl\":\"https://vendor.example\"}")));verifyNoInteractions(endpoints,usage);}
  @Test void paginatedCommandRejectsMalformedPagingBeforeQuery() {
@@ -81,6 +81,13 @@ class ModelOperationsServiceTest {
  @Test void malformedDraftProbeCannotSendArbitraryHeaders() {
   assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"endpointProbe\",\"providerType\":\"OPENAI\",\"baseUrl\":\"https://a.example/v1\",\"headers\":{}}")));
   verifyNoInteractions(endpoints, usage);
+ }
+
+ @Test void unassignedFiltersAreForwardedAndRequireBooleans() throws Exception {
+  when(usage.records(30,null,null,null,null,null,null,null,500,true,true)).thenReturn(List.of());
+  service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"unassignedUser\":true,\"unassignedTenant\":true}"));
+  verify(usage).records(30,null,null,null,null,null,null,null,500,true,true);
+  assertThrows(BusinessException.class,()->service.execute(mapper.readTree("{\"action\":\"usageRecords\",\"unassignedUser\":\"true\"}")));
  }
 
 }

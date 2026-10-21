@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.dialogue;
 
+import com.aistareco.aep.service.AiModelUsageContext;
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
 import com.aistareco.aep.ipstudio.dialogue.tools.StudioDialogueTool;
 import com.aistareco.aep.ipstudio.dialogue.tools.StudioDialogueToolRegistry;
@@ -118,7 +119,7 @@ public class StudioDialogueTurnWorker {
         AtomicBoolean stopFlag = signals.register(runId);
         Turn turn = null;
         ScheduledFuture<?> ticker = TICKER.scheduleAtFixedRate(() -> heartbeat(runId), 20, 20, TimeUnit.SECONDS);
-        try {
+        try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", runId)) {
             turn = new Turn(run, stopFlag);
             DialogueLoop.Outcome outcome = new DialogueLoop(turn.model, turn.toolsAdapter(), turn.hooks(), turn.budget).run(turn.prompt);
             turn.sink.flush();

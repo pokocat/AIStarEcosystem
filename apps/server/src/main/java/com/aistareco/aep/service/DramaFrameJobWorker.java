@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.AiModelUsageContext;
+
 import com.aistareco.aep.model.DramaFrameJob;
 import com.aistareco.aep.repository.DramaFrameJobRepository;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -42,7 +44,7 @@ public class DramaFrameJobWorker {
             log.info("[drama-frame] job {} already terminal ({}), skip", jobId, job.getStatus());
             return;
         }
-        try {
+        try (var attribution = AiModelUsageContext.bind(job.getOwnerUserId(), "drama", jobId)) {
             markRunning(jobId);
             JsonNode body = om.readTree(job.getRequestJson());
             JsonNode result = renderService.renderFrame(body, job.getOwnerUserId());

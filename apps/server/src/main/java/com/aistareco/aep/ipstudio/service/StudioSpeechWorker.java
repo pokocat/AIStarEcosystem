@@ -122,7 +122,7 @@ public class StudioSpeechWorker {
             tx.executeWithoutResult(s->{var r=billingLockedRun(id).orElseThrow();r.setOutputJson(write(output));runs.save(r);});
             if(finish(id,output,null,null)) {
                 try {long seconds=lip?exec.path("billableSeconds").asLong():(long)Math.ceil(duration);usage.recordMeteredObservedWithAttribution(endpoint.getId(),endpoint.getName(),lip?"x-dub":"qwen3-tts",lip?"DAP_LIP_SYNC":"DAP_AUDIO",null,null,null,
-                        AiModelBillingMode.PER_SECOND,seconds,seconds,true,run.getOwnerUserId(),null,"aiavatar",id,exec.path("jobId").asText(),null,null,null,exec.path("requestBody").asText(),null,null);}
+                        AiModelBillingMode.PER_SECOND,1L,seconds,true,run.getOwnerUserId(),null,"aiavatar",id,exec.path("jobId").asText(),null,null,null,exec.path("requestBody").asText(),null,null);}
                 catch(Exception error){log.warn("[speech] usage recording failed run={}",id,error);}
             }
         } catch(JusuanSpeechClient.Rejected error) {finish(id,null,error.getCode(),error.getMessage());}

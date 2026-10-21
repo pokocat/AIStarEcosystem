@@ -113,15 +113,22 @@ export function HealthLine({
   );
 }
 
+export type UsageTrendMetric = "totalTokens" | "calls" | "billableUnits" | "billableSeconds" | "estimatedCostMicros";
+
 export function TrendBars({
   data,
   emptyText = "暂无趋势数据。",
+  metric = "totalTokens",
 }: {
   data: AiModelUsageDaily[];
   emptyText?: string;
+  metric?: UsageTrendMetric;
 }) {
   if (!data || data.length === 0) return <EmptyPanel text={emptyText} />;
-  const max = Math.max(...data.map((d) => d.totalTokens), 1);
+  const unit = { totalTokens: "Token", calls: "次调用", billableUnits: "计费单位", billableSeconds: "计费秒", estimatedCostMicros: "估算成本" }[metric];
+  const peak = Math.max(...data.map((d) => d[metric] ?? 0), 0);
+  const max = Math.max(peak, 1);
+  const valueLabel = (value: number) => metric === "estimatedCostMicros" ? `¥${(value / 1_000_000).toFixed(4)}` : formatTokens(value);
   const width = Math.max(640, data.length * 72);
   const height = 240;
   const pad = { left: 44, right: 24, top: 34, bottom: 42 };
@@ -129,7 +136,7 @@ export function TrendBars({
   const plotHeight = height - pad.top - pad.bottom;
   const points = data.map((d, index) => {
     const x = pad.left + (data.length === 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
-    const y = pad.top + plotHeight - (d.totalTokens / max) * plotHeight;
+    const y = pad.top + plotHeight - ((d[metric] ?? 0) / max) * plotHeight;
     return { x, y, d };
   });
   const path = smoothPath(points);
@@ -138,7 +145,7 @@ export function TrendBars({
     <div className="overflow-x-auto">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="text-xs text-muted-foreground">按自然日聚合，Asia/Shanghai</div>
-        <div className="text-xs tabular-nums text-muted-foreground">峰值 {formatTokens(max)} Token</div>
+        <div className="text-xs tabular-nums text-muted-foreground">峰值 {valueLabel(peak)} {unit}</div>
       </div>
       <svg
         className="block min-w-full text-muted-foreground"
@@ -146,7 +153,7 @@ export function TrendBars({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Token 用量趋势曲线"
+        aria-label={`${unit}用量趋势曲线`}
       >
         {[0, 0.25, 0.5, 0.75, 1].map((step) => {
           const y = pad.top + plotHeight - step * plotHeight;
@@ -154,7 +161,7 @@ export function TrendBars({
             <g key={step}>
               <line x1={pad.left} x2={width - pad.right} y1={y} y2={y} className="stroke-border" strokeDasharray={step === 0 ? undefined : "4 6"} />
               <text x={pad.left - 10} y={y + 4} textAnchor="end" className="fill-muted-foreground text-[10px] tabular-nums">
-                {formatTokens(Math.round(max * step))}
+                {valueLabel(Math.round(max * step))}
               </text>
             </g>
           );
@@ -168,7 +175,7 @@ export function TrendBars({
               {showLabel && (
                 <>
                   <text x={p.x} y={Math.max(12, p.y - 10)} textAnchor="middle" className="fill-foreground text-[10px] font-medium tabular-nums">
-                    {formatTokens(p.d.totalTokens)}
+                    {valueLabel(p.d[metric] ?? 0)}
                   </text>
                   <text x={p.x} y={height - 14} textAnchor="middle" className="fill-muted-foreground text-[10px] tabular-nums">
                     {shortDate(p.d.date)}

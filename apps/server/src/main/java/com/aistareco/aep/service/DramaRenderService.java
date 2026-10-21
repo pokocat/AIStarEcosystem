@@ -398,9 +398,11 @@ public class DramaRenderService {
                 throw failed;
             }
             String upstreamId = null;
+            com.aistareco.aep.service.ai.AiModelTokenUsage tokens = com.aistareco.aep.service.ai.AiModelTokenUsage.from(null);
             byte[] bytes;
             try {
                 JsonNode root = om.readTree(resp.body());
+                tokens = com.aistareco.aep.service.ai.AiModelTokenUsage.from(root);
                 upstreamId = root.path("id").asText(null);
                 JsonNode data0 = root.path("data").path(0);
                 String url = data0.path("url").asText(null);
@@ -430,7 +432,7 @@ public class DramaRenderService {
             // 用量观测（best-effort，token 数图像接口通常不回）
             try {
                 usage.recordMeteredObserved(ep.getId(), ep.getName(), ep.getModel(),
-                        AiModelPurpose.IMAGE_GENERATION.name(), 0L, 0L, 0L,
+                        AiModelPurpose.IMAGE_GENERATION.name(), tokens.input(), tokens.output(), tokens.total(),
                         AiModelBillingMode.PER_CALL, 1L, 0L, true,
                         requestId, upstreamId, elapsedMs(startNanos), null, null);
             } catch (Exception ignore) { /* 观测旁路，不阻塞主链路 */ }

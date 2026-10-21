@@ -66,6 +66,9 @@ import java.util.stream.Collectors;
 @Service
 public class AiModelUsageService {
 
+    /** Observation-only purpose: this auxiliary API uses a video endpoint but does not generate video. */
+    public static final String VIDEO_PROMPT_OPTIMIZATION = "VIDEO_PROMPT_OPTIMIZATION";
+
     private static final Logger log = LoggerFactory.getLogger(AiModelUsageService.class);
     private static final int DEFAULT_WINDOW_DAYS = 30;
     private static final int MAX_WINDOW_DAYS = 365;
@@ -231,6 +234,27 @@ public class AiModelUsageService {
                 billingMode, billableUnits, billableSeconds);
     }
 
+    /** One observation per successful vendor optimization key; retries must not multiply reported consumption. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void recordPromptOptimization(String providerId, String providerName, String model, String userId,
+                                         String requestId, String upstreamId, boolean success, Long latencyMs, String errorCode) {
+        try {
+            String observationId = requestId != null && requestId.length() > 96
+                    ? "opt-" + java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(requestId.getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+                    : requestId;
+            // Serialize duplicate successful observations using the existing endpoint row, without a new schema.
+            if (success) {
+                endpointRepo.lockById(providerId);
+                if (repo.existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(providerId, VIDEO_PROMPT_OPTIMIZATION, observationId)) return;
+            }
+            saveRecord(providerId, providerName, model, VIDEO_PROMPT_OPTIMIZATION,
+                    null, null, null, success, userId, null, "celebrity", observationId, upstreamId, latencyMs,
+                    errorCode, null, null, null, null, AiModelBillingMode.PER_CALL, success ? 1L : 0L, 0L);
+        } catch (Exception error) {
+            log.warn("[ai-usage] optimization observation failed provider={} requestId={}", providerId, requestId, error);
+        }
+    }
+
     private void saveRecord(String providerId, String providerName, String model, String purpose,
                             Long promptTokens, Long completionTokens, Long totalTokens, boolean success,
                             String userId, String tenantId, String appCode,
@@ -242,9 +266,10 @@ public class AiModelUsageService {
                             Long requestedBillableUnits,
                             Long requestedBillableSeconds) {
         try {
-            String normalizedUserId = blankToNull(userId);
+            Attribution fallback = currentAttribution();
+            String normalizedUserId = firstNonBlank(userId, fallback.userId());
             String normalizedTenantId = firstNonBlank(tenantId, resolveTenantId(normalizedUserId));
-            String normalizedAppCode = firstNonBlank(normalizeAppCode(appCode), inferAppCodeForPurpose(purpose));
+            String normalizedAppCode = firstNonBlank(normalizeAppCode(appCode), fallback.appCode(), inferAppCodeForPurpose(purpose));
             AiModelEndpoint endpoint = endpointRepo.findById(blankToNull(providerId) == null ? "" : providerId).orElse(null);
             long prompt = safeLong(promptTokens);
             long completion = safeLong(completionTokens);
@@ -252,7 +277,7 @@ public class AiModelUsageService {
             AiModelBillingMode billingMode = effectiveBillingMode(endpoint, purpose, requestedBillingMode);
             long billableUnits = effectiveBillableUnits(billingMode, requestedBillableUnits, success);
             long billableSeconds = effectiveBillableSeconds(requestedBillableSeconds, success);
-            long unitPriceMicros = endpoint == null ? 0L : Math.max(0L, endpoint.getUnitPriceMicros());
+            long unitPriceMicros = endpoint == null || VIDEO_PROMPT_OPTIMIZATION.equals(purpose) ? 0L : Math.max(0L, endpoint.getUnitPriceMicros());
             Long costMicros = estimateCostMicros(prompt, completion, billingMode, billableUnits, billableSeconds, unitPriceMicros, endpoint);
             AiModelFailureCategory errorCategory = success
                     ? null
@@ -285,6 +310,11 @@ public class AiModelUsageService {
                     .totalTokens(totalTokens)
                     .success(success)
                     .build();
+            if (normalizedUserId == null && currentRequest() == null) {
+                var task = AiModelUsageContext.current();
+                log.warn("[ai-usage] missing attribution purpose={} provider={} requestId={} task={}",
+                        purpose, providerId, requestId, task == null ? null : task.taskId());
+            }
             repo.save(rec);
             bumpEndpointCounters(endpoint, success, total, billableUnits, billableSeconds);
         } catch (Exception e) {
@@ -313,7 +343,7 @@ public class AiModelUsageService {
                 window, since,
                 totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6], failedCalls,
                 alerts, byFailureCategory,
-                byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
+                byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay, groupModalities(byPurpose));
     }
 
     @Transactional(readOnly = true)
@@ -326,6 +356,14 @@ public class AiModelUsageService {
                                                Boolean success,
                                                String q,
                                                Integer size) {
+        return records(days, appCode, userId, tenantId, purpose, providerId, success, q, size, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public List<AiModelUsageRecordDto> records(Integer days, String appCode, String userId, String tenantId,
+            String purpose, String providerId, Boolean success, String q, Integer size,
+            boolean unassignedUser, boolean unassignedTenant) {
+        validateAttributionFilters(userId, tenantId, unassignedUser, unassignedTenant);
         int window = clampDays(days);
         int safeSize = clampSize(size);
         String normalizedApp = normalizeAppCode(appCode);
@@ -337,7 +375,7 @@ public class AiModelUsageService {
                 blankToNull(tenantId),
                 blankToNull(purpose),
                 success,
-                blankToNull(q),
+                blankToNull(q), unassignedUser, unassignedTenant,
                 PageRequest.of(0, fetchSize));
 
         Map<String, AiModelEndpoint> endpoints = endpointMap(records);
@@ -355,6 +393,14 @@ public class AiModelUsageService {
     public AiModelUsagePageDto recordsPage(int days, int page, int size, Instant asOf,
             String appCode, String userId, String tenantId, String purpose, String providerId,
             String model, Boolean success, String q) {
+        return recordsPage(days, page, size, asOf, appCode, userId, tenantId, purpose, providerId, model, success, q, false, false);
+    }
+
+    @Transactional(readOnly = true)
+    public AiModelUsagePageDto recordsPage(int days, int page, int size, Instant asOf,
+            String appCode, String userId, String tenantId, String purpose, String providerId,
+            String model, Boolean success, String q, boolean unassignedUser, boolean unassignedTenant) {
+        validateAttributionFilters(userId, tenantId, unassignedUser, unassignedTenant);
         Instant now = Instant.now();
         Instant upper = asOf == null ? now : asOf;
         if (days < 1 || days > MAX_WINDOW_DAYS || page < 0 || size < 1 || size > 200
@@ -369,6 +415,8 @@ public class AiModelUsageService {
             String[] values = {userId, tenantId, purpose, providerId};
             for (int n = 0; n < fields.length; n++)
                 if (blankToNull(values[n]) != null) conditions.add(cb.equal(root.get(fields[n]), values[n].trim()));
+            if (unassignedUser) conditions.add(cb.isNull(root.get("userId")));
+            if (unassignedTenant) conditions.add(cb.isNull(root.get("tenantId")));
             if (success != null) conditions.add(cb.equal(root.get("success"), success));
             if (blankToNull(model) != null)
                 conditions.add(cb.like(cb.lower(root.get("model")), literalLike(model), '\\'));
@@ -400,6 +448,11 @@ public class AiModelUsageService {
         return new AiModelUsagePageDto(records.stream()
                 .map(r -> toRecordDto(r, endpoints.get(r.getProviderId()), users, tenants)).toList(),
                 result.getTotalElements(), page, size, upper);
+    }
+
+    private static void validateAttributionFilters(String userId, String tenantId, boolean unassignedUser, boolean unassignedTenant) {
+        if (unassignedUser && blankToNull(userId) != null || unassignedTenant && blankToNull(tenantId) != null)
+            throw BusinessException.badRequest("AI_USAGE_FILTER_INVALID", "未归属筛选不能同时指定用户或租户");
     }
 
     private static String literalLike(String value) {
@@ -440,7 +493,7 @@ public class AiModelUsageService {
                 window, since,
                 totals[0], totals[1], totals[2], totals[3], totals[4], totals[5], totals[6], failedCalls,
                 alerts, byFailureCategory,
-                byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay);
+                byProvider, byModel, byPurpose, byUser, byTenant, byAppCode, byDay, groupModalities(byPurpose));
     }
 
     // ── 内部 ───────────────────────────────────────────────────────────────
@@ -477,7 +530,7 @@ public class AiModelUsageService {
         for (Object[] r : rows) {
             String wire = r[0] != null ? String.valueOf(r[0]) : null;
             String key = wire != null ? wire : "GENERAL";
-            String label = AiModelPurpose.fromWire(wire).label();
+            String label = usagePurposeLabel(wire);
             out.add(new AiModelUsageStatDto(
                     key, label,
                     asLong(r[2]), asLong(r[3]), asLong(r[4]), asLong(r[5]),
@@ -485,6 +538,27 @@ public class AiModelUsageService {
         }
         sortUsageStats(out);
         return out;
+    }
+
+    /** Output modality, not endpoint name: vision/chat calls keep the vendor's reported token usage. */
+    private static List<AiModelUsageStatDto> groupModalities(List<AiModelUsageStatDto> purposes) {
+        Map<String, long[]> groups = new TreeMap<>();
+        Map<String, String> labels = Map.of("text", "文本与多模态理解", "image", "图片生成", "video", "视频与口型", "audio", "音频与音乐", "other", "其他调用");
+        for (var row : purposes) {
+            String key = switch (AiModelPurpose.fromWire(row.key())) {
+                case IMAGE_GENERATION, DAP_IMAGE -> "image";
+                case VIDEO_GENERATION, DAP_VIDEO, DAP_LIP_SYNC -> "video";
+                case DAP_AUDIO, MUSIC_GENERATION -> "audio";
+                case DAP_REAL_AVATAR, GENERAL -> "other";
+                default -> "text";
+            };
+            var sum = groups.computeIfAbsent(key, ignored -> new long[7]);
+            long[] values = {row.calls(), row.totalTokens(), row.promptTokens(), row.completionTokens(), row.billableUnits(), row.billableSeconds(), row.estimatedCostMicros()};
+            for (int i = 0; i < values.length; i++) sum[i] += values[i];
+        }
+        List<AiModelUsageStatDto> result = new ArrayList<>();
+        groups.forEach((key, v) -> result.add(new AiModelUsageStatDto(key, labels.get(key), v[0], v[1], v[2], v[3], v[4], v[5], v[6])));
+        return result;
     }
 
     private static List<AiModelFailureStatDto> mapFailureRows(List<Object[]> rows) {
@@ -685,7 +759,7 @@ public class AiModelUsageService {
                 firstNonBlank(record.getProviderName(), endpoint == null ? null : endpoint.getName(), record.getProviderId()),
                 record.getModel(),
                 purpose,
-                AiModelPurpose.fromWire(purpose).label(),
+                usagePurposeLabel(purpose),
                 record.getUserId(),
                 labelOrFallback(record.getUserId(), userLabels, "未归属用户"),
                 record.getTenantId(),
@@ -840,10 +914,11 @@ public class AiModelUsageService {
     }
 
     private Attribution currentAttribution() {
-        String userId = currentUserId();
+        var task = AiModelUsageContext.current();
+        String userId = firstNonBlank(task == null ? null : task.userId(), currentUserId());
         HttpServletRequest request = currentRequest();
-        String appCode = AuditService.appCode(request);
-        return new Attribution(userId, resolveTenantId(userId), appCode);
+        String appCode = firstNonBlank(task == null ? null : normalizeAppCode(task.appCode()), AuditService.appCode(request));
+        return new Attribution(userId, null, appCode);
     }
 
     private static String currentUserId() {
@@ -928,9 +1003,14 @@ public class AiModelUsageService {
         return labels.getOrDefault(normalized, normalized);
     }
 
+    private static String usagePurposeLabel(String purpose) {
+        return VIDEO_PROMPT_OPTIMIZATION.equals(purpose) ? "视频提示词优化" : AiModelPurpose.fromWire(purpose).label();
+    }
+
     private static AiModelBillingMode effectiveBillingMode(AiModelEndpoint endpoint,
                                                            String purpose,
                                                            AiModelBillingMode requested) {
+        if (VIDEO_PROMPT_OPTIMIZATION.equals(purpose)) return AiModelBillingMode.PER_CALL;
         if (endpoint != null && endpoint.effectiveSupplierBillingMode() != null) return endpoint.effectiveSupplierBillingMode();
         if (requested != null) return requested;
         return inferBillingModeForPurpose(purpose);
@@ -939,7 +1019,7 @@ public class AiModelUsageService {
     private static AiModelBillingMode inferBillingModeForPurpose(String purpose) {
         return switch (AiModelPurpose.fromWire(purpose)) {
             case IMAGE_GENERATION, DAP_IMAGE -> AiModelBillingMode.PER_CALL;
-            case VIDEO_GENERATION, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC -> AiModelBillingMode.PER_SECOND;
+            case VIDEO_GENERATION, DAP_VIDEO, DAP_AUDIO, DAP_LIP_SYNC, MUSIC_GENERATION -> AiModelBillingMode.PER_SECOND;
             default -> AiModelBillingMode.TOKENS;
         };
     }

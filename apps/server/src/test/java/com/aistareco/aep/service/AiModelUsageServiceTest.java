@@ -352,4 +352,45 @@ class AiModelUsageServiceTest {
         assertEquals(0, service.recordsPage(30, 0, 20, asOf, "drama", "absent", null, null, null, null, true, null).total());
     }
 
+    @Test
+    void nullAttributionFiltersWorkInBothListsAndPagination() {
+        Instant now = Instant.now();
+        seedAttr(null, null, "aiavatar", 1, 1, 2, now);
+        seedAttr(null, "tenant-a", "aiavatar", 2, 2, 4, now);
+        seedAttr("user-a", null, "aiavatar", 3, 3, 6, now);
+        seedAttr("user-b", "tenant-b", "aiavatar", 4, 4, 8, now);
+        assertEquals(2, service.records(30, null, null, null, null, null, null, null, 20, true, false).size());
+        assertEquals(2, service.records(30, null, null, null, null, null, null, null, 20, false, true).size());
+        assertEquals(1, service.records(30, null, null, null, null, null, null, null, 20, true, true).size());
+        assertEquals(2, service.recordsPage(30, 0, 20, null, null, null, null, null, null, null, null, null, true, false).total());
+        assertEquals(1, service.recordsPage(30, 0, 20, null, null, null, null, null, null, null, null, null, true, true).total());
+        org.junit.jupiter.api.Assertions.assertThrows(com.aistareco.common.BusinessException.class,
+                () -> service.records(30, null, "user-a", null, null, null, null, null, 20, true, false));
+    }
+
+    @Test
+    void multimodalTotalsKeepTokensUnitsSecondsAndCostsIndependent() {
+        String[] purposes = {"DAP_PERSONA", "DAP_IMAGE", "VIDEO_GENERATION", "DAP_AUDIO", "MUSIC_GENERATION", "DAP_LIP_SYNC"};
+        for (int i = 0; i < purposes.length; i++) {
+            repo.saveAndFlush(AiModelUsageRecord.builder().id("multi-" + i).providerId("ep").providerName("provider").model("model-" + i)
+                    .purpose(purposes[i]).success(true).createdAt(Instant.now()).userId("owner")
+                    .promptTokens(i == 0 ? 10L : 0L).completionTokens(i == 0 ? 20L : 0L).totalTokens(i == 0 ? 30L : 0L)
+                    .billableUnits(i == 0 ? 0L : 1L).billableSeconds(i < 2 ? 0L : 5L).costMicros(100L).build());
+        }
+        var report = service.report(30);
+        assertEquals(6, report.totalCalls());
+        assertEquals(30, report.totalTokens());
+        assertEquals(5, report.totalBillableUnits());
+        assertEquals(20, report.totalBillableSeconds());
+        assertEquals(600, report.estimatedCostMicros());
+        assertEquals(4, report.byModality().size());
+        var audio = report.byModality().stream().filter(row -> "audio".equals(row.key())).findFirst().orElseThrow();
+        assertEquals(2, audio.calls());
+        assertEquals(10, audio.billableSeconds());
+        assertEquals(report.totalTokens(), report.byModality().stream().mapToLong(row -> row.totalTokens()).sum());
+        assertEquals(report.totalBillableUnits(), report.byModality().stream().mapToLong(row -> row.billableUnits()).sum());
+        assertEquals(report.estimatedCostMicros(), report.byModality().stream().mapToLong(row -> row.estimatedCostMicros()).sum());
+        assertEquals(4, service.reportForProvider("ep", 30).byModality().size());
+    }
+
 }

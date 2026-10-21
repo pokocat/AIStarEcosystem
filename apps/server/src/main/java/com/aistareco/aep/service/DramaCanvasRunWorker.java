@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.AiModelUsageContext;
+
 import com.aistareco.aep.config.MdcTaskDecorator;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.model.DramaCanvasRun;
@@ -264,7 +266,7 @@ public class DramaCanvasRunWorker {
         }
         if (!claim(run)) return;
         run = reload(run);
-        try {
+        try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "drama", runId)) {
             switch (run.getKind()) {
                 case DramaCanvasRun.KIND_SCRIPT, DramaCanvasRun.KIND_EXTRACT, DramaCanvasRun.KIND_STORYBOARD -> runText(run);
                 case DramaCanvasRun.KIND_IMAGE -> runImage(run, false);
@@ -288,7 +290,7 @@ public class DramaCanvasRunWorker {
                 DramaCanvasRun run = runs.findById(id).orElse(null);
                 if (run == null || !claim(run)) continue;
                 run = reload(run);
-                try {
+                try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "drama", id)) {
                     runImage(run, true);
                 } catch (RuntimeException e) {
                     log.warn("[drama-canvas] 批量出图单项异常 run={}", id, e);
