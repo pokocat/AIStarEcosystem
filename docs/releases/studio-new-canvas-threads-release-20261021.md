@@ -515,3 +515,94 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 只回 web-aiavatar，server 不动；回滚后恢复「节点在就不补」与打字确认后的切换窗口。
+
+## 热修 `20261021-studio-skill-routing`（2026-10-21 19:33 CST，只发 server）
+
+### 现象
+
+今天线上画布上有图片时，几句话落错了技能：「用这几张图做一段视频」「用一张图生成一段视频」留在出图（出图的裸词「几张图 / 一张图」与出视频的「做一段视频 / 生成一段视频」同分，平手时线程在出图上就沿用出图）；「用这张商品图写三条卖点文案」带图落到出图（出图「商品图」+2、图片 +1 = 3，写稿「写三条」+2 = 2）；14:36 的热修给出视频加了「做个视频」，于是「做个视频脚本」落到出视频。
+
+### 用户的决定
+
+平手时不留在当前技能、交给模型判断；「写…文案 / 卖点 / 标题」带图也归写文案；用今天碰到的句子加测试并真调验证，发 server。
+
+### 修法（main `c82bd5ad`，分支 `fix/studio-skill-routing-20261021` 快进；设计真源 `docs/ip-studio-dialogue-intents.md` §4）
+
+- **`StudioSkillRouter.decide`** 返回 MATCH（绑这个）/ KEEP（不变）/ OPEN（平手，不绑）；`route(…)` 保留为它的 Optional 形式。
+  1. **写作意图先判**：写作动词（写 / 改 / 改写 / 润色 / 扩写 / 精简 / 优化 / 拟 / 编 / 做 / 出 / 想 / 来 / 列，「起」只在数量前）在同一分句、16 字以内直接带文字产物（文案 / 卖点 / 标题 / 口播 / 脚本 / 台词 / 剧本 / 简介 / 广告语 / 旁白 / 分镜 / 小传 / 人设 / 标语 / 话术 / 大纲 / 故事 / 文字…）→ 写剧本与文案，带图片、视频素材也一样。文字是图或视频一部分的不算（「做一张带标题的海报」「做个口播视频」「卖点图」「海报上的标题」「写上标题」「特写」）；这句话**先**要了图、视频或复刻的不算（「画一张海报，上面写标题…」「做一条视频，先写个脚本」），且这时写稿技能的关键词也不计分。「拍的 / 做好的 / 生成的」是已有素材，不算先要了别的。一组正则写在路由里，不在技能文件里堆单字。
+  2. 其余照旧：关键词 ×2、素材 ×1，唯一最高分胜出。
+  3. **只有素材不选方法**：文字一个关键词都没命中 → 沿用当前技能，没有就不绑。此前素材单独计分，钉着做好的片段说「把做好的片段合成一条成片」会因为钉的是视频跳到复刻（分析阶段）。
+  4. **平手一律不绑**：当前技能在平手里也不沿用。`StudioDialogueService.startTurn` 清掉线程 `skillKey / skillVersion / stage`，本轮不带技能，日志 `[dialogue] routing tie thread=… among [...] … the model picks`；模型看到「还没有选定方法」和全部技能摘要，用 `read_skill` 选（线程没技能时 `read_skill` 直接绑定）。有进行中执行时不路由、锁定规则不变。
+- **出图关键词**：裸词「一张图 / 几张图」换成「出一张图 / 来一张图 / 要一张图 / 生成一张图 / 做一张图 / 出几张图 / 来几张图 / 要几张图 / 生成几张图 / 多出几张」：「用这几张图」是素材不是要出图，这两句现在直接归出视频。技能文件变了，启动时按摘要追加为新种子版本。
+- **未选定方法时的提示**（`StudioDialogueTurnWorker.skillText(null)`，代码拼的变量，不是提示词模板）：补「可以和看图放在同一批动作里。选定方法之前不要向用户提问：要不要问、问什么，按选定方法里的「必填与可选」来定」，原因见下面的真模型结果。`propose_plan` 的工具说明原来叫模型用已下架的「原创创作」，改为「出图、出视频、写剧本与文案没有分析阶段……只有参考视频复刻要先分析」。
+- `dap.ip_studio_skill_dialogue.md` 没改，`PromptTemplateSeeder.SEED_VERSION` 仍是 `v23-2026-10-21-exec-target-node`。
+- 文档：意图文档 §3 / §4 / §7 / §8，`specs/BUSINESS_RULES.md` Studio §19，`apps/server/README.md` 路由段，AGENTS.md「对话意图直达」路由一条，TODO.md 今天记的两条路由问题勾掉并注明、另记一条「演示 mock 路由落后于服务端」（只影响演示模式，下次发 web 时同步），`docs/INDEX.md`。
+
+### 用例表（`StudioSkillRouterTest#theRoutingTableHoldsFromEveryThreadState`，仓库技能文件）
+
+61 行 × 5 种线程状态（未绑定、绑在出图 / 出视频 / 写稿 / 复刻上）= 305 次判定，全过。主要几行：
+
+| 消息 | 素材 | 结果 |
+|---|---|---|
+| 用这张图做一段视频 | 无 / 图片 / 视频 | 出视频 |
+| 用这几张图做一段视频、用一张图生成一段视频 | 无 / 图片 / 视频 | 出视频（原来平手留在出图） |
+| 用这张商品图写三条卖点文案 | 无 / 图片 / 视频 | 写剧本与文案（原来带图落到出图） |
+| 做个ip形象三视图、换个风格再出一张 | 无 / 图片 / 视频 | 出图 |
+| 把做好的片段合成一条成片 | 无 / 图片 / 视频 | 不变（沿用当前技能，未绑定就不绑；原来钉视频会跳到复刻） |
+| 写一集 60 秒的短剧剧本：… | 无 / 图片 / 视频 | 写剧本与文案（原来一个词都不中） |
+| 照这条视频的拍法，把商品换成我的 | 无 / 视频 / 视频+图片 | 参考视频复刻 |
+| 做个视频脚本 | 无 / 图片 / 视频 | 写剧本与文案（原来落到出视频） |
+| 画一张海报，标题写「…」；做一张海报，上面写标题：… | 无 / 图片 / 文字 | 出图 |
+| 做一条视频，先写个脚本 | 无 | 出视频（先点名的是视频） |
+| 这个视频配个音 | 视频 | 不变（原来被视频素材绑成复刻） |
+| 复刻这条，换成我的保温杯，做一个视频 | 视频+图片 | 平手 → 不绑（原来线程在复刻上就沿用复刻） |
+| 用这张商品图做一段视频 | 图片 | 平手 → 不绑 |
+| 照着参考视频做一条 | 无 | 平手 → 不绑（钉了视频则复刻） |
+
+另有意图文档 §7 其余句子（国风海报、动起来、你好 / 谢谢、做张图、封面、剧本出成视频、写一段视频脚本等）同表钉住，结果与 §7 一致。写作意图正例 20 句、反例 14 句、「先要了别的」6 句、「已有素材不算」4 句单独钉住。核对过表能抓回归：把写作技能键改掉，表里写稿行与「海报上写标题」行失败；恢复「平手在当前技能里就沿用」，「复刻…做一个视频」「照着参考视频做一条」等行与平手用例失败。`StudioSuggestionRoutingTest` 一处按新规则改了预期：「复刻这条，换成我的保温杯，做一个视频」+ 视频 + 图片在线程绑在复刻上时，原来沿用复刻，现在不绑、交给模型（真调 3/3 选回复刻）；其余 13 条完成后建议的预期不变。`StudioDialogueRoutingTest` 新增「平手把已绑定线程清成未绑定、本轮输入不带技能」「只有素材不选方法」；`StudioDialoguePromptWiringTest` 新增一条钉住未选定方法时那段话和 `propose_plan` 不再提已下架方法。
+
+### 真模型验证（本机，没有用生产密钥）
+
+本机开发库副本里的聚算凭据（`studio-live-jusuan-audio` 端点，本地开发密钥加密），直连 `https://api.jusuanhub.com/v1/chat/completions`，`model=qwen38-27b`、`temperature=0.7`、`max_tokens=4096`、非流式。请求取线上 14:10 那轮（画布两张图、线程刚出完三视图），换成：当前对话系统提示词、`skillText(null)`（未选定方法 + 四个技能摘要）、阶段「未开始（还没有选定制作方法）」、当前 `propose_plan` 说明、测试句；复刻那组在画布上加一条参考视频和一张保温杯图。回复用服务端自己的 `DialogueActionProtocol.parse` 解析，全部可解析、对象 id 都是真实的：
+
+| 场景（未选定方法） | 次数 | 第一步 | 选对的方法 |
+|---|---|---|---|
+| 旧说明：用这几张图做一段视频 / 用一张图生成一段视频 / 复刻这条…做一个视频（钉视频 + 图） | 3 × 3 | 9 次都只 `view_images`，0 次 `read_skill` | — |
+| 旧说明，接一个看图结果再调一次（同三组） | 3 × 3 | `read_skill` 6 次（出视频 3、复刻 3），`ask_question` 3 次（问动作 / 首帧，没选方法就先问） | 6/6 |
+| 新说明：复刻这条，换成我的保温杯，做一个视频（钉视频 + 图，路由平手） | 3 | `view_images` + `read_skill` 同一批 3 次 | 复刻 3/3 |
+| 新说明：照着参考视频做一条（画布有视频、没钉，路由平手） | 3 | `read_skill` 3 次（两次与看图同批，一次先选再看） | 复刻 3/3 |
+| 新说明：用这张商品图做一段视频（钉图，路由平手） | 3 | `view_images` + `read_skill` 3 次 | 出视频 3/3 |
+| 新说明：用这几张图做一段视频 / 用一张图生成一段视频（路由已直接归出视频，未绑定状态下仅作对照） | 3 × 2 | `read_skill` 3 次、只看图 2 次、`ask_question` 1 次（问首帧） | 出视频 3/3 |
+
+平手句子在新说明下第一步就选定方法 9/9、全部选对。每次输入约 6.5k–6.9k token、输出 66–156 token。只验了第一步（旧说明多验了第二步），选定方法之后出方案、发卡没有真调。
+
+### 门禁与测试
+
+- `./mvnw compile -q -o` 通过；`./mvnw -o -Dtest='StudioSkill*,StudioSuggestionRouting*,StudioDialogue*' test`：114 条，0 失败；`com.aistareco.aep.ipstudio.**` 116 个类 804 条，0 失败，5 跳过；`pnpm check:api-contract`：`OK.`。没有新接口、没有迁移。
+- rebase 到 main `3a5fff4a` 后（期间 main 只多了 web-aiavatar 与文档提交，`apps/server` / `specs` / `packages` 无改动）重新 `./mvnw compile -q -o` 通过。
+
+### 制品与发布
+
+- 发布前核对：线上 server 最新为 `20261021-studio-dialogue-steps`（`GIT_SHA='8e772145…'`，PID 1394779，18:34:51 起，`server/app.jar` sha256 `a4095f3a…` 与本地 `dist/deploy/20261021-studio-dialogue-steps` 一致），在 main 历史里；web-aiavatar 最新为 `20261021-studio-restore-fix`（`e184a8dd`，不动）。`AIStarEcosystem-main-release` 干净、没有构建 / 发布进程，main `3a5fff4a` 快进到 `c82bd5ad`。
+- 构建 `RELEASE_ID=20261021-studio-skill-routing ./infra/scripts/build-release.sh server`：`manifest.env` 为 `SERVICES='server'`、`GIT_SHA='c82bd5adc8873e4a7a0ef523ccc68dcbde058489'`；`checksums.sha256` 两项通过；`server/app.jar` sha256 `0800cb0f03405c2631fae4e5161b6c327e968084a4af4ed2b95100e7255e2cfa`。jar 内五个技能文件与仓库逐字节一致（`image-generation.md` 含新词、不含裸词「几张图」），有 `StudioSkillRouter$Decision / $Kind / $Writing`，`StudioDialogueTurnWorker$Turn` 含新说明；`PromptTemplateSeeder` 版本串仍是 `v23-2026-10-21-exec-target-node`；迁移最高仍 V63。
+- `deploy-release.sh dist/deploy/20261021-studio-skill-routing server`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- 新进程 PID 1407844 于 **19:33:51 CST** 启动，`Successfully validated 63 migrations`、`Current version of schema aistareco: 63`（无新迁移），`Started AiStarEcoApplication in 15.446 seconds`（19:34:07），`NRestarts=0`；线上 jar sha256 `0800cb0f…` 与制品一致，`/opt/ai-star-eco/releases` 最新为 `20261021-studio-skill-routing`（`GIT_SHA='c82bd5ad…'`）。
+- 启动日志：`[studio-skill] repository file key=image-generation version=1 status=active digest=d6238737331a`，紧接着 `[studio-skill] re-seeded image-generation as v2 from changed file image-generation.md`；其余四个技能文件摘要不变。提示词没变，没有 `PromptTemplateSeeder` 刷新。
+- 库（只读查询）：`ip_skill` 的 `image-generation` 为 `current_version=2, updated_by=seed`（11:34:06Z）；`ip_skill_version` v2（`seed`、`published`、摘要 `d6238737331a`）front matter 含「出几张图」、不含裸词「几张图」，v1 仍在。其余技能版本不变（video-generation v3、reference-video-recreation v2、script-writing v1）。
+- 日志 ERROR：grep `' -ERROR | ERROR [0-9]+ ---'` 对今天 00:00–19:33 计数 237 条（旧进程），证明 grep 能命中；19:33 之后只有 1 条，是旧进程 PID 1394779 停机时 19:33:48 打的（`Cannot render error page … response has already been committed`）。按新进程 PID 过滤至 19:34:29：**0 条 ERROR**，2 条 WARN（Hibernate 方言弃用提示、UserDetailsServiceAutoConfiguration，常规启动提示）。
+- `https://aiavatar.aibuzz.cn/projects` → 200。
+- **没做**：没用生产账号在线上真发对话（需要用户登录，且每轮扣积分）。建议在有图片的画布上说「用这几张图做一段视频」（应直接是出视频）、带商品图说「用这张商品图写三条卖点文案」（应是写稿，当轮写好放进画布）；平手的句子（如钉着参考视频和商品图说「复刻这条，换成我的保温杯，做一个视频」）日志里应有 `[dialogue] routing tie`，助手第一步就选定方法。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-dialogue-steps/server/app.jar` 的 sha256 `a4095f3a…` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-dialogue-steps server
+```
+
+无迁移、提示词未变。回滚后 `image-generation` 文件摘要又变，库里没被后台改过，会把旧文件追加为 v3（旧关键词），v2 留在历史里；平手时被清成未绑定的线程在旧版本下照常按旧规则重新路由。web-aiavatar 不涉及。
