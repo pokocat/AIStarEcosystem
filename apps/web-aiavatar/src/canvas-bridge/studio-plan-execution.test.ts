@@ -81,6 +81,67 @@ describe('node.upsert projection', () => {
   });
 });
 
+describe('assistant settings (update_nodes, 2026-10-20 IPP-45bead91)', () => {
+  const clip: CanvasNodeData = { id: 'clip', type: 'video', title: '视频片段', position: { x: 400, y: 0 }, width: 360, height: 240,
+    metadata: { prompt: '画幅 16:9，时长 4 秒', size: '720x1280', seconds: '8', studio: { kind: 'shot',
+      composerDraft: { operation: 'video', prompt: '画幅 16:9，时长 4 秒', referenceNodeIds: ['male'], aspectRatio: '9:16', count: 1, durationSec: 8,
+        settings: {} as never, video: { mode: 'i2v', tier: '720p' } } } } as CanvasNodeData['metadata'] };
+  const images = ['male', 'female', 'room'].map((id, i): CanvasNodeData => ({ id, type: 'image', title: id, position: { x: 0, y: i * 300 }, width: 300, height: 300, metadata: { storageKey: `k/${id}`, status: 'success' } }));
+  const doc: ProjectionDoc = { nodes: [...images, clip], connections: [{ id: 'e0', fromNodeId: 'male', toNodeId: 'clip' }] };
+  // `references` is the complete list: the male lead already connected is listed too.
+  const spec = { aspectRatio: '16:9', durationSec: 4, references: [{ nodeId: 'male', role: 'character' as const }, { nodeId: 'female', role: 'character' as const }, { nodeId: 'room', role: 'scene' as const }], source: 'assistant' as const, updatedAt: '2026-10-20T15:11:27Z' };
+
+  test('the spec lands on the node, the open draft follows it, the user prompt is untouched and the material is connected', () => {
+    let next = projectStudioNodeUpsert(doc, { nodeId: 'clip', op: 'update', node: { id: 'clip', type: 'video', title: '视频片段', metadata: { studio: { spec } } } as never });
+    for (const r of spec.references) next = projectStudioNodeUpsert(next, { nodeId: 'clip', op: 'connect', connection: { fromNodeId: r.nodeId, toNodeId: 'clip' } });
+    const node = next.nodes.find(n => n.id === 'clip')!;
+    expect(node.metadata?.studio?.spec).toEqual(spec);
+    expect(node.metadata?.studio?.composerDraft).toMatchObject({ aspectRatio: '16:9', durationSec: 4, referenceNodeIds: ['male', 'female', 'room'] });
+    expect(node.metadata?.prompt).toBe('画幅 16:9，时长 4 秒');
+    expect(next.connections.filter(c => c.toNodeId === 'clip').map(c => c.fromNodeId).sort()).toEqual(['female', 'male', 'room']);
+  });
+});
+
+// Codex review of 39ca9218: replacing material, partial updates and frame roles.
+describe('assistant settings follow-up updates', () => {
+  const images = ['a', 'b', 'f'].map((id, i): CanvasNodeData => ({ id, type: 'image', title: id, position: { x: 0, y: i * 300 }, width: 300, height: 300, metadata: { storageKey: `k/${id}`, status: 'success' } }));
+  const clip = (studio: Record<string, unknown>): CanvasNodeData => ({ id: 'v', type: 'video', title: 'v', position: { x: 400, y: 0 }, width: 360, height: 240,
+    metadata: { studio: { kind: 'shot', ...studio } } as CanvasNodeData['metadata'] });
+  const draft = { operation: 'video', prompt: 'p', referenceNodeIds: ['a'], connectedReferenceNodeIds: ['a'], aspectRatio: '16:9', count: 4, durationSec: 4, settings: {}, video: { mode: 'i2v', tier: '720p', firstId: 'a' } };
+  const update = (spec: Record<string, unknown>): StudioNodeUpsertData => ({ nodeId: 'v', op: 'update', node: { id: 'v', type: 'video', title: 'v', metadata: { studio: { spec: { source: 'assistant', updatedAt: 'x', ...spec } } } } as never });
+  const connect = (from: string): StudioNodeUpsertData => ({ nodeId: 'v', op: 'connect', connection: { fromNodeId: from, toNodeId: 'v' } });
+
+  test('「其他不变，只改时长」 keeps ratio, count and material', () => {
+    const doc: ProjectionDoc = { nodes: [...images, clip({ spec: { aspectRatio: '16:9', count: 4, durationSec: 4, references: [{ nodeId: 'a', role: 'character' }], source: 'assistant', updatedAt: 'o' }, composerDraft: draft })], connections: [{ id: 'e', fromNodeId: 'a', toNodeId: 'v' }] };
+    const next = projectStudioNodeUpsert(doc, update({ durationSec: 8 }));
+    const node = next.nodes.find(n => n.id === 'v')!;
+    expect(node.metadata?.studio?.spec).toMatchObject({ aspectRatio: '16:9', count: 4, durationSec: 8, references: [{ nodeId: 'a', role: 'character' }] });
+    expect(node.metadata?.studio?.composerDraft).toMatchObject({ aspectRatio: '16:9', count: 4, durationSec: 8, referenceNodeIds: ['a'] });
+    expect(next.connections).toHaveLength(1);
+  });
+
+  test('「不要 A，换成 B」 drops A from the edges and the draft; [] clears the material', () => {
+    const doc: ProjectionDoc = { nodes: [...images, clip({ composerDraft: draft })], connections: [{ id: 'e', fromNodeId: 'a', toNodeId: 'v' }] };
+    let next = projectStudioNodeUpsert(doc, update({ references: [{ nodeId: 'b', role: 'character' }] }));
+    next = projectStudioNodeUpsert(next, connect('b'));
+    const node = next.nodes.find(n => n.id === 'v')!;
+    expect(next.connections.filter(c => c.toNodeId === 'v').map(c => c.fromNodeId)).toEqual(['b']);
+    expect(node.metadata?.studio?.composerDraft?.referenceNodeIds).toEqual(['b']);
+    expect(node.metadata?.studio?.composerDraft?.video).toMatchObject({ mode: 'universal_reference_video', firstId: undefined });
+    const cleared = projectStudioNodeUpsert(next, update({ references: [] }));
+    expect(cleared.connections.filter(c => c.toNodeId === 'v')).toEqual([]);
+    expect(cleared.nodes.find(n => n.id === 'v')!.metadata?.studio?.composerDraft?.referenceNodeIds).toEqual([]);
+  });
+
+  test('a picture marked as the frame is the first frame, whatever its order; text edges are untouched', () => {
+    const text: CanvasNodeData = { id: 't', type: 'text', title: 't', position: { x: 0, y: 900 }, width: 300, height: 200, metadata: { content: '剧本' } };
+    const doc: ProjectionDoc = { nodes: [...images, text, clip({ composerDraft: draft })], connections: [{ id: 'et', fromNodeId: 't', toNodeId: 'v' }] };
+    const next = projectStudioNodeUpsert(doc, update({ references: [{ nodeId: 'a', role: 'character' }, { nodeId: 'f', role: 'frame' }] }));
+    expect(next.nodes.find(n => n.id === 'v')!.metadata?.studio?.composerDraft?.video).toMatchObject({ mode: 'universal_reference_video', firstId: 'f' });
+    expect(next.connections.map(c => c.fromNodeId)).toContain('t');
+  });
+});
+
 describe('check.result projection', () => {
   const check: StudioCheckResultData = { stepId: 'c1', runId: 'run-c1', result: { status: 'unknown', targetRunId: 'run-v1', items: [
     { id: 'subject', status: 'pass', evidence: [{ kind: 'frame', timeSec: 2.5, observation: '主体是洗衣液' }], reason: '一致' },

@@ -1132,6 +1132,15 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 已知边界：缓存按节点，跨节点最多 60 秒才看到后台改动；版本号由技能行锁内 `max(version)+1` 分配；草稿只修订正文，改 YAML 头（含 `autoFixChecks`）只能由管理员发布新版本；`autoFixChecks` 仍为空，要等检查项实测与版本评审。
 
+### 原创创作技能、看图、节点规格与动作协议（2026-10-20，生产问题修复）
+
+- **原创创作**（`resources/studio/skills/original-creation.md`）：`operations.analysis: []`，只有制作阶段。`StudioSkill.firstStage()` / `Rules.firstStage()` 是唯一判定：线程绑定、`propose_plan` 默认阶段、`StudioPlanExecutionService.create` 的起始阶段都读它。新执行可以直接从 production 开始（仍须推荐方案、报价不超上限、卡片 / 自然语言同一套确认）；复刻技能照旧先分析。没有进行中的执行时 `read_skill` 可换技能（`Effects.bindSkill` 覆盖线程技能与阶段，作废旧卡）；`startTurn` 的阶段 = 进行中执行的阶段，否则技能第一阶段。
+- **`view_images`**（`dialogue/tools/ViewImagesTool`）：`StudioVisualContext.snapshot` 校验本人 key → `parts` 内联字节 → 本轮对话端点（须 `supportsVision`）→ 返回客观描述；调用前按「文字 + 每张 1200 token」查本轮预算，用量记进本轮账单；视觉预算被拒时同一批图缩到 640 边再试一次。`DialogueCanvasDigest` 在图片 / 视频对象上注明「这里只有名称，画面要用 view_images 看」。
+- **节点规格**：`NodeSpecs` 解析 `aspectRatio / durationSec / count / references`；`create_nodes` 写进新节点 `metadata.studio.spec` 并为每个参考发 connect；新工具 `update_nodes` 对已有图片 / 视频节点发 `update`（prompt 走客户端改稿建议）+ connect。
+- **动作协议**：`DialogueActionProtocol` 接受 `<<<studio-actions>>>`、`<tool_call>`、`<studio-actions>` / `<studio_actions>`；`MarkerFilter` 在闭合标签后继续推送正文，标记里含的标签写法不误判；正文模仿工作记录按格式错误处理；`DialogueLoop` 连续 2 次格式纠正后以 `LIMIT/protocol` 结束本轮。`DialogueHistory.line` 把工具记录放到单独的「（服务端记录…）」行。
+- **模型下架**：`VideoProviderErrorMapper` 把 `400 model_delisted` 映射为 `VIDEO_MODEL_RETIRED`；`MaterialVideoModelClient` 记住（进程内 24h）并在 `validateRequest` / `submit` 冻结前拒绝同一端点 + 模型。
+- 提示词：`dap.ip_studio_skill_dialogue` 新增规则 10–13（选对方法、看图要真看、规格写到对象上、不模仿记录），`PromptTemplateSeeder.SEED_VERSION` = `v18-2026-10-20-dialogue-original-vision-specs`。无迁移、无 HTTP 路径变化。
+
 ### Studio 原生 GPT 图片接入（2026-10-20）
 
 图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。

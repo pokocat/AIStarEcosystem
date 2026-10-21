@@ -760,6 +760,7 @@ test('view switching saves a creator draft; a failed save retains its editor for
  await waitFor(()=>expect(api.error).toHaveBeenCalledWith('保存失败'));
  expect(screen.getByRole('dialog',{name:'生成视频'})).toBeDefined();
  expect(screen.queryByRole('region',{name:'故事板'})).toBeNull();
+ await waitFor(()=>expect((screen.getByRole('button',{name:'故事板',exact:true}) as HTMLButtonElement).disabled).toBe(false));
  fireEvent.click(screen.getByRole('button',{name:'故事板',exact:true}));
  await screen.findByRole('region',{name:'故事板'});
  expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull();

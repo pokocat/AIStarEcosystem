@@ -43,7 +43,7 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      （线上复刻检查看到「三位成年男性」仍判「没有旧人物」）。
     // v17：对话提示词把「聊天按用量扣少量积分」与「制作确认报价后才开始」分开说，禁止先报数再改口、禁止「不确认不会花钱」
     //      （Codex 真 Agnes 复测：先说「费用 12 积分」，服务端报价 98，末尾还说「不确认不会花钱」而本轮已扣 5）。
-    private static final String SEED_VERSION = "v17-2026-10-19-dialogue-charging-words";
+    private static final String SEED_VERSION = "v18-2026-10-20-dialogue-original-vision-specs";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

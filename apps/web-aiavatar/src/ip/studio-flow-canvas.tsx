@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, 
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal } from 'antd';
-import { AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, Scissors, Search, ShoppingBag, Trash2, Upload, Video, X } from 'lucide-react';
+import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, RotateCcw, Scissors, Search, ShoppingBag, Trash2, Upload, Video, X } from 'lucide-react';
 import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
@@ -25,6 +25,7 @@ import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { attachmentNode, readAssistantAttachment, savedAssetPayload } from '@/canvas-bridge/studio-attachments';
 import { importStudioMedia, importStudioStory } from '@/canvas-bridge/studio-api';
 import { studioAiMade, studioUploadedByUser } from '@/canvas-bridge/studio-node-origin';
+import { studioFailedWithoutMedia, studioFailureReason } from '@/canvas-bridge/studio-node-failure';
 import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 import { StudioNodeContent } from './studio-node-content';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
@@ -66,6 +67,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const generating = meta?.status === 'loading' && !data.uploading;
   // 设计稿 · Language 画板：媒体是你自己传上来的就标「你上传的」；从素材库、人物库引用的，裁剪出来的，空白占位和文字都不标。
   const uploaded = studioUploadedByUser(node);
+  const failed = studioFailedWithoutMedia(node);
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
@@ -80,12 +82,17 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && (meta?.content || meta?.storageKey) ?
         <div className="studio-flow-audio"><Music2 size={28}/><SignedAudio className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
         <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
+        // A failed draft is not an empty one: say it failed and why, offer one way back (the prompt and references are kept).
+        failed && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-failure" role="group" aria-label="生成失败">
+          <AlertCircle size={22}/><strong>没有生成出来</strong><span title={meta?.studio?.task?.errorMessage || meta?.errorDetails || undefined}>{studioFailureReason(node)}</span>
+          <div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><RotateCcw size={15}/>修改后重试</button>
+            <button type="button" className="nodrag nopan studio-flow-failure-upload" disabled={imageLocked} onClick={node.type === CanvasNodeType.Image ? uploadImage : uploadVideo}><Upload size={15}/>改为上传</button></div></div> :
         node.type === CanvasNodeType.Image && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><ImagePlus size={28}/><span>上传图片或使用 AI 创作</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={15}/>{data.uploading?'上传中…':'上传图片'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><ImagePlus size={15}/>生成图片</button></div></div> :
         node.type === CanvasNodeType.Video && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-image-placeholder"><Video size={28}/><span>上传视频，开始解析或拉片</span><div className="studio-flow-image-actions"><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={15}/>{data.uploading?'上传处理中…':'上传视频'}</button><button type="button" className="nodrag nopan" disabled={imageLocked} onClick={edit}><Video size={15}/>生成视频</button></div><small>MP4 · 最长 60 秒 · 最大 128 MB</small></div> :
         <div className="studio-flow-placeholder"><button type="button" className="studio-flow-media-action nodrag nopan" onClick={edit}><Icon size={28}/><span>{data.readOnly?'查看节点设置':meta?.status === 'loading' ? '任务进行中，可继续编辑画布' : `点击创作${node.type === 'video' ? '视频' : node.type==='audio'?'配音':'图片'}`}</span></button></div>}
     </div>
     {meta?.status === 'loading' && !mediaGenerating && studioTaskQueued(meta.studio?.task) && <p className="studio-flow-queue" aria-label="队列状态">{studioQueueNotice(meta.studio?.task?.queue)}</p>}
-    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label="生成失败 · 查看错误" autoReport={false}/></div>)}
+    {meta?.status === 'error' && (meta.studio?.task?.errorCode==='IP_RUN_CANCELLED'?<p className="studio-flow-queue">已停止</p>:<div className="studio-flow-node-error"><StudioErrorNotice error={studioNodeError(node)} once={`run:${meta.studio?.runId || meta.runId || node.id}`} label={failed ? "查看错误详情" : "生成失败 · 查看错误"} autoReport={false}/></div>)}
   </article>;
 }
 const nodeTypes = { studio: StudioFlowCard };
