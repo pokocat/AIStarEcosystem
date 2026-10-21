@@ -166,3 +166,23 @@ test('the first-frame crop hint and the media size report are wired', () => {
   expect(canvas).toMatch(/onMediaSize: mediaSize/);
   expect(canvas).toContain('fitStudioNodeToMedia(n, size)');
 });
+
+// 视频节点铺满与抽帧（2026-10-21）：§8.0.1 ⑥ —— both entries really send video-frames, and the panel is mounted on the canvas.
+test('抽帧 is reachable from the action bar and the right-click menu, and its panel is mounted', () => {
+  const workspace = read('ip/studio-workspace.tsx');
+  expect(workspace).toMatch(/add\("video-frames",<button [^>]*onClick=\{\(\)=>dispatchStudioCommand\("video-frames",selected\.id\)\}><Camera size=\{15\}\/>抽帧<\/button>,2\)/);
+  expect(workspace).toContain("framesNodeId!==selected?.id&&contextualActions");
+  const canvas = read('ip/studio-flow-canvas.tsx');
+  expect(canvas).toContain("{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}");
+  expect(canvas).toMatch(/<StudioFlowVideoFrames nodes=\{project\.nodes\} pending=\{pendingFrames\} onPendingChange=\{setPendingFrames\}/);
+  // Placeholders are drawn from local state only, never written to the document.
+  expect(canvas).toContain('flowNodes(pendingFrames.map(p => p.node), new Set())');
+  const frames = read('ip/studio-flow-video-frames.tsx');
+  expect(frames).toContain("action !== 'video-frames'");
+  expect(frames).toContain('fetchAssetBlob(storageKey)');
+  expect(frames).not.toMatch(/status: ?'loading'/);
+  // Video nodes keep the clip ratio while resized and are drawn edge to edge once in shape.
+  expect(canvas).toContain('keepAspectRatio={videoShaped}');
+  expect(canvas).toContain('onVideoResized: videoResized');
+  expect(read('styles/studio-flow.css')).toContain('.studio-flow-video-card.is-fitted .studio-flow-media>video { object-fit:cover; }');
+});

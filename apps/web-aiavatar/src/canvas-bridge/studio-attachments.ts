@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import type { IpSavedAsset, StudioMediaImportResult } from '@ai-star-eco/types';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
 import { readAssistantStory, assistantContextNodes } from './studio-assistant-context';
+import { fitStudioVideoNode } from './studio-media-fit';
 
 export const ATTACHMENT_ACCEPT = '.txt,.md,.markdown,.pdf,.doc,.docx,.jpg,.jpeg,.png,.mp4,.mp3,.wav,.m4a';
 export type InsertAssetPayload = ({ kind: 'text'; content: string; title: string } |
@@ -26,13 +27,15 @@ export function attachmentNode(payload: InsertAssetPayload, nodes: CanvasNodeDat
   if (existing) return existing;
   const type = { text: CanvasNodeType.Text, image: CanvasNodeType.Image, video: CanvasNodeType.Video, audio: CanvasNodeType.Audio }[payload.kind];
   const width = payload.kind === 'text' ? 480 : 360, height = payload.kind === 'audio' ? 150 : payload.kind === 'text' ? 300 : 270;
-  return { id: nanoid(), type, title: payload.title, width, height,
+  const node: CanvasNodeData = { id: nanoid(), type, title: payload.title, width, height,
     position: { x: Math.max(20, ...nodes.map(n => n.position.x + n.width)) + 80, y: 120 },
     metadata: { content: payload.kind === 'text' ? payload.content : payload.kind === 'image' ? payload.dataUrl : payload.url,
       storageKey: media ? payload.storageKey : undefined, status: media ? 'success' : 'idle',
       ...(payload.libraryReference?{studio:{kind:media?'ip':'text',libraryReference:payload.libraryReference}}:{}),
       ...(payload.kind === 'audio' ? { mimeType: payload.mimeType } : {}),
       ...(payload.kind === 'video' ? { naturalWidth: payload.width, naturalHeight: payload.height } : {}) } };
+  // A clip whose size is known takes its shape right away (视频节点铺满); the rest wait for the video to load.
+  return payload.kind === 'video' && payload.width && payload.height ? fitStudioVideoNode(node, payload.width, payload.height) : node;
 }
 
 export async function readAssistantAttachment(file: File, nodes: CanvasNodeData[],

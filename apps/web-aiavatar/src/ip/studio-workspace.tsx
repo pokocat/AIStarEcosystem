@@ -11,7 +11,7 @@ import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { placeStudioNode } from "@/canvas-bridge/flow-document";
 import { App, Button, Checkbox, Dropdown, Input, Modal, Popover, Select } from "antd";
 import { ApiError } from "@ai-star-eco/api-client";
-import { ArrowUp, ArrowLeftRight, BookOpen, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X } from "lucide-react";
+import { ArrowUp, ArrowLeftRight, BookOpen, Camera, Clapperboard, Download, Ellipsis, FileText, ImagePlus, Play, RotateCcw, SquareCheckBig, Upload, UserRound, X } from "lucide-react";
 import { nanoid } from "nanoid";
 import { LibraryExtractionPanel } from "./library-extraction-panel";
 import { LibraryReferencePicker } from "./library-reference-picker";
@@ -205,6 +205,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const openLipSync=(node?:CanvasNodeData)=>{setLipOriginId(node?.id);setDirector(false);setLipSyncOpen(true);onClosePanel();};
   const [voiceAdoptId,setVoiceAdoptId]=useState<string>();
   const [speechOpen,setSpeechOpen]=useState(false);
+  // 抽帧 opens under the video node where its action bar sits (studio-flow-video-frames.tsx); the bar steps aside meanwhile.
+  const [framesNodeId,setFramesNodeId]=useState<string>();
+  useEffect(()=>{
+    const listener=(event:Event)=>setFramesNodeId((event as CustomEvent<{nodeId?:string}>).detail?.nodeId);
+    window.addEventListener('studio-video-frames',listener);return()=>window.removeEventListener('studio-video-frames',listener);
+  },[]);
   const [speechOriginId,setSpeechOriginId]=useState<string>(),[speechSaving,setSpeechSaving]=useState(false);
   const [settings,setSettings]=useState<StudioScriptSettings>({genre:"都市治愈",episodeCount:1,episodeDurationSec:30});
   const [episodeNo,setEpisodeNo]=useState<number>(),[episodeFilter,setEpisodeFilter]=useState<number|"all">("all");
@@ -1059,6 +1065,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         add("analyze",<button type="button" onClick={()=>dispatchStudioCommand("recreation",selected.id)}><FileText size={15}/>解析视频</button>);
         add("film",<button type="button" onClick={()=>dispatchStudioCommand("film-study",selected.id)}><Clapperboard size={15}/>拉片</button>);
         add("lip",<button type="button" onClick={()=>openLipSync(selected)}>口型同步</button>);
+        // 抽帧 is free and done in the browser: the second main action of a video node, after 生成视频.
+        add("video-frames",<button type="button" disabled={meta.status==="loading"||studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand("video-frames",selected.id)}><Camera size={15}/>抽帧</button>,2);
         add("work",<button type="button" disabled={!!meta.templateStepId&&studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>);
       }
     }
@@ -1203,7 +1211,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       &&<StudioCanvasGuide assistantOpen={assistantOpen} onStartAssistant={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}/>}
     {/* Plain text actions and editing share one screen-space surface. */}
     {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
-      : !director&&!speechOpen&&!lipSyncOpen&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} toolbar width="auto">{contextualActions}</StudioFloatingPanel>}
+      : !director&&!speechOpen&&!lipSyncOpen&&framesNodeId!==selected?.id&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} toolbar width="auto">{contextualActions}</StudioFloatingPanel>}
     {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
       <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}

@@ -6,7 +6,7 @@ const media={mediaType:'video' as const,key:'own/video.mp4',url:'/signed.mp4',fi
 test('upload fills the same connected video and removes stale run identity',()=>{
  const report={...source,id:'report',type:CanvasNodeType.Text,metadata:{studio:{kind:'recreation' as const}}};
  const next=replaceStudioVideo([source,report],[{id:'edge',fromNodeId:'source',toNodeId:'report'}],'source',media);
- expect(next[0]).toMatchObject({id:source.id,title:source.title,position:source.position,width:360,height:270,metadata:{storageKey:media.key,content:media.url,status:'success',durationMs:15000,naturalWidth:720,naturalHeight:1280}});
+ expect(next[0]).toMatchObject({id:source.id,title:source.title,position:source.position,width:360,height:674,metadata:{storageKey:media.key,content:media.url,status:'success',durationMs:15000,naturalWidth:720,naturalHeight:1280}});
  expect(next[0].metadata?.studio?.runId).toBeUndefined();expect(next[0].metadata?.runId).toBeUndefined();expect(next[0].metadata?.videoTaskId).toBeUndefined();expect(next[0].metadata?.studio?.task).toBeUndefined();
  expect(next[0].metadata?.primaryVideoId).toBe(next[0].metadata?.videos?.[0].id);
  expect(next[1].metadata?.studio?.upstreamChanged).toBe(true);
@@ -20,4 +20,13 @@ test('upload does not resurrect a deleted slot or replace a pending task',()=>{
 test('accepts MP4 without demanding a browser codec and rejects empty or oversized input',()=>{
  expect(()=>validateStudioVideoUpload({name:'手机.MP4',size:128*1024*1024})).not.toThrow();
  for(const file of [{name:'a.txt',size:12},{name:'a.mp4',size:0},{name:'a.mp4',size:128*1024*1024+1}])expect(()=>validateStudioVideoUpload(file)).toThrow();
+});
+test('视频节点铺满: the server-measured size shapes the node at once, and a missing size leaves the box alone',()=>{
+ const wide=replaceStudioVideo([source],[],'source',{...media,width:1920,height:1080})[0];
+ expect(wide).toMatchObject({width:360,height:Math.round(358*1080/1920+38)});
+ // Taller than the 640 cap at this width: the box narrows instead of leaving bars on the sides.
+ const tall=replaceStudioVideo([{...source,width:480}],[],'source',media)[0];
+ expect(tall).toMatchObject({width:362,height:678});
+ const unknown=replaceStudioVideo([source],[],'source',{...media,width:undefined,height:undefined} as unknown as typeof media)[0];
+ expect(unknown).toMatchObject({width:360,height:270});
 });
