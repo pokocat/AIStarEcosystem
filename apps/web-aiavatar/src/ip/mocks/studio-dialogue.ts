@@ -6,8 +6,12 @@
 // 这是演示：正文是写死的示例回答，按小段定时推出来，不是模型输出；面板上有「演示」角标，
 // 产出的节点带 studio.mock=true（AGENTS.md §8.0 (c)），不扣任何积分。
 //
-// 演示流程：第一条消息 → 读取画布 + 分析计划 + 确认卡「开始分析」→ 拉片（工作记录）→
-// 制作计划（推荐与替代做法）+ 确认卡「开始制作」→ 两段视频节点 + 一次检查（含一项无法判断）。
+// 演示流程（技能按服务端 StudioSkillRouter 的规则选，见 docs/ip-studio-dialogue-intents.md §4）：
+// · 复刻：第一条消息 → 读取画布 + 分析计划 + 确认卡「开始分析」→ 拉片（工作记录）→
+//   制作计划（推荐与替代做法）+ 确认卡「开始制作」→ 两段视频节点 + 一次检查（含一项无法判断）。
+// · 出图 / 出视频（直达）：同一轮发制作方案 + 制作确认卡（不带 executionId）→ 确认后直接以制作阶段建执行，跑完一步。
+// · 写剧本与文案：短稿当轮写好，放进画布一个文字节点，没有确认卡。
+// · 没命中任何技能：不绑技能，直接回答（全能创作）。
 //
 // 和真服务端一样：每一步做完都有一次可读取的运行（getRun），画布节点 id 按
 // StudioPlanExecutionIds.nodeId 推出来，节点形状照 StudioPlanExecutor.nodeEvents；
@@ -20,13 +24,16 @@ import type {
   StudioBranchRequest, StudioCheckResultData, StudioDialogueControlRequest, StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage,
   StudioDialogueState, StudioDialogueThread, StudioMessageBlock, StudioNodeUpsertData, StudioPlanExecution, StudioPlanExecutionAcceptRequest,
   StudioPlanExecutionCreateRequest, StudioPlanExecutionStep, StudioPostMessageRequest, StudioPostMessageResult, StudioSkillDraftOutput, StudioSkillDraftRequest,
-  StudioSkillRequiredDetails, StudioSkillSummary, StudioTokenBilling,
+  StudioSkillSummary, StudioTokenBilling,
 } from "@ai-star-eco/types/ip-studio-workflow";
 import type { IpRun, IpRunOutput } from "@ai-star-eco/types";
 import { ApiError } from "@ai-star-eco/api-client";
 import { dialogueReducer, emptyDialogueStore, isPlaceholderMessage, type DialogueStore } from "@/canvas-bridge/studio-dialogue-store";
 import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockReadRun, mockRegisterRun, mockStore } from "./ip-studio";
 
+// Two demo-only skills, then the three direct skills seeded on the server (resources/studio/skills/{image-generation,
+// script-writing,video-generation}.md): key / name / summary / operations / limits / checks / triggers copied from their
+// YAML front matter (maxSteps "maxSegments * 3 + 4" is resolved to 28 like the server's summary). Keep them in step.
 export const MOCK_STUDIO_SKILLS: StudioSkillSummary[] = [{
   key: "video-recreation", name: "短视频复刻", version: 2, status: "active", planning: "dynamic",
   summary: "参考一条短视频的节奏和反转，换成你的商品和人物重新做一版。",
@@ -43,25 +50,91 @@ export const MOCK_STUDIO_SKILLS: StudioSkillSummary[] = [{
   limits: { maxSourceSec: 30, maxSegments: 4, maxSegmentSec: 10, maxSteps: 16, maxAutoFixPerSegment: 1 },
   checks: ["caption"], autoFixChecks: [], requiredCapabilities: ["video"],
   triggers: { media: ["image"], keywords: ["口播", "种草"] },
+}, {
+  key: "image-generation", name: "出图", version: 1, status: "active", planning: "dynamic",
+  summary: "用一句话、一段描述或画布上的参考图直接出图：海报、封面、商品图、人物设定、插画、配图。信息够就一轮确认开始生成，不追问风格画幅这类有默认值的事。",
+  methodExamples: ["text-to-image", "reference-styled", "character-sheet", "product-shot", "variations"],
+  operations: { analysis: [], production: ["text", "image"] },
+  limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 8, maxAutoFixPerSegment: 0 },
+  checks: [], autoFixChecks: [], requiredCapabilities: ["image-generation"],
+  triggers: { media: ["image"], keywords: ["出图", "生图", "画一", "画张", "画个", "画几", "一张图", "几张图", "做张图", "做几张", "海报", "封面", "配图", "设定图", "三视图", "头像", "插画",
+    "商品图", "产品图", "换个背景", "换背景", "换个风格", "同款图", "再来一张", "再出一张", "P图", "修图"] },
+}, {
+  key: "script-writing", name: "写剧本与文案", version: 1, status: "active", planning: "dynamic",
+  summary: "写能直接用的文字：短视频剧本、分镜脚本、口播稿、带货文案、标题、广告语、人物小传。短稿当轮写好放进画布；长稿或多集才走制作计划。",
+  methodExamples: ["short-video-script", "talking-head-copy", "storyboard-breakdown", "product-copy", "rewrite-and-polish"],
+  operations: { analysis: [], production: ["text"] },
+  limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 12, maxAutoFixPerSegment: 0 },
+  checks: [], autoFixChecks: [], requiredCapabilities: ["text-model"],
+  triggers: { media: ["text"], keywords: ["剧本", "脚本", "文案", "口播", "台词", "分镜", "故事", "标题", "广告语", "卖点", "小传", "人设", "写一段", "写个", "写一篇", "写一条",
+    "改写", "润色", "缩短", "扩写", "翻译成"] },
+}, {
+  key: "video-generation", name: "出视频", version: 1, status: "active", planning: "dynamic",
+  summary: "用一句话、一段剧本或画布上的图直接出一段或几段视频：把图动起来、商品展示、口播镜头、短片。信息够就一轮确认开始生成；没有参考视频要拆解时用这个，不是复刻。",
+  methodExamples: ["image-to-motion", "text-to-clip", "script-to-segments", "keyframe-first"],
+  operations: { analysis: [], production: ["text", "image", "video", "check", "assemble"] },
+  limits: { maxSourceSec: 60, maxSegments: 8, maxSegmentSec: "model", maxSteps: 28, maxAutoFixPerSegment: 0 },
+  checks: ["subject-consistency", "scene-and-action", "duration-and-order"], autoFixChecks: [], requiredCapabilities: ["video-generation"],
+  triggers: { media: ["image"], keywords: ["视频", "出片", "动起来", "动一下", "短片", "动画", "做一条", "拍一条", "来一条", "成片", "一段片", "镜头", "运镜", "口播视频", "带货视频", "宣传片"] },
 }];
-const mockSkill = (key?: string) => MOCK_STUDIO_SKILLS.find(s => s.key === key && s.status === "active");
-/** Like the server's intent routing on a thread's first turn: an explicit choice wins, a tie asks the user. */
-function routeSkill(t: MockThread, request: StudioPostMessageRequest): StudioSkillSummary {
-  if (request.skillKey && t.thread.skillKey && request.skillKey !== t.thread.skillKey)
-    throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这条对话已经在按另一种方法制作；要换方法，请从某条消息重新开始" }, 400);
+/** A skill the thread may keep working with (a draft keeps working, a withdrawn one never does). */
+const mockSkill = (key?: string) => MOCK_STUDIO_SKILLS.find(s => s.key === key && s.status !== "withdrawn");
+const activeSkill = (key?: string) => MOCK_STUDIO_SKILLS.find(s => s.key === key && s.status === "active");
+/** A direct skill (出图 / 写剧本与文案 / 出视频) has no analysis operations: its first card starts production (StudioSkill.direct()). */
+export const mockSkillIsDirect = (skill: Pick<StudioSkillSummary, "operations">) => !skill.operations.analysis?.length;
+
+/** Canvas node type → trigger media type (StudioSkillRouter.mediaOf); unknown types do not count. */
+function mediaOf(nodeType?: string): "video" | "image" | "audio" | "text" | undefined {
+  const type = (nodeType || "").toLowerCase();
+  if (type.includes("video")) return "video";
+  if (type.includes("image")) return "image";
+  if (type.includes("audio") || type.includes("voice") || type.includes("music")) return "audio";
+  if (type.includes("text") || type.includes("script")) return "text";
+  return undefined;
+}
+
+/**
+ * StudioSkillRouter.route, line for line: 2 per matching keyword + 1 per matching media type (words outrank media);
+ * a unique best wins; no hit keeps the bound skill (or none); a tie keeps the bound skill when it is among the leaders,
+ * otherwise none (the model picks inside the turn). There is no 400 for a tie any more.
+ */
+export function mockRouteSkill(active: StudioSkillSummary[], media: Set<string>, text: string, bound?: StudioSkillSummary): StudioSkillSummary | undefined {
+  if (!active.length) return undefined;
+  const haystack = text.toLowerCase();
+  let best = 0, leaders: StudioSkillSummary[] = [];
+  for (const skill of active) {
+    const score = (skill.triggers?.keywords || []).filter(k => k.trim() && haystack.includes(k.toLowerCase())).length * 2
+      + (skill.triggers?.media || []).filter(m => media.has(m)).length;
+    if (score > best) { best = score; leaders = [skill]; }
+    else if (score === best && score > 0) leaders.push(skill);
+  }
+  const boundOffered = !!bound && bound.status === "active" && active.some(s => s.key === bound.key);
+  if (best === 0) return boundOffered ? bound : undefined;
+  if (leaders.length === 1) return leaders[0];
+  return boundOffered && leaders.some(s => s.key === bound!.key) ? bound : undefined;
+}
+
+const workingExecution = (p: MockProject) => !!p.execution && ["running", "paused", "needs_user"].includes(p.execution.status);
+
+/**
+ * The skill for this message, like StudioDialogueService.startTurn: an explicit choice wins (switching away from the bound
+ * skill only while no execution is active); with an active execution the method stays; otherwise every message is routed
+ * again and a hit on another skill switches the thread. A tie or no hit keeps the current skill (or none).
+ */
+function pickSkill(projectId: string, p: MockProject, t: MockThread, request: StudioPostMessageRequest): StudioSkillSummary | undefined {
+  const current = mockSkill(t.thread.skillKey);
   if (request.skillKey) {
-    const chosen = mockSkill(request.skillKey);
+    const chosen = current?.key === request.skillKey ? current : activeSkill(request.skillKey);
     if (!chosen) throw new ApiError({ code: "STUDIO_SKILL_NOT_FOUND", message: "这个技能已经停用了，换一个再发" }, 404);
+    if (current && current.key !== chosen.key && workingExecution(p))
+      throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这条对话正在按另一种方法制作；要换方法，请先结束这次制作，或从某条消息重新开始" }, 400);
     return chosen;
   }
-  const bound = mockSkill(t.thread.skillKey);
-  if (bound) return bound;
-  const hits = MOCK_STUDIO_SKILLS.filter(s => s.status === "active" && s.triggers?.keywords?.some(k => request.text.includes(k)));
-  if (hits.length > 1) {
-    const details: StudioSkillRequiredDetails = { skills: hits.map(s => ({ key: s.key, name: s.name, summary: s.summary })) };
-    throw new ApiError({ code: "STUDIO_SKILL_REQUIRED", message: "这条消息有几种做法都说得通，请选一个", details }, 400);
-  }
-  return hits[0] || MOCK_STUDIO_SKILLS.find(s => s.status === "active" && s.triggers?.default) || MOCK_STUDIO_SKILLS[0];
+  if (workingExecution(p)) return current;
+  const nodes = mockStore().projects.get(projectId)?.doc.nodes || [];
+  const ids = new Set([...(request.pinnedNodeIds || []), ...(request.attachmentNodeIds || [])]);
+  const media = new Set(nodes.filter(n => ids.has(n.id)).map(n => mediaOf(n.type)).filter((m): m is NonNullable<typeof m> => !!m));
+  return mockRouteSkill(MOCK_STUDIO_SKILLS.filter(s => s.status === "active"), media, request.text, current) ?? current;
 }
 
 /** Delay between streamed pieces of the canned answer. Tests may lower it. */
@@ -234,6 +307,10 @@ const MOCK_CHECK_ITEMS = (targetRunId: string): StudioCheckResultData["result"] 
 const MOCK_RECREATION_TEXT = "切成 2 段：第 1 段人物出场，交代场景；第 2 段可见主体是水杯，靠它做反转。";
 const MOCK_NOTES = "第 1 段：人物出场，中景，节奏慢，先交代场景。\n第 2 段：特写水杯，节奏突然加快，台词点出反转。";
 
+/** Like the server's thread.planRevision: every plan on a thread gets the next revision, whichever skill proposed it (a
+ *  lower revision after a newer plan would read as replaced). */
+const nextPlanRevision = (t: MockThread) => Math.max(0, ...t.view.messages.flatMap(m => m.blocks).map(b => b.type === "plan" ? b.revision : 0)) + 1;
+
 function canvasSize(projectId: string) {
   const nodes = mockStore().projects.get(projectId)?.doc.nodes || [];
   return { count: nodes.length, right: Math.max(40, ...nodes.map(n => n.position.x + n.width)), videos: nodes.filter(n => n.type === "video").length, images: nodes.filter(n => n.type === "image").length };
@@ -243,9 +320,9 @@ function canvasSize(projectId: string) {
 
 function firstTurn(projectId: string, p: MockProject, t: MockThread, request: StudioPostMessageRequest) {
   const messageId = startTurn(t), canvas = canvasSize(projectId), tool = nextId("tool");
-  const fingerprint = "mock-analysis-v1";
-  const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-analysis", revision: 1, fingerprint, plan: {
-    summary: "先拉片，弄清原片每一段在做什么，再给你制作方案。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "analysis", revision: 1, fingerprint,
+  const revision = nextPlanRevision(t), fingerprint = `mock-analysis-v${revision}`;
+  const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-analysis", revision, fingerprint, plan: {
+    summary: "先拉片，弄清原片每一段在做什么，再给你制作方案。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "analysis", revision, fingerprint,
     steps: [
       { id: "s1", operation: "recreation", title: "拉片：切成 2 段", prompt: "", referenceNodeIds: [], quotedCost: 20 },
       { id: "s2", operation: "text", title: "整理每段的画面和节奏", prompt: "", referenceNodeIds: [], quotedCost: 6, dependsOn: ["s1"] },
@@ -269,9 +346,9 @@ function firstTurn(projectId: string, p: MockProject, t: MockThread, request: St
 }
 
 function analysisTurn(projectId: string, p: MockProject, t: MockThread) {
-  const e = p.execution!, messageId = startTurn(t), tool = nextId("tool"), fingerprint = "mock-production-v2";
-  const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-production", revision: 2, fingerprint, plan: {
-    summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "production", revision: 2, fingerprint,
+  const e = p.execution!, messageId = startTurn(t), tool = nextId("tool"), revision = nextPlanRevision(t), fingerprint = `mock-production-v${revision}`;
+  const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId: "mock-plan-production", revision, fingerprint, plan: {
+    summary: "按两段重做：保留原片动作和反转，商品换成你的，台词重写。", questions: [], skillKey: t.thread.skillKey, skillVersion: t.thread.skillVersion, stage: "production", revision, fingerprint,
     recommendedApproachId: "keep-motion",
     approaches: [
       { id: "keep-motion", title: "保留动作，换商品和台词", summary: "两段都参考原片的动作和机位，只换商品和台词。", rationale: "原片的笑点在动作和反转，保留它们最稳。",
@@ -347,6 +424,82 @@ function productionTurn(projectId: string, p: MockProject, t: MockThread) {
   ]);
 }
 
+/** No skill fits and the thread has none: 「全能创作」 answers directly; nothing is planned or charged. */
+function generalTurn(p: MockProject, t: MockThread) {
+  const messageId = startTurn(t);
+  play(p, t, [
+    ...say(t, messageId, "g1", "这条我先直接回答。要出图、写文案、出视频，或者照着一条视频做一版，直接说要做什么，我按那件事来。"),
+    { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["画一张国风海报，9:16", "写一段保温杯的口播", "做一条 5 秒的商品展示视频"] }) },
+  ]);
+}
+
+const DIRECT_STEP: Record<string, { operation: StudioPlanExecutionStep["operation"]; title: string; quotedCost: number; summary: string; said: string }> = {
+  "image-generation": { operation: "image", title: "出图 1 张", quotedCost: 8, summary: "按你说的出 1 张图，画幅 1:1，风格按用途补的默认。",
+    said: "按你说的出 1 张图。画幅 1:1 和风格是我补的默认，要改直接说。这一张 8 积分，确认就开始。" },
+  "video-generation": { operation: "video", title: "出视频 1 段", quotedCost: 40, summary: "按你说的出 1 段 5 秒竖屏视频，时长和画幅是补的默认。",
+    said: "按你说的出 1 段 5 秒的竖屏视频。时长和画幅是我补的默认，要改直接说。这一段 40 积分，确认就开始。" },
+};
+const MOCK_SCRIPT = "【开场】一句话抛出问题：出门一天，水还是烫的吗？\n【卖点】杯身拿在手里，说一个最打动人的点。\n【收尾】只留一个动作：点下面的链接看看。";
+
+/**
+ * A direct skill's first turn (StudioSkill.direct()): no analysis. 出图 / 出视频 send the production plan and its card in
+ * the same reply, the card without an executionId (confirming it starts a new execution). 写剧本与文案 writes a short
+ * draft straight onto the canvas (create_nodes), with no card and no charge.
+ */
+function directTurn(projectId: string, p: MockProject, t: MockThread, request: StudioPostMessageRequest, skill: StudioSkillSummary) {
+  const messageId = startTurn(t);
+  if (skill.key === "script-writing") {
+    const tool = nextId("tool"), nodeId = nextId("dlg"), canvas = canvasSize(projectId);
+    const node = { id: nodeId, type: "text", title: "口播稿 · 示例", width: 380, height: 320, position: { x: canvas.right + 40, y: 40 },
+      metadata: { content: MOCK_SCRIPT, studio: { mock: true } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
+    play(p, t, [
+      { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
+      { run: () => { emit(t, "node.upsert", { nodeId, op: "create", node } satisfies StudioNodeUpsertData);
+        emit(t, "tool.finished", { toolCallId: tool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [nodeId] }, creditsActual: 0, settling: false }); } },
+      ...say(t, messageId, "w1", "口播稿放在画布上了，三段：开场问题、一个卖点、一个动作。想换开头或者再短一点，直接说。"),
+      { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["开头再抓人一点", "缩短到 100 字以内", "按这段出一条视频"] }) },
+    ]);
+    return;
+  }
+  const spec = DIRECT_STEP[skill.key] || DIRECT_STEP["image-generation"];
+  const n = ++counter, revision = nextPlanRevision(t), fingerprint = `mock-direct-${skill.key}-${n}`, planRunId = `mock-plan-${skill.key}-${n}`;
+  const references = mockStore().projects.get(projectId)?.doc.nodes.filter(x => request.attachmentNodeIds?.includes(x.id) || request.pinnedNodeIds?.includes(x.id)).map(x => x.id) || [];
+  const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId, revision, fingerprint, plan: {
+    summary: spec.summary, questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
+    steps: [{ id: "d1", operation: spec.operation, title: spec.title, prompt: request.text, referenceNodeIds: references, quotedCost: spec.quotedCost }],
+    budget: { estimated: spec.quotedCost, autoFixCap: 0 } } };
+  play(p, t, [
+    ...say(t, messageId, "d1", spec.said),
+    { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
+    { run: () => emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: `mock-approval-${skill.key}-${n}`, stage: "production", planFingerprint: fingerprint,
+      scope: [spec.title], quotedCost: spec.quotedCost, budgetCap: spec.quotedCost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
+    { run: () => { emit(t, "turn.done", { reason: "waiting_user", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["可以，开始", "改成 16:9", "多来一版"] }); p.stage = "production-proposed"; } },
+  ]);
+}
+
+/** A confirmed direct card: its execution starts in production and runs the one step, like productionTurn does. */
+function directProductionTurn(projectId: string, p: MockProject, t: MockThread) {
+  const e = p.execution!, messageId = startTurn(t), s = e.steps[0], tool = nextId("tool"), runId = `${e.id}-run-${s.id}`;
+  const noun = s.operation === "video" ? "视频" : "图";
+  play(p, t, [
+    ...say(t, messageId, "e1", `开始出${noun}。`),
+    { waitsForExecution: true, run: () => { setStep(p, s.id, "running", runId); emit(t, "tool.started", { toolCallId: tool, toolName: s.operation, title: s.title, safeInputSummary: s.operation === "video" ? "5 秒 · 竖屏" : "1 张 · 1:1", childRunId: runId }, e.id); budget(p, t, 0, s.quotedCost, "quote"); } },
+    { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: s.operation, progress: "已提交，等待结果" }, e.id) },
+    { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
+      emit(t, "tool.finished", { toolCallId: tool, toolName: s.operation, status: "done", result: { summary: `${s.title}完成`, nodeIds: [stepNodeId(e.id, s)] }, creditsActual: s.quotedCost, settling: false }, e.id);
+      finishStep(projectId, p, t, s.id, {}, runId); budget(p, t, s.quotedCost, 0, "actual");
+      updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() }));
+    } },
+    ...say(t, messageId, "e2", `${noun}出好了，在画布上，用了 ${s.quotedCost} 积分。想换个画幅或者再来一版，直接说。`),
+    { run: () => {
+      const suggestions = s.operation === "video" ? ["再来一段", "改成 10 秒"] : ["再来一张，背景亮一点", "把这张动起来"];
+      emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions });
+      patchViewMessage(t, messageId, m => ({ ...m, suggestions, clientMessageId: `exec-summary-${e.id}` }));
+      p.stage = "done";
+    } },
+  ]);
+}
+
 // Like the server's guard (StudioNaturalApprovals): a reply that says to go ahead confirms the pending card; a question,
 // hesitation or edit never does. The demo used to answer every reply with 「确认没问题就点…」, so the card's
 // 「直接回复「开始」也行」 could not be tried here.
@@ -386,7 +539,8 @@ function naturalApproval(projectId: string, p: MockProject, t: MockThread, text:
   try {
     void mockExecutionCreate(projectId, { clientRequestId: nextId("said"), stage, planRunId: plan?.planRunId || `mock-plan-${stage}`, planFingerprint: card.planFingerprint,
       budgetCap: card.budgetCap, autoFixCap: card.autoFixCap, approvalId: card.approvalId, confirmationMessageId: messageId,
-      ...(stage === "production" ? { executionId: p.execution?.id, expectedRevision: plan?.revision ?? 2 } : {}) });
+      // Like the panel: a production card confirms the execution it names; a direct skill's card names none and starts one.
+      ...(stage === "production" && card.executionId ? { executionId: card.executionId, expectedRevision: plan?.revision ?? 2 } : {}) });
   } catch { return false; }
   const holder = t.view.messages.find(m => m.blocks.some(b => b.type === "approval" && b.approvalId === card.approvalId));
   const approved = holder?.blocks.find(b => b.type === "approval" && b.approvalId === card.approvalId);
@@ -426,9 +580,6 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   const known = t.results.get(request.clientMessageId);
   if (known) return later(known);
   const busy = t.running;
-  let skill: StudioSkillSummary;
-  try { skill = routeSkill(t, request); } catch (error) { return Promise.reject(error); }
-  if (!t.thread.skillKey) { t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; }
   // Same as the server: a typed stop / pause while something is working is a priority control, not queued steering.
   const said = mockStopIntent(request.text);
   const working = p.execution && ["running", "paused", "needs_user"].includes(p.execution.status);
@@ -446,13 +597,21 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
     t.results.set(request.clientMessageId, result);
     return later(result);
   }
+  // Like the server, a message sent mid-turn is queued as is; routing happens when a turn starts (and a refused choice
+  // leaves no message behind).
+  let skill: StudioSkillSummary | undefined;
+  if (!busy) try { skill = pickSkill(projectId, p, t, request); } catch (error) { return Promise.reject(error); }
   const message: StudioDialogueMessage = { id: nextId("msg"), threadId, seq: ++t.thread.lastSeq, role: "user", text: request.text, blocks: [],
     pinnedNodeIds: request.pinnedNodeIds, attachmentNodeIds: request.attachmentNodeIds, clientMessageId: request.clientMessageId, status: busy ? "queued" : "done", createdAt: now() };
   t.view = { ...t.view, messages: [...t.view.messages, message] };
   let result: StudioPostMessageResult;
   if (busy) { t.queued.push(message.id); result = { messageId: message.id, turnId: t.turnId, queueState: "queued" }; }
   else {
-    if (p.stage === "idle") firstTurn(projectId, p, t, request);
+    // The skill is bound per job: a different one switches the thread and starts its job from the beginning.
+    if (skill && skill.key !== t.thread.skillKey) { t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; p.stage = "idle"; }
+    if (!skill) generalTurn(p, t);
+    else if (mockSkillIsDirect(skill) && (p.stage === "idle" || p.stage === "done")) directTurn(projectId, p, t, request, skill);
+    else if (p.stage === "idle") firstTurn(projectId, p, t, request);
     else if (!naturalApproval(projectId, p, t, request.text, message.id)) replyTurn(p, t, request);
     result = { messageId: message.id, turnId: t.turnId, runId: t.runId, queueState: "accepted" };
     patchViewMessage(t, message.id, m => ({ ...m, turnId: t.turnId }));
@@ -520,6 +679,7 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
     analysisTurn(projectId, p, t);
     return later(p.execution);
   }
+  if (!request.executionId) return directExecutionCreate(projectId, p, t, request);
   const e = p.execution;
   if (!e || e.id !== request.executionId) throw Object.assign(new Error("分析还没有完成，请先确认分析"), { code: "STUDIO_PLAN_STALE" });
   if (e.stage === "production") return later(e);
@@ -529,6 +689,30 @@ export function mockExecutionCreate(projectId: string, request: StudioPlanExecut
   patchApproval(t, request.approvalId, e.id, request);
   p.stage = "production-running";
   productionTurn(projectId, p, t);
+  return later(p.execution);
+}
+
+/**
+ * A production card without an executionId (StudioPlanExecutionService.create): allowed only for a plan of a direct skill,
+ * which then starts in production with the plan's steps; any other plan still needs its analysis first (400). The same
+ * plan and card confirmed twice returns the same execution.
+ */
+function directExecutionCreate(projectId: string, p: MockProject, t: MockThread, request: StudioPlanExecutionCreateRequest): Promise<StudioPlanExecution> {
+  if (p.execution && p.execution.planRunId === request.planRunId && p.execution.stage === "production") return later(p.execution);
+  const plan = t.view.messages.flatMap(m => m.blocks).filter((b): b is Extract<StudioMessageBlock, { type: "plan" }> => b.type === "plan" && b.planRunId === request.planRunId).at(-1);
+  const skill = mockSkill(plan?.plan.skillKey);
+  // Thrown, like the other refusals here, so the typed 「可以」 path (naturalApproval) can catch it.
+  if (!plan || !skill || !mockSkillIsDirect(skill)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这个方案要先确认分析，再确认制作" }, 400);
+  if (workingExecution(p)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "上一次制作还没结束，结束后再开始新的" }, 400);
+  const id = nextId("exec"), at = now();
+  p.execution = { id, projectId, threadId: t.thread.id, skillKey: skill.key, skillVersion: skill.version, stage: "production", planRunId: request.planRunId, planRevision: plan.revision,
+    planFingerprint: request.planFingerprint, status: "running",
+    steps: withNodeIds(id, plan.plan.steps.map(x => step(x.id, x.title, x.operation, "production", x.quotedCost, x.dependsOn || []))),
+    budgets: [{ stage: "production", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }],
+    startedAt: at, deadlineAt: new Date(Date.now() + 90 * 60_000).toISOString(), updatedAt: at };
+  patchApproval(t, request.approvalId, id, request);
+  p.stage = "production-running";
+  directProductionTurn(projectId, p, t);
   return later(p.execution);
 }
 

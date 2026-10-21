@@ -19,6 +19,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.SimpleTransactionStatus;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -126,15 +127,27 @@ class StudioDialogueRoutingTest {
         assertNull(routedSkill());
     }
 
-    @Test void aTieWithoutADefaultAsksWhichSkill() throws Exception {
+    /** 意图直达 2026-10-20: a tie is the model's call inside the turn (read_skill), not a 400 that makes the UI ask the user. */
+    @Test void aTieStartsTheTurnWithoutASkillSoTheModelPicksOne() throws Exception {
         var cut = skill("clip-cut", "triggers:\n  media: [video]\n  keywords: [剪]");
         when(catalog.available()).thenReturn(List.of(cut, video));
-        var e = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", message("c-4b", "看看这条", List.of("v1"), null)));
-        assertEquals("STUDIO_SKILL_REQUIRED", e.getCode());
-        assertEquals(400, e.getStatus().value());
+        var result = service.post("u1", "P1", "IPT-P1", message("c-4b", "看看这条", List.of("v1"), null));
+        assertNotNull(result.turnId(), "the turn is accepted");
         assertNull(thread.getSkillKey());
-        verify(runs, never()).save(any());
-        verifyNoInteractions(credits);
+        assertNull(routedSkill());
+    }
+
+    @Test void aDirectSkillBindsInProductionAndARecreationSkillInAnalysis() throws Exception {
+        String file = Files.readString(Path.of("src/main/resources/studio/skills/image-generation.md"));
+        var image = StudioSkillCatalog.parse(file);
+        assertTrue(image.direct());
+        when(catalog.available()).thenReturn(List.of(video, image));
+        service.post("u1", "P1", "IPT-P1", message("c-img", "画一张国风少女海报", null, null));
+        assertEquals("image-generation", thread.getSkillKey());
+        assertEquals("production", thread.getStage(), "no analysis stage: the first plan is the production plan");
+        var run = ArgumentCaptor.forClass(IpRun.class);
+        verify(runs).save(run.capture());
+        assertEquals("production", mapper.readTree(run.getValue().getInputJson()).path("_exec").path("stage").asText());
     }
 
     @Test void anExplicitChoiceWinsAndMustBeActive() throws Exception {
@@ -149,11 +162,41 @@ class StudioDialogueRoutingTest {
         assertEquals("script-rewrite", routedSkill());
     }
 
-    @Test void aBoundThreadIsNeverReRouted() throws Exception {
-        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("analysis");
+    /** 意图直达 2026-10-20: the skill is bound per job. Between jobs a message that names another job switches the thread. */
+    @Test void aBoundThreadWithNoActiveExecutionIsReRoutedByTheNextMessage() throws Exception {
+        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production");
         when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
-        service.post("u1", "P1", "IPT-P1", message("c-7", "复刻", List.of("v1"), null));
+        when(catalog.available()).thenReturn(List.of(video, script));
+        service.post("u1", "P1", "IPT-P1", message("c-7", "复刻这条", List.of("v1"), null));
+        assertEquals("video-recreation", thread.getSkillKey(), "画完文案再复刻: the job changed, so did the method");
+        assertEquals("analysis", thread.getStage(), "the new method starts in its own stage");
+        assertEquals("video-recreation", routedSkill());
+    }
+
+    @Test void aFollowUpThatNamesNoJobKeepsTheBoundSkill() throws Exception {
+        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production");
+        when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
+        when(catalog.available()).thenReturn(List.of(video, script));
+        service.post("u1", "P1", "IPT-P1", message("c-8", "再短一点", null, null));
         assertEquals("script-rewrite", thread.getSkillKey());
+        assertEquals("production", thread.getStage());
+        assertEquals("script-rewrite", routedSkill());
+    }
+
+    @Test void whileAnExecutionIsActiveTheMethodStaysAndAnExplicitSwitchIsRefused() throws Exception {
+        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production"); thread.setActiveExecutionId("PEX-1");
+        when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
+        when(catalog.requireForNewWork("script-rewrite")).thenReturn(script);
+        when(catalog.requireForNewSelection("video-recreation")).thenReturn(video);
+        var control = mock(StudioExecutionControl.class);
+        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "production", "needs_user")));
+        ReflectionTestUtils.setField(service, "executionControl", control);
+        service.post("u1", "P1", "IPT-P1", message("c-9", "复刻这条", List.of("v1"), null));
+        assertEquals("script-rewrite", thread.getSkillKey(), "routing never touches a thread whose execution is active");
         verify(catalog, never()).available();
+        thread.setActiveTurnId(null); thread.setActiveRunId(null); // the mocked worker never ends the turn; free the thread for the next message
+        var e = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", message("c-10", "复刻这条", List.of("v1"), "video-recreation")));
+        assertEquals("STUDIO_INPUT_INVALID", e.getCode());
+        assertEquals("script-rewrite", thread.getSkillKey());
     }
 }

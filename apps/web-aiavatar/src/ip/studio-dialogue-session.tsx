@@ -213,8 +213,11 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const request: StudioPlanExecutionCreateRequest = { clientRequestId, stage: block.stage, planRunId: plan.planRunId, planFingerprint: block.planFingerprint,
       budgetCap: caps.budgetCap, autoFixCap: caps.autoFixCap, approvalId: block.approvalId, confirmationMessageId: messageId,
       ...(block.billingSelection ? { billing: block.billingSelection } : {}),
-      ...(block.stage === 'production' ? { executionId: block.executionId || s.execution?.id, approachId: plan.plan.confirmedApproachId || plan.plan.recommendedApproachId, expectedRevision: plan.revision }
-        // A card the running analysis posted (a budget raise, a revised plan) confirms that same execution, not a new one.
+      // The card names the execution it confirms (a stage of the running one, a raise, a revised plan). A production card
+      // without one starts a new execution: a direct skill (出图 / 写剧本 / 出视频) has no analysis stage, so its only card is
+      // the start. The old fallback to the panel's last execution turned that start into a confirmation of a finished job.
+      ...(block.stage === 'production' ? { ...(block.executionId ? { executionId: block.executionId, expectedRevision: plan.revision } : {}),
+          ...(plan.plan.confirmedApproachId || plan.plan.recommendedApproachId ? { approachId: plan.plan.confirmedApproachId || plan.plan.recommendedApproachId } : {}) }
         : block.executionId ? { executionId: block.executionId, expectedRevision: plan.revision } : {}) };
     const execution = await createStudioPlanExecution(projectId, request);
     dispatch({ type: 'execution', execution });

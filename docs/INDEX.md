@@ -102,6 +102,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
 | [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（last-reviewed 2026-10-18） |
+| [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md) | **Studio 对话意图直达 · 现行设计真源** | 意图 → 技能 → 一轮确认：出图 / 写剧本与文案 / 出视频三个直达技能 + 参考视频复刻；路由关键词 ×2 / 素材 ×1、平手不 400、按任务绑定技能；问题预算；触发评测集（§7）。本地实现，未发布，未做真模型端到端（last-reviewed 2026-10-20） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
 | [Studio 视频模式](ip-studio-video-modes.md) | 产品 / 实施 | 原生首尾帧、全能参考、模型合同与费用校验；本地验证边界 |
@@ -279,3 +280,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - **删 / 归档旧文档**：先 `git grep -n '<filename>'`（**代码注释也会引文档路径**，不要只扫 `*.md`）改指真源；归档的在文件顶部加「已归档 + 现行真源」一行。
 - **大版本迭代**：同 commit 更新 `product_spec*.md` 版本节、受影响 `apps/*/README.md` + `PRODUCT.md`、`docs/VERSION_HISTORY.md`（`AGENTS.md` §7 只留最近 5 版速览）、本 INDEX 的 last-reviewed。详 [`AGENTS.md` §9](../AGENTS.md)。
 - **CLAUDE.md ↔ AGENTS.md**：CLAUDE.md 是 symlink，改 AGENTS.md 即同步两者。
+
+- [Studio 对话意图直达真模型验收](releases/studio-dialogue-intents-validation-20261020.md) — §7 评测集用聚算 Qwen3.8 27B / Agnes 2.5 Flash 真跑，图片画幅契约修复，未确认出图；last-reviewed: 2026-10-20。

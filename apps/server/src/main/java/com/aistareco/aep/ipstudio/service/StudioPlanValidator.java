@@ -142,7 +142,8 @@ public final class StudioPlanValidator {
                 for(String list:List.of("preserve","change","tradeoffs","requiredCapabilities"))out.set(list,strings(a.path(list),12,500));
             }
         }
-        if("production".equals(stage)&&approachIds.isEmpty())invalid("制作计划需要说明推荐方案保留什么、改变什么");
+        // A recreation production plan says what it keeps and changes; a direct skill's plan (one image, one clip) may skip approaches.
+        if("production".equals(stage)&&approachIds.isEmpty()&&!rules.direct())invalid("制作计划需要说明推荐方案保留什么、改变什么");
         if(!approachIds.isEmpty()) {
             String recommended=raw.path("recommendedApproachId").asText("");
             if(!approachIds.contains(recommended))invalid("推荐方案不在方案列表中");
@@ -211,7 +212,11 @@ public final class StudioPlanValidator {
             earlier.put(id,operation);
         }
         plan.set("questions",questions(raw.path("questions")));
-        if(raw.hasNonNull("notes"))plan.set("notes",strings(raw.path("notes"),12,16500));
+        // notes are the planner's remarks to the user, never executed. A single string instead of string[] (real model
+        // 2026-10-20, every image plan) is one note, not a reason to throw away an otherwise valid plan; the length cap holds.
+        JsonNode notes=raw.path("notes");
+        if(notes.isTextual())notes=OM.createArrayNode().add(notes.asText());
+        if(raw.hasNonNull("notes"))plan.set("notes",strings(notes,12,16500));
         return plan;
     }
 
@@ -230,10 +235,24 @@ public final class StudioPlanValidator {
             }
             case "image" -> {
                 out.put("count",count(raw.path("count"),label));
+                // Skills speak in 画幅 (「海报 9:16」), so an image step carries aspectRatio like a video step; size stays an
+                // exact pixel override. A ratio written into size (「size: "9:16"」, real model 2026-10-20) is read as the
+                // ratio it is, not rejected: before this every direct image plan with a stated 画幅 failed three times and
+                // ran the turn out of budget, and one without it silently fell back to 3:4.
+                String ratio=raw.path("aspectRatio").asText("").strip();
                 if(raw.hasNonNull("size")) {
-                    String size=raw.path("size").asText("");
-                    if(!size.matches("[1-9][0-9]{1,4}x[1-9][0-9]{1,4}"))invalid(label+"的图片尺寸不正确");
-                    out.put("size",size);
+                    String size=raw.path("size").asText("").strip();
+                    if(size.matches("[1-9][0-9]?:[1-9][0-9]?")) {
+                        if(!ratio.isEmpty()&&!ratio.equals(size))invalid(label+"的画幅与尺寸不一致");
+                        ratio=size;
+                    } else {
+                        if(!size.matches("[1-9][0-9]{1,4}x[1-9][0-9]{1,4}"))invalid(label+"的图片尺寸不正确");
+                        out.put("size",size);
+                    }
+                }
+                if(!ratio.isEmpty()) {
+                    if(!ratio.matches("[1-9][0-9]?:[1-9][0-9]?"))invalid(label+"的画幅不正确");
+                    out.put("aspectRatio",ratio);
                 }
                 out.set("referenceBindings",bindings(raw.path("referenceBindings"),IMAGE_BINDING_ROLES,allowed,earlier,dependencies,label));
             }
@@ -249,7 +268,9 @@ public final class StudioPlanValidator {
                 }
                 JsonNode duration=raw.path("durationSec");
                 if(!duration.isIntegralNumber()||duration.asInt()<1||duration.asInt()>60)invalid(label+"的时长需为 1 到 60 的整数秒");
-                String ratio=raw.path("aspectRatio").asText("");
+                // aspectRatio belongs to the step, not to video{}; a planner that nests it there (real reply 2026-10-20,
+                // 「把这张图动起来」) means the same value, so it is read from there when the step has none.
+                String ratio=raw.hasNonNull("aspectRatio")?raw.path("aspectRatio").asText(""):video.path("aspectRatio").asText("");
                 if(!ratio.matches("[1-9][0-9]?:[1-9][0-9]?"))invalid(label+"的画幅不正确");
                 out.put("durationSec",duration.asInt()).put("aspectRatio",ratio).put("count",count(raw.path("count"),label));
                 out.set("referenceBindings",bindings(raw.path("referenceBindings"),BINDING_ROLES,allowed,earlier,dependencies,label));

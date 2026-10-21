@@ -645,6 +645,30 @@ test('a raise card of the running analysis confirms that same execution', async 
   expect(api.createExecution.mock.calls[0][1]).toMatchObject({ stage: 'analysis', executionId: 'PEX-9', approvalId: 'a9', budgetCap: 45, expectedRevision: 2 });
 });
 
+// 意图直达 (2026-10-20): a direct skill (出图 / 写剧本与文案 / 出视频) has no analysis stage, so its production card names no
+// execution and starts one. The panel used to fall back to the execution it was showing, which turned that start into a
+// confirmation of a finished job (the server then refused it). A card that does name its execution keeps sending it with
+// the plan revision (see 「confirming production posts the execution…」 above).
+test('a production card without an execution starts a new one: no executionId, revision or approach, even with a finished execution shown', async () => {
+  closedCanvas();
+  // The server numbers plans per thread (thread.planRevision), so the new job's plan comes after the finished one's revision 2.
+  const directPlan: Extract<StudioMessageBlock, { type: 'plan' }> = { type: 'plan', planRunId: 'plan-img', revision: 3, fingerprint: 'fi', plan: { summary: '出 1 张图', questions: [], stage: 'production',
+    skillKey: 'image-generation', skillVersion: 1, steps: [{ id: 'd1', operation: 'image', title: '出图 1 张', prompt: '', referenceNodeIds: [], quotedCost: 8 }], budget: { estimated: 8, autoFixCap: 0 } } };
+  const directCard: Extract<StudioMessageBlock, { type: 'approval' }> = { type: 'approval', approvalId: 'a-img', stage: 'production', planFingerprint: 'fi', scope: ['出图 1 张'], quotedCost: 8, budgetCap: 18, autoFixCap: 0, status: 'pending' };
+  const direct: StudioDialogueMessage = { id: 'm3', threadId: 'th', seq: 23, turnId: 't3', role: 'assistant', text: '按你说的出 1 张图。', blocks: [directPlan, directCard], status: 'done', createdAt: at };
+  api.getConversation.mockResolvedValue({ ...closedState(), latestSeq: 23, messages: [...closedState().messages, direct] });
+  api.createExecution.mockResolvedValue({ ...doneExecution, id: 'PEX-2', planRunId: 'plan-img', planRevision: 3, planFingerprint: 'fi', status: 'running', finishedAt: undefined, steps: [],
+    budgets: [{ stage: 'production', approvedCap: 18, autoFixCap: 0, spent: 0, inFlight: 0, remaining: 18 }] });
+  await ready();
+  // The finished execution is what the panel shows: the old fallback would have sent its id.
+  await waitFor(() => expect(within(screen.getByLabelText('制作进度')).getByText(/^制作 · 已完成/)).toBeDefined());
+  const pending = screen.getAllByLabelText('确认制作').find(card => within(card).queryByRole('button', { name: '开始制作' }))!;
+  fireEvent.click(within(pending).getByRole('button', { name: '开始制作' }));
+  await waitFor(() => expect(api.createExecution).toHaveBeenCalledOnce());
+  expect(api.createExecution.mock.calls[0]).toEqual(['p', { clientRequestId: expect.any(String), stage: 'production', planRunId: 'plan-img', planFingerprint: 'fi', budgetCap: 18, autoFixCap: 0,
+    approvalId: 'a-img', confirmationMessageId: 'm3' }]);
+});
+
 // ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
 
 const skill = (key: string, name: string, extra: Partial<StudioSkillSummary> = {}): StudioSkillSummary => ({ key, name, version: 1, status: 'active', planning: 'dynamic', summary: `${name}的说明`,

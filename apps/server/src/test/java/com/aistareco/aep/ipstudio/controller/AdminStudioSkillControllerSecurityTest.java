@@ -54,18 +54,33 @@ class AdminStudioSkillControllerSecurityTest {
                 .andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_NOT_FOUND"));
     }
 
+    /** 意图直达 2026-10-20 seeds four skills; the three direct ones are withdrawn first so recreation is the last active one. */
+    private static final String[] DIRECT_SKILLS = {"image-generation", "script-writing", "video-generation"};
+
     @Test @WithMockUser(roles = "SUPER_ADMIN")
     void superAdminCannotWithdrawTheOnlyActiveSkill() throws Exception {
-        mvc.perform(put("/api/admin/studio/skills/reference-video-recreation/status").contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"status\":\"withdrawn\"}"))
-                .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_LAST_ACTIVE"));
+        try {
+            for (String key : DIRECT_SKILLS) setStatus(key, "withdrawn").andExpect(status().isOk());
+            setStatus("reference-video-recreation", "withdrawn")
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_LAST_ACTIVE"));
+        } finally {
+            // The context (and its H2 database) is shared with the other tests in this class.
+            for (String key : DIRECT_SKILLS) setStatus(key, "active").andExpect(status().isOk());
+        }
+    }
+
+    private org.springframework.test.web.servlet.ResultActions setStatus(String key, String status) throws Exception {
+        return mvc.perform(put("/api/admin/studio/skills/" + key + "/status").contentType(MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"" + status + "\"}"));
     }
 
     @Test @WithMockUser(username = "plain-user", roles = "USER")
     void usersSeeActiveSkillsWithTriggersButCannotDistill() throws Exception {
         mvc.perform(get("/api/v1/ip-studio/studio/skills")).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data[0].key").value("reference-video-recreation"))
-                .andExpect(jsonPath("$.data[0].triggers.default").value(true));
+                // Four seeded skills (意图直达 2026-10-20); match by key, list order is not part of the contract.
+                .andExpect(jsonPath("$.data[*].key", org.hamcrest.Matchers.hasItems(
+                        "image-generation", "script-writing", "video-generation", "reference-video-recreation")))
+                .andExpect(jsonPath("$.data[?(@.key=='reference-video-recreation')].triggers.default").value(true));
         mvc.perform(post("/api/v1/ip-studio/projects/IPP-x/skill-drafts").contentType(MediaType.APPLICATION_JSON)
                         .content("{\"clientRequestId\":\"d-1\",\"executionId\":\"PEX-x\",\"maxCost\":10}"))
                 .andExpect(status().isForbidden()).andExpect(jsonPath("$.error.code").value("STUDIO_SKILL_DRAFT_FORBIDDEN"));

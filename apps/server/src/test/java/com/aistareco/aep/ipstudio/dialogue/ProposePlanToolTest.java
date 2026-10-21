@@ -200,4 +200,27 @@ class ProposePlanToolTest {
         var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
         assertEquals("done", run.status(), run.forModel());
     }
+
+
+    /** 意图直达 2026-10-20: a direct skill proposes its production plan with no execution; analysis is refused for it. */
+    @Test void aDirectSkillProposesProductionStraightAwayAndNeverAnalysis() throws Exception {
+        com.aistareco.aep.ipstudio.skill.StudioSkill image;
+        try (var in = getClass().getResourceAsStream("/studio/skills/image-generation.md")) {
+            image = StudioSkillCatalog.parse(new String(in.readAllBytes(), StandardCharsets.UTF_8));
+        }
+        var direct = new ToolContext("u1", "P1", "IPT-P1", "TRN-1", "IPR-1", "IDM-A", "IDM-U", null, null, false, null, null,
+                DialogueLoop.TurnBudget.unmetered(8192, Clock.systemUTC()), image, "production", () -> false, effects);
+        assertNull(tool.validate(om.createObjectNode().put("brief", "一张海报").put("stage", "production"), direct));
+        assertNull(tool.validate(om.createObjectNode().put("brief", "一张海报"), direct), "stage may be omitted: it defaults to the skill's own");
+        assertNotNull(tool.validate(om.createObjectNode().put("brief", "一张海报").put("stage", "analysis"), direct));
+        assertNotNull(tool.validate(om.createObjectNode().put("brief", "照参考视频复刻").put("stage", "production"), ctx), "recreation still needs the analysis first");
+        modelReplies("""
+                {"summary":"一张国风少女海报，9:16","steps":[{"id":"poster","operation":"image","title":"国风少女海报","prompt":"竖版海报……","execution":"auto",
+                 "settings":{"count":1,"referenceBindings":[]},"referenceNodeIds":[],"dependsOn":[]}],"questions":[]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "一张国风少女海报"), direct, HANDLE);
+        assertEquals("done", run.status(), run.forModel());
+        assertEquals("production", appended.path("stage").asText());
+        assertEquals("image-generation", appended.path("skillKey").asText());
+        assertTrue(userPromptSentToTheModel().contains("没有分析阶段"), "the planner is told there is no analysis stage");
+    }
 }

@@ -4,6 +4,19 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 对话意图直达 · 2026-10-20 · 本地，未发布（server + web-aiavatar）
+
+背景：用户反馈「AI 对话里问太多」。改版前对话链只为参考视频复刻设计：技能只有一个，没命中就落进全能创作、做不了收费生成而反复追问；哪怕只出一张图也要「分析确认 + 制作确认」两张卡；线程一旦绑定技能就不能换；路由平手回 400 让界面问「用哪种方法」。设计真源 [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md)。
+
+- **四个技能**：出图 `image-generation`、写剧本与文案 `script-writing`、出视频 `video-generation`（新增技能文件 `resources/studio/skills/*.md`，`operations.analysis: []` 即直达技能，`StudioSkill.direct()`，起始阶段 production）+ 参考视频复刻 `reference-video-recreation`（两阶段不变）。不允许 `check` 的技能 `checks` 可为空。
+- **直达技能一张卡**：`propose_plan` 的 stage 填 production，方案和确认卡同一轮发；直达技能的制作计划可以没有 approaches；`StudioPlanExecutionService.create` 接受不带 `executionId` 的 production 请求（计划所属技能必须是直达，否则 400 `STUDIO_INPUT_INVALID`），文字确认同样放行。写剧本与文案的短稿当轮 `create_nodes` 放进画布，不发卡、不报价。
+- **前端确认卡**：`studio-dialogue-session.tsx` 的 `approve()` 只在卡上带 `executionId` 时才作为阶段确认（带 `executionId` + `expectedRevision`），否则是新执行的开始；`approachId` 只在方案有推荐 / 已确认做法时传。去掉了「回退到面板上最近一次执行 id」的旧逻辑。测试：`studio-assistant.test.tsx`「a production card without an execution starts a new one…」（旧逻辑下会带上已完成执行的 id，测试为红）。
+- **路由**（`StudioSkillRouter` + `StudioDialogueService.startTurn`）：关键词 ×2、素材类型 ×1，词优先于素材；唯一最高分胜出；没命中沿用当前技能，没有就不绑；平手沿用当前技能（在平手里时），否则不绑、由模型 `read_skill` 选；**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。`triggers.default` 只作提示。技能按任务绑定：没有活跃执行时每条消息重新路由并可换技能（线程 stage 改为新技能起始阶段），有活跃执行时不换，显式换 400 `STUDIO_INPUT_INVALID`；执行结束解绑时清掉线程 stage。
+- **问题预算**：技能正文「必填与可选」是要不要问的唯一判据；必填缺且推不出才问，一轮一个，附候选和默认；可选项一律用默认，不问不编；用户给的引号 / 数字原样用。配音、口型、声音克隆、局部重绘不在对话里做，提示词要求说明去画布节点工具里做。
+- **提示词**：`dap.ip_studio_skill_dialogue.md` / `dap.ip_studio_skill_plan.md` 重写意图表与提问规则，`PromptTemplateSeeder.SEED_VERSION` 升到 `v18-2026-10-20-dialogue-intent-direct`。
+- **演示 mock**（`apps/web-aiavatar/src/ip/mocks/studio-dialogue.ts`）：`MOCK_STUDIO_SKILLS` 补上三个直达技能（YAML 头照抄，`maxSteps` 表达式按服务端算成 28）；`mockRouteSkill` 逐行照 `StudioSkillRouter`，`pickSkill` 照 `startTurn`（显式选择、活跃执行不换、每条消息重新路由）；出图 / 出视频首轮发方案 + 不带 `executionId` 的制作卡，确认后以 production 建执行跑完一步（确定性、零积分、节点带 `studio.mock`）；写剧本与文案当轮放一个文字节点；没命中任何技能直接回答。计划版本号改为按线程递增（照服务端 `thread.planRevision`），否则新任务的卡会被前端当成被旧方案替代。测试：`mocks/studio-dialogue.test.ts` 路由（平手不 400、显式选择、活跃执行禁止切换、词优先于素材、素材单独计分、出图线程沿用）、直达流程、写稿流程。
+- **未做**：真模型端到端（按真源 §7 触发评测集）；配音 / 口型技能接入对话（待对话工具开放这些操作）。
+
 ### Studio 对话与制作修复（Codex 2026-10-19 六项）· 2026-10-19 · 本地未发布（server + web-aiavatar）
 
 制作中确认同阶段新方案时在原执行上替换剩余工作（`StudioPlanExecutionService.replanStage`：未变且已完成的步骤保留，改动及下游重做，原 run 进 `previousRunIds` 继续计费，在途步骤不改写）；执行器预算停下的步骤标 `budgetBlocked`，追加预算确认后自动继续（用户暂停除外）；绑定执行的对话轮次用执行的固定付款人，消息带别的付款人 409（`StudioExecutionGate.executionPayer`）；整句停止 / 暂停的消息走优先控制（`StudioStopIntent`），不进转向队列；前端助手把所选模型随消息发出，分析阶段的追加卡带上执行 id；画布投影只有保存成功才记「已投影」和画布游标（`canvasUnsavedFrom`）。无迁移、无 API 路径变化。server ipstudio 659 项、web-aiavatar 970 项通过。

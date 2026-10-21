@@ -38,6 +38,9 @@ public final class DialogueActionProtocol {
         JsonNode array;
         try { array = OM.readTree(block); }
         catch (Exception e) { return new Parsed(visible, List.of(), "不是有效的 JSON 数组"); }
+        // One action written as a bare object after the marker (real agnes-2.5-flash reply 2026-10-20:
+        // 「…<<<studio-actions>>>{"tool":"read_canvas","args":{}}」) is that one action, as in the tag form.
+        if (array != null && array.isObject() && array.path("tool").isTextual()) array = OM.createArrayNode().add(array);
         if (array == null || !array.isArray()) return new Parsed(visible, List.of(), "动作必须是 JSON 数组");
         if (array.size() > MAX_ACTIONS_PER_REPLY) return new Parsed(visible, List.of(), "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作");
         List<DialogueLoop.Action> actions = new ArrayList<>();
@@ -46,7 +49,7 @@ public final class DialogueActionProtocol {
             i++;
             if (!item.isObject() || !item.path("tool").isTextual() || item.path("tool").asText().isBlank())
                 return new Parsed(visible, List.of(), "第 " + i + " 个动作缺少 tool");
-            JsonNode args = item.path("args");
+            JsonNode args = flatArgs(item);
             if (!args.isMissingNode() && !args.isNull() && !args.isObject()) return new Parsed(visible, List.of(), "第 " + i + " 个动作的 args 必须是对象");
             actions.add(new DialogueLoop.Action("act-" + i, item.path("tool").asText().strip(), args.isObject() ? args : OM.createObjectNode()));
         }
@@ -60,7 +63,7 @@ public final class DialogueActionProtocol {
      */
     private static Parsed parseTagForm(String full) {
         int first = full.indexOf(TAG_OPEN);
-        if (first < 0) return new Parsed(full.strip(), List.of(), null);
+        if (first < 0) return bareActions(full);
         Matcher m = TAG_BLOCK.matcher(full);
         StringBuilder visible = new StringBuilder();
         List<DialogueLoop.Action> actions = new ArrayList<>();
@@ -98,6 +101,32 @@ public final class DialogueActionProtocol {
         return new Parsed(visible.toString().strip(), List.copyOf(actions), null);
     }
 
+    /**
+     * A reply that is nothing but an action — {@code {"tool":..,"args":{..}}} or an array of them, optionally fenced —
+     * with no marker (the same model's correction reply after a rejected batch, 2026-10-20). Without this the raw JSON
+     * was shown to the user as the answer and the turn ended. Only a reply that is entirely such JSON counts; prose that
+     * merely contains braces stays prose.
+     */
+    private static Parsed bareActions(String full) {
+        String text = stripFence(full.strip());
+        if (!(text.startsWith("{") || text.startsWith("["))) return new Parsed(full.strip(), List.of(), null);
+        JsonNode node;
+        try { node = OM.readTree(text); } catch (Exception e) { return new Parsed(full.strip(), List.of(), null); }
+        if (node == null) return new Parsed(full.strip(), List.of(), null);
+        var items = node.isArray() ? node : OM.createArrayNode().add(node);
+        if (items.isEmpty() || items.size() > MAX_ACTIONS_PER_REPLY) return new Parsed(full.strip(), List.of(), null);
+        List<DialogueLoop.Action> actions = new ArrayList<>();
+        int i = 0;
+        for (JsonNode item : items) {
+            i++;
+            if (!item.isObject() || !item.path("tool").isTextual() || item.path("tool").asText().isBlank()) return new Parsed(full.strip(), List.of(), null);
+            JsonNode args = flatArgs(item);
+            if (!args.isMissingNode() && !args.isNull() && !args.isObject()) return new Parsed("", List.of(), "第 " + i + " 个动作的 args 必须是对象");
+            actions.add(new DialogueLoop.Action("act-" + i, item.path("tool").asText().strip(), args.isObject() ? args : OM.createObjectNode()));
+        }
+        return new Parsed("", List.copyOf(actions), null);
+    }
+
     /** Native tool calls → actions. Arguments that are not a JSON object reject the whole batch (nothing half-executes). */
     public static Parsed fromNative(String visibleText, List<ChatToolCall> calls) {
         List<DialogueLoop.Action> actions = new ArrayList<>();
@@ -113,6 +142,18 @@ public final class DialogueActionProtocol {
             actions.add(new DialogueLoop.Action(id, call.name(), args));
         }
         return new Parsed(visibleText, List.copyOf(actions), null);
+    }
+
+    /**
+     * {@code args}, or — when the model wrote the arguments next to {@code tool} instead of inside {@code args}
+     * ({@code {"tool":"ask_question","text":"…","options":[…]}}, real reply 2026-10-20) — those sibling fields. The tool
+     * still validates every argument; this only stops a correctly named action from running with nothing.
+     */
+    private static JsonNode flatArgs(JsonNode item) {
+        if (item.has("args")) return item.path("args");
+        var rest = OM.createObjectNode();
+        item.fields().forEachRemaining(f -> { if (!"tool".equals(f.getKey())) rest.set(f.getKey(), f.getValue()); });
+        return rest.isEmpty() ? item.path("args") : rest;
     }
 
     private static String stripFence(String block) {

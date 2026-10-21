@@ -217,4 +217,84 @@ class StudioPlanValidatorSkillTest {
         ((ObjectNode)raw.path("steps").get(1).path("settings").path("referenceBindings").get(1)).put("stepId","nobody");
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(raw,rules(),"production",context));
     }
+
+
+    /** 意图直达 2026-10-20: a direct skill's production plan (one image) needs no approaches; recreation still does. */
+    @Test void aDirectSkillsProductionPlanMaySkipApproaches() throws Exception {
+        StudioSkillRules.Rules image;
+        try(var in=getClass().getResourceAsStream("/studio/skills/image-generation.md")) {
+            image=StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));
+        }
+        assertTrue(image.direct());
+        var raw=(ObjectNode)om.readTree("""
+            {"summary":"一张国风少女海报，9:16（补的默认：一张、插画风）",
+             "steps":[{"id":"poster","operation":"image","title":"国风少女海报","prompt":"竖版海报：一位穿汉服的少女……无文字。整体为国风插画。",
+               "settings":{"count":1,"referenceBindings":[]}}],
+             "questions":[]}""");
+        var plan=StudioPlanValidator.validateSkillPlan(raw,image,"production",List.of());
+        assertEquals(1,plan.path("steps").size());
+        assertFalse(plan.has("recommendedApproachId"));
+        var recreation=production();recreation.remove("approaches");recreation.remove("recommendedApproachId");
+        var e=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(recreation,rules(),"production",List.of("product-img","person-img")));
+        assertEquals("AI_BAD_OUTPUT",e.getCode());
+        var video=(ObjectNode)om.readTree("""
+            {"summary":"x","steps":[{"id":"v","operation":"video","title":"片","prompt":"动","settings":{"video":{"mode":"i2v","resolutionTier":"768p"},"durationSec":5,"aspectRatio":"9:16","count":1}}],"questions":[]}""");
+        var denied=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(video,image,"production",List.of()));
+        assertEquals("STUDIO_SKILL_OPERATION_NOT_ALLOWED",denied.getCode(),"the direct skill's whitelist still bounds the plan");
+    }
+
+    /**
+     * Real-model run 2026-10-20 (agnes-2.5-flash): for 「画一张国风少女海报，9:16」 the planner wrote settings.size "9:16" three
+     * times; the validator only took pixel sizes, so every attempt failed and the turn ran out of budget before a card. The
+     * ratio is the 画幅 the skill talks about: it is kept as aspectRatio (also when written into size), pixel sizes stay
+     * exact, and anything else is still refused.
+     */
+    @Test void anImageStepKeepsItsAspectRatioAlsoWhenThePlannerWritesItIntoSize() throws Exception {
+        StudioSkillRules.Rules image;
+        try(var in=getClass().getResourceAsStream("/studio/skills/image-generation.md")) {
+            image=StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));
+        }
+        java.util.function.Function<String,ObjectNode> plan=settings->{
+            try{return (ObjectNode)om.readTree("{\"summary\":\"海报\",\"steps\":[{\"id\":\"p\",\"operation\":\"image\",\"title\":\"海报\",\"prompt\":\"国风少女\",\"settings\":"+settings+"}],\"questions\":[]}");}
+            catch(Exception e){throw new IllegalStateException(e);}
+        };
+        var inSize=StudioPlanValidator.validateSkillPlan(plan.apply("{\"count\":1,\"size\":\"9:16\"}"),image,"production",List.of()).path("steps").get(0).path("settings");
+        assertEquals("9:16",inSize.path("aspectRatio").asText());
+        assertFalse(inSize.has("size"),"a ratio is not a pixel size");
+        var named=StudioPlanValidator.validateSkillPlan(plan.apply("{\"count\":1,\"aspectRatio\":\"16:9\",\"size\":\"1365x768\"}"),image,"production",List.of()).path("steps").get(0).path("settings");
+        assertEquals("16:9",named.path("aspectRatio").asText());
+        assertEquals("1365x768",named.path("size").asText());
+        for(String bad:List.of("{\"count\":1,\"size\":\"竖版\"}","{\"count\":1,\"aspectRatio\":\"portrait\"}","{\"count\":1,\"aspectRatio\":\"16:9\",\"size\":\"9:16\"}"))
+            assertEquals("AI_BAD_OUTPUT",assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(plan.apply(bad),image,"production",List.of())).getCode(),bad);
+        var noted=plan.apply("{\"count\":1,\"aspectRatio\":\"9:16\"}");noted.put("notes","补的默认：一张、插画风");
+        assertEquals("[\"补的默认：一张、插画风\"]",StudioPlanValidator.validateSkillPlan(noted,image,"production",List.of()).path("notes").toString(),
+                "a single note string is one note (the same planner reply wrote notes as a string)");
+        noted.put("notes","x".repeat(16501));
+        assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(noted,image,"production",List.of()));
+        StudioSkillRules.Rules videoSkill;
+        try(var in=getClass().getResourceAsStream("/studio/skills/video-generation.md")) {
+            videoSkill=StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));
+        }
+        var nested=(ObjectNode)om.readTree("""
+            {"summary":"x","steps":[{"id":"v","operation":"video","title":"片","prompt":"动","settings":{"video":{"mode":"i2v","resolutionTier":"720p","aspectRatio":"9:16"},"durationSec":4,"count":1}}],"questions":[]}""");
+        var lifted=StudioPlanValidator.validateSkillPlan(nested,videoSkill,"production",List.of()).path("steps").get(0).path("settings");
+        assertEquals("9:16",lifted.path("aspectRatio").asText(),"a ratio nested in video{} is the step's ratio");
+        assertFalse(lifted.path("video").has("aspectRatio"));
+        String contract=StudioWorkflowService.skillPlanConstraints(om,image,"production").path("settings").asText();
+        assertTrue(contract.contains("image{count:1|2|4,aspectRatio?"),"the planner is told the field exists: "+contract);
+    }
+
+    @Test void thePlannerGuideForADirectSkillNamesOnlyItsOwnOperations() throws Exception {
+        StudioSkillRules.Rules script;
+        try(var in=getClass().getResourceAsStream("/studio/skills/script-writing.md")) {
+            script=StudioSkillRules.rules(StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8)));
+        }
+        String guide=StudioWorkflowService.skillPlanConstraints(om,script,"production").path("stageGuide").asText();
+        assertTrue(guide.contains("没有分析阶段"),guide);
+        assertTrue(guide.contains("text"),guide);
+        assertFalse(guide.contains("assemble"),"a writing skill is not told to assemble clips: "+guide);
+        String recreation=StudioWorkflowService.skillPlanConstraints(om,rules(),"production").path("stageGuide").asText();
+        assertTrue(recreation.contains("assemble")&&recreation.contains("check"),recreation);
+        assertFalse(recreation.contains("没有分析阶段"),recreation);
+    }
 }

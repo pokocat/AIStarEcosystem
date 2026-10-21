@@ -51,6 +51,13 @@ public record StudioSkill(String key, String name, int version, String status, S
 
     public boolean active() { return "active".equals(status); }
     public boolean draft() { return "draft".equals(status); }
+    /**
+     * A skill with no analysis operations goes straight to production: the dialogue proposes a production plan and its
+     * card starts the execution in that stage (one confirmation for 「画一张图」). Recreation keeps its analysis stage.
+     */
+    public boolean direct() { return stageOperations(ANALYSIS).isEmpty(); }
+    /** The stage a thread bound to this skill starts in: production for a direct skill, analysis otherwise. */
+    public String startingStage() { return direct() ? PRODUCTION : ANALYSIS; }
     public boolean withdrawn() { return "withdrawn".equals(status); }
     public List<String> stageOperations(String stage) { return operations.getOrDefault(stage, List.of()); }
     public boolean allows(String stage, String operation) { return stageOperations(stage).contains(operation); }

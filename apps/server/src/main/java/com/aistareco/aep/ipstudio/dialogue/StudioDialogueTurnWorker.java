@@ -423,15 +423,29 @@ public class StudioDialogueTurnWorker {
         }
 
         String skillText(StudioSkill skill) {
-            if (skill != null) return "「" + skill.name() + "」v" + skill.version() + "\n" + skill.body();
-            StringBuilder out = new StringBuilder("还没有选定制作方法。普通创作问题直接回答；需要按下面某个方法制作时，先调用 read_skill 选定：\n");
-            for (var s : catalog.available()) out.append("- ").append(s.key()).append("：").append(s.name()).append(" — ").append(s.summary()).append('\n');
+            StringBuilder out = new StringBuilder();
+            if (skill != null) {
+                out.append("已选定「").append(skill.name()).append("」v").append(skill.version()).append('\n').append(skill.body()).append('\n');
+                if (executionId == null) {
+                    out.append("\n用户这条消息要做的若是别的事，先用 read_skill 换成对应的方法（没有进行中的制作时可以换；换方法对用户无感，不要问他）。其它方法：\n");
+                    for (var s : catalog.available()) if (!s.key().equals(skill.key())) out.append(skillLine(s));
+                }
+                return out.toString();
+            }
+            out.append("还没有选定方法。只是讨论、提问、闲聊就直接回答；要做出东西（图、文字、视频、复刻）就先用 read_skill 选定对应的方法（免费，对用户无感，不要问用户选哪种）：\n");
+            for (var s : catalog.available()) out.append(skillLine(s));
             return out.toString();
+        }
+
+        private String skillLine(StudioSkill s) {
+            String hint = s.direct() ? "（没有分析阶段：方案与确认卡同一轮发出）" : "（先分析再制作：两次确认）";
+            return "- " + s.key() + "：" + s.name() + hint + " — " + s.summary() + '\n';
         }
 
         String stageText(StudioSkill skill, String stage) {
             if (skill == null || stage == null) return "未开始（还没有选定制作方法）";
-            return ("production".equals(stage) ? "制作阶段" : "分析阶段") + "；本阶段可用的收费操作：" + String.join("、", skill.stageOperations(stage))
+            String label = "production".equals(stage) ? (skill.direct() ? "制作阶段（本方法没有分析阶段，propose_plan 的 stage 填 production，方案和确认卡同一轮发出）" : "制作阶段") : "分析阶段";
+            return label + "；本阶段可用的收费操作：" + String.join("、", skill.stageOperations(stage))
                     + "（收费步骤需要用户确认方案和预算后才执行）";
         }
 
@@ -629,12 +643,16 @@ public class StudioDialogueTurnWorker {
                 store.write(threadId, t -> upserts.stream().map(u -> pending(StudioDialogueEventTypes.NODE_UPSERT, u)).toList());
             }
             @Override public void bindSkill(StudioSkill skill) {
+                // read_skill binds a thread that has no method, or switches one with no active execution (the tool refuses
+                // otherwise). A switch starts the new method's own stage; the same method keeps the stage it is in.
+                boolean switched = context.skill() != null && !context.skill().key().equals(skill.key());
+                String stage = switched || context.stage() == null ? skill.startingStage() : context.stage();
                 store.write(threadId, t -> {
-                    if (t.getSkillKey() == null) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); }
-                    if (t.getStage() == null) t.setStage(StudioSkill.ANALYSIS);
+                    if (t.getSkillKey() == null || switched) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); }
+                    if (t.getStage() == null || switched) t.setStage(stage);
                     return List.of();
                 });
-                context.bindSkill(skill, context.stage() == null ? StudioSkill.ANALYSIS : context.stage());
+                context.bindSkill(skill, stage);
                 // The parent run carries the skill snapshot the plan executor reads back (plans proposed in this turn).
                 tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
                     ObjectNode input = (ObjectNode) parse(run.getInputJson());

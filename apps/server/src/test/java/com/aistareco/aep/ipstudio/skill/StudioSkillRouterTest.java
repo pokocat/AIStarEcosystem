@@ -1,17 +1,18 @@
 package com.aistareco.aep.ipstudio.skill;
 
-import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Intent routing for a thread without a skill: scored best wins, no hit → none (全能创作), tie → default, else STUDIO_SKILL_REQUIRED. */
+/**
+ * Intent routing (意图直达 2026-10-20): words outrank attachments, a unique best wins, no hit keeps the bound skill (else
+ * none, 全能创作), a tie is left to the model — never a 400 that makes the UI ask which method.
+ */
 class StudioSkillRouterTest {
     static final Path FILE = Path.of("src/main/resources/studio/skills/reference-video-recreation.md");
 
@@ -37,11 +38,13 @@ class StudioSkillRouterTest {
         assertEquals("video-recreation", StudioSkillRouter.route(List.of(video), Set.of("video", "image"), "照这条视频做").orElseThrow().key());
     }
 
-    @Test void mediaAndKeywordsScoreAndAUniqueBestWins() {
+    @Test void wordsOutrankAttachmentsAndAUniqueBestWins() {
         assertEquals("script-rewrite", StudioSkillRouter.route(List.of(video, script), Set.of(), "帮我改脚本").orElseThrow().key());
         assertEquals("poster", StudioSkillRouter.route(List.of(video, script, plain), Set.of("image"), "做一张").orElseThrow().key());
-        // media counts double: an attached video outweighs one keyword for another skill
-        assertEquals("video-recreation", StudioSkillRouter.route(List.of(video, script), Set.of("video"), "文案也看看").orElseThrow().key());
+        // An attached video is material; 「文案」 says what to make of it. With media weighted double, a product photo plus
+        // 「写一段文案」 used to become an image job.
+        assertEquals("script-rewrite", StudioSkillRouter.route(List.of(video, script), Set.of("video"), "文案也看看").orElseThrow().key());
+        assertEquals("video-recreation", StudioSkillRouter.route(List.of(video, script), Set.of("video", "text"), "复刻这条").orElseThrow().key());
         assertEquals("script-rewrite", StudioSkillRouter.route(List.of(video, script), Set.of(), "改脚本 TEXT").orElseThrow().key());
     }
 
@@ -50,16 +53,23 @@ class StudioSkillRouterTest {
         assertTrue(StudioSkillRouter.route(List.of(script, plain), Set.of(), "你好").isEmpty());
     }
 
-    @Test void aTieGoesToTheDefaultOnlyWhenTheDefaultIsAmongTheBest() throws Exception {
+    @Test void noHitKeepsTheSkillTheThreadAlreadyHasWhileItIsActive() throws Exception {
+        assertEquals("poster", StudioSkillRouter.route(List.of(video, script, plain), Set.of(), "再来一张，背景亮一点", plain).orElseThrow().key(),
+                "a follow-up that names no job continues the current one");
+        assertEquals("script-rewrite", StudioSkillRouter.route(List.of(video, script, plain), Set.of(), "帮我改脚本", plain).orElseThrow().key(),
+                "a message that names another job switches");
+        var withdrawn = skill("gone", "triggers:\n  media: []\n  keywords: []").withRuntime("withdrawn", 1);
+        assertTrue(StudioSkillRouter.route(List.of(video, script, plain), Set.of(), "谢谢", withdrawn).isEmpty(), "a withdrawn method never carries over");
+        var offShelf = skill("off-shelf", "triggers:\n  media: []\n  keywords: []");
+        assertTrue(StudioSkillRouter.route(List.of(video, script, plain), Set.of(), "谢谢", offShelf).isEmpty(), "nor one that is no longer offered");
+    }
+
+    @Test void aTieIsLeftToTheModelNotToADefaultOrA400() throws Exception {
         var both = skill("poster-recreation", "triggers:\n  media: [image]\n  keywords: [复刻]");
-        assertEquals("video-recreation", StudioSkillRouter.route(List.of(both, video), Set.of(), "复刻一下").orElseThrow().key());
-        var e = assertThrows(BusinessException.class, () -> StudioSkillRouter.route(List.of(script, plain, video), Set.of("text", "image"), ""),
-                "a tie between two others is asked, not handed to an unrelated default");
-        assertEquals("STUDIO_SKILL_REQUIRED", e.getCode());
-        assertEquals(400, e.getStatus().value());
-        @SuppressWarnings("unchecked") var skills = (List<Map<String, String>>) ((Map<String, Object>) e.getDetails()).get("skills");
-        assertEquals(List.of("script-rewrite", "poster"), skills.stream().map(s -> s.get("key")).toList());
-        assertTrue(skills.stream().allMatch(s -> s.containsKey("name") && s.containsKey("summary")));
+        assertTrue(StudioSkillRouter.route(List.of(both, video), Set.of(), "复刻一下").isEmpty(), "the default is a hint for the model, not a tie-break");
+        assertTrue(StudioSkillRouter.route(List.of(script, plain, video), Set.of("text", "image"), "").isEmpty(), "two attachments, no words: the model decides");
+        assertEquals("poster", StudioSkillRouter.route(List.of(script, plain, video), Set.of("text", "image"), "", plain).orElseThrow().key(),
+                "…unless the thread is already on one of the tied methods: a tie never bumps the current job");
     }
 
     @Test void triggersParseLenientlyAndNeverReject() throws Exception {
