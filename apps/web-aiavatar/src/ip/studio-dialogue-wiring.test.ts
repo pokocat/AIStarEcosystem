@@ -186,3 +186,12 @@ test('抽帧 is reachable from the action bar and the right-click menu, and its 
   expect(canvas).toContain('onVideoResized: videoResized');
   expect(read('styles/studio-flow.css')).toContain('.studio-flow-video-card.is-fitted .studio-flow-media>video { object-fit:cover; }');
 });
+
+// 右键菜单（2026-10-21）：菜单渲染成一排平铺按钮、直接调 item.onClick，带 children 的项点了就报错（「素材拆解」）。
+test('the node right-click menu has no nested items, and 解析视频 / 拉片 are direct entries', () => {
+  const canvas = read('ip/studio-flow-canvas.tsx');
+  const menu = canvas.slice(canvas.indexOf('const nodeMenu = target ? ['), canvas.indexOf('const paneMenu = ['));
+  expect(menu).not.toContain('children');
+  expect(menu).toContain("{key:'analyze',label:'解析视频',onClick:()=>dispatchStudioCommand('recreation',target.id)}");
+  expect(menu).toContain("{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}");
+});

@@ -425,10 +425,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   if (!project) return null;
   const text = project.nodes.find(n => n.id === textId);
   const named = project.nodes.find(n => n.id === renameId), target = project.nodes.find(n => n.id === (context?.nodeId || [...selected][0]));
+  // 右键菜单是一排平铺的按钮，每项都要有 onClick；不支持 children（「素材拆解」曾因此点了就报错）。
   const nodeMenu = target ? [
     { key: 'edit', label: target.type === CanvasNodeType.Group ? '编辑分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) { checkpoint(); setRenameId(target.id); } else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
     ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}]:[]),
-    ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'recreation',label:'素材拆解',children:[{key:'analyze',label:'解析',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]}]:[]),
+    ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'analyze',label:'解析视频',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]:[]),
     { key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } },
     ...(target.type === CanvasNodeType.Video ? [{ key: 'upload-video', label: target.metadata?.storageKey ? '替换视频' : '上传视频', onClick: () => dispatchStudioCommand('upload-video', target.id) }] : []),
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
