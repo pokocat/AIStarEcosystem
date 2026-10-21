@@ -5,11 +5,11 @@
 // card quoted for it in the same reply render as one card (docs/ip-studio-new-canvas-and-threads.md §4.2).
 import { useState, type ReactNode } from 'react';
 import { Button } from 'antd';
-import { FilePlus2, GitBranch, LoaderCircle, LocateFixed } from 'lucide-react';
+import { Check, CheckCheck, Clock, FilePlus2, GitBranch, LoaderCircle, LocateFixed } from 'lucide-react';
 import { formatCredits } from '@ai-star-eco/api-client';
 import type { StudioDialogueMessage, StudioMessageBlock, StudioPlan } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { blockKey, type DialogueActivity, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialoguePlanBlock } from '@/canvas-bridge/studio-dialogue-store';
+import { blockKey, type DialogueActivity, type DialogueAdoptionBlock, type DialogueApprovalBlock, type DialogueLayout, type DialoguePlanBlock, type DialogueQueueState } from '@/canvas-bridge/studio-dialogue-store';
 import { proposalFieldValue } from '@/canvas-bridge/studio-plan-execution';
 import { splitReplyActions } from '@/canvas-bridge/studio-reply-actions';
 import { completionExecutionId } from '@/canvas-bridge/studio-skills';
@@ -21,6 +21,23 @@ import { StudioDialogueActivity } from './studio-dialogue-activity';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 
 const FIELD_LABEL = { content: '正文', prompt: '提示词', script: '剧本正文' } as const;
+
+// Where a sent message stands is a small grey icon under the bubble, not a line of text (user feedback 2026-10-21:
+// 「没必要这么显眼」). The words stay in one place, here: they are the icon's name for screen readers and the hover tip.
+// A send that failed is not here: it needs the user, so it stays text with its retry (studio-dialogue-timeline.tsx).
+const QUEUE_MARK = {
+  sending: { Icon: LoaderCircle, label: '发送中' },
+  accepted: { Icon: Check, label: '已收到' },
+  queued: { Icon: Clock, label: '排队中，下一步应用' },
+  applied: { Icon: CheckCheck, label: '已应用' },
+} as const;
+
+export function StudioDialogueQueueMark({ state }: { state: DialogueQueueState | 'sending' }) {
+  const { Icon, label } = QUEUE_MARK[state];
+  return <small className="studio-dialogue-queue is-mark" data-state={state} role="status" title={label}>
+    <Icon size={13} role="img" aria-label={label} className={state === 'sending' ? 'studio-dialogue-action-spin' : undefined}/>
+  </small>;
+}
 
 export type DialogueMessageHandlers = {
   onCompose: (text: string) => void;
@@ -137,7 +154,7 @@ function messageBody(message: StudioDialogueMessage, props: MessageProps): React
 
 type MessageProps = {
   message: StudioDialogueMessage; layout?: DialogueLayout; nodes: CanvasNodeData[]; readOnly?: boolean;
-  queueLabel?: string; suggestions?: string[]; shortfalls: Record<string, number>; handlers: DialogueMessageHandlers;
+  queueState?: DialogueQueueState; suggestions?: string[]; shortfalls: Record<string, number>; handlers: DialogueMessageHandlers;
   /** The running plan's step list, shown under the latest reply. */
   progress?: ReactNode;
   /** What the assistant is doing in this message right now (thinking, writing, running a tool); absent once the turn ends. */
@@ -149,7 +166,7 @@ type MessageProps = {
 };
 
 export function StudioDialogueMessageView(props: MessageProps) {
-  const { message, nodes, readOnly, queueLabel, suggestions, handlers, activity, latest } = props;
+  const { message, nodes, readOnly, queueState, suggestions, handlers, activity, latest } = props;
   const [branching, setBranching] = useState(false), [placing, setPlacing] = useState(false), [error, setError] = useStudioErrorState();
   const user = message.role === 'user';
   const refs = [...(message.pinnedNodeIds || []), ...(message.attachmentNodeIds || [])];
@@ -185,7 +202,7 @@ export function StudioDialogueMessageView(props: MessageProps) {
     <small className="studio-dialogue-author">{user ? '你' : message.role === 'assistant' ? 'Studio' : '提示'}</small>
     {user ? <p className="studio-dialogue-text">{message.text}</p> : body}
     {user && !!refs.length && <p className="studio-dialogue-refs">{refs.map(id => <span key={id} title={nodes.find(n => n.id === id)?.title}>{nodes.find(n => n.id === id)?.title || '已删除的画布对象'}</span>)}</p>}
-    {user && queueLabel && <small className="studio-dialogue-queue" role="status">{queueLabel}</small>}
+    {user && queueState && <StudioDialogueQueueMark state={queueState}/>}
     {/* A running tool already says so on its own line (spinner, 「进行中」); the extra row is for thinking and writing. */}
     {!user && activity && activity.phase !== 'tool' && <StudioDialogueActivity activity={activity}/>}
     {!user && message.status === 'interrupted' && <small className="studio-dialogue-note">已停止</small>}

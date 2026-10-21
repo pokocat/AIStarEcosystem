@@ -110,7 +110,9 @@ test('the composer stays editable while a reply streams, and a tool event render
   expect(screen.getByRole('button', { name: '停止' })).toBeDefined();
   api.post.mockResolvedValueOnce({ messageId: 'u2', turnId: 't1', queueState: 'queued' });
   fireEvent.click(sendButton());
-  await waitFor(() => expect(screen.getByText('排队中，下一步应用')).toBeDefined());
+  // Queued is a small icon under the bubble, named for screen readers and the hover tip; not a line of text (2026-10-21).
+  await waitFor(() => expect(screen.getByRole('img', { name: '排队中，下一步应用' })).toBeDefined());
+  expect(screen.queryByText('排队中，下一步应用')).toBeNull();
   expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21, model: 'one' });
   emit(ev('tool.finished', { toolCallId: 'x', toolName: 'read_canvas', status: 'done', result: { summary: '找到 1 条视频' }, creditsActual: 0, settling: false }));
   expect(within(card).getByText('找到 1 条视频')).toBeDefined();
@@ -127,6 +129,8 @@ test('send pins @ references, saves first, and a lost response is retried with t
   fireEvent.change(composer(), { target: { value: '@台词 B 改得口语一点' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
+  // A failed send needs the user: it stays words with its retry, unlike the delivery icons.
+  expect(screen.getByText(/没有确认送达/).classList.contains('is-failed')).toBe(true);
   expect(api.save).toHaveBeenCalled();
   const first = api.post.mock.calls[0];
   expect(first[0]).toBe('p'); expect(first[1]).toBe('th');

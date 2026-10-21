@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { StudioDialogueEvent, StudioDialogueEventType, StudioDialogueMessage, StudioDialogueState, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
 import {
-  answeredAfter, approvedCaps, approvedExecutionIds, canvasRestoring, dialogueActivity, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueLabel, messageSuggestions, persistableCanvasCursor, planForApproval,
+  answeredAfter, approvedCaps, approvedExecutionIds, canvasRestoring, dialogueActivity, dialogueCursor, dialogueReducer, emptyDialogueStore, executionBudget, messageQueueState, messageSuggestions, persistableCanvasCursor, planForApproval,
   type DialogueApprovalBlock, type DialogueStore,
 } from './studio-dialogue-store';
 
@@ -224,7 +224,7 @@ describe('outbox and snapshots', () => {
     s = fold(s, delta(6, '收到'));
     expect(s.outbox).toEqual([]);
     expect(s.messages.map(m => m.id)).toEqual(['u1', 'u2', 'm1']);
-    expect(messageQueueLabel(s, s.messages.find(m => m.id === 'u2')!)).toBe('排队中，下一步应用');
+    expect(messageQueueState(s, s.messages.find(m => m.id === 'u2')!)).toBe('queued');
   });
   test('a reply that streams in before the POST returns still follows the message that caused it', () => {
     let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c3', text: '开始吧', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
@@ -233,13 +233,13 @@ describe('outbox and snapshots', () => {
     expect(s.messages.map(m => m.id)).toEqual(['u1', 'u3', 'm1']);
     expect(s.activeTurnId).toBe('t1');
     // 「已收到」 only until the reply starts: once it has, the bubble is just the message (canvas redesign).
-    expect(messageQueueLabel(s, s.messages.find(m => m.id === 'u3')!)).toBeUndefined();
+    expect(messageQueueState(s, s.messages.find(m => m.id === 'u3')!)).toBeUndefined();
   });
-  test('an accepted message says 「已收到」 while no reply has started yet', () => {
+  test('an accepted message shows as received (「已收到」) while no reply has started yet', () => {
     let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c4', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
     s = dialogueReducer(s, { type: 'outbox.sent', clientMessageId: 'c4', result: { messageId: 'u4', turnId: 't2', queueState: 'accepted' } });
     const sent = s.messages.find(m => m.id === 'u4') ?? { ...userMessage, id: 'u4', seq: s.latestSeq + 1 };
-    expect(messageQueueLabel(s, sent)).toBe('已收到');
+    expect(messageQueueState(s, sent)).toBe('accepted');
   });
   test('a failed send stays in the outbox for a same-key retry; a snapshot that contains it clears it', () => {
     let s = dialogueReducer(loaded(), { type: 'outbox.add', item: { clientMessageId: 'c9', text: '加字幕', pinnedNodeIds: [], attachmentNodeIds: [], createdAt: '2026-10-18T01:01:00Z', state: 'sending' } });
@@ -247,7 +247,7 @@ describe('outbox and snapshots', () => {
     expect(s.outbox[0]).toMatchObject({ state: 'failed', error: '网络中断' });
     s = dialogueReducer(s, { type: 'snapshot', state: state({ latestSeq: 6, messages: [userMessage, { ...userMessage, id: 'u9', seq: 6, text: '加字幕', clientMessageId: 'c9', status: 'applied' }] }), mode: 'merge' });
     expect(s.outbox).toEqual([]);
-    expect(messageQueueLabel(s, s.messages.find(m => m.id === 'u9')!)).toBe('已应用');
+    expect(messageQueueState(s, s.messages.find(m => m.id === 'u9')!)).toBe('applied');
   });
   test('a merge snapshot keeps the live arrangement when the saved text matches what streamed', () => {
     const live = fold(loaded(), delta(6, '先读。', 'a'), ev(7, 'tool.started', { toolCallId: 'x', toolName: 'read_canvas' }), delta(8, '读完。', 'b'), ev(9, 'turn.done', { reason: 'completed', messageId: 'm1' }));
@@ -327,7 +327,7 @@ describe('execution messages, dialogue budget share and queued steering', () => 
     const queued = s.messages.find(m => m.id === 'u5')!;
     expect(queued).toMatchObject({ status: 'queued', turnId: undefined });
     expect(s.activeTurnId).toBeUndefined();
-    expect(messageQueueLabel(s, queued)).toBe('排队中，下一步应用');
+    expect(messageQueueState(s, queued)).toBe('queued');
   });
 });
 

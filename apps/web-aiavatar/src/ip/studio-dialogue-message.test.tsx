@@ -6,7 +6,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { StudioDialogueMessage, StudioMessageBlock } from '@ai-star-eco/types/ip-studio-workflow';
 import { blockKey } from '@/canvas-bridge/studio-dialogue-store';
-import { StudioDialogueMessageView } from './studio-dialogue-message';
+import { StudioDialogueMessageView, StudioDialogueQueueMark } from './studio-dialogue-message';
 
 afterEach(cleanup);
 
@@ -55,4 +55,29 @@ test('a card whose confirmation is being settled says so and offers 「现在再
   expect(await screen.findByText('正在核对确认结果，请稍等')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: '现在再查一次' }));
   expect(recheck).toHaveBeenCalledOnce();
+});
+
+// User feedback 2026-10-21: 「已收到」「排队中」 on a message were too loud as words. Each delivery state is a small icon whose
+// name (screen readers) and hover tip carry the old words; the bubble shows no text for it.
+test('a sent message shows where it stands as an icon, not as words', () => {
+  const sent: StudioDialogueMessage = { id: 'u1', threadId: 'th', seq: 3, role: 'user', status: 'done', createdAt: '2026-10-21T01:00:00Z', text: '加字幕', blocks: [] };
+  const words = { accepted: '已收到', queued: '排队中，下一步应用', applied: '已应用' } as const;
+  for (const [state, label] of Object.entries(words) as [keyof typeof words, string][]) {
+    const { container, unmount } = render(<StudioDialogueMessageView message={sent} queueState={state} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+    const mark = screen.getByRole('status');
+    expect(mark.getAttribute('title')).toBe(label);
+    expect(screen.getByRole('img', { name: label }).tagName.toLowerCase()).toBe('svg');
+    expect(mark.textContent).toBe('');
+    expect(container.textContent).not.toContain(label);
+    unmount();
+  }
+  const { container } = render(<StudioDialogueMessageView message={sent} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+  expect(container.querySelector('.studio-dialogue-queue')).toBeNull();
+});
+
+test('a message still on its way shows a spinning icon named 「发送中」', () => {
+  render(<StudioDialogueQueueMark state="sending"/>);
+  const icon = screen.getByRole('img', { name: '发送中' });
+  expect(icon.getAttribute('class')).toContain('studio-dialogue-action-spin');
+  expect(screen.getByRole('status').textContent).toBe('');
 });

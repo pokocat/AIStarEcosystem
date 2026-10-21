@@ -4,8 +4,8 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { StudioDialogueMessage } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { answeredAfter, dialogueActivity, dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
-import { StudioDialogueMessageView, type DialogueMessageHandlers } from './studio-dialogue-message';
+import { answeredAfter, dialogueActivity, dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueState, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
+import { StudioDialogueMessageView, StudioDialogueQueueMark, type DialogueMessageHandlers } from './studio-dialogue-message';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { StudioDialogueActivity } from './studio-dialogue-activity';
 
@@ -66,14 +66,14 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     {store.hasOlder && <button type="button" className="studio-dialogue-link" disabled={loadingOlder} onClick={() => void older()}>{loadingOlder ? '正在读取' : '查看更早的消息'}</button>}
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     <ParentThread store={store} nodes={nodes} handlers={handlers} readThread={readThread}/>
-    {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueLabel={messageQueueLabel(store, m)}
+    {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueState={messageQueueState(store, m)}
       progress={m.id === last?.id ? progress : undefined} latest={m.id === last?.id} activity={m.id === activityHost ? activity : undefined}
       answered={m.role === 'assistant' && m.blocks.some(b => b.type === 'question') ? !!answeredAfter(store, m) : undefined}
       suggestions={m.id === last?.id && store.activeTurnId !== m.turnId && !answeredAfter(store, m) ? messageSuggestions(store, m) : undefined}
       handlers={isPlaceholderMessage(m.id) ? { ...handlers, onBranch: undefined } : handlers}/> : item && <article key={item.clientMessageId} className="studio-dialogue-message is-user" data-status={item.state} aria-label="你的消息">
       <small className="studio-dialogue-author">你</small>
       <p className="studio-dialogue-text">{item.text}</p>
-      {item.state === 'sending' ? <small className="studio-dialogue-queue" role="status">发送中</small>
+      {item.state === 'sending' ? <StudioDialogueQueueMark state="sending"/>
         : <small className="studio-dialogue-queue is-failed" role="status">没有确认送达{item.error ? `：${item.error}` : ''}
           <button type="button" className="studio-dialogue-link" title="重新发送这条消息，不会重复" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
     </article>)}

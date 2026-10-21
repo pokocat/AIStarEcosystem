@@ -477,13 +477,14 @@ export function messageSuggestions(store: DialogueStore, message: StudioDialogue
   return list.length ? list : undefined;
 }
 
-export function messageQueueLabel(store: DialogueStore, message: StudioDialogueMessage) {
+/** Where a sent message stands; the bubble shows it as a small icon (the words live in StudioDialogueQueueMark only). */
+export function messageQueueState(store: DialogueStore, message: StudioDialogueMessage): DialogueQueueState | undefined {
   if (message.role !== 'user') return undefined;
   const local = store.queueStates[message.id];
   const state = message.status === 'queued' ? 'queued' : message.status === 'applied' ? 'applied' : local;
   // 「已收到」只在回复开始之前有意义；回复一出来气泡就恢复干净（画布页改版设计稿：你的话只是一个气泡）。
   const answered = state === 'accepted' && store.messages.some(m => m.role !== 'user' && m.seq > message.seq);
-  return state === 'queued' ? '排队中，下一步应用' : state === 'applied' ? '已应用' : state === 'accepted' && !answered ? '已收到' : undefined;
+  return state === 'queued' || state === 'applied' ? state : state === 'accepted' && !answered ? 'accepted' : undefined;
 }
 
 /**

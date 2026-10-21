@@ -25,6 +25,8 @@
 .ip-surface .studio-dialogue-refs span { max-width: 100%; padding: 2px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-surface .studio-dialogue-queue { color: var(--ink-2); font-size: 11px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-queue.is-failed { color: var(--err); }
+/* 送达状态（发送中 / 已收到 / 排队中 / 已应用）只是气泡底部靠右的一个小灰图标，悬停看文字；发送失败要用户处理，仍是上面那行文字。 */
+.ip-surface .studio-dialogue-queue.is-mark { display: inline-flex; align-self: flex-end; margin-top: -4px; color: var(--ink-3); line-height: 0; }
 .ip-surface .studio-dialogue-note { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-warning { margin: 0; color: var(--warn); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
