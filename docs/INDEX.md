@@ -199,6 +199,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [模型用量归属与多模态统计生产发布](releases/model-usage-attribution-production-release-20261021.md)：main `3782da88`、server/admin 制品、142 项后端测试、线上未归属筛选与模态汇总验收及历史数据边界（2026-10-21）。
+
 上线制品、线上验收与本地实施验收的证据，写完基本不再改。现行设计以 §1 的真源为准。
 
 | 文档 | 主题 | 内容与状态 |
