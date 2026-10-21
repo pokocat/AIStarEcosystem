@@ -57,6 +57,7 @@ public class DapJobRunner {
     private final PromptService prompts;
     private final DapImageInput imageInput;
     private final DapAssetJobs assetJobs;
+    @org.springframework.beans.factory.annotation.Autowired private DapVideoBridge videos;
 
     public DapJobRunner(DapJobRepository jobRepo,
                         DapAvatarRepository avatarRepo,
@@ -549,36 +550,34 @@ public class DapJobRunner {
         return base + (extraEn.isBlank() ? "" : ", " + extraEn);
     }
 
-    /** 运镜短视频（Agnes 异步视频 → 下载落库）。云端 status/progress 实时回显到任务卡。 */
+    /** 运镜短视频复用正式媒体任务链；只由父 DapJob 结算原有单次积分。 */
     private void deriveVideo(DapJob job, DapAvatar a, Map<String, Object> options, String extraEn) {
         progress(job, 8, "video.submit", "提交视频任务…");
         byte[] mp4;
         String spec;
         if (multimodal.isConfigured()) {
-            String motion = str(options, "motion", "orbit");
-            String taskId = multimodal.createVideoTask(
-                    videoPromptFor(motion, extraEn),
-                    firstOrNull(identityInputOf(a)), 768, 1152, 121, 24);
-            progress(job, 14, "video.queued", "已提交 · 云端排队中…");
-            DapMultimodalClient.VideoTask t = multimodal.awaitVideo(taskId, vt -> {
-                // 回显云端真实状态：queued → 排队中；in_progress + progress → 真实百分比
-                int cloudPct = vt.progress() == null ? -1 : Math.max(0, Math.min(100, vt.progress()));
-                if ("queued".equals(vt.status())) {
-                    progress(job, 16, "video.queued", "云端排队中…");
-                } else if (cloudPct >= 0) {
-                    progress(job, 18 + (int) (cloudPct * 0.65), "video.rendering", "云端渲染中 · " + cloudPct + "%");
-                } else {
-                    progress(job, Math.max(job.getPct(), 18), "video.rendering", "云端渲染中…");
-                }
-                checkCancelQuiet(job);
-            });
-            if (!"completed".equals(t.status()) || t.videoUrl() == null) {
-                throw new DapMultimodalClient.DapModelException("DAP_MODEL_VIDEO_FAILED",
-                        "视频任务未成功：status=" + t.status());
+            String taskId=videos.start(job,a,videoPromptFor(str(options,"motion","orbit"),extraEn));
+            long deadline=System.nanoTime()+java.time.Duration.ofMinutes(25).toNanos();
+            JsonNode card;
+            while(true) {
+                checkCancel(job);
+                card=videos.status(taskId,job.getOwnerUserId());
+                if("ready".equals(card.path("status").asText()))break;
+                if("failed".equals(card.path("status").asText()))
+                    throw new DapMultimodalClient.DapModelException(card.path("error_code").asText("DAP_MODEL_VIDEO_FAILED"),
+                            card.path("error_message").asText("视频生成失败"));
+                progress(job,16+Math.max(0,Math.min(100,card.path("progress_pct").asInt()))*65/100,
+                        "video.rendering",card.path("stage").asText("云端渲染中…"));
+                if(System.nanoTime()>deadline)throw new DapMultimodalClient.DapModelException("DAP_VIDEO_PENDING",
+                        "视频仍在生成，请稍后重试以查询原任务，系统不会重复提交");
+                try {Thread.sleep(3000);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException("视频查询已中断",e);}
             }
-            progress(job, 88, "video.download", "下载成片…");
-            mp4 = multimodal.download(t.videoUrl(), 512L * 1024 * 1024);
-            spec = "768×1152 · 5s · MP4";
+            String videoKey=card.path("video_key").asText();
+            if(videoKey.isBlank())videoKey=storage.keyOfStoredUrl(card.path("video_url").asText());
+            if(videoKey==null || videoKey.isBlank())throw new DapMultimodalClient.DapModelException("DAP_MODEL_VIDEO_FAILED","视频结果缺少存储凭据");
+            try {mp4=Files.readAllBytes(storage.openForRead(videoKey));}
+            catch(IOException e){throw new IllegalStateException("读取已生成视频失败",e);}
+            spec="9:16 · 5s · MP4";
         } else {
             mp4 = placeholderVideo(a);
             spec = "占位视频 · MP4";
@@ -659,7 +658,7 @@ public class DapJobRunner {
     /** 当前定妆图 → i2i 输入（OSS 公网 URL 直接给；本地文件转 dataURI）。 */
     private List<String> identityInputOf(DapAvatar a) {
         if (a.getImageKey() == null) return List.of();
-        String input = toAgnesImageInput(a.getImageKey());
+        String input = toImageInput(a.getImageKey());
         return input == null ? List.of() : List.of(input);
     }
 
@@ -669,7 +668,7 @@ public class DapJobRunner {
         List<DapPhoto> photos = avatarService.photosOf(a.getId());
         for (DapPhoto p : photos) {
             if (inputs.size() >= 3) break;
-            String in = toAgnesImageInput(p.getFileKey());
+            String in = toImageInput(p.getFileKey());
             if (in != null) inputs.add(in);
         }
         if (inputs.isEmpty()) {
@@ -678,15 +677,15 @@ public class DapJobRunner {
                     ? captureRepo.findById(captureId).orElse(null)
                     : captureRepo.findFirstByAvatarIdAndOwnerUserIdOrderByCreatedAtDesc(a.getId(), job.getOwnerUserId()).orElse(null);
             if (cap != null && cap.getFrameKey() != null) {
-                String in = toAgnesImageInput(cap.getFrameKey());
+                String in = toImageInput(cap.getFrameKey());
                 if (in != null) inputs.add(in);
             }
         }
         return inputs;
     }
 
-    /** storage key → Agnes 可消费的图片输入（公网 URL 或 dataURI；大图自动压缩）。 */
-    private String toAgnesImageInput(String key) {
+    /** storage key → 模型可消费的图片输入（公网 URL 或 dataURI；大图自动压缩）。 */
+    private String toImageInput(String key) {
         return imageInput.of(key);
     }
 

@@ -56,6 +56,8 @@ public class MaterialVideoJobService {
      */
     public static final String APP_CELEBRITY = "celebrity";
     public static final String APP_DRAMA = "drama";
+    /** Server-owned DAP camera derivatives; parent DapJob owns the original flat credit charge. */
+    public static final String APP_DAP = "dap";
     /**
      * AI IP 工作台的画布视频（v0.157）。
      *
@@ -496,6 +498,7 @@ public class MaterialVideoJobService {
         return switch (normalizeApp(app)) {
             case APP_IPSTUDIO -> "studio";
             case APP_DRAMA -> "drama";
+            case APP_DAP -> "aiavatar";
             case APP_CELEBRITY, APP_VIDEO_STUDIO -> "celebrity";
             default -> throw BusinessException.badRequest("VIDEO_APP_INVALID", "视频任务所属应用无效");
         };
@@ -507,8 +510,8 @@ public class MaterialVideoJobService {
      * <ul>
      *   <li>原生规格（模式 / 清晰度 / 种子 / 尾帧 / 参考素材）只允许视频生成区与 Studio：两处均复用原生合同计价，
      *       在提交前校验规格、媒体和每个 key 的归属；variant_config 均由服务端组装。</li>
-     *   <li>首帧参考图 key 只许三个分区带：画布（提交前过 {@code requireOwnedAssetKey}）、视频生成区，和短剧 ——
-     *       短剧的 variant_config 全部由服务端逐字段组装（{@code DramaRenderService} / 短剧画布），首帧 key 只在
+     *   <li>首帧参考图 key 只许四个分区带：画布（提交前过 {@code requireOwnedAssetKey}）、视频生成区，和短剧 ——
+     *       DAP 运镜由 DapVideoBridge 核验形象归属并组装；短剧的 variant_config 全部由服务端逐字段组装（{@code DramaRenderService} / 短剧画布），首帧 key 只在
      *       确认属于本人之后才写进去（2026-09-30 首帧热修：{@code DramaReferenceAssembler.requireOwnedFrameKey}）。</li>
      * </ul>
      * 带货（素材运营）的 variant_config 直接来自客户端（HTTP 入口原样透传），不挡住就等于让任何人带着别人的 key、
@@ -527,7 +530,7 @@ public class MaterialVideoJobService {
     }
 
     /** 允许在 variant_config 里带首帧 key 的分区（见 {@link #requireInputsAllowedIn}）。 */
-    private static final java.util.Set<String> FIRST_FRAME_KEY_APPS = java.util.Set.of(APP_IPSTUDIO, APP_VIDEO_STUDIO, APP_DRAMA);
+    private static final java.util.Set<String> FIRST_FRAME_KEY_APPS = java.util.Set.of(APP_IPSTUDIO, APP_VIDEO_STUDIO, APP_DRAMA, APP_DAP);
 
     /** 行的实际分区：老数据 app 为 null（回填前）时按 kind 前缀推断，读路径不漏也不串。 */
     static String appOf(MaterialVideoJob job) {

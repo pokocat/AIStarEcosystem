@@ -200,6 +200,7 @@ export interface ViralShot {
 }
 
 export interface ViralHit {
+  analysis_basis?: string;
   id: string;
   platform: PlatformId;
   plays: string;

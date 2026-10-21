@@ -1146,3 +1146,8 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
 
 `wire.requireExactOutputSize=true` 按原始图片字节校验返回尺寸；不匹配作为供应商已完成但无效的结果在结算前拒绝，不重投、不伪装尺寸。
+
+
+### 正式模型与旧入口兼容（2026-10-20）
+
+DAP / 短剧图片经 `ConfiguredImageGenerator` 复用 Studio 配置化原生传输：文生图 JSON、图生图 multipart 实际文件，旧固定像素按合法原生画布等比处理（16:10 场景采用中央安全区），不放宽 Studio 原生输出尺寸校验。DAP 文本经统一 chat 适配端点能力与输出预算。DAP 运镜经 `DapVideoBridge` 复用持久化媒体 worker，`dap` 子分区仅接本人形象首帧，子任务零价，父作业仍按原动作计费并持久保存子任务 ID。爆款雷达由 `VideoAnalysisFrames` 读取实际视频取四帧交给看图模型，结果明确采样范围与未知指标，失败不凭链接生成分析。实现、正式模型配置与发布证据见 [验收记录](../../docs/releases/production-model-compat-20261020.md)。

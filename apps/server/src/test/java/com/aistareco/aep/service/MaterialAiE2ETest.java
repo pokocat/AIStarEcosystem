@@ -39,9 +39,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @ActiveProfiles("dev")
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:mat-ai-e2e;MODE=MySQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:mat-ai-e2e;MODE=MySQL;NON_KEYWORDS=CAST;DB_CLOSE_DELAY=-1",
         "spring.jpa.hibernate.ddl-auto=update",
-        "aep.seed.dev-data.enabled=true"
+        "aep.seed.dev-data.enabled=true",
+        "aep.dap.allow-placeholder=false"
 })
 class MaterialAiE2ETest {
 
@@ -50,6 +51,43 @@ class MaterialAiE2ETest {
     @Autowired private MaterialAiService materialAi;
 
     @MockBean private AiModelInvocationService invocation;
+
+    @MockBean private com.aistareco.aep.service.ai.VideoAnalysisFrames videoFrames;
+
+    @Test void viralAnalysisSendsActualPixelsAndMarksUnknownMetrics() {
+        var ep=com.aistareco.aep.model.AiModelEndpoint.builder().id("formal").model("qwen38-27b")
+                .modelsJson("[{\"id\":\"qwen38-27b\",\"supportsVision\":true}]").build();
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_REF_ANALYSIS,"celebrity")).thenReturn(java.util.Optional.of(ep));
+        var pixels=java.util.Map.<String,Object>of("type","image_url","image_url",java.util.Map.of("url","data:image/jpeg;base64,actual-pixels"));
+        when(videoFrames.sample("https://8.8.8.8/video.mp4")).thenReturn(new com.aistareco.aep.service.ai.VideoAnalysisFrames.Sample(List.of(pixels),12.5));
+        when(invocation.invokeChatOnEndpoint(eq(ep),eq(AiModelPurpose.VIDEO_REF_ANALYSIS),any(),any()))
+                .thenReturn(resp("{\"title\":\"红色画面\",\"structure\":[{\"text\":\"红色主体\"},{\"text\":\"背景干净\"},{\"text\":\"构图简洁\"}],\"plays\":\"100万\"}"));
+        var result=materialAi.analyzeViralLink("source","https://8.8.8.8/video.mp4","抖音","title");
+        assertTrue(result.path("analysis_basis").asText().contains("采样"));assertEquals(13,result.path("duration").asInt());
+        assertEquals("未知",result.path("plays").asText());
+        var messages=org.mockito.ArgumentCaptor.forClass(List.class);
+        org.mockito.Mockito.verify(invocation).invokeChatOnEndpoint(eq(ep),eq(AiModelPurpose.VIDEO_REF_ANALYSIS),messages.capture(),any());
+        assertTrue(messages.getValue().toString().contains("actual-pixels"));
+        org.mockito.Mockito.verify(invocation,org.mockito.Mockito.never()).invokeChat(eq(AiModelPurpose.VIDEO_REF_ANALYSIS),any(),any(),org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Autowired private com.aistareco.aep.dap.service.DapWorkflowService dapWorkflow;
+    @Autowired private com.aistareco.aep.dap.service.DapAvatarService dapAvatars;
+    @Autowired private com.aistareco.aep.dap.repository.DapAvatarRepository dapAvatarRows;
+    @Autowired private com.aistareco.aep.dap.repository.DapLookRepository dapLooks;
+
+    @Test void rejectedGenerationAndLookLeaveNoStuckDatabaseRows() {
+        String owner="rollback-model-test";
+        var dto=dapAvatars.create(owner,new com.aistareco.aep.dap.dto.DapRequests.CreateAvatarRequest("ai","ai","rollback"));
+        var ex=assertThrows(BusinessException.class,()->dapWorkflow.generate(owner,dto.id(),new com.aistareco.aep.dap.dto.DapRequests.GenerateRequest("ai",null,null,null)));
+        assertEquals("DAP_ENGINE_NOT_CONFIGURED",ex.getCode());
+        var row=dapAvatarRows.findById(dto.id()).orElseThrow();assertEquals("draft",row.getStatus());
+        row.setImageKey("owned-source");dapAvatarRows.save(row);long before=dapLooks.count();
+        assertThrows(BusinessException.class,()->dapWorkflow.createLook(owner,dto.id(),new com.aistareco.aep.dap.dto.DapRequests.CreateLookRequest("design","blue outfit",null)));
+        assertEquals(before,dapLooks.count());
+        assertThrows(BusinessException.class,()->dapWorkflow.createDerivative(owner,dto.id(),"expr",null,java.util.Map.of()));
+        assertNotEquals("running",dapAvatarRows.findById(dto.id()).orElseThrow().derivOrEmpty().get("expr"));
+    }
 
     @BeforeEach
     void setUp() {
