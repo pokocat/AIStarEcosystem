@@ -339,3 +339,43 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 无迁移。server 回滚后提示词按 v22 刷回（只刷没人改过的行）；`video-generation` 文件摘要又变，库里没被后台改过，会把旧文件追加为 v4，v3 留在历史里。已绑定的执行状态里多了 `steps[].nodeId`，旧版本读不到它，正在跑的绑定步骤在旧版本下会按旧规则另建节点（回包里的 `node_id` 仍是绑定对象），刚发布无存量。web 回滚后结果节点不再按产物比例、面板没有裁剪提示，已写进画布的 `mediaFit` / `naturalWidth` 字段旧版本忽略。
+
+## web 发布 `20261021-studio-queue-icons`（2026-10-21 18:23 CST，只发 web-aiavatar）
+
+### 改了什么
+
+用户反馈：「消息上的『已收到』和『排队中』的文字标识，改成 icon 吧，没必要这么显眼。」
+
+- 你的消息气泡底部靠右，送达状态从一行文字改成 13px 的浅灰小图标（`--ink-3`）：发送中 `LoaderCircle`（转圈，减少动态时不转）、已收到 `Check`、排队中 `Clock`、已应用 `CheckCheck`。图标的读屏名称和悬停提示就是原来的完整文字（「排队中，下一步应用」等），外层仍是 `role="status"`。「已收到」照旧在回复开始后消失。
+- 发送失败（「没有确认送达：…」+「重新发送」，`.is-failed`）要用户处理，保持文字不变。
+- 实现：`messageQueueLabel` 改为 `messageQueueState`，只返回状态码（`accepted` / `queued` / `applied`，即服务端 `queueState` 的取值）；文字只在 `studio-dialogue-message.tsx` 的 `StudioDialogueQueueMark` 一处映射，`studio-dialogue-timeline.tsx` 的「发送中」也用它。样式 `studio-dialogue.css` 加 `.studio-dialogue-queue.is-mark`。只改前端：没有接口、没有迁移。
+- 文件：`src/canvas-bridge/studio-dialogue-store.ts`、`src/ip/studio-dialogue-message.tsx`、`src/ip/studio-dialogue-timeline.tsx`、`src/styles/studio-dialogue.css`；测试 `studio-dialogue-store.test.ts`、`studio-dialogue-message.test.tsx`（新增两条：三种状态是带名称的图标、气泡里没有这些字；发送中是转圈图标）、`studio-assistant.test.tsx`（排队中按图标断言、页面上没有可视文字；发送失败仍是文字）；AGENTS.md「画布页改版」第三遍补一句。
+
+### 门禁
+
+- web-aiavatar vitest 全量 145 个文件 1105 条全过。第一次全量与构建同时跑，`studio-template-source.test.tsx` 一条（与本改动无关）超时失败，单独跑与构建结束后重跑全量都通过。
+- `pnpm --filter @ai-star-eco/web-aiavatar typecheck`、`pnpm typecheck:all`（exit 0）、`pnpm check:api-contract`（`OK.`）通过。
+- 演示模式（`NEXT_PUBLIC_USE_MOCK=1`，`--webpack`，3113 端口，worktree 里起，验完关掉）1440 宽：演示回复是即时的，看不到过渡状态，于是往停靠助手的用户气泡里插入同结构的标记核对样式：图标在气泡最底一行靠右、13×13、颜色 `rgb(98,109,130)`、`align-self:flex-end`。控制台只有演示模式没起后端的 500。
+
+### 制品与发布
+
+- 发布前核对：线上 web-aiavatar 最新为 `20261021-studio-exec-node`（`GIT_SHA='d3a55b7d…'`，`BUILD_ID` `06hvybdGyqt0ZNIWn8i0t`，在 main 历史里）；`AIStarEcosystem-main-release` 工作区干净、没有构建 / 发布进程；main `190b3085` 快进到 `87089561`（分支 `fix/studio-queue-icons-20261021`）。
+- 构建 `RELEASE_ID=20261021-studio-queue-icons NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh web-aiavatar`：`manifest.env` 为 `SERVICES='web-aiavatar'`、`GIT_SHA='870895618cabe6a8eb173444145ed3f678e285fe'`、`NEXT_PUBLIC_USE_MOCK='0'`、`NEXT_PUBLIC_ENABLE_DEV_LOGIN='0'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；`checksums.sha256` 两项通过。`web-aiavatar.tar.gz` sha256 `dc6bdfbb40cc3e2b07c4e072945be73725c41bbaaf06dcf7a7fa0ae722a01993`，包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `ld7hjNUOQXnDSHncYm06e`；CSS 含 `is-mark`，`chunks/5780.a4452bf3653b1742.js` 含「排队中，下一步应用」。
+- `deploy-release.sh dist/deploy/20261021-studio-queue-icons web-aiavatar`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- `aistareco-web-aiavatar` 新进程 PID 1391532 于 **18:23:42 CST** 启动，`Ready`，`NRestarts=0`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，线上 `BUILD_ID` `ld7hjNUOQXnDSHncYm06e` 与制品一致；`/opt/ai-star-eco/releases` 最新为 `20261021-studio-queue-icons`（`GIT_SHA='87089561…'`）。
+- `https://aiavatar.aibuzz.cn/projects` → 200，`/create` → 200；公网取 `_next/static/chunks/5780.a4452bf3653b1742.js` 含「排队中，下一步应用」。
+- **没做**：没用生产账号登录发一条消息看图标（需要用户自己登录，真模型回复会扣积分）。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-exec-node` 的 `BUILD_ID` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-exec-node web-aiavatar
+```
+
+只回 web-aiavatar，server 不动；回滚后气泡里的送达状态恢复为文字。
