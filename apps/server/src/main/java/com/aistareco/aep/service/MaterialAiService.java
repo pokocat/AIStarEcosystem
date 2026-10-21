@@ -35,6 +35,7 @@ import java.util.Set;
  */
 @Service
 public class MaterialAiService {
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ai.VideoAnalysisFrames videoFrames;
 
     private static final Logger log = LoggerFactory.getLogger(MaterialAiService.class);
 
@@ -195,11 +196,19 @@ public class MaterialAiService {
         vars.put("platform", nz(platform));
         vars.put("title_hint", nz(titleHint));
         String user = PromptService.fill(p.userTemplate(), vars);
-        JsonNode root = callJsonObject(AiModelPurpose.VIDEO_REF_ANALYSIS, p, user);
+        var endpoint=invocation.resolveDefaultEndpoint(AiModelPurpose.VIDEO_REF_ANALYSIS,"celebrity")
+                .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED","视频分析模型尚未配置"));
+        if(!com.aistareco.aep.ipstudio.service.StudioVisualContext.supportsVision(endpoint))
+            throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_VISION_NOT_CONFIGURED","视频分析模型未配置看图能力");
+        var sample=videoFrames.sample(videoUrl);
+        user+="\n只依据下面真实视频采样画面分析；未看到的动作、音轨、人物身份和播放点赞数据不要编造。采样点之间的镜头切分与精确节奏无法判断。";
+        JsonNode root = callJsonObject(AiModelPurpose.VIDEO_REF_ANALYSIS, p, user,sample.parts());
         JsonNode built = buildViralHit(root, platform, sourceUrl, videoUrl, titleHint);
         if (built == null) {
             throw badOutput(AiModelPurpose.VIDEO_REF_ANALYSIS, "未产出有效爆款拆解");
         }
+        ((ObjectNode)built).put("analysis_basis","基于视频的 4 帧采样画面与提供的标题；未分析音轨或完整镜头切分")
+                .put("duration",(int)Math.ceil(sample.durationSec())).put("plays","未知").put("likes","未知").put("author","来源未提供");
         return built;
     }
 
@@ -224,6 +233,9 @@ public class MaterialAiService {
     // ── LLM 调用 + 解析 + 自修复重试（失败抛 BusinessException） ──────────────────
 
     private JsonNode callJsonObject(AiModelPurpose purpose, ResolvedPrompt p, String user) {
+        return callJsonObject(purpose,p,user,null);
+    }
+    private JsonNode callJsonObject(AiModelPurpose purpose, ResolvedPrompt p, String user,List<Map<String,Object>> visuals) {
         String key = PromptService.promptKeyFor(purpose);
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "system", "content", p.system()));
@@ -241,7 +253,15 @@ public class MaterialAiService {
         for (int attempt = 0; attempt < 2; attempt++) {
             AiModelInvocationService.AiModelResponse resp;
             try {
-                resp = invocation.invokeChat(purpose, messages, options, "celebrity");
+                if(visuals==null)resp = invocation.invokeChat(purpose, messages, options, "celebrity");
+                else {
+                    var endpoint=invocation.resolveDefaultEndpoint(purpose,"celebrity").orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_NOT_CONFIGURED","视频分析模型尚未配置"));
+                    List<Map<String,Object>> wireMessages=new ArrayList<>();
+                    for(var message:messages)wireMessages.add(new java.util.LinkedHashMap<>(message));
+                    List<Map<String,Object>> parts=new ArrayList<>();parts.add(Map.of("type","text","text",user));parts.addAll(visuals);
+                    wireMessages.get(1).put("content",parts);
+                    resp=invocation.invokeChatOnEndpoint(endpoint,purpose,wireMessages,options);
+                }
             } catch (BusinessException be) {
                 String hint = (be.getStatus() == HttpStatus.UNAUTHORIZED || be.getStatus() == HttpStatus.FORBIDDEN)
                         ? "（API Key 可能无效或无权限，请检查 AI 模型配置）" : "";

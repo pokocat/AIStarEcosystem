@@ -307,9 +307,10 @@ function RadarDetail({ hit, onClone }: { hit: ViralHit; onClone: () => void }) {
 
       <div style={{ padding: "16px 22px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <Eyebrow>AI 分析 · 镜头结构</Eyebrow>
+          <Eyebrow>{hit.analysis_basis ? "AI 分析 · 采样画面" : "AI 分析 · 镜头结构"}</Eyebrow>
           <span style={{ fontFamily: "var(--font-mono)", fontSize: 10, color: "var(--fg-2)" }}>总时长 {hit.duration}s</span>
         </div>
+        {hit.analysis_basis && <p style={{fontSize:12,color:"var(--fg-2)",lineHeight:1.6,margin:"0 0 12px"}}>{hit.analysis_basis}</p>}
         <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
           {hit.structure.map((s, i) => (
             <div

@@ -108,7 +108,7 @@ public final class StudioVisualContext {
         }finally{Files.deleteIfExists(output);}
     }
     private static Map<String,Object> text(String text){return Map.of("type","text","text",text==null?"":text);}
-    static Map<String,Object> image(byte[] bytes) throws Exception { return image(bytes,768); }
+    public static Map<String,Object> image(byte[] bytes) throws Exception { return image(bytes,768); }
     static Map<String,Object> image(byte[] bytes,int maxSide) throws Exception {
         // Probe dimensions before decoding, bounding allocation even for small compressed files.
         BufferedImage source;
