@@ -45,7 +45,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      （Codex 真 Agnes 复测：先说「费用 12 积分」，服务端报价 98，末尾还说「不确认不会花钱」而本轮已扣 5）。
     // v20：卡片精简（docs/ip-studio-new-canvas-and-threads.md §4.4）：方案 summary / title 只写要做出什么，不写判断过程、积分和流程；
     //      对话发卡时正文最多一句、不复述卡片、不报价、不给操作提示。
-    private static final String SEED_VERSION = "v20-2026-10-20-concise-cards";
+    // v21：对话提示词恢复「调用工具时正文可以写一句在做什么」，并在动作输出方式后给一个完整的动作示例
+    //      （线上 2026-10-21 13:50 聚算 Qwen3.8 27B 整条回复只写了「[调用工具 view_images]」，没有调用任何工具）。
+    private static final String SEED_VERSION = "v21-2026-10-21-action-format-example";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

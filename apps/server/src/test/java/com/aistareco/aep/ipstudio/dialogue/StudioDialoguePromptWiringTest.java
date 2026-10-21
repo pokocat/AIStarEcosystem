@@ -95,4 +95,24 @@ class StudioDialoguePromptWiringTest {
         assertTrue(dialogue.contains("不要说「不确认不会花钱」「聊天免费」"));
         assertTrue(dialogue.contains("confirm_approval"));
     }
+    /**
+     * The complete action example at the end of the dialogue prompt (v21) must itself be an action the parser accepts and
+     * view_images must declare the arguments it uses: a model copies the example's shape exactly (2026-10-21, without an
+     * example it wrote 「[调用工具 view_images]」 and nothing ran).
+     */
+    @Test void theActionExampleInTheDialoguePromptParsesAsTheToolItNames() throws Exception {
+        String prompt = Files.readString(DIALOGUE);
+        String system = prompt.substring(0, prompt.indexOf("\n---\n"));
+        int at = system.lastIndexOf("\n" + DialogueActionProtocol.MARKER + "\n");
+        assertTrue(at > 0, "the prompt shows the marker on its own line in a complete example");
+        int proseStart = system.lastIndexOf('\n', at - 1) + 1;
+        var parsed = DialogueActionProtocol.parse(system.substring(proseStart), toolNames());
+        assertNull(parsed.parseError(), parsed.parseError());
+        assertEquals(1, parsed.actions().size());
+        assertEquals("view_images", parsed.actions().get(0).tool());
+        assertFalse(parsed.visibleText().isBlank(), "the example shows one sentence of prose before the action");
+        String declared = Files.readString(TOOLS.resolve("ViewImagesTool.java"));
+        parsed.actions().get(0).args().fieldNames().forEachRemaining(arg ->
+                assertTrue(declared.contains("\"" + arg + "\""), "view_images does not declare " + arg));
+    }
 }

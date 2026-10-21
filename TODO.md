@@ -31,6 +31,11 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-21 · 热修 `20261021-studio-action-format`（工具调用写成了正文）
+
+- [x] ~~**整条回复只写「[调用工具 view_images]」，什么都没做还扣了积分**（线上 2026-10-21 13:50，聚算 Qwen3.8 27B，JSON 动作协议）~~ **2026-10-21 已修**：`DialogueActionProtocol.ProseCallFilter` 按已注册工具名认出写成正文的调用（带括号的「调用工具 / 使用工具 / 工具 + 工具名」任意位置、不带括号的整行、只有工具名的整条回复），流式和非流式都不显示，按格式错误重试；纠正提示带一个完整动作示例（`DialogueLoop.correctionText`）；对话提示词恢复「调用时可以写一句在做什么」并补完整示例（`SEED_VERSION` → `v21-2026-10-21-action-format-example`）。真调：新提示词 6/6、带纠正的重试 5/5 都给出可解析的 `view_images`。
+- [ ] **旧提示词真调时另外两种「什么都没做」**（判定：先观察，2026-10-21）：同一份请求用旧提示词真调 5 次，除 3 次正常外，1 次整条回复是「[用户已确认]」（6 token），1 次只写「画布上有一张「分镜」图，我先看看它的内容。」没有动作、回合就此结束。解析器不认这两种（不是工具名，也不是工作记录的写法）。新提示词 6 次都没出现；线上再出现时再定是否把「说了要看 / 要做却没给动作」当格式错误重试一次。
+
 ### 2026-10-20 · 新建画布、多段对话与卡片精简（2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`；真源 `docs/ip-studio-new-canvas-and-threads.md`）
 
 - [x] ~~**两个标签页各开一段对话时，断线补拉会改掉「最近打开」**~~ **审计确认**，2026-10-20：`6a836dc0` 已把读和切换分开（`GET …/conversations/{threadId}` 只读、不 `markOpened`，主动切换才走 `POST …/open`），事件流补拉 `getSnapshot` 改走只读接口，Codex 复审确认已修。原描述：`apps/web-aiavatar/src/ip/studio-dialogue-session.tsx` 事件流订阅的 `getSnapshot` 先读 `GET …/conversation`，发现最近打开的不是本标签页那段，就按 id 调 `GET …/conversations/{threadId}`，而这个接口会 `markOpened`，等于本标签页一断线重连就把「当前对话」抢回来，另一个标签页刷新后会落到这段。时间线本身不会错（`onSnapshot` 只收本线程）。彻底避免需要服务端加一个不改 `last_opened_at` 的只读快照接口，补拉改走它。

@@ -3,6 +3,7 @@ package com.aistareco.aep.ipstudio.dialogue;
 import com.aistareco.aep.service.AiModelInvocationService.ChatToolCall;
 import org.junit.jupiter.api.Test;
 import java.util.List;
+import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** Both action paths normalize to the same actions; the JSON block never reaches the user. */
@@ -258,5 +259,108 @@ class DialogueActionProtocolTest {
         assertFalse(flat.actions().get(0).args().has("tool"));
         for (String prose : List.of("{这不是 JSON}", "[1, 2]", "{\"title\":\"不是动作\"}", "按 {\"tool\":\"x\"} 这样写"))
             assertTrue(DialogueActionProtocol.parse(prose).actions().isEmpty(), prose);
+    }
+    // ── Production 2026-10-21 13:50 (聚算 Qwen3.8 27B, JSON action path): the whole reply was 「[调用工具 view_images]」 ──
+
+    /** The registered tool names, read from the tool classes the same way the prompt wiring test does. */
+    static Set<String> registered() throws Exception { return StudioDialoguePromptWiringTest.toolNames(); }
+
+    static String streamedWith(String reply, Set<String> names) {
+        var f = new DialogueActionProtocol.MarkerFilter(names);
+        StringBuilder out = new StringBuilder();
+        for (char c : reply.toCharArray()) out.append(f.accept(String.valueOf(c)));
+        return out.append(f.finish()).toString();
+    }
+
+    /** Every cut into two deltas and the per-character stream show exactly what parse() keeps. */
+    static void assertStreamsAsParsed(String reply, Set<String> names) {
+        String kept = DialogueActionProtocol.parse(reply, names).visibleText();
+        assertEquals(kept, streamedWith(reply, names).strip(), "per character: " + reply);
+        for (int cut = 0; cut <= reply.length(); cut++) {
+            var f = new DialogueActionProtocol.MarkerFilter(names);
+            String two = f.accept(reply.substring(0, cut)) + f.accept(reply.substring(cut)) + f.finish();
+            assertEquals(kept, two.strip(), "cut at " + cut + ": " + reply);
+        }
+    }
+
+    @Test void theProductionReplyIsAFormatErrorAndIsNeverShown() throws Exception {
+        var parsed = DialogueActionProtocol.parse("[调用工具 view_images]", registered());
+        assertNotNull(parsed.parseError(), "a tool call written as text is not an answer");
+        assertTrue(parsed.parseError().contains("[调用工具 view_images]"), parsed.parseError());
+        assertTrue(parsed.actions().isEmpty());
+        assertEquals("", parsed.visibleText(), "the text that looks like a call is never shown");
+        assertEquals("", streamedWith("[调用工具 view_images]", registered()));
+    }
+
+    @Test void everySpellingOfACallWrittenAsTextIsAFormatErrorAndHidden() throws Exception {
+        Set<String> names = registered();
+        for (String reply : List.of("[调用工具 view_images]", "[调用工具：view_images]", "[调用工具:view_images]", "[使用工具 read_canvas]",
+                "[工具 view_images]", "【调用工具 view_images】", "[调用工具 `view_images`]", "[调用工具 view_images({\"nodeIds\":\"a\"})]",
+                "调用工具 view_images", "调用工具：view_images。", "  使用工具 read_canvas  ", "[view_images]", "view_images()",
+                "view_images", "`read_canvas`", "\n[view_images]\n")) {
+            var parsed = DialogueActionProtocol.parse(reply, names);
+            assertNotNull(parsed.parseError(), reply);
+            assertTrue(parsed.actions().isEmpty(), reply);
+            assertEquals("", parsed.visibleText(), reply);
+            assertStreamsAsParsed(reply, names);
+        }
+    }
+
+    @Test void proseAroundACallWrittenAsTextStaysAndOnlyTheCallIsHidden() throws Exception {
+        Set<String> names = registered();
+        var after = DialogueActionProtocol.parse("先看一下画布上的设定图。\n[调用工具 view_images]", names);
+        assertNotNull(after.parseError());
+        assertEquals("先看一下画布上的设定图。", after.visibleText());
+        var line = DialogueActionProtocol.parse("先看一下画布上的设定图。\n调用工具 view_images\n", names);
+        assertNotNull(line.parseError());
+        assertEquals("先看一下画布上的设定图。", line.visibleText());
+        var inline = DialogueActionProtocol.parse("先看一下设定图[调用工具：view_images]，再整理方案。", names);
+        assertNotNull(inline.parseError());
+        assertEquals("先看一下设定图，再整理方案。", inline.visibleText());
+        for (String reply : List.of("先看一下画布上的设定图。\n[调用工具 view_images]", "先看一下画布上的设定图。\n调用工具 view_images\n",
+                "先看一下设定图[调用工具：view_images]，再整理方案。"))
+            assertStreamsAsParsed(reply, names);
+    }
+
+    @Test void aCallWrittenAsTextNextToARealActionIsHiddenAndTheActionRuns() throws Exception {
+        String reply = "[调用工具 view_images]\n<<<studio-actions>>>\n[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"a\"]}}]";
+        var parsed = DialogueActionProtocol.parse(reply, registered());
+        assertNull(parsed.parseError());
+        assertEquals(List.of("view_images"), parsed.actions().stream().map(DialogueLoop.Action::tool).toList());
+        assertEquals("", parsed.visibleText());
+        assertStreamsAsParsed(reply, registered());
+    }
+
+    @Test void proseThatTalksAboutToolsIsNotMistakenForACall() throws Exception {
+        Set<String> names = registered();
+        for (String reply : List.of("我先用看图工具看一下画布上的设定图。", "调用工具前我会先说一声在做什么。", "这一步会调用工具查看画布，不收费。",
+                "工具栏里有裁剪和局部重绘。", "使用这张图做第一顺位参考。", "方案里会用到 [男主三视图] 和客厅图。", "【重点】三视图要正面、侧面、背面一致。",
+                "[调用工具 make_coffee]", "调用工具 view_images 之后我再整理方案。", "先看 [view_images] 再说", "view_images()\n然后我会出方案。",
+                "参考 [1] 和 [2]。\n- [ ] 待办", "一张图 [未闭合的括号\n下一行")) {
+            var parsed = DialogueActionProtocol.parse(reply, names);
+            assertNull(parsed.parseError(), reply);
+            assertEquals(reply.strip(), parsed.visibleText(), reply);
+            assertStreamsAsParsed(reply, names);
+        }
+    }
+
+    @Test void withoutToolNamesOnlyTheImitatedRecordIsRecognized() {
+        var plain = DialogueActionProtocol.parse("[调用工具 view_images]");
+        assertNull(plain.parseError(), "names come from the registry; none given, none recognized");
+        assertEquals("[调用工具 view_images]", plain.visibleText());
+        var record = DialogueActionProtocol.parse("[查看画布：done，已读取 3 个对象] 先这样。");
+        assertNotNull(record.parseError());
+        assertEquals("先这样。", record.visibleText(), "an imitated work record is hidden like a call written as text");
+        assertStreamsAsParsed("[查看画布：done，已读取 3 个对象] 先这样。", Set.of());
+    }
+
+    @Test void aLongBracketIsReleasedAndNeverHeldBackPastItsLimit() throws Exception {
+        String longBracket = "[" + "很长的说明".repeat(100) + "]";
+        var parsed = DialogueActionProtocol.parse(longBracket, registered());
+        assertNull(parsed.parseError());
+        assertEquals(longBracket, parsed.visibleText());
+        var f = new DialogueActionProtocol.MarkerFilter(registered());
+        String shown = f.accept("[" + "很长的说明".repeat(100));
+        assertFalse(shown.isEmpty(), "an open bracket past the limit is shown without waiting for it to close");
     }
 }

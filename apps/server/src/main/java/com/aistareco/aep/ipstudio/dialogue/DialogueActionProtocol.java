@@ -4,7 +4,9 @@ import com.aistareco.aep.service.AiModelInvocationService.ChatToolCall;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,6 +22,9 @@ import java.util.regex.Pattern;
  * then asked to start was never proposed, because this spelling was shown as prose and nothing ran). A tag body may be one
  * object or an array; prose before, between and after tags stays visible. Anything not complete (unclosed tag, invalid
  * JSON, missing tool) rejects the whole batch: nothing half-executes, and the model is asked to send it again.
+ *
+ * <p>A tool call written as plain prose instead ({@link ProseCallFilter}: 「[调用工具 view_images]」) is never shown and is
+ * a format error too, so the model is asked again instead of the turn ending with nothing done.
  */
 public final class DialogueActionProtocol {
     public static final String MARKER = "<<<studio-actions>>>";
@@ -49,7 +54,10 @@ public final class DialogueActionProtocol {
      * tag and contain no other opening (otherwise the outer one never closed); the marker takes the rest of the reply.
      * Any defect rejects the whole batch.
      */
-    public static Parsed parse(String text) {
+    public static Parsed parse(String text) { return parse(text, Set.of()); }
+
+    /** {@link #parse(String)} that also recognizes a tool call written as prose, by these registered tool names. */
+    public static Parsed parse(String text, Collection<String> toolNames) {
         String full = text == null ? "" : text;
         StringBuilder visible = new StringBuilder();
         List<DialogueLoop.Action> actions = new ArrayList<>();
@@ -90,12 +98,19 @@ public final class DialogueActionProtocol {
             Parsed bare = bareActions(shown);
             if (bare != null) return bare;
         }
+        // The same second stage the streaming filter runs, over the same prose, so what was shown equals what is kept.
+        ProseCallFilter prose = new ProseCallFilter(toolNames);
+        String kept = (prose.accept(visible.toString()) + prose.finish()).strip();
         if (error == null && actions.size() > MAX_ACTIONS_PER_REPLY) error = "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作";
-        if (error != null) return new Parsed(shown, List.of(), error);
-        if (actions.isEmpty() && IMITATED_RECORD.matcher(shown).find())
-            return new Parsed(shown, List.of(), "正文里写了工具记录的样子，但没有真正调用工具；要做事就按动作格式调用，不要在正文里模仿记录");
-        return new Parsed(shown, List.copyOf(actions), null);
+        if (error != null) return new Parsed(kept, List.of(), error);
+        if (actions.isEmpty() && !prose.calls().isEmpty())
+            return new Parsed(kept, List.of(), "正文里写了「" + excerpt(prose.calls().get(0), 40) + "」，这只是文字，工具没有运行；要调用工具必须按动作格式发出");
+        if (actions.isEmpty() && (prose.records() || IMITATED_RECORD.matcher(shown).find()))
+            return new Parsed(kept, List.of(), "正文里写了工具记录的样子，但没有真正调用工具；要做事就按动作格式调用，不要在正文里模仿记录");
+        return new Parsed(kept, List.copyOf(actions), null);
     }
+
+    private static String excerpt(String text, int max) { return text.length() <= max ? text : text.substring(0, max) + "…"; }
 
     /**
      * {start, tagIndex} of the earliest envelope opening at or after {@code from}, tagIndex -1 for the marker; null when
@@ -211,9 +226,17 @@ public final class DialogueActionProtocol {
         private boolean markerSeen, envelopeSeen;
         /** Lower-case closing tag being waited for, or null outside a tag envelope. */
         private String closing;
+        /** Second stage over the prose this stage lets through: hides a tool call written as text. */
+        private final ProseCallFilter prose;
+
+        public MarkerFilter() { this(Set.of()); }
+
+        public MarkerFilter(Collection<String> toolNames) { this.prose = new ProseCallFilter(toolNames); }
 
         /** @return the part of {@code delta} that is certainly prose and can be shown now (possibly empty). */
-        public String accept(String delta) {
+        public String accept(String delta) { return prose.accept(envelopes(delta)); }
+
+        private String envelopes(String delta) {
             if (markerSeen || delta == null || delta.isEmpty()) return "";
             pending.append(delta);
             StringBuilder out = new StringBuilder();
@@ -250,10 +273,9 @@ public final class DialogueActionProtocol {
 
         /** End of stream: a withheld tail that never became an envelope is prose; an unclosed envelope is dropped. */
         public String finish() {
-            if (markerSeen || closing != null) { pending.setLength(0); return ""; }
-            String rest = pending.toString();
+            String rest = markerSeen || closing != null ? "" : pending.toString();
             pending.setLength(0);
-            return rest;
+            return prose.accept(rest) + prose.finish();
         }
 
         /** True once any action envelope (the marker or a tag) has started in this reply. */
@@ -279,5 +301,122 @@ public final class DialogueActionProtocol {
         }
 
         private static int indexIgnoreCase(CharSequence text, String needle) { return DialogueActionProtocol.indexIgnoreCase(text, needle, 0); }
+    }
+
+    /**
+     * A tool call written as prose instead of being sent as an action. Production 2026-10-21 13:50 (聚算 Qwen3.8 27B, JSON
+     * action path): the whole reply was 「[调用工具 view_images]」, 7 tokens; it was shown as the answer, nothing ran, the turn
+     * ended and was billed. The prompt had just stopped asking for a sentence before each call and showed no complete
+     * action example, so the model made up its own spelling.
+     *
+     * <p>Recognized only with a registered tool name, so prose that merely talks about tools stays prose:
+     * <ul>
+     *   <li>anywhere, in brackets with a call word: {@code [调用工具 view_images]} {@code [调用工具：view_images]}
+     *       {@code [使用工具 read_canvas]} {@code [工具 view_images]}, also with 【】 and anything after the name;</li>
+     *   <li>a whole line with a call word and no brackets: {@code 调用工具 view_images};</li>
+     *   <li>a whole reply that is only the name: {@code [view_images]} {@code view_images()}.</li>
+     * </ul>
+     * A bracketed imitation of the server's work record ({@link #IMITATED_RECORD}) is hidden the same way. Hidden text is
+     * never shown, streamed or not. It is a streaming transducer whose output does not depend on how the text was cut
+     * into deltas; {@link #parse} runs the same filter over the whole prose, so the stored reply equals what was shown.
+     * It withholds only what may still become such a call: an open bracket until it closes (one line, at most
+     * {@value #MAX_SPAN} characters), a line start while it can still be a call line, a first line that is only a name
+     * until something else follows.
+     */
+    static final class ProseCallFilter {
+        static final int MAX_SPAN = 420;
+        private static final String CALL_WORD = "(?:(?:调用|使用|执行|运行)\\s*工具|调用|使用|执行|工具)";
+        private final Pattern bracketCall, lineCall, replyCall;
+        private final StringBuilder pending = new StringBuilder();
+        private final List<String> calls = new ArrayList<>();
+        private boolean records, lineStart = true, shownAny;
+        /** A first line that is only a tool name: dropped when nothing else follows, shown when something does. */
+        private StringBuilder heldReply;
+
+        /** Without tool names only imitated work records are recognized. */
+        ProseCallFilter(Collection<String> toolNames) {
+            if (toolNames == null || toolNames.isEmpty()) { bracketCall = lineCall = replyCall = null; return; }
+            String name = "`?" + toolNames.stream().map(Pattern::quote).collect(java.util.stream.Collectors.joining("|", "(?:", ")")) + "`?";
+            String args = "(?:[(（][^\\n]*[)）])?";
+            bracketCall = Pattern.compile("[\\[【]\\s*" + CALL_WORD + "\\s*[：:]?\\s*" + name + "(?![A-Za-z0-9_])[^\\n]*[\\]】]");
+            lineCall = Pattern.compile("\\s*" + CALL_WORD + "\\s*[：:]?\\s*" + name + "\\s*" + args + "\\s*[。.]?\\s*");
+            replyCall = Pattern.compile("\\s*[\\[【]?\\s*" + name + "\\s*" + args + "\\s*[\\]】]?\\s*");
+        }
+
+        /** Tool calls that were written as text and hidden, in order. */
+        List<String> calls() { return calls; }
+
+        /** True when a bracketed imitation of the work record was hidden. */
+        boolean records() { return records; }
+
+        String accept(String delta) {
+            if (delta != null) pending.append(delta);
+            return drain(false);
+        }
+
+        String finish() { return drain(true); }
+
+        private String drain(boolean end) {
+            StringBuilder out = new StringBuilder();
+            while (pending.length() > 0 || (end && heldReply != null)) {
+                if (heldReply != null) {
+                    if (pending.toString().isBlank()) {
+                        heldReply.append(pending);
+                        pending.setLength(0);
+                        if (end) { calls.add(heldReply.toString().strip()); heldReply = null; }
+                        break;
+                    }
+                    emit(out, heldReply);
+                    heldReply = null;
+                    continue;
+                }
+                if (lineStart && lineCall == null) lineStart = false;
+                if (lineStart) {
+                    int nl = pending.indexOf("\n");
+                    String line = nl < 0 ? pending.toString() : pending.substring(0, nl);
+                    int consumed = nl < 0 ? pending.length() : nl + 1;
+                    Matcher asLine = lineCall.matcher(line), asReply = shownAny ? null : replyCall.matcher(line);
+                    if (nl >= 0 || end) {
+                        if (asLine.matches()) { calls.add(line.strip()); pending.delete(0, consumed); continue; }
+                        if (asReply != null && asReply.matches()) { heldReply = new StringBuilder(pending.substring(0, consumed)); pending.delete(0, consumed); continue; }
+                    } else if (asLine.matches() || asLine.hitEnd() || (asReply != null && (asReply.matches() || asReply.hitEnd()))) {
+                        break; // may still become a call line: wait for the rest of it
+                    }
+                    lineStart = false;
+                }
+                int at = nextSpecial(pending);
+                if (at < 0) { emit(out, pending); pending.setLength(0); break; }
+                emit(out, pending.subSequence(0, at));
+                pending.delete(0, at);
+                char c = pending.charAt(0);
+                if (c == '\n') { emit(out, "\n"); pending.deleteCharAt(0); lineStart = true; continue; }
+                int close = pending.indexOf(c == '[' ? "]" : "】", 1), nl = pending.indexOf("\n", 1);
+                if (close >= 0 && (nl < 0 || close < nl) && close < MAX_SPAN) {
+                    String span = pending.substring(0, close + 1);
+                    pending.delete(0, close + 1);
+                    if (bracketCall != null && bracketCall.matcher(span).matches()) calls.add(span);
+                    else if (IMITATED_RECORD.matcher(span).lookingAt()) records = true;
+                    else emit(out, span);
+                    continue;
+                }
+                if (close < 0 && nl < 0 && pending.length() < MAX_SPAN && !end) break; // the bracket may still close
+                emit(out, String.valueOf(c)); // never closes on this line: an ordinary bracket
+                pending.deleteCharAt(0);
+            }
+            return out.toString();
+        }
+
+        private void emit(StringBuilder out, CharSequence text) {
+            out.append(text);
+            if (!shownAny && !text.toString().isBlank()) shownAny = true;
+        }
+
+        private static int nextSpecial(CharSequence text) {
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (c == '[' || c == '【' || c == '\n') return i;
+            }
+            return -1;
+        }
     }
 }

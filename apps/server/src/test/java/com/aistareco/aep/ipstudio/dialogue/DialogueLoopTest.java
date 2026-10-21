@@ -200,6 +200,21 @@ class DialogueLoopTest {
         assertTrue(model.log.stream().anyMatch(l -> l.startsWith("user:上一条回复里的动作格式无法解析")));
     }
 
+    /** 2026-10-21: the correction carries one complete action, and that action is one the parser accepts as view_images. */
+    @Test void theCorrectionShowsACompleteActionTheParserAccepts() throws Exception {
+        var budget = budget(100_000, 100_000);
+        var model = new ScriptedModel(budget).broken("[调用工具 view_images]").reply("看完了");
+        var messages = new ArrayList<Map<String, Object>>();
+        new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(messages);
+        String correction = messages.stream().filter(m -> "user".equals(m.get("role"))).map(m -> String.valueOf(m.get("content")))
+                .filter(t -> t.startsWith("上一条回复里的动作格式无法解析")).findFirst().orElseThrow();
+        assertTrue(correction.contains(DialogueActionProtocol.MARKER + "\n" + DialogueLoop.ACTION_EXAMPLE), correction);
+        var example = DialogueActionProtocol.parse(DialogueActionProtocol.MARKER + "\n" + DialogueLoop.ACTION_EXAMPLE, StudioDialoguePromptWiringTest.toolNames());
+        assertNull(example.parseError());
+        assertEquals("view_images", example.actions().get(0).tool());
+        assertTrue(example.actions().get(0).args().path("nodeIds").isArray(), "the argument names are view_images' own");
+    }
+
     @Test void outputAllowanceShrinksWithTheRemainingBudget() {
         var budget = budget(100_000, 1500);
         budget.record(0, 1000);

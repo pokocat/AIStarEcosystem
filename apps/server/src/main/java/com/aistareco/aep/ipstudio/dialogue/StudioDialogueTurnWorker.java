@@ -366,7 +366,7 @@ public class StudioDialogueTurnWorker {
             String inputText = inputText(inputs);
             if (mock) this.model = new DialogueModels.Fixture(sink, inputText, mapper);
             else {
-                this.model = new DialogueModels.Real(models, endpoint, tools.specs(mapper), budget, sink, this::stopped, this::beforeModelCall,
+                this.model = new DialogueModels.Real(models, endpoint, tools.specs(mapper), tools.names(), budget, sink, this::stopped, this::beforeModelCall,
                         exec.path("temperature").asDouble(0.7), mapper);
                 buildPrompt(thread, skill, stage, inputs, inputText);
             }

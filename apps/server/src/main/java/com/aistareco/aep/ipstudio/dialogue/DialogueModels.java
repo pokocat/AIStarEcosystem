@@ -37,6 +37,7 @@ final class DialogueModels {
         private final AiModelInvocationService models;
         private final AiModelEndpoint endpoint;
         private final List<Map<String, Object>> toolSpecs;
+        private final Set<String> toolNames;
         private final int toolSpecChars;
         private final boolean nativeTools;
         private final DialogueLoop.TurnBudget budget;
@@ -46,10 +47,11 @@ final class DialogueModels {
         private final double temperature;
         private final ObjectMapper mapper;
 
-        Real(AiModelInvocationService models, AiModelEndpoint endpoint, List<Map<String, Object>> toolSpecs, DialogueLoop.TurnBudget budget,
-             TextSink sink, BooleanSupplier stopped, Runnable beforeCall, double temperature, ObjectMapper mapper) {
+        Real(AiModelInvocationService models, AiModelEndpoint endpoint, List<Map<String, Object>> toolSpecs, Set<String> toolNames,
+             DialogueLoop.TurnBudget budget, TextSink sink, BooleanSupplier stopped, Runnable beforeCall, double temperature, ObjectMapper mapper) {
             this.models = models; this.endpoint = endpoint; this.nativeTools = Boolean.TRUE.equals(endpoint.getChatSupportsTools());
             this.toolSpecs = nativeTools ? toolSpecs : List.of();
+            this.toolNames = Set.copyOf(toolNames);
             this.toolSpecChars = toolSpecs.toString().length();
             this.budget = budget; this.sink = sink; this.stopped = stopped; this.beforeCall = beforeCall; this.temperature = temperature; this.mapper = mapper;
         }
@@ -59,7 +61,7 @@ final class DialogueModels {
         public DialogueLoop.Reply call(List<Map<String, Object>> messages, int callIndex, int maxOutputTokens) {
             beforeCall.run();
             String partId = "p" + callIndex;
-            var filter = new DialogueActionProtocol.MarkerFilter();
+            var filter = new DialogueActionProtocol.MarkerFilter(toolNames);
             var listener = new AiModelInvocationService.ChatStreamListener() {
                 @Override public void onTextDelta(String delta) {
                     String visible = filter.accept(delta);
@@ -73,7 +75,7 @@ final class DialogueModels {
             options.put("temperature", temperature);
             ChatTurnResult result = models.invokeChatTurnOnEndpoint(endpoint, AiModelPurpose.DAP_PERSONA, messages, options,
                     toolSpecs.isEmpty() ? null : toolSpecs, listener);
-            DialogueActionProtocol.Parsed parsed = DialogueActionProtocol.parse(result.content());
+            DialogueActionProtocol.Parsed parsed = DialogueActionProtocol.parse(result.content(), toolNames);
             if (result.streamed()) {
                 String tail = filter.finish();
                 if (!tail.isEmpty()) sink.delta(partId, tail);

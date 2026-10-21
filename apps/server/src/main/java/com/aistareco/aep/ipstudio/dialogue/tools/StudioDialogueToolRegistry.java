@@ -15,6 +15,8 @@ public class StudioDialogueToolRegistry {
 
     public Optional<StudioDialogueTool> find(String name) { return Optional.ofNullable(name == null ? null : tools.get(name)); }
     public Collection<StudioDialogueTool> all() { return tools.values(); }
+    /** Registered tool names: the only names a tool call written as prose is recognized by (DialogueActionProtocol). */
+    public Set<String> names() { return Collections.unmodifiableSet(tools.keySet()); }
 
     /** OpenAI-compatible tool declarations (native function calling). */
     public List<Map<String, Object>> specs(ObjectMapper mapper) {

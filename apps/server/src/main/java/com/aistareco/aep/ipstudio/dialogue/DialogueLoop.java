@@ -100,7 +100,7 @@ public final class DialogueLoop {
                 // wrong spelling only spends the user's turn budget.
                 if (++protocolErrors > MAX_PROTOCOL_RETRIES) return outcome(Reason.LIMIT, "protocol", toolCalls);
                 model.appendExchange(messages, reply, List.of());
-                model.appendUser(messages, "上一条回复里的动作格式无法解析（" + reply.parseError() + "）。请按约定格式重新给出动作，正文不必重复。");
+                model.appendUser(messages, correctionText(reply.parseError()));
                 continue;
             }
             protocolErrors = 0;
@@ -156,6 +156,19 @@ public final class DialogueLoop {
     }
 
     private Outcome outcome(Reason reason, String limit, int toolCalls) { return new Outcome(reason, limit, budget.modelCalls(), toolCalls); }
+
+    /** A complete, minimal action the correction shows; the argument names are view_images' real parameters. */
+    static final String ACTION_EXAMPLE = "[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"对象 id\"],\"question\":\"想确认什么\"}}]";
+
+    /**
+     * The correction after a reply whose actions could not be parsed: the reason, and one complete action in the expected
+     * shape. Without the example the model repeated its own spelling (2026-10-21: 「[调用工具 view_images]」).
+     */
+    static String correctionText(String parseError) {
+        return "上一条回复里的动作格式无法解析（" + parseError + "），工具没有运行。请重新给出动作，正文不必重复，不要在正文里写「[调用工具 …]」这类文字。"
+                + "能直接调用工具就直接调用；否则另起一行写 " + DialogueActionProtocol.MARKER + "，下一行写 JSON 数组，例如：\n"
+                + DialogueActionProtocol.MARKER + "\n" + ACTION_EXAMPLE + "\n把 view_images 换成你要调用的工具，args 按该工具的参数写。";
+    }
 
     static String steeringText(List<String> steering) {
         StringBuilder out = new StringBuilder("用户在你工作时发来新消息（按收到顺序，属于对当前安排的调整）：");
