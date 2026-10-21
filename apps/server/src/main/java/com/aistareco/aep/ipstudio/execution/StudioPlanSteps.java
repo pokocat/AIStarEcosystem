@@ -82,7 +82,7 @@ public final class StudioPlanSteps {
             case "image" -> {
                 List<Reference> refs=new ArrayList<>();
                 for(JsonNode b:ordered(settings.path("referenceBindings")))refs.add(new Reference(null,null,null,keys.binding(b),imageRole(b.path("role").asText()),null));
-                yield new RunRequest(requestId,nodeId,"image",prompt,refs,null,settings.path("size").asText(null),null,null,settings.path("count").asInt(1),
+                yield new RunRequest(requestId,nodeId,"image",prompt,refs,null,settings.path("size").asText(null),null,settings.path("aspectRatio").asText(null),settings.path("count").asInt(1),
                         null,null,null,null,null,maxCost,null,null,null,null,null,billing,null,null,null,null,stage,executionId,null);
             }
             case "video" -> new RunRequest(requestId,nodeId,"video",prompt,List.of(),null,null,settings.path("durationSec").asInt(),settings.path("aspectRatio").asText(),

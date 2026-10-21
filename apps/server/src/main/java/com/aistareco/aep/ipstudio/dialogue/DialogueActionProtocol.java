@@ -64,7 +64,10 @@ public final class DialogueActionProtocol {
                 if (block.isEmpty()) break;
                 JsonNode array;
                 try { array = OM.readTree(block); } catch (Exception e) { array = null; }
-                if (array == null || !array.isArray()) { error = error != null ? error : "不是有效的 JSON 数组"; break; }
+                // One action written as a bare object after the marker (real agnes-2.5-flash reply 2026-10-20:
+                // 「…<<<studio-actions>>>{"tool":"read_canvas","args":{}}」) is that one action, as in the tag form.
+                boolean single = array != null && array.isObject() && (array.hasNonNull("tool") || array.hasNonNull("name"));
+                if (array == null || !(array.isArray() || single)) { error = error != null ? error : "不是有效的 JSON 数组"; break; }
                 String e = collect(array, actions, actions.size());
                 if (error == null) error = e;
                 break;
@@ -83,6 +86,10 @@ public final class DialogueActionProtocol {
             error = collect(item, actions, actions.size());
         }
         String shown = visible.toString().strip();
+        if (error == null && actions.isEmpty() && nextOpening(full, 0) == null) {
+            Parsed bare = bareActions(shown);
+            if (bare != null) return bare;
+        }
         if (error == null && actions.size() > MAX_ACTIONS_PER_REPLY) error = "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作";
         if (error != null) return new Parsed(shown, List.of(), error);
         if (actions.isEmpty() && IMITATED_RECORD.matcher(shown).find())
@@ -124,7 +131,7 @@ public final class DialogueActionProtocol {
             if (!item.isObject()) return "第 " + i + " 个动作必须是对象";
             JsonNode name = item.hasNonNull("tool") ? item.get("tool") : item.get("name");
             if (name == null || !name.isTextual() || name.asText().isBlank()) return "第 " + i + " 个动作缺少 tool";
-            JsonNode args = item.hasNonNull("args") ? item.get("args") : item.get("arguments");
+            JsonNode args = item.hasNonNull("args") ? item.get("args") : item.hasNonNull("arguments") ? item.get("arguments") : siblingArgs(item);
             if (args != null && args.isTextual()) {
                 try { args = OM.readTree(args.asText()); } catch (Exception e) { return "第 " + i + " 个动作的 args 必须是对象"; }
             }
@@ -132,6 +139,38 @@ public final class DialogueActionProtocol {
             out.add(new DialogueLoop.Action("act-" + i, name.asText().strip(), args != null && args.isObject() ? args : OM.createObjectNode()));
         }
         return null;
+    }
+
+    /**
+     * A reply that is nothing but an action — {@code {"tool":..,"args":{..}}} or an array of them, optionally fenced —
+     * with no envelope at all (the correction reply after a rejected batch, real model 2026-10-20). Without this the raw
+     * JSON was shown to the user as the answer and the turn ended. Only a reply that is entirely such JSON counts; prose
+     * that merely contains braces stays prose. Returns null when the reply is not such JSON.
+     */
+    private static Parsed bareActions(String shown) {
+        String text = stripFence(shown);
+        if (!(text.startsWith("{") || text.startsWith("["))) return null;
+        JsonNode node;
+        try { node = OM.readTree(text); } catch (Exception e) { return null; }
+        if (node == null || !(node.isObject() || node.isArray()) || node.isEmpty()) return null;
+        for (JsonNode item : node.isArray() ? node : OM.createArrayNode().add(node))
+            if (!item.isObject() || !(item.path("tool").isTextual() || item.path("name").isTextual())) return null;
+        List<DialogueLoop.Action> actions = new ArrayList<>();
+        String error = collect(node, actions, 0);
+        if (error == null && actions.size() > MAX_ACTIONS_PER_REPLY) error = "一次最多 " + MAX_ACTIONS_PER_REPLY + " 个动作";
+        return error != null ? new Parsed("", List.of(), error) : new Parsed("", List.copyOf(actions), null);
+    }
+
+    /**
+     * Arguments written next to {@code tool} instead of inside {@code args}
+     * ({@code {"tool":"ask_question","text":"…","options":[…]}}, real reply 2026-10-20): those sibling fields. The tool
+     * still validates every argument; this only stops a correctly named action from running with nothing. Null when none.
+     */
+    private static JsonNode siblingArgs(JsonNode item) {
+        var rest = OM.createObjectNode();
+        String nameKey = item.hasNonNull("tool") ? "tool" : "name";
+        item.fields().forEachRemaining(f -> { if (!nameKey.equals(f.getKey())) rest.set(f.getKey(), f.getValue()); });
+        return rest.isEmpty() ? null : rest;
     }
 
     /** Native tool calls → actions. Arguments that are not a JSON object reject the whole batch (nothing half-executes). */

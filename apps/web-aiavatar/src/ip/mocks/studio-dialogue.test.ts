@@ -1,15 +1,15 @@
 // Runs in node: nothing here renders; the one storage call (mocks/ip-studio.ts, the projected-node reset) is guarded.
 // The demo dialogue runs the whole flow on the same reducer and contract as the real server.
 import { beforeEach, expect, test } from 'vitest';
-import type { IpRun } from '@ai-star-eco/types';
+import type { IpProject, IpRun } from '@ai-star-eco/types';
 import type { StudioDialogueEvent, StudioNodeUpsertData } from '@ai-star-eco/types/ip-studio-workflow';
 import { approvedCaps, approvedExecutionIds, dialogueReducer, emptyDialogueStore, planForApproval, type DialogueApprovalBlock, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
 import { executionRestoreUpserts, missingExecutionNodes, projectCanvasOps, stepRunCandidates } from '@/canvas-bridge/studio-plan-execution';
-import { mockReadRun } from './ip-studio';
+import { mockReadRun, mockStore } from './ip-studio';
 import {
   mockCreateSkillDraft, mockDialogueConversation, mockDialoguePost, mockDialogueSubscribe, mockDialogueTiming, mockExecutionCreate, mockExecutionGet, mockSeedCompletedExecution, resetMockDialogue,
 } from './studio-dialogue';
-import { completionExecutionId, skillDraftOutput, skillRequiredChoices } from '@/canvas-bridge/studio-skills';
+import { completionExecutionId, skillDraftOutput } from '@/canvas-bridge/studio-skills';
 
 beforeEach(() => { resetMockDialogue(); mockDialogueTiming.tickMs = 0; });
 
@@ -23,9 +23,11 @@ test('message → streamed text, a work record, a plan and a confirmation; appro
   let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace' });
   const events: StudioDialogueEvent[] = [];
   const stop = mockDialogueSubscribe('p', state.thread.id, 0, e => { events.push(e); store = dialogueReducer(store, { type: 'event', event: e }); });
-  const first = await mockDialoguePost('p', state.thread.id, { clientMessageId: 'c1', text: '换成我的洗衣液，保留最后的反转' });
+  // The message names the job (「复刻」): since 2026-10-20 a message that hits no skill no longer falls back to the default
+  // skill, it stays unbound like on the server (docs/ip-studio-dialogue-intents.md §4).
+  const first = await mockDialoguePost('p', state.thread.id, { clientMessageId: 'c1', text: '复刻这条，换成我的洗衣液，保留最后的反转' });
   expect(first.queueState).toBe('accepted');
-  expect(await mockDialoguePost('p', state.thread.id, { clientMessageId: 'c1', text: '换成我的洗衣液，保留最后的反转' })).toEqual(first);
+  expect(await mockDialoguePost('p', state.thread.id, { clientMessageId: 'c1', text: '复刻这条，换成我的洗衣液，保留最后的反转' })).toEqual(first);
   await until(events, e => e.type === 'turn.done');
   expect(events.filter(e => e.type === 'message.delta').length).toBeGreaterThan(3);
   expect(events.map(e => e.seq)).toEqual([...events.map(e => e.seq)].sort((a, b) => a - b));
@@ -82,15 +84,120 @@ test('message → streamed text, a work record, a plan and a confirmation; appro
   expect(skillDraftOutput(mockReadRun(draft.id))).toMatchObject({ skillKey: 'video-recreation', version: 3, baseVersion: 2 });
 }, 20000);
 
-test('skill routing: a tie asks the user, an explicit choice binds the thread, and a bound thread cannot switch', async () => {
-  const state = await mockDialogueConversation('route');
-  const tie = await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x1', text: '照着这条复刻一条口播' }).catch(e => e);
-  expect(skillRequiredChoices(tie)?.map(s => s.name)).toEqual(['短视频复刻', '口播种草']);
-  expect(tie.status).toBe(400);
-  expect((await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x2', text: '照着这条复刻一条口播', skillKey: 'talking-head-seeding' })).queueState).toBe('accepted');
+// Routing follows StudioSkillRouter since 意图直达 (2026-10-20): keywords ×2, media ×1, a unique best wins, no hit keeps the
+// current skill, a tie keeps the current skill or binds none (no more 400 STUDIO_SKILL_REQUIRED), and a thread without an
+// active execution is routed again on every message.
+async function settled(projectId: string, threadId: string) {
+  const events: StudioDialogueEvent[] = [];
+  const stop = mockDialogueSubscribe(projectId, threadId, 0, e => events.push(e));
+  return { events, stop, done: (n: number) => until(events, e => e.type === 'turn.done' && events.filter(x => x.type === 'turn.done').length >= n) };
+}
+function canvasWith(projectId: string, nodes: { id: string; type: string }[]) {
+  mockStore().projects.set(projectId, { id: projectId, name: projectId, status: 'draft', createdAt: '2026-10-20T00:00:00Z', updatedAt: '2026-10-20T00:00:00Z', runs: {}, runsById: {},
+    doc: { nodes: nodes.map(n => ({ ...n, title: n.id, position: { x: 0, y: 0 }, width: 320, height: 240, metadata: {} })), connections: [], viewport: { x: 0, y: 0, k: 1 } } } as unknown as IpProject);
+}
+
+test('skill routing: a tie binds nothing and answers without a 400; an explicit choice binds; switching is refused only during an active execution', async () => {
+  const state = await mockDialogueConversation('route'), id = state.thread.id, flow = await settled('route', id);
+  // 「照着」 (复刻) and 「做一条」 (出视频) score the same: no skill, no question, a plain answer.
+  expect((await mockDialoguePost('route', id, { clientMessageId: 'x1', text: '照着做一条' })).queueState).toBe('accepted');
+  expect((await mockDialogueConversation('route')).thread.skillKey).toBeUndefined();
+  await flow.done(1);
+  expect(await mockDialoguePost('route', id, { clientMessageId: 'x2', text: '照着这条复刻一条口播', skillKey: 'talking-head-seeding' })).toMatchObject({ queueState: 'accepted' });
   expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'talking-head-seeding', skillVersion: 1 });
-  const switched = await mockDialoguePost('route', state.thread.id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'video-recreation' }).catch(e => e);
-  expect(switched).toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
+  await flow.done(2);
+  // No execution yet (the analysis card is still pending): an explicit switch is allowed and starts that job.
+  expect(await mockDialoguePost('route', id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'video-recreation' })).toMatchObject({ queueState: 'accepted' });
+  expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'video-recreation', skillVersion: 2 });
+  await flow.done(3);
+  // Once the analysis runs, the method is fixed: an explicit switch is refused, a routed message keeps it.
+  const store = (await mockDialogueConversation('route'));
+  const card = store.messages.flatMap(m => m.blocks).filter((b): b is DialogueApprovalBlock => b.type === 'approval' && b.status === 'pending').at(-1)!;
+  await mockExecutionCreate('route', { clientRequestId: 'r1', stage: 'analysis', planRunId: 'mock-plan-analysis', planFingerprint: card.planFingerprint, budgetCap: card.budgetCap, autoFixCap: 0, approvalId: card.approvalId });
+  await flow.done(4);
+  expect(await mockDialoguePost('route', id, { clientMessageId: 'x4', text: '画一张海报', skillKey: 'image-generation' }).catch(e => e)).toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
+  await mockDialoguePost('route', id, { clientMessageId: 'x5', text: '画一张海报' });
+  expect((await mockDialogueConversation('route')).thread.skillKey).toBe('video-recreation');
+  flow.stop();
+}, 20000);
+
+test('skill routing: words outrank media, and a message without a hit stays on the current job', async () => {
+  canvasWith('mixed', [{ id: 'pic', type: 'image' }]);
+  // 「写一段文案」 with a product image attached: 写一段 + 文案 (4) beat the image's +1 for 出图 / 出视频 / 口播种草.
+  const a = await mockDialogueConversation('mixed');
+  await mockDialoguePost('mixed', a.thread.id, { clientMessageId: 'w1', text: '用这张图写一段文案', attachmentNodeIds: ['pic'] });
+  expect((await mockDialogueConversation('mixed')).thread.skillKey).toBe('script-writing');
+  // Media alone counts too: a pinned video with no keyword picks the one skill whose media is video.
+  canvasWith('clip', [{ id: 'ref', type: 'video' }]);
+  const c = await mockDialogueConversation('clip');
+  await mockDialoguePost('clip', c.thread.id, { clientMessageId: 'v1', text: '照这个来', pinnedNodeIds: ['ref'] });
+  expect((await mockDialogueConversation('clip')).thread.skillKey).toBe('video-recreation');
+  // An image job, then follow-ups with and without a keyword: both stay 出图.
+  const b = await mockDialogueConversation('again'), flow = await settled('again', b.thread.id);
+  await mockDialoguePost('again', b.thread.id, { clientMessageId: 'i1', text: '画一张国风少女海报，9:16' });
+  expect((await mockDialogueConversation('again')).thread.skillKey).toBe('image-generation');
+  await flow.done(1);
+  await mockDialoguePost('again', b.thread.id, { clientMessageId: 'i2', text: '背景再亮一点' });
+  expect((await mockDialogueConversation('again')).thread.skillKey).toBe('image-generation');
+  await flow.done(2);
+  await mockDialoguePost('again', b.thread.id, { clientMessageId: 'i3', text: '再来一张，背景亮一点' });
+  expect((await mockDialogueConversation('again')).thread.skillKey).toBe('image-generation');
+  await flow.done(3);
+  // Nothing active: a message naming another job switches the thread (画完图再写文案).
+  await mockDialoguePost('again', b.thread.id, { clientMessageId: 'i4', text: '再写一段口播' });
+  expect((await mockDialogueConversation('again')).thread.skillKey).toBe('script-writing');
+  flow.stop();
+}, 20000);
+
+test('a direct skill: plan and production card in one reply, the card names no execution and starting it runs production at once', async () => {
+  const state = await mockDialogueConversation('img');
+  let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace' });
+  const events: StudioDialogueEvent[] = [];
+  const stop = mockDialogueSubscribe('img', state.thread.id, 0, e => { events.push(e); store = dialogueReducer(store, { type: 'event', event: e }); });
+  await mockDialoguePost('img', state.thread.id, { clientMessageId: 'c1', text: '画一张国风少女海报，9:16' });
+  await until(events, e => e.type === 'turn.done');
+  const reply = store.messages.find(m => m.role === 'assistant')!;
+  expect(reply.blocks.map(b => b.type)).toEqual(['plan', 'approval']);
+  const card = reply.blocks.find((b): b is DialogueApprovalBlock => b.type === 'approval')!;
+  expect(card.stage).toBe('production');
+  expect(card.executionId).toBeUndefined();
+  const plan = planForApproval(store, card)!;
+  expect(plan.plan).toMatchObject({ stage: 'production', skillKey: 'image-generation', skillVersion: 1 });
+  expect(plan.plan.approaches).toBeUndefined();
+  // A plan that is not a direct skill's still needs its analysis first.
+  expect(await Promise.resolve().then(() => mockExecutionCreate('img', { clientRequestId: 'bad', stage: 'production', planRunId: 'mock-plan-analysis', planFingerprint: 'x', budgetCap: 10, autoFixCap: 0 })).catch(e => e))
+    .toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
+  // 「可以」 typed back confirms the card like the button: production starts without an executionId.
+  await mockDialoguePost('img', state.thread.id, { clientMessageId: 'c2', text: '可以' });
+  await until(events, e => e.type === 'turn.done' && (e.data as { reason: string }).reason === 'completed');
+  stop();
+  const approved = store.messages.flatMap(m => m.blocks).find((b): b is DialogueApprovalBlock => b.type === 'approval' && b.approvalId === card.approvalId)!;
+  expect(approved).toMatchObject({ status: 'approved', approvedBudgetCap: card.budgetCap });
+  const execution = await mockExecutionGet('img', approved.executionId!);
+  expect(execution).toMatchObject({ stage: 'production', status: 'done', skillKey: 'image-generation', planRunId: plan.planRunId });
+  expect(execution.budgets.map(b => b.stage)).toEqual(['production']);
+  expect(execution.steps.map(s => [s.operation, s.stage, s.status])).toEqual([['image', 'production', 'done']]);
+  const creates = events.filter(e => e.type === 'node.upsert').map(e => e.data as StudioNodeUpsertData).filter(u => u.op === 'create');
+  expect(creates.map(u => [u.nodeId, u.node?.type])).toEqual([[`${execution.id}-p-d1`, 'image']]);
+  expect(mockReadRun(execution.steps[0].runIds.at(-1)!).status).toBe('done');
+  // Zero credits in the demo; the summary is keyed by its execution.
+  expect(events.filter(e => e.type === 'turn.done').every(e => (e.data as { billing?: { credits: number } }).billing?.credits === 0)).toBe(true);
+  expect(completionExecutionId((await mockDialogueConversation('img')).messages.at(-1)!)).toBe(execution.id);
+}, 20000);
+
+test('写剧本与文案 writes a short draft straight onto the canvas: one text node, no plan, no card', async () => {
+  const state = await mockDialogueConversation('copy');
+  const events: StudioDialogueEvent[] = [];
+  const stop = mockDialogueSubscribe('copy', state.thread.id, 0, e => events.push(e));
+  await mockDialoguePost('copy', state.thread.id, { clientMessageId: 'c1', text: '写一段保温杯的口播' });
+  await until(events, e => e.type === 'turn.done');
+  stop();
+  expect(events.some(e => e.type === 'plan.proposed' || e.type === 'approval.required')).toBe(false);
+  const created = events.filter(e => e.type === 'node.upsert').map(e => e.data as StudioNodeUpsertData);
+  expect(created).toHaveLength(1);
+  expect(created[0]).toMatchObject({ op: 'create', node: { type: 'text', metadata: { studio: { mock: true } } } });
+  expect(created[0].executionId).toBeUndefined();
+  expect((await mockDialogueConversation('copy')).thread.skillKey).toBe('script-writing');
 });
 
 test('a canvas whose recreation finished while it was closed: nodes come back from the execution, not from pruned events', async () => {

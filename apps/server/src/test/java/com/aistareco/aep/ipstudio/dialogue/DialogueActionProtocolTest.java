@@ -239,4 +239,24 @@ class DialogueActionProtocolTest {
             assertFalse(two.contains("read_canvas"), "cut at " + cut + ": " + two);
         }
     }
+
+    /** Real agnes-2.5-flash replies 2026-10-20 (意图直达 evaluation): one object after the marker, then a bare correction. */
+    @Test void aSingleObjectAfterTheMarkerAndABareActionReplyAreActionsNotProse() {
+        var single = DialogueActionProtocol.parse("让我先看看画布上有什么素材。<<<studio-actions>>>{\"tool\":\"read_canvas\",\"args\":{}}");
+        assertNull(single.parseError());
+        assertEquals("让我先看看画布上有什么素材。", single.visibleText());
+        assertEquals("read_canvas", single.actions().get(0).tool());
+        var bare = DialogueActionProtocol.parse("{\"tool\":\"read_canvas\",\"args\":{}}");
+        assertNull(bare.parseError());
+        assertEquals("", bare.visibleText(), "the raw JSON is never shown as the answer");
+        assertEquals(1, bare.actions().size());
+        var fencedArray = DialogueActionProtocol.parse("```json\n[{\"tool\":\"read_canvas\"},{\"tool\":\"read_skill\",\"args\":{\"key\":\"image-generation\"}}]\n```");
+        assertEquals(2, fencedArray.actions().size());
+        var flat = DialogueActionProtocol.parse("先问一件事：\n<<<studio-actions>>>\n[{\"tool\":\"ask_question\",\"text\":\"保留原片哪部分？\",\"options\":[\"动作\",\"节奏\"]}]");
+        assertEquals("保留原片哪部分？", flat.actions().get(0).args().path("text").asText(), "arguments written beside tool are its args");
+        assertEquals(2, flat.actions().get(0).args().path("options").size());
+        assertFalse(flat.actions().get(0).args().has("tool"));
+        for (String prose : List.of("{这不是 JSON}", "[1, 2]", "{\"title\":\"不是动作\"}", "按 {\"tool\":\"x\"} 这样写"))
+            assertTrue(DialogueActionProtocol.parse(prose).actions().isEmpty(), prose);
+    }
 }

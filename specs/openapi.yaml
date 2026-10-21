@@ -667,7 +667,7 @@ components:
         lastSeq: { type: integer }
         activeTurnId: { type: string, nullable: true }
         activeExecutionId: { type: string, nullable: true }
-        skillKey: { type: string, nullable: true, description: 线程绑定的技能（显式选择或首轮意图路由的结果）；还没有任何一轮选定时为空 }
+        skillKey: { type: string, nullable: true, description: 线程当前的技能（显式选择或意图路由的结果；没有活跃执行时每条消息可能换）；还没有任何一轮选定时为空 }
         skillVersion: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -795,7 +795,7 @@ components:
         budgetCap: { type: integer, minimum: 0 }
         autoFixCap: { type: integer, minimum: 0 }
         billing: { type: object, nullable: true }
-        executionId: { type: string, nullable: true, description: 确认制作阶段时带已有执行，避免第二份活跃执行。 }
+        executionId: { type: string, nullable: true, description: 确认制作阶段时带已有执行，避免第二份活跃执行；直达技能的制作方案卡开始新执行时不带。 }
         expectedRevision: { type: integer, nullable: true }
         approvalId: { type: string, nullable: true, description: 必填（缺失 400 STUDIO_INPUT_INVALID）：用户确认的那张确认卡。 }
         confirmationMessageId: { type: string, nullable: true, description: 必填（缺失 400 STUDIO_INPUT_INVALID）：放着这张确认卡的助手消息；服务端核对卡片属于本人本画布线程、仍待确认、对应线程当前最新的计划修订。用文字确认（「就按这个开始」）只能由对话里的 confirm_approval 工具在服务端完成，不经这个接口。 }
@@ -12993,11 +12993,11 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPostMessage
-      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。S3 意图路由：线程还没有技能时，带 skillKey 则必须是启用中的技能；不带则按钉住 / 附件节点的媒体类型（每命中一种 2 分）与消息关键词（每个 1 分）给每个启用中的技能打分取唯一最高分；一个都没命中就不绑技能（全能创作，下一条消息再路由；只有一个启用技能也一样），最高分平局用其中的 default 方法，仍定不下来返回 400 STUDIO_SKILL_REQUIRED；选定结果写到线程（thread.skillKey / skillVersion），之后不再改。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。意图路由（2026-10-20「意图直达」，技能按任务绑定）：线程没有活跃执行（running / paused / needs_user）时每条消息都重新路由——带 skillKey 时换到别的方法必须是启用中的技能；不带则按消息关键词（每个 2 分）与钉住 / 附件节点的媒体类型（每命中一种 1 分，词优先于素材）给每个启用中的技能打分取唯一最高分；一个都没命中沿用线程当前技能，线程没有技能就不绑（全能创作，模型可用 read_skill 自己选）；最高分平局时当前技能在其中就沿用，否则不绑、由模型在回合内判断，不再返回 400。命中别的技能就改写 thread.skillKey / skillVersion，stage 改为新技能的起始阶段（出图 / 写剧本与文案 / 出视频直接 production，参考视频复刻 analysis）。有活跃执行时方法不变，显式带另一个 skillKey → 400 STUDIO_INPUT_INVALID。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
-        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）/ STUDIO_SKILL_REQUIRED（S3：线程还没有技能，按附件媒体类型与关键词打分有几个技能并列最高、其中没有默认方法；error.details.skills=[{key,name,summary}] 只列并列的几个，界面据此请用户选一个后带 skillKey 重发）' }
+        '400': { description: 'STUDIO_INPUT_INVALID（含：有活跃执行时显式换方法）/ STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）。STUDIO_SKILL_REQUIRED 自 2026-10-20 起路由不再返回（平局交给模型判断），错误码保留给将来的显式冲突，客户端仍应能处理（error.details.skills=[{key,name,summary}]）' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（线程绑定的后台制作本阶段预算放不下这一轮对话；带 stage, spent, inFlight, quotedCost=本轮上限, approvedCap, shortfall）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
         '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND（显式 skillKey 不存在、已停用，或在还没有技能的线程上选了非启用的方法）/ IP_PROJECT_NOT_FOUND' }
@@ -13044,7 +13044,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioCreatePlanExecution
-      description: 创建分析执行，或在同一执行上确认制作阶段 / 提高本阶段上限（带 executionId / approachId / expectedRevision）。approvalId + confirmationMessageId 必填：确认来源只能是对话里的确认卡，且卡片必须对应线程当前最新的计划修订（出现新修订或新卡时，旧的待确认卡变为 superseded）。服务端核对计划指纹、技能在架、引用归属、总报价 ≤ 上限、付款绑定；落 ip_plan_execution，并在同一事务里把卡片标为 approved（写入 approvedBudgetCap / approvedAutoFixCap / approvedPlanRevision / approvedAt / approvedByMessageId / executionId），afterCommit 派发执行器。同项目只许一份活跃执行。
+      description: 创建分析执行；直达技能（出图 / 写剧本与文案 / 出视频，没有分析阶段）的制作方案卡不带 executionId、stage=production 直接创建制作阶段执行（服务端按计划定位技能，非直达技能这样请求 → 400 STUDIO_INPUT_INVALID）；或在同一执行上确认制作阶段 / 提高本阶段上限（带 executionId / approachId / expectedRevision）。approvalId + confirmationMessageId 必填：确认来源只能是对话里的确认卡，且卡片必须对应线程当前最新的计划修订（出现新修订或新卡时，旧的待确认卡变为 superseded）。服务端核对计划指纹、技能在架、引用归属、总报价 ≤ 上限、付款绑定；落 ip_plan_execution，并在同一事务里把卡片标为 approved（写入 approvedBudgetCap / approvedAutoFixCap / approvedPlanRevision / approvedAt / approvedByMessageId / executionId），afterCommit 派发执行器。同项目只许一份活跃执行。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecutionCreateRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPlanExecution>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPlanExecution' } } } }

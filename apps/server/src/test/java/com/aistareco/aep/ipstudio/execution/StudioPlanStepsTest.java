@@ -43,6 +43,13 @@ class StudioPlanStepsTest {
         assertEquals("STUDIO_VIDEO_MODE_UNAVAILABLE",assertThrows(BusinessException.class,()->StudioPlanSteps.request(unknown,keys(null),modes,binding(null))).getCode());
     }
 
+    /** An image step's 画幅 reaches the run (it used to be dropped, so every planned image fell back to 3:4). */
+    @Test void anImageStepSubmitsItsAspectRatio() throws Exception {
+        var step=om.readTree("{\"id\":\"p\",\"operation\":\"image\",\"prompt\":\"国风少女海报\",\"settings\":{\"count\":1,\"aspectRatio\":\"9:16\",\"referenceBindings\":[]}}");
+        var request=StudioPlanSteps.request(step,keys(null),modes,binding(null));
+        assertEquals("image",request.operation());assertEquals("9:16",request.aspectRatio());assertNull(request.size());assertEquals(1,request.count());
+    }
+
     @Test void recreationCheckTextAndAssembleCarryTheirTypedInputs() throws Exception {
         var recreation=StudioPlanSteps.request(om.readTree("{\"operation\":\"recreation\",\"prompt\":\"看结构\",\"settings\":{\"sourceNodeId\":\"src\",\"mode\":\"segments\",\"maxSegmentSec\":\"model\",\"videoModel\":\"ep-h3\"}}"),keys(null),modes,binding(null));
         assertEquals("segments",recreation.mode());assertEquals(List.of("src"),recreation.contextNodeIds());assertEquals("model",recreation.recreation().maxSegmentSec());

@@ -9,6 +9,7 @@ import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.skill.StudioSkillCatalog;
+import com.aistareco.aep.ipstudio.skill.StudioSkill;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -72,6 +73,7 @@ class StudioPlanExecutionServiceTest {
         }
     }
 
+    StudioSkillCatalog catalog;
     @BeforeEach void setUp() throws Exception {
         var executions=mock(IpPlanExecutionRepository.class);
         when(executions.findById(anyString())).thenAnswer(i->Optional.ofNullable(rows.get((String)i.getArgument(0))));
@@ -88,7 +90,7 @@ class StudioPlanExecutionServiceTest {
         when(projects.ownedRun(eq("u"),eq("p"),anyString())).thenAnswer(i->Optional.ofNullable(runs.get((String)i.getArgument(2))));
         String file;
         try(var in=getClass().getResourceAsStream("/studio/skills/reference-video-recreation.md")){file=new String(in.readAllBytes(),StandardCharsets.UTF_8);}
-        var catalog=mock(StudioSkillCatalog.class);var skill=StudioSkillCatalog.parse(file);
+        catalog=mock(StudioSkillCatalog.class);var skill=StudioSkillCatalog.parse(file);
         String original;
         try(var in=getClass().getResourceAsStream("/studio/skills/original-creation.md")){original=new String(in.readAllBytes(),StandardCharsets.UTF_8);}
         originalSkill=StudioSkillCatalog.parse(original);
@@ -456,6 +458,45 @@ class StudioPlanExecutionServiceTest {
         cards.put("msg-raise2","APV-raise2","analysis",fp,30,50);
         var paused=service.create("u","p",new PlanExecutionCreateRequest("raise-2","analysis","IPR-a",fp,null,50L,0L,null,created.id(),null,"APV-raise2","msg-raise2"));
         assertEquals("paused",paused.status(),"the user's pause stays");assertEquals("pending",paused.steps().get(0).status(),"its 「继续制作」 will go on");
+    }
+
+
+    /** 意图直达 2026-10-20: a direct skill (出图) starts its execution from its one production card; recreation still cannot. */
+    @Test void aDirectSkillsProductionCardStartsTheExecutionInProduction() throws Exception {
+        StudioSkillRules.Rules image;
+        StudioSkill imageSkill;
+        try(var in=getClass().getResourceAsStream("/studio/skills/image-generation.md")){imageSkill=StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8));}
+        image=StudioSkillRules.rules(imageSkill);
+        // The live catalog is where creation re-checks the skill is still active (requireActive), so it must know this one too.
+        when(catalog.requireForNewWork("image-generation")).thenReturn(imageSkill);when(catalog.find("image-generation")).thenReturn(Optional.of(imageSkill));
+        String raw="{\"summary\":\"一张海报\",\"steps\":[{\"id\":\"poster\",\"operation\":\"image\",\"title\":\"海报\",\"prompt\":\"竖版海报\",\"settings\":{\"count\":1,\"referenceBindings\":[]}}],\"questions\":[]}";
+        var plan=StudioPlanValidator.validateSkillPlan(om.readTree(raw),image,"production",List.of("product"));
+        plan.put("skillKey",image.key()).put("skillVersion",image.version()).put("stage","production").put("revision",1);
+        ((ObjectNode)plan.path("steps").get(0)).put("quotedCost",8);
+        plan.putObject("budget").put("estimated",8).put("autoFixCap",0);
+        String fp=StudioPlanValidator.fingerprint(plan);plan.put("fingerprint",fp);
+        var output=om.createObjectNode();output.set("plan",plan);
+        var input=om.createObjectNode();input.putArray("contextNodeIds").add("product");input.putObject("dialogue").put("threadId","thread-1").put("messageId","m");
+        input.putObject("_exec").set("skill",StudioSkillRules.snapshot(image));
+        runs.put("IPR-img",IpRun.builder().id("IPR-img").projectId("p").ownerUserId("u").kind("studio-dialogue").status("done").inputJson(input.toString()).outputJson(output.toString()).build());
+        cards.currentFingerprint=fp;cards.currentRunId="IPR-img";
+        cards.put("msg-IPR-img","APV-IPR-img","production",fp,8,20);
+        var req=new PlanExecutionCreateRequest("create-img","production","IPR-img",fp,null,20L,0L,null,null,null,"APV-IPR-img","msg-IPR-img");
+        var created=service.create("u","p",req);
+        assertEquals("running",created.status());
+        assertEquals("production",created.stage(),"no analysis stage was ever created");
+        assertEquals(1,created.steps().size());
+        assertEquals("production",created.steps().get(0).stage());
+        assertEquals(created.id()+"-p-poster",created.steps().get(0).nodeId());
+        assertEquals(List.of("production"),created.budgets().stream().map(b->b.stage()).toList());
+        assertEquals(20,created.budgets().get(0).approvedCap());
+        verify(executor).wake(created.id());
+        assertEquals(created.id(),service.create("u","p",req).id(),"same request replays");
+        // The non-direct method keeps its order: a production request with no execution is still refused before anything.
+        rows.clear();cards.approved.clear();
+        String analysisFp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var production=new PlanExecutionCreateRequest("create-4b","production","IPR-a",analysisFp,null,30L,0L,null,null,null,"APV-IPR-a","msg-IPR-a");
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->service.create("u","p",production)).getCode());
     }
 
     // ── 原创创作: a production-only skill (IPP-51a92043, 2026-10-20) ─────────────────────────────────────────────────

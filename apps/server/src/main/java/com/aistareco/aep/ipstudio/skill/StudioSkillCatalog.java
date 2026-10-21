@@ -285,7 +285,9 @@ public class StudioSkillCatalog {
         if (maxSteps < 1 || maxSteps > 64) throw new IllegalArgumentException("limits.maxSteps out of range");
 
         List<String> checks = list(map.get("checks"), "checks", CHECK_ID);
-        if (checks.isEmpty()) throw new IllegalArgumentException("checks must not be empty");
+        // A skill that can run `check` steps must say what they judge; one that never checks (出图, 写剧本) may leave the list empty.
+        boolean checksOperation = operations.values().stream().anyMatch(stageOps -> stageOps.contains("check"));
+        if (checks.isEmpty() && checksOperation) throw new IllegalArgumentException("checks must not be empty when a stage allows check");
         List<String> autoFixChecks = map.get("autoFixChecks") == null ? List.of() : list(map.get("autoFixChecks"), "autoFixChecks", CHECK_ID);
         if (!new HashSet<>(checks).containsAll(autoFixChecks)) throw new IllegalArgumentException("autoFixChecks must be a subset of checks");
         List<String> capabilities = map.get("requiredCapabilities") == null ? List.of() : list(map.get("requiredCapabilities"), "requiredCapabilities", null);

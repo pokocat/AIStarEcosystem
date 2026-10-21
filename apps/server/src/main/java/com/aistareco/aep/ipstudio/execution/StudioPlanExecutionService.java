@@ -130,7 +130,9 @@ public class StudioPlanExecutionService {
         if(!stage.equals(loaded.rules().firstStage())||!stage.equals(loaded.plan().path("stage").asText()))
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
         skills.requireActive(loaded.rules().key());
-        if("production".equals(stage)&&(req.approachId()==null||!req.approachId().equals(loaded.plan().path("recommendedApproachId").asText(""))))
+        // A plan with approaches is confirmed for its recommended one; a direct skill's plan may have none (one image).
+        String recommended=loaded.plan().path("recommendedApproachId").asText(null);
+        if("production".equals(stage)&&recommended!=null&&!recommended.equals(req.approachId()))
             throw stale("确认的方案与当前计划不一致，请按所选方案重新生成计划后再确认");
         Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
         String confirmedThread=confirmation.threadId();
@@ -266,7 +268,9 @@ public class StudioPlanExecutionService {
         var loaded=loadPlan(userId,projectId,req.planRunId(),req.planFingerprint(),stage);
         if(!loaded.rules().key().equals(e.getSkillKey()))throw stale("新方案与这次制作使用的制作方法不一致，请结束这次制作后重新开始");
         skills.requireActive(loaded.rules().key());
-        if("production".equals(stage)&&(req.approachId()==null||!req.approachId().equals(loaded.plan().path("recommendedApproachId").asText(""))))
+        // A plan with approaches is confirmed for one of them; a direct skill's plan may have none (one image, one clip).
+        String recommended=loaded.plan().path("recommendedApproachId").asText(null);
+        if("production".equals(stage)&&recommended!=null&&!recommended.equals(req.approachId()))
             throw stale("确认的方案与当前计划不一致，请按所选方案重新生成计划后再确认");
         Confirmation confirmation=confirm(userId,projectId,req,billing,quotedTotal(loaded),byMessage);
         if(confirmation.threadId()!=null&&e.getThreadId()!=null&&!confirmation.threadId().equals(e.getThreadId()))throw stale("这条确认来自另一段对话");

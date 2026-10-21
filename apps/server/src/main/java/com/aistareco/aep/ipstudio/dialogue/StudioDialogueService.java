@@ -286,18 +286,27 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     private Started startTurn(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, BillingSelection billing, Long maxCost,
                               String skillKey, String requestedModel) {
         boolean mock = fixtures.enabled();
-        StudioSkill skill = null;
-        if (skillKey != null && !skillKey.isBlank()) {
-            // A thread without a skill may only pick an active one; a bound thread keeps working while its skill is a draft.
-            skill = thread.getSkillKey() == null ? catalog.requireForNewSelection(skillKey) : catalog.requireForNewWork(skillKey);
-            if (thread.getSkillKey() != null && !thread.getSkillKey().equals(skill.key()))
-                throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话已经在按另一种方法制作；要换方法，请从某条消息重新开始");
-        } else if (thread.getSkillKey() != null) {
-            skill = catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
-        } else {
-            skill = routeSkill(userId, thread, inputs); // S3: triggers → the best match; no match → none; a tie → default / 400 STUDIO_SKILL_REQUIRED
-        }
         var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
+        // The skill is bound per job, not per thread for good (意图直达 2026-10-20): while an execution is active its method
+        // stays; otherwise each message is routed again and may switch the thread to another method (画完图再写文案).
+        StudioSkill current = thread.getSkillKey() == null ? null : catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
+        StudioSkill skill;
+        boolean rebound = false;
+        if (skillKey != null && !skillKey.isBlank()) {
+            // Keeping the bound method only needs it not withdrawn (a draft keeps working); choosing another needs an active one.
+            skill = current != null && current.key().equals(skillKey) ? catalog.requireForNewWork(skillKey) : catalog.requireForNewSelection(skillKey);
+            if (current != null && !current.key().equals(skill.key())) {
+                if (bound != null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话正在按另一种方法制作；要换方法，请先结束这次制作，或从某条消息重新开始");
+                rebound = true;
+            } else rebound = current == null;
+        } else if (bound != null) {
+            skill = current;
+        } else {
+            // S3 routing: the best match; a tie → none (the model picks with read_skill); no hit → the current method stays.
+            StudioSkill routed = routeSkill(userId, thread, inputs, current);
+            skill = routed != null ? routed : current;
+            rebound = skill != null && (current == null || !current.key().equals(skill.key()));
+        }
         var gate = gates == null ? null : gates.getIfAvailable();
         // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread counts against its stage
         // budget (D06), so the turn is paid by that same account. A message naming another payer is refused; one naming
@@ -391,7 +400,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 .turnId(turnId).runId(runId).role("assistant").text("").blocksJson("[]").settling(!mock).status(IpDialogueMessage.STREAMING)
                 .createdAt(now).updatedAt(now).build());
         for (var m : inputs) { m.setTurnId(turnId); m.setRunId(runId); m.setStatus(IpDialogueMessage.DONE); m.setUpdatedAt(now); messages.save(m); }
-        if (skill != null && thread.getSkillKey() == null) { thread.setSkillKey(skill.key()); thread.setSkillVersion(skill.version()); }
+        if (skill != null && (thread.getSkillKey() == null || rebound)) { thread.setSkillKey(skill.key()); thread.setSkillVersion(skill.version()); }
         if (stage != null && bound == null) thread.setStage(stage);
         thread.setActiveTurnId(turnId); thread.setActiveRunId(runId); thread.setLastOpenedAt(now); thread.setUpdatedAt(now);
         threads.save(thread);
@@ -404,11 +413,12 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     }
 
     /**
-     * Intent routing for a thread that has no skill yet ({@link StudioSkillRouter}): the media types of the pinned and
-     * attached nodes and the message text against each active skill's triggers. A message that matches no skill stays
-     * unbound (「全能创作」) and the next one is routed again. The caller persists a choice on the thread.
+     * Intent routing for a message on a thread with no active execution ({@link StudioSkillRouter}): the media types of the
+     * pinned and attached nodes and the message text against each active skill's triggers. A message that matches no skill
+     * keeps the method the thread already has (or stays unbound, 「全能创作」); a tie leaves the choice to the model, which
+     * binds with read_skill. The caller persists a change on the thread.
      */
-    private StudioSkill routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs) {
+    private StudioSkill routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, StudioSkill current) {
         List<StudioSkill> active = catalog.available();
         if (active.isEmpty()) return null;
         Set<String> media = new LinkedHashSet<>();
@@ -421,8 +431,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 if (type != null) media.add(type);
             }
         }
-        StudioSkill chosen = StudioSkillRouter.route(active, media, text.toString()).orElse(null);
-        if (chosen != null) log.info("[dialogue] routed thread={} to skill={} v{} media={}", thread.getId(), chosen.key(), chosen.version(), media);
+        StudioSkill chosen = StudioSkillRouter.route(active, media, text.toString(), current).orElse(null);
+        if (chosen != null && (current == null || !current.key().equals(chosen.key())))
+            log.info("[dialogue] routed thread={} to skill={} v{} media={}", thread.getId(), chosen.key(), chosen.version(), media);
         return chosen;
     }
 
@@ -539,6 +550,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         store.write(threadId, t -> {
             t.setActiveExecutionId(executionId);
             if (stage != null) t.setStage(stage);
+            // A finished execution leaves no stage behind: the next job starts in its own skill's starting stage (a
+            // thread that kept 「production」 after unbinding made the next plan a stage confirmation with nothing to confirm).
+            else if (executionId == null) t.setStage(null);
             return List.of();
         });
     }

@@ -29,6 +29,8 @@ public class StudioSkillRules {
         public List<String> stageOperations(String stage) {return operations.getOrDefault(stage,List.of());}
         /** {@link StudioSkill#firstStage()}: production-only skills start (and stay) in production. */
         public String firstStage() {return StudioSkill.firstStage(operations);}
+        /** Same rule as {@code StudioSkill.direct()}: the production plan is proposed and confirmed directly. */
+        public boolean direct() {return "production".equals(firstStage());}
         /** The section of the body that explains how each check is judged; empty when the file has none. */
         public String checkGuide() {
             int start=body.indexOf("## 检查依据");

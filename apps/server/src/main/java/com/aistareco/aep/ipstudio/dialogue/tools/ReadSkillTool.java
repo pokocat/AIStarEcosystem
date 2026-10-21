@@ -24,7 +24,7 @@ public class ReadSkillTool implements StudioDialogueTool {
     public String description() { return "读取制作方法（技能）的完整说明并选定它。给出 key 即选定该方法（没有进行中的制作时，也可以换成另一种更合适的方法）；已选定时可省略 key。只选和用户要做的事对得上的方法，不为过流程挂不相关的方法。免费。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m);
-        DialogueTools.prop(s, "key", "string", "技能标识；已选定方法时可省略");
+        DialogueTools.prop(s, "key", "string", "技能标识；已选定方法且不换时可省略");
         return s;
     }
     public String validate(JsonNode args, ToolContext ctx) {

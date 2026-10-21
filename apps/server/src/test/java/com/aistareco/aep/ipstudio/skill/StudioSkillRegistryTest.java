@@ -76,7 +76,9 @@ class StudioSkillRegistryTest {
 
     String second() {
         return text.replace("key: reference-video-recreation", "key: script-rewrite").replace("name: 参考视频复刻", "name: 脚本改写")
-                .replace("  default: true\n", "").replace("media: [video]", "media: [text]").replace("keywords: [复刻, 拉片, 参考视频, 照着这条, 做同款, 翻拍]", "keywords: [改脚本, 文案]");
+                .replace("  default: true\n", "").replace("media: [video]", "media: [text]")
+                // Any keyword list: the seed's own list changes over time, and a literal replace that misses would leave the copy a duplicate.
+                .replaceFirst("keywords: \\[[^\\]\n]*\\]", "keywords: [改脚本, 文案]");
     }
 
     PublishRequest edit(String body, Integer expected) {

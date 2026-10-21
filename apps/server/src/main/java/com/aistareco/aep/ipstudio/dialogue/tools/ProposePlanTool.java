@@ -56,7 +56,7 @@ public class ProposePlanTool implements StudioDialogueTool {
         var s = DialogueTools.schema(m, "brief");
         DialogueTools.prop(s, "brief", "string", "用户目标、保留与替换范围、已知事实的整理，≤4000 字");
         DialogueTools.prop(s, "feedback", "string", "用户对上一版方案的反馈，≤2000 字");
-        DialogueTools.prop(s, "stage", "string", "analysis（分析方案）| production（制作方案）；省略为当前阶段。只有带分析阶段的方法（参考视频复刻）才需要先分析").putArray("enum").add("analysis").add("production");
+        DialogueTools.prop(s, "stage", "string", "analysis（分析方案）| production（制作方案：没有分析阶段的方法直接填它，否则要等分析完成）；省略为当前阶段").putArray("enum").add("analysis").add("production");
         return s;
     }
     public String validate(JsonNode args, ToolContext ctx) {
@@ -66,10 +66,9 @@ public class ProposePlanTool implements StudioDialogueTool {
         if (args.path("feedback").asText("").length() > 2000) return "feedback 不超过 2000 字";
         String stage = DialogueTools.text(args, "stage");
         if (stage != null && !java.util.Set.of("analysis", "production").contains(stage)) return "stage 只能是 analysis 或 production";
-        String first = ctx.skill().firstStage();
-        if ("analysis".equals(stage) && ctx.skill().stageOperations(StudioSkill.ANALYSIS).isEmpty())
-            return "「" + ctx.skill().name() + "」没有分析阶段，直接整理制作方案（stage 写 production 或省略）";
-        if ("production".equals(stage) && ctx.executionId == null && !"production".equals(first)) return "还没有进行中的分析，先整理并确认分析方案";
+        // A direct skill (no analysis operations) proposes its production plan straight away; the others only after analysis.
+        if ("production".equals(stage) && ctx.executionId == null && !ctx.skill().direct()) return "还没有进行中的分析，先整理并确认分析方案";
+        if ("analysis".equals(stage) && ctx.skill().direct()) return "这个方法没有分析阶段，stage 请填 production";
         return null;
     }
     public String safeInputSummary(JsonNode args, ToolContext ctx) {

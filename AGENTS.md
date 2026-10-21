@@ -509,6 +509,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **对话意图直达** | 2026-10-20 本地，未发布 | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
 | **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
 | **v0.205** | 2026-10-08 | Studio IP 人物库按人物汇总，素材详情/筛选/默认声音与精确版本引用；V45 素材分类与免费整理，浏览器恢复/账本验收通过。设定图系统提示词冲突已修，两次实图均未通过质量，未发布 |
@@ -518,7 +519,6 @@ pnpm check:api-contract
 | **v0.201** | 2026-10-07 | 画布完整生成历史与最近 50 版恢复；加入资产改云端并在顶部资产页显示；V39 文档 LONGTEXT，旧本人素材迁移，切页先保存 |
 | **v0.200** | 2026-10-07 | 接手整合开放修复 PR；名片完整资产归属、混剪下载边界、视频镜像退款、DAP afterCommit；发布 retry_count 走 V38，首次冻结保留裸 jobId 兼容在途任务 |
 | **v0.199.1** | 2026-10-04 | 视频生成区真厂商实测后的修补：厂商不给封面，worker 就从成片截一帧当封面（`MaterialVideoCover`，老任务启动时后台补），模板卡片不再是黑块；智能优化结果是英文时加一句说明，演示数据照真厂商改成英文。1:1 的 `square` 实测通过 |
-| **v0.199** | 2026-09-30 | 明星带货新增「AI 创作 → 视频生成」（`/studio/video`）：把 MiniMax H3 四种原生模式原样搬过来（文生 / 首帧 / 首尾帧 / 全能参考，768p·544p × 六种画布，5–15 秒），出片复用通用视频链（分区 `video-studio`）；价格我们自己定、后台「引擎定价 → 视频生成」可配；可选的提示词智能优化（默认勾上，优化完能改再生成）；作品存为模板、做同款（官方模板只有运营能发）；V37 两张新表；顺手修画布选模型不生效、非聚算协议丢首帧、老接口可夹带原生规格、对账错价、工作台底部被裁 |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -1110,6 +1110,17 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 成片页的「高级编辑」用 **Twick 0.15.31**（`@twick/studio` 等四个包，固定版本 + `patches/` 下两个 pnpm 补丁修无限重试），组件是 `src/ip/studio-advanced-editor.tsx`，经 `next/dynamic` 只在打开时加载、`createPortal` 到 body，手机端不开放。**Twick 只负责编辑和预览，不在浏览器里导出**：导出时 `toEditTimeline`（`src/canvas-bridge/studio-edit-timeline.ts`，纯函数）把工程转成 `StudioEditTimeline`（视频 / 音频 / 文字 / 字幕 + 起止秒），工作台 `assemble(edit)` 照常建 work 节点、提交 `operation:"assemble"` 带 `edit`，服务端 `StudioEditGraph`（纯函数生成 FFmpeg 参数）+ `DramaAssembleService.renderStudioEdit` 合成：视频按开始时间排一条主轨、后开始的截断前一段、空隙补黑；音频按时间延后补静音再混（amix 后乘回路数）；文字和字幕由 `StudioPackagingService` 画成整幅 PNG 按时间叠加，用户文字不进滤镜语法。`edit` 只许 assemble，clips / audios 的 key 逐个过 `requireOwnedAssetKey`，校验错误码 `STUDIO_EDIT_INVALID`。工程存在成片方案 `workDraft.advanced`（Twick ProjectJSON，媒体只存 `metadata.storageKey`，`props.src` 不落库）。**素材一律用 `fetchAssetBlob` 取成 Blob 再给 Twick**：线上 OSS 没配 CORS 而 Twick 播放时设了 crossOrigin，别改成直接给签名地址。Twick 的样式会改全局（`body`、`:root` 变量、和 Tailwind 同名的工具类），所以不直接引入，用 `scripts/scope-twick-css.mjs` 生成只在 `.twick-scope` 生效的 `twick-scoped.css`，升级 Twick 后重跑。Twick 取缩略图时往 `<body>` 挂屏幕外 `<video>` 不收，编辑器卸载时按我们的 blob 地址移走。同批服务端把「配音过长 / 字幕超时」挪到拼接之前判（`StudioPackagingService.precheck`）。证据：`StudioEditGraphTest`（真 ffmpeg）、`DramaAssembleStudioPrecheckTest`、`studio-edit-timeline.test.ts`、`studio-work-editor.test.tsx`、`studio-workspace.test.tsx`（导出带时间线、不带包装）；本地真服务端 + 浏览器走过「切开、删段、加文字、导出、刷新后继续编辑、改回一键成片」。
 
+### 对话意图直达 · 2026-10-20（本地，未发布；server + web-aiavatar）
+
+用户反馈「AI 对话里问太多」。真源 [`docs/ip-studio-dialogue-intents.md`](docs/ip-studio-dialogue-intents.md)。
+- **合并 main 时**：main 同日的「原创创作」`original-creation` 与出图触发词重叠，已改 `status: withdrawn`（文件保留以便下架库里的行）；直达判定统一为 `StudioSkill.firstStage()`，`direct()` 委托给它。
+- **四个技能**：出图 `image-generation`、写剧本与文案 `script-writing`、出视频 `video-generation` 是**直达技能**（`operations.analysis: []`，起始阶段 production）；参考视频复刻 `reference-video-recreation` 仍是分析 → 制作两阶段。
+- **直达技能一张卡**：方案和制作确认卡同一轮发出，卡上不带 `executionId`，点按钮或回「可以」直接以 production 建执行；写剧本与文案的短稿（1500 字内）当轮 `create_nodes` 放进画布，不发卡。前端 `approve()` 只在卡上带 `executionId` 时才当阶段确认，**不再回退到面板上最近一次执行的 id**。
+- **路由**（`StudioSkillRouter`）：关键词 ×2、素材类型 ×1，词优先于素材；唯一最高分胜出；没命中沿用当前技能、没有就不绑；平手沿用当前技能（在平手里时）否则不绑、由模型 `read_skill` 选，**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。
+- **按任务绑定**：没有活跃执行时每条消息重新路由，命中别的技能就换；有活跃执行时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。
+- **问题预算**：技能正文「必填与可选」是要不要问的唯一判据；必填缺且推不出才问，一轮一个，带候选和默认；可选项（画幅、张数、时长、风格、模型）一律用默认，不问不编。
+- **提示词改了**：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，不升线上不生效。演示 mock（`src/ip/mocks/studio-dialogue.ts`）已照服务端补三个直达技能与新路由。
+- **未做**：真模型端到端（上线前按真源 §7 触发评测集至少真调一遍，§8.0.1 ⑦）；配音 / 口型技能接入对话。
 ### Studio 生产问题五项 · 2026-10-20（server + web-aiavatar）
 
 已从干净 main `14260eea` 构建并发布 `20261021-studio-prod-fixes`；GPT 默认生图、视频仅 H3，Qwen 看图能力经合成图验证并声明。真实生图 / 视频未重跑；旧产品默认用途解绑的影响与验收边界见 `docs/releases/studio-prod-fixes-20261020.md`。

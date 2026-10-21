@@ -93,4 +93,34 @@ class StudioSkillCatalogTest {
         assertThrows(IllegalArgumentException.class, () -> StudioSkillExpression.evaluate("maxSegments / 0", Map.of("maxSegments", 8)));
         assertThrows(IllegalArgumentException.class, () -> StudioSkillExpression.evaluate("Runtime.exec()", Map.of()));
     }
+
+
+    /** 意图直达 2026-10-20: the three direct seed skills parse, have no analysis stage and need no checks. */
+    @Test void theDirectSeedSkillsParseAndStartInProduction() throws Exception {
+        for (String name : List.of("image-generation", "script-writing", "video-generation")) {
+            StudioSkill skill = StudioSkillCatalog.parse(Files.readString(Path.of("src/main/resources/studio/skills/" + name + ".md")));
+            assertEquals(name, skill.key());
+            assertEquals("active", skill.status());
+            assertTrue(skill.direct(), name + " has no analysis operations");
+            assertEquals("production", skill.firstStage());
+            assertTrue(skill.stageOperations("analysis").isEmpty());
+            assertFalse(skill.triggers().keywords().isEmpty(), name + " declares routing keywords");
+            assertTrue(skill.triggers().keywords().stream().allMatch(k -> k.length() >= 2), name + ": a one-character keyword matches too much (画 matches 画布)");
+            StudioSkill back = StudioSkill.fromSnapshot(skill.snapshot(new com.fasterxml.jackson.databind.ObjectMapper()));
+            assertTrue(back.direct(), "the snapshot keeps the stage shape");
+        }
+        var recreation = StudioSkillCatalog.parse(Files.readString(FILE));
+        assertFalse(recreation.direct());
+        assertEquals("analysis", recreation.firstStage());
+        var catalog = new StudioSkillCatalog();
+        assertEquals(4, catalog.list().size(), "all four repository skills are offered");
+    }
+
+    @Test void checksMayBeEmptyOnlyForASkillThatNeverChecks() throws Exception {
+        String image = Files.readString(Path.of("src/main/resources/studio/skills/image-generation.md"));
+        assertTrue(StudioSkillCatalog.parse(image).checks().isEmpty());
+        String withCheck = image.replace("production: [text, image]", "production: [text, image, check]");
+        var e = assertThrows(IllegalArgumentException.class, () -> StudioSkillCatalog.parse(withCheck));
+        assertTrue(e.getMessage().contains("checks must not be empty"), e.getMessage());
+    }
 }

@@ -2,7 +2,7 @@
 key: original-creation
 name: 原创创作
 version: 1
-status: active
+status: withdrawn
 planning: dynamic
 summary: 没有参考视频、从用户的想法和素材直接做：人物三视图与设定图、海报和场景图、原创短视频片段。先把想法聊清楚，再按服务端报价请用户确认后出图出片。
 methodExamples:
@@ -27,6 +27,8 @@ requiredCapabilities: [image-generation]
 triggers:
   keywords: [原创, 三视图, 设定图, 角色设计, 形象设计, 出图, 生图, 画一张, 海报, 原创视频]
 ---
+
+> 已由「出图」「写剧本与文案」「出视频」替代，2026-10-20。本文件保留只为把已种进库的这一行下架（删文件不会下架）。
 
 # 原创创作
 
