@@ -4,7 +4,7 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 新建画布、多段对话与卡片精简 · 2026-10-20 · 本地，未发布（server + web-aiavatar）
+### Studio 新建画布、多段对话与卡片精简 · 2026-10-20 · 2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`（server + web-aiavatar）
 
 背景：用户反馈三件事加一轮文案意见。「新建」各处不一样（项目页「新建创作」先跳 `/create`，那页还要在全能创作 / 图片 / 视频 / 剧本里选一个再填想法）；助手默认打开后旧空态被藏起来，空白画布没有任何提示；助手没有「新对话」和「历史对话」；卡片废话多，把判断过程和计费逻辑都摆给用户看。设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](ip-studio-new-canvas-and-threads.md)，取代 `ip-studio-conversational-video-recreation-plan.md` §对话形态里「每张画布一段对话、没有新对话和历史」那一句。
 

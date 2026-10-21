@@ -509,7 +509,7 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
-| **新建画布与多段对话** | 2026-10-20 本地，未发布 | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
+| **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
 | **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
@@ -1125,7 +1125,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **看图要真看**：素材清单不含画面；描述图片内容只能经 `view_images`（本人 key、内联字节、对话端点须声明 `supportsVision`、计入本轮预算）。
 - **失败节点只有一个恢复入口**；`VIDEO_MODEL_RETIRED` 的模型不再被预选或重投（服务端冻结前也拒绝）。
 
-### 新建画布、多段对话与卡片精简 · 2026-10-20（本地，未发布；server + web-aiavatar）
+### 新建画布、多段对话与卡片精简 · 2026-10-20（2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`；server + web-aiavatar）
 
 真源 [`docs/ip-studio-new-canvas-and-threads.md`](docs/ip-studio-new-canvas-and-threads.md)。上面「创作助手改版」「对话优先的创作入口」「画布页改版」里与此冲突的写法以本节为准。
 - **新建只有一条路**：所有「新建创作 / 新建画布 / 新建空白画布 / 创建空白画布」都调 `startNewCanvas()`（`src/ip/studio-entry.ts`；页面经 `use-start-new-canvas.ts` 加锁，连点、StrictMode 双跑只建一张），进 `/projects/{id}?start=assistant`，桌面助手停靠打开。最近一张仍叫「空白画布 · 新画布」、2 小时内建、没有节点也没有 `assistantConversations` 的画布直接复用，判断失败就新建。桌面 `/create` 进来即 `router.replace` 到画布；手机 `/create` 保留页面，只有 `StudioConversationStart` + 能力入口 + 模板（`studio-creation-brief.tsx` 已删）。形态按 `useLayoutMode()`，不写媒体查询。
