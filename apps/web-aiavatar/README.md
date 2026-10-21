@@ -1047,7 +1047,7 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 
 设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](../../docs/ip-studio-new-canvas-and-threads.md)。
 
-- **新建画布**：`startNewCanvas()`（`src/ip/studio-entry.ts`）是所有「新建创作 / 新建画布 / 新建空白画布 / 创建空白画布」的唯一入口，页面用 `src/ip/use-start-new-canvas.ts`（锁、失败重试、未开通识别）。进 `/projects/{id}?start=assistant`；2 小时内建、仍叫「空白画布 · 新画布」、没有节点也没有对话的最近一张直接复用。桌面 `/create` 进来即替换到画布（失败给重试和「去项目页」），手机 `/create` 只留对话框、能力入口和模板。`studio-creation-brief.tsx` 已删；首页「全部画布」改指 `/projects`。
+- **新建画布**：`startNewCanvas()`（`src/ip/studio-entry.ts`）是所有「新建创作 / 新建画布 / 新建空白画布 / 创建空白画布」的唯一入口，页面用 `src/ip/use-start-new-canvas.ts`（锁、失败重试、未开通识别）。进 `/projects/{id}?start=assistant`；2 小时内建、仍叫「空白画布 · 新画布」、没有节点也没有对话的最近一张直接复用。桌面 `/create` 进来即替换到画布（失败给重试和「去项目页」），手机 `/create` 只留对话框、能力入口和模板（2026-10-21 改为桌面和手机同一页：「新建画布」卡片 + 能力入口（不含空白画布）+ 模板，进来不建画布，没有对话框，见 `docs/ip-studio-new-canvas-and-threads.md` §2.2）。`studio-creation-brief.tsx` 已删；首页「全部画布」改指 `/projects`。
 - **空白画布引导**：`src/ip/studio-canvas-guide.tsx`，无节点、画布视图、没有创作浮层时显示在可见区域中间；五个入口（文字 / 图片生成 / 视频生成 / 配音 / 上传素材）和「从模板开始」都发 `studio-command`，与左栏「＋添加」同一条路径。旧空态并入。
 - **新对话 / 历史对话**：`src/ip/studio-dialogue-threads.tsx` 挂在助手头部（`StudioFloatingPanel` 新增 `actions` 插槽），接 `GET|POST /v1/ip-studio/projects/{id}/conversations`、`GET …/conversations/{threadId}`（`canvas-bridge/studio-dialogue.ts`）。新对话保留输入框里的字、引用、附件和模型；当前对话在回复或制作时不能新建也不能切换。演示 mock 同步三个接口。
 - **卡片与文案**：方案与确认卡合成一张，只显示做什么、一个积分数字和按钮；判断过程（`rationale` / `tradeoffs`）、上限、预留、过期时间、技能版本不显示，上限输入只在预算不够时出现；不再提示「直接回复可以也行」（打字确认照旧）。开场段落、「第一次用？」链接、一次性提示「结果放进画布了…」删除；输入框占位、发送键提示、每条回复积分、进度条与回复状态的文案收短。完成总结只一句结果和总花费；「放进画布」不给完成总结、system 消息和已建 / 改过节点的回复，正文门槛 80 字。

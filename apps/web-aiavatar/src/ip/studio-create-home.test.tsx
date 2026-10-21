@@ -98,7 +98,7 @@ describe("Creation catalogue", () => {
   it("opens a workflow template read-only without creating a canvas", async () => {
     render(<StudioCreateHome />);
     expect(screen.queryByRole("group", { name: "创作工作区" })).toBeNull();
-    expect(screen.getByRole("textbox", { name: "想做什么" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
     expect(screen.queryByRole("searchbox", { name: "搜索我的画布" })).toBeNull();
     expect(within(screen.getByRole("navigation", { name: "工作台导航" })).getByRole("link", { name: "项目", exact: true }).getAttribute("href")).toBe("/projects");
     expect(mocks.projects).not.toHaveBeenCalled();
@@ -110,25 +110,28 @@ describe("Creation catalogue", () => {
     expect(mocks.create).not.toHaveBeenCalled();
     expect(screen.getByRole("link", { name: "更多模板" }).getAttribute("href")).toBe("/templates");
   });
-  // §2.1: the phone page's 「空白画布」 tool is the shared 「新建」 (reuse rule, opened with the assistant).
-  it("guards rapid blank-canvas creation and opens the new canvas with the assistant", async () => {
+  // §2.1/§2.2: the 「新建画布」 card is the shared 「新建」 (reuse rule, opened with the assistant).
+  it("guards rapid 「新建画布」 clicks, keeps the other entries busy and opens the new canvas with the assistant", async () => {
     let resolve!: (p: any) => void;
     mocks.create.mockReturnValue(new Promise(r => { resolve = r; }));
     render(<StudioCreateHome />);
-    const button = await screen.findByRole("button", { name: "空白画布", exact: true });
+    const button = await screen.findByRole("button", { name: "新建画布" });
     fireEvent.click(button); fireEvent.click(button);
     await waitFor(() => expect(mocks.create).toHaveBeenCalledTimes(1));
     expect(mocks.create).toHaveBeenCalledWith({ name: "空白画布 · 新画布" });
-    expect((screen.getByRole("button", { name: "空白画布", exact: true }) as HTMLButtonElement).disabled).toBe(true);
+    const card = screen.getByRole("button", { name: "新建画布" }) as HTMLButtonElement;
+    expect(card.disabled).toBe(true);
+    expect(card.getAttribute("aria-busy")).toBe("true");
+    expect((screen.getByRole("button", { name: "图片创作" }) as HTMLButtonElement).disabled).toBe(true);
     resolve({ id: "P-new", doc });
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
     expect(mocks.update).not.toHaveBeenCalled();
   });
-  it("the phone 「空白画布」 tool reuses an untouched blank canvas from the last two hours", async () => {
+  it("「新建画布」 reuses an untouched blank canvas from the last two hours", async () => {
     mocks.projects.mockResolvedValue([{ ...projects[0], id: "P-blank", name: "空白画布 · 新画布", createdAt: new Date(Date.now() - 60_000).toISOString() }]);
     mocks.get.mockResolvedValue({ id: "P-blank", docVersion: "v1", doc: { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } } });
     render(<StudioCreateHome />);
-    fireEvent.click(await screen.findByRole("button", { name: "空白画布", exact: true }));
+    fireEvent.click(await screen.findByRole("button", { name: "新建画布" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-blank?start=assistant"));
     expect(mocks.create).not.toHaveBeenCalled();
   });
@@ -187,36 +190,42 @@ describe("Template market", () => {
 });
 
 
-describe("Creation idea moved from home", () => {
-  it("the phone page has only the conversation box: no mode switch, the brief is sent as the first message", async () => {
+// docs/ip-studio-new-canvas-and-threads.md §2.2 (2026-10-21): /create is a page again on both forms, with no mode switch and
+// no conversation box (the home page has that box).
+describe("Creation page", () => {
+  it("has no mode switch and no conversation box, and the tools no longer list the blank canvas", async () => {
     render(<StudioCreateHome/>);
     expect(screen.queryByRole('group', { name:'创作方式' })).toBeNull();
     expect(screen.queryByRole('textbox', { name:'创作想法' })).toBeNull();
-    fireEvent.change(screen.getByRole('textbox', { name:'想做什么' }), { target:{value:'让小紫介绍灵感杯'} });
+    expect(screen.queryByRole('textbox', { name:'想做什么' })).toBeNull();
+    expect(screen.queryByRole('button', { name:'开始对话' })).toBeNull();
+    const tools = screen.getByRole("navigation", { name: "快速开始创作" });
+    expect(within(tools).queryByRole('button', { name:'空白画布' })).toBeNull();
+    expect(within(tools).getAllByRole('button').map(b => b.getAttribute('aria-label'))).toEqual(['图片创作','视频创作','剧本创编','解析视频','导演执导','成片编辑','人物配音','数字人口型','IP 人物库']);
+    // The card comes first, above the tools.
+    const card = screen.getByRole('button', { name:'新建画布' });
+    expect(card.compareDocumentPosition(tools) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.getAttribute('aria-describedby') && document.getElementById(card.getAttribute('aria-describedby')!)?.textContent).toBe('一张空白画布，打开就有助手，直接开始。');
+    await screen.findByRole("button", { name: "预览模板 IP 商品视频" });
     expect(mocks.create).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name:'开始对话' }));
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=assistant&send=1'));
-    expect(mocks.update.mock.calls[0][1].doc.assistantConversations.at(-1).metadata.prompt).toBe('让小紫介绍灵感杯');
-    expect(screen.getByRole("navigation", { name: "快速开始创作" })).toBeTruthy();
   });
-  it("retains a failed idea save and retries the same created workspace", async () => {
-    mocks.update.mockRejectedValueOnce(new Error('保存失败'));
+  it("a tool opens its own free canvas with its panel, and a failure leaves the page usable", async () => {
+    mocks.create.mockRejectedValueOnce(new Error('网络断开'));
     render(<StudioCreateHome/>);
-    fireEvent.change(screen.getByRole('textbox', { name:'想做什么' }), { target:{value:'保留这段创作想法'} });
-    fireEvent.click(screen.getByRole('button', { name:'开始对话' }));
-    await screen.findByText(/画布已创建，重试/);
-    expect((screen.getByRole('textbox', { name:'想做什么' }) as HTMLTextAreaElement).value).toBe('保留这段创作想法');
-    expect(screen.getByRole('textbox', { name:'想做什么' }).hasAttribute('disabled')).toBe(true);
-    fireEvent.click(screen.getByRole('button', { name:'继续保存并打开' }));
-    // A brief typed here is sent by the canvas as the first message (dialogue-first start).
-    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=assistant&send=1'));
-    expect(mocks.create).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name:'图片创作' }));
+    await waitFor(() => expect((screen.getByRole('button', { name:'图片创作' }) as HTMLButtonElement).disabled).toBe(false));
+    expect(mocks.push).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name:'图片创作' }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith('/projects/P-new?start=image'));
+    expect(mocks.create).toHaveBeenLastCalledWith({ name: '图片创作 · 新画布' });
+    expect(mocks.update).not.toHaveBeenCalled();
   });
 });
 
 beforeEach(() => { mountStudioErrorNotifications(); });
 
-// docs/ip-studio-new-canvas-and-threads.md §2.2: 「新建」 opens a canvas directly; the desktop /create is that hand-off.
+// docs/ip-studio-new-canvas-and-threads.md §2.2: 「新建」 opens a canvas directly; on /create that is the 「新建画布」 card,
+// clicked by the user (the page no longer hands off to a canvas by itself).
 describe("New canvas entries", () => {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
   it("项目页「新建创作」 creates one canvas and opens it with the assistant, busy while it runs", async () => {
@@ -253,38 +262,49 @@ describe("New canvas entries", () => {
     fireEvent.click(screen.getByRole("button", { name: "新建创作" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
   });
-  it("desktop /create opens a new canvas at once with replace, once even under StrictMode", async () => {
+  it("desktop /create shows the page and creates nothing until 「新建画布」 is clicked, then one canvas even under StrictMode", async () => {
     mocks.layout = "desktop";
     render(<StrictMode><StudioCreateHome/></StrictMode>);
-    expect(screen.getByText("正在打开新画布…")).toBeTruthy();
-    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
-    expect(mocks.create).toHaveBeenCalledTimes(1);
+    const card = await screen.findByRole("button", { name: "新建画布" });
+    await screen.findByRole("button", { name: "预览模板 IP 商品视频" });
+    expect(screen.queryByText("正在打开新画布…")).toBeNull();
+    expect(mocks.create).not.toHaveBeenCalled();
+    expect(mocks.replace).not.toHaveBeenCalled();
     expect(mocks.push).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
-    expect(mocks.templates).not.toHaveBeenCalled();
+    fireEvent.click(card);
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    expect(mocks.create).toHaveBeenCalledTimes(1);
+    expect(mocks.replace).not.toHaveBeenCalled();
   });
-  it("desktop /create shows the reason, a retry and the way to the projects page when it fails", async () => {
+  it("/create shows why a new canvas failed and the card can be clicked again", async () => {
     mocks.layout = "desktop";
     mocks.create.mockRejectedValueOnce(new Error("服务暂时不可用"));
     render(<StudioCreateHome/>);
-    await screen.findByText("服务暂时不可用");
-    expect(screen.getByRole("link", { name: "去项目页" }).getAttribute("href")).toBe("/projects");
-    fireEvent.click(screen.getByRole("button", { name: "重试" }));
-    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
+    await screen.findByText(/新画布没有创建成功/);
+    expect(mocks.push).not.toHaveBeenCalled();
+    await waitFor(() => expect((screen.getByRole("button", { name: "新建画布" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
+    await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new?start=assistant"));
     expect(mocks.create).toHaveBeenCalledTimes(2);
   });
-  it("desktop /create shows the enrolment screen when the product is not enabled", async () => {
+  it("/create shows the enrolment screen when the product is not enabled", async () => {
     mocks.layout = "desktop";
     mocks.create.mockRejectedValueOnce(new ApiError({ code: "PRODUCT_NOT_ENROLLED", message: "未开通" }, 403));
     render(<StudioCreateHome/>);
+    fireEvent.click(screen.getByRole("button", { name: "新建画布" }));
     await screen.findByText("开通产品");
-    expect(mocks.replace).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
   });
-  it("/create waits for the layout before creating anything", () => {
-    mocks.layout = null;
-    render(<StudioCreateHome/>);
+  it("/create creates nothing on load, whatever the layout", async () => {
+    for (const layout of [null, "mobile", "desktop"] as const) {
+      mocks.layout = layout;
+      render(<StudioCreateHome/>);
+      expect(screen.getByRole("button", { name: "新建画布" })).toBeTruthy();
+      await screen.findByRole("button", { name: "预览模板 IP 商品视频" });
+      cleanup();
+    }
     expect(mocks.create).not.toHaveBeenCalled();
     expect(mocks.projects).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
   });
 });

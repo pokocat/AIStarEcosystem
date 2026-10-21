@@ -35,11 +35,14 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('aria-label="使用说明"');
   expect(read('ip/studio-dialogue-execution.tsx')).toContain('role="progressbar"');
   expect(read('ip/studio-flow-canvas.tsx')).toContain("detail.action === 'focus'");
-  // Dialogue-first start: the home hero, the mobile home and the creation page all open on the conversation box,
-  // the canvas sends the brief by itself, and the assistant's new nodes come into view.
+  // Dialogue-first start: the home hero and the mobile home open on the conversation box, the canvas sends the brief by
+  // itself, and the assistant's new nodes come into view. The creation page (/create) has no box of its own: its first
+  // entry is the 「新建画布」 card, the shared startNewCanvas() (docs/ip-studio-new-canvas-and-threads.md §2.2).
   expect(read('components/landing/ip-home.tsx')).toContain('<StudioConversationStart ');
   expect(read('components/hub/studio-home.tsx')).toContain('<StudioConversationStart ');
-  expect(read('ip/studio-create-home.tsx')).toContain('<StudioConversationStart ');
+  expect(read('ip/studio-create-home.tsx')).not.toContain('StudioConversationStart');
+  expect(read('ip/studio-create-home.tsx')).toContain('className="studio-create-new" aria-label="新建画布"');
+  expect(read('ip/studio-create-home.tsx')).not.toContain('router.replace');
   expect(read('ip/studio-workspace.tsx')).toContain('autoSend={entryAutoSend}');
   expect(read('ip/studio-workspace.tsx')).toContain('>问助手</button>');
   // The empty canvas shows one guide card (docs/ip-studio-new-canvas-and-threads.md §2.3), with the assistant open or closed.
