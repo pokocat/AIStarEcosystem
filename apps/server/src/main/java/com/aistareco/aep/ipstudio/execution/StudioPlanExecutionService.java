@@ -147,11 +147,12 @@ public class StudioPlanExecutionService {
         loaded.contextNodeIds().forEach(canvas::add);
         ArrayNode steps=state.putArray("steps");
         appendSteps(steps,loaded,stage);
+        String threadId=confirmedThread!=null?confirmedThread:loaded.threadId();
+        bindTargets(userId,projectId,steps,stage,threadId,id);
         ObjectNode budget=mapper.createObjectNode();
         ObjectNode first=stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now);
         if("production".equals(stage))first.put("approachId",req.approachId());
         budget.set(stage,first);
-        String threadId=confirmedThread!=null?confirmedThread:loaded.threadId();
         var row=IpPlanExecution.builder().id(id).projectId(projectId).ownerUserId(userId).threadId(threadId)
                 .skillKey(loaded.rules().key()).skillVersion(loaded.rules().version()).stage(stage)
                 .planRunId(loaded.planRunId()).planRevision(confirmation.card().cardPlanRevision()).planFingerprint(req.planFingerprint())
@@ -215,6 +216,7 @@ public class StudioPlanExecutionService {
         if(confirmedThread!=null&&e.getThreadId()!=null&&!confirmedThread.equals(e.getThreadId()))throw stale("这条确认来自另一段对话");
         long quoted=requireWithinBudget(loaded,req.budgetCap(),"production");
         appendSteps((ArrayNode)state.withArray("steps"),loaded,"production");
+        bindTargets(userId,projectId,(ArrayNode)state.withArray("steps"),"production",e.getThreadId()!=null?e.getThreadId():confirmedThread!=null?confirmedThread:loaded.threadId(),e.getId());
         state.remove("needsUserReason");
         markSteeringSeen(e,state);
         ObjectNode production=stageBudget(req,fingerprint,loaded,confirmation.card().cardPlanRevision(),quoted,now);
@@ -303,6 +305,10 @@ public class StudioPlanExecutionService {
             if(old!=null&&Set.of("submitted","running").contains(old.path("status").asText()))
                 throw stale("「"+old.path("title").asText()+"」还在生成中，新方案要改它，等它做完后再确认");
             ObjectNode step=newStep(entry.getValue(),loaded,stage);
+            // A redone step keeps the object it filled, unless the revision names another one for it.
+            String keptNode=old==null?"":old.path("nodeId").asText("");
+            String named=entry.getValue().path("targetNodeId").asText("");
+            if(!keptNode.isBlank()&&(named.isBlank()||named.equals(keptNode)))step.put("nodeId",keptNode);
             if(old!=null&&ran(old)) {
                 // A new attempt: a new request identity; the earlier runs stay counted in the stage budget.
                 step.put("attempt",old.path("attempt").asInt(1)+1);
@@ -322,6 +328,7 @@ public class StudioPlanExecutionService {
         long spent=current.path("spent").asLong(),inFlight=current.path("inFlight").asLong();
         if(req.budgetCap()<Math.addExact(Math.addExact(spent,inFlight),toRun))throw budgetExceeded(stage,spent,inFlight,toRun,req.budgetCap());
         state.set("steps",next);
+        bindTargets(userId,projectId,next,stage,e.getThreadId(),e.getId());
         state.remove("needsUserReason");
         markSteeringSeen(e,state);
         current.put("approvedCap",req.budgetCap()).put("autoFixCap",req.autoFixCap()).put("quoted",quotedTotal(loaded))
@@ -621,6 +628,38 @@ public class StudioPlanExecutionService {
             steps.add(newStep(definition,loaded,stage));
         }
     }
+    /**
+     * §6.1: the new steps of {@code stage} fill the canvas objects prepared for their results instead of a second node
+     * beside them (StudioPlanValidator.bindTargets against the saved canvas; the client saves it before it confirms). A
+     * bound step's {@code nodeId} is its result node for the native run, the projection and the restore. A target that
+     * no longer fits is dropped with a log line, never an error: the step then gets its own node as before.
+     */
+    private void bindTargets(String userId,String projectId,ArrayNode steps,String stage,String threadId,String executionId) {
+        List<ObjectNode> fresh=new ArrayList<>();Set<String> occupied=new HashSet<>();
+        for(JsonNode raw:steps) {
+            String node=raw.path("nodeId").asText("");
+            if(!node.isBlank()){occupied.add(node);continue;}
+            if(stage.equals(raw.path("stage").asText())&&"pending".equals(raw.path("status").asText())&&raw.path("runIds").isEmpty())fresh.add((ObjectNode)raw);
+        }
+        if(fresh.isEmpty())return;
+        JsonNode doc=projects.readDoc(projects.required(userId,projectId));
+        Set<String> assistant=null;
+        if(threadId!=null)for(var source:sources.orderedStream().toList()) {
+            var ids=source.assistantNodeIds(threadId);
+            if(ids==null)continue;
+            if(assistant==null)assistant=new LinkedHashSet<>();
+            assistant.addAll(ids);
+        }
+        var binding=StudioPlanValidator.bindTargets(fresh,doc,assistant,occupied);
+        for(String dropped:binding.dropped())log.info("[plan-exec] target dropped execution={} {}",executionId,dropped);
+        for(ObjectNode step:fresh) {
+            String node=binding.bound().get(step.path("id").asText());
+            if(node==null)continue;
+            step.put("nodeId",node);
+            log.info("[plan-exec] step bound execution={} stage={} step={} node={} named={}",executionId,stage,step.path("id").asText(),node,
+                    node.equals(step.path("definition").path("targetNodeId").asText(null)));
+        }
+    }
     private ObjectNode newStep(JsonNode definition,LoadedPlan loaded,String stage) {
         var step=mapper.createObjectNode().put("id",definition.path("id").asText()).put("stage",stage).put("title",definition.path("title").asText())
                 .put("operation",definition.path("operation").asText()).put("execution",definition.path("execution").asText("auto"))
@@ -713,7 +752,7 @@ public class StudioPlanExecutionService {
                     depends,step.path("status").asText(),runIds,step.path("attempt").asInt(1),step.path("quotedCost").asLong(),
                     step.hasNonNull("maxCost")?step.path("maxCost").asLong():null,step.path("acceptedRunId").asText(null),
                     step.hasNonNull("acceptedCandidateIndex")?step.path("acceptedCandidateIndex").asInt():null,
-                    StudioPlanExecutionIds.nodeId(e.getId(),step.path("stage").asText(),step.path("id").asText()),step.path("reason").asText(null)));
+                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null)));
         }
         List<PlanExecutionBudget> budgets=new ArrayList<>();
         for(String stage:List.of("analysis","production")) {

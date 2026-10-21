@@ -77,3 +77,28 @@ export function studioSpecVideoDraft<T extends { mode: string; firstId?: string;
 export function mergeStudioSpec(prior: StudioNodeSpec | undefined, next: StudioNodeSpec): StudioNodeSpec {
   return { ...prior, ...next, ...(next.references ? {} : prior?.references ? { references: prior.references } : {}) };
 }
+
+const COMMON_RATIOS = ["1:1", "9:16", "16:9", "3:4", "4:3", "2:3", "3:2", "21:9", "4:5", "5:4"];
+const ratioOf = (ratio: string) => { const m = ratio.match(/^([1-9]\d*):([1-9]\d*)$/); return m ? Number(m[1]) / Number(m[2]) : undefined; };
+/** Within 2% counts as the same 画幅: the rule the server crops by (StudioFrameCrop.TOLERANCE). */
+const sameShape = (a: number, b: number) => Math.abs(a - b) / b <= 0.02;
+
+/** A picture's 画幅 in words: the common ratio it is within 2% of (1024×1024 → 1:1), else its size. */
+export function studioShapeLabel(width: number, height: number): string {
+  const actual = width / height;
+  return COMMON_RATIOS.find(r => sameShape(actual, ratioOf(r)!)) || `${width}×${height}`;
+}
+
+/**
+ * The first frame and the clip have different shapes (docs/ip-studio-new-canvas-and-threads.md §6.2): the server crops the
+ * frame around its centre to the chosen 画幅 (never stretches it; production 2026-10-21 IPP-655ea55a came back stretched).
+ * Said next to the send button, not blocking; 「改成 X」 only when the chosen model can make the frame's own 画幅.
+ */
+export function studioFrameCropNotice(frame: { width: number; height: number } | undefined, ratio: string, supported: string[]): { text: string; fix?: string } | undefined {
+  const target = ratioOf(ratio);
+  if (!frame || !(frame.width > 0) || !(frame.height > 0) || !target) return undefined;
+  const actual = frame.width / frame.height;
+  if (sameShape(actual, target)) return undefined;
+  const fix = supported.find(r => { const v = ratioOf(r); return v !== undefined && sameShape(actual, v); });
+  return { text: `首帧图是 ${studioShapeLabel(frame.width, frame.height)}，会按 ${ratio} 居中裁剪`, ...(fix ? { fix } : {}) };
+}

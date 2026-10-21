@@ -149,7 +149,17 @@ test('skill routing: words outrank media, and a message without a hit stays on t
   flow.stop();
 }, 20000);
 
+/** What the canvas does with the turn's node.upsert before it confirms (the panel saves first): the draft is in the saved document. */
+function saveDrafts(projectId: string, events: StudioDialogueEvent[]) {
+  const doc = mockStore().projects.get(projectId)!.doc;
+  for (const e of events) {
+    const u = e.data as StudioNodeUpsertData;
+    if (e.type === 'node.upsert' && u.op === 'create' && u.node && !doc.nodes.some(n => n.id === u.nodeId)) doc.nodes.push(u.node);
+  }
+}
+
 test('a direct skill: plan and production card in one reply, the card names no execution and starting it runs production at once', async () => {
+  canvasWith('img', []);
   const state = await mockDialogueConversation('img');
   let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace' });
   const events: StudioDialogueEvent[] = [];
@@ -157,12 +167,17 @@ test('a direct skill: plan and production card in one reply, the card names no e
   await mockDialoguePost('img', state.thread.id, { clientMessageId: 'c1', text: '画一张国风少女海报，9:16' });
   await until(events, e => e.type === 'turn.done');
   const reply = store.messages.find(m => m.role === 'assistant')!;
-  expect(reply.blocks.map(b => b.type)).toEqual(['plan', 'approval']);
+  // Like the real assistant: the object for the picture goes on the canvas first (create_nodes), then plan and card.
+  expect(reply.blocks.map(b => b.type)).toEqual(['tool_call', 'plan', 'approval']);
+  const draft = events.map(e => e.data as StudioNodeUpsertData).find(u => u.op === 'create')!;
+  expect(draft.node).toMatchObject({ type: 'image', metadata: { studio: { spec: { aspectRatio: '9:16', source: 'assistant' } } } });
+  saveDrafts('img', events);
   const card = reply.blocks.find((b): b is DialogueApprovalBlock => b.type === 'approval')!;
   expect(card.stage).toBe('production');
   expect(card.executionId).toBeUndefined();
   const plan = planForApproval(store, card)!;
   expect(plan.plan).toMatchObject({ stage: 'production', skillKey: 'image-generation', skillVersion: 1 });
+  expect(plan.plan.steps[0].targetNodeId).toBe(draft.nodeId);
   expect(plan.plan.approaches).toBeUndefined();
   // A plan that is not a direct skill's still needs its analysis first.
   expect(await Promise.resolve().then(() => mockExecutionCreate('img', { clientRequestId: 'bad', stage: 'production', planRunId: 'mock-plan-analysis', planFingerprint: 'x', budgetCap: 10, autoFixCap: 0 })).catch(e => e))
@@ -177,9 +192,15 @@ test('a direct skill: plan and production card in one reply, the card names no e
   expect(execution).toMatchObject({ stage: 'production', status: 'done', skillKey: 'image-generation', planRunId: plan.planRunId });
   expect(execution.budgets.map(b => b.stage)).toEqual(['production']);
   expect(execution.steps.map(s => [s.operation, s.stage, s.status])).toEqual([['image', 'production', 'done']]);
-  const creates = events.filter(e => e.type === 'node.upsert').map(e => e.data as StudioNodeUpsertData).filter(u => u.op === 'create');
-  expect(creates.map(u => [u.nodeId, u.node?.type])).toEqual([[`${execution.id}-p-d1`, 'image']]);
-  expect(mockReadRun(execution.steps[0].runIds.at(-1)!).status).toBe('done');
+  // §6.1: the result fills the draft; no second node beside it, and it carries the prompt it was sent with.
+  expect(execution.steps[0].nodeId).toBe(draft.nodeId);
+  const upserts = events.filter(e => e.type === 'node.upsert').map(e => e.data as StudioNodeUpsertData);
+  expect(upserts.filter(u => u.op === 'create').map(u => u.nodeId)).toEqual([draft.nodeId]);
+  const filled = upserts.find(u => u.op === 'update' && u.executionId === execution.id)!;
+  expect(filled.nodeId).toBe(draft.nodeId);
+  expect(filled.node?.metadata).toMatchObject({ prompt: plan.plan.steps[0].prompt, studio: { mediaFit: { aspectRatio: '9:16' } } });
+  expect(upserts.some(u => u.nodeId === `${execution.id}-p-d1`)).toBe(false);
+  expect(mockReadRun(execution.steps[0].runIds.at(-1)!)).toMatchObject({ status: 'done', nodeId: draft.nodeId });
   // Zero credits in the demo; the summary is keyed by its execution.
   expect(events.filter(e => e.type === 'turn.done').every(e => (e.data as { billing?: { credits: number } }).billing?.credits === 0)).toBe(true);
   expect(completionExecutionId((await mockDialogueConversation('img')).messages.at(-1)!)).toBe(execution.id);
@@ -192,7 +213,7 @@ test('one finished clip is already the whole video: no 「合成一条成片」 
   const stop = mockDialogueSubscribe('clip', state.thread.id, 0, e => { events.push(e); store = dialogueReducer(store, { type: 'event', event: e }); });
   await mockDialoguePost('clip', state.thread.id, { clientMessageId: 'c1', text: '做一条 5 秒的产品短片' });
   await until(events, e => e.type === 'turn.done');
-  expect(store.messages.find(m => m.role === 'assistant')!.blocks.map(b => b.type)).toEqual(['plan', 'approval']);
+  expect(store.messages.find(m => m.role === 'assistant')!.blocks.map(b => b.type)).toEqual(['tool_call', 'plan', 'approval']);
   await mockDialoguePost('clip', state.thread.id, { clientMessageId: 'c2', text: '可以' });
   await until(events, e => e.type === 'turn.done' && (e.data as { reason: string }).reason === 'completed');
   stop();

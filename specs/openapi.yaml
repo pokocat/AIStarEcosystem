@@ -468,6 +468,7 @@ components:
               content: { type: string, maxLength: 16000, description: text 步骤必填的完整文字初稿，采用时不再次调用模型。 }
               dependsOn: { type: array, maxItems: 12, items: { type: string }, description: 仅引用本方案中更早的步骤 ID，采用后由客户端解析为真实节点。 }
               referenceNodeIds: { type: array, items: { type: string } }
+              targetNodeId: { type: string, nullable: true, description: 技能计划：为这一步结果准备好的画布对象（助手 create_nodes 建的或用户放的空图片 / 视频 / 文字对象），结果放进它、不另建。只对 image / video / 写稿 text 步骤有效；确认时按已保存画布核对（在画布上、类型对应、还没有产物、没被别的步骤占用），不符合就丢弃绑定并写日志，不报错（docs/ip-studio-new-canvas-and-threads.md §6.1）。 }
               unresolvedReferences: { type: array, maxItems: 16, items: { type: string }, description: 模型使用的未知名称，需要用户明确补选，服务端不猜测映射。 }
     StudioSkillSummary:
       type: object
@@ -778,7 +779,7 @@ components:
               maxCost: { type: integer, nullable: true }
               acceptedRunId: { type: string, nullable: true }
               acceptedCandidateIndex: { type: integer, nullable: true }
-              nodeId: { type: string, nullable: true }
+              nodeId: { type: string, nullable: true, description: 这一步结果所在的画布节点：确认时绑定的已有对象（§6.1），否则是它自己的输出节点 <executionId>-<a|p>-<stepId>。生成任务的 node_id 与 node.upsert 都用它。 }
               reason: { type: string, nullable: true }
         budgets:
           type: array

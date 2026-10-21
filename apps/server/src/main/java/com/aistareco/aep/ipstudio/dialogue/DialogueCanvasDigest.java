@@ -27,11 +27,7 @@ public final class DialogueCanvasDigest {
         int shown = 0;
         for (JsonNode n : nodes) {
             if (shown >= MAX_NODES) { out.append("…其余 ").append(nodes.size() - shown).append(" 个对象省略，可用 read_canvas 指定 id 查看。\n"); break; }
-            out.append("- [").append(n.path("id").asText()).append("] ").append(typeLabel(n)).append(" · ")
-                    .append(oneLine(n.path("title").asText("未命名"), 60));
-            String body = excerpt(n);
-            if (!body.isBlank()) out.append("：").append(oneLine(body, EXCERPT));
-            out.append('\n');
+            out.append(line(n)).append('\n');
             shown++;
         }
         JsonNode connections = doc == null ? null : doc.path("connections");
@@ -59,6 +55,54 @@ public final class DialogueCanvasDigest {
         }
         return out.toString();
     }
+
+    /** One catalog line: {@code - [id] 类型·状态·尺寸 · 标题：摘要}. */
+    public static String line(JsonNode n) {
+        StringBuilder out = new StringBuilder("- [").append(n.path("id").asText()).append("] ").append(typeLabel(n)).append(size(n)).append(spec(n)).append(" · ")
+                .append(oneLine(n.path("title").asText("未命名"), 60));
+        String body = excerpt(n);
+        if (!body.isBlank()) out.append("：").append(oneLine(body, EXCERPT));
+        return out.toString();
+    }
+
+    /**
+     * Pixel size and 画幅 of a picture or video when the canvas recorded it (the client records the real size of what it
+     * shows): 「·1024×1024（1:1）」. A first frame's shape decides the clip's 画幅 when the user named none (§6.2), and the
+     * catalog was the planner's only view of it.
+     */
+    static String size(JsonNode n) {
+        if (!Set.of("image", "video").contains(n.path("type").asText()) || IpDocs.primaryStorageKey(n) == null) return "";
+        int w = n.path("metadata").path("naturalWidth").asInt(0), h = n.path("metadata").path("naturalHeight").asInt(0);
+        if (w <= 0 || h <= 0) return "";
+        return "·" + w + "×" + h + "（" + ratioLabel(w, h) + "）";
+    }
+
+    /**
+     * The settings written on a draft that has no picture yet (create_nodes / update_nodes, {@code studio.spec}):
+     * 「·设定 1:1、5 秒」. The plan for that object should follow them; they used to be invisible to the planner.
+     */
+    static String spec(JsonNode n) {
+        JsonNode spec = n.path("metadata").path("studio").path("spec");
+        if (!spec.isObject() || IpDocs.primaryStorageKey(n) != null) return "";
+        List<String> parts = new ArrayList<>();
+        if (spec.path("aspectRatio").isTextual()) parts.add(spec.path("aspectRatio").asText());
+        if (spec.path("durationSec").isInt()) parts.add(spec.path("durationSec").asInt() + " 秒");
+        if (spec.path("count").isInt() && spec.path("count").asInt() > 1) parts.add(spec.path("count").asInt() + " 份");
+        return parts.isEmpty() ? "" : "·设定 " + String.join("、", parts);
+    }
+
+    /** The common 画幅 a size is within 2% of (1024×1024 → 1:1, 768×1344 → 9:16), else the reduced ratio. */
+    public static String ratioLabel(int w, int h) {
+        double actual = (double) w / h;
+        for (String r : List.of("1:1", "9:16", "16:9", "3:4", "4:3", "2:3", "3:2", "21:9", "4:5", "5:4")) {
+            String[] p = r.split(":");
+            double target = Double.parseDouble(p[0]) / Double.parseDouble(p[1]);
+            if (Math.abs(actual - target) / target <= 0.02) return r;
+        }
+        int g = gcd(w, h);
+        return (w / g) + ":" + (h / g);
+    }
+    private static int gcd(int a, int b) { return b == 0 ? a : gcd(b, a % b); }
 
     /** Full content of one node (≤ {@value #PINNED} chars), used for pinned objects and read_canvas with ids. */
     public static String full(JsonNode doc, String id) {

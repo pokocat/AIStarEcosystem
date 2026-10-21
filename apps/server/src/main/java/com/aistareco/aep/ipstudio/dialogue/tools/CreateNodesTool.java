@@ -103,6 +103,7 @@ public class CreateNodesTool implements StudioDialogueTool {
             for (JsonNode r : settings == null ? DialogueTools.OM.createArrayNode() : settings.path("references"))
                 referenceEdges.add(new NodeUpsertData(id, "connect", null, new Connection(r.path("nodeId").asText(), id), ctx.executionId, null, null, null, null));
             ctx.createdNodeIds.add(id);
+            ctx.createdNodeLines.put(id, DialogueCanvasDigest.line(node));
             i++;
         }
         upserts.addAll(referenceEdges);

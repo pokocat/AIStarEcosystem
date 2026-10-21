@@ -173,11 +173,14 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "video".equals(request.operation())) {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
-            var jobs=imageRuns.generateVideoBatch(userId,projectId,new IpRunService.IpVideoRequest(request.prompt(),
+            var batch=imageRuns.generateVideoBatch(userId,projectId,new IpRunService.IpVideoRequest(request.prompt(),
                     references.isEmpty()?null:references.get(0).storageKey(),request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video(),request.billing()),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
-            var ids=inputs.putObject("_exec").putArray("nativeVideoJobIds");
-            jobs.forEach(job->ids.add(job.path("id").asText()));
+            ObjectNode exec=inputs.putObject("_exec");
+            var ids=exec.putArray("nativeVideoJobIds");
+            batch.jobs().forEach(job->ids.add(job.path("id").asText()));
+            // The request keeps the frame the user chose; what was actually sent after a crop (§6.2) is recorded here.
+            if(batch.frameAdjustments()!=null)exec.setAll(batch.frameAdjustments());
             // This row is an immutable binding. Native video status, result and settlement are read-only projections.
             IpRun binding=IpRun.builder().id("IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20))
                     .projectId(projectId).ownerUserId(userId).nodeId(request.nodeId()).kind("studio-video")
@@ -376,7 +379,7 @@ public class StudioWorkflowService {
         JsonNode state=projects.parseOrEmptyObject(execution.getStepsJson());
         boolean stepNode=false;
         for(JsonNode step:state.path("steps"))stepNode|=com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds
-                .nodeId(execution.getId(),step.path("stage").asText(),step.path("id").asText()).equals(request.nodeId());
+                .stepNodeId(execution.getId(),step).equals(request.nodeId());
         // A planning run may read an active execution's outputs as context (e.g. compiling the production plan after
         // analysis) without filling a step; it never spends the execution's budget.
         if(!stepNode&&"text".equals(request.operation())&&request.skillKey()!=null) {
@@ -397,7 +400,7 @@ public class StudioWorkflowService {
         }
         for(JsonNode step:state.path("steps")) {
             String stage=step.path("stage").asText(),id=step.path("id").asText();
-            if(!com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.nodeId(execution.getId(),stage,id).equals(request.nodeId()))continue;
+            if(!com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.stepNodeId(execution.getId(),step).equals(request.nodeId()))continue;
             if(!step.path("operation").asText().equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","请求与连续制作的步骤不一致");
             if(!com.aistareco.aep.ipstudio.execution.StudioPlanExecutionIds.requestId(execution.getId(),stage,id,step.path("attempt").asInt(1)).equals(request.clientRequestId()))
                 throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_STALE","这一步已经换了新的尝试，请刷新后再看");
@@ -615,6 +618,7 @@ public class StudioWorkflowService {
         constraints.put("bindingRoles","referenceBindings 的 role 只能取这些值：图片步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.IMAGE_BINDING_ROLES))
                 +"；视频步骤 "+String.join(" / ",new java.util.TreeSet<>(StudioPlanValidator.BINDING_ROLES))+"（原片片段用 reference-video 或 clip）。order 从 0 开始，同一步里不重复。");
         constraints.put("models","recreation.videoModel 必须原样复制「可用模型与合同」里 videoModels[].endpointId 的值，不能写模型名、别名或自己缩写。");
+        constraints.put("targets","targetNodeId 只填素材清单里为这一步准备、还没有画面或正文的对象 id，类型与这一步的结果一致（image 填图片对象、video 填视频对象、写稿的 text 填文字对象）；check、assemble、recreation、plan-compile 和改稿的步骤不填。");
         constraints.put("references","referenceNodeIds 只能填素材清单里的画布对象 id，不能填步骤编号；要用更早步骤的产物，写进 dependsOn，图片和视频步骤再用 settings.referenceBindings 的 stepId 指定。素材清单里的对象（包括分析阶段产出的分段片段）在 referenceBindings 里一律写 nodeId，stepId 只填本计划里更早的步骤编号。");
         return constraints;
     }

@@ -50,6 +50,20 @@ public class StudioDialogueConfirmations implements StudioPlanSource {
         return Optional.empty();
     }
 
+    /** Objects the finished create_nodes calls of the conversation's latest {@value #RECENT} messages put on the canvas. */
+    @Override
+    public Set<String> assistantNodeIds(String threadId) {
+        var repository=messages.getIfAvailable();
+        if(repository==null||threadId==null)return null;
+        Set<String> out=new LinkedHashSet<>();
+        for(var message:repository.findByThreadIdOrderBySeqDesc(threadId,org.springframework.data.domain.PageRequest.of(0,RECENT)))
+            for(JsonNode block:blocks(message)) {
+                if(!"tool_call".equals(block.path("type").asText())||!"create_nodes".equals(block.path("toolName").asText())||!"done".equals(block.path("status").asText()))continue;
+                block.path("result").path("nodeIds").forEach(id->{if(id.isTextual())out.add(id.asText());});
+            }
+        return out;
+    }
+
     private List<JsonNode> blocks(IpDialogueMessage message) {
         JsonNode blocks=PlanState.parse(mapper,"{\"b\":"+(message.getBlocksJson()==null||message.getBlocksJson().isBlank()?"[]":message.getBlocksJson())+"}").path("b");
         List<JsonNode> out=new ArrayList<>();if(blocks.isArray())blocks.forEach(out::add);return out;

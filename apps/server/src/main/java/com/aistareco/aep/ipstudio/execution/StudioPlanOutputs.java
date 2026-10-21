@@ -87,7 +87,7 @@ public class StudioPlanOutputs {
             var dto=run(execution.getOwnerUserId(),execution.getProjectId(),runId).orElse(null);
             if(dto==null)continue;
             String stage=step.path("stage").asText(),id=step.path("id").asText(),operation=step.path("operation").asText();
-            String nodeId=StudioPlanExecutionIds.nodeId(execution.getId(),stage,id);
+            String nodeId=StudioPlanExecutionIds.stepNodeId(execution.getId(),step);
             JsonNode output=dto.output()==null?mapper.createObjectNode():dto.output();
             var node=out.addObject().put("nodeId",nodeId).put("stepId",id).put("stage",stage).put("runId",runId)
                     .put("title",step.path("title").asText()).put("operation",operation);
@@ -141,23 +141,24 @@ public class StudioPlanOutputs {
         return out.length()>24000?out.substring(0,24000):out.toString();
     }
 
-    /** Resolve a plan binding node id: an output of this execution, else an owned canvas media node. */
+    /**
+     * Resolve a plan binding node id: an output of this execution (its own output node, or a prepared canvas object a step
+     * filled, §6.1, read from the run even before the client saved the result into it), else an owned canvas media node.
+     */
     public String resolveNodeKey(IpPlanExecution execution,JsonNode steps,JsonNode doc,String nodeId) {
-        if(nodeId.startsWith(execution.getId()+"-")) {
-            for(JsonNode node:outputNodes(execution,steps)) {
-                if(!nodeId.equals(node.path("nodeId").asText()))continue;
-                var dto=run(execution.getOwnerUserId(),execution.getProjectId(),node.path("runId").asText()).orElseThrow(StudioPlanOutputs::missing);
-                if(node.has("segmentNo")) {
-                    for(JsonNode segment:dto.output().path("filmStudy").path("segments"))
-                        if(segment.path("no").asInt()==node.path("segmentNo").asInt()&&segment.hasNonNull("storageKey"))return segment.path("storageKey").asText();
-                    throw missing();
-                }
-                String key=outputKey(dto,null);
-                if(key==null)throw missing();
-                return key;
+        for(JsonNode node:outputNodes(execution,steps)) {
+            if(!nodeId.equals(node.path("nodeId").asText()))continue;
+            var dto=run(execution.getOwnerUserId(),execution.getProjectId(),node.path("runId").asText()).orElseThrow(StudioPlanOutputs::missing);
+            if(node.has("segmentNo")) {
+                for(JsonNode segment:dto.output().path("filmStudy").path("segments"))
+                    if(segment.path("no").asInt()==node.path("segmentNo").asInt()&&segment.hasNonNull("storageKey"))return segment.path("storageKey").asText();
+                throw missing();
             }
-            throw missing();
+            String key=outputKey(dto,null);
+            if(key==null)throw missing();
+            return key;
         }
+        if(nodeId.startsWith(execution.getId()+"-"))throw missing();
         JsonNode node=IpDocs.node(doc,nodeId);
         String key=node==null?null:IpDocs.primaryStorageKey(node);
         if(key==null)throw BusinessException.badRequest("STUDIO_CONTEXT_NOT_FOUND","计划引用的画布素材已不存在或还没有可用文件，请检查后重新规划");

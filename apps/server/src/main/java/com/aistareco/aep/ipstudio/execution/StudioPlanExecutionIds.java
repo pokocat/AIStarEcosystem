@@ -12,6 +12,16 @@ public final class StudioPlanExecutionIds {
     public static String nodeId(String executionId,String stage,String stepId) {
         return executionId+"-"+("production".equals(stage)?"p":"a")+"-"+stepId;
     }
+    /**
+     * The canvas node a step's result goes to: the node it was bound to at confirmation ({@code step.nodeId}, an object the
+     * assistant or the user prepared for it), else its own stable output node. Every reader of a step's node uses this, so a
+     * bound step is never projected, matched or resolved under the derived id (2026-10-21: the executor always made a
+     * second node beside the assistant's prepared one, which stayed an empty shell).
+     */
+    public static String stepNodeId(String executionId,com.fasterxml.jackson.databind.JsonNode step) {
+        String bound=step.path("nodeId").asText("");
+        return bound.isBlank()?nodeId(executionId,step.path("stage").asText(),step.path("id").asText()):bound;
+    }
     /** A film-study segment clip of a recreation step, projected as its own video node. */
     public static String segmentNodeId(String executionId,String stage,String stepId,int segmentNo) {
         return nodeId(executionId,stage,stepId)+"-s"+segmentNo;

@@ -74,6 +74,8 @@ class StudioPlanExecutionServiceTest {
     }
 
     StudioSkillCatalog catalog;
+    /** Plan sources beyond the native runs (the dialogue's in production); empty unless a test adds one. */
+    final List<StudioPlanSource> extraSources=new ArrayList<>();
     @BeforeEach void setUp() throws Exception {
         var executions=mock(IpPlanExecutionRepository.class);
         when(executions.findById(anyString())).thenAnswer(i->Optional.ofNullable(rows.get((String)i.getArgument(0))));
@@ -100,7 +102,7 @@ class StudioPlanExecutionServiceTest {
         var skills=new StudioSkillRules(catalogs);rules=StudioSkillRules.rules(skill);
         outputs=mock(StudioPlanOutputs.class);executor=mock(StudioPlanExecutor.class);
         @SuppressWarnings("unchecked") ObjectProvider<StudioPlanExecutor> executors=mock(ObjectProvider.class);when(executors.getIfAvailable()).thenReturn(executor);
-        @SuppressWarnings("unchecked") ObjectProvider<StudioPlanSource> sources=mock(ObjectProvider.class);when(sources.orderedStream()).thenAnswer(i->Stream.empty());
+        @SuppressWarnings("unchecked") ObjectProvider<StudioPlanSource> sources=mock(ObjectProvider.class);when(sources.orderedStream()).thenAnswer(i->extraSources.stream());
         service=new StudioPlanExecutionService(executions,projects,skills,outputs,executors,sources,om);
         cards=new FakeCards();
         @SuppressWarnings("unchecked") ObjectProvider<StudioDialogueApprovals> provider=mock(ObjectProvider.class);
@@ -497,6 +499,35 @@ class StudioPlanExecutionServiceTest {
         String analysisFp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
         var production=new PlanExecutionCreateRequest("create-4b","production","IPR-a",analysisFp,null,30L,0L,null,null,null,"APV-IPR-a","msg-IPR-a");
         assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,()->service.create("u","p",production)).getCode());
+    }
+
+    /** §6.1: the direct skill's one step fills the draft the assistant made in this conversation, named or not. */
+    @Test void aConfirmedStepFillsTheObjectTheAssistantPreparedForIt() throws Exception {
+        StudioSkill imageSkill;
+        try(var in=getClass().getResourceAsStream("/studio/skills/image-generation.md")){imageSkill=StudioSkillCatalog.parse(new String(in.readAllBytes(),StandardCharsets.UTF_8));}
+        var image=StudioSkillRules.rules(imageSkill);
+        when(catalog.requireForNewWork("image-generation")).thenReturn(imageSkill);when(catalog.find("image-generation")).thenReturn(Optional.of(imageSkill));
+        when(projects.readDoc(any())).thenReturn(om.readTree("{\"nodes\":[{\"id\":\"dlg-img\",\"type\":\"image\",\"title\":\"海报\",\"metadata\":{\"prompt\":\"竖版海报\"}},"
+                +"{\"id\":\"product\",\"type\":\"image\",\"title\":\"商品\",\"metadata\":{\"storageKey\":\"ipstudio_source/u/p.png\"}}],\"connections\":[]}"));
+        extraSources.add(new StudioPlanSource() {
+            @Override public Optional<PlanRecord> find(String userId,String projectId,String planRunId,String fingerprint){return Optional.empty();}
+            @Override public Set<String> assistantNodeIds(String threadId){return "thread-1".equals(threadId)?Set.of("dlg-img"):Set.of();}
+        });
+        String raw="{\"summary\":\"一张海报\",\"steps\":[{\"id\":\"poster\",\"operation\":\"image\",\"title\":\"海报\",\"prompt\":\"竖版海报\",\"settings\":{\"count\":1,\"referenceBindings\":[]}}],\"questions\":[]}";
+        var plan=StudioPlanValidator.validateSkillPlan(om.readTree(raw),image,"production",List.of("product","dlg-img"));
+        plan.put("skillKey",image.key()).put("skillVersion",image.version()).put("stage","production").put("revision",1);
+        ((ObjectNode)plan.path("steps").get(0)).put("quotedCost",8);
+        plan.putObject("budget").put("estimated",8).put("autoFixCap",0);
+        String fp=StudioPlanValidator.fingerprint(plan);plan.put("fingerprint",fp);
+        var output=om.createObjectNode();output.set("plan",plan);
+        var input=om.createObjectNode();input.putArray("contextNodeIds").add("product");input.putObject("dialogue").put("threadId","thread-1").put("messageId","m");
+        input.putObject("_exec").set("skill",StudioSkillRules.snapshot(image));
+        runs.put("IPR-img",IpRun.builder().id("IPR-img").projectId("p").ownerUserId("u").kind("studio-dialogue").status("done").inputJson(input.toString()).outputJson(output.toString()).build());
+        cards.currentFingerprint=fp;cards.currentRunId="IPR-img";
+        cards.put("msg-IPR-img","APV-IPR-img","production",fp,8,20);
+        var created=service.create("u","p",new PlanExecutionCreateRequest("create-bind","production","IPR-img",fp,null,20L,0L,null,null,null,"APV-IPR-img","msg-IPR-img"));
+        assertEquals("dlg-img",created.steps().get(0).nodeId(),"the step fills the assistant's draft, not a node of its own");
+        assertEquals("dlg-img",om.readTree(rows.get(created.id()).getStepsJson()).path("steps").get(0).path("nodeId").asText(),"stored for the run, the projection and the restore");
     }
 
     // ── 原创创作: a production-only skill (IPP-51a92043, 2026-10-20) ─────────────────────────────────────────────────

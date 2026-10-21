@@ -3,7 +3,9 @@ import type { Node, NodeChange, Edge, EdgeChange } from '@xyflow/react';
 import { CanvasNodeType, type CanvasNodeData, type CanvasConnection } from '@/canvas/types/canvas';
 import { studioGenerationPending } from './studio-nodes';
 
-export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; uploading?: boolean; fresh?: boolean; onInspect?: (node:CanvasNodeData)=>void; onRename?: (id:string,title:string)=>void; onDescribeGroup?: (id:string,description:string)=>void }, 'studio'>;
+export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; uploading?: boolean; fresh?: boolean; onInspect?: (node:CanvasNodeData)=>void; onRename?: (id:string,title:string)=>void; onDescribeGroup?: (id:string,description:string)=>void;
+  /** The picture / clip a card shows reported its real size (studio-media-fit: record it, and take a just-landed result's shape). */
+  onMediaSize?: (id:string,size:{width:number;height:number;storageKey?:string})=>void }, 'studio'>;
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },

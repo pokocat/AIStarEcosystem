@@ -147,3 +147,15 @@ test('canvas page buttons use the AI gradient or ink, never the wheat action col
   for (const file of ['ip/canvas-host.tsx', 'ip/publish/publish-dialog.tsx']) expect(read(file)).not.toContain('var(--action)');
   expect(read('styles/studio-flow.css')).toContain('.studio-floating-panel .ant-btn-primary:not(:disabled):has(.studio-ai-icon)');
 });
+
+// §6.2 (docs/ip-studio-new-canvas-and-threads.md): the crop hint and the box-shape report are mounted, not just defined.
+test('the first-frame crop hint and the media size report are wired', () => {
+  const workspace = read('ip/studio-workspace.tsx');
+  expect(workspace).toMatch(/<StudioFrameCropHint frame=\{cropFrame\} ratio=\{ratio\} ratios=\{cropRatios\} onFix=\{changeComposerRatio\}\/>/);
+  expect(workspace).toContain('{composerBlocker}{frameCropHint}');
+  const canvas = read('ip/studio-flow-canvas.tsx');
+  expect(canvas.match(/onLoadedMetadata=\{videoLoaded\}/g)).toHaveLength(2);
+  expect(canvas.match(/onLoad=\{imageLoaded\}/g)).toHaveLength(2);
+  expect(canvas).toMatch(/onMediaSize: mediaSize/);
+  expect(canvas).toContain('fitStudioNodeToMedia(n, size)');
+});

@@ -130,4 +130,28 @@ class StudioDialoguePromptWiringTest {
         assertEquals(1, system.lines().filter(l -> l.strip().equals(DialogueActionProtocol.MARKER)).count(), "one marker line in the example");
         assertTrue(system.stripTrailing().endsWith("]"), "nothing follows the example's array");
     }
+    /**
+     * §6.1 / §6.2 (docs/ip-studio-new-canvas-and-threads.md), production 2026-10-21 IPP-655ea55a: the executor made a second
+     * node beside the assistant's prepared one, and a 1:1 first frame was stretched to 9:16. The planner's JSON shape names
+     * the field the validator reads, the rule says when to fill it, and both prompts and the video skill say the clip
+     * follows its first frame unless the user named a 画幅. Contract with the model, not user copy (§8.0.1 ⑩).
+     */
+    @Test void thePlannerIsToldToFillThePreparedObjectAndTheClipFollowsItsFirstFrame() throws Exception {
+        String plan = Files.readString(PLAN);
+        String system = plan.substring(0, plan.indexOf("\n---\n"));
+        assertTrue(system.contains("dependsOn[],targetNodeId?}"), "targetNodeId is in the planner's JSON shape");
+        assertTrue(system.contains("在这一步填 targetNodeId") && system.contains("不要另建"), "the rule for filling it");
+        assertTrue(system.contains("aspectRatio 跟首帧图一致"), "planner: 画幅 follows the first frame");
+        String dialogue = Files.readString(DIALOGUE);
+        assertTrue(dialogue.substring(0, dialogue.indexOf("\n---\n")).contains("视频画幅跟首帧图一致"), "dialogue rule 11");
+        String video = Files.readString(SKILLS.resolve("video-generation.md"));
+        assertTrue(video.contains("有首帧图时跟首帧图一致") && video.contains("targetNodeId"), "video skill");
+        // The validator reads exactly the field the prompt names.
+        var raw = new com.fasterxml.jackson.databind.ObjectMapper().readTree("""
+            {"summary":"一段视频","steps":[{"id":"s1","operation":"video","title":"转身","prompt":"转身","targetNodeId":"dlg-1",
+              "settings":{"video":{"mode":"t2v","resolutionTier":"768p"},"durationSec":5,"aspectRatio":"1:1","count":1}}],"questions":[]}""");
+        var rules = com.aistareco.aep.ipstudio.execution.StudioSkillRules.rules(StudioSkillCatalog.parse(video));
+        assertEquals("dlg-1", com.aistareco.aep.ipstudio.service.StudioPlanValidator.validateSkillPlan(raw, rules, "production", List.of("dlg-1"))
+                .path("steps").get(0).path("targetNodeId").asText());
+    }
 }

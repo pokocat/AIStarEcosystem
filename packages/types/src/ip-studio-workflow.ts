@@ -68,6 +68,12 @@ export interface StudioPlanStep {
   referenceNodeIds:string[]; unresolvedReferences?:string[];
   /** Earlier steps only; canvas IDs are resolved after their output exists. */
   dependsOn?:string[];
+  /**
+   * The canvas object prepared for this step's result (the assistant's create_nodes draft or an empty object the user
+   * placed): the result fills it instead of a new node. Checked against the saved canvas at confirmation; a target that
+   * no longer fits is dropped and the step gets its own node (§6.1).
+   */
+  targetNodeId?:string;
   /** Client-owned adoption binding. Never supplied by the model or copied in shares. */
   resultNodeId?:string;
 }
@@ -253,6 +259,11 @@ export interface StudioNodeMetadata {
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
   /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */
   execution?: { executionId: string; stepId: string; runId?: string };
+  /**
+   * A result just landed and the box should take its shape once (docs/ip-studio-new-canvas-and-threads.md §6.2): the task's
+   * `aspectRatio` right away, then the file's real size when `storageKey` loads; removed after that. Width stays, height is capped.
+   */
+  mediaFit?: { storageKey?: string; aspectRatio?: string };
   /** Display projection of the latest native check run on this node. */
   check?: StudioCheckResult;
   speechRequest?: StudioSpeechRequest;
@@ -488,7 +499,9 @@ export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "ha
 export type StudioPlanExecutionStatus = "running" | "paused" | "needs_user" | "done" | "partial" | "failed" | "canceled";
 export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" | "done" | "failed" | "skipped" | "needs_user";
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
-  runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number; nodeId?: string; reason?: string }
+  runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
+  /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
+  nodeId?: string; reason?: string }
 export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number;
   /** Parent-dialogue share already included in spent / inFlight (never add it again). */
   dialogueSpent?: number; dialogueInFlight?: number }

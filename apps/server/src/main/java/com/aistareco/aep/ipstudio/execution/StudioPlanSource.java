@@ -14,6 +14,12 @@ public interface StudioPlanSource {
     Optional<PlanRecord> find(String userId,String projectId,String planRunId,String fingerprint);
 
     /**
+     * Canvas objects the assistant created in this conversation (its finished create_nodes calls), the only objects a step
+     * is bound to without the planner naming them (§6.1). Null when this source does not know the conversation.
+     */
+    default java.util.Set<String> assistantNodeIds(String threadId) {return null;}
+
+    /**
      * @param plan           normalized plan with skillKey / skillVersion / stage / server quotes (as fingerprinted)
      * @param skillSnapshot  the skill snapshot the plan was validated against ({@link StudioSkillRules#snapshot} shape)
      * @param contextNodeIds canvas node ids the plan may reference

@@ -306,6 +306,50 @@ class StudioPlanExecutorTest {
         assertEquals("IPR-PEX-1-p-c1",check.path("node").path("metadata").path("studio").path("execution").path("runId").asText());
     }
 
+    /** §6.1: production 2026-10-21 IPP-655ea55a, the result landed in a second node with no prompt and no edge. */
+    @Test void aBoundStepFillsThePreparedObjectInsteadOfMakingASecondNode() throws Exception {
+        var key=videoStep("k1",10);
+        var bound=videoStep("v1",40,"k1");bound.put("nodeId","dlg-924c749ca1f7");
+        execution("running",1000,key,bound);
+        executor.advance("PEX-1");
+        assertEquals("PEX-1-p-k1",submitted.get(0).nodeId(),"an unbound step keeps its own node");
+        dtos.put("IPR-PEX-1-p-k1",dto("IPR-PEX-1-p-k1","done",10,videoOutput("k1.mp4")));
+        executor.advance("PEX-1");
+        assertEquals("dlg-924c749ca1f7",submitted.get(1).nodeId(),"the native run is the prepared object's run");
+        var sent=om.createObjectNode().put("prompt","她缓慢转身，看向镜头，背景不动");
+        dtos.put("IPR-dlg-924c749ca1f7",new IpRunDto("IPR-dlg-924c749ca1f7","p","dlg-924c749ca1f7","studio-video","done","done",100,40,null,null,
+                sent,videoOutput("v1.mp4"),Instant.now().toString(),null,null));
+        executor.advance("PEX-1");
+        assertEquals("done",row.getStatus());
+        List<JsonNode> upserts=new ArrayList<>();
+        for(int i=0;i<published.size();i++)if("node.upsert".equals(published.get(i)))upserts.add(publishedData.get(i));
+        assertTrue(upserts.stream().noneMatch(d->"PEX-1-p-v1".equals(d.path("nodeId").asText())),"no second node beside the prepared one");
+        JsonNode filled=upserts.stream().filter(d->"dlg-924c749ca1f7".equals(d.path("nodeId").asText())&&d.has("node")).findFirst().orElseThrow();
+        assertEquals("update",filled.path("op").asText(),"the prepared object is updated, its title / size / spec / edges stay");
+        JsonNode meta=filled.path("node").path("metadata");
+        assertEquals("v1.mp4",meta.path("storageKey").asText());
+        assertEquals("她缓慢转身，看向镜头，背景不动",meta.path("prompt").asText(),"the prompt actually sent");
+        assertEquals("PEX-1",meta.path("studio").path("execution").path("executionId").asText());
+        assertEquals("9:16",meta.path("studio").path("mediaFit").path("aspectRatio").asText(),"the box takes the task's shape");
+        JsonNode edge=upserts.stream().filter(d->"connect".equals(d.path("op").asText())&&"dlg-924c749ca1f7".equals(d.path("connection").path("toNodeId").asText())).findFirst().orElseThrow();
+        assertEquals("PEX-1-p-k1",edge.path("connection").path("fromNodeId").asText(),"the dependency edge comes into the prepared object");
+        JsonNode own=upserts.stream().filter(d->"PEX-1-p-k1".equals(d.path("nodeId").asText())&&d.has("node")).findFirst().orElseThrow();
+        assertEquals("create",own.path("op").asText());
+        assertEquals("出片",own.path("node").path("metadata").path("prompt").asText(),"a new result node also carries its prompt (the step's, when the run kept none)");
+        assertEquals("dlg-924c749ca1f7",StudioPlanExecutionIds.stepNodeId("PEX-1",step("v1")),"the binding survives every save of the state");
+    }
+
+    @Test void aLaterStepResolvesAPreparedObjectsResultFromItsRunBeforeTheCanvasSavedIt() throws Exception {
+        var bound=videoStep("v1",40);bound.put("nodeId","dlg-1");bound.put("status","done");bound.withArray("runIds").add("IPR-v1");
+        dtos.put("IPR-v1",dto("IPR-v1","done",40,videoOutput("v1.mp4")));
+        execution("running",1000,bound);
+        var outputs=new StudioPlanOutputs(runRepository,projects,om);
+        // The saved canvas still has the empty draft: the key comes from the run, not from the document.
+        var doc=om.readTree("{\"nodes\":[{\"id\":\"dlg-1\",\"type\":\"video\",\"metadata\":{}}]}");
+        assertEquals("v1.mp4",outputs.resolveNodeKey(row,state().path("steps"),doc,"dlg-1"));
+        assertEquals("dlg-1",outputs.outputNodes(row,state().path("steps")).get(0).path("nodeId").asText());
+    }
+
     @Test void aFilmStudyLinksTheReferenceFilmToItsAnalysisAndMarksEachCutAsSourceMaterial() throws Exception {
         var step=om.createObjectNode().put("id","r1").put("stage","production").put("title","拉片").put("operation","recreation").put("execution","auto")
                 .put("status","pending").put("attempt",1).put("quotedCost",5).put("maxCost",5);

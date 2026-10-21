@@ -280,7 +280,43 @@ export interface StudioCreateThreadRequest { clientRequestId: string }
 - 不新增服务端接口、不改技能路由与报价。
 - 首页「和助手开始」对话框下的四个示例开头这次不改（首页没有素材位，单独评估）。
 
-## 6. 验收
+## 6. 执行结果落到助手准备的节点、首帧比例（2026-10-21 用户反馈）
+
+线上画布 `IPP-655ea55a`（用户原话：对话生成视频后不是附到之前的节点上，而是新增了一个分离的节点，且这个节点没有提示词，体验割裂；视频比例看着有问题）：
+- 助手先用 `create_nodes` 建了视频节点 `dlg-924c749ca1f7`（提示词、9:16 / 5 秒、首帧连线都在），确认执行后执行器按 `executionNodeId` 另建 `PEX-79c7…-p-s1` 放结果，没有提示词也没有连线。前面两张图片的结果节点同样没有提示词。
+- 视频文件 768×1344（9:16），首帧 1024×1024（1:1）。逐点对照：太阳、高楼的相对位置与首帧完全相同，厂商把正方形首帧非等比拉伸成竖屏，画面纵向拉长约 1.78 倍。9:16 是助手按技能默认写的，没看首帧比例。画布结果节点是 320×240 的 4:3 框，也没按视频比例。
+
+### 6.1 结果落到已有节点
+
+- 方案步骤可带 `targetNodeId`（模型填）：画布上已经有为这一步准备的对象时（助手刚用 `create_nodes` 建的，或用户放的空图片 / 视频 / 文字对象），结果放进它，不再另建。规划提示词写明这条。
+- 服务端编译方案时校验：节点在文档里、类型与操作对应（image→图片、video→视频、text/script→文字）、还没有产物、没被同一方案里别的步骤占用；不满足就去掉这个绑定（不报错，写进日志）。
+- 模型没填时自动绑定：本对话里助手建的（`metadata.studio.spec.source === 'assistant'`）、还没有产物的同类型对象，**唯一**一个对应**唯一**一个同类型步骤时绑定；有歧义就不绑。
+- 绑定后执行步骤的 `nodeId` = 这个节点（前端 `stepNodeId` 已经优先用 `step.nodeId`），生成任务的 `node_id` 也是它；`node.upsert` 对它是更新而不是新建：写入产物、状态和执行信息，保留它的标题、规格和连线。恢复逻辑（`missingExecutionNodes` 等）不能再补一个重复节点。
+- 每个结果节点（新建的或绑定的）都写上这一步实际发给模型的提示词（`metadata.prompt`）；绑定节点上用户自己改过的提示词不覆盖（照现有 keepText 规则），实际发出的仍记在请求里。
+
+### 6.2 首帧比例不再拉伸
+
+- **默认跟首帧**：出视频技能与对话提示词写明——有首帧图、用户没说画幅时，画幅跟首帧图一致（取最接近的支持画幅）；用户明确说了画幅才用用户的。
+- **服务端兜底**（图生视频的所有入口：对话执行与手动生成面板，都经 `StudioVideoService`）：首帧图的宽高比与请求画幅相差超过 2% 时，先把首帧**居中裁剪**到请求画幅（等比，不拉伸），存成本人的派生图再交给厂商；任务输入里记 `_exec.firstFrameAdjusted {from, to, mode:"crop"}`，日志记一行。不改请求画幅、不静默换规格。
+- **生成面板提示**：手动出视频时首帧比例与所选画幅不一致，就地一行：「首帧图是 1:1，会按 9:16 居中裁剪」+ 按钮「改成 1:1」。不挡发送。
+- **画布显示**：视频（和图片）结果落进节点时，节点按产物的实际宽高比调整高度（宽度不变，高度有上限）；视频元素 `object-fit: contain`，任何情况下不变形。
+- 已经生成的那条变形视频无法回改，重新生成即可。
+
+### 6.3 实现说明（2026-10-21，与上文的细化和偏离）
+
+- **在哪一步绑定**：规划（`StudioPlanValidator.validateSkillPlan`，对话 `propose_plan` 与原生规划 run 共用）只做形状检查——`targetNodeId` 在素材清单里、这一步的结果是一个图片 / 视频 / 写稿文字、同一计划里一个对象只给一步，不合格就去掉并写日志；真正的绑定在**确认时**按已保存画布做（`StudioPlanValidator.bindTargets`，在建执行、确认制作阶段、确认改过的方案三处调用；面板确认前先存画布，打字确认的发送链路也先存）。绑定结果是执行状态里步骤的 `nodeId`，不改计划，指纹不变。
+- **「本对话里助手建的」**：取这段对话最近 200 条消息里已完成的 `create_nodes` 工作记录的 `result.nodeIds`（`StudioDialogueConfirmations.assistantNodeIds`）；只有来源不知道对话时才退回 `studio.spec.source === 'assistant'` 标记。文字对象没有 spec，所以按对话记录判断而不是只看标记。「还没有产物」另外排除正在生成（`status=loading`）和已是别的执行输出（有 `studio.execution`）的对象。
+- **改过的方案**：重做的同一步沿用它原来绑定的对象（除非新方案给它点名了别的对象），新增的步骤照常绑定。
+- **读步骤节点只有一处**：`StudioPlanExecutionIds.stepNodeId`（`nodeId` 优先，否则 `<执行>-<a|p>-<步骤>`），执行器的任务 `node_id` / `node.upsert` / 依赖连线 / 检查节点的来源、`StudioPlanOutputs.outputNodes` 与引用解析（绑定对象还没被画布保存时从 run 读产物）、`StudioWorkflowService` 的步骤校验、执行接口的 `steps[].nodeId` 都用它。前端 `stepNodeId` / `missingExecutionNodes` / `executionRestoreUpserts` 本来就按 `step.nodeId`，恢复不会补重复节点。
+- **提示词**：服务端从任务输入取实际发出的提示词（视频绑定 run 的 `prompt`，图片 run 的 `studioRequest.prompt`，取不到用步骤自己的），新节点直接写上；绑定对象上已有提示词时按 keepText 保留，发出的那句作为可采纳建议出现（设计写「照现有 keepText 规则」，原样执行）。
+- **规划模型看得到什么**：素材清单（`DialogueCanvasDigest.line`）在画布记录了真实尺寸时写「1024×1024（1:1）」，在没画面的草稿上写它的设定「设定 9:16、5 秒」；同一轮里刚 `create_nodes`、画布还没保存的对象另列在「本轮刚新建、画布还没保存的对象」下面；`view_images` 的结果给每张图的 `size` 与 `aspectRatio`。规划提示词的 JSON 形状写了 `targetNodeId?`，`skillPlanConstraints` 加了 `targets` 一行。
+- **裁剪**：尾帧同样处理（`lastFrameAdjusted`）；单首帧旧协议（没有视频模式设置的模型）也经 `alignFrame`。JDK 读不了的格式（WebP）先用 ffmpeg 转 PNG 再裁；结果不透明的写 JPEG（质量 0.95），有透明的写 PNG，存储层再按字节判类型。记录字段 `{from, to, mode:"crop", sourceKey, croppedKey, sourceSize, croppedSize}`，在绑定 run 的 `_exec`（出 wire 时 `_exec` 照旧去掉）。
+- **节点比例**：结果落地时打一次性标记 `studio.mediaFit {storageKey, aspectRatio}`（执行投影与手动生成 `applyStudioRun` 都打），先按任务画幅定高度（宽度不变，媒体区 = 宽 × 比例，上限 640，加 38px 卡片头），媒体加载后（图片 `onLoad`、视频 `loadedmetadata`）按真实尺寸再定一次并去掉标记；之后用户自己拉的尺寸不再被改。卡片同时把所显示媒体的真实尺寸记进 `naturalWidth/Height`（旧画布打开时会为此保存一次）。视频元素本来就是 `object-fit: contain`。
+- **面板提示的首帧**：原生视频模式取请求里的首帧（`videoSettings.firstFrameKey` 对应的图），单首帧旧协议取第一张参考图；尺寸用画布记录的真实尺寸，没有就从图片地址量一次；「改成 X」只在所选模型（当前清晰度档）的画幅里有首帧那个比例时出现。
+- **演示模式照服务端补**（§8.0.1 ⑦）：出图 / 出视频的演示先 `create_nodes` 建好对象（写画幅、时长、首帧），方案步骤带 `targetNodeId`，确认时按同样规则绑定，结果以 `op=update` 落进同一个对象，带提示词和 `mediaFit`；有首帧图且用户没说画幅时演示画幅跟首帧。
+- **真模型**（本机开发凭据，聚算 `qwen38-27b`，按 `propose_plan` 的规划请求）：画布上一张 1024×1024 的图 + 助手建好的空视频对象（首帧连线），用户说「用这张图做一段视频」：新提示词调用 7 次、5 次有回复（另 2 次厂商 503），5 次全部填了 `targetNodeId` 指向那个对象、`aspectRatio` 为 1:1、i2v 首帧绑定那张图；旧提示词 + 旧素材清单对照调用 5 次、3 次有回复（2 次 503），3 次都没填 `targetNodeId`、画幅都是 9:16（即线上那次）。旧提示词下服务端的自动绑定仍会把结果放进那个对象。
+
+## 7. 验收
 
 - 门禁：`pnpm typecheck:all`、`pnpm typecheck:admin`、`(cd apps/server && ./mvnw compile -q -o)`、`pnpm check:api-contract`；改到的 vitest 文件与服务端新测试。
 - 浏览器走一遍（§8.0.1 ⑭）：项目页「新建创作」→ 直接进画布、助手在右、空画布卡片在可见区域中间 → 点「图片生成」出图片节点并打开生成面板 → 删掉节点卡片回来；

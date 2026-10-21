@@ -309,3 +309,63 @@ describe('the per-browser projected record is a deletion tombstone, even on an e
     expect(executionOutputMissing([run], [], new Set())).toBe(true);
   });
 });
+
+// §6.1 / §6.2 (docs/ip-studio-new-canvas-and-threads.md): production 2026-10-21 IPP-655ea55a. The assistant made the video
+// draft (prompt, 9:16 / 5 s, first-frame edge); the executor's result used to land in a second 320×240 node without a prompt.
+describe('a step bound to the object prepared for it', () => {
+  const E = 'PEX-79c7';
+  const frame: CanvasNodeData = { id: 'img-frame', type: 'image', title: '首帧', position: { x: 0, y: 0 }, width: 320, height: 320, metadata: { storageKey: 'k/frame.png', status: 'success' } };
+  const draft = (prompt = '她缓慢转身'): CanvasNodeData => ({ id: 'dlg-924c749ca1f7', type: 'video', title: '让她转身', position: { x: 400, y: 0 }, width: 360, height: 240,
+    metadata: { prompt, studio: { kind: 'shot', spec: { aspectRatio: '9:16', durationSec: 5, references: [{ nodeId: 'img-frame', role: 'frame' }], source: 'assistant', updatedAt: '2026-10-21T06:00:00Z' } } } });
+  const doc = (node = draft()): ProjectionDoc => ({ nodes: [frame, node], connections: [{ id: 'e-frame', fromNodeId: 'img-frame', toNodeId: node.id }] });
+  // StudioPlanExecutor.nodeEvents for a bound step: op update, the real key, the prompt it sent, the task's shape.
+  const result = (prompt = '她缓慢转身，看向镜头，背景不动'): StudioNodeUpsertData => ({ nodeId: 'dlg-924c749ca1f7', op: 'update', executionId: E, stepId: 's1', runId: 'IPR-s1',
+    node: { id: 'dlg-924c749ca1f7', type: 'video', title: '一段 5 秒竖屏视频', width: 320, height: 240, position: { x: 0, y: 0 },
+      metadata: { status: 'success', storageKey: 'material-videos/j1/video.mp4', prompt, studio: { runId: 'IPR-s1', execution: { executionId: E, stepId: 's1', runId: 'IPR-s1' }, mediaFit: { storageKey: 'material-videos/j1/video.mp4', aspectRatio: '9:16' } } } } as unknown as StudioNodeUpsertData['node'] });
+
+  test('the result fills the prepared object: one node, its title, spec and first-frame edge kept, its box takes the 9:16 shape', () => {
+    const next = projectStudioNodeUpsert(doc(), result());
+    expect(next.outcome).toBe('applied');
+    expect(next.nodes).toHaveLength(2);
+    const node = next.nodes.find(n => n.id === 'dlg-924c749ca1f7')!;
+    expect(node.title).toBe('让她转身');
+    expect(node.position).toEqual({ x: 400, y: 0 });
+    expect(node.width).toBe(360);
+    expect(node.height).toBeGreaterThan(node.width);
+    expect((node.height - 38) / node.width).toBeCloseTo(16 / 9, 1);
+    expect(node.metadata).toMatchObject({ storageKey: 'material-videos/j1/video.mp4', status: 'success' });
+    expect(node.metadata?.studio?.spec?.aspectRatio).toBe('9:16');
+    expect(node.metadata?.studio?.execution).toEqual({ executionId: E, stepId: 's1', runId: 'IPR-s1' });
+    expect(next.connections).toEqual([{ id: 'e-frame', fromNodeId: 'img-frame', toNodeId: 'dlg-924c749ca1f7' }]);
+  });
+
+  test('a prompt is never overwritten: an empty one is filled with what was sent, a written one stays and the sent one is offered', () => {
+    const filled = projectStudioNodeUpsert(doc(draft('')), result());
+    expect(filled.nodes.find(n => n.id === 'dlg-924c749ca1f7')!.metadata?.prompt).toBe('她缓慢转身，看向镜头，背景不动');
+    expect(filled.proposals).toEqual([]);
+    const kept = projectStudioNodeUpsert(doc(), result());
+    expect(kept.nodes.find(n => n.id === 'dlg-924c749ca1f7')!.metadata?.prompt).toBe('她缓慢转身');
+    expect(kept.proposals).toEqual([{ nodeId: 'dlg-924c749ca1f7', field: 'prompt', content: '她缓慢转身，看向镜头，背景不动', snapshot: '她缓慢转身' }]);
+    expect(projectStudioNodeUpsert(kept, result()).proposals).toHaveLength(1);
+  });
+
+  test('reopening never adds a second node for a bound step, and a restore after deletion brings it back under the same id with its prompt', () => {
+    const execution: StudioPlanExecution = { id: E, projectId: 'IPP-655ea55a', threadId: 't', skillKey: 'video-generation', skillVersion: 2, stage: 'production', planRunId: 'p', planRevision: 1,
+      planFingerprint: 'f', status: 'done', budgets: [], startedAt: '', deadlineAt: '', updatedAt: '', steps: [
+        { id: 's1', title: '一段 5 秒竖屏视频', operation: 'video', stage: 'production', dependsOn: [], status: 'done', runIds: ['IPR-s1'], attempt: 1, quotedCost: 40, nodeId: 'dlg-924c749ca1f7' }] };
+    const runs: Record<string, IpRun> = { 'IPR-s1': { id: 'IPR-s1', projectId: 'IPP-655ea55a', nodeId: 'dlg-924c749ca1f7', kind: 'studio-video', status: 'done', stage: 'done', pct: 100, cost: 40,
+      inputs: { prompt: '她缓慢转身，看向镜头，背景不动', aspectRatio: '9:16' } as unknown as IpRun['inputs'],
+      output: { videoCandidates: [{ index: 0, jobId: 'j1', status: 'done', pct: 100, storageKey: 'material-videos/j1/video.mp4', durationSec: 5 }] }, createdAt: '' } };
+    const filled = projectStudioNodeUpsert(doc(), result());
+    expect(missingExecutionNodes(execution, filled.nodes, new Set())).toEqual([]);
+    const restored = projectCanvasOps(filled, executionRestoreUpserts(execution, runs).map(data => ({ kind: 'node' as const, data, executionId: E, turnId: E, restore: true })));
+    expect(restored.changed).toBe(false);
+    expect(restored.doc.nodes).toHaveLength(2);
+    const gone = { nodes: [frame], connections: [] };
+    expect(missingExecutionNodes(execution, gone.nodes, new Set()).map(s => s.id)).toEqual(['s1']);
+    const back = projectCanvasOps(gone, executionRestoreUpserts(execution, runs).map(data => ({ kind: 'node' as const, data, executionId: E, turnId: E, restore: true }))).doc;
+    const node = back.nodes.find(n => n.id === 'dlg-924c749ca1f7')!;
+    expect(node.metadata?.prompt).toBe('她缓慢转身，看向镜头，背景不动');
+    expect(node.height).toBeGreaterThan(node.width);
+  });
+});

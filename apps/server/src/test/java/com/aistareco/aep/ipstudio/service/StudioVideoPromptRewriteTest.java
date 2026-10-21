@@ -45,17 +45,17 @@ class StudioVideoPromptRewriteTest {
 
     @Test
     void originalPromptIsWrittenIntoTheSpecWithoutChangingThePrice() {
-        var prepared = service(true).prepare("u", request(false));
+        var prepared = service(true).prepare("u", request(false)).canvas();
         assertEquals(Boolean.FALSE, prepared.spec().optimizePrompt());
         assertEquals(320, prepared.credits());
         assertEquals(99, prepared.seedMax());
-        assertNull(service(true).prepare("u", request(null)).spec().optimizePrompt());
+        assertNull(service(true).prepare("u", request(null)).canvas().spec().optimizePrompt());
     }
 
     @Test
     void modelsThatDoNotRewriteRejectTheSwitchInsteadOfIgnoringIt() {
         var error = assertThrows(BusinessException.class, () -> service(false).prepare("u", request(false)));
         assertEquals("STUDIO_VIDEO_OPTION_UNSUPPORTED", error.getCode());
-        assertNull(service(false).prepare("u", request(null)).spec().optimizePrompt());
+        assertNull(service(false).prepare("u", request(null)).canvas().spec().optimizePrompt());
     }
 }

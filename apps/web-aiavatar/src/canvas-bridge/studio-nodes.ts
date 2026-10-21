@@ -6,6 +6,7 @@ import type { IpRun } from "@ai-star-eco/types";
 import type { StudioNodeMetadata, StudioOperation, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeVideoTake } from "@/canvas/types/canvas";
 import { markStudioDescendants, mergeStudioRewrite, studioNodeEpisode } from "./studio-script";
+import { markStudioMediaFit, runAspectRatio } from "./studio-media-fit";
 
 export function makeStudioNode(operation: StudioOperation, origin?: CanvasNodeData): CanvasNodeData {
   const type = operation === "image" ? CanvasNodeType.Image : ["video", "assemble"].includes(operation) ? CanvasNodeType.Video : CanvasNodeType.Text;
@@ -136,7 +137,13 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       id:`${run.id}:comparison`,status:"success",storageKey:run.output.comparisonStorageKey,content:run.output.comparisonUrl,mimeType:"video/mp4",seconds:String(run.output.durationSec||0)}];
     if (!metadata.storageKey || run.status==='done'&&!alreadyApplied || run.output.lipSyncNormalized&&metadata.primaryVideoId===run.id) { metadata.storageKey = run.output.storageKey; metadata.content = run.output.url; metadata.primaryVideoId = run.id; }
   }
-  return { ...node, metadata };
+  const applied = { ...node, metadata };
+  // A new picture or clip landed: the box takes its shape (task 画幅 now, the file's real size when it loads; §6.2).
+  if (run.status === "done" && !alreadyApplied && metadata.storageKey && metadata.storageKey !== node.metadata?.storageKey) {
+    const ratio = runAspectRatio(run);
+    return markStudioMediaFit(applied, { storageKey: metadata.storageKey, ...(ratio ? { aspectRatio: ratio } : {}) });
+  }
+  return applied;
 }
 
 /** Keep the accepted task on its authored node and invalidate inputs that used its previous media. */

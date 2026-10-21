@@ -32,6 +32,7 @@ import type { IpRun, IpRunOutput } from "@ai-star-eco/types";
 import { ApiError } from "@ai-star-eco/api-client";
 import { dialogueReducer, emptyDialogueStore, isPlaceholderMessage, type DialogueStore } from "@/canvas-bridge/studio-dialogue-store";
 import { MOCK_CLOSED_EXECUTION_PROJECT_ID, mockReadRun, mockRegisterRun, mockStore } from "./ip-studio";
+import { studioShapeLabel } from "@/canvas-bridge/studio-composer-spec";
 
 // The recreation skill and the three direct skills seeded on the server (resources/studio/skills/{reference-video-recreation,
 // image-generation,script-writing,video-generation}.md): key / name / summary / operations / limits / checks / triggers
@@ -272,8 +273,10 @@ function budget(p: MockProject, t: MockThread, spent: number, inFlight: number, 
 /** The step's native run, finished: readable through getRun like the real one. */
 function stepRun(projectId: string, e: StudioPlanExecution, s: StudioPlanExecutionStep, output: IpRunOutput, runId = s.runIds.at(-1)!): IpRun {
   const at = now();
+  const sent = stepRequests.get(`${e.id}:${s.id}`);
   return { id: runId, projectId, nodeId: s.nodeId || stepNodeId(e.id, s), kind: `studio-${s.operation}`, status: "done", stage: "done", pct: 100, cost: 0,
-    inputs: { executionId: e.id, stage: s.stage } as unknown as IpRun["inputs"], output: { mock: true, ...output }, createdAt: at, finishedAt: at };
+    inputs: { executionId: e.id, stage: s.stage, ...(sent ? { prompt: sent.prompt, ...(sent.aspectRatio ? { aspectRatio: sent.aspectRatio } : {}) } : {}) } as unknown as IpRun["inputs"],
+    output: { mock: true, ...output }, createdAt: at, finishedAt: at };
 }
 
 /** node.upsert commands of a finished step, shaped like StudioPlanExecutor.nodeEvents (plus the demo marker). */
@@ -281,6 +284,10 @@ function stepNodeEvents(e: StudioPlanExecution, s: StudioPlanExecutionStep, run:
   const nodeId = s.nodeId || stepNodeId(e.id, s), type = s.operation === "video" || s.operation === "assemble" ? "video" : s.operation === "image" ? "image" : "text";
   const studio: Record<string, unknown> = { runId: run.id, execution: { executionId: e.id, stepId: s.id, runId: run.id }, mock: true };
   const metadata: Record<string, unknown> = { status: "success", studio };
+  // StudioPlanExecutor.nodeEvents: every result node carries the prompt it was sent with, a media result the shape it asked for.
+  const sent = run.inputs as unknown as { prompt?: string; aspectRatio?: string };
+  if (sent?.prompt) metadata.prompt = sent.prompt;
+  if (type !== "text") studio.mediaFit = { ...(sent?.aspectRatio ? { aspectRatio: sent.aspectRatio } : {}) };
   let title = s.title, connection: StudioNodeUpsertData["connection"];
   if (s.operation === "check") {
     const subject = e.steps.find(x => run.output.check && x.runIds.includes(run.output.check.targetRunId));
@@ -291,7 +298,9 @@ function stepNodeEvents(e: StudioPlanExecution, s: StudioPlanExecutionStep, run:
   } else if (s.operation === "recreation") { studio.kind = "recreation"; metadata.content = run.output.text || ""; }
   else if (type === "text") { studio.kind = "text"; metadata.content = run.output.textRevision?.content ?? run.output.text ?? ""; }
   const node = { id: nodeId, type, title, width: type === "text" ? 380 : 320, height: type === "text" ? 320 : 240, position: { x: 0, y: 0 }, metadata } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
-  const out: StudioNodeUpsertData[] = [{ nodeId, op: "create", executionId: e.id, stepId: s.id, runId: run.id, node, ...(connection ? { connection } : {}) }];
+  // A step bound to a prepared object (§6.1) updates it: its title, size, spec and edges stay.
+  const op = nodeId === stepNodeId(e.id, s) ? "create" as const : "update" as const;
+  const out: StudioNodeUpsertData[] = [{ nodeId, op, executionId: e.id, stepId: s.id, runId: run.id, node, ...(connection ? { connection } : {}) }];
   if (s.operation !== "check") for (const dependency of s.dependsOn) {
     const upstream = e.steps.find(x => x.id === dependency && x.stage === s.stage);
     if (upstream && upstream.operation !== "check") out.push({ nodeId, op: "connect", executionId: e.id, stepId: s.id, runId: run.id, connection: { fromNodeId: upstream.nodeId || stepNodeId(e.id, upstream), toNodeId: nodeId } });
@@ -448,15 +457,31 @@ const secondsIn = (text: string) => Number(text.match(/(\d{1,2})\s*秒/)?.[1]) |
 const pictureIn = (text: string) => /设定图/.test(text) ? "多视角设定图" : /三视图/.test(text) ? "三视图" : /头像/.test(text) ? "头像" : "图";
 const shape = (ratio: string) => ratio === "9:16" ? "竖屏" : ratio === "16:9" ? "横屏" : ratio;
 const sentence = (text: string) => text.trim().replace(/[。.！!？?，,\s]+$/, "");
-type DirectSpec = { operation: StudioPlanExecutionStep["operation"]; quotedCost: (text: string) => number; title: (text: string) => string; summary: (text: string) => string; prompt: (text: string) => string; said: string };
+type DirectSpec = { operation: "image" | "video"; ratio: string; quotedCost: (text: string) => number; title: (text: string, ratio: string) => string; summary: (text: string, ratio: string) => string; prompt: (text: string, ratio: string) => string; said: string };
 const DIRECT_STEP: Record<string, DirectSpec> = {
-  "image-generation": { operation: "image", quotedCost: () => 8, title: text => `一张 ${ratioIn(text, "1:1")} 的${pictureIn(text)}`,
-    summary: text => `一张 ${ratioIn(text, "1:1")} 的${pictureIn(text)}：${clip(text, 24)}`,
-    prompt: text => `${sentence(text)}。${ratioIn(text, "1:1")} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
-  "video-generation": { operation: "video", quotedCost: text => secondsIn(text) * 8, title: text => `一段 ${secondsIn(text)} 秒${shape(ratioIn(text, "9:16"))}视频`,
-    summary: text => `一段 ${secondsIn(text)} 秒${shape(ratioIn(text, "9:16"))}视频：${clip(text, 22)}`,
-    prompt: text => `${sentence(text)}。${ratioIn(text, "9:16")}，${secondsIn(text)} 秒，${/镜头/.test(text) ? "" : "镜头缓慢推近，"}光线自然。`, said: "按你的描述出一段。" },
+  "image-generation": { operation: "image", ratio: "1:1", quotedCost: () => 8, title: (text, ratio) => `一张 ${ratio} 的${pictureIn(text)}`,
+    summary: (text, ratio) => `一张 ${ratio} 的${pictureIn(text)}：${clip(text, 24)}`,
+    prompt: (text, ratio) => `${sentence(text)}。${ratio} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
+  "video-generation": { operation: "video", ratio: "9:16", quotedCost: text => secondsIn(text) * 8, title: (text, ratio) => `一段 ${secondsIn(text)} 秒${shape(ratio)}视频`,
+    summary: (text, ratio) => `一段 ${secondsIn(text)} 秒${shape(ratio)}视频：${clip(text, 22)}`,
+    prompt: (text, ratio) => `${sentence(text)}。${ratio}，${secondsIn(text)} 秒，${/镜头/.test(text) ? "" : "镜头缓慢推近，"}光线自然。`, said: "按你的描述出一段。" },
 };
+const SPEC_RATIOS = ["9:16", "16:9", "1:1", "3:4", "4:3", "2:3", "3:2", "21:9"];
+/**
+ * The 画幅 the assistant writes (dialogue prompt rule 11, video-generation.md): what the user said, else the first frame's
+ * own shape when it is one of the spec ratios, else the skill's default.
+ */
+function directRatio(text: string, spec: DirectSpec, frame?: { naturalWidth?: number; naturalHeight?: number }) {
+  const said = ratioIn(text, "");
+  if (said) return said;
+  if (spec.operation === "video" && frame?.naturalWidth && frame.naturalHeight) {
+    const label = studioShapeLabel(frame.naturalWidth, frame.naturalHeight);
+    if (SPEC_RATIOS.includes(label)) return label;
+  }
+  return spec.ratio;
+}
+/** What a step's native run was submitted with (prompt, 画幅), by execution and step: the mock's stand-in for run.inputs. */
+const stepRequests = new Map<string, { prompt: string; aspectRatio?: string }>();
 const MOCK_SCRIPT = "【开场】一句话抛出问题：出门一天，水还是烫的吗？\n【卖点】杯身拿在手里，说一个最打动人的点。\n【收尾】只留一个动作：点下面的链接看看。";
 /** A 剧本 request (the 「写剧本」 card) gets a scene-by-scene sample built around its synopsis. */
 const mockDrama = (text: string) => {
@@ -489,16 +514,32 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
   }
   const spec = DIRECT_STEP[skill.key] || DIRECT_STEP["image-generation"], cost = spec.quotedCost(request.text);
   const n = ++counter, revision = nextPlanRevision(t), fingerprint = `mock-direct-${skill.key}-${n}`, planRunId = `mock-plan-${skill.key}-${n}`;
-  const references = mockStore().projects.get(projectId)?.doc.nodes.filter(x => request.attachmentNodeIds?.includes(x.id) || request.pinnedNodeIds?.includes(x.id)).map(x => x.id) || [];
+  const canvasNodes = mockStore().projects.get(projectId)?.doc.nodes || [];
+  const attached = canvasNodes.filter(x => request.attachmentNodeIds?.includes(x.id) || request.pinnedNodeIds?.includes(x.id));
+  const references = attached.map(x => x.id);
+  // Like the real assistant (dialogue prompt rule 11): the object for the result goes on the canvas first, with its 画幅,
+  // length and first frame written on it (create_nodes), and the plan names it as the step's targetNodeId (§6.1).
+  const frame = spec.operation === "video" ? attached.find(x => x.type === "image" && (x.metadata?.storageKey || x.metadata?.content)) : undefined;
+  const ratio = directRatio(request.text, spec, frame?.metadata as { naturalWidth?: number; naturalHeight?: number } | undefined);
+  const tool = nextId("tool"), draftId = nextId("dlg"), canvas = canvasSize(projectId), video = spec.operation === "video";
+  const draft = { id: draftId, type: spec.operation, title: spec.title(request.text, ratio), width: video ? 360 : 320, height: video ? 240 : 320, position: { x: canvas.right + 40, y: 40 },
+    metadata: { prompt: spec.prompt(request.text, ratio), studio: { kind: "shot", mock: true, spec: { aspectRatio: ratio, ...(video ? { durationSec: secondsIn(request.text) } : {}),
+      ...(frame ? { references: [{ nodeId: frame.id, role: "frame" }] } : {}), source: "assistant", updatedAt: now() } } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
   const plan: Extract<StudioMessageBlock, { type: "plan" }> = { type: "plan", planRunId, revision, fingerprint, plan: {
-    summary: spec.summary(request.text), questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
-    steps: [{ id: "d1", operation: spec.operation, title: spec.title(request.text), prompt: spec.prompt(request.text), referenceNodeIds: references, quotedCost: cost }],
+    summary: spec.summary(request.text, ratio), questions: [], skillKey: skill.key, skillVersion: skill.version, stage: "production", revision, fingerprint,
+    steps: [{ id: "d1", operation: spec.operation, title: spec.title(request.text, ratio), prompt: spec.prompt(request.text, ratio), referenceNodeIds: references, quotedCost: cost, targetNodeId: draftId,
+      settings: video ? { operation: "video", video: { mode: frame ? "i2v" : "t2v", resolutionTier: "768p" }, durationSec: secondsIn(request.text), aspectRatio: ratio, count: 1,
+        referenceBindings: frame ? [{ nodeId: frame.id, role: "frame", order: 0 }] : [] } : { operation: "image", aspectRatio: ratio, count: 1, referenceBindings: [] } }],
     budget: { estimated: cost, autoFixCap: 0 } } };
   play(p, t, [
     ...say(t, messageId, "d1", spec.said),
+    { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
+    { run: () => { emit(t, "node.upsert", { nodeId: draftId, op: "create", node: draft } satisfies StudioNodeUpsertData);
+      if (frame) emit(t, "node.upsert", { nodeId: draftId, op: "connect", connection: { fromNodeId: frame.id, toNodeId: draftId } } satisfies StudioNodeUpsertData);
+      emit(t, "tool.finished", { toolCallId: tool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [draftId] }, creditsActual: 0, settling: false }); } },
     { run: () => emit(t, "plan.proposed", { messageId, block: plan }) },
     { run: () => emit(t, "approval.required", { messageId, block: { type: "approval", approvalId: `mock-approval-${skill.key}-${n}`, stage: "production", planFingerprint: fingerprint,
-      scope: [spec.title(request.text)], quotedCost: cost, budgetCap: cost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
+      scope: [spec.title(request.text, ratio)], quotedCost: cost, budgetCap: cost + 10, autoFixCap: 0, status: "pending", expiresAt: new Date(Date.now() + 30 * 60_000).toISOString() } }) },
     { run: () => { emit(t, "turn.done", { reason: "waiting_user", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["可以，开始", "改成 16:9", "多来一版"] }); p.stage = "production-proposed"; } },
   ]);
 }
@@ -510,7 +551,7 @@ function directProductionTurn(projectId: string, p: MockProject, t: MockThread) 
     { waitsForExecution: true, run: () => { setStep(p, s.id, "running", runId); emit(t, "tool.started", { toolCallId: tool, toolName: s.operation, title: s.title, safeInputSummary: s.title, childRunId: runId }, e.id); budget(p, t, 0, s.quotedCost, "quote"); } },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => emit(t, "tool.progress", { toolCallId: tool, toolName: s.operation, progress: "已提交，等待结果" }, e.id) },
     { waitsForExecution: true, delay: mockDialogueTiming.tickMs * 6, run: () => {
-      emit(t, "tool.finished", { toolCallId: tool, toolName: s.operation, status: "done", result: { summary: `${s.title}完成`, nodeIds: [stepNodeId(e.id, s)] }, creditsActual: s.quotedCost, settling: false }, e.id);
+      emit(t, "tool.finished", { toolCallId: tool, toolName: s.operation, status: "done", result: { summary: `${s.title}完成`, nodeIds: [s.nodeId || stepNodeId(e.id, s)] }, creditsActual: s.quotedCost, settling: false }, e.id);
       finishStep(projectId, p, t, s.id, {}, runId); budget(p, t, s.quotedCost, 0, "actual");
       updateExecution(p, x => ({ ...x, status: "done", finishedAt: now() }));
     } },
@@ -802,15 +843,49 @@ function directExecutionCreate(projectId: string, p: MockProject, t: MockThread,
   if (!plan || !skill || !mockSkillIsDirect(skill)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这个方案要先确认分析，再确认制作" }, 400);
   if (workingExecution(p)) throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "上一次制作还没结束，结束后再开始新的" }, 400);
   const id = nextId("exec"), at = now();
+  const bound = mockBindTargets(plan.plan.steps, mockStore().projects.get(projectId)?.doc.nodes || [], assistantNodeIds(t));
+  for (const x of plan.plan.steps) stepRequests.set(`${id}:${x.id}`, { prompt: x.prompt, ...(x.settings && "aspectRatio" in x.settings && x.settings.aspectRatio ? { aspectRatio: x.settings.aspectRatio } : {}) });
   p.execution = { id, projectId, threadId: t.thread.id, skillKey: skill.key, skillVersion: skill.version, stage: "production", planRunId: request.planRunId, planRevision: plan.revision,
     planFingerprint: request.planFingerprint, status: "running",
-    steps: withNodeIds(id, plan.plan.steps.map(x => step(x.id, x.title, x.operation, "production", x.quotedCost, x.dependsOn || []))),
+    steps: withNodeIds(id, plan.plan.steps.map(x => step(x.id, x.title, x.operation, "production", x.quotedCost, x.dependsOn || [])))
+      .map(x => bound.has(x.id) ? { ...x, nodeId: bound.get(x.id) } : x),
     budgets: [{ stage: "production", approvedCap: request.budgetCap, autoFixCap: request.autoFixCap, spent: 0, inFlight: 0, remaining: request.budgetCap }],
     startedAt: at, deadlineAt: new Date(Date.now() + 90 * 60_000).toISOString(), updatedAt: at };
   patchApproval(t, request.approvalId, id, request);
   p.stage = "production-running";
   directProductionTurn(projectId, p, t);
   return later(p.execution);
+}
+
+/** Objects this conversation's create_nodes calls made (StudioDialogueConfirmations.assistantNodeIds). */
+function assistantNodeIds(t: MockThread): Set<string> {
+  const ids = new Set<string>();
+  for (const m of t.view.messages) for (const b of m.blocks) if (b.type === "tool_call" && b.toolName === "create_nodes" && b.status === "done") for (const id of b.result?.nodeIds || []) ids.add(id);
+  return ids;
+}
+/**
+ * StudioPlanValidator.bindTargets, same rules: a named target binds when it is on the canvas, of the step's result type,
+ * still empty and free; an unbound step is bound only as the single step of its type to the single empty object of that
+ * type this conversation's assistant made. Checks, assembles and edits never bind.
+ */
+export function mockBindTargets(steps: { id: string; operation: string; targetNodeId?: string; settings?: unknown }[], nodes: { id: string; type: string; metadata?: Record<string, unknown> & { storageKey?: string; content?: string; status?: string; studio?: { execution?: unknown } } }[], assistant: Set<string>) {
+  const resultType = (op: string, settings: unknown) => op === "image" ? "image" : op === "video" ? "video"
+    : op === "text" && (settings as { purpose?: string; editTarget?: unknown } | undefined)?.purpose !== "plan-compile" && !(settings as { editTarget?: unknown } | undefined)?.editTarget ? "text" : undefined;
+  const empty = (n: (typeof nodes)[number]) => n.metadata?.status !== "loading" && !n.metadata?.studio?.execution && !n.metadata?.storageKey && !String(n.metadata?.content || "").trim();
+  const bound = new Map<string, string>(), taken = new Set<string>(), unbound = new Map<string, string[]>();
+  for (const x of steps) {
+    const type = resultType(x.operation, x.settings);
+    if (!type) continue;
+    const node = x.targetNodeId ? nodes.find(n => n.id === x.targetNodeId) : undefined;
+    if (node && node.type === type && empty(node) && !taken.has(node.id)) { bound.set(x.id, node.id); taken.add(node.id); continue; }
+    unbound.set(type, [...(unbound.get(type) || []), x.id]);
+  }
+  for (const [type, ids] of unbound) {
+    if (ids.length !== 1) continue;
+    const candidates = nodes.filter(n => n.type === type && assistant.has(n.id) && !taken.has(n.id) && empty(n));
+    if (candidates.length === 1) { bound.set(ids[0], candidates[0].id); taken.add(candidates[0].id); }
+  }
+  return bound;
 }
 
 /** Like the server's approval snapshot: the card keeps what was actually authorized, not what it proposed. */

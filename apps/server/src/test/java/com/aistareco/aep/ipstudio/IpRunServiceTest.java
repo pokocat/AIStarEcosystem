@@ -201,7 +201,7 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
         var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("first_last_frame_video","544p",42L,"first","last",List.of());
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(List.of(OM.createObjectNode().put("id","advanced")));
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("first_last_frame_video","544p",42L,"first","last",List.of());
         svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("过渡",null,7,"3:4","ep-h3",280L,settings));
@@ -215,9 +215,9 @@ class IpRunServiceTest {
     @Test void nativeVideoWithOptionalPromptDoesNotRequireTextBeforeModeValidation() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(
                 new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(
-                        new com.aistareco.aep.service.materialvideo.VideoGenSpec("silent-mode","custom",null,null,null,List.of()),5));
+                        new com.aistareco.aep.service.materialvideo.VideoGenSpec("silent-mode","custom",null,null,null,List.of()),5),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(List.of(OM.createObjectNode().put("id","optional")));
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("silent-mode","custom",null,null,null,List.of());
         svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest(null,null,5,"9:16","ep-custom",5L,settings));
@@ -229,7 +229,7 @@ class IpRunServiceTest {
     @Test void changedNativePriceCannotSubmitOrFreeze() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,400));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,400),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
         assertThrows(BusinessException.class,()->svc.generateVideo(USER,PID,new IpRunService.IpVideoRequest("x",null,5,"9:16","ep-h3",200L,settings)));
         verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
@@ -240,11 +240,11 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
         var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("t2v","544p",2_147_483_647L,null,null,List.of());
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,280),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(java.util.stream.IntStream.range(0,4).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","544p",2_147_483_647L,null,null,List.of());
         var request=new IpRunService.IpVideoRequest("动作",null,7,"9:16","ep-h3",1120L,settings);
-        assertEquals(4,svc.generateVideoBatch(USER,PID,request,4).size());
+        assertEquals(4,svc.generateVideoBatch(USER,PID,request,4).jobs().size());
         var body=org.mockito.ArgumentCaptor.forClass(JsonNode.class);verify(videoJobs).submit(body.capture(),eq(USER),eq("ipstudio"));
         var items=body.getValue().path("items");assertEquals(4,items.size());
         assertEquals(280,items.get(3).path("max_credit_cost").asLong());assertEquals(280,items.get(3).path("credit_cost").asLong());
@@ -257,8 +257,8 @@ class IpRunServiceTest {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
         var spec=new com.aistareco.aep.service.materialvideo.VideoGenSpec("custom-mode","custom-tier",1L,null,null,List.of());
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
-                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,5,1));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(
+                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(spec,5,1),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(
                 java.util.stream.IntStream.range(0,4).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("custom-mode","custom-tier",1L,null,null,List.of());
@@ -274,7 +274,7 @@ class IpRunServiceTest {
     @Test void batchRejectsAnUnderquotedTotalAndInvalidQuantityBeforeSubmission() {
         seedProject(IpStudioFixtures.chainDoc(null,0));
         var nativeVideo=mock(com.aistareco.aep.ipstudio.service.StudioVideoService.class);svc.studioVideoService(nativeVideo);
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,280));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,280),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
         var request=new IpRunService.IpVideoRequest("动作",null,7,"9:16","ep-h3",280L,settings);
         assertThrows(BusinessException.class,()->svc.generateVideoBatch(USER,PID,request,2));
@@ -296,8 +296,8 @@ class IpRunServiceTest {
                 .enabled(true).build();
         when(policy.resolveStudioVideo("video")).thenReturn(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(ep,null,true));
         org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
-        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(
-                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,20));
+        when(nativeVideo.prepare(eq(USER),org.mockito.ArgumentMatchers.any())).thenReturn(new com.aistareco.aep.ipstudio.service.StudioVideoService.Prepared(
+                new com.aistareco.aep.videostudio.service.VideoStudioService.CanvasPreparation(com.aistareco.aep.service.materialvideo.VideoGenSpec.EMPTY,20),new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode()));
         when(videoJobs.submit(org.mockito.ArgumentMatchers.any(),eq(USER),anyString())).thenReturn(
                 java.util.stream.IntStream.range(0,3).mapToObj(i->(JsonNode)OM.createObjectNode().put("id","job"+i)).toList());
         var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of());
@@ -305,7 +305,7 @@ class IpRunServiceTest {
         assertEquals("STUDIO_VIDEO_COUNT_INVALID",assertThrows(BusinessException.class,
                 ()->svc.generateVideoBatch(USER,PID,request,2)).getCode());
         verify(videoJobs,never()).submit(org.mockito.ArgumentMatchers.any(),anyString(),anyString());
-        assertEquals(3,svc.generateVideoBatch(USER,PID,request,3).size());
+        assertEquals(3,svc.generateVideoBatch(USER,PID,request,3).jobs().size());
     }
 
     @Test

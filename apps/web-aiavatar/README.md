@@ -1056,3 +1056,9 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 ### 新对话的四个快捷入口（2026-10-21，仅 web-aiavatar）
 - 新对话开场的四张卡与填空卡在 `src/ip/studio-assistant-starters.tsx`（卡片配置、`StudioAssistantStarterCards` / `StudioAssistantStarterForm`、拼句纯函数 `composeStarter`、`isMentionResidue`），接入在 `src/ip/studio-assistant.tsx`（`openStarter` / `leaveStarter` / 布局副作用跟随选项改写输入框、发送显式带 `skillKey`）。原 `studio-assistant-checklist.tsx` 已删除。样式在 `src/styles/ip-studio-workflow.css`（`studio-welcome` / `studio-starter` 容器查询，2×2，窄于 360px 单列）。演示数据 `src/ip/mocks/studio-dialogue.ts` 的复刻技能改为服务端同名 `reference-video-recreation`。设计与实现说明见 `docs/ip-studio-new-canvas-and-threads.md` §5。
 - 测试：`studio-assistant-starters.test.ts`（四张卡的拼句与缺项）、`studio-assistant.test.tsx`（开场卡、填空卡、手改不覆盖、发送带技能、复刻与首页原话）、`studio-dialogue-wiring.test.ts`、`mocks/studio-dialogue.test.ts`。
+
+### 结果落到助手准备的节点、首帧比例（2026-10-21，server + web-aiavatar）
+- 执行步骤绑定到已有对象时（`step.nodeId`），执行结果以 `op=update` 投影进它，保留标题、尺寸、规格与连线，带这一步发出的提示词（已有提示词时作为可采纳建议）；恢复不补重复节点（`canvas-bridge/studio-plan-execution.ts`）。
+- 节点按产物比例：`canvas-bridge/studio-media-fit.ts`（`studio.mediaFit` 一次性标记，先按任务画幅、媒体加载后按真实尺寸，宽度不变、媒体区上限 640）；`StudioFlowCard` 的图片 `onLoad` / 视频 `loadedmetadata` 经 `onMediaSize` 记下真实尺寸。
+- 出视频面板首帧比例与画幅不同时显示「首帧图是 1:1，会按 9:16 居中裁剪」+「改成 1:1」（`src/ip/studio-frame-crop-hint.tsx`，判定 `studioFrameCropNotice` 在 `studio-composer-spec.ts`），不挡发送；服务端居中裁剪。
+- 演示模式：出图 / 出视频先 `create_nodes` 建对象，方案带 `targetNodeId`，结果落进同一个对象。真源 `docs/ip-studio-new-canvas-and-threads.md` §6。

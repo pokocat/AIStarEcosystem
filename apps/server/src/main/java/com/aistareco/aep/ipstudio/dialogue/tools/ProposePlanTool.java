@@ -91,7 +91,7 @@ public class ProposePlanTool implements StudioDialogueTool {
         vars.put("constraints", StudioWorkflowService.skillPlanConstraints(mapper, rules, stage).toString());
         vars.put("brief", DialogueTools.text(args, "brief"));
         vars.put("analysis", analysis(doc));
-        vars.put("assets", DialogueCanvasDigest.build(doc, List.of(), List.of()));
+        vars.put("assets", assets(doc, ctx));
         vars.put("capabilities", capabilities());
         vars.put("budget", ctx.executionId == null ? "尚未批准任何制作预算（报价由服务端计算，用户确认后才执行）" : "已有进行中的制作，预算以服务端记录为准");
         vars.put("feedback", args.path("feedback").asText("（无）"));
@@ -162,6 +162,18 @@ public class ProposePlanTool implements StudioDialogueTool {
         return new ToolRun("done", "方案第 " + block.path("revision").asInt() + " 版：" + plan.path("steps").size() + " 步"
                 + (quoted ? "，报价 " + plan.path("budget").path("estimated").asLong() + " 积分" : ""),
                 DialogueTools.ok(body), List.of(), List.of(), null, null, true, null, null, null);
+    }
+
+    /**
+     * The saved canvas catalog plus the objects this turn created that the canvas has not saved yet: a draft the assistant
+     * just made for this step is what {@code targetNodeId} should name (docs/ip-studio-new-canvas-and-threads.md §6.1).
+     */
+    static String assets(JsonNode doc, ToolContext ctx) {
+        String saved = DialogueCanvasDigest.build(doc, List.of(), List.of());
+        Set<String> present = DialogueCanvasDigest.nodeIds(doc);
+        StringBuilder fresh = new StringBuilder();
+        for (var entry : ctx.createdNodeLines.entrySet()) if (!present.contains(entry.getKey())) fresh.append(entry.getValue()).append('\n');
+        return fresh.length() == 0 ? saved : saved + "本轮刚新建、画布还没保存的对象：\n" + fresh;
     }
 
     static String analysis(JsonNode doc) {

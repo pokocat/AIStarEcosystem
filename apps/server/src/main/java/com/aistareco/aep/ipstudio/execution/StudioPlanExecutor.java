@@ -505,7 +505,7 @@ public class StudioPlanExecutor {
         }
         List<String> canvas=PlanState.canvasContext(state);
         BillingSelection billing=billing(e);
-        String nodeId=StudioPlanExecutionIds.nodeId(e.getId(),stage,step.path("id").asText());
+        String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
         var binding=new StudioPlanSteps.Binding(requestId,nodeId,step.path("quotedCost").asLong(),billing,e.getId(),e.getSkillKey(),e.getSkillVersion(),stage,canvas,check);
         return StudioPlanSteps.request(compiled,keys,quoter.modes(),binding);
     }
@@ -544,25 +544,39 @@ public class StudioPlanExecutor {
      * Client projection of a finished step (the server never writes the canvas document): one node per step with its real
      * output key or text, a check node beside the video it inspected, one video node per film-study segment clip, and
      * connections from the step's inputs. Node ids are stable, so repeated events are idempotent on the client.
+     *
+     * <p>A step bound at confirmation to an object prepared for it (§6.1) fills that object: the command is an {@code update}
+     * that brings the result, status and execution identity, and the client keeps the object's title, size, spec and edges.
+     * Every result node carries the prompt this step actually sent ({@code metadata.prompt}); on a bound object the client
+     * fills an empty prompt and keeps one already written there (the sent one is offered as an adoption, the keepText rule).
      */
     private void nodeEvents(IpPlanExecution e,ObjectNode state,ObjectNode step,IpRunDto run,List<Event> out) {
         String stage=step.path("stage").asText(),stepId=step.path("id").asText(),operation=step.path("operation").asText();
-        String nodeId=StudioPlanExecutionIds.nodeId(e.getId(),stage,stepId);
+        String nodeId=StudioPlanExecutionIds.stepNodeId(e.getId(),step);
+        boolean bound=!step.path("nodeId").asText("").isBlank();
         JsonNode output=run.output()==null?mapper.createObjectNode():run.output();
         String type=switch(operation){case "image" -> "image";case "video","assemble" -> "video";default -> "text";};
         String title=step.path("title").asText();
         ObjectNode data=nodeData(e,nodeId,type,title,stepId,run.id());
+        if(bound)data.put("op","update");
         ObjectNode metadata=(ObjectNode)data.path("node").path("metadata");ObjectNode studio=(ObjectNode)metadata.path("studio");
+        String prompt=sentPrompt(run,step);
+        if(!prompt.isBlank())metadata.put("prompt",prompt);
         switch(operation) {
             case "image","video","assemble" -> {
                 String key=outputs.outputKey(run,null);
                 if(key!=null)metadata.put("storageKey",key);
                 if("assemble".equals(operation))studio.put("kind","work");
+                // The box takes the result's shape: the task's ratio now, the file's real size once it loads (client).
+                String ratio=resultRatio(step);
+                var fit=studio.putObject("mediaFit");
+                if(key!=null)fit.put("storageKey",key);
+                if(ratio!=null)fit.put("aspectRatio",ratio);
             }
             case "check" -> {
                 String target=step.path("definition").path("settings").path("targetStepId").asText();
                 var subject=PlanState.step(state,stage,target);
-                String subjectId=StudioPlanExecutionIds.nodeId(e.getId(),stage,target);
+                String subjectId=subject==null?StudioPlanExecutionIds.nodeId(e.getId(),stage,target):StudioPlanExecutionIds.stepNodeId(e.getId(),subject);
                 ((ObjectNode)data.path("node")).put("title",(subject==null?"成片":subject.path("title").asText())+" · 检查");
                 studio.put("kind","check").put("parentNodeId",subjectId);
                 if(output.path("check").isObject())studio.set("check",output.path("check"));
@@ -576,7 +590,7 @@ public class StudioPlanExecutor {
             var upstream=PlanState.step(state,stage,dependency.asText());
             if(upstream==null||"check".equals(upstream.path("operation").asText()))continue;
             var connect=mapper.createObjectNode().put("nodeId",nodeId).put("op","connect").put("executionId",e.getId()).put("stepId",stepId).put("runId",run.id());
-            connect.putObject("connection").put("fromNodeId",StudioPlanExecutionIds.nodeId(e.getId(),stage,dependency.asText())).put("toNodeId",nodeId);
+            connect.putObject("connection").put("fromNodeId",StudioPlanExecutionIds.stepNodeId(e.getId(),upstream)).put("toNodeId",nodeId);
             out.add(new Event("node.upsert",connect));
         }
         if("recreation".equals(operation)) {
@@ -602,6 +616,26 @@ public class StudioPlanExecutor {
             clip.putObject("connection").put("fromNodeId",nodeId).put("toNodeId",segmentId);
             out.add(new Event("node.upsert",clip));
         }
+    }
+    /**
+     * The prompt this step's native run was submitted with (its request as stored on the run), else the step's own
+     * instruction. The video binding run stores the request itself; the image run keeps it under {@code studioRequest}.
+     */
+    static String sentPrompt(IpRunDto run,JsonNode step) {
+        JsonNode inputs=run.inputs()==null?null:run.inputs();
+        if(inputs!=null) {
+            for(JsonNode candidate:List.of(inputs.path("studioRequest").path("prompt"),inputs.path("prompt")))
+                if(candidate.isTextual()&&!candidate.asText().isBlank())return candidate.asText();
+        }
+        return step.path("definition").path("prompt").asText("");
+    }
+    /** The 画幅 a media step asked for: its aspectRatio, or the ratio of an exact {@code WxH} size; null when it named none. */
+    static String resultRatio(JsonNode step) {
+        JsonNode settings=step.path("definition").path("settings");
+        String ratio=settings.path("aspectRatio").asText("");
+        if(ratio.matches("[1-9][0-9]*:[1-9][0-9]*"))return ratio;
+        String size=settings.path("size").asText("");
+        return size.matches("[1-9][0-9]*x[1-9][0-9]*")?size.replace('x',':'):null;
     }
     private ObjectNode nodeData(IpPlanExecution e,String nodeId,String type,String title,String stepId,String runId) {
         var data=mapper.createObjectNode().put("nodeId",nodeId).put("op","create").put("executionId",e.getId()).put("stepId",stepId).put("runId",runId);

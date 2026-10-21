@@ -1,6 +1,6 @@
 'use client';
 import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-errors';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction, type SyntheticEvent } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal, type GetRef } from 'antd';
@@ -25,6 +25,7 @@ import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { attachmentNode, readAssistantAttachment, savedAssetPayload } from '@/canvas-bridge/studio-attachments';
 import { importStudioMedia, importStudioStory } from '@/canvas-bridge/studio-api';
 import { studioAiMade, studioUploadedByUser } from '@/canvas-bridge/studio-node-origin';
+import { fitStudioNodeToMedia } from '@/canvas-bridge/studio-media-fit';
 import { studioFailedWithoutMedia, studioFailureReason } from '@/canvas-bridge/studio-node-failure';
 import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 import { StudioNodeContent } from './studio-node-content';
@@ -71,15 +72,19 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const uploadImage = () => dispatchStudioCommand('upload-image', node.id);
   const uploadVideo = () => dispatchStudioCommand('upload-video', node.id);
   const edit = () => { if(data.readOnly){data.onInspect?.(node);return;} const action=studioNodeCommand(node,true); if(action)dispatchStudioCommand(action,node.id); };
+  // The real size of what is shown: the node records it and a result that just landed takes its shape (§6.2).
+  const sized = (width: number, height: number) => { if (!data.readOnly && width > 0 && height > 0) data.onMediaSize?.(node.id, { width, height, storageKey: meta?.storageKey }); };
+  const imageLoaded = (event: SyntheticEvent<HTMLImageElement>) => sized(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
+  const videoLoaded = (event: SyntheticEvent<HTMLVideoElement>) => sized(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
   return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
     {port('target')}{port('source')}
     <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade ? <span className="studio-flow-ai-badge" title={generating ? 'AI 正在生成' : 'AI 生成的'}><AiMark size={10}/>{generating ? '生成中' : 'AI'}</span> : uploaded && <span className="studio-flow-origin">你上传的</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
     <div className={`studio-flow-media${studioText ? ' studio-flow-business' : ''}${mediaGenerating ? ' is-generating-media' : ''}`}>
       {studioText ? <div className="nowheel"><StudioNodeContent node={node} readOnly={data.readOnly}/></div> : mediaGenerating ?
-        <>{meta?.content && (node.type===CanvasNodeType.Video ? <SignedVideo src={meta.content} storageKey={meta.storageKey} preload="metadata"/> : <SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title}/>)}<StudioMediaGenerationState media={node.type===CanvasNodeType.Video?'video':'image'} task={meta?.studio?.task} confirmed={!!(meta?.studio?.runId||meta?.runId||meta?.videoTaskId||meta?.images?.some(t=>t.runId))}/></> : node.type === CanvasNodeType.Image && (meta?.content||meta?.storageKey) ?
-        <><SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && (meta?.content || meta?.storageKey) ?
-        <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata"/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && (meta?.content || meta?.storageKey) ?
+        <>{meta?.content && (node.type===CanvasNodeType.Video ? <SignedVideo src={meta.content} storageKey={meta.storageKey} preload="metadata" onLoadedMetadata={videoLoaded}/> : <SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title} onLoad={imageLoaded}/>)}<StudioMediaGenerationState media={node.type===CanvasNodeType.Video?'video':'image'} task={meta?.studio?.task} confirmed={!!(meta?.studio?.runId||meta?.runId||meta?.videoTaskId||meta?.images?.some(t=>t.runId))}/></> : node.type === CanvasNodeType.Image && (meta?.content||meta?.storageKey) ?
+        <><SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title} onLoad={imageLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && (meta?.content || meta?.storageKey) ?
+        <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata" onLoadedMetadata={videoLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && (meta?.content || meta?.storageKey) ?
         <div className="studio-flow-audio"><Music2 size={28}/><SignedAudio className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
         <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
         // A failed draft is not an empty one: say it failed and why, offer one way back (the prompt and references are kept).
@@ -379,7 +384,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     } await saveStudioDocument(projectId); if (last) focusNode(last); } catch (e) { message.error(e); }
     finally { setReading(false); }
   };
-  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup } })), [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup]);
+  // Not an undo step: the size of what a node shows is a fact about the file, not an edit.
+  const mediaSize = useCallback((id: string, size: { width: number; height: number; storageKey?: string }) => {
+    setNodes(old => { let changed = false; const next = old.map(n => { if (n.id !== id) return n; const fitted = fitStudioNodeToMedia(n, size); changed ||= fitted !== n; return fitted; }); return changed ? next : old; });
+  }, [setNodes]);
+  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup, onMediaSize: mediaSize } })), [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup, mediaSize]);
   const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));

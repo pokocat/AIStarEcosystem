@@ -231,10 +231,13 @@ public class IpRunService {
             return videoJobs.getJob(ids.get(0),userId,
                     com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
         }
-        JsonNode created=generateVideoBatch(userId, projectId, req, 1).get(0);
+        VideoBatch batch=generateVideoBatch(userId, projectId, req, 1);
+        JsonNode created=batch.jobs().get(0);
         if(requestId!=null) {
             ObjectNode inputs=om.valueToTree(req);
-            inputs.putObject("_exec").putArray("nativeVideoJobIds").add(created.path("id").asText());
+            ObjectNode exec=inputs.putObject("_exec");
+            exec.putArray("nativeVideoJobIds").add(created.path("id").asText());
+            exec.setAll(batch.frameAdjustments());
             Instant now=Instant.now();
             runRepo.save(IpRun.builder().id(uniqueRunId()).projectId(projectId).ownerUserId(userId)
                     .nodeId("adhoc").kind("studio-video").status(IpRun.STATUS_DONE).stage("video.bound").cost(0)
@@ -245,9 +248,15 @@ public class IpRunService {
         return created;
     }
 
+    /**
+     * The native jobs of one batch and what was done to its frames before submission ({@code firstFrameAdjusted} /
+     * {@code lastFrameAdjusted}, empty when nothing): the caller writes it into its binding run's {@code _exec}.
+     */
+    public record VideoBatch(List<JsonNode> jobs, ObjectNode frameAdjustments) {}
+
     /** One native batch: all candidates pass preflight before any hold or after-commit dispatch. */
     @Transactional
-    public List<JsonNode> generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count) {
+    public VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count) {
         requireNativeMode();
         List<Integer> allowedCounts=List.of(1,2,4);
         String batchEndpointId=null;
@@ -283,14 +292,25 @@ public class IpRunService {
         if (scenePolicies != null) variantConfig.put("endpoint_id", batchEndpointId==null
                 ?scenePolicies.resolveStudioVideo(req.model()).endpoint().getId():batchEndpointId);
         else if (req.model() != null && !req.model().isBlank()) variantConfig.put("endpoint_id", req.model().trim());
+        ObjectNode frameAdjustments = om.createObjectNode();
         if (req.video() != null) {
             if (refKey != null) throw BusinessException.badRequest("STUDIO_VIDEO_INPUT_INVALID", "请在视频模式中明确选择首帧或参考素材");
             var prepared=studioVideo.prepare(userId,req);
-            seedMax = prepared.seedMax();
-            requireApprovedCost(req.maxCost(),Math.multiplyExact(prepared.credits(), count));
-            item.put("credit_cost",prepared.credits());
-            prepared.spec().writeTo(variantConfig);
-        } else if (refKey != null) variantConfig.put("first_frame_key", refKey);
+            if (prepared.frameAdjustments() != null) frameAdjustments.setAll(prepared.frameAdjustments());
+            seedMax = prepared.canvas().seedMax();
+            requireApprovedCost(req.maxCost(),Math.multiplyExact(prepared.canvas().credits(), count));
+            item.put("credit_cost",prepared.canvas().credits());
+            prepared.canvas().spec().writeTo(variantConfig);
+        } else if (refKey != null) {
+            // The single-frame protocol is cropped the same way (§6.2): the provider stretches whatever shape it gets.
+            String frameKey = refKey;
+            if (studioVideo != null) {
+                var aligned = studioVideo.alignFrame(userId, refKey, req.aspectRatio());
+                frameKey = aligned.key();
+                if (aligned.adjusted() != null) frameAdjustments.set("firstFrameAdjusted", aligned.adjusted());
+            }
+            variantConfig.put("first_frame_key", frameKey);
+        }
         if (!variantConfig.isEmpty()) item.set("variant_config", variantConfig);
 
         ObjectNode body = om.createObjectNode();
@@ -313,7 +333,7 @@ public class IpRunService {
         if (created.size() != count) {
             throw BusinessException.badRequest("IP_VIDEO_SUBMIT_FAILED", "视频任务没建齐，请稍后再试");
         }
-        return created;
+        return new VideoBatch(created, frameAdjustments);
     }
 
     /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */

@@ -31,6 +31,13 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-21 · 结果落到助手准备的节点、首帧比例（`20261021-studio-exec-node`；真源 `docs/ip-studio-new-canvas-and-threads.md` §6）
+
+- [x] ~~**对话出视频后结果另起一个没有提示词的节点，助手准备的节点成了空壳；1:1 首帧被拉成 9:16**~~ **2026-10-21 已修**（线上 IPP-655ea55a）：计划步骤 `targetNodeId` + 确认时 `StudioPlanValidator.bindTargets` 绑定，读步骤节点统一经 `StudioPlanExecutionIds.stepNodeId`；结果节点带实际发出的提示词；`StudioVideoService.alignFrame` 居中裁剪首帧 / 尾帧并记 `_exec.firstFrameAdjusted`；生成面板裁剪提示；节点按产物比例（`studio-media-fit.ts`）；提示词 seed v23。测试：`StudioPlanTargetBindingTest`、`StudioPlanExecutorTest`（绑定步骤）、`StudioPlanExecutionServiceTest`（确认时绑定）、`StudioFrameCropTest`、`PlannerAssetCatalogTest`、`studio-plan-execution.test.ts`、`studio-media-fit.test.ts`、`studio-frame-crop-hint.test.tsx`。
+- [ ] **绑定的对象在步骤生成期间不显示「生成中」**（2026-10-21 发现）：执行器只在步骤完成时发 `node.upsert`，生成中那个对象仍是空的上传卡；原生 run 的 `node_id` 已是它，可以在 `StudioPlanExecutor` 受理后发一次 `status=loading` 的投影（或前端按执行步骤状态画进行中），要注意失败与取消时还原。
+- [ ] **对话模型是否真的按首帧写画幅只验了规划一步**：真调只覆盖 `propose_plan`（5/5 跟首帧 1:1、填了 `targetNodeId`）；对话模型在 `create_nodes` 里写 `aspectRatio`（规则 11 新句）、以及先 `view_images` 拿到尺寸的路径没有真调（§8.0.1 ⑦）。
+- [ ] **裁剪在真厂商上没出过片**：`alignFrame` 只有单测和真实图片字节测试，没有提交过一次收费的图生视频看厂商对裁剪图的输出；线上首次用 1:1 首帧出 9:16 时看一眼 `[studio-video] frame cropped` 日志与成片。
+
 ### 2026-10-21 · 热修 `20261021-studio-action-marker`（数组后面多写了一个结束标记）
 
 - [x] ~~**动作对了却被判格式错误，同一句正文显示三遍还扣了积分**（线上 2026-10-21 14:10，聚算 Qwen3.8 27B，JSON 动作协议，v20 提示词）~~ **2026-10-21 已修**：模型三次都在数组后面又写了一行 `<<<studio-actions>>>`。`DialogueActionProtocol.stripClosing` 把结尾处的一行收尾（分隔行再写一次、`<<</studio-actions>>>`、`<<<end>>>`、`<<<end-studio-actions>>>`、`</studio-actions>`、代码围栏收尾，大小写不敏感，最多两行）当合法收尾去掉，其它多余内容仍判错；格式错误重试时被判错那次的正文先不显示，重试不再流式，解析完再显示，正文只出现一次（`DialogueModels.Real` + `DialogueLoop.Model.endTurn`）；失败说明改为「这一轮没能执行，请再说一次。」；纠正提示和对话提示词补「分隔行只写一次，数组后面不要再写」（`SEED_VERSION` → `v22-2026-10-21-single-action-marker`）。

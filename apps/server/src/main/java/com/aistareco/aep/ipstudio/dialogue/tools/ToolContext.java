@@ -45,6 +45,12 @@ public final class ToolContext {
     public final BooleanSupplier stopRequested;
     public final Effects effects;
     public final Set<String> createdNodeIds = new LinkedHashSet<>();
+    /**
+     * One catalog line per object created in this turn ({@code [id] 视频 · 标题·待生成}). The canvas saves them a moment later,
+     * so a plan in the same turn would not see them in the saved document; the planner is shown these lines instead and
+     * can name such an object as a step's {@code targetNodeId}.
+     */
+    public final java.util.Map<String, String> createdNodeLines = new java.util.LinkedHashMap<>();
     private StudioSkill skill;
     private String stage;
     private int questions;

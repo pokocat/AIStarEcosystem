@@ -1,5 +1,5 @@
-import { expect, test } from 'vitest';
-import { mergeStudioSpec, studioDurationIssue, studioPromptSpec, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft } from './studio-composer-spec';
+import { describe, expect, test } from 'vitest';
+import { mergeStudioSpec, studioDurationIssue, studioFrameCropNotice, studioPromptSpec, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft } from './studio-composer-spec';
 
 // IPR-fde32da6c2cc4664974f (2026-10-20): the description as submitted, with the settings it was sent with.
 const INCIDENT = '用我给你的人物和客厅图片来做视频，画幅 16:9，低饱和冷色调。\n\n镜 1（中景）：固定中全景，两人分坐在沙发两侧。无台词，仅安静底噪。时长 4 秒。';
@@ -43,4 +43,16 @@ test('roles, not canvas order, decide frames and reference sets', () => {
   expect(studioSpecVideoDraft(undefined, base)).toBe(base);
   expect(mergeStudioSpec({ aspectRatio: '16:9', count: 4, source: 'assistant', updatedAt: '1' }, { durationSec: 8, source: 'assistant', updatedAt: '2' }))
     .toEqual({ aspectRatio: '16:9', count: 4, durationSec: 8, source: 'assistant', updatedAt: '2' });
+});
+
+// §6.2: production 2026-10-21 IPP-655ea55a, a 1:1 first frame sent for a 9:16 clip came back stretched.
+describe('a first frame of another shape', () => {
+  test('is said next to the send button with the server rule (centre crop, 2%), and a fix only when the model can do the frame', () => {
+    expect(studioFrameCropNotice({ width: 1024, height: 1024 }, '9:16', ['9:16', '16:9', '1:1'])).toEqual({ text: '首帧图是 1:1，会按 9:16 居中裁剪', fix: '1:1' });
+    expect(studioFrameCropNotice({ width: 1024, height: 1024 }, '9:16', ['9:16', '16:9'])).toEqual({ text: '首帧图是 1:1，会按 9:16 居中裁剪' });
+    expect(studioFrameCropNotice({ width: 1920, height: 1080 }, '9:16', ['9:16', '16:9'])).toEqual({ text: '首帧图是 16:9，会按 9:16 居中裁剪', fix: '16:9' });
+    expect(studioFrameCropNotice({ width: 1000, height: 1400 }, '9:16', ['9:16', '16:9', '1:1'])).toEqual({ text: '首帧图是 1000×1400，会按 9:16 居中裁剪' });
+    expect(studioFrameCropNotice({ width: 768, height: 1344 }, '9:16', ['9:16'])).toBeUndefined();
+    expect(studioFrameCropNotice(undefined, '9:16', ['9:16'])).toBeUndefined();
+  });
 });

@@ -21,6 +21,7 @@ import { placeStudioNode } from './flow-document';
 import { withStudioBilling } from './studio-billing';
 import { assistantFieldValue } from './studio-assistant-plan';
 import { mergeStudioSpec, studioSpecVideoDraft } from './studio-composer-spec';
+import { fitStudioNodeToRatio, runAspectRatio } from './studio-media-fit';
 import { mockExecutionAccept, mockExecutionControl, mockExecutionCreate, mockExecutionGet } from '@/ip/mocks/studio-dialogue';
 
 // ── API ────────────────────────────────────────────────────────────────────
@@ -92,7 +93,11 @@ function binding(data: StudioNodeUpsertData, incoming?: CanvasNodeData, existing
   return executionId && stepId ? { executionId, stepId, runId: data.runId || saved?.runId } : saved;
 }
 
-/** Merge server-owned fields; position, size, title and user writing stay with the user. */
+/**
+ * Merge server-owned fields; position, size, title and user writing stay with the user. An execution result brings the
+ * prompt it actually sent (§6.1): it fills an empty prompt; a prompt already written there is kept and the sent one is
+ * offered as an adoption (the keepText rule), the request keeping the record of what was sent.
+ */
 function mergeServerNode(existing: CanvasNodeData, incoming: CanvasNodeData, execution: ReturnType<typeof binding>) {
   const proposals: ProjectionProposal[] = [];
   const { content, prompt, composerContent: _composerContent, studio: incomingStudio, ...serverOwned } = incoming.metadata || {};
@@ -109,7 +114,8 @@ function mergeServerNode(existing: CanvasNodeData, incoming: CanvasNodeData, exe
   const studio = existing.metadata?.studio || incomingStudio
     ? { ...incomingStudio, ...existing.metadata?.studio, ...(incomingStudio ? {
         kind: existing.metadata?.studio?.kind || incomingStudio.kind, task: incomingStudio.task, runId: incomingStudio.runId ?? existing.metadata?.studio?.runId,
-        check: incomingStudio.check ?? existing.metadata?.studio?.check, mock: incomingStudio.mock ?? existing.metadata?.studio?.mock } : {}),
+        check: incomingStudio.check ?? existing.metadata?.studio?.check, mock: incomingStudio.mock ?? existing.metadata?.studio?.mock,
+        mediaFit: incomingStudio.mediaFit ?? existing.metadata?.studio?.mediaFit } : {}),
       ...(execution ? { execution } : {}) } as NonNullable<CanvasNodeData['metadata']>['studio']
     : undefined;
   if (studio) metadata.studio = studio;
@@ -170,15 +176,19 @@ export function projectStudioNodeUpsert(doc: ProjectionDoc, data: StudioNodeUpse
   const existing = projectedNode(doc, data, incoming);
   if (existing && opts.missingOnly) return unchanged();
   const execution = binding(data, incoming, existing);
+  // A result carries the shape its task asked for: the box takes it now, the file's real size refines it when it loads.
+  const fitRatio = incoming.metadata?.studio?.mediaFit?.aspectRatio;
   let next: ProjectionDoc = doc, proposals: ProjectionProposal[] = [], changed = false;
   if (!existing) {
-    const created = placeStudioNode({ ...incoming, metadata: { ...incoming.metadata, ...(execution ? { studio: { kind: userTextContent(incoming) ? 'text' as const : 'shot' as const, ...incoming.metadata?.studio, execution } } : {}) } }, doc.nodes);
+    const created = placeStudioNode(fitStudioNodeToRatio({ ...incoming, metadata: { ...incoming.metadata, ...(execution ? { studio: { kind: userTextContent(incoming) ? 'text' as const : 'shot' as const, ...incoming.metadata?.studio, execution } } : {}) } }, fitRatio), doc.nodes);
     next = { ...doc, nodes: [...doc.nodes, created] };
     changed = true;
   } else {
     const merged = mergeServerNode(existing, incoming, execution);
+    // A prepared object a step filled (§6.1) keeps its width; its height follows the result.
+    const node: CanvasNodeData = incoming.metadata?.studio?.mediaFit ? fitStudioNodeToRatio(merged.node, fitRatio) : merged.node;
     proposals = merged.proposals;
-    if (!sameJson(merged.node, existing)) { next = { ...doc, nodes: doc.nodes.map(n => n.id === existing.id ? merged.node : n) }; changed = true; }
+    if (!sameJson(node, existing)) { next = { ...doc, nodes: doc.nodes.map(n => n.id === existing.id ? node : n) }; changed = true; }
     // Assistant references are the node's complete media inputs: other picture / video / audio edges into it go.
     const refs = incoming.metadata?.studio?.spec?.references;
     if (refs) {
@@ -327,6 +337,12 @@ export function runOutputKey(output: IpRunOutput | undefined, candidate?: number
 }
 
 type UpsertNode = NonNullable<StudioNodeUpsertData['node']>;
+/** The prompt a step's run was submitted with, read like StudioPlanExecutor.sentPrompt (an image run keeps it under studioRequest). */
+export function runSentPrompt(run: IpRun): string | undefined {
+  const inputs = run.inputs as unknown as { prompt?: unknown; studioRequest?: { prompt?: unknown } } | undefined;
+  for (const value of [inputs?.studioRequest?.prompt, inputs?.prompt]) if (typeof value === 'string' && value.trim()) return value;
+  return undefined;
+}
 function stepUpsert(execution: StudioPlanExecution, nodeId: string, type: 'text' | 'image' | 'video', title: string, stepId: string, runId: string, mock?: boolean) {
   const node = { id: nodeId, type, title, width: type === 'text' ? 380 : 320, height: type === 'text' ? 320 : 240, position: { x: 0, y: 0 },
     metadata: { status: 'success', studio: { runId, execution: { executionId: execution.id, stepId, runId }, ...(mock ? { mock: true } : {}) } } };
@@ -353,10 +369,14 @@ export function executionRestoreUpserts(execution: StudioPlanExecution, runs: Re
     const type = operation === 'image' ? 'image' : operation === 'video' || operation === 'assemble' ? 'video' : 'text';
     const data = stepUpsert(execution, nodeId, type, step.title, step.id, run.id, output.mock);
     const metadata = meta(data), studio = metadata.studio!;
+    const prompt = runSentPrompt(run);
+    if (prompt) metadata.prompt = prompt;
     if (type !== 'text') {
       const key = runOutputKey(output, step.acceptedRunId === run.id ? step.acceptedCandidateIndex : undefined);
       if (key) metadata.storageKey = key;
       if (operation === 'assemble') studio.kind = 'work';
+      const ratio = runAspectRatio(run);
+      studio.mediaFit = { ...(key ? { storageKey: key } : {}), ...(ratio ? { aspectRatio: ratio } : {}) };
     } else if (operation === 'check') {
       const subject = (output.check && checkedStep(execution, output.check.targetRunId)) || stageSteps(step.stage).find(s => s.id === step.dependsOn[0]);
       const subjectId = subject ? stepNodeId(execution, subject) : undefined;

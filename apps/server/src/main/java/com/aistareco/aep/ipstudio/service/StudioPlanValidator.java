@@ -11,6 +11,7 @@ import java.util.*;
 
 /** Model output is an editable suggestion, never executable code or permission to spend. */
 public final class StudioPlanValidator {
+    private static final org.slf4j.Logger log=org.slf4j.LoggerFactory.getLogger(StudioPlanValidator.class);
     public static final String CONTRACT = """
         创作方案输出契约升级（替代前文 steps 的旧定义）：
         返回 {summary:string,steps:[{id:string,operation:"text"|"script"|"storyboard"|"image"|"video",title:string,prompt:string,content?:string,editTarget?:{nodeId:string,field:"content"|"prompt"|"script"},referenceNodeIds:string[],dependsOn?:string[]}],questions:string[]}。
@@ -154,6 +155,7 @@ public final class StudioPlanValidator {
         if(steps.size()>rules.maxSteps())invalid("计划超过 "+rules.maxSteps()+" 步，请缩小范围后重新规划");
         var allowedOperations=new HashSet<>(rules.stageOperations(stage));
         Map<String,String> earlier=new LinkedHashMap<>(); // id -> operation
+        Set<String> targets=new HashSet<>(); // canvas objects a step already claimed as its result node
         var outSteps=plan.putArray("steps");
         int index=0;
         boolean compiled=false; // a plan-compile step turns the analysis into the production plan, so it has to come last
@@ -206,6 +208,8 @@ public final class StudioPlanValidator {
             }
             ObjectNode settings=settings(step.path("settings"),operation,stage,rules,allowed,earlier,dependencies,label);
             out.set("settings",settings);
+            String target=target(step.path("targetNodeId"),operation,settings,allowed,targets,id);
+            if(target!=null){out.put("targetNodeId",target);targets.add(target);}
             if("recreation".equals(operation)&&compiled)invalid(label+"的拉片要放在「编排制作计划」那一步之前");
             if("text".equals(operation)&&"plan-compile".equals(settings.path("purpose").asText()))compiled=true;
             var depends=out.putArray("dependsOn");dependencies.forEach(depends::add);
@@ -347,6 +351,95 @@ public final class StudioPlanValidator {
             item.put("role",role).put("order",order.asInt());
         }
         return out;
+    }
+
+    /**
+     * The planner's {@code targetNodeId}: the canvas object prepared for this step's result (the assistant's create_nodes
+     * draft, or an empty object the user placed). Only a shape check here: an id the planner may reference, a step whose
+     * result is one image / video / text, and not claimed by an earlier step. Anything else is dropped with a log line,
+     * never a reason to reject the plan; whether the object is still empty and of the right type is decided against the
+     * saved canvas at confirmation ({@link #bindTargets}).
+     */
+    private static String target(JsonNode value,String operation,JsonNode settings,Set<String> allowed,Set<String> claimed,String stepId) {
+        if(value.isMissingNode()||value.isNull())return null;
+        String id=value.isTextual()?value.asText().strip():"";
+        String reason=id.isEmpty()?"不是对象 id":resultType(operation,settings)==null?"这一步的结果不放进单个对象"
+                :!allowed.contains(id)?"不在素材清单里":claimed.contains(id)?"已被更早的步骤占用":null;
+        if(reason==null)return id;
+        log.info("[plan] targetNodeId dropped step={} target={} reason={}",stepId,abbreviate(value.toString()),reason);
+        return null;
+    }
+    private static String abbreviate(String text){return text.length()<=80?text:text.substring(0,80)+"…";}
+    /**
+     * The canvas type a step's result fills, or null when the result is not one object: image → 图片, video → 视频, a written
+     * text (script / note / prompt-revision without an edit target) → 文字. Checks, assembles, recreations, plan-compile and
+     * edits of an existing object never bind.
+     */
+    public static String resultType(String operation,JsonNode settings) {
+        return switch(operation==null?"":operation) {
+            case "image" -> "image";
+            case "video" -> "video";
+            case "text" -> !"plan-compile".equals(settings.path("purpose").asText())&&!settings.hasNonNull("editTarget")?"text":null;
+            default -> null;
+        };
+    }
+
+    /** Which new steps fill which prepared canvas object; {@code dropped} are refused explicit targets, for the log. */
+    public record TargetBinding(Map<String,String> bound,List<String> dropped) {}
+
+    /**
+     * Bind the steps of a confirmed plan to canvas objects prepared for their results (docs/ip-studio-new-canvas-and-threads.md
+     * §6.1). {@code steps} are execution step states ({@code id, operation, definition}); {@code doc} is the saved canvas;
+     * {@code assistantNodes} the objects the assistant created in this conversation (null when unknown: then the
+     * {@code metadata.studio.spec.source == "assistant"} marker stands in); {@code occupied} the objects other steps of the
+     * execution already fill.
+     * <ol>
+     * <li>An explicit {@code definition.targetNodeId} binds when the object is on the canvas, of the step's result type,
+     *     still without a result and not taken; otherwise it is dropped (reported in {@code dropped}, never an error).</li>
+     * <li>A step left unbound is bound automatically only when it is the single unbound step of its type and exactly one
+     *     assistant-made object of that type is still empty and free. Two drafts or two steps of a type: no guess.</li>
+     * </ol>
+     */
+    public static TargetBinding bindTargets(List<? extends JsonNode> steps,JsonNode doc,Set<String> assistantNodes,Set<String> occupied) {
+        Map<String,String> bound=new LinkedHashMap<>();List<String> dropped=new ArrayList<>();
+        Set<String> taken=new HashSet<>(occupied==null?Set.of():occupied);
+        Map<String,List<String>> unbound=new LinkedHashMap<>(); // result type -> step ids
+        for(JsonNode step:steps) {
+            JsonNode definition=step.path("definition");
+            String stepId=step.path("id").asText();
+            String type=resultType(step.path("operation").asText(),definition.path("settings"));
+            if(type==null)continue;
+            String target=definition.path("targetNodeId").asText("");
+            if(!target.isBlank()) {
+                JsonNode node=IpDocs.node(doc,target);
+                String reason=node==null?"对象不在画布上":!type.equals(node.path("type").asText())?"类型与这一步的结果不对应"
+                        :!emptyObject(node)?"对象已经有内容":taken.contains(target)?"已被别的步骤占用":null;
+                if(reason==null){bound.put(stepId,target);taken.add(target);continue;}
+                dropped.add(stepId+" → "+target+"："+reason);
+            }
+            unbound.computeIfAbsent(type,k->new ArrayList<>()).add(stepId);
+        }
+        for(var entry:unbound.entrySet()) {
+            if(entry.getValue().size()!=1)continue;
+            List<String> candidates=new ArrayList<>();
+            for(JsonNode node:IpDocs.nodes(doc)) {
+                String id=node.path("id").asText("");
+                if(id.isEmpty()||taken.contains(id)||!entry.getKey().equals(node.path("type").asText())||!emptyObject(node))continue;
+                boolean assistantMade=assistantNodes!=null?assistantNodes.contains(id)
+                        :"assistant".equals(node.path("metadata").path("studio").path("spec").path("source").asText());
+                if(assistantMade)candidates.add(id);
+            }
+            if(candidates.size()==1){bound.put(entry.getValue().get(0),candidates.get(0));taken.add(candidates.get(0));}
+        }
+        return new TargetBinding(bound,dropped);
+    }
+    /** An object that can take a result: nothing in it yet, nothing generating into it, not another execution's output. */
+    static boolean emptyObject(JsonNode node) {
+        JsonNode md=node.path("metadata");
+        if("loading".equals(md.path("status").asText())||md.path("studio").path("execution").isObject())return false;
+        if("text".equals(node.path("type").asText()))
+            return md.path("content").asText("").isBlank()&&!md.path("studio").hasNonNull("script")&&md.path("studio").path("scriptMarkdown").asText("").isBlank();
+        return IpDocs.primaryStorageKey(node)==null&&md.path("content").asText("").isBlank();
     }
 
     private static String segmentCap(JsonNode value,String label) {

@@ -110,7 +110,17 @@ public class ViewImagesTool implements StudioDialogueTool {
                 DialogueTools.fail("本轮的模型额度不足以看这些图。告诉用户回复后继续，或一次少看几张；不要凭名称描述画面")).settlingInTurn();
         var body = DialogueTools.OM.createObjectNode();
         var seen = body.putArray("objects");
-        for (JsonNode item : snapshot) seen.addObject().put("id", item.path("nodeId").asText()).put("title", item.path("title").asText()).put("type", item.path("type").asText());
+        for (JsonNode item : snapshot) {
+            var object = seen.addObject().put("id", item.path("nodeId").asText()).put("title", item.path("title").asText()).put("type", item.path("type").asText());
+            // A picture's real shape: when it becomes a first frame, the clip's 画幅 follows it unless the user said one (§6.2).
+            if ("image".equals(item.path("type").asText())) {
+                int[] size;
+                try { size = com.aistareco.aep.ipstudio.service.StudioFrameCrop.dimensions(storage.openForRead(item.path("storageKey").asText())); }
+                catch (Exception e) { size = null; }
+                if (size != null) object.put("size", size[0] + "×" + size[1])
+                        .put("aspectRatio", com.aistareco.aep.ipstudio.dialogue.DialogueCanvasDigest.ratioLabel(size[0], size[1]));
+            }
+        }
         body.put("observations", DialogueTools.excerpt(reply, 6000));
         body.put("note", "这是看图模型真实看到的画面描述。对用户只说这里写到的；没写到的、看不清的不要补，也不要编名字。"
                 + "说到某张图时用它的标题加你看到的特征（如「短发、白衬衫的男性正面图」），不要让用户认领编号。");
