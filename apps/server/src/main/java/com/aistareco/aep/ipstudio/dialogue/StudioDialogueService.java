@@ -444,7 +444,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         // stays; otherwise each message is routed again and may switch the thread to another method (画完图再写文案).
         StudioSkill current = thread.getSkillKey() == null ? null : catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
         StudioSkill skill;
-        boolean rebound = false;
+        boolean rebound = false, unbind = false;
         if (skillKey != null && !skillKey.isBlank()) {
             // Keeping the bound method only needs it not withdrawn (a draft keeps working); choosing another needs an active one.
             skill = current != null && current.key().equals(skillKey) ? catalog.requireForNewWork(skillKey) : catalog.requireForNewSelection(skillKey);
@@ -455,10 +455,21 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         } else if (bound != null) {
             skill = current;
         } else {
-            // S3 routing: the best match; a tie → none (the model picks with read_skill); no hit → the current method stays.
-            StudioSkill routed = routeSkill(userId, thread, inputs, current);
-            skill = routed != null ? routed : current;
-            rebound = skill != null && (current == null || !current.key().equals(skill.key()));
+            // S3 routing (docs/ip-studio-dialogue-intents.md §4): the best match switches; nothing that names a job keeps the
+            // current method; a tie unbinds the thread for this message and the model picks with read_skill (2026-10-21:
+            // a tie used to keep the current method, so 「用这几张图做一段视频」 right after the pictures stayed 出图).
+            var decision = routeSkill(userId, thread, inputs, current);
+            switch (decision.kind()) {
+                case MATCH -> {
+                    skill = decision.skill();
+                    rebound = current == null || !current.key().equals(skill.key());
+                }
+                case OPEN -> {
+                    skill = null;
+                    unbind = thread.getSkillKey() != null;
+                }
+                default -> skill = current;
+            }
         }
         var gate = gates == null ? null : gates.getIfAvailable();
         // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread counts against its stage
@@ -554,6 +565,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 .createdAt(now).updatedAt(now).build());
         for (var m : inputs) { m.setTurnId(turnId); m.setRunId(runId); m.setStatus(IpDialogueMessage.DONE); m.setUpdatedAt(now); messages.save(m); }
         if (skill != null && (thread.getSkillKey() == null || rebound)) { thread.setSkillKey(skill.key()); thread.setSkillVersion(skill.version()); }
+        // A tie: the thread holds no method until the model binds one with read_skill (which binds only an unbound thread or
+        // a switch), so the old method neither carries over to the next message nor shows on the thread meanwhile.
+        if (unbind) { thread.setSkillKey(null); thread.setSkillVersion(null); thread.setStage(null); }
         if (stage != null && bound == null) thread.setStage(stage);
         thread.setActiveTurnId(turnId); thread.setActiveRunId(runId); thread.setLastOpenedAt(now); thread.setUpdatedAt(now);
         threads.save(thread);
@@ -566,14 +580,14 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     }
 
     /**
-     * Intent routing for a message on a thread with no active execution ({@link StudioSkillRouter}): the media types of the
-     * pinned and attached nodes and the message text against each active skill's triggers. A message that matches no skill
-     * keeps the method the thread already has (or stays unbound, 「全能创作」); a tie leaves the choice to the model, which
-     * binds with read_skill. The caller persists a change on the thread.
+     * Intent routing for a message on a thread with no active execution ({@link StudioSkillRouter#decide}): the media types
+     * of the pinned and attached nodes and the message text against each active skill's triggers. A message that names no
+     * job keeps the method the thread already has (or stays unbound, 「全能创作」); a tie leaves the choice to the model,
+     * which binds with read_skill. The caller persists a change on the thread.
      */
-    private StudioSkill routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, StudioSkill current) {
+    private StudioSkillRouter.Decision routeSkill(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, StudioSkill current) {
         List<StudioSkill> active = catalog.available();
-        if (active.isEmpty()) return null;
+        if (active.isEmpty()) return StudioSkillRouter.decide(active, Set.of(), null, current);
         Set<String> media = new LinkedHashSet<>();
         StringBuilder text = new StringBuilder();
         JsonNode doc = projects.readDoc(projects.required(userId, thread.getProjectId()));
@@ -584,10 +598,14 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 if (type != null) media.add(type);
             }
         }
-        StudioSkill chosen = StudioSkillRouter.route(active, media, text.toString(), current).orElse(null);
-        if (chosen != null && (current == null || !current.key().equals(chosen.key())))
-            log.info("[dialogue] routed thread={} to skill={} v{} media={}", thread.getId(), chosen.key(), chosen.version(), media);
-        return chosen;
+        var decision = StudioSkillRouter.decide(active, media, text.toString(), current);
+        StudioSkill chosen = decision.skill();
+        if (decision.kind() == StudioSkillRouter.Kind.OPEN)
+            log.info("[dialogue] routing tie thread={} among {} media={} (was {}); the model picks", thread.getId(), decision.tied(), media,
+                    current == null ? "unbound" : current.key());
+        else if (decision.kind() == StudioSkillRouter.Kind.MATCH && (current == null || !current.key().equals(chosen.key())))
+            log.info("[dialogue] routed thread={} to skill={} v{} by {} media={}", thread.getId(), chosen.key(), chosen.version(), decision.reason(), media);
+        return decision;
     }
 
     /**

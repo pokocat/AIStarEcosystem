@@ -97,9 +97,10 @@ class StudioSuggestionRoutingTest {
         assertEquals("reference-video-recreation", route(Set.of("video"), "照这条做一段视频", null));
         assertEquals("reference-video-recreation", route(Set.of("video", "image"), "复刻这条，换成我的保温杯", null));
         // A reference video plus a product picture also scores 出视频's image: with a video word this is a tie, which the
-        // model settles by the intent table (never a wrong method forced on the thread), and never bumps a thread on 复刻.
-        assertNotEquals("video-generation", route(Set.of("video", "image"), "复刻这条，换成我的保温杯，做一个视频", null));
-        assertEquals("reference-video-recreation", route(Set.of("video", "image"), "复刻这条，换成我的保温杯，做一个视频", "reference-video-recreation"));
+        // model settles by the intent table (never a wrong method forced on the thread). Since 2026-10-21 a tie no longer
+        // keeps the thread's method either, even when it is 复刻 itself: the thread is unbound and the model reads the message.
+        assertNull(route(Set.of("video", "image"), "复刻这条，换成我的保温杯，做一个视频", null));
+        assertNull(route(Set.of("video", "image"), "复刻这条，换成我的保温杯，做一个视频", "reference-video-recreation"));
         assertEquals("image-generation", route(Set.of(), "画一张国风少女海报，9:16", null));
         assertEquals("image-generation", route(Set.of(), "帮我做个封面，内容是「夏日特饮上新」", null));
         assertEquals("video-generation", route(Set.of("text"), "画布上的这段剧本，出成视频", null));

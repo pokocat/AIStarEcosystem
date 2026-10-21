@@ -131,6 +131,23 @@ class StudioDialoguePromptWiringTest {
         assertTrue(system.stripTrailing().endsWith("]"), "nothing follows the example's array");
     }
     /**
+     * 2026-10-21: a routing tie leaves the turn without a method and the model binds one with read_skill. On qwen38-27b the
+     * model bound in the first step only once the unbound text said to bind alongside looking and not to ask before binding
+     * (0 of 9 → 9 of 9); and propose_plan's description no longer sends it to the withdrawn 「原创创作」. Contract with the
+     * model, not user copy (§8.0.1 ⑩).
+     */
+    @Test void anUnboundTurnIsToldToBindFirstAndOnlyMethodsOnTheShelfAreNamed() throws Exception {
+        String worker = Files.readString(Path.of("src/main/java/com/aistareco/aep/ipstudio/dialogue/StudioDialogueTurnWorker.java"));
+        assertTrue(worker.contains("read_skill 选定对应的方法") && worker.contains("可以和看图放在同一批动作里")
+                && worker.contains("选定方法之前不要向用户提问"), "the unbound skill text");
+        String propose = Files.readString(TOOLS.resolve("ProposePlanTool.java"));
+        for (StudioSkill s : skills()) {
+            if (s.withdrawn()) assertFalse(propose.contains("「" + s.name() + "」"), "propose_plan names the withdrawn method " + s.name());
+            else if (s.direct()) assertTrue(propose.contains(s.name()), "propose_plan names the direct method " + s.name());
+        }
+    }
+
+    /**
      * §6.1 / §6.2 (docs/ip-studio-new-canvas-and-threads.md), production 2026-10-21 IPP-655ea55a: the executor made a second
      * node beside the assistant's prepared one, and a 1:1 first frame was stretched to 9:16. The planner's JSON shape names
      * the field the validator reads, the rule says when to fill it, and both prompts and the video skill say the clip

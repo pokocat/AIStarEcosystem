@@ -461,7 +461,11 @@ public class StudioDialogueTurnWorker {
                 }
                 return out.toString();
             }
-            out.append("还没有选定方法。只是讨论、提问、闲聊就直接回答；要做出东西（图、文字、视频、复刻）就先用 read_skill 选定对应的方法（免费，对用户无感，不要问用户选哪种）：\n");
+            // A routing tie lands here too (2026-10-21): the model binds the method. On qwen38-27b the old wording never bound
+            // in the first step of 9 tie turns (it looked at the pictures first) and 3 then asked about motion or the first
+            // frame instead — questions the method's 「必填与可选」 answers with defaults. Binding alongside looking: 9 of 9.
+            out.append("还没有选定方法。只是讨论、提问、闲聊就直接回答；要做出东西（图、文字、视频、复刻）就先用 read_skill 选定对应的方法（免费，对用户无感，不要问用户选哪种），可以和看图放在同一批动作里。"
+                    + "选定方法之前不要向用户提问：要不要问、问什么，按选定方法里的「必填与可选」来定。\n");
             for (var s : catalog.available()) out.append(skillLine(s));
             return out.toString();
         }

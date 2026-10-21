@@ -51,7 +51,7 @@ public class ProposePlanTool implements StudioDialogueTool {
 
     public String name() { return "propose_plan"; }
     public String title() { return "整理制作方案"; }
-    public String description() { return "按已选制作方法为当前阶段整理制作方案：推荐方案、必要的替代方案、每一步做法与依赖。方案会显示给用户，不会自动执行；报价由服务端计算。没有参考视频的出图、出片（原创三视图、海报、原创短片）用「原创创作」方法，直接整理制作方案，不需要分析阶段。"; }
+    public String description() { return "按已选制作方法为当前阶段整理制作方案：推荐方案、必要的替代方案、每一步做法与依赖。方案会显示给用户，不会自动执行；报价由服务端计算。出图、出视频、写剧本与文案这几种方法没有分析阶段，直接整理制作方案（stage 填 production）；只有参考视频复刻要先分析。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "brief");
         DialogueTools.prop(s, "brief", "string", "用户目标、保留与替换范围、已知事实的整理，≤4000 字");

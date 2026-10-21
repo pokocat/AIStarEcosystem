@@ -1114,7 +1114,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **合并 main 时**：main 同日的「原创创作」`original-creation` 与出图触发词重叠，已改 `status: withdrawn`（文件保留以便下架库里的行）；直达判定统一为 `StudioSkill.firstStage()`，`direct()` 委托给它。
 - **四个技能**：出图 `image-generation`、写剧本与文案 `script-writing`、出视频 `video-generation` 是**直达技能**（`operations.analysis: []`，起始阶段 production）；参考视频复刻 `reference-video-recreation` 仍是分析 → 制作两阶段。
 - **直达技能一张卡**：方案和制作确认卡同一轮发出，卡上不带 `executionId`，点按钮或回「可以」直接以 production 建执行；写剧本与文案的短稿（1500 字内）当轮 `create_nodes` 放进画布，不发卡。前端 `approve()` 只在卡上带 `executionId` 时才当阶段确认，**不再回退到面板上最近一次执行的 id**。
-- **路由**（`StudioSkillRouter`）：关键词 ×2、素材类型 ×1，词优先于素材；唯一最高分胜出；没命中沿用当前技能、没有就不绑；平手沿用当前技能（在平手里时）否则不绑、由模型 `read_skill` 选，**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。
+- **路由**（`StudioSkillRouter.decide`）：写作意图（写 / 改 / 润色 / 出几条 / 想几个…直接带「文案 / 卖点 / 标题 / 口播 / 脚本 / 剧本…」）先判，带图带视频也归写剧本与文案，除非这句话先要了图或视频（「画一张海报，上面写标题」仍是出图）；其余关键词 ×2、素材类型 ×1，唯一最高分胜出；文字一个词都没命中 → 沿用当前技能、没有就不绑（**只有素材不选方法**）；**平手一律不绑**（2026-10-21 起，当前技能在平手里也不沿用），线程清掉技能，由模型 `read_skill` 选，**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。
 - **按任务绑定**：没有活跃执行时每条消息重新路由，命中别的技能就换；有活跃执行时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。
 - **问题预算**：技能正文「必填与可选」是要不要问的唯一判据；必填缺且推不出才问，一轮一个，带候选和默认；可选项（画幅、张数、时长、风格、模型）一律用默认，不问不编。
 - **提示词改了**：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，不升线上不生效。演示 mock（`src/ip/mocks/studio-dialogue.ts`）已照服务端补三个直达技能与新路由。

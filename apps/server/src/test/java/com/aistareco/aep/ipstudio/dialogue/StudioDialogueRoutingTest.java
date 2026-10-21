@@ -33,7 +33,11 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-/** S3 intent routing on a thread without a skill: single active, explicit choice, scored by attachments, ambiguous → 400. */
+/**
+ * S3 intent routing at turn start: single active, explicit choice, words scored with attachments as weight, attachments
+ * alone never pick a method, a tie unbinds the thread for the model (2026-10-21; it used to be a 400, then kept the current
+ * method when that was among the tied).
+ */
 class StudioDialogueRoutingTest {
     private final ObjectMapper mapper = new ObjectMapper();
     private final IpProjectService projects = mock(IpProjectService.class);
@@ -57,8 +61,8 @@ class StudioDialogueRoutingTest {
     }
 
     @BeforeEach void setUp() throws Exception {
-        video = skill("video-recreation", "triggers:\n  media: [video]\n  keywords: [复刻]");
-        script = skill("script-rewrite", "triggers:\n  media: [text]\n  keywords: [改脚本]");
+        video = skill("video-recreation", "triggers:\n  media: [video]\n  keywords: [复刻, 做一条]");
+        script = skill("script-rewrite", "triggers:\n  media: [text]\n  keywords: [改脚本, 做一条]");
         when(manager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(fixtures.enabled()).thenReturn(true); // free turns: routing is the only thing under test
         var project = IpProject.builder().id("P1").ownerUserId("u1").docJson(
@@ -107,11 +111,42 @@ class StudioDialogueRoutingTest {
         assertEquals("video-recreation", service.toDto(thread).skillKey(), "the routing result is on the thread state");
     }
 
-    @Test void anAttachedVideoRoutesToTheVideoSkill() throws Exception {
+    @Test void anAttachedVideoWeighsInBetweenSkillsTheWordsNamed() throws Exception {
         when(catalog.available()).thenReturn(List.of(script, video));
         service.post("u1", "P1", "IPT-P1", message("c-2", "照这个做一条", List.of("v1"), null));
         assertEquals("video-recreation", thread.getSkillKey());
         assertEquals("video-recreation", routedSkill());
+    }
+
+    /** 2026-10-21: a pinned video is material; it does not make 「看看这条」 a recreation (nor switch a bound thread). */
+    @Test void anAttachmentAloneNamesNoJob() throws Exception {
+        when(catalog.available()).thenReturn(List.of(script, video));
+        service.post("u1", "P1", "IPT-P1", message("c-2b", "看看这条", List.of("v1"), null));
+        assertNull(thread.getSkillKey());
+        assertNull(routedSkill());
+    }
+
+    /**
+     * 2026-10-21 (production: 「用这几张图做一段视频」 right after the pictures stayed 出图): a tie no longer keeps the
+     * current method even when it is one of the tied. The thread is unbound, the turn carries no skill, and the model binds
+     * one with read_skill (which binds an unbound thread).
+     */
+    @Test void aTieUnbindsABoundThreadEvenWhenItsMethodIsAmongTheTied() throws Exception {
+        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production");
+        when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
+        when(catalog.available()).thenReturn(List.of(video, script));
+        var result = service.post("u1", "P1", "IPT-P1", message("c-tie", "再做一条", null, null));
+        assertNotNull(result.turnId(), "the turn is accepted, no 400");
+        assertNull(thread.getSkillKey(), "the old method does not carry over");
+        assertNull(thread.getSkillVersion());
+        assertNull(thread.getStage());
+        assertNull(routedSkill(), "the model picks inside the turn");
+        var run = ArgumentCaptor.forClass(IpRun.class);
+        verify(runs).save(run.capture());
+        var input = mapper.readTree(run.getValue().getInputJson());
+        assertFalse(input.has("skillKey"));
+        assertFalse(input.path("_exec").has("stage"));
+        assertNull(service.toDto(thread).skillKey());
     }
 
     @Test void keywordsRouteWhenNothingIsAttached() throws Exception {
@@ -129,9 +164,9 @@ class StudioDialogueRoutingTest {
 
     /** 意图直达 2026-10-20: a tie is the model's call inside the turn (read_skill), not a 400 that makes the UI ask the user. */
     @Test void aTieStartsTheTurnWithoutASkillSoTheModelPicksOne() throws Exception {
-        var cut = skill("clip-cut", "triggers:\n  media: [video]\n  keywords: [剪]");
+        var cut = skill("clip-cut", "triggers:\n  media: [video]\n  keywords: [剪辑]");
         when(catalog.available()).thenReturn(List.of(cut, video));
-        var result = service.post("u1", "P1", "IPT-P1", message("c-4b", "看看这条", List.of("v1"), null));
+        var result = service.post("u1", "P1", "IPT-P1", message("c-4b", "剪辑一下再复刻这条", List.of("v1"), null));
         assertNotNull(result.turnId(), "the turn is accepted");
         assertNull(thread.getSkillKey());
         assertNull(routedSkill());

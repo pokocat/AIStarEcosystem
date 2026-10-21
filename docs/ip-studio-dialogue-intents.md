@@ -1,6 +1,6 @@
 # Studio 对话：意图直达（agent + 技能体系）
 
-> 现行设计真源（2026-10-20）。背景：用户反馈「AI 对话里问太多」。本文定义对话助手如何识别意图、分到哪个技能、什么时候问、什么时候直接生成，以及为此改动的服务端规则。配套：提示词 `resources/prompts/material/dap.ip_studio_skill_dialogue.md` / `dap.ip_studio_skill_plan.md`，技能文件 `resources/studio/skills/*.md`。对话机制本身（线程、流式、工具、执行器）仍以 [`ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) 为真源，本文只覆盖「意图 → 技能 → 一轮确认」这一层。
+> 现行设计真源（2026-10-20；路由规则 2026-10-21 修订：写作意图先判、平手一律不绑、只有素材不选方法）。背景：用户反馈「AI 对话里问太多」。本文定义对话助手如何识别意图、分到哪个技能、什么时候问、什么时候直接生成，以及为此改动的服务端规则。配套：提示词 `resources/prompts/material/dap.ip_studio_skill_dialogue.md` / `dap.ip_studio_skill_plan.md`，技能文件 `resources/studio/skills/*.md`。对话机制本身（线程、流式、工具、执行器）仍以 [`ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) 为真源，本文只覆盖「意图 → 技能 → 一轮确认」这一层。
 
 ## 1. 问题
 
@@ -24,7 +24,7 @@
 
 | 技能 | key | 阶段 | 允许操作 | 触发（关键词 ×2 / 素材 ×1） |
 |---|---|---|---|---|
-| 出图 | `image-generation` | 直达制作 | text, image | 出图 / 生图 / 画一 / 画张 / 海报 / 封面 / 设定图 / 换背景 / 再来一张…；素材 image |
+| 出图 | `image-generation` | 直达制作 | text, image | 出图 / 生图 / 画一 / 画张 / 出一张图 / 生成几张图 / 海报 / 封面 / 设定图 / 换背景 / 再来一张…（不收裸词「一张图」「几张图」：「用这几张图做视频」里它们是素材）；素材 image |
 | 写剧本与文案 | `script-writing` | 直达制作 | text | 剧本 / 脚本 / 文案 / 口播 / 台词 / 分镜 / 标题 / 改写 / 润色…；素材 text |
 | 出视频 | `video-generation` | 直达制作 | text, image, video, check, assemble | 视频 / 出片 / 动起来 / 做一条 / 短片 / 运镜…；素材 image |
 | 参考视频复刻 | `reference-video-recreation` | 分析 → 制作 | analysis: recreation, text；production: text, image, video, check, assemble | 复刻 / 拉片 / 参考视频 / 照着这条 / 做同款 / 翻拍…；素材 video |
@@ -37,14 +37,19 @@
 - 我们自己给的完成后建议（`StudioExecutionSummary.suggestions`）每一条都要路由到它说的那件事，或者明确不切换：`StudioSuggestionRoutingTest` 用仓库里的技能文件逐条钉住，新加一条建议就得在那里写上预期。
 - 配音 / 口型 / 声音克隆 / 局部重绘不在对话里做：提示词要求说明在画布对应节点的工具里做，不冒充。
 
-## 4. 路由（`StudioSkillRouter` + `StudioDialogueService.startTurn`）
+## 4. 路由（`StudioSkillRouter.decide` + `StudioDialogueService.startTurn`）
 
-1. 关键词命中 +2、素材类型命中 +1（**词优先于素材**：附商品图说「写一段文案」是写稿，不是出图）。
-2. 唯一最高分胜出。
-3. 一个都没命中 → 沿用线程当前技能（「再来一张」接着出图）；线程没有技能就不绑（全能创作，模型可用 `read_skill` 自己选）。
-4. 平手 → 当前技能在平手里就沿用；否则不绑，由模型在回合内按意图表决定并 `read_skill`。**不再抛 400 `STUDIO_SKILL_REQUIRED`**；`triggers.default` 只作为给模型的提示，不再做平手裁决。
-5. **技能按任务绑定而不是按线程绑定**：线程没有活跃执行时每条消息都重新路由，命中别的技能就换（`thread.skillKey` 改写、`stage` 改为新技能起始阶段）；有活跃执行（running / paused / needs_user）时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。执行结束解绑时清掉线程 `stage`。
-6. `read_skill` 在没有活跃执行时可以换方法（`Effects.bindSkill` 改为可覆盖）。
+结果三种：**MATCH**（绑这个技能）、**KEEP**（不变：有当前技能就沿用，没有就不绑）、**OPEN**（平手：不绑，交给模型）。
+
+1. **写作意图先判**（2026-10-21）：写作动词（写 / 改 / 改写 / 润色 / 扩写 / 精简 / 优化 / 拟 / 编 / 做 / 出 / 想 / 来 / 列，「起」只在数量前）在同一分句里直接带文字产物（文案 / 卖点 / 标题 / 口播 / 脚本 / 台词 / 剧本 / 简介 / 广告语 / 旁白 / 分镜 / 小传 / 人设 / 标语 / 话术 / 大纲 / 故事 / 文字…）→ 写剧本与文案，**带图片、视频素材也一样**（「用这张商品图写三条卖点文案」「做个视频脚本」）。图片素材只是写稿的材料。
+   - 不算写作意图：文字是图或视频的一部分——「做一张带标题的海报」（标题后面跟「的海报」）、「做个口播视频」「卖点图」（后面紧跟图 / 视频）、「海报上的标题」、「写上 / 写在」（往东西上写字）、「特写」。
+   - 这句话**先**要了图、视频或复刻（「画一张海报，上面写标题…」「做一条视频，先写个脚本」）：不算写作意图，而且写稿技能的关键词这次不计分，按其余技能打分（先点名的产物就是这件事）。「拍的 / 做好的 / 生成的」是已有素材，不算先要了别的。
+   - 写成代码里的一组正则（动词 + 同一分句内 16 字以内 + 文字名词作宾语中心），不是在技能文件里堆单字关键词；写作技能键是 `StudioSkillRouter.WRITING_SKILL`，它没上架时这条规则不生效。
+2. 其余按关键词命中 +2、素材类型命中 +1 打分（**词优先于素材**）；唯一最高分胜出（MATCH）。素材只在文字点名了事之后加权：「照这条做一段视频」+ 参考视频是复刻（3 比 2）。
+3. **文字一个关键词都没命中 → KEEP**：沿用线程当前技能（「再来一张」接着出图；钉着做好的片段说「合成一条成片」不会因为钉的是视频就跳到复刻）；线程没有技能就不绑（全能创作，模型可用 `read_skill` 自己选）。**只有素材不选方法**（2026-10-21 起；此前素材单独计分，钉一条视频说「看看这条」就会绑成复刻、钉一段文字说「配张图」会绑成写稿）。
+4. **平手 → OPEN，一律不绑**（2026-10-21 起；此前当前技能在平手里就沿用，于是刚出完图说「用这几张图做一段视频」留在了出图）：线程清掉 `skillKey / skillVersion / stage`，本轮不带技能，模型看到「还没有选定方法」和全部技能摘要，按意图表 `read_skill` 选定（提示里要求先选定、可与看图同一批、选定前不向用户提问）。日志 `[dialogue] routing tie thread=… among [...]`。**不再抛 400 `STUDIO_SKILL_REQUIRED`**；`triggers.default` 只作为给模型的提示，不做平手裁决。
+5. **技能按任务绑定而不是按线程绑定**：线程没有活跃执行时每条消息都重新路由，命中别的技能就换（`thread.skillKey` 改写、`stage` 改为新技能起始阶段）；有活跃执行（running / paused / needs_user）时方法不变、不路由，显式换技能 400 `STUDIO_INPUT_INVALID`。执行结束解绑时清掉线程 `stage`。
+6. `read_skill` 在没有活跃执行时可以换方法（`Effects.bindSkill` 改为可覆盖）；线程没有技能时它直接绑定。
 
 ## 5. 一轮确认（直达技能）
 
@@ -70,22 +75,30 @@
 |---|---|---|
 | 画一张国风少女海报，9:16 | — | 出图，一轮出卡，不问 |
 | 把这张图动起来，5 秒 | image | 出视频（动起来 ×2 + image ×1） |
-| 用这张商品图写三条卖点文案 | image | 写剧本与文案（词优先于素材），当轮写好 |
+| 用这张商品图写三条卖点文案 | image | 写剧本与文案（写作意图先判；2026-10-21 前实际落到出图），当轮写好 |
 | 复刻这条，换成我的保温杯 | video + image | 参考视频复刻 |
-| 照着参考视频做一条 | video | 复刻与出视频平手 → 模型按意图表选复刻 |
+| 照着参考视频做一条 | video | 复刻（「参考视频」×2 + video ×1 胜「做一条」×2）；不钉视频时平手 → 模型选（真调 3/3 选复刻） |
 | 再来一张，背景亮一点 | — | 沿用上一技能（出图） |
 | 这段文案怎么样，能更有力一点吗 | text | 写剧本与文案（要产物），`propose_text` |
 | 你好 / 谢谢 | — | 不绑技能，直接回答 |
 | 做张图 | — | 出图，问一个问题（画什么）附候选 |
 | 帮我做个封面，内容是「夏日特饮上新」 | — | 出图，不问，文字入提示词 |
 | 画布上的这段剧本，出成视频 | text | 出视频（剧本 → 分段） |
-| 这个视频配个音 | video | 不选方法，说明在节点工具里做 |
+| 这个视频配个音 | video | 不选方法（只有素材不选方法；2026-10-21 前被视频素材绑成复刻），说明在节点工具里做 |
 | 用这张图做一段视频（完成后建议，点击发出时不带引用） | —，或 image | 出视频（「做一段视频」×2；2026-10-21 前与出图平手，线程留在出图） |
+| 用这几张图做一段视频 / 用一张图生成一段视频 | —，或 image | 出视频（出图不再收裸词「几张图 / 一张图」；2026-10-21 前平手留在出图） |
+| 用这张商品图做一段视频 | image | 出图「商品图」与出视频平手 → 模型选（真调 3/3 选出视频） |
+| 复刻这条，换成我的保温杯，做一个视频 | video + image | 复刻与出视频平手 → 模型选（真调 3/3 选复刻；2026-10-21 前线程在复刻上就沿用） |
+| 做个ip形象三视图 / 换个风格再出一张 | — | 出图 |
+| 把做好的片段合成一条成片 | —，或 video | 不变（沿用当前技能，没有就不绑） |
+| 写一集 60 秒的短剧剧本：… / 做个视频脚本 | — | 写剧本与文案（写作意图；「做个视频脚本」2026-10-21 下午曾落到出视频） |
+| 画一张海报，标题写「…」/ 做一张海报，上面写标题：… | — | 出图（先要了海报，标题是海报上的字） |
 | 换个风格再出一张（完成后建议） | — | 出图 |
 | 写一段视频脚本，30 秒 | — | 写剧本与文案（出视频不收「一段视频」这个裸词，就是为了不抢这一句） |
 
 ## 8. 验证与边界
 
-- 服务端：`StudioSkillRouterTest`、`StudioDialogueRoutingTest`（换技能 / 沿用 / 活跃执行不换 / 直达起始阶段）、`StudioSkillCatalogTest`（三份直达种子、checks 规则）、`StudioPlanValidatorSkillTest`（直达无 approaches、指南只列本技能操作）、`ProposePlanToolTest`（直达 production）、`StudioPlanExecutionServiceTest`（直达制作卡直接建执行）、`StudioDialoguePromptWiringTest`（提示词里的工具名 / 技能名 / 变量都真实存在）。
+- 服务端：`StudioSkillRouterTest`（含表驱动用例 `theRoutingTableHoldsFromEveryThreadState`：§7 全部句子与 2026-10-21 线上遇到的句子，各带 / 不带图片、视频素材，在未绑定和绑在四个技能上共五种线程状态下逐一核对；另有写作意图正反例）、`StudioDialogueRoutingTest`（换技能 / 沿用 / 活跃执行不换 / 直达起始阶段）、`StudioSkillCatalogTest`（三份直达种子、checks 规则）、`StudioPlanValidatorSkillTest`（直达无 approaches、指南只列本技能操作）、`ProposePlanToolTest`（直达 production）、`StudioPlanExecutionServiceTest`（直达制作卡直接建执行）、`StudioDialoguePromptWiringTest`（提示词里的工具名 / 技能名 / 变量都真实存在）。
 - 改了提示词文件：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，否则线上不生效。
-- 未做：真模型端到端（§8.0.1 ⑦ 要求上线前至少真调一次，按 §7 评测集走）；前端演示 mock 的技能目录与路由镜像；配音 / 口型技能（待对话工具开放这些操作）。
+- 真模型（2026-10-21，本机开发库的聚算凭据直连 `qwen38-27b`，线上 14:10 那轮的真实请求换成「未选定方法」的技能段）：三句平手句子（复刻 + 做视频、照着参考视频做一条、用这张商品图做一段视频）各 3 次，第一步都发了 `read_skill` 且选对（9/9）；旧提示里第一步从不 `read_skill`（0/9，先看图，之后 3/9 先问用户再选），于是「未选定方法」那段改为「先选定、可与看图同一批、选定前不提问」。记录见 `docs/releases/studio-new-canvas-threads-release-20261021.md`「热修 20261021-studio-skill-routing」。
+- 未做：完整的真模型端到端（§7 其余句子只验了路由，没有真调）；前端演示 mock 的技能目录与路由镜像；配音 / 口型技能（待对话工具开放这些操作）。
