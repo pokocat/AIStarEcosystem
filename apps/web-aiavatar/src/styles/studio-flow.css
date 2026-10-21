@@ -85,6 +85,11 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
 .studio-flow-media-action:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
 .studio-flow-media.is-generating-media { container-type:size; }
 .studio-flow-media>img,.studio-flow-media>video { width:100%; height:100%; object-fit:contain; display:block; }
+/* 视频节点铺满：the box is already in the clip's shape (studio-media-fit), so cover only trims rounding, never content. */
+.studio-flow-video-card.is-fitted .studio-flow-media>video { object-fit:cover; }
+/* 抽帧 placeholder: local only, never saved; the frame lands in its place. */
+.studio-flow-card.is-processing { opacity:.9; }
+.studio-flow-processing-spin { width:28px; height:28px; border-radius:50%; border:3px solid var(--line-2); border-top-color:var(--ink-2); animation:studio-flow-generation-spin 1s linear infinite; }
 .studio-flow-media.studio-flow-business { background:var(--surface); }
 .studio-flow-business>div { height:100%; overflow:auto; }
 .studio-flow-placeholder { width:100%; height:100%; display:flex; gap:16px; align-items:center; justify-content:center; flex-direction:column; border:0; background:transparent; color:var(--ink-2); cursor:pointer; font-size:12px; }
@@ -302,6 +307,12 @@ html[data-layout="desktop"] .ip-surface .studio-overlay:has(> .studio-focused-vi
 .studio-lip-footer { display:flex; align-items:center; justify-content:space-between; gap:16px; width:100%; }
 .studio-lip-footer .studio-quote { margin:0; flex:1; font-variant-numeric:tabular-nums; }
 .studio-lip-footer .ant-btn { flex-shrink:0; }
+.studio-video-frames-footer { display:flex; align-items:center; justify-content:flex-end; gap:8px; width:100%; }
+.studio-video-frames-footer>span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2); font-size:12px; }
+.studio-video-frames .studio-director-form { gap:14px; }
+.studio-video-frames-choice { display:flex; flex-direction:column; gap:8px; font-size:12px; color:var(--ink-2); }
+.studio-video-frames-choice .ant-radio-group { display:flex; flex-wrap:wrap; }
+.studio-video-frames-choice .ant-radio-button-wrapper { font-variant-numeric:tabular-nums; }
 /* Only visible toolbar controls capture input; its transparent span must allow node dragging. */
 .studio-flow-shell .studio-command-strip { pointer-events:none; }
 .studio-flow-shell .studio-command-strip>* { pointer-events:auto; }

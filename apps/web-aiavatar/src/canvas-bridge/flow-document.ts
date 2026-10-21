@@ -5,7 +5,11 @@ import { studioGenerationPending } from './studio-nodes';
 
 export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean; uploading?: boolean; fresh?: boolean; onInspect?: (node:CanvasNodeData)=>void; onRename?: (id:string,title:string)=>void; onDescribeGroup?: (id:string,description:string)=>void;
   /** The picture / clip a card shows reported its real size (studio-media-fit: record it, and take a just-landed result's shape). */
-  onMediaSize?: (id:string,size:{width:number;height:number;storageKey?:string})=>void }, 'studio'>;
+  onMediaSize?: (id:string,size:{width:number;height:number;storageKey?:string})=>void;
+  /** A video node the user just resized: its height follows the clip again (studio-media-fit `fitStudioVideoToResize`). */
+  onVideoResized?: (id:string)=>void;
+  /** A local placeholder that is not in the document (抽帧 while the frame is being captured): drawn, never saved. */
+  processing?: boolean }, 'studio'>;
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },

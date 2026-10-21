@@ -2,6 +2,7 @@ import { nanoid } from 'nanoid';
 import type { StudioMediaImportResult } from '@ai-star-eco/types';
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from '@/canvas/types/canvas';
 import { studioGenerationPending } from './studio-nodes';
+import { fitStudioVideoNode } from './studio-media-fit';
 
 export const STUDIO_VIDEO_UPLOAD_ACCEPT = 'video/mp4,.mp4';
 
@@ -26,7 +27,9 @@ export function replaceStudioVideo(nodes: CanvasNodeData[], connections: CanvasC
       dependents.add(edge.toNodeId); changed = true;
     }
   }
-  return nodes.map(n => n.id === nodeId ? { ...n, metadata: { ...n.metadata,
+  // The server already measured the clip: the node takes its shape now instead of waiting for the video to load.
+  const shaped = (n: CanvasNodeData) => video.width && video.height ? fitStudioVideoNode(n, video.width, video.height) : n;
+  return nodes.map(n => n.id === nodeId ? shaped({ ...n, metadata: { ...n.metadata,
     content: video.url, storageKey: video.key, status: 'success', errorDetails: undefined, origin: 'upload',
     mimeType: video.mimeType, bytes: video.bytes, naturalWidth: video.width, naturalHeight: video.height,
     durationMs: video.durationSec ? Math.round(video.durationSec * 1000) : undefined,
@@ -35,6 +38,6 @@ export function replaceStudioVideo(nodes: CanvasNodeData[], connections: CanvasC
       storageKey: video.key, mimeType: video.mimeType, seconds: String(video.durationSec || '') }],
     studio: n.metadata?.studio ? { ...n.metadata.studio, runId: undefined, request: undefined,
       task: undefined, adoption: undefined, references: [], upstreamChanged: false } : undefined,
-  } } : dependents.has(n.id) && n.metadata?.studio ? { ...n, metadata: { ...n.metadata,
+  } }) : dependents.has(n.id) && n.metadata?.studio ? { ...n, metadata: { ...n.metadata,
     studio: { ...n.metadata.studio, upstreamChanged: true } } } : n);
 }

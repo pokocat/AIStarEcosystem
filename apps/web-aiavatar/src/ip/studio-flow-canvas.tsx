@@ -25,13 +25,14 @@ import { saveStudioDocument } from '@/canvas-bridge/studio-save';
 import { attachmentNode, readAssistantAttachment, savedAssetPayload } from '@/canvas-bridge/studio-attachments';
 import { importStudioMedia, importStudioStory } from '@/canvas-bridge/studio-api';
 import { studioAiMade, studioUploadedByUser } from '@/canvas-bridge/studio-node-origin';
-import { fitStudioNodeToMedia } from '@/canvas-bridge/studio-media-fit';
+import { fitStudioNodeToMedia, fitStudioVideoToResize, studioVideoFitted, studioVideoSize } from '@/canvas-bridge/studio-media-fit';
 import { studioFailedWithoutMedia, studioFailureReason } from '@/canvas-bridge/studio-node-failure';
 import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-attachment-picker';
 import { StudioNodeContent } from './studio-node-content';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
 import { StudioWorkspace } from './studio-workspace';
 import { StudioFlowImageTools } from './studio-flow-image-tools';
+import { StudioFlowVideoFrames, type StudioPendingFrame } from './studio-flow-video-frames';
 import { studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-bridge/studio-task-status';
 import { createStudioLinkedNode } from '@/canvas-bridge/studio-linked-inputs';
 import { StudioConnectionCreateMenu, type PendingStudioConnection } from './studio-connection-create-menu';
@@ -76,8 +77,17 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
   const sized = (width: number, height: number) => { if (!data.readOnly && width > 0 && height > 0) data.onMediaSize?.(node.id, { width, height, storageKey: meta?.storageKey }); };
   const imageLoaded = (event: SyntheticEvent<HTMLImageElement>) => sized(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight);
   const videoLoaded = (event: SyntheticEvent<HTMLVideoElement>) => sized(event.currentTarget.videoWidth, event.currentTarget.videoHeight);
-  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}`} aria-label={`${node.title} · ${node.type}`}>
-    {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
+  // 视频节点铺满：a video whose real size is known keeps that shape while being resized (exact at the end, same undo step)
+  // and is drawn edge to edge once the box is in shape.
+  const videoShaped = node.type === CanvasNodeType.Video && !!studioVideoSize(node);
+  const videoFitted = videoShaped && studioVideoFitted(node);
+  if (data.processing) return <article className="studio-flow-card is-processing" aria-label={`${node.title} · 处理中`} aria-busy="true">
+    {port('target')}
+    <header className="studio-flow-drag"><Icon size={15}/><StudioNodeTitle title={node.title}/></header>
+    <div className="studio-flow-media"><div className="studio-flow-placeholder" role="status"><span className="studio-flow-processing-spin" aria-hidden/><span>处理中</span></div></div>
+  </article>;
+  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${videoFitted ? ' is-fitted' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}`} aria-label={`${node.title} · ${node.type}`}>
+    {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} keepAspectRatio={videoShaped} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))} onResizeEnd={videoShaped ? () => data.onVideoResized?.(node.id) : undefined}/>}
     {port('target')}{port('source')}
     <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade ? <span className="studio-flow-ai-badge" title={generating ? 'AI 正在生成' : 'AI 生成的'}><AiMark size={10}/>{generating ? '生成中' : 'AI'}</span> : uploaded && <span className="studio-flow-origin">你上传的</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
     <div className={`studio-flow-media${studioText ? ' studio-flow-business' : ''}${mediaGenerating ? ' is-generating-media' : ''}`}>
@@ -388,8 +398,20 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const mediaSize = useCallback((id: string, size: { width: number; height: number; storageKey?: string }) => {
     setNodes(old => { let changed = false; const next = old.map(n => { if (n.id !== id) return n; const fitted = fitStudioNodeToMedia(n, size); changed ||= fitted !== n; return fitted; }); return changed ? next : old; });
   }, [setNodes]);
-  const graphNodes = useMemo(() => flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup, onMediaSize: mediaSize } })), [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup, mediaSize]);
-  const graphEdges = useMemo(() => flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })), [project?.connections, selectedEdges]);
+  // The resize itself was the undo step (checkpoint at resize start); squaring the height with the clip belongs to it.
+  const videoResized = useCallback((id: string) => {
+    setNodes(old => { let changed = false; const next = old.map(n => { if (n.id !== id) return n; const fitted = fitStudioVideoToResize(n); changed ||= fitted !== n; return fitted; }); return changed ? next : old; });
+  }, [setNodes]);
+  // 抽帧 placeholders live only here (never in the document, so autosave and task recovery never see them).
+  const [pendingFrames, setPendingFrames] = useState<StudioPendingFrame[]>([]);
+  const graphNodes = useMemo(() => [
+    ...flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup, onMediaSize: mediaSize, onVideoResized: videoResized } })),
+    ...flowNodes(pendingFrames.map(p => p.node), new Set()).map(n => ({ ...n, draggable: false, selectable: false, connectable: false, deletable: false, data: { ...n.data, readOnly: true, processing: true } })),
+  ], [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup, mediaSize, videoResized, pendingFrames]);
+  const graphEdges = useMemo(() => [
+    ...flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })),
+    ...flowEdges(pendingFrames.map(p => p.connection)).map(e => ({ ...e, selectable: false, deletable: false })),
+  ], [project?.connections, selectedEdges, pendingFrames]);
   const changeNodes = useCallback((changes: NodeChange<StudioFlowNode>[]) => {
     setNodes(old => changeFlowNodes(old, changes));
     const selection = changes.filter(c => c.type === 'select');
@@ -403,9 +425,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   if (!project) return null;
   const text = project.nodes.find(n => n.id === textId);
   const named = project.nodes.find(n => n.id === renameId), target = project.nodes.find(n => n.id === (context?.nodeId || [...selected][0]));
+  // 右键菜单是一排平铺的按钮，每项都要有 onClick；不支持 children（「素材拆解」曾因此点了就报错）。
   const nodeMenu = target ? [
     { key: 'edit', label: target.type === CanvasNodeType.Group ? '编辑分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) { checkpoint(); setRenameId(target.id); } else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
-    ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'recreation',label:'素材拆解',children:[{key:'analyze',label:'解析',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]}]:[]),
+    ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}]:[]),
+    ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'analyze',label:'解析视频',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]:[]),
     { key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } },
     ...(target.type === CanvasNodeType.Video ? [{ key: 'upload-video', label: target.metadata?.storageKey ? '替换视频' : '上传视频', onClick: () => dispatchStudioCommand('upload-video', target.id) }] : []),
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
@@ -503,6 +527,13 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           <Input.TextArea aria-label="展开节点文字" rows={18} value={text?.metadata?.content||''} onChange={e=>setNodes(old=>old.map(n=>n.id===textId?{...n,metadata:{...n.metadata,content:e.target.value}}:n))}/>
         </Modal>
       </>}/>
+    <StudioFlowVideoFrames nodes={project.nodes} pending={pendingFrames} onPendingChange={setPendingFrames} onInsert={async (nodes, connections) => {
+      checkpoint(); const p = current(), placed=[...p.nodes];
+      for(const node of nodes)placed.push(placeStudioNode(node,placed));
+      useCanvasStore.getState().updateProject(projectId, { nodes: placed, connections: [...p.connections, ...connections] });
+      focusNode(nodes[nodes.length - 1].id);
+      try { await saveStudioDocument(projectId); } catch (e) { message.error(e instanceof Error ? `${e.message}；截出的图片已保留，可按 Ctrl/Cmd+S 重试保存` : '截出的图片已保留，请重试保存画布'); }
+    }}/>
     <StudioFlowImageTools nodes={project.nodes} onInsert={async (nodes, connections) => {
       checkpoint(); const p = current(), placed=[...p.nodes];
       // Crop, split and redraw share the same collision avoidance as other automatic additions.

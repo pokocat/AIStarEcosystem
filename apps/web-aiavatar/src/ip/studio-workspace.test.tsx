@@ -645,14 +645,15 @@ test.each(['image','video'])('the %s download uses the newly adopted take and ne
 });
 
 // Canvas redesign (design Main board): the node bar is 「问助手」 plus at most two main actions; everything else is in 「⋯」.
-test('a selected video with two takes keeps 问助手, 重新生成视频 and 比较版本 on the bar and the rest under 更多操作',()=>{
+// 抽帧（2026-10-21）takes the second main slot of a video node (rank 2), so 比较版本 moves under 更多操作.
+test('a selected video with two takes keeps 问助手, 重新生成视频 and 抽帧 on the bar and the rest under 更多操作',()=>{
  const takes=[{id:'old',status:'success',storageKey:'old-media',content:'/old'},{id:'new',status:'success',storageKey:'new-media',content:'/new'}];
  render(<Host initial={{...node,type:'video',metadata:{status:'success',storageKey:'old-media',content:'/old',videos:takes,primaryVideoId:'old',studio:{kind:'shot'}}}}/>);
  const bar=screen.getByLabelText('继续创作'),more=within(bar).getByRole('group',{name:'更多操作'});
  const inline=[...bar.querySelectorAll(':scope>button')].map(b=>b.textContent);
- expect(inline).toEqual(['问助手','重新生成视频','比较版本','']);
+ expect(inline).toEqual(['问助手','重新生成视频','抽帧','']);
  expect(within(bar).getByRole('button',{name:'更多操作'})).toBeDefined();
- for(const label of ['替换视频','解析视频','拉片','口型同步','加入成片','下载视频'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
+ for(const label of ['替换视频','解析视频','拉片','口型同步','加入成片','下载视频','比较版本'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
  expect(within(more).getByRole('combobox',{name:'采用版本'})).toBeDefined();
 });
 
