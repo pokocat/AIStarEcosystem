@@ -473,3 +473,45 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 无迁移、提示词与技能文件未变，回滚不触发刷新或追加版本。回滚后恢复 8 次调用上限与旧说明；新版本已写进助手消息的 `requestJson.suggestions`（「继续」）旧版本照样读出显示（完成总结同一套），run 输出多出的 `steps` / `limit` 旧版本忽略。web-aiavatar 不涉及。
+
+## web 发布 `20261021-studio-restore-fix`（2026-10-21 19:21 CST，只发 web-aiavatar）
+
+### 问题（Codex 只读复现）
+
+1. **[P1] 制作完成后，助手准备的空节点恢复不出结果。** 制作中关页、换设备打开：恢复只看「节点在不在」。绑定到这一步的准备对象（§6.1）在画布上但还是空的，`missingExecutionNodes` 认为不缺，`executionOutputMissing` 不报，历史事件回放（无画布游标时的恢复模式，`projectStudioNodeUpsert` 的 `missingOnly`）见到节点存在也直接跳过；而且回放会把这个节点记进本浏览器的投影记录，之后执行恢复又因为「投影过」再跳过一次。结果：任务成功、积分已结算，画布仍为空。
+2. **[P2] 打字确认制作后有一段时间能切换对话。** 回复「可以」时服务端在这一轮回复里确认卡片、建好执行（`approval.required` 带已确认的卡，然后 `turn.done`）；前端回复结束、执行详情还没读到时 `dialogueThreadBusy` 为假，可以新建 / 打开别的对话，之后这份执行的节点事件就收不到了。按钮确认不受影响（`confirming` 一直锁到执行返回）。
+
+### 修法（main `e184a8dd`，分支 `fix/studio-restore-empty-node-20261021` 快进）
+
+- **恢复按「结果是否已回填」判断**（`canvas-bridge/studio-plan-execution.ts`）：新增 `nodeHoldsResult`（服务端 `StudioPlanValidator.emptyObject` 的反面：有媒体 / 候选 / 文字 / 剧本、正在生成、或已带执行绑定）。节点在画布上时，没有结果也没有别的内容就补，与投影记录无关（准备对象在助手建它时就被记下了）；不在画布上才看投影记录（删掉的不重建，Codex R6-02 不变）；已绑定这一步的节点算已回填，之后用户手动重新生成过也不覆盖。`missingExecutionNodes`、`executionOutputMissing`（关着面板时触发读对话的信号）、恢复回放的 `missingOnly`（`restoreFills`）用同一条规则。补的方式与实时事件相同：标题、位置、宽度、规格、连线保留，已有提示词 / 文字按 keepText 保留，恢复不出采纳建议，高度按产物比例；被补的对象和新建的一样能接上这次的依赖连线（`projectCanvasOps` 的 `attach`），用户删掉的连线不补回。执行恢复给绑定步骤发 `op: update`，与 `StudioPlanExecutor.nodeEvents` 一致。
+- **打字确认后保持切换锁**（`canvas-bridge/studio-dialogue-store.ts`、`ip/studio-dialogue-session.tsx`）：`DialogueStore.awaitingExecutionId`。收到 `approval.required` 里卡片变成已确认（之前不是已确认，带 `executionId`，且当前显示的不是这份执行），或同一对话的快照里原来待确认的卡变成已确认，就记下这份执行；读到它（`execution` 动作，无论属于哪段对话）或读执行明确返回 400 / 403 / 404（`execution.unavailable`）才清掉。期间 `dialogueThreadBusy` 为真，「新对话」「历史对话」不可点，提示沿用「这段对话还在进行，等它做完或先停止」，事件流保持订阅。会话里单独一个读取：失败按确认重发的退避（2s / 4s / 8s… 封顶 30s）重读，切换代次变化、离开画布或卸载就停；读到后它就是面板显示的执行（替换之前显示的已结束执行），在跑时由 `executionActive` 继续锁。第一次读一段对话时卡早已确认，不算；按钮确认路径不变；关联执行的读取跳过正在等的那一份，不重复请求。
+- 文档：`docs/ip-studio-new-canvas-and-threads.md` §3.2 评审修正段、§6.3 各补一条；`TODO.md` 两条记为已修；AGENTS.md「新建画布、多段对话与卡片精简」两处各补一句（本次发布记录同一提交）。只改前端：没有接口、没有迁移、server 不动。
+
+### 测试与门禁
+
+- 新增：`studio-plan-execution.test.ts`「restore fills an object prepared for a step when its result never reached it」7 条（换设备补进准备对象且只补一次、回放实时事件同样补、空提示词填实际发出的、本浏览器删掉的不重建、用户自己的媒体 / 生成中不覆盖、已绑定后手动重新生成不覆盖、文字步骤补空文字对象而有字的不动、两个准备对象之间补上依赖连线而用户删掉的不补回）；`studio-assistant.test.tsx` 2 条（整页：换设备打开后结果落进准备对象、再开不读 run 不保存、删掉的不重建；执行读不到时靠回放的结果事件补进去）；`studio-dialogue-session.test.tsx` 5 条（打字「可以」→ 服务端确认 → 执行详情未到时不能新建 / 切换 → 读到在跑的执行后由执行继续锁、只读一次；读失败两次后重读成功、已完成即解锁并能切换；快照里卡变成已确认同样锁；404 放开；卸载后不再重读）；`studio-dialogue-threads.test.tsx` 1 条（头部两个按钮在执行读到前不可点、提示原句，读到已完成的执行后可点）。新增的 5 + 2 + 4 + 1 条在改动前的代码上失败（其余是守护用例，改动前后都过）。
+- 改到的及相关文件（plan-execution / assistant / session / threads / store / mocks / check / wiring）8 个文件 189 条全过；`pnpm --filter @ai-star-eco/web-aiavatar typecheck`、`pnpm typecheck:all`、`pnpm check:api-contract`（`OK.`）通过；单独跑 web-aiavatar vitest 全量 145 个文件 1121 条全过。
+- **没做**：没在浏览器里真走「制作中关页 → 换设备打开」和「打字可以 → 立刻点新对话」（需要真实执行和扣积分）；没有 Codex 复测。
+
+### 制品与发布
+
+- 发布前核对：线上 web-aiavatar 最新为 `20261021-studio-composer-chips`（`GIT_SHA='cf9050f0…'`，`BUILD_ID` `y7Q6PWirR5fG3bhpZ4i1b`，PID 1393204，18:29:28 起），在 main 历史里；server 最新为 `20261021-studio-dialogue-steps`（不动）。`AIStarEcosystem-main-release` 干净；主仓另一个 agent 的 Maven 测试两次在跑，等到没有构建 / 发布 / Maven 进程后才合入与构建；main `9dc3ad80` 快进到 `e184a8dd`。
+- 构建 `RELEASE_ID=20261021-studio-restore-fix NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh web-aiavatar`：`manifest.env` 为 `SERVICES='web-aiavatar'`、`GIT_SHA='e184a8dd857624d7e7f3502530fda48e27909222'`、`NEXT_PUBLIC_USE_MOCK='0'`、`NEXT_PUBLIC_ENABLE_DEV_LOGIN='0'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；`checksums.sha256` 两项通过；`web-aiavatar.tar.gz` sha256 `a96481c23ff267cdc915d59e104633bd1e0d70e092acdabe46539b50307b1d77`，包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `RrgZBzhbXtiDBd764nGlm`；`chunks/5780.8c4a2a4d18fb791b.js` 与 `9526.2f76a0bb700a3a60.js` 含 `execution.unavailable`、`awaitingExecutionId`。
+- `deploy-release.sh dist/deploy/20261021-studio-restore-fix web-aiavatar`：`[env-check] ALL GREEN`、`[verify] ALL GREEN`。
+
+### 线上验收
+
+- `aistareco-web-aiavatar` 新进程 PID 1404847 于 **19:21:20 CST** 启动，`Ready`，`NRestarts=0`，`ActiveState=active`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，线上 `BUILD_ID` `RrgZBzhbXtiDBd764nGlm` 与制品一致；`/opt/ai-star-eco/releases` 最新为 `20261021-studio-restore-fix`（`GIT_SHA='e184a8dd…'`）。
+- `https://aiavatar.aibuzz.cn/projects` → 200，`/create` → 200；公网取 `_next/static/chunks/5780.8c4a2a4d18fb791b.js`：`execution.unavailable` 1 处、`awaitingExecutionId` 3 处。
+- **没做**：没用生产账号登录走一遍（需要用户自己登录，制作会扣积分）。建议：在一张画布上让助手出一段视频、确认后马上关页，等制作完成后换一个浏览器（或清掉本站数据）打开，结果应落进助手准备的那个视频对象；回复「可以」确认后立刻看头部「新对话」，执行读到之前应不可点。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-composer-chips` 的 `BUILD_ID` 与发布前线上一致）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-composer-chips web-aiavatar
+```
+
+只回 web-aiavatar，server 不动；回滚后恢复「节点在就不补」与打字确认后的切换窗口。
