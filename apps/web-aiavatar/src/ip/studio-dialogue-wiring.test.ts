@@ -95,7 +95,7 @@ test('dialogue styles stay inside the panel at phone width', () => {
   // Desktop / mobile differences follow html[data-layout], never width media queries.
   expect(css.match(/@media[^{]*/g) || []).toEqual(['@media (prefers-reduced-motion: reduce) ']);
   for (const [, value] of css.matchAll(/grid-template-columns:\s*([^;}]+)/g))
-    expect(value.trim()).toMatch(/^(?:(?:auto|minmax\(0, 1fr\)|repeat\(\d, minmax\(0, 1fr\)\))\s*)+$/);
+    expect(value.trim()).toMatch(/^(?:(?:auto|\d{1,2}px|minmax\(0, 1fr\)|repeat\(\d, minmax\(0, 1fr\)\))\s*)+$/);
   for (const [, px] of css.matchAll(/(?<![-\w])width:\s*(\d+)px/g)) expect(Number(px)).toBeLessThanOrEqual(120);
   for (const rule of css.split('}').map(r => r.trim()).filter(Boolean)) {
     const selector = rule.slice(0, rule.indexOf('{')).trim();

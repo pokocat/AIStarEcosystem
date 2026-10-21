@@ -13,3 +13,13 @@ test('raw action blocks in older replies are folded away from the prose; plain r
   const plain = '没有动作的普通回复，保留原样。\n\n\n第二段';
   expect(splitReplyActions(plain)).toEqual({ prose: plain, actions: '' });
 });
+
+// 2026-10-20 IPT-2f13c2ed42994624907d seq 10: the plan envelope was shown as prose and never ran.
+test('the studio-actions tag spelling is folded like the other two, prose around it kept', () => {
+  const reply = '好，就按单段 4 秒来做。\n\n<studio-actions>\n[{"tool":"propose_plan","args":{"stage":"production"}}]\n</studio-actions>';
+  const split = splitReplyActions(reply);
+  expect(split.prose).toBe('好，就按单段 4 秒来做。');
+  expect(split.actions).toContain('propose_plan');
+  expect(splitReplyActions('先看。<STUDIO_ACTIONS>[]</STUDIO_ACTIONS>再说。').prose).toBe('先看。再说。');
+  expect(splitReplyActions('好。<studio-actions>[{"tool":').prose).toBe('好。');
+});

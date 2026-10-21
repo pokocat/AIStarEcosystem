@@ -38,12 +38,12 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     </>}
     {section!=="references"&&<>
     <StudioChoiceGroup<string> label="清晰度" ariaLabel="视频清晰度" value={draft.tier} onChange={tier=>onChange({...draft,tier})} options={model.contract.tiers.map(t=>({value:t.tier,label:t.tier}))}/>
-    {section==="all"&&<StudioVideoSeedControl seed={draft.seed} max={model.contract.seedMax} onChange={seed=>onChange({...draft,seed})}/>}
     {/* 只有出片前会改写描述的模型（聚算 H3，厂商契约 optimizePrompt）才有这个选择；价格不变。 */}
     {model.supportsPromptOptimization&&<div className="studio-video-prompt-mode">
       <Checkbox checked={!!draft.keepPrompt} onChange={e=>onChange({...draft,keepPrompt:e.target.checked})}>按原文生成</Checkbox>
       <p>{draft.keepPrompt?"描述和台词原样交给模型，不再改写。画面细节要靠你自己写清楚。":"不勾选时，模型出片前会先改写一遍你的描述，台词偶尔会被删掉。"}</p>
     </div>}
+    {section==="all"&&<StudioVideoSeedControl seed={draft.seed} max={model.contract.seedMax} onChange={seed=>onChange({...draft,seed})}/>}
     </>}
   </>;
 }

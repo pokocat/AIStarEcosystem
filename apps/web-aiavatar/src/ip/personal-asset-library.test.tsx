@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { PersonalAssetLibrary } from './personal-asset-library';
 const api = vi.hoisted(() => ({ folders: vi.fn(), objects: vi.fn(), materials: vi.fn(), write: vi.fn() }));
@@ -61,16 +61,25 @@ test('changing search clears selection and keeps batch actions scoped to visible
 });
 
 test('older search requests cannot overwrite the latest visible results', async () => {
-  let finishOld!: (r: any) => void;
-  api.objects.mockImplementation((q: any) => q?.query === '旧' ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(result(q?.query === '新' ? [object('new', '新资产')] : [object()])));
-  render(<PersonalAssetLibrary/>);
-  await screen.findByRole('article', { name: '剧本资产 画家' });
-  fireEvent.change(screen.getByRole('textbox', { name: '搜索个人资产' }), { target: { value: '旧' } });
-  await waitFor(() => expect(finishOld).toBeDefined());
-  fireEvent.change(screen.getByRole('textbox', { name: '搜索个人资产' }), { target: { value: '新' } });
-  await screen.findByRole('article', { name: '剧本资产 新资产' });
-  finishOld(result([object('old', '旧资产')]));
-  await waitFor(() => expect(screen.queryByRole('article', { name: '剧本资产 旧资产' })).toBeNull());
+  // 组件的搜索有 180ms 防抖：用假计时器推过去，不真等两轮
+  vi.useFakeTimers();
+  try {
+    const debounce = () => act(async () => { await vi.advanceTimersByTimeAsync(200); });
+    let finishOld!: (r: any) => void;
+    api.objects.mockImplementation((q: any) => q?.query === '旧' ? new Promise(resolve => { finishOld = resolve; }) : Promise.resolve(result(q?.query === '新' ? [object('new', '新资产')] : [object()])));
+    render(<PersonalAssetLibrary/>);
+    await debounce();
+    expect(screen.getByRole('article', { name: '剧本资产 画家' })).toBeDefined();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索个人资产' }), { target: { value: '旧' } });
+    await debounce();
+    expect(finishOld).toBeDefined();
+    fireEvent.change(screen.getByRole('textbox', { name: '搜索个人资产' }), { target: { value: '新' } });
+    await debounce();
+    expect(screen.getByRole('article', { name: '剧本资产 新资产' })).toBeDefined();
+    await act(async () => { finishOld(result([object('old', '旧资产')])); await vi.advanceTimersByTimeAsync(0); });
+    expect(screen.queryByRole('article', { name: '剧本资产 旧资产' })).toBeNull();
+    expect(screen.getByRole('article', { name: '剧本资产 新资产' })).toBeDefined();
+  } finally { vi.useRealTimers(); }
 });
 
 test('text previews retain the complete saved content and use no write API', async () => {

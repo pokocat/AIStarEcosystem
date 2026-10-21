@@ -68,6 +68,7 @@ public class DramaRenderService {
     private final AiModelUsageService usage;
     private final UpstreamModelHttp upstreamHttp;
     private final MaterialVideoJobService videoJobs;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ai.ConfiguredImageGenerator configuredImages;
     private final CreditService creditService;
     private final CdnUploader cdnUploader;
     private final CdnUrlSigner signer;
@@ -319,6 +320,8 @@ public class DramaRenderService {
      * 本方法不计费；调用方在它抛异常时都不扣（首帧在成功后才 debit，三视图 / 画布按张 commit、其余退冻结）。
      */
     private byte[] callImageModel(AiModelEndpoint ep, String prompt, String size, java.util.List<String> validRefs) {
+        if(ep.getImageRequestSpecJson()!=null && !ep.getImageRequestSpecJson().isBlank())
+            return configuredImages.generate(ep,AiModelPurpose.IMAGE_GENERATION,"drama",prompt,size,validRefs);
         ImageSize requested = ImageSize.parse(size);
         ImageSize known = sizePresets.get(presetKey(ep));
         String firstSize = size;

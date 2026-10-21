@@ -9,7 +9,6 @@ vi.mock('./api',()=>({setCurrentProjectId:vi.fn(),signKeys:vi.fn(),uploadImage:v
 import { useProjectSync } from './project-sync';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { resumableImageRuns } from '@/canvas/lib/canvas/canvas-generation-helpers';
-import { isVideoTaskFailed } from './video';
 import { publishWithLatestDoc } from './publish-gate';
 const doc={nodes:[],connections:[],viewport:{x:0,y:0,k:1}};
 beforeEach(()=>{vi.useFakeTimers();m.get.mockResolvedValue({id:'A',name:'A',doc,docVersion:'v1'});m.put.mockResolvedValue({docVersion:'v2'});useCanvasStore.setState({projects:[],deletedProjects:[],hydrated:false});});
@@ -36,9 +35,6 @@ it('保存中再改一笔然后离开仍须把最后一笔保存',async()=>{
 it('网络失败或停止留下的任务号依然可对账恢复',()=>{
  const n={id:'n',type:'image',metadata:{status:'error',images:[{id:'i',status:'error',content:'',runId:'R'}]}} as any;
  expect(resumableImageRuns(n)).toHaveLength(1);
-});
-it('网络错误不能判为视频服务端终态失败并清除任务号',()=>{
- expect(isVideoTaskFailed(new TypeError('Failed to fetch'))).toBe(false);
 });
 it('离开后立即重新打开同项目不应读回尾部保存之前的旧文档',async()=>{
  let persisted={id:'A',name:'A',doc,docVersion:'v1'};

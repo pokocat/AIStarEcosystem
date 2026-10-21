@@ -179,7 +179,9 @@ class StudioDialogueRoutingTest {
         when(catalog.available()).thenReturn(List.of(video, script));
         service.post("u1", "P1", "IPT-P1", message("c-8", "再短一点", null, null));
         assertEquals("script-rewrite", thread.getSkillKey());
-        assertEquals("production", thread.getStage());
+        // No execution is running, so the next plan starts in the method's first stage (main's rule, merged 2026-10-20):
+        // this test method has an analysis stage, and a production plan without a running analysis could not be confirmed.
+        assertEquals("analysis", thread.getStage());
         assertEquals("script-rewrite", routedSkill());
     }
 

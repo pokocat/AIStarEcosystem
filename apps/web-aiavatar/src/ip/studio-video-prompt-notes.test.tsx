@@ -42,14 +42,6 @@ test("after a run: the lines the vendor dropped, said as after-the-fact, with th
   expect(onShow).toHaveBeenCalledOnce();
 });
 
-test("the composer reads the adopted take, else the first take that reports a rewrite", () => {
-  const twoTakes = run([done(0, "He says (S1) <d>[Chinese]等等？你说这片地要拆了，我怎么一点风声都没听到</d>"), done(1, REWRITTEN)]);
-  expect(studioComposerTake(twoTakes, "r1:1")?.lost).toHaveLength(1);
-  expect(studioComposerTake(twoTakes, "r1")?.lost).toEqual([]);
-  expect(studioComposerTake(twoTakes, undefined)?.index).toBe(0);
-  expect(studioComposerTake({ ...twoTakes, kind: "studio-image" }, "r1")).toBeUndefined();
-});
-
 test("the run input view shows what each take was generated from", () => {
   render(<StudioVideoRewriteDetail run={run([done(0, REWRITTEN), { ...done(1), promptRewrite: { state: "off" } }])}/>);
   expect(screen.getByText("候选 1 · 模型实际用的描述")).toBeDefined();

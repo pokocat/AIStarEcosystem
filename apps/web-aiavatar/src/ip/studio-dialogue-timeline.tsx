@@ -4,9 +4,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import type { StudioDialogueMessage } from '@ai-star-eco/types/ip-studio-workflow';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
+import { answeredAfter, dialogueActivity, dialogueSections, isPlaceholderMessage, lastAssistantMessage, messageQueueLabel, messageSuggestions, type DialogueStore } from '@/canvas-bridge/studio-dialogue-store';
 import { StudioDialogueMessageView, type DialogueMessageHandlers } from './studio-dialogue-message';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
+import { StudioDialogueActivity } from './studio-dialogue-activity';
 
 function ParentThread({ store, nodes, handlers, readThread }: { store: DialogueStore; nodes: CanvasNodeData[]; handlers: DialogueMessageHandlers; readThread: (id: string) => Promise<StudioDialogueMessage[]> }) {
   const [messages, setMessages] = useState<StudioDialogueMessage[]>(), [error, setError] = useStudioErrorState();
@@ -32,6 +33,9 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
 }) {
   const { current } = dialogueSections(store);
   const last = lastAssistantMessage(store);
+  // The live state of the open turn sits in its reply; before any reply exists it gets a row of its own.
+  const activity = dialogueActivity(store);
+  const activityHost = activity?.messageId && current.some(m => m.id === activity.messageId) ? activity.messageId : undefined;
   const [loadingOlder, setLoadingOlder] = useState(false), [error, setError] = useStudioErrorState();
   // Follow streamed text while the reader is at the bottom; leave them alone once they scroll up.
   const root = useRef<HTMLDivElement>(null), stick = useRef(true), sent = useRef(store.outbox.length);
@@ -42,7 +46,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     body.addEventListener('scroll', onScroll, { passive: true });
     return () => body.removeEventListener('scroll', onScroll);
   }, []);
-  const tail = `${store.latestSeq}:${store.messages.length}:${store.outbox.length}:${last?.text.length || 0}:${last?.blocks.length || 0}`;
+  const tail = `${store.latestSeq}:${store.messages.length}:${store.outbox.length}:${last?.text.length || 0}:${last?.blocks.length || 0}:${activity?.phase || ''}`;
   useLayoutEffect(() => {
     if (store.outbox.length > sent.current) stick.current = true;
     sent.current = store.outbox.length;
@@ -63,8 +67,9 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
     {error && <p className="studio-assistant-error"><span>{error}</span> <StudioErrorNotice error={error} autoReport={false} label="查看详情"/></p>}
     <ParentThread store={store} nodes={nodes} handlers={handlers} readThread={readThread}/>
     {entries.map(({ message: m, item }) => m ? <StudioDialogueMessageView key={m.id} message={m} layout={store.layouts[m.id]} nodes={nodes} shortfalls={store.shortfalls} queueLabel={messageQueueLabel(store, m)}
-      progress={m.id === last?.id ? progress : undefined}
-      suggestions={m.id === last?.id && store.activeTurnId !== m.turnId ? messageSuggestions(store, m) : undefined}
+      progress={m.id === last?.id ? progress : undefined} latest={m.id === last?.id} activity={m.id === activityHost ? activity : undefined}
+      answered={m.role === 'assistant' && m.blocks.some(b => b.type === 'question') ? !!answeredAfter(store, m) : undefined}
+      suggestions={m.id === last?.id && store.activeTurnId !== m.turnId && !answeredAfter(store, m) ? messageSuggestions(store, m) : undefined}
       handlers={isPlaceholderMessage(m.id) ? { ...handlers, onBranch: undefined } : handlers}/> : item && <article key={item.clientMessageId} className="studio-dialogue-message is-user" data-status={item.state} aria-label="你的消息">
       <small className="studio-dialogue-author">你</small>
       <p className="studio-dialogue-text">{item.text}</p>
@@ -72,6 +77,7 @@ export function StudioDialogueTimeline({ store, nodes, handlers, onRetry, onLoad
         : <small className="studio-dialogue-queue is-failed" role="status">没有确认送达{item.error ? `：${item.error}` : ''}
           <button type="button" className="studio-dialogue-link" title="用同一条消息重发，服务端只会处理一次" onClick={() => onRetry(item.clientMessageId)}>重新发送</button></small>}
     </article>)}
+    {activity && !activityHost && <div className="studio-dialogue-message is-assistant is-pending"><StudioDialogueActivity activity={activity}/></div>}
     {!last && progress}
   </div>;
 }

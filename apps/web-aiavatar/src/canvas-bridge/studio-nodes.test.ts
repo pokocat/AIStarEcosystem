@@ -91,14 +91,12 @@ describe("Studio adoption and recovery", () => {
     expect(selectStudioTake(second,"r1").metadata?.content).toBe("/cdn/first.jpg");
     expect(applyStudioRun(second,run("r2","second.jpg")).metadata?.storageKey).toBe("second.jpg");
   });
-  it("does not erase the previous adopted image on a failed retry", () => {
+  it("keeps the adopted image and committed candidates when a run fails outright or partially",()=>{
     const first=applyStudioRun(makeStudioNode("image"),run("r1","first.jpg"));
+    // 整次失败（没有任何产物）的重试不抹掉之前采用的图
     const failed=applyStudioRun(first,{...run("r2","ignored.jpg"),status:"failed",errorMessage:"测试失败",output:{}});
     expect(failed.metadata?.storageKey).toBe("first.jpg");
     expect(failed.metadata?.status).toBe("error");
-  });
-  it("keeps committed candidates when a multi-image run partially fails",()=>{
-    const first=applyStudioRun(makeStudioNode("image"),run("r1","first.jpg"));
     const partial=applyStudioRun(first,{...run("r2","committed.jpg"),status:"failed",errorMessage:"第二张未完成"});
     expect(partial.metadata?.status).toBe("error");expect(partial.metadata?.storageKey).toBe("first.jpg");
     expect(selectStudioTake(partial,"r2").metadata?.storageKey).toBe("committed.jpg");

@@ -12,8 +12,10 @@ import { studioVideoPromptReferences } from "@/canvas-bridge/studio-video-refere
 function ReferenceVisual({node}:{node:CanvasNodeData}) {
   return node.type===CanvasNodeType.Image&&node.metadata?.content?<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>:node.type===CanvasNodeType.Video?<Film size={22}/>:node.type===CanvasNodeType.Audio?<Music2 size={22}/>:<ImagePlus size={22}/>;
 }
-export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanvasPick}:{nodes:CanvasNodeData[];ids:string[];onChange:(ids:string[])=>void;accepts:(ids:string[])=>boolean;picking:boolean;onCanvasPick:()=>void}) {
+export function StudioReferencePicker({nodes,ids,onChange,accepts,picking,onCanvasPick,openRequest=0}:{nodes:CanvasNodeData[];ids:string[];onChange:(ids:string[])=>void;accepts:(ids:string[])=>boolean;picking:boolean;onCanvasPick:()=>void;openRequest?:number}) {
   const [open,setOpen]=useState(false),trigger=useRef<HTMLButtonElement>(null),panel=useRef<HTMLDivElement>(null);
+  const priorOpenRequest=useRef(openRequest);
+  useEffect(()=>{if(openRequest!==priorOpenRequest.current){priorOpenRequest.current=openRequest;if(openRequest)setOpen(true);}},[openRequest]);
   const close=()=>{setOpen(false);trigger.current?.focus();};
   useEffect(()=>{if(!open)return;const escape=(event:KeyboardEvent)=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close();}};window.addEventListener('keydown',escape,true);return()=>window.removeEventListener('keydown',escape,true);},[open]);
   const usable=nodes.filter(n=>n.metadata?.storageKey&&[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].includes(n.type as CanvasNodeType));

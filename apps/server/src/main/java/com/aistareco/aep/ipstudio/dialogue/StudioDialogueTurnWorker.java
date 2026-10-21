@@ -275,11 +275,22 @@ public class StudioDialogueTurnWorker {
         };
     }
 
+    /**
+     * A thread may change method only while no execution is bound to it, checked under the thread lock: an execution
+     * confirmed earlier in the same turn (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
+     * Same rule as turn start (StudioDialogueService.startTurn): a thread pointer to an execution means bound.
+     */
+    static void requireSkillSwitchAllowed(IpDialogueThread locked, boolean switching) {
+        if (switching && locked.getActiveExecutionId() != null)
+            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LOCKED", "这条对话正在制作，制作结束前不能换方法");
+    }
+
     static String limitNote(String limit) {
         return switch (String.valueOf(limit)) {
             case "calls" -> "这一轮已经想了很多步，先停在这里。回复「继续」我接着做。";
             case "time" -> "这一轮用时已到上限，先停在这里。回复「继续」我接着做。";
             case "tokens" -> "这一轮的模型额度用完了，先停在这里。回复「继续」我接着做。";
+            case "protocol" -> "这一轮整理出的操作格式不对，没有执行任何操作。回复「继续」我重新整理。";
             default -> "这一轮的动作次数用完了，先停在这里。回复「继续」我接着做。";
         };
     }
@@ -643,16 +654,21 @@ public class StudioDialogueTurnWorker {
                 store.write(threadId, t -> upserts.stream().map(u -> pending(StudioDialogueEventTypes.NODE_UPSERT, u)).toList());
             }
             @Override public void bindSkill(StudioSkill skill) {
-                // read_skill binds a thread that has no method, or switches one with no active execution (the tool refuses
-                // otherwise). A switch starts the new method's own stage; the same method keeps the stage it is in.
-                boolean switched = context.skill() != null && !context.skill().key().equals(skill.key());
-                String stage = switched || context.stage() == null ? skill.startingStage() : context.stage();
+                // Binding a first skill, or switching to another one while nothing is running on this thread (read_skill
+                // refuses a switch during an execution). A switch drops the old method's stage and supersedes its pending
+                // cards: a plan for 「参考视频复刻」 must not stay confirmable once the thread is making an original image set.
+                boolean switching = context.skill() != null && !context.skill().key().equals(skill.key());
                 store.write(threadId, t -> {
-                    if (t.getSkillKey() == null || switched) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); }
-                    if (t.getStage() == null || switched) t.setStage(stage);
-                    return List.of();
+                    // Checked again under the thread lock: an execution confirmed earlier in this same turn
+                    // (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
+                    requireSkillSwitchAllowed(t, switching);
+                    List<StudioDialogueStore.Pending> out = new ArrayList<>();
+                    if (t.getSkillKey() == null || switching) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); t.setStage(skill.firstStage()); }
+                    else if (t.getStage() == null) t.setStage(skill.firstStage());
+                    if (switching) out.addAll(store.supersedePendingApprovals(t, null, turnId, runId, executionId));
+                    return out;
                 });
-                context.bindSkill(skill, stage);
+                context.bindSkill(skill, switching || context.stage() == null ? skill.firstStage() : context.stage());
                 // The parent run carries the skill snapshot the plan executor reads back (plans proposed in this turn).
                 tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
                     ObjectNode input = (ObjectNode) parse(run.getInputJson());

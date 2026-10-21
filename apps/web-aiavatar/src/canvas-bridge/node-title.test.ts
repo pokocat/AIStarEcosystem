@@ -37,26 +37,20 @@ describe("自动标题", () => {
 });
 
 describe("认得出「没改过的自动标题」", () => {
-  it("线上那批 slice(0,32) 的老标题一律命中", () => {
+  it("线上那批 slice(0,32) 的老标题与本函数派生的值一律命中", () => {
     expect(looksAutoTitled(拿手机.slice(0, 30), 拿手机)).toBe(true);
     expect(looksAutoTitled(主形象.slice(0, 30), 主形象)).toBe(true);
-  });
-
-  it("本函数自己派生的值也命中（截断号不影响判断）", () => {
+    // 本函数自己派生的值也命中（截断号不影响判断）
     expect(looksAutoTitled(autoNodeTitle(主形象, "出图"), 主形象)).toBe(true);
   });
 
-  it("人手改过的名字不命中", () => {
+  it("人手改过的名字、短名字、没提示词的节点都不命中", () => {
     expect(looksAutoTitled("③ 招牌形象", 主形象)).toBe(false);
     expect(looksAutoTitled("穿针织衫拿手机", 拿手机)).toBe(false);
     expect(looksAutoTitled("开屏打招呼 · 8 秒", 视频)).toBe(false);
-  });
-
-  it("短名字一律放过，即使碰巧是提示词开头", () => {
+    // 短名字一律放过，即使碰巧是提示词开头
     expect(looksAutoTitled("一只猫", "一只猫坐在窗台上")).toBe(false);
-  });
-
-  it("没提示词的节点（上传的图）不算", () => {
+    // 没提示词的节点（上传的图）不算
     expect(looksAutoTitled("图片", null)).toBe(false);
   });
 });

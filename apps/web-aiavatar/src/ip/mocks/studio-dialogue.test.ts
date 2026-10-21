@@ -1,4 +1,4 @@
-// @vitest-environment jsdom
+// Runs in node: nothing here renders; the one storage call (mocks/ip-studio.ts, the projected-node reset) is guarded.
 // The demo dialogue runs the whole flow on the same reducer and contract as the real server.
 import { beforeEach, expect, test } from 'vitest';
 import type { IpProject, IpRun } from '@ai-star-eco/types';

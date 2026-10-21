@@ -93,7 +93,7 @@ public class DapAvatar {
 
     @Column(length = 64)
     @Builder.Default
-    private String engine = "Agnes Image 2.1";
+    private String engine = "平台图像引擎";
 
     /** 外部克隆引擎中的资产 id（石榴 avatarID 等）。 */
     @Column(length = 160)

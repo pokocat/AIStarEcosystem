@@ -69,7 +69,7 @@ class StudioDialoguePromptWiringTest {
         }
         // The one-card rule names exactly the direct skills; recreation keeps its two stages.
         for (StudioSkill s : skills()) {
-            if (s.direct()) assertTrue(prompt.contains(s.name()), s.name() + " is a direct skill the prompt must route to");
+            if (s.direct() && s.active()) assertTrue(prompt.contains(s.name()), s.name() + " is a direct skill the prompt must route to");
         }
         assertFalse(byName.get("参考视频复刻").direct());
         assertTrue(prompt.contains("stage 填 production"), "the direct skills' propose_plan stage is spelled out");

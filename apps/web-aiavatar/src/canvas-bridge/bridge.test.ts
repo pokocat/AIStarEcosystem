@@ -72,18 +72,15 @@ describe("签名地址：过期要换新的，换不到也别把好地址擦掉"
     expect(signKeysMock).toHaveBeenCalledTimes(1);
   });
 
-  it("服务端签不出来时返回 fallback，而不是空串", async () => {
+  it("服务端签不出来或网络抖动时返回 fallback，而不是空串", async () => {
     // 空串会让 img 渲染成破图图标 —— 用户以为图丢了。
     // 保留旧地址至少还有机会命中浏览器缓存。
     signKeysMock.mockResolvedValue({});
     const url = await resolveImageUrl("k/missing", "https://cdn.test/old?sig=stale");
     expect(url).toBe("https://cdn.test/old?sig=stale");
-  });
-
-  it("网络抖动不该让画布上的图消失", async () => {
+    // 网络抖动也不该让画布上的图消失
     signKeysMock.mockRejectedValue(new Error("network down"));
-    const url = await resolveImageUrl("k/flaky", "https://cdn.test/old?sig=stale");
-    expect(url).toBe("https://cdn.test/old?sig=stale");
+    expect(await resolveImageUrl("k/flaky", "https://cdn.test/old?sig=stale")).toBe("https://cdn.test/old?sig=stale");
   });
 
   it("没有 key 时直接给 fallback，不去打服务端", async () => {
@@ -103,9 +100,7 @@ describe("收集存储键（清理与统计用）", () => {
       ],
     });
     expect([...keys].sort()).toEqual(["a", "b", "c"]);
-  });
-
-  it("空值不炸", () => {
+    // 空值不炸
     expect(collectImageStorageKeys(null).size).toBe(0);
     expect(collectImageStorageKeys(undefined).size).toBe(0);
   });

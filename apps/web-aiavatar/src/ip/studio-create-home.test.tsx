@@ -51,6 +51,11 @@ describe("Creation catalogue", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "画布状态" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: "草稿" }));
     expect(screen.getByText("没有找到符合条件的画布")).toBeTruthy();
+    // 项目页只放已存的画布，不读模板目录（放在列表被筛空之后断言：整棵树小，getByRole 不用扫 24 张卡）
+    expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "新建创作" }).getAttribute("href")).toBe("/create");
+    expect(mocks.templates).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("link", { name: "打开画布 测试画布 0" })).toBeTruthy();
   });
@@ -69,6 +74,7 @@ describe("Creation catalogue", () => {
     fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
     await screen.findByText('封面保存失败');
     expect(screen.getByRole('dialog')).toBeTruthy();
+    await waitFor(() => expect((screen.getByRole('button', {name:'设为封面：图 1'}) as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(screen.getByRole('button', {name:'设为封面：图 1'}));
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(mocks.selectCover).toHaveBeenLastCalledWith('project', 'P0', 'owned/image.png');
@@ -110,16 +116,10 @@ describe("Creation catalogue", () => {
     resolve({ id: "P-new", doc });
     await waitFor(() => expect(mocks.push).toHaveBeenCalledWith("/projects/P-new"));
   });
-  it("keeps saved canvases in Projects without loading the template catalogue", async () => {
-    render(<StudioProjects />);
-    await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    expect(screen.getByRole("heading", { name: "项目", level: 1 })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "新建创作" }).getAttribute("href")).toBe("/create");
-    expect(mocks.templates).not.toHaveBeenCalled();
-    expect(screen.queryByRole("textbox", { name: "想做什么" })).toBeNull();
-  });
   it("keeps a failed delete reviewable and removes the card only after a successful retry", async () => {
     mocks.remove.mockRejectedValueOnce(new Error("删除未成功"));
+    // 只测删除：1 份画布就够（默认 27 份会让 waitFor 每拍都扫 24 张卡）
+    mocks.projects.mockResolvedValue([projects[0]]);
     render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     const card = screen.getByRole("link", { name: "打开画布 测试画布 0" }).closest("article")!;

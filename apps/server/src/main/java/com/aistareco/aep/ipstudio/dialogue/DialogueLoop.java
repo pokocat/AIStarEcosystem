@@ -81,8 +81,11 @@ public final class DialogueLoop {
         this.model = model; this.tools = tools; this.hooks = hooks; this.budget = budget; this.maxToolCalls = maxToolCalls;
     }
 
+    /** Consecutive replies whose actions could not be parsed before the turn stops instead of paying for another try. */
+    static final int MAX_PROTOCOL_RETRIES = 2;
+
     public Outcome run(List<Map<String, Object>> messages) throws Exception {
-        int toolCalls = 0;
+        int toolCalls = 0, protocolErrors = 0;
         while (true) {
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
             String limit = budget.blockReason(model.estimateInputTokens(messages), MIN_OUTPUT_TOKENS);
@@ -93,10 +96,14 @@ public final class DialogueLoop {
             // A stop that arrived while the model was answering wins over the reply's actions.
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
             if (reply.parseError() != null) {
+                // Nothing in a malformed batch runs. Two corrections are enough; a third paid call that repeats the same
+                // wrong spelling only spends the user's turn budget.
+                if (++protocolErrors > MAX_PROTOCOL_RETRIES) return outcome(Reason.LIMIT, "protocol", toolCalls);
                 model.appendExchange(messages, reply, List.of());
                 model.appendUser(messages, "上一条回复里的动作格式无法解析（" + reply.parseError() + "）。请按约定格式重新给出动作，正文不必重复。");
                 continue;
             }
+            protocolErrors = 0;
             if (reply.actions().isEmpty()) {
                 List<String> steering = canContinue(messages) ? hooks.drainSteering() : List.of();
                 if (steering.isEmpty()) return outcome(Reason.COMPLETED, null, toolCalls);

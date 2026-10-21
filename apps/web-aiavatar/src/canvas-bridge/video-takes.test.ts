@@ -9,8 +9,9 @@ describe('mixed native video candidates',()=>{
  it('wraps only through successful keyed takes and reaches nonadjacent successes',()=>{
   const mixed=[takes[2],takes[0],takes[3],takes[1],{id:'no-key',status:'success' as const}];
   expect(nextStudioVideoTake(mixed,'third',1)?.id).toBe('fourth');expect(nextStudioVideoTake(mixed,'third',-1)?.id).toBe('fourth');expect(nextStudioVideoTake(mixed,'fourth',1)?.id).toBe('third');
+  // 只有一个可播放的版本时不能翻
+  expect(nextStudioVideoTake([takes[0],takes[1],takes[3]],'fourth',1)).toBeUndefined();
  });
- it('disables navigation when there is only one playable take',()=>expect(nextStudioVideoTake([takes[0],takes[1],takes[3]],'fourth',1)).toBeUndefined());
  it('adoption rejects pending and failed media, including failed slots carrying a key',()=>{
   const nodes=[node,child];expect(adoptStudioTake(nodes,'v','pending')).toBe(nodes);expect(adoptStudioTake(nodes,'v','bad')).toBe(nodes);expect(adoptStudioTake(nodes,'v','fourth')).toBe(nodes);
  });

@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 // 形态判定（桌面版 / 手机版）。
 //
 // 两条真实反馈钉在这里：
@@ -69,9 +70,7 @@ describe("形态判定", () => {
   it("但横屏手机不该被误判成桌面（iPhone 16 Pro Max 横屏 956）", () => {
     mockWidth(956);
     expect(resolvedLayout()).toBe("mobile");
-  });
-
-  it("竖持手机是手机版", () => {
+    // 竖持手机是手机版
     mockWidth(390);
     expect(resolvedLayout()).toBe("mobile");
   });
@@ -109,12 +108,18 @@ describe("形态判定", () => {
     expect(document.documentElement.getAttribute("data-layout")).toBe("mobile");
   });
 
-  it("与自动判定**不同**的偏好要留着", () => {
+  it("与自动判定**不同**的偏好要留着，首帧脚本两个方向都按用户的选择写", () => {
     mockWidth(390);
     window.localStorage.setItem(LAYOUT_KEY, "desktop");
     new Function(LAYOUT_BOOT_SCRIPT)();
     expect(window.localStorage.getItem(LAYOUT_KEY)).toBe("desktop");
     expect(document.documentElement.getAttribute("data-layout")).toBe("desktop");
+
+    mockWidth(1600);
+    window.localStorage.setItem(LAYOUT_KEY, "mobile");
+    new Function(LAYOUT_BOOT_SCRIPT)();
+    expect(window.localStorage.getItem(LAYOUT_KEY)).toBe("mobile");
+    expect(document.documentElement.getAttribute("data-layout")).toBe("mobile");
   });
 
   it("setLayout 只存「与自动不同」的那次", async () => {
@@ -128,13 +133,6 @@ describe("形态判定", () => {
     expect(window.localStorage.getItem(LAYOUT_KEY)).toBeNull();
     setLayout("mobile");                                    // 与自动不同
     expect(window.localStorage.getItem(LAYOUT_KEY)).toBe("mobile");
-  });
-
-  it("首帧脚本读得到用户的选择", () => {
-    mockWidth(1600);
-    window.localStorage.setItem(LAYOUT_KEY, "mobile");
-    new Function(LAYOUT_BOOT_SCRIPT)();
-    expect(document.documentElement.getAttribute("data-layout")).toBe("mobile");
   });
 });
 

@@ -39,14 +39,6 @@ async function openPerson() {
   fireEvent.click(await screen.findByRole("button", { name: "查看 IP 小鹿" }));
 }
 describe("IP management user flows", () => {
-  it("keeps shared navigation available when the desktop header is hidden on mobile", async () => {
-    render(<IpManagement />);
-    await screen.findByRole("button", { name: "查看 IP 小鹿" });
-    expect(screen.getByRole("link", { name: "首页", exact: true }).getAttribute("href")).toBe("/dashboard");
-    expect(screen.getByRole("link", { name: "资产", exact: true }).getAttribute("href")).toBe("/assets");
-    expect(screen.getByRole("link", { name: "我的", exact: true }).getAttribute("href")).toBe("/me");
-    expect(mocks.create).not.toHaveBeenCalled();
-  });
   it("saves a renamed character and updates the list and open dossier together", async () => {
     mocks.patch.mockResolvedValue({ ...avatar, name: "新小鹿", tagline: "新简介" });
     await openPerson();
@@ -99,7 +91,7 @@ describe("IP management user flows", () => {
     fireEvent.click(screen.getByRole("button", { name: "清除筛选" }));
     expect(screen.getByRole("button", { name: "查看 IP 小鹿" })).toBeTruthy();
   });
-  it("shows unavailable statistics when the corresponding catalogue failed", async () => {
+  it("shows unavailable statistics when the corresponding catalogue failed, with shared navigation intact", async () => {
     mocks.voices.mockRejectedValue(new Error("声音服务未返回"));
     mocks.assets.mockRejectedValue(new Error("素材服务未返回"));
     render(<IpManagement />);
@@ -107,6 +99,11 @@ describe("IP management user flows", () => {
     expect(screen.getByLabelText("IP 资产概览").textContent).toContain("形象素材 —");
     expect(screen.getByLabelText("IP 资产概览").textContent).toContain("已绑定声音 —");
     expect(screen.queryByText("演示模式 · 以下为示例数据")).toBeNull();
+    // 共用的工作台导航（手机上桌面头隐藏时也要在），打开页面不建画布
+    expect(screen.getByRole("link", { name: "首页", exact: true }).getAttribute("href")).toBe("/dashboard");
+    expect(screen.getByRole("link", { name: "资产", exact: true }).getAttribute("href")).toBe("/assets");
+    expect(screen.getByRole("link", { name: "我的", exact: true }).getAttribute("href")).toBe("/me");
+    expect(mocks.create).not.toHaveBeenCalled();
   });
 });
 

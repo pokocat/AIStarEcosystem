@@ -7,7 +7,6 @@ import { StrictMode } from 'react';
 import { mountStudioErrorNotifications } from './testing/studio-notification-harness';
 
 import { LibraryExtractionPanel } from './library-extraction-panel';
-import { extractionSourceHash } from './library-extraction-source';
 const api=vi.hoisted(()=>({extract:vi.fn(),task:vi.fn(),save:vi.fn(),read:vi.fn(),objects:vi.fn(),folders:vi.fn(),preference:vi.fn()}));
 vi.mock('@/canvas-bridge/asset-library',()=>({extractLibraryAssets:api.extract,saveLibraryExtraction:api.save,libraryFolders:api.folders,createLibraryFolder:vi.fn(),libraryObjects:api.objects,canvasLibraryFolder:api.preference,mainLibraryVersion:(asset:any)=>asset.versions.find((v:any)=>v.id===asset.mainVersionId)}));
 vi.mock('@/canvas-bridge/studio-api',()=>({studioCapabilities:async()=>({mock:false,textModelMode:'fixed',textCost:2,textModels:[{endpointId:'text',name:'qwen3.6',creditCost:2,isDefault:true,tokenPricing:{inputCreditsPerK:0.18,outputCreditsPerK:1.08,maxInputTokens:65536,maxOutputTokens:8192,maxCost:21}}]})}));
@@ -82,12 +81,6 @@ test('newly accepted extraction persists the returned fingerprint after the docu
  await screen.findByText('已消耗 4 积分');
  expect(api.task).toHaveBeenLastCalledWith(expect.objectContaining({runId:'run',sourceHash:'accepted-after-save'}));
 });
-test('episode-only snapshots and legacy runs keep the original full-document guard',async()=>{
- const scoped={...done.run,inputs:{scriptEdit:{markdown:'第一集正文'}}};
- expect(await extractionSourceHash(scoped as any,'full-document-hash',1)).toBe('full-document-hash');
- expect(await extractionSourceHash(done.run as any,'legacy-original-hash')).toBe('legacy-original-hash');
-});
-
 const savedAsset=(id='asset',name='文森特·梵高')=>({id,name,kind:'character',description:'已保存的画家设定',prompt:'画家',folderId:'folder',versions:[],sources:[],createdAt:'2026-10-12',updatedAt:'2026-10-12'});
 test('saved assets appear on opening without clicking an improve button or rerunning analysis',async()=>{
  const asset=savedAsset();

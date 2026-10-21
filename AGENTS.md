@@ -669,6 +669,7 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   是后来另写的一份、漏了字段契约，而同一份契约在执行侧早就写全了（§8.0.1 ④ 又犯一次）。判据：提示词里有字段名的完整契约且只有一个来源，
   解析容忍围栏与常见变体、校验仍然严格，并且至少真调用过一次。另：`prompt_template` 行首次启动入库，之后只有 `PromptTemplateSeeder.SEED_VERSION`
   变更才会刷新「没人改过」（version=1）的行 —— 只改提示词文件，线上不会生效。
+  2026-10-20 又一次：模型把动作写成 `<studio-actions>[…]</studio-actions>`（第三种写法），被当正文显示、方案从没提出；下一轮它干脆照着近期对话里内联的「[查看画布：done，…]」在正文里**假装**调用了工具。判据补充：解析器认真实出现过的每种写法并配用例；近期对话里的服务端记录不要写成模型能照抄的格式；正文里出现执行记录而没有真的调用，按格式错误处理。
 
 **⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
 2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是
@@ -1075,7 +1076,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 开场不再是口号 + 填字按钮：「想做点什么？」+「画布上现在有 N 条视频 / N 张图片」（点一下整类引用）+ 三到四张任务卡（要准备什么 / 会得到什么）+「第一次用？花 30 秒看它怎么工作」。点「复刻一条短视频」进**素材清单**（`studio-assistant-checklist.tsx`）：唯一的视频自动引用、技能切到 `reference-video-recreation`、输入框预填带方括号空位的一句话；参考视频 / 替换素材 / 空位三项齐了才能发，缺什么就在按钮旁写什么，清单可一键跳过。清单纯前端引导，服务端路由与报价不变。
 
-写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` 原文折叠成「这一轮的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
+写完的回复（正文 ≥40 字）下面有「放进画布」，把回复建成一个普通文字节点（同样内容已在画布上就只定位过去），兑现「写一段文字」卡片的承诺，不依赖模型是否调用 `create_nodes`；早期回复正文里残留的 `<tool_call>` / `<<<studio-actions>>>` / `<studio-actions>` 原文折叠成「这一轮没有执行的操作原文」（`canvas-bridge/studio-reply-actions.ts`）。确认卡只剩一个大数字（报价）和一个主按钮；两个上限输入折进「调整上限」（预算不够的那张卡自动展开）；注明「直接回复可以也行」（卡上写的词必须能过服务端 `StudioNaturalApprovals`：2026-10-19 起整句只由短肯定词组成的回复——「可以」「好」「行」「嗯，可以」——也算确认，此前「可以」过不去、照着卡片回复毫无反应；`studio-dialogue-wiring.test.ts` 钉住卡上的词能确认，演示模式 `mockSaysApprove` 同一套规则）。空线程不再自动滚到底（否则开场卡片被顶出视口）。结构测试：`studio-dialogue-wiring.test.ts` 钉死停靠默认、进度条、清单与使用说明都挂上了；交互在 `studio-assistant.test.tsx` 与 `studio-floating-panel.interaction.test.tsx`。手机端沿用全屏固定面板，停靠与拖宽不生效。
 
 ### 对话优先的创作入口 · 2026-10-19（同日已生产发布 `20261019-studio-dialogue-first`，仅 web-aiavatar）
 
@@ -1098,6 +1099,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 「在画布上看」、助手放进新节点、整理和「适应全部节点」都按**可见区域**适配（`visibleFitPadding`：左栏、顶部、缩放条和停靠面板都让开），聚焦只等目标节点被 React Flow 认得；
 打字确认：服务端 `StudioNaturalApprovals` 增加「整句只由短肯定词组成」也放行（可以 / 好 / 行 / 嗯 / 对 / 是的…，逐段去掉句末语气词后判断；疑问、犹豫、改动照旧拒绝），对话提示词同步举例（`PromptTemplateSeeder.SEED_VERSION` 已 bump，否则线上不生效），确认卡保持「直接回复「可以」也行」；演示模式 `mockSaysApprove` 同一套规则。**这一条要发 server**。
 
+**第五遍（对话的动静与快捷答复，2026-10-20 用户反馈，已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`），仅 web-aiavatar）**：进行中的状态只从事件流推出（`dialogueActivity`）：已受理没回话 →「正在思考」、正文流入 →「正在回复」（正文末尾闪光标）、工具跑完回合未结束 →「正在思考」；跑工具时由那条工作记录自己转圈并写「进行中 · 已用 N 秒」；回合结束、失败、停止即消失，不编思考内容、不编百分比。工作记录是左侧细竖线的一行过程记录（不是带框的按钮），只有右边的小箭头展开详情，失败直接写原因。问题选项、后续建议、「改用这个做法」单击就作为一条用户消息发出（同一条发送链路：先存画布、同 clientMessageId 重试），不带草稿的引用、不动输入框；发送中禁用，发出后问题按「之后有你的消息」判为已回答（`answeredAfter`，服务端不标）。回复下的「放进画布 / 从这里重新开始」是小图标按钮（读屏有名字、悬停有提示），最新一条常显、旧的悬停或键盘聚焦才出现、手机常显；带问题、方案或确认卡的回复不给「放进画布」，已在画布上的显示「在画布上查看」。
+
 
 ### 成片编辑器改版 · 2026-10-19（本地，未发布，仅 web-aiavatar）
 
@@ -1110,10 +1113,20 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### 对话意图直达 · 2026-10-20（本地，未发布；server + web-aiavatar）
 
 用户反馈「AI 对话里问太多」。真源 [`docs/ip-studio-dialogue-intents.md`](docs/ip-studio-dialogue-intents.md)。
+- **合并 main 时**：main 同日的「原创创作」`original-creation` 与出图触发词重叠，已改 `status: withdrawn`（文件保留以便下架库里的行）；直达判定统一为 `StudioSkill.firstStage()`，`direct()` 委托给它。
 - **四个技能**：出图 `image-generation`、写剧本与文案 `script-writing`、出视频 `video-generation` 是**直达技能**（`operations.analysis: []`，起始阶段 production）；参考视频复刻 `reference-video-recreation` 仍是分析 → 制作两阶段。
 - **直达技能一张卡**：方案和制作确认卡同一轮发出，卡上不带 `executionId`，点按钮或回「可以」直接以 production 建执行；写剧本与文案的短稿（1500 字内）当轮 `create_nodes` 放进画布，不发卡。前端 `approve()` 只在卡上带 `executionId` 时才当阶段确认，**不再回退到面板上最近一次执行的 id**。
 - **路由**（`StudioSkillRouter`）：关键词 ×2、素材类型 ×1，词优先于素材；唯一最高分胜出；没命中沿用当前技能、没有就不绑；平手沿用当前技能（在平手里时）否则不绑、由模型 `read_skill` 选，**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。
 - **按任务绑定**：没有活跃执行时每条消息重新路由，命中别的技能就换；有活跃执行时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。
 - **问题预算**：技能正文「必填与可选」是要不要问的唯一判据；必填缺且推不出才问，一轮一个，带候选和默认；可选项（画幅、张数、时长、风格、模型）一律用默认，不问不编。
-- **提示词改了**：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v18-2026-10-20-dialogue-intent-direct`，不升线上不生效。演示 mock（`src/ip/mocks/studio-dialogue.ts`）已照服务端补三个直达技能与新路由。
+- **提示词改了**：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，不升线上不生效。演示 mock（`src/ip/mocks/studio-dialogue.ts`）已照服务端补三个直达技能与新路由。
 - **未做**：真模型端到端（上线前按真源 §7 触发评测集至少真调一遍，§8.0.1 ⑦）；配音 / 口型技能接入对话。
+### Studio 生产问题五项 · 2026-10-20（server + web-aiavatar）
+
+已从干净 main `14260eea` 构建并发布 `20261021-studio-prod-fixes`；GPT 默认生图、视频仅 H3，Qwen 看图能力经合成图验证并声明。真实生图 / 视频未重跑；旧产品默认用途解绑的影响与验收边界见 `docs/releases/studio-prod-fixes-20261020.md`。
+
+- **方法要对得上事**：没有参考视频的出图出片走「原创创作」（`original-creation`，只有制作阶段，`StudioSkill.firstStage()` 是唯一判定）；不要为了过流程给对话挂不相关的技能。无进行中执行时 `read_skill` 可换技能。
+- **规格不能只写在提示词里**：助手用 `create_nodes` / `update_nodes` 的 `aspectRatio / durationSec / count / references` 写到节点（`metadata.studio.spec`，参考同时连边）；生成面板**不许静默钳制**时长或画幅，做不到就阻断并给修正按钮（`studio-composer-spec.ts`）。
+- **看图要真看**：素材清单不含画面；描述图片内容只能经 `view_images`（本人 key、内联字节、对话端点须声明 `supportsVision`、计入本轮预算）。
+- **失败节点只有一个恢复入口**；`VIDEO_MODEL_RETIRED` 的模型不再被预选或重投（服务端冻结前也拒绝）。
+

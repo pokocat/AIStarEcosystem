@@ -45,18 +45,6 @@ beforeEach(() => {
 });
 
 describe("出图", () => {
-  it("把候选图变成画布认得的形状，并带上存储键", async () => {
-    generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
-    readRunMock.mockResolvedValue(done([{ key: "ipstudio_gen/u1/a.png", url: "https://cdn.test/a?sig=1" }]));
-
-    const images = await requestEdit(cfg, "画一只柴犬", []);
-
-    expect(images).toHaveLength(1);
-    expect(images[0]!.storageKey).toBe("ipstudio_gen/u1/a.png");
-    // 画布只把 dataUrl 当 img src 用 —— 这里放的是签名地址，不是 base64
-    expect(images[0]!.dataUrl).toBe("https://cdn.test/a?sig=1");
-  });
-
   it("只把带存储键的参考图报给服务端", async () => {
     generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
     readRunMock.mockResolvedValue(done([{ key: "k", url: "u" }]));
@@ -91,25 +79,6 @@ describe("出图", () => {
 });
 
 describe("出错要说清楚，不能装作成功", () => {
-  it("服务端说失败就抛，且带上它给的原因", async () => {
-    generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
-    readRunMock.mockResolvedValue({
-      id: "IPR-1", status: "failed", cost: 0,
-      errorCode: "AI_CALL_FAILED", errorMessage: "上游模型超时",
-    });
-
-    await expect(requestEdit(cfg, "会失败的", [])).rejects.toThrow("上游模型超时");
-  });
-
-  it("跑完了但一张图都没有，也算失败", async () => {
-    // 这是最阴的一种：状态是 done，候选是空数组。
-    // 不拦的话画布会把「没有图」当成一次正常结果，节点停在空白上。
-    generateMock.mockResolvedValue({ id: "IPR-1", status: "running" });
-    readRunMock.mockResolvedValue(done([]));
-
-    await expect(requestEdit(cfg, "空结果", [])).rejects.toThrow(/没有返回图片/);
-  });
-
   it("用户取消抛的是取消，不是失败", async () => {
     // 画布靠这个区分「我自己点的取消」和「真出错了」——
     // 混在一起用户会看到一个红色报错，以为哪里坏了。
@@ -142,14 +111,19 @@ describe("运行结果的字段名必须跟服务端一致", () => {
     const out = await requestGeneration({ ...cfg, count: "1" }, "画一个");
     expect(out).toHaveLength(1);
     expect(out[0].storageKey).toBe("ipstudio_gen/u/a.png");
+    // 画布只把 dataUrl 当 img src 用 —— 这里放的是签名地址，不是 base64
+    expect(out[0].dataUrl).toBe("https://cdn/a.png?sig=1");
   });
 
-  it("真的没有候选时，不许谎称积分已退回", async () => {
+  it("跑完了但一张图都没有也算失败，且不许谎称积分已退回", async () => {
+    // 这是最阴的一种：状态是 done，候选是空数组。
+    // 不拦的话画布会把「没有图」当成一次正常结果，节点停在空白上。
     // 运行是 done 就意味着已经结算了。此前这里写死「积分已退回」，是错的。
     generateMock.mockResolvedValue({ id: "IPR-2", status: "running" });
     readRunMock.mockResolvedValue({ id: "IPR-2", status: "done", output: { candidates: [] } });
 
     const err = await requestGeneration({ ...cfg, count: "1" }, "画一个").catch((e: Error) => e);
+    expect((err as Error).message).toMatch(/没有返回图片/);
     expect((err as Error).message).toContain("IPR-2");
     expect((err as Error).message).not.toContain("已退回");
   });
@@ -181,13 +155,14 @@ describe("留下这次的真实入参", () => {
     expect(last.refs[1].reason).toBe("读不到");
   });
 
+  // 也守「服务端说失败就抛，且带上它给的原因」。
   it("失败时也记 —— 不然最该看提示词的那次反而什么都看不到", async () => {
     const { useLastRun } = await import("./last-run");
     useLastRun.getState().set(null);
     generateMock.mockResolvedValue({ id: "IPR-10", status: "running" });
     readRunMock.mockResolvedValue({
       id: "IPR-10", projectId: "IPP-test", nodeId: "n-1", status: "failed",
-      cost: 0, errorMessage: "模型拒绝了这次请求",
+      cost: 0, errorCode: "AI_CALL_FAILED", errorMessage: "模型拒绝了这次请求",
       inputs: { prompt: "发出去的完整提示词", refs: [] },
       output: {},
     });
@@ -210,22 +185,16 @@ describe("模型优先级", () => {
     readRunMock.mockResolvedValue(done([{ key: "k", url: "u" }]));
   };
 
-  it("节点上选的模型（config.model）胜过全局默认（config.imageModel）", async () => {
+  it("节点上选的模型（config.model）胜过全局默认（config.imageModel）；没有才回落，都空就不传", async () => {
     ok();
     await requestEdit({ ...cfg, model: "节点选的", imageModel: "全局默认" } as unknown as AiConfig, "x", []);
     expect(generateMock.mock.calls[0]![1]).toMatchObject({ model: "ep-节点选的" });
-  });
-
-  it("调用方传的是原始全局 config（没有 model）时回落到 imageModel", async () => {
-    ok();
+    // 调用方传的是原始全局 config（没有 model）时回落到 imageModel
     await requestEdit({ ...cfg, model: "", imageModel: "全局默认" } as unknown as AiConfig, "x", []);
-    expect(generateMock.mock.calls[0]![1]).toMatchObject({ model: "ep-全局默认" });
-  });
-
-  it("一个候选都没配时不传 model —— 交给服务端的默认端点，不瞎猜", async () => {
-    ok();
+    expect(generateMock.mock.calls[1]![1]).toMatchObject({ model: "ep-全局默认" });
+    // 一个候选都没配时不传 model —— 交给服务端的默认端点，不瞎猜
     await requestEdit({ ...cfg, model: "", imageModel: "" } as unknown as AiConfig, "x", []);
-    expect(generateMock.mock.calls[0]![1].model).toBeUndefined();
+    expect(generateMock.mock.calls[2]![1].model).toBeUndefined();
   });
 });
 
@@ -251,26 +220,32 @@ describe("运行号要在受理时就交出去", () => {
 
 // 「停止」此前只是本地 abort：服务端继续把剩下的张数跑完、逐张扣费。
 describe("停止要告诉服务端", () => {
+  // 轮询间隔是真实的 1.5s sleep 且不响应 abort：用假计时器推过去，不实打实等。
+  const stopAfterAccepted = async (runId: string) => {
+    vi.useFakeTimers();
+    try {
+      generateMock.mockResolvedValue({ id: runId, status: "running" });
+      readRunMock.mockResolvedValue({ id: runId, status: "running", output: {} });
+      const ac = new AbortController();
+      const settled = expect(requestEdit(cfg, "x", [], { signal: ac.signal })).rejects.toBeInstanceOf(GenerationCanceled);
+      // 等 generate 受理之后再点停止 —— 这才是真实时序（受理前 abort 走的是另一条早返回）
+      await vi.advanceTimersByTimeAsync(0);
+      expect(readRunMock).toHaveBeenCalledWith(runId);
+      ac.abort();
+      await vi.advanceTimersByTimeAsync(1500);
+      await settled;
+    } finally {
+      vi.useRealTimers();
+    }
+  };
+
   it("abort 时调 cancelRun，并抛取消（不是失败）", async () => {
-    generateMock.mockResolvedValue({ id: "IPR-7", status: "running" });
-    readRunMock.mockResolvedValue({ id: "IPR-7", status: "running", output: {} });
-    const ac = new AbortController();
-    const task = requestEdit(cfg, "x", [], { signal: ac.signal });
-    // 等 generate 受理之后再点停止 —— 这才是真实时序（受理前 abort 走的是另一条早返回）
-    await new Promise((r) => setTimeout(r, 0));
-    ac.abort();
-    await expect(task).rejects.toBeInstanceOf(GenerationCanceled);
+    await stopAfterAccepted("IPR-7");
     expect(cancelRunMock).toHaveBeenCalledWith("IPR-7");
   });
 
   it("取消请求本身失败不改变结论 —— 用户点的是「我不等了」", async () => {
-    generateMock.mockResolvedValue({ id: "IPR-8", status: "running" });
-    readRunMock.mockResolvedValue({ id: "IPR-8", status: "running", output: {} });
     cancelRunMock.mockRejectedValue(new Error("网络断了"));
-    const ac = new AbortController();
-    const task = requestEdit(cfg, "x", [], { signal: ac.signal });
-    await new Promise((r) => setTimeout(r, 0));
-    ac.abort();
-    await expect(task).rejects.toBeInstanceOf(GenerationCanceled);
+    await stopAfterAccepted("IPR-8");
   });
 });

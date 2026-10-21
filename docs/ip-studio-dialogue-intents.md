@@ -29,7 +29,8 @@
 | 出视频 | `video-generation` | 直达制作 | text, image, video, check, assemble | 视频 / 出片 / 动起来 / 做一条 / 短片 / 运镜…；素材 image |
 | 参考视频复刻 | `reference-video-recreation` | 分析 → 制作 | analysis: recreation, text；production: text, image, video, check, assemble | 复刻 / 拉片 / 参考视频 / 照着这条 / 做同款 / 翻拍…；素材 video |
 
-- 技能文件格式不变（YAML 头 = 服务端边界，正文 = 方法）。**直达技能 = `operations.analysis: []`**：`StudioSkill.direct()` / `StudioSkillRules.Rules.direct()`，起始阶段 `startingStage()` 为 production。
+- 技能文件格式不变（YAML 头 = 服务端边界，正文 = 方法）。**直达技能 = `operations.analysis: []`**：`StudioSkill.direct()` / `StudioSkillRules.Rules.direct()`，起始阶段 `firstStage()` 为 production（与 main 上原创创作引入的 `StudioSkill.firstStage()` 是同一条规则，`direct()` 委托给它）。
+- main 上同日的 `original-creation`（原创创作）与「出图」触发词重叠（画一张 / 海报 / 出图 / 设定图），合并时改为 `status: withdrawn`（文件保留，目录按文件状态把库里那一行下架；删文件不会下架），由出图 / 写剧本与文案 / 出视频替代。
 - 不允许 `check` 操作的技能 `checks` 可以为空（目录校验按「是否有阶段允许 check」判断）。
 - 每个技能正文固定有「必填与可选」一节：这是模型「要不要问」的唯一判据（Cursor 参数规则：必填缺且推不出 → 问；可选 → 用默认，不问不编；用户引号 / 数字原样用）。
 - 关键词不用单字（「画」会命中「画布」），最短两字；目录测试钉死。
@@ -82,5 +83,5 @@
 ## 8. 验证与边界
 
 - 服务端：`StudioSkillRouterTest`、`StudioDialogueRoutingTest`（换技能 / 沿用 / 活跃执行不换 / 直达起始阶段）、`StudioSkillCatalogTest`（三份直达种子、checks 规则）、`StudioPlanValidatorSkillTest`（直达无 approaches、指南只列本技能操作）、`ProposePlanToolTest`（直达 production）、`StudioPlanExecutionServiceTest`（直达制作卡直接建执行）、`StudioDialoguePromptWiringTest`（提示词里的工具名 / 技能名 / 变量都真实存在）。
-- 改了提示词文件：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v18-2026-10-20-dialogue-intent-direct`，否则线上不生效。
+- 改了提示词文件：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，否则线上不生效。
 - 未做：真模型端到端（§8.0.1 ⑦ 要求上线前至少真调一次，按 §7 评测集走）；前端演示 mock 的技能目录与路由镜像；配音 / 口型技能（待对话工具开放这些操作）。

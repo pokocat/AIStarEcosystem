@@ -6,6 +6,7 @@ import { LoaderCircle } from 'lucide-react';
 import type { StudioCapabilities, StudioTokenBilling } from '@ai-star-eco/types/ip-studio-workflow';
 import { StudioAiIcon } from './studio-ai-icon';
 import { StudioFloatingPanel } from './studio-floating-panel';
+import { studioChosenTextModel } from '@/canvas-bridge/studio-text-model';
 
 type Props = {
   open: boolean; embedded: boolean; nodeId?: string; value: string; onChange: (value: string) => void;
@@ -17,7 +18,7 @@ type Props = {
 /** Intent is a draft message; typing never writes into the node's body. */
 export function StudioTextComposer({open,embedded,nodeId,value,onChange,model,onModelChange,capabilities,billing,busy,pending,unknownTask,onConfirm,onSubmit,onClose,summary}:Props) {
   const options=capabilities?.textModels||[];
-  const selected=(capabilities?.textModelMode!=='fixed'?options.find(m=>m.endpointId===model):undefined)||options.find(m=>m.isDefault)||options[0];
+  const selected=studioChosenTextModel(capabilities,model);
   const disabled=busy||!!pending||!value.trim()||value.length>16000||!capabilities||!capabilities.mock&&(!selected||!selected.tokenPricing);
   return <StudioFloatingPanel open={open} embedded={embedded} anchorId={nodeId} title="AI 修改文本" onClose={onClose} closable={!busy} className="studio-text-node-composer"
     footer={<>
