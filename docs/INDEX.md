@@ -289,3 +289,4 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - **CLAUDE.md ↔ AGENTS.md**：CLAUDE.md 是 symlink，改 AGENTS.md 即同步两者。
 
 - [Studio 对话意图直达真模型验收](releases/studio-dialogue-intents-validation-20261020.md) — §7 评测集用聚算 Qwen3.8 27B / Agnes 2.5 Flash 真跑，图片画幅契约修复，未确认出图；last-reviewed: 2026-10-20。
+- [Studio 对话意图直达生产发布](releases/studio-dialogue-intents-release-20261020.md) — release `20261020-studio-dialogue-intents`（main `eea08f72`，server + web-aiavatar）、合并取舍、门禁、线上验收与回滚；last-reviewed: 2026-10-21。
