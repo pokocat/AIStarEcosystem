@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.AiModelUsageContext;
 import com.aistareco.aep.dap.service.DapImageInput;
 import com.aistareco.aep.dap.service.DapMultimodalClient;
 import com.aistareco.aep.dap.service.DapMultimodalClient.DapModelException;
@@ -143,7 +144,7 @@ public class IpRunWorker {
         }
         if(run.getStartedAt()==null)run.setStartedAt(Instant.now());
         var context=queue==null?null:queue.bind(com.aistareco.aep.service.AiGenerationQueueService.IMAGE,runId);
-        try {
+        try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", runId)) {
             if(enterpriseBilling!=null && IpRun.KIND_IDENTITY.equals(run.getKind()))enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,runId,
                     projects.parseOrEmptyObject(run.getInputJson()).path("_exec").path("endpointId").asText(null));
             progress(run, 8, "prompt.compile");

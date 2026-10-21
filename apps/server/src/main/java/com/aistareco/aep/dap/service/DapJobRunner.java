@@ -1,5 +1,6 @@
 package com.aistareco.aep.dap.service;
 
+import com.aistareco.aep.service.AiModelUsageContext;
 import com.aistareco.aep.dap.model.DapAvatar;
 import com.aistareco.aep.dap.model.DapCapture;
 import com.aistareco.aep.dap.model.DapDerivative;
@@ -114,7 +115,7 @@ public class DapJobRunner {
         long startNanos = System.nanoTime();
         log.info("[dap-job] run start id={} type={} mode={} engine={} owner={} avatar={}",
                 job.getId(), job.getType(), job.getMode(), job.getEngine(), job.getOwnerUserId(), job.getAvatarId());
-        try {
+        try (var attribution = AiModelUsageContext.bind(job.getOwnerUserId(), "aiavatar", jobId)) {
             switch (job.getType()) {
                 case DapJob.T_GENERATE -> runGenerate(job);
                 case DapJob.T_GENERATE_UPLOAD -> runGenerateUpload(job);

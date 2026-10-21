@@ -72,6 +72,7 @@ class StudioDialogueIntegrationTest {
     @Autowired CreditService credits;
     @Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
+    @Autowired AiModelUsageRecordRepository modelUsage;
 
     HttpServer http;
     final AtomicInteger calls = new AtomicInteger();
@@ -188,6 +189,10 @@ class StudioDialogueIntegrationTest {
         assertEquals(99L, wallet.getTotalBalance());
         assertEquals(0L, wallet.getPendingBalance());
         assertEquals(2, calls.get());
+        var observed = modelUsage.findAll().stream().filter(row -> user.equals(row.getUserId())).toList();
+        assertEquals(2, observed.size(), "both async model calls retain the task owner, including the post-tool call");
+        assertTrue(observed.stream().allMatch(row -> "aiavatar".equals(row.getAppCode())));
+        assertEquals(400L, observed.stream().mapToLong(AiModelUsageRecord::getTotalTokens).sum());
         assertTrue(bodies.get(0).contains("\"stream\":true") && bodies.get(0).contains("include_usage"));
         assertTrue(bodies.get(0).contains("一瓶洗衣液"), "pinned node content reaches the model");
         assertTrue(bodies.get(1).contains("工具结果"), "tool result is fed back before the second call");

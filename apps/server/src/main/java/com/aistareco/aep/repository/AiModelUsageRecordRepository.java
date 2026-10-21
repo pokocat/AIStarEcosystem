@@ -14,6 +14,8 @@ import java.util.List;
 @Repository
 public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsageRecord, String>, JpaSpecificationExecutor<AiModelUsageRecord> {
 
+    boolean existsByProviderIdAndPurposeAndRequestIdAndSuccessTrue(String providerId, String purpose, String requestId);
+
     // 聚合查询返回 Object[]：[0]=分组键, [1]=分组名, [2]=调用次数, [3]=total,
     // [4]=prompt, [5]=completion, [6]=billableUnits, [7]=billableSeconds, [8]=costMicros。
     // 用 Object[] 而非构造器表达式，避开 Long → long 在 JPQL new 表达式里的拆箱兼容坑。
@@ -164,6 +166,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
               AND (:tenantId IS NULL OR r.tenantId = :tenantId)
               AND (:purpose IS NULL OR r.purpose = :purpose)
               AND (:success IS NULL OR r.success = :success)
+              AND (:unassignedUser = false OR r.userId IS NULL)
+              AND (:unassignedTenant = false OR r.tenantId IS NULL)
               AND (:q IS NULL OR
                     LOWER(COALESCE(r.userId, '')) LIKE LOWER(CONCAT('%', :q, '%')) OR
                     LOWER(COALESCE(r.tenantId, '')) LIKE LOWER(CONCAT('%', :q, '%')) OR
@@ -183,6 +187,8 @@ public interface AiModelUsageRecordRepository extends JpaRepository<AiModelUsage
                                            @Param("purpose") String purpose,
                                            @Param("success") Boolean success,
                                            @Param("q") String q,
+                                           @Param("unassignedUser") boolean unassignedUser,
+                                           @Param("unassignedTenant") boolean unassignedTenant,
                                            Pageable pageable);
 
     /** 时间窗内失败调用数（success=false）。providerId 为 null 时统计全局。 */

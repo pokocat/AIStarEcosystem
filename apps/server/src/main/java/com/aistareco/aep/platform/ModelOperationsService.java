@@ -67,8 +67,10 @@ public class ModelOperationsService {
             return result;
         }
         if ("usageRecordsPage".equals(action)) {
-            fields(command, Set.of("action", "days", "page", "size", "asOf", "appCode", "userId", "tenantId", "purpose", "providerId", "model", "success", "q"));
+            fields(command, Set.of("action", "days", "page", "size", "asOf", "appCode", "userId", "tenantId", "purpose", "providerId", "model", "success", "q", "unassignedUser", "unassignedTenant"));
             if (command.has("success") && !command.get("success").isBoolean()) throw invalid();
+            for (String flag : java.util.List.of("unassignedUser", "unassignedTenant"))
+                if (command.has(flag) && !command.get(flag).isBoolean()) throw invalid();
             int page = 0;
             if (command.has("page")) {
                 if (!command.get("page").isIntegralNumber() || !command.get("page").canConvertToInt() || command.get("page").intValue() < 0) throw invalid();
@@ -82,18 +84,20 @@ public class ModelOperationsService {
             var result = usage.recordsPage(integer(command,"days",30,365), page, integer(command,"size",20,200), asOf,
                     text(command,"appCode",100), text(command,"userId",160), text(command,"tenantId",160),
                     text(command,"purpose",100), text(command,"providerId",160), text(command,"model",200),
-                    command.has("success") ? command.get("success").booleanValue() : null, text(command,"q",200));
+                    command.has("success") ? command.get("success").booleanValue() : null, text(command,"q",200), command.path("unassignedUser").asBoolean(), command.path("unassignedTenant").asBoolean());
             ObjectNode safe = mapper.valueToTree(result);
             safe.path("items").forEach(row -> ((ObjectNode) row).remove(Set.of("requestBodyJson", "responseBodyJson")));
             return safe;
         }
         if ("usageRecords".equals(action)) {
-            fields(command, Set.of("action", "days", "size", "appCode", "userId", "tenantId", "purpose", "providerId", "success", "q"));
+            fields(command, Set.of("action", "days", "size", "appCode", "userId", "tenantId", "purpose", "providerId", "success", "q", "unassignedUser", "unassignedTenant"));
             if (command.has("success") && !command.get("success").isBoolean()) throw invalid();
+            for (String flag : java.util.List.of("unassignedUser", "unassignedTenant"))
+                if (command.has(flag) && !command.get(flag).isBoolean()) throw invalid();
             var records = usage.records(integer(command,"days",30,365), text(command,"appCode",100),
                     text(command,"userId",160), text(command,"tenantId",160), text(command,"purpose",100),
                     text(command,"providerId",160), command.has("success") ? command.get("success").booleanValue() : null,
-                    text(command,"q",200), integer(command,"size",500,500));
+                    text(command,"q",200), integer(command,"size",500,500), command.path("unassignedUser").asBoolean(), command.path("unassignedTenant").asBoolean());
             return records.stream().map(record -> {
                 ObjectNode safe = mapper.valueToTree(record);
                 safe.remove(Set.of("requestBodyJson", "responseBodyJson"));

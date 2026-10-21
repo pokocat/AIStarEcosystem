@@ -78,8 +78,10 @@ public class AdminAiModelEndpointController {
             @RequestParam(required = false) String providerId,
             @RequestParam(required = false) Boolean success,
             @RequestParam(required = false) String q,
-            @RequestParam(required = false) Integer size) {
-        return ApiResponse.of(usageService.records(days, appCode, userId, tenantId, purpose, providerId, success, q, size));
+            @RequestParam(required = false) Integer size,
+            @RequestParam(defaultValue = "false") boolean unassignedUser,
+            @RequestParam(defaultValue = "false") boolean unassignedTenant) {
+        return ApiResponse.of(usageService.records(days, appCode, userId, tenantId, purpose, providerId, success, q, size, unassignedUser, unassignedTenant));
     }
 
     @PostMapping("/usage-records/{recordId}/replay")

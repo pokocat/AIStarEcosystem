@@ -2144,24 +2144,23 @@ function FailureCategoryTable({ rows }: { rows: AiModelFailureStat[] }) {
   );
 }
 
-function dailyTrendValue(day: AiModelUsageDaily): number {
-  if (day.estimatedCostMicros > 0) return day.estimatedCostMicros;
-  return day.totalTokens + day.billableUnits + day.billableSeconds;
+function dailyTrendValue(day: AiModelUsageDaily, hasCost: boolean): number {
+  return hasCost ? day.estimatedCostMicros : day.calls;
 }
 
-/** 按天趋势：优先画成本；未配置成本时画 token+次数+秒数的综合用量。 */
+/** Keep one unit across the whole chart; unpriced days must not switch from cost to tokens or seconds. */
 function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
   if (!data || data.length === 0) return null;
-  const values = data.map((d) => dailyTrendValue(d));
-  const max = Math.max(...values, 1);
   const hasCost = data.some((d) => d.estimatedCostMicros > 0);
+  const values = data.map((d) => dailyTrendValue(d, hasCost));
+  const max = Math.max(...values, 1);
   const width = Math.max(560, data.length * 64);
   const height = 220;
   const pad = { left: 44, right: 24, top: 34, bottom: 38 };
   const plotWidth = width - pad.left - pad.right;
   const plotHeight = height - pad.top - pad.bottom;
   const points = data.map((d, index) => {
-    const value = dailyTrendValue(d);
+    const value = dailyTrendValue(d, hasCost);
     const x = pad.left + (data.length === 1 ? plotWidth / 2 : (index / (data.length - 1)) * plotWidth);
     const y = pad.top + plotHeight - (value / max) * plotHeight;
     return { x, y, d, value };
@@ -2170,7 +2169,7 @@ function UsageTrend({ data }: { data: AiModelUsageDaily[] }) {
   return (
     <div className="rounded-lg border border-border bg-surface p-4">
       <div className="mb-3 flex items-center justify-between">
-        <div className="text-sm font-medium">按天趋势</div>
+        <div className="text-sm font-medium">按天趋势 · {hasCost ? "估算成本" : "成功调用次数"}</div>
         <div className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
           峰值 {hasCost ? microsCostLabel(max) : max.toLocaleString()} / 天
         </div>
@@ -2339,6 +2338,7 @@ function exportUsageCsv(usage: AiModelUsageReport) {
     }
     lines.push("");
   };
+  section("按模态", "模态", usage.byModality ?? []);
   section("按端点", "端点", usage.byProvider);
   section("按模型", "模型", usage.byModel);
   section("按用途", "用途", usage.byPurpose);

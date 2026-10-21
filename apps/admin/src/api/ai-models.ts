@@ -38,6 +38,7 @@ export type AiModelPurpose =
   | "DAP_AUDIO"
   | "DAP_LIP_SYNC"
   | "DAP_REAL_AVATAR"
+  | "MUSIC_GENERATION"
   | "GENERAL";
 
 export type AiModelBillingMode = "TOKENS" | "PER_CALL" | "PER_SECOND";
@@ -283,7 +284,11 @@ export interface AiModelUsageReport {
   byTenant: AiModelUsageStat[];
   byAppCode: AiModelUsageStat[];
   byDay: AiModelUsageDaily[];
+  byModality?: AiModelUsageStat[];
 }
+
+/** Auxiliary observations do not create a routable model binding purpose. */
+export type AiModelUsagePurpose = AiModelPurpose | "VIDEO_PROMPT_OPTIMIZATION";
 
 export interface AiModelUsageRecord {
   id: string;
@@ -291,7 +296,7 @@ export interface AiModelUsageRecord {
   providerId?: string;
   providerName?: string;
   model?: string;
-  purpose?: AiModelPurpose;
+  purpose?: AiModelUsagePurpose;
   purposeLabel: string;
   userId?: string;
   userLabel: string;
@@ -383,7 +388,9 @@ export async function getUsageRecords(params?: {
   appCode?: string;
   userId?: string;
   tenantId?: string;
-  purpose?: AiModelPurpose;
+  unassignedUser?: boolean;
+  unassignedTenant?: boolean;
+  purpose?: AiModelUsagePurpose;
   providerId?: string;
   success?: boolean;
   q?: string;

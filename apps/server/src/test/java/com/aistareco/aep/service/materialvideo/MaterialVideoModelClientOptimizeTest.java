@@ -41,6 +41,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.ArgumentMatchers.*;
 
 /**
  * 智能优化的真实请求（docs/video-studio-plan.md §9，照 Portal「智能优化后生成」示例逐字段）：
@@ -68,6 +70,7 @@ class MaterialVideoModelClientOptimizeTest {
     private AiModelInvocationService invocation;
     private FileStorageService storage;
     private MaterialVideoModelClient client;
+    private AiModelUsageService usage;
     private final List<Long> sleeps = new ArrayList<>();
     private final AtomicLong fakeNanos = new AtomicLong();
 
@@ -106,7 +109,8 @@ class MaterialVideoModelClientOptimizeTest {
 
         invocation = mock(AiModelInvocationService.class);
         storage = mock(FileStorageService.class);
-        client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), mock(AiModelUsageService.class),
+        usage = mock(AiModelUsageService.class);
+        client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), usage,
                 new UpstreamModelHttp(mock(AiModelUsageService.class)), storage);
         // 不真等：每次「等待」把假时钟往前拨，预算用完的路径也能毫秒级测完
         client.setOptimizeRetryHooksForTest(ms -> {
@@ -244,6 +248,7 @@ class MaterialVideoModelClientOptimizeTest {
         }
         assertEquals(1, uploads().size());
         assertEquals(List.of(5_000L, 10_000L), sleeps);
+        verify(usage).recordPromptOptimization(eq("ep-h3"), anyString(), eq("minimax-h3"), eq("u1"), eq(KEY), eq("opt_v1"), eq(true), anyLong(), isNull());
     }
 
     @Test

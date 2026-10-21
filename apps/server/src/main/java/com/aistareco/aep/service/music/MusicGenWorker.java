@@ -3,6 +3,8 @@ package com.aistareco.aep.service.music;
 import com.aistareco.aep.config.MusicGenProperties;
 import com.aistareco.aep.model.MusicGenJob;
 import com.aistareco.aep.service.CreditService;
+import com.aistareco.aep.service.AiModelUsageService;
+import com.aistareco.aep.model.AiModelBillingMode;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Async;
@@ -31,17 +33,19 @@ public class MusicGenWorker {
     private final MusicOutputStorage outputStorage;
     private final CreditService creditService;
     private final MusicGenProperties props;
+    private final AiModelUsageService usage;
 
     public MusicGenWorker(MusicGenJobState state,
                           MusicGenModelClient modelClient,
                           MusicOutputStorage outputStorage,
                           CreditService creditService,
-                          MusicGenProperties props) {
+                          MusicGenProperties props, AiModelUsageService usage) {
         this.state = state;
         this.modelClient = modelClient;
         this.outputStorage = outputStorage;
         this.creditService = creditService;
         this.props = props;
+        this.usage = usage;
     }
 
     @Async("musicGenExecutor")
@@ -71,45 +75,77 @@ public class MusicGenWorker {
 
         String endpointId = extractEndpointId(job.getOptionsJson());
         state.markStatus(jobId, "submitting", 5);
+        MusicGenModelClient.SubmitResult submitted = null;
+        boolean observed = false;
+        long startedNanos = System.nanoTime();
+        try {
+            var submit = modelClient.submit(new MusicGenModelClient.SubmitSpec(
+                    job.getPrompt(), job.getLyrics(), job.getGenre(), job.getMood(),
+                    job.getTimbre(), job.getGender(), job.getDurationSec(),
+                    job.isInstrumental(), endpointId));
+            submitted = submit;
+            // Pin polling and observation to the endpoint that actually accepted the task.
+            endpointId = submit.endpointId();
+            state.markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
+            log.info("[music-gen] job={} submitted task={} model={}", jobId, submit.taskId(), submit.modelUsed());
 
-        var submit = modelClient.submit(new MusicGenModelClient.SubmitSpec(
-                job.getPrompt(), job.getLyrics(), job.getGenre(), job.getMood(),
-                job.getTimbre(), job.getGender(), job.getDurationSec(),
-                job.isInstrumental(), endpointId));
-        state.markGenerating(jobId, submit.taskId(), submit.providerUsed(), submit.modelUsed());
-        log.info("[music-gen] job={} submitted task={} model={}", jobId, submit.taskId(), submit.modelUsed());
+            long maxWaitMs = props.getMaxWaitSeconds() * 1000L;
+            long intervalMs = Math.max(2, props.getPollIntervalSeconds()) * 1000L;
+            long startedAt = System.currentTimeMillis();
 
-        long maxWaitMs = props.getMaxWaitSeconds() * 1000L;
-        long intervalMs = Math.max(2, props.getPollIntervalSeconds()) * 1000L;
-        long startedAt = System.currentTimeMillis();
+            while (true) {
+                Thread.sleep(intervalMs);
+                long elapsed = System.currentTimeMillis() - startedAt;
 
-        while (true) {
-            Thread.sleep(intervalMs);
-            long elapsed = System.currentTimeMillis() - startedAt;
+                var poll = modelClient.poll(endpointId, submit.taskId());
 
-            var poll = modelClient.poll(endpointId, submit.taskId());
+                if (poll.succeeded()) {
+                    recordUsage(job, submit, poll.durationSec(), true, null, startedNanos);
+                    observed = true;
+                    finish(jobId, job, poll);
+                    return;
+                }
+                if (poll.failed()) {
+                    recordUsage(job, submit, null, false, "MUSIC_PROVIDER_FAILED", startedNanos);
+                    observed = true;
+                    String reason = poll.failReason() == null ? "音乐生成失败" : mapFailReason(poll.failReason());
+                    state.markFailed(jobId, reason);
+                    releaseCredits(job, "音乐生成失败");
+                    return;
+                }
+                // 上游有真实进度就用真实值，否则按耗时估算；两者都封顶 95，留给转存收尾。
+                int pct = poll.progress() > 0
+                        ? clamp(poll.progress(), 10, 95)
+                        : (int) Math.min(95, 10 + elapsed * 85.0 / maxWaitMs);
+                state.heartbeat(jobId, pct);
 
-            if (poll.succeeded()) {
-                finish(jobId, job, poll);
-                return;
+                if (elapsed >= maxWaitMs) {
+                    recordUsage(job, submit, null, false, "MUSIC_POLL_TIMEOUT", startedNanos);
+                    observed = true;
+                    state.markFailed(jobId, "音乐生成超时，请稍后重试。");
+                    releaseCredits(job, "音乐生成超时");
+                    return;
+                }
             }
-            if (poll.failed()) {
-                String reason = poll.failReason() == null ? "音乐生成失败" : mapFailReason(poll.failReason());
-                state.markFailed(jobId, reason);
-                releaseCredits(job, "音乐生成失败");
-                return;
-            }
-            // 上游有真实进度就用真实值，否则按耗时估算；两者都封顶 95，留给转存收尾。
-            int pct = poll.progress() > 0
-                    ? clamp(poll.progress(), 10, 95)
-                    : (int) Math.min(95, 10 + elapsed * 85.0 / maxWaitMs);
-            state.heartbeat(jobId, pct);
+        } catch (RuntimeException | InterruptedException error) {
+            if (!observed) recordUsage(job, submitted, null, false,
+                    error instanceof com.aistareco.common.BusinessException business ? business.getCode() : error.getClass().getSimpleName(), startedNanos);
+            throw error;
+        }
+    }
 
-            if (elapsed >= maxWaitMs) {
-                state.markFailed(jobId, "音乐生成超时，请稍后重试。");
-                releaseCredits(job, "音乐生成超时");
-                return;
-            }
+    private void recordUsage(MusicGenJob job, MusicGenModelClient.SubmitResult submit, Integer duration,
+                             boolean success, String errorCode, long startedNanos) {
+        // Observe vendor completion even when subsequent storage/delivery fails. Never invent a missing duration.
+        try {
+            usage.recordMeteredObservedWithAttribution(submit == null ? extractEndpointId(job.getOptionsJson()) : submit.endpointId(),
+                    submit == null ? null : submit.providerUsed(), submit == null ? null : submit.modelUsed(), "MUSIC_GENERATION",
+                    null, null, null, AiModelBillingMode.PER_SECOND, success ? 1L : 0L,
+                    duration == null ? 0L : Math.max(0L, duration.longValue()), success,
+                    job.getOwnerUserId(), null, "music", job.getId(), submit == null ? null : submit.taskId(),
+                    (System.nanoTime() - startedNanos) / 1_000_000, errorCode, null, null, null, null);
+        } catch (RuntimeException error) {
+            log.warn("[music-gen] usage recording failed job={}", job.getId(), error);
         }
     }
 

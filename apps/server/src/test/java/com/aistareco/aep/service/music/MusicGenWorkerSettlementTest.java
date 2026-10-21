@@ -32,7 +32,7 @@ class MusicGenWorkerSettlementTest {
                 mock(MusicGenModelClient.class),
                 mock(MusicOutputStorage.class),
                 creditService,
-                new MusicGenProperties());
+                new MusicGenProperties(), mock(com.aistareco.aep.service.AiModelUsageService.class));
     }
 
     /** settleCredits 是私有的实现细节，但结算正确性值得直接钉住。 */

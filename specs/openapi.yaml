@@ -5635,6 +5635,9 @@ paths:
         无任意 URL 或 admin 路径代理。固定 app+scene 模型白名单和候选积分价首先覆盖 Studio script/image。
         endpointTest / endpointFetchModels 使用已保存配置；endpointProbe 使用当前表单 providerType/baseUrl/apiKey，编辑时可带 id 保留同供应商密钥，只请求模型目录，不落库、不生成。返回 ok/statusCode/models/latencyMs，供应商原始错误脱敏。旧 usageRecords 保留最多 500 条的兼容形状。
         usageRecordsPage 在原库过滤 / 计数后返回 items/total/page/size/asOf，单页最多 200 条，总数无 500 条截断，不返回生成正文。
+        usageRecords / usageRecordsPage 均支持 unassignedUser、unassignedTenant 布尔值（缺省 false），分别按 user_id / tenant_id IS NULL 筛选；与同维度具体 ID 同传时 400。
+        usage 的观测用途 VIDEO_PROMPT_OPTIMIZATION 独立记录视频智能优化次数（按原键去重），无独立成本价时不套视频单价。
+        usage 报表新增 byModality，按文本与多模态理解 / 图片 / 视频与口型 / 音频与音乐 / 其他汇总调用、Token、计费单位、秒数与成本；各模态相加等于全量。
         promptSaveVersioned / promptRollbackVersioned 必须带 expectedVersion，由原 PromptService 原子条件更新；冲突返回 409。
       security:
         - modelManagementGrant: []
@@ -9738,7 +9741,7 @@ paths:
       tags: [admin-ai-models]
       operationId: adminAiModelUsage
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
-      responses: { '200': { description: 全局大模型用量报表（自建调用流水聚合；文本 token，图片按次，视频按秒；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度） } }
+      responses: { '200': { description: 全局大模型用量报表（自建调用流水聚合；文本 token，图片按次，视频按秒；按服务商 / 模型 / 用途 / 用户 / 租户 / 来源应用 / 日期维度，另含 byModality 模态汇总；次数与秒数独立于 Token，不把不同单位相加） } }
   /admin/ai-models/usage-records:
     get:
       tags: [admin-ai-models]
@@ -9749,6 +9752,8 @@ paths:
         - { name: appCode, in: query, required: false, schema: { type: string } }
         - { name: userId, in: query, required: false, schema: { type: string } }
         - { name: tenantId, in: query, required: false, schema: { type: string } }
+        - { name: unassignedUser, in: query, required: false, description: 仅查 user_id IS NULL；不得同时指定 userId, schema: { type: boolean, default: false } }
+        - { name: unassignedTenant, in: query, required: false, description: 仅查 tenant_id IS NULL；不得同时指定 tenantId, schema: { type: boolean, default: false } }
         - { name: purpose, in: query, required: false, schema: { type: string } }
         - { name: providerId, in: query, required: false, schema: { type: string } }
         - { name: success, in: query, required: false, schema: { type: boolean } }

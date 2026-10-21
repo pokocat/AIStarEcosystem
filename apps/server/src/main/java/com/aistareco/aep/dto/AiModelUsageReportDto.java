@@ -30,5 +30,6 @@ public record AiModelUsageReportDto(
         List<AiModelUsageStatDto> byUser,
         List<AiModelUsageStatDto> byTenant,
         List<AiModelUsageStatDto> byAppCode,
-        List<AiModelUsageDailyDto> byDay
+        List<AiModelUsageDailyDto> byDay,
+        List<AiModelUsageStatDto> byModality
 ) {}

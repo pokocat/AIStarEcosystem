@@ -2030,76 +2030,93 @@ public class MaterialVideoModelClient {
         }
         URI uri = URI.create(joinUrl(p.getBaseUrl(), "/media/prompt-optimizations"));
 
-        long backoffMs = OPTIMIZE_FIRST_BACKOFF_MS;
-        String lastProblem = "no attempt";
-        for (int attempt = 1; ; attempt++) {
-            long remainingMs = (deadline - optimizeNanoClock.getAsLong()) / 1_000_000L;
-            if (remainingMs < OPTIMIZE_MIN_ATTEMPT_MS) {
-                log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
-                        p.getName(), idempotencyKey, attempt - 1, lastProblem);
-                throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
-                        "智能优化超时", "key=" + idempotencyKey + " last=" + lastProblem);
-            }
-            Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
-            HttpRequest req = HttpRequest.newBuilder(uri)
-                    .timeout(timeout)
-                    .header("Authorization", "Bearer " + apiKey)
-                    .header("Content-Type", "application/json")
-                    .header("Idempotency-Key", idempotencyKey)
-                    .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
-                    .build();
-            ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
-                    .endpoint(p.getId(), p.getName())
-                    .model(model)
-                    .requestId(idempotencyKey + "#" + attempt)
-                    .ownerUserId(ownerUserId)
-                    .appCode("celebrity")
-                    .requestBodyJson(bodyJson)
-                    // 优化是厂商单独计费的另一种调用，不记进「视频生成」的按秒用量（那张表按出片秒数算成本）。
-                    .recordFailureUsage(false)
-                    .client(http)
-                    .build();
-            HttpResponse<String> resp;
-            try {
-                resp = upstreamHttp.sendJson(req, ctx);
-            } catch (UpstreamCallException ex) {
-                if (ex.getCause() instanceof InterruptedException || Thread.currentThread().isInterrupted()) {
-                    throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
-                            "智能优化被中断", "interrupted key=" + idempotencyKey);
+        long observationStart = System.nanoTime();
+        try {
+            long backoffMs = OPTIMIZE_FIRST_BACKOFF_MS;
+            String lastProblem = "no attempt";
+            for (int attempt = 1; ; attempt++) {
+                long remainingMs = (deadline - optimizeNanoClock.getAsLong()) / 1_000_000L;
+                if (remainingMs < OPTIMIZE_MIN_ATTEMPT_MS) {
+                    log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
+                            p.getName(), idempotencyKey, attempt - 1, lastProblem);
+                    throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
+                            "智能优化超时", "key=" + idempotencyKey + " last=" + lastProblem);
                 }
-                lastProblem = (ex.isTimeout() ? "timeout " : "io ") + ex.getMessage();
-                log.warn("[material-video] 智能优化调用没有结果，同一键重发 endpoint={} key={} attempt={} err={}",
-                        p.getName(), idempotencyKey, attempt, lastProblem);
-                backoffMs = pause(backoffMs, null, deadline);
-                continue;
-            }
-            int status = resp.statusCode();
-            if (status >= 200 && status < 300) {
-                OptimizeResult result = parseOptimizationResponse(resp.body());
-                if (result == null) {
-                    log.warn("[material-video] 智能优化返回成功但没有优化结果 endpoint={} key={} status={} body={}",
-                            p.getName(), idempotencyKey, status, snippet(resp.body()));
-                    throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_FAILED",
-                            "智能优化没有返回结果，请稍后重试", "status=" + status + " body=" + snippet(resp.body()));
+                Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
+                HttpRequest req = HttpRequest.newBuilder(uri)
+                        .timeout(timeout)
+                        .header("Authorization", "Bearer " + apiKey)
+                        .header("Content-Type", "application/json")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .POST(HttpRequest.BodyPublishers.ofString(bodyJson))
+                        .build();
+                ModelCallCtx ctx = ModelCallCtx.builder(AiModelPurpose.VIDEO_GENERATION)
+                        .endpoint(p.getId(), p.getName())
+                        .model(model)
+                        .requestId(idempotencyKey + "#" + attempt)
+                        .ownerUserId(ownerUserId)
+                        .appCode("celebrity")
+                        .requestBodyJson(bodyJson)
+                        // 优化是厂商单独计费的另一种调用，不记进「视频生成」的按秒用量（那张表按出片秒数算成本）。
+                        .recordFailureUsage(false)
+                        .client(http)
+                        .build();
+                HttpResponse<String> resp;
+                try {
+                    resp = upstreamHttp.sendJson(req, ctx);
+                } catch (UpstreamCallException ex) {
+                    if (ex.getCause() instanceof InterruptedException || Thread.currentThread().isInterrupted()) {
+                        throw BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
+                                "智能优化被中断", "interrupted key=" + idempotencyKey);
+                    }
+                    lastProblem = (ex.isTimeout() ? "timeout " : "io ") + ex.getMessage();
+                    log.warn("[material-video] 智能优化调用没有结果，同一键重发 endpoint={} key={} attempt={} err={}",
+                            p.getName(), idempotencyKey, attempt, lastProblem);
+                    backoffMs = pause(backoffMs, null, deadline);
+                    continue;
                 }
-                log.info("[material-video] 智能优化完成 endpoint={} key={} attempt={} vendorId={} optimizedLength={}",
-                        p.getName(), idempotencyKey, attempt, result.vendorOptimizationId(),
-                        result.optimizedPrompt().length());
-                return result;
+                int status = resp.statusCode();
+                if (status >= 200 && status < 300) {
+                    OptimizeResult result = parseOptimizationResponse(resp.body());
+                    if (result == null) {
+                        log.warn("[material-video] 智能优化返回成功但没有优化结果 endpoint={} key={} status={} body={}",
+                                p.getName(), idempotencyKey, status, snippet(resp.body()));
+                        throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_FAILED",
+                                "智能优化没有返回结果，请稍后重试", "status=" + status + " body=" + snippet(resp.body()));
+                    }
+                    log.info("[material-video] 智能优化完成 endpoint={} key={} attempt={} vendorId={} optimizedLength={}",
+                            p.getName(), idempotencyKey, attempt, result.vendorOptimizationId(),
+                            result.optimizedPrompt().length());
+                    recordOptimizationUsage(p, model, ownerUserId, idempotencyKey, result.vendorOptimizationId(), true, observationStart, null);
+                    return result;
+                }
+                if (status == 409 || status == 429 || status >= 500) {
+                    // 409 = 同一操作还在处理（optimization_in_progress）；429 / 5xx = 厂商忙。同一正文同一键重发。
+                    lastProblem = "status=" + status + " body=" + snippet(resp.body());
+                    log.warn("[material-video] 智能优化暂时没结果，同一键重发 endpoint={} key={} attempt={} status={} body={}",
+                            p.getName(), idempotencyKey, attempt, status, snippet(resp.body()));
+                    backoffMs = pause(backoffMs, retryAfterMs(resp), deadline);
+                    continue;
+                }
+                log.warn("[material-video] 智能优化被拒 endpoint={} model={} key={} status={} body={}",
+                        p.getName(), model, idempotencyKey, status, snippet(resp.body()));
+                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_REJECTED",
+                        optimizationFailureMessage(status, resp.body()),
+                        "status=" + status + " body=" + snippet(resp.body()));
             }
-            if (status == 409 || status == 429 || status >= 500) {
-                // 409 = 同一操作还在处理（optimization_in_progress）；429 / 5xx = 厂商忙。同一正文同一键重发。
-                lastProblem = "status=" + status + " body=" + snippet(resp.body());
-                log.warn("[material-video] 智能优化暂时没结果，同一键重发 endpoint={} key={} attempt={} status={} body={}",
-                        p.getName(), idempotencyKey, attempt, status, snippet(resp.body()));
-                backoffMs = pause(backoffMs, retryAfterMs(resp), deadline);
-                continue;
-            }
-            log.warn("[material-video] 智能优化被拒 endpoint={} model={} key={} status={} body={}",
-                    p.getName(), model, idempotencyKey, status, snippet(resp.body()));
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_STUDIO_OPTIMIZATION_REJECTED",
-                    optimizationFailureMessage(status, resp.body()),
-                    "status=" + status + " body=" + snippet(resp.body()));
+        } catch (BusinessException error) {
+            recordOptimizationUsage(p, model, ownerUserId, idempotencyKey, null, false, observationStart, error.getCode());
+            throw error;
+        }
+    }
+
+    private void recordOptimizationUsage(AiModelEndpoint endpoint, String model, String userId, String requestId,
+                                         String upstreamId, boolean success, long start, String errorCode) {
+        try {
+            usage.recordPromptOptimization(endpoint.getId(), endpoint.getName(), model, userId,
+                    requestId, upstreamId, success, elapsedMs(start), errorCode);
+        } catch (RuntimeException error) {
+            log.warn("[material-video] optimization usage recording failed endpoint={} key={}", endpoint.getId(), requestId, error);
         }
     }
 

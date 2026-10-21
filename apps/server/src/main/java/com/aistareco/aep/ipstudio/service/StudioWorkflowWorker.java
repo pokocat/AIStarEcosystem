@@ -1,5 +1,6 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.AiModelUsageContext;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.dap.service.DapAssetService;
@@ -67,7 +68,7 @@ public class StudioWorkflowWorker {
             if(admission==AiGenerationQueueService.Admission.BUSY)return;
         }
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
-        try {
+        try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
             if(!progress(id,10,"studio.prepare")) return;
             JsonNode input=mapper.readTree(run.getInputJson());

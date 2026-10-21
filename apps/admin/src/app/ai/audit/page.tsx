@@ -30,7 +30,7 @@ import type {
   AiModelUsageStat,
 } from "@/api/ai-models";
 import { formatDateTimeCN } from "@/lib/utils";
-import { AiNotice, BreakdownList, EmptyPanel, TrendBars } from "../_components";
+import { AiNotice, BreakdownList, EmptyPanel, TrendBars, type UsageTrendMetric } from "../_components";
 import {
   PURPOSE_LABEL,
   PURPOSE_PRODUCT_LABEL,
@@ -53,12 +53,12 @@ type QualityGap = {
 const OBSERVABILITY_CAPABILITIES: QualityGap[] = [
   { label: "分维聚合", state: "ready", detail: "子应用、用户、租户、场景、模型、端点" },
   { label: "调用明细", state: "ready", detail: "时间、归属、端点、模型、Token、状态、耗时" },
-  { label: "成本估算", state: "ready", detail: "按端点当前输入/输出单价计算成本" },
+  { label: "成本估算", state: "ready", detail: "按供应商 Token / 次数 / 秒单价记录成本快照" },
   { label: "数据导出", state: "ready", detail: "汇总与明细可导出 CSV，包含 trace 字段" },
   { label: "错误可见性", state: "ready", detail: "success、errorCode、errorMessage 已进入流水" },
   { label: "Trace 追踪", state: "partial", detail: "已接 requestId / upstreamId，缺 spanId 和业务对象 ID" },
   { label: "延迟观测", state: "partial", detail: "已接总耗时，缺首 token、队列耗时、重试次数" },
-  { label: "成本快照", state: "partial", detail: "当前按现价估算，尚未在流水落历史单价" },
+  { label: "成本快照", state: "ready", detail: "新流水保存估算成本，历史缺快照记录按当前配置估算" },
   { label: "Prompt 审计", state: "missing", detail: "缺 prompt 摘要、模板版本、变量快照" },
   { label: "质量闭环", state: "missing", detail: "缺反馈、重试率、命中率、人工标注" },
   { label: "预算治理", state: "missing", detail: "缺子应用配额、用户限额、告警和熔断" },
@@ -77,7 +77,8 @@ function appLabel(row: AiModelUsageStat): string {
   return sourceLabel(row.key) || row.label || row.key;
 }
 
-function costLabel(micros: number | null | undefined): string {
+function costLabel(micros: number | null | undefined, purpose?: string): string {
+  if (purpose === "VIDEO_PROMPT_OPTIMIZATION") return "未估价";
   const value = (micros ?? 0) / 1_000_000;
   if (value <= 0) return "¥0";
   return `¥${value.toFixed(6).replace(/\.?0+$/, "")}`;
@@ -105,9 +106,11 @@ export default function AiAuditPage() {
   const [records, setRecords] = React.useState<AiModelUsageRecord[]>([]);
   const [endpoints, setEndpoints] = React.useState<AiModelEndpoint[]>([]);
   const [days, setDays] = React.useState(30);
+  const [trendMetric, setTrendMetric] = React.useState<UsageTrendMetric>("totalTokens");
   const [query, setQuery] = React.useState("");
   const [appCode, setAppCode] = React.useState<string>(ALL);
   const [purpose, setPurpose] = React.useState<string>(ALL);
+  const [tenantFilter, setTenantFilter] = React.useState<string>(ALL);
   const [selectedUserId, setSelectedUserId] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [loadError, setLoadError] = React.useState<string | null>(null);
@@ -125,7 +128,10 @@ export default function AiAuditPage() {
           q: query.trim() || undefined,
           appCode: appCode === ALL ? undefined : appCode,
           purpose: purpose === ALL ? undefined : (purpose as AiModelPurpose),
-          userId: selectedUserId ?? undefined,
+          userId: selectedUserId && selectedUserId !== "unassigned" ? selectedUserId : undefined,
+          unassignedUser: selectedUserId === "unassigned" || undefined,
+          tenantId: tenantFilter !== ALL && tenantFilter !== "unassigned" ? tenantFilter : undefined,
+          unassignedTenant: tenantFilter === "unassigned" || undefined,
         }),
         AiModelsApi.list(),
       ] as const);
@@ -144,7 +150,7 @@ export default function AiAuditPage() {
     } finally {
       setLoading(false);
     }
-  }, [appCode, days, purpose, query, selectedUserId]);
+  }, [appCode, days, purpose, query, selectedUserId, tenantFilter]);
 
   React.useEffect(() => {
     void reload();
@@ -192,7 +198,7 @@ export default function AiAuditPage() {
           </div>
         }
         meta={
-          <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-[132px_150px_180px_minmax(220px,1fr)]">
+          <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-[132px_150px_160px_160px_minmax(220px,1fr)]">
             <Select value={String(days)} onValueChange={(value) => setDays(Number(value))}>
               <SelectTrigger className="h-9">
                 <SelectValue />
@@ -229,6 +235,13 @@ export default function AiAuditPage() {
                     {purposeLabel(row)}
                   </SelectItem>
                 ))}
+              </SelectContent>
+            </Select>
+            <Select value={tenantFilter} onValueChange={setTenantFilter}>
+              <SelectTrigger className="h-9"><SelectValue placeholder="租户" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ALL}>全部租户</SelectItem>
+                {(usage?.byTenant ?? []).map((row) => <SelectItem key={row.key} value={row.key}>{row.label}</SelectItem>)}
               </SelectContent>
             </Select>
             <div className="relative">
@@ -274,14 +287,32 @@ export default function AiAuditPage() {
         />
       </section>
 
+      {usage?.byUser.some((row) => row.key === "unassigned") && (
+        <AiNotice>未归属记录缺少用户信息，历史流水保留原始归属状态。点击“未归属用户”可查看明细。</AiNotice>
+      )}
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4" aria-label="多模态消耗">
+        {(usage?.byModality ?? []).map((row) => (
+          <Card key={row.key}>
+            <CardHeader className="pb-2"><CardTitle className="text-sm">{row.label}</CardTitle></CardHeader>
+            <CardContent className="space-y-1 text-sm tabular-nums">
+              <div>{formatTokens(row.calls)} 次成功调用 · {costLabel(row.estimatedCostMicros, row.key)}</div>
+              <div className="text-muted-foreground">{formatTokens(row.totalTokens)} Token · {formatTokens(row.billableUnits)} 计费单位 · {formatTokens(row.billableSeconds)} 计费秒</div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+      <p className="text-xs text-muted-foreground">视觉理解按供应商返回的输入/输出 Token 统计；图片按张/次，视频、配音和音乐按端点计费口径记录次数与秒数。视频秒数为受理时请求用量。成本为已配置供应商单价的估算，未配置单价或未返回的用量不代表免费。</p>
       <div className="space-y-5">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle>用量趋势</CardTitle>
-            <CardDescription>按自然日聚合成功调用，点位标签显示 Token。</CardDescription>
+            <CardDescription>按自然日聚合成功调用，可切换计费用量与成本。</CardDescription>
+            <select aria-label="趋势指标" className="h-9 rounded-md border border-border bg-surface px-2 text-sm" value={trendMetric} onChange={(event) => setTrendMetric(event.target.value as UsageTrendMetric)}>
+              <option value="totalTokens">Token</option><option value="calls">调用次数</option><option value="billableUnits">计费单位</option><option value="billableSeconds">计费秒数</option><option value="estimatedCostMicros">估算成本</option>
+            </select>
           </CardHeader>
           <CardContent>
-            {usage ? <TrendBars data={usage.byDay} emptyText="当前窗口暂无调用趋势。" /> : <EmptyPanel text="暂无趋势数据。" />}
+            {usage ? <TrendBars data={usage.byDay} metric={trendMetric} emptyText="当前窗口暂无调用趋势。" /> : <EmptyPanel text="暂无趋势数据。" />}
           </CardContent>
         </Card>
 
@@ -349,7 +380,7 @@ export default function AiAuditPage() {
               secondaryFor={(row) => (row.key === "unassigned" ? "未归属" : compactId(row.key))}
               emptyText="暂无用户用量。"
               activeKey={selectedUserId}
-              onSelect={(row) => setSelectedUserId(row.key === "unassigned" ? null : row.key)}
+              onSelect={(row) => setSelectedUserId(row.key)}
             />
           </CardContent>
         </Card>
@@ -437,7 +468,10 @@ function AggregationTable({
           <TableHead className="text-right">总 Token</TableHead>
           <TableHead className="text-right">输入</TableHead>
           <TableHead className="text-right">输出</TableHead>
-          <TableHead className="text-right">占比</TableHead>
+          <TableHead className="text-right">计费单位</TableHead>
+          <TableHead className="text-right">计费秒</TableHead>
+          <TableHead className="text-right">估算成本</TableHead>
+          <TableHead className="text-right">Token 占比</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -458,6 +492,9 @@ function AggregationTable({
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(row.totalTokens)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(row.promptTokens)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(row.completionTokens)}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(row.billableUnits)}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(row.billableSeconds)}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{costLabel(row.estimatedCostMicros, row.key)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatRate(row.totalTokens, total)}</TableCell>
             </TableRow>
           );
@@ -487,6 +524,9 @@ function UsageRecordsTable({ records, emptyText }: { records: AiModelUsageRecord
             <TableHead className="text-right">输入 Token</TableHead>
             <TableHead className="text-right">输出 Token</TableHead>
             <TableHead className="text-right">总 Token</TableHead>
+            <TableHead>计费方式</TableHead>
+            <TableHead className="text-right">计费单位</TableHead>
+            <TableHead className="text-right">计费秒</TableHead>
             <TableHead className="text-right">成本</TableHead>
             <TableHead className="text-right">耗时</TableHead>
             <TableHead>状态</TableHead>
@@ -517,7 +557,10 @@ function UsageRecordsTable({ records, emptyText }: { records: AiModelUsageRecord
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(record.promptTokens)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(record.completionTokens)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(record.totalTokens)}</TableCell>
-              <TableCell className="whitespace-nowrap text-right tabular-nums">{costLabel(record.estimatedCostMicros)}</TableCell>
+              <TableCell className="whitespace-nowrap">{record.billingMode === "PER_SECOND" ? "按秒" : record.billingMode === "PER_CALL" ? "按次" : "按 Token"}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(record.billableUnits)}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{formatTokens(record.billableSeconds)}</TableCell>
+              <TableCell className="whitespace-nowrap text-right tabular-nums">{costLabel(record.estimatedCostMicros, record.purpose)}</TableCell>
               <TableCell className="whitespace-nowrap text-right tabular-nums">{latencyLabel(record.latencyMs)}</TableCell>
               <TableCell>
                 <Badge tone={record.success ? "success" : "danger"} className="font-normal">
@@ -557,20 +600,21 @@ function exportAuditCsv(usage: AiModelUsageReport, records: AiModelUsageRecord[]
 
   const section = (title: string, dim: string, rows: AiModelUsageStat[], labelFor: (row: AiModelUsageStat) => string) => {
     lines.push(`# ${title}`);
-    lines.push(`${dim},键,调用,总 Token,输入 Token,输出 Token`);
+    lines.push(`${dim},键,调用,总 Token,输入 Token,输出 Token,计费单位,计费秒,估算成本微元`);
     for (const row of rows) {
-      lines.push([labelFor(row), row.key, row.calls, row.totalTokens, row.promptTokens, row.completionTokens].map(esc).join(","));
+      lines.push([labelFor(row), row.key, row.calls, row.totalTokens, row.promptTokens, row.completionTokens, row.billableUnits, row.billableSeconds, row.estimatedCostMicros].map(esc).join(","));
     }
     lines.push("");
   };
 
+  section("按模态", "模态", usage.byModality ?? [], (row) => row.label);
   section("按子应用", "子应用", usage.byAppCode, appLabel);
   section("按用户", "用户", usage.byUser, (row) => row.label);
   section("按场景", "场景", usage.byPurpose, purposeLabel);
   section("按租户", "租户", usage.byTenant, (row) => row.label);
 
   lines.push("# 调用明细");
-  lines.push("时间,追踪号,上游 ID,子应用,应用码,用户,租户,场景,用途码,端点,模型,输入 Token,输出 Token,总 Token,估算成本,耗时,状态,错误码,错误摘要");
+  lines.push("时间,追踪号,上游 ID,子应用,应用码,用户,租户,场景,用途码,端点,模型,输入 Token,输出 Token,总 Token,计费方式,计费单位,计费秒,估算成本,耗时,状态,错误码,错误摘要");
   for (const record of records) {
     lines.push(
       [
@@ -588,7 +632,10 @@ function exportAuditCsv(usage: AiModelUsageReport, records: AiModelUsageRecord[]
         record.promptTokens,
         record.completionTokens,
         record.totalTokens,
-        costLabel(record.estimatedCostMicros),
+        record.billingMode,
+        record.billableUnits,
+        record.billableSeconds,
+        costLabel(record.estimatedCostMicros, record.purpose),
         record.latencyMs ?? "",
         record.success ? "成功" : "失败",
         record.errorCode ?? "",

@@ -321,11 +321,11 @@ public class DapMultimodalClient {
                 out = Base64.getDecoder().decode(b64);
             }
             recordMetered(t, AiModelBillingMode.PER_CALL, 1L, 0L, true,
-                    requestId, upstreamId, elapsedMs(startNanos), null, null);
+                    requestId, upstreamId, elapsedMs(startNanos), null, null, resp);
             return out;
         } catch (DapModelException e) {
             recordMetered(t, AiModelBillingMode.PER_CALL, 0L, 0L, false,
-                    requestId, null, elapsedMs(startNanos), e.getCode(), e.getMessage());
+                    requestId, null, elapsedMs(startNanos), e.getCode(), e.getMessage(), null);
             throw e;
         }
     }
@@ -394,16 +394,17 @@ public class DapMultimodalClient {
                                String upstreamId,
                                long latencyMs,
                                String errorCode,
-                               String errorMessage) {
+                               String errorMessage, JsonNode response) {
         try {
+            var tokens = com.aistareco.aep.service.ai.AiModelTokenUsage.from(response);
             usage.recordMeteredObserved(
                     t.endpointId(),
                     t.endpointName(),
                     t.model(),
                     t.purpose().name(),
-                    0L,
-                    0L,
-                    0L,
+                    tokens.input(),
+                    tokens.output(),
+                    tokens.total(),
                     mode,
                     success ? Math.max(0L, units) : 0L,
                     success ? Math.max(0L, seconds) : 0L,
