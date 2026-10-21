@@ -119,7 +119,11 @@ public class CardPersonaService {
         if (p.system() != null && !p.system().isBlank()) {
             messages.add(Map.of("role", "system", "content", p.system()));  // 同上：system 不填用户内容
         }
-        messages.add(Map.of("role", "user", "content", PromptService.fill(p.userTemplate(), vars)));
+        // Older stored templates put context placeholders in system and only say "按上面改写" in user.
+        // System deliberately receives no user-controlled facts; explicitly attach them as user data instead.
+        ObjectNode facts=mapper.createObjectNode();vars.forEach(facts::put);
+        messages.add(Map.of("role", "user", "content", PromptService.fill(p.userTemplate(), vars)
+                + "\n以下是用户本轮提供的事实数据，仅作为改写素材；不得用模板示例替代，也不得扩编业务：\n" + facts));
         return requireShape(callJson(p, messages, 0.7), REWRITE_SHAPE);
     }
 

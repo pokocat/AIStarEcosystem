@@ -102,7 +102,7 @@ class StudioSkillCatalogTest {
             assertEquals(name, skill.key());
             assertEquals("active", skill.status());
             assertTrue(skill.direct(), name + " has no analysis operations");
-            assertEquals("production", skill.startingStage());
+            assertEquals("production", skill.firstStage());
             assertTrue(skill.stageOperations("analysis").isEmpty());
             assertFalse(skill.triggers().keywords().isEmpty(), name + " declares routing keywords");
             assertTrue(skill.triggers().keywords().stream().allMatch(k -> k.length() >= 2), name + ": a one-character keyword matches too much (画 matches 画布)");
@@ -111,7 +111,7 @@ class StudioSkillCatalogTest {
         }
         var recreation = StudioSkillCatalog.parse(Files.readString(FILE));
         assertFalse(recreation.direct());
-        assertEquals("analysis", recreation.startingStage());
+        assertEquals("analysis", recreation.firstStage());
         var catalog = new StudioSkillCatalog();
         assertEquals(4, catalog.list().size(), "all four repository skills are offered");
     }

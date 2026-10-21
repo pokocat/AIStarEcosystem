@@ -1,15 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { accountPageKey, studioEntryDestination } from './account-navigation';
 
+// v0.230 入口迁移：每一行都是一条要保留的深链。
 describe('unified account navigation', () => {
-  it.each([['','/projects'], ['#studio','/projects'], ['#/studio','/projects'], ['#/home','/dashboard'], ['#/library','/assets'], ['#/me','/me'], ['#/licenses','/licenses']])('replaces root %s with %s', (hash, destination) => {
-    expect(studioEntryDestination(hash)).toBe(destination);
+  it('replaces bare root entries with their new destinations', () => {
+    for (const [hash, destination] of [['','/projects'], ['#studio','/projects'], ['#/studio','/projects'], ['#/home','/dashboard'], ['#/library','/assets'], ['#/me','/me'], ['#/licenses','/licenses']]) {
+      expect(studioEntryDestination(hash), hash).toBe(destination);
+    }
   });
-  it.each(['#/tasks','#/settings','#/membership','#/avatar/DH-1/voice','#/create/real','#/real-auth/session-1'])('preserves stateful or account link %s', hash => {
-    expect(studioEntryDestination(hash)).toBeUndefined();
-  });
-  it.each(['?start=real','?start=ai','?start=sheet','?start=compose','?create=1'])('does not redirect creation entry %s', search => {
-    expect(studioEntryDestination('', search)).toBeUndefined();
+  it('preserves stateful or account links and creation entries', () => {
+    for (const hash of ['#/tasks','#/settings','#/membership','#/avatar/DH-1/voice','#/create/real','#/real-auth/session-1']) {
+      expect(studioEntryDestination(hash), hash).toBeUndefined();
+    }
+    for (const search of ['?start=real','?start=ai','?start=sheet','?start=compose','?create=1']) {
+      expect(studioEntryDestination('', search), search).toBeUndefined();
+    }
   });
   it('matches security to settings and leaves asset flows outside account selection', () => {
     expect(accountPageKey('#/security')).toBe('settings');

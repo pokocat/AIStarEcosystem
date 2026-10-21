@@ -1022,3 +1022,23 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 未加入企业的账号直接使用个人积分，不弹出付款账户选择。已加入企业的账号可勾选「保存为默认，下次不再询问」；在「设置 → 生成付款账户」切换每次询问、默认个人或默认当前企业。偏好按用户与企业保存在当前浏览器，企业变更不复用旧企业默认；余额不足不自动切换，原任务重试/退款仍固定原账户。
 
 代码 `a2221b9a` 已上线，见 [付款默认设置发布记录](../../docs/releases/studio-billing-default-release-20261017.md)。
+
+### 2026-10-20 · 图片输出尺寸
+
+图片创作面板从模型目录读取 `imageSizes`，按当前画幅提供精确输出尺寸；选择保存在画布草稿及受理请求中，重新打开沿用。1K、2K 与参考图是否可用由后台端点合同决定，不按供应商模型别名推断。见 `docs/releases/studio-gpt-image-native-20261020.md`。
+
+### 节点参数交互（2026-10-20）
+
+创作节点共用 `studio-generation-controls.tsx`：模型菜单、参数摘要浮层、分组单选按钮及比例图形。图片与视频的清晰度/比例/数量（视频另含模式/时长）、剧本设定、配音与分析配置统一入口；素材仍留在正文选择。固定模型显示名称，浮层 Esc 关闭并归还焦点，方向键切换选项，手机依据 data-layout 适配。规格和价格仍读取服务端；切比例保留清晰度档位，提交与草稿保存精确尺寸。见 [发布记录](../../docs/releases/studio-node-settings-20261020.md)。
+
+数量使用紧凑分段选择；原生视频时长用合同内常用值与整数输入，离散模型保留自身列表。随机种子默认收在高级设置，保留已填值（0 也是固定种子），可一键恢复随机。
+
+视频模式在底栏独立切换，并根据所选图片、视频、音频及模型合同自动适配；不兼容模式禁用，素材始终完整保留。参考菜单和编号缩略图条取代重复表单，首尾帧可交换。桌面底栏单行显示模型、模式、规格、总积分与箭头提交，手机有序分两行。
+
+### 2026-10-20 · Studio 生产问题五项修复（已生产发布 `20261021-studio-prod-fixes`，源码 `14260eea`）
+
+`canvas-bridge/studio-composer-spec.ts`（描述与设置不一致、时长超出模型范围的判定，纯函数）、`canvas-bridge/studio-node-failure.ts`（失败节点、不可再用的模型、一行原因）；`studio-plan-execution.ts` 的投影接受助手写的 `studio.spec` 并同步打开中的草稿；`studio-reply-actions.ts` 折叠 `<studio-actions>`；`studio-dialogue-session.tsx` 制作阶段确认卡只复用进行中的执行。测试：`studio-failure-recovery.test.tsx`、`studio-flow-card-failure.test.tsx` 与上述纯函数的单测。类型 `StudioNodeSpec` 在 `packages/types/src/ip-studio-workflow.ts`。
+
+### 创作助手对话动静与快捷答复（2026-10-20，已生产发布 `20261020-studio-assistant-activity`（GIT_SHA `8b408533`））
+
+回合进行中显示「正在思考 / 正在回复」（`studio-dialogue-activity.tsx`，阶段来自 `dialogueActivity`），流式正文闪光标；工作记录改为一行过程记录，小箭头展开、失败写原因；问题选项和后续建议单击直接发送，不动草稿；「放进画布 / 从这里重新开始」改为小图标按钮，旧回复悬停或聚焦才显示。测试：`studio-assistant.test.tsx`（直接发送、连点只发一次、拒收回填、阶段切换）、`studio-dialogue-store.test.ts`（`dialogueActivity` / `answeredAfter`）。

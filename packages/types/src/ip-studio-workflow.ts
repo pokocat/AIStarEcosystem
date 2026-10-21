@@ -213,6 +213,16 @@ export interface StudioIpAsset extends Omit<StudioAdoptResult,"ipId"> {
   attributes?: Record<string,string>;
 }
 
+/** See StudioNodeMetadata.spec. Mirrors the server's NodeSpecs (dialogue tools). */
+export interface StudioNodeSpec {
+  aspectRatio?: string;
+  durationSec?: number;
+  count?: number;
+  references?: { nodeId: string; role: "character" | "scene" | "product" | "frame" | "style" }[];
+  source: "assistant";
+  updatedAt: string;
+}
+
 /** Business metadata on generic canvas nodes. Server stores the client document whole. */
 export interface StudioNodeMetadata {
   libraryReference?: { objectId:string; versionId?:string; name:string; description:string; folderName:string; sourceTitle:string };
@@ -226,8 +236,14 @@ export interface StudioNodeMetadata {
     queue?: import('./ai-model-concurrency').AiGenerationQueuePosition | null };
   workDraft?: StudioWorkDraft;
   speechDraft?: Omit<StudioSpeechRequest,'clientRequestId'|'nodeId'|'maxCost'>;
+  /**
+   * Settings the assistant wrote for this image / video draft (create_nodes / update_nodes): what the user said in the
+   * conversation — ratio, seconds, count, which material is used as what. The composer opens with them; a value the chosen
+   * model cannot do is shown as a blocking message, never replaced. `references` are also canvas edges into the node.
+   */
+  spec?: StudioNodeSpec;
   /** Client-owned editor draft, separate from the immutable accepted run request. */
-  composerDraft?: { operation: StudioOperation; prompt: string; referenceNodeIds: string[]; connectedReferenceNodeIds?: string[]; aspectRatio: string; model?: string;
+  composerDraft?: { operation: StudioOperation; prompt: string; referenceNodeIds: string[]; connectedReferenceNodeIds?: string[]; aspectRatio: string; model?: string; size?: string;
     count: number; durationSec: number; settings: StudioScriptSettings; pasteScript?: boolean;
     episodeNo?: number; rewriteScope?: StudioNodeMetadata['rewriteScope'];
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;

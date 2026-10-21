@@ -37,8 +37,7 @@ import java.util.UUID;
  *   · chat   → DAP_PERSONA  → POST {baseUrl}/v1/chat/completions   OpenAI 兼容
  *   · image  → DAP_IMAGE    → POST {baseUrl}/v1/images/generations OpenAI Images 兼容
  *                                            (i2i 走 extra_body.image=[url|dataURI])
- *   · video  → DAP_VIDEO    → POST {baseUrl}/v1/videos             异步 submit + poll
- *                              + GET  {baseUrl}/v1/videos/{taskId}
+ *   · video  → DapVideoBridge → shared durable media worker
  *
  * 任一用途未绑定启用端点 → isConfigured()=false,调用方按 aep.dap.allow-placeholder
  * 配合 DapJobService.requireEngineOrPlaceholderAllowed() 二选一:
@@ -54,6 +53,7 @@ public class DapMultimodalClient {
     private static final Logger log = LoggerFactory.getLogger(DapMultimodalClient.class);
     private static final ObjectMapper OM = new ObjectMapper();
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.ai.ConfiguredImageGenerator configuredImages;
     private final DapProperties props;
     private final AiModelInvocationService aiModels;
     private final AiModelUsageService usage;
@@ -83,7 +83,7 @@ public class DapMultimodalClient {
     record Target(String endpointId, String endpointName, String baseUrl, String apiKey,
                   String model, String source, AiModelPurpose purpose,
                   /** 该端点声明的出图最小像素数；null = 无下限。 */
-                  Integer minImagePixels) {}
+                  Integer minImagePixels, AiModelEndpoint endpoint) {}
 
     private Target resolveTarget(AiModelPurpose purpose) {
         return resolveTarget(purpose, null);
@@ -123,7 +123,7 @@ public class DapMultimodalClient {
                 return null;
             }
             return new Target(e.getId(), e.getName(), rstrip(e.getBaseUrl()), key, model,
-                    "endpoint:" + e.getName(), purpose, minPixels);
+                    "endpoint:" + e.getName(), purpose, minPixels, e);
         } catch (Exception ex) {
             log.warn("[dap-ai] endpoint decrypt failed purpose={} endpoint={} err={} → unconfigured",
                     purpose.wire(), e.getName(), ex.getMessage());
@@ -160,27 +160,25 @@ public class DapMultimodalClient {
 
     /** 单轮 chat;返回 assistant content。 */
     public String chat(String systemPrompt, String userPrompt) {
-        Target t = require(chatTarget(), "chat");
-        ObjectNode body = OM.createObjectNode();
-        body.put("model", t.model());
-        ArrayNode messages = body.putArray("messages");
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            messages.addObject().put("role", "system").put("content", systemPrompt);
-        }
-        messages.addObject().put("role", "user").put("content", userPrompt);
-        body.put("temperature", 0.6);
+        return chatResult(systemPrompt,userPrompt,false);
+    }
 
-        JsonNode resp = postJson(t, "/v1/chat/completions", body);
-        JsonNode content = resp.path("choices").path(0).path("message").path("content");
-        if (content.isMissingNode() || content.isNull()) {
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应缺少 choices[0].message.content");
-        }
-        return content.asText();
+    private String chatResult(String systemPrompt,String userPrompt,boolean json) {
+        Target target=require(chatTarget(),"chat");
+        List<java.util.Map<String,String>> messages=new java.util.ArrayList<>();
+        if(systemPrompt!=null && !systemPrompt.isBlank())messages.add(java.util.Map.of("role","system","content",systemPrompt));
+        messages.add(java.util.Map.of("role","user","content",userPrompt==null?"":userPrompt));
+        var options=new java.util.HashMap<String,Object>();options.put("temperature",0.6);
+        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        if(json)options.put("response_format",java.util.Map.of("type","json_object"));
+        var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
+        if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","文本模型没有返回有效内容");
+        return response.content();
     }
 
     /** chat 并解析 JSON 产物(剥 markdown 围栏 + 截取首个 {...})。 */
     public JsonNode chatJson(String systemPrompt, String userPrompt) {
-        String raw = chat(systemPrompt, userPrompt);
+        String raw = chatResult(systemPrompt, userPrompt, true);
         String cleaned = extractJson(raw);
         try {
             return OM.readTree(cleaned);
@@ -201,40 +199,22 @@ public class DapMultimodalClient {
      * {@code DAP_MODEL_HTTP_4xx}：调用方负责翻成业务错误码并**不产假产物**（§8.0）。
      */
     public String chatWithImages(String systemPrompt, String userPrompt, List<String> imageInputs) {
-        Target t = require(chatTarget(), "chat");
-        ObjectNode body = OM.createObjectNode();
-        body.put("model", t.model());
-        ArrayNode messages = body.putArray("messages");
-        if (systemPrompt != null && !systemPrompt.isBlank()) {
-            messages.addObject().put("role", "system").put("content", systemPrompt);
+        Target target=require(chatTarget(),"chat");
+        List<java.util.Map<String,Object>> messages=new java.util.ArrayList<>();
+        if(systemPrompt!=null && !systemPrompt.isBlank())messages.add(java.util.Map.of("role","system","content",systemPrompt));
+        List<java.util.Map<String,Object>> parts=new java.util.ArrayList<>();
+        parts.add(java.util.Map.of("type","text","text",userPrompt==null?"":userPrompt));
+        if(imageInputs!=null)for(String input:imageInputs) {
+            if(input==null || input.isBlank())throw new DapModelException("DAP_MODEL_BAD_INPUT","参考图片无法读取");
+            parts.add(java.util.Map.of("type","image_url","image_url",java.util.Map.of("url",input)));
         }
-        ObjectNode userMsg = messages.addObject();
-        userMsg.put("role", "user");
-        ArrayNode parts = userMsg.putArray("content");
-        parts.addObject().put("type", "text").put("text", userPrompt == null ? "" : userPrompt);
-        if (imageInputs != null) {
-            for (String img : imageInputs) {
-                if (img == null || img.isBlank()) continue;
-                ObjectNode part = parts.addObject();
-                part.put("type", "image_url");
-                part.putObject("image_url").put("url", img);
-            }
-        }
-        body.put("temperature", 0.4);
-
-        JsonNode resp = postJson(t, "/v1/chat/completions", body);
-        JsonNode content = resp.path("choices").path(0).path("message").path("content");
-        if (content.isMissingNode() || content.isNull()) {
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应缺少 choices[0].message.content");
-        }
-        // 部分兼容实现把 content 也回成 parts 数组，取首个 text 段
-        if (content.isArray()) {
-            for (JsonNode part : content) {
-                if (part.path("text").isTextual()) return part.path("text").asText();
-            }
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 响应 content 数组里没有文本段");
-        }
-        return content.asText();
+        messages.add(java.util.Map.of("role","user","content",parts));
+        var options=new java.util.HashMap<String,Object>();options.put("temperature",0.4);
+        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        options.put("response_format",java.util.Map.of("type","json_object"));
+        var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
+        if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","看图模型没有返回有效内容");
+        return response.content();
     }
 
     /** 带图 chat 并解析 JSON 产物（剥 markdown 围栏 + 截取首个 {...}）。 */
@@ -269,6 +249,8 @@ public class DapMultimodalClient {
     /** Shared image transport takes the actual calling application for endpoint access checks. */
     public byte[] generateImage(String prompt, String size, List<String> inputImages, String endpointId, String appCode) {
         Target t = require(resolveTarget(AiModelPurpose.DAP_IMAGE, endpointId, appCode), "image");
+        if(t.endpoint().getImageRequestSpecJson()!=null && !t.endpoint().getImageRequestSpecJson().isBlank())
+            return configuredImages.generate(t.endpoint(),AiModelPurpose.DAP_IMAGE,appCode,prompt,size,inputImages);
         String requestId = "dap-img-" + UUID.randomUUID().toString().substring(0, 12);
         long startNanos = System.nanoTime();
         ObjectNode body = OM.createObjectNode();
@@ -348,118 +330,6 @@ public class DapMultimodalClient {
         }
     }
 
-    // ── 视频(异步)────────────────────────────────────────────
-
-    /** progress:云端真实进度 0-100(响应缺失时为 null,调用方自行兜底)。 */
-    public record VideoTask(String taskId, String status, String videoUrl, Integer progress, String raw) {}
-
-    /**
-     * 创建视频任务。
-     *
-     * @param prompt     英文 prompt
-     * @param inputImage i2v 输入(URL / dataURI),null = 文生视频
-     */
-    public String createVideoTask(String prompt, String inputImage, int width, int height,
-                                  int numFrames, int frameRate) {
-        Target t = require(videoTarget(), "video");
-        String requestId = "dap-vid-" + UUID.randomUUID().toString().substring(0, 12);
-        long startNanos = System.nanoTime();
-        ObjectNode body = OM.createObjectNode();
-        body.put("model", t.model());
-        body.put("prompt", prompt);
-        body.put("width", width);
-        body.put("height", height);
-        body.put("num_frames", normalizeFrames(numFrames));
-        body.put("frame_rate", frameRate);
-        if (inputImage != null && !inputImage.isBlank()) {
-            body.put("image", inputImage);
-        }
-        try {
-            JsonNode resp = postJson(t, "/v1/videos", body);
-            String taskId = firstNonBlank(
-                    resp.path("id").asText(null),
-                    resp.path("task_id").asText(null),
-                    resp.path("data").path("id").asText(null),
-                    resp.path("data").path("task_id").asText(null));
-            if (taskId == null) {
-                throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "videos 响应缺少任务 id: " + truncate(resp.toString(), 300));
-            }
-            long seconds = secondsForFrames(normalizeFrames(numFrames), frameRate);
-            recordMetered(t, AiModelBillingMode.PER_SECOND, 1L, seconds, true,
-                    requestId, taskId, elapsedMs(startNanos), null, null);
-            log.info("[dap-ai] video-task created taskId={} model={} size={}x{} frames={} fps={}",
-                    taskId, t.model(), width, height, normalizeFrames(numFrames), frameRate);
-            return taskId;
-        } catch (DapModelException e) {
-            recordMetered(t, AiModelBillingMode.PER_SECOND, 0L, 0L, false,
-                    requestId, null, elapsedMs(startNanos), e.getCode(), e.getMessage());
-            throw e;
-        }
-    }
-
-    /** 查询视频任务(status 归一化为 queued|in_progress|completed|failed)。 */
-    public VideoTask getVideoTask(String taskId) {
-        Target t = require(videoTarget(), "video");
-        JsonNode resp = getJson(t, "/v1/videos/" + taskId);
-        String status = firstNonBlank(
-                resp.path("status").asText(null),
-                resp.path("data").path("status").asText(null),
-                "in_progress").toLowerCase();
-        // 常见别名归一
-        if (status.contains("succ") || status.equals("done") || status.equals("complete")) status = "completed";
-        if (status.contains("fail") || status.equals("error")) status = "failed";
-        if (status.equals("processing") || status.equals("running") || status.equals("pending")) status = "in_progress";
-
-        String videoUrl = firstNonBlank(
-                resp.path("video_url").asText(null),
-                resp.path("url").asText(null),
-                resp.path("data").path("video_url").asText(null),
-                resp.path("data").path("url").asText(null),
-                resp.path("output").path("video_url").asText(null));
-        Integer progress = null;
-        JsonNode pn = resp.path("progress").isMissingNode() ? resp.path("data").path("progress") : resp.path("progress");
-        if (pn.isNumber()) {
-            double pv = pn.asDouble();
-            progress = (int) Math.round(pv <= 1.0 && pv > 0 ? pv * 100 : pv); // 兼容 0-1 / 0-100 两种形态
-        }
-        return new VideoTask(taskId, status, videoUrl, progress, resp.toString());
-    }
-
-    /** 阻塞轮询直到 completed/failed/超时;onPoll 每轮收到云端真实任务态(status / progress)。 */
-    public VideoTask awaitVideo(String taskId, java.util.function.Consumer<VideoTask> onPoll) {
-        int interval = Math.max(2, props.getVideo().getPollIntervalSeconds());
-        int maxWait = Math.max(30, props.getVideo().getMaxWaitSeconds());
-        long deadline = System.currentTimeMillis() + maxWait * 1000L;
-        long start = System.currentTimeMillis();
-        String lastStatus = null;
-        long lastHeartbeat = 0L;
-        while (System.currentTimeMillis() < deadline) {
-            VideoTask t = getVideoTask(taskId);
-            long now = System.currentTimeMillis();
-            if (!t.status().equals(lastStatus) || now - lastHeartbeat >= 60_000L) {
-                log.info("[dap-ai] video-task poll taskId={} status={} progress={} elapsedSec={} maxWaitSec={} videoUrlPresent={}",
-                        taskId, t.status(), t.progress(), (now - start) / 1000L, maxWait,
-                        t.videoUrl() != null && !t.videoUrl().isBlank());
-                lastStatus = t.status();
-                lastHeartbeat = now;
-            }
-            if ("completed".equals(t.status()) || "failed".equals(t.status())) {
-                if ("failed".equals(t.status())) {
-                    log.warn("[dap-ai] video-task FAILED taskId={} progress={} raw={}",
-                            taskId, t.progress(), truncate(t.raw(), 600));
-                }
-                return t;
-            }
-            if (onPoll != null) onPoll.accept(t);
-            try {
-                Thread.sleep(interval * 1000L);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new DapModelException("DAP_MODEL_INTERRUPTED", "视频轮询被中断");
-            }
-        }
-        throw new DapModelException("DAP_MODEL_TIMEOUT", "视频生成超时(>" + maxWait + "s),任务 " + taskId);
-    }
 
     // ── 通用 HTTP ──────────────────────────────────────────────
 
@@ -552,7 +422,7 @@ public class DapMultimodalClient {
      * 发送 + 解析 JSON。v0.85：HTTP 发送 / 原始日志 / 非 2xx WARN / IOException 退避重试统一走共享原语
      * {@link UpstreamModelHttp#sendJson}（dataURI 大字段经 {@code summarizeRequest} 脱敏后作为 io 日志的请求体）。
      *
-     * dap 的用量流水仍由各调用方（{@code generateImage} / {@code createVideoTask}）按 metered 计费记录
+     * dap 的用量流水仍由各调用方（{@code generateImage}）按 metered 计费记录
      * （成功带 units/seconds、失败 units=0），故此处 {@code recordFailureUsage(false)}，不重复落库。
      * 对外异常码保持不变：HTTP 错误 → DAP_MODEL_HTTP_{status}；网络层失败 / 中断 → DAP_MODEL_CALL_FAILED。
      */

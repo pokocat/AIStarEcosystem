@@ -21,7 +21,8 @@ public class CreateNodesTool implements StudioDialogueTool {
     static final Set<String> TYPES = Set.of("text", "image", "video", "audio");
     public String name() { return "create_nodes"; }
     public String title() { return "搭建画布"; }
-    public String description() { return "在画布上新建普通对象（文字正文、图片/视频/音频的提示词草稿）并可连线。每个对象给一个临时 key，连线可用 key 或已有对象 id。只建草稿，不会生成图片或视频。"; }
+    public String description() { return "在画布上新建普通对象（文字正文、图片/视频/音频的提示词草稿）并可连线。每个对象给一个临时 key，连线可用 key 或已有对象 id。"
+            + "图片/视频对象把用户说过的画幅、时长、数量和要用的参考素材写进 aspectRatio / durationSec / count / references（不要只写在提示词里），生成面板会按这些打开。只建草稿，不会生成图片或视频。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "nodes");
         var nodes = DialogueTools.prop(s, "nodes", "array", "最多 12 个对象");
@@ -32,6 +33,7 @@ public class CreateNodesTool implements StudioDialogueTool {
         p.putObject("title").put("type", "string");
         p.putObject("content").put("type", "string").put("description", "文字对象的正文");
         p.putObject("prompt").put("type", "string").put("description", "图片/视频/音频对象的提示词草稿");
+        NodeSpecs.describe(p);
         item.putArray("required").add("key").add("type").add("title");
         var conns = DialogueTools.prop(s, "connections", "array", "连线（上游 → 下游），最多 24 条");
         var c = conns.putObject("items").put("type", "object");
@@ -44,6 +46,13 @@ public class CreateNodesTool implements StudioDialogueTool {
         JsonNode nodes = args.path("nodes");
         if (!nodes.isArray() || nodes.isEmpty() || nodes.size() > MAX_NODES) return "一次新建 1 到 12 个对象";
         Set<String> keys = new HashSet<>();
+        for (JsonNode n : nodes) { String k = DialogueTools.text(n, "key"); if (k != null) keys.add(k); }
+        JsonNode doc = ctx.effects.readDoc();
+        for (JsonNode n : nodes) {
+            String spec = NodeSpecs.validate(n, DialogueTools.text(n, "type"), doc, keys);
+            if (spec != null) return spec;
+        }
+        keys.clear();
         for (JsonNode n : nodes) {
             String key = DialogueTools.text(n, "key"), type = DialogueTools.text(n, "type"), title = DialogueTools.text(n, "title");
             if (key == null || key.length() > 64 || !keys.add(key)) return "每个对象需要唯一的 key";
@@ -54,7 +63,7 @@ public class CreateNodesTool implements StudioDialogueTool {
         JsonNode conns = args.path("connections");
         if (conns.isMissingNode() || conns.isNull()) return null;
         if (!conns.isArray() || conns.size() > MAX_CONNECTIONS) return "连线最多 24 条";
-        Set<String> existing = DialogueCanvasDigest.nodeIds(ctx.effects.readDoc());
+        Set<String> existing = DialogueCanvasDigest.nodeIds(doc);
         existing.addAll(ctx.createdNodeIds);
         for (JsonNode c : conns) {
             String from = DialogueTools.text(c, "from"), to = DialogueTools.text(c, "to");
@@ -71,7 +80,7 @@ public class CreateNodesTool implements StudioDialogueTool {
         JsonNode doc = ctx.effects.readDoc();
         double[] origin = origin(doc);
         Map<String, String> ids = new LinkedHashMap<>();
-        List<NodeUpsertData> upserts = new ArrayList<>();
+        List<NodeUpsertData> upserts = new ArrayList<>(), referenceEdges = new ArrayList<>();
         var created = DialogueTools.OM.createArrayNode();
         int i = 0;
         for (JsonNode spec : args.path("nodes")) {
@@ -85,11 +94,18 @@ public class CreateNodesTool implements StudioDialogueTool {
             ObjectNode md = node.putObject("metadata");
             if ("text".equals(type)) md.put("content", spec.path("content").asText(""));
             else md.put("prompt", spec.path("prompt").asText(""));
+            ObjectNode settings = NodeSpecs.spec(spec, DialogueTools.OM);
+            if (settings != null) md.putObject("studio").put("kind", "shot").set("spec", settings);
             upserts.add(new NodeUpsertData(id, "create", node, null, ctx.executionId, null, null, null, null));
-            created.addObject().put("key", DialogueTools.text(spec, "key")).put("id", id).put("type", type).put("title", node.path("title").asText());
+            var item = created.addObject().put("key", DialogueTools.text(spec, "key")).put("id", id).put("type", type).put("title", node.path("title").asText());
+            if (settings != null) item.put("settings", NodeSpecs.summary(settings));
+            // References are edges into the node: the composer and the request read inputs from these connections.
+            for (JsonNode r : settings == null ? DialogueTools.OM.createArrayNode() : settings.path("references"))
+                referenceEdges.add(new NodeUpsertData(id, "connect", null, new Connection(r.path("nodeId").asText(), id), ctx.executionId, null, null, null, null));
             ctx.createdNodeIds.add(id);
             i++;
         }
+        upserts.addAll(referenceEdges);
         for (JsonNode c : args.path("connections")) {
             String from = ids.getOrDefault(DialogueTools.text(c, "from"), DialogueTools.text(c, "from"));
             String to = ids.getOrDefault(DialogueTools.text(c, "to"), DialogueTools.text(c, "to"));

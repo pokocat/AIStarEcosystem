@@ -2,6 +2,7 @@
 const nextConfig = {
   reactStrictMode: true,
   output: "standalone",
+  experimental: { proxyTimeout: 180_000 },
   // 部署到 celebrity.aibuzz.cn 根路径，无 basePath；本地 dev: localhost:3012
   images: {
     remotePatterns: [

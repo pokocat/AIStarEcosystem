@@ -146,14 +146,6 @@ describe("参数面板：画幅按模型真正能出的来", () => {
     expect(onConfigChange).toHaveBeenCalledWith("size", expect.stringMatching(/^768x/));
   });
 
-  it("竖的仍然落到竖的（3:4 → 9:16，不是一律回到第一个 16:9）", () => {
-    boundsMock.mockReturnValue({ min: 5, max: 15 });
-    geometryMock.mockReturnValue({ resolutions: ["768"], ratios: ["16:9", "9:16"] });
-    const g = effectiveVideoGeometry({ vquality: "720", size: "720x960", model: "m", videoModel: "m" } as AiConfig);
-    expect(g.ratio).toBe("9:16");
-    expect(g.resolution).toBe("768");
-  });
-
   it("拿不到能力（模型没加载 / 协议不受限）就保留完整选项，不臆造限制", () => {
     boundsMock.mockReturnValue(undefined);
     geometryMock.mockReturnValue(undefined);

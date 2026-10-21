@@ -8,7 +8,7 @@ vi.mock('@/canvas-bridge/studio-api',()=>({studioLipSyncCatalog:api.catalog,quot
 vi.mock('./studio-floating-panel',()=>({StudioFloatingPanel:({open,children,footer}:any)=>open?<section><div data-testid="body">{children}</div><footer>{footer}</footer></section>:null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:()=> <video/>}));
 vi.mock('@/canvas-bridge/signed-audio',()=>({SignedAudio:()=> <audio/>}));
-vi.mock('antd',()=>({Button:({loading,type,...props}:any)=><button {...props} disabled={loading||props.disabled}/>,Select:({options,value,onChange,...props}:any)=><select aria-label={props['aria-label']} value={value||''} onChange={e=>onChange(e.target.value)}><option value=""/>{options?.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>}));
+vi.mock('antd',()=>({Popover:({children,content}:any)=><>{children}{content}</>,Button:({loading,type,...props}:any)=><button {...props} disabled={loading||props.disabled}/>,Select:({options,value,onChange,...props}:any)=><select aria-label={props['aria-label']} value={value||''} onChange={e=>onChange(e.target.value)}><option value=""/>{options?.map((o:any)=><option key={o.value} value={o.value}>{o.label}</option>)}</select>}));
 const nodes=[['v','video','v.mp4'],['a','audio','a.wav'],['a2','audio','a2.wav']].map(([id,type,storageKey])=>({id,type,title:id,metadata:{storageKey,content:`/${storageKey}`,status:'success',mimeType:type==='audio'?'audio/wav':'video/mp4'}} as CanvasNodeData));
 beforeEach(()=>{vi.clearAllMocks();api.catalog.mockResolvedValue({models:[{endpointId:'lip',name:'口型模型',creditCostPerSecond:8,isDefault:true}]});api.quote.mockResolvedValue({cost:24,billableSeconds:3,audioDurationSec:2.4});});
 afterEach(cleanup);

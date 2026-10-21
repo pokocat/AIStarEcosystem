@@ -101,7 +101,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
-| [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（last-reviewed 2026-10-18） |
+| [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（之后的追加发布到 2026-10-20 `20261020-h3-video-dialogue`；last-reviewed 2026-10-20） |
 | [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md) | **Studio 对话意图直达 · 现行设计真源** | 意图 → 技能 → 一轮确认：出图 / 写剧本与文案 / 出视频三个直达技能 + 参考视频复刻；路由关键词 ×2 / 素材 ×1、平手不 400、按任务绑定技能；问题预算；触发评测集（§7）。本地实现，未发布，未做真模型端到端（last-reviewed 2026-10-20） |
 | [`docs/ip-studio-workflow-template-plan.md`](ip-studio-workflow-template-plan.md) | **标准画布模板与人物设定图方案** | 用户新增核心方向；含 LibTV 公开/复制画布实测、默认一次人物设定图与反推提示词，进阶独立资产/拼板；模板输入/依赖/输出/版本/套用和有限执行（last-reviewed 2026-10-08） |
 | [Studio 创作首页](ip-studio-home.md) | AI IP 工作台 | 首页主要功能、近期画布与模板、同一 Studio 落点与品牌保留（last-reviewed 2026-10-08） |
@@ -194,6 +194,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/studio-film-study-technical-sharing-2026-10.md`](audits/studio-film-study-technical-sharing-2026-10.md) | 视频拉片技术分享：媒体工程、模型理解、成本与音频补全，程序和大模型各管什么（2026-10-17） |
 | [`docs/audits/studio-local-full-e2e-20261019.md`](audits/studio-local-full-e2e-20261019.md) | 本地全站验收与逐项复测：Agnes真实拉片/流式、受控制作与企业账本；10-20补过本机上传、双浏览器三种冲突恢复及任务回写，保留其余失败/待复测和真实视频队列阻塞 |
 | [`docs/audits/studio-user-journey-acceptance-20261019.md`](audits/studio-user-journey-acceptance-20261019.md) | 线上只读的用户视角验收：文字落画布、复刻检查口径、成片默认片段等待办（2026-10-19，后续见 TODO） |
+| [`docs/audits/web-aiavatar-test-suite-audit-2026-10.md`](audits/web-aiavatar-test-suite-audit-2026-10.md) | web-aiavatar vitest 审计：耗时来自 jsdom 并发争用而非条数；限并发 + 假计时器 + 1056→963 条（2026-10-20，已实施） |
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
@@ -201,7 +202,9 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
-| [`docs/releases/studio-recreation-release-20261018.md`](releases/studio-recreation-release-20261018.md) | 全能创作复刻 S1/S2/S3 生产发布记录 | 发布 `20261018-studio-recreation-s1s3`（c6f40808）：基线核对与合并、V60–V63 迁移、技能 seed、verify 全绿、上线后配置项与未验证范围（last-reviewed 2026-10-18） |
+| [`docs/releases/studio-recreation-release-20261018.md`](releases/studio-recreation-release-20261018.md) | 全能创作复刻 S1/S2/S3 生产发布记录 | 发布 `20261018-studio-recreation-s1s3`（c6f40808）：基线核对与合并、V60–V63 迁移、技能 seed、verify 全绿、上线后配置项与未验证范围；之后每次追加发布记在同一份，最近一次是 2026-10-20 第一次从 main 发的 `20261020-studio-main-h3-conflict`（last-reviewed 2026-10-20） |
+| [`docs/releases/studio-gpt-image-native-20261020.md`](releases/studio-gpt-image-native-20261020.md) | Studio GPT Image 2 原生接入与验收 | 2K、参考图 multipart、尺寸选择与 30 积分定价；尺寸不符在扣费前拒绝（last-reviewed 2026-10-20） |
+| [`docs/releases/studio-node-settings-20261020.md`](releases/studio-node-settings-20261020.md) | Studio 节点配置交互统一 | 底栏摘要、分组浮层、可视比例与各创作节点统一；已发布 web-aiavatar（last-reviewed 2026-10-20） |
 | [统一账号邀请 · 本地验收](releases/unified-account-referral-validation-20261017.md) | 两仓范围、ID/Studio 闭环、账号与共享 SDK/前端回归、MySQL、浏览器截图及发布边界 | 发布前本地证据；首版已发布、线上闭环待完成（last-reviewed 2026-10-17） |
 | [统一账号邀请 · 首版发布](releases/unified-account-referral-production-release-20261017.md) | 两仓 SHA、CI、制品、V12、备份、账号释放及已验/待验范围 | 首版上线，完整线上验收待品牌入口修正（2026-10-17） |
 | [统一认证手机号与后台搜索发布验收](releases/identity-phone-release-20261010.md) | `/userinfo` 完整手机号副本、服务端跨分页搜索、指定存量账号补齐、权益不变及账号中心 SOP 更新 | server/admin 已上线；46 项专项测试与真实线上 UI 通过（last-reviewed 2026-10-10） |
@@ -240,6 +243,10 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [视频节点暖白配色发布](releases/studio-video-node-warm-production-20261017.md)：2011deda 上线记录（2026-10-17）。
 - [助手正文字体统一](releases/studio-body-font-release-20261017.md)：助手面板改用共享正文字体；已发布（2026-10-17）。
 - [官方内容管理页展示修复](releases/studio-demos-layout-release-20261018.md)：`/projects/demos` 手机布局修复，仅发布 web-aiavatar（2026-10-18）。
+- [正式模型与旧入口兼容修复](releases/production-model-compat-20261020.md)：数字资产与短剧统一 GPT、正式文本与真实视频采样分析、旧计费保留及发布验收（2026-10-20）。
+- [Studio 生产问题五项修复](releases/studio-prod-fixes-20261020.md)：原创创作技能、节点规格贯通、`<studio-actions>` 协议、真实看图、失败节点恢复；含 Agnes 下架后六个用途的兼容性检查（2026-10-20）。
+- [创作助手对话动静与快捷答复](releases/studio-assistant-dialogue-ux-validation-20261020.md)：进行中提示、快捷答复直接发送、图标化回复操作、工作记录改为过程行；本地验收记录（2026-10-20）。
+- [创作助手对话动静发布](releases/studio-assistant-activity-release-20261020.md)：`20261020-studio-assistant-activity`（8b408533）上线记录，仅 web-aiavatar（2026-10-20）。
 
 ## 8. 待办与归档
 

@@ -48,23 +48,38 @@ public final class DialogueHistory {
     }
 
     /** One message as a history line (blocks summarized by their structured fields). */
+    /**
+     * One message for the prompt. What the server recorded (tool runs, plans, cards, questions) goes on its own
+     * 「（服务端记录…）」 line in Chinese, never inline in the assistant's words: the inline 「[查看画布：done，…]」 form was
+     * copied by the model into its prose as if it had called the tool (IPT-2f13c2ed42994624907d seq 12, nothing ran).
+     */
     public static String line(IpDialogueMessage m) {
         String who = switch (m.getRole()) { case "user" -> "用户"; case "assistant" -> "助手"; default -> "系统"; };
         StringBuilder out = new StringBuilder(who).append("：").append(m.getText() == null ? "" : m.getText().strip());
+        List<String> records = new ArrayList<>();
         for (JsonNode b : blocks(m)) {
             switch (b.path("type").asText()) {
-                case "plan" -> out.append(" [方案第").append(b.path("revision").asInt()).append("版：")
-                        .append(b.path("plan").path("summary").asText()).append("；").append(b.path("plan").path("steps").size()).append(" 步]");
-                case "approval" -> out.append(" [确认卡 ").append(b.path("approvalId").asText()).append("：报价 ")
-                        .append(b.path("quotedCost").asLong()).append("，上限 ").append(b.path("budgetCap").asLong()).append("，").append(b.path("status").asText()).append("]");
-                case "question" -> out.append(" [提问：").append(b.path("text").asText()).append("]");
-                case "adoption" -> out.append(" [改稿建议 ").append(b.path("nodeId").asText()).append("：").append(b.path("status").asText()).append("]");
-                case "tool_call" -> out.append(" [").append(b.path("title").asText()).append("：").append(b.path("status").asText())
-                        .append(b.path("result").path("summary").isTextual() ? "，" + b.path("result").path("summary").asText() : "").append("]");
+                case "plan" -> records.add("提出了方案第 " + b.path("revision").asInt() + " 版（" + b.path("plan").path("summary").asText()
+                        + "；" + b.path("plan").path("steps").size() + " 步）");
+                case "approval" -> records.add("发出确认卡 " + b.path("approvalId").asText() + "（报价 " + b.path("quotedCost").asLong()
+                        + "，上限 " + b.path("budgetCap").asLong() + "，" + approvalStatus(b.path("status").asText()) + "）");
+                case "question" -> records.add("向用户提问：" + b.path("text").asText());
+                case "adoption" -> records.add("给 " + b.path("nodeId").asText() + " 提了改稿建议（" + b.path("status").asText() + "）");
+                case "tool_call" -> records.add("调用「" + b.path("title").asText() + "」" + toolStatus(b.path("status").asText())
+                        + (b.path("result").path("summary").isTextual() ? "，结果：" + b.path("result").path("summary").asText() : ""));
                 default -> { }
             }
         }
+        if (!records.isEmpty()) out.append("\n  （服务端记录，不是对话内容，不要在回复里模仿：").append(String.join("；", records)).append("）");
         return out.toString();
+    }
+
+    private static String toolStatus(String status) {
+        return switch (status) { case "done" -> "已完成"; case "failed" -> "失败"; case "running" -> "进行中"; default -> status; };
+    }
+
+    private static String approvalStatus(String status) {
+        return switch (status) { case "pending" -> "待确认"; case "approved" -> "已确认"; case "superseded" -> "已被新方案取代"; case "expired" -> "已过期"; default -> status; };
     }
 
     /** Latest plan revision and every approved approval, verbatim (structured originals survive any compaction). */

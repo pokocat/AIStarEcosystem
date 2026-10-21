@@ -21,7 +21,6 @@
 .ip-surface .studio-dialogue-raw-actions { min-width: 0; font-size: 12px; color: var(--ink-3); }
 .ip-surface .studio-dialogue-raw-actions summary { cursor: pointer; }
 .ip-surface .studio-dialogue-raw-actions pre { margin: 6px 0 0; max-height: 160px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; }
-.ip-surface .studio-dialogue-waiting { margin: 0; color: var(--ink-2); font-size: 12px; }
 .ip-surface .studio-dialogue-refs { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; min-width: 0; }
 .ip-surface .studio-dialogue-refs span { max-width: 100%; padding: 2px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--line); font-size: 11px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ip-surface .studio-dialogue-queue { color: var(--ink-2); font-size: 11px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; overflow-wrap: anywhere; }
@@ -38,19 +37,57 @@
 .ip-surface .studio-dialogue-footer li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .ip-surface .studio-dialogue-footer li span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 工作记录 */
-.ip-surface .studio-dialogue-tool { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
-.ip-surface .studio-dialogue-tool > summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 40px; padding: 8px 12px; cursor: pointer; list-style: none; font-size: 12px; }
-.ip-surface .studio-dialogue-tool > summary::-webkit-details-marker { display: none; }
-.ip-surface .studio-dialogue-tool > summary svg { color: var(--ink-2); }
-.ip-surface .studio-dialogue-tool[data-status="done"] > summary svg { color: var(--ok); }
-.ip-surface .studio-dialogue-tool[data-status="failed"] > summary svg { color: var(--err); }
-.ip-surface .studio-dialogue-tool-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-weight: 500; }
-.ip-surface .studio-dialogue-tool-state { color: var(--ink-2); font-size: 11px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; }
-.ip-surface .studio-dialogue-tool-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 0; padding: 0 12px 12px; font-size: 12px; line-height: 1.6; }
+/* 工作记录：AI 在做的事的一行记录，不是按钮（2026-10-20 用户反馈：带框的整行像要去点）。
+   左边一条细竖线把连续几条串成过程；进行中是 AI 色的转圈，完成打勾，失败红色并直接写原因。
+   只有右边的小箭头能展开详情，整行没有悬停反馈。 */
+.ip-surface .studio-dialogue-tool { min-width: 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--line); color: var(--ink-2); }
+.ip-surface .studio-dialogue-tool[data-status="running"] { border-left-color: var(--ai); }
+.ip-surface .studio-dialogue-tool[data-status="failed"] { border-left-color: var(--err); }
+.ip-surface .studio-dialogue-tool + .studio-dialogue-tool { margin-top: -6px; }
+.ip-surface .studio-dialogue-tool-row { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 26px; font-size: 12px; }
+.ip-surface .studio-dialogue-tool-mark { display: grid; place-items: center; width: 16px; height: 16px; color: var(--ok); }
+.ip-surface .studio-dialogue-tool[data-status="failed"] .studio-dialogue-tool-mark { color: var(--err); }
+.ip-surface .studio-dialogue-tool-mark > i { width: 12px; height: 12px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--ai); border-right-color: transparent; animation: studio-dialogue-spin .9s linear infinite; }
+.ip-surface .studio-dialogue-tool-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink-2); font-weight: 400; }
+.ip-surface .studio-dialogue-tool[data-status="running"] .studio-dialogue-tool-title { color: var(--ai-ink); font-weight: 500;
+  background: linear-gradient(90deg, var(--ai-ink) 0%, var(--ai-ink) 35%, var(--ai-2) 50%, var(--ai-ink) 65%, var(--ai-ink) 100%); background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: studio-dialogue-sheen 2.2s linear infinite; }
+.ip-surface .studio-dialogue-tool-state { color: var(--ink-3); font-size: 11px; white-space: nowrap; max-width: 140px; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.ip-surface .studio-dialogue-tool-toggle { display: grid; place-items: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--ink-3); cursor: pointer; }
+.ip-surface .studio-dialogue-tool-toggle:hover { background: var(--surface-2); color: var(--ink); }
+.ip-surface .studio-dialogue-tool-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ip-surface .studio-dialogue-tool-toggle svg { transition: transform .15s ease; }
+.ip-surface .studio-dialogue-tool[data-open] .studio-dialogue-tool-toggle svg { transform: rotate(180deg); }
+.ip-surface .studio-dialogue-tool-reason { margin: 0 0 2px 24px; color: var(--err); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.ip-surface .studio-dialogue-tool-body { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; margin: 4px 0 4px 24px; padding: 0; font-size: 12px; line-height: 1.6; }
+.ip-surface .studio-dialogue-tool-body[hidden] { display: none; }
 .ip-surface .studio-dialogue-tool-body dt { color: var(--ink-3); }
 .ip-surface .studio-dialogue-tool-body dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; min-width: 0; }
 .ip-surface .studio-dialogue-tool-error { color: var(--err) !important; }
+
+/* 进行中：四角星轻轻呼吸 + 一行阶段文字（正在思考 / 正在回复 / 正在查看画布）+ 三个跳动的点；等久了补一个真实秒数。
+   流式写字时正文末尾有一个闪动的光标。 */
+.ip-surface .studio-dialogue-activity { display: inline-flex; align-items: center; gap: 6px; min-height: 22px; min-width: 0; color: var(--ai-ink); font-size: 12px; }
+.ip-surface .studio-dialogue-activity-mark { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--ai-gradient); color: #fff; animation: studio-dialogue-breathe 1.6s ease-in-out infinite; }
+.ip-surface .studio-dialogue-activity-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500;
+  background: linear-gradient(90deg, var(--ai-ink) 0%, var(--ai-ink) 35%, var(--ai-2) 50%, var(--ai-ink) 65%, var(--ai-ink) 100%); background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: studio-dialogue-sheen 2.2s linear infinite; }
+.ip-surface .studio-dialogue-activity-dots { display: inline-flex; gap: 3px; }
+.ip-surface .studio-dialogue-activity-dots i { width: 4px; height: 4px; border-radius: 50%; background: var(--ai); opacity: .35; animation: studio-dialogue-dot 1.2s ease-in-out infinite; }
+.ip-surface .studio-dialogue-activity-dots i:nth-child(2) { animation-delay: .15s; }
+.ip-surface .studio-dialogue-activity-dots i:nth-child(3) { animation-delay: .3s; }
+.ip-surface .studio-dialogue-activity-time { color: var(--ink-3); font-size: 11px; font-variant-numeric: tabular-nums; }
+.ip-surface .studio-dialogue-message.is-writing > p.studio-dialogue-text:last-of-type::after { content: ""; display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; vertical-align: -0.18em; border-radius: 1px; background: var(--ai); animation: studio-dialogue-caret 1s steps(2, start) infinite; }
+
+/* 每条回复的操作：小图标按钮（悬停有提示，读屏读名字）。最新一条一直在，旧的悬停或键盘移到这条消息时才出现；手机上一直在。 */
+.ip-surface .studio-dialogue-message-actions { display: flex; align-items: center; gap: 2px; }
+.ip-surface .studio-dialogue-action { display: inline-flex; align-items: center; justify-content: center; gap: 4px; min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-3); font: inherit; font-size: 12px; cursor: pointer; }
+.ip-surface .studio-dialogue-action:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.ip-surface .studio-dialogue-action:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ip-surface .studio-dialogue-action:disabled { cursor: progress; opacity: .7; }
+.ip-surface .studio-dialogue-action-spin { animation: studio-dialogue-spin .9s linear infinite; }
+html[data-layout="desktop"] .ip-surface .studio-dialogue-message:not(.is-latest):not(:hover):not(:focus-within) .studio-dialogue-message-actions { opacity: 0; }
+html[data-layout="desktop"] .ip-surface .studio-dialogue-message-actions { transition: opacity .12s ease; }
 
 /* 制作计划 */
 .ip-surface .studio-dialogue-plan, .ip-surface .studio-dialogue-approval { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line-2); border-radius: 12px; background: var(--surface); min-width: 0; }
@@ -174,6 +211,13 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-message.is-user { margin
 html[data-layout="mobile"] .ip-surface .studio-dialogue-tool-state { max-width: 96px; }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-chips button, html[data-layout="mobile"] .ip-surface .studio-dialogue-suggestions button { min-height: 40px; }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-link { min-height: 36px; }
+html[data-layout="mobile"] .ip-surface .studio-dialogue-action { min-width: 36px; height: 36px; }
+html[data-layout="mobile"] .ip-surface .studio-dialogue-tool-toggle { width: 32px; height: 32px; }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget dt, html[data-layout="mobile"] .ip-surface .studio-dialogue-plan-budget dd { grid-row: auto; }
-@media (prefers-reduced-motion: reduce) { .ip-surface .studio-dialogue-chips button, .ip-surface .studio-dialogue-suggestions button { transition: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .ip-surface .studio-dialogue-chips button, .ip-surface .studio-dialogue-suggestions button { transition: none; }
+  .ip-surface .studio-dialogue-activity-mark, .ip-surface .studio-dialogue-activity-label, .ip-surface .studio-dialogue-activity-dots i,
+  .ip-surface .studio-dialogue-tool-mark > i, .ip-surface .studio-dialogue-action-spin, .ip-surface .studio-dialogue-tool[data-status="running"] .studio-dialogue-tool-title, .ip-surface .studio-dialogue-message.is-writing > p.studio-dialogue-text:last-of-type::after { animation: none; }
+  .ip-surface .studio-dialogue-activity-dots i { opacity: .7; }
+}

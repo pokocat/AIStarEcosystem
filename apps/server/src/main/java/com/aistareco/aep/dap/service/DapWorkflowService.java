@@ -76,6 +76,7 @@ public class DapWorkflowService {
 
     // ── 形象生成 ──────────────────────────────────────────────
 
+    @org.springframework.transaction.annotation.Transactional
     public JobDto generate(String userId, String avatarId, GenerateRequest req) {
         DapAvatar a = avatarService.required(userId, avatarId);
         boolean upload = "upload".equals(req.mode());
@@ -152,6 +153,7 @@ public class DapWorkflowService {
         return Map.of("ok", true, "avatarId", a.getId());
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public JobDto iterate(String userId, String avatarId, IterateRequest req) {
         DapAvatar a = avatarService.required(userId, avatarId);
         if (a.getImageKey() == null) {
@@ -167,6 +169,7 @@ public class DapWorkflowService {
         return JobDto.from(job, support::hm);
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public JobDto warp(String userId, String avatarId, Map<String, Object> params) {
         DapAvatar a = avatarService.required(userId, avatarId);
         if (a.getImageKey() == null) {
@@ -247,6 +250,7 @@ public class DapWorkflowService {
                 .toList();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public LookDto createLook(String userId, String avatarId, CreateLookRequest req) {
         DapAvatar a = avatarService.required(userId, avatarId);
         if (a.getImageKey() == null) {
@@ -291,6 +295,7 @@ public class DapWorkflowService {
                 .toList();
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public JobDto createDerivative(String userId, String avatarId, String derivKey, String templateId,
                                    Map<String, Object> options) {
         DapAvatar a = avatarService.required(userId, avatarId);
@@ -348,6 +353,7 @@ public class DapWorkflowService {
      * 真人线要求已审核素材，缺素材时 requireApprovedGenerationAsset 会抛，
      * 同样被吞掉 —— 这类账号本来也还不能出片。
      */
+    @org.springframework.transaction.annotation.Transactional
     public void autoIdleLoopAfterFinalize(String userId, String avatarId) {
         if (!props.isAutoIdleLoop()) return;
         try {
@@ -361,10 +367,6 @@ public class DapWorkflowService {
                     ? materialService.requireApprovedGenerationAsset(userId, a.getId(), null) : null;
 
             String prevStatus = a.getStatus();
-            deriv.put("video", "running");
-            a.setDeriv(deriv);
-            if ("finalized".equals(prevStatus) || "archived".equals(prevStatus)) a.setStatus("deriving");
-            avatarService.save(a);
 
             Map<String, Object> options = new LinkedHashMap<>();
             options.put("motion", "idle");
@@ -380,6 +382,11 @@ public class DapWorkflowService {
 
             String engine = multimodal.isConfigured() ? "云端视频引擎" : "占位引擎";
             jobService.submit(userId, a, DapJob.T_DERIVE, "待机循环", engine, 0L, "约 3-6 分钟", payload);
+            // Change visible state only after admission succeeds; dispatch still waits for this transaction.
+            deriv.put("video", "running");
+            a.setDeriv(deriv);
+            if ("finalized".equals(prevStatus) || "archived".equals(prevStatus)) a.setStatus("deriving");
+            avatarService.save(a);
             log.info("[dap] auto idle loop queued for avatar={} owner={}", avatarId, userId);
         } catch (Exception e) {
             // 定稿已经成功，这里只是锦上添花，失败不回滚、不抛给调用方

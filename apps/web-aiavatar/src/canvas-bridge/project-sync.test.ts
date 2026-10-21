@@ -1,11 +1,23 @@
+// @vitest-environment jsdom
 // 项目同步的单元测试。
 //
 // 这里只有一条真正致命：**加载完成之前不能保存**。
 // 画布一挂载就认为「这个项目是空的」，此时若触发自动保存，
 // 服务端上真正的内容会被一份空文档覆盖 —— 用户的画布当场清零，而且不可逆。
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook } from "@testing-library/react";
+
+// 整个文件跑在假计时器上：900ms 防抖、1200ms「等过防抖窗口」都改成推进假时间，断言不变
+// （原来 13 条用例真睡，占了这个文件约 14 秒）。`until` 是假计时器下的 waitFor：
+// 每拍推进 50ms 假时间再重试，超过 maxMs 就把最后一次断言失败抛出来。
+const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+async function until(check: () => void, { timeout = 1000 }: { timeout?: number } = {}) {
+  for (let elapsed = 0; ; elapsed += 50) {
+    try { check(); return; } catch (error) { if (elapsed >= timeout) throw error; }
+    await advance(50);
+  }
+}
 
 const getProjectMock = vi.fn();
 const updateProjectMock = vi.fn();
@@ -38,11 +50,13 @@ const serverDoc = {
 };
 
 beforeEach(() => {
+  vi.useFakeTimers();
   getProjectMock.mockReset();
   updateProjectMock.mockReset().mockResolvedValue({});
   createProjectMock.mockReset();
   useCanvasStore.setState({ projects: [], deletedProjects: [], hydrated: false });
 });
+afterEach(() => { vi.useRealTimers(); });
 
 describe("加载", () => {
   it("加载失败通知保留服务端错误码和真实追查号，仍不创建空画布", async () => {
@@ -50,7 +64,9 @@ describe("加载", () => {
     getProjectMock.mockRejectedValue(Object.assign(new Error("画布不存在"), { code: "IP_PROJECT_NOT_FOUND", logId: "ABCDEF234567" }));
     const view = renderHook(() => useProjectSync("IPP-missing"));
     try {
-      await waitFor(() => expect(view.result.current.state).toBe("error"));
+      await until(() => expect(view.result.current.state).toBe("error"));
+      // 给空画布 = 用户以为项目丢了，还会顺手在上面改 —— 一改就真丢了
+      expect(view.result.current.error).toBe("画布不存在");
       expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_NOT_FOUND", message: "画布不存在", logId: "ABCDEF234567" }));
       expect(useCanvasStore.getState().projects).toHaveLength(0);
       expect(updateProjectMock).not.toHaveBeenCalled();
@@ -62,21 +78,13 @@ describe("加载", () => {
     const { result } = renderHook(() => useProjectSync("IPP-1"));
     expect(result.current.state).toBe("loading");
 
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     const p = useCanvasStore.getState().projects[0]!;
     expect(p.id).toBe("IPP-1");
     expect(p.title).toBe("我的 IP");
     expect(p.nodes).toHaveLength(1);
   });
 
-  it("读不出来时给错误态，不是空画布", async () => {
-    // 给空画布 = 用户以为项目丢了，还会顺手在上面改 —— 一改就真丢了
-    getProjectMock.mockRejectedValue(new Error("项目不存在"));
-    const { result } = renderHook(() => useProjectSync("IPP-x"));
-    await waitFor(() => expect(result.current.state).toBe("error"));
-    expect(result.current.error).toBe("项目不存在");
-    expect(useCanvasStore.getState().projects).toHaveLength(0);
-  });
 });
 
 describe("自动保存", () => {
@@ -86,7 +94,7 @@ describe("自动保存", () => {
     updateProjectMock.mockRejectedValue(Object.assign(new Error("保存失败"), { code: "IP_PROJECT_SAVE_FAILED", logId: "ABCDEF234567" }));
     const view = renderHook(() => useProjectSync("IPP-1"));
     try {
-      await waitFor(() => expect(view.result.current.state).toBe("ready"));
+      await until(() => expect(view.result.current.state).toBe("ready"));
       act(() => useCanvasStore.getState().updateProject("IPP-1", { title: "新标题" }));
       let outcome: string | undefined;
       await act(async () => { outcome = await view.result.current.saveNow(); });
@@ -106,7 +114,7 @@ describe("自动保存", () => {
     act(() => {
       useCanvasStore.setState({ projects: [], deletedProjects: [], hydrated: true });
     });
-    await new Promise((r) => setTimeout(r, 50));
+    await advance(50);
     expect(updateProjectMock).not.toHaveBeenCalled();
 
     act(() => { resolveLoad({ id: "IPP-1", name: "我的 IP", doc: serverDoc }); });
@@ -115,7 +123,7 @@ describe("自动保存", () => {
   it("加载完之后改动会防抖回存", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => {
       useCanvasStore.getState().updateProject("IPP-1", {
@@ -123,11 +131,11 @@ describe("自动保存", () => {
       });
     });
 
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
     const [id, payload] = updateProjectMock.mock.calls[0]!;
     expect(id).toBe("IPP-1");
     expect((payload as { doc: { nodes: unknown[] } }).doc.nodes).toHaveLength(2);
-    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+    await until(() => expect(result.current.saveState).toBe("saved"));
   });
 
   it("防抖还没到点就切走：那一笔存进**旧项目自己**，且切换后不再重复存", async () => {
@@ -138,20 +146,20 @@ describe("自动保存", () => {
     const { result, rerender, unmount } = renderHook(({ id }) => useProjectSync(id), {
       initialProps: { id: "IPP-1" },
     });
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     // 防抖还没到点就切走
     getProjectMock.mockResolvedValue({ id: "IPP-2", name: "B", doc: serverDoc });
     rerender({ id: "IPP-2" });
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     const forProjectOne = updateProjectMock.mock.calls.filter(([id]) => id === "IPP-1");
     expect(forProjectOne).toHaveLength(1);
     expect((forProjectOne[0]![1] as { name: string }).name).toBe("A");
 
     // 再等过防抖窗口：旧项目不该被存第二次（计时器已掐掉）
-    await new Promise((r) => setTimeout(r, 1200));
+    await advance(1200);
     expect(updateProjectMock.mock.calls.filter(([id]) => id === "IPP-1")).toHaveLength(1);
     unmount();
   });
@@ -159,23 +167,23 @@ describe("自动保存", () => {
   it("卸载时把最后一笔存掉 —— 改一笔立刻点走，改动不能没", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
     const { result, unmount } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     expect(result.current.saveState).toBe("dirty");   // 界面上得看得见「未保存」
     expect(updateProjectMock).not.toHaveBeenCalled(); // 防抖还没到点
 
     unmount();
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1));
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1));
     expect(updateProjectMock.mock.calls[0]![0]).toBe("IPP-1");
   });
 
   it("没有改动时卸载不白发一次 PUT", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
     const { result, unmount } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     unmount();
-    await new Promise((r) => setTimeout(r, 50));
+    await advance(50);
     expect(updateProjectMock).not.toHaveBeenCalled();
   });
 
@@ -183,11 +191,11 @@ describe("自动保存", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });
     updateProjectMock.mockRejectedValue(new Error("网络断了"));
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
 
-    await waitFor(() => expect(result.current.saveState).toBe("failed"), { timeout: 3000 });
+    await until(() => expect(result.current.saveState).toBe("failed"), { timeout: 3000 });
   });
 });
 
@@ -209,21 +217,21 @@ describe("跨项目不许串号", () => {
     const { result, rerender, unmount } = renderHook(({ id }) => useProjectSync(id), {
       initialProps: { id: "IPP-1" },
     });
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     // A 改一笔 → 在途（上面那个 promise 卡住不 resolve）
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1));
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1));
 
     // 切到 B，然后 A 的响应才回来（带着 A 的新指纹）
     rerender({ id: "IPP-2" });
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     updateProjectMock.mockResolvedValue({ docVersion: "IPP-2-v2" });
     await act(async () => { finishA({ docVersion: "IPP-1-v2" }); await Promise.resolve(); });
 
     // B 改一笔：带的必须是 B 自己的指纹
     act(() => { useCanvasStore.getState().updateProject("IPP-2", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock.mock.calls.some(([id]) => id === "IPP-2")).toBe(true), { timeout: 3000 });
+    await until(() => expect(updateProjectMock.mock.calls.some(([id]) => id === "IPP-2")).toBe(true), { timeout: 3000 });
     const callB = updateProjectMock.mock.calls.find(([id]) => id === "IPP-2")!;
     expect((callB[1] as { baseDocVersion?: string }).baseDocVersion).toBe("IPP-2-v1");
     expect(result.current.saveState).not.toBe("conflict");
@@ -237,7 +245,7 @@ describe("saveNow 给调用方一个能据以决策的结果", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
     updateProjectMock.mockResolvedValue({ docVersion: "v2" });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     await expect(result.current.saveNow()).resolves.toBe("saved");
   });
@@ -246,10 +254,10 @@ describe("saveNow 给调用方一个能据以决策的结果", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
     updateProjectMock.mockRejectedValue(new Error("网络断了"));
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     await expect(result.current.saveNow()).resolves.toBe("failed");
-    await waitFor(() => expect(result.current.saveState).toBe("failed"));
+    await until(() => expect(result.current.saveState).toBe("failed"));
     // 重试入口能真的再发一次
     updateProjectMock.mockResolvedValue({ docVersion: "v2" });
     await expect(result.current.retrySave()).resolves.toBe("saved");
@@ -259,14 +267,14 @@ describe("saveNow 给调用方一个能据以决策的结果", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
     updateProjectMock.mockRejectedValue(Object.assign(new Error("stale"), { code: "IP_PROJECT_STALE" }));
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     await expect(result.current.saveNow()).resolves.toBe("conflict");
-    await waitFor(() => expect(result.current.saveState).toBe("conflict"));
+    await until(() => expect(result.current.saveState).toBe("conflict"));
 
     updateProjectMock.mockClear();
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [{ ...serverDoc.nodes[0]!, id: "n-9" }] }); });
-    await new Promise((r) => setTimeout(r, 1200));
+    await advance(1200);
     expect(updateProjectMock).not.toHaveBeenCalled();
   });
 });
@@ -280,11 +288,11 @@ describe("在途时的 saveNow 不许把「排队了」当成「存好了」", (
     updateProjectMock.mockRejectedValue(new Error("还是断的"));
 
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     // 自动保存先跑起来（防抖到点），此时它卡在网络里
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
 
     // 用户这会儿点了发布 → saveNow 必须等那次的真实结果，而不是立刻说「存好了」
     let outcome: string | undefined;
@@ -303,9 +311,9 @@ describe("在途时的 saveNow 不许把「排队了」当成「存好了」", (
     updateProjectMock.mockImplementationOnce(() => new Promise((r) => { finishSave = r; }));
 
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
 
     let outcome: string | undefined;
     const pending = result.current.saveNow().then((o) => { outcome = o; });
@@ -320,14 +328,14 @@ describe("不做无谓的保存", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
     updateProjectMock.mockResolvedValue({ docVersion: "v2" });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
     await expect(result.current.saveNow()).resolves.toBe("saved");
     expect(updateProjectMock).toHaveBeenCalledTimes(1);
 
     // 防抖窗口过去
-    await new Promise((r) => setTimeout(r, 1200));
+    await advance(1200);
     expect(updateProjectMock).toHaveBeenCalledTimes(1);
     expect(result.current.saveState).toBe("saved");
   });
@@ -335,7 +343,7 @@ describe("不做无谓的保存", () => {
   it("什么都没改就点发布：不发 PUT，也不算失败（服务端已经有这份了）", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     await expect(result.current.saveNow()).resolves.toBe("nothing-to-save");
     expect(updateProjectMock).not.toHaveBeenCalled();
   });
@@ -353,17 +361,17 @@ describe("离开前补存的那一笔", () => {
     updateProjectMock.mockResolvedValue({ docVersion: "v3" });
 
     const { result, unmount } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
     expect(updateProjectMock.mock.calls[0]![1].baseDocVersion).toBe("v1");
 
     // 在途期间又改一笔，然后立刻离开
     act(() => { useCanvasStore.getState().renameProject("IPP-1", "改完就走"); });
     unmount();
     await act(async () => { finishFirst({ docVersion: "v2" }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(2));
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(2));
 
     const tail = updateProjectMock.mock.calls[1]![1] as { name: string; baseDocVersion?: string };
     expect(tail.name).toBe("改完就走");
@@ -388,26 +396,26 @@ describe("离开后立刻又打开同一个项目", () => {
     );
 
     const first = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(first.result.current.state).toBe("ready"));
+    await until(() => expect(first.result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().renameProject("IPP-1", "改完就走"); });
     first.unmount();                                   // 补存出发，还没落地
 
     const second = renderHook(() => useProjectSync("IPP-1"));
     // 补存没落地之前不许读完（否则读到的是 name:"A"）
-    await new Promise((r) => setTimeout(r, 50));
+    await advance(50);
     expect(second.result.current.state).toBe("loading");
 
-    await act(async () => { land(); await new Promise((r) => setTimeout(r, 0)); });
-    await waitFor(() => expect(second.result.current.state).toBe("ready"));
+    await act(async () => { land(); await vi.advanceTimersByTimeAsync(0); });
+    await until(() => expect(second.result.current.state).toBe("ready"));
     expect(useCanvasStore.getState().projects[0]!.title).toBe("改完就走");
 
     // 基线也得是新的：接着改一笔，带的必须是 v2，不能撞 409
     act(() => { useCanvasStore.getState().renameProject("IPP-1", "再改一笔"); });
-    await waitFor(() => expect(updateProjectMock.mock.calls.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+    await until(() => expect(updateProjectMock.mock.calls.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
     expect(updateProjectMock.mock.calls.at(-1)![1].baseDocVersion).toBe("v2");
     // 收尾：把第二次 PUT 也放行。模块级保存队列是跨 hook 实例活着的（设计如此），
     // 留一条永不落地的在里面会让后面用同一个 projectId 的测试一直在等它。
-    await act(async () => { land(); await new Promise((r) => setTimeout(r, 0)); });
+    await act(async () => { land(); await vi.advanceTimersByTimeAsync(0); });
     second.unmount();
   });
 });
@@ -453,7 +461,7 @@ it('loads legacy conversation nodes into separate history and persists history-o
   const legacy={...serverDoc.nodes[0],id:'history',type:'text',metadata:{studio:{kind:'assistant',request:{clientRequestId:'original-paid-request'},conversation:{mode:'general',turns:[{role:'user',content:'原对话'}]}}}};
   getProjectMock.mockResolvedValue({id:'IPP-history',name:'历史画布',doc:{...serverDoc,nodes:[...serverDoc.nodes,legacy],connections:[{id:'legacy-edge',fromNodeId:'n-1',toNodeId:'history'}]},docVersion:'old'});
   const view=renderHook(()=>useProjectSync('IPP-history'));
-  await waitFor(()=>expect(view.result.current.state).toBe('ready'));
+  await until(()=>expect(view.result.current.state).toBe('ready'));
   const project=useCanvasStore.getState().projects[0];
   expect(project.nodes.map(n=>n.id)).toEqual(['n-1']);expect(project.connections).toEqual([]);
   expect(project.assistantConversations?.[0].metadata?.studio?.request?.clientRequestId).toBe('original-paid-request');
@@ -475,12 +483,12 @@ describe("别的标签页存了新版", () => {
   it("这里没改过东西：悄悄换成最新内容，不发 PUT、不进冲突，视口保留", async () => {
     getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { viewport: { x: 50, y: 60, k: 2 } }); });
 
     getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A 改过", doc: { ...theirs, viewport: { x: 0, y: 0, k: 1 } }, docVersion: "v2" });
     await act(async () => { otherTab("v2"); });
-    await waitFor(() => expect(result.current.remoteRefreshes).toBe(1));
+    await until(() => expect(result.current.remoteRefreshes).toBe(1));
     const p = useCanvasStore.getState().projects[0]!;
     expect(p.nodes.map((n) => n.id)).toEqual(["n-theirs"]);
     expect(p.title).toBe("A 改过");
@@ -488,7 +496,7 @@ describe("别的标签页存了新版", () => {
     expect(result.current.saveState).not.toBe("conflict");
 
     // 只拖过视口那一笔，补存到新基线上（而不是丢掉或撞 409）
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
     expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { viewport: { x: 50, y: 60, k: 2 } } });
   });
 
@@ -497,11 +505,11 @@ describe("别的标签页存了新版", () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
     try {
-      await waitFor(() => expect(result.current.state).toBe("ready"));
+      await until(() => expect(result.current.state).toBe("ready"));
       act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
       await act(async () => { otherTab("v2"); });
-      await waitFor(() => expect(result.current.saveState).toBe("conflict"));
-      await new Promise((r) => setTimeout(r, 1200));
+      await until(() => expect(result.current.saveState).toBe("conflict"));
+      await advance(1200);
       expect(updateProjectMock).not.toHaveBeenCalled();
       expect(notify).not.toHaveBeenCalled();
       expect(useCanvasStore.getState().projects[0]!.nodes).toEqual([]);   // 本地改动还在
@@ -512,9 +520,9 @@ describe("别的标签页存了新版", () => {
   it("自己这一页的保存不算「别处」，同版本号的消息也不动", async () => {
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
     const { result } = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(result.current.state).toBe("ready"));
+    await until(() => expect(result.current.state).toBe("ready"));
     await act(async () => { otherTab("v1"); });
-    await new Promise((r) => setTimeout(r, 50));
+    await advance(50);
     expect(getProjectMock).toHaveBeenCalledTimes(1);
     expect(result.current.remoteRefreshes).toBe(0);
   });
@@ -529,10 +537,10 @@ describe("撞上冲突之后的三条出路", () => {
     getProjectMock.mockResolvedValueOnce({ id: "IPP-1", name: "A", doc: serverDoc, docVersion: "v1" });
     updateProjectMock.mockRejectedValueOnce(stale);
     const view = renderHook(() => useProjectSync("IPP-1"));
-    await waitFor(() => expect(view.result.current.state).toBe("ready"));
+    await until(() => expect(view.result.current.state).toBe("ready"));
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: mine }); });
     await expect(view.result.current.saveNow()).resolves.toBe("conflict");
-    await waitFor(() => expect(view.result.current.saveState).toBe("conflict"));
+    await until(() => expect(view.result.current.saveState).toBe("conflict"));
     updateProjectMock.mockClear(); getProjectMock.mockClear();
     return view;
   }
@@ -553,7 +561,7 @@ describe("撞上冲突之后的三条出路", () => {
     expect(updateProjectMock).not.toHaveBeenCalled();
 
     act(() => { useCanvasStore.getState().updateProject("IPP-1", { nodes: [] }); });
-    await waitFor(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
+    await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1), { timeout: 2000 });
     expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { nodes: [] } });
     await expect(result.current.saveNow()).resolves.not.toBe("conflict");
   });
@@ -566,7 +574,7 @@ describe("撞上冲突之后的三条出路", () => {
     expect(updateProjectMock).toHaveBeenCalledTimes(1);
     expect(updateProjectMock.mock.calls[0]![1]).toMatchObject({ baseDocVersion: "v2", doc: { nodes: [{ id: "n-mine" }] } });
     expect(useCanvasStore.getState().projects[0]!.nodes.map((n) => n.id)).toEqual(["n-mine"]);
-    await waitFor(() => expect(result.current.saveState).toBe("saved"));
+    await until(() => expect(result.current.saveState).toBe("saved"));
     await expect(result.current.saveNow()).resolves.toBe("nothing-to-save");
   });
 

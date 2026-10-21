@@ -33,7 +33,8 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
                        Integer maxPollAttempts, Integer pollIntervalMillis,
                        Integer requestTimeoutMillis,
                        String inputMode, String resultMode, String outputPointer,
-                       List<String> outputHosts) {}
+                       List<String> outputHosts,
+                       String referenceSubmitPath, Boolean requireExactOutputSize) {}
 
     public AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int maxReferenceImages,
                               String referenceField, List<Output> outputs) {
@@ -104,10 +105,12 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
     private static void validateWire(Wire wire,String referenceField) {
         String input=wire.inputMode()==null?"asset-id":wire.inputMode();
         String result=wire.resultMode()==null?"async-asset":wire.resultMode();
-        if(!Set.of("asset-id","url").contains(input)
+        if(!Set.of("asset-id","url","multipart").contains(input)
                 || !Set.of("async-asset","async-url","sync-base64","sync-url").contains(result))throw invalid();
         path(wire.submitPath(),false);
         if(wire.submitPath()!=null && wire.submitPath().contains("{id}"))throw invalid();
+        path(wire.referenceSubmitPath(),false);
+        if(wire.referenceSubmitPath()!=null && (wire.referenceSubmitPath().contains("{id}") || !"multipart".equals(input)))throw invalid();
         String method=wire.pollMethod()==null?"GET":wire.pollMethod();
         if(!Set.of("GET","POST").contains(method) || "GET".equals(method) && wire.pollTemplate()!=null)throw invalid();
         path(wire.pollPathTemplate(),"GET".equals(method));
@@ -127,10 +130,11 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
         if(wire.uploadFieldName()!=null && !wire.uploadFieldName().matches("[A-Za-z][A-Za-z0-9_-]*"))throw invalid();
         if(wire.submitTemplate()!=null) {
             template(wire.submitTemplate());
-            if("single".equals(referenceField) && !containsVariable(wire.submitTemplate(),
+            // Multipart references are attached as files, outside the JSON field template.
+            if(!"multipart".equals(input) && ("single".equals(referenceField) && !containsVariable(wire.submitTemplate(),
                     "url".equals(input)?"referenceUrl":"assetId")
                     || "multiple".equals(referenceField) && !containsVariable(wire.submitTemplate(),
-                    "url".equals(input)?"referenceUrls":"assetIds"))throw invalid();
+                    "url".equals(input)?"referenceUrls":"assetIds")))throw invalid();
         }
         if(wire.pollTemplate()!=null)template(wire.pollTemplate());
         if("POST".equals(method) && wire.pollPathTemplate()!=null && !wire.pollPathTemplate().contains("{id}")

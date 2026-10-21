@@ -69,21 +69,15 @@ describe("reopening a native video node in Studio",()=>{
     const selection=studioVideoNodeSelection(node,nodes,["last","first"]);
     expect(selection).toEqual({count:4,seconds:8,ratio:"9:16",draft:{mode:"first_last_frame_video",tier:"544p",firstId:"last",lastId:"first",seed:undefined}});
   });
-  it("reopens the exact custom mode, tier and canvas from the accepted request",()=>{
-    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"600x900",
+  // 同一个期望，三种来源：已受理的 request、作者模板的 videoPreset、只剩原生节点 metadata。
+  it("reopens the exact custom mode, tier and canvas from the accepted request, an authored template, or bare metadata",()=>{
+    const fromRequest={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"600x900",
       studio:{request:{aspectRatio:"2:3",video:{mode:"product-shot",resolutionTier:"portraitX"}}}}} as CanvasNodeData;
-    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",
-      draft:{mode:"product-shot",tier:"portraitX"}});
-  });
-  it("reopens an authored template with a custom ratio before any request",()=>{
-    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3",
+    const fromTemplate={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3",
       studio:{videoPreset:{mode:"product-shot",resolutionTier:"portraitX"}}}} as CanvasNodeData;
-    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",
-      draft:{mode:"product-shot",tier:"portraitX"}});
-  });
-  it("keeps a custom tier when only the native video node metadata remains",()=>{
-    const node={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3"}} as CanvasNodeData;
-    expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",draft:{mode:"product-shot",tier:"portraitX"}});
+    const metadataOnly={type:CanvasNodeType.Video,metadata:{videoMode:"product-shot",vquality:"portraitX",size:"2:3"}} as CanvasNodeData;
+    for(const node of [fromRequest,fromTemplate,metadataOnly])
+      expect(studioVideoNodeSelection(node,nodes,[])).toMatchObject({ratio:"2:3",draft:{mode:"product-shot",tier:"portraitX"}});
   });
   it("uses current control edits and keeps mixed references without resurrecting disconnected frames",()=>{
     const node={type:CanvasNodeType.Video,metadata:{videoCount:"2",seconds:"10",size:"16:9",videoMode:"reference",studio:{request:{count:4,durationSec:8,aspectRatio:"9:16",video:{mode:"first_last_frame_video",resolutionTier:"768p",firstFrameKey:"old",lastFrameKey:"old-tail",seed:42}}}}} as CanvasNodeData;

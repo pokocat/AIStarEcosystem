@@ -6,7 +6,8 @@ import java.util.*;
 
 /**
  * Server-built canvas context for the dialogue model (§连续线程与自动上下文): the whole canvas is logical context, but the
- * model gets a catalog (id, type, title, short excerpt, relations) plus pinned objects in full, never every image.
+ * model gets a catalog (id, type, title, short excerpt, relations) plus pinned objects in full, never any image: pictures
+ * are read only through the {@code view_images} tool.
  * Storage keys and URLs are not included; the model refers to nodes by id. Canvas text is material, not instructions.
  */
 public final class DialogueCanvasDigest {
@@ -89,7 +90,11 @@ public final class DialogueCanvasDigest {
             default -> "";
         };
         boolean media = Set.of("image", "video", "audio").contains(n.path("type").asText());
-        return base + suffix + (media && IpDocs.primaryStorageKey(n) != null ? "·已有内容" : media ? "·待生成" : "");
+        boolean visual = Set.of("image", "video").contains(n.path("type").asText());
+        // The digest carries names and prompts, never pixels: say so on every picture, so a file name is not read as
+        // what the picture shows (「A（6809）是男主」 was guessed from names, 2026-10-20). view_images looks for real.
+        return base + suffix + (media && IpDocs.primaryStorageKey(n) != null ? (visual ? "·有画面（这里只有名称，画面要用 view_images 看）" : "·已有内容")
+                : media ? "·待生成" : "");
     }
 
     static String excerpt(JsonNode n) {

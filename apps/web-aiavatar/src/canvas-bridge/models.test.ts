@@ -44,44 +44,28 @@ describe("灌入服务端候选", () => {
     await loadServerModels();
     expect(imageBatchCountsFor("ai-7f6cce37-778")).toEqual([1,3,5]);
   });
-  it("下拉只显示后台别名，选择值保留端点 ID", async () => {
+  it("下拉只显示后台别名、选择值保留端点 ID；capability 按来源列表定；默认选中 isDefault 那个", async () => {
     fetchModelsMock.mockResolvedValue(serverModels);
     await loadServerModels();
     const ch = useConfigStore.getState().config.channels.find((c) => c.id === SERVER_CHANNEL_ID);
     expect(ch?.models.map((m) => m.displayName)).toEqual(["agnes-image", "agnes-video", "MiniMax H3 · 768P"]);
     const c = useConfigStore.getState().config;
     expect(modelOptionLabel(c, c.imageModel)).toBe("agnes-image");
-  });
-
-  it("capability 按它来自哪个列表定，不靠猜名字", async () => {
-    // 上游有个 guessCapability 按关键词猜（"video"/"tts"…）——「agnes-image」猜得对，
-    // 「MiniMax H3 · 768P」就猜不出是视频了。服务端已经分好两个列表，别再猜。
-    fetchModelsMock.mockResolvedValue(serverModels);
-    await loadServerModels();
-    const ch = useConfigStore.getState().config.channels.find((c) => c.id === SERVER_CHANNEL_ID);
+    // capability 按它来自哪个列表定，不靠猜名字：上游有个 guessCapability 按关键词猜（"video"/"tts"…）——
+    // 「agnes-image」猜得对，「MiniMax H3 · 768P」就猜不出是视频了。服务端已经分好两个列表，别再猜。
     expect(ch?.models.find((m) => m.displayName === "MiniMax H3 · 768P")?.capability).toBe("video");
     expect(ch?.models.find((m) => m.displayName === "agnes-image")?.capability).toBe("image");
-  });
-
-  it("默认选中的是后台标了 isDefault 的那个", async () => {
-    fetchModelsMock.mockResolvedValue(serverModels);
-    await loadServerModels();
-    const c = useConfigStore.getState().config;
+    // 默认选中的是后台标了 isDefault 的那个
     expect(endpointIdFor(c.imageModel)).toBe("ai-7f6cce37-778");
     expect(endpointIdFor(c.videoModel)).toBe("ai-39013ff4-012");
   });
 });
 
 describe("传给服务端的是 endpointId 不是模型名", () => {
-  it("下拉值翻成服务端认的 id", async () => {
+  it("下拉值翻成服务端认的 id；翻不出来就不传 —— 让服务端走后台配的默认端点", async () => {
     fetchModelsMock.mockResolvedValue(serverModels);
     await loadServerModels();
     expect(endpointIdFor(`${SERVER_CHANNEL_ID}::MiniMax H3 · 768P`)).toBe("ai-jusuan-minimax-h3");
-  });
-
-  it("翻不出来就不传 —— 让服务端走后台配的默认端点", async () => {
-    fetchModelsMock.mockResolvedValue(serverModels);
-    await loadServerModels();
     // 不能瞎猜一个：指定了却悄悄换一个模型是 D-11 明令禁止的（用户按那个价付的钱）。
     expect(endpointIdFor("default::gpt-image-2")).toBeUndefined();
     expect(endpointIdFor("")).toBeUndefined();

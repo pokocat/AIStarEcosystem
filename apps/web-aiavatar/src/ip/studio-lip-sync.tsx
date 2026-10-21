@@ -1,5 +1,6 @@
 "use client";
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
+import { StudioModelPicker } from "./studio-generation-controls";
 import { StudioAiIcon } from "./studio-ai-icon";
 import { StudioFloatingPanel } from "./studio-floating-panel";
 import { useEffect, useRef, useState } from "react";
@@ -32,13 +33,14 @@ export function StudioLipSync({open,onClose,projectId,nodes,initialNodeId,busy,o
     return()=>{cancelled=true;};
   },[open,projectId,selected?.endpointId,selected?.creditCostPerSecond,video?.metadata?.storageKey,audio?.metadata?.storageKey]);
   return <StudioFloatingPanel title="人物口型同步" open={open} onClose={busy?undefined:onClose} width={520} anchorId={initialNodeId} footer={<div className="studio-lip-footer">
+    <StudioModelPicker label="口型模型" value={selected?.endpointId} loading={loading} disabled={busy||!catalog?.models.length||catalog.models.length<=1} onChange={setModel} options={(catalog?.models||[]).map(m=>({value:m.endpointId,label:m.name}))}/>
     <p className="studio-quote">{quote?`配音 ${quote.audioDurationSec.toFixed(2)} 秒 · ${quote.billableSeconds} 秒 × ${selected?.creditCostPerSecond} 积分`:'选择视频和配音后预估费用'}</p>
     <Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" type="primary" loading={busy||quoting} disabled={loading||!!error||!quote||!video||!audio||!selected} onClick={()=>{if(quote&&video&&audio&&selected)void onSubmit({model:selected.endpointId,videoStorageKey:video.metadata!.storageKey!,audioStorageKey:audio.metadata!.storageKey!,maxCost:quote.cost},video.id,audio.id);}}>{quote?`生成口型视频 · ${quote.cost} 积分`:"先选择视频和配音"}</Button>
   </div>}>
     <div className="studio-director-form"><p>选择画布里的单人人物视频和配音，让人物按这条音频说话。结果另存为新片段，原视频仍可使用。</p>
       {error&&<p><StudioErrorNotice error={error}/><Button onClick={reload}>重新加载</Button></p>}
       {!loading&&!error&&!catalog?.models.length&&<p role="status">尚未配置口型模型，请在后台绑定「Studio 口型同步」。</p>}
-      <label>口型模型<Select aria-label="口型模型" loading={loading} value={selected?.endpointId} onChange={setModel} options={catalog?.models.map(m=>({value:m.endpointId,label:m.name}))}/></label>
+
       <label>人物视频<Select aria-label="口型人物视频" value={videoId} onChange={setVideoId} options={videos.map(n=>({value:n.id,label:n.title}))} placeholder="选择面部清晰的单人视频"/></label>
       {video&&<SignedVideo src={video.metadata!.content!} storageKey={video.metadata?.storageKey} controls style={{maxHeight:200,width:"100%"}}/>}
       <label>驱动配音<Select aria-label="口型驱动配音" value={audioId} onChange={setAudioId} options={audios.map(n=>({value:n.id,label:n.title}))} placeholder="先在画布生成 WAV 配音"/></label>

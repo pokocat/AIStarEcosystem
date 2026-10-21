@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { CanvasNodeType, type CanvasNodeData } from '@/canvas/types/canvas';
 import { StudioFlowCard } from './studio-flow-canvas';
+import { StudioMediaGenerationState } from './studio-media-generation-state';
 
 vi.mock('@xyflow/react',()=>({useViewport:()=>({zoom:1}),Handle:()=>null,NodeResizer:()=>null,Position:{Right:'right',Left:'left'}}));
 vi.mock('./studio-workspace',()=>({StudioWorkspace:()=>null}));
@@ -54,4 +55,17 @@ test('a finished video restored with only its key shows the video, not an upload
   const view=render(<StudioFlowCard {...({data:{document:node},selected:false} as any)}/>);
   expect(view.container.querySelector('video')).not.toBeNull();
   expect(screen.queryByRole('button',{name:'上传视频'})).toBeNull();
+});
+
+// v0.221「不编造进度」：排队与未确认受理时不显示百分比（原 studio-media-generation-state.test.tsx）。
+test('queue and unconfirmed submission do not show misleading percentages', () => {
+  const queued = render(<StudioMediaGenerationState media="video" confirmed task={{ status: 'running', stage: 'queued', pct: 10, queue: { position: 3, running: 1 } }}/>);
+  expect(screen.getByRole('status').textContent).toContain('等待生成视频');
+  expect(screen.getByRole('status').textContent).toContain('第 3 位');
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  queued.unmount();
+
+  render(<StudioMediaGenerationState media="video" confirmed={false}/>);
+  expect(screen.getByRole('status').textContent).toContain('正在确认生成任务');
+  expect(screen.queryByRole('progressbar')).toBeNull();
 });

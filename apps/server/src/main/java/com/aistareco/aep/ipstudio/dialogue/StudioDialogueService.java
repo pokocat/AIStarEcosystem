@@ -318,10 +318,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                         "这次制作已确认由" + ("enterprise".equals(fixedPayer.mode()) ? "企业" : "个人") + "积分付款，制作期间的对话也由它付；要换付款账户，请先结束这次制作");
             billing = fixedPayer;
         }
-        // A direct skill (出图 / 写剧本 / 出视频: no analysis operations) starts in production; recreation starts in analysis.
-        String stage = bound != null && bound.stage() != null ? bound.stage()
-                : rebound ? skill.startingStage()
-                : thread.getStage() != null ? thread.getStage() : skill == null ? null : skill.startingStage();
+        // Without a running execution a new plan starts in the skill's first stage (production for 原创创作), whatever stage
+        // the thread reached in an earlier, finished execution.
+        String stage = bound != null && bound.stage() != null ? bound.stage() : skill == null ? null : skill.firstStage();
         AiModelEndpoint endpoint = null;
         PromptService.ResolvedPrompt prompt = null;
         AiChatTokenPricing.Rate rate = null;
@@ -402,8 +401,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                 .createdAt(now).updatedAt(now).build());
         for (var m : inputs) { m.setTurnId(turnId); m.setRunId(runId); m.setStatus(IpDialogueMessage.DONE); m.setUpdatedAt(now); messages.save(m); }
         if (skill != null && (thread.getSkillKey() == null || rebound)) { thread.setSkillKey(skill.key()); thread.setSkillVersion(skill.version()); }
-        if (rebound) thread.setStage(stage);
-        else if (stage != null && thread.getStage() == null) thread.setStage(stage);
+        if (stage != null && bound == null) thread.setStage(stage);
         thread.setActiveTurnId(turnId); thread.setActiveRunId(runId); thread.setLastOpenedAt(now); thread.setUpdatedAt(now);
         threads.save(thread);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -583,7 +581,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                     .branchFromMessageId(from.getId()).clientRequestId(request.clientRequestId())
                     .title(excerpt((source.getTitle() == null ? DEFAULT_TITLE : source.getTitle()) + " · 新的尝试", 128))
                     .skillKey(source.getSkillKey()).skillVersion(source.getSkillVersion())
-                    .stage(source.getSkillKey() == null ? null : catalog.find(source.getSkillKey()).map(StudioSkill::startingStage).orElse(StudioSkill.ANALYSIS))
+                    .stage(source.getSkillKey() == null ? null : catalog.find(source.getSkillKey()).map(StudioSkill::firstStage).orElse(StudioSkill.ANALYSIS))
                     .planRevision(source.getPlanRevision()).lastOpenedAt(now).createdAt(now).updatedAt(now).build();
             threads.save(branch);
             long seq = 0;

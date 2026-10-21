@@ -17,14 +17,17 @@ export default defineConfig({
   test: {
     globals: true,
     include: ["src/**/*.test.{ts,tsx}"],
-    // 大多是纯逻辑（node 就够）；这几份要 DOM：project-sync 测 React hook，
-    // layout-mode 要 localStorage / matchMedia / documentElement。
-    environmentMatchGlobs: [
-      ["**/project-sync.test.ts", "jsdom"],
-      ["**/layout-mode.test.ts", "jsdom"],
-    ],
+    // 大多是纯逻辑（node 就够）；要 DOM 的文件在第一行写 `// @vitest-environment jsdom`。
     environment: "node",
-    // 本机 Node 25 和 CI 的 Node 22 看到的 Web Storage 不一样：jsdom 那两份要能用、node 环境里要「没有」
+    // jsdom 文件每个都要建一个浏览器环境、再加载 antd / 画布模块，纯 CPU。默认开「核数 - 1」个进程时，
+    // 测试自己就把 10 核机器的负载顶到 110 以上，单条用例从 0.3 秒被拖到 10 秒、报 5 秒超时的假失败；
+    // 限到一半核数，墙钟不变、CPU 减半、假失败归零（2026-10-20 实测，见 docs/audits/web-aiavatar-test-suite-audit-2026-10.md）。
+    maxWorkers: "50%",
+    minWorkers: 1,
+    // 剩下那点争用（和开发服务器、浏览器脚本同机跑）仍会把首条用例拖过 5 秒；放宽到 15 秒只让慢变成慢、不变成红，
+    // 真卡死的用例照样会超时失败。
+    testTimeout: 15_000,
+    // 本机 Node 25 和 CI 的 Node 22 看到的 Web Storage 不一样：jsdom 文件里要能用、node 环境里要「没有」
     // （全仓共用一份，见 scripts/vitest/setup-storage.ts 文件头注释）
     setupFiles: [resolve(__dirname, "../../scripts/vitest/setup-storage.ts")],
   },

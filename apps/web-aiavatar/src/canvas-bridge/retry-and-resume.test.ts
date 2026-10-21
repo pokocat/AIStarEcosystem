@@ -129,9 +129,7 @@ describe("能上传什么", () => {
     expect(isSupportedUploadImage(file("a.mp3", "audio/mpeg"))).toBe(false);
     expect(isSupportedUploadImage(file("a.webp", "image/webp"))).toBe(false);
     expect(isSupportedUploadImage(file("a.heic", "image/heic"))).toBe(false);
-  });
-
-  it("浏览器没给 type 时按扩展名认（拖拽有时就是空 type）", () => {
+    // 浏览器没给 type 时按扩展名认（拖拽有时就是空 type）
     expect(isSupportedUploadImage(file("photo.JPEG", ""))).toBe(true);
     expect(isSupportedUploadImage(file("clip.mov", ""))).toBe(false);
   });
@@ -176,6 +174,8 @@ describe("把出好的候选写回节点", () => {
     const m = node!.metadata!;
     expect(m.content).toBe("https://cdn/first.png");
     expect(m.primaryImageId).toBe("i-1");
+    // 重出的是**别的**候选时也不动主图的参考图真值
+    expect(m.storageKey).toBe("ipstudio_gen/u/first.png");
     expect(m.images![1]!.storageKey).toBe(uploaded.storageKey);
   });
 
@@ -241,22 +241,5 @@ describe("重出当前这张主候选", () => {
     expect(m.content).toBe(uploaded.url);
     expect(m.primaryImageId).toBe("i-1");
     expect(m.images![0]!.storageKey).toBe("ipstudio_gen/u/new.png");
-  });
-
-  it("重出的是**别的**候选时仍然不动主图", () => {
-    const [node] = applyCandidateToNode(
-      [imageNode({
-        status: "loading",
-        content: "https://cdn/first.png",
-        storageKey: "ipstudio_gen/u/first.png",
-        primaryImageId: "i-1",
-        images: [
-          { id: "i-1", status: "success", content: "https://cdn/first.png", storageKey: "ipstudio_gen/u/first.png", naturalWidth: 0, naturalHeight: 0, bytes: 0, mimeType: "" },
-          { id: "i-2", status: "loading", content: "", naturalWidth: 0, naturalHeight: 0, bytes: 0, mimeType: "" },
-        ],
-      })],
-      "n-1", "i-2", uploaded, "IPR-9", 0,
-    );
-    expect(node!.metadata!.storageKey).toBe("ipstudio_gen/u/first.png");
   });
 });

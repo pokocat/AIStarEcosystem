@@ -52,15 +52,24 @@ public record StudioSkill(String key, String name, int version, String status, S
     public boolean active() { return "active".equals(status); }
     public boolean draft() { return "draft".equals(status); }
     /**
-     * A skill with no analysis operations goes straight to production: the dialogue proposes a production plan and its
-     * card starts the execution in that stage (one confirmation for 「画一张图」). Recreation keeps its analysis stage.
+     * A direct skill ({@link #firstStage()} is production) goes straight to production: the dialogue proposes a production
+     * plan and its card starts the execution in that stage (one confirmation for 「画一张图」). Recreation keeps its analysis.
      */
-    public boolean direct() { return stageOperations(ANALYSIS).isEmpty(); }
-    /** The stage a thread bound to this skill starts in: production for a direct skill, analysis otherwise. */
-    public String startingStage() { return direct() ? PRODUCTION : ANALYSIS; }
+    public boolean direct() { return PRODUCTION.equals(firstStage()); }
     public boolean withdrawn() { return "withdrawn".equals(status); }
     public List<String> stageOperations(String stage) { return operations.getOrDefault(stage, List.of()); }
     public boolean allows(String stage, String operation) { return stageOperations(stage).contains(operation); }
+
+    /**
+     * The stage a new plan of this skill starts in. A skill with no analysis operations (原创创作: nothing to study before
+     * making) starts in production; the reference-video skill starts with its analysis. One rule for the dialogue, the
+     * planner and the executor, so a production-only skill is never pushed through an analysis it cannot do.
+     */
+    public String firstStage() { return firstStage(operations); }
+
+    public static String firstStage(Map<String, List<String>> operations) {
+        return operations == null || operations.getOrDefault(ANALYSIS, List.of()).isEmpty() ? PRODUCTION : ANALYSIS;
+    }
 
     public SkillSummary summaryDto() {
         return new SkillSummary(key, name, version, status, planning, summary, methodExamples, operations,

@@ -1138,12 +1138,31 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 **技能目录（`resources/studio/skills/*.md` 种子，四项）**：出图 `image-generation`（production：text, image）、写剧本与文案 `script-writing`（production：text）、出视频 `video-generation`（production：text, image, video, check, assemble）、参考视频复刻 `reference-video-recreation`（analysis：recreation, text → production：text, image, video, check, assemble）。每个技能正文有「必填与可选」一节，是模型「要不要问」的唯一判据。关键词至少两个字（「画」会命中「画布」），`StudioSkillCatalogTest` 钉住。
 
-**direct 规则**：`operations.analysis: []` 的技能是直达技能（`StudioSkill.direct()` / `StudioSkillRules.Rules.direct()`），`startingStage()` 为 production，其余为 analysis。不允许 `check` 的技能 `checks` 可以为空（`StudioSkillCatalog.fromHeader` 按「是否有阶段允许 check」判断）。
+**direct 规则**：`operations.analysis: []` 的技能是直达技能（`StudioSkill.direct()` / `StudioSkillRules.Rules.direct()`），`firstStage()` 为 production，其余为 analysis。不允许 `check` 的技能 `checks` 可以为空（`StudioSkillCatalog.fromHeader` 按「是否有阶段允许 check」判断）。
 
 **路由新规则（`StudioSkillRouter.route(active, media, text, bound)`）**：关键词每个 +2、素材类型每种 +1（词优先于素材）；唯一最高分胜出；一个没中 → 沿用线程当前技能，没有就不绑；平手 → 当前技能在平手者里就沿用，否则不绑、由模型在回合内 `read_skill`，**不再抛 400 `STUDIO_SKILL_REQUIRED`**，`triggers.default` 只是给模型的提示。`StudioDialogueService.startTurn` 按任务绑定：线程没有活跃执行时每条消息重新路由，换技能就改写 `thread.skillKey / skillVersion` 并把 `stage` 设为新技能起始阶段；有活跃执行时方法不变，显式换 → 400 `STUDIO_INPUT_INVALID`。`bindExecution(…, null, null)` 解绑时清空线程 `stage`；分叉线程的 `stage` 取技能起始阶段；`read_skill` 在没有活跃执行时可换方法（`Effects.bindSkill` 可覆盖）。
 
 **一张卡的执行路径**：`ProposePlanTool` 对直达技能接受 `stage=production`（无执行也可），拒绝 `analysis`；`StudioPlanValidator` 允许直达技能的制作计划没有 `approaches`；`StudioWorkflowService.skillPlanConstraints` 的 `stageGuide` 按技能写（直达技能说明没有分析阶段、不写 plan-compile，只列本技能允许的操作）。`StudioPlanExecutionService.create` 收到 `stage=production` 且无 `executionId` 时先 `locatePlan` 查技能：直达 → 直接以 production 阶段建执行（步骤、预算、授权快照、afterCommit 唤醒与分析阶段同一套代码）；非直达 → 400 `STUDIO_INPUT_INVALID`（原行为）。`confirmNatural`（文字确认）同样放行；`replanStage` 只在计划有 `recommendedApproachId` 时核对 approachId。写剧本与文案的短稿（1500 字以内）由对话模型当轮写好、`create_nodes` 放进画布，不走计划。
 
-**提示词**：`dap.ip_studio_skill_dialogue.md` / `dap.ip_studio_skill_plan.md` 改写（意图表、问题预算、一轮确认），`PromptTemplateSeeder.SEED_VERSION` = `v18-2026-10-20-dialogue-intent-direct`（不升版本线上不刷新）。`StudioDialoguePromptWiringTest` 钉住提示词里提到的工具名、意图表里的技能名与 worker 填的模板变量都真实存在，两份提示词的问题预算一致。
+**提示词**：`dap.ip_studio_skill_dialogue.md` / `dap.ip_studio_skill_plan.md` 改写（意图表、问题预算、一轮确认），`PromptTemplateSeeder.SEED_VERSION` = `v19-2026-10-20-dialogue-intent-direct-merged`（不升版本线上不刷新）。`StudioDialoguePromptWiringTest` 钉住提示词里提到的工具名、意图表里的技能名与 worker 填的模板变量都真实存在，两份提示词的问题预算一致。
 
 测试：`StudioSkillRouterTest`、`StudioDialogueRoutingTest`、`StudioSkillCatalogTest`、`StudioPlanValidatorSkillTest`、`ProposePlanToolTest`、`StudioPlanExecutionServiceTest`（`aDirectSkillsProductionCardStartsTheExecutionInProduction`）、`StudioDialoguePromptWiringTest`；`StudioSkillRegistryTest` / `AdminStudioSkillControllerSecurityTest` 按四个种子技能调整。未做：真模型按设计 §7 评测集端到端（§8.0.1 ⑦）；配音 / 口型技能。
+### 原创创作技能、看图、节点规格与动作协议（2026-10-20，生产问题修复）
+
+- **原创创作**（`resources/studio/skills/original-creation.md`）：`operations.analysis: []`，只有制作阶段。`StudioSkill.firstStage()` / `Rules.firstStage()` 是唯一判定：线程绑定、`propose_plan` 默认阶段、`StudioPlanExecutionService.create` 的起始阶段都读它。新执行可以直接从 production 开始（仍须推荐方案、报价不超上限、卡片 / 自然语言同一套确认）；复刻技能照旧先分析。没有进行中的执行时 `read_skill` 可换技能（`Effects.bindSkill` 覆盖线程技能与阶段，作废旧卡）；`startTurn` 的阶段 = 进行中执行的阶段，否则技能第一阶段。
+- **`view_images`**（`dialogue/tools/ViewImagesTool`）：`StudioVisualContext.snapshot` 校验本人 key → `parts` 内联字节 → 本轮对话端点（须 `supportsVision`）→ 返回客观描述；调用前按「文字 + 每张 1200 token」查本轮预算，用量记进本轮账单；视觉预算被拒时同一批图缩到 640 边再试一次。`DialogueCanvasDigest` 在图片 / 视频对象上注明「这里只有名称，画面要用 view_images 看」。
+- **节点规格**：`NodeSpecs` 解析 `aspectRatio / durationSec / count / references`；`create_nodes` 写进新节点 `metadata.studio.spec` 并为每个参考发 connect；新工具 `update_nodes` 对已有图片 / 视频节点发 `update`（prompt 走客户端改稿建议）+ connect。
+- **动作协议**：`DialogueActionProtocol` 接受 `<<<studio-actions>>>`、`<tool_call>`、`<studio-actions>` / `<studio_actions>`；`MarkerFilter` 在闭合标签后继续推送正文，标记里含的标签写法不误判；正文模仿工作记录按格式错误处理；`DialogueLoop` 连续 2 次格式纠正后以 `LIMIT/protocol` 结束本轮。`DialogueHistory.line` 把工具记录放到单独的「（服务端记录…）」行。
+- **模型下架**：`VideoProviderErrorMapper` 把 `400 model_delisted` 映射为 `VIDEO_MODEL_RETIRED`；`MaterialVideoModelClient` 记住（进程内 24h）并在 `validateRequest` / `submit` 冻结前拒绝同一端点 + 模型。
+- 提示词：`dap.ip_studio_skill_dialogue` 新增规则 10–13（选对方法、看图要真看、规格写到对象上、不模仿记录），`PromptTemplateSeeder.SEED_VERSION` = `v18-2026-10-20-dialogue-original-vision-specs`。无迁移、无 HTTP 路径变化。
+
+### Studio 原生 GPT 图片接入（2026-10-20）
+
+图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
+
+`wire.requireExactOutputSize=true` 按原始图片字节校验返回尺寸；不匹配作为供应商已完成但无效的结果在结算前拒绝，不重投、不伪装尺寸。
+
+
+### 正式模型与旧入口兼容（2026-10-20）
+
+DAP / 短剧图片经 `ConfiguredImageGenerator` 复用 Studio 配置化原生传输：文生图 JSON、图生图 multipart 实际文件，旧固定像素按合法原生画布等比处理（16:10 场景采用中央安全区），不放宽 Studio 原生输出尺寸校验。DAP 文本经统一 chat 适配端点能力与输出预算。DAP 运镜经 `DapVideoBridge` 复用持久化媒体 worker，`dap` 子分区仅接本人形象首帧，子任务零价，父作业仍按原动作计费并持久保存子任务 ID。爆款雷达由 `VideoAnalysisFrames` 读取实际视频取四帧交给看图模型，结果明确采样范围与未知指标，失败不凭链接生成分析。实现、正式模型配置与发布证据见 [验收记录](../../docs/releases/production-model-compat-20261020.md)。
