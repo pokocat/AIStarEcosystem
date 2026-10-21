@@ -18,3 +18,13 @@
 用户随后收敛验收范围：只验数字人和短剧，不再扩展其他产品或重复细碎测试。爆款雷达与带货 UI 只保留已完成的编译/回归结果，不宣称正式链路已验收；本机 DNS 被代理映射为保留地址，视频下载公开地址校验按设计拒绝，未因此放宽公开地址限制。
 
 验收证据在本地 `.studio-e2e/production-model-compat-20261020/`，生产模型变更前备份 `/opt/ai-star-eco/backups/production-model-compat-20261021T005638Z/`。本地数字人及短剧验收已完成；生产发布与配置核对结果在主线发布后补齐。
+
+
+## 生产发布（2026-10-21 UTC）
+
+- 修复提交 `27a0396d`，主线合并 / 构建提交 `76ef8ee8329dc22f6930af19ace5bb80ba70e446`，已推送 origin/main；保留 main 原有测试整理提交。发布编号 `20261021-production-model-compat`，仅替换 server、web-celebrity。
+- 主线 JAR SHA256 `8a23069c2036398dd362fd2ca5855787303e388d984c3f2437103d0c651da342`；web-celebrity BUILD_ID `7RM2mGmP6N3EXBaV0ndM3`，线上文件与构建制品一致。服务已重启为 active，正式配置 `mock=0` / 开发登录关闭 / OIDC。
+- 发布检查通过：数字资产入口 `aistar.aibuzz.cn` 的首页、登录、projects、studio、API 配置，短剧首页与 dashboard；后端本地 API、服务状态与 nginx 检查全绿。未重复提交生产收费生成。
+- 经原签名管理 API 完成 26 项配置写入。`DAP_IMAGE` / `IMAGE_GENERATION` 默认与唯一候选都是 GPT `ai-abadd123-a06`；`DAP_PERSONA` / `DRAMA_SCRIPT_DRAFT` / `VIDEO_REF_ANALYSIS` / `APPEARANCE_FORGE` / `GENERAL` 默认均为正式 Qwen `ai-studio-jusuan-qwen38`。Agnes 三端点与退役 Seedance 仍禁用，DAP 视频继续正式 H3。
+- 数字人和短剧涉及图片 / 人设 / 剧本的 37 个功能配置状态均为 configured。动作价格与 Studio 场景策略 / 场景价格逐项对比相同；短剧默认图片仍 2 积分，新 GPT 候选没有售价覆盖；端点供应商价格、额度、参数配置未变。保留 DAP 原有动作价（生产常用生图 20、运镜 50）、Studio 生图 30 / 张等既有规则。
+- 配置前后、26 项变更与断言结果保存在生产 `/opt/ai-star-eco/backups/production-model-compat-20261021T013822Z-apply/`；本地 `production-config-verification.json`、`production-feature-verification.json`、`runtime-artifacts.txt`、`deploy.log` 与 `acceptance-summary.json` 记录发布证据。制品核对后同步 server / web-celebrity 发布标记，旧标记在 release 目录备份。
