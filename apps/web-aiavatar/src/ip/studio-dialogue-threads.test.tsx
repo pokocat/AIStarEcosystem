@@ -74,6 +74,7 @@ const emit = (...events: StudioDialogueEvent[]) => act(() => { for (const e of e
 const composer = () => screen.getByRole('textbox', { name: '给创作助手的消息' }) as HTMLTextAreaElement;
 const headerButton = (name: string) => within(screen.getByRole('dialog', { name: '创作助手' }).querySelector('header')!).getByRole('button', { name }) as HTMLButtonElement;
 const historyList = () => screen.findByRole('region', { name: '历史对话' });
+const modeLabel = () => within(screen.getByRole('dialog', { name: '创作助手' }).querySelector('header')!).getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!;
 
 // jsdom never ends a CSS transition, so antd's leave motion would keep a closed popup in the page; switch motion off.
 function Host({ onClose = () => {}, ...props }: any) {
@@ -187,12 +188,17 @@ test('an empty conversation is already new: 新对话 is off and says why', asyn
   expect(headerButton('历史对话').disabled).toBe(false);
 });
 
-test('新对话 empties the timeline and brings the opening cards back; the draft and the model stay, the skill returns to 自动, a lost answer retries the same key', async () => {
+// 2026-10-21: nothing under the composer shows or changes the skill or the model. The model this browser remembered for
+// the canvas stays across the switch; the method shows in the header label and follows the conversation shown.
+test('新对话 empties the timeline and brings the opening cards back; the draft and the model stay, the method label returns to 全能创作, a lost answer retries the same key', async () => {
   api.skills.mockResolvedValue([skill('video-recreation', '短视频复刻'), skill('talking-head-seeding', '口播种草')]);
+  api.getConversation.mockResolvedValue({ ...talked, thread: thread('th', { skillKey: 'video-recreation', skillVersion: 1 }) });
+  api.post.mockResolvedValueOnce({ messageId: 'u3', turnId: 't3', queueState: 'accepted' });
+  localStorage.setItem('studio-assistant:model:p', 'two');
   await ready();
-  await waitFor(() => expect(screen.getByLabelText('技能')).toBeDefined());
-  fireEvent.change(screen.getByLabelText('技能'), { target: { value: 'video-recreation' } });
-  fireEvent.change(screen.getByLabelText('助手模型'), { target: { value: 'two' } });
+  await waitFor(() => expect(modeLabel().textContent).toBe('短视频复刻'));
+  expect(screen.queryByLabelText('技能')).toBeNull();
+  expect(screen.queryByLabelText('助手模型')).toBeNull();
   fireEvent.change(composer(), { target: { value: '下一条想说的' } });
   expect(screen.queryByText('想做点什么？')).toBeNull();
 
@@ -213,10 +219,14 @@ test('新对话 empties the timeline and brings the opening cards back; the draf
   expect(screen.queryByText('好的，我先看一下这条视频。')).toBeNull();
   await waitFor(() => expect(streams.at(-1)!.threadId).toBe('th-new'));
   expect(composer().value).toBe('下一条想说的');
-  expect((screen.getByLabelText('助手模型') as HTMLSelectElement).value).toBe('two');
-  expect((screen.getByLabelText('技能') as HTMLSelectElement).value).toBe('__auto__');
+  expect(modeLabel().textContent).toBe('全能创作');
   expect(headerButton('新对话').disabled).toBe(true);
   expect(headerButton('新对话').title).toBe(DIALOGUE_ALREADY_NEW);
+  // The remembered model goes with its own ceiling into the new conversation; no skill rides along.
+  fireEvent.click(screen.getByRole('button', { name: '发送' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '下一条想说的', model: 'two', maxCost: 8 });
+  expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
 });
 
 test('Escape inside the history list closes the list only; the assistant stays open', async () => {

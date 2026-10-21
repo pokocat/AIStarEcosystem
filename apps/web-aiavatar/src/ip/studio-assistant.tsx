@@ -10,7 +10,7 @@
 // old four-mode assistant stay readable (with their adoption bindings) under 「之前的对话」.
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
-import { Button, Select } from "antd";
+import { Button } from "antd";
 import { ChevronRight, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
 import { AiMark } from "./studio-ai-icon";
 import { nanoid } from "nanoid";
@@ -47,7 +47,7 @@ import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
 import { StudioAssistantStarterCards, StudioAssistantStarterForm, composeStarter, isMentionResidue, starterDefaults, starterSlotNodes, starterSlots, studioStarter, type StarterKey } from "./studio-assistant-starters";
-import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft, writeAssistantModel } from "@/canvas-bridge/studio-assistant-memory";
+import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft } from "@/canvas-bridge/studio-assistant-memory";
 import { studioBriefNeedsReference, studioCanvasHasDefaultTitle, studioTitleFromBrief } from "./studio-entry";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { splitReplyActions } from "@/canvas-bridge/studio-reply-actions";
@@ -72,24 +72,27 @@ type ComposerDraft = { text: string; pinnedIds: string[]; attachmentIds: string[
 /** Contract limit for pinnedNodeIds / attachmentNodeIds (specs/openapi.yaml StudioPostMessageRequest). */
 const MAX_REFERENCES = 64;
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-/** The settings' 「自动」 choice: no skillKey on the message, the server routes by intent. */
-const AUTO_SKILL = "__auto__";
 /** An open fill-in card (docs/ip-studio-new-canvas-and-threads.md §5): its option choices and its lines of text. Material is the message's own references. */
 type Starter = { key: StarterKey; options: Record<string, string>; fields: Record<string, string> };
 /** Layout effects warn during server rendering; the assistant only renders in the browser, but the module may be imported on the server. */
 const useClientLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
+/** The header label's hover text: how the method is chosen, since nothing under the composer shows or changes it. */
+const modeLabelTitle = (skillName?: string) => skillName
+  ? `现在按「${skillName}」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。`
+  : "按你说的话自动选择做法。";
 /** A skill's summary up to its first full stop: the guide says what the skill is for in one line. */
 const firstSentence = (text: string) => text.match(/^[^。！？]*[。！？]/)?.[0] || text;
 type SkillChoice = StudioSkillRequiredDetails["skills"][number];
 /**
- * 400 STUDIO_SKILL_REQUIRED is a question, not a failure: say which skills fit, keep the draft and open the choice.
- * It is shown inline only (no error notification).
+ * 400 STUDIO_SKILL_REQUIRED is a question, not a failure: say which skills fit and keep the draft. The skills are offered
+ * as quick replies next to the composer, and picking one sends the draft again with that skill (there is no skill picker
+ * under the composer any more, 2026-10-21). It is shown inline only (no error notification).
  */
 function skillRequiredNotice(error: unknown, fallback: SkillChoice[]) {
   const choices = skillRequiredChoices(error);
   if (!choices) return undefined;
   const names = (choices.length ? choices : fallback).map(s => `「${s.name}」`);
-  const text = names.length ? `${names.join("和")}都能做，选一个技能再发` : "先选一个技能再发";
+  const text = names.length ? `${names.join("和")}都能做，选一个就按它发送` : "选一种做法，就按它发送";
   return { choices, text };
 }
 /** 402 while an execution runs: this turn would not fit the stage budget. Say by how much; the draft stays. */
@@ -107,11 +110,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // The composer starts from this canvas's saved draft (a refresh keeps what was typed, runbook 2.7).
   const [initialDraft] = useState(() => readAssistantDraft(projectId, new Set(assistantContextNodes(nodes).map(n => n.id))));
   const [text, setText] = useState(initialDraft?.text ?? ""), [pinnedIds, setPinnedIds] = useState<string[]>(initialDraft?.pinnedIds ?? []), [attachmentIds, setAttachmentIds] = useState<string[]>(initialDraft?.attachmentIds ?? []);
-  const [model, setModel] = useState<string>(() => readAssistantModel(projectId));
-  useEffect(() => { setModel(readAssistantModel(projectId)); }, [projectId]);
-  // The chosen reply model is remembered per canvas in this browser: after a refresh the next message used to go to the
-  // default model while the picker could not show the difference (local e2e 2026-10-19).
-  const chooseModel = (value: string) => { setModel(value); writeAssistantModel(projectId, value); };
+  // The reply model has no control under the composer (2026-10-21, user feedback): there is one dialogue model online, the
+  // disabled pill could not be changed, and its name read as if videos were made with it too. A choice this browser saved
+  // for the canvas earlier (when the picker existed) still applies where the scene offers that model.
+  const model = useMemo(() => readAssistantModel(projectId), [projectId]);
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
   // References added while a fill-in card is open belong to that card and leave the message with it (「换一个」).
   // `starterWritten` is the sentence the card last put in the composer; text that is still that sentence (or it plus a
@@ -197,14 +199,15 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
   const demo = USE_MOCK || !!capabilities?.mock;
   const maxCost = demo ? 0 : selectedModel?.tokenPricing ? Math.ceil(selectedModel.tokenPricing.maxCost) : undefined;
-  // ── Skill choice: only while the thread has none yet (a bound thread changes method by starting over from a message) ──
+  // ── Skill: routed by the server from what is said; a fill-in card or a 「which method」 quick reply names one explicitly ──
+  // No picker under the composer (2026-10-21): the 「自动」 dropdown and the fixed pill a bound thread showed confused people
+  // (why can it not be changed?). The method in use is shown only by the label in the header.
   const activeSkills = activeStudioSkills(skills);
   const skillOptions: SkillChoice[] = [...activeSkills.map(s => ({ key: s.key, name: s.name, summary: s.summary })), ...(skillChoices || []).filter(c => !activeSkills.some(s => s.key === c.key))];
   const boundSkillKey = store.thread?.skillKey;
   const boundSkill = boundSkillKey ? skills.find(s => s.key === boundSkillKey) : undefined;
   const chosenSkill = boundSkillKey ? undefined : skillOptions.find(s => s.key === skillKey);
-  const pickSkill = !boundSkillKey && skillOptions.length > 1;
-  const chooseSkill = (value?: string) => { setSkillKey(!value || value === AUTO_SKILL ? undefined : value); setSkillNotice(""); };
+  const chooseSkill = (value?: string) => { setSkillKey(value); setSkillNotice(""); };
   // The skill-draft run is a text run on the scene's default model; its ceiling is that model's.
   const draftModel = textModels.find(m => m.isDefault) || textModels[0];
   const draftCost = demo ? 0 : draftModel?.tokenPricing ? Math.ceil(draftModel.tokenPricing.maxCost) : draftModel?.creditCost ?? undefined;
@@ -291,8 +294,10 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
    * `quick`: a question option or follow-up suggestion sent as it is (user feedback 2026-10-20: chips that only filled the
    * composer piled up there). It goes through the same chain as a typed message (save, outbox, retry key, rejection
    * handling) but carries no references and never touches the draft, its pins or its attachments.
+   * `withSkill`: the skill picked from the 「which method」 quick replies; it goes on this send (state set alongside it
+   * only reaches the next render).
    */
-  const send = async (quick?: string) => {
+  const send = async (quick?: string, withSkill?: string) => {
     const draft = quick === undefined;
     if (sending || sendLock.current || (draft ? sendDisabledReason : session.status !== "ready" || !!session.switching || !quick.trim())) return;
     // A second click after the first one was already accepted gets a new message key, so the server could not tell them
@@ -307,8 +312,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     // server refuses that switch only while a production runs there, with its own message (shown like any refusal).
     const starterSkill = draft && starterConfig && skillKey === starterConfig.skill && skillOptions.some(s => s.key === skillKey) ? skillKey : undefined;
     const input = { text: draft ? text.trim() : quick.trim(), pinnedNodeIds: draft ? pinnedIds : [], attachmentNodeIds: draft ? attachmentIds.filter(id => !pinnedIds.includes(id)) : [], ...(maxCost !== undefined ? { maxCost } : {}),
-      ...(chosenSkill ? { skillKey: chosenSkill.key } : starterSkill ? { skillKey: starterSkill } : {}),
-      // The ceiling above is the picked model's, so the model goes with it; a fixed or single-model scene sends none.
+      ...(withSkill ? { skillKey: withSkill } : chosenSkill ? { skillKey: chosenSkill.key } : starterSkill ? { skillKey: starterSkill } : {}),
+      // The ceiling above is the remembered (or default) model's, so the model goes with it; a fixed or single-model scene sends none.
       ...(selectable && selectedModel ? { model: selectedModel.endpointId } : {}) };
     setSending(true); setComposerError(""); setSkillNotice("");
     // The first message names a canvas nobody named yet, so the list shows what each one is for; a name the user gave stays.
@@ -641,7 +646,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       const fit = contextNodes.filter(n => n.type === slot.type);
       if (fit.length === 1 && pin(fit[0])) starterHeld.current.add(fit[0].id);
     }
-    // The card names its skill (the chip shows it; the message carries it), not the keywords of its sentence.
+    // The card names its skill (the header label shows it; the message carries it), not the keywords of its sentence.
     chooseSkill(config.skill);
     starterWritten.current = undefined;
     setStarter({ key, options: starterDefaults(config), fields: {} }); setGuideOpen(false);
@@ -669,7 +674,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
 
   // ── 「新对话」 / 「历史对话」 (docs/ip-studio-new-canvas-and-threads.md §3.3) ──────────
   // What is being written stays: the text, its references and attachments, the model. What belonged to the conversation
-  // that was left goes: the skill choice returns to 「自动」, the checklist and the guide close, its notices clear. An
+  // that was left goes: a skill a card picked is dropped, the fill-in card and the guide close, its notices clear. An
   // empty conversation shows the opening cards again. Switching never sends anything: the home page brief and its
   // auto-send belong to the first open of the canvas only.
   const switchThread = async (run: () => Promise<boolean>) => {
@@ -697,6 +702,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const checks = Object.values(store.checks);
   const streamNote = session.stream === "reconnecting" ? "连接中断，正在重连" : session.stream === "polling" ? "实时更新暂时不可用，每隔几秒刷新一次" : "";
   const modeSkill = boundSkill || chosenSkill;
+  // The skills offered after a 400 STUDIO_SKILL_REQUIRED: the ones the server named, else every skill on the shelf.
+  const skillReplies = skillChoices?.length ? skillChoices : skillOptions;
   const inventory = (["video", "image", "audio", "text"] as const).map(type => ({ type, nodes: contextNodes.filter(n => n.type === type) })).filter(entry => entry.nodes.length);
   const typeLabel = { video: "条视频", image: "张图片", audio: "段音频", text: "段文字" } as const;
   // With nodes referenced the cards work on them (unchanged by §5); without, the four fill-in cards.
@@ -712,17 +719,6 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     { title: "复刻一条短视频", detail: "照参考视频的节奏，换成你的商品", Icon: Video, tone: "video", run: () => openStarter("recreation") },
     { title: "搭一套创作流程", detail: "从设定图一路做到视频", Icon: Workflow, tone: "flow", run: () => startWith("帮我把整套流程串起来：先写人物设定，再出三视图和细节图，最后做成场景视频。") },
   ] : undefined;
-  // 设计稿 Main 画板的按钮区：「技能 · 复刻视频」是一个无边框的实心小胶囊（有技能时浅紫，自动时浅灰）；
-  // 对话已经绑定了技能、不能再换时也照样显示它，只是不能点。
-  const tools = <>
-    {pickSkill && <span className={`studio-dialogue-chip${chosenSkill ? " is-skill" : ""}`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><Select aria-label="技能" variant="borderless" size="small" popupMatchSelectWidth={false} value={chosenSkill?.key || AUTO_SKILL} onChange={chooseSkill}
-      options={[{ value: AUTO_SKILL, label: "自动" }, ...skillOptions.map(s => ({ value: s.key, label: s.name }))]}/></span>}
-    {!pickSkill && modeSkill && <span className="studio-dialogue-chip is-skill is-static" title={`这段对话在按「${modeSkill.name}」做`}><span>技能</span><span className="studio-dialogue-chip-dot" aria-hidden="true">·</span><span>{modeSkill.name}</span></span>}
-    {selectable && <span className="studio-dialogue-chip"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" popupMatchSelectWidth={false} value={selectedModel?.endpointId} onChange={chooseModel} options={textModels.map(m => ({ value: m.endpointId, label: m.name }))}/></span>}
-    {/* A single or fixed model stays visible, just not changeable (ported from the old composer, Codex 2026-10-18). */}
-    {!selectable && selectedModel && <span className="studio-dialogue-chip is-fixed"><span>模型</span><Select aria-label="助手模型" variant="borderless" size="small" disabled value={selectedModel.endpointId} title={selectedModel.name}
-      options={[{ value: selectedModel.endpointId, label: selectedModel.name }]}/></span>}
-  </>;
   // Three steps and one line about the current skill (§4.3); how credits, caps and attachments work is not explained here.
   const guide = <section id="studio-assistant-guide" className="studio-assistant-guide" aria-label="使用说明">
     <ol>
@@ -730,13 +726,13 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
       <li><span><strong>看方案</strong>我列出要生成的内容和要花的积分，等你确认。</span></li>
       <li><span><strong>开始做</strong>结果一步步放进画布，中途随时可以插话或停下。</span></li>
     </ol>
-    <p className="studio-helper-note">{modeSkill ? `${modeSkill.name}：${firstSentence(modeSkill.summary)}` : "自动：按你说的事和素材选做法。"}</p>
+    <p className="studio-helper-note">{modeSkill ? `${modeSkill.name}：${firstSentence(modeSkill.summary)}` : "全能创作：按你说的话和素材自动选择做法。"}</p>
   </section>;
   // 设计稿 Main 画板的头部：四角星标、标题、当前技能（紫色小胶囊），右边只有停靠和关闭。使用说明不再单占一个「?」：
-  // 点这个技能胶囊展开（它本来就在说「这段对话怎么做」）。
+  // 点这个技能胶囊展开（它本来就在说「这段对话怎么做」）。2026-10-21 起输入框下不再有技能和模型胶囊，当前做法只在这里。
   const titleExtra = <>
     <button type="button" className={`studio-assistant-mode${modeSkill ? " is-skill" : ""}`} aria-expanded={guideOpen} aria-controls="studio-assistant-guide"
-      title="怎么用" onClick={() => setGuideOpen(v => !v)}>{modeSkill ? modeSkill.name : "全能创作"}</button>
+      title={modeLabelTitle(modeSkill?.name)} onClick={() => setGuideOpen(v => !v)}>{modeSkill ? modeSkill.name : "全能创作"}</button>
     {demo && <em className="studio-dialogue-mock" title="演示数据，不是模型生成，也不扣积分">演示</em>}
   </>;
   // The real queue position of a step's task (the node's own queue ticket), never an estimate.
@@ -751,12 +747,16 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   </> : undefined;
   return <StudioFloatingPanel title="创作助手" titleIcon={<span className="studio-assistant-mark" aria-hidden="true"><AiMark size={14}/></span>} titleExtra={titleExtra} actions={threadActions} subheader={subheader} className="studio-assistant-panel" open={open} onClose={onClose}
     width={480} utility dockable defaultDocked resizable layoutKey="assistant" footer={<>
+      {skillNotice && <div className="studio-dialogue-skill-choice" role="group" aria-label="选一种做法">
+        <p className="studio-dialogue-note" role="status">{skillNotice}</p>
+        {!!skillReplies.length && <div className="studio-dialogue-suggestions">{skillReplies.map(s => <button key={s.key} type="button" title={s.summary || undefined}
+          disabled={sending || !!sendDisabledReason} onClick={() => { chooseSkill(s.key); void send(undefined, s.key); }}><span>{s.name}</span></button>)}</div>}
+      </div>}
       <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
         onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
         sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} demo={demo}
-        tools={tools} compact={!empty} placeholder={empty ? undefined : "想改哪里，直接说"}/>
-      {skillNotice && <p className="studio-dialogue-note" role="status">{skillNotice}</p>}
+        compact={!empty} placeholder={empty ? undefined : "想改哪里，直接说"}/>
       {(composerError || missing.length > 0) && <p className="studio-assistant-error" role="alert"><span>{missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError}</span> <StudioErrorNotice error={missing.length ? "部分引用已从画布删除，请移除后重新选择" : composerError} autoReport={false} label="查看详情"/></p>}
     </>}>
     <div className="studio-assistant studio-dialogue">

@@ -654,13 +654,8 @@ html[data-layout="mobile"] .ip-surface .studio-share-preview { max-height: min(3
 .ip-surface .studio-assistant-panel .studio-assistant-context-actions { display:flex; align-items:center; gap:4px; flex-wrap:wrap; min-width:0; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .ant-btn { height:34px; min-width:34px; padding-inline:8px; font-size:12px; border-radius:8px; box-shadow:none; flex-shrink:0; border-color:transparent; background:transparent; color:var(--ink-2); }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .ant-btn:not(:disabled):hover { background:var(--surface-3); color:var(--ink); }
-.ip-surface .studio-dialogue-chip { display:inline-flex; align-items:center; gap:2px; height:30px; padding-left:10px; border:1px solid var(--line-2); border-radius:999px; background:var(--surface); font-size:12px; color:var(--ink-2); white-space:nowrap; max-width:100%; min-width:0; }
-.ip-surface .studio-dialogue-chip>span { flex-shrink:0; }
-.ip-surface .studio-dialogue-chip .ant-select { min-width:0; max-width:168px; font-size:12px; color:var(--ink); }
-.ip-surface .studio-dialogue-chip .ant-select .ant-select-selector { padding-inline:4px 24px !important; background:transparent !important; border:0 !important; box-shadow:none !important; height:28px !important; }
-.ip-surface .studio-dialogue-chip .ant-select .ant-select-selection-item { line-height:28px !important; font-weight:500; color:var(--ink); }
-.ip-surface .studio-dialogue-chip.is-skill { background:var(--primary-soft); border-color:transparent; color:var(--primary-700); }
-.ip-surface .studio-dialogue-chip.is-skill .ant-select .ant-select-selection-item { color:var(--primary-700); }
+/* 服务端回「几种做法都行」时，输入框上方给几个做法按钮（样式同建议），点一个就按它重新发送。 */
+.ip-surface .studio-dialogue-skill-choice { display:grid; gap:6px; min-width:0; margin-bottom:8px; }
 .ip-surface .studio-dialogue-send { display:flex; align-items:center; gap:8px; min-width:0; }
 .ip-surface .studio-dialogue-send-reason { font-size:12px; color:var(--warn); max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button { width:36px; height:36px; padding:0; border-radius:10px; display:grid; place-items:center; }
@@ -777,8 +772,7 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-
 .ip-surface .studio-context-actions .studio-ask-assistant:hover { background:linear-gradient(var(--ai-soft), var(--ai-soft)) padding-box, var(--ai-gradient) border-box; color:var(--ai-ink); }
 .ip-surface .studio-assistant-mark { display:grid; place-items:center; width:24px; height:24px; border-radius:7px; background:var(--ai-gradient); color:#fff; flex-shrink:0; }
 .ip-surface .studio-assistant-panel>.studio-floating-header { background:linear-gradient(90deg, rgba(79, 91, 213, 0.06), rgba(139, 108, 240, 0.02)); }
-.ip-surface .studio-assistant-mode.is-skill,.ip-surface .studio-dialogue-chip.is-skill { background:var(--ai-soft); color:var(--ai-ink); border-color:transparent; }
-.ip-surface .studio-dialogue-chip.is-skill .ant-select .ant-select-selection-item { color:var(--ai-ink); }
+.ip-surface .studio-assistant-mode.is-skill { background:var(--ai-soft); color:var(--ai-ink); border-color:transparent; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled) { background:var(--ai-gradient); color:#fff; border-color:transparent; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:not(:disabled):hover { background:var(--ai-gradient); filter:brightness(1.06); }
 html[data-layout="mobile"] .studio-ai-orb { right:12px; top:68px; width:40px; height:40px; }
@@ -1002,15 +996,6 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-threads { width:min(340p
 /* 输入框：浅灰底、细边，获得焦点时边框只略深一点（不是深色粗线）。 */
 .ip-surface .studio-assistant-panel .studio-assistant-composer { border-color:var(--line); background:color-mix(in srgb, var(--surface-2) 55%, var(--surface)); }
 .ip-surface .studio-assistant-panel .studio-assistant-composer:focus-within { border-color:var(--line-3); }
-/* 技能 / 模型 chip：30px 高、无边框的实心小胶囊，没有下拉箭头（antd 6 的 Select 是 .ant-select-content / .ant-select-suffix）。 */
-.ip-surface .studio-assistant-panel .studio-dialogue-chip { gap:4px; height:30px; padding:0 12px; border:0; background:var(--surface-3); color:var(--ink-2); cursor:pointer; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip.is-skill { background:var(--ai-soft); color:var(--ai-ink); }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip.is-static { cursor:default; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select { height:30px; min-height:0; padding:0; background:transparent; color:inherit; font-size:12px; cursor:pointer; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-content { padding:0; color:inherit; font-weight:500; line-height:30px; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-suffix { display:none; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select-disabled .ant-select-content { color:inherit; cursor:default; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip:focus-within { outline:2px solid var(--primary); outline-offset:2px; }
 /* 发送：始终是 AI 渐变；不能发的时候只是变淡。 */
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:disabled { background:var(--ai-gradient); color:#fff; opacity:.4; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button svg { stroke-width:2.4; }
@@ -1068,13 +1053,9 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 /* 运营专用的「整理成技能草稿」和建议一样是小胶囊。 */
 .ip-surface .studio-assistant-panel .studio-dialogue-skill-draft .ant-btn { height:30px; padding:0 12px; border-color:var(--line); border-radius:999px; font-size:12px; box-shadow:none; }
 /* 输入框按钮区与设计稿逐像素对齐（第五遍）：发送键始终是满色渐变（不能发时只换指针，原因写在旁边 / 提示里）；
-   「技能 · 名称」的点两边留白；占位字用更浅的灰。 */
+   占位字用更浅的灰。2026-10-21 起输入框下不再有技能 / 模型胶囊，按钮区只剩 @、附件和发送 / 停止。 */
 .ip-surface .studio-assistant-panel .studio-assistant-composer-toolbar .studio-dialogue-send-button:disabled { background:var(--ai-gradient); color:#fff; opacity:1; cursor:not-allowed; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip { gap:0; }
-.ip-surface .studio-dialogue-chip-dot { margin:0 6px; }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip .ant-select { margin-left:0; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input::placeholder { color:var(--ink-3); }
-.ip-surface .studio-assistant-panel .studio-dialogue-chip { font-weight:500; }
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input { padding:8px 4px; }
 /* ── 画布页按钮配色统一（2026-10-19）：画布页不再用麦黄。
    AI 去做的事（发送、开始制作 / 开始分析、带 AI 记号的「生成…」、和助手开始）= AI 渐变；

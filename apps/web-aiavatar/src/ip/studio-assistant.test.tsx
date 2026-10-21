@@ -708,54 +708,68 @@ test('a production card without an execution starts a new one: no executionId, r
 
 // ── Skills (S3): the per-message choice, the plan badge, the "pick one" rejection and the operator draft ──
 
-// The guide opens from the skill chip in the header (the design has no separate 「?」).
-const openGuide = () => fireEvent.click(screen.getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!);
+// The guide opens from the skill label in the header (the design has no separate 「?」). 2026-10-21 (user feedback): that
+// label is the only place the method shows; nothing under the composer shows or changes the skill or the reply model.
+const modeLabel = () => screen.getAllByRole('button').find(b => b.getAttribute('aria-controls') === 'studio-assistant-guide')!;
+const openGuide = () => fireEvent.click(modeLabel());
+const AUTO_TITLE = '按你说的话自动选择做法。';
+const skillTitle = (name: string) => `现在按「${name}」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。`;
 
-test('with several active skills the settings offer 「技能」 (default 自动 = no skillKey); a chosen one rides on the message and its retry', async () => {
+test('nothing under the composer picks the skill or the model: a typed message carries no skillKey, the header label says how the method is chosen', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
   await ready();
+  await waitFor(() => expect(api.skills).toHaveBeenCalled());
+  expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
+  expect(screen.queryByRole('combobox', { name: '助手模型' })).toBeNull();
+  expect(document.querySelector('.studio-dialogue-chip')).toBeNull();
+  expect(screen.queryByText('模型一')).toBeNull();
+  // The button area under the input is @, attachments and send.
+  const toolbar = document.querySelector('.studio-assistant-context-actions')!;
+  expect(within(toolbar as HTMLElement).getAllByRole('button').map(b => b.getAttribute('aria-label') || b.textContent)).toEqual(['引用节点', '添加附件']);
+  expect(modeLabel().textContent).toBe('全能创作');
+  expect(modeLabel().title).toBe(AUTO_TITLE);
   openGuide();
-  const picker = await screen.findByRole('combobox', { name: '技能' }) as HTMLSelectElement;
-  expect([...picker.options].map(o => o.textContent)).toEqual(['自动', '短视频复刻', '口播种草']);
-  expect(screen.getByText('自动：按你说的事和素材选做法。')).toBeDefined();
+  expect(screen.getByText('全能创作：按你说的话和素材自动选择做法。')).toBeDefined();
   fireEvent.change(composer(), { target: { value: '做一条种草视频' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
   expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
-
-  fireEvent.change(screen.getByRole('combobox', { name: '技能' }), { target: { value: 'talking-head-seeding' } });
-  expect(screen.getByText('口播种草：口播种草的说明')).toBeDefined();
-  api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
-  fireEvent.change(composer(), { target: { value: '换成口播' } });
-  fireEvent.click(sendButton());
-  await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
-  expect(api.post.mock.calls[1][2]).toMatchObject({ text: '换成口播', skillKey: 'talking-head-seeding' });
-  fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
-  expect(api.post.mock.calls[2][2]).toMatchObject({ clientMessageId: api.post.mock.calls[1][2].clientMessageId, skillKey: 'talking-head-seeding' });
 });
 
-test('one active skill, or a thread already bound to a skill, shows no choice', async () => {
-  api.skills.mockResolvedValue([recreation]);
-  const view = await ready();
-  openGuide();
-  await waitFor(() => expect(api.skills).toHaveBeenCalled());
-  expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
-  view.unmount();
+test('a fill-in card\'s skill rides on the message and on its retry; the header label shows it and says how it changes', async () => {
+  api.skills.mockResolvedValue(starterSkills());
+  await ready();
+  fireEvent.click(card('写剧本'));
+  await waitFor(() => expect(modeLabel().textContent).toBe('写剧本与文案'));
+  expect(modeLabel().title).toBe(skillTitle('写剧本与文案'));
+  expect(modeLabel().className).toContain('is-skill');
+  fireEvent.change(within(starterForm('写剧本')).getByLabelText('一句梗概'), { target: { value: '外卖员送错一单' } });
+  api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
+  expect(api.post.mock.calls[0][2]).toMatchObject({ skillKey: 'script-writing' });
+  fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][2]).toMatchObject({ clientMessageId: api.post.mock.calls[0][2].clientMessageId, skillKey: 'script-writing' });
+});
 
+test('a thread already bound to a skill shows it only in the header label, and a typed message carries no skillKey', async () => {
   api.skills.mockResolvedValue([recreation, seeding]);
   api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, skillKey: 'video-recreation', skillVersion: 2 } });
   await ready();
+  await waitFor(() => expect(modeLabel().textContent).toBe('短视频复刻'));
+  expect(modeLabel().title).toBe(skillTitle('短视频复刻'));
   openGuide();
   await screen.findByText('短视频复刻：短视频复刻的说明');
   expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
+  expect(document.querySelector('.studio-dialogue-chip')).toBeNull();
   fireEvent.change(composer(), { target: { value: '继续' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
   expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
 });
 
-test('400 STUDIO_SKILL_REQUIRED names the skills that fit, keeps the draft and opens the choice', async () => {
+test('400 STUDIO_SKILL_REQUIRED names the skills that fit, keeps the draft, and each skill is a quick reply that sends it again with that skill', async () => {
   api.skills.mockResolvedValue([recreation]);
   api.reloadSkills.mockResolvedValue([recreation, seeding]);
   await ready();
@@ -764,17 +778,20 @@ test('400 STUDIO_SKILL_REQUIRED names the skills that fit, keeps the draft and o
   fireEvent.change(composer(), { target: { value: '照着这条复刻一条口播' } });
   fireEvent.click(sendButton());
   // A question, not a failure: shown inline, never as an error notification.
-  await screen.findByText('「短视频复刻」和「口播种草」都能做，选一个技能再发');
+  await screen.findByText('「短视频复刻」和「口播种草」都能做，选一个就按它发送');
   expect(screen.queryByRole('alert')).toBeNull();
   expect(composer().value).toBe('照着这条复刻一条口播');
   expect(api.reloadSkills).toHaveBeenCalled();
-  const picker = await screen.findByRole('combobox', { name: '技能' }) as HTMLSelectElement;
-  expect([...picker.options].map(o => o.textContent)).toEqual(['自动', '短视频复刻', '口播种草']);
-  fireEvent.change(picker, { target: { value: 'talking-head-seeding' } });
-  expect(screen.queryByText(/都能做，选一个技能再发/)).toBeNull();
-  fireEvent.click(sendButton());
+  // No dropdown to go and find: the skills are buttons right there.
+  expect(screen.queryByRole('combobox', { name: '技能' })).toBeNull();
+  const choice = screen.getByRole('group', { name: '选一种做法' });
+  expect(within(choice).getAllByRole('button').map(b => b.textContent)).toEqual(['短视频复刻', '口播种草']);
+  fireEvent.click(within(choice).getByRole('button', { name: '口播种草' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
   expect(api.post.mock.calls[1][2]).toMatchObject({ text: '照着这条复刻一条口播', skillKey: 'talking-head-seeding' });
+  expect(screen.queryByRole('group', { name: '选一种做法' })).toBeNull();
+  await waitFor(() => expect(composer().value).toBe(''));
+  expect(modeLabel().textContent).toBe('口播种草');
 });
 
 const summaryMessage: StudioDialogueMessage = { id: 'm-sum', threadId: 'th', seq: 4, turnId: 'EXS-1', role: 'assistant', text: '两段都做好了。', blocks: [], status: 'done', createdAt: at,
@@ -831,23 +848,21 @@ test('the draft entry is only for operators, only under a summary of finished wo
 });
 
 
-// Ported from the old composer (Codex, 2026-10-18): a single or fixed model is visible without opening the settings.
-// Codex 2026-10-19 (P2): the request carried the picked model's ceiling but not the model, so the server ran the default
-// one (and a cheaper pick looked like a price change). The model now goes with its ceiling; a fixed scene sends none.
-// (The picked-model case is in 「the picked model goes with its own ceiling…」.)
-test.each(['fixed', 'selectable'] as const)('assistant shows its single %s model without opening settings; a fixed model is not sent', async policy => {
+// 2026-10-21 (user feedback): no model pill under the composer, fixed or selectable. The one dialogue model could not be
+// changed and its name read as if videos were made with it too. The model still goes with its ceiling (Codex 2026-10-19,
+// P2: without it the server ran the default model); a fixed or single-model scene sends none.
+test.each(['fixed', 'selectable'] as const)('no model control with a single %s model; its ceiling goes with the message and no model is sent', async policy => {
   await ready(<Host capabilities={{ ...capabilities, textModelMode: policy, textModels: [capabilities.textModels[0]] }}/>);
   expect(api.getConversation).toHaveBeenCalledWith('p');
-  const select = screen.getByRole('combobox', { name: '助手模型' }) as HTMLSelectElement;
-  expect(select.value).toBe('one');
-  expect(select.disabled).toBe(true);
+  expect(screen.queryByRole('combobox', { name: '助手模型' })).toBeNull();
+  expect(screen.queryByText('模型一')).toBeNull();
   expect(screen.queryByRole('button', { name: '对话设置' })).toBeNull();
   expect(api.post).not.toHaveBeenCalled();
   fireEvent.change(composer(), { target: { value: '写一段口播' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalled());
   expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 21 });
-  if (policy === 'fixed') expect(api.post.mock.calls[0][2].model).toBeUndefined();
+  expect(api.post.mock.calls[0][2].model).toBeUndefined();
 });
 
 // ── Opening guidance: inventory chips, the four cards and their fill-in cards (docs/ip-studio-new-canvas-and-threads.md §5) ──
@@ -855,7 +870,6 @@ const clip = { ...character, id: 'clip', type: 'video', title: '带货样片', m
 const starterSkills = () => [skill('image-generation', '出图'), skill('script-writing', '写剧本与文案'), skill('video-generation', '出视频'), skill('reference-video-recreation', '参考视频复刻')];
 const card = (title: string) => screen.getByRole('button', { name: new RegExp(`^${title}`) });
 const starterForm = (title: string) => screen.getByRole('region', { name: title });
-const skillPicker = () => screen.getByRole('combobox', { name: '技能' }) as HTMLSelectElement;
 const IP_DEFAULT = (photo: string) => `用${photo}做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。`;
 
 test('an empty conversation opens on four cards and what the canvas holds; with a node referenced the cards work on it', async () => {
@@ -868,10 +882,10 @@ test('an empty conversation opens on four cards and what the canvas holds; with 
   expect(card('做个短视频').textContent).toBe('做个短视频一句描述出视频，也可以从一张图动起来需要：画面描述');
   expect(card('复刻视频').textContent).toBe('复刻视频照爆款的节奏和镜头，换成你的商品或人物需要：参考视频 + 你的素材');
   expect(document.body.textContent).not.toMatch(/要准备|会得到|选一件事开始|第一次用|做一张图|写一段文字/);
-  // The guide opens from the skill chip: three steps and one line about the current skill, nothing about credits or attachments.
+  // The guide opens from the skill label: three steps and one line about the current skill, nothing about credits or attachments.
   openGuide();
   const guide = screen.getByRole('region', { name: '使用说明' });
-  expect(within(guide).getByText('自动：按你说的事和素材选做法。')).toBeDefined();
+  expect(within(guide).getByText('全能创作：按你说的话和素材自动选择做法。')).toBeDefined();
   expect(guide.textContent).not.toMatch(/附件|上限|整张画布/);
   // Each step is a two-column grid (number + text). A bare text node beside <strong> becomes a third grid item and
   // drops into the 24px number column, one character per line; title and text must share one element.
@@ -890,7 +904,6 @@ test('an empty conversation opens on four cards and what the canvas holds; with 
 test('制作个人 IP picks the only photo, writes the default sentence, follows the options and sends with its skill', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready(<Host initial={[character, text, clip]}/>);
-  await screen.findByRole('combobox', { name: '技能' });
   fireEvent.click(card('制作个人 IP'));
   const form = starterForm('制作个人 IP');
   expect(screen.queryByRole('heading', { name: '想做点什么？' })).toBeNull();
@@ -899,7 +912,7 @@ test('制作个人 IP picks the only photo, writes the default sentence, follows
   expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
   expect(within(form).getByRole('button', { name: '写实' }).getAttribute('aria-pressed')).toBe('true');
   expect(within(form).getByRole('button', { name: '多视角设定图' }).getAttribute('aria-pressed')).toBe('true');
-  expect(skillPicker().value).toBe('image-generation');
+  await waitFor(() => expect(modeLabel().textContent).toBe('出图'));
   fireEvent.click(within(form).getByRole('button', { name: 'Q 版' }));
   fireEvent.click(within(form).getByRole('button', { name: '头像' }));
   expect(composer().value).toBe('用 @角色 A 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。');
@@ -939,11 +952,11 @@ test('a card holds the send until its material is there; 「从画布选」 pick
 test('写剧本: the synopsis feeds the sentence; a hand edit stops the options, 「按选项重写」 brings the sentence back', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready();
-  await screen.findByRole('combobox', { name: '技能' });
   fireEvent.click(card('写剧本'));
   const form = starterForm('写剧本');
   const synopsis = within(form).getByLabelText('一句梗概');
   expect(document.activeElement).toBe(synopsis);
+  await waitFor(() => expect(modeLabel().textContent).toBe('写剧本与文案'));
   expect(composer().value).toBe('写一个 60 秒的短剧剧本。有反转，分场写清画面、台词和时长。');
   expect(sendButton().disabled).toBe(true);
   expect(screen.getByText('先写一句梗概')).toBeDefined();
@@ -973,9 +986,9 @@ test('写剧本: the synopsis feeds the sentence; a hand edit stops the options,
 test('做个短视频: the first frame is not picked for the user; frame and camera join the sentence only when chosen; Enter in the line sends', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready();
-  await screen.findByRole('combobox', { name: '技能' });
   fireEvent.click(card('做个短视频'));
   const form = starterForm('做个短视频');
+  await waitFor(() => expect(modeLabel().textContent).toBe('出视频'));
   // The one image on the canvas would turn this into an image-to-video: an optional slot stays empty until chosen.
   expect(within(form).getByRole('group', { name: '首帧图' }).textContent).toContain('选填');
   expect(screen.getByLabelText('本次引用').textContent).toBe('');
@@ -995,11 +1008,10 @@ test('做个短视频: the first frame is not picked for the user; frame and cam
 test('复刻视频 picks the only video and the only image, and sends them with the recreation skill', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready(<Host initial={[character, text, clip]}/>);
-  await screen.findByRole('combobox', { name: '技能' });
   fireEvent.click(card('复刻视频'));
   const form = starterForm('复刻视频');
   expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，保留节奏和镜头。');
-  expect(skillPicker().value).toBe('reference-video-recreation');
+  await waitFor(() => expect(modeLabel().textContent).toBe('参考视频复刻'));
   fireEvent.click(within(form).getByRole('button', { name: '只保留节奏' }));
   fireEvent.change(within(form).getByLabelText('要讲的卖点'), { target: { value: '保温 12 小时' } });
   expect(composer().value).toBe('照 @带货样片 的拍法，把里面的商品或人物换成 @角色 A，只保留节奏，口播改成介绍：保温 12 小时。');
@@ -1012,13 +1024,13 @@ test('复刻视频 picks the only video and the only image, and sends them with 
 test('「换一个」 goes back to the four cards as before: the card\'s sentence, skill and picks leave the message', async () => {
   api.skills.mockResolvedValue(starterSkills());
   await ready();
-  await screen.findByRole('combobox', { name: '技能' });
   fireEvent.click(card('制作个人 IP'));
+  await waitFor(() => expect(modeLabel().textContent).toBe('出图'));
   expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
   expect(screen.getByLabelText('本次引用').textContent).toContain('角色 A');
   fireEvent.click(screen.getByRole('button', { name: '换一个' }));
   expect(composer().value).toBe('');
-  expect(skillPicker().value).toBe('__auto__');
+  expect(modeLabel().textContent).toBe('全能创作');
   expect(screen.getByLabelText('本次引用').textContent).toBe('');
   expect(card('写剧本')).toBeDefined();
   // A picture picked for one card does not ride along into another (the canvas still has it to pick again).
@@ -1142,21 +1154,30 @@ test('under StrictMode a saved draft is restored and stays saved; references to 
   expect(JSON.parse(localStorage.getItem('studio-assistant:draft:p')!)).toMatchObject({ text: '刷新前写的，又补了一句', pinnedIds: ['t'] });
 });
 
-// Codex 2026-10-19 (P2): the picked model goes with its own ceiling, before and after a refresh.
-test('the picked model goes with its own ceiling, and is remembered for this canvas after a refresh', async () => {
+// Codex 2026-10-19 (P2): the model goes with its own ceiling. 2026-10-21: there is no picker any more; the default model
+// is sent, and a model this browser remembered for the canvas (picked while the picker existed) still applies while offered.
+test('with several models the default goes with its ceiling; a remembered model still applies, one no longer offered falls back to the default', async () => {
   await ready();
-  fireEvent.change(screen.getByRole('combobox', { name: '助手模型' }), { target: { value: 'two' } });
+  expect(screen.queryByRole('combobox', { name: '助手模型' })).toBeNull();
   fireEvent.change(composer(), { target: { value: '写一段口播' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 8 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'one', maxCost: 21 });
   cleanup();
+  localStorage.setItem('studio-assistant:model:p', 'two');
   await ready();
-  expect((screen.getByRole('combobox', { name: '助手模型' }) as HTMLSelectElement).value).toBe('two');
+  expect(screen.queryByRole('combobox', { name: '助手模型' })).toBeNull();
   fireEvent.change(composer(), { target: { value: '用便宜的那个回答' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
   expect(api.post.mock.calls[1][2]).toMatchObject({ model: 'two', maxCost: 8 });
+  cleanup();
+  localStorage.setItem('studio-assistant:model:p', 'retired');
+  await ready();
+  fireEvent.change(composer(), { target: { value: '再写一段' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
+  expect(api.post.mock.calls[2][2]).toMatchObject({ model: 'one', maxCost: 21 });
 });
 
 const longReply = '末世英雄·林烬：三十岁出头，左眼有一道旧疤，穿改装过的防化服，背一把自制弩。外冷内热，嘴上不饶人，遇到孩子会先把干粮分出去。末世第三年，他守着城北最后一座净水站，只换药品不换枪。';

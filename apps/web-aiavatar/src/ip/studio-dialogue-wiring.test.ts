@@ -20,8 +20,16 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('<StudioDialogueComposer');
   expect(assistant).toContain('window.addEventListener(STUDIO_CHECK_COMMAND');
   expect(read('ip/studio-dialogue-session.tsx')).toContain('subscribeStudioDialogue(');
-  // S3: the skill choice, the plan badge and the operator draft action are reachable from the panel.
-  expect(assistant).toMatch(/<Select aria-label="技能"/);
+  // S3: the plan badge and the operator draft action are reachable from the panel. 2026-10-21 (user feedback): no skill or
+  // model control under the composer; the method shows only in the header label, whose hover text says how it is chosen,
+  // and the 「which method」 rejection offers the skills as quick replies instead of a dropdown.
+  expect(assistant).not.toContain('<Select');
+  expect(assistant).not.toContain('aria-label="助手模型"');
+  expect(assistant).not.toMatch(/studio-dialogue-chip(?!s)/);
+  expect(assistant).toContain('title={modeLabelTitle(modeSkill?.name)}');
+  expect(assistant).toContain('按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。');
+  expect(assistant).toContain('aria-label="选一种做法"');
+  expect(read('ip/studio-dialogue-composer.tsx')).not.toContain('{tools}');
   expect(assistant).toContain('<StudioDialogueSkillDraft');
   expect(assistant).toMatch(/completionActions: operator \? completionActions : undefined/);
   expect(read('ip/studio-dialogue-message.tsx')).toContain('handlers.completionActions?.(message)');
@@ -85,12 +93,11 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('progress={execution && <StudioDialogueSteps');
   expect(assistant).toContain('aria-controls="studio-assistant-guide"');
   expect(read('styles/studio-flow.css')).toContain('.studio-flow-drag>.studio-flow-ai-badge,.studio-flow-drag>.studio-flow-origin { flex:none;');
-  // Third pass: the dialogue and its button area (design Main board). The skill pill stays visible once a thread is bound;
-  // a reply ends in one meta line; a confirmed card collapses to one line; antd 6 Select parts are styled (not v5's .ant-select-selector).
-  expect(assistant).toContain('studio-dialogue-chip is-skill is-static');
+  // Third pass: the dialogue and its button area (design Main board). A reply ends in one meta line; a confirmed card
+  // collapses to one line. (The skill and model pills under the input were removed on 2026-10-21, with their styles.)
   expect(read('ip/studio-dialogue-message.tsx')).toContain('className="studio-dialogue-meta"');
   expect(read('ip/studio-dialogue-approval.tsx')).toContain('className="studio-dialogue-approval-done"');
-  expect(read('styles/ip-studio-workflow.css')).toContain('.studio-dialogue-chip .ant-select-suffix { display:none; }');
+  expect(read('styles/ip-studio-workflow.css')).not.toMatch(/studio-dialogue-chip(?!s)/);
 });
 
 test('the composer is never disabled as a whole', () => {

@@ -2,7 +2,7 @@
 // The always-editable composer. Typing is never locked by streaming, tools or a running
 // production; only the send button waits for attachments to finish saving. `@` pins a
 // canvas object for this message, attachments are added as ordinary canvas nodes first.
-import { forwardRef, useImperativeHandle, useRef, useState, type ComponentRef, type ReactNode } from 'react';
+import { forwardRef, useImperativeHandle, useRef, useState, type ComponentRef } from 'react';
 import { gsap } from 'gsap';
 import { Button, Input } from 'antd';
 import { ArrowUp, AtSign, Square, X } from 'lucide-react';
@@ -24,8 +24,6 @@ type Props = {
   canStop: boolean; stopping: boolean; onStop: () => void;
   /** Demo mode: the send button says nothing is charged. */
   demo?: boolean;
-  /** Chips after the @ and attachment buttons (the skill and model choices live here, not in a hidden settings pane). */
-  tools?: ReactNode;
   /** One starting row while a conversation is on screen; two on an empty canvas so the invitation reads as a place to write. */
   compact?: boolean; placeholder?: string;
 };
@@ -34,7 +32,7 @@ const nodeKind = (node?: CanvasNodeData) => node?.type === 'image' ? '图片' : 
 
 export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(function StudioDialogueComposer(props, handle) {
   const { projectId, text, onText, contextNodes, pinnedIds, attachmentIds, onPin, onUnpin, onRemoveAttachment, onFiles, onAssets, reading, attachmentsUnsaved, onRetrySave,
-    sendDisabledReason, sending, onSend, canStop, stopping, onStop, demo = false, tools, compact = false, placeholder } = props;
+    sendDisabledReason, sending, onSend, canStop, stopping, onStop, demo = false, compact = false, placeholder } = props;
   const area = useRef<ComponentRef<typeof Input.TextArea>>(null), frame = useRef<HTMLDivElement>(null), picker = useRef<AttachmentPickerActions>(null);
   const [caret, setCaret] = useState(0), [mentionOpen, setMentionOpen] = useState(false), [mentionIndex, setMentionIndex] = useState(0);
   const [libraryQuery, setLibraryQuery] = useState<string>();
@@ -98,7 +96,6 @@ export const StudioDialogueComposer = forwardRef<DialogueComposerHandle, Props>(
       <div className="studio-assistant-context-actions">
         <Button icon={<AtSign size={17}/>} aria-label="引用节点" title="引用画布上的内容（@）" onClick={openMention}/>
         <StudioAttachmentPicker projectId={projectId} locked={reading} reading={reading} onFiles={onFiles} onAssets={onAssets} iconOnly actions={picker}/>
-        {tools}
       </div>
       <div className="studio-dialogue-send">
         {sendDisabledReason && text.trim() && <span className="studio-dialogue-send-reason" role="status" title={sendDisabledReason}>{sendDisabledReason}</span>}
