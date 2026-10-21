@@ -232,3 +232,46 @@ DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem 
 ```
 
 无迁移。回滚后提示词按 v21 刷回（只刷没人改过的行）；`video-generation` 的文件摘要又变了，库里没被后台改过，会把旧文件追加为 v3（旧关键词），v2 留在历史里。web-aiavatar 不涉及。
+
+## web 发布 `20261021-studio-starters`（2026-10-21 14:55 CST，只发 web-aiavatar）
+
+### 改了什么
+
+用户反馈：新对话里的快捷选项不够好用，换成「制作个人 IP、写剧本、做个短视频、复刻视频」。设计与实现说明见 `docs/ip-studio-new-canvas-and-threads.md` §5。
+
+- 空对话、没有引用节点时，开场是四张卡（2×2，窄于约 360px 单列）：图标、标题、会得到什么、「需要：…」。有引用节点时的那组卡不变。
+- 点一张变成填空卡：素材位（「从画布选」走输入框的 @，「上传」走输入框的附件；画布上正好一个合适素材时只给必填位自动选上；选中的可以 × 去掉）、默认已选好的选项按钮、一两行文字位；按这些实时拼一句话写进输入框。发送仍是输入框那一个按钮，缺必填项不能发，原因写在按钮旁，必填文字位为空时卡上也标「还缺」；发送显式带技能（`image-generation` / `script-writing` / `video-generation` / `reference-video-recreation`）。
+- 用户改过输入框后选项不再覆盖，出现「按选项重写」；点开卡片时输入框已有的字不覆盖；「← 换一个」撤掉这张卡写的话、技能和它选的素材，回到四张卡。
+- 原复刻清单 `studio-assistant-checklist.tsx` 并入「复刻视频」卡并删除。首页需要参考视频的原话照旧打开这张卡、保留原话、不自动发（素材被自动选齐也不发）。
+- 演示数据的复刻技能改成与服务端同名的 `reference-video-recreation`；写剧本回分场示例，短视频按所选秒数报价。
+- 只改前端：没有接口、没有迁移，服务端报价、确认卡与计费不变。
+- 文件：新增 `apps/web-aiavatar/src/ip/studio-assistant-starters.tsx`（卡片配置、填空卡、拼句纯函数 `composeStarter`）及其测试；改 `src/ip/studio-assistant.tsx`、`src/styles/ip-studio-workflow.css`、`src/ip/mocks/studio-dialogue.ts`、`src/ip/studio-attachment-picker.tsx`（注释）；测试 `studio-assistant.test.tsx`、`studio-dialogue-wiring.test.ts`、`mocks/studio-dialogue.test.ts`；文档 §5、AGENTS.md、`docs/INDEX.md`、`apps/web-aiavatar/PRODUCT.md`、`apps/web-aiavatar/README.md`。
+
+### 门禁
+
+- `studio-assistant-starters.test.ts`（7）、`studio-assistant.test.tsx`（64）、`studio-dialogue-wiring.test.ts`、`studio-dialogue-threads.test.tsx`、`mocks/studio-dialogue.test.ts`（9）五个文件 95 条全过；另跑 `canvas-bridge/studio-dialogue.test.ts`、`studio-workspace.test.tsx` 79 条全过。「素材被自动选齐也不自动发」那条用例，去掉对应代码后会变红（确认它测得到）。
+- `pnpm --filter @ai-star-eco/web-aiavatar typecheck`、`pnpm typecheck:all`、`pnpm check:api-contract`（`OK.`）均通过。
+- 演示模式（`NEXT_PUBLIC_USE_MOCK=1`，`--webpack`，3917 端口，`AEP_NEXT_DIST_DIR=.next-starters`，验完还原 `tsconfig.json`、删除临时目录）无头 Chrome 1440 与 375 逐步走：四张卡 → 各自的填空卡（缺照片 / 缺梗概 / 缺参考视频时发送键不可点、原因正确）→ 从画布选 / 改选项 / 手改输入框后「按选项重写」→ 发送。四张卡都拿到对应的演示回复（出图确认卡 8 积分、剧本放进画布、10 秒横屏视频确认卡 80 积分、复刻的分析确认卡），每一步页面和助手面板都没有横向溢出。截图在会话临时目录 `starters/`（`1440-01…13`、`375-01…08`）。演示模式下上传要走后端，本机没起后端，复刻的参考视频是用左栏「＋添加 → 视频」放的空视频节点。
+
+### 制品与发布
+
+- 发布前核对：线上 web-aiavatar 最新发布为 `20261021-studio-create-page`（GIT_SHA `0222df1a…`，在 main 历史里）；之后只有 server 热修 `20261021-studio-action-marker`（main `1ebcaea6`，记录 `0a890d0d`）。`AIStarEcosystem-main-release` 工作区干净、没有构建 / 发布进程在跑；分支 `feat/studio-starters-20261021` 变基到 main 后快进。
+- 在 `AIStarEcosystem-main-release` 的 `main`（`658c38ccf96e68aace630fd2e2aaa2f5b515598c`）构建 `RELEASE_ID=20261021-studio-starters NEXT_PUBLIC_AUTH_MODE=id NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn NEXT_PUBLIC_ENTERPRISE_ENABLED=1 ./infra/scripts/build-release.sh web-aiavatar`：`manifest.env` 为 `SERVICES='web-aiavatar'`、`GIT_SHA='658c38cc…'`、`NEXT_PUBLIC_AUTH_MODE='id'`、`NEXT_PUBLIC_ID_ISSUER='https://id.aibuzz.cn'`、`NEXT_PUBLIC_ENTERPRISE_ENABLED='1'`；`checksums.sha256` 两项校验通过；包内入口 `./apps/web-aiavatar/server.js`，`BUILD_ID` `JRQEOd39WIzPrBzrZsCWL`；包里能搜到四张卡的标题与说明和「按选项重写」，搜不到旧清单的「不用清单，直接说」。
+- `deploy-release.sh dist/deploy/20261021-studio-starters web-aiavatar`：`[verify] ALL GREEN`。
+
+### 线上验收
+
+- `aistareco-web-aiavatar` 新进程 PID 1346941 于 **14:55:05 CST** 启动，`Ready`，`NRestarts=0`；`WorkingDirectory=/opt/ai-star-eco/web-aiavatar/apps/web-aiavatar`，线上 `BUILD_ID` 与本地制品一致；`/opt/ai-star-eco/releases` 最新为 `20261021-studio-starters`（`GIT_SHA='658c38cc…'`）。
+- `https://aiavatar.aibuzz.cn/projects` → 200。运行目录 `.next/static/chunks/6333.3720a2ef61d8e02f.js` 含「制作个人 IP」与四张卡的说明（「真人照片变成数字形象，出多角度设定图」「一句梗概写成能拍的分场剧本」「一句描述出视频，也可以从一张图动起来」「照爆款的节奏和镜头，换成你的商品或人物」）和「需要：」「按选项重写」；公网取同名 chunk 200 且含新文案。
+- **没做**：没用生产账号登录点一次卡片发消息（需要用户自己登录，发出后真模型回复会扣积分）。建议用户在新画布上各点一张卡发一次，确认技能胶囊对得上、回复走的是对应做法。
+
+### 回滚
+
+在 `AIStarEcosystem-main-release` 里（本地 `dist/deploy/20261021-studio-create-page` 仍在）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+  ./infra/scripts/deploy-release.sh dist/deploy/20261021-studio-create-page web-aiavatar
+```
+
+只回 web-aiavatar，server 不动；回滚后新对话开场恢复为原来的四张卡和复刻清单。
