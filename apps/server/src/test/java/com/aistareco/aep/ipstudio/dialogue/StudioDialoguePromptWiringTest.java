@@ -115,4 +115,19 @@ class StudioDialoguePromptWiringTest {
         parsed.actions().get(0).args().fieldNames().forEachRemaining(arg ->
                 assertTrue(declared.contains("\"" + arg + "\""), "view_images does not declare " + arg));
     }
+
+    /**
+     * 2026-10-21 14:10 the model closed the action array with the marker again, three tries in a row, and the turn ran
+     * nothing. The parser now forgives a closing line, but a model copies what it is shown: the prompt and the correction
+     * both say the marker is written once, and the example shows it once with nothing after its array. The rule sentence
+     * is asserted because it is the contract with the model, not copy for the user (AGENTS §8.0.1 ⑩).
+     */
+    @Test void theMarkerIsAskedForAndShownOnce() throws Exception {
+        String prompt = Files.readString(DIALOGUE);
+        String system = prompt.substring(0, prompt.indexOf("\n---\n"));
+        assertTrue(system.contains("分隔行 `" + DialogueActionProtocol.MARKER + "` 只写一次，数组后面不要再写"), "dialogue prompt");
+        assertTrue(DialogueLoop.correctionText("x").contains(DialogueActionProtocol.MARKER + " 只写一次，数组后面不要再写"), "correction");
+        assertEquals(1, system.lines().filter(l -> l.strip().equals(DialogueActionProtocol.MARKER)).count(), "one marker line in the example");
+        assertTrue(system.stripTrailing().endsWith("]"), "nothing follows the example's array");
+    }
 }

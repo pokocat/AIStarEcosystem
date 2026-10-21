@@ -47,7 +47,9 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      对话发卡时正文最多一句、不复述卡片、不报价、不给操作提示。
     // v21：对话提示词恢复「调用工具时正文可以写一句在做什么」，并在动作输出方式后给一个完整的动作示例
     //      （线上 2026-10-21 13:50 聚算 Qwen3.8 27B 整条回复只写了「[调用工具 view_images]」，没有调用任何工具）。
-    private static final String SEED_VERSION = "v21-2026-10-21-action-format-example";
+    // v22：对话提示词「动作输出方式」补一句分隔行只写一次、数组后面不要再写
+    //      （线上 2026-10-21 14:10 聚算 Qwen3.8 27B 三次都在数组后面又写了一遍 <<<studio-actions>>>，整轮被判格式错误）。
+    private static final String SEED_VERSION = "v22-2026-10-21-single-action-marker";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

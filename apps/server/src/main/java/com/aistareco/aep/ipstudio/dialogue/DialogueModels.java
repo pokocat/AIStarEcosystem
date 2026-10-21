@@ -58,14 +58,32 @@ final class DialogueModels {
 
         public long estimateInputTokens(List<Map<String, Object>> messages) { return estimate(messages, nativeTools ? toolSpecChars : 0); }
 
+        // ── Prose of replies rejected for their action format ─────────────────────────────────────────────────────
+        // Production 2026-10-21 14:10: the same sentence shown three times, one per try (a rejected reply, then two
+        // corrections that repeated it and were rejected too). Now a rejected reply's prose is held, not shown; a retry is
+        // not streamed and is shown only once it parsed. Accepted retry → its prose, or the held prose when it wrote none
+        // (the correction says 「正文不必重复」). Every try rejected → the last prose, once, when the loop ends (endTurn).
+        // A streaming endpoint has already shown the first rejected reply as it arrived; a retry then shows only what it
+        // adds beyond that (an identical leading part is dropped).
+        /** True while the previous reply was rejected and its corrected try has not been accepted. */
+        private boolean retrying;
+        /** Latest rejected prose not shown yet, and the call it came from. */
+        private String held, heldPart;
+        /** Prose of the current rejection streak a streaming endpoint already showed. */
+        private String streakShown = "";
+
         public DialogueLoop.Reply call(List<Map<String, Object>> messages, int callIndex, int maxOutputTokens) {
             beforeCall.run();
             String partId = "p" + callIndex;
+            boolean retry = retrying;
+            StringBuilder streamedNow = new StringBuilder();
             var filter = new DialogueActionProtocol.MarkerFilter(toolNames);
             var listener = new AiModelInvocationService.ChatStreamListener() {
                 @Override public void onTextDelta(String delta) {
                     String visible = filter.accept(delta);
-                    if (!visible.isEmpty()) sink.delta(partId, visible);
+                    if (retry || visible.isEmpty()) return; // a retry is shown only after it parsed
+                    sink.delta(partId, visible);
+                    streamedNow.append(visible);
                 }
                 @Override public boolean cancelled() { return stopped.getAsBoolean(); }
             };
@@ -78,24 +96,56 @@ final class DialogueModels {
             DialogueActionProtocol.Parsed parsed = DialogueActionProtocol.parse(result.content(), toolNames);
             if (result.streamed()) {
                 String tail = filter.finish();
-                if (!tail.isEmpty()) sink.delta(partId, tail);
-            } else if (!parsed.visibleText().isEmpty()) {
-                sink.delta(partId, parsed.visibleText()); // a non-streaming endpoint: the whole reply, shown once, as received
+                if (!retry && !tail.isEmpty()) { sink.delta(partId, tail); streamedNow.append(tail); }
             }
+            DialogueLoop.Reply reply;
+            if (result.cancelled()) reply = new DialogueLoop.Reply(parsed.visibleText(), List.of(), null, result);
+            else if (!result.toolCalls().isEmpty()) {
+                var nativeParsed = DialogueActionProtocol.fromNative(parsed.visibleText(), result.toolCalls());
+                reply = new DialogueLoop.Reply(parsed.visibleText(), nativeParsed.actions(), nativeParsed.parseError(), result);
+            } else reply = new DialogueLoop.Reply(parsed.visibleText(), parsed.actions(), parsed.parseError(), result);
+            present(partId, reply, result.streamed() && !retry, streamedNow.toString());
             sink.flush();
             if (result.cancelled()) {
                 // Usage of an interrupted stream is recorded only when the vendor reported it; never estimated from text.
                 if (result.promptTokens() != null && result.completionTokens() != null) budget.record(result.promptTokens(), result.completionTokens());
-                return new DialogueLoop.Reply(parsed.visibleText(), List.of(), null, result);
+                return reply;
             }
             if (result.promptTokens() == null || result.completionTokens() == null)
                 throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_USAGE_MISSING", "模型未返回有效Token用量，本次未扣积分");
             budget.record(result.promptTokens(), result.completionTokens());
-            if (!result.toolCalls().isEmpty()) {
-                var nativeParsed = DialogueActionProtocol.fromNative(parsed.visibleText(), result.toolCalls());
-                return new DialogueLoop.Reply(parsed.visibleText(), nativeParsed.actions(), nativeParsed.parseError(), result);
+            return reply;
+        }
+
+        /** What of this reply's prose the user sees now ({@code streamed}: it was already shown as it arrived). */
+        private void present(String partId, DialogueLoop.Reply reply, boolean streamed, String streamedText) {
+            String prose = reply.visibleText() == null ? "" : reply.visibleText();
+            boolean rejected = reply.parseError() != null;
+            if (!retrying) {
+                if (!rejected) { if (!streamed && !prose.isEmpty()) sink.delta(partId, prose); return; } // shown once, as received
+                retrying = true;
+                streakShown = streamed ? streamedText.strip() : "";
+                held = streamed || prose.isBlank() ? null : prose;
+                heldPart = partId;
+                return;
             }
-            return new DialogueLoop.Reply(parsed.visibleText(), parsed.actions(), parsed.parseError(), result);
+            if (rejected) { if (!prose.isBlank()) { held = prose; heldPart = partId; } return; }
+            showOnce(partId, prose.isBlank() && held != null ? held : prose);
+        }
+
+        @Override public void endTurn() {
+            if (!retrying) return;
+            String part = heldPart;
+            showOnce(part, held);
+            sink.flush();
+        }
+
+        /** Ends the rejection streak, showing {@code text} minus what streaming already showed of it. */
+        private void showOnce(String partId, String text) {
+            String rest = text == null ? "" : text.strip();
+            if (!streakShown.isEmpty() && rest.startsWith(streakShown)) rest = rest.substring(streakShown.length()).strip();
+            retrying = false; held = null; heldPart = null; streakShown = "";
+            if (!rest.isEmpty()) sink.delta(partId, rest);
         }
 
         public void appendExchange(List<Map<String, Object>> messages, DialogueLoop.Reply reply, List<DialogueLoop.ToolResult> results) {

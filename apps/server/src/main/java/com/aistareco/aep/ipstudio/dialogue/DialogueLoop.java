@@ -54,6 +54,12 @@ public final class DialogueLoop {
         /** Append the assistant reply and its tool results in this protocol's message shape (native tools or JSON actions). */
         void appendExchange(List<Map<String, Object>> messages, Reply reply, List<ToolResult> results);
         void appendUser(List<Map<String, Object>> messages, String text);
+        /**
+         * The turn's loop is over (any reason, also an exception). A model that held back the prose of a reply rejected for
+         * its action format, waiting for the corrected try, shows it now: every try was rejected, or the turn stopped
+         * before the next try.
+         */
+        default void endTurn() { }
     }
 
     public interface Tools {
@@ -85,6 +91,17 @@ public final class DialogueLoop {
     static final int MAX_PROTOCOL_RETRIES = 2;
 
     public Outcome run(List<Map<String, Object>> messages) throws Exception {
+        Outcome outcome;
+        try { outcome = loop(messages); }
+        catch (Exception e) {
+            try { model.endTurn(); } catch (RuntimeException shown) { e.addSuppressed(shown); }
+            throw e;
+        }
+        model.endTurn();
+        return outcome;
+    }
+
+    private Outcome loop(List<Map<String, Object>> messages) throws Exception {
         int toolCalls = 0, protocolErrors = 0;
         while (true) {
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
@@ -162,12 +179,14 @@ public final class DialogueLoop {
 
     /**
      * The correction after a reply whose actions could not be parsed: the reason, and one complete action in the expected
-     * shape. Without the example the model repeated its own spelling (2026-10-21: 「[调用工具 view_images]」).
+     * shape. Without the example the model repeated its own spelling (2026-10-21: 「[调用工具 view_images]」). The marker is
+     * written once: three tries in a row closed the array with the marker again (2026-10-21 14:10).
      */
     static String correctionText(String parseError) {
         return "上一条回复里的动作格式无法解析（" + parseError + "），工具没有运行。请重新给出动作，正文不必重复，不要在正文里写「[调用工具 …]」这类文字。"
                 + "能直接调用工具就直接调用；否则另起一行写 " + DialogueActionProtocol.MARKER + "，下一行写 JSON 数组，例如：\n"
-                + DialogueActionProtocol.MARKER + "\n" + ACTION_EXAMPLE + "\n把 view_images 换成你要调用的工具，args 按该工具的参数写。";
+                + DialogueActionProtocol.MARKER + "\n" + ACTION_EXAMPLE + "\n把 view_images 换成你要调用的工具，args 按该工具的参数写。"
+                + "分隔行 " + DialogueActionProtocol.MARKER + " 只写一次，数组后面不要再写。";
     }
 
     static String steeringText(List<String> steering) {

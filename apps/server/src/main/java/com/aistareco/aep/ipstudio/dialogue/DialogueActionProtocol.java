@@ -25,6 +25,10 @@ import java.util.regex.Pattern;
  *
  * <p>A tool call written as plain prose instead ({@link ProseCallFilter}: 「[调用工具 view_images]」) is never shown and is
  * a format error too, so the model is asked again instead of the turn ending with nothing done.
+ *
+ * <p>After the marker, the action value may be followed by a closing line that ends the reply (the marker written a
+ * second time, 2026-10-21 14:10; see {@link #stripClosing}). Nothing after the marker is ever shown, so streaming needs
+ * no extra rule for it.
  */
 public final class DialogueActionProtocol {
     public static final String MARKER = "<<<studio-actions>>>";
@@ -40,7 +44,10 @@ public final class DialogueActionProtocol {
     private static final Pattern IMITATED_RECORD = Pattern.compile(
             "\\[(?:查看画布|看图|读取制作方法|整理制作方案|请你确认|搭建画布|调整画布对象|提交生成|提问|方案第\\s*\\d+\\s*版|确认卡)[：:][^\\]]{0,400}\\]"
                     + "|\\[[^\\[\\]：:]{1,16}[：:]\\s*(?:done|failed|running|waiting_user)\\b");
-    /** Strict: a block with anything after its JSON value ({@code [..] [..}) is not a complete action batch. */
+    /**
+     * Strict: a block with anything after its JSON value ({@code [..] [..}) is not a complete action batch. The one
+     * exception is a closing line that ends the reply ({@link #stripClosing}), removed before this parse.
+     */
     private static final ObjectMapper OM = new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     static final int MAX_ACTIONS_PER_REPLY = 8;
 
@@ -68,7 +75,7 @@ public final class DialogueActionProtocol {
             if (open == null) { visible.append(full, pos, full.length()); break; }
             visible.append(full, pos, open[0]);
             if (open[1] < 0) { // the marker: everything after it is the action array
-                String block = stripFence(full.substring(open[0] + MARKER.length()).strip());
+                String block = stripFence(stripClosing(full.substring(open[0] + MARKER.length()).strip()));
                 if (block.isEmpty()) break;
                 JsonNode array;
                 try { array = OM.readTree(block); } catch (Exception e) { array = null; }
@@ -203,6 +210,31 @@ public final class DialogueActionProtocol {
             actions.add(new DialogueLoop.Action(id, call.name(), args));
         }
         return new Parsed(visibleText, List.copyOf(actions), null);
+    }
+
+    /**
+     * A closing line the model wrote after the action value, which then ends the reply. Production 2026-10-21 14:10 (聚算
+     * Qwen3.8 27B): 「…\n<<<studio-actions>>>\n[{"tool":"view_images",…}]\n<<<studio-actions>>>」 three times in a row, the
+     * action itself correct, and the strict parser rejected each try for what came after the array. Accepted closers, case
+     * insensitive: the marker again, {@code <<</studio-actions>>>}, {@code <<<end>>>}, {@code <<<end-studio-actions>>>}
+     * (also with {@code _}), {@code </studio-actions>}, and a closing code fence.
+     */
+    private static final Pattern TRAILING_CLOSER = Pattern.compile(
+            "(?i)\\s*(?:<<<\\s*/?\\s*(?:studio[-_]actions|end(?:[-_]studio[-_]actions)?)\\s*>>>|</\\s*studio[-_]actions\\s*>|```)\\s*\\z");
+
+    /**
+     * The action block without the closer(s) at its very end: at most two (a marker-like line and a fence, in either
+     * order). Only the end of the reply is touched, so anything else after the JSON value (prose, a second array, a closer
+     * followed by more text) is still there and still rejects the batch.
+     */
+    static String stripClosing(String block) {
+        String b = block;
+        for (int i = 0; i < 2; i++) {
+            Matcher m = TRAILING_CLOSER.matcher(b);
+            if (!m.find()) break;
+            b = b.substring(0, m.start()).strip();
+        }
+        return b;
     }
 
     private static String stripFence(String block) {

@@ -363,4 +363,73 @@ class DialogueActionProtocolTest {
         String shown = f.accept("[" + "很长的说明".repeat(100));
         assertFalse(shown.isEmpty(), "an open bracket past the limit is shown without waiting for it to close");
     }
+
+    // ── Production 2026-10-21 14:10 (聚算 Qwen3.8 27B, JSON action path): the array closed with the marker again ────────
+
+    /** The real reply, verbatim but for the question's length, in the three spacings the model writes JSON in. */
+    static final List<String> MARKER_TWICE = List.of(
+            "我先把两张图都看一下，确认用哪张、画面里有什么。\n\n<<<studio-actions>>>\n"
+                    + "[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"PEX-9669b282de6947219cae-p-s1\",\"PEX-ee2d8251303b4403bf50-p-s1\"],\"question\":\"哪张是正面单图、哪张是三视图拼版？\"}}]\n"
+                    + "<<<studio-actions>>>",
+            "我先把两张图都看一下，确认用哪张、画面里有什么。\n\n<<<studio-actions>>>\n"
+                    + "[{\"tool\": \"view_images\", \"args\": {\"nodeIds\": [\"PEX-9669b282de6947219cae-p-s1\", \"PEX-ee2d8251303b4403bf50-p-s1\"], \"question\": \"哪张是正面单图、哪张是三视图拼版？\"}}]\n"
+                    + "<<<studio-actions>>>\n",
+            "我先把两张图都看一下，确认用哪张、画面里有什么。\n\n<<<studio-actions>>>\n[\n  {\n    \"tool\": \"view_images\",\n    \"args\": {\n"
+                    + "      \"nodeIds\": [\"PEX-9669b282de6947219cae-p-s1\", \"PEX-ee2d8251303b4403bf50-p-s1\"],\n      \"question\": \"哪张是正面单图、哪张是三视图拼版？\"\n    }\n  }\n]\n"
+                    + "<<<studio-actions>>>");
+
+    @Test void theProductionReplyWithTheMarkerWrittenTwiceIsTheActionItSays() throws Exception {
+        for (String reply : MARKER_TWICE) {
+            var parsed = DialogueActionProtocol.parse(reply, registered());
+            assertNull(parsed.parseError(), reply);
+            assertEquals(List.of("view_images"), parsed.actions().stream().map(DialogueLoop.Action::tool).toList(), reply);
+            var args = parsed.actions().get(0).args();
+            assertEquals(2, args.path("nodeIds").size());
+            assertEquals("PEX-9669b282de6947219cae-p-s1", args.path("nodeIds").get(0).asText());
+            assertEquals("哪张是正面单图、哪张是三视图拼版？", args.path("question").asText());
+            assertEquals("我先把两张图都看一下，确认用哪张、画面里有什么。", parsed.visibleText());
+            assertStreamsAsParsed(reply, registered());
+            assertFalse(streamedWith(reply, registered()).contains("<<"), "neither marker is ever shown");
+        }
+    }
+
+    @Test void everyObviousClosingLineIsAcceptedInAnyCase() throws Exception {
+        String head = "先看一下。\n<<<studio-actions>>>\n";
+        String array = "[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"a\"]}}]";
+        String object = "{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"a\"]}}";
+        for (String closer : List.of("<<<studio-actions>>>", "<<<STUDIO-ACTIONS>>>", "<<</studio-actions>>>", "<<< /studio-actions >>>",
+                "<<<studio_actions>>>", "<<<end>>>", "<<<END>>>", "<<<end-studio-actions>>>", "<<<end_studio_actions>>>", "</studio-actions>",
+                "```", "```\n<<<studio-actions>>>", "<<<studio-actions>>>\n```")) {
+            for (String value : List.of(array, object)) {
+                for (String reply : List.of(head + value + "\n" + closer, head + value + closer, head + value + "\n" + closer + "\n\n")) {
+                    var parsed = DialogueActionProtocol.parse(reply, registered());
+                    assertNull(parsed.parseError(), reply);
+                    assertEquals(List.of("view_images"), parsed.actions().stream().map(DialogueLoop.Action::tool).toList(), reply);
+                    assertEquals("先看一下。", parsed.visibleText(), reply);
+                    assertStreamsAsParsed(reply, registered());
+                }
+            }
+        }
+        var fenced = DialogueActionProtocol.parse(head + "```json\n" + array + "\n```\n<<<studio-actions>>>", registered());
+        assertNull(fenced.parseError());
+        assertEquals(1, fenced.actions().size());
+    }
+
+    /** Only a closing line at the very end is forgiven; anything else after the JSON value still rejects the whole batch. */
+    @Test void anythingElseAfterTheActionsIsStillAFormatError() throws Exception {
+        String head = "先看一下。\n<<<studio-actions>>>\n";
+        String array = "[{\"tool\":\"view_images\",\"args\":{\"nodeIds\":[\"a\"]}}]";
+        for (String tail : List.of("\n看完我再告诉你。", "\n<<<studio-actions>>>\n看完我再告诉你。", "\n[{\"tool\":\"read_canvas\"}]",
+                "\n<<<studio-actions>>>\n[{\"tool\":\"read_canvas\"}]", "\n<<<studio-actions>>>\n[{\"tool\":\"read_canvas\"}]\n<<<studio-actions>>>",
+                " 还有", "\n```\n还有", "\n<<<studio-actions>>>\n<<<studio-actions>>>\n<<<studio-actions>>>", "\n<<<stop>>>", "\n>>>")) {
+            String reply = head + array + tail;
+            var parsed = DialogueActionProtocol.parse(reply, registered());
+            assertNotNull(parsed.parseError(), reply);
+            assertTrue(parsed.actions().isEmpty(), "nothing half-executes: " + reply);
+            assertEquals("先看一下。", parsed.visibleText(), reply);
+            assertStreamsAsParsed(reply, registered());
+        }
+        assertEquals("[1]", DialogueActionProtocol.stripClosing("[1]\n<<<studio-actions>>>"));
+        assertEquals("[1]\n<<<studio-actions>>>\n还有", DialogueActionProtocol.stripClosing("[1]\n<<<studio-actions>>>\n还有"));
+    }
 }
