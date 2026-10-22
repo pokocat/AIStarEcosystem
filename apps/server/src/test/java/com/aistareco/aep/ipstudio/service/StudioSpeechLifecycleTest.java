@@ -51,18 +51,18 @@ class StudioSpeechLifecycleTest {
         worker.step("r");worker.step("r");assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }
-    @Test void providerBusinessErrorsBecomeReviewAndStopAfterBoundedSameKeyRecovery() {
+    @Test void providerBusinessErrorsFailAndRefundWithoutAutomaticResubmission() {
         var diagnostics=mock(StudioRunErrorLog.class);
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLog",diagnostics);
         when(client.submit(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(
             new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"STUDIO_SPEECH_UNAVAILABLE","unavailable"));
-        worker.step("r");assertEquals("audio.recovering",run.getStage());assertEquals("STUDIO_SPEECH_RECOVERING",run.getErrorCode());
+        worker.step("r");assertEquals("failed",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
         assertTrue(run.getErrorMessage().contains("unavailable"));
         verify(diagnostics).attach(eq(run),isA(com.aistareco.common.BusinessException.class));
         worker.step("r");worker.step("r");String receipt=run.getInputJson();worker.step("r");
-        assertEquals("audio.submission_unknown",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
-        assertEquals(receipt,run.getInputJson());assertEquals(8,run.getCost());verifyNoInteractions(credits);
-        verify(client,times(3)).submit(any(),anyString(),eq("original-bytes"),eq("r"),eq("owner"));
+        assertEquals("failed",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
+        assertEquals(receipt,run.getInputJson());assertEquals(0,run.getCost());verify(credits,times(1)).releaseHold(eq("ip-run"),eq("r"),anyString());
+        verify(client,times(1)).submit(any(),anyString(),eq("original-bytes"),eq("r"),eq("owner"));
     }
     @Test void pollingBusinessErrorIsVisibleAndNeverResubmitsOrReleasesCredits() {
         run.setInputJson("{\"_exec\":{\"endpointId\":\"tts\",\"baseUrl\":\"https://api.jusuanhub.com/v1\",\"jobId\":\"job_r\",\"jobUrl\":\"url\"}}");
@@ -136,7 +136,14 @@ class StudioSpeechLifecycleTest {
             verify(queue).bind(AiGenerationQueueService.SPEECH,"r");
             verify(scope,never()).close();throw new IllegalStateException("transient");
         });
-        worker.step("r");assertEquals("running",run.getStatus());verify(scope).close();verifyNoInteractions(credits);
+        org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
+        try {
+            worker.step("r");assertEquals("failed",run.getStatus());verify(scope).close();
+            verify(credits).releaseHold(eq("ip-run"),eq("r"),anyString());
+            verify(queue,never()).finish(anyString(),anyString());
+            org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());
+            verify(queue).finish(AiGenerationQueueService.SPEECH,"r");
+        } finally {org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();}
     }
     private static class JsonBody {
         static void assertNativeLipBody(ObjectMapper mapper,String body)throws Exception {

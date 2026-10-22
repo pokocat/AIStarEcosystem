@@ -41,12 +41,23 @@ class MaterialVideoQueueAdmissionTest {
         when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(com.aistareco.common.BusinessException.badRequest("VIDEO_NOT_CONFIGURED","disabled"));
         worker.generateAsync("job");verify(queue).finish(AiGenerationQueueService.VIDEO,"job");
     }
-    @Test void unknownSubmissionKeepsCapacityAndCannotBeResubmitted(){
+    @Test void unknownSubmissionFailsRefundsAndCannotAutomaticallyResubmit(){
         when(client.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(new MaterialVideoModelClient.SubmissionUnknown("timeout"));
-        worker.generateAsync("job");verify(queue,never()).finish(any(),any());
-        assertEquals("submitting",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
-        verify(credits,never()).releaseHold(any(),any(),any());
-        worker.recoverQueuedGeneration("job");verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
+        worker.generateAsync("job");verify(queue).finish(AiGenerationQueueService.VIDEO,"job");
+        assertEquals("failed",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
+        verify(credits).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),any());
+        worker.generateAsync("job");worker.recoverQueuedGeneration("job");verify(client,times(1)).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
+    }
+    @Test void historicalUnknownIsClosedOnceWithoutAnyProviderCall() {
+        job.setStatus("submitting");job.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");
+        worker.failUnconfirmedSubmission("job");worker.failUnconfirmedSubmission("job");
+        assertEquals("failed",job.getStatus());assertTrue(job.getErrorMessage().contains("重新生成"));
+        verify(credits,times(1)).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("job"),anyString());
+        verifyNoInteractions(client);
+    }
+    @Test void acceptedJobIsNeverRefundedByUnknownReceiptCleanup() {
+        job.setStatus("submitting");job.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");job.setExternalTaskId("original");
+        worker.failUnconfirmedSubmission("job");assertEquals("submitting",job.getStatus());verifyNoInteractions(client,credits);
     }
     @Test void originalJobRecoveryNeverSubmitsAnotherGeneration(){
         job.setStatus("failed");job.setExternalTaskId("original");

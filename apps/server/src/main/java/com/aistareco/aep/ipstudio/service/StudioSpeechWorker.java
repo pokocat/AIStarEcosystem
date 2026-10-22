@@ -49,9 +49,11 @@ public class StudioSpeechWorker {
             var r=billingLockedRun(id).orElse(null);
             if(r==null||!manages(r.getKind())||!IpRun.STATUS_RUNNING.equals(r.getStatus()))return null;
             ObjectNode input=read(r.getInputJson());var exec=(ObjectNode)input.path("_exec");
-            if(exec.path("jobId").asText().isBlank() && ("STUDIO_SPEECH_SUBMISSION_UNKNOWN".equals(r.getErrorCode())
-                    || "STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN".equals(r.getErrorCode())))return null;
             if(exec.path("leaseUntil").asLong()>System.currentTimeMillis())return null;
+            if(exec.path("jobId").asText().isBlank() && exec.path("submitAttempts").asInt()>0) {
+                terminal(r,null,"studio-lip-sync".equals(r.getKind())?"STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN":"STUDIO_SPEECH_SUBMISSION_UNKNOWN",
+                        GenerationSubmissionFailure.MESSAGE,new IllegalStateException("Submission receipt missing after worker interruption"));return null;
+            }
             if(r.isCancelRequested()&&exec.path("submitAttempts").asInt()==0){terminal(r,null,"IP_RUN_CANCELLED","已停止生成");return null;}
             exec.put("leaseUntil",System.currentTimeMillis()+150_000);r.setInputJson(write(input));
             if(r.getStartedAt()==null)r.setStartedAt(Instant.now());r.setHeartbeatAt(Instant.now());runs.save(r);return r;
@@ -87,11 +89,6 @@ public class StudioSpeechWorker {
             }
             if(exec.path("jobId").asText().isBlank()) {
                 int attempts=exec.path("submitAttempts").asInt();long first=exec.path("firstSubmitAt").asLong(System.currentTimeMillis());
-                // The live service declares Idempotency-Key. Bound retries retain identical bytes and key;
-                // after this short recovery window require reconciliation, never create a fresh request.
-                if(attempts>=3 || attempts>0&&System.currentTimeMillis()-first>120_000) {
-                    update(id,e->e.put("leaseUntil",0),prefix+".submission_unknown",5,lip?"STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN":"STUDIO_SPEECH_SUBMISSION_UNKNOWN",label+"受理结果尚未确认，请联系运营核对原请求；请勿重新生成");return;
-                }
                 if(enterpriseBilling!=null && attempts==0)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.getId());
                 exec.put("submitAttempts",attempts+1).put("firstSubmitAt",first);
                 update(id,e->{e.put("submitAttempts",attempts+1).put("firstSubmitAt",first);},prefix+".submitting",10,null,null);
@@ -149,12 +146,11 @@ public class StudioSpeechWorker {
             finish(id,null,error instanceof BusinessException business?business.getCode():codePrefix+"_PREPARATION_FAILED",
                     (error instanceof BusinessException business?business.getMessage()+"。":"")+"生成准备失败，任务未提交，冻结积分已释放。请检查素材后重试",error);return;
         }
-        boolean unknown=exec.path("jobId").asText().isBlank() && (exec.path("submitAttempts").asInt()>=3
-                || System.currentTimeMillis()-exec.path("firstSubmitAt").asLong(System.currentTimeMillis())>120_000);
-        update(id,e->e.put("leaseUntil",0),prefix+(unknown?".submission_unknown":".recovering"),current.getPct(),
-                codePrefix+(unknown?"_SUBMISSION_UNKNOWN":"_RECOVERING"),(error instanceof BusinessException business?business.getMessage()+"。":"")+(unknown
-                    ?label+"受理结果尚未确认，请联系运营核对原请求；请勿重新生成"
-                    :"正在恢复原"+label+"任务，无需重新生成"),error);
+        if(exec.path("jobId").asText().isBlank()) {
+            finish(id,null,codePrefix+"_SUBMISSION_UNKNOWN",GenerationSubmissionFailure.message(error),error);return;
+        }
+        update(id,e->e.put("leaseUntil",0),prefix+".recovering",current.getPct(),codePrefix+"_RECOVERING",
+                (error instanceof BusinessException business?business.getMessage()+"。":"")+"正在重新查询"+label+"结果，刷新不会重新生成或再次扣费",error);
     }
     private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message) {
         update(id,update,stage,pct,code,message,null);

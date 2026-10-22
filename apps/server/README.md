@@ -989,7 +989,7 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 
 `AiModelEndpoint.concurrencyLimit` 经现有 admin 端点配置，V48 新增字段和 `ai_generation_queue` 票据表。端点行锁保证跨进程准入，按票据顺序排队；Studio 与通用视频等待不占工作线程，同步文字/图片请求也共用额度。视频、配音/口型保留名额到上游终态，重启仅恢复原任务；排队取消退回原冻结、等待不算生成超时，端点有活跃票据时禁止删除。配置省略/null 保留，0 清空，1–1000 限制，不中断原任务。其他独立协议和人工处理未知受理容量的边界见 [`ai-endpoint-generation-queue.md`](../../docs/ai-endpoint-generation-queue.md)。
 
-2026-10-22 图片受理未知修复：`AiGenerationQueueRepository.countOccupyingSlots` 在端点锁内供准入、派发和位置投影共用。只排除原生图片 `generate/running/image.provider.recovering/STUDIO_IMAGE_SUBMISSION_UNKNOWN`，保留原票据、请求、冻结与付款授权，不触发新提交或结算；部署后旧记录即生效，无迁移。已知图片原任务恢复及视频/配音/口型容量规则保留。前端图片阶段无假百分比，未知受理显式引导运营核对。
+2026-10-22 最新无回执策略：图片/视频/配音/口型提交未获得有效任务回执，按失败终态处理，事务内退回未完成部分冻结，保留已成功产物；用户可主动重新生成。旧 unknown 记录由原 worker 收尾，无需 SQL 改账。原始请求与诊断保留，`GET /api/admin/ai-generation-attention` 为 SUPER_ADMIN/OPERATOR 提供只读异常告警。已知供应商任务号的查询异常仍查询原任务，不重复提交。
 
 V53 为每个固定聊天模型端点保存 `chat_supports_temperature`、`chat_supports_top_p`、`chat_supports_response_format` 与 `chat_max_output_tokens`。`AiModelInvocationService` 是内部聊天用途的请求参数执行点：能力列为 null 时沿用原先发送行为，false 时调用方和默认配置均不得发送该参数；输出上限在组装请求后收敛。有限制的端点拒绝调用方改用另一模型，防止把此模型规则误套到别的模型。迁移将存量 Qwen3.5/3.6 的已验证限制写入端点行，运行时代码不按模型名猜能力。管理端可修改；输出上限更新请求省略/null 保留，0 清空。媒体协议仍由对应客户端及候选能力配置负责。
 
@@ -1056,7 +1056,7 @@ V51 为 `material_video_job` 增加可空 `error_code VARCHAR(64)`，和原 `err
 - 受理恢复：图片/视频保存原供应商路由/请求与任务号，轮询故障保留冻结；仅 SUPER_ADMIN/OPERATOR（不含纯 FINANCE_ADMIN）GET `/api/admin/material-video-jobs/{id}` 或 `/api/admin/ip-studio/runs/{id}` 核对，reconcile 可带原任务号和证据，只查询原任务。不提供无证据强制退积分或重新提交。
 - 完整结果见 [交付验收](../../docs/releases/ip-studio-enterprise-complete-validation.md)；产品场景见 [端到端用例](../../docs/releases/ip-studio-enterprise-scenario-acceptance.md)；发布与回退边界见 [发布准备](../../docs/releases/ip-studio-enterprise-release-readiness.md)。
 
-受理未知而供应商明确证明原请求未受理时，运营可提交核对依据并显式确认：图片 `POST /api/admin/ip-studio/runs/{id}/release-unknown`，视频 reconcile 的 `confirmedNotAccepted=true`。仅无原供应商ID、原冻结/授权仍有效且符合未知状态时允许；审计、原任务失败、仅剩余原冻结释放/归集及授权结束同事务。已有原ID必须继续查询，不允许单凭“查不到状态”释放，也不退已成功产物的费用。
+历史人工核对接口仍保留严格的状态和原冻结校验；已按新策略失败并退回的无回执任务不得补录恢复或补扣积分。
 
 
 ## Studio 场景模板与发行共享（2026-10-17，已生产发布）

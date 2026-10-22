@@ -390,7 +390,29 @@ public class IpRunWorker {
             run.setInputJson(fresh.getInputJson());
         });
     }
+    /** Close legacy unknown receipts only after their worker lease expires. Retain already delivered images. */
+    public void failUnconfirmedSubmission(String runId) {
+        atomic(() -> {
+            if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
+            var run=runRepo.lockById(runId).orElse(null);
+            if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || !"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()))return;
+            var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+            int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
+            var item=exec.path("imageJobs").path(completed);
+            if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis() || !item.path("jobId").asText().isBlank() || !item.path("storageKey").asText().isBlank())return;
+            run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
+            failAtomically(run,"STUDIO_IMAGE_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
+                    new IllegalStateException("Historical unknown submission: "+run.getErrorMessage()));
+        });
+    }
     private void pending(IpRun run,JusuanImageClient.Pending pending) {
+        if("STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(pending.code())) {
+            var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
+            int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
+            run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
+            fail(run,pending.code(),com.aistareco.aep.service.GenerationSubmissionFailure.message(pending.getCause()),pending);
+            return;
+        }
         atomic(()->{
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
             var fresh=runRepo.lockById(run.getId()).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))return;

@@ -12,9 +12,9 @@ const makeProps = () => ({ runs: [run('active123', 'running'), run('failure456',
 test.each([['generate','STUDIO_IMAGE_SUBMISSION_UNKNOWN'],['studio-video','VIDEO_SUBMISSION_UNKNOWN'],['studio-audio','STUDIO_SPEECH_SUBMISSION_UNKNOWN'],['studio-lip-sync','STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN']])('%s review retains frozen credits without impossible stop or regeneration',(kind,errorCode)=>{
   const props={...makeProps(),runs:[run('unknown','running',{kind,stage:'provider.submission_unknown',pct:5,cost:30,errorCode})]};
   render(<StudioTaskList {...props}/>);
-  expect(screen.getByText('受理结果待核对')).toBeDefined();
+  expect(screen.getByText('生成遇到问题')).toBeDefined();
   expect(screen.getByText('冻结 30 积分')).toBeDefined();
-  expect(screen.getByRole('status').textContent).toContain('请勿重复生成');
+  expect(screen.getByRole('status').textContent).toContain('显示失败后可以重新生成');
   expect(screen.queryByRole('progressbar')).toBeNull();
   expect(screen.queryByRole('button',{name:'停止'})).toBeNull();
   expect(screen.queryByRole('button',{name:'重新生成'})).toBeNull();
@@ -56,8 +56,8 @@ test('failed assistant tasks offer reopening the conversation without a misleadi
 
 test.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP_SYNC_RECOVERING'])('%s shows recovery without frozen percent or stop',errorCode=>{
   render(<StudioTaskList {...makeProps()} runs={[run('recover','running',{pct:5,errorCode})]}/>);
-  expect(screen.getByText('正在恢复原任务')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
-  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('冻结积分');
+  expect(screen.getByText('正在重新查询结果')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('不会重新生成');
 });
 
 test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED_MODEL_ERROR'])('%s remains inspectable before terminal failure',errorCode=>{
@@ -67,4 +67,16 @@ test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED
   fireEvent.click(screen.getByRole('button',{name:'查看错误详情'}));
   expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage);
   expect(screen.queryByRole('button',{name:'重新生成'})).toBeNull();
+});
+
+test('refreshes the original running task once, reports completion, and never retries generation',async()=>{
+  let finish!:()=>void;
+  const onRefresh=vi.fn(()=>new Promise<void>(resolve=>{finish=resolve;}));
+  const props={...makeProps(),runs:[run('original','running',{errorCode:'VIDEO_RECONCILIATION_PENDING'})],onRefresh};
+  render(<StudioTaskList {...props}/>);
+  fireEvent.click(screen.getByRole('button',{name:'刷新结果'}));
+  fireEvent.click(screen.getByRole('button',{name:'正在刷新…'}));
+  expect(onRefresh).toHaveBeenCalledExactlyOnceWith(props.runs[0]);
+  finish();await screen.findByText('已读取最新状态，未重新生成或扣费。');
+  expect(props.onRetry).not.toHaveBeenCalled();expect(props.onCancel).not.toHaveBeenCalled();
 });

@@ -63,7 +63,7 @@ class AiGenerationQueueDispatcherTest {
         when(images.canResumeNative(receipt)).thenReturn(false);
         when(queue.claimDispatch(later,false)).thenReturn(true);
         dispatcher.dispatch();
-        verify(images).execute("later");verify(images,never()).execute("unknown");
+        verify(images).execute("later");verify(images).failUnconfirmedSubmission("unknown");verify(images,never()).execute("unknown");
         verify(images,never()).recoverNative("unknown");verify(queue,never()).finish(AiGenerationQueueService.IMAGE,"unknown");
     }
     @Test void acceptedVideoRecoveryOnlyQueriesOriginalTask() {
@@ -95,7 +95,7 @@ class AiGenerationQueueDispatcherTest {
         var entry=ticket(AiGenerationQueueService.VIDEO,"uncertain","running");when(queue.openEntries()).thenReturn(List.of(entry));
         when(videos.findById("uncertain")).thenReturn(Optional.of(MaterialVideoJob.builder().status("submitting").errorCode("VIDEO_SUBMISSION_UNKNOWN").build()));
         dispatcher.dispatch();
-        verifyNoInteractions(videoWorker);verify(queue,never()).claimDispatch(any(),anyBoolean());verify(queue,never()).finish(any(),any());
+        verify(videoWorker).failUnconfirmedSubmission("uncertain");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).claimDispatch(any(),anyBoolean());verify(queue,never()).finish(any(),any());
     }
     private AiGenerationQueueEntry ticket(String type,String id,String state) {
         var ticket=new AiGenerationQueueEntry();ticket.setId(1L);ticket.setTaskType(type);ticket.setTaskId(id);

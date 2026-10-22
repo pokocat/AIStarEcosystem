@@ -1001,3 +1001,19 @@ test('frame-intent confirmation opens the compact picker, preserves the requeste
  fireEvent.click(generate());await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  expect(api.submit.mock.calls[0][1].video).toMatchObject({mode:'first_last_frame_video',firstFrameKey:'first.png',lastFrameKey:'last.png',optimizePrompt:false});
 });
+
+test('manual refresh reads the original task and unlocks user retry only after a failed response',async()=>{
+ const active={...done,status:'running',pct:5,cost:520,errorCode:'VIDEO_RECONCILIATION_PENDING',output:{}};
+ api.read.mockResolvedValue(active);api.history.mockResolvedValue({items:[active],hasMore:false});
+ render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'查看创作任务'}));
+ const panel=await screen.findByRole('dialog',{name:'创作任务'});
+ await within(panel).findByRole('button',{name:'刷新结果'});
+ api.read.mockResolvedValue({...active,status:'failed',cost:0,errorCode:'VIDEO_SUBMISSION_UNKNOWN',errorMessage:'没有返回有效任务信息，积分已退回，可以重新生成'});
+ const before=api.read.mock.calls.length;
+ fireEvent.click(within(panel).getByRole('button',{name:'刷新结果'}));
+ await within(panel).findByRole('button',{name:'重新生成'});
+ expect(api.read.mock.calls.length).toBeGreaterThan(before);expect(api.read).toHaveBeenLastCalledWith('accepted');
+ expect(snapshot[0].metadata?.status).toBe('error');
+ expect(api.submit).not.toHaveBeenCalled();expect(api.speech).not.toHaveBeenCalled();expect(api.lip).not.toHaveBeenCalled();
+});

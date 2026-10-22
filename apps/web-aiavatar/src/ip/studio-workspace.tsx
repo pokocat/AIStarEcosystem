@@ -1299,6 +1299,11 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         detailFor={run=>studioTaskPresentation(run,[...nodes,...conversations]).detail}
         onInput={setRunDetail} onLocate={node=>{setTaskList(false);if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else{setMode("canvas");onFocusNode(node.id);}}}
         onRetry={node=>{if(node.metadata?.studio?.conversation){setAssistantNodeId(node.id);setAssistantOpen(true);}else void retry(node);}} onReload={()=>void loadTasks(taskPage)} onMore={()=>void loadTasks(taskPage+1)}
+        onRefresh={async run=>{const token=epoch.current;const latest=await readRun(run.id);if(token!==epoch.current||!alive.current)return;
+          setRuns(current=>current.map(item=>item.id===latest.id?latest:item));
+          if(latest.status!=='running')terminalRuns.current.set(latest.id,latest);
+          const target=nodesRef.current.find(node=>node.id===latest.nodeId&&node.metadata?.studio?.runId===latest.id);
+          if(target)setNodes(nodes=>applyStudioRunToDocument(nodes,connectionsRef.current,target.id,latest));}}
         onCancel={run=>{const token=epoch.current;void cancelRun(run.id).then(result=>{
           if(epoch.current!==token||!alive.current)return;
           if(result.status!=='running')terminalRuns.current.set(result.id,result);

@@ -1,4 +1,5 @@
 "use client";
+import { GenerationSubmissionAlerts } from "./generation-alerts";
 import { GenerationTaskReconciliation } from "./material-video-reconciliation";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -834,6 +835,7 @@ export default function AdminAiModelsPage() {
         description="配置模型接入端点（固定上游密钥 + 单模型 + 地址），并把每个 AI 应用绑定到一个端点。密钥由服务端加密存储，列表仅显示脱敏值。"
       />
 
+      <GenerationSubmissionAlerts />
       <Tabs defaultValue="endpoints">
         <TabsList>
           <TabsTrigger value="endpoints">模型接入端点</TabsTrigger>

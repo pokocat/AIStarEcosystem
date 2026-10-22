@@ -43,8 +43,10 @@ public class AiGenerationQueueDispatcher {
                         && (job.getExternalTaskId()==null||job.getExternalTaskId().isBlank());
                 if(job==null || terminalWithoutSupplier || (waiting && !"queued".equals(job.getStatus()))) {queue.finish(type,id);continue;}
                 if(!waiting) {
-                    // No supplier ID means there is nothing to poll. Keep the receipt for operator evidence.
-                    if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())continue;
+                    if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank()) {
+                        if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))videoWorker.getObject().failUnconfirmedSubmission(id);
+                        continue;
+                    }
                     if(queue.claimDispatch(entry,true))videoWorker.getObject().recoverQueuedGeneration(id);
                     continue;
                 }
@@ -53,6 +55,9 @@ public class AiGenerationQueueDispatcher {
                 if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) {queue.finish(type,id);continue;}
                 // Waiting is not execution time. Reaper and hold sweeper recognize the durable ticket.
                 if(!waiting) {
+                    if(AiGenerationQueueService.IMAGE.equals(type) && "STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
+                        images.getObject().failUnconfirmedSubmission(id);continue;
+                    }
                     if(AiGenerationQueueService.IMAGE.equals(type) && images.getObject().canResumeNative(run) && queue.claimDispatch(entry,true))
                         images.getObject().recoverNative(id);
                     continue;

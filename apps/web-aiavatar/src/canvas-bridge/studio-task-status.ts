@@ -8,8 +8,8 @@ export function studioTaskNeedsReview(task?: Task): boolean {
 export function studioTaskRecovering(task?: Task): boolean {
   return modelTaskException(task)?.needsReview === false;
 }
-export const studioRecoveryNotice = '生成服务暂时无法返回结果，正在恢复原任务。请勿重复生成，冻结积分待结果确认后结算。';
-export const studioReviewNotice = '生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。';
+export const studioRecoveryNotice = modelTaskException({status:'running',errorCode:'VIDEO_RECONCILIATION_PENDING'})!.notice;
+export const studioReviewNotice = modelTaskException({status:'running',errorCode:'VIDEO_SUBMISSION_UNKNOWN'})!.notice;
 /** Image stages are checkpoints, not provider percentages. */
 export function studioTaskHasProgress(task?: Task): boolean {
   return task?.kind !== 'generate' && !studioTaskNeedsReview(task) && !studioTaskRecovering(task) && !task?.stage?.startsWith('image.') && task?.stage !== 'storage.persist';
@@ -23,8 +23,8 @@ export function studioQueueNotice(queue?: AiGenerationQueuePosition | null): str
     : '排队中 · 有空位后自动开始';
 }
 export function studioTaskLabel(task?: Task, compact = false): string {
-  if (studioTaskNeedsReview(task)) return '受理结果待核对';
-  if (studioTaskRecovering(task)) return '正在恢复原任务';
+  if (studioTaskNeedsReview(task)) return '生成遇到问题';
+  if (studioTaskRecovering(task)) return '正在重新查询结果';
   if (studioTaskQueued(task)) return compact ? task?.queue?`排队第 ${task.queue.position} 位`:'排队中' : studioQueueNotice(task?.queue);
   if(task?.stage==='image.provider.recovering')return '正在查询原图片任务';
   if(task?.stage==='image.provider.queued')return '生成服务排队中';

@@ -9800,6 +9800,44 @@ paths:
       parameters: [{ name: days, in: query, required: false, schema: { type: integer, default: 30, maximum: 365 } }]
       responses: { '200': { description: 单端点大模型用量报表（同样返回用户 / 租户 / 来源应用维度） } }
 
+  /admin/ai-generation-attention:
+    get:
+      tags: [admin-ai-models]
+      operationId: adminGenerationSubmissionAlerts
+      summary: 未收到有效生成回执的异常告警
+      description: SUPER_ADMIN/OPERATOR 只读。投影原任务与保留的排队记录，包含已失败并退回未完成冻结的任务；不调用供应商、不重新提交、不改积分。固定每页20条，按请求时间倒序。
+      parameters:
+      - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200':
+          description: 异常告警列表
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  data:
+                    type: object
+                    properties:
+                      page: { type: integer }
+                      total: { type: integer, format: int64 }
+                      hasMore: { type: boolean }
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            taskType: { type: string }
+                            taskId: { type: string }
+                            endpointId: { type: string }
+                            createdAt: { type: string, format: date-time }
+                            status: { type: string }
+                            errorCode: { type: string }
+                            errorMessage: { type: string, nullable: true }
+                            logId: { type: string, nullable: true }
+        '403': { description: 没有平台运营权限 }
+
   /admin/material-video-jobs/{id}/reconcile:
     post:
       tags:

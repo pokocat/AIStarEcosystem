@@ -1002,6 +1002,6 @@ describe("演示数据（mocks/video-studio.ts）照 plan §2 / §3 / §10", () 
 });
 
 test('受理未知和原任务恢复不显示冻结的百分比',()=>{
-  assert.equal(jobStatusText({status:'running',progressPct:5,errorCode:'VIDEO_SUBMISSION_UNKNOWN'}),'受理结果待核对');
-  assert.equal(jobStatusText({status:'running',progressPct:35,errorCode:'VIDEO_RECONCILIATION_PENDING'}),'正在恢复原任务');
+  assert.equal(jobStatusText({status:'running',progressPct:5,errorCode:'VIDEO_SUBMISSION_UNKNOWN'}),'生成遇到问题');
+  assert.equal(jobStatusText({status:'running',progressPct:35,errorCode:'VIDEO_RECONCILIATION_PENDING'}),'正在重新查询结果');
 });

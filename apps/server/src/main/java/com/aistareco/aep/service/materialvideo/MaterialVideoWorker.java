@@ -115,10 +115,9 @@ public class MaterialVideoWorker {
             log.error("[material-video] job {} failed", jobId, t);
             String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
             MaterialVideoJob current=jobRepo.findById(jobId).orElse(job);
-            if(t instanceof MaterialVideoModelClient.SubmissionUnknown || hasAcceptedTask(current)) {
-                // An HTTP timeout is not supplier failure. Keep the original hold; review-only receipts do not occupy capacity.
-                markPending(jobId,t instanceof MaterialVideoModelClient.SubmissionUnknown
-                        ? "VIDEO_SUBMISSION_UNKNOWN" : "VIDEO_RECONCILIATION_PENDING", t);
+            if(hasAcceptedTask(current)) {
+                // A recorded supplier job can still be queried; do not create a second generation.
+                markPending(jobId,"VIDEO_RECONCILIATION_PENDING", t);
             } else {
                 markFailed(jobId, t instanceof BusinessException business ? business.getCode() : null, msg, t);
                 terminal[0]=true;
@@ -127,6 +126,17 @@ public class MaterialVideoWorker {
             if(queue!=null && terminal[0] && jobRepo.findById(jobId).map(j->isTerminal(j.getStatus())).orElse(true))
                 queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
         }
+    }
+
+    /** Apply the explicit fail-and-refund policy to historical unknown receipts, without any provider call. */
+    public void failUnconfirmedSubmission(String jobId) {
+        inTransaction(() -> settlementJob(jobId).ifPresent(job -> {
+            if (!"submitting".equals(job.getStatus()) || hasAcceptedTask(job)
+                    || !"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())) return;
+            markFailed(jobId, "VIDEO_SUBMISSION_UNKNOWN",
+                    com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
+                    new IllegalStateException("Historical unknown submission: " + job.getErrorMessage()));
+        }));
     }
 
     /** After a process loss, resume only a recorded upstream ID. Never submit a second task. */

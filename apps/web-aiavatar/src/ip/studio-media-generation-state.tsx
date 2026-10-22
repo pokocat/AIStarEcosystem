@@ -14,7 +14,7 @@ export function StudioMediaGenerationState({ task, confirmed, media }: { task?: 
   const progress = media !== 'image' && !review && !recovering && !queued && confirmed && Number.isFinite(task?.pct)
     ? Math.max(0, Math.min(100, Math.round(task!.pct!))) : undefined;
   const imageTitle = task?.stage?.startsWith('image.') || task?.stage === 'storage.persist' ? studioTaskLabel(task) : '正在生成图片';
-  const title = review ? '受理结果待核对' : recovering ? '正在恢复原任务' : queued ? `等待生成${label}` : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
+  const title = review ? '生成遇到问题' : recovering ? '正在重新查询结果' : queued ? `等待生成${label}` : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
   const detail = queued ? studioTaskLabel(task, true) : !confirmed ? '请勿重复提交' : undefined;
 
   return <div className="studio-flow-media-generating nodrag nopan" role="status" aria-live="polite">
@@ -25,6 +25,6 @@ export function StudioMediaGenerationState({ task, confirmed, media }: { task?: 
       {detail && <><span aria-hidden="true"> · </span><span>{detail}</span></>}
       {progress !== undefined && <><span aria-hidden="true"> · </span><span>{progress}%</span></>}
     </span>
-    {(review || recovering) && <p className="studio-flow-generation-review">{review ? studioReviewNotice : studioRecoveryNotice}</p>}
+    {(review || recovering) && <><p className="studio-flow-generation-review">{review ? studioReviewNotice : studioRecoveryNotice}</p><button type="button" className="studio-error-link" onClick={event=>{event.stopPropagation();window.dispatchEvent(new CustomEvent('studio-command',{detail:{action:'tasks'}}));}}>查看任务状态</button></>}
   </div>;
 }

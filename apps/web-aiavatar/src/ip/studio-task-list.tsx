@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import type { IpRun } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { studioReviewNotice, studioRecoveryNotice, studioTaskRecovering, studioTaskHasProgress, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
@@ -12,10 +12,15 @@ type Props = {
   loading: boolean; busy: boolean; hasMore: boolean; error?: string; refreshErrors: Record<string, boolean>;
   titleFor: (run: IpRun) => string; detailFor?: (run: IpRun) => string; onInput: (run: IpRun) => void; onLocate: (node: CanvasNodeData) => void;
   onCancel: (run: IpRun) => void; onRetry: (node: CanvasNodeData) => void; onReload: () => void; onMore: () => void;
+  onRefresh?: (run: IpRun) => Promise<void>;
 };
 const failed = (run: IpRun) => run.status === 'failed' && run.errorCode !== 'IP_RUN_CANCELLED';
-export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, error, refreshErrors, titleFor, detailFor, onInput, onLocate, onCancel, onRetry, onReload, onMore }: Props) {
+export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMore, error, refreshErrors, titleFor, detailFor, onInput, onLocate, onCancel, onRetry, onReload, onMore, onRefresh }: Props) {
   const [filter, setFilter] = useState<Filter>('all');
+  const [refreshing,setRefreshing]=useState<string>();
+  const [refreshed,setRefreshed]=useState<string>();
+  const refreshLock=useRef(false);
+  const refresh=async(run:IpRun)=>{if(refreshLock.current||!onRefresh)return;refreshLock.current=true;setRefreshing(run.id);setRefreshed(undefined);try{await onRefresh(run);setRefreshed(run.id);}catch(error){reportStudioError(error);}finally{refreshLock.current=false;setRefreshing(undefined);}};
   const filters: { id: Filter; label: string; count: number }[] = [
     { id: 'all', label: '全部', count: runs.length + unconfirmed.length },
     { id: 'active', label: '进行中', count: runs.filter(r => r.status === 'running').length + unconfirmed.length },
@@ -51,11 +56,13 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         {run.kind === 'studio-video' && studioRunRewrites(run).some(take => take.lost.length) && <p className="studio-task-note">出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照</p>}
         {(state === 'failed' || state === 'partial' || (run.status === 'running' && (run.errorCode || run.errorMessage))) && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || (run.status === 'running' ? '任务出现异常，可查看错误详情' : '本次创作未完成，可查看错误详情')}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
         <div className="studio-task-actions">
+          {run.status==='running'&&onRefresh&&<button type="button" disabled={!!refreshing} onClick={()=>void refresh(run)}>{refreshing===run.id?'正在刷新…':review?'刷新状态':'刷新结果'}</button>}
           {node && <button type="button" className={run.status === 'done' && current ? 'is-primary' : ''} onClick={() => onLocate(node)}>{node.metadata?.studio?.conversation ? '打开对话' : run.status === 'done' && current ? '查看结果' : '定位节点'}</button>}
           {failed(run) && current && node && !node.metadata?.studio?.conversation && <button type="button" className="is-primary" disabled={busy} onClick={() => onRetry(node)}>重新生成</button>}
           <button type="button" onClick={() => onInput(run)}>查看输入</button>
           {run.status === 'running' && !review && !recovering && (run.kind === 'studio-video' && !queued ? <span className="studio-task-note">视频生成中</span> : <button type="button" onClick={() => onCancel(run)}>{queued ? '停止排队' : '停止'}</button>)}
         </div>
+        {refreshed===run.id&&<p className="studio-task-note" role="status">已读取最新状态，未重新生成或扣费。</p>}
       </article>;
     })}
     {!visible.length && (!(filter === 'all' || filter === 'active') || !unconfirmed.length) && !loading && <div className="studio-task-empty">{filter === 'all' ? '还没有创作任务' : filter === 'active' ? '当前没有进行中的任务' : filter === 'failed' ? '没有失败的任务' : '还没有完成的任务'}</div>}

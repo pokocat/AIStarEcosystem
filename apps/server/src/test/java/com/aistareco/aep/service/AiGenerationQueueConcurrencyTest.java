@@ -71,6 +71,7 @@ class AiGenerationQueueConcurrencyTest {
             queue.register("ip-image",id,"e",true);
         }
         assertEquals(2,tickets.countByEndpointIdAndState("e","running"));
+        assertEquals(2,tickets.findNeedingAttention(org.springframework.data.domain.PageRequest.of(0,20)).getTotalElements());
         assertEquals(0,tickets.countOccupyingSlots("e"));
         assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("sync-call","http","e",false));
         assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","next-one","e",false));
@@ -107,6 +108,8 @@ class AiGenerationQueueConcurrencyTest {
             queue.register("ip-speech",kind,"e",true);
         }
         assertEquals(3,tickets.countByEndpointIdAndState("e","running"));assertEquals(0,tickets.countOccupyingSlots("e"));
+        var attention=tickets.findNeedingAttention(org.springframework.data.domain.PageRequest.of(0,2));
+        assertEquals(3,attention.getTotalElements());assertEquals(2,attention.getContent().size());assertTrue(attention.hasNext());
         assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("material-video","next","e",false));
         assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("material-video","later","e",false));
         assertEquals(1,queue.position("material-video","later").running());
@@ -117,6 +120,10 @@ class AiGenerationQueueConcurrencyTest {
         video.setExternalTaskId("original");videos.saveAndFlush(video);assertEquals(1,tickets.countOccupyingSlots("e"));
         var audio=runs.findById("studio-audio").orElseThrow();audio.setStage("audio.recovering");audio.setErrorCode("STUDIO_SPEECH_RECOVERING");runs.saveAndFlush(audio);
         assertEquals(2,tickets.countOccupyingSlots("e"));
+        var lip=runs.findById("studio-lip-sync").orElseThrow();lip.setStatus("failed");lip.setCost(0);runs.saveAndFlush(lip);
+        queue.finish("ip-speech","studio-lip-sync");
+        // Closed/refunded incidents remain visible; viewing never reopens a queue ticket.
+        assertEquals(List.of("studio-lip-sync"),tickets.findNeedingAttention(org.springframework.data.domain.PageRequest.of(0,20)).stream().map(AiGenerationQueueEntry::getTaskId).toList());
     }
     @Test void unlimitedPolicyAndDispatchLeasesDoNotDuplicateTasks() {
         endpoint("e",1);

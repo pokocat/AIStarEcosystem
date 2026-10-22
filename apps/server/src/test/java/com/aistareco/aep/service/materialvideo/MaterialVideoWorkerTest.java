@@ -142,7 +142,8 @@ class MaterialVideoWorkerTest {
         worker(new FakeUploader(false)).generateAsync("mvj_test");assertEquals("succeeded",job.getStatus());
     }
 
-    @Test void uncertainSubmissionKeepsSafeHttpReasonAndRealTraceWithoutReleasingHold() {
+    @Test void uncertainSubmissionFailsWithSafeHttpReasonTraceAndRefund() {
+        job.setCreditsHeld(520);
         var error=new MaterialVideoModelClient.SubmissionUnknown("private provider response",503);
         when(modelClient.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(error);
         var errors=mock(com.aistareco.aep.service.ErrorLogService.class);
@@ -150,11 +151,11 @@ class MaterialVideoWorkerTest {
         var worker=worker(new FakeUploader(false));
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
         worker.generateAsync("mvj_test");
-        assertEquals("submitting",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
+        assertEquals("failed",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
         assertTrue(job.getErrorMessage().contains("HTTP 503"));assertTrue(job.getErrorMessage().contains("ABCDEF234567"));
         assertFalse(job.getErrorMessage().contains("private provider response"));
         verify(errors).recordTask(error,"VIDEO_SUBMISSION_UNKNOWN","u1","mvj_test");
-        verify(creditService,never()).releaseHold(anyString(),anyString(),anyString());
+        verify(creditService).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE),eq("mvj_test"),anyString());
     }
 
     @Test void originalRecoveryFailureBecomesVisibleAndKeepsOneDiagnosticForRepeatedError() {

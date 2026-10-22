@@ -35,14 +35,14 @@ test('an unknown image submission explains review without a spinner or misleadin
     metadata:{status:'loading',studio:{kind:'shot',runId:'IPR-unknown',task}}};
   const props={data:{document:node},selected:true} as any;
   const view=render(<StudioFlowCard {...props}/>);
-  expect(screen.getByRole('status').textContent).toContain('受理结果待核对');
-  expect(screen.getByRole('status').textContent).toContain('请联系运营核对原任务');
-  expect(screen.getByRole('status').textContent).toContain('冻结积分待核实后结算');
+  expect(screen.getByRole('status').textContent).toContain('生成遇到问题');
+  expect(screen.getByRole('status').textContent).toContain('系统正在结束本次任务');
+  expect(screen.getByRole('status').textContent).toContain('退回未完成部分的冻结积分');
   expect(screen.getByRole('status').textContent).not.toContain('10%');
   expect(screen.queryByRole('progressbar')).toBeNull();
   expect(view.container.querySelector('.studio-flow-generation-ring')).toBeNull();
   view.unmount();render(<StudioFlowCard {...props}/>);
-  expect(screen.getByRole('status').textContent).toContain('受理结果待核对');
+  expect(screen.getByRole('status').textContent).toContain('生成遇到问题');
 });
 
 test.each(['image.generate.1','image.provider.processing','image.provider.recovering','storage.persist'])('image checkpoint %s is a stage, not a percentage',stage=>{
@@ -96,8 +96,8 @@ test('queue and unconfirmed submission do not show misleading percentages', () =
 test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING'])('video %s is explicit after refresh and has no 5 percent progress',errorCode=>{
   const task={status:'running',pct:5,errorCode};
   const view=render(<StudioMediaGenerationState media="video" task={task} confirmed/>);
-  expect(screen.getByRole('status').textContent).toContain(errorCode==='VIDEO_SUBMISSION_UNKNOWN'?'受理结果待核对':'正在恢复原任务');
+  expect(screen.getByRole('status').textContent).toContain(errorCode==='VIDEO_SUBMISSION_UNKNOWN'?'生成遇到问题':'正在重新查询结果');
   expect(screen.queryByRole('progressbar')).toBeNull();expect(screen.getByRole('status').textContent).not.toContain('5%');
-  expect(screen.getByRole('status').textContent).toContain('请勿重复生成');
+  expect(screen.getByRole('status').textContent).toContain('刷新');
   if(errorCode==='VIDEO_SUBMISSION_UNKNOWN')expect(view.container.querySelector('.studio-flow-generation-ring')).toBeNull();
 });

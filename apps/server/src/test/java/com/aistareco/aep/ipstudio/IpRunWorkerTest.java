@@ -571,10 +571,24 @@ class IpRunWorkerTest {
             java.util.function.Consumer<ObjectNode> callback=inv.getArgument(9);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original-body"));
             throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(false,new IllegalStateException("reply lost"));
         });
-        worker.runBlocking(RID);assertEquals("running",reload().getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
-        assertTrue(IpRunWorker.hasNativeSubmission(reload()));assertFalse(worker.canResumeNative(reload()));worker.recoverNative(RID);
-        assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));verifyNoCharges();
+        worker.runBlocking(RID);assertEquals("failed",reload().getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
+        assertEquals(0,reload().getCost());assertTrue(reload().getInputJson().contains("original-body"));assertFalse(IpRunWorker.hasNativeSubmission(reload()));assertFalse(worker.canResumeNative(reload()));worker.recoverNative(RID);
+        assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
         verify(nativeImages,times(1)).generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any());
+    }
+    @Test void historicalUnknownImageRefundsOnlyUndeliveredPartAndNeverCallsProvider() throws Exception {
+        var run=seedGenerateRun(2,8L,16L,"source");
+        ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("nativeLeaseUntil",0).withArray("imageJobs")
+                .add(OM.createObjectNode().put("jobId","delivered").put("storageKey","first.png"))
+                .add(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original"));
+        run.setInputJson(input.toString());run.setOutputJson("{\"candidates\":[{\"key\":\"first.png\"}]}");
+        run.setCost(8);run.setErrorCode("STUDIO_IMAGE_SUBMISSION_UNKNOWN");runs.repo.save(run);
+        worker.failUnconfirmedSubmission(RID);worker.failUnconfirmedSubmission(RID);
+        assertEquals("failed",reload().getStatus());assertEquals(8,reload().getCost());
+        assertEquals("first.png",OM.readTree(reload().getOutputJson()).path("candidates").path(0).path("key").asText());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
     }
     @Test void acceptedImageCheckpointWriteFailureCannotFallThroughToRefund() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);

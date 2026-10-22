@@ -1,0 +1,30 @@
+# 模型任务故障处理与飞书告警
+
+2026-10-22 新策略由用户明确指定：没有拿到有效生成回执即按失败处理，用户可以重试；不要求用户等待人工核对。
+
+## 任务和积分
+
+- 图片、视频、配音、口型提交无有效任务号：原任务终止为失败，原事务释放未完成部分冻结，记录错误和追查号，释放并发名额。已成功图片和已扣费用保留。
+- 旧 `*_SUBMISSION_UNKNOWN` 记录沿用原结算服务收尾，不通过 SQL 直接改钱包。图片/语音需先确认执行租约结束；有已知供应商任务号或已镜像产物时继续原任务处理。
+- 系统不自动重复提交；用户从失败记录主动重新生成，新任务新计价。平台承担供应商可能已收到旧请求的风险，不能事后补扣已退还积分。
+- 已有任务号的短暂查询错误：继续查询原任务，用户可刷新状态，无新提交/扣费。浏览器没收到平台响应的请求仍以原幂等键查询，不能混同于平台未收到供应商回执。
+
+## 后台可见性
+
+后台「AI 模型与用量」顶部显示“生成异常告警”。`GET /api/admin/ai-generation-attention?page=0` 仅 SUPER_ADMIN/OPERATOR 可读，每页20条，保留原任务、端点、错误、追查号。列表由原记录投影，不改任务或积分。原始供应商请求在请求日志中，完整错误追查仅超管可读。
+
+## 飞书应用机器人
+
+采用飞书应用机器人，先向配置的群发送普通文本告警，再向配置的群成员发应用内加急。Webhook 自定义机器人不适用。必须具备发送消息及 `im:message.urgent:app_send`（或等价 `im:message.urgent`）权限；机器人与接收人均须在群内。
+
+环境变量见 `infra/env/server.env.example`：`AEP_FEISHU_ALERTS_ENABLED`、`AEP_FEISHU_APP_ID`、`AEP_FEISHU_APP_SECRET`、`AEP_FEISHU_ALERT_CHAT_ID`、`AEP_FEISHU_ALERT_USER_ID`、`AEP_FEISHU_ALERT_URGENT`。密钥仅安装在服务器受限 env 文件，不写 Git、聊天或日志。默认禁用；配置完整才入队/发送。
+
+V64 新增 `model_alert_delivery`，仅记录通知投递：同任务+错误码生成稳定 UUID 主键去重，飞书发送复用该 UUID。独立调度线程每10秒取一条、数据库60秒租约防抢占；HTTP单次5秒超时。发送成功先持久化 message_id，加急失败只重试已有消息；最多5次、30/60/120/240秒退避，最终失败留下状态与脱敏错误。通知异常不得回滚任务失败/退款，或拖住生成调度。
+
+消息仅含错误分类、HTTP状态、任务号、我方追查号、可提取的供应商 request ID/logid 与后台入口；不转发提示词、素材链接、完整供应商正文、密钥或用户手机号。全部异步模型 ErrorLog 使用此链路，取消任务不告警。
+
+## 验证与维护
+
+先发送明确标注的测试消息，验证群消息与指定人的加急分别成功。线上验收检查 delivery.state=sent、message_id 非空；发送成功不等同加急成功。权限问题使用原 message_id 重试，不重复发群消息。已超过5次失败的通知由运维在排除配置问题后人工恢复该通知为 pending、attempts=0；保留 message_id，禁止清空它重发。
+
+排查只读 SQL：`SELECT id,task_id,error_code,log_id,state,attempts,message_id,last_error FROM model_alert_delivery ORDER BY created_at DESC LIMIT 20`。不要导出 message_text 或服务器 env。生产发布只从干净 main 构建，先合并再部署，记录代码 SHA 与真实验收。

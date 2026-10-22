@@ -473,13 +473,13 @@ public class MaterialVideoModelClient {
         }
     }
 
-    /** A create request may be accepted without a readable reply. Retain its receipt and original credit hold. */
+    /** A create request may be accepted without a readable reply. The worker closes it as failed and retains diagnostics. */
     public static class SubmissionUnknown extends BusinessException {
         public SubmissionUnknown(String detail) {
             this(detail,null);
         }
         public SubmissionUnknown(String detail,Integer status) {
-            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","视频受理结果尚未确认"+(status==null?"":"（HTTP "+status+"）")+"，请联系运营核对，请勿重新生成",null,detail);
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE+(status==null?"":" 错误原因：HTTP "+status),null,detail);
         }
     }
 

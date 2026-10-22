@@ -48,6 +48,7 @@ public class ErrorLogService {
     private static final int STACKTRACE_CAP = 8 * 1024;
 
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.transaction.PlatformTransactionManager taskTransactions;
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private com.aistareco.aep.service.alerts.FeishuModelAlerts modelAlerts;
     private final ErrorLogRepository repo;
     private final SecureRandom random = new SecureRandom();
 
@@ -75,7 +76,10 @@ public class ErrorLogService {
         try {
             var tx = new org.springframework.transaction.support.TransactionTemplate(taskTransactions);
             tx.setPropagationBehavior(org.springframework.transaction.TransactionDefinition.PROPAGATION_REQUIRES_NEW);
-            return tx.execute(status -> recordContext(ex, errorCode, ex instanceof BusinessException business ? business.getStatus().value() : 500, null, ownerUserId, null, "async:" + taskId));
+            String logId=tx.execute(status -> recordContext(ex, errorCode, ex instanceof BusinessException business ? business.getStatus().value() : 500, null, ownerUserId, null, "async:" + taskId));
+            try {if(modelAlerts!=null)modelAlerts.enqueue(taskId,errorCode,logId,ex);}
+            catch(Exception failure){log.warn("[model-alert] enqueue failed task={} logId={}",taskId,logId);}
+            return logId;
         } catch (Exception failure) {
             // Observability must never roll back task completion or its credit settlement.
             log.warn("写异步 ErrorLog 失败 task={} code={}", taskId, errorCode, failure);
