@@ -20,4 +20,10 @@
 
 ## 发布与实际发放
 
-待发布后补充 main SHA、制品核验与原单唯一入账结果。手机号仅保留掩码 `155****6196`；完整用户/钱包与前后余额回执只保留在受限运维目录，不写入仓库。
+- 已先快进合入并推送 main `8dc276d0b02ea3f3afa52ec709f3cbfb15e4a9fe`，构建前后 main 工作区干净，保留上一版图片受理未知修复与主线既有功能。
+- 发布 `20261022-super-admin-credits`，仅 `server admin`；北京时间 2026-10-22 17:34:40/41 重启。server PID `1681094`，admin PID `1681144`，均 NRestarts=0；deploy-release.sh 成功，verify.sh ALL GREEN，主服务重启至验收 ERROR=0。
+- 生产 JAR SHA-256 `fa2bbdb946ae3c739c2ee870b3bb0d146c442a671d6ac7f5d42106c0de25d62f` 与 main 制品一致；admin BUILD_ID `zz9qcekzPAqI4LRmEae3p`。公开 `/admin/_next/static/chunks/0k.22u1h-1e8g.js` 返回 200，SHA-256 `710b4fa4b9b0ad0ab3a6600b1fdf1e7d93eac29cb0ae982bcd13612a7378a59e` 与本地一致，包含新的超管规则说明。核验后同步 server/admin 发布标记。
+- 生产授权单 `car-e8dcec98-d65` 沿用原请求、原活动号，由当前有效超管通过既有 approve API 批准；maker/checker 为同一超管，状态 APPROVED，新增且仅新增一条 10000 积分 GIFT/CREDIT 分录，cashArtifactId=null。原单与新账本编号关联一致，没有重新提交赠送单。
+- 本人个人钱包可用余额 **1586 → 11586**，gift **0 → 10000**；recharge=1586、license=0、pending=30 均与本次操作前一致。已再次通过正常 admin 钱包 GET 核对余额及分桶勾稽。手机号仅保留掩码 `155****6196`；完整用户/钱包、账本号、前后回执保存在生产受限目录，不写入仓库。
+- 回执与回滚：生产 `/opt/ai-star-eco/backups/super-admin-credits-20261022/`（目录0700、关键回执0600）含旧 JAR、原发布标记/后台 BUILD_ID、原审批和钱包快照、approve-result.json、fulfill-receipt.json、runtime-acceptance.json。admin 原版由安装器保留在 `/opt/ai-star-eco/admin.__previous__`。服务制品回滚不回滚业务账本、不重开已批准单，不能据回滚重复发放。
+- 本地追加证据：build-release.log、deploy-release.log、public-assets.json、fulfill-receipt.json、runtime-acceptance.json。没有改生产角色、阈值配置或登录凭据，没有调用付费模型。
