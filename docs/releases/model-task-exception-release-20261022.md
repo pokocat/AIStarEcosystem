@@ -36,4 +36,21 @@
 - 视频受理/恢复故障保留安全原因（含原 HTTP 状态）并记录原异常到 ErrorLog，原供应商响应在后台追查记录中保留；重复的同类恢复错误复用追查号。普通视频失败也统一记录追查号。原任务恢复 worker 的 catch 不再只写日志而不更新用户状态。
 - 配音/口型的准备失败、未知受理、查询恢复保留安全原因并挂追查记录；原始技术详情不直接暴露到客户端。
 - 本次不补造历史缺失的追查号，不重提原视频，不变更冻结/结算。
-- 追加回归：后端 67 项、Studio 106 项（含轮询错误去重、实时待核对提示、详情与失败重试）、共享状态 10 项通过。追加发布的构建 SHA 和线上验收在完成后补录。
+- 追加回归：后端 67 项、Studio 106 项（含轮询错误去重、实时待核对提示、详情与失败重试）、共享状态 10 项通过。四个编译/契约门再次通过，发布情况见下。
+
+## 追加发布与线上验收
+
+- 构建来源：干净 main `7caf56a434993431ad894a9d7b3855d78790e553`；制品 `20261022-model-errors-visible`。
+- 北京时间 2026-10-22 19:50 发布 server / web-aiavatar / web-celebrity / web-drama，四个单元均 active/running、NRestarts=0，verify.sh 全绿，未改运行环境密钥或数据库结构。
+- 后端 JAR SHA-256：`76571e5706c1728b045a192fb62516e42529965e3b21642377425f8b511c59ea`，与构建产物一致。三端 BUILD_ID 及包含本次异常逻辑的公网 JS 与制品逐字节一致：
+
+| 服务 | BUILD_ID |
+|---|---|
+| web-aiavatar | `RfbrsfhTryo1eo4tEgrJQ` |
+| web-celebrity | `yYLWOpN1Ce5oTGeEVAIlH` |
+| web-drama | `i-YoGlPO9kYLiuHIrZ1VG` |
+
+- 使用原任务所有者上下文读取线上 GET：原 `IPR-e0679edb33ef40e6a678` 及候选 `mvj_265ff6b6e166` 返回 `VIDEO_SUBMISSION_UNKNOWN`，stage 为 `video.submission_unknown`。历史 pct=5 仍作内部检查点保留；客户端异常分支不显示该百分比。
+- 原任务、包装记录、520 积分冻结、账本完整行摘要与部署前一致，未重提、未重复扣费、未误退款。原回执保留，按新规则执行占位 0；已有 Job ID 的正常执行/恢复任务仍计入并发，真实事务回归覆盖后续任务放行。
+- 历史任务原本未写追查号，本次不凭空补号；新发生的受理/恢复异常保留原 Throwable 与供应商技术细节，用户看到安全原因与实际记录的追查号。
+- 证据：本地 `.studio-e2e/model-task-exceptions-20261022/` 的构建/发布日志、`artifact-disclosure.json`、`after.json`、`live-services.json` 与测试结果；服务器保留原任务发布前后只读快照摘要。
