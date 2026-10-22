@@ -8,12 +8,15 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class ModelAlertContextTest {
     JdbcTemplate db; ModelAlertContext context;
-    @BeforeEach void setup() {
+    @BeforeEach void setup() throws Exception {
         db = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:context-"+java.util.UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1","sa",""));
         db.execute("CREATE TABLE material_video_job(id VARCHAR PRIMARY KEY,provider_used VARCHAR,model_used VARCHAR,upstream_base_url_snapshot VARCHAR,variant_config_json VARCHAR,duration_sec INT,aspect_ratio VARCHAR)");
         db.execute("CREATE TABLE ip_run(id VARCHAR PRIMARY KEY,kind VARCHAR,input_json VARCHAR,output_json VARCHAR)");
         db.execute("CREATE TABLE ai_generation_queue(id INT,task_id VARCHAR,endpoint_id VARCHAR)");
-        db.execute("CREATE TABLE ai_model_providers(id VARCHAR PRIMARY KEY,name VARCHAR,model VARCHAR,base_url VARCHAR)");
+        // Use the entity's actual mapping, so a query using a Java property as a SQL column fails here too.
+        String modelColumn = com.aistareco.aep.model.AiModelEndpoint.class.getDeclaredField("model")
+                .getAnnotation(jakarta.persistence.Column.class).name();
+        db.execute("CREATE TABLE ai_model_providers(id VARCHAR PRIMARY KEY,name VARCHAR,"+modelColumn+" VARCHAR,base_url VARCHAR)");
         db.update("INSERT INTO ai_model_providers VALUES ('ep','当前端点','new-model','https://new.example/v2')");
         context = new ModelAlertContext(db);
     }

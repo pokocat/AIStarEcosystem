@@ -64,7 +64,8 @@ public class ModelAlertContext {
         }
         String baseSource = "任务快照", modelSource = "任务快照";
         if (!endpointId.isBlank()) {
-            var endpoints = db.queryForList("SELECT name,model,base_url FROM ai_model_providers WHERE id=?", endpointId);
+            // AiModelEndpoint.model deliberately retains the legacy physical column default_model.
+            var endpoints = db.queryForList("SELECT name,default_model AS model,base_url FROM ai_model_providers WHERE id=?", endpointId);
             if (!endpoints.isEmpty()) {
                 var endpoint = endpoints.get(0); name = first(name, value(endpoint, "name"));
                 if (model.isBlank()) { model = value(endpoint, "model"); modelSource = "当前端点配置，原调用未记录"; }
