@@ -49,7 +49,7 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         {queued && run.queue && <p className="studio-task-note">前面还有 {Math.max(0, run.queue.position - 1)} 项 · 有空位后自动开始</p>}
         {run.status === 'running' && refreshErrors[run.id] && <p className="studio-task-note" role="status">任务状态暂未更新，正在重试…</p>}
         {run.kind === 'studio-video' && studioRunRewrites(run).some(take => take.lost.length) && <p className="studio-task-note">出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照</p>}
-        {(state === 'failed' || state === 'partial') && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || '本次创作未完成，可查看错误详情'}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
+        {(state === 'failed' || state === 'partial' || (run.status === 'running' && (run.errorCode || run.errorMessage))) && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || (run.status === 'running' ? '任务出现异常，可查看错误详情' : '本次创作未完成，可查看错误详情')}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
         <div className="studio-task-actions">
           {node && <button type="button" className={run.status === 'done' && current ? 'is-primary' : ''} onClick={() => onLocate(node)}>{node.metadata?.studio?.conversation ? '打开对话' : run.status === 'done' && current ? '查看结果' : '定位节点'}</button>}
           {failed(run) && current && node && !node.metadata?.studio?.conversation && <button type="button" className="is-primary" disabled={busy} onClick={() => onRetry(node)}>重新生成</button>}

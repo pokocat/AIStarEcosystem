@@ -67,6 +67,9 @@ class StudioNativeVideoProjectionTest {
         var dto=service.toRunDto(binding);assertEquals("running",dto.status());assertEquals("video.submission_unknown",dto.stage());
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertTrue(dto.errorMessage().contains("受理结果待核对"));assertEquals(840,dto.cost());
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.output().path("videoCandidates").get(0).path("errorCode").asText());
+        a.setErrorMessage("视频受理结果尚未确认（HTTP 503） · 追查号 ABCDEF234567");
+        assertEquals(a.getErrorMessage(),service.toRunDto(binding).errorMessage());
+        assertEquals(a.getErrorMessage(),service.toRunDto(binding).output().path("videoCandidates").get(0).path("errorMessage").asText());
         assertFalse(dto.output().path("videoCandidates").get(1).has("errorCode"));
         a.setStatus("generating");a.setExternalTaskId("original");a.setErrorCode("VIDEO_RECONCILIATION_PENDING");
         assertEquals("video.recovering",service.toRunDto(binding).stage());

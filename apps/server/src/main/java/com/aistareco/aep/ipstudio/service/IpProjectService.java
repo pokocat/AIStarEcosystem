@@ -629,6 +629,7 @@ public class IpProjectService {
             boolean recovering=!done&&!failed&&"VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
             String pending=review?"生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。"
                     :recovering?"生成服务暂时无法返回结果，正在查询原视频任务；请勿重复生成，冻结积分待结果确认后结算。":null;
+            if(pending!=null && job.getErrorMessage()!=null && !job.getErrorMessage().isBlank())pending=job.getErrorMessage();
             String error=failed?(job.getErrorMessage()==null?"视频未交付，请查看任务状态":job.getErrorMessage()):null;
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())

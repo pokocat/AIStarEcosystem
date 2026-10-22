@@ -118,9 +118,9 @@ public class MaterialVideoWorker {
             if(t instanceof MaterialVideoModelClient.SubmissionUnknown || hasAcceptedTask(current)) {
                 // An HTTP timeout is not supplier failure. Keep the original hold; review-only receipts do not occupy capacity.
                 markPending(jobId,t instanceof MaterialVideoModelClient.SubmissionUnknown
-                        ? "VIDEO_SUBMISSION_UNKNOWN" : "VIDEO_RECONCILIATION_PENDING");
+                        ? "VIDEO_SUBMISSION_UNKNOWN" : "VIDEO_RECONCILIATION_PENDING", t);
             } else {
-                markFailed(jobId, t instanceof BusinessException business ? business.getCode() : null, msg);
+                markFailed(jobId, t instanceof BusinessException business ? business.getCode() : null, msg, t);
                 terminal[0]=true;
             }
         } finally {
@@ -144,7 +144,10 @@ public class MaterialVideoWorker {
                         appCodeOf(job),job.getUpstreamBaseUrlSnapshot(),job.getVideoRequestSpecSnapshotJson());
                 var poll=modelClient.poll(submit);terminal[0]=poll.succeeded()||poll.failed();
             } else runGeneration(job,terminal);
-        } catch(Exception error){log.warn("[material-video] original task recovery pending job={}",jobId);}
+        } catch(Exception error){
+            log.warn("[material-video] original task recovery pending job={}",jobId);
+            markPending(jobId,"VIDEO_RECONCILIATION_PENDING",error);
+        }
         finally {
             if(queue!=null && terminal[0] && jobRepo.findById(jobId).map(j->isTerminal(j.getStatus())).orElse(true))
                 queue.finish(com.aistareco.aep.service.AiGenerationQueueService.VIDEO,jobId);
@@ -368,7 +371,8 @@ public class MaterialVideoWorker {
             if (elapsed >= maxWaitMs) {
                 log.warn("[material-video] job {} timed out after {}s taskId={}", jobId, props.getMaxWaitSeconds(), submit.taskId());
                 terminal[0]=false;
-                markPending(jobId,"VIDEO_RECONCILIATION_PENDING");
+                markPending(jobId,"VIDEO_RECONCILIATION_PENDING",new BusinessException(HttpStatus.GATEWAY_TIMEOUT,
+                        "VIDEO_POLL_TIMEOUT","等待生成结果超时，正在查询原视频任务，请勿重复生成"));
                 return;
             }
         }
@@ -617,6 +621,9 @@ public class MaterialVideoWorker {
     }
 
     private void markFailed(String jobId, String code, String message) {
+        markFailed(jobId,code,message,null);
+    }
+    private void markFailed(String jobId, String code, String message, Throwable cause) {
         inTransaction(()->settlementJob(jobId).ifPresent(j -> {
             if(isTerminal(j.getStatus()))return;
             releaseCredits(j,message);
@@ -624,8 +631,8 @@ public class MaterialVideoWorker {
             j.setStatus("failed");
             j.setErrorCode(code);
             String visible = truncate(message, 900);
-            if (MaterialVideoJobService.APP_IPSTUDIO.equals(j.getApp()) && errorLogs != null) {
-                String logId = errorLogs.recordTask(new IllegalStateException(message), code == null ? "STUDIO_VIDEO_FAILED" : code, j.getOwnerUserId(), j.getId());
+            if (errorLogs != null) {
+                String logId = errorLogs.recordTask(cause==null?new IllegalStateException(message):cause, code == null ? "STUDIO_VIDEO_FAILED" : code, j.getOwnerUserId(), j.getId());
                 if (logId != null) visible += " · 追查号 " + logId;
             }
             j.setErrorMessage(visible);
@@ -635,10 +642,14 @@ public class MaterialVideoWorker {
         }));
     }
 
-    private void markPending(String jobId,String code) {
+    private void markPending(String jobId,String code,Throwable cause) {
         inTransaction(()->jobRepo.findById(jobId).ifPresent(j->{
             if(isTerminal(j.getStatus()))return;
-            j.setErrorCode(code);j.setErrorMessage("正在核对生成结果，请稍后查看");
+            String message=cause instanceof BusinessException business?business.getMessage():"生成服务调用异常，正在查询原任务，请勿重复生成";
+            // Retain a stable lookup ID while the same recovery error repeats; raw provider details stay in ErrorLog.
+            if(code.equals(j.getErrorCode()) && j.getErrorMessage()!=null && j.getErrorMessage().startsWith(message+" · 追查号 "))return;
+            String logId=errorLogs==null?null:errorLogs.recordTask(cause,code,j.getOwnerUserId(),j.getId());
+            j.setErrorCode(code);j.setErrorMessage(truncate(message,900)+(logId==null?"":" · 追查号 "+logId));
             j.setUpdatedAt(OffsetDateTime.now());jobRepo.save(j);
         }));
     }

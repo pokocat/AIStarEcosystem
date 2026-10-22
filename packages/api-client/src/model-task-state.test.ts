@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { modelTaskException } from './model-task-state';
 describe('durable model task exceptions', () => {
+  it('keeps the actual safe failure reason and lookup ID beside recovery instructions', () => {
+    expect(modelTaskException({status:'running',error_code:'VIDEO_SUBMISSION_UNKNOWN',error_message:'HTTP 503 · 追查号 ABCDEF234567'})?.notice).toContain('HTTP 503 · 追查号 ABCDEF234567');
+  });
   it.each(['STUDIO_IMAGE_SUBMISSION_UNKNOWN','VIDEO_SUBMISSION_UNKNOWN','STUDIO_SPEECH_SUBMISSION_UNKNOWN','STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN'])('%s is review-only across wire styles', code => {
     expect(modelTaskException({status:'running',errorCode:code})).toMatchObject({needsReview:true,label:'受理结果待核对'});
     expect(modelTaskException({status:'rendering',error_code:code})?.notice).toContain('冻结积分');

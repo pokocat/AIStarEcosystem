@@ -127,7 +127,7 @@ public class StudioSpeechWorker {
                         AiModelBillingMode.PER_SECOND,1L,seconds,true,run.getOwnerUserId(),null,"aiavatar",id,exec.path("jobId").asText(),null,null,null,exec.path("requestBody").asText(),null,null);}
                 catch(Exception error){log.warn("[speech] usage recording failed run={}",id,error);}
             }
-        } catch(JusuanSpeechClient.Rejected error) {finish(id,null,error.getCode(),error.getMessage());}
+        } catch(JusuanSpeechClient.Rejected error) {finish(id,null,error.getCode(),error.getMessage(),error);}
         catch(BusinessException error) {
             if("ENTERPRISE_BILLING_REVOKED".equals(error.getCode()) || "ENTERPRISE_MODEL_NOT_ALLOWED".equals(error.getCode()))
                 finish(id,null,error.getCode(),error.getMessage());
@@ -147,24 +147,35 @@ public class StudioSpeechWorker {
         String codePrefix="lip-sync".equals(prefix)?"STUDIO_LIP_SYNC":"STUDIO_SPEECH";
         if(exec.path("jobId").asText().isBlank()&&exec.path("submitAttempts").asInt()==0) {
             finish(id,null,error instanceof BusinessException business?business.getCode():codePrefix+"_PREPARATION_FAILED",
-                    "生成准备失败，任务未提交，冻结积分已释放。请检查素材后重试");return;
+                    (error instanceof BusinessException business?business.getMessage()+"。":"")+"生成准备失败，任务未提交，冻结积分已释放。请检查素材后重试",error);return;
         }
         boolean unknown=exec.path("jobId").asText().isBlank() && (exec.path("submitAttempts").asInt()>=3
                 || System.currentTimeMillis()-exec.path("firstSubmitAt").asLong(System.currentTimeMillis())>120_000);
         update(id,e->e.put("leaseUntil",0),prefix+(unknown?".submission_unknown":".recovering"),current.getPct(),
-                codePrefix+(unknown?"_SUBMISSION_UNKNOWN":"_RECOVERING"),unknown
+                codePrefix+(unknown?"_SUBMISSION_UNKNOWN":"_RECOVERING"),(error instanceof BusinessException business?business.getMessage()+"。":"")+(unknown
                     ?label+"受理结果尚未确认，请联系运营核对原请求；请勿重新生成"
-                    :"正在恢复原"+label+"任务，无需重新生成");
+                    :"正在恢复原"+label+"任务，无需重新生成"),error);
     }
     private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message) {
+        update(id,update,stage,pct,code,message,null);
+    }
+    private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message,Throwable cause) {
         tx.executeWithoutResult(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return;
             ObjectNode input=read(r.getInputJson());update.accept((ObjectNode)input.path("_exec"));r.setInputJson(write(input));
-            r.setStage(stage);r.setPct(pct);r.setErrorCode(code);r.setErrorMessage(message);r.setHeartbeatAt(Instant.now());runs.save(r);});
+            r.setStage(stage);r.setPct(pct);r.setErrorCode(code);r.setErrorMessage(message);r.setHeartbeatAt(Instant.now());
+            if(cause!=null && errorLog!=null)errorLog.attach(r,cause);
+            runs.save(r);});
     }
     private boolean finish(String id,ObjectNode output,String code,String message) {
-        return Boolean.TRUE.equals(tx.execute(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return false;terminal(r,output,code,message);return true;}));
+        return finish(id,output,code,message,null);
+    }
+    private boolean finish(String id,ObjectNode output,String code,String message,Throwable cause) {
+        return Boolean.TRUE.equals(tx.execute(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return false;terminal(r,output,code,message,cause);return true;}));
     }
     private void terminal(IpRun run,ObjectNode output,String code,String message) {
+        terminal(run,output,code,message,null);
+    }
+    private void terminal(IpRun run,ObjectNode output,String code,String message,Throwable cause) {
         if(output!=null) {
             var exec=read(run.getInputJson()).path("_exec");
             if(exec.has("pointPricing")) {
@@ -187,7 +198,7 @@ public class StudioSpeechWorker {
         } else {
             credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 生成失败或取消 · 释放冻结");run.setCost(0);
             run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");run.setErrorCode(code);run.setErrorMessage(message);
-            if (errorLog != null) errorLog.attach(run, null);
+            if (errorLog != null) errorLog.attach(run, cause);
         }
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);
         if(enterpriseBilling!=null)enterpriseBilling.complete(IpRunService.REF_TYPE,run.getId());

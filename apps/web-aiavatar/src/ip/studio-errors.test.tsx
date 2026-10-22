@@ -2,7 +2,7 @@
 import { render, fireEvent, screen, cleanup, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client/client';
-import { StudioNotifications, StudioErrorNotice, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures } from './studio-errors';
+import { StudioNotifications, StudioErrorNotice, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError } from './studio-errors';
 const api = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('antd', () => ({ notification: { useNotification: () => [api, null] }, ConfigProvider: ({children}: any) => children, Button: ({icon, children, ...props}: any) => <button {...props}>{children}</button>, App: { useApp: () => ({message: {}}) } }));
 beforeEach(() => api.error.mockReset());
@@ -54,4 +54,15 @@ it('does not toast canvas save conflicts: the conflict dialog owns them, and eve
   expect(api.error).not.toHaveBeenCalled();
   // 内联状态仍拿得到原文
   expect(reportStudioError({ code: 'IP_PROJECT_STALE', message: '原文' }).message).toBe('原文');
+});
+
+it('reports any live task error before a terminal failure and preserves partial candidate diagnostics', () => {
+  render(<StudioNotifications/>);
+  for (const code of ['VIDEO_SUBMISSION_UNKNOWN','STUDIO_SPEECH_RECOVERING','UNEXPECTED_MODEL_ERROR']) {
+    const run={id:code,status:'running',errorCode:code,errorMessage:'HTTP 503 · 追查号 ABCDEF234567',output:{}} as any;
+    reportStudioRunFailures(run);reportStudioRunFailures(run);
+  }
+  expect(api.error).toHaveBeenCalledTimes(3);
+  expect(normalizeStudioError(studioRunError({id:'batch',status:'done',output:{videoCandidates:[{jobId:'failed-one',status:'failed',errorCode:'UPSTREAM_400',errorMessage:'参考图不可用',logId:'ABCDEF234567'}]}} as any)))
+    .toMatchObject({code:'UPSTREAM_400',message:'参考图不可用',taskId:'failed-one',logId:'ABCDEF234567'});
 });

@@ -142,6 +142,35 @@ class MaterialVideoWorkerTest {
         worker(new FakeUploader(false)).generateAsync("mvj_test");assertEquals("succeeded",job.getStatus());
     }
 
+    @Test void uncertainSubmissionKeepsSafeHttpReasonAndRealTraceWithoutReleasingHold() {
+        var error=new MaterialVideoModelClient.SubmissionUnknown("private provider response",503);
+        when(modelClient.submit(any(),anyInt(),any(),any(),any(),any(),any(),any())).thenThrow(error);
+        var errors=mock(com.aistareco.aep.service.ErrorLogService.class);
+        when(errors.recordTask(eq(error),eq("VIDEO_SUBMISSION_UNKNOWN"),eq("u1"),eq("mvj_test"))).thenReturn("ABCDEF234567");
+        var worker=worker(new FakeUploader(false));
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
+        worker.generateAsync("mvj_test");
+        assertEquals("submitting",job.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",job.getErrorCode());
+        assertTrue(job.getErrorMessage().contains("HTTP 503"));assertTrue(job.getErrorMessage().contains("ABCDEF234567"));
+        assertFalse(job.getErrorMessage().contains("private provider response"));
+        verify(errors).recordTask(error,"VIDEO_SUBMISSION_UNKNOWN","u1","mvj_test");
+        verify(creditService,never()).releaseHold(anyString(),anyString(),anyString());
+    }
+
+    @Test void originalRecoveryFailureBecomesVisibleAndKeepsOneDiagnosticForRepeatedError() {
+        job.setStatus("generating");job.setExternalTaskId("original");
+        var error=new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"UPSTREAM_503","查询失败（HTTP 503）");
+        when(modelClient.resumeExistingTask(any(),any(),any(),any(),any(),any(),any())).thenThrow(error);
+        var errors=mock(com.aistareco.aep.service.ErrorLogService.class);
+        when(errors.recordTask(eq(error),eq("VIDEO_RECONCILIATION_PENDING"),eq("u1"),eq("mvj_test"))).thenReturn("ABCDEF234567");
+        var worker=worker(new FakeUploader(false));org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
+        worker.recoverQueuedGeneration("mvj_test");worker.recoverQueuedGeneration("mvj_test");
+        assertEquals("VIDEO_RECONCILIATION_PENDING",job.getErrorCode());assertTrue(job.getErrorMessage().contains("HTTP 503"));
+        verify(errors).recordTask(error,"VIDEO_RECONCILIATION_PENDING","u1","mvj_test");
+        verify(modelClient,never()).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
+        verify(creditService,never()).releaseHold(anyString(),anyString(),anyString());
+    }
+
     /** 假 CDN：记录 upload 过的 key；lastFrameFails=true 时 last-frame key 抛 IOException（模拟末帧镜像失败）。 */
     private static final class FakeUploader implements CdnUploader {
         final ConcurrentHashMap<String, Long> uploaded = new ConcurrentHashMap<>();

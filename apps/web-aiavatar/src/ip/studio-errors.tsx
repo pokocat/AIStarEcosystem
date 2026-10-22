@@ -57,10 +57,13 @@ export function reportStudioError(input: ErrorInput, options: { once?: string; f
   if (sink) sink(error); else pending.set(keyOf(error), error);
   return error;
 }
-export const studioRunError = (run: IpRun) => ({ code: run.errorCode || 'STUDIO_RUN_FAILED', message: run.errorMessage || '生成失败，请重试', logId: run.logId || run.output.logId, taskId: run.id });
+export const studioRunError = (run: IpRun) => {
+  const failed = run.output.videoCandidates?.find(candidate => candidate.status === 'failed');
+  return { code: run.errorCode || failed?.errorCode || 'STUDIO_RUN_FAILED', message: run.errorMessage || failed?.errorMessage || (run.status === 'running' ? '任务出现异常，请查看任务状态' : '生成失败，请重试'), logId: run.logId || run.output.logId || failed?.logId, taskId: failed?.jobId || run.id };
+};
 export const studioNodeError = (node: CanvasNodeData) => ({ code: node.metadata?.studio?.task?.errorCode || node.metadata?.errorCode || 'STUDIO_RUN_FAILED', message: node.metadata?.studio?.task?.errorMessage || node.metadata?.errorDetails || '生成失败，请查看任务', logId: node.metadata?.studio?.task?.logId || node.metadata?.errorLogId, taskId: node.metadata?.studio?.runId || node.metadata?.runId });
 export function reportStudioRunFailures(run: IpRun) {
-  if (run.status === 'failed') reportStudioError(studioRunError(run), {once: `run:${run.id}`});
+  if (run.status === 'failed' || (run.status === 'running' && (run.errorCode || run.errorMessage))) reportStudioError(studioRunError(run), {once: `run:${run.id}`});
   if (run.status === 'done') for (const candidate of run.output.videoCandidates || []) {
     if (candidate.status === 'failed') reportStudioError({code: candidate.errorCode || 'STUDIO_VIDEO_FAILED', message: candidate.errorMessage || '本条视频生成失败，其他候选仍可采用', logId: candidate.logId, taskId: candidate.jobId}, {once: `video:${candidate.jobId}`});
   }

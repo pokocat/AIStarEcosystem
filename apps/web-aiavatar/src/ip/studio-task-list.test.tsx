@@ -4,6 +4,7 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { cleanup } from '@testing-library/react';
 import type { IpRun } from '@ai-star-eco/types';
 import { StudioTaskList } from './studio-task-list';
+import { reportStudioError } from './studio-errors';
 vi.mock('./studio-errors', () => ({ reportStudioError: vi.fn(), studioRunError: (r: IpRun) => r.errorMessage }));
 afterEach(cleanup);
 const run = (id: string, status: IpRun['status'], extra = {}): IpRun => ({ id, projectId: 'p', nodeId: 'n', kind: 'studio-video', status, stage: 'generating', pct: 30, cost: 200, createdAt: '2026-10-13T12:34:56Z', inputs: {}, output: {}, ...extra } as IpRun);
@@ -57,4 +58,13 @@ test.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP
   render(<StudioTaskList {...makeProps()} runs={[run('recover','running',{pct:5,errorCode})]}/>);
   expect(screen.getByText('正在恢复原任务')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
   expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('冻结积分');
+});
+
+test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED_MODEL_ERROR'])('%s remains inspectable before terminal failure',errorCode=>{
+  const props={...makeProps(),runs:[run('diagnostic','running',{errorCode,errorMessage:'生成服务 HTTP 503 · 追查号 ABCDEF234567'})]};
+  render(<StudioTaskList {...props}/>);
+  expect(screen.getByText(props.runs[0].errorMessage!)).toBeDefined();
+  fireEvent.click(screen.getByRole('button',{name:'查看错误详情'}));
+  expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage);
+  expect(screen.queryByRole('button',{name:'重新生成'})).toBeNull();
 });

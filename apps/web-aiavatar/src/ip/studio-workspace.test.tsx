@@ -266,8 +266,20 @@ test('polling failure on an accepted batch keeps the original task locked withou
  api.project.mockResolvedValue({runsById:{accepted:active}});api.read.mockRejectedValue(new TypeError('polling network failure'));
  render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();
  await act(async()=>{await vi.advanceTimersByTimeAsync(1300);});
+ expect(api.error).toHaveBeenCalledWith('polling network failure');
+ await act(async()=>{await vi.advanceTimersByTimeAsync(4500);});
+ expect(api.error.mock.calls.filter(([message])=>message==='polling network failure')).toHaveLength(1);
  expect(api.read).toHaveBeenCalledWith('accepted');expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();expect(screen.getByRole('button',{name:'查看原任务'})).toBeDefined();expect(snapshot[0].metadata?.status).toBe('loading');expect(snapshot[0].metadata?.studio?.request).toEqual(request);expect(api.submit).not.toHaveBeenCalled();
  } finally {vi.useRealTimers();}
+});
+test('a newly accepted task discloses its live provider error before reaching a terminal state',async()=>{
+ const pending={...done,status:'running',pct:5,errorCode:'VIDEO_SUBMISSION_UNKNOWN',errorMessage:'视频受理结果尚未确认（HTTP 503） · 追查号 ABCDEF234567',output:{}};
+ api.submit.mockResolvedValue(pending);api.read.mockResolvedValue(pending);
+ render(<Host/>);openVideo();
+ await waitFor(()=>expect((screen.getByRole('button',{name:'生成视频',exact:true}) as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(screen.getByRole('button',{name:'生成视频',exact:true}));
+ await waitFor(()=>expect(api.error).toHaveBeenCalledWith('视频受理结果尚未确认（HTTP 503）'));
+ expect(api.submit).toHaveBeenCalledTimes(1);expect(snapshot[0].metadata?.studio?.task?.errorCode).toBe('VIDEO_SUBMISSION_UNKNOWN');
 });
 // A local document conflict currently fails the same way (plain Error from save); add a case if it ever gets its own branch.
 test('a local save failure during unknown-task recovery retains the saved request and keeps ordinary generation locked',()=>{

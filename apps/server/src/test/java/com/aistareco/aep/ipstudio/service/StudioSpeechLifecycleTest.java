@@ -52,9 +52,13 @@ class StudioSpeechLifecycleTest {
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }
     @Test void providerBusinessErrorsBecomeReviewAndStopAfterBoundedSameKeyRecovery() {
+        var diagnostics=mock(StudioRunErrorLog.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLog",diagnostics);
         when(client.submit(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(
             new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"STUDIO_SPEECH_UNAVAILABLE","unavailable"));
         worker.step("r");assertEquals("audio.recovering",run.getStage());assertEquals("STUDIO_SPEECH_RECOVERING",run.getErrorCode());
+        assertTrue(run.getErrorMessage().contains("unavailable"));
+        verify(diagnostics).attach(eq(run),isA(com.aistareco.common.BusinessException.class));
         worker.step("r");worker.step("r");String receipt=run.getInputJson();worker.step("r");
         assertEquals("audio.submission_unknown",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
         assertEquals(receipt,run.getInputJson());assertEquals(8,run.getCost());verifyNoInteractions(credits);

@@ -1,6 +1,6 @@
 "use client";
 import {filmStudyConnections} from '@/canvas-bridge/studio-film-study';
-import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, useStudioApp, useStudioErrorState } from './studio-errors';
+import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, normalizeStudioError, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioRecreation } from "./studio-recreation";
 import { StudioTaskList } from "./studio-task-list";
 import { studioTaskPresentation } from '@/canvas-bridge/studio-task-title';
@@ -301,16 +301,17 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     if (watching.current.has(watchKey)) return;
     watching.current.add(watchKey);
     let current = run;
+    let historical = restored;
     try {
       while (alive.current && epoch.current === token) {
         current=terminalRuns.current.get(current.id)||current;
         if(targetId){setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,targetId!,current));if(current.output.filmStudy||current.output.sourceAudio)setConnections(edges=>filmStudyConnections(edges,targetId!,current,nodesRef.current));}
         setRuns(list => [current, ...list.filter(r => r.id !== current.id)]);
+        if (!historical) reportStudioRunFailures(current);
         if (current.status !== "running") {
           setRefreshErrors(old=>{const next={...old};delete next[current.id];return next;});
           if (targetId && nodesRef.current.some(n=>n.id===targetId&&n.metadata?.studio?.runId===current.id) && current.status === "done" && current.kind === "studio-storyboard" && current.output.script) materializeStoryboard(targetId, current.output.script);
-          if (!restored && current.status === "done"&&current.output.billing) message.success(`已消耗 ${current.output.billing.credits} 积分`);
-          if (!restored) reportStudioRunFailures(current);
+          if (!historical && current.status === "done"&&current.output.billing) message.success(`已消耗 ${current.output.billing.credits} 积分`);
           void saveStudioDocument(projectId).catch(e => message.error(e));
           return;
         }
@@ -319,10 +320,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         try {
           current = await readRun(current.id);
           if(!alive.current||epoch.current!==token)return;
+          historical = false;
           setRefreshErrors(old=>{if(!old[current.id])return old;const next={...old};delete next[current.id];return next;});
         }
-        catch {
+        catch (error) {
           if(!alive.current||epoch.current!==token)return;
+          reportStudioError({...normalizeStudioError(error),taskId:current.id},{once:`poll:${current.id}`});
           setRefreshErrors(old=>({...old,[current.id]:true}));
           await new Promise(resolve => setTimeout(resolve, 3000));
         }
