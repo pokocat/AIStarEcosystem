@@ -54,6 +54,7 @@ import { SignedImage } from "@/canvas-bridge/signed-image";
 import { parseStudioCaptions, studioWorkDraft, updateStudioWorkDraft } from "@/canvas-bridge/studio-packaging";
 import { StudioScriptSettingsForm } from "./studio-script-settings";
 import { StudioScriptEditor } from "./studio-script-editor";
+import { StudioDocumentEditor } from "./studio-document-editor";
 import { StudioTextComposer } from "./studio-text-composer";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
 import { scriptToMarkdown } from "@/canvas-bridge/studio-script-markdown";
@@ -1257,9 +1258,9 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       {nodeActions(scriptPreviewId,["editor"])}
       {(()=>{const script=nodes.find(n=>n.id===scriptPreviewId)?.metadata?.studio?.script;return script?<div className="studio-script-inline"><h3>{script.title}</h3><p>{script.outline||script.episodes[0]?.content.slice(0,600)}</p><small>{script.episodes.length} 集 · 在画布中确认内容，展开后编辑大纲、人物与分集正文。</small></div>:null;})()}
     </StudioFloatingPanel>
-    <Modal title="编辑文字" open={storyboardTextExpanded&&!!storyboardNode} onCancel={()=>{void saveStudioDocument(projectId).then(()=>setStoryboardTextExpanded(false)).catch(e=>message.error(e));}} footer={null} width="90vw" getContainer={containers}>
-      <Input.TextArea aria-label="展开节点文字" rows={18} value={storyboardNode?.metadata?.content||""} onChange={e=>{if(storyboardNode)patch(storyboardNode.id,n=>({...n,metadata:{...n.metadata,content:e.target.value}}));}}/>
-    </Modal>
+    {storyboardTextExpanded&&storyboardNode&&<StudioDocumentEditor key={storyboardNode.id} title={storyboardNode.title||"文字"} closeLabel="收起编辑"
+      value={storyboardNode.metadata?.content||""} onChange={content=>patch(storyboardNode.id,n=>({...n,metadata:{...n.metadata,content}}))}
+      onSave={async()=>{await saveStudioDocument(projectId);}} onClose={()=>setStoryboardTextExpanded(false)}/>}
     {editor&&<StudioScriptEditor key={`${projectId}:${editor.id}`} projectId={projectId} node={editor} capabilities={capabilities}
       onState={scriptEditor=>patch(editor.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,scriptEditor}}}))}
       onCommit={async(markdown,script)=>{

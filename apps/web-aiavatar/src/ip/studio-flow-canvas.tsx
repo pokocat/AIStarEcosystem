@@ -31,6 +31,7 @@ import { StudioAttachmentPicker, type AttachmentPickerActions } from './studio-a
 import { StudioNodeContent } from './studio-node-content';
 import { StudioFloatingContext, StudioFloatingPanel } from './studio-floating-panel';
 import { StudioWorkspace } from './studio-workspace';
+import { StudioDocumentEditor } from './studio-document-editor';
 import { StudioFlowImageTools } from './studio-flow-image-tools';
 import { StudioFlowVideoFrames, type StudioPendingFrame } from './studio-flow-video-frames';
 import { studioTaskNeedsReview, studioTaskLabel, studioTaskQueued, studioQueueNotice } from '@/canvas-bridge/studio-task-status';
@@ -526,9 +527,9 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           {actions}
           <Input.TextArea ref={textEditorRef} aria-label="节点文字" rows={5} value={text?.metadata?.content || ''} onChange={e => setNodes(old => old.map(n => n.id === textId ? { ...n, metadata: { ...n.metadata, content: e.target.value } } : n))}/>
         </StudioFloatingPanel>
-        <Modal title="展开文字编辑" open={!!text&&textExpanded} width={960} onCancel={()=>setTextExpanded(false)} footer={<Button type="primary" onClick={()=>setTextExpanded(false)}>收起编辑</Button>} getContainer={modalContainer}>
-          <Input.TextArea aria-label="展开节点文字" rows={18} value={text?.metadata?.content||''} onChange={e=>setNodes(old=>old.map(n=>n.id===textId?{...n,metadata:{...n.metadata,content:e.target.value}}:n))}/>
-        </Modal>
+        {text&&textExpanded&&<StudioDocumentEditor key={text.id} title={text.title||'文字'} closeLabel="收起编辑" actions={actions}
+          value={text.metadata?.content||''} onChange={content=>setNodes(old=>old.map(n=>n.id===text.id?{...n,metadata:{...n.metadata,content}}:n))}
+          onSave={async()=>{await saveStudioDocument(projectId);}} onClose={()=>setTextExpanded(false)}/>}
       </>}/>
     <StudioFlowVideoFrames nodes={project.nodes} pending={pendingFrames} onPendingChange={setPendingFrames} onInsert={async (nodes, connections) => {
       checkpoint(); const p = current(), placed=[...p.nodes];

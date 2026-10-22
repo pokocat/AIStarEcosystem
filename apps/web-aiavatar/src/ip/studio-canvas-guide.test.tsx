@@ -3,7 +3,7 @@
 // same additions as the rail's 「＋添加」 (the canvas handles add-text / add-image / add-video / upload).
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { useImperativeHandle } from 'react';
+import { useImperativeHandle, useState } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
@@ -13,7 +13,8 @@ import StudioFlowCanvas from './studio-flow-canvas';
 const api = vi.hoisted(() => ({ upload: vi.fn(), save: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() }));
 vi.mock('@/canvas-bridge/studio-api', () => ({ importStudioMedia: vi.fn(), importStudioStory: vi.fn() }));
 vi.mock('@/canvas-bridge/studio-save', () => ({ saveStudioDocument: api.save }));
-vi.mock('./studio-errors', () => ({ useStudioApp: () => ({ message: { error: api.error, success: api.success, info: api.info } }), StudioErrorNotice: () => null }));
+vi.mock('./studio-errors', () => ({ useStudioApp: () => ({ message: { error: api.error, success: api.success, info: api.info } }), useStudioErrorState: () => useState(''), StudioErrorNotice: ({error}:any) => <p role="alert">{String(error)}</p> }));
+vi.mock('./studio-script-rich-editor', () => ({ StudioScriptRichEditor: ({markdown,onChange,ariaLabel}:any) => <textarea aria-label={ariaLabel} value={markdown} onChange={e=>onChange(e.target.value)}/> }));
 vi.mock('@/proto/api', () => ({ useIdentity: () => ({}) }));
 vi.mock('@/shell/wallet-badge', () => ({ WalletBadge: () => null }));
 vi.mock('@/canvas-bridge/host-actions', () => ({ HostActionsSlot: () => null }));
@@ -155,4 +156,32 @@ describe('on the canvas', () => {
     expect(api.upload).toHaveBeenCalledOnce();
     expect(nodes()).toHaveLength(0);
   });
+});
+
+// Exercise the real canvas store + document shell: no script conversion and no second node.
+test('expanded plain text uses the shared document editor and keeps the original body through failed saves and reopening', async () => {
+  render(<StudioFlowCanvas projectId="p"/>);
+  fireEvent.click(screen.getByRole('button', {name:'文字'}));
+  const id=nodes()[0].id, original='# 人物设定\n\n- 勇敢\n- **可靠**';
+  fireEvent.change(screen.getByRole('textbox', {name:'节点文字'}), {target:{value:original}});
+  fireEvent.click(screen.getByRole('button', {name:'展开编辑'}));
+  const documentEditor=await screen.findByRole('textbox', {name:'文字文档'});
+  expect((documentEditor as HTMLTextAreaElement).value).toBe(original);
+  expect(screen.queryByRole('textbox', {name:'节点文字'})).toBeNull();
+  const edited=original+'\n\n## 新增背景\n\n> 自己写的故事';
+  fireEvent.change(documentEditor, {target:{value:edited}});
+  expect(nodes()).toHaveLength(1);
+  expect(nodes()[0]).toMatchObject({id,metadata:{content:edited}});
+  expect(nodes()[0].metadata?.studio?.script).toBeUndefined();
+  api.save.mockRejectedValueOnce(new Error('网络断开'));
+  fireEvent.click(screen.getByRole('button', {name:'收起编辑'}));
+  await screen.findByRole('alert');
+  expect((screen.getByRole('textbox', {name:'文字文档'}) as HTMLTextAreaElement).value).toBe(edited);
+  fireEvent.click(screen.getByRole('button', {name:'收起编辑'}));
+  await waitFor(()=>expect(screen.queryByRole('textbox', {name:'文字文档'})).toBeNull());
+  expect(api.save).toHaveBeenCalledTimes(2);
+  expect(api.save).toHaveBeenLastCalledWith('p');
+  expect((screen.getByRole('textbox', {name:'节点文字'}) as HTMLTextAreaElement).value).toBe(edited);
+  fireEvent.click(screen.getByRole('button', {name:'展开编辑'}));
+  expect((await screen.findByRole('textbox', {name:'文字文档'}) as HTMLTextAreaElement).value).toBe(edited);
 });
