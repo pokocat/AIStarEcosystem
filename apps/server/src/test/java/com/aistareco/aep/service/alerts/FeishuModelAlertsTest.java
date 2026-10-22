@@ -56,5 +56,13 @@ class FeishuModelAlertsTest {
         var error=new BusinessException(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","safe",null,"provider HTTP 503");
         assertTrue(FeishuModelAlerts.message("task",error.getCode(),"ABCDEF234567",error).contains("HTTP 503"));
     }
+    @Test void modelContextIsPersistedInTheOutgoingMessage() {
+        var context=mock(ModelAlertContext.class);
+        when(context.describe("task")).thenReturn("供应商 / 端点：聚算\nAPI 基础地址：https://api.example/v1\n模型：minimax-h3\n任务参数：duration_sec=13");
+        org.springframework.test.util.ReflectionTestUtils.setField(alerts,"modelContext",context);
+        alerts.enqueue("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException());
+        String text=db.queryForObject("SELECT message_text FROM model_alert_delivery",String.class);
+        assertTrue(text.contains("https://api.example/v1"));assertTrue(text.contains("minimax-h3"));assertTrue(text.contains("duration_sec=13"));
+    }
     private String state(){return db.queryForObject("SELECT state FROM model_alert_delivery",String.class);}
 }

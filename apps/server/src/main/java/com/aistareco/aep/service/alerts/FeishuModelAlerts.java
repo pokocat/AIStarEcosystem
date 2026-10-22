@@ -16,6 +16,7 @@ import java.util.*;
 public class FeishuModelAlerts {
     private static final Logger log=LoggerFactory.getLogger(FeishuModelAlerts.class);
     private final JdbcTemplate db;private final FeishuAlertConfig config;private final FeishuAlertClient client;
+    @org.springframework.beans.factory.annotation.Autowired private ModelAlertContext modelContext;
     public FeishuModelAlerts(JdbcTemplate db,FeishuAlertConfig config,FeishuAlertClient client){this.db=db;this.config=config;this.client=client;}
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public void enqueue(String taskId,String code,String logId,Throwable error) {
@@ -23,8 +24,10 @@ public class FeishuModelAlerts {
         String actualCode=code==null?"MODEL_TASK_FAILED":code;
         String id=UUID.nameUUIDFromBytes((taskId+"\n"+actualCode).getBytes(StandardCharsets.UTF_8)).toString();
         // MySQL and H2 MySQL mode both support INSERT IGNORE; the primary key is the cross-process dedupe gate.
+        String text=message(taskId,actualCode,logId,error);
+        if(modelContext!=null)text=text.replace("\n后台：","\n"+modelContext.describe(taskId)+"\n后台：");
         db.update("INSERT IGNORE INTO model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)",
-                id,taskId,actualCode,logId,message(taskId,actualCode,logId,error),Timestamp.from(Instant.now()),Timestamp.from(Instant.now()));
+                id,taskId,actualCode,logId,text,Timestamp.from(Instant.now()),Timestamp.from(Instant.now()));
     }
     @Scheduled(fixedDelay=10000,initialDelay=15000,scheduler="modelAlertScheduler")
     public void deliver() {

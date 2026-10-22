@@ -31,6 +31,7 @@ export function GenerationSubmissionAlerts() {
       {data?.items.map(item=><details key={`${item.taskType}:${item.taskId}`} className="rounded-md border p-3 text-sm">
         <summary className="cursor-pointer break-words"><span className="font-medium">{item.taskType==="material-video"?"视频":item.taskType==="ip-image"?"图片":"配音 / 口型"}</span> · {item.status==="failed"?"已按失败处理":"正在结束任务"} · {item.taskId}<span className="ml-2 text-muted-foreground">{formatDateTimeCN(item.createdAt)}</span></summary>
         <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 break-all"><dt>模型端点</dt><dd>{item.endpointId}</dd><dt>错误码</dt><dd>{item.errorCode}</dd><dt>追查号</dt><dd>{item.logId||"未记录，可按任务号查请求日志"}</dd><dt>错误原因</dt><dd className="whitespace-pre-wrap">{item.errorMessage||"生成服务未返回有效任务信息"}</dd></dl>
+        {item.modelContext&&<p className="mt-3 whitespace-pre-wrap break-words text-sm">{item.modelContext}</p>}
         <p className="mt-3 text-muted-foreground">原始响应在请求日志中；有追查号时，超管可在「错误日志」查看详细信息。这些记录不会自动重新提交或补扣用户积分。</p>
       </details>)}
       {data&&data.total>20&&<div className="flex items-center gap-3"><Button variant="outline" size="sm" disabled={busy||data.page===0} onClick={()=>void read(data.page-1)}>上一页</Button><span className="text-sm">第 {data.page+1} 页</span><Button variant="outline" size="sm" disabled={busy||!data.hasMore} onClick={()=>void read(data.page+1)}>下一页</Button></div>}

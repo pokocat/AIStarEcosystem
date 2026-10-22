@@ -18,11 +18,13 @@ public class AdminGenerationAttentionController {
     private final MaterialVideoJobRepository videos;
     private final IpRunRepository runs;
     private final com.fasterxml.jackson.databind.ObjectMapper mapper;
+    private final com.aistareco.aep.service.alerts.ModelAlertContext modelContext;
     public AdminGenerationAttentionController(AiGenerationQueueRepository queue, MaterialVideoJobRepository videos,
-            IpRunRepository runs, com.fasterxml.jackson.databind.ObjectMapper mapper) {
-        this.queue=queue;this.videos=videos;this.runs=runs;this.mapper=mapper;
+            IpRunRepository runs, com.fasterxml.jackson.databind.ObjectMapper mapper,
+            com.aistareco.aep.service.alerts.ModelAlertContext modelContext) {
+        this.queue=queue;this.videos=videos;this.runs=runs;this.mapper=mapper;this.modelContext=modelContext;
     }
-    public record Item(String taskType,String taskId,String endpointId,Instant createdAt,String status,String errorCode,String errorMessage,String logId) {}
+    public record Item(String taskType,String taskId,String endpointId,Instant createdAt,String status,String errorCode,String errorMessage,String logId,String modelContext) {}
     public record Inbox(List<Item> items,int page,long total,boolean hasMore) {}
     @GetMapping
     @org.springframework.transaction.annotation.Transactional(readOnly=true)
@@ -44,7 +46,7 @@ public class AdminGenerationAttentionController {
                 var match=java.util.regex.Pattern.compile("追查号\\s+([A-Z2-9]{12})").matcher(message);
                 if(match.find())logId=match.group(1);
             }
-            return new Item(q.getTaskType(),q.getTaskId(),q.getEndpointId(),q.getCreatedAt(),status,code,message,logId);
+            return new Item(q.getTaskType(),q.getTaskId(),q.getEndpointId(),q.getCreatedAt(),status,code,message,logId,modelContext.describe(q.getTaskId()));
         }).getContent();
         return ApiResponse.of(new Inbox(items,entries.getNumber(),entries.getTotalElements(),entries.hasNext()));
     }

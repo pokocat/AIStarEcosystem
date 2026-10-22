@@ -9836,6 +9836,7 @@ paths:
                             errorCode: { type: string }
                             errorMessage: { type: string, nullable: true }
                             logId: { type: string, nullable: true }
+                            modelContext: { type: string, description: 脱敏模型端点、API基础地址、模型及参数；标明任务快照或当前配置 }
         '403': { description: 没有平台运营权限 }
 
   /admin/material-video-jobs/{id}/reconcile:
