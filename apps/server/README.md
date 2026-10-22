@@ -989,6 +989,8 @@ POST /api/v1/ip-studio/projects/{id}/story-import，multipart字段file，返回
 
 `AiModelEndpoint.concurrencyLimit` 经现有 admin 端点配置，V48 新增字段和 `ai_generation_queue` 票据表。端点行锁保证跨进程准入，按票据顺序排队；Studio 与通用视频等待不占工作线程，同步文字/图片请求也共用额度。视频、配音/口型保留名额到上游终态，重启仅恢复原任务；排队取消退回原冻结、等待不算生成超时，端点有活跃票据时禁止删除。配置省略/null 保留，0 清空，1–1000 限制，不中断原任务。其他独立协议和人工处理未知受理容量的边界见 [`ai-endpoint-generation-queue.md`](../../docs/ai-endpoint-generation-queue.md)。
 
+2026-10-22 图片受理未知修复：`AiGenerationQueueRepository.countOccupyingSlots` 在端点锁内供准入、派发和位置投影共用。只排除原生图片 `generate/running/image.provider.recovering/STUDIO_IMAGE_SUBMISSION_UNKNOWN`，保留原票据、请求、冻结与付款授权，不触发新提交或结算；部署后旧记录即生效，无迁移。已知图片原任务恢复及视频/配音/口型容量规则保留。前端图片阶段无假百分比，未知受理显式引导运营核对。
+
 V53 为每个固定聊天模型端点保存 `chat_supports_temperature`、`chat_supports_top_p`、`chat_supports_response_format` 与 `chat_max_output_tokens`。`AiModelInvocationService` 是内部聊天用途的请求参数执行点：能力列为 null 时沿用原先发送行为，false 时调用方和默认配置均不得发送该参数；输出上限在组装请求后收敛。有限制的端点拒绝调用方改用另一模型，防止把此模型规则误套到别的模型。迁移将存量 Qwen3.5/3.6 的已验证限制写入端点行，运行时代码不按模型名猜能力。管理端可修改；输出上限更新请求省略/null 保留，0 清空。媒体协议仍由对应客户端及候选能力配置负责。
 
 V54 为图片模型端点新增 `image_request_spec_json`：每个端点保存提示词上限、参考图范围、引用字段和允许的画布到供应商请求字段映射。迁移仅初始化已有的三个聚算图片模型；后台编辑同一端点记录。Studio 列表从端点返回可用画幅，受理前按该记录校验并把规格快照写入运行，worker 使用快照组包；缺规格拒绝新聚算图片任务。新图片模型接入时必须先核实并保存该模型的合法规格，不能在运行时代码按模型名猜预设。视频 H3 的 `JusuanH3Contract` 仍是代码中的旧合同，尚未迁移到端点记录。

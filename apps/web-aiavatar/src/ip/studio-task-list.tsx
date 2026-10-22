@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import type { IpRun } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
-import { studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
+import { studioImageReviewNotice, studioTaskHasProgress, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 import { reportStudioError, studioRunError } from './studio-errors';
 import { studioRunRewrites } from '@/canvas-bridge/studio-video-prompt';
 
@@ -34,8 +34,8 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
     </article>)}
     {visible.map(run => {
       const node = nodes.find(n => n.id === run.nodeId), queued = studioTaskQueued(run), stopped = run.errorCode === 'IP_RUN_CANCELLED';
-      const current = node?.metadata?.studio?.runId === run.id;
-      const state = run.status === 'running' ? queued ? 'queued' : 'running' : stopped ? 'stopped' : failed(run) ? 'failed' : run.stage === '部分视频生成失败' ? 'partial' : 'done';
+      const current = node?.metadata?.studio?.runId === run.id, review = studioTaskNeedsReview(run);
+      const state = run.status === 'running' ? review ? 'review' : queued ? 'queued' : 'running' : stopped ? 'stopped' : failed(run) ? 'failed' : run.stage === '部分视频生成失败' ? 'partial' : 'done';
       const label = run.status === 'running' ? studioTaskLabel(run, true) : stopped ? '已停止' : state === 'failed' ? '生成失败' : state === 'partial' ? '部分完成' : '已完成';
       const pct = Math.max(0, Math.min(100, Number.isFinite(run.pct) ? run.pct : 0));
       const title = titleFor(run), detail = detailFor?.(run);
@@ -44,7 +44,8 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         <div className="studio-task-heading"><strong title={title}>{title}</strong><span className="studio-task-status" data-status={state}>{label}</span></div>
         {detail && <p className="studio-task-brief" title={detail}>{detail}</p>}
         <div className="studio-task-meta"><time dateTime={run.createdAt}>{timestamp}</time><span title={run.id}>#{run.id.slice(-6)}</span><span>{run.output.mock ? '测试响应' : run.status === 'running' ? `冻结 ${run.cost} 积分` : `已消耗 ${run.cost} 积分`}</span></div>
-        {state === 'running' && <div className="studio-task-progress" role="progressbar" aria-label={`${title}生成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ transform: `scaleX(${pct / 100})` }}/></div>}
+        {state === 'running' && studioTaskHasProgress(run) && <div className="studio-task-progress" role="progressbar" aria-label={`${title}生成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ transform: `scaleX(${pct / 100})` }}/></div>}
+        {review && <p className="studio-task-note" role="status">{studioImageReviewNotice}</p>}
         {queued && run.queue && <p className="studio-task-note">前面还有 {Math.max(0, run.queue.position - 1)} 项 · 有空位后自动开始</p>}
         {run.status === 'running' && refreshErrors[run.id] && <p className="studio-task-note" role="status">任务状态暂未更新，正在重试…</p>}
         {run.kind === 'studio-video' && studioRunRewrites(run).some(take => take.lost.length) && <p className="studio-task-note">出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照</p>}
@@ -53,7 +54,7 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
           {node && <button type="button" className={run.status === 'done' && current ? 'is-primary' : ''} onClick={() => onLocate(node)}>{node.metadata?.studio?.conversation ? '打开对话' : run.status === 'done' && current ? '查看结果' : '定位节点'}</button>}
           {failed(run) && current && node && !node.metadata?.studio?.conversation && <button type="button" className="is-primary" disabled={busy} onClick={() => onRetry(node)}>重新生成</button>}
           <button type="button" onClick={() => onInput(run)}>查看输入</button>
-          {run.status === 'running' && (run.kind === 'studio-video' && !queued ? <span className="studio-task-note">视频生成中</span> : <button type="button" onClick={() => onCancel(run)}>{queued ? '停止排队' : '停止'}</button>)}
+          {run.status === 'running' && !review && (run.kind === 'studio-video' && !queued ? <span className="studio-task-note">视频生成中</span> : <button type="button" onClick={() => onCancel(run)}>{queued ? '停止排队' : '停止'}</button>)}
         </div>
       </article>;
     })}

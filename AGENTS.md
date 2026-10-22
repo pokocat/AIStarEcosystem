@@ -1007,6 +1007,10 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 用户确定按端点而非 vendor 分组。`concurrencyLimit` 在原后台配置，V48 增列与持久票据；`AiGenerationQueueService` 的端点行锁、FIFO 和派发租约为准入唯一真值。Studio 和通用视频 worker 超限即退出线程并排队，旧同步 chat/images 调用共用同一额度；ThreadLocal Scope 防内部重复占名额，结束必须清理。视频和配音/口型持有到上游终态，未知受理不可释放容量后重提；排队时长不当运行超时/孤儿 hold，停止退回原冻结。原业务任务/账本仍各自真值，票据不能保存密钥、素材或提示词。其他协议及人工容量核对边界见 `docs/ai-endpoint-generation-queue.md`。
 
 
+### 图片受理未知不占执行名额（2026-10-22）
+
+图片 `generate/running/image.provider.recovering/STUDIO_IMAGE_SUBMISSION_UNKNOWN` 保留原任务、供应商请求和冻结/付款授权，但不计入端点执行名额。准入、派发、`queue.running` 共用 `AiGenerationQueueRepository.countOccupyingSlots`，无迁移，旧记录读取即生效。不能据此重提或自动退款；视频/音频及已知图片任务的恢复规则保留。画布、任务列表和历史明确“受理结果待核对”，图片阶段不展示虚假百分比。
+
 ### v0.222 · Studio 画布浮层（2026-10-09，本地未发布）
 
 创作操作默认在画布内无蒙层浮层，禁止恢复为强制右侧 Drawer。`studio-floating-panel.tsx` portal 到 stage 屏幕层，视口/节点 context 与 ResizeObserver 定位，不随画布缩放、不轮询 DOM；模型/费用/提交 footer 固定。助手 2026-10-18 起默认停靠右侧、占满画布高度（浏览器记住「改成浮窗」和拖出的宽度，见下「创作助手改版」）；普通节点选择不关闭工具浮窗。人物库返回保持原节点/草稿/视口，展开编辑器关闭回原内容。工作台 async session guard 防旧请求关闭新面板，助手历史草稿按项目/对话缓存在内存，不能写进已受理请求。无后端/API 改动，证据见统一验证 §38；手机/生产未验收。

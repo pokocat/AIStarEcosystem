@@ -19,7 +19,8 @@ class AiGenerationQueueConcurrencyTest {
     @Autowired AiModelEndpointRepository endpoints;
     @Autowired AiGenerationQueueRepository tickets;
     @Autowired AiGenerationQueueService queue;
-    @BeforeEach void reset(){tickets.deleteAll();endpoints.deleteAll();}
+    @Autowired com.aistareco.aep.ipstudio.repository.IpRunRepository runs;
+    @BeforeEach void reset(){tickets.deleteAll();runs.deleteAll();endpoints.deleteAll();}
     private void endpoint(String id,int limit){endpoints.saveAndFlush(AiModelEndpoint.builder().id(id).name(id)
         .providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://localhost").upstreamApiKeyEncrypted("unused")
         .concurrencyLimit(limit==0?null:limit).build());}
@@ -57,6 +58,39 @@ class AiGenerationQueueConcurrencyTest {
         assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("ip-image","image","e",false));
         queue.finish("material-video","video");
         assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","image","e",false));
+    }
+    @Test void unknownImageReceiptsDoNotBlockNewImagesOrSynchronousEntrances() {
+        endpoint("e",2);
+        for(String id:List.of("unknown-one","unknown-two")) {
+            runs.saveAndFlush(com.aistareco.aep.ipstudio.model.IpRun.builder().id(id).projectId("p").nodeId(id)
+                .ownerUserId("owner").kind("generate").status("running").stage("image.provider.recovering")
+                .pct(10).cost(30).errorCode("STUDIO_IMAGE_SUBMISSION_UNKNOWN")
+                .inputJson("{\"_exec\":{\"imageJobs\":[{\"submitAttempted\":true,\"requestBody\":\"original\"}]}}")
+                .build());
+            queue.register("ip-image",id,"e",true);
+        }
+        assertEquals(2,tickets.countByEndpointIdAndState("e","running"));
+        assertEquals(0,tickets.countOccupyingSlots("e"));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("sync-call","http","e",false));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","next-one","e",false));
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("ip-image","next-two","e",false));
+        assertEquals(2,queue.position("ip-image","next-two").running());
+        var next=tickets.findByTaskTypeAndTaskId("ip-image","next-two").orElseThrow();
+        assertFalse(queue.claimDispatch(next,false));
+        queue.finish("sync-call","http");
+        assertTrue(queue.claimDispatch(next,false));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("ip-image","next-two","e",false));
+        for(String id:List.of("unknown-one","unknown-two")) {
+            var original=runs.findById(id).orElseThrow();
+            assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",original.getErrorCode());
+            assertEquals("running",original.getStatus());assertEquals(30,original.getCost());
+            assertTrue(original.getInputJson().contains("original"));
+        }
+        // Operator confirmation changes the same task back into a known accepted job; it counts again.
+        var recovered=runs.findById("unknown-one").orElseThrow();
+        recovered.setErrorCode("STUDIO_IMAGE_RECOVERING");runs.saveAndFlush(recovered);
+        assertEquals(3,tickets.countOccupyingSlots("e"));
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("ip-image","later","e",false));
     }
     @Test void unlimitedPolicyAndDispatchLeasesDoNotDuplicateTasks() {
         endpoint("e",1);

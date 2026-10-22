@@ -471,6 +471,7 @@ html[data-layout="desktop"] .studio-flow-controls span { min-width:44px; color:v
 .studio-flow-media-generating { gap:8px; background:var(--surface-2); backdrop-filter:none; color:var(--ink-2); font-size:12px; }
 .studio-flow-generation-ring { width:44px; height:44px; flex:none; border-radius:50%; background:conic-gradient(from 0deg, var(--ai), var(--ai-2), var(--surface-3) 70%, var(--ai)); -webkit-mask:radial-gradient(circle, transparent 54%, #000 56%); mask:radial-gradient(circle, transparent 54%, #000 56%); animation:studio-flow-generation-spin 1.6s linear infinite; }
 .studio-flow-generation-line { max-width:100%; padding:0 12px; line-height:1.5; overflow-wrap:anywhere; }
+.studio-flow-generation-review { max-width:32ch; margin:0; font-size:14px; line-height:1.6; overflow-wrap:anywhere; color:var(--ink-2); }
 @media (prefers-reduced-motion:reduce) { .studio-flow-generation-ring { animation:none; } }
 /* 画布页按钮配色统一（2026-10-19）：浮层里的主按钮，带 AI 记号的（会去生成、要花积分）用 AI 渐变，其它用深色；不再用麦黄。 */
 .studio-floating-panel .ant-btn-primary:not(:disabled) { background:var(--ink); border-color:var(--ink); color:var(--surface); }

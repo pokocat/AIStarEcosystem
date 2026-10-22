@@ -52,6 +52,20 @@ class AiGenerationQueueDispatcherTest {
         dispatcher.dispatch();dispatcher.dispatch();
         verify(images,times(1)).execute("run");verifyNoInteractions(videoWorker);
     }
+    @Test void unknownImageReceiptIsNeverResubmittedWhileLaterImagesCanDispatch() {
+        var unknown=ticket(AiGenerationQueueService.IMAGE,"unknown","running");
+        var later=ticket(AiGenerationQueueService.IMAGE,"later","waiting");later.setId(2L);
+        var receipt=IpRun.builder().id("unknown").kind("generate").status("running")
+            .stage("image.provider.recovering").errorCode("STUDIO_IMAGE_SUBMISSION_UNKNOWN").build();
+        when(queue.openEntries()).thenReturn(List.of(unknown,later));
+        when(runs.findById("unknown")).thenReturn(Optional.of(receipt));
+        when(runs.findById("later")).thenReturn(Optional.of(IpRun.builder().status("running").build()));
+        when(images.canResumeNative(receipt)).thenReturn(false);
+        when(queue.claimDispatch(later,false)).thenReturn(true);
+        dispatcher.dispatch();
+        verify(images).execute("later");verify(images,never()).execute("unknown");
+        verify(images,never()).recoverNative("unknown");verify(queue,never()).finish(AiGenerationQueueService.IMAGE,"unknown");
+    }
     @Test void acceptedVideoRecoveryOnlyQueriesOriginalTask() {
         var ticket=ticket(AiGenerationQueueService.VIDEO,"video","running");
         when(queue.openEntries()).thenReturn(List.of(ticket));

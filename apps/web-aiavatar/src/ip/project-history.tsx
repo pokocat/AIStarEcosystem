@@ -8,6 +8,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { nanoid } from "nanoid";
 import type { IpRun, IpRevision, IpCandidate } from "@ai-star-eco/types";
 import { IpStudioApi } from "@/ip/api";
+import { studioTaskLabel } from '@/canvas-bridge/studio-task-status';
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { useAssetStore } from "@/canvas/stores/use-asset-store";
 import { insertRecoveredNode } from "@/canvas-bridge/canvas-recovery";
@@ -74,7 +75,7 @@ export function ProjectHistory({ projectId, saveNow }: { projectId: string; save
         { key: "runs", label: "生成记录", children: <div style={{ maxHeight: "65vh", overflowY: "auto" }}>
           {!loading && !error && !runs.length && <Empty description="还没有生成记录" />}
           {runs.map((run) => <article key={run.id} style={{ padding: "14px 0", borderBottom: "1px solid var(--line-2)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}><span>{time(run.createdAt)}</span><span>{run.status === "done" ? "已完成" : run.status === "failed" ? "生成失败" : "生成中"} · {run.cost} 积分</span></div>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12 }}><span>{time(run.createdAt)}</span><span>{run.status === "done" ? "已完成" : run.status === "failed" ? "生成失败" : studioTaskLabel(run)} · {run.cost} 积分</span></div>
             {run.errorMessage && <StudioErrorNotice error={studioRunError(run)} once={`run:${run.id}`} autoReport={false}/>}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 12 }}>{(run.output.candidates ?? []).map((image) => <div key={image.key} style={{ width: 180 }}>
               <SignedImage storageKey={image.key} src={image.url} alt="历史生成图片" style={{ width: "100%", height: 150, objectFit: "contain", background: "var(--surface-2)", borderRadius: 8 }} />

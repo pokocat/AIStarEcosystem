@@ -1287,6 +1287,8 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 生成准入按 `AiModelEndpoint.id` 的并发配置和持久 FIFO 票据执行，等待不重新提交厂商。`IpRun.queue` 与原生视频候选 `queue` 是读取时计算的只读投影：`position` 为同端点全部等待任务中的 1-based 顺序，`waiting/running` 为该端点汇总数，`concurrencyLimit` 为配置上限；不得泄露其他用户任务明细。已准入或终态不返回排位。原生视频混合批次的运行级排位仅在全部活跃候选均排队时返回，候选级位置分别保留。取消复用原任务及冻结，前序任务退出后读取位次自动前移，不改变账本、不创建替代任务。
 
+图片受理未知（2026-10-22）：`generate + running + image.provider.recovering + STUDIO_IMAGE_SUBMISSION_UNKNOWN` 的原记录继续保留任务、供应商请求及原冻结/付款授权，但不计入端点执行名额；准入、派发、`queue.running` 共用数据库只读计数 `countOccupyingSlots`，存量任务立即适用，不建第二份调度/计费状态。无供应商 ID 不重提、不自动退款、不因释放名额允许同一任务重新生成；已知任务的恢复和视频/音频容量规则不变。画布、任务列表和历史显示“受理结果待核对”，引导联系运营且无无效停止入口；图片阶段不作为真实百分比展示。
+
 ### Studio 剧本编辑改稿（v0.224，本地未发布）
 
 - `StudioRunRequest.scriptEdit` 仅允许 `operation=assistant` 的文字路径，不允许同时 readVisuals=true、settings 或 episodeNo。markdown 1–48000字，在冻结前校验；沿用配置 assistant 提示词与 DAP_PERSONA 端点、端点并发队列、平台实际价格与 maxCost、同 owner/clientRequestId 幂等和 afterCommit 派发。

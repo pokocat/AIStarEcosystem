@@ -53,7 +53,7 @@ public class AiGenerationQueueService {
             if("finished".equals(entry.getState()))return Admission.BUSY;
             if("running".equals(entry.getState()))return retainAcrossSteps?Admission.READY:Admission.BUSY;
             int limit=endpoint.getConcurrencyLimit()==null?0:endpoint.getConcurrencyLimit();
-            long running=entries.countByEndpointIdAndState(scope,"running");
+            long running=entries.countOccupyingSlots(scope);
             long ahead=entries.countByEndpointIdAndStateAndIdLessThan(scope,"waiting",entry.getId());
             if(limit>0 && running+ahead>=limit)return Admission.WAITING;
             entry.setState("running");entry.setDispatchAfter(Instant.now().plusSeconds(180));entries.save(entry);
@@ -77,7 +77,7 @@ public class AiGenerationQueueService {
             if(!entry.getState().equals(recovery?"running":"waiting")||entry.getDispatchAfter().isAfter(Instant.now()))return false;
             if(!recovery) {
                 int limit=endpoint.getConcurrencyLimit()==null?0:endpoint.getConcurrencyLimit();
-                if(limit>0&&entries.countByEndpointIdAndState(endpoint.getId(),"running")+
+                if(limit>0&&entries.countOccupyingSlots(endpoint.getId())+
                         entries.countByEndpointIdAndStateAndIdLessThan(endpoint.getId(),"waiting",entry.getId())>=limit)return false;
             }
             entry.setDispatchAfter(Instant.now().plusSeconds(recovery?180:30));entries.save(entry);return true;
@@ -99,7 +99,7 @@ public class AiGenerationQueueService {
             return new com.aistareco.aep.dto.AiGenerationQueuePositionDto(
                 entries.countByEndpointIdAndStateAndIdLessThan(endpoint.getId(),"waiting",entry.getId())+1,
                 entries.countByEndpointIdAndState(endpoint.getId(),"waiting"),
-                entries.countByEndpointIdAndState(endpoint.getId(),"running"),endpoint.getConcurrencyLimit());
+                entries.countOccupyingSlots(endpoint.getId()),endpoint.getConcurrencyLimit());
         });
     }
     public String pinnedEndpoint(String type,String id){return entries.findByTaskTypeAndTaskId(type,id).map(AiGenerationQueueEntry::getEndpointId).orElse(null);}

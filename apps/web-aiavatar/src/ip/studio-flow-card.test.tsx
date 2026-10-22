@@ -19,13 +19,36 @@ test.each([CanvasNodeType.Image,CanvasNodeType.Video])('%s generation is centere
   const view=render(<StudioFlowCard {...props}/>);
   const label=type===CanvasNodeType.Video?'视频':'图片';
   expect(screen.getByRole('status').textContent).toContain(`正在生成${label}`);
-  expect(screen.getByRole('progressbar',{name:`${label}任务进度`}).getAttribute('aria-valuenow')).toBe('11');
+  if(type===CanvasNodeType.Video)expect(screen.getByRole('progressbar',{name:`${label}任务进度`}).getAttribute('aria-valuenow')).toBe('11');
+  else expect(screen.queryByRole('progressbar')).toBeNull();
   expect(view.container.querySelector('header small')).toBeNull();
   expect(screen.queryByText('任务进行中，可继续编辑画布')).toBeNull();
   if(type===CanvasNodeType.Video)expect(view.container.querySelector('video')?.getAttribute('src')).toBe('/old');
   view.rerender(<StudioFlowCard {...props} data={{document:{...node,metadata:{...node.metadata,status:'success',content:'/new',storageKey:'new',studio:{...node.metadata!.studio!,task:{status:'done',pct:100}}}}}}/>);
   expect(screen.queryByRole('status')).toBeNull();expect(screen.queryByRole('progressbar')).toBeNull();
   expect(view.container.querySelector(type===CanvasNodeType.Video?'video':'img')?.getAttribute('src')).toBe('/new');
+});
+
+test('an unknown image submission explains review without a spinner or misleading percentage, including after reload',()=>{
+  const task={status:'running' as const,stage:'image.provider.recovering',pct:10,errorCode:'STUDIO_IMAGE_SUBMISSION_UNKNOWN'};
+  const node:CanvasNodeData={id:'unknown',type:CanvasNodeType.Image,title:'医生低头写字',position:{x:0,y:0},width:320,height:400,
+    metadata:{status:'loading',studio:{kind:'shot',runId:'IPR-unknown',task}}};
+  const props={data:{document:node},selected:true} as any;
+  const view=render(<StudioFlowCard {...props}/>);
+  expect(screen.getByRole('status').textContent).toContain('受理结果待核对');
+  expect(screen.getByRole('status').textContent).toContain('请联系运营核对原任务');
+  expect(screen.getByRole('status').textContent).toContain('冻结积分待核实后结算');
+  expect(screen.getByRole('status').textContent).not.toContain('10%');
+  expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(view.container.querySelector('.studio-flow-generation-ring')).toBeNull();
+  view.unmount();render(<StudioFlowCard {...props}/>);
+  expect(screen.getByRole('status').textContent).toContain('受理结果待核对');
+});
+
+test.each(['image.generate.1','image.provider.processing','image.provider.recovering','storage.persist'])('image checkpoint %s is a stage, not a percentage',stage=>{
+  render(<StudioMediaGenerationState media="image" confirmed task={{status:'running',stage,pct:10}}/>);
+  expect(screen.getByRole('status').textContent).not.toContain('%');
+  expect(screen.queryByRole('progressbar')).toBeNull();
 });
 
 test('an empty video offers upload without starting generation and hides mutation in read-only previews',()=>{
