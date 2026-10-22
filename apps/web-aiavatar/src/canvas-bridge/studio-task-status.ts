@@ -1,13 +1,18 @@
+import { modelTaskException } from '@ai-star-eco/api-client/model-task-state';
 import type { AiGenerationQueuePosition } from '@ai-star-eco/types';
 
 type Task = { kind?: string; status?: string; stage?: string; pct?: number; errorCode?: string; queue?: AiGenerationQueuePosition | null };
 export function studioTaskNeedsReview(task?: Task): boolean {
-  return task?.status === 'running' && task.errorCode === 'STUDIO_IMAGE_SUBMISSION_UNKNOWN';
+  return modelTaskException(task)?.needsReview === true;
 }
-export const studioImageReviewNotice = '生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。';
+export function studioTaskRecovering(task?: Task): boolean {
+  return modelTaskException(task)?.needsReview === false;
+}
+export const studioRecoveryNotice = '生成服务暂时无法返回结果，正在恢复原任务。请勿重复生成，冻结积分待结果确认后结算。';
+export const studioReviewNotice = '生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。';
 /** Image stages are checkpoints, not provider percentages. */
 export function studioTaskHasProgress(task?: Task): boolean {
-  return task?.kind !== 'generate' && !studioTaskNeedsReview(task) && !task?.stage?.startsWith('image.') && task?.stage !== 'storage.persist';
+  return task?.kind !== 'generate' && !studioTaskNeedsReview(task) && !studioTaskRecovering(task) && !task?.stage?.startsWith('image.') && task?.stage !== 'storage.persist';
 }
 export function studioTaskQueued(task?: Task): boolean {
   return task?.status === 'running' && (!!task.queue || task.stage === 'endpoint.queued' || task.stage === 'queued');
@@ -19,6 +24,7 @@ export function studioQueueNotice(queue?: AiGenerationQueuePosition | null): str
 }
 export function studioTaskLabel(task?: Task, compact = false): string {
   if (studioTaskNeedsReview(task)) return '受理结果待核对';
+  if (studioTaskRecovering(task)) return '正在恢复原任务';
   if (studioTaskQueued(task)) return compact ? task?.queue?`排队第 ${task.queue.position} 位`:'排队中' : studioQueueNotice(task?.queue);
   if(task?.stage==='image.provider.recovering')return '正在查询原图片任务';
   if(task?.stage==='image.provider.queued')return '生成服务排队中';

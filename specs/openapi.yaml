@@ -4999,7 +4999,8 @@ components:
         inputs: { type: array, items: { $ref: '#/components/schemas/VideoStudioJobInput' } }
         videoUrl: { type: string, nullable: true, description: 成片短期签名地址；未完成为 null }
         thumbnailUrl: { type: string, nullable: true }
-        errorMessage: { type: string, nullable: true, description: 失败原因（可直接给用户看，含厂商 4xx 原话）；未失败为 null }
+        errorCode: { type: string, nullable: true, description: 受理待核对或恢复中的稳定错误码 }
+        errorMessage: { type: string, nullable: true, description: 失败或原任务恢复说明（可直接给用户看）；无异常为 null }
         credits: { type: integer, format: int64, description: 进行中 = 已冻结，成功 = 已扣，失败 = 已退回 }
         originalPrompt: { type: string, nullable: true, description: 用了智能优化时的原提示词（prompt 是最终送去生成的那版）；没优化为 null }
         templateId: { type: string, nullable: true, description: 做同款时来自哪个模板；不是做同款为 null }

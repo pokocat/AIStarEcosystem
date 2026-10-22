@@ -20,7 +20,8 @@ class AiGenerationQueueConcurrencyTest {
     @Autowired AiGenerationQueueRepository tickets;
     @Autowired AiGenerationQueueService queue;
     @Autowired com.aistareco.aep.ipstudio.repository.IpRunRepository runs;
-    @BeforeEach void reset(){tickets.deleteAll();runs.deleteAll();endpoints.deleteAll();}
+    @Autowired MaterialVideoJobRepository videos;
+    @BeforeEach void reset(){tickets.deleteAll();runs.deleteAll();videos.deleteAll();endpoints.deleteAll();}
     private void endpoint(String id,int limit){endpoints.saveAndFlush(AiModelEndpoint.builder().id(id).name(id)
         .providerType(AiModelProviderType.OPENAI_COMPATIBLE).baseUrl("http://localhost").upstreamApiKeyEncrypted("unused")
         .concurrencyLimit(limit==0?null:limit).build());}
@@ -91,6 +92,31 @@ class AiGenerationQueueConcurrencyTest {
         recovered.setErrorCode("STUDIO_IMAGE_RECOVERING");runs.saveAndFlush(recovered);
         assertEquals(3,tickets.countOccupyingSlots("e"));
         assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("ip-image","later","e",false));
+    }
+    @Test void allReviewOnlyMediaReleaseCapacityButKeepReceiptsAndKnownJobsCountAgain() {
+        endpoint("e",1);
+        var video=MaterialVideoJob.builder().id("video").ownerUserId("owner").status("submitting")
+            .progress(5).creditsHeld(520).errorCode("VIDEO_SUBMISSION_UNKNOWN").createdAt(java.time.OffsetDateTime.now()).build();
+        videos.saveAndFlush(video);queue.register("material-video","video","e",true);
+        for(String kind:List.of("studio-audio","studio-lip-sync")) {
+            boolean lip=kind.equals("studio-lip-sync");
+            runs.saveAndFlush(com.aistareco.aep.ipstudio.model.IpRun.builder().id(kind).projectId("p").nodeId(kind)
+                .ownerUserId("owner").kind(kind).status("running").stage(lip?"lip-sync.submission_unknown":"audio.submission_unknown")
+                .errorCode(lip?"STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN":"STUDIO_SPEECH_SUBMISSION_UNKNOWN").cost(20)
+                .inputJson("{\"_exec\":{\"submitAttempts\":3,\"requestBody\":\"original\"}}").build());
+            queue.register("ip-speech",kind,"e",true);
+        }
+        assertEquals(3,tickets.countByEndpointIdAndState("e","running"));assertEquals(0,tickets.countOccupyingSlots("e"));
+        assertEquals(AiGenerationQueueService.Admission.READY,queue.acquire("material-video","next","e",false));
+        assertEquals(AiGenerationQueueService.Admission.WAITING,queue.acquire("material-video","later","e",false));
+        assertEquals(1,queue.position("material-video","later").running());
+        assertEquals(520,videos.findById("video").orElseThrow().getCreditsHeld());
+        queue.finish("material-video","next");
+        assertTrue(queue.claimDispatch(tickets.findByTaskTypeAndTaskId("material-video","later").orElseThrow(),false));
+        // Even an inconsistent old error code must not exclude an accepted video.
+        video.setExternalTaskId("original");videos.saveAndFlush(video);assertEquals(1,tickets.countOccupyingSlots("e"));
+        var audio=runs.findById("studio-audio").orElseThrow();audio.setStage("audio.recovering");audio.setErrorCode("STUDIO_SPEECH_RECOVERING");runs.saveAndFlush(audio);
+        assertEquals(2,tickets.countOccupyingSlots("e"));
     }
     @Test void unlimitedPolicyAndDispatchLeasesDoNotDuplicateTasks() {
         endpoint("e",1);

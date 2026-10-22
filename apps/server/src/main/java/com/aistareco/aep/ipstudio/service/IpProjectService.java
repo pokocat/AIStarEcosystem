@@ -616,6 +616,7 @@ public class IpProjectService {
         var candidates=output.putArray("videoCandidates");
         boolean active=false,allQueued=true;int successes=0,pct=0;long cost=0;Instant finished=null;String firstError=null,firstErrorCode=null;
         com.aistareco.aep.dto.AiGenerationQueuePositionDto firstQueue=null;
+        String pendingCode=null,pendingMessage=null;
         for(int index=0;index<ids.size();index++) {
             String id=ids.get(index);
             var job=videoJobs.findById(id).filter(j->r.getOwnerUserId().equals(j.getOwnerUserId()))
@@ -624,10 +625,19 @@ public class IpProjectService {
             boolean done="succeeded".equals(job.getStatus()),failed="failed".equals(job.getStatus());
             String key=done?storage.keyOfStoredUrl(job.getVideoUrl()):null;
             if(done && key==null) {done=false;failed=true;}
+            boolean review=!done&&!failed&&"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode());
+            boolean recovering=!done&&!failed&&"VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
+            String pending=review?"生成服务响应异常，受理结果待核对。请联系运营核对原任务，请勿重复生成；冻结积分待核实后结算。"
+                    :recovering?"生成服务暂时无法返回结果，正在查询原视频任务；请勿重复生成，冻结积分待结果确认后结算。":null;
             String error=failed?(job.getErrorMessage()==null?"视频未交付，请查看任务状态":job.getErrorMessage()):null;
             var candidate=candidates.addObject().put("index",index).put("jobId",id)
                     .put("status",done?"done":failed?"failed":"running").put("pct",done||failed?100:job.getProgress())
                     .put("durationSec",job.getDurationSec());
+            if(pending!=null) {
+                candidate.put("errorCode",job.getErrorCode()).put("errorMessage",pending);
+                // Any uncertain item must remain visible even when other batch items are progressing or done.
+                if(pendingCode==null||review) {pendingCode=job.getErrorCode();pendingMessage=pending;}
+            }
             // 厂商出片前改写提示词的结果（只读；受理后才知道，只用来解释成片与原文的差异）。
             var rewrite=com.aistareco.aep.service.materialvideo.VideoPromptRewrite.wire(om,job.getVariantConfigJson(),job.getPayloadJson());
             if(rewrite!=null)candidate.set("promptRewrite",rewrite);
@@ -658,10 +668,12 @@ public class IpProjectService {
             if(job.getCompletedAt()!=null) {Instant time=job.getCompletedAt().toInstant();if(finished==null||time.isAfter(finished))finished=time;}
         }
         boolean allFailed=!active&&successes==0;
-        String stage=active?allQueued?"endpoint.queued":"视频生成中":allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
+        String stage=active?(allQueued?"endpoint.queued":"视频生成中")
+                :allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
+        if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
-                stage,pct/ids.size(),cost,allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
-                allFailed?firstError:null,inputs,output,
+                stage,pct/ids.size(),cost,pendingCode!=null?pendingCode:allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
+                pendingMessage!=null?pendingMessage:allFailed?firstError:null,inputs,output,
                 iso(r.getCreatedAt()),active||finished==null?null:finished.toString(),active&&allQueued?firstQueue:null);
     }
 

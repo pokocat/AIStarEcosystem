@@ -8,8 +8,8 @@ vi.mock('./studio-errors', () => ({ reportStudioError: vi.fn(), studioRunError: 
 afterEach(cleanup);
 const run = (id: string, status: IpRun['status'], extra = {}): IpRun => ({ id, projectId: 'p', nodeId: 'n', kind: 'studio-video', status, stage: 'generating', pct: 30, cost: 200, createdAt: '2026-10-13T12:34:56Z', inputs: {}, output: {}, ...extra } as IpRun);
 const makeProps = () => ({ runs: [run('active123', 'running'), run('failure456', 'failed', { cost: 0, errorMessage: '参考图上传失败', errorCode: 'VIDEO_REF_UPLOAD_FAILED' }), run('done789', 'done'), run('stopped000', 'failed', { errorCode: 'IP_RUN_CANCELLED' })], nodes: [{ id: 'n', title: '表情视频', type: 'video', position: { x: 0, y: 0 }, metadata: { studio: { runId: 'failure456' } } }] as never, unconfirmed: [], loading: false, busy: false, hasMore: false, refreshErrors: {}, titleFor: () => '表情视频 · 5 秒', onInput: vi.fn(), onLocate: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn(), onReload: vi.fn(), onMore: vi.fn() });
-test('unknown images show review, retain frozen credits, and offer no impossible stop or regeneration',()=>{
-  const props={...makeProps(),runs:[run('unknown','running',{kind:'generate',stage:'image.provider.recovering',pct:10,cost:30,errorCode:'STUDIO_IMAGE_SUBMISSION_UNKNOWN'})]};
+test.each([['generate','STUDIO_IMAGE_SUBMISSION_UNKNOWN'],['studio-video','VIDEO_SUBMISSION_UNKNOWN'],['studio-audio','STUDIO_SPEECH_SUBMISSION_UNKNOWN'],['studio-lip-sync','STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN']])('%s review retains frozen credits without impossible stop or regeneration',(kind,errorCode)=>{
+  const props={...makeProps(),runs:[run('unknown','running',{kind,stage:'provider.submission_unknown',pct:5,cost:30,errorCode})]};
   render(<StudioTaskList {...props}/>);
   expect(screen.getByText('受理结果待核对')).toBeDefined();
   expect(screen.getByText('冻结 30 积分')).toBeDefined();
@@ -51,4 +51,10 @@ test('failed assistant tasks offer reopening the conversation without a misleadi
   const props = { ...makeProps(), runs: [run('failure456', 'failed', { errorMessage: '方案不完整' })], nodes: [{ ...makeProps().nodes[0], metadata: { studio: { conversation: {}, runId: 'failure456' } } }] as never }; render(<StudioTaskList {...props}/>);
   expect(screen.queryByRole('button', { name: '重新生成' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: '打开对话' })); expect(props.onLocate).toHaveBeenCalledOnce(); expect(props.onRetry).not.toHaveBeenCalled();
+});
+
+test.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP_SYNC_RECOVERING'])('%s shows recovery without frozen percent or stop',errorCode=>{
+  render(<StudioTaskList {...makeProps()} runs={[run('recover','running',{pct:5,errorCode})]}/>);
+  expect(screen.getByText('正在恢复原任务')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('冻结积分');
 });

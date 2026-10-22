@@ -12,6 +12,7 @@
 //   · 评审后：「几个在生成 / 排队」、首帧 / 视频各几个，一律按面板里列出的这批任务（自己的、在短剧里时只算这部）数。
 //     之前读的是 summary.total —— 那是全平台的计数，于是入口写「没有在生成的」，点开却说「3 个在生成」。
 //     全平台排队单独一块，明确写「平台排队」，和自己的分开。
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { Activity, Check, ChevronDown, ChevronUp, CircleAlert, Image as ImageIcon, Loader2, Video, X } from "lucide-react";
@@ -26,6 +27,8 @@ function isActiveTask(t: DramaRenderTask) {
 }
 
 function statusLabel(t: DramaRenderTask) {
+  const exception = modelTaskException(t);
+  if (exception) return exception.label;
   if (t.status === "ready") return "已完成";
   if (t.status === "failed") return "失败";
   if (t.status === "queued") return "排队中";
@@ -47,6 +50,7 @@ function taskLabel(t: DramaRenderTask) {
 }
 
 function TaskIcon({ task }: { task: DramaRenderTask }) {
+  if (modelTaskException(task)) return <CircleAlert size={14} />;
   if (task.status === "failed") return <CircleAlert size={14} />;
   if (task.status === "ready") return <Check size={14} />;
   if (task.task_type === "frame") return <ImageIcon size={14} />;
@@ -260,10 +264,10 @@ function TaskPanel({
                 {err ? (
                   <span className="render-task-err">失败：{err}</span>
                 ) : (
-                  <span>{statusLabel(task)}</span>
+                  <span title={modelTaskException(task)?.notice}>{statusLabel(task)}</span>
                 )}
               </span>
-              <span className="render-task-pct">{task.progress_pct ?? (task.status === "ready" ? 100 : 0)}%</span>
+              {!modelTaskException(task) && <span className="render-task-pct">{task.progress_pct ?? (task.status === "ready" ? 100 : 0)}%</span>}
             </div>
           );
         })}

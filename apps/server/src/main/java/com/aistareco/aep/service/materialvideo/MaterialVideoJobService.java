@@ -623,9 +623,7 @@ public class MaterialVideoJobService {
         card.putNull("render_cost_sec");
         card.put("model", orDefault(job.getModelUsed(), "ai-video"));
         card.put("progress_pct", job.getProgress());
-        boolean awaitingReconciliation="VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())
-                || "VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode());
-        card.put("stage", awaitingReconciliation?"正在核对生成结果":stageLabel(job.getStatus()));
+        card.put("stage",stageLabel(job));
         // 资产 URL 出 wire 经 signer（OSS 域才签，local /cdn 相对路径不匹配 base → 原样返回，dev 零影响）。
         // C-1 范围选择：last_frame 走 cdnKey 真值派生（§4.7.4，不过期）+ fallback 旧 lastFrameUrl；
         // video/thumbnail 只做 maybeSign 兜底（顺手偿还 §4.7.6 URL 时效欠债，不做完整 URL→key 迁移）。
@@ -659,6 +657,11 @@ public class MaterialVideoJobService {
     }
 
     /** 进度文案（已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败）。视频生成区的任务卡用同一套。 */
+    public static String stageLabel(MaterialVideoJob job) {
+        if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))return "受理结果待核对";
+        if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "正在查询原视频任务";
+        return stageLabel(job.getStatus());
+    }
     public static String stageLabel(String jobStatus) {
         if (jobStatus == null) return "处理中";
         return switch (jobStatus) {

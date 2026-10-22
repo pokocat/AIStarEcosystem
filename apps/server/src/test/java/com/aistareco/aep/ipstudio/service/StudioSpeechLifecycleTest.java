@@ -51,6 +51,27 @@ class StudioSpeechLifecycleTest {
         worker.step("r");worker.step("r");assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }
+    @Test void providerBusinessErrorsBecomeReviewAndStopAfterBoundedSameKeyRecovery() {
+        when(client.submit(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(
+            new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"STUDIO_SPEECH_UNAVAILABLE","unavailable"));
+        worker.step("r");assertEquals("audio.recovering",run.getStage());assertEquals("STUDIO_SPEECH_RECOVERING",run.getErrorCode());
+        worker.step("r");worker.step("r");String receipt=run.getInputJson();worker.step("r");
+        assertEquals("audio.submission_unknown",run.getStage());assertEquals("STUDIO_SPEECH_SUBMISSION_UNKNOWN",run.getErrorCode());
+        assertEquals(receipt,run.getInputJson());assertEquals(8,run.getCost());verifyNoInteractions(credits);
+        verify(client,times(3)).submit(any(),anyString(),eq("original-bytes"),eq("r"),eq("owner"));
+    }
+    @Test void pollingBusinessErrorIsVisibleAndNeverResubmitsOrReleasesCredits() {
+        run.setInputJson("{\"_exec\":{\"endpointId\":\"tts\",\"baseUrl\":\"https://api.jusuanhub.com/v1\",\"jobId\":\"job_r\",\"jobUrl\":\"url\"}}");
+        when(client.poll(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(
+            new com.aistareco.common.BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"STUDIO_SPEECH_UNAVAILABLE","unavailable"));
+        worker.step("r");worker.step("r");assertEquals("STUDIO_SPEECH_RECOVERING",run.getErrorCode());assertEquals("audio.recovering",run.getStage());
+        verify(client,never()).submit(any(),anyString(),anyString(),anyString(),anyString());verifyNoInteractions(credits);
+    }
+    @Test void preparationFailureBeforeSubmitTerminatesAndReleasesHold() {
+        when(endpoints.findById("tts")).thenReturn(Optional.empty());worker.step("r");worker.step("r");
+        assertEquals("failed",run.getStatus());assertEquals("STUDIO_SPEECH_PREPARATION_FAILED",run.getErrorCode());
+        verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());verifyNoInteractions(client);
+    }
     @Test void cancelledBeforeProviderAdmissionDoesNotSubmit() {
         run.setCancelRequested(true);worker.step("r");assertEquals("failed",run.getStatus());verifyNoInteractions(client);
     }

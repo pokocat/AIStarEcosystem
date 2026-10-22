@@ -10,6 +10,7 @@
 //
 // 渲染中（status=rendering）存在时 3s 轻量轮询刷新进度。
 
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ExternalLink, PlayCircle, Loader2, TriangleAlert, Search, Film, Trash2 } from "lucide-react";
@@ -270,6 +271,7 @@ function ScriptVideoCard({
   const badge = STATUS_BADGE[video.status];
   const isRendering = video.status === "rendering";
   const isFailed = video.status === "failed";
+  const exception = modelTaskException(video);
   const canPlay = video.status === "ready" && !!video.video_url;
   return (
     <div className="group flex flex-col gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 p-1.5 text-left transition hover:border-violet-300 hover:bg-zinc-100">
@@ -293,6 +295,7 @@ function ScriptVideoCard({
             <PosterFromVideo src={video.video_url} />
           ) : null}
 
+          {exception && <span className="absolute inset-x-2 top-8 text-xs text-white" role="status">{exception.notice}</span>}
           {/* 状态徽标 */}
           <span
             className={cn(
@@ -300,13 +303,13 @@ function ScriptVideoCard({
               badge.className,
             )}
           >
-            {isRendering ? `生成中 ${video.progress_pct ?? 0}%` : badge.label}
+            {exception ? exception.label : isRendering ? `生成中 ${video.progress_pct ?? 0}%` : badge.label}
           </span>
 
           {/* 中央图标 */}
           {isFailed ? (
             <TriangleAlert className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 text-white/90" />
-          ) : isRendering ? (
+          ) : isRendering && !exception ? (
             <Loader2 className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 animate-spin text-white/90" />
           ) : canPlay ? (
             <span className="absolute left-1/2 top-1/2 flex size-9 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-white/55 text-zinc-900 backdrop-blur-sm transition group-hover:bg-white/80 group-hover:scale-110">

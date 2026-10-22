@@ -196,6 +196,7 @@ export interface DramaFrameJob {
   cost?: number;
   /** C-1：本次首帧渲染的参考生效回报（参考 N/M 生效）。 */
   applied_refs?: AppliedRefs;
+  error_code?: string | null;
   error_message?: string | null;
   created_at?: string;
   started_at?: string;
@@ -228,6 +229,7 @@ export interface DramaRenderTask {
    */
   source?: { last_frame_url?: string | null } | null;
   duration_sec?: number;
+  error_code?: string | null;
   error_message?: string | null;
   created_at?: string;
   completed_at?: string;

@@ -1,4 +1,5 @@
 "use client";
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 
 // 视频生成弹窗 —— 真实提交视频大模型 + 轮询回显。
@@ -537,6 +538,7 @@ function GeneratingStage({
 function JobCard({ job }: { job: MaterialVideo }) {
   const ready = job.status === "ready";
   const failed = job.status === "failed";
+  const exception = modelTaskException(job);
   const tone = job.cover_color || "#7c5cff";
   return (
     <div style={{ borderRadius: "var(--radius-md)", overflow: "hidden", background: "var(--bg-2)", border: `1px solid ${failed ? "var(--danger)" : ready ? hexA(tone, "66") : "var(--line)"}` }}>
@@ -553,6 +555,8 @@ function JobCard({ job }: { job: MaterialVideo }) {
             <TriangleAlert size={22} color="var(--danger)" />
             <span style={{ fontSize: 11, color: "var(--danger)", fontWeight: 600 }}>生成失败</span>
           </div>
+        ) : exception ? (
+          <p role="status" style={{padding:12,color:"white"}}>{exception.notice}</p>
         ) : ready ? (
           <PlayCircle size={30} color="#fff" style={{ opacity: 0.85 }} />
         ) : (
@@ -573,7 +577,7 @@ function JobCard({ job }: { job: MaterialVideo }) {
       <div style={{ padding: "8px 12px" }}>
         <div style={{ fontSize: 12, color: "var(--fg-0)", fontWeight: 500, lineHeight: 1.4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{job.name}</div>
         <div style={{ marginTop: 4, fontFamily: "var(--font-mono)", fontSize: 9.5, color: failed ? "var(--danger)" : ready ? "var(--extra-teal)" : "var(--fg-3)" }}>
-          {failed ? (job.error_message ? truncate(job.error_message, 60) : "生成失败 · 可重新生成") : ready ? "已完成 · 已入素材库" : `${job.stage ?? "生成中"} · ${job.progress_pct ?? 0}%`}
+          {failed ? (job.error_message ? truncate(job.error_message, 60) : "生成失败 · 可重新生成") : ready ? "已完成 · 已入素材库" : exception ? exception.label : `${job.stage ?? "生成中"} · ${job.progress_pct ?? 0}%`}
         </div>
       </div>
     </div>

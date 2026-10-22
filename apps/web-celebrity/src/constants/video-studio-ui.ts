@@ -1,3 +1,4 @@
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 // ─────────────────────────────────────────────────────────────────────────────
 // constants/video-studio-ui.ts：「AI 创作 → 视频生成」的界面文案与展示小工具。
 //
@@ -53,7 +54,9 @@ export function isJobActive(status: VideoStudioJobStatus): boolean {
 }
 
 /** 卡片上的状态文字：生成中带百分比，如「生成中 42%」。 */
-export function jobStatusText(job: Pick<VideoStudioJob, "status" | "progressPct">): string {
+export function jobStatusText(job: Pick<VideoStudioJob, "status" | "progressPct"> & { errorCode?: string | null }): string {
+  const exception = modelTaskException(job);
+  if (exception) return exception.label;
   if (job.status === "running") {
     const pct = Math.max(0, Math.min(100, Math.round(job.progressPct)));
     return `${VIDEO_STUDIO_STATUS_LABEL.running} ${pct}%`;

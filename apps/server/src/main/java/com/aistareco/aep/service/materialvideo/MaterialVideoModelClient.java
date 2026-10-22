@@ -473,7 +473,7 @@ public class MaterialVideoModelClient {
         }
     }
 
-    /** A create request may be accepted without a readable reply. It must keep its capacity reservation. */
+    /** A create request may be accepted without a readable reply. Retain its receipt and original credit hold. */
     public static class SubmissionUnknown extends BusinessException {
         public SubmissionUnknown(String detail) {
             this(detail,null);

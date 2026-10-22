@@ -156,6 +156,7 @@ export interface MaterialVideo {
   video_url?: string | null;
   thumbnail_url?: string | null;
   /** status=failed 时的失败原因（后端透传，前端直接展示）。 */
+  error_code?: string | null;
   error_message?: string | null;
   /** 视频大模型异步任务 id（排障用）。 */
   external_task_id?: string | null;

@@ -54,6 +54,25 @@ class StudioNativeVideoProjectionTest {
         verify(repository,never()).save(any());assertEquals(0,binding.getCost());
         c.setOwnerUserId("other");assertThrows(BusinessException.class,()->service.toRunDto(binding));
     }
+    @Test void uncertainAndRecoveringCandidatesRemainVisibleInMixedBatches() {
+        var repository=mock(MaterialVideoJobRepository.class);var storage=IpStudioFixtures.storage();
+        var service=new IpProjectService(new IpStudioFixtures.Projects().repo,new IpStudioFixtures.Runs().repo,
+            new IpCatalogService(IpStudioFixtures.OM),IpStudioFixtures.templateResolver(),storage,IpStudioFixtures.props(),repository,IpStudioFixtures.OM,null);
+        var binding=IpRun.builder().id("binding").projectId("p").ownerUserId("owner").nodeId("n").kind("studio-video")
+            .status("done").inputJson("{\"_exec\":{\"nativeVideoJobIds\":[\"a\",\"b\"]}}").outputJson("{}").build();
+        var a=MaterialVideoJob.builder().id("a").ownerUserId("owner").app("ipstudio").status("submitting").progress(5)
+            .creditsHeld(520).errorCode("VIDEO_SUBMISSION_UNKNOWN").build();
+        var b=MaterialVideoJob.builder().id("b").ownerUserId("owner").app("ipstudio").status("generating").progress(45).creditsHeld(320).build();
+        when(repository.findById("a")).thenReturn(Optional.of(a));when(repository.findById("b")).thenReturn(Optional.of(b));
+        var dto=service.toRunDto(binding);assertEquals("running",dto.status());assertEquals("video.submission_unknown",dto.stage());
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertTrue(dto.errorMessage().contains("受理结果待核对"));assertEquals(840,dto.cost());
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.output().path("videoCandidates").get(0).path("errorCode").asText());
+        assertFalse(dto.output().path("videoCandidates").get(1).has("errorCode"));
+        a.setStatus("generating");a.setExternalTaskId("original");a.setErrorCode("VIDEO_RECONCILIATION_PENDING");
+        assertEquals("video.recovering",service.toRunDto(binding).stage());
+        a.setErrorCode(null);assertNull(service.toRunDto(binding).errorCode());
+        verify(repository,never()).save(any());assertEquals("done",binding.getStatus());
+    }
     /** 厂商出片前改写的描述跟着候选出 wire（只读、受理之后才有）；内部记录号不出；按原文生成的任务标 off。 */
     @Test void projectsTheVendorsRewrittenPromptPerCandidate() {
         var repository=mock(MaterialVideoJobRepository.class);var storage=IpStudioFixtures.storage();

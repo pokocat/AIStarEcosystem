@@ -131,6 +131,17 @@ class MaterialVideoWorkerTest {
         return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider, cover);
     }
 
+    @Test void successfulOriginalTaskPollingClearsAnEarlierRecoveryNotice() {
+        job.setErrorCode("VIDEO_RECONCILIATION_PENDING");job.setErrorMessage("正在核对生成结果");
+        var calls=new java.util.concurrent.atomic.AtomicInteger();
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenAnswer(inv->{
+            if(calls.getAndIncrement()==0)return new MaterialVideoModelClient.PollResult("running",null,null,"RUNNING",40,null,null);
+            assertNull(job.getErrorCode());assertNull(job.getErrorMessage());
+            return new MaterialVideoModelClient.PollResult("succeeded",base+"/video.mp4",base+"/thumb.png","SUCCESS",100,null,null);
+        });
+        worker(new FakeUploader(false)).generateAsync("mvj_test");assertEquals("succeeded",job.getStatus());
+    }
+
     /** 假 CDN：记录 upload 过的 key；lastFrameFails=true 时 last-frame key 抛 IOException（模拟末帧镜像失败）。 */
     private static final class FakeUploader implements CdnUploader {
         final ConcurrentHashMap<String, Long> uploaded = new ConcurrentHashMap<>();

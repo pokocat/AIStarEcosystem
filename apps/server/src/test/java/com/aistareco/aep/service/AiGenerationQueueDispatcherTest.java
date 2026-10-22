@@ -91,11 +91,11 @@ class AiGenerationQueueDispatcherTest {
         when(queue.claimDispatch(entry,true)).thenReturn(true);dispatcher.dispatch();
         verify(videoWorker).recoverQueuedGeneration("legacy");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).finish(any(),any());
     }
-    @Test void uncertainSubmissionWithoutSupplierIdStillKeepsCapacityForEvidence() {
+    @Test void uncertainSubmissionWithoutSupplierIdKeepsReceiptWithoutDispatch() {
         var entry=ticket(AiGenerationQueueService.VIDEO,"uncertain","running");when(queue.openEntries()).thenReturn(List.of(entry));
         when(videos.findById("uncertain")).thenReturn(Optional.of(MaterialVideoJob.builder().status("submitting").errorCode("VIDEO_SUBMISSION_UNKNOWN").build()));
-        when(queue.claimDispatch(entry,true)).thenReturn(true);dispatcher.dispatch();
-        verify(videoWorker).recoverQueuedGeneration("uncertain");verify(videoWorker,never()).generateAsync(any());verify(queue,never()).finish(any(),any());
+        dispatcher.dispatch();
+        verifyNoInteractions(videoWorker);verify(queue,never()).claimDispatch(any(),anyBoolean());verify(queue,never()).finish(any(),any());
     }
     private AiGenerationQueueEntry ticket(String type,String id,String state) {
         var ticket=new AiGenerationQueueEntry();ticket.setId(1L);ticket.setTaskType(type);ticket.setTaskId(id);

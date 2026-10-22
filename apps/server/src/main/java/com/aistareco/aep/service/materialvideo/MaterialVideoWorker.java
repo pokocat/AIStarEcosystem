@@ -116,7 +116,7 @@ public class MaterialVideoWorker {
             String msg = t.getMessage() == null ? t.getClass().getSimpleName() : t.getMessage();
             MaterialVideoJob current=jobRepo.findById(jobId).orElse(job);
             if(t instanceof MaterialVideoModelClient.SubmissionUnknown || hasAcceptedTask(current)) {
-                // An HTTP timeout is not supplier failure. Keep the original money and capacity reserved.
+                // An HTTP timeout is not supplier failure. Keep the original hold; review-only receipts do not occupy capacity.
                 markPending(jobId,t instanceof MaterialVideoModelClient.SubmissionUnknown
                         ? "VIDEO_SUBMISSION_UNKNOWN" : "VIDEO_RECONCILIATION_PENDING");
             } else {
@@ -134,7 +134,7 @@ public class MaterialVideoWorker {
     public void recoverQueuedGeneration(String jobId) {
         var job=jobRepo.findById(jobId).orElse(null);
         if(job==null)return;
-        if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())return; // unknown acceptance holds its slot for reconciliation
+        if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())return; // unknown acceptance awaits evidence, never a new submit
         boolean[] terminal={false};
         try {
             if(isTerminal(job.getStatus())) {
@@ -511,6 +511,7 @@ public class MaterialVideoWorker {
             j.setStatus(status);
             j.setProgress(Math.max(0, Math.min(100, progress)));
             if (error != null) j.setErrorMessage(truncate(error, 1000));
+            else {j.setErrorCode(null);j.setErrorMessage(null);} // A successful original-task poll ends the recovery notice.
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
         });

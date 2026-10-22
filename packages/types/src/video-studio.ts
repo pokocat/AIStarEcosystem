@@ -221,7 +221,9 @@ export interface VideoStudioJob {
   /** 成片短期签名地址；未完成为 null。 */
   videoUrl: string | null;
   thumbnailUrl: string | null;
-  /** 失败原因（可直接给用户看）；未失败为 null。 */
+  /** 稳定错误码；受理待核对或恢复中也会提供。 */
+  errorCode?: string | null;
+  /** 失败或恢复说明（可直接给用户看）。 */
   errorMessage: string | null;
   /** 本条冻结 / 扣除的积分：进行中 = 已冻结，成功 = 已扣，失败 = 已退回。 */
   credits: number;

@@ -1204,6 +1204,14 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 - 成片高级编辑（2026-10-19）：`edit`（StudioEditTimeline）只许 `operation=assemble`，非 assemble 带它报 STUDIO_EDIT_ASSEMBLE_ONLY；有它时按时间线合成、不用 `packaging`。视频按 start 排成一条主轨，后开始的截断前一段，空隙补黑；音频、文字、字幕按时间叠加。画幅 320–1920 偶数，视频 1–60 段、音频 ≤20、文字 ≤30（≤120 字、字号 12–200、颜色 #RRGGBB）、字幕 ≤200（≤80 字），音量 0–2，总长 ≤600 秒，越界报 STUDIO_EDIT_INVALID；clips 与 audios 的 key 必须是本人素材。读不出的素材报 STUDIO_EDIT_BAD_MEDIA。不扣积分。
 
 
+### 模型任务异常状态与并发（2026-10-22）
+
+- 所有模型入口须区分明确失败、受理待核对、原任务恢复和正常生成。异常必须有可读状态；禁止继续把提交阶段的 5% / 10% 当成生成进度。
+- 图片、视频、配音和口型的 `*_SUBMISSION_UNKNOWN` 保留原任务、请求、付款授权和冻结；这些仅供核对的回执不计入端点执行并发。并发准入、派发和排队位置共用 `countOccupyingSlots`，无需修改存量记录。视频必须无供应商 ID 才豁免；已知任务继续按原路由查询，仍计入执行容量。
+- Studio 单任务与批量视频候选、节点、任务列表、视频生成区、带货素材卡和短剧任务栏透出稳定错误码，待核对不显示百分比、不转圈、不提供重提/无效停止；恢复中显示正在恢复原任务，成功查询后恢复正常状态。
+- 配音/口型的 HTTP 业务异常和网络异常都持久化；原幂等键/正文的恢复窗口仍为最多三次、两分钟，结束后进入人工核对并停止自动派发。提交前准备失败明确结束并释放冻结；已提交的查询故障保留冻结。既有运营证据恢复与确认未受理流程不变。
+- 通用同步调用在异常/超时的 finally 释放调用票据；文本/多模态工作流、智能优化、短剧首帧、音乐和 clip 保留各自明确失败及超时终态，不用假成功内容覆盖异常。
+
 ### Studio 同音频口型同步（v0.202 增量，2026-10-08）
 
 - `/studio/lip-sync-catalog`、`projects/{id}/lip-sync-quote`、`lip-sync-runs`、`lip-sync-runs/{runId}/extract` 均属 aiavatar。本人项目/精确素材 key/真实 ffprobe 检查先于 hold；quote 不调供应商、不冻结。独立 DAP_LIP_SYNC 用途与 V42，明确每秒价×ceil(实际音频秒)，maxCost 上涨 409，零新增冻结。

@@ -43,6 +43,8 @@ public class AiGenerationQueueDispatcher {
                         && (job.getExternalTaskId()==null||job.getExternalTaskId().isBlank());
                 if(job==null || terminalWithoutSupplier || (waiting && !"queued".equals(job.getStatus()))) {queue.finish(type,id);continue;}
                 if(!waiting) {
+                    // No supplier ID means there is nothing to poll. Keep the receipt for operator evidence.
+                    if(job.getExternalTaskId()==null||job.getExternalTaskId().isBlank())continue;
                     if(queue.claimDispatch(entry,true))videoWorker.getObject().recoverQueuedGeneration(id);
                     continue;
                 }

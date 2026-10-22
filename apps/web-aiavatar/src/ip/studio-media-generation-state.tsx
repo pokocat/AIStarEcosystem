@@ -1,5 +1,5 @@
 import { CircleAlert } from 'lucide-react';
-import { studioImageReviewNotice, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
+import { studioReviewNotice, studioRecoveryNotice, studioTaskRecovering, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 
 type Task = Parameters<typeof studioTaskQueued>[0];
 
@@ -10,11 +10,11 @@ type Task = Parameters<typeof studioTaskQueued>[0];
 export function StudioMediaGenerationState({ task, confirmed, media }: { task?: Task; confirmed: boolean; media: 'image' | 'video' }) {
   const label = media === 'video' ? '视频' : '图片';
   const queued = studioTaskQueued(task);
-  const review = studioTaskNeedsReview(task);
-  const progress = media !== 'image' && !review && !queued && confirmed && Number.isFinite(task?.pct)
+  const review = studioTaskNeedsReview(task), recovering = studioTaskRecovering(task);
+  const progress = media !== 'image' && !review && !recovering && !queued && confirmed && Number.isFinite(task?.pct)
     ? Math.max(0, Math.min(100, Math.round(task!.pct!))) : undefined;
   const imageTitle = task?.stage?.startsWith('image.') || task?.stage === 'storage.persist' ? studioTaskLabel(task) : '正在生成图片';
-  const title = review ? '受理结果待核对' : queued ? `等待生成${label}` : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
+  const title = review ? '受理结果待核对' : recovering ? '正在恢复原任务' : queued ? `等待生成${label}` : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
   const detail = queued ? studioTaskLabel(task, true) : !confirmed ? '请勿重复提交' : undefined;
 
   return <div className="studio-flow-media-generating nodrag nopan" role="status" aria-live="polite">
@@ -25,6 +25,6 @@ export function StudioMediaGenerationState({ task, confirmed, media }: { task?: 
       {detail && <><span aria-hidden="true"> · </span><span>{detail}</span></>}
       {progress !== undefined && <><span aria-hidden="true"> · </span><span>{progress}%</span></>}
     </span>
-    {review && <p className="studio-flow-generation-review">{studioImageReviewNotice}</p>}
+    {(review || recovering) && <p className="studio-flow-generation-review">{review ? studioReviewNotice : studioRecoveryNotice}</p>}
   </div>;
 }

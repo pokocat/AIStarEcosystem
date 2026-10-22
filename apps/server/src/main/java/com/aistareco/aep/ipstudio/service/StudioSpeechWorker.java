@@ -49,6 +49,8 @@ public class StudioSpeechWorker {
             var r=billingLockedRun(id).orElse(null);
             if(r==null||!manages(r.getKind())||!IpRun.STATUS_RUNNING.equals(r.getStatus()))return null;
             ObjectNode input=read(r.getInputJson());var exec=(ObjectNode)input.path("_exec");
+            if(exec.path("jobId").asText().isBlank() && ("STUDIO_SPEECH_SUBMISSION_UNKNOWN".equals(r.getErrorCode())
+                    || "STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN".equals(r.getErrorCode())))return null;
             if(exec.path("leaseUntil").asLong()>System.currentTimeMillis())return null;
             if(r.isCancelRequested()&&exec.path("submitAttempts").asInt()==0){terminal(r,null,"IP_RUN_CANCELLED","已停止生成");return null;}
             exec.put("leaseUntil",System.currentTimeMillis()+150_000);r.setInputJson(write(input));
@@ -129,14 +131,30 @@ public class StudioSpeechWorker {
         catch(BusinessException error) {
             if("ENTERPRISE_BILLING_REVOKED".equals(error.getCode()) || "ENTERPRISE_MODEL_NOT_ALLOWED".equals(error.getCode()))
                 finish(id,null,error.getCode(),error.getMessage());
-            else throw error;
+            else awaitOrFail(id,prefix,label,error);
         }
         catch(Exception error) {
-            log.warn("[speech] awaiting original task run={} reason={}",id,error.getClass().getSimpleName());
-            update(id,e->e.put("leaseUntil",0),prefix+".recovering",run.getPct(),lip?"STUDIO_LIP_SYNC_RECOVERING":"STUDIO_SPEECH_RECOVERING","正在恢复原"+label+"任务，无需重新生成");
+            awaitOrFail(id,prefix,label,error);
         } finally {
             if(admissionScope!=null)admissionScope.close();
         }
+    }
+    /** All provider failures become a durable, visible state, including BusinessException from HTTP errors. */
+    private void awaitOrFail(String id,String prefix,String label,Exception error) {
+        log.warn("[speech] provider step failed run={} reason={}",id,error.getClass().getSimpleName());
+        var current=tx.execute(s->billingLockedRun(id).orElseThrow());
+        var exec=read(current.getInputJson()).path("_exec");
+        String codePrefix="lip-sync".equals(prefix)?"STUDIO_LIP_SYNC":"STUDIO_SPEECH";
+        if(exec.path("jobId").asText().isBlank()&&exec.path("submitAttempts").asInt()==0) {
+            finish(id,null,error instanceof BusinessException business?business.getCode():codePrefix+"_PREPARATION_FAILED",
+                    "生成准备失败，任务未提交，冻结积分已释放。请检查素材后重试");return;
+        }
+        boolean unknown=exec.path("jobId").asText().isBlank() && (exec.path("submitAttempts").asInt()>=3
+                || System.currentTimeMillis()-exec.path("firstSubmitAt").asLong(System.currentTimeMillis())>120_000);
+        update(id,e->e.put("leaseUntil",0),prefix+(unknown?".submission_unknown":".recovering"),current.getPct(),
+                codePrefix+(unknown?"_SUBMISSION_UNKNOWN":"_RECOVERING"),unknown
+                    ?label+"受理结果尚未确认，请联系运营核对原请求；请勿重新生成"
+                    :"正在恢复原"+label+"任务，无需重新生成");
     }
     private void update(String id,java.util.function.Consumer<ObjectNode> update,String stage,int pct,String code,String message) {
         tx.executeWithoutResult(s->{var r=billingLockedRun(id).orElseThrow();if(!IpRun.STATUS_RUNNING.equals(r.getStatus()))return;

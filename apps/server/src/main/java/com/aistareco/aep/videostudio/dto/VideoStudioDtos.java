@@ -135,7 +135,7 @@ public final class VideoStudioDtos {
     public record VideoStudioJob(String id, String mode, String prompt, String resolutionTier, String aspectRatio,
                                  Integer width, Integer height, int seconds, Long seed, String modelName,
                                  String status, int progressPct, String stage, List<VideoStudioJobInput> inputs,
-                                 String videoUrl, String thumbnailUrl, String errorMessage, long credits,
+                                 String videoUrl, String thumbnailUrl, String errorMessage, String errorCode, long credits,
                                  String originalPrompt, String templateId,
                                  String createdAt, String completedAt) {}
 

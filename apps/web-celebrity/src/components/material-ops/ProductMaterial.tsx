@@ -4,6 +4,7 @@
 // 选中某商品时浮出该商品 hero（价格 / 佣金 / 卖点 / AI 提取）。视图：全部 / 按商品分组 / 按脚本分组。
 // 点开单条视频 → 视频详情 + AI 维度 + 派生。
 
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -843,6 +844,7 @@ function GroupStat({ label, value, tone }: { label: string; value: string; tone:
 function VideoCard({ video, onClick, onRetry, showParent, productName }: { video: MaterialVideo; onClick: () => void; onRetry?: () => void; showParent?: boolean; productName?: string }) {
   const isRendering = video.status === "rendering";
   const isFailed = video.status === "failed";
+  const exception = modelTaskException(video);
   const published = !!video.metrics;
   return (
     <button
@@ -868,7 +870,8 @@ function VideoCard({ video, onClick, onRetry, showParent, productName }: { video
           </div>
         ) : null}
         {!isRendering && !isFailed && <PlayCircle size={26} color="#fff" style={{ position: "absolute", opacity: 0.85 }} />}
-        {isRendering && (
+        {isRendering && exception && <p role="status" style={{padding:12,color:"white",zIndex:1}}>{exception.notice}</p>}
+        {isRendering && !exception && (
           <>
             <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.35)" }} />
             <Loader2 size={22} color="#fff" className="animate-spin" style={{ position: "absolute" }} />
@@ -903,7 +906,7 @@ function VideoCard({ video, onClick, onRetry, showParent, productName }: { video
           </div>
         ) : (
           <div style={{ marginTop: 5, fontFamily: "var(--font-mono)", fontSize: 9, color: isFailed ? "var(--danger)" : isRendering ? "var(--extra-teal)" : "var(--fg-3)" }}>
-            {isFailed ? "生成失败 · 可重试" : isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
+            {isFailed ? "生成失败 · 可重试" : exception ? exception.label : isRendering ? `${video.stage} · ${video.progress_pct ?? 0}%` : video.generated_at ? `生成于 ${(video.generated_at || "").slice(5, 10)}` : "未发布"}
           </div>
         )}
       </div>

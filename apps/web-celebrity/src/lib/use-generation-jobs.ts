@@ -4,6 +4,7 @@
 // 合并两条真实生产线：脚本带货视频（/material/videos/jobs）+ 混剪（/mixcut/jobs），
 // 来源打标、可见性感知轮询；单个来源失败不吞成空列表，而是回报 sourceErrors 让 UI 显式提示。
 
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import * as React from "react";
 import { MaterialOpsApi, MixcutApi } from "@/api";
 
@@ -16,6 +17,7 @@ export interface GenerationJobItem {
   status: "running" | "done" | "failed" | "partial";
   /** 0-100；来源没有进度语义时为 null。 */
   progressPct: number | null;
+  statusLabel?: string;
   createdAt: string | null;
   /** 查看详情的落点（脚本视频 → 商品素材库；混剪 → 生成任务页）。 */
   href: string;
@@ -61,7 +63,8 @@ export function useGenerationJobs(opts?: { pollMs?: number; enabled?: boolean })
           source: "material",
           name: v.name,
           status: RUNNING_MATERIAL.has(v.status) ? "running" : v.status === "failed" ? "failed" : "done",
-          progressPct: v.progress_pct ?? null,
+          progressPct: modelTaskException(v) ? null : v.progress_pct ?? null,
+          statusLabel: modelTaskException(v)?.label,
           createdAt: v.created_at ?? null,
           href: "/material/assets",
         });

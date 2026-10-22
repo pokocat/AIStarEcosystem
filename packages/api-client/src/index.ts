@@ -122,3 +122,5 @@ export type { CheckoutPayload, CheckoutResponse, PaymentChannel } from "./api/ac
 //   import { initBind } from "@ai-star-eco/api-client/api/social-account";
 
 export * as EnterpriseApi from "./api/enterprise";
+
+export { modelTaskException } from "./model-task-state";

@@ -1118,6 +1118,16 @@ class VideoStudioServiceTest {
             assertEquals("视频模型拒绝了这次请求：prompt rejected", svc.getJob(USER, "mvj_9").errorMessage());
         }
 
+        @Test void pendingAdmissionAndOriginalTaskRecoveryAreVisibleOnVideoStudioWire() {
+            var pending=job("submitting");pending.setProgress(5);pending.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");
+            pending.setErrorMessage("受理结果待核对");when(jobRepo.findById("mvj_9")).thenReturn(Optional.of(pending));
+            var dto=svc.getJob(USER,"mvj_9");assertEquals("running",dto.status());
+            assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertEquals("受理结果待核对",dto.stage());
+            assertEquals("受理结果待核对",dto.errorMessage());
+            pending.setStatus("generating");pending.setErrorCode("VIDEO_RECONCILIATION_PENDING");
+            assertEquals("正在查询原视频任务",svc.getJob(USER,"mvj_9").stage());
+        }
+
         @Test
         @DisplayName("首尾帧的素材标「首帧」「尾帧」；还没提交到厂商时模型名为 null；没优化、不是做同款时两者为 null")
         void frameLabelsAndPendingModel() {

@@ -119,7 +119,7 @@ export default function GenerateCenterPage() {
                 </span>
                 <span className={`w-16 shrink-0 text-right text-xs tabular-nums ${j.status === "failed" ? "text-red-500" : j.status === "partial" ? "text-amber-600" : "text-zinc-500"}`}>
                   {j.status === "running"
-                    ? (j.progressPct != null ? `${j.progressPct}%` : "生成中")
+                    ? (j.statusLabel || (j.progressPct != null ? `${j.progressPct}%` : "生成中"))
                     : j.status === "failed" ? "失败" : j.status === "partial" ? "部分失败" : "已完成"}
                 </span>
                 <ArrowRight className="h-3.5 w-3.5 shrink-0 text-zinc-300" />

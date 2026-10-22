@@ -7,6 +7,7 @@
 // 免得坏文件无限重试）。演示模式没有真实成片，明确标出来，不放一个打不开的播放器（§8.0）。
 // 成功的那条可以「存为模板」（docs/video-studio-plan.md §10）；用过智能优化 / 做同款的各有一个小标。
 
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import * as React from "react";
 import { BookmarkPlus, CheckCircle2, Clock, Coins, Download, Loader2, TriangleAlert } from "lucide-react";
 import type { VideoStudioJob, VideoStudioJobStatus } from "@ai-star-eco/types/video-studio";
@@ -45,6 +46,7 @@ export function JobCard({
   /** 「存为模板」：只有成功的那条有。 */
   onSaveTemplate: (job: VideoStudioJob) => void;
 }) {
+  const exception = modelTaskException(job);
   const status = STATUS_STYLE[job.status] ?? STATUS_STYLE.queued;
   const modeLabel = VIDEO_STUDIO_MODE_LABEL[job.mode] ?? "视频生成";
   const refreshes = React.useRef(0);
@@ -75,7 +77,7 @@ export function JobCard({
             status.className,
           )}
         >
-          <status.Icon className={cn("h-3 w-3", status.spin && "animate-spin")} />
+          <status.Icon className={cn("h-3 w-3", status.spin && !exception && "animate-spin")} />
           {jobStatusText(job)}
         </span>
         <span className="min-w-0 truncate text-[13px] font-semibold text-zinc-800" title={modeLabel}>
@@ -131,7 +133,7 @@ export function JobCard({
         </div>
       ) : null}
 
-      {isJobActive(job.status) ? (
+      {!exception && isJobActive(job.status) ? (
         <div className="flex min-w-0 items-center gap-2">
           <div
             className="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-zinc-200"
@@ -141,7 +143,7 @@ export function JobCard({
             aria-valuenow={pct}
             aria-label="生成进度"
           >
-            <div className="h-full rounded-full bg-violet-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
+            <div className="h-full w-full origin-left rounded-full bg-violet-500 transition-transform duration-500" style={{ transform: `scaleX(${pct / 100})` }} />
           </div>
           <span className="max-w-[50%] shrink-0 truncate text-[11px] text-zinc-500" title={job.stage}>
             {job.stage}
@@ -159,6 +161,7 @@ export function JobCard({
         )
       ) : null}
 
+      {exception && <p role="status" className="text-sm text-zinc-600">{exception.notice}</p>}
       {job.status === "failed" ? <AiErrorNotice title="生成失败" message={job.errorMessage || "生成失败"} /> : null}
 
       {job.credits > 0 || job.status === "succeeded" ? (
