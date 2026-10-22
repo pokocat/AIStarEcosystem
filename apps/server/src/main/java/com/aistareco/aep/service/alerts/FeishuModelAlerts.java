@@ -55,7 +55,7 @@ public class FeishuModelAlerts {
         }catch(Exception error){log.error("[model-alert] delivery storage unavailable type={}",error.getClass().getSimpleName());}
     }
     static String message(String task,String code,String logId,Throwable error) {
-        int status=error instanceof BusinessException be?be.getStatus().value():500;
+        Integer status=error instanceof BusinessException be?be.getStatus().value():null;
         String reason=code.endsWith("_SUBMISSION_UNKNOWN")?"生成服务未返回有效任务信息，已触发失败处理":"模型任务调用异常，请查看后台详情";
         // Extract only provider trace identifiers. Never send prompts, response bodies, URLs or internal credentials to chat.
         Set<String> ids=new LinkedHashSet<>();Set<Throwable> visited=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -66,7 +66,7 @@ public class FeishuModelAlerts {
             var matches=java.util.regex.Pattern.compile("\\breq_[A-Za-z0-9_-]{8,100}\\b|(?i:(?:request[_ -]?id|log[_ -]?id))[\\\"' :=]+([A-Za-z0-9_-]{8,100})").matcher(source);
             while(matches.find()&&ids.size()<5)ids.add(matches.group(1)==null?matches.group():matches.group(1));
         }
-        return "【模型任务告警】\n原因："+reason+"\n错误码："+code+"\n接口状态：HTTP "+status+"\n我方任务："+task
+        return "【模型任务告警】\n原因："+reason+"\n错误码："+code+"\n接口状态："+(status==null?"未记录 HTTP 状态":"HTTP "+status)+"\n我方任务："+task
                 +"\n追查号："+logId+(ids.isEmpty()?"":"\n供应商追踪号："+String.join("、",ids))
                 +"\n后台：https://admin.aibuzz.cn/admin/platform/ai-models\n同一任务同类错误只提醒一次；最终状态及积分以后台记录为准。";
     }

@@ -50,5 +50,11 @@ class FeishuModelAlertsTest {
         assertTrue(message.contains("req_01a16341-b439-7371-b964-86cb9690732b"));assertTrue(message.contains("ABCDEF234567"));
         for(String secret:java.util.List.of("private-prompt","secret-token","private-signature"))assertFalse(message.contains(secret));
     }
+    @Test void missingHttpEvidenceDoesNotInventAStatusAndProviderStatusWinsWhenPresent() {
+        String missing=FeishuModelAlerts.message("task","VIDEO_SUBMISSION_UNKNOWN","ABCDEF234567",new IllegalStateException("historical submission"));
+        assertTrue(missing.contains("未记录 HTTP 状态"));assertFalse(missing.contains("HTTP 500"));
+        var error=new BusinessException(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","safe",null,"provider HTTP 503");
+        assertTrue(FeishuModelAlerts.message("task",error.getCode(),"ABCDEF234567",error).contains("HTTP 503"));
+    }
     private String state(){return db.queryForObject("SELECT state FROM model_alert_delivery",String.class);}
 }
