@@ -1074,8 +1074,8 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 - 出视频面板首帧比例与画幅不同时显示「首帧图是 1:1，会按 9:16 居中裁剪」+「改成 1:1」（`src/ip/studio-frame-crop-hint.tsx`，判定 `studioFrameCropNotice` 在 `studio-composer-spec.ts`），不挡发送；服务端居中裁剪。
 - 演示模式：出图 / 出视频先 `create_nodes` 建对象，方案带 `targetNodeId`，结果落进同一个对象。真源 `docs/ip-studio-new-canvas-and-threads.md` §6。
 
-### 普通文字文档编辑统一 · 2026-10-22（本地未发布）
+### 普通文字文档编辑统一 · 2026-10-22（已生产发布）
 
 从 `studio-analysis-document.tsx` 提取 `StudioDocumentEditor`，解析文档继续通过原组件调用。画布与故事板的普通文字展开入口复用该文档外壳及 `StudioScriptRichEditor`，直接读写 `metadata.content`，不生成结构化剧本或新节点。保存／收起／Esc 共用保存失败保护，收起回到原浮层或故事板详情。
 
-验证：4 个相关文件、105 项测试通过，覆盖原节点正文、展开／收起／重开、保存失败重试以及剧本富文本回归；工作区和后台类型检查、后端离线编译、API 契约检查通过。全量测试中的后台审计页原生选择框守门失败是已记录的既有问题（见 TODO.md）；本次未改后台，未提交或发布。
+验证：4 个相关文件、105 项测试通过，覆盖原节点正文、展开／收起／重开、保存失败重试以及剧本富文本回归；工作区和后台类型检查、后端离线编译、API 契约检查通过。全量测试中的后台审计页原生选择框守门失败是已记录的既有问题（见 TODO.md）；本次未改后台。已从干净 main `bd3a9df2` 发布 `20261022-studio-text-document`；画布／故事板的展开、保存、收起重开与刷新持久化均通过线上验收，积分未变。详见[发布记录](../../docs/releases/studio-text-document-release-20261022.md)。
