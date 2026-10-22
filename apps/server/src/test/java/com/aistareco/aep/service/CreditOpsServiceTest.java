@@ -29,6 +29,7 @@ class CreditOpsServiceTest {
     private CreditAdjustmentRequestRepository requestRepo;
     private com.aistareco.aep.repository.LedgerEntryRepository ledgerRepo;
     private CreditOpsService svc;
+    private com.aistareco.aep.repository.AdminUserRepository admins;
     private Map<String, CreditAdjustmentRequest> db;
 
     @BeforeEach
@@ -47,10 +48,11 @@ class CreditOpsServiceTest {
             db.put(r.getId(), r);
             return r;
         });
-        when(requestRepo.findById(anyString()))
+        when(requestRepo.lockById(anyString()))
                 .thenAnswer(inv -> Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
         // 默认日限额 50000、actor 当日累计 0（未 stub → Mockito long 默认 0）
-        svc = new CreditOpsService(creditService, requestRepo, ledgerRepo, 5000, 50000);
+        admins = mock(com.aistareco.aep.repository.AdminUserRepository.class);
+        svc = new CreditOpsService(creditService, requestRepo, ledgerRepo, admins, 5000, 50000);
     }
 
     @Test
@@ -60,6 +62,51 @@ class CreditOpsServiceTest {
         assertNotNull(r.entry());
         verify(creditService).creditAccount(eq("u1"), eq(300L),
                 eq(LedgerEntry.LedgerEntryType.GIFT), eq("ops_compensation"), eq("T-9"), anyString());
+    }
+
+    private void staff(String id, com.aistareco.aep.model.AdminUser.AdminRole role, com.aistareco.aep.model.AdminUser.AdminStatus status) {
+        when(admins.findById(id)).thenReturn(Optional.of(com.aistareco.aep.model.AdminUser.builder().id(id).role(role).status(status).build()));
+    }
+
+    @Test void superAdminLargeGrantAndCompensationExecuteWithExplicitAudit() {
+        staff("root", com.aistareco.aep.model.AdminUser.AdminRole.SUPER_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.ACTIVE);
+        assertFalse(svc.grantGift("u1",10000,"campaign","用户授权","root").pending());
+        assertFalse(svc.compensate("u1",10000,"incident","用户授权","root").pending());
+        assertEquals(2,db.size());
+        assertTrue(db.values().stream().allMatch(r -> r.getStatus()==CreditAdjustmentRequest.Status.APPROVED
+                && r.getDecideNote().contains("超管直接发放") && r.getLedgerEntryId()!=null && r.getCheckerId()==null));
+        verify(creditService,times(2)).creditAccount(eq("u1"),eq(10000L),eq(LedgerEntry.LedgerEntryType.GIFT),anyString(),anyString(),anyString());
+    }
+
+    @Test void activeSuperAdminCanApproveOwnExistingRequestOnce() {
+        var pending=svc.grantGift("u1",10000,"campaign","用户授权","root");
+        staff("root", com.aistareco.aep.model.AdminUser.AdminRole.SUPER_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.ACTIVE);
+        svc.approve(pending.requestId(),"root");
+        var row=db.get(pending.requestId());
+        assertEquals("root",row.getMakerId());assertEquals("root",row.getCheckerId());
+        assertTrue(row.getDecideNote().contains("超管批准入账"));
+        assertEquals("REQUEST_NOT_PENDING",assertThrows(BusinessException.class,()->svc.approve(pending.requestId(),"root")).getCode());
+        verify(creditService,times(1)).creditAccount(eq("u1"),eq(10000L),any(),anyString(),anyString(),anyString());
+    }
+
+    @Test void suspendedSuperAdminAndFinanceDoNotGainDirectGrantOrSelfApproval() {
+        staff("suspended", com.aistareco.aep.model.AdminUser.AdminRole.SUPER_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.SUSPENDED);
+        staff("finance", com.aistareco.aep.model.AdminUser.AdminRole.FINANCE_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.ACTIVE);
+        for(String actor:List.of("suspended","finance")) {
+            var pending=svc.grantGift("u1",10000,null,"用户授权",actor);assertTrue(pending.pending());
+            assertEquals("MAKER_CHECKER_SAME",assertThrows(BusinessException.class,()->svc.approve(pending.requestId(),actor)).getCode());
+        }
+        verifyNoInteractions(creditService);
+    }
+
+    @Test void superAdminStillHasDailyLimitAndCampaignDuplicateProtection() {
+        staff("root", com.aistareco.aep.model.AdminUser.AdminRole.SUPER_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.ACTIVE);
+        when(requestRepo.sumAmountByMakerSince(eq("root"),any(),anyList())).thenReturn(45000L);
+        assertEquals("ACTOR_DAILY_LIMIT",assertThrows(BusinessException.class,()->svc.grantGift("u1",10000,"campaign","r","root")).getCode());
+        when(requestRepo.sumAmountByMakerSince(eq("root"),any(),anyList())).thenReturn(0L);
+        when(ledgerRepo.existsByReferenceTypeAndReferenceId("ops_gift_campaign:campaign","campaign:u1")).thenReturn(true);
+        assertEquals("DUPLICATE_CAMPAIGN_GRANT",assertThrows(BusinessException.class,()->svc.grantGift("u1",10000,"campaign","r","root")).getCode());
+        verifyNoInteractions(creditService);
     }
 
     @Test

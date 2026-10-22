@@ -297,3 +297,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 视频节点铺满与抽帧发布](releases/studio-video-fit-frames-release-20261021.md) — release `20261021-studio-video-fit-frames`（main `13553ee7`，只发 web-aiavatar）：视频节点按视频比例铺满、抽帧、右键「素材拆解」报错修复；门禁、验收边界与回滚；last-reviewed: 2026-10-21。
 
 - [图片受理未知与执行名额修复](releases/studio-image-review-release-20261022.md) — 未知图片状态提示、并发准入与存量冻结保护；last-reviewed: 2026-10-22。
+
+- [超管直接发放积分](releases/super-admin-credit-grant-release-20261022.md) — 超管直接发放与本人历史待审单批准、其他角色独立复核、原单防重复入账；last-reviewed: 2026-10-22。

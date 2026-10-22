@@ -4,8 +4,10 @@ import com.aistareco.aep.dto.AdjustmentResult;
 import com.aistareco.aep.dto.CreditAdjustmentRequestDto;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.model.CreditAdjustmentRequest;
+import com.aistareco.aep.model.AdminUser;
 import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.repository.CreditAdjustmentRequestRepository;
+import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.aep.repository.LedgerEntryRepository;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
@@ -29,7 +31,8 @@ import java.util.UUID;
  *
  * maker-checker：小额（≤ 阈值 {@code aep.credit.adjust.threshold-credits}，默认 5000）由 OPERATOR 单人
  * 直接发放；大额（&gt; 阈值）先落 PENDING_APPROVAL 审批单（**不入账**），需第二个不同身份的
- * FINANCE_ADMIN / SUPER_ADMIN 复核（maker != checker 服务端硬校验）批准后才入账。
+ * FINANCE_ADMIN / SUPER_ADMIN 复核后才入账。当前有效 SUPER_ADMIN 可直接发放，并可批准本人历史待审单；
+ * 其他角色仍校验 maker != checker。原因、日限额、GIFT 桶与审计保持一致。
  *
  * 后续（非本阶段）：批量 campaign 幂等 + 独立 AdminAuditLog。
  */
@@ -48,24 +51,27 @@ public class CreditOpsService {
     private final CreditService creditService;
     private final CreditAdjustmentRequestRepository requestRepo;
     private final LedgerEntryRepository ledgerRepo;
+    private final AdminUserRepository admins;
     private final long threshold;
     private final long actorDailyLimit;
 
     public CreditOpsService(CreditService creditService,
                             CreditAdjustmentRequestRepository requestRepo,
                             LedgerEntryRepository ledgerRepo,
+                            AdminUserRepository admins,
                             @Value("${aep.credit.adjust.threshold-credits:5000}") long threshold,
                             @Value("${aep.credit.adjust.actor-daily-limit-credits:50000}") long actorDailyLimit) {
         this.creditService = creditService;
         this.requestRepo = requestRepo;
         this.ledgerRepo = ledgerRepo;
+        this.admins = admins;
         this.threshold = threshold;
         this.actorDailyLimit = actorDailyLimit;
     }
 
     // ── 发起（maker） ────────────────────────────────────────────────
 
-    /** 客诉补偿：小额直发，大额落审批单。 */
+    /** 客诉补偿：超管直发，其他角色大额落审批单。 */
     @Transactional
     public AdjustmentResult compensate(String targetUserId, long amount, String incidentRef,
                                        String reason, String operatorId) {
@@ -74,17 +80,18 @@ public class CreditOpsService {
         String ticket = requireText(incidentRef, "INCIDENT_REF_REQUIRED", "请填写工单号 / 事故单号");
         String why = requireText(reason, "REASON_REQUIRED", "请填写补偿原因");
         enforceActorDailyLimit(operatorId, amount);
-        if (amount > threshold) {
+        boolean directSuperAdmin = isActiveSuperAdmin(operatorId);
+        if (amount > threshold && !directSuperAdmin) {
             CreditAdjustmentRequest req = createPending(
                     CreditAdjustmentRequest.Type.COMPENSATE, uid, amount, why, ticket, null, operatorId);
             return AdjustmentResult.pending(req.getId(), amount);
         }
         LedgerEntryDto e = doCompensate(uid, amount, ticket, why, operatorId);
-        recordAutoApproved(CreditAdjustmentRequest.Type.COMPENSATE, uid, amount, why, ticket, null, operatorId, e.id());
+        recordAutoApproved(CreditAdjustmentRequest.Type.COMPENSATE, uid, amount, why, ticket, null, operatorId, e.id(), directSuperAdmin);
         return AdjustmentResult.executed(e, amount);
     }
 
-    /** 激励赠送：小额直发，大额落审批单。 */
+    /** 激励赠送：超管直发，其他角色大额落审批单。 */
     @Transactional
     public AdjustmentResult grantGift(String targetUserId, long amount, String campaignId,
                                       String reason, String operatorId) {
@@ -93,13 +100,14 @@ public class CreditOpsService {
         String why = requireText(reason, "REASON_REQUIRED", "请填写赠送原因");
         String camp = (campaignId != null && !campaignId.isBlank()) ? campaignId.trim() : null;
         enforceActorDailyLimit(operatorId, amount);
-        if (amount > threshold) {
+        boolean directSuperAdmin = isActiveSuperAdmin(operatorId);
+        if (amount > threshold && !directSuperAdmin) {
             CreditAdjustmentRequest req = createPending(
                     CreditAdjustmentRequest.Type.GRANT, uid, amount, why, null, camp, operatorId);
             return AdjustmentResult.pending(req.getId(), amount);
         }
         LedgerEntryDto e = doGrant(uid, amount, camp, why, operatorId);
-        recordAutoApproved(CreditAdjustmentRequest.Type.GRANT, uid, amount, why, null, camp, operatorId, e.id());
+        recordAutoApproved(CreditAdjustmentRequest.Type.GRANT, uid, amount, why, null, camp, operatorId, e.id(), directSuperAdmin);
         return AdjustmentResult.executed(e, amount);
     }
 
@@ -121,20 +129,22 @@ public class CreditOpsService {
         return rows.stream().map(CreditAdjustmentRequestDto::from).toList();
     }
 
-    /** 批准：maker != checker 硬校验 → 真正入账（GIFT）。 */
+    /** 批准：仅当前有效超管可自批；锁原单，避免并发批准重复入账。 */
     @Transactional
     public CreditAdjustmentRequestDto approve(String requestId, String checkerId) {
         CreditAdjustmentRequest req = requirePending(requestId);
-        if (req.getMakerId() != null && req.getMakerId().equals(checkerId)) {
+        boolean superAdmin = isActiveSuperAdmin(checkerId);
+        if (!superAdmin && req.getMakerId() != null && req.getMakerId().equals(checkerId)) {
             throw new BusinessException(HttpStatus.FORBIDDEN, "MAKER_CHECKER_SAME", "复核人不能是发起人");
         }
-        String actor = "审批通过 · 复核 " + nz(checkerId) + " · 发起 " + nz(req.getMakerId());
+        String actor = (superAdmin ? "超管批准入账" : "审批通过") + " · 复核 " + nz(checkerId) + " · 发起 " + nz(req.getMakerId());
         LedgerEntryDto e = req.getType() == CreditAdjustmentRequest.Type.COMPENSATE
                 ? doCompensate(req.getTargetUserId(), req.getAmount(), req.getIncidentRef(), req.getReason(), actor)
                 : doGrant(req.getTargetUserId(), req.getAmount(), req.getCampaignId(), req.getReason(), actor);
         req.setStatus(CreditAdjustmentRequest.Status.APPROVED);
         req.setCheckerId(checkerId);
         req.setLedgerEntryId(e.id());
+        if (superAdmin) req.setDecideNote("超管批准入账（允许本人发起）");
         req.setDecidedAt(Instant.now());
         requestRepo.save(req);
         log.info("[credit-ops] approved request={} maker={} checker={} ledger={}",
@@ -175,11 +185,11 @@ public class CreditOpsService {
     }
 
     /**
-     * 小额直发也落一条 APPROVED 审计单（§9.2 #4 不可变审计 + 计入日限额）。maker = 操作人、无独立 checker，
+     * 所有直发均落 APPROVED 审计单（§9.2 #4 不可变审计 + 计入日限额）。maker = 操作人、无独立 checker，
      * 已带 ledgerEntryId 可溯源；不进「待审批」队列（status=APPROVED）。
      */
     private void recordAutoApproved(CreditAdjustmentRequest.Type type, String uid, long amount, String reason,
-                                    String incidentRef, String campaignId, String operatorId, String ledgerEntryId) {
+                                    String incidentRef, String campaignId, String operatorId, String ledgerEntryId, boolean directSuperAdmin) {
         Instant now = Instant.now();
         CreditAdjustmentRequest req = CreditAdjustmentRequest.builder()
                 .id("car-" + UUID.randomUUID().toString().substring(0, 12))
@@ -188,7 +198,7 @@ public class CreditOpsService {
                 .status(CreditAdjustmentRequest.Status.APPROVED)
                 .makerId(operatorId)
                 .ledgerEntryId(ledgerEntryId)
-                .decideNote("小额直发（≤阈值），单人即时")
+                .decideNote(directSuperAdmin ? "超管直接发放，无需独立复核" : "小额直发（≤阈值），单人即时")
                 .createdAt(now).decidedAt(now)
                 .build();
         requestRepo.save(req);
@@ -211,13 +221,20 @@ public class CreditOpsService {
     }
 
     private CreditAdjustmentRequest requirePending(String requestId) {
-        CreditAdjustmentRequest req = requestRepo.findById(requestId)
+        CreditAdjustmentRequest req = requestRepo.lockById(requestId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "REQUEST_NOT_FOUND", "审批单不存在"));
         if (req.getStatus() != CreditAdjustmentRequest.Status.PENDING_APPROVAL) {
             throw new BusinessException(HttpStatus.CONFLICT, "REQUEST_NOT_PENDING",
                     "该审批单已处理（" + req.getStatus() + "）");
         }
         return req;
+    }
+
+    /** Exception comes from the current staff record, never from request body or a caller-supplied flag. */
+    private boolean isActiveSuperAdmin(String actorId) {
+        return actorId != null && admins.findById(actorId)
+                .filter(a -> a.getStatus() == AdminUser.AdminStatus.ACTIVE && a.getRole() == AdminUser.AdminRole.SUPER_ADMIN)
+                .isPresent();
     }
 
     private LedgerEntryDto doCompensate(String uid, long amount, String ticket, String why, String operatorId) {

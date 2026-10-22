@@ -9465,7 +9465,7 @@ paths:
     post:
       tags: [admin-finance]
       operationId: adminCompensate
-      summary: 客诉补偿（v2 §9 积分面）—— 给用户补发赠送积分，挂工单号；不碰资金面
+      summary: 客诉补偿 —— 有效超管直接发放；其他角色大额需独立复核；挂工单号，不碰资金面
       requestBody:
         required: true
         content:
@@ -9478,12 +9478,12 @@ paths:
                 amount: { type: integer, format: int64 }
                 incidentRef: { type: string }
                 reason: { type: string }
-      responses: { '200': { description: "新增账本分录（GIFT）" } }
+      responses: { '200': { description: "AdjustmentResult；超管直接发放，其他角色超阈值 pending=true" } }
   /admin/finance/adjustments/grant:
     post:
       tags: [admin-finance]
       operationId: adminGrantGift
-      summary: 激励赠送（v2 §9 积分面）—— 给用户发赠送积分，可挂活动号；不碰资金面
+      summary: 激励赠送 —— 有效超管直接发放；其他角色大额需独立复核；可挂活动号，不碰资金面
       requestBody:
         required: true
         content:
@@ -9496,7 +9496,7 @@ paths:
                 amount: { type: integer, format: int64 }
                 campaignId: { type: string }
                 reason: { type: string }
-      responses: { '200': { description: "新增账本分录（GIFT）；超阈值时进审批，pending=true" } }
+      responses: { '200': { description: "AdjustmentResult；超管直接发放，其他角色超阈值 pending=true" } }
   /admin/finance/adjustments/requests:
     get:
       tags: [admin-finance]
@@ -9510,7 +9510,7 @@ paths:
     post:
       tags: [admin-finance]
       operationId: adminApproveAdjustmentRequest
-      summary: 批准大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN；服务端校验 maker≠checker）
+      summary: 批准大额审批单（限 FINANCE_ADMIN / SUPER_ADMIN；仅当前有效超管允许自批；原单锁防重复入账）
       responses: { '200': { description: "已批准并入账（GIFT）" } }
   /admin/finance/adjustments/requests/{id}/reject:
     parameters: [{ name: id, in: path, required: true, schema: { type: string } }]

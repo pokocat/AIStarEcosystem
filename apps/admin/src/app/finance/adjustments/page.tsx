@@ -5,7 +5,7 @@
 //
 // 运营给用户补发（客诉补偿）/ 赠送（激励）积分。只发赠送积分（giftBalance），
 // 结构上不碰资金面（不影响真实资金）。强制填原因；补偿强制填工单号。
-// 小额（≤ 阈值）直发；大额（> 阈值）落审批单，需 FINANCE_ADMIN / SUPER_ADMIN 复核（maker≠checker）。
+// 超管直接发放；其他角色大额落审批单。超管可批准本人历史待审单，财务仍不可自批。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
@@ -16,11 +16,14 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/feedback";
 import { AdjustmentsApi } from "@/api";
 import type { CreditAdjustmentRequest, AdjustmentResult } from "@/api/adjustments";
+import { useAdminIdentity, type AdminIdentity } from "@/lib/useAdminRole";
 
 type Toast = ReturnType<typeof useToast>;
 
 export default function AdminAdjustmentsPage() {
   const toast = useToast();
+  const identity = useAdminIdentity();
+  const superAdmin = identity.accountSource === "admin" && identity.role === "SUPER_ADMIN";
   const [pending, setPending] = React.useState<CreditAdjustmentRequest[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -41,12 +44,11 @@ export default function AdminAdjustmentsPage() {
 
   return (
     <div className="space-y-6">
-      <PageHeader title="调差 / 赠送" description="给用户补发 / 赠送积分（积分面，不碰真实资金）· 大额走审批" />
+      <PageHeader title="调差 / 赠送" description={superAdmin ? "超管发放即时到账，无需他人复核" : "给用户补发或赠送积分，大额需复核"} />
 
       <div className="rounded-lg border border-amber-300/50 bg-amber-50/60 px-4 py-3 text-sm text-amber-900 dark:border-amber-700/40 dark:bg-amber-950/30 dark:text-amber-200">
-        ⚖️ 本操作只发<strong>赠送积分（giftBalance）</strong>，<strong>不影响真实资金</strong>（不碰充值 / 现金桶）。
-        强制填原因，补偿强制填工单号；操作人 + 原因写入不可变账本可溯源。
-        大额（超阈值）需财务复核（复核人 ≠ 发起人）。
+        本操作只增加<strong>赠送积分</strong>，不改变充值余额。请填写原因，补偿还需填写工单号；操作记录可追溯。
+        {superAdmin ? "你可以直接发放，也可以批准本人已提交的待审单。每日发放限额仍适用。" : "大额发放需由另一位财务或超管批准；超管本人发放可直接到账。"}
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -54,7 +56,7 @@ export default function AdminAdjustmentsPage() {
         <GrantCard toast={toast} onSubmitted={reloadPending} />
       </div>
 
-      <PendingApprovals toast={toast} list={pending} loading={loading} reload={reloadPending} />
+      <PendingApprovals toast={toast} list={pending} loading={loading} reload={reloadPending} identity={identity} />
     </div>
   );
 }
@@ -182,13 +184,17 @@ function PendingApprovals({
   list,
   loading,
   reload,
+  identity,
 }: {
   toast: Toast;
   list: CreditAdjustmentRequest[];
   loading: boolean;
   reload: () => void;
+  identity: AdminIdentity;
 }) {
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const superAdmin = identity.accountSource === "admin" && identity.role === "SUPER_ADMIN";
+  const canReview = superAdmin || identity.role === "FINANCE_ADMIN";
 
   async function decide(id: string, action: "approve" | "reject") {
     setBusyId(id);
@@ -214,7 +220,7 @@ function PendingApprovals({
         <CardTitle>待审批（大额调差 / 赠送）</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="text-xs text-muted-foreground">复核仅限财务 / 超管，且复核人不能是发起人。批准后才真正入账。</div>
+        <div className="text-xs text-muted-foreground">{superAdmin ? "你可以直接批准待审单，包括本人发起的单据。批准后即入账。" : "财务不能批准本人发起的单据，需另一位财务或超管批准。"}</div>
         {loading ? (
           <div className="text-sm text-muted-foreground">加载中…</div>
         ) : list.length === 0 ? (
@@ -237,10 +243,10 @@ function PendingApprovals({
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <Button size="sm" onClick={() => decide(r.id, "approve")} disabled={busyId === r.id}>
+                  <Button size="sm" onClick={() => decide(r.id, "approve")} disabled={busyId === r.id || !canReview || !superAdmin && identity.id === r.makerId} title={!superAdmin && identity.id === r.makerId ? "请由另一位财务或超管批准" : undefined}>
                     批准入账
                   </Button>
-                  <Button size="sm" variant="secondary" onClick={() => decide(r.id, "reject")} disabled={busyId === r.id}>
+                  <Button size="sm" variant="secondary" onClick={() => decide(r.id, "reject")} disabled={busyId === r.id || !canReview}>
                     驳回
                   </Button>
                 </div>

@@ -1151,3 +1151,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **拖大小保持比例**：已知尺寸的视频节点 `NodeResizer keepAspectRatio`，拖完 `fitStudioVideoToResize` 按新宽度校正高度（不封顶），和开始拖时的 checkpoint 是同一个撤销步骤；尺寸未知（空占位、还在生成）照旧自由拖。
 - **抽帧**（`studio-flow-video-frames.tsx`，命令 `video-frames`，入口在视频节点操作条 rank 2 和右键菜单）：免费、纯前端。视频一律经 `fetchAssetBlob` 取成 Blob 再截（线上 OSS 没配 CORS，签名地址画到 canvas 会被污染），截出的 JPEG 走 `uploadImage` 成为本人图片，新节点 `origin:'derived'`、连线 视频→图片。截取过程中的「处理中」占位**只是画布本地状态**（`pendingFrames`，不进文档），不能用 `metadata.status='loading'` 或任何 studio 任务字段，否则任务恢复和「确认原任务」会把它当生成任务；失败删占位并说明原因。演示模式下面板直接说不能抽帧，不假成功。
 - **右键菜单只放平铺的按钮**：`studio-flow-canvas.tsx` 的 `nodeMenu` 逐项直接调 `onClick`，不支持 `children`（「素材拆解」曾因此点了就报错，现拆成「解析视频」「拉片」两项，`studio-dialogue-wiring.test.ts` 钉住）。
+
+### 超管直接发放积分（2026-10-22）
+
+有效 `admin_users.status=ACTIVE / role=SUPER_ADMIN` 可经 CreditOpsService 直接赠送/补偿积分，并批准本人历史待审单；其他角色保留阈值与独立复核，财务不可自批。例外只读服务端当前管理员记录，日限额、必填原因、工单/活动幂等、GIFT 桶与完整审计保留。审批通过锁原单，账本和状态同事务，防重复入账。不自动批量批准历史单。

@@ -2,7 +2,7 @@
 // api/adjustments.ts — 运营调差 / 赠送 + maker-checker（v2 §9 积分面）。
 // 对应 AdminCreditOpsController（/api/admin/finance/adjustments）。
 // 只发赠送积分（giftBalance），结构上不碰资金面；强制原因，补偿强制工单号。
-// 小额直发，大额（> 阈值）落审批单，需 FINANCE_ADMIN / SUPER_ADMIN 复核（maker≠checker）。
+// 有效超管直接发放并可批准本人历史待审单；其他角色大额仍落审批单，财务不可自批。
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { LedgerEntry } from "@/types/wallet";
@@ -70,7 +70,7 @@ export async function listRequests(status?: AdjustmentRequestStatus | "all"): Pr
   });
 }
 
-/** 批准（限 FINANCE_ADMIN / SUPER_ADMIN；服务端校验 maker≠checker）。 */
+/** 批准（限 FINANCE_ADMIN / SUPER_ADMIN；仅当前有效超管允许本人批准）。 */
 export async function approveRequest(id: string): Promise<CreditAdjustmentRequest> {
   return apiFetch<CreditAdjustmentRequest>(`${BASE}/requests/${encodeURIComponent(id)}/approve`, { method: "POST" });
 }

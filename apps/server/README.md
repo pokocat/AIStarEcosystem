@@ -529,7 +529,7 @@ src/main/java/com/aistareco/aep/
 | `aep_license_keys` | 秘钥单码 |
 | `aep_wallets` | 钱包（license / recharge / gift / pending 四科目，`total_balance` = 前三项之和）。并发写余额走悲观行锁 `findByUserIdForUpdate`（v2 §5） |
 | `aep_ledger_entries` | 不可变点数流水，Admin Finance 图表由此派生。**v2 §1/§4.2** +`plane`(MONEY/CREDIT 两平面归类)+`cash_artifact_id`（资金面非空 / 积分面必 null）+ DB `CHECK(plane<>'CREDIT' OR cash_artifact_id IS NULL)`——把「调差/赠送不碰现金」升级为数据库不变量；entry_type 增 `REFUND_CASH`（资金面真实现金退款，与积分面 `REFUND` 严格区分）。plane 由 `@PrePersist` 派生、历史行由 `LedgerPlaneBackfill` 启动回填 |
-| `credit_adjustment_requests` | **v2 §4.5 / §9.2** 运营调差/赠送审批单（maker-checker）。`type`(COMPENSATE/GRANT)/`target_user_id`/`amount`/`reason`/`incident_ref`\|`campaign_id`/`status`(PENDING_APPROVAL/APPROVED/REJECTED)/`maker_id`/`checker_id`/`ledger_entry_id`。小额直发也落 APPROVED 审计单（全量审计 + per-actor 日限额计数）；大额需 FINANCE_ADMIN 复核（maker≠checker 服务端硬校验） |
+| `credit_adjustment_request` | **v2 §4.5 / §9.2** 运营调差/赠送审批单（maker-checker）。`type`(COMPENSATE/GRANT)/`target_user_id`/`amount`/`reason`/`incident_ref`\|`campaign_id`/`status`(PENDING_APPROVAL/APPROVED/REJECTED)/`maker_id`/`checker_id`/`ledger_entry_id`。小额直发也落 APPROVED 审计单（全量审计 + per-actor 日限额计数）；有效 SUPER_ADMIN 可不受单笔复核阈值限制直接发放，日限额仍适用，并可批准本人历史待审单；其他角色大额仍须独立复核，FINANCE_ADMIN 不可自批。例外按当前 ACTIVE admin_users 记录判断，非客户端参数；所有直发与批准保留审计和 GIFT 账本，原审批单加悲观锁防并发重复入账 |
 | `aep_audit_logs` | 审计日志 |
 
 内容/IP 域相关表（`digital_ips` / `aep_songs` / `aep_albums` / `aep_concerts` / `aep_dramas` / `aep_movies` / `aep_advertisements` / `aep_voice_works` / `copyright_items` / `distribution_*` / `nft_items` / `community_*` / …）见 product_spec.md §4–§5。

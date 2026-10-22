@@ -16,8 +16,8 @@ import java.util.List;
  * 运营调差 / 赠送后台 + maker-checker（v2 §9 积分面 lane）。
  *
  * 路径在 /api/admin/** 下 → SUPER_ADMIN / OPERATOR / FINANCE_ADMIN 可访问。
- * 发起（compensate/grant）：小额直发，大额落审批单（OPERATOR 可发起）。
- * 复核（approve/reject）：@PreAuthorize 限 FINANCE_ADMIN / SUPER_ADMIN；服务端再校验 maker != checker。
+ * 发起（compensate/grant）：有效超管直接发放；其他角色小额直发、大额落审批单。
+ * 复核（approve/reject）：@PreAuthorize 限 FINANCE_ADMIN / SUPER_ADMIN；仅有效超管允许自批。
  * 只发赠送积分（giftBalance），不碰资金面。操作人 = 当前 admin principal，写进账本溯源。
  */
 @RestController
