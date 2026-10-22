@@ -575,8 +575,8 @@ html[data-layout="mobile"] .ip-surface .studio-option-grid.is-compact>.studio-op
 .ip-surface .studio-media-composer .studio-composer-send.ant-btn { width:36px; height:36px; min-height:36px; padding:0; border-radius:10px; }
 .ip-surface .studio-media-composer .studio-composer-send:not(:disabled) { background:var(--ink); color:var(--surface); }
 .ip-surface .studio-composer-inputs:empty { display:none; }
-.ip-surface .studio-composer-references>.ant-btn,.ip-surface .studio-reference-add { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:30px; padding:4px 9px; border:0; border-radius:7px; background:var(--surface-2); color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
-.ip-surface .studio-composer-references>.ant-btn:hover,.ip-surface .studio-reference-add:hover { color:var(--ink); background:var(--surface-3); }
+.ip-surface .studio-composer-actions>.ant-btn,.ip-surface .studio-reference-add { display:inline-flex; align-items:center; justify-content:center; gap:5px; min-height:30px; padding:4px 9px; border:0; border-radius:7px; background:var(--surface-2); color:var(--ink-2); font:inherit; font-size:12px; cursor:pointer; }
+.ip-surface .studio-composer-actions>.ant-btn:hover,.ip-surface .studio-reference-add:hover { color:var(--ink); background:var(--surface-3); }
 .ip-surface .studio-reference-strip { display:flex; align-items:center; gap:8px; width:100%; overflow:auto; padding:4px 0 2px; scrollbar-width:thin; }
 .ip-surface .studio-reference-tile { position:relative; display:flex; align-items:center; justify-content:center; flex:0 0 64px; height:64px; overflow:hidden; border-radius:8px; background:var(--surface-2); color:var(--ink-2); }
 .ip-surface .studio-reference-tile>img { width:100%; height:100%; object-fit:cover; }
@@ -650,3 +650,8 @@ html[data-layout="mobile"] .studio-flow-shell .studio-canvas-guide { padding:56p
 html[data-layout="mobile"] .studio-canvas-guide-entries { grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
 html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(odd) { grid-column:1 / -1; }
 @media (prefers-reduced-motion:reduce) { .studio-overlay .studio-canvas-guide-entry { transition:none; } }
+
+/* Keep editor commands in one row; reference chips stay below and can wrap independently. */
+.ip-surface .studio-composer-actions { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto; min-width:0; margin-bottom:12px; }
+.ip-surface .studio-composer-actions>* { flex-shrink:0; white-space:nowrap; }
+.ip-surface .studio-composer-actions>.studio-node-editor-actions { flex-wrap:nowrap; margin:0; }

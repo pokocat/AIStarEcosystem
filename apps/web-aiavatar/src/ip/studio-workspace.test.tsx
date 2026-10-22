@@ -150,17 +150,17 @@ test('image composer submits the exact chosen resolution and retains it in the s
  await waitFor(()=>expect(api.submit).toHaveBeenCalled());
  expect(api.submit.mock.calls[0][1]).toMatchObject({model:'gpt',size:'2048x2048',aspectRatio:'1:1',count:1,maxCost:30});
 });
-test('image result actions stay on the image node toolbar rather than its generation form',async()=>{
+test('image selection has no toolbar and its editor contains the unique result actions',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};
  render(<Host initial={image}/>);
- expect(screen.getByRole('button',{name:'引用生成视频'})).toBeDefined();
- expect(screen.getByRole('button',{name:'加入 IP'})).toBeDefined();
+ expect(screen.queryByLabelText('节点编辑操作')).toBeNull();
+ expect(screen.queryByRole('button',{name:'引用生成视频'})).toBeNull();
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
  expect(within(panel).getByRole('button',{name:'替换图片'})).toBeDefined();
- expect(within(panel).queryByRole('button',{name:'引用生成视频'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'加入 IP'})).toBeNull();
- expect(within(panel).queryByRole('button',{name:'下载图片'})).toBeNull();
+ expect(within(panel).getByRole('button',{name:'引用生成视频'})).toBeDefined();
+ expect(within(panel).getByRole('button',{name:'加入 IP'})).toBeDefined();
+ expect(within(panel).getByRole('button',{name:'下载图片'})).toBeDefined();
  expect(api.submit).not.toHaveBeenCalled();
 });
 test('editing reference images on an existing image generates in that node without appending a child',async()=>{
@@ -242,6 +242,7 @@ test('refresh restores cancelled queue semantics without replaying adopted resul
 test('retrying a failed native video keeps 按原文生成 from the saved request under a new request key',async()=>{
  const kept={...request,video:{mode:'t2v' as const,resolutionTier:'768p',optimizePrompt:false}};
  render(<Host initial={{...node,metadata:{...node.metadata,status:'error',errorDetails:'生成失败',studio:{...node.metadata!.studio,request:kept}}}}/>);
+ openVideo();
  await waitFor(()=>expect(api.capabilities).toHaveBeenCalled());
  fireEvent.click(screen.getAllByRole('button',{name:'重新生成'})[0]);
  await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
@@ -325,9 +326,9 @@ test('closing and reopening the unified editor preserves an editable draft witho
  openVideo();
  const videoPanel=await screen.findByRole('dialog',{name:'生成视频'});
  expect(screen.getByRole('dialog',{name:'创作任务'})).toBeDefined();
- // Video generation shows video controls without result or image-upload actions.
+ // Result actions share the editor; image-only actions stay out of a video editor.
  expect(within(videoPanel).getByRole('button',{name:'参考',exact:true})).toBeDefined();
- for(const label of ['加入成片','加入 IP','替换图片','下载视频'])expect(within(videoPanel).queryByRole('button',{name:label})).toBeNull();
+ for(const label of ['加入 IP','替换图片'])expect(within(videoPanel).queryByRole('button',{name:label})).toBeNull();
  await screen.findByRole('textbox',{name:'创作要求'});
  fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'镜头缓慢推进，保留人物服装'}});
  fireEvent.click(screen.getByRole('button',{name:'关闭创作面板'}));
@@ -504,7 +505,7 @@ test.each(['image','video'])('a template %s node opens its execution step withou
 test('blank and unaccepted template videos cannot enter assembly; server acceptance makes the clip available',async()=>{
  const pending={...node,metadata:{...node.metadata,templateStepId:'video',studio:{...node.metadata!.studio,kind:'shot',templateAccepted:false}}};
  render(<Host initial={pending}/>);
- expect((screen.getByRole('button',{name:'加入成片'}) as HTMLButtonElement).disabled).toBe(true);
+ expect(screen.queryByLabelText('节点编辑操作')).toBeNull();
  fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work'}}));
  expect(screen.getByText('还没有视频片段')).toBeDefined();expect(screen.queryByRole('button',{name:'合成作品'})).toBeNull();
  cleanup();mountStudioErrorNotifications(api.error);render(<Host initial={{...pending,metadata:{...pending.metadata,studio:{...pending.metadata.studio,kind:'shot',templateAccepted:true}}}}/>);
@@ -651,21 +652,24 @@ test('editing or removing a plain story flags its adaptation and retained work w
 test.each(['image','video'])('the %s download uses the newly adopted take and never creates another run',type=>{
  const takes=[{id:'old',status:'success',storageKey:'old-media',content:'/old'},{id:'new',status:'success',storageKey:'new-media',content:'/new'}];
  render(<Host initial={{...node,type,metadata:{status:'success',storageKey:'old-media',content:'/old',...(type==='image'?{images:takes,primaryImageId:'old'}:{videos:takes,primaryVideoId:'old'}),studio:{kind:'shot'}}}}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:type,nodeId:'v'}}));
  fireEvent.change(screen.getByRole('combobox',{name:'采用版本'}),{target:{value:'new'}});
  fireEvent.click(screen.getByRole('button',{name:type==='image'?'下载图片':'下载视频',exact:true}));
  expect(api.download).toHaveBeenCalledWith('/new','old adopted',undefined,'new-media');expect(api.submit).not.toHaveBeenCalled();
 });
 
-// Canvas redesign (design Main board): the node bar is 「问助手」 plus at most two main actions; everything else is in 「⋯」.
-// 抽帧（2026-10-21）takes the second main slot of a video node (rank 2), so 比较版本 moves under 更多操作.
-test('a selected video with two takes keeps 问助手, 重新生成视频 and 抽帧 on the bar and the rest under 更多操作',()=>{
+// Selection alone must never mount a floating action bar.
+test('video editing retains frame extraction and versions under 更多操作 without a second generation launcher',()=>{
  const takes=[{id:'old',status:'success',storageKey:'old-media',content:'/old'},{id:'new',status:'success',storageKey:'new-media',content:'/new'}];
  render(<Host initial={{...node,type:'video',metadata:{status:'success',storageKey:'old-media',content:'/old',videos:takes,primaryVideoId:'old',studio:{kind:'shot'}}}}/>);
- const bar=screen.getByLabelText('继续创作'),more=within(bar).getByRole('group',{name:'更多操作'});
+ expect(screen.queryByLabelText('节点编辑操作')).toBeNull();
+ openVideo();
+ const bar=screen.getByLabelText('节点编辑操作'),more=within(bar).getByRole('group',{name:'更多操作'});
  const inline=[...bar.querySelectorAll(':scope>button')].map(b=>b.textContent);
- expect(inline).toEqual(['问助手','重新生成视频','抽帧','']);
+ expect(inline).toEqual(['问助手','']);
+ expect(screen.queryByRole('button',{name:'重新生成视频'})).toBeNull();
  expect(within(bar).getByRole('button',{name:'更多操作'})).toBeDefined();
- for(const label of ['替换视频','解析视频','拉片','口型同步','加入成片','下载视频','比较版本'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
+ for(const label of ['替换视频','解析视频','拉片','口型同步','抽帧','加入成片','下载视频','比较版本'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
  expect(within(more).getByRole('combobox',{name:'采用版本'})).toBeDefined();
 });
 
@@ -1016,4 +1020,41 @@ test('manual refresh reads the original task and unlocks user retry only after a
  expect(api.read.mock.calls.length).toBeGreaterThan(before);expect(api.read).toHaveBeenLastCalledWith('accepted');
  expect(snapshot[0].metadata?.status).toBe('error');
  expect(api.submit).not.toHaveBeenCalled();expect(api.speech).not.toHaveBeenCalled();expect(api.lip).not.toHaveBeenCalled();
+});
+
+test('editor actions target the open node even when a different card is selected',async()=>{
+ const other={...node,id:'other',title:'other video',metadata:{...node.metadata,storageKey:'other.mp4',content:'/other.mp4'}};
+ render(<Host initialNodes={[node,other]}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'video',nodeId:'other'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成视频'});
+ fireEvent.click(within(panel).getByRole('button',{name:'下载视频'}));
+ expect(api.download).toHaveBeenCalledWith('/other.mp4','other video',undefined,'other.mp4');
+ fireEvent.click(within(panel).getByRole('button',{name:'问助手'}));
+ expect(screen.getByRole('dialog',{name:'AI 创作助手'}).textContent).toBe('other');
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('right-click dismisses the editor after preserving its draft, and reopening retains it',async()=>{
+ render(<Host/>);openVideo();
+ fireEvent.change(screen.getByRole('textbox',{name:'创作要求'}),{target:{value:'右键前编辑的要求'}});
+ fireEvent(window,new Event('studio-node-context-menu'));
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'生成视频'})).toBeNull());
+ expect(screen.queryByLabelText('节点编辑操作')).toBeNull();expect(api.save).toHaveBeenCalled();
+ openVideo();
+ expect(screen.getByRole('textbox',{name:'创作要求'})).toHaveProperty('value','右键前编辑的要求');
+ expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('finished works keep unique media actions inside their result in the work editor',async()=>{
+ const work={...node,id:'work',title:'完成作品',metadata:{...node.metadata,studio:{kind:'work' as const}}};
+ render(<Host initialNodes={[node,work]}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'work',nodeId:'work'}}));
+ const result=screen.getByRole('region',{name:'合成好的作品'});
+ expect(within(result).getByRole('button',{name:'下载作品'})).toBeDefined();
+ expect(within(result).queryByRole('button',{name:'下载视频'})).toBeNull();
+ expect(within(result).getByRole('button',{name:'抽帧'})).toBeDefined();
+ const commands=vi.fn();window.addEventListener('studio-command',commands);
+ try{fireEvent.click(within(result).getByRole('button',{name:'抽帧'}));expect(commands.mock.calls[0][0].detail).toEqual({action:'video-frames',nodeId:'work'});}
+ finally{window.removeEventListener('studio-command',commands);}
+ expect(api.submit).not.toHaveBeenCalled();
 });

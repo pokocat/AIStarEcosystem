@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover } from "./studio-generation-controls";
 import { StudioAiIcon } from "./studio-ai-icon";
@@ -9,8 +10,8 @@ import type { StudioSpeechCatalog, StudioSpeechRequest, StudioVoiceCatalog, Stud
 import { bindStudioVoice, studioSpeechCatalog, studioVoiceProfiles } from "@/canvas-bridge/studio-api";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 
-type Props={anchorId?:string;open:boolean;onClose:()=>void;initialText:string;initialAvatarId?:string;initialVoiceId?:string;initialDraft?:StudioNodeMetadata['speechDraft'];onDraft?:(draft:NonNullable<StudioNodeMetadata['speechDraft']>)=>void;pending?:{confirmed:boolean};onConfirm?:()=>void;busy:boolean;onSubmit:(request:Omit<StudioSpeechRequest,"clientRequestId"|"nodeId">)=>Promise<void>};
-export function StudioSpeech({anchorId,open,onClose,initialText,initialAvatarId,initialVoiceId,initialDraft,onDraft,pending,onConfirm,busy,onSubmit}:Props) {
+type Props={actions?:ReactNode;anchorId?:string;open:boolean;onClose:()=>void;initialText:string;initialAvatarId?:string;initialVoiceId?:string;initialDraft?:StudioNodeMetadata['speechDraft'];onDraft?:(draft:NonNullable<StudioNodeMetadata['speechDraft']>)=>void;pending?:{confirmed:boolean};onConfirm?:()=>void;busy:boolean;onSubmit:(request:Omit<StudioSpeechRequest,"clientRequestId"|"nodeId">)=>Promise<void>};
+export function StudioSpeech({actions,anchorId,open,onClose,initialText,initialAvatarId,initialVoiceId,initialDraft,onDraft,pending,onConfirm,busy,onSubmit}:Props) {
   const [catalog,setCatalog]=useState<StudioSpeechCatalog>(),[profiles,setProfiles]=useState<StudioVoiceCatalog>(),[error,setError]=useStudioErrorState(),[loading,setLoading]=useState(false),[binding,setBinding]=useState(false);
   const [model,setModel]=useState<string>(),[speaker,setSpeaker]=useState("Vivian"),[text,setText]=useState(""),[instruct,setInstruct]=useState("");
   const [avatarId,setAvatarId]=useState<string>(),[voiceId,setVoiceId]=useState<string>(),[notice,setNotice]=useState("");
@@ -49,6 +50,7 @@ export function StudioSpeech({anchorId,open,onClose,initialText,initialAvatarId,
       {cost==null?"配音费用未配置":rate==null?`生成配音 · ${cost} 积分`:`生成配音 · 预冻结 ${cost} 积分`}
     </Button>}
   </div>}>
+    {actions}
     <div className="studio-director-form">{rate!=null&&<p role="status">{rate} 积分/秒，按生成音频的实际时长向上取整计费。预冻结 {cost} 积分，完成后退回差额，不会超出本次上限。</p>}<p>指定人物与声音版本，为台词或商品介绍生成配音。音频会保存在当前画布，可试听、下载并用于成片。</p>
       {error&&<p><StudioErrorNotice error={error}/><Button onClick={()=>void reload()}>重新加载</Button></p>}
       {notice&&<p role="status">{notice}</p>}

@@ -1,4 +1,5 @@
 'use client';
+import type { ReactNode } from 'react';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { StudioModelPicker, StudioSettingsPopover } from './studio-generation-controls';
 import { Button, Input, Select } from 'antd';
@@ -23,10 +24,10 @@ import { StudioErrorNotice, useStudioErrorState, useStudioApp } from './studio-e
 import { StudioAnalysisDocument } from './studio-analysis-document';
 import { studioTaskLabel } from '@/canvas-bridge/studio-task-status';
 
-type Props={mode?:"segments";projectId:string;initialNodeId?:string;nodes:CanvasNodeData[];capabilities?:StudioCapabilities;
+type Props={actions?:ReactNode;mode?:"segments";projectId:string;initialNodeId?:string;nodes:CanvasNodeData[];capabilities?:StudioCapabilities;
  setNodes:Dispatch<SetStateAction<CanvasNodeData[]>>;setConnections:Dispatch<SetStateAction<CanvasConnection[]>>;
  onClose:()=>void;onFocus:(id:string)=>void;onRun:(run:IpRun,nodeId:string)=>void};
-export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilities,setNodes,setConnections,onClose,onFocus,onRun}:Props) {
+export function StudioRecreation({actions,mode,projectId,initialNodeId,nodes,capabilities,setNodes,setConnections,onClose,onFocus,onRun}:Props) {
  const chosen=nodes.find(n=>n.id===initialNodeId);
  const segments=mode==='segments'||chosen?.metadata?.studio?.recreation?.mode==='segments';
  const selectedInitial=segments&&chosen?.metadata?.studio?.recreation?.report?recreationSource(chosen,nodes):chosen;
@@ -98,7 +99,7 @@ export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilitie
      }
    }finally{guard.current=false;if(alive.current)setBusy(false);}
  };
- if((report||document)&&target)return <StudioAnalysisDocument title={target.metadata?.studio?.recreation?.mode==='segments'?target.title:undefined} value={target.metadata?.content||''} onChange={content=>patch(target.id,n=>({...n,metadata:{...n.metadata,content}}))} onSave={save} onClose={onClose}/>;
+ if((report||document)&&target)return <StudioAnalysisDocument actions={actions} title={target.metadata?.studio?.recreation?.mode==='segments'?target.title:undefined} value={target.metadata?.content||''} onChange={content=>patch(target.id,n=>({...n,metadata:{...n.metadata,content}}))} onSave={save} onClose={onClose}/>;
  return <StudioFloatingPanel open title={segments?"视频拉片":"解析视频"} anchorId={targetId||sourceId} width={420} onClose={onClose} closable={!busy&&!importing} className="studio-recreation is-setup"
    footer={<>
      <div className="studio-generation-toolbar"><StudioModelPicker label="复刻分析模型" value={selected?.endpointId} disabled={busy||pending||fixed||options.filter(m=>fixed||m.supportsVision).length<=1} onChange={setModel} options={options.filter(m=>fixed||m.supportsVision).map(m=>({value:m.endpointId,label:m.name,disabled:!m.supportsVision}))}/>
@@ -107,6 +108,7 @@ export function StudioRecreation({mode,projectId,initialNodeId,nodes,capabilitie
      <span>{pending?studioTaskLabel(target?.metadata?.studio?.task):'按实际用量消耗积分'}</span>
      {pending?<Button loading={busy} onClick={()=>void submit(true)}>{known?'刷新任务':'确认原任务'}</Button>:<Button type="primary" icon={<StudioAiIcon/>} disabled={!source||!allowed||importing||!!imported.current} loading={busy} onClick={()=>void submit()} title="AI 分析，会消耗积分">{target?.metadata?.status==='error'?segments?'继续拉片':'重新解析':segments?'开始拉片':'开始解析'}</Button>}
    </>}>
+   {actions}
    {error&&<StudioErrorNotice error={error}/>}
    {target?.metadata?.status==='error'&&target.metadata.errorDetails&&<p role="alert">{target.metadata.errorDetails}</p>}
    <>

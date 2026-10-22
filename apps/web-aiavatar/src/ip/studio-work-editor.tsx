@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Button, Checkbox, Input, Select } from "antd";
 import { ArrowDown, ArrowUp, Download, GripVertical, Mic, Pause, Play, SlidersHorizontal } from "lucide-react";
 import { formatDateTime } from "@/lib/datetime";
@@ -23,7 +23,7 @@ type Props = {
   onIncludeClip: (id: string, included: boolean) => void;
   onMoveClip: (from: number, to: number) => void;
   /** Assembled works of this view, oldest first (document order). */
-  works: CanvasNodeData[];
+  works: CanvasNodeData[]; renderNodeActions?: (node: CanvasNodeData) => ReactNode;
   busy: boolean; locked: boolean; mock?: boolean;
   onAssemble: () => void; onDownload: (node: CanvasNodeData) => void;
   onAddClips: () => void; onCreateVideo: () => void; onOpenStoryboard: () => void; onMakeVoice: () => void;
@@ -96,7 +96,7 @@ export function StudioWorkEditor(p: Props) {
   if (!clips.length) return <>
     <div className="studio-empty"><Play size={28}/><h3>还没有视频片段</h3><p>在画布上传视频，或者先生成几段视频，再回来排顺序、配声音、合成。</p>
       <Button onClick={p.onAddClips}>去画布添加片段</Button><Button onClick={p.onCreateVideo}>生成一段视频</Button><Button onClick={p.onOpenStoryboard}>去故事板</Button></div>
-    <StudioWorkResults works={p.works} onDownload={p.onDownload} anchor={results}/>
+    <StudioWorkResults works={p.works} onDownload={p.onDownload} renderNodeActions={p.renderNodeActions} anchor={results}/>
   </>;
 
   const captionTemplateReady = known && !draft.captionText.trim();
@@ -203,14 +203,14 @@ export function StudioWorkEditor(p: Props) {
         </div>}
       </div>
     </div>
-    <StudioWorkResults works={p.works} onDownload={p.onDownload} anchor={results}/>
+    <StudioWorkResults works={p.works} onDownload={p.onDownload} renderNodeActions={p.renderNodeActions} anchor={results}/>
   </>;
 }
 
-function StudioWorkResults({ works, onDownload, anchor }: { works: CanvasNodeData[]; onDownload: (node: CanvasNodeData) => void; anchor: RefObject<HTMLElement | null> }) {
+function StudioWorkResults({ works, onDownload, renderNodeActions, anchor }: { renderNodeActions?: (node: CanvasNodeData) => ReactNode; works: CanvasNodeData[]; onDownload: (node: CanvasNodeData) => void; anchor: RefObject<HTMLElement | null> }) {
   if (!works.length) return null;
   return <section className="studio-work-results" ref={anchor} aria-label="合成好的作品"><h3>合成好的作品</h3>
-    {[...works].reverse().map(node => <article key={node.id} className="studio-work-result"><h4>{node.title}</h4>
+    {[...works].reverse().map(node => <article key={node.id} className="studio-work-result"><h4>{node.title}</h4>{renderNodeActions?.(node)}
       {node.metadata?.status === "loading" ? <p>正在合成，可以先回画布继续做。</p>
         : node.metadata?.content || node.metadata?.storageKey ? <><SignedVideo src={node.metadata.content} storageKey={node.metadata.storageKey} controls preload="metadata"/>
           <Button onClick={() => onDownload(node)}><Download size={15}/>下载作品</Button></>

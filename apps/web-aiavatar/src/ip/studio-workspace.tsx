@@ -205,18 +205,12 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const openLipSync=(node?:CanvasNodeData)=>{setLipOriginId(node?.id);setDirector(false);setLipSyncOpen(true);onClosePanel();};
   const [voiceAdoptId,setVoiceAdoptId]=useState<string>();
   const [speechOpen,setSpeechOpen]=useState(false);
-  // 抽帧 opens under the video node where its action bar sits (studio-flow-video-frames.tsx); the bar steps aside meanwhile.
-  const [framesNodeId,setFramesNodeId]=useState<string>();
-  useEffect(()=>{
-    const listener=(event:Event)=>setFramesNodeId((event as CustomEvent<{nodeId?:string}>).detail?.nodeId);
-    window.addEventListener('studio-video-frames',listener);return()=>window.removeEventListener('studio-video-frames',listener);
-  },[]);
   const [speechOriginId,setSpeechOriginId]=useState<string>(),[speechSaving,setSpeechSaving]=useState(false);
   const [settings,setSettings]=useState<StudioScriptSettings>({genre:"都市治愈",episodeCount:1,episodeDurationSec:30});
   const [episodeNo,setEpisodeNo]=useState<number>(),[episodeFilter,setEpisodeFilter]=useState<number|"all">("all");
   const [takePicker,setTakePicker]=useState<string>();
-  const [contextMoreOpen,setContextMoreOpen]=useState(false);
-  useEffect(()=>{setContextMoreOpen(false);},[selectedNodeIds]);
+  const [contextMoreOpen,setContextMoreOpen]=useState<string>();
+  useEffect(()=>{setContextMoreOpen(undefined);},[selectedNodeIds]);
   const nodesRef = useRef(nodes); nodesRef.current = nodes;
   // Output of a plan execution that finished while this canvas was closed: let the assistant restore it on open.
   const executionRestorePending = useMemo(() => executionOutputMissing(runs, nodesRef.current, readProjectedNodes(projectId)), [runs, projectId]);
@@ -986,6 +980,16 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     window.addEventListener("studio-reference-selected",picked);window.addEventListener("studio-reference-removed",removed);window.addEventListener("studio-dismiss-composer",dismiss);
     return()=>{window.removeEventListener("studio-reference-selected",picked);window.removeEventListener("studio-reference-removed",removed);window.removeEventListener("studio-dismiss-composer",dismiss);};
   },[director,pickingReferences,originId,operation,nativeVideo,videoDraft,busy,directorSaving]);
+  useEffect(()=>{
+    const dismissForMenu=()=>{
+      setContextMoreOpen(undefined);setScriptPreviewId(undefined);setPickingReferences(false);
+      if(director)void closeDirector();
+      if(speechOpen)void closeSpeech();
+      if(!busy)setLipSyncOpen(false);
+    };
+    window.addEventListener('studio-node-context-menu',dismissForMenu);
+    return()=>window.removeEventListener('studio-node-context-menu',dismissForMenu);
+  },[director,speechOpen,busy,directorSaving,speechSaving]);
   const videoAssets=studioVideoSelectionIds(videoDraft,referenceIds)
     .map(id=>{const n=nodes.find(node=>node.id===id);return {storageKey:n?.metadata?.storageKey,mediaType:n?.type===CanvasNodeType.Video?"video" as const:n?.type===CanvasNodeType.Audio?"audio" as const:"image" as const};});
   let videoSettings:StudioRunRequest["video"],videoValidationError:string|undefined;
@@ -1024,28 +1028,31 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const composerTake=studioComposerTake(composerRun,directorOrigin?.metadata?.primaryVideoId);
   const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
-  // 设计稿 Main 画板 · 选中节点的操作条：名字、「问助手」、最多两个主操作，其余进「⋯」（更少的按钮，一个焦点）。
-  // 主操作按 rank 排：先是任务状态（确认原任务 / 失败重来），再是这个节点最主要的「生成」，然后是比较版本。
-  type ContextAction={key:string;rank?:number;node:ReactNode};
-  const contextItems:ContextAction[]=[];
-  if(selected&&selectedNodeIds.size===1&&mode==="canvas"&&!referencePicking&&!pickingReferences){
-    const meta=selected.metadata, studio=meta?.studio, add=(key:string,node:ReactNode,rank?:number)=>contextItems.push({key,node,rank});
-    if(meta?.status==="loading" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest) && !studio?.runId) add("confirm",<button type="button" disabled={busy} onClick={()=>void retry(selected)}>确认原任务</button>,0);
+  type ContextAction={key:string;node:ReactNode};
+  // Actions belong to the open editor's node, never the mutable canvas selection (including right-click selection).
+  const nodeActions=(nodeId?:string, excluded:string[]=[]):ReactNode=>{
+    const selected=nodes.find(n=>n.id===nodeId);
+    if(!selected)return null;
+    const selectedStudio=selected.metadata?.studio;
+    const selectedTakes=selected.type===CanvasNodeType.Image?selected.metadata?.images:selected.metadata?.videos;
+    const contextItems:ContextAction[]=[];
+    const meta=selected.metadata, studio=meta?.studio, add=(key:string,node:ReactNode)=>contextItems.push({key,node});
+    if(meta?.status==="loading" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest) && !studio?.runId) add("confirm",<button type="button" disabled={busy} onClick={()=>void retry(selected)}>确认原任务</button>);
     // A failed image / video draft has one recovery here: the same request again, or — when its model is gone — the
     // composer to pick another. 「修改后重试」 is on the node itself; no second 「生成图片 / 生成视频」 next to it.
     const failedDraft=studioFailedWithoutMedia(selected);
     const offeredForSelected=selected.type===CanvasNodeType.Video?models.video:selected.type===CanvasNodeType.Image?models.image:undefined;
     const modelGone=!!studio?.request&&!!studioUnusableModel(selected,offeredForSelected?.length?offeredForSelected.map(m=>m.endpointId):undefined);
     if(meta?.status==="error" && modelGone && (studio?.request?.operation==="image"||studio?.request?.operation==="video"))
-      add("retry",<button type="button" disabled={busy} onClick={()=>openDirector(studio!.request!.operation as "image"|"video",selected)}><RotateCcw size={15}/>换模型重试</button>,0);
-    else if(meta?.status==="error" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest)) add("retry",<button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>,0);
+      add("retry",<button type="button" disabled={busy} onClick={()=>openDirector(studio!.request!.operation as "image"|"video",selected)}><RotateCcw size={15}/>换模型重试</button>);
+    else if(meta?.status==="error" && (studio?.request||studio?.speechRequest||studio?.lipSyncRequest)) add("retry",<button title="AI 处理，会消耗积分" type="button" disabled={busy} onClick={()=>void retry(selected)}><StudioAiIcon/>重新生成</button>);
     if(selected.type===CanvasNodeType.Image){
       if(!failedDraft) add("image",<button data-studio-command="image" type="button" onClick={() => {
           openDirector("image",selected);
           if(selectedStudio?.libraryAssetRole==="sheet"){
             setPrompt("以选中的整张人物设定图为角色参考，生成一张单独的镜头画面。保持同一人物特征、服饰和视觉风格。只呈现一个场景，不要多视角拼版、说明文字或边框。请在此补充场景、动作与镜头角度。");setRatio("9:16");
           }
-        }}><ImagePlus size={15}/>{selectedStudio?.libraryAssetRole==="sheet"?"生成镜头画面":meta?.storageKey?"继续改图":"生成图片"}</button>,1);
+        }}><ImagePlus size={15}/>{selectedStudio?.libraryAssetRole==="sheet"?"生成镜头画面":meta?.storageKey?"继续改图":"生成图片"}</button>);
       if(meta?.storageKey){
         add("image-next",selectedStudio?.libraryAssetRole==="sheet"?<button type="button" onClick={()=>openDirector("image",selected)}><ImagePlus size={15}/>修改设定图</button>:<button type="button" onClick={() => openDirector("video",selected)}><Play size={15}/>引用生成视频</button>);
         add("adopt",<button type="button" onClick={() => openAdopt(selected)}><UserRound size={15}/>{studio?.adoption?.lookId?"另存人物素材":studio?.adoption?"更新主形象":"加入 IP"}</button>);
@@ -1053,23 +1060,23 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       }
     }
     if(selected.type===CanvasNodeType.Text&&studio?.script){
-      add("editor",<button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>,1);
-      add("split",<button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button>,2);
+      add("editor",<button type="button" onClick={() => {setEditorId(selected.id);onClosePanel();}}><FileText size={15}/>打开编辑器</button>);
+      add("split",<button type="button" onClick={() => splitScript(selected)}><Clapperboard size={15}/>生成分镜</button>);
       add("extract",<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>);
     }
     if(selected.type===CanvasNodeType.Text&&!studio?.script&&!studio?.libraryReference) add("extract",<button type="button" onClick={()=>void openExtraction(selected.id)}><UserRound size={15}/>提取资产</button>);
-    if(studio?.recreation?.report) add("film-study",<button type="button" onClick={()=>dispatchStudioCommand('film-study',selected.id)}><Clapperboard size={15}/>继续拉片</button>,1);
-    if(studio?.kind==='recreation') add("recreation-doc",<button type="button" onClick={()=>dispatchStudioCommand('recreation',selected.id)}><FileText size={15}/>打开文档</button>,1);
+    if(studio?.recreation?.report) add("film-study",<button type="button" onClick={()=>dispatchStudioCommand('film-study',selected.id)}><Clapperboard size={15}/>继续拉片</button>);
+    if(studio?.kind==='recreation') add("recreation-doc",<button type="button" onClick={()=>dispatchStudioCommand('recreation',selected.id)}><FileText size={15}/>打开文档</button>);
     if(selected.type===CanvasNodeType.Video){
-      if(studio?.kind!=="work"&&!failedDraft) add("video",<button data-studio-command="video" type="button" disabled={meta?.status==="loading"} onClick={()=>openDirector("video",selected)}>{meta?.storageKey?"重新生成视频":"生成视频"}</button>,1);
+      if(studio?.kind!=="work"&&!failedDraft) add("video",<button data-studio-command="video" type="button" disabled={meta?.status==="loading"} onClick={()=>openDirector("video",selected)}>{meta?.storageKey?"重新生成视频":"生成视频"}</button>);
       add("upload-video",<button type="button" disabled={studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand('upload-video',selected.id)}><Upload size={15}/>{meta?.storageKey?'替换视频':'上传视频'}</button>);
       if(meta?.storageKey){
         // 原第二排「专项创作」里的解析视频、口型同步，落在视频节点的「⋯」里。
-        add("analyze",<button type="button" onClick={()=>dispatchStudioCommand("recreation",selected.id)}><FileText size={15}/>解析视频</button>);
+        add("analyze",<button type="button" onClick={()=>void closeDirector().then(closed=>{if(closed)dispatchStudioCommand("recreation",selected.id);})}><FileText size={15}/>解析视频</button>);
         add("film",<button type="button" onClick={()=>dispatchStudioCommand("film-study",selected.id)}><Clapperboard size={15}/>拉片</button>);
         add("lip",<button type="button" onClick={()=>openLipSync(selected)}>口型同步</button>);
-        // 抽帧 is free and done in the browser: the second main action of a video node, after 生成视频.
-        add("video-frames",<button type="button" disabled={meta.status==="loading"||studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand("video-frames",selected.id)}><Camera size={15}/>抽帧</button>,2);
+        // Frame extraction remains available in the editor overflow and the right-click menu.
+        add("video-frames",<button type="button" disabled={meta.status==="loading"||studioGenerationPending(selected)} onClick={()=>dispatchStudioCommand("video-frames",selected.id)}><Camera size={15}/>抽帧</button>);
         add("work",<button type="button" disabled={!!meta.templateStepId&&studio?.templateAccepted!==true} onClick={() => setMode("work")}><Clapperboard size={15}/>加入成片</button>);
       }
     }
@@ -1080,30 +1087,27 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
           message.success("口型片段已提取，原始对照视频保留在版本中；未再次扣积分");}
         catch(e){if(epoch.current===token)message.error(e);}
         finally{if(epoch.current===token)setBusy(false);}
-      })()}>提取口型片段 · 免费</button>,1);
+      })()}>提取口型片段 · 免费</button>);
     if(studio?.lipSyncRequest&&meta?.storageKey&&studio.lipSyncNormalized&&!meta.primaryVideoId?.endsWith(":comparison")) add("lip-adopt",<button type="button" onClick={()=>{
         const original=selected.metadata?.studio?.parentNodeId;
         setNodes(current=>current.map(n=>n.id===selected.id||n.id===original?{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:n.id===selected.id}}}:n));setMode("work");
-      }}>采用口型片段</button>,1);
-    if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>,1);
+      }}>采用口型片段</button>);
+    if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>);
     if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey)}>下载配音</button>);
     if((selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&meta?.storageKey&&meta.content) add("download",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>);
     if(selectedTakes && selectedTakes.length>1){
-      add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>,3);
+      add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>);
       add("take",<Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?meta?.primaryImageId:meta?.primaryVideoId} getPopupContainer={containers}
         onChange={id => chooseTake(selected.id,id)} options={selectedTakes.map((v,i) => ({value:v.id,label:v.id.endsWith(":comparison")?"原始对照结果":`版本 ${i+1}${v.status==="loading"?" · 生成中":v.status==="error"?" · 失败":""}`,disabled:v.status!=="success"||!v.storageKey}))}/>);
     }
-  }
-  const contextPrimary=contextItems.filter(a=>a.rank!==undefined).sort((a,b)=>a.rank!-b.rank!).slice(0,2);
-  const contextMore=contextItems.filter(a=>!contextPrimary.includes(a));
-  const contextualActions=selected&&selectedNodeIds.size===1&&mode==="canvas"&&!referencePicking&&!pickingReferences?<div className="studio-context-actions" aria-label="继续创作">
-      <span className="studio-selected-name" title={selected.title}>{selected.title}</span>
+    const contextMore=contextItems.filter(a=>!excluded.includes(a.key));
+    return <div className="studio-node-editor-actions" aria-label="节点编辑操作">
       <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
-      {contextPrimary.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}
-      {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen} onOpenChange={setContextMoreOpen} getPopupContainer={containers}
-        content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(false);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>
-        <button type="button" className="studio-context-more-button" aria-label="更多操作" title="更多操作" aria-expanded={contextMoreOpen}><Ellipsis size={18}/></button>
-      </Popover>}</div>:null;
+      {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen===selected.id} onOpenChange={open=>setContextMoreOpen(open?selected.id:undefined)} getPopupContainer={containers}
+        content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(undefined);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>
+        <button type="button" className="studio-context-more-button" aria-label="更多操作" title="更多操作" aria-expanded={contextMoreOpen===selected.id}><Ellipsis size={18}/></button>
+      </Popover>}</div>;
+  };
   const storyboardNode=nodes.find(n=>n.id===storyboardNodeId);
   const changeComposerRatio=(next:string)=>{
     if(operation==="image"){
@@ -1148,7 +1152,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const cropRatios=nativeVideo?nativeVideo.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.map(c=>c.aspectRatio)||[]:['9:16','16:9','1:1'];
   const frameCropHint=cropFrame?<StudioFrameCropHint frame={cropFrame} ratio={ratio} ratios={cropRatios} onFix={changeComposerRatio}/>:null;
   const composerParameterSummary=operation==="image"?[ratio,studioImageSizeLabel(selectedImageSize),`${imageCount} 张`].filter(Boolean).join(' · '):operation==="video"?[ratio,nativeVideo?videoDraft.tier:undefined,`${duration}秒`,`${videoCount}条`,nativeVideo?.supportsPromptOptimization&&videoDraft.keepPrompt?"按原文":undefined].filter(Boolean).join(' · '):[settings.genre||'创作设定',`${settings.episodeCount||1} 集`,`${settings.episodeDurationSec||30} 秒`].join(' · ');
-  const directorPanel = operation==="text" ? <StudioTextComposer open={director} embedded={mode==="storyboard"} nodeId={originId} value={prompt} onChange={setPrompt}
+  const directorPanel = operation==="text" ? <StudioTextComposer actions={nodeActions(originId,["confirm"])} open={director} embedded={mode==="storyboard"} nodeId={originId} value={prompt} onChange={setPrompt}
     model={model} onModelChange={setModel} capabilities={capabilities} busy={busy||directorSaving}
     pending={directorPending?(directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交修改要求…":"提交结果尚未确认，请确认原任务"):undefined}
     unknownTask={!!directorPending&&!directorPending.metadata?.studio?.runId&&!busy} onConfirm={()=>{if(directorPending)void retry(directorPending);}}
@@ -1168,11 +1172,13 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       <StudioSettingsPopover label="创作参数" summary={composerParameterSummary} open={composerSettingsOpen} onOpenChange={setComposerSettingsOpen} disabled={busy||directorSaving||!!directorPending}>{composerParameterContent}</StudioSettingsPopover>
       </div>
 {replacedModelNotice&&!directorPending&&<p className="studio-composer-validation" role="status">{replacedModelNotice}</p>}{composerBlocker}{frameCropHint}<div className="studio-creator-footer">{(!["text","script","storyboard"].includes(operation)||pasteScript&&operation==="script"||capabilities?.mock||quote==null)&&<p className="studio-quote" title={operation==="video"&&videoUnitQuote!=null?`${videoCount} 条，每条 ${videoUnitQuote} 积分`:undefined}>{pasteScript&&operation==="script"?"保存剧本 · 免费":capabilities?.mock?"测试响应 · 免费":["text","script","storyboard"].includes(operation)?(quote==null?"模型计费未配置":""):quote==null?"模型未配置，暂不可生成":`${quote} 积分`}</p>}{directorPending?<><p role="status">{directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交任务，请稍候。":"提交结果尚未确认，请确认原任务。"}</p><Button type="primary" loading={busy} onClick={()=>{if(directorPending.metadata?.studio?.runId){setDirector(false);setTaskList(true);}else void retry(directorPending);}}>{directorPending.metadata?.studio?.runId?"查看原任务":"确认原任务"}</Button></>:<Button type="primary" className={operation==="image"||operation==="video"?"studio-composer-send":undefined} aria-label={operation==="image"||operation==="video"?labels[operation]:undefined} icon={operation==="image"||operation==="video"?<ArrowUp size={20}/>:pasteScript&&operation==="script"?undefined:<StudioAiIcon/>} title={pasteScript&&operation==="script"?undefined:"AI 处理，会消耗积分"} loading={busy||directorSaving} disabled={!(pasteScript&&operation==="script")&&quote==null||(!prompt.trim()&&!(operation==="video"&&nativeVideo&&nativeModeSpec?.promptRequired===false))||!capabilities||removedVideoMention||!!legacyVideoError||!!durationIssue||imageRatioUnsupported||!!nativeVideo&&!!videoValidationError||missingPlanRefs.length>0&&!referenceIds.length||promptTooLong||!capabilities.mock&&(operation==="image"||operation==="video")&&!chosenModel} onClick={() => void (pasteScript&&operation==="script"?importScript():submit())}>{operation==="image"||operation==="video"?null:pasteScript&&operation==="script"?"保存并编辑剧本":labels[operation]}</Button>}</div></>}>
-      {operation==='video'&&directorOrigin?.metadata?.storageKey&&<div className="studio-recreation-launch"><Button disabled={busy||directorSaving} onClick={()=>void closeDirector().then(closed=>{if(closed)dispatchStudioCommand('recreation',directorOrigin.id);})}><FileText size={15}/>解析视频</Button><span>生成全片拆解和参考画面</span></div>}
-      <div className="studio-composer-references">{referenceComposer&&<>{nativeVideo?<StudioReferencePicker openRequest={referencePickerRequest} nodes={nodes.filter(n=>n.id!==originId)} ids={referenceIds} onChange={ids=>setReferenceIds(ids)}
+      <div className="studio-composer-actions" role="group" aria-label="编辑操作">{nodeActions(originId,["confirm",...(operation==="image"&&directorOrigin?.metadata?.studio?.libraryAssetRole!=="sheet"?["image"]:[]),...(operation==="video"?["video"]:[])])}
+      {referenceComposer&&<>{nativeVideo?<StudioReferencePicker openRequest={referencePickerRequest} nodes={nodes.filter(n=>n.id!==originId)} ids={referenceIds} onChange={ids=>setReferenceIds(ids)}
           accepts={ids=>nativeVideo.contract.modes.some(spec=>studioVideoAcceptsReferences(spec,ids,nodes))}
           picking={pickingReferences} onCanvasPick={()=>{setMode("canvas");setPickingReferences(value=>!value);}}/>:<Button aria-pressed={pickingReferences} onClick={()=>{setMode(pickingReferences&&storyboardNodeId?"storyboard":"canvas");setPickingReferences(value=>!value);}}>{pickingReferences?"完成参考选择":"参考"}</Button>}<Button ref={directorLibraryButton} onClick={()=>openIpLibrary({kind:"director"})}>IP 人物库</Button></>}
         {operation==="image"&&directorOrigin?.type===CanvasNodeType.Image&&<Button icon={<Upload size={16}/>} disabled={busy||!!directorPending} onClick={()=>dispatchStudioCommand('upload-image',originId)}>{directorOrigin.metadata?.storageKey?'替换图片':'上传图片'}</Button>}
+      </div>
+      <div className="studio-composer-references">
         {originId&&studioLinkedNodes(originId,nodes,connections).filter(n=>studioLinkedText(n).trim()||n.type===CanvasNodeType.Text&&n.metadata?.studio?.templateInput).map(n=><span className="studio-reference-chip" key={`text-${n.id}`}><FileText size={14}/><span title={studioLinkedText(n)}>{n.title}</span><button aria-label={`移除文本引用 ${n.title}`} onClick={()=>setConnections(edges=>edges.filter(c=>c.toNodeId!==originId||c.fromNodeId!==n.id))}><X size={14}/></button></span>)}
         {!nativeVideo&&(operation==="video"?studioVideoSelectionIds(videoDraft,referenceIds):referenceIds).map(id=>{const node=nodes.find(n=>n.id===id);return node?<span className="studio-reference-chip" key={id}>{node.type===CanvasNodeType.Image&&node.metadata?.content&&<SignedImage src={node.metadata.content} storageKey={node.metadata.storageKey} alt=""/>}<span>{operation==="video"?`${videoPromptReferences.find(r=>r.nodeId===id)?.label||"待补充"} · ${node.title}`:node.title}</span><button type="button" aria-label={`移除参考 ${node.title}`} onClick={()=>removeComposerReference(id)}><X size={13}/></button></span>:null;})}
         {nativeVideo&&<StudioReferenceStrip nodes={nodes} ids={studioVideoSelectionIds(videoDraft,referenceIds)} draft={videoDraft} spec={nativeModeSpec} onRemove={removeComposerReference}/>}
@@ -1206,15 +1212,14 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {!assistantOpen&&<button type="button" className="studio-ai-orb" aria-label="打开创作助手" title="和助手说一句，它会把每一步放进画布" onClick={()=>dispatchStudioCommand("assistant",selected?.id)}><AiMark size={18}/></button>}
     <button type="button" className="studio-tasks-launch" onClick={()=>setTaskList(v=>!v)} aria-label={activeRunCount?`查看创作任务，${activeRunCount} 个进行中`:"查看创作任务"} title="创作任务" aria-pressed={taskList}><SquareCheckBig size={19} strokeWidth={1.75}/>{activeRunCount>0&&<span className="studio-tasks-count" aria-hidden="true">{activeRunCount}</span>}</button>
     {recreationOpen&&<StudioRecreation key={`${projectId}:${recreationId||'new'}`} projectId={projectId} initialNodeId={recreationId} nodes={nodes} capabilities={capabilities} setNodes={setNodes} setConnections={setConnections}
-      mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
+      actions={nodeActions(recreationId,["recreation-doc","analyze","film"])} mode={recreationMode} onClose={()=>setRecreationOpen(false)} onFocus={onFocusNode} onRun={(run,id)=>void watch(run,id)}/>}
     {capabilities?.mock && <div className="studio-test-note">测试响应 · 使用已有文字和媒体样例，不调用付费模型</div>}
     {capabilityError && <div className="studio-error-note"><StudioErrorNotice error={capabilityError}/><button type="button" onClick={loadCapabilities}>重新加载</button></div>}
     {/* Empty canvas: one guide card in the visible middle, with the assistant open or closed (docs/ip-studio-new-canvas-and-threads.md §2.3). */}
     {studioCanvasGuideVisible({nodeCount:nodes.length,mode,panelOpen:director||speechOpen||lipSyncOpen||recreationOpen||templateLibraryOpen||assetPicker||batchOpen||taskList||libraryQuery!==undefined||!!editorId||!!extractionId||!!textEditingNodeId})
       &&<StudioCanvasGuide assistantOpen={assistantOpen} onStartAssistant={()=>{setAssistantNodeId(undefined);setAssistantOpen(true);onClosePanel();}}/>}
-    {/* Plain text actions and editing share one screen-space surface. */}
-    {textEditingNodeId && mode==="canvas" ? renderTextEditor?.(selected?.id===textEditingNodeId?contextualActions:null)
-      : !director&&!speechOpen&&!lipSyncOpen&&framesNodeId!==selected?.id&&contextualActions&&<StudioFloatingPanel open anchorId={selected?.id} toolbar width="auto">{contextualActions}</StudioFloatingPanel>}
+    {/* Node actions live inside editors only; selection and right-click never mount an extra floating toolbar. */}
+    {textEditingNodeId && mode==="canvas" && renderTextEditor?.(nodeActions(textEditingNodeId))}
     {mode!=="canvas" && <section className={`studio-focused-view${mode==="storyboard"?" studio-storyboard-view":""}`} aria-label={mode==="storyboard"?"故事板":"成片编辑器"}>
       <header><h2>{mode==="storyboard"?"故事板":"成片编辑器"}</h2><button type="button" aria-label="返回画布" disabled={workSaving||directorSaving||storyboardChanging||busy} onClick={() => void switchView("canvas")}><X size={18}/></button></header>
       {mode==="work"&&(episodeNumbers.length>1||episodeFilter!=="all")&&<div className="studio-episode-nav"><Select aria-label="当前分集" value={episodeFilter} onChange={setEpisodeFilter} options={[{value:"all",label:"全部分集"},...episodeNumbers.map(no=>({value:no,label:`第 ${no} 集`}))]}/></div>}
@@ -1237,6 +1242,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         }}/>
       : <StudioWorkEditor nodes={nodes} connections={connections} clips={clips} multiEpisode={episodeNumbers.length>1}
           draft={workDraft} onDraftChange={changeWorkDraft} onIncludeClip={includeClip} onMoveClip={moveClip} works={work}
+          renderNodeActions={node=>nodeActions(node.id,["work","download"])}
           busy={busy} locked={workSaving} mock={capabilities?.mock} onAssemble={() => void assemble()}
           onDownload={node => void downloadMedia(node.metadata!.content!,node.title,"video/mp4",node.metadata!.storageKey).catch(e => message.error(e))}
           onAddClips={() => setMode("canvas")} onCreateVideo={() => openDirector("video")} onOpenStoryboard={() => setMode("storyboard")}
@@ -1248,6 +1254,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       clips={clips.filter(n=>studioClipIncluded(n,sourceClipIds))} voice={voiceoverKey?nodes.find(n=>n.type===CanvasNodeType.Audio&&n.metadata?.storageKey===voiceoverKey):undefined}
       onSave={saveAdvanced} onExport={exportAdvanced} onClose={()=>setAdvancedOpen(false)}/>,document.body)}
     <StudioFloatingPanel title="剧本" anchorId={scriptPreviewId} open={!!scriptPreviewId&&!editorId} onClose={()=>setScriptPreviewId(undefined)} footer={<Button type="primary" onClick={()=>{setEditorId(scriptPreviewId);}}>展开剧本编辑器</Button>}>
+      {nodeActions(scriptPreviewId,["editor"])}
       {(()=>{const script=nodes.find(n=>n.id===scriptPreviewId)?.metadata?.studio?.script;return script?<div className="studio-script-inline"><h3>{script.title}</h3><p>{script.outline||script.episodes[0]?.content.slice(0,600)}</p><small>{script.episodes.length} 集 · 在画布中确认内容，展开后编辑大纲、人物与分集正文。</small></div>:null;})()}
     </StudioFloatingPanel>
     <Modal title="编辑文字" open={storyboardTextExpanded&&!!storyboardNode} onCancel={()=>{void saveStudioDocument(projectId).then(()=>setStoryboardTextExpanded(false)).catch(e=>message.error(e));}} footer={null} width="90vw" getContainer={containers}>
@@ -1269,8 +1276,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {extractionId&&nodes.find(n=>n.id===extractionId)&&<LibraryExtractionPanel projectId={projectId} node={nodes.find(n=>n.id===extractionId)!} onClose={()=>setExtractionId(undefined)} onTask={async assetExtraction=>{patch(extractionId,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,assetExtraction}}}));await saveStudioDocument(projectId);}} onUse={async asset=>{await insertLibrary([libraryObjectAsset(asset)]);}}/>}
     <LibraryReferencePicker open={libraryQuery!==undefined} query={libraryQuery||''} projectId={projectId} onClose={()=>{setLibraryQuery(undefined);libraryMention.current=undefined;}} onAssets={insertLibrary}/>
     <StudioTemplateLibrary open={templateLibraryOpen} scope={templateScope} nodes={nodes} onClose={()=>setTemplateLibraryOpen(false)}/>
-    <StudioLipSync open={lipSyncOpen} onClose={()=>setLipSyncOpen(false)} projectId={projectId} nodes={nodes} initialNodeId={lipOriginId} busy={busy} onSubmit={createLipSync}/>
-    <StudioSpeech anchorId={speechOriginId} key={speechOriginId} initialDraft={speechOrigin?.metadata?.studio?.speechDraft} onDraft={updateSpeechDraft} initialVoiceId={speechOrigin?.metadata?.studio?.speechRequest?.voiceId||speechOrigin?.metadata?.studio?.voiceProfile?.voiceId} initialAvatarId={speechOrigin?.metadata?.studio?.speechRequest?.avatarId||speechOrigin?.metadata?.studio?.voiceProfile?.avatarId||speechOrigin?.metadata?.studio?.references?.find(r=>r.avatarId)?.avatarId||speechAvatarId} open={speechOpen} onClose={()=>void closeSpeech()} initialText={speechOrigin?.metadata?.studio?.speechRequest?.text||speechOrigin?.metadata?.prompt||""} busy={busy||speechSaving} pending={studioGenerationPending(speechOrigin)?{confirmed:!!speechOrigin?.metadata?.studio?.runId}:undefined} onConfirm={()=>{if(speechOrigin?.metadata?.studio?.runId){setSpeechOpen(false);setTaskList(true);}else if(speechOrigin)void retry(speechOrigin);}} onSubmit={createSpeech}/>
+    <StudioLipSync actions={nodeActions(lipOriginId,["lip"])} open={lipSyncOpen} onClose={()=>setLipSyncOpen(false)} projectId={projectId} nodes={nodes} initialNodeId={lipOriginId} busy={busy} onSubmit={createLipSync}/>
+    <StudioSpeech actions={nodeActions(speechOriginId,["confirm"])} anchorId={speechOriginId} key={speechOriginId} initialDraft={speechOrigin?.metadata?.studio?.speechDraft} onDraft={updateSpeechDraft} initialVoiceId={speechOrigin?.metadata?.studio?.speechRequest?.voiceId||speechOrigin?.metadata?.studio?.voiceProfile?.voiceId} initialAvatarId={speechOrigin?.metadata?.studio?.speechRequest?.avatarId||speechOrigin?.metadata?.studio?.voiceProfile?.avatarId||speechOrigin?.metadata?.studio?.references?.find(r=>r.avatarId)?.avatarId||speechAvatarId} open={speechOpen} onClose={()=>void closeSpeech()} initialText={speechOrigin?.metadata?.studio?.speechRequest?.text||speechOrigin?.metadata?.prompt||""} busy={busy||speechSaving} pending={studioGenerationPending(speechOrigin)?{confirmed:!!speechOrigin?.metadata?.studio?.runId}:undefined} onConfirm={()=>{if(speechOrigin?.metadata?.studio?.runId){setSpeechOpen(false);setTaskList(true);}else if(speechOrigin)void retry(speechOrigin);}} onSubmit={createSpeech}/>
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
       if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}；未再次扣积分`);
     }}/>;})()}

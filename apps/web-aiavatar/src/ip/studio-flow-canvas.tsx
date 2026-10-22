@@ -96,7 +96,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
         <><SignedImage draggable={false} src={meta.content} storageKey={meta.storageKey} alt={node.title} onLoad={imageLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadImage}><Upload size={14}/>{data.uploading?'上传中…':'替换图片'}</button>}</> : node.type === CanvasNodeType.Video && (meta?.content || meta?.storageKey) ?
         <><SignedVideo className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls preload="metadata" onLoadedMetadata={videoLoaded}/>{!data.readOnly&&<button type="button" className="studio-flow-replace-image nodrag nopan" disabled={imageLocked} onClick={uploadVideo}><Upload size={14}/>{data.uploading?'上传处理中…':'替换视频'}</button>}</> : node.type === CanvasNodeType.Audio && (meta?.content || meta?.storageKey) ?
         <div className="studio-flow-audio"><Music2 size={28}/><SignedAudio className="nodrag nopan" src={meta.content} storageKey={meta.storageKey} controls/></div> : node.type === CanvasNodeType.Text ?
-        <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'双击编辑文字')}</div> :
+        <div className="studio-flow-text nowheel">{meta?.content || (data.readOnly?'存为个人副本后填写':'单击编辑文字')}</div> :
         // A failed draft is not an empty one: say it failed and why, offer one way back (the prompt and references are kept).
         failed && !data.readOnly ? <div className="studio-flow-placeholder studio-flow-failure" role="group" aria-label="生成失败">
           <AlertCircle size={22}/><strong>没有生成出来</strong><span title={meta?.studio?.task?.errorMessage || meta?.errorDetails || undefined}>{studioFailureReason(node)}</span>
@@ -268,6 +268,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     return placeNodeInViewport(node, existing, { ...start, width: Math.max(0, end.x - start.x), height: Math.max(0, end.y - start.y) }, at && flow.screenToFlowPosition(at));
   };
   const add = (type: CanvasNodeType, at?: {x:number;y:number}) => {
+    setContext(undefined);
     checkpoint(); const node = makeStudioNode(type === CanvasNodeType.Video ? 'video' : type === CanvasNodeType.Text ? 'script' : 'image');
     node.type = type; node.title = type === CanvasNodeType.Text ? '文字' : type === CanvasNodeType.Video ? '视频' : '图片';
     if (type === CanvasNodeType.Text) node.metadata = { content: '', status: 'idle' };
@@ -462,13 +463,15 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         isValidConnection={c=>c.source!==c.target&&!current().connections.some(edge=>edge.fromNodeId===c.source&&edge.toNodeId===c.target)}
         onConnect={c => {if(c.source&&c.target)connectReference(c.source,c.target);}}
         onNodeClick={(event,n)=>{
+          if(event.button!==0)return;
+          setContext(undefined);
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
           if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
           const node=n.data.document;if(node.type==='group')return;
           const action=studioNodeCommand(node);if(action)dispatchStudioCommand(action,n.id);
         }}
         onNodeDoubleClick={(event, n) => { if ((event.target as HTMLElement).closest('.studio-flow-title,.studio-flow-title-input')) return; if (n.data.document.type === 'group') { checkpoint(); setRenameId(n.id); } else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
-        onNodeContextMenu={(event, n) => { event.preventDefault(); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
+        onNodeContextMenu={(event, n) => { event.preventDefault(); setTextId(undefined); window.dispatchEvent(new Event('studio-node-context-menu')); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
         onPaneClick={event => { if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
         onPaneContextMenu={event => { event.preventDefault();setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY}); }}
         defaultViewport={{ x: project.viewport.x, y: project.viewport.y, zoom: project.viewport.k }}

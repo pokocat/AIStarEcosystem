@@ -70,11 +70,11 @@ const retiredFailure={...node,storageKey:undefined,metadata:{status:'error' as c
     task:{status:'failed' as const,stage:'failed',pct:100,errorCode:'VIDEO_MODEL_RETIRED',errorMessage:'这个视频模型已被提供方下架，不能再用它生成，请换一个模型',logId:'M64E8LSCR77Q'}}}};
 test('a draft whose model was retired offers 换模型重试 only, and the composer does not reuse that model',async()=>{
  api.models.mockResolvedValue({image:[],video:[{endpointId:'retired-seedance',name:'Seedance（已下架）',creditCost:80},{endpointId:'h3',name:'H3',isDefault:true,creditCost:40,capability:{minDurationSec:5,maxDurationSec:15}}]});
- render(<Host initial={retiredFailure}/>);
+ render(<Host initial={retiredFailure}/>);openVideo();
  await waitFor(()=>expect(api.models).toHaveBeenCalled());
  await waitFor(()=>expect(screen.getByRole('button',{name:'换模型重试'})).toBeDefined());
  expect(screen.queryByRole('button',{name:'重新生成',exact:true})).toBeNull();
- expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
+ expect(screen.queryByRole('button',{name:'重新生成视频',exact:true})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'换模型重试'}));
  const panel=await screen.findByRole('dialog',{name:'生成视频'});
  await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'}).textContent).toContain('H3'));
@@ -84,19 +84,19 @@ test('a draft whose model was retired offers 换模型重试 only, and the compo
 test('retry never resubmits to a model the last failure proved gone',async()=>{
  api.models.mockResolvedValue({image:[],video:[{endpointId:'h3',name:'H3',isDefault:true,creditCost:40}]});
  const failed={...retiredFailure,metadata:{...retiredFailure.metadata,studio:{...retiredFailure.metadata.studio,task:{...retiredFailure.metadata.studio.task,errorCode:'VIDEO_SUBMIT_FAILED'}}}};
- render(<Host initial={failed}/>);
+ render(<Host initial={failed}/>);openVideo();
  await waitFor(()=>expect(api.models).toHaveBeenCalled());
  // the old model is no longer offered at all: the same request is not sent again
  await waitFor(()=>expect(screen.getByRole('button',{name:'换模型重试'})).toBeDefined());
  expect(api.submit).not.toHaveBeenCalled();
 });
-test('a passing outage keeps exactly one 重新生成 and no second 生成 button',async()=>{
+test('an outage exposes one saved-request retry inside the editor without a duplicate editor launcher',async()=>{
  const busy={...retiredFailure,metadata:{...retiredFailure.metadata,studio:{...retiredFailure.metadata.studio,request:{...request},task:{status:'failed' as const,stage:'failed',pct:100,errorCode:'DAP_MODEL_HTTP_503',errorMessage:'模型服务暂时不可用（上游 503），请稍后重试'}}}};
- render(<Host initial={busy}/>);
+ render(<Host initial={busy}/>);openVideo();
  await waitFor(()=>expect(api.models).toHaveBeenCalled());
  await waitFor(()=>expect(screen.getAllByRole('button',{name:'重新生成'})).toHaveLength(1));
  expect(screen.queryByRole('button',{name:'换模型重试'})).toBeNull();
- expect(screen.queryByRole('button',{name:'生成视频',exact:true})).toBeNull();
+ expect(screen.queryByRole('button',{name:'重新生成视频',exact:true})).toBeNull();
 });
 test('the assistant spec opens the composer at 16:9 / 4 秒; a duration the model cannot do blocks with a fix instead of being clamped',async()=>{
  api.models.mockResolvedValue({image:[],video:[{endpointId:'model',name:'model',isDefault:true,creditCost:80,capability:{minDurationSec:5,maxDurationSec:15}}]});

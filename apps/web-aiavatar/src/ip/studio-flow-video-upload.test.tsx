@@ -18,7 +18,7 @@ vi.mock('./studio-attachment-picker',()=>({StudioAttachmentPicker:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:({storageKey,...props}:any)=><video {...props}/>}));
 vi.mock('@xyflow/react',()=>{
  const viewport={x:0,y:0,zoom:1},flow={viewportInitialized:true,fitView:vi.fn(),screenToFlowPosition:(p:any)=>p,getInternalNode:(id:string)=>({id})};
- return {ReactFlowProvider:({children}:any)=>children,ReactFlow:({nodes,nodeTypes}:any)=><div>{nodes.map((n:any)=>{const Card=nodeTypes.studio;return <Card key={n.id} data={n.data} selected/>;})}</div>,
+ return {ReactFlowProvider:({children}:any)=>children,ReactFlow:({nodes,nodeTypes,onNodeClick,onNodeContextMenu}:any)=><div>{nodes.map((n:any)=>{const Card=nodeTypes.studio;return <div key={n.id} data-testid={`card-${n.id}`} onClick={e=>onNodeClick(e,n)} onContextMenu={e=>onNodeContextMenu(e,n)}><Card data={n.data} selected/></div>;})}</div>,
  useReactFlow:()=>flow,useViewport:()=>viewport,Background:()=>null,MiniMap:()=>null,Handle:()=>null,NodeResizer:()=>null,
  Position:{Right:'right',Left:'left'},SelectionMode:{Partial:'partial'},BackgroundVariant:{Dots:'dots'}};
 });
@@ -48,4 +48,18 @@ test('a rejected upload keeps the empty slot available for retry without saving 
  await waitFor(()=>expect(api.error).toHaveBeenCalled());expect(api.save).not.toHaveBeenCalled();
  expect(useCanvasStore.getState().projects[0].nodes[0].metadata?.storageKey).toBeUndefined();
  expect(screen.getByRole('button',{name:'上传视频'})).toHaveProperty('disabled',false);
+});
+
+test('right-click only opens the menu; left-click clears it and requests the node editor',()=>{
+ const commands=vi.fn(),dismiss=vi.fn();
+ window.addEventListener('studio-command',commands);window.addEventListener('studio-node-context-menu',dismiss);
+ try {
+  render(<StudioFlowCanvas projectId="p"/>);
+  fireEvent.contextMenu(screen.getByTestId('card-source'),{button:2,clientX:100,clientY:100});
+  expect(screen.getByRole('button',{name:'编辑内容'})).toBeDefined();
+  expect(dismiss).toHaveBeenCalledOnce();expect(commands).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByTestId('card-source'),{button:0});
+  expect(screen.queryByRole('button',{name:'编辑内容'})).toBeNull();
+  expect(commands).toHaveBeenCalledOnce();expect(commands.mock.calls[0][0].detail).toEqual({action:'video',nodeId:'source'});
+ } finally {window.removeEventListener('studio-command',commands);window.removeEventListener('studio-node-context-menu',dismiss);}
 });

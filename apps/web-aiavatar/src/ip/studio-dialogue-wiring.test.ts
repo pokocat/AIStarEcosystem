@@ -88,7 +88,7 @@ test('the dialogue is actually mounted and wired', () => {
   expect(canvas).toContain('className="studio-flow-origin">你上传的</span>');
   expect(canvas).not.toContain('>小地图</button>');
   expect(workspace).toContain('className="studio-context-more-button"');
-  expect(workspace).toContain('toolbar width="auto"');
+  expect(workspace).not.toContain('toolbar width="auto"');
   expect(workspace).toContain('<AiMark size={18}/></button>}');
   expect(assistant).toContain('progress={execution && <StudioDialogueSteps');
   expect(assistant).toContain('aria-controls="studio-assistant-guide"');
@@ -168,10 +168,10 @@ test('the first-frame crop hint and the media size report are wired', () => {
 });
 
 // 视频节点铺满与抽帧（2026-10-21）：§8.0.1 ⑥ —— both entries really send video-frames, and the panel is mounted on the canvas.
-test('抽帧 is reachable from the action bar and the right-click menu, and its panel is mounted', () => {
+test('抽帧 is reachable from the editor and the right-click menu, and its panel is mounted', () => {
   const workspace = read('ip/studio-workspace.tsx');
-  expect(workspace).toMatch(/add\("video-frames",<button [^>]*onClick=\{\(\)=>dispatchStudioCommand\("video-frames",selected\.id\)\}><Camera size=\{15\}\/>抽帧<\/button>,2\)/);
-  expect(workspace).toContain("framesNodeId!==selected?.id&&contextualActions");
+  expect(workspace).toMatch(/add\("video-frames",<button [^>]*onClick=\{\(\)=>dispatchStudioCommand\("video-frames",selected\.id\)\}><Camera size=\{15\}\/>抽帧<\/button>\)/);
+  expect(workspace).toContain('aria-label="节点编辑操作"');
   const canvas = read('ip/studio-flow-canvas.tsx');
   expect(canvas).toContain("{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}");
   expect(canvas).toMatch(/<StudioFlowVideoFrames nodes=\{project\.nodes\} pending=\{pendingFrames\} onPendingChange=\{setPendingFrames\}/);

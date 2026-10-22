@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
 import { StudioModelPicker } from "./studio-generation-controls";
 import { StudioAiIcon } from "./studio-ai-icon";
@@ -11,9 +12,9 @@ import { quoteStudioLipSync, studioLipSyncCatalog } from "@/canvas-bridge/studio
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { SignedAudio } from "@/canvas-bridge/signed-audio";
 
-type Props={open:boolean;onClose:()=>void;projectId:string;nodes:CanvasNodeData[];initialNodeId?:string;busy:boolean;
+type Props={actions?:ReactNode;open:boolean;onClose:()=>void;projectId:string;nodes:CanvasNodeData[];initialNodeId?:string;busy:boolean;
   onSubmit:(value:Omit<StudioLipSyncRequest,"clientRequestId"|"nodeId">,videoNodeId:string,audioNodeId:string)=>Promise<void>};
-export function StudioLipSync({open,onClose,projectId,nodes,initialNodeId,busy,onSubmit}:Props) {
+export function StudioLipSync({actions,open,onClose,projectId,nodes,initialNodeId,busy,onSubmit}:Props) {
   const [catalog,setCatalog]=useState<StudioLipSyncCatalog>(),[error,setError]=useStudioErrorState(),[loading,setLoading]=useState(false);
   const [model,setModel]=useState<string>(),[videoId,setVideoId]=useState<string>(),[audioId,setAudioId]=useState<string>();
   const [quote,setQuote]=useState<StudioLipSyncQuote>(),[quoting,setQuoting]=useState(false);
@@ -37,6 +38,7 @@ export function StudioLipSync({open,onClose,projectId,nodes,initialNodeId,busy,o
     <p className="studio-quote">{quote?`配音 ${quote.audioDurationSec.toFixed(2)} 秒 · ${quote.billableSeconds} 秒 × ${selected?.creditCostPerSecond} 积分`:'选择视频和配音后预估费用'}</p>
     <Button icon={<StudioAiIcon/>} title="AI 处理，会消耗积分" type="primary" loading={busy||quoting} disabled={loading||!!error||!quote||!video||!audio||!selected} onClick={()=>{if(quote&&video&&audio&&selected)void onSubmit({model:selected.endpointId,videoStorageKey:video.metadata!.storageKey!,audioStorageKey:audio.metadata!.storageKey!,maxCost:quote.cost},video.id,audio.id);}}>{quote?`生成口型视频 · ${quote.cost} 积分`:"先选择视频和配音"}</Button>
   </div>}>
+    {actions}
     <div className="studio-director-form"><p>选择画布里的单人人物视频和配音，让人物按这条音频说话。结果另存为新片段，原视频仍可使用。</p>
       {error&&<p><StudioErrorNotice error={error}/><Button onClick={reload}>重新加载</Button></p>}
       {!loading&&!error&&!catalog?.models.length&&<p role="status">尚未配置口型模型，请在后台绑定「Studio 口型同步」。</p>}
