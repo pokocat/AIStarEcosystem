@@ -199,6 +199,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [Studio 节点操作合并发布](releases/studio-node-editor-actions-release-20261022.md)：移除独立小操作条，编辑按钮单行排列，左键编辑、右键菜单；main `cf91ae0e`、121 项回归及线上 UI 验收（2026-10-22）。
+
 - [模型用量归属与多模态统计生产发布](releases/model-usage-attribution-production-release-20261021.md)：main `3782da88`、server/admin 制品、142 项后端测试、线上未归属筛选与模态汇总验收及历史数据边界（2026-10-21）。
 
 上线制品、线上验收与本地实施验收的证据，写完基本不再改。现行设计以 §1 的真源为准。
