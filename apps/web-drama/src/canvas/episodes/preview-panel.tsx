@@ -9,6 +9,7 @@ import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import * as React from "react";
 import { ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, Info, Loader2, SkipForward, Square } from "lucide-react";
 import { formatDateTime } from "@ai-star-eco/api-client";
+import { modelTaskException } from "@ai-star-eco/api-client/model-task-state";
 import type { CanvasRunRef, CanvasSegment, DramaCanvasRatio, DramaCanvasRun, DramaCanvasRunStatus, DramaCanvasRunTarget } from "@ai-star-eco/types/drama-canvas";
 import { CanvasImage, CanvasVideo } from "@/canvas/shell";
 import { RunTarget, pickedImage, pickedVideo, setPicked, useCanvasDoc, useCanvasPricing, useCanvasRuns, type CanvasPricingValue } from "@/canvas/core";
@@ -55,6 +56,15 @@ export function RunLine({
     );
   }
   if (!status) return null;
+  const exception = modelTaskException(run && { ...run, status });
+  if (exception) {
+    return (
+      <div className="cve-run is-note" data-run={what} data-status={exception.needsReview ? "submission-unknown" : "recovering"}>
+        <Info size={13} />
+        <span className="cve-run-text">{what}{exception.label}。{exception.notice}</span>
+      </div>
+    );
+  }
   if (status === "queued") {
     return (
       <div className="cve-run is-active cve-run-queued" data-run={what} data-status="queued">

@@ -247,6 +247,7 @@ public class DramaFrameJobService {
         if (card.hasNonNull("duration_sec")) n.put("duration_sec", card.path("duration_sec").asInt());
         if (card.hasNonNull("video_url")) n.put("video_url", card.path("video_url").asText());
         if (card.hasNonNull("thumbnail_url")) n.put("thumbnail_url", card.path("thumbnail_url").asText());
+        if (card.hasNonNull("error_code")) n.put("error_code", card.path("error_code").asText());
         if (card.hasNonNull("error_message")) n.put("error_message", card.path("error_message").asText());
         if (card.hasNonNull("created_at")) n.put("created_at", card.path("created_at").asText());
         if (card.hasNonNull("generated_at")) n.put("completed_at", card.path("generated_at").asText());

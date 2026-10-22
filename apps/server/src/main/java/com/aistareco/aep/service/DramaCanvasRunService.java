@@ -694,9 +694,20 @@ public class DramaCanvasRunService {
         for (DramaCanvasRun r : list) {
             JsonNode res = results.get(r.getId());
             if (res != null) decorateUrls(res, owned);
+            String errorCode = blankToNull(r.getErrorCode());
+            String errorMessage = blankToNull(r.getErrorMessage());
+            // Video acceptance belongs to the native job; expose its current exception without a second stored truth.
+            if (!r.isTerminal() && DramaCanvasRun.KIND_VIDEO.equals(r.getKind()) && r.getJobId() != null) {
+                JsonNode video = videoJobs.getJob(r.getJobId(), userId, MaterialVideoJobService.APP_DRAMA);
+                String code = video == null ? null : video.path("error_code").asText(null);
+                if ("VIDEO_SUBMISSION_UNKNOWN".equals(code) || "VIDEO_RECONCILIATION_PENDING".equals(code)) {
+                    errorCode = code;
+                    errorMessage = video.path("error_message").asText(null);
+                }
+            }
             out.add(new DramaCanvasRunDto(
                     r.getId(), r.getCanvasId(), r.getKind(), r.getTarget(), r.getStatus(), r.getCost(),
-                    res, parseRefs(r.getRefsJson()), blankToNull(r.getErrorCode()), blankToNull(r.getErrorMessage()),
+                    res, parseRefs(r.getRefsJson()), errorCode, errorMessage,
                     iso(r.getCreatedAt()), iso(r.getFinishedAt())));
         }
         return out;

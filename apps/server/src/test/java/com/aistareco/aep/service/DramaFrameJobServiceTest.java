@@ -32,6 +32,7 @@ class DramaFrameJobServiceTest {
         MaterialVideoJobService videoJobs = mock(MaterialVideoJobService.class);
         List<JsonNode> cards = new ArrayList<>();
         cards.add(OM.createObjectNode().put("id", "mvj_shot").put("kind", "drama-shot").put("status", "rendering")
+                .put("progress_pct", 5).put("error_code", "VIDEO_SUBMISSION_UNKNOWN").put("stage", "受理结果待核对")
                 .put("created_at", "2026-09-30T01:00:00Z"));
         cards.add(OM.createObjectNode().put("id", "mvj_canvas").put("kind", DramaCanvasRunService.VIDEO_JOB_KIND)
                 .put("status", "rendering").put("created_at", "2026-09-30T02:00:00Z"));
@@ -42,5 +43,7 @@ class DramaFrameJobServiceTest {
         JsonNode tasks = svc.listTasks("u1", null).path("tasks");
         assertEquals(1, tasks.size(), tasks.toString());
         assertEquals("mvj_shot", tasks.get(0).path("id").asText());
+        assertEquals("VIDEO_SUBMISSION_UNKNOWN", tasks.get(0).path("error_code").asText());
+        assertEquals("受理结果待核对", tasks.get(0).path("stage").asText());
     }
 }

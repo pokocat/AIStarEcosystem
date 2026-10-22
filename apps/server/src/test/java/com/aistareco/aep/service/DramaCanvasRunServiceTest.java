@@ -114,6 +114,25 @@ class DramaCanvasRunServiceTest {
         return canvas.getDocVersion();
     }
 
+    @Test
+    void activeVideoProjectsNativeExceptionAndClearsItAfterRecoveryWithoutMutatingRun() {
+        DramaCanvasRun run = DramaCanvasRun.builder().id("dcr_pending").canvasId(CANVAS).ownerUserId(USER)
+                .kind(DramaCanvasRun.KIND_VIDEO).target("video:1:seg1").status("running").cost(520).jobId("mvj_pending").build();
+        for (String code : List.of("VIDEO_SUBMISSION_UNKNOWN", "VIDEO_RECONCILIATION_PENDING")) {
+            when(videoJobs.getJob("mvj_pending", USER, MaterialVideoJobService.APP_DRAMA))
+                    .thenReturn(OM.createObjectNode().put("error_code", code).put("error_message", "核对原任务"));
+            DramaCanvasRunDto dto = svc.toDtos(USER, List.of(run)).get(0);
+            assertEquals(code, dto.errorCode());
+            assertEquals("核对原任务", dto.errorMessage());
+            assertEquals("running", dto.status());
+            assertEquals(520, dto.cost());
+            assertNull(run.getErrorCode());
+        }
+        when(videoJobs.getJob("mvj_pending", USER, MaterialVideoJobService.APP_DRAMA)).thenReturn(OM.createObjectNode());
+        assertNull(svc.toDtos(USER, List.of(run)).get(0).errorCode());
+        verifyNoInteractions(credits);
+    }
+
     // ── 幂等 / 版本 ────────────────────────────────────────────────────────────
 
     @Test

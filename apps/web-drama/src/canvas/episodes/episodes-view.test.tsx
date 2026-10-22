@@ -4,7 +4,7 @@ const selectFieldValue=createSelectFieldUser({fireEvent,screen});
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import type { DramaCanvasDoc, SaveDramaCanvasBody } from "@ai-star-eco/types/drama-canvas";
+import type { DramaCanvasDoc, DramaCanvasRun, SaveDramaCanvasBody } from "@ai-star-eco/types/drama-canvas";
 
 // 结构测试（§8.0.1 ⑥）：用 mock 的「示例：末班车」把逐集列表和第 1 集编辑器真渲染出来，钉住接线与状态。
 // 只断结构（data-* / 调了哪个接口 / 文档里的值），不断界面文案（§8.0.1 ⑩）。
@@ -605,6 +605,17 @@ describe("视频模型下拉", () => {
 });
 
 describe("停止按钮", () => {
+  it.each([
+    ["VIDEO_SUBMISSION_UNKNOWN", "submission-unknown"],
+    ["VIDEO_RECONCILIATION_PENDING", "recovering"],
+  ])("视频异常 %s 不伪装生成进度或提供停止重提", (errorCode, state) => {
+    const run: DramaCanvasRun = { id: "dcr_pending", canvasId: EX, kind: "video", target: "video:1:seg1", status: "running", cost: 520, errorCode, createdAt: "2026-10-22T00:00:00Z" };
+    const { container } = render(<RunLine what="视频" status="running" run={run} onCancel={vi.fn()} cancelAction="cancel-video" />);
+    expect(container.querySelector(`[data-status="${state}"]`)).not.toBeNull();
+    expect(container.querySelector(".cv-spin")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
+    expect(container.textContent).not.toContain("5%");
+  });
   it("只读时（别的页面改过）禁用并就地说先载入最新的画布；提交中没有可停的东西", () => {
     const onCancel = vi.fn();
     const { rerender } = render(<RunLine what="视频" status="queued" readOnly onCancel={onCancel} cancelAction="cancel-video" />);
