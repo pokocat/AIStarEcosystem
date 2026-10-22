@@ -23,7 +23,7 @@ vi.mock('@/canvas-bridge/models',()=>({SERVER_CHANNEL_ID:'server',endpointIdFor:
 vi.mock('@/canvas-bridge/config-store',()=>({encodeChannelModel:(_:string,m:string)=>m}));
 vi.mock('./studio-script-rich-editor',async()=>{
  const {forwardRef}=await import('react');
- return {StudioScriptRichEditor:forwardRef(({markdown,onChange,readOnly}:any,_ref:any)=>readOnly?<article>{markdown}</article>:<textarea aria-label="剧本文档" value={markdown} onChange={e=>onChange(e.target.value)}/>)};
+ return {StudioScriptRichEditor:forwardRef(({markdown,onChange,readOnly,ariaLabel}:any,_ref:any)=>readOnly?<article>{markdown}</article>:<textarea aria-label={ariaLabel||"剧本文档"} value={markdown} onChange={e=>onChange(e.target.value)}/>)};
 });
 vi.mock('antd',()=>{
  const Input=({children,...p}:any)=><input {...p}/>;Input.TextArea=({autoSize,...p}:any)=><textarea {...p}/>;
@@ -834,9 +834,9 @@ test('plain text detail edits the original node, follows incoming reference thum
  await screen.findByRole('region',{name:'节点详情 商品卖点'});
  expect(screen.getByRole('region',{name:'文本节点列表'})).toBeDefined();
  fireEvent.click(screen.getByRole('button',{name:'展开编辑 商品卖点'}));
- fireEvent.change(screen.getByRole('textbox',{name:'展开节点文字'}),{target:{value:'修改后的商品卖点'}});
- fireEvent.click(screen.getByRole('button',{name:'关闭编辑文字'}));
- await waitFor(()=>expect(screen.queryByRole('dialog',{name:'编辑文字'})).toBeNull());
+ fireEvent.change(screen.getByRole('textbox',{name:'文字文档'}),{target:{value:'修改后的商品卖点'}});
+ fireEvent.click(screen.getByRole('button',{name:'收起编辑'}));
+ await waitFor(()=>expect(screen.queryByRole('dialog',{name:'商品卖点'})).toBeNull());
  expect(snapshot.find(n=>n.id==='text')?.metadata?.content).toBe('修改后的商品卖点');
  api.save.mockRejectedValueOnce(new Error('文字保存失败'));
  fireEvent.click(screen.getByRole('button',{name:'返回画布'}));
