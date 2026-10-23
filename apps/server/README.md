@@ -1182,7 +1182,7 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 DAP / 短剧图片经 `ConfiguredImageGenerator` 复用 Studio 配置化原生传输：文生图 JSON、图生图 multipart 实际文件，旧固定像素按合法原生画布等比处理（16:10 场景采用中央安全区），不放宽 Studio 原生输出尺寸校验。DAP 文本经统一 chat 适配端点能力与输出预算。DAP 运镜经 `DapVideoBridge` 复用持久化媒体 worker，`dap` 子分区仅接本人形象首帧，子任务零价，父作业仍按原动作计费并持久保存子任务 ID。爆款雷达由 `VideoAnalysisFrames` 读取实际视频取四帧交给看图模型，结果明确采样范围与未知指标，失败不凭链接生成分析。实现、正式模型配置与发布证据见 [验收记录](../../docs/releases/production-model-compat-20261020.md)。
 
-### Studio 单轮对话独立额度（2026-10-22，本地未发布）
+### Studio 单轮对话独立额度（2026-10-23 已生产发布）
 
 capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `tokenPricing`。`AiChatTokenPricing.findDialogue` 沿用 `ai.chat-token-pricing` 的模型单价，整轮上限读取 `studio.dialogue-token-budget`，未配置时默认累计输入 1048576 / 输出 65536 Token。配置形状：
 
@@ -1194,6 +1194,6 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 用量保护提示改为「本轮对话已达到用量保护上限，已暂停。已完成的内容已保留，点「继续」接着做；后续按实际用量计费。」；快捷答复沿用原消息发送和幂等路径，不自动另开付费轮次。
 
-### 对话确认继续（2026-10-22，本地未发布）
+### 对话确认继续（2026-10-23 已生产发布）
 
 服务端从真实受限 run 和明确的本人续接消息派生 `continueUntilDone` / `continuationOf`，不接收客户端开关；新任务不沿用。继续期间使用同一循环与父 run，原目标和完成的操作保留在上下文；取消单轮 Token 分配、步数 / 调用 / 工具次数和用时阈值，以已冻结的 `rate.maxCost` 为实际金额约束，按真实用量结算。调用前按剩余金额收敛输出，预算不足 reason=`budget`，停止、制作授权和重复保护保留。`<studio-action name="…" args='JSON' />` 进入原动作校验，流式隐藏、坏批次不执行。详见对话续接回放审计。

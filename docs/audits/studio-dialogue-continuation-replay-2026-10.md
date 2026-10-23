@@ -1,6 +1,6 @@
 # Studio 对话用量中断与继续回放（2026-10-22）
 
-状态：本地修改，未发布。线上排查仅 SELECT，未重新提交原任务、未重跑图片或视频。
+状态：2026-10-23 已生产发布 `20261023-studio-dialogue-recovery`，见[发布与线上验收](../releases/studio-dialogue-recovery-release-20261023.md)。原故障项目仅 SELECT；另建验收画布实调文本模型，未重新提交原图片或视频任务。
 
 ## 线上证据
 
