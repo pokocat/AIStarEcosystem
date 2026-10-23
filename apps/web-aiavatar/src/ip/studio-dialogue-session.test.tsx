@@ -10,7 +10,7 @@ import type { StudioDialogueEvent, StudioDialogueMessage, StudioDialogueState, S
 import { ApiError } from '@ai-star-eco/api-client';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import type { DialogueApprovalBlock } from '@/canvas-bridge/studio-dialogue-store';
-import { DIALOGUE_SWITCHING, DIALOGUE_THREAD_BUSY, dialogueThreadBusy, dialogueVerifyTiming, useStudioDialogueSession } from './studio-dialogue-session';
+import { DIALOGUE_SWITCHING, DIALOGUE_THREAD_BUSY, dialogueThreadBusy, dialogueVerifyTiming, dialogueSendTiming, useStudioDialogueSession } from './studio-dialogue-session';
 
 const api = vi.hoisted(() => ({
   getConversation: vi.fn(), getThread: vi.fn(), openThread: vi.fn(), createThread: vi.fn(), threads: vi.fn(), list: vi.fn(), post: vi.fn(), control: vi.fn(),
@@ -49,6 +49,7 @@ let streams: DialogueStreamOptions[] = [];
 const timing = { ...dialogueVerifyTiming };
 beforeEach(() => {
   Object.assign(dialogueVerifyTiming, timing);
+  Object.assign(dialogueSendTiming, { firstMs: 1, maxMs: 1, attempts: 5 });
   for (const fn of Object.values(api)) fn.mockReset();
   streams = [];
   api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
@@ -396,4 +397,60 @@ test('closing the panel stops the reads of that execution', async () => {
   const reads = api.getExecution.mock.calls.length;
   await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
   expect(api.getExecution).toHaveBeenCalledTimes(reads);
+});
+
+
+test('a lost send answer is reconciled from its persisted message without a second POST', async () => {
+  const {result}=await ready();
+  api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  api.getThread.mockImplementation(async()=>({...stateA, messages:[...stateA.messages,
+    {...message('A','delivered',3,'user','继续'),clientMessageId:api.post.mock.calls[0][2].clientMessageId}]}));
+  let outcome:unknown;
+  await act(async()=>{outcome=await result.current.send({text:'继续',pinnedNodeIds:[],attachmentNodeIds:[],maxCost:21,model:'qwen'});});
+  expect(outcome).toEqual({state:'sent'});
+  expect(api.post).toHaveBeenCalledTimes(1);
+  expect(result.current.store.outbox).toHaveLength(0);
+  expect(result.current.store.messages.filter(m=>m.id==='delivered')).toHaveLength(1);
+});
+
+test('transient gateway errors resend exactly the approved body and keep one accepted message', async () => {
+  const {result}=await ready();
+  api.post.mockRejectedValueOnce(new ApiError({code:'HTTP_ERROR',message:'HTTP 503'},503))
+    .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+    .mockResolvedValueOnce({messageId:'delivered',turnId:'turn-new',runId:'run-new',queueState:'accepted'});
+  api.getThread.mockResolvedValue(stateA);
+  let outcome:unknown;
+  await act(async()=>{outcome=await result.current.send({text:'继续',pinnedNodeIds:['a'],attachmentNodeIds:[],maxCost:21,model:'qwen',skillKey:'script-writing'});});
+  expect(outcome).toEqual({state:'sent'});expect(api.post).toHaveBeenCalledTimes(3);
+  for(const call of api.post.mock.calls)expect(call).toEqual(api.post.mock.calls[0]);
+  expect(result.current.store.outbox).toHaveLength(0);
+  expect(result.current.store.messages.filter(m=>m.id==='delivered')).toHaveLength(1);
+});
+
+test('persistent send failure retains the original code logId and client message ID and retries that ID manually', async () => {
+  const {result}=await ready();
+  const error=new ApiError({code:'INTERNAL_ERROR',message:'处理失败',logId:'ABCDEF234567'},500);
+  api.post.mockRejectedValue(error);api.getThread.mockResolvedValue(stateA);
+  let outcome:any;
+  await act(async()=>{outcome=await result.current.send({text:'继续',pinnedNodeIds:[],attachmentNodeIds:[],maxCost:21});});
+  const id=api.post.mock.calls[0][2].clientMessageId;
+  expect(api.post).toHaveBeenCalledTimes(5);
+  expect(outcome).toMatchObject({state:'unknown',error:{code:'INTERNAL_ERROR',logId:'ABCDEF234567',clientMessageId:id}});
+  expect(result.current.store.outbox[0]).toMatchObject({clientMessageId:id,state:'failed',text:'继续'});
+  api.post.mockResolvedValueOnce({messageId:'delivered',queueState:'accepted'});
+  await act(async()=>{await result.current.retry(id);});
+  expect(api.post.mock.calls[5][2]).toEqual(api.post.mock.calls[0][2]);
+  expect(result.current.store.outbox).toHaveLength(0);
+});
+
+test('business refusals do not retry and a pending retry stops after leaving its canvas', async () => {
+  const first=await ready();api.post.mockRejectedValueOnce(new ApiError({code:'STUDIO_PRICE_CHANGED',message:'报价已更新'},409));
+  await act(async()=>{expect(await first.result.current.send({text:'继续',pinnedNodeIds:[],attachmentNodeIds:[]})).toMatchObject({state:'rejected'});});
+  expect(api.post).toHaveBeenCalledTimes(1);first.unmount();
+  const next=await ready();const failed=deferred<any>();api.post.mockImplementationOnce(()=>failed.promise);
+  let sending:Promise<unknown>;
+  act(()=>{sending=next.result.current.send({text:'继续',pinnedNodeIds:[],attachmentNodeIds:[]});});
+  next.unmount();api.getThread.mockResolvedValue(stateA);
+  await act(async()=>{failed.reject(new TypeError('Failed to fetch'));await sending!;});
+  expect(api.post).toHaveBeenCalledTimes(2);
 });

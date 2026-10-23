@@ -9,13 +9,14 @@ import { formatDateTime } from '@/lib/datetime';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { DialogueStreamOptions } from '@/canvas-bridge/studio-dialogue';
 import { StudioAssistant } from './studio-assistant';
+import { dialogueSendTiming } from './studio-dialogue-session';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import { STUDIO_CHECK_COMMAND } from '@/canvas-bridge/studio-plan-execution';
 
 const api = vi.hoisted(() => ({
   getConversation: vi.fn(), post: vi.fn(), subscribe: vi.fn(), control: vi.fn(), branch: vi.fn(), list: vi.fn(), threads: vi.fn(), createThread: vi.fn(), openThread: vi.fn(),
   createExecution: vi.fn(), getExecution: vi.fn(), pause: vi.fn(), resume: vi.fn(), cancel: vi.fn(), accept: vi.fn(),
-  save: vi.fn(), importStudioStory: vi.fn(), importStudioMedia: vi.fn(), submitStudioRun: vi.fn(), readRun: vi.fn(), getRun: vi.fn(), success: vi.fn(), error: vi.fn(),
+  save: vi.fn(), capabilities: vi.fn(), importStudioStory: vi.fn(), importStudioMedia: vi.fn(), submitStudioRun: vi.fn(), readRun: vi.fn(), getRun: vi.fn(), success: vi.fn(), error: vi.fn(),
   skills: vi.fn(), reloadSkills: vi.fn(), draft: vi.fn(), confirm: vi.fn(), role: null as string | null,
 }));
 vi.mock('@/canvas-bridge/studio-dialogue', () => ({ getStudioConversation: api.getConversation, postStudioDialogueMessage: api.post, subscribeStudioDialogue: api.subscribe,
@@ -30,7 +31,7 @@ vi.mock('@/canvas-bridge/studio-skills', async original => ({ ...(await original
   loadStudioSkills: () => api.skills(), reloadStudioSkills: () => api.reloadSkills(), createStudioSkillDraft: api.draft }));
 vi.mock('@/proto/api', () => ({ useIdentity: () => ({ operatorRole: api.role }), isOperatorRole: (role?: string | null) => role === 'operator' || role === 'super_admin' }));
 vi.mock('@/canvas-bridge/studio-save', () => ({ saveStudioDocument: api.save }));
-vi.mock('@/canvas-bridge/studio-api', () => ({ importStudioStory: api.importStudioStory, importStudioMedia: api.importStudioMedia, submitStudioRun: api.submitStudioRun }));
+vi.mock('@/canvas-bridge/studio-api', () => ({ studioCapabilities: api.capabilities, importStudioStory: api.importStudioStory, importStudioMedia: api.importStudioMedia, submitStudioRun: api.submitStudioRun }));
 vi.mock('@/canvas-bridge/api', () => ({ readRun: api.readRun }));
 vi.mock('@/ip/api/ip-studio', async original => ({ ...(await original<typeof import('@/ip/api/ip-studio')>()), getRun: api.getRun }));
 vi.mock('./studio-floating-panel', () => ({ StudioFloatingPanel: ({ open, title, titleExtra, actions, subheader, children, onClose, footer }: any) => open ? <section role="dialog" aria-label={title}><header>{title}{titleExtra}{actions}<button aria-label={`关闭${title}`} onClick={onClose}>关闭</button></header>{subheader}{children}{footer}</section> : null }));
@@ -78,6 +79,7 @@ async function ready(ui = <Host/>) {
 afterEach(cleanup);
 beforeEach(() => {
   localStorage.clear(); vi.clearAllMocks(); streams = []; seq = 0;
+  Object.assign(dialogueSendTiming, { firstMs: 1, maxMs: 1, attempts: 5 });
   api.getConversation.mockResolvedValue(emptyState);
   api.subscribe.mockImplementation((options: DialogueStreamOptions) => { streams.push(options); return () => {}; });
   api.save.mockResolvedValue(undefined);
@@ -119,7 +121,7 @@ test('the composer stays editable while a reply streams, and a tool event render
   expect(within(card).getByText('0 积分')).toBeDefined();
 });
 
-test('send pins @ references, saves first, and a lost response is retried with the same message key', async () => {
+test('send pins @ references, saves first, and a lost response automatically recovers with the same key', async () => {
   await ready(<Host selectedIds={['c']}/>);
   expect(screen.getByRole('button', { name: '移除引用 角色 A' })).toBeDefined();
   fireEvent.change(composer(), { target: { value: '@台', selectionStart: 2 } });
@@ -128,17 +130,14 @@ test('send pins @ references, saves first, and a lost response is retried with t
   api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
   fireEvent.change(composer(), { target: { value: '@台词 B 改得口语一点' } });
   fireEvent.click(sendButton());
-  await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
-  // A failed send needs the user: it stays words with its retry, unlike the delivery icons.
-  expect(screen.getByText(/没有确认送达/).classList.contains('is-failed')).toBe(true);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
   expect(api.save).toHaveBeenCalled();
   const first = api.post.mock.calls[0];
   expect(first[0]).toBe('p'); expect(first[1]).toBe('th');
   expect(first[2]).toMatchObject({ text: '@台词 B 改得口语一点', pinnedNodeIds: ['c', 't'] });
-  fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
-  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
-  expect(api.post.mock.calls[1][2].clientMessageId).toBe(first[2].clientMessageId);
-  await waitFor(() => expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull());
+  expect(api.post.mock.calls[1][2]).toEqual(first[2]);
+  expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+  expect(screen.queryAllByRole('alert').map(e=>e.textContent).join(' ')).not.toContain('CLIENT_ERROR');
 });
 
 test('a definite rejection gives the draft and references back for editing', async () => {
@@ -746,11 +745,10 @@ test('a fill-in card\'s skill rides on the message and on its retry; the header 
   fireEvent.change(within(starterForm('写剧本')).getByLabelText('一句梗概'), { target: { value: '外卖员送错一单' } });
   api.post.mockRejectedValueOnce(new TypeError('Failed to fetch'));
   fireEvent.click(sendButton());
-  await waitFor(() => expect(screen.getByRole('button', { name: '重新发送' })).toBeDefined());
-  expect(api.post.mock.calls[0][2]).toMatchObject({ skillKey: 'script-writing' });
-  fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
-  expect(api.post.mock.calls[1][2]).toMatchObject({ clientMessageId: api.post.mock.calls[0][2].clientMessageId, skillKey: 'script-writing' });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ skillKey: 'script-writing' });
+  expect(api.post.mock.calls[1][2]).toEqual(api.post.mock.calls[0][2]);
+  expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
 });
 
 test('a thread already bound to a skill shows it only in the header label, and a typed message carries no skillKey', async () => {
@@ -1442,4 +1440,32 @@ test('the replayed result event fills the prepared object too, when the executio
   expect(canvas[0].title).toBe('让她转身');
   expect(canvas[0].metadata?.prompt).toBe('她缓慢转身');
   await waitFor(() => expect(api.save).toHaveBeenCalled());
+});
+
+
+test('a changed quote refreshes in place and keeps the draft until the user sends with the new ceiling', async () => {
+  await ready();
+  api.capabilities.mockResolvedValue({...capabilities,textModels:capabilities.textModels.map(m=>({...m,dialogueTokenPricing:{...m.dialogueTokenPricing,maxCost:300}}))});
+  api.post.mockRejectedValueOnce(new ApiError({code:'STUDIO_PRICE_CHANGED',message:'请刷新'},409));
+  fireEvent.change(composer(),{target:{value:'继续写剧本'}});fireEvent.click(sendButton());
+  await waitFor(()=>expect(api.capabilities).toHaveBeenCalledTimes(1));
+  await waitFor(()=>expect(composer().value).toBe('继续写剧本'));
+  expect(api.post).toHaveBeenCalledTimes(1);
+  await waitFor(()=>expect(sendButton().disabled).toBe(false));fireEvent.click(sendButton());
+  await waitFor(()=>expect(api.post).toHaveBeenCalledTimes(2));
+  expect(api.post.mock.calls[1][2]).toMatchObject({maxCost:300,text:'继续写剧本'});
+});
+
+
+test('a persistent uncertain send keeps its retry and a definite refusal of the retry restores the original draft', async () => {
+  await ready(<Host selectedIds={['c']}/>);
+  for(let i=0;i<5;i++)api.post.mockRejectedValueOnce(new ApiError({code:'INTERNAL_ERROR',message:'暂时不可用',logId:'ABCDEF234567'},500));
+  fireEvent.change(composer(),{target:{value:'按这个人物继续写'}});fireEvent.click(sendButton());
+  await waitFor(()=>expect(screen.getByRole('button',{name:'重新发送'})).toBeDefined());
+  expect(api.post).toHaveBeenCalledTimes(5);
+  api.post.mockRejectedValueOnce(new ApiError({code:'WALLET_INSUFFICIENT',message:'积分不足'},402));
+  fireEvent.click(screen.getByRole('button',{name:'重新发送'}));
+  await waitFor(()=>expect(composer().value).toBe('按这个人物继续写'));
+  expect(screen.getByRole('button',{name:'移除引用 角色 A'})).toBeDefined();
+  expect(api.post.mock.calls[5][2]).toEqual(api.post.mock.calls[0][2]);
 });

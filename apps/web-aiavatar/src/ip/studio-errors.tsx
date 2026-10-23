@@ -7,13 +7,13 @@ import copy from 'copy-to-clipboard';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
 
-export type StudioError = { code: string; message: string; logId?: string; taskId?: string };
+export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
 type ErrorInput = unknown;
 const remembered = new Map<string, StudioError>();
 const shown = new Map<string, string>();
 let sink: ((error: StudioError) => void) | undefined;
 const pending = new Map<string, StudioError>();
-const keyOf = (e: StudioError) => e.taskId || e.logId || `${e.code}:${e.message}`;
+const keyOf = (e: StudioError) => e.taskId || e.logId || e.clientMessageId || `${e.code}:${e.message}`;
 
 /** Read structured errors and the older server's message suffix without inventing a log ID. */
 export function normalizeStudioError(input: ErrorInput, fallback = '操作未完成，请重试'): StudioError {
@@ -28,10 +28,18 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
     message: suffix ? raw.slice(0, suffix.index).trim() || fallback : raw,
     logId,
     taskId: typeof value.taskId === 'string' ? value.taskId : typeof value.runId === 'string' ? value.runId : undefined,
+    ...(typeof value.clientMessageId === 'string' ? { clientMessageId: value.clientMessageId } : {}),
   };
   remembered.set(result.message, result);
   if (remembered.size > 100) remembered.delete(remembered.keys().next().value!);
   return result;
+}
+
+/** A real client message ID is useful even when no server response (and therefore no logId) arrived. */
+export function messageDeliveryError(input: unknown, clientMessageId: string): StudioError {
+  const original = normalizeStudioError(input);
+  return { ...original, code: original.code === 'CLIENT_ERROR' ? 'MESSAGE_DELIVERY_UNCONFIRMED' : original.code,
+    message: `暂时无法确认消息是否送达，原消息已保留。点「重新发送」可继续核对。原因：${original.message}`, clientMessageId };
 }
 
 export function subscribeStudioErrors(handler: (error: StudioError) => void) {
@@ -73,7 +81,7 @@ export function studioErrorMetadata(input: unknown) {
   return { errorDetails: error.message, errorCode: error.code, errorLogId: error.logId };
 }
 export function studioErrorText(error: StudioError) {
-  return `错误码：${error.code}\n错误信息：${error.message}\nlogId：${error.logId || '未记录'}${error.taskId ? `\n任务 ID：${error.taskId}` : ''}`;
+  return `错误码：${error.code}\n错误信息：${error.message}\nlogId：${error.logId || '未记录'}${error.taskId ? `\n任务 ID：${error.taskId}` : ''}${error.clientMessageId ? `\n消息编号：${error.clientMessageId}` : ''}`;
 }
 
 function ErrorDetails({ error }: { error: StudioError }) {
@@ -85,7 +93,7 @@ function ErrorDetails({ error }: { error: StudioError }) {
     setCopied(ok); setCopyFailed(!ok);
   };
   return <div className="studio-error-details">
-    <dl><dt>错误码</dt><dd>{error.code}</dd><dt>错误信息</dt><dd>{error.message}</dd><dt>logId</dt><dd>{error.logId || '未记录'}{!error.logId && <small>此错误未提供追查号</small>}</dd>{error.taskId && <><dt>任务 ID</dt><dd>{error.taskId}</dd></>}</dl>
+    <dl><dt>错误码</dt><dd>{error.code}</dd><dt>错误信息</dt><dd>{error.message}</dd>{(error.logId || !error.clientMessageId) && <><dt>logId</dt><dd>{error.logId || '未记录'}{!error.logId && <small>此错误未提供追查号</small>}</dd></>}{error.clientMessageId && <><dt>消息编号</dt><dd>{error.clientMessageId}</dd></>}{error.taskId && <><dt>任务 ID</dt><dd>{error.taskId}</dd></>}</dl>
     <Button icon={copied ? <Check size={15}/> : <Copy size={15}/>} onClick={() => void copyDetails()}>{copied ? '已复制' : '复制错误详情'}</Button>
     {copyFailed && <p role="status">复制未完成，请选中上方文字复制。</p>}
   </div>;

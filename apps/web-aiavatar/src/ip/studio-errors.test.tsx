@@ -2,7 +2,7 @@
 import { render, fireEvent, screen, cleanup, waitFor } from '@testing-library/react';
 import { beforeEach, afterEach, it, expect, vi } from 'vitest';
 import { ApiError } from '@ai-star-eco/api-client/client';
-import { StudioNotifications, StudioErrorNotice, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError } from './studio-errors';
+import { StudioNotifications, StudioErrorNotice, messageDeliveryError, normalizeStudioError, studioErrorText, reportStudioError, reportStudioRunFailures, studioRunError } from './studio-errors';
 const api = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('antd', () => ({ notification: { useNotification: () => [api, null] }, ConfigProvider: ({children}: any) => children, Button: ({icon, children, ...props}: any) => <button {...props}>{children}</button>, App: { useApp: () => ({message: {}}) } }));
 beforeEach(() => api.error.mockReset());
@@ -65,4 +65,16 @@ it('reports any live task error before a terminal failure and preserves partial 
   expect(api.error).toHaveBeenCalledTimes(3);
   expect(normalizeStudioError(studioRunError({id:'batch',status:'done',output:{videoCandidates:[{jobId:'failed-one',status:'failed',errorCode:'UPSTREAM_400',errorMessage:'参考图不可用',logId:'ABCDEF234567'}]}} as any)))
     .toMatchObject({code:'UPSTREAM_400',message:'参考图不可用',taskId:'failed-one',logId:'ABCDEF234567'});
+});
+
+it('delivery errors preserve genuine diagnostics and expose a real message ID when no server log exists', () => {
+  const network=messageDeliveryError(new TypeError('Failed to fetch'),'message-123');
+  expect(network).toMatchObject({code:'NETWORK_ERROR',clientMessageId:'message-123'});
+  expect(network.logId).toBeUndefined();
+  render(<StudioNotifications/>);reportStudioError(network);render(api.error.mock.lastCall![0].description);
+  expect(screen.getByText('消息编号')).toBeTruthy();expect(screen.getByText('message-123')).toBeTruthy();
+  expect(screen.queryByText('此错误未提供追查号')).toBeNull();
+  expect(studioErrorText(network)).toContain('消息编号：message-123');
+  expect(messageDeliveryError(new ApiError({code:'INTERNAL_ERROR',message:'失败',logId:'ABCDEF234567'},500),'message-456'))
+    .toMatchObject({code:'INTERNAL_ERROR',logId:'ABCDEF234567',clientMessageId:'message-456'});
 });

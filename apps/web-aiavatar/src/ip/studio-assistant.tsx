@@ -21,6 +21,7 @@ import type { CanvasConnection, CanvasNodeData } from "@/canvas/types/canvas";
 import { USE_MOCK } from "@/ip/api/_client";
 import { isOperatorRole, useIdentity } from "@/proto/api";
 import { getRun } from "@/ip/api/ip-studio";
+import { studioCapabilities } from "@/canvas-bridge/studio-api";
 import { applyStudioRun, dispatchStudioCommand, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { readRun } from "@/canvas-bridge/api";
 import { importStudioMedia, importStudioStory, submitStudioRun } from "@/canvas-bridge/studio-api";
@@ -194,10 +195,13 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   }, []);
 
   // ── Model ceiling (the reply's own cost; production budgets are approved separately) ──
-  const textModels = capabilities?.textModels || [];
-  const selectable = capabilities?.textModelMode === "selectable" && textModels.length > 1;
+  const [freshCapabilities, setFreshCapabilities] = useState<StudioCapabilities>();
+  useEffect(() => { setFreshCapabilities(undefined); }, [projectId, capabilities]);
+  const currentCapabilities = freshCapabilities || capabilities;
+  const textModels = currentCapabilities?.textModels || [];
+  const selectable = currentCapabilities?.textModelMode === "selectable" && textModels.length > 1;
   const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
-  const demo = USE_MOCK || !!capabilities?.mock;
+  const demo = USE_MOCK || !!currentCapabilities?.mock;
   const maxCost = demo ? 0 : selectedModel?.dialogueTokenPricing ? Math.ceil(selectedModel.dialogueTokenPricing.maxCost) : undefined;
   // ── Skill: routed by the server from what is said; a fill-in card or a 「which method」 quick reply names one explicitly ──
   // No picker under the composer (2026-10-21): the 「自动」 dropdown and the fixed pill a bound thread showed confused people
@@ -297,6 +301,18 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
    * `withSkill`: the skill picked from the 「which method」 quick replies; it goes on this send (state set alongside it
    * only reaches the next render).
    */
+  const reportSendRejection = async (error: unknown, project: string) => {
+    if (error instanceof ApiError && error.code === "STUDIO_PRICE_CHANGED") {
+      try {
+        const fresh = await studioCapabilities();
+        if (!same(project)) return;
+        setFreshCapabilities(fresh);
+        setComposerError({ code: error.code, logId: error.logId, message: "对话计费配置已更新，原消息已保留，请点发送继续。" });
+        return;
+      } catch { /* keep the original refusal and draft if the new quote cannot be read */ }
+    }
+    if (same(project)) setComposerError(budgetExceededError(error) ?? error);
+  };
   const send = async (quick?: string, withSkill?: string) => {
     const draft = quick === undefined;
     if (sending || sendLock.current || (draft ? sendDisabledReason : session.status !== "ready" || !!session.switching || !quick.trim())) return;
@@ -341,9 +357,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           setSkillChoices(required.choices.length ? required.choices : undefined); setSkillNotice(required.text);
           // The server may know skills this page has not loaded yet.
           void reloadStudioSkills().then(list => { if (mounted.current) setSkills(list); }).catch(() => undefined);
-        } else setComposerError(budgetExceededError(outcome.error) ?? outcome.error);
+        } else await reportSendRejection(outcome.error, project);
       } else if (outcome.state === "sent") { setSkillChoices(undefined); if (draft) { setStarter(undefined); starterHeld.current.clear(); starterWritten.current = undefined; } }
-      else if (outcome.state === "unknown") setComposerError("消息可能没发出去，点「重新发送」再试，不会重复发送");
+      else if (outcome.state === "unknown") setComposerError(outcome.error);
     } finally { sendLock.current = false; if (same(project)) setSending(false); }
   };
   const stop = async () => {
@@ -786,7 +802,17 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           onEditStep={editLegacyStep} onApplyStep={applyLegacyStep} onRecover={id => void recoverLegacy(id)} onCompose={compose}/>)}
       </details>}
       {/* Keyed by conversation: its scroll-follow state and the branch note's loaded messages belong to one thread. */}
-      <StudioDialogueTimeline key={store.thread?.id || "loading"} store={store} nodes={nodes} handlers={handlers} onRetry={id => void session.retry(id)} onLoadOlder={session.loadOlder} readThread={session.readThread}
+      <StudioDialogueTimeline key={store.thread?.id || "loading"} store={store} nodes={nodes} handlers={handlers} onRetry={id => {
+        const item = store.outbox.find(o => o.clientMessageId === id);
+        void session.retry(id).then(outcome => {
+          if (!same(projectId)) return;
+          if (outcome.state === "rejected") {
+            if (item) { setText(current => current.trim() ? current : item.text); setPinnedIds(current => current.length ? current : item.pinnedNodeIds); setAttachmentIds(current => current.length ? current : item.attachmentNodeIds); }
+            void reportSendRejection(outcome.error, projectId);
+          } else if (outcome.state === "unknown") setComposerError(outcome.error);
+          else setComposerError("");
+        });
+      }} onLoadOlder={session.loadOlder} readThread={session.readThread}
         progress={execution && <StudioDialogueSteps execution={execution} queueOf={stepQueue}
           locate={step => { const id = stepNodeId(execution, step); return live.current.nodes.some(n => n.id === id) ? id : undefined; }}/>}/>
     </div>

@@ -25,6 +25,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { nanoid } from 'nanoid';
 import { ApiError } from '@ai-star-eco/api-client';
+import { messageDeliveryError } from './studio-errors';
 import type { StudioDialogueMessage, StudioDialogueState, StudioDialogueThreadSummary, StudioPlanExecution, StudioPlanExecutionCreateRequest } from '@ai-star-eco/types/ip-studio-workflow';
 import {
   approvedExecutionIds, canvasRestoring, dialogueCursor, dialogueReducer, emptyDialogueStore, executionActive, isPlaceholderMessage, persistableCanvasCursor, planForApproval,
@@ -81,7 +82,10 @@ export const DIALOGUE_VERIFYING = '正在核对确认结果，请稍等';
 /** Backoff between resends of a confirmation whose answer was lost: 2s, 4s, 8s… up to 30s. Tests shorten it. */
 export const dialogueVerifyTiming = { firstMs: 2000, maxMs: 30000 };
 const verifyDelay = (attempt: number) => Math.min(dialogueVerifyTiming.firstMs * 2 ** (attempt - 1), dialogueVerifyTiming.maxMs);
-const definitelyRefused = (error: unknown) => error instanceof ApiError && !!error.status && DEFINITE_REJECTION.has(error.status);
+const definitelyRefused = (error: unknown) => error instanceof ApiError && !!error.status && DEFINITE_REJECTION.has(error.status)
+  && !['HTTP_ERROR', 'PARSE_ERROR', 'BAD_ENVELOPE'].includes(error.code);
+/** Delivery can be uncertain during a brief disconnect/restart. Reuse the exact request, with bounded backoff. */
+export const dialogueSendTiming = { firstMs: 2000, maxMs: 16000, attempts: 5 };
 /** A read of an execution that can never succeed (none such for this user); anything else is tried again. */
 const executionUnreadable = (error: unknown) => error instanceof ApiError && (error.status === 400 || error.status === 403 || error.status === 404);
 
@@ -261,18 +265,38 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     const revision = [...s.messages].reverse().flatMap(m => m.blocks).find(b => b.type === 'plan');
     // The outcome is still reported; the store is only touched while this conversation is the one shown.
     const apply = (action: DialogueAction) => { if (stillShown(at)) dispatch(action); };
-    try {
-      const result = await postStudioDialogueMessage(at.projectId, s.thread.id, { clientMessageId, text: input.text,
-        ...(input.pinnedNodeIds.length ? { pinnedNodeIds: input.pinnedNodeIds } : {}), ...(input.attachmentNodeIds.length ? { attachmentNodeIds: input.attachmentNodeIds } : {}),
-        ...(revision?.type === 'plan' ? { expectedPlanRevision: revision.revision } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}),
-        ...(input.skillKey ? { skillKey: input.skillKey } : {}), ...(input.model ? { model: input.model } : {}) });
-      apply({ type: 'outbox.sent', clientMessageId, result, createdAt: new Date().toISOString() });
-      return { state: 'sent' };
-    } catch (error) {
-      if (error instanceof ApiError && error.status && DEFINITE_REJECTION.has(error.status)) { apply({ type: 'outbox.remove', clientMessageId }); return { state: 'rejected', error }; }
-      apply({ type: 'outbox.failed', clientMessageId, error: error instanceof Error ? error.message : '消息没有送达' });
-      return { state: 'unknown', error };
+    // Keep the complete body fixed across retries (including its approved price, model and plan revision).
+    const request = { clientMessageId, text: input.text,
+      ...(input.pinnedNodeIds.length ? { pinnedNodeIds: input.pinnedNodeIds } : {}), ...(input.attachmentNodeIds.length ? { attachmentNodeIds: input.attachmentNodeIds } : {}),
+      ...(revision?.type === 'plan' ? { expectedPlanRevision: revision.revision } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}),
+      ...(input.skillKey ? { skillKey: input.skillKey } : {}), ...(input.model ? { model: input.model } : {}) };
+    let lastError: unknown;
+    for (let attempt = 0; attempt < dialogueSendTiming.attempts; attempt++) {
+      try {
+        const result = await postStudioDialogueMessage(at.projectId, s.thread.id, request);
+        apply({ type: 'outbox.sent', clientMessageId, result, createdAt: new Date().toISOString() });
+        return { state: 'sent' };
+      } catch (error) {
+        if (definitelyRefused(error)) { apply({ type: 'outbox.remove', clientMessageId }); return { state: 'rejected', error }; }
+        lastError = error;
+        // An answer can be lost after acceptance. Read first; a matching persisted message proves delivery without
+        // resending or opening another conversation. Never infer acceptance from the text alone.
+        try {
+          const state = await getStudioDialogueThread(at.projectId, s.thread.id);
+          if (state?.thread.id === s.thread.id && state.messages.some(m => m.clientMessageId === clientMessageId)) {
+            if (stillShown(at)) fold({ type: 'snapshot', state, mode: 'merge' });
+            return { state: 'sent' };
+          }
+        } catch { /* retry the original key if reading is unavailable too */ }
+        if (!alive.current || !stillShown(at) || attempt + 1 >= dialogueSendTiming.attempts) break;
+        await new Promise(resolve => setTimeout(resolve, Math.min(dialogueSendTiming.firstMs * 2 ** attempt, dialogueSendTiming.maxMs)));
+        if (!alive.current || !stillShown(at)) break;
+      }
     }
+    const error = messageDeliveryError(lastError, clientMessageId);
+    apply({ type: 'outbox.failed', clientMessageId, error: error.message });
+    return { state: 'unknown', error };
+
   }, [projectId]);
   const send = useCallback((input: DialogueSendInput) => {
     const clientMessageId = nanoid();
