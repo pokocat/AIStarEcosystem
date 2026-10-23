@@ -4,6 +4,8 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { webcrypto } from "node:crypto";
 import { EnterpriseManagement } from "./enterprise-management";
 import type { EnterpriseContext } from "@ai-star-eco/types/enterprise";
+const clipboard = vi.hoisted(() => ({ copy: vi.fn() }));
+vi.mock("copy-to-clipboard", () => ({ default: clipboard.copy }));
 const api = vi.hoisted(() => ({ members: vi.fn(), invitations: vi.fn(), ownershipTransfers: vi.fn(), invite: vi.fn(), revoke: vi.fn(), updateMember: vi.fn(), requestOwnership: vi.fn(), acceptOwnership: vi.fn(), policy: vi.fn(), updatePolicy: vi.fn(), previewLifecycle: vi.fn(), lifecycle: vi.fn() }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: vi.fn().mockResolvedValue({ image: [{ endpointId: "image-id", name: "人像图片" }], video: [] }) }));
@@ -24,7 +26,7 @@ vi.mock("antd", () => ({
 const owner = { enterprise: { id: "team", name: "创作公司", status: "active" }, member: { id: "self", userId: "owner", role: "owner", status: "active" }, permissions: ["enterprise.read", "member.invite", "member.manage", "policy.manage"] } as EnterpriseContext;
 const member = { id: "member", userId: "user", displayName: "张三", role: "member", status: "active", capabilities: { pointsManage: false, billingRead: false, rechargeRequest: false }, version: 3 };
 const page = (data: unknown[]) => ({ data, pagination: { total: data.length } });
-beforeEach(() => { vi.clearAllMocks(); vi.stubGlobal("crypto", webcrypto); api.members.mockResolvedValue(page([member])); api.invitations.mockResolvedValue(page([])); api.ownershipTransfers.mockResolvedValue(page([])); api.previewLifecycle.mockResolvedValue({ availableCredits: 50, pendingCredits: 20, activeJobs: 2, cancellableJobs: 1, acceptedJobs: 1, canProceed: true, blockers: [], confirmationFingerprint: "preview" }); api.lifecycle.mockResolvedValue({ reclaimedCredits: 50 }); api.policy.mockResolvedValue({ allowedEndpointIds: ["image-id"], maxActiveJobs: 3, version: 2 }); });
+beforeEach(() => { vi.clearAllMocks(); clipboard.copy.mockReset(); clipboard.copy.mockResolvedValue(true); vi.stubGlobal("crypto", webcrypto); api.members.mockResolvedValue(page([member])); api.invitations.mockResolvedValue(page([])); api.ownershipTransfers.mockResolvedValue(page([])); api.previewLifecycle.mockResolvedValue({ availableCredits: 50, pendingCredits: 20, activeJobs: 2, cancellableJobs: 1, acceptedJobs: 1, canProceed: true, blockers: [], confirmationFingerprint: "preview" }); api.lifecycle.mockResolvedValue({ reclaimedCredits: 50 }); api.policy.mockResolvedValue({ allowedEndpointIds: ["image-id"], maxActiveJobs: 3, version: 2 }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 test("suspend previews exact available and pending consequences before explicit confirmation", async () => {
@@ -79,4 +81,47 @@ test("group invitation creates a shareable 90-day link and stays visible until e
   expect(api.invite).toHaveBeenCalledWith("team", { clientRequestId: expect.any(String), validDays: 90 });
   expect((within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement).value).toContain(`/enterprise/invite#token=${token}`); expect(changed).not.toHaveBeenCalled();
   fireEvent.click(within(dialog).getByRole("button", { name: "完成" })); expect(screen.queryByRole("dialog", { name: "分享企业邀请" })).toBeNull();
+});
+
+
+async function invitationDialog() {
+  api.invite.mockResolvedValue({invitation:{id:"invite",expiresAt:"2027-01-15T08:00:00Z"},token:"c".repeat(43)});
+  render(<EnterpriseManagement context={owner} section="team" onChanged={vi.fn().mockResolvedValue(undefined)}/>);
+  fireEvent.click(await screen.findByRole("button",{name:"创建分享链接"}));
+  return screen.findByRole("dialog",{name:"分享企业邀请"});
+}
+
+test("copying an enterprise invitation writes plain text and confirms inside its dialog only after success", async () => {
+  const dialog=await invitationDialog();let resolve!:(value:boolean)=>void;
+  clipboard.copy.mockReturnValueOnce(new Promise<boolean>(done=>{resolve=done;}));
+  fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));
+  expect(clipboard.copy).toHaveBeenCalledWith((within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement).value,{format:"text/plain",fallbackToPrompt:false});
+  expect(within(dialog).queryByRole("status")).toBeNull();
+  expect(within(dialog).getByRole("button",{name:"复制邀请链接"}).hasAttribute("disabled")).toBe(true);
+  resolve(true);
+  expect(await within(dialog).findByRole("status")).toHaveProperty("textContent",expect.stringContaining("已复制"));
+  expect(api.invite).toHaveBeenCalledTimes(1);
+});
+
+test.each([false, "throws"])("copy failure %s visibly selects the complete link without pretending the previous clipboard was replaced",async failure=>{
+  const dialog=await invitationDialog();
+  if(failure===false)clipboard.copy.mockResolvedValueOnce(false);else clipboard.copy.mockRejectedValueOnce(new Error("not allowed"));
+  fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));
+  await within(dialog).findByRole("alert");
+  const field=within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement;
+  expect(document.activeElement).toBe(field);expect(field.selectionStart).toBe(0);expect(field.selectionEnd).toBe(field.value.length);
+  expect(within(dialog).queryByRole("status")).toBeNull();
+  clipboard.copy.mockResolvedValueOnce(true);fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));
+  await within(dialog).findByRole("status");expect(api.invite).toHaveBeenCalledTimes(1);
+});
+
+
+test("the native clipboard writes only the complete invitation string, with compatibility fallback on denial",async()=>{
+  const writeText=vi.fn().mockResolvedValue(undefined);vi.stubGlobal("navigator",{clipboard:{writeText}});
+  const dialog=await invitationDialog();const link=(within(dialog).getByLabelText("企业邀请链接") as HTMLTextAreaElement).value;
+  fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));await within(dialog).findByRole("status");
+  expect(writeText).toHaveBeenCalledWith(link);expect(clipboard.copy).not.toHaveBeenCalled();
+  writeText.mockRejectedValueOnce(new Error("permission denied"));
+  fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));
+  await waitFor(()=>expect(clipboard.copy).toHaveBeenCalledWith(link,{format:"text/plain",fallbackToPrompt:false}));
 });
