@@ -182,7 +182,7 @@ class StudioDialogueSettlementTest {
         assertEquals("这次处理时间较长，已暂停。已完成的内容已保留，点「继续」接着做。", StudioDialogueTurnWorker.limitNote("time"));
         assertEquals("本轮对话已达到用量保护上限，已暂停。已完成的内容已保留，点「继续」接着做；后续按实际用量计费。", StudioDialogueTurnWorker.limitNote("tokens"));
         assertEquals("这一步重复了，先停在这里。", StudioDialogueTurnWorker.limitNote("loop"));
-        assertEquals("这一轮没能执行，请再说一次。", StudioDialogueTurnWorker.limitNote("protocol"));
+        assertEquals("模型返回的执行格式有误，自动修复后仍未成功。已完成的内容已保留，请稍后重试。", StudioDialogueTurnWorker.limitNote("protocol"));
         for (String limit : List.of("steps", "calls", "tools", "time", "tokens", "loop", "protocol")) {
             String note = StudioDialogueTurnWorker.limitNote(limit);
             assertFalse(note.contains("回复") || note.contains("——"), limit + ": " + note);
@@ -198,7 +198,7 @@ class StudioDialogueSettlementTest {
 
     @Test void aFormatFailureKeepsItsNoteAndOffersNoContinue() throws Exception {
         worker.finish("IPR-1", limited("protocol"), null);
-        assertEquals("这一轮没能执行，请再说一次。", systemNote());
+        assertEquals("模型返回的执行格式有误，自动修复后仍未成功。已完成的内容已保留，请稍后重试。", systemNote());
         assertNull(assistant.getRequestJson());
         var done = turnDone();
         assertTrue(done.path("suggestions").isNull() || done.path("suggestions").isMissingNode());
