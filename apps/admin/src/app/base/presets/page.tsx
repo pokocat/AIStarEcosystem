@@ -29,7 +29,10 @@ interface KnownKeyMeta {
 }
 
 const GROUPS: { label: string; keys: KnownKeyMeta[] }[] = [
-  {label:"AI 文本计费",keys:[{key:"ai.chat-token-pricing",label:"模型 Token 售价",schema:"unknown",hint:"按 endpoints 的模型端点 ID 保存输入/输出积分每千 Token（inputCreditsPerK / outputCreditsPerK）与最大用量（maxInputTokens / maxOutputTokens）。用于 Studio 所有文本 AI 操作（改稿、剧本、分镜、对话与资产提取）。supplierReference 记录核价依据；修改售价只影响新任务。"}]},
+  {label:"AI 文本计费",keys:[
+    {key:"ai.chat-token-pricing",label:"模型 Token 售价与普通文本额度",schema:"unknown",hint:"按 endpoints 的模型端点 ID 保存输入/输出积分每千 Token（inputCreditsPerK / outputCreditsPerK）与普通文本调用额度（maxInputTokens / maxOutputTokens）。用于改稿、剧本、分镜与资产提取；对话沿用单价，整轮额度单独设置。supplierReference 记录核价依据；修改只影响新任务。"},
+    {key:"studio.dialogue-token-budget",label:"Studio 单轮对话额度",schema:"unknown",hint:'整轮对话的累计额度，包含看图、规划、历史摘要等模型调用。未配置时输入 1048576、输出 65536 Token。格式：{"maxInputTokens":1048576,"maxOutputTokens":65536,"endpoints":{}}；可在 endpoints 下按模型端点 ID 覆盖这两个值。输入 1–2000000、输出 256–2000000，均为整数。沿用模型单价，按上限冻结、按实际结算；不改变普通文本额度或供应商单次输出限制。'}
+  ]},
   {
     label: "孵化向导",
     keys: [

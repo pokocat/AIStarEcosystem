@@ -36,6 +36,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -73,9 +74,11 @@ class StudioDialogueIntegrationTest {
     @Autowired ObjectMapper json;
     @Autowired MockMvc mvc;
     @Autowired AiModelUsageRecordRepository modelUsage;
+    @Autowired com.aistareco.aep.ipstudio.service.StudioWorkflowService workflows;
 
     HttpServer http;
     final AtomicInteger calls = new AtomicInteger();
+    final AtomicBoolean continuing = new AtomicBoolean();
     final List<String> bodies = Collections.synchronizedList(new ArrayList<>());
     final CountDownLatch slowStarted = new CountDownLatch(1);
     final CountDownLatch steeringWindow = new CountDownLatch(1), steeringPosted = new CountDownLatch(1);
@@ -91,8 +94,12 @@ class StudioDialogueIntegrationTest {
         candidates.save(AiAppEndpointCandidate.builder().id("c-" + UUID.randomUUID()).purpose(AiModelPurpose.DAP_PERSONA).endpointId(id).enabled(true).build());
         bindings.save(AiAppBinding.builder().purpose(AiModelPurpose.DAP_PERSONA).endpointId(id).build());
         var price = json.createObjectNode();
-        price.putObject("endpoints").putObject(id).put("inputCreditsPerK", 1).put("outputCreditsPerK", 2).put("maxInputTokens", 20000).put("maxOutputTokens", 4000);
-        configs.upsert(AiChatTokenPricing.KEY, price, "确定性测试价格", "test"); // maxCost = 20 + 8 = 28
+        var rates = price.putObject("endpoints");
+        // Capabilities lists all candidates, including the endpoints earlier tests in this context created.
+        endpoints.findAll().forEach(ep -> rates.putObject(ep.getId()).put("inputCreditsPerK", 1).put("outputCreditsPerK", 2)
+                .put("maxInputTokens", 20000).put("maxOutputTokens", 4000));
+        configs.upsert(AiChatTokenPricing.KEY, price, "确定性测试价格", "test"); // ordinary text maxCost = 28
+        configs.upsert(AiChatTokenPricing.DIALOGUE_BUDGET_KEY, json.readTree("{\"maxInputTokens\":40000,\"maxOutputTokens\":8000}"), "独立对话额度", "test"); // dialogue maxCost = 56
     }
 
     @AfterEach void stop() { if (http != null) http.stop(0); }
@@ -105,7 +112,19 @@ class StudioDialogueIntegrationTest {
         exchange.getResponseHeaders().add("Content-Type", "text/event-stream");
         exchange.sendResponseHeaders(200, 0);
         try (OutputStream out = exchange.getResponseBody()) {
-            if (body.contains("用户在你工作时发来新消息")) {
+            if (body.contains("多余括号验收")) {
+                String content = body.contains("工具结果") ? "第一集已放到画布。"
+                        : "先写第一集。\n<<<studio-actions>>>\n[{\"tool\":\"create_nodes\",\"args\":{\"nodes\":[{\"key\":\"ep1\",\"type\":\"text\",\"title\":\"第一集\",\"content\":\"完整剧本文字\"}]}}}]";
+                chunk(out, json.writeValueAsString(Map.of("choices", List.of(Map.of("delta", Map.of("content", content), "finish_reason", "stop")))));
+                chunk(out, "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":50}}");
+            } else if (body.contains("连续完成验收")) {
+                int step = calls.get() - 1;
+                String content = !continuing.get()
+                        ? "先看已有对象。<studio-action name=\"read_canvas\" args='{\"nodeIds\":[\"n0\"]}' />"
+                        : step <= 45 ? "继续整理。<studio-action name=\"read_canvas\" args='{\"nodeIds\":[\"n" + step + "\"]}' />" : "剩余内容已整理完成。";
+                chunk(out, json.writeValueAsString(Map.of("choices", List.of(Map.of("delta", Map.of("content", content), "finish_reason", "stop")))));
+                chunk(out, json.writeValueAsString(Map.of("choices", List.of(), "usage", Map.of("prompt_tokens", continuing.get() ? 500 : 19999, "completion_tokens", 100))));
+            } else if (body.contains("用户在你工作时发来新消息")) {
                 chunk(out, "{\"choices\":[{\"delta\":{\"content\":\"收到，改成三个女工。\"},\"finish_reason\":\"stop\"}]}");
                 chunk(out, "{\"choices\":[],\"usage\":{\"prompt_tokens\":50,\"completion_tokens\":10}}");
             } else if (body.contains("稍等")) {
@@ -122,11 +141,15 @@ class StudioDialogueIntegrationTest {
             } else if (body.contains("工具结果")) {
                 chunk(out, "{\"choices\":[{\"delta\":{\"content\":\"画布上有 1 个\"}}]}");
                 chunk(out, "{\"choices\":[{\"delta\":{\"content\":\"对象。\"},\"finish_reason\":\"stop\"}]}");
-                chunk(out, "{\"choices\":[],\"usage\":{\"prompt_tokens\":200,\"completion_tokens\":50}}");
+                chunk(out, body.contains("多步预算验收")
+                        ? "{\"choices\":[],\"usage\":{\"prompt_tokens\":16000,\"completion_tokens\":2500}}"
+                        : "{\"choices\":[],\"usage\":{\"prompt_tokens\":200,\"completion_tokens\":50}}");
             } else {
                 chunk(out, "{\"choices\":[{\"delta\":{\"content\":\"我先看一下画布。\\n<<<studio\"}}]}");
                 chunk(out, "{\"choices\":[{\"delta\":{\"content\":\"-actions>>>\\n[{\\\"tool\\\":\\\"read_canvas\\\",\\\"args\\\":{}}]\"},\"finish_reason\":\"stop\"}]}");
-                chunk(out, "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":50}}");
+                chunk(out, body.contains("多步预算验收")
+                        ? "{\"choices\":[],\"usage\":{\"prompt_tokens\":16000,\"completion_tokens\":2500}}"
+                        : "{\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":50}}");
             }
             out.write("data: [DONE]\n\n".getBytes(StandardCharsets.UTF_8));
         } catch (java.io.IOException closedByClient) { /* the stop test closes the stream */ }
@@ -165,6 +188,61 @@ class StudioDialogueIntegrationTest {
         fail("turn did not finish");
     }
 
+    @Test void productionMalformedActionCreatesOneNodeWithoutProtocolRetriesAndResendingDoesNotRepeatIt() throws Exception {
+        String user=person(),project=project(user),thread=dialogue.conversation(user,project).thread().id();
+        var request=new PostMessageRequest("braces","多余括号验收，继续写第一集",null,null,null,null,null,56L,null);
+        var posted=dialogue.post(user,project,thread,request);
+        awaitTurnEnd(thread);
+        var run=runs.findById(posted.runId()).orElseThrow();
+        var result=json.readTree(run.getOutputJson());
+        assertEquals("completed",result.path("reason").asText());
+        assertFalse(result.has("limit"));
+        assertEquals(2,calls.get(),"one action call, then completion; no paid format corrections");
+        assertEquals(1,result.path("toolCalls").asInt());
+        var rows=events.findByThreadIdAndSeqGreaterThanOrderBySeqAsc(thread,0,PageRequest.of(0,500));
+        var upserts=rows.stream().filter(e->"node.upsert".equals(e.getType())).toList();
+        assertEquals(1,upserts.size());
+        assertEquals("完整剧本文字",json.readTree(upserts.get(0).getDataJson()).path("node").path("metadata").path("content").asText());
+        assertTrue(messages.findByThreadIdOrderBySeqDesc(thread,PageRequest.of(0,20)).stream()
+                .noneMatch(m->m.getText().contains("<<<studio-actions>>>")||m.getText().contains("请再说一次")));
+        assertEquals(posted.runId(),dialogue.post(user,project,thread,request).runId());
+        assertEquals(2,calls.get());
+        assertEquals(0,wallets.findByUserId(user).orElseThrow().getPendingBalance());
+    }
+
+    @Test void aConfirmedContinuationFinishesPastTheOldThresholdsWithOneReplyAndOneHold() throws Exception {
+        var price=json.createObjectNode();var rates=price.putObject("endpoints");
+        endpoints.findAll().forEach(ep->rates.putObject(ep.getId()).put("inputCreditsPerK",.001).put("outputCreditsPerK",.001)
+                .put("maxInputTokens",20000).put("maxOutputTokens",4000));
+        configs.upsert(AiChatTokenPricing.KEY,price,"连续执行验收价格","test");
+        configs.upsert(AiChatTokenPricing.DIALOGUE_BUDGET_KEY,json.readTree("{\"maxInputTokens\":20000,\"maxOutputTokens\":4000}"),"重现小额度中断","test");
+        String user=person(),project=project(user);String threadId=dialogue.conversation(user,project).thread().id();
+        var doc=(com.fasterxml.jackson.databind.node.ObjectNode)projects.readDoc(projects.required(user,project));
+        for(int i=0;i<=45;i++)doc.withArray("nodes").addObject().put("id","n"+i).put("type","text").put("title","素材"+i)
+                .putObject("metadata").put("content","第"+i+"部分的已保存内容");
+        projects.update(user,project,new IpUpdateProjectRequest(null,doc));
+        var first=dialogue.post(user,project,threadId,new PostMessageRequest("limited","连续完成验收",null,null,null,null,null,1L,null));
+        awaitTurnEnd(threadId);
+        assertEquals("tokens",json.readTree(runs.findById(first.runId()).orElseThrow().getOutputJson()).path("limit").asText());
+        assertEquals(1,calls.get());
+        continuing.set(true);
+        var resumed=dialogue.post(user,project,threadId,new PostMessageRequest("resume","继续",null,null,null,null,null,1L,null));
+        awaitTurnEnd(threadId);
+        var run=runs.findById(resumed.runId()).orElseThrow();var output=json.readTree(run.getOutputJson());
+        assertTrue(json.readTree(run.getInputJson()).path("_exec").path("continueUntilDone").asBoolean());
+        assertEquals("completed",output.path("reason").asText());assertFalse(output.has("limit"));
+        assertEquals(46,output.path("steps").asInt());assertEquals(45,output.path("toolCalls").asInt());
+        assertEquals(23000,output.path("billing").path("inputTokens").asInt());
+        assertEquals(4600,output.path("billing").path("outputTokens").asInt());
+        assertEquals(1,run.getCost());assertEquals(98,wallets.findByUserId(user).orElseThrow().getTotalBalance());
+        assertEquals(0,wallets.findByUserId(user).orElseThrow().getPendingBalance());
+        var reply=messages.findByThreadIdOrderBySeqDesc(threadId,PageRequest.of(0,50)).stream().filter(m->resumed.runId().equals(m.getRunId())).toList();
+        assertEquals(2,reply.size(),"one user message and one assistant reply, no intermediate limit notes");
+        assertTrue(reply.stream().noneMatch(m->m.getText().contains("<studio-action")));
+        assertEquals(resumed.runId(),dialogue.post(user,project,threadId,new PostMessageRequest("resume","继续",null,null,null,null,null,1L,null)).runId());
+        assertEquals(47,calls.get(),"resending the user's confirmation never repeats model or tool work");
+    }
+
     @Test void fullTurnStreamsRunsAToolSettlesRealUsageAndReplaysConsistently() throws Exception {
         String user = person(), project = project(user);
         State state = dialogue.conversation(user, project);
@@ -176,23 +254,30 @@ class StudioDialogueIntegrationTest {
         assertTrue(runs.findByProjectIdOrderByCreatedAtDesc(project).isEmpty(), "import never runs or bills");
         assertEquals(3, dialogue.conversation(user, project).messages().size(), "import is idempotent");
 
-        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("c-1", "帮我看看画布", List.of("text-1"), null, null, null, null, 28L, null));
+        var model=workflows.capabilities().textModels().stream().filter(m->m.isDefault()).findFirst().orElseThrow();
+        assertEquals(28,model.tokenPricing().maxCost(),"ordinary text keeps its own ceiling");
+        assertEquals(56,model.dialogueTokenPricing().maxCost(),"the client receives the independent dialogue reservation");
+        assertEquals(56,dialogue.dialogueReserve(user),"execution cards reserve the same dialogue ceiling");
+        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("c-1", "多步预算验收，帮我看看画布", List.of("text-1"), null, null, null, null, 56L, null));
         assertEquals("accepted", posted.queueState());
         awaitTurnEnd(threadId);
 
         var run = runs.findById(posted.runId()).orElseThrow();
         assertEquals("done", run.getStatus());
         assertEquals("studio-dialogue", run.getKind());
-        // (100+200)×1/1000 + (50+50)×2/1000 = 0.5 → 1 credit; the remaining 27 of the 28 hold are released.
-        assertEquals(1L, run.getCost());
+        // 32000 input + 5000 output exceed BOTH ordinary limits; charge 42, release 14 of the dialogue's 56 hold.
+        assertEquals(42L, run.getCost());
+        var snapshot=json.readTree(run.getInputJson()).path("_exec").path("tokenPricing");
+        assertEquals(40000,snapshot.path("maxInputTokens").asInt());
+        assertEquals(8000,snapshot.path("maxOutputTokens").asInt());
         var wallet = wallets.findByUserId(user).orElseThrow();
-        assertEquals(99L, wallet.getTotalBalance());
+        assertEquals(58L, wallet.getTotalBalance());
         assertEquals(0L, wallet.getPendingBalance());
         assertEquals(2, calls.get());
         var observed = modelUsage.findAll().stream().filter(row -> user.equals(row.getUserId())).toList();
         assertEquals(2, observed.size(), "both async model calls retain the task owner, including the post-tool call");
         assertTrue(observed.stream().allMatch(row -> "aiavatar".equals(row.getAppCode())));
-        assertEquals(400L, observed.stream().mapToLong(AiModelUsageRecord::getTotalTokens).sum());
+        assertEquals(37000L, observed.stream().mapToLong(AiModelUsageRecord::getTotalTokens).sum());
         assertTrue(bodies.get(0).contains("\"stream\":true") && bodies.get(0).contains("include_usage"));
         assertTrue(bodies.get(0).contains("一瓶洗衣液"), "pinned node content reaches the model");
         assertTrue(bodies.get(1).contains("工具结果"), "tool result is fed back before the second call");
@@ -205,7 +290,7 @@ class StudioDialogueIntegrationTest {
         assertEquals("tool_call", blocks.get(0).path("type").asText());
         assertEquals("read_canvas", blocks.get(0).path("toolName").asText());
         assertEquals("done", blocks.get(0).path("status").asText());
-        assertEquals(1L, json.readTree(assistant.getBillingJson()).path("credits").asLong());
+        assertEquals(42L, json.readTree(assistant.getBillingJson()).path("credits").asLong());
 
         var rows = events.findByThreadIdAndSeqGreaterThanOrderBySeqAsc(threadId, 0, PageRequest.of(0, 500));
         for (int i = 0; i < rows.size(); i++) assertEquals(i + 1, rows.get(i).getSeq(), "seq is contiguous per thread");
@@ -221,17 +306,17 @@ class StudioDialogueIntegrationTest {
         assertEquals("turn.done", types.get(types.size() - 1));
         JsonNode done = json.readTree(rows.get(rows.size() - 1).getDataJson());
         assertEquals("completed", done.path("reason").asText());
-        assertEquals(1L, done.path("billing").path("credits").asLong());
+        assertEquals(42L, done.path("billing").path("credits").asLong());
         assertEquals(dialogue.conversation(user, project).latestSeq(), rows.get(rows.size() - 1).getSeq());
 
-        var again = dialogue.post(user, project, threadId, new PostMessageRequest("c-1", "帮我看看画布", List.of("text-1"), null, null, null, null, 28L, null));
+        var again = dialogue.post(user, project, threadId, new PostMessageRequest("c-1", "多步预算验收，帮我看看画布", List.of("text-1"), null, null, null, null, 56L, null));
         assertEquals(posted.messageId(), again.messageId());
         assertEquals(1, runs.findByProjectIdOrderByCreatedAtDesc(project).size(), "a resend never starts a second paid turn");
 
         var branch = dialogue.branch(user, project, threadId, new BranchRequest("br-1", posted.messageId()));
         assertNotEquals(threadId, branch.thread().id());
         assertEquals(threadId, branch.thread().parentThreadId());
-        assertEquals("帮我看看画布", branch.messages().get(branch.messages().size() - 1).text());
+        assertEquals("多步预算验收，帮我看看画布", branch.messages().get(branch.messages().size() - 1).text());
         assertEquals(branch.thread().id(), dialogue.conversation(user, project).thread().id(), "reopens the branch the user is in");
         assertEquals(branch.thread().id(), dialogue.branch(user, project, threadId, new BranchRequest("br-1", posted.messageId())).thread().id());
 
@@ -246,9 +331,9 @@ class StudioDialogueIntegrationTest {
     @Test void aMessageSentWhileTheTurnRunsIsQueuedThenAppliedAtTheNextBoundary() throws Exception {
         String user = person(), project = project(user);
         String threadId = dialogue.conversation(user, project).thread().id();
-        var first = dialogue.post(user, project, threadId, new PostMessageRequest("c-a", "稍等，帮我想想", null, null, null, null, null, 28L, null));
+        var first = dialogue.post(user, project, threadId, new PostMessageRequest("c-a", "稍等，帮我想想", null, null, null, null, null, 56L, null));
         assertTrue(steeringWindow.await(10, TimeUnit.SECONDS));
-        var second = dialogue.post(user, project, threadId, new PostMessageRequest("c-b", "改成三个女工", null, null, null, null, null, 28L, null));
+        var second = dialogue.post(user, project, threadId, new PostMessageRequest("c-b", "改成三个女工", null, null, null, null, null, 56L, null));
         assertEquals("queued", second.queueState(), "input is never refused because the assistant is busy");
         assertEquals(first.turnId(), second.turnId());
         steeringPosted.countDown();
@@ -263,7 +348,7 @@ class StudioDialogueIntegrationTest {
     @Test void priorityStopClosesALiveStreamAndChargesNothingUnknown() throws Exception {
         String user = person(), project = project(user);
         String threadId = dialogue.conversation(user, project).thread().id();
-        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("c-slow", "慢慢来，想清楚再说", null, null, null, null, null, 28L, null));
+        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("c-slow", "慢慢来，想清楚再说", null, null, null, null, null, 56L, null));
         assertTrue(slowStarted.await(10, TimeUnit.SECONDS));
         long stoppedAt = System.nanoTime();
         dialogue.control(user, project, threadId, new ControlRequest("ctl-1", "stop", null));

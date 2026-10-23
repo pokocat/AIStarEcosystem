@@ -999,9 +999,12 @@ components:
               supportsVision: { type: boolean, description: '来自端点models列表中实际model对应的明确声明，缺省false，不按模型名称猜测。' }
               creditCost: {type: integer, minimum: 0, description: 非对话文本任务的按次价格}
               tokenPricing: {$ref: '#/components/schemas/StudioTokenPricing'}
+              dialogueTokenPricing:
+                allOf: [{$ref: '#/components/schemas/StudioTokenPricing'}]
+                description: 单轮对话累计计费额度（含看图、规划、历史摘要），对话 maxCost 使用此字段。与普通文本 tokenPricing 独立，单价相同；缺省输入1048576、输出65536 Token，可由 studio.dialogue-token-budget 调整。
     StudioTokenPricing:
       type: object
-      description: Studio AI 对话实际 Token 计费；冻结最大输入与输出预算，完成后合计费用向上取整，退回余量。
+      description: Studio 文本实际 Token 计费；tokenPricing 为普通文本额度，dialogueTokenPricing 为整轮对话累计额度。冻结最大输入与输出预算，完成后合计费用向上取整，退回余量。
       required: [inputCreditsPerK, outputCreditsPerK, maxInputTokens, maxOutputTokens, maxCost]
       properties:
         inputCreditsPerK: {type: number, minimum: 0}

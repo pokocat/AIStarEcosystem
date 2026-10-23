@@ -8,6 +8,39 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /** Both action paths normalize to the same actions; the JSON block never reaches the user. */
 class DialogueActionProtocolTest {
+    @Test void productionSurplusBraceIsRecoveredWithoutChangingTheScriptOrDroppingConnections() {
+        String script = "旁白：\"你好\"\n正文里保留 } 和 ]，以及反斜线 \\";
+        var om = new com.fasterxml.jackson.databind.ObjectMapper();
+        var args = om.createObjectNode();
+        args.putArray("nodes").addObject().put("key", "ep1").put("type", "text").put("title", "第一集").put("content", script);
+        args.putArray("connections").addObject().put("from", "ep1").put("to", "existing");
+        String valid = "[{\"tool\":\"create_nodes\",\"args\":" + args + "}]";
+        String malformed = valid.substring(0, valid.length() - 1) + "}]";
+        var repaired = DialogueActionProtocol.parse("先写第一集。\n" + DialogueActionProtocol.MARKER + "\n" + malformed);
+        assertNull(repaired.parseError());
+        assertEquals(1, repaired.actions().size());
+        assertEquals(args, repaired.actions().get(0).args(), "no script content, reference or argument is discarded");
+        assertEquals("先写第一集。", repaired.visibleText());
+        String sibling = "[{\"tool\":\"create_nodes\",\"args\":{\"nodes\":" + args.path("nodes") + "}},\"connections\":" + args.path("connections") + "}]";
+        var earlier = DialogueActionProtocol.parse(DialogueActionProtocol.MARKER + sibling);
+        assertNull(earlier.parseError());
+        assertEquals(args, earlier.actions().get(0).args(), "the earlier production variant preserves sibling connections too");
+    }
+
+    @Test void recoveryRejectsAmbiguousIncompleteConflictingOrDuplicateArguments() {
+        for (String block : List.of(
+                "[{\"tool\":\"read_canvas\",\"args\":{}}", // missing final array closer
+                "[{\"tool\":\"read_canvas\",\"args\":{}}}garbage]",
+                "[{\"tool\":\"read_canvas\",\"args\":{}}}}]", // two redundant closers
+                "[{\"tool\":\"read_canvas\",\"args\":{\"x\":1,\"x\":2}}}]",
+                "[{\"tool\":\"create_nodes\",\"args\":{\"connections\":[]},\"connections\":[{}]}]",
+                "[{\"tool\":\"read_canvas\",\"args\":{\"nested\":{}},\"other\":{}},\"next\":1}]")) {
+            var parsed = DialogueActionProtocol.parse(DialogueActionProtocol.MARKER + block);
+            assertNotNull(parsed.parseError(), block);
+            assertTrue(parsed.actions().isEmpty(), "no partial action is executed");
+        }
+    }
+
     @Test void splitsProseFromTheFallbackActionBlock() {
         var parsed = DialogueActionProtocol.parse("我先看一下画布。\n<<<studio-actions>>>\n[{\"tool\":\"read_canvas\",\"args\":{}}]");
         assertEquals("我先看一下画布。", parsed.visibleText());
@@ -198,6 +231,31 @@ class DialogueActionProtocolTest {
         StringBuilder out = new StringBuilder();
         for (char c : reply.toCharArray()) out.append(f.accept(String.valueOf(c)));
         return out.append(f.finish()).toString();
+    }
+
+    /** Production IPT-IPP-d395bde4 seq 33: a continuation was printed as text, neither action ran. */
+    @Test void continuationAttributeActionsExecuteAndNeverLeakAtAnyStreamBoundary() {
+        String reply="沿用刚才的对象。<studio-action name=\"propose_plan\" args='{\"brief\":\"已建的视频对象\",\"stage\":\"production\"}' />"
+                +"<studio-action name=\"request_approval\" args='{\"scope\":[\"第一段视频\"]}' />方案已备好。";
+        var parsed=DialogueActionProtocol.parse(reply);assertNull(parsed.parseError());
+        assertEquals(List.of("propose_plan","request_approval"),parsed.actions().stream().map(DialogueLoop.Action::tool).toList());
+        assertEquals("production",parsed.actions().get(0).args().path("stage").asText());
+        assertEquals("沿用刚才的对象。方案已备好。",parsed.visibleText());assertEquals(parsed.visibleText(),streamed(reply));
+        for(int cut=0;cut<=reply.length();cut++){
+            var filter=new DialogueActionProtocol.MarkerFilter();
+            assertEquals(parsed.visibleText(),filter.accept(reply.substring(0,cut))+filter.accept(reply.substring(cut))+filter.finish(),"cut "+cut);
+        }
+    }
+
+    @Test void malformedAttributeActionsRejectTheWholeBatchAndQuotedTagEndIsNotARealEnd() {
+        var quoted=DialogueActionProtocol.parse("<studio-action name=\"ask_question\" args='{\"text\":\"保留 /> 符号\"}' />");
+        assertNull(quoted.parseError());assertEquals("保留 /> 符号",quoted.actions().get(0).args().path("text").asText());
+        for(String broken:List.of("<studio-action name=\"read_canvas\" args='{oops}' />","<studio-action name=\"read_canvas\" args='{\"x\":'",
+                "<studio-action name=\"read_canvas\" args='{}' extra='x' />")){
+            String reply="先看。<tool_call>{\"tool\":\"read_skill\",\"args\":{}}</tool_call>"+broken;
+            var parsed=DialogueActionProtocol.parse(reply);assertNotNull(parsed.parseError());assertTrue(parsed.actions().isEmpty());
+            assertEquals("先看。",parsed.visibleText());assertEquals("先看。",streamed(reply));
+        }
     }
 
     @Test void anOuterEnvelopeThatNeverClosesRunsNothingEvenWithACompleteInnerBlock() {

@@ -63,8 +63,8 @@ const skill = (key: string, name: string): StudioSkillSummary => ({ key, name, v
   operations: { analysis: ['text'], production: ['text', 'video'] }, limits: { maxSourceSec: 60, maxSegments: 4, maxSegmentSec: 'model', maxSteps: 16, maxAutoFixPerSegment: 1 },
   checks: [], autoFixChecks: [], requiredCapabilities: [] });
 const capabilities = { mock: false, operations: ['assistant'], imageCost: 8, textCost: 2, videoCost: null, textModelMode: 'selectable' as const,
-  textModels: [{ endpointId: 'one', name: '模型一', isDefault: true, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 20.4 } },
-    { endpointId: 'two', name: '模型二', isDefault: false, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 8 } }] };
+  textModels: [{ endpointId: 'one', name: '模型一', isDefault: true, dialogueTokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 1048576, maxOutputTokens: 65536, maxCost: 260 }, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 20.4 } },
+    { endpointId: 'two', name: '模型二', isDefault: false, dialogueTokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 524288, maxOutputTokens: 32768, maxCost: 130 }, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 8 } }] };
 const character = { id: 'c', type: 'image', title: '角色 A', position: { x: 20, y: 20 }, width: 320, height: 400, metadata: { prompt: '紫发角色' } } as CanvasNodeData;
 
 let streams: DialogueStreamOptions[] = [];
@@ -225,7 +225,7 @@ test('新对话 empties the timeline and brings the opening cards back; the draf
   // The remembered model goes with its own ceiling into the new conversation; no skill rides along.
   fireEvent.click(screen.getByRole('button', { name: '发送' }));
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '下一条想说的', model: 'two', maxCost: 8 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '下一条想说的', model: 'two', maxCost: 130 });
   expect(api.post.mock.calls[0][2]).not.toHaveProperty('skillKey');
 });
 

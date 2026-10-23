@@ -113,6 +113,90 @@ class DialogueLoopTest {
         return DialogueLoop.TurnBudget.standard(maxIn, maxOut, 1024, Clock.systemUTC());
     }
 
+    /** Exact usage from IPR-3caf6046c68d40dea34b's three dialogue calls and one vision call. */
+    @Test void replaysTheProductionStopAndReachesItsCardWithTheIndependentOrContinuedBudget() throws Exception {
+        var oldRate=new com.aistareco.aep.service.AiChatTokenPricing.Rate(new java.math.BigDecimal(".18"),new java.math.BigDecimal("1.08"),65536,8192);
+        for(int mode=0;mode<3;mode++) {
+            var budget=mode==0?budget(65536,8192):mode==1?budget(1048576,65536):DialogueLoop.TurnBudget.continued(oldRate,8192,Clock.systemUTC());
+            int[] input={17770,19454,20363,15000},output={116,165,436,500};
+            var script=new ScriptedModel(budget).reply("看剧本",act("read_canvas")).reply("看参考图",act("view_images"))
+                    .reply("建视频对象",act("create_nodes")).reply("请确认方案",act("propose_plan"),act("request_approval"));
+            DialogueLoop.Model model=new DialogueLoop.Model() {
+                public long estimateInputTokens(List<Map<String,Object>> messages){return 20000;}
+                public DialogueLoop.Reply call(List<Map<String,Object>> messages,int index,int allowance){budget.record(input[index-1],output[index-1]);return script.replies.removeFirst();}
+                public void appendExchange(List<Map<String,Object>> messages,DialogueLoop.Reply reply,List<DialogueLoop.ToolResult> results){script.appendExchange(messages,reply,results);}
+                public void appendUser(List<Map<String,Object>> messages,String text){script.appendUser(messages,text);}
+            };
+            List<String> executed=new ArrayList<>();
+            DialogueLoop.Tools tools=new DialogueLoop.Tools() {
+                public Optional<String> reject(DialogueLoop.Action a){return Optional.empty();}
+                public DialogueLoop.ToolOutcome run(DialogueLoop.Action a){
+                    executed.add(a.tool());
+                    if(a.tool().equals("view_images")){budget.beginSubCall();budget.record(1034,537);}
+                    if(a.tool().equals("propose_plan")){budget.beginSubCall();budget.record(12000,2000);}
+                    return new DialogueLoop.ToolOutcome("{}",a.tool().equals("request_approval")?DialogueLoop.Reason.WAITING_USER:null);
+                }
+            };
+            var outcome=new DialogueLoop(model,tools,new Hooks(),budget).run(new ArrayList<>());
+            assertEquals(1,Collections.frequency(executed,"create_nodes"));
+            if(mode==0){
+                assertEquals("tokens",outcome.limit());assertEquals(3,outcome.steps());assertEquals(4,outcome.modelCalls());
+                assertEquals(58621,budget.inputTokens());assertEquals(1254,budget.outputTokens());
+                assertFalse(executed.contains("request_approval"));
+            } else {
+                assertEquals(DialogueLoop.Reason.WAITING_USER,outcome.reason());
+                assertEquals(List.of("read_canvas","view_images","create_nodes","propose_plan","request_approval"),executed);
+                if(mode==2)assertTrue(oldRate.settleContinued(budget.inputTokens(),budget.outputTokens())<=oldRate.maxCost());
+            }
+        }
+    }
+
+    @Test void confirmedContinuationPassesTokenStepToolCallAndTimeThresholdsInOneLoop() throws Exception {
+        var clock=new MutableClock();
+        var rate=new com.aistareco.aep.service.AiChatTokenPricing.Rate(new java.math.BigDecimal(".001"),new java.math.BigDecimal(".001"),1000,1000);
+        var budget=DialogueLoop.TurnBudget.continued(rate,1024,clock);
+        var model=new ScriptedModel(budget);
+        model.duringCall=()->clock.advance(Duration.ofSeconds(30));
+        for(int i=0;i<49;i++)model.reply("下一处",act("view_images","{\"nodeIds\":[\"n"+i+"\"]}"));
+        model.reply("已完成");
+        var outcome=new DialogueLoop(model,new SubCallingTools(budget),new Hooks(),budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED,outcome.reason());
+        assertEquals(50,outcome.steps());assertEquals(99,outcome.modelCalls());assertEquals(49,outcome.toolCalls());
+        assertTrue(budget.inputTokens()>rate.maxInputTokens());assertTrue(budget.outputTokens()>rate.maxOutputTokens());
+        assertTrue(budget.remainingTime().compareTo(Duration.ofMinutes(10))>0);
+        assertTrue(rate.settleContinued(budget.inputTokens(),budget.outputTokens())<=rate.maxCost());
+    }
+
+    @Test void continuationStillHonorsRealBudgetUserStopAndRepeatProtection() throws Exception {
+        var rate=new com.aistareco.aep.service.AiChatTokenPricing.Rate(java.math.BigDecimal.ONE,java.math.BigDecimal.ONE,500,500);
+        var budget=DialogueLoop.TurnBudget.continued(rate,4096,Clock.systemUTC());budget.record(900,0);
+        assertEquals("budget",budget.blockReason(0,256));assertEquals(100,budget.outputAllowance());
+        var stopped=new Hooks();stopped.stop.set(true);var model=new ScriptedModel(budget).reply("不能运行");
+        assertEquals(DialogueLoop.Reason.INTERRUPTED,new DialogueLoop(model,new RecordingTools(),stopped,budget).run(new ArrayList<>()).reason());
+        assertTrue(model.log.isEmpty());
+        var other=DialogueLoop.TurnBudget.continued(rate,1024,Clock.systemUTC());
+        var repeated=new ScriptedModel(other).reply("看",act("read_canvas")).reply("再看",act("read_canvas"));
+        var tools=new RecordingTools();assertEquals("loop",new DialogueLoop(repeated,tools,new Hooks(),other).run(new ArrayList<>()).limit());
+        assertEquals(1,tools.ran.size());
+    }
+
+    @Test void aNormalMultiStepTaskCanExceedOrdinaryTextUsageAndStillFinish() throws Exception {
+        var budget=budget(com.aistareco.aep.service.AiChatTokenPricing.DIALOGUE_INPUT_TOKENS,
+                com.aistareco.aep.service.AiChatTokenPricing.DIALOGUE_OUTPUT_TOKENS);
+        var model=new ScriptedModel(budget);
+        model.tokensPerCall=3000;
+        // Ten steps plus nine tool-internal calls: enough room to inspect, adjust and finish the task.
+        for(int i=0;i<9;i++)model.reply("处理下一部分",act("view_images","{\"nodeIds\":[\"n"+i+"\"]}"));
+        model.reply("已经完成");
+        var tools=new SubCallingTools(budget);
+        var outcome=new DialogueLoop(model,tools,new Hooks(),budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED,outcome.reason());
+        assertEquals(10,outcome.steps());
+        assertEquals(19,outcome.modelCalls());
+        assertEquals(9,outcome.toolCalls());
+        assertTrue(budget.outputTokens()>8192,"the former ordinary-text output ceiling no longer interrupts the turn");
+    }
+
     @Test void completesWhenTheModelRequestsNoAction() throws Exception {
         var budget = budget(100_000, 100_000);
         var model = new ScriptedModel(budget).reply("你好");

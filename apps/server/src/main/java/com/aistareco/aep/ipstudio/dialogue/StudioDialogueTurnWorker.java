@@ -163,7 +163,12 @@ public class StudioDialogueTurnWorker {
 
     /** What a finished turn reports for settlement: real vendor usage only, plus the plans it proposed. */
     record Settlement(DialogueLoop.Outcome outcome, long inputTokens, long outputTokens, AiChatTokenPricing.Rate rate, int modelCalls,
-                      ObjectNode latestPlan, List<ObjectNode> plans) {}
+                      ObjectNode latestPlan, List<ObjectNode> plans, boolean continued) {
+        Settlement(DialogueLoop.Outcome outcome, long inputTokens, long outputTokens, AiChatTokenPricing.Rate rate, int modelCalls,
+                   ObjectNode latestPlan, List<ObjectNode> plans) {
+            this(outcome, inputTokens, outputTokens, rate, modelCalls, latestPlan, plans, false);
+        }
+    }
 
     /**
      * Terminal transition under the settlement lock (running → done/failed is conditional: a run already finalized by
@@ -177,7 +182,8 @@ public class StudioDialogueTurnWorker {
         long actual = 0;
         Exception failure = error;
         if (failure == null && rate != null && in + out > 0) {
-            try { actual = rate.settle(in, out); } catch (BusinessException e) { failure = e; }
+            try { actual = result.continued() ? rate.settleContinued(in, out) : rate.settle(in, out); }
+            catch (BusinessException e) { failure = e; }
         }
         final long settled = failure == null ? actual : 0;
         final Exception finalError = failure;
@@ -301,11 +307,12 @@ public class StudioDialogueTurnWorker {
      */
     static String limitNote(String limit) {
         return switch (String.valueOf(limit)) {
-            case "time" -> "这一轮用时到上限了，先停在这里。";
-            case "tokens" -> "这一轮的用量到上限了，先停在这里。";
+            case "time" -> "这次处理时间较长，已暂停。已完成的内容已保留，点「继续」接着做。";
+            case "tokens" -> "本轮对话已达到用量保护上限，已暂停。已完成的内容已保留，点「继续」接着做；后续按实际用量计费。";
+            case "budget" -> "本次确认的对话预算已用完，已完成的内容已保留。点「继续」确认下一次对话费用后接着做。";
             case "loop" -> "这一步重复了，先停在这里。";
-            case "protocol" -> "这一轮没能执行，请再说一次。";
-            default -> "这一轮步骤太多，先停在这里。"; // steps, calls (all model calls), tools
+            case "protocol" -> "模型返回的执行格式有误，自动修复后仍未成功。已完成的内容已保留，请稍后重试。";
+            default -> "这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。"; // steps, calls (all model calls), tools
         };
     }
 
@@ -348,7 +355,7 @@ public class StudioDialogueTurnWorker {
         private long cachedDocAt;
 
         Settlement settlement(DialogueLoop.Outcome outcome) {
-            return new Settlement(outcome, budget.inputTokens(), budget.outputTokens(), rate, budget.modelCalls(), latestPlan, List.copyOf(plans));
+            return new Settlement(outcome, budget.inputTokens(), budget.outputTokens(), rate, budget.modelCalls(), latestPlan, List.copyOf(plans), budget.continued());
         }
 
         Turn(IpRun run, AtomicBoolean stopFlag) throws Exception {
@@ -367,6 +374,7 @@ public class StudioDialogueTurnWorker {
             this.rate = exec.hasNonNull("tokenPricing") ? mapper.treeToValue(exec.path("tokenPricing"), AiChatTokenPricing.Rate.class) : null;
             int perCall = exec.path("maxTokens").asInt(4096);
             this.budget = mock || rate == null ? DialogueLoop.TurnBudget.unmetered(perCall, clock)
+                    : exec.path("continueUntilDone").asBoolean(false) ? DialogueLoop.TurnBudget.continued(rate, perCall, clock)
                     : DialogueLoop.TurnBudget.standard(rate.maxInputTokens(), rate.maxOutputTokens(), perCall, clock);
             if (mock) this.endpoint = null;
             // D08: the rule acceptance used (default binding, or an enabled candidate), so an accepted turn is runnable.
@@ -402,7 +410,7 @@ public class StudioDialogueTurnWorker {
             vars.put("tools", tools.describe(mapper));
             vars.put("context", DialogueCanvasDigest.build(doc(), pinned, attachments));
             vars.put("history", history(thread, firstSeq));
-            vars.put("steering", "（无）");
+            vars.put("steering", continuationContext());
             vars.put("input", inputText);
             String system = exec.path("prompt").path("system").asText("");
             String user = PromptService.fill(exec.path("prompt").path("user").asText(""), vars);
@@ -509,6 +517,23 @@ public class StudioDialogueTurnWorker {
             if (!pins.isEmpty()) out.append("（钉住：").append(String.join("、", pins)).append("）");
             if (!atts.isEmpty()) out.append("（附件：").append(String.join("、", atts)).append("）");
             return out.toString();
+        }
+
+        /** Keep the original task and completed tool results explicit when the user resumes, even after history compaction. */
+        String continuationContext() {
+            if (!exec.path("continueUntilDone").asBoolean(false)) return "（无）";
+            var source = runs.findById(exec.path("continuationOf").asText("")).orElse(null);
+            if (source == null || !userId.equals(source.getOwnerUserId()) || !projectId.equals(source.getProjectId())
+                    || !threadId.equals(source.getNodeId()) || !KIND.equals(source.getKind())) return "（无）";
+            JsonNode input = parse(source.getInputJson());
+            StringBuilder out = new StringBuilder("用户已明确确认继续未完成的同一任务，沿用已完成的结果，从尚未完成的步骤接着做。\n原任务：")
+                    .append(input.path("prompt").asText()).append("\n已执行的操作（服务端记录，不要重复执行）：");
+            messages.findById(input.path("_exec").path("assistantMessageId").asText("")).ifPresent(message -> {
+                for (JsonNode block : store.blocks(message)) if ("tool_call".equals(block.path("type").asText()) && "done".equals(block.path("status").asText()))
+                    out.append('\n').append(block.path("toolName").asText()).append("：").append(block.path("result").path("summary").asText())
+                            .append("；对象 ").append(block.path("result").path("nodeIds")).append("；已有任务 ").append(block.path("childRunId").asText("无"));
+            });
+            return excerpt(out.toString(), 8000);
         }
 
         boolean stopped() {

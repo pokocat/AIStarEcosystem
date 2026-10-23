@@ -198,7 +198,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const selectable = capabilities?.textModelMode === "selectable" && textModels.length > 1;
   const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
   const demo = USE_MOCK || !!capabilities?.mock;
-  const maxCost = demo ? 0 : selectedModel?.tokenPricing ? Math.ceil(selectedModel.tokenPricing.maxCost) : undefined;
+  const maxCost = demo ? 0 : selectedModel?.dialogueTokenPricing ? Math.ceil(selectedModel.dialogueTokenPricing.maxCost) : undefined;
   // ── Skill: routed by the server from what is said; a fill-in card or a 「which method」 quick reply names one explicitly ──
   // No picker under the composer (2026-10-21): the 「自动」 dropdown and the fixed pill a bound thread showed confused people
   // (why can it not be changed?). The method in use is shown only by the label in the header.

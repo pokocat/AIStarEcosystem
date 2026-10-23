@@ -11,6 +11,10 @@ import java.math.RoundingMode;
 @Service
 public class AiChatTokenPricing {
     public static final String KEY="ai.chat-token-pricing";
+    public static final String DIALOGUE_BUDGET_KEY="studio.dialogue-token-budget";
+    // A turn repeatedly sends context: 16 dialogue steps plus vision, planning and history calls share this budget.
+    public static final int DIALOGUE_INPUT_TOKENS=1_048_576;
+    public static final int DIALOGUE_OUTPUT_TOKENS=65_536;
     private final PlatformConfigService configs;
     public AiChatTokenPricing(PlatformConfigService configs){this.configs=configs;}
     public Rate find(String endpointId) {
@@ -19,6 +23,38 @@ public class AiChatTokenPricing {
         var node=config.get().value().path("endpoints").path(endpointId);
         if(node.isMissingNode())throw unavailable("AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置 Token 积分售价");
         return parse(node);
+    }
+    /** Same unit prices, independently configured cumulative limits. Never change a run's accepted rate snapshot. */
+    public Rate findDialogue(String endpointId) {
+        Rate text=find(endpointId);
+        if(text==null)return null;
+        var config=configs.findByKey(DIALOGUE_BUDGET_KEY);
+        int input=DIALOGUE_INPUT_TOKENS,output=DIALOGUE_OUTPUT_TOKENS;
+        if(config.isPresent()) {
+            JsonNode value=config.get().value();
+            validateDialogueBudget(value);
+            JsonNode budget=value.path("endpoints").path(endpointId);
+            if(budget.isMissingNode())budget=value;
+            input=positive(budget,"maxInputTokens");
+            output=positive(budget,"maxOutputTokens");
+        }
+        return new Rate(text.inputCreditsPerK(),text.outputCreditsPerK(),input,output);
+    }
+    public static void validateDialogueBudget(JsonNode value) {
+        try {
+            validateBudget(value);
+            JsonNode endpoints=value.path("endpoints");
+            if(!endpoints.isMissingNode()) {
+                if(!endpoints.isObject())throw new IllegalArgumentException();
+                endpoints.elements().forEachRemaining(AiChatTokenPricing::validateBudget);
+            }
+        } catch(RuntimeException e) {
+            throw BusinessException.badRequest("STUDIO_DIALOGUE_BUDGET_INVALID","对话用量上限配置无效，请填写 1 到 2000000 的整数，输出上限至少 256");
+        }
+    }
+    private static void validateBudget(JsonNode value) {
+        positive(value,"maxInputTokens");
+        if(positive(value,"maxOutputTokens")<256)throw new IllegalArgumentException();
     }
     public static void validate(JsonNode value) {
         var endpoints=value==null?null:value.path("endpoints");
@@ -39,6 +75,13 @@ public class AiChatTokenPricing {
             if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
             if(input>maxInputTokens||output>maxOutputTokens)throw unavailable("AI_USAGE_LIMIT","模型返回用量超出已确认上限，本次未扣积分");
             return cost(input,output);
+        }
+        /** Continued work shares the approved monetary ceiling, rather than fixed input/output partitions. */
+        public long settleContinued(Long input,Long output) {
+            if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
+            long actual=cost(input,output);
+            if(actual>maxCost())throw unavailable("AI_USAGE_LIMIT","模型返回费用超出已确认预算，本次未扣积分");
+            return actual;
         }
     }
     private static BusinessException unavailable(String code,String message){return new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,code,message);}

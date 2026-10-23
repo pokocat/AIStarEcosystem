@@ -51,8 +51,8 @@ const text = { ...character, id: 't', type: 'text', title: '台词 B', metadata:
 const legacy = { ...text, id: 'h', title: '导演执导', metadata: { studio: { kind: 'assistant', request: { clientRequestId: 'old', nodeId: 'h', operation: 'assistant', prompt: '讨论', contextNodeIds: ['t'] },
   conversation: { mode: 'director', turns: [{ role: 'user', content: '讨论' }, { role: 'assistant', content: '之前的建议' }] } } } } as CanvasNodeData;
 const capabilities = { mock: false, operations: ['assistant'], imageCost: 8, textCost: 2, videoCost: null, textModelMode: 'selectable' as const,
-  textModels: [{ endpointId: 'one', name: '模型一', isDefault: true, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 20.4 } },
-    { endpointId: 'two', name: '模型二', isDefault: false, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 8 } }] };
+  textModels: [{ endpointId: 'one', name: '模型一', isDefault: true, dialogueTokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 1048576, maxOutputTokens: 65536, maxCost: 260 }, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 20.4 } },
+    { endpointId: 'two', name: '模型二', isDefault: false, dialogueTokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 524288, maxOutputTokens: 32768, maxCost: 130 }, tokenPricing: { inputCreditsPerK: .18, outputCreditsPerK: 1.08, maxInputTokens: 65536, maxOutputTokens: 8192, maxCost: 8 } }] };
 
 let streams: DialogueStreamOptions[] = [];
 let seq = 0;
@@ -113,7 +113,7 @@ test('the composer stays editable while a reply streams, and a tool event render
   // Queued is a small icon under the bubble, named for screen readers and the hover tip; not a line of text (2026-10-21).
   await waitFor(() => expect(screen.getByRole('img', { name: '排队中，下一步应用' })).toBeDefined());
   expect(screen.queryByText('排队中，下一步应用')).toBeNull();
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 21, model: 'one' });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '第 3 段换成这张图', maxCost: 260, model: 'one' });
   emit(ev('tool.finished', { toolCallId: 'x', toolName: 'read_canvas', status: 'done', result: { summary: '找到 1 条视频' }, creditsActual: 0, settling: false }));
   expect(within(card).getByText('找到 1 条视频')).toBeDefined();
   expect(within(card).getByText('0 积分')).toBeDefined();
@@ -861,7 +861,7 @@ test.each(['fixed', 'selectable'] as const)('no model control with a single %s m
   fireEvent.change(composer(), { target: { value: '写一段口播' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalled());
-  expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 21 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 260 });
   expect(api.post.mock.calls[0][2].model).toBeUndefined();
 });
 
@@ -1162,7 +1162,7 @@ test('with several models the default goes with its ceiling; a remembered model 
   fireEvent.change(composer(), { target: { value: '写一段口播' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'one', maxCost: 21 });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'one', maxCost: 260 });
   cleanup();
   localStorage.setItem('studio-assistant:model:p', 'two');
   await ready();
@@ -1170,14 +1170,14 @@ test('with several models the default goes with its ceiling; a remembered model 
   fireEvent.change(composer(), { target: { value: '用便宜的那个回答' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(2));
-  expect(api.post.mock.calls[1][2]).toMatchObject({ model: 'two', maxCost: 8 });
+  expect(api.post.mock.calls[1][2]).toMatchObject({ model: 'two', maxCost: 130 });
   cleanup();
   localStorage.setItem('studio-assistant:model:p', 'retired');
   await ready();
   fireEvent.change(composer(), { target: { value: '再写一段' } });
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(3));
-  expect(api.post.mock.calls[2][2]).toMatchObject({ model: 'one', maxCost: 21 });
+  expect(api.post.mock.calls[2][2]).toMatchObject({ model: 'one', maxCost: 260 });
 });
 
 const longReply = '末世英雄·林烬：三十岁出头，左眼有一道旧疤，穿改装过的防化服，背一把自制弩。外冷内热，嘴上不饶人，遇到孩子会先把干粮分出去。末世第三年，他守着城北最后一座净水站，只换药品不换枪。';

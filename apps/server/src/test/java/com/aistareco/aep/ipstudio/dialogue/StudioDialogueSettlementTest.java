@@ -112,6 +112,21 @@ class StudioDialogueSettlementTest {
         assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
     }
 
+    @Test void confirmedContinuationCanUseTheUnusedOutputAllocationForInputWithoutExceedingTheHold() {
+        worker.finish("IPR-1",new StudioDialogueTurnWorker.Settlement(
+                new DialogueLoop.Outcome(DialogueLoop.Reason.COMPLETED,null,50,30,25),12000,500,rate,50,null,List.of(),true),null);
+        assertEquals("done",run.getStatus());assertEquals(13,run.getCost());
+        verify(credits).commitHold(IpRunService.REF_TYPE,"IPR-1",13,"Studio 对话实际结算");
+        verify(credits).releaseHold(eq(IpRunService.REF_TYPE),eq("IPR-1"),anyString());
+    }
+
+    @Test void continuationCannotChargeBeyondTheOriginallyReservedMoney() {
+        worker.finish("IPR-1",new StudioDialogueTurnWorker.Settlement(
+                new DialogueLoop.Outcome(DialogueLoop.Reason.COMPLETED,null,50,30,25),15000,500,rate,50,null,List.of(),true),null);
+        assertEquals("failed",run.getStatus());assertEquals("AI_USAGE_LIMIT",run.getErrorCode());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+    }
+
     @Test void interruptedBeforeAnyCallReleasesEverything() throws Exception {
         run.setCancelRequested(true);
         worker.finish("IPR-1", null, null);
@@ -148,7 +163,7 @@ class StudioDialogueSettlementTest {
     @Test void limitEndsAsWaitingForTheUserWithANoteAndAContinueButton() throws Exception {
         worker.finish("IPR-1", limited("steps"), null);
         assertEquals("waiting_user", run.getStage());
-        assertEquals("这一轮步骤太多，先停在这里。", systemNote());
+        assertEquals("这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。", systemNote());
         assertEquals(List.of("继续"), mapper.convertValue(mapper.readTree(assistant.getRequestJson()).path("suggestions"), List.class));
         var done = turnDone();
         assertEquals("waiting_user", done.path("reason").asText());
@@ -160,17 +175,17 @@ class StudioDialogueSettlementTest {
         assertEquals("steps", output.path("limit").asText());
     }
 
-    @Test void everyStopNoteIsOneShortLineWithoutTypingInstructions() {
-        assertEquals("这一轮步骤太多，先停在这里。", StudioDialogueTurnWorker.limitNote("steps"));
-        assertEquals("这一轮步骤太多，先停在这里。", StudioDialogueTurnWorker.limitNote("calls"));
-        assertEquals("这一轮步骤太多，先停在这里。", StudioDialogueTurnWorker.limitNote("tools"));
-        assertEquals("这一轮用时到上限了，先停在这里。", StudioDialogueTurnWorker.limitNote("time"));
-        assertEquals("这一轮的用量到上限了，先停在这里。", StudioDialogueTurnWorker.limitNote("tokens"));
+    @Test void stopNotesExplainThePauseAndPreservedProgressWithAContinueAction() {
+        assertEquals("这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。", StudioDialogueTurnWorker.limitNote("steps"));
+        assertEquals("这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。", StudioDialogueTurnWorker.limitNote("calls"));
+        assertEquals("这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。", StudioDialogueTurnWorker.limitNote("tools"));
+        assertEquals("这次处理时间较长，已暂停。已完成的内容已保留，点「继续」接着做。", StudioDialogueTurnWorker.limitNote("time"));
+        assertEquals("本轮对话已达到用量保护上限，已暂停。已完成的内容已保留，点「继续」接着做；后续按实际用量计费。", StudioDialogueTurnWorker.limitNote("tokens"));
         assertEquals("这一步重复了，先停在这里。", StudioDialogueTurnWorker.limitNote("loop"));
         assertEquals("这一轮没能执行，请再说一次。", StudioDialogueTurnWorker.limitNote("protocol"));
         for (String limit : List.of("steps", "calls", "tools", "time", "tokens", "loop", "protocol")) {
             String note = StudioDialogueTurnWorker.limitNote(limit);
-            assertFalse(note.contains("回复") || note.contains("「") || note.contains("——"), limit + ": " + note);
+            assertFalse(note.contains("回复") || note.contains("——"), limit + ": " + note);
             assertEquals("protocol".equals(limit) ? List.of() : List.of("继续"), StudioDialogueTurnWorker.limitSuggestions(limit), limit);
         }
     }

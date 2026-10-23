@@ -68,6 +68,9 @@ class StudioDialogueServiceTest {
         when(messages.findById(anyString())).thenAnswer(i -> Optional.ofNullable(stored.get((String) i.getArgument(0))));
         when(messages.findByThreadIdOrderBySeqDesc(anyString(), any())).thenAnswer(i -> stored.values().stream().filter(m -> i.getArgument(0).equals(m.getThreadId()))
                 .sorted(Comparator.comparingLong(IpDialogueMessage::getSeq).reversed()).toList());
+        when(messages.findByThreadIdAndSeqLessThanOrderBySeqDesc(anyString(), anyLong(), any())).thenAnswer(i -> stored.values().stream()
+                .filter(m -> i.getArgument(0).equals(m.getThreadId()) && m.getSeq() < (long)i.getArgument(1))
+                .sorted(Comparator.comparingLong(IpDialogueMessage::getSeq).reversed()).toList());
         var eventRepo = mock(IpDialogueEventRepository.class);
         when(eventRepo.save(any())).thenAnswer(i -> { events.add(i.getArgument(0)); return i.getArgument(0); });
         var store = new StudioDialogueStore(threads, messages, eventRepo, new StudioDialogueEventHub(), mapper, manager);
@@ -79,6 +82,31 @@ class StudioDialogueServiceTest {
     @AfterEach void clear() { if (TransactionSynchronizationManager.isSynchronizationActive()) TransactionSynchronizationManager.clearSynchronization(); }
 
     private PostMessageRequest request(String id, String text, Long maxCost) { return new PostMessageRequest(id, text, null, null, null, null, null, maxCost, null); }
+
+    @Test void onlyAnExplicitContinuationAfterARealLimitEnablesContinuousWorkAndTheConsentSurvivesReload() throws Exception {
+        when(fixtures.enabled()).thenReturn(true);
+        var stopped=IpRun.builder().id("IPR-paused").projectId("P1").ownerUserId("u1").nodeId("IPT-P1").kind("studio-dialogue")
+                .status("done").inputJson("{}").outputJson("{\"limit\":\"tokens\"}").build();
+        when(runs.findById("IPR-paused")).thenReturn(Optional.of(stopped));
+        message("previous",1,"assistant","[]").setRunId("IPR-paused");thread.setMessageSeq(1);
+        var accepted=service.post("u1","P1","IPT-P1",request("resume-1","继续",null));
+        var run=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(run.capture());
+        var exec=mapper.readTree(run.getValue().getInputJson()).path("_exec");
+        assertTrue(exec.path("continueUntilDone").asBoolean());assertEquals("IPR-paused",exec.path("continuationOf").asText());
+        assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("resume-1","继续",null)).runId());
+        verify(runs,times(1)).save(any());
+    }
+
+    @Test void anUnrelatedNewTaskOrARefusalDoesNotInheritContinuousConsent() throws Exception {
+        when(fixtures.enabled()).thenReturn(true);
+        var old=IpRun.builder().id("old").projectId("P1").ownerUserId("u1").nodeId("IPT-P1").kind("studio-dialogue")
+                .status("done").inputJson("{}").outputJson("{\"limit\":\"tokens\"}").build();
+        when(runs.findById("old")).thenReturn(Optional.of(old));message("paused",1,"assistant","[]").setRunId("old");
+        message("new-task",2,"user","[]").setText("画另一张海报");thread.setMessageSeq(2);
+        service.post("u1","P1","IPT-P1",request("other","继续",null));
+        var run=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(run.capture());
+        assertFalse(mapper.readTree(run.getValue().getInputJson()).path("_exec").path("continueUntilDone").asBoolean());
+    }
 
     // Codex real-environment retest 2026-10-19: the home page brief (a conversation record with no turns) was imported as
     // 「之前的对话「创作想法」」, the thread was no longer empty, and the brief was never sent as the first message.
@@ -273,7 +301,7 @@ class StudioDialogueServiceTest {
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
                 .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         var pricing = mock(AiChatTokenPricing.class);
-        when(pricing.find("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000)); // maxCost = 14
+        when(pricing.findDialogue("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000)); // maxCost = 14
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var control = mock(StudioExecutionControl.class);
         when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "analysis", "needs_user")));
@@ -352,7 +380,7 @@ class StudioDialogueServiceTest {
 
         var pricing = mock(AiChatTokenPricing.class);
         var rate = new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000); // maxCost = 14
-        when(pricing.find("ep-1")).thenReturn(rate);
+        when(pricing.findDialogue("ep-1")).thenReturn(rate);
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var missingCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null)));
         assertEquals("STUDIO_PRICE_CHANGED", missingCeiling.getCode());

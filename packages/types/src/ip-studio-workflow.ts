@@ -186,7 +186,7 @@ export interface StudioCapabilities {
   videoCost: number | null;
   imageModelMode?: "fixed" | "selectable";
   textModelMode?: "fixed" | "selectable";
-  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; supportsTools?: boolean; supportsStreaming?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing }[];
+  textModels?: { endpointId: string; name: string; isDefault: boolean; supportsVision?: boolean; supportsTools?: boolean; supportsStreaming?: boolean; creditCost?: number; tokenPricing?:StudioTokenPricing; dialogueTokenPricing?:StudioTokenPricing }[];
 }
 export interface StudioAdoptRequest {
   nodeId: string;

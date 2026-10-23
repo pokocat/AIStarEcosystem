@@ -1,6 +1,12 @@
 import { expect, test } from 'vitest';
 import { splitReplyActions } from './studio-reply-actions';
 
+test('the production continuation attribute form is folded in history without executing it', () => {
+  const raw = '<studio-action name="propose_plan" args=\'{"brief":"沿用已建的视频对象","stage":"production"}\' />';
+  expect(splitReplyActions(`接着做。${raw}方案已备好。`)).toEqual({ prose: '接着做。方案已备好。', actions: raw });
+  expect(splitReplyActions('接着做。<studio-action name="propose_plan" args=\'{').prose).toBe('接着做。');
+});
+
 // Production 2026-10-19 (IPP-6658ccda): two early replies showed `<tool_call>{...}</tool_call>` as if the assistant said it.
 test('raw action blocks in older replies are folded away from the prose; plain replies are untouched', () => {
   const tagged = splitReplyActions('我先看一下素材。\n<tool_call>{"tool":"read_canvas","args":{}}</tool_call>\n看完了。');

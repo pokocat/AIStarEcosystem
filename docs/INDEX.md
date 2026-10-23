@@ -303,3 +303,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [图片受理未知与执行名额修复](releases/studio-image-review-release-20261022.md) — 未知图片状态提示、并发准入与存量冻结保护；last-reviewed: 2026-10-22。
 
 - [超管直接发放积分](releases/super-admin-credit-grant-release-20261022.md) — 超管直接发放与本人历史待审单批准、其他角色独立复核、原单防重复入账；last-reviewed: 2026-10-22。
+
+- [Studio 对话用量中断与继续回放](audits/studio-dialogue-continuation-replay-2026-10.md) — 线上原始记录、精确用量回放、确认继续和格式兼容；本地未发布；last-reviewed: 2026-10-22。

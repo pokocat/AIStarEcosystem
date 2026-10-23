@@ -99,7 +99,8 @@ public final class DialogueLoop {
     public DialogueLoop(Model model, Tools tools, Hooks hooks, TurnBudget budget) { this(model, tools, hooks, budget, MAX_TOOL_CALLS); }
 
     public DialogueLoop(Model model, Tools tools, Hooks hooks, TurnBudget budget, int maxToolCalls) {
-        this.model = model; this.tools = tools; this.hooks = hooks; this.budget = budget; this.maxToolCalls = maxToolCalls;
+        this.model = model; this.tools = tools; this.hooks = hooks; this.budget = budget;
+        this.maxToolCalls = budget.continued() ? Integer.MAX_VALUE : maxToolCalls;
     }
 
     /** Consecutive replies whose actions could not be parsed before the turn stops instead of paying for another try. */
@@ -286,6 +287,8 @@ public final class DialogueLoop {
         private final int desiredOutputTokens;
         private final Instant deadline;
         private final Clock clock;
+        private com.aistareco.aep.service.AiChatTokenPricing.Rate continuedRate;
+        private long pendingInput;
         private int steps, modelCalls;
         private long inputTokens, outputTokens;
 
@@ -298,6 +301,16 @@ public final class DialogueLoop {
         public static TurnBudget standard(long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Clock clock) {
             return new TurnBudget(MAX_DIALOGUE_STEPS, MAX_MODEL_CALLS, maxInputTokens, maxOutputTokens, desiredOutputTokens, MAX_DURATION, clock);
         }
+
+        /** A user-confirmed continuation keeps one loop and its tool results, bounded by its approved cost. */
+        public static TurnBudget continued(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock) {
+            var budget = new TurnBudget(Integer.MAX_VALUE, Integer.MAX_VALUE, Long.MAX_VALUE / 4, Long.MAX_VALUE / 4,
+                    perCall, MAX_DURATION, clock);
+            budget.continuedRate = rate;
+            return budget;
+        }
+
+        public boolean continued() { return continuedRate != null; }
 
         /** Unlimited token budget (fixture mode: no vendor, zero cost); step, call and time limits still apply. */
         public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) {
@@ -315,6 +328,10 @@ public final class DialogueLoop {
          * summary check only this: they are part of a step, not steps of their own.
          */
         public synchronized String blockReason(long estimatedInput, int minOutput) {
+            if (continued()) {
+                pendingInput = Math.max(0, estimatedInput);
+                return continuedRate.cost(inputTokens + pendingInput, outputTokens + minOutput) > continuedRate.maxCost() ? "budget" : null;
+            }
             if (modelCalls >= maxModelCalls) return "calls";
             if (!clock.instant().isBefore(deadline)) return "time";
             if (inputTokens + Math.max(0, estimatedInput) > maxInputTokens || outputTokens + minOutput > maxOutputTokens) return "tokens";
@@ -324,14 +341,25 @@ public final class DialogueLoop {
         public synchronized void beginStep() { steps++; modelCalls++; }
         /** A model call that is not a dialogue step (view_images' look, propose_plan's planner, the history summary). */
         public synchronized void beginSubCall() { modelCalls++; }
-        public synchronized int outputAllowance() { return (int) Math.max(0, Math.min(desiredOutputTokens, maxOutputTokens - outputTokens)); }
-        public synchronized int outputAllowance(int desired) { return (int) Math.max(0, Math.min(desired, maxOutputTokens - outputTokens)); }
-        public synchronized void record(long input, long output) { inputTokens = Math.addExact(inputTokens, input); outputTokens = Math.addExact(outputTokens, output); }
+        public synchronized int outputAllowance() { return outputAllowance(desiredOutputTokens); }
+        public synchronized int outputAllowance(int desired) {
+            if (continued() && continuedRate.outputCreditsPerK().signum() > 0) {
+                var remaining = java.math.BigDecimal.valueOf(continuedRate.maxCost()).multiply(java.math.BigDecimal.valueOf(1000))
+                        .subtract(continuedRate.inputCreditsPerK().multiply(java.math.BigDecimal.valueOf(inputTokens + pendingInput)))
+                        .subtract(continuedRate.outputCreditsPerK().multiply(java.math.BigDecimal.valueOf(outputTokens)));
+                return remaining.signum() <= 0 ? 0 : remaining.divide(continuedRate.outputCreditsPerK(), 0, java.math.RoundingMode.DOWN)
+                        .min(java.math.BigDecimal.valueOf(desired)).intValueExact();
+            }
+            return (int) Math.max(0, Math.min(desired, maxOutputTokens - outputTokens));
+        }
+        public synchronized void record(long input, long output) {
+            inputTokens = Math.addExact(inputTokens, input); outputTokens = Math.addExact(outputTokens, output); pendingInput = 0;
+        }
         public synchronized int steps() { return steps; }
         public synchronized int modelCalls() { return modelCalls; }
         public synchronized long inputTokens() { return inputTokens; }
         public synchronized long outputTokens() { return outputTokens; }
-        public Duration remainingTime() { var left = Duration.between(clock.instant(), deadline); return left.isNegative() ? Duration.ZERO : left; }
-        public Instant deadline() { return deadline; }
+        public Duration remainingTime() { var left = Duration.between(clock.instant(), deadline()); return left.isNegative() ? Duration.ZERO : left; }
+        public Instant deadline() { return continued() ? Instant.MAX : deadline; }
     }
 }

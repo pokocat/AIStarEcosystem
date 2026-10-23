@@ -92,13 +92,17 @@ public class StudioWorkflowService {
     private List<TextModel> textModelOptions() {
         if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA,"studio").stream()
                 .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),chatRate(r.endpoint().getId()),
-                        Boolean.TRUE.equals(r.endpoint().getChatSupportsTools()),Boolean.TRUE.equals(r.endpoint().getChatSupportsStreaming()))).toList();
+                        Boolean.TRUE.equals(r.endpoint().getChatSupportsTools()),Boolean.TRUE.equals(r.endpoint().getChatSupportsStreaming()),dialogueRate(r.endpoint().getId()))).toList();
         return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().publicModelName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),chatRate(s.resolved().endpoint().getId()),
-                Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsTools()),Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsStreaming()))).toList();
+                Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsTools()),Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsStreaming()),dialogueRate(s.resolved().endpoint().getId()))).toList();
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate chatRate(String endpointId) {
         return fixtures.enabled()||tokenPricing==null?null:tokenPricing.find(endpointId);
+    }
+
+    private com.aistareco.aep.service.AiChatTokenPricing.Rate dialogueRate(String endpointId) {
+        return fixtures.enabled()||tokenPricing==null?null:tokenPricing.findDialogue(endpointId);
     }
 
     @Transactional

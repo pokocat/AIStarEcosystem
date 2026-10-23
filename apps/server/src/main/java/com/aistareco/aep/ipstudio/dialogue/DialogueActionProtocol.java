@@ -35,7 +35,8 @@ public final class DialogueActionProtocol {
     /** Many chat models, when told to "write actions as JSON", emit this tag form instead; it is accepted as the same fallback. */
     public static final String TAG_OPEN = "<tool_call>";
     /** Tag names accepted as an action envelope (lower case, compared case-insensitively). */
-    static final List<String> TAGS = List.of("tool_call", "studio-actions", "studio_actions");
+    static final List<String> TAGS = List.of("tool_call", "studio-actions", "studio_actions", "studio-action", "studio_action");
+    private static final Pattern ATTRIBUTE = Pattern.compile("\\s*([a-zA-Z_]+)\\s*=\\s*(['\"])(.*?)\\2", Pattern.DOTALL);
     /**
      * A line that imitates the server's own work record ({@link DialogueHistory#line}) instead of calling the tool: the
      * model wrote 「[查看画布：done，已读取 3 个对象] [提问：……]」 as prose (same thread, seq 12) and no tool ran. The user then
@@ -48,7 +49,8 @@ public final class DialogueActionProtocol {
      * Strict: a block with anything after its JSON value ({@code [..] [..}) is not a complete action batch. The one
      * exception is a closing line that ends the reply ({@link #stripClosing}), removed before this parse.
      */
-    private static final ObjectMapper OM = new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
+    private static final ObjectMapper OM = new ObjectMapper().enable(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+            .enable(com.fasterxml.jackson.core.JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
     static final int MAX_ACTIONS_PER_REPLY = 8;
 
     private DialogueActionProtocol() {}
@@ -78,7 +80,7 @@ public final class DialogueActionProtocol {
                 String block = stripFence(stripClosing(full.substring(open[0] + MARKER.length()).strip()));
                 if (block.isEmpty()) break;
                 JsonNode array;
-                try { array = OM.readTree(block); } catch (Exception e) { array = null; }
+                try { array = readActionJson(block); } catch (Exception e) { array = null; }
                 // One action written as a bare object after the marker (real agnes-2.5-flash reply 2026-10-20:
                 // 「…<<<studio-actions>>>{"tool":"read_canvas","args":{}}」) is that one action, as in the tag form.
                 boolean single = array != null && array.isObject() && (array.hasNonNull("tool") || array.hasNonNull("name"));
@@ -88,6 +90,17 @@ public final class DialogueActionProtocol {
                 break;
             }
             String tag = TAGS.get(open[1]);
+            if (open[1] >= 3) {
+                int end = attributeEnd(full, open[0]);
+                if (end < 0) { error = "动作没有写完整"; break; }
+                String header = full.substring(open[0] + tag.length() + 1, end - 2);
+                pos = end;
+                if (error != null) continue;
+                JsonNode item = attributedAction(header);
+                if (item == null) { error = "动作的 name 和 args 格式不完整"; continue; }
+                error = collect(item, actions, actions.size());
+                continue;
+            }
             int bodyStart = open[0] + tag.length() + 2;
             int end = indexIgnoreCase(full, "</" + tag + ">", bodyStart);
             if (end < 0) { if (error == null) error = "动作没有写完整"; break; } // never shown, never run
@@ -96,7 +109,7 @@ public final class DialogueActionProtocol {
             if (error != null) continue;
             if (nextOpening(body, 0) != null) { error = "动作没有写完整"; continue; } // an outer envelope that never closed
             JsonNode item;
-            try { item = OM.readTree(stripFence(body.strip())); } catch (Exception e) { error = "第 " + (actions.size() + 1) + " 个动作不是有效 JSON"; continue; }
+            try { item = readActionJson(stripFence(body.strip())); } catch (Exception e) { error = "第 " + (actions.size() + 1) + " 个动作不是有效 JSON"; continue; }
             if (item == null || !(item.isObject() || item.isArray())) { error = "第 " + (actions.size() + 1) + " 个动作必须是对象或数组"; continue; }
             error = collect(item, actions, actions.size());
         }
@@ -117,6 +130,43 @@ public final class DialogueActionProtocol {
         return new Parsed(kept, List.copyOf(actions), null);
     }
 
+    /**
+     * Production 2026-10-23: Qwen repeated a complete create_nodes batch with one surplus '}' three times.
+     * Recover only a single redundant object closer, outside strings, when every valid removal produces the same
+     * JSON tree. Never add missing data, alter string contents, accept trailing text or choose between different trees.
+     * This operates on the fallback envelope only; native arguments keep their strict contract. Tool validation and
+     * payment approval still run after parsing. Bounded work even for an unexpectedly large model reply.
+     */
+    private static JsonNode readActionJson(String text) throws Exception {
+        try { return OM.readTree(text); } catch (com.fasterxml.jackson.core.JsonProcessingException invalid) {
+            if (text.length() > 256_000) throw invalid;
+            List<Integer> closers = new ArrayList<>();
+            boolean quoted = false;
+            for (int i = 0; i < text.length(); i++) {
+                char c = text.charAt(i);
+                if (quoted) {
+                    if (c == '\\') i++;
+                    else if (c == '"') quoted = false;
+                } else if (c == '"') quoted = true;
+                else if (c == '}') {
+                    closers.add(i);
+                    if (closers.size() > 256) throw invalid;
+                }
+            }
+            JsonNode recovered = null;
+            for (int at : closers) {
+                JsonNode candidate;
+                try { candidate = OM.readTree(text.substring(0, at) + text.substring(at + 1)); }
+                catch (com.fasterxml.jackson.core.JsonProcessingException ignored) { continue; }
+                if (candidate == null || !(candidate.isArray() || candidate.isObject())) continue;
+                if (recovered != null && !recovered.equals(candidate)) throw invalid;
+                recovered = candidate;
+            }
+            if (recovered == null) throw invalid;
+            return recovered;
+        }
+    }
+
     private static String excerpt(String text, int max) { return text.length() <= max ? text : text.substring(0, max) + "…"; }
 
     /**
@@ -129,14 +179,47 @@ public final class DialogueActionProtocol {
         int marker = lower.indexOf(MARKER, from);
         int best = marker, which = marker < 0 ? -2 : -1;
         for (int t = 0; t < TAGS.size(); t++) {
-            String opening = "<" + TAGS.get(t) + ">";
+            String opening = "<" + TAGS.get(t) + (t >= 3 ? "" : ">");
             for (int at = lower.indexOf(opening, from); at >= 0; at = lower.indexOf(opening, at + 1)) {
+                int after = at + opening.length();
+                if (t >= 3 && after < lower.length() && !Character.isWhitespace(lower.charAt(after))
+                        && lower.charAt(after) != '/' && lower.charAt(after) != '>') continue;
                 if (at >= 2 && lower.charAt(at - 1) == '<' && lower.charAt(at - 2) == '<') continue;
                 if (best < 0 || at < best) { best = at; which = t; }
                 break;
             }
         }
         return best < 0 ? null : new int[] {best, which};
+    }
+
+    /** Self-closing attribute form seen in production 2026-10-22; quoted '>' or '/>' belong to JSON, not the tag. */
+    private static int attributeEnd(CharSequence text, int start) {
+        char quote = 0;
+        for (int i = start; i < text.length(); i++) {
+            char c = text.charAt(i);
+            if (quote != 0) {
+                if (c == '\\' && i + 1 < text.length()) { i++; continue; }
+                if (c == quote) quote = 0;
+            } else if (c == '\'' || c == '"') quote = c;
+            else if (c == '>' && i > start && text.charAt(i - 1) == '/') return i + 1;
+        }
+        return -1;
+    }
+
+    private static JsonNode attributedAction(String header) {
+        var fields = OM.createObjectNode();
+        Matcher matcher = ATTRIBUTE.matcher(header);
+        int pos = 0;
+        while (matcher.find()) {
+            if (!header.substring(pos, matcher.start()).isBlank()) return null;
+            String key = matcher.group(1);
+            if (!Set.of("name", "tool", "args", "arguments").contains(key) || fields.has(key)) return null;
+            fields.put(key, matcher.group(3));
+            pos = matcher.end();
+        }
+        if (!header.substring(pos).isBlank() || !(fields.has("name") || fields.has("tool"))
+                || !(fields.has("args") || fields.has("arguments"))) return null;
+        return fields;
     }
 
     static int indexIgnoreCase(CharSequence text, String needle, int from) {
@@ -158,6 +241,20 @@ public final class DialogueActionProtocol {
                 try { args = OM.readTree(args.asText()); } catch (Exception e) { return "第 " + i + " 个动作的 args 必须是对象"; }
             }
             if (args != null && !args.isNull() && !args.isMissingNode() && !args.isObject()) return "第 " + i + " 个动作的 args 必须是对象";
+            // The same production reply put connections next to args. Preserve every parameter, and reject
+            // conflicting copies rather than silently dropping a connection or choosing an approval value.
+            if (args != null && args.isObject() && (item.hasNonNull("args") || item.hasNonNull("arguments"))) {
+                var merged = ((com.fasterxml.jackson.databind.node.ObjectNode) args).deepCopy();
+                var fields = item.fields();
+                while (fields.hasNext()) {
+                    var field = fields.next();
+                    if (Set.of("tool", "name", "args", "arguments").contains(field.getKey())) continue;
+                    if (merged.has(field.getKey()) && !merged.get(field.getKey()).equals(field.getValue()))
+                        return "第 " + i + " 个动作的参数重复且不一致";
+                    merged.set(field.getKey(), field.getValue());
+                }
+                args = merged;
+            }
             out.add(new DialogueLoop.Action("act-" + i, name.asText().strip(), args != null && args.isObject() ? args : OM.createObjectNode()));
         }
         return null;
@@ -173,7 +270,7 @@ public final class DialogueActionProtocol {
         String text = stripFence(shown);
         if (!(text.startsWith("{") || text.startsWith("["))) return null;
         JsonNode node;
-        try { node = OM.readTree(text); } catch (Exception e) { return null; }
+        try { node = readActionJson(text); } catch (Exception e) { return null; }
         if (node == null || !(node.isObject() || node.isArray()) || node.isEmpty()) return null;
         for (JsonNode item : node.isArray() ? node : OM.createArrayNode().add(node))
             if (!item.isObject() || !(item.path("tool").isTextual() || item.path("name").isTextual())) return null;
@@ -256,6 +353,7 @@ public final class DialogueActionProtocol {
     public static final class MarkerFilter {
         private final StringBuilder pending = new StringBuilder();
         private boolean markerSeen, envelopeSeen;
+        private boolean attributeAction;
         /** Lower-case closing tag being waited for, or null outside a tag envelope. */
         private String closing;
         /** Second stage over the prose this stage lets through: hides a tool call written as text. */
@@ -274,6 +372,13 @@ public final class DialogueActionProtocol {
             StringBuilder out = new StringBuilder();
             while (true) {
                 if (markerSeen) { pending.setLength(0); break; }
+                if (attributeAction) {
+                    int end = attributeEnd(pending, 0);
+                    if (end < 0) break;
+                    pending.delete(0, end);
+                    attributeAction = false;
+                    continue;
+                }
                 if (closing != null) {
                     int end = indexIgnoreCase(pending, closing);
                     if (end < 0) {
@@ -290,6 +395,11 @@ public final class DialogueActionProtocol {
                 if (open != null) {
                     out.append(pending, 0, open[0]);
                     envelopeSeen = true;
+                    if (open[1] >= 3) {
+                        pending.delete(0, open[0]);
+                        attributeAction = true;
+                        continue;
+                    }
                     if (open[1] < 0) markerSeen = true;
                     else closing = "</" + TAGS.get(open[1]) + ">";
                     pending.delete(0, open[0] + (open[1] < 0 ? MARKER.length() : TAGS.get(open[1]).length() + 2));
@@ -305,7 +415,7 @@ public final class DialogueActionProtocol {
 
         /** End of stream: a withheld tail that never became an envelope is prose; an unclosed envelope is dropped. */
         public String finish() {
-            String rest = markerSeen || closing != null ? "" : pending.toString();
+            String rest = markerSeen || closing != null || attributeAction ? "" : pending.toString();
             pending.setLength(0);
             return prose.accept(rest) + prose.finish();
         }
@@ -313,15 +423,19 @@ public final class DialogueActionProtocol {
         /** True once any action envelope (the marker or a tag) has started in this reply. */
         public boolean markerSeen() { return envelopeSeen; }
 
-        private static int[] firstOpening(CharSequence text) { return nextOpening(text, 0); }
+        private static int[] firstOpening(CharSequence text) {
+            int[] open = nextOpening(text, 0);
+            // "<studio-action" may still become the existing plural "<studio-actions>" in the next delta.
+            return open != null && open[1] >= 3 && open[0] + TAGS.get(open[1]).length() + 1 == text.length() ? null : open;
+        }
 
         private static int longestOpeningPrefixSuffix(CharSequence text) {
             int keep = 0;
             List<String> openings = new ArrayList<>();
             openings.add(MARKER);
-            for (String t : TAGS) openings.add("<" + t + ">");
+            for (int i = 0; i < TAGS.size(); i++) openings.add("<" + TAGS.get(i) + (i >= 3 ? "" : ">"));
             for (String marker : openings) {
-                int max = Math.min(text.length(), marker.length() - 1);
+                int max = Math.min(text.length(), marker.length());
                 for (int len = max; len > keep; len--) {
                     boolean match = true;
                     for (int i = 0; i < len; i++)

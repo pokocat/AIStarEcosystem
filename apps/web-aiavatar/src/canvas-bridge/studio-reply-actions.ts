@@ -13,6 +13,7 @@ export function splitReplyActions(text: string): { prose: string; actions: strin
   const at = prose.indexOf(MARKER);
   if (at >= 0) { marker = prose.slice(at).trim(); prose = prose.slice(0, at); }
   prose = prose.replace(/<(tool_call|studio[-_]actions)>[\s\S]*?(?:<\/\1>|$)/gi, block => { actions.push(block.trim()); return ""; });
+  prose = prose.replace(/<studio[-_]action\b[\s\S]*?(?:\/>|$)/gi, block => { actions.push(block.trim()); return ""; });
   if (marker) actions.push(marker);
   return { prose: actions.length ? prose.replace(/\n{3,}/g, "\n\n").trim() : text, actions: actions.join("\n") };
 }

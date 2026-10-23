@@ -431,6 +431,38 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
 
     record Started(String turnId, String runId) {}
 
+    private static boolean saysContinue(String text) {
+        return text != null && text.strip().replaceAll("[\\s，。！？!?,.]", "")
+                .matches("继续|继续吧|可以继续|好的继续|继续下一步|继续完成|继续做完|把剩下的做完|完成剩下的|没有完成的部分帮我完成|(?i:continue)");
+    }
+
+    /** Server-derived consent: a continuation reply after a real limit, never model text or a client-supplied flag. */
+    private String resumedTask(IpDialogueThread thread, List<IpDialogueMessage> inputs) {
+        if (inputs.isEmpty() || inputs.stream().anyMatch(m -> !saysContinue(m.getText())
+                || !ids(m.getPinnedNodeIdsJson()).isEmpty() || !ids(m.getAttachmentNodeIdsJson()).isEmpty())) return null;
+        long before = inputs.stream().mapToLong(IpDialogueMessage::getSeq).min().orElse(0);
+        Set<String> seen = new HashSet<>();
+        for (var message : messages.findByThreadIdAndSeqLessThanOrderBySeqDesc(thread.getId(), before, PageRequest.of(0, 50))) {
+            if ("user".equals(message.getRole()) && !saysContinue(message.getText())) break; // a new task ends the old consent
+            if (message.getRunId() == null || !seen.add(message.getRunId())) continue;
+            var previous = runs.findById(message.getRunId()).orElse(null);
+            if (previous == null || !thread.getProjectId().equals(previous.getProjectId())
+                    || !thread.getOwnerUserId().equals(previous.getOwnerUserId()) || !thread.getId().equals(previous.getNodeId())
+                    || !StudioDialogueTurnWorker.KIND.equals(previous.getKind()) || !IpRun.STATUS_DONE.equals(previous.getStatus())) continue;
+            String limit = parse(previous.getOutputJson()).path("limit").asText("");
+            JsonNode exec = parse(previous.getInputJson()).path("_exec");
+            if (exec.path("continueUntilDone").asBoolean(false)) {
+                String origin = exec.path("continuationOf").asText(null);
+                var root = origin == null ? null : runs.findById(origin).orElse(null);
+                if (root != null && thread.getProjectId().equals(root.getProjectId()) && thread.getOwnerUserId().equals(root.getOwnerUserId())
+                        && thread.getId().equals(root.getNodeId()) && StudioDialogueTurnWorker.KIND.equals(root.getKind())) return root.getId();
+                return previous.getId();
+            }
+            if (Set.of("tokens", "steps", "calls", "tools", "time", "budget").contains(limit)) return previous.getId();
+        }
+        return null;
+    }
+
     /**
      * Accept a parent dialogue turn inside the caller's transaction (project and thread locks held): resolve the endpoint
      * and prompt, require the token price and the user's approved ceiling, hold credits, create the run and the
@@ -507,7 +539,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             }
             prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
             if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
-            rate = tokenPricing == null ? null : tokenPricing.find(endpoint.getId());
+            rate = tokenPricing == null ? null : tokenPricing.findDialogue(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
             cost = rate.maxCost();
             if (maxCost == null) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "模型计费配置已更新，请刷新后重试");
@@ -530,6 +562,8 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         input.put("prompt", excerpt(inputs.get(inputs.size() - 1).getText(), 500));
         ObjectNode exec = input.putObject("_exec").put("holdTotal", cost).put("unitCost", cost).put("billingUnit", mock ? "per_call" : "per_token")
                 .put("assistantMessageId", assistantId).put("maxTokens", perCall);
+        String resumed = resumedTask(thread, inputs);
+        if (resumed != null) exec.put("continueUntilDone", true).put("continuationOf", resumed);
         var ids = exec.putArray("userMessageIds");
         inputs.forEach(m -> ids.add(m.getId()));
         exec.putArray("childRunIds");
@@ -885,7 +919,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             AiModelEndpoint endpoint = scenePolicies != null
                     ? scenePolicies.resolve("studio", "script", null, pricing.ipIdentity()).resolved().endpoint()
                     : models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, null, "studio").map(AiModelInvocationService.ResolvedEndpoint::endpoint).orElse(null);
-            var rate = endpoint == null ? null : tokenPricing.find(endpoint.getId());
+            var rate = endpoint == null ? null : tokenPricing.findDialogue(endpoint.getId());
             return rate == null ? 0 : rate.maxCost();
         } catch (RuntimeException e) {
             log.info("[dialogue] dialogue reserve unknown: {}", e.toString());
