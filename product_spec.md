@@ -1423,3 +1423,7 @@ E01–E04 建立类型/API 契约、V56 数据结构、邀请/角色/策略/移�
 人工封面优先，其次自动取已保存图片，没有可用图片则回落实际画布缩略图；两页共用预览、选图、独立 JPG/PNG 上传和恢复自动功能。共用 POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id}；个人项目/模板仅属主，官方模板仅 SUPER_ADMIN 可改。封面独立于 doc 和模板版本，失败保留原封面，可重试；URL 读时签名，不产生生成费用。
 
 内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。
+
+## AI 导演台增量（2026-10-23，独立功能分支，未发布）
+
+AiAvatar 新增 `/director` 作品列表和「剧本 / 资产 / 分镜」制作工作台。独立 `director_work`（V65）保存剧本、分集、资产引用、片段和采用版本，生成沿用 `ip_run.host_type=director`，API 为 `/api/v1/ip-studio/director/works` 及作品编辑、任务、报价、上传、连跑子路径。账号、开通、文件归属、个人／企业付款和积分结算复用既有体系。一键制作在后台按预算推进并停在人工确认点；视频按模型支持全能参考或单首帧，整集导出沿用 Studio 合成。Agnes 真实剧本／资产／首帧已验，视频队列拒绝，真实视频、导出及声音连续性待验；用户已停止重试。详细真源：[总方案](docs/ai-director-plan.md)与[契约](specs/openapi.yaml)。

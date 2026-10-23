@@ -1157,6 +1157,10 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 有效 `admin_users.status=ACTIVE / role=SUPER_ADMIN` 可经 CreditOpsService 直接赠送/补偿积分，并批准本人历史待审单；其他角色保留阈值与独立复核，财务不可自批。例外只读服务端当前管理员记录，日限额、必填原因、工单/活动幂等、GIFT 桶与完整审计保留。审批通过锁原单，账本和状态同事务，防重复入账。不自动批量批准历史单。
 
+### AI 导演台（2026-10-22，本地首版已实现，独立功能分支提交、未发布；真实 Agnes 出图已验，视频受厂商队列阻塞，见 `docs/audits/ai-director-local-acceptance-20261022.md`）
+
+入口 `/director`（Studio 主导航「AI 导演台」），方案真源 `docs/ai-director-plan.md` v1.1。作品是**服务端拥有**的结构化对象（V65 `director_work.content_json`），不放进 `IpProject.doc`，不依赖分镜编辑方案。用户编辑带对象 `rev`，超长直接 400 不截断；生成结果回投前比对提交时的输入指纹（提示词 + 实际参考图 key / 正文哈希 / 本集片段修订基线），没变才填空着的采用位（`adoptedBy=auto`，要用户确认），变了只追加 `stale` 历史版本或留 `pendingPlan` 让用户决定。任务就是原生 `IpRun`（`host_type=director`，`project_id` 存作品 id，`node_id` 存目标），文字走 `StudioWorkflowService.submitDirectorText`、出图走 `IpRunService.generateForDirector`，付款选择与 `maxCost` 报价校验同 Studio。片段规划只做结构校验，镜头数 / 时长 / 未知资产与说话人一律原样保留，由片段 `issues` 阻止出图、就地修改。片段时长来自所选视频模型（`StudioVideoService.models()` 里支持全能参考的），没有可用模型时规划 503。一键连跑 `DirectorRunner` 每 3 秒推进，最多 2 个在途、预算硬上限、参考图（做到视频时还有分镜图）生成后停下等确认；做到视频只按集。片段视频走 `IpRunService.generateVideoForDirector`（全能参考：图1 采用并确认的分镜图，之后是资产参考图和说话角色绑定的声音样本 `asset.voice`，可选的供应商改写默认关闭），先 `quote` 报价再提交；原生视频任务记在片段 `video.pending`，读作品 / 后台推进时查询回投。整集导出按每个片段当前采用并确认的视频，走 Studio 合成（`studio-assemble`，不扣积分），导出记录保存所用版本，换过片段就标「这版是旧的」。连播预览在前端按顺序播已采用的视频，缺段跳过并标明。只支持首帧的视频模型（没有保存视频规格、走旧首帧路径的端点，如 Agnes Video 2.5）按「首帧出片」模式：一镜一段、采用的单张分镜画面作真正首帧（refKey 路径），不带参考图和声音；绑了声音的片段要用户显式勾「不带声音参考生成」，绑定保留。采用版本按生成指纹核对，与当前设置不一致时标原因、给重新生成入口，不自动重跑。
+
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 
 2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准。

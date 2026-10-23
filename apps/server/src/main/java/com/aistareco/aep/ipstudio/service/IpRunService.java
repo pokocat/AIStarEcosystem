@@ -163,7 +163,7 @@ public class IpRunService {
         // 输入编译（含缺失校验 + 资产 key 归属闸）—— 全部在 hold 之前
         Compiled compiled = compileGeneration(userId, projectId, doc, node);
         requireApprovedCost(req==null?null:req.maxCost(),compiled.unitCost()*compiled.count());
-        return execute(userId, project, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
+        return execute(userId, null, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
     }
 
     /**
@@ -177,7 +177,21 @@ public class IpRunService {
     @Transactional
     public IpRunDto generate(String userId, String projectId, IpGenerateRequest req) {
         requireNativeMode();
-        IpProject project = projects.requiredForUpdate(userId, projectId);
+        projects.requiredForUpdate(userId, projectId);
+        return generateHosted(userId, projectId, null, req);
+    }
+
+    /**
+     * 导演作品出图（docs/ai-director-plan.md §10.2a）：作品的归属与加锁由 DirectorService 做，
+     * 这里只把宿主类型记到运行上；编译、归属闸、计价、冻结、派发与画布出图是同一条链。
+     */
+    @Transactional
+    public IpRunDto generateForDirector(String userId, String workId, IpGenerateRequest req) {
+        requireNativeMode();
+        return generateHosted(userId, workId, IpRun.HOST_DIRECTOR, req);
+    }
+
+    private IpRunDto generateHosted(String userId, String projectId, String hostType, IpGenerateRequest req) {
         String requestId=req==null?null:req.clientRequestId();
         String fingerprint=nativeFingerprint(req==null?null:req.nodeId(),req);
         IpRun prior=nativeReplay(projectId,requestId,fingerprint,req==null?null:req.billing());
@@ -193,7 +207,7 @@ public class IpRunService {
         }
         Compiled compiled = compileExplicit(userId, req);
         requireApprovedCost(req.maxCost(), compiled.unitCost() * compiled.count());
-        return execute(userId, project, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
+        return execute(userId, hostType, projectId, nodeId, compiled, req == null ? null : req.billing(),requestId,fingerprint);
     }
 
     /** 画布出视频的请求。 */
@@ -254,9 +268,44 @@ public class IpRunService {
      */
     public record VideoBatch(List<JsonNode> jobs, ObjectNode frameAdjustments) {}
 
+    /**
+     * 导演作品出片段视频（docs/ai-director-plan.md §10.2a）：作品归属与加锁由 DirectorService 做；
+     * 同一请求编号重放返回原任务，不重新提交、不重复扣费。绑定行记宿主类型 director、目标 nodeId。
+     */
+    @Transactional
+    public JsonNode generateVideoForDirector(String userId, String workId, String nodeId, IpVideoRequest req) {
+        requireNativeMode();
+        String requestId=req==null?null:req.clientRequestId();
+        if(requestId==null||requestId.isBlank())throw BusinessException.badRequest("STUDIO_REQUEST_ID_REQUIRED","缺少请求编号，请刷新后重试");
+        String fingerprint=nativeFingerprint(nodeId,req);
+        IpRun prior=nativeReplay(workId,requestId,fingerprint,req.billing());
+        if(prior!=null) {
+            var ids=IpProjectService.nativeVideoJobIds(projects.parseOrEmptyObject(prior.getInputJson()));
+            if(ids.size()!=1)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            return videoJobs.getJob(ids.get(0),userId,com.aistareco.aep.service.materialvideo.MaterialVideoJobService.APP_IPSTUDIO);
+        }
+        VideoBatch batch=generateVideoBatch(userId, workId, req, 1, true);
+        JsonNode created=batch.jobs().get(0);
+        ObjectNode inputs=om.valueToTree(req);
+        ObjectNode exec=inputs.putObject("_exec");
+        exec.putArray("nativeVideoJobIds").add(created.path("id").asText());
+        exec.setAll(batch.frameAdjustments());
+        Instant now=Instant.now();
+        runRepo.save(IpRun.builder().id(uniqueRunId()).projectId(workId).hostType(IpRun.HOST_DIRECTOR).ownerUserId(userId)
+                .nodeId(nodeId).kind("studio-video").status(IpRun.STATUS_DONE).stage("video.bound").cost(0)
+                .enterpriseId(req.billing()!=null&&"enterprise".equals(req.billing().mode())?req.billing().enterpriseId():null)
+                .clientRequestId(requestId).inputFingerprint(fingerprint).inputJson(writeJson(inputs)).outputJson("{}")
+                .createdAt(now).heartbeatAt(now).build());
+        return created;
+    }
+
     /** One native batch: all candidates pass preflight before any hold or after-commit dispatch. */
     @Transactional
     public VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count) {
+        return generateVideoBatch(userId, projectId, req, count, false);
+    }
+
+    private VideoBatch generateVideoBatch(String userId, String projectId, IpVideoRequest req, int count, boolean hostChecked) {
         requireNativeMode();
         List<Integer> allowedCounts=List.of(1,2,4);
         String batchEndpointId=null;
@@ -269,7 +318,7 @@ public class IpRunService {
         if (!allowedCounts.contains(count)) throw BusinessException.badRequest("STUDIO_VIDEO_COUNT_INVALID",
                 "当前视频模型每次可生成 " + allowedCounts.stream().map(String::valueOf)
                         .collect(java.util.stream.Collectors.joining("、")) + " 条");
-        projects.required(userId, projectId);
+        if (!hostChecked) projects.required(userId, projectId);
         if (req == null || req.video() == null && (req.prompt() == null || req.prompt().isBlank())) {
             requireNoMissing(List.of("prompt"));
         }
@@ -337,7 +386,7 @@ public class IpRunService {
     }
 
     /** 冻结 → 落库 → 派发。两条入口共用，计费纪律只有这一处。 */
-    private IpRunDto execute(String userId, IpProject project, String projectId, String nodeId, Compiled compiled, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selection,String clientRequestId,String fingerprint) {
+    private IpRunDto execute(String userId, String hostType, String projectId, String nodeId, Compiled compiled, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection selection,String clientRequestId,String fingerprint) {
 
         // preflight（§8.0）：引擎与提示词，缺一不可，且不冻结
         preflight(compiled);
@@ -367,6 +416,7 @@ public class IpRunService {
         IpRun run = IpRun.builder()
                 .id(runId)
                 .projectId(projectId)
+                .hostType(hostType)
                 .ownerUserId(userId)
                 .nodeId(nodeId).clientRequestId(clientRequestId).inputFingerprint(clientRequestId==null?null:fingerprint)
                 .kind(compiled.kind())

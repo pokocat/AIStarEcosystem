@@ -32,6 +32,16 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-23 · AI 导演台（独立功能分支，未发布）
+
+总方案：[AI 导演台完整方案](docs/ai-director-plan.md)；实测边界见[本地验收](docs/audits/ai-director-local-acceptance-20261022.md)。
+
+- [x] ~~**实现导演作品及生成宿主适配**~~ **2026-10-23 完成**：V65 独立作品、原生任务宿主、个人／企业付款接入、采用版本与修订保护。
+- [x] ~~**接通剧本到分镜及后台连跑**~~ **2026-10-23 完成**：剧本／资产／分镜三工作区、一键推进、人工确认、暂停与局部续跑；Agnes 真实剧本、资产图和单镜头首帧已验。
+- [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
+- [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
+- [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
+
 ### 2026-10-21 · 结果落到助手准备的节点、首帧比例（`20261021-studio-exec-node`；真源 `docs/ip-studio-new-canvas-and-threads.md` §6）
 
 - [x] ~~**对话出视频后结果另起一个没有提示词的节点，助手准备的节点成了空壳；1:1 首帧被拉成 9:16**~~ **2026-10-21 已修**（线上 IPP-655ea55a）：计划步骤 `targetNodeId` + 确认时 `StudioPlanValidator.bindTargets` 绑定，读步骤节点统一经 `StudioPlanExecutionIds.stepNodeId`；结果节点带实际发出的提示词；`StudioVideoService.alignFrame` 居中裁剪首帧 / 尾帧并记 `_exec.firstFrameAdjusted`；生成面板裁剪提示；节点按产物比例（`studio-media-fit.ts`）；提示词 seed v23。测试：`StudioPlanTargetBindingTest`、`StudioPlanExecutorTest`（绑定步骤）、`StudioPlanExecutionServiceTest`（确认时绑定）、`StudioFrameCropTest`、`PlannerAssetCatalogTest`、`studio-plan-execution.test.ts`、`studio-media-fit.test.ts`、`studio-frame-crop-hint.test.tsx`。

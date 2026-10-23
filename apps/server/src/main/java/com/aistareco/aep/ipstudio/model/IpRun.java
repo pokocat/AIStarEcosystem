@@ -54,6 +54,11 @@ public class IpRun {
     @Column(nullable = false, length = 32)
     private String projectId;
 
+    /** 宿主类型：null = 画布（projectId 是 IpProject），{@link #HOST_DIRECTOR} = 导演作品（projectId 是作品 id）。 */
+    @Column(length = 16)
+    private String hostType;
+    public static final String HOST_DIRECTOR = "director";
+
     @Column(nullable = false, length = 64)
     private String ownerUserId;
     @Column(length=64) private String billingWalletId;

@@ -26,6 +26,7 @@ import "../styles/studio-workspace-navigation.css";
 import "../styles/enterprise.css";
 import "../styles/control-focus.css";
 import "../styles/studio-select.css";
+import "../styles/director.css";
 import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";

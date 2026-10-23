@@ -101,6 +101,12 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-libtv-alignment.md`](ip-studio-libtv-alignment.md) | **IPStudio 对标 LibTV 的原始提案与实时差距矩阵** | 首页与统一画布、助手/剧本/图片/原生视频/模板核心动线，v0.229 补回拖线引用、v0.231 模板直接复制为普通画布；多模态助手、长视频、专属声音等差距明确（last-reviewed 2026-10-10） |
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
+| [AI 导演台完整方案](ai-director-plan.md) ★ | **v1.1 定稿；独立功能分支首版、未发布。测试响应全流程跑通；Agnes 真实出图已验，视频受厂商队列阻塞** | 三工作区、独立服务端导演作品、既有资产／声音复用、精确引用、后台连跑、分级检查、企业付款与并发边界、整集导出；§14 实现状态（last-reviewed 2026-10-22） |
+| [AI 导演台 Claude 联合评审记录](audits/ai-director-claude-review-2026-10.md) | **方案评审记录** | Claude App 首轮意见、Codex 反驳与修正、第二轮共识、最终复核及效果验证边界（last-reviewed 2026-10-22） |
+| [AI 导演台工作流详细稿](ai-director-workflow-plan.md) | **v0.2 详细附件；首版按总方案实现** | 配套总方案：后台连跑、分步写作、资产基准派生、真正首帧与宫格代表图区分、候选预算和局部恢复（last-reviewed 2026-10-22） |
+| [AI 导演台 Agent 提示词](prompts/ai-director-agents-v1.md) | **提示词 v0.2；A1–A4 已改写进代码，Agnes 小样已验** | 八类职责的完整正文、输入输出；吸收 AID／ViMax 的分步创作、参考筛选和首尾帧方法（last-reviewed 2026-10-22） |
+| [AI 导演台视觉与声音提示词实操稿](prompts/ai-director-visual-production.md) | **模板已用于本地首版；Agnes 出图已验，视频与声音待验** | 参考现成项目，角色／场景／道具、宫格、原生音画模板及完整例子；角色声音基准与跨片段检查（last-reviewed 2026-10-22） |
+| [AI 导演台 AID／ViMax 源码对照](audits/ai-director-reference-comparison-2026-10.md) | **源码对照完成，效果未实测** | 固定提交的优点、适配边界、第一版缺口、v0.2 修订与评测要求（last-reviewed 2026-10-22） |
 | [`docs/ip-studio-conversational-video-recreation-plan.md`](ip-studio-conversational-video-recreation-plan.md) ★ | **全能创作对话驱动视频复刻 · 唯一方案真源（v4）** | 技能（仓内 `reference-video-recreation.md`）+ 连续线程 / 真流式 / 工作记录 / 转向 + 两阶段计划 + 服务端执行器（`ip_plan_execution`，提交前预算、租约、暂停只查）+ 原生 `check` 三态；S1/S2/S3 已本地实现（2026-10-18，未发布；S3 = 技能表 V63 / 后台技能页 / 多技能路由 / 蒸馏草稿），S0 付费实测待批预算；接入前两项产品问题已修（之后的追加发布到 2026-10-20 `20261020-h3-video-dialogue`；last-reviewed 2026-10-20） |
 | [`docs/ip-studio-dialogue-no-continue.md`](ip-studio-dialogue-no-continue.md) | **Studio 对话去掉「继续」 · 现行设计真源** | 一句话做完：只有付费生成停下确认；删掉单轮的步数 / 调用 / 工具 / 时间 / Token 分配上限；一条消息一个 run，首笔冻结普通文本那档、不够时同一 run 追加冻结，钱包没钱才停并给充值入口；对话费用不计入制作预算；死循环先纠正再结束；单轮上下文裁剪、长文分段读、子任务最多等 10 分钟、冻结回收跳过活着的对话任务；单 run 300 次 / 2 小时隐形保险。本地实现，未发布、未用真模型验证（last-reviewed 2026-10-23） |
 | [`docs/ip-studio-dialogue-intents.md`](ip-studio-dialogue-intents.md) | **Studio 对话意图直达 · 现行设计真源** | 意图 → 技能 → 一轮确认：出图 / 写剧本与文案 / 出视频三个直达技能 + 参考视频复刻；写作意图先判、路由关键词 ×2 / 素材 ×1、只有素材不选方法、平手一律不绑交给模型、按任务绑定技能；问题预算；触发评测集（§7）。已生产发布，平手句子真模型验过；2026-10-23 起不锁方法：有活跃制作时也按意图换方法，旧制作停止收尾或暂停解绑（last-reviewed 2026-10-23） |
@@ -317,3 +323,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
 
 - [Studio 读取、进度、保存恢复与 Agent 运行时评估](audits/studio-agent-runtime-assessment-2026-10.md) — 本地修复，未发布；AgentScope Java / LangGraph 替换边界与验收标准（last-reviewed: 2026-10-23）。
+
+- [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-22。

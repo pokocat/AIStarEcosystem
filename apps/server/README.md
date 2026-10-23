@@ -427,6 +427,8 @@ src/main/java/com/aistareco/aep/
 
 ## 数据模型
 
+- **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
+
 ### 角色体系
 
 | 角色 | 类型 | 说明 |

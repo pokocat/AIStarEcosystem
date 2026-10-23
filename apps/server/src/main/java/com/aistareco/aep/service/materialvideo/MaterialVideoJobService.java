@@ -674,6 +674,16 @@ public class MaterialVideoJobService {
         };
     }
 
+    /**
+     * 画布旧首帧路径（不带 credit_cost 的 item）的单价：与 submit 同一个时长校验、同一个计价函数。
+     * AI 导演台用它给「首帧出片」模式报价。
+     */
+    public long studioLegacyQuote(String endpointId, int durationSec) {
+        String appCode = modelAppCode(APP_IPSTUDIO);
+        modelClient.validateRequest(endpointId, durationSec, appCode);
+        return itemUnitCost(com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode(), endpointId, durationSec, appCode);
+    }
+
     /** 单条视频单价：调用方在 item 里显式传 credit_cost（≥0）则用它（app 维度独立定价，解耦本带货线），否则回落带货线定价。 */
     private long itemUnitCost(JsonNode item, String endpointId, int durationSec, String appCode) {
         long override = item.path("credit_cost").asLong(-1L);

@@ -229,6 +229,15 @@ public class MaterialVideoModelClient {
     public record DurationBounds(Integer minSec, Integer maxSec) {}
 
     /**
+     * 这个端点能不能走旧的「单首帧」出片路径：没有保存视频规格的端点都按协议带首帧
+     * （聚算媒体上传换 assetId、seedance / Agnes / 通用协议给 URL 或 data URI，见 resolveUpstreamInputs）。
+     * 保存了视频规格的端点按规格里的模式判断，不走这里。
+     */
+    public boolean supportsLegacyFirstFrame(AiModelEndpoint endpoint) {
+        return endpoint != null && AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson()) == null;
+    }
+
+    /**
      * 这个端点**真正能出**的画幅：已保存视频规格按规格返回，旧端点按协议返回。
      *
      * <p>为什么需要：画布的参数面板照搬了上游的通用选项 —— 清晰度 480p/720p/1080p、
