@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import copy from "copy-to-clipboard";
 import { Alert, Button, Checkbox, Empty, Input, InputNumber, Modal, Pagination, Select, Skeleton, Table, Tag } from "antd";
 import type { EnterpriseCapabilities, EnterpriseContext, EnterpriseInvitation, EnterpriseMember, EnterpriseOwnershipTransfer, EnterprisePolicy, EnterpriseLifecyclePreview, EnterpriseLifecycleAction } from "@ai-star-eco/types/enterprise";
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
@@ -97,15 +96,26 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
         return;
       }
     } catch { /* Some embedded browsers expose the API but refuse it. Use the compatible text path below. */ }
+    // Select the visible field inside the modal. A hidden span outside an open modal can report a successful
+    // execCommand while leaving the previous image untouched. Require the actual copy event to contain our text.
+    const field = invitationForm.current?.querySelector("textarea");
+    field?.focus(); field?.select();
+    let wroteText = false;
+    const plainText = (event: ClipboardEvent) => {
+      if (!event.clipboardData) return;
+      event.clipboardData.clearData();
+      event.clipboardData.setData("text/plain", link);
+      event.preventDefault(); event.stopImmediatePropagation();
+      wroteText = true;
+    };
+    field?.addEventListener("copy", plainText);
     try {
-      // Explicit plain text replaces any previous image; no prompt or image representation is used.
-      if (await copy(link, { format: "text/plain", fallbackToPrompt: false })) {
+      if (field && document.execCommand("copy") && wroteText) {
         setInviteCopyStatus("copied");
         return;
       }
-    } catch { /* Leave the actual link selected if both browser copy paths are unavailable. */ }
-    const field = invitationForm.current?.querySelector("textarea");
-    field?.focus(); field?.select();
+    } catch { /* Keep the full link selected for the user's native copy gesture. */ }
+    finally { field?.removeEventListener("copy", plainText); }
     setInviteCopyStatus("manual");
   };
   const openLifecycle = (action: EnterpriseLifecycleAction, member?: EnterpriseMember) => void mutate(async () => {
