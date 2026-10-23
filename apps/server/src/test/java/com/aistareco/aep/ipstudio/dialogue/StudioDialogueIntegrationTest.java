@@ -210,37 +210,36 @@ class StudioDialogueIntegrationTest {
         assertEquals(0,wallets.findByUserId(user).orElseThrow().getPendingBalance());
     }
 
-    @Test void aConfirmedContinuationFinishesPastTheOldThresholdsWithOneReplyAndOneHold() throws Exception {
+    /**
+     * docs/ip-studio-dialogue-no-continue.md §10: the job that used to stop at the token split (and then needed a typed
+     * 「继续」): 47 steps, 46 tool runs, past the old 16 / 24 / token limits, is done from one message and one hold.
+     */
+    @Test void aLongJobIsDoneFromOneMessageWithoutAnyContinue() throws Exception {
         var price=json.createObjectNode();var rates=price.putObject("endpoints");
         endpoints.findAll().forEach(ep->rates.putObject(ep.getId()).put("inputCreditsPerK",.001).put("outputCreditsPerK",.001)
                 .put("maxInputTokens",20000).put("maxOutputTokens",4000));
         configs.upsert(AiChatTokenPricing.KEY,price,"连续执行验收价格","test");
-        configs.upsert(AiChatTokenPricing.DIALOGUE_BUDGET_KEY,json.readTree("{\"maxInputTokens\":20000,\"maxOutputTokens\":4000}"),"重现小额度中断","test");
+        configs.upsert(AiChatTokenPricing.DIALOGUE_BUDGET_KEY,json.readTree("{\"maxInputTokens\":20000,\"maxOutputTokens\":4000}"),"小额度","test");
         String user=person(),project=project(user);String threadId=dialogue.conversation(user,project).thread().id();
         var doc=(com.fasterxml.jackson.databind.node.ObjectNode)projects.readDoc(projects.required(user,project));
         for(int i=0;i<=45;i++)doc.withArray("nodes").addObject().put("id","n"+i).put("type","text").put("title","素材"+i)
                 .putObject("metadata").put("content","第"+i+"部分的已保存内容");
         projects.update(user,project,new IpUpdateProjectRequest(null,doc));
-        var first=dialogue.post(user,project,threadId,new PostMessageRequest("limited","连续完成验收",null,null,null,null,null,1L,null));
-        awaitTurnEnd(threadId);
-        assertEquals("tokens",json.readTree(runs.findById(first.runId()).orElseThrow().getOutputJson()).path("limit").asText());
-        assertEquals(1,calls.get());
         continuing.set(true);
-        var resumed=dialogue.post(user,project,threadId,new PostMessageRequest("resume","继续",null,null,null,null,null,1L,null));
+        // An old page still sends a ceiling of 1; it neither refuses nor limits the job.
+        var posted=dialogue.post(user,project,threadId,new PostMessageRequest("long","连续完成验收",null,null,null,null,null,1L,null));
         awaitTurnEnd(threadId);
-        var run=runs.findById(resumed.runId()).orElseThrow();var output=json.readTree(run.getOutputJson());
-        assertTrue(json.readTree(run.getInputJson()).path("_exec").path("continueUntilDone").asBoolean());
+        var run=runs.findById(posted.runId()).orElseThrow();var output=json.readTree(run.getOutputJson());
+        assertFalse(json.readTree(run.getInputJson()).path("_exec").has("continueUntilDone"));
         assertEquals("completed",output.path("reason").asText());assertFalse(output.has("limit"));
-        assertEquals(46,output.path("steps").asInt());assertEquals(45,output.path("toolCalls").asInt());
-        assertEquals(23000,output.path("billing").path("inputTokens").asInt());
-        assertEquals(4600,output.path("billing").path("outputTokens").asInt());
-        assertEquals(1,run.getCost());assertEquals(98,wallets.findByUserId(user).orElseThrow().getTotalBalance());
+        assertEquals(47,output.path("steps").asInt());assertEquals(46,output.path("toolCalls").asInt());
+        assertEquals(1,run.getCost());assertEquals(99,wallets.findByUserId(user).orElseThrow().getTotalBalance());
         assertEquals(0,wallets.findByUserId(user).orElseThrow().getPendingBalance());
-        var reply=messages.findByThreadIdOrderBySeqDesc(threadId,PageRequest.of(0,50)).stream().filter(m->resumed.runId().equals(m.getRunId())).toList();
-        assertEquals(2,reply.size(),"one user message and one assistant reply, no intermediate limit notes");
-        assertTrue(reply.stream().noneMatch(m->m.getText().contains("<studio-action")));
-        assertEquals(resumed.runId(),dialogue.post(user,project,threadId,new PostMessageRequest("resume","继续",null,null,null,null,null,1L,null)).runId());
-        assertEquals(47,calls.get(),"resending the user's confirmation never repeats model or tool work");
+        var thread=messages.findByThreadIdOrderBySeqDesc(threadId,PageRequest.of(0,50));
+        assertTrue(thread.stream().noneMatch(m->"system".equals(m.getRole())&&posted.runId().equals(m.getRunId())),"no pause note");
+        assertTrue(thread.stream().noneMatch(m->m.getRequestJson()!=null&&m.getRequestJson().contains("继续")),"no 「继续」 reply offered");
+        assertTrue(thread.stream().noneMatch(m->m.getText().contains("<studio-action")));
+        assertEquals(47,calls.get());
     }
 
     @Test void fullTurnStreamsRunsAToolSettlesRealUsageAndReplaysConsistently() throws Exception {

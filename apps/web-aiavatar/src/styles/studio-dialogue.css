@@ -29,6 +29,10 @@
 .ip-surface .studio-dialogue-queue.is-mark { display: inline-flex; align-self: flex-end; margin-top: -4px; color: var(--ink-3); line-height: 0; }
 .ip-surface .studio-dialogue-note { margin: 0; color: var(--ink-2); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
 .ip-surface .studio-dialogue-warning { margin: 0; color: var(--warn); font-size: 12px; line-height: 1.6; overflow-wrap: anywhere; }
+/* 「积分不够了」后面的充值入口：一个链接，不是按钮（充值在另一页完成，新标签页打开，画布留着）。 */
+.ip-surface .studio-dialogue-notice { margin: 4px 0 0; font-size: 12px; line-height: 1.6; }
+.ip-surface .studio-dialogue-recharge { color: var(--blue, var(--ink)); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+.ip-surface .studio-dialogue-recharge:hover { color: var(--ink); }
 .ip-surface .studio-dialogue-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 0; border: 0; background: transparent; color: var(--ink-2); font: inherit; font-size: 12px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .ip-surface .studio-dialogue-link:hover:not(:disabled) { color: var(--ink); }
 .ip-surface .studio-dialogue-link:disabled { opacity: .55; cursor: not-allowed; }

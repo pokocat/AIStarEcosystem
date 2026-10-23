@@ -52,7 +52,7 @@ public class ReadCanvasTool implements StudioDialogueTool {
                 int start=Math.min(offset,total),end=start+Math.min(args.path("limit").asInt(8000),total-start);
                 part.put("title",node.path("title").asText()).put("type",node.path("type").asText())
                         .put("hasAdoptedContent",IpDocs.primaryStorageKey(node)!=null)
-                        .put("offset",start).put("totalChars",total).put("hasMore",end<total)
+                        .put("offset",start).put("total",total).put("totalChars",total).put("hasMore",end<total)
                         .put("text",text.substring(text.offsetByCodePoints(0,start),text.offsetByCodePoints(0,end)));
                 if(end<total)part.put("nextOffset",end);else part.putNull("nextOffset");
             }

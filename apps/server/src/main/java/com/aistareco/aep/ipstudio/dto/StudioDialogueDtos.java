@@ -22,7 +22,9 @@ public final class StudioDialogueDtos {
                           JsonNode blocks, List<String> pinnedNodeIds, List<String> attachmentNodeIds, String clientMessageId,
                           JsonNode billing, Boolean settling, String status, String createdAt, String legacyNodeId,
                           /** Follow-ups offered under an assistant message (execution summaries keep them across reloads). */
-                          List<String> suggestions) {}
+                          List<String> suggestions,
+                          /** A system note's action: "recharge" (personal) | "recharge-enterprise" (the chain ran out of credits). */
+                          String notice) {}
 
     /** {@code execution} is the executor's StudioPlanExecution projection when a plan execution is bound. */
     public record State(DialogueThread thread, List<Message> messages, String nextCursor, long latestSeq, Object execution) {}
@@ -66,5 +68,13 @@ public final class StudioDialogueDtos {
                                  String runId, String expectedDocVersion, Proposal proposal) {}
     public record TokenBilling(long inputTokens, long outputTokens, long credits, java.math.BigDecimal inputCreditsPerK,
                                java.math.BigDecimal outputCreditsPerK) {}
-    public record TurnDoneData(String reason, String messageId, TokenBilling billing, Boolean settling, List<String> suggestions) {}
+    /**
+     * {@code reason} "chained": this task's hold was used up and the work goes on in the next task of the chain, whose
+     * turn is {@code nextTurnId} (docs/ip-studio-dialogue-no-continue.md §3): the conversation stays 「进行中」.
+     */
+    public record TurnDoneData(String reason, String messageId, TokenBilling billing, Boolean settling, List<String> suggestions, String nextTurnId) {
+        public TurnDoneData(String reason, String messageId, TokenBilling billing, Boolean settling, List<String> suggestions) {
+            this(reason, messageId, billing, settling, suggestions, null);
+        }
+    }
 }

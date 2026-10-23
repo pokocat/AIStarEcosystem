@@ -656,6 +656,7 @@ components:
         createdAt: { type: string, format: date-time }
         legacyNodeId: { type: string, nullable: true }
         suggestions: { type: array, nullable: true, items: { type: string }, description: 助手消息下的后续建议（后台制作结束时的总结消息会持久保存，刷新后仍在） }
+        notice: { type: string, nullable: true, enum: [recharge, recharge-enterprise], description: 系统提示附带的一个操作。任务链因付款账户余额不足结束时为 recharge（个人）/ recharge-enterprise（企业成员），页面给充值入口（docs/ip-studio-dialogue-no-continue.md §9）。 }
     StudioDialogueThread:
       type: object
       required: [id, projectId, lastSeq, createdAt, updatedAt]
@@ -692,8 +693,19 @@ components:
         expectedPlanRevision: { type: integer, nullable: true }
         skillKey: { type: string, nullable: true }
         billing: { type: object, nullable: true }
-        maxCost: { type: integer, nullable: true, description: 本轮父对话 run 自身模型调用的费用上限；不是制作预算。 }
+        maxCost: { type: integer, nullable: true, description: '兼容字段（老页面照发）：服务端只记录，不再据此拒绝（不再回 409 STUDIO_PRICE_CHANGED），也不再用它限制冻结额。对话按实际 Token 用量结算，每条任务冻结 min(该端点对话额度换算的积分, 付款账户可用余额)；连一次最小调用都不够时 402。付费生成（出图 / 视频 / 配音）的 maxCost 校验不变。见 docs/ip-studio-dialogue-no-continue.md §8。' }
         model: { type: string, nullable: true, description: 可选文本端点（账号允许选择时）；不代表付款授权。 }
+    StudioTurnDoneData:
+      type: object
+      required: [reason, messageId]
+      description: turn.done 事件的 data。reason=chained：这条任务冻结的积分用完，服务端已在同一事务里接上下一条任务（新 turn / run / 助手消息），nextTurnId 是它的 turn，界面保持进行中（docs/ip-studio-dialogue-no-continue.md §3）。
+      properties:
+        reason: { type: string, enum: [completed, waiting_user, handed_off, interrupted, failed, chained] }
+        messageId: { type: string }
+        billing: { type: object, nullable: true }
+        settling: { type: boolean, nullable: true }
+        suggestions: { type: array, nullable: true, items: { type: string } }
+        nextTurnId: { type: string, nullable: true }
     StudioPostMessageResult:
       type: object
       required: [messageId, queueState]

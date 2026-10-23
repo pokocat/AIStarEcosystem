@@ -1,6 +1,5 @@
 package com.aistareco.aep.ipstudio.dialogue.tools;
 
-import com.aistareco.aep.ipstudio.dialogue.DialogueLoop;
 import com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
@@ -55,17 +54,29 @@ public class ChildRuns {
     }
 
     /**
-     * Follow a child run until it is terminal, the turn deadline passes or the user stops. Progress strings come from the
-     * child's own stage and persisted partial output only. Returns the latest row (possibly still running).
+     * How long a dialogue task waits for one child run. Image queues took up to 38 minutes on 2026-10-23 and the
+     * conversation showed 「进行中」 all along; after this the tool reports the child as still running (its result lands on
+     * the canvas by itself) and the model tells the user so (docs/ip-studio-dialogue-no-continue.md §6).
+     */
+    public static final Duration MAX_FOLLOW = Duration.ofMinutes(10);
+
+    /**
+     * Follow a child run until it is terminal, {@link #MAX_FOLLOW} passed or the user stops. Progress strings come from
+     * the child's own stage and persisted partial output only. Returns the latest row (possibly still running).
      */
     public IpRun follow(ToolContext ctx, String runId, Duration poll, Consumer<IpRun> onChange) throws InterruptedException {
+        return follow(ctx, runId, poll, MAX_FOLLOW, onChange);
+    }
+
+    IpRun follow(ToolContext ctx, String runId, Duration poll, Duration maxWait, Consumer<IpRun> onChange) throws InterruptedException {
         String last = null;
+        long until = System.nanoTime() + maxWait.toNanos();
         while (true) {
             IpRun run = runs.findById(runId).orElseThrow(() -> new IllegalStateException("child run missing " + runId));
             String signature = run.getStatus() + "|" + run.getStage() + "|" + run.getPct() + "|" + (run.getOutputJson() == null ? 0 : run.getOutputJson().length());
             if (!signature.equals(last)) { last = signature; onChange.accept(run); }
             if (!IpRun.STATUS_RUNNING.equals(run.getStatus())) return run;
-            if (ctx.stopped() || ctx.budget.remainingTime().compareTo(poll) <= 0) return run;
+            if (ctx.stopped() || until - System.nanoTime() <= poll.toNanos()) return run;
             Thread.sleep(poll.toMillis());
         }
     }
@@ -101,10 +112,6 @@ public class ChildRuns {
         if (stage.equals("done")) return "已完成";
         if (stage.equals("failed")) return "没有完成";
         return "处理中";
-    }
-
-    static DialogueLoop.Reason endFor(IpRun run) {
-        return IpRun.STATUS_RUNNING.equals(run.getStatus()) ? DialogueLoop.Reason.HANDED_OFF : null;
     }
 
     static JsonNode parse(String json) {

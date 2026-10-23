@@ -50,13 +50,19 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Runs one dialogue turn: the bounded agent loop on the parent {@code studio-dialogue} IpRun, then settlement.
+ * Runs one dialogue task: the agent loop on the parent {@code studio-dialogue} IpRun, then settlement.
  *
- * <p>Billing follows the Studio text-run pattern: the turn's hold (rate.maxCost, approved by the user's maxCost) is taken
- * at acceptance; every model call of the turn (loop, plan, history summary) adds real vendor usage; settlement commits the
- * actual credits and releases the rest in the same REQUIRES_NEW transaction that moves the run running → done/failed under
- * the settlement lock. Failures release everything. Child tool runs bill themselves; the parent never adds their cost.
- * Every event is persisted before it is broadcast.
+ * <p>Billing follows the Studio text-run pattern: the task's hold (the endpoint's dialogue ceiling, or the payer's balance
+ * when that is smaller) is taken at acceptance; every model call of the task (loop, plan, history summary) adds real vendor
+ * usage; settlement commits the actual credits and releases the rest in the same REQUIRES_NEW transaction that moves the
+ * run running → done/failed under the settlement lock. Failures release everything. Child tool runs bill themselves; the
+ * parent never adds their cost. Every event is persisted before it is broadcast.
+ *
+ * <p>Task chain (docs/ip-studio-dialogue-no-continue.md §3): a task whose hold cannot pay for the next model call is
+ * settled and, in that same transaction, the next task is created with its own hold from the same payer (same personal
+ * wallet, or a new enterprise authorization for the same member), the thread's active pointers move to it, and it is
+ * dispatched after commit. One hold per task, never topped up; the user never has to say 「继续」. When the payer cannot
+ * fund the next task the chain ends with a recharge note and every hold is settled.
  */
 @Service
 public class StudioDialogueTurnWorker {
@@ -64,6 +70,16 @@ public class StudioDialogueTurnWorker {
     public static final String KIND = "studio-dialogue";
     /** A live turn heartbeats every 20s; older than this it is treated as abandoned (restart / lost thread). */
     static final Duration STALE = Duration.ofMinutes(3);
+
+    /**
+     * A running dialogue task whose worker heartbeat is recent: its hold is owned by that worker and settles with it, so
+     * an age-based hold sweeper must leave it alone (docs/ip-studio-dialogue-no-continue.md §7).
+     */
+    public static boolean isLive(IpRun run, Instant now) {
+        if (run == null || !KIND.equals(run.getKind()) || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return false;
+        Instant beat = run.getHeartbeatAt() == null ? run.getCreatedAt() : run.getHeartbeatAt();
+        return beat != null && beat.isAfter(now.minus(STALE));
+    }
     private static final ScheduledExecutorService TICKER = Executors.newScheduledThreadPool(2, r -> {
         Thread t = new Thread(r, "studio-dialogue-ticker");
         t.setDaemon(true);
@@ -73,6 +89,11 @@ public class StudioDialogueTurnWorker {
     @Autowired(required = false) private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
     @Autowired(required = false) private StudioRunErrorLog errorLog;
     @Autowired(required = false) private StudioExecutionControl executionControl;
+    @Autowired(required = false) private com.aistareco.aep.repository.WalletRepository wallets;
+    @Autowired(required = false) private ObjectProvider<StudioExecutionGate> gates;
+    /** This bean through its proxy, so a chained task is dispatched on the dialogue executor ({@code @Async}). */
+    @Autowired(required = false) private ObjectProvider<StudioDialogueTurnWorker> self;
+    private java.util.function.Consumer<String> dispatcher;
 
     private final IpRunRepository runs;
     private final IpProjectService projects;
@@ -161,128 +182,312 @@ public class StudioDialogueTurnWorker {
 
     // ── Settlement ──────────────────────────────────────────────────────────────────────────────────────────────
 
-    /** What a finished turn reports for settlement: real vendor usage only, plus the plans it proposed. */
+    /**
+     * What a finished task reports for settlement: real vendor usage only, the plans it proposed, how many model calls the
+     * whole chain made so far (the hidden safety net) and the estimated input of the call its hold could not pay for (what
+     * the next task of the chain must at least be able to pay for).
+     */
     record Settlement(DialogueLoop.Outcome outcome, long inputTokens, long outputTokens, AiChatTokenPricing.Rate rate, int modelCalls,
-                      ObjectNode latestPlan, List<ObjectNode> plans, boolean continued) {
+                      ObjectNode latestPlan, List<ObjectNode> plans, int chainModelCalls, long blockedInput) {
         Settlement(DialogueLoop.Outcome outcome, long inputTokens, long outputTokens, AiChatTokenPricing.Rate rate, int modelCalls,
                    ObjectNode latestPlan, List<ObjectNode> plans) {
-            this(outcome, inputTokens, outputTokens, rate, modelCalls, latestPlan, plans, false);
+            this(outcome, inputTokens, outputTokens, rate, modelCalls, latestPlan, plans, modelCalls, 0);
         }
+    }
+
+    /** Why the chain could not hand the work to a next task. */
+    enum Refusal {
+        /** The payer's balance cannot pay for one more model call: a recharge note. */
+        BALANCE,
+        /** The next call cannot fit even a full task hold (or this task made no progress): retrying would loop. */
+        TOO_LARGE,
+        /** Something else refused the next task (enterprise policy, execution budget, member removed …). */
+        OTHER
+    }
+
+    record ChainRefusal(Refusal kind, String message) {}
+
+    /** The next task of the chain, created in the settlement transaction; dispatched after commit. */
+    record Chained(String turnId, String runId, String assistantMessageId) {}
+
+    /** Thrown inside the settlement transaction to roll it back when the next task could not be created. */
+    private static final class ChainRefused extends RuntimeException {
+        final ChainRefusal refusal;
+        ChainRefused(ChainRefusal refusal, Throwable cause) { super(refusal.message(), cause); this.refusal = refusal; }
     }
 
     /**
      * Terminal transition under the settlement lock (running → done/failed is conditional: a run already finalized by
      * someone else is left untouched). Commits actual usage and releases the remainder, or releases all on failure; then
-     * closes the assistant message, clears the thread pointers and appends turn.done in the same transaction.
+     * closes the assistant message, moves or clears the thread pointers and appends turn.done in the same transaction.
+     * A task that stopped because its hold was used up hands the work to the next task of the chain in that transaction.
      */
-    void finish(String runId, Settlement result, Exception error) {
+    void finish(String runId, Settlement result, Exception error) { finish(runId, result, error, null); }
+
+    private void finish(String runId, Settlement result, Exception error, ChainRefusal refusedBefore) {
         DialogueLoop.Outcome outcome = result == null ? null : result.outcome();
         long in = result == null ? 0 : result.inputTokens(), out = result == null ? 0 : result.outputTokens();
         AiChatTokenPricing.Rate rate = result == null ? null : result.rate();
         long actual = 0;
         Exception failure = error;
         if (failure == null && rate != null && in + out > 0) {
-            try { actual = result.continued() ? rate.settleContinued(in, out) : rate.settle(in, out); }
+            // The hold is the limit; the rate's input / output split is not (docs/ip-studio-dialogue-no-continue.md §2).
+            try { actual = rate.settleContinued(in, out); }
             catch (BusinessException e) { failure = e; }
         }
         final long settled = failure == null ? actual : 0;
         final Exception finalError = failure;
-        List<Event> written = tx.execute(s -> {
-            if (enterpriseBilling != null) enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE, runId);
-            IpRun run = runs.lockById(runId).orElse(null);
-            if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return List.of();
-            JsonNode input = parse(run.getInputJson());
-            String reason = finalError != null ? "failed" : wire(outcome, run.isCancelRequested());
-            long cost = run.getCost();
-            ObjectNode output = mapper.createObjectNode();
-            output.put("mock", input.path("mock").asBoolean(false)).put("reason", reason);
-            ObjectNode billing = null;
-            if (finalError == null) {
-                if (settled > cost) throw new IllegalStateException("Dialogue settlement exceeds reservation");
-                if (settled > 0) credits.commitHold(IpRunService.REF_TYPE, runId, settled, "Studio 对话实际结算");
-                if (settled < cost) credits.releaseHold(IpRunService.REF_TYPE, runId, "Studio 对话实际用量结算 · 退回余量");
-                run.setCost(settled);
-                if (rate != null) {
-                    billing = output.putObject("billing").put("inputTokens", in).put("outputTokens", out).put("credits", settled);
-                    billing.put("inputCreditsPerK", rate.inputCreditsPerK()).put("outputCreditsPerK", rate.outputCreditsPerK());
+        final boolean wantChain = refusedBefore == null && finalError == null && outcome != null
+                && outcome.reason() == DialogueLoop.Reason.LIMIT && "budget".equals(outcome.limit());
+        Chained[] chained = new Chained[1];
+        List<Event> written;
+        try {
+            written = tx.execute(s -> {
+                if (enterpriseBilling != null) enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE, runId);
+                IpRun run = runs.lockById(runId).orElse(null);
+                if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return List.of();
+                JsonNode input = parse(run.getInputJson());
+                long cost = run.getCost();
+                ObjectNode output = mapper.createObjectNode();
+                output.put("mock", input.path("mock").asBoolean(false));
+                ObjectNode billing = null;
+                if (finalError == null) {
+                    if (settled > cost) throw new IllegalStateException("Dialogue settlement exceeds reservation");
+                    if (settled > 0) credits.commitHold(IpRunService.REF_TYPE, runId, settled, "Studio 对话实际结算");
+                    if (settled < cost) credits.releaseHold(IpRunService.REF_TYPE, runId, "Studio 对话实际用量结算 · 退回余量");
+                    run.setCost(settled);
+                    if (rate != null) {
+                        billing = output.putObject("billing").put("inputTokens", in).put("outputTokens", out).put("credits", settled);
+                        billing.put("inputCreditsPerK", rate.inputCreditsPerK()).put("outputCreditsPerK", rate.outputCreditsPerK());
+                    }
+                    run.setStatus(IpRun.STATUS_DONE); run.setPct(100);
+                } else {
+                    credits.releaseHold(IpRunService.REF_TYPE, runId, "Studio 对话失败或取消 · 释放冻结");
+                    run.setCost(0); run.setStatus(IpRun.STATUS_FAILED); run.setStage("failed");
+                    run.setErrorCode(finalError instanceof BusinessException b ? b.getCode() : "STUDIO_DIALOGUE_FAILED");
+                    run.setErrorMessage(friendly(finalError));
                 }
-                run.setStatus(IpRun.STATUS_DONE); run.setStage(reason); run.setPct(100);
-            } else {
-                credits.releaseHold(IpRunService.REF_TYPE, runId, "Studio 对话失败或取消 · 释放冻结");
-                run.setCost(0); run.setStatus(IpRun.STATUS_FAILED); run.setStage("failed");
-                run.setErrorCode(finalError instanceof BusinessException b ? b.getCode() : "STUDIO_DIALOGUE_FAILED");
-                run.setErrorMessage(friendly(finalError));
-            }
-            if (result != null) {
-                output.put("modelCalls", result.modelCalls());
-                if (outcome != null) output.put("steps", outcome.steps()).put("toolCalls", outcome.toolCalls());
-                if (outcome != null && outcome.limit() != null) output.put("limit", outcome.limit());
-                if (result.latestPlan() != null) output.set("plan", result.latestPlan());
-                var plans = output.putArray("plans");
-                result.plans().forEach(p -> plans.addObject().put("revision", p.path("revision").asInt()).put("fingerprint", p.path("fingerprint").asText()));
-            }
-            String threadId = input.path("dialogue").path("threadId").asText();
-            String turnId = input.path("turnId").asText();
-            String assistantId = input.path("_exec").path("assistantMessageId").asText();
-            IpDialogueThread thread = threads.lockById(threadId).orElse(null);
-            List<Event> events = List.of();
-            boolean limited = finalError == null && outcome != null && outcome.reason() == DialogueLoop.Reason.LIMIT;
-            // A turn stopped by a limit offers 「继续」 as a one-tap reply (the same follow-up mechanism as an execution's
-            // completion summary: saved on the reply, sent in turn.done), instead of telling the user what to type.
-            List<String> followUps = limited ? limitSuggestions(outcome.limit()) : List.of();
-            if (thread != null) {
-                IpDialogueMessage message = messages.findById(assistantId).orElse(null);
-                List<StudioDialogueStore.Pending> pending = new ArrayList<>();
-                if (message != null) {
-                    // Not "text": the asset-library collector files any run's output.text as a saved text asset, and a
-                    // chat reply is conversation, not a work product. The full reply stays on the message.
-                    output.put("reply", excerpt(message.getText(), 16000));
-                    message.setStatus(finalError != null ? IpDialogueMessage.FAILED : "interrupted".equals(reason) ? IpDialogueMessage.INTERRUPTED : IpDialogueMessage.DONE);
-                    message.setSettling(false);
-                    if (billing != null) message.setBillingJson(billing.toString());
-                    if (!followUps.isEmpty()) message.setRequestJson(mapper.createObjectNode().set("suggestions", mapper.valueToTree(followUps)).toString());
-                    ArrayNode blocks = store.blocks(message);
-                    for (JsonNode b : blocks) if (b instanceof ObjectNode o && "tool_call".equals(b.path("type").asText())
-                            && b.path("settling").asBoolean(false) && !b.hasNonNull("childRunId")) o.put("settling", false);
-                    store.saveBlocks(message, blocks);
+                String threadId = input.path("dialogue").path("threadId").asText();
+                String turnId = input.path("turnId").asText();
+                String assistantId = input.path("_exec").path("assistantMessageId").asText();
+                IpDialogueThread thread = threads.lockById(threadId).orElse(null);
+                ChainRefusal refusal = refusedBefore;
+                if (wantChain && !run.isCancelRequested() && thread != null && turnId.equals(thread.getActiveTurnId())) {
+                    var full = dialogueRate(input, rate);
+                    refusal = precheckChain(run, result, full);
+                    if (refusal == null) {
+                        try { chained[0] = chainNext(run, input, thread, result, full); }
+                        catch (RuntimeException e) {
+                            log.info("[dialogue] next task of the chain refused run={} reason={}", runId, e.toString());
+                            throw new ChainRefused(refusalOf(e), e);
+                        }
+                    }
                 }
-                String note = finalError != null ? "本轮没有完成：" + friendly(finalError) : limited ? limitNote(outcome.limit()) : null;
-                if (note != null) {
-                    messages.save(IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(threadId)
-                            .seq(StudioDialogueStore.nextMessageSeq(thread)).turnId(turnId).runId(runId).role("system").text(note)
-                            .blocksJson("[]").status(finalError != null ? IpDialogueMessage.FAILED : IpDialogueMessage.DONE).createdAt(Instant.now()).build());
+                if (outcome != null && "safeguard".equals(outcome.limit()))
+                    log.error("[dialogue] chain safety net reached thread={} rootRun={} run={} chainModelCalls={} startedAt={}", threadId,
+                            input.path("_exec").path("chainOf").asText(runId), runId, result.chainModelCalls(),
+                            input.path("_exec").path("chainStartedAt").asText(String.valueOf(run.getCreatedAt())));
+                String reason = finalError != null ? "failed" : chained[0] != null ? "chained" : wire(outcome, run.isCancelRequested());
+                output.put("reason", reason);
+                if (finalError == null) run.setStage(reason);
+                if (result != null) {
+                    output.put("modelCalls", result.modelCalls()).put("chainModelCalls", result.chainModelCalls());
+                    if (outcome != null) output.put("steps", outcome.steps()).put("toolCalls", outcome.toolCalls());
+                    if (outcome != null && outcome.limit() != null) output.put("limit", outcome.limit());
+                    if (refusal != null) output.put("chainRefused", refusal.kind().name().toLowerCase(Locale.ROOT));
+                    if (chained[0] != null) output.put("chainedRunId", chained[0].runId());
+                    if (result.latestPlan() != null) output.set("plan", result.latestPlan());
+                    var plans = output.putArray("plans");
+                    result.plans().forEach(p -> plans.addObject().put("revision", p.path("revision").asInt()).put("fingerprint", p.path("fingerprint").asText()));
                 }
-                if (turnId.equals(thread.getActiveTurnId())) { thread.setActiveTurnId(null); thread.setActiveRunId(null); }
-                TurnDoneData done = new TurnDoneData(reason, assistantId, billing == null ? null : mapper.convertValue(billing, TokenBilling.class), false,
-                        followUps.isEmpty() || message == null ? null : followUps);
-                pending.add(new StudioDialogueStore.Pending(turnId, runId, thread.getActiveExecutionId(), StudioDialogueEventTypes.TURN_DONE, mapper.valueToTree(done)));
-                events = store.appendLocked(thread, pending);
-            }
-            try { run.setOutputJson(mapper.writeValueAsString(output)); } catch (Exception e) { throw new IllegalStateException(e); }
-            if (finalError != null && errorLog != null) errorLog.attach(run, finalError);
-            run.setFinishedAt(Instant.now()); run.setHeartbeatAt(Instant.now());
-            runs.save(run);
-            if (enterpriseBilling != null) enterpriseBilling.complete(IpRunService.REF_TYPE, runId);
-            return events;
-        });
+                List<Event> events = List.of();
+                boolean safeguard = finalError == null && outcome != null && "safeguard".equals(outcome.limit());
+                if (thread != null) {
+                    IpDialogueMessage message = messages.findById(assistantId).orElse(null);
+                    List<StudioDialogueStore.Pending> pending = new ArrayList<>();
+                    if (message != null) {
+                        // Not "text": the asset-library collector files any run's output.text as a saved text asset, and a
+                        // chat reply is conversation, not a work product. The full reply stays on the message.
+                        output.put("reply", excerpt(message.getText(), 16000));
+                        message.setStatus(finalError != null || safeguard ? IpDialogueMessage.FAILED
+                                : "interrupted".equals(reason) ? IpDialogueMessage.INTERRUPTED : IpDialogueMessage.DONE);
+                        message.setSettling(false);
+                        if (billing != null) message.setBillingJson(billing.toString());
+                        ArrayNode blocks = store.blocks(message);
+                        for (JsonNode b : blocks) if (b instanceof ObjectNode o && "tool_call".equals(b.path("type").asText())
+                                && b.path("settling").asBoolean(false) && !b.hasNonNull("childRunId")) o.put("settling", false);
+                        store.saveBlocks(message, blocks);
+                    }
+                    String note = finalError != null ? "本轮没有完成：" + friendly(finalError)
+                            : chained[0] != null || "interrupted".equals(reason) ? null
+                            : refusal != null ? refusalNote(refusal)
+                            : outcome != null && outcome.reason() == DialogueLoop.Reason.LIMIT ? limitNote(outcome.limit()) : null;
+                    if (note != null) {
+                        String notice = refusal != null && refusal.kind() == Refusal.BALANCE ? rechargeNotice(input) : null;
+                        messages.save(IpDialogueMessage.builder().id("IDM-" + StudioDialogueStore.uuid20()).threadId(threadId)
+                                .seq(StudioDialogueStore.nextMessageSeq(thread)).turnId(turnId).runId(runId).role("system").text(note)
+                                .requestJson(notice == null ? null : mapper.createObjectNode().put("notice", notice).toString())
+                                .blocksJson("[]").status(finalError != null || safeguard ? IpDialogueMessage.FAILED : IpDialogueMessage.DONE)
+                                .createdAt(Instant.now()).build());
+                    }
+                    if (chained[0] == null && turnId.equals(thread.getActiveTurnId())) { thread.setActiveTurnId(null); thread.setActiveRunId(null); }
+                    TurnDoneData done = new TurnDoneData(reason, assistantId, billing == null ? null : mapper.convertValue(billing, TokenBilling.class), false,
+                            null, chained[0] == null ? null : chained[0].turnId());
+                    pending.add(new StudioDialogueStore.Pending(turnId, runId, thread.getActiveExecutionId(), StudioDialogueEventTypes.TURN_DONE, mapper.valueToTree(done)));
+                    events = store.appendLocked(thread, pending);
+                }
+                try { run.setOutputJson(mapper.writeValueAsString(output)); } catch (Exception e) { throw new IllegalStateException(e); }
+                if (finalError != null && errorLog != null) errorLog.attach(run, finalError);
+                run.setFinishedAt(Instant.now()); run.setHeartbeatAt(Instant.now());
+                runs.save(run);
+                if (enterpriseBilling != null) enterpriseBilling.complete(IpRunService.REF_TYPE, runId);
+                return events;
+            });
+        } catch (ChainRefused e) {
+            // Everything of the attempt rolled back (the old hold is still active, the thread still points at this task):
+            // settle once more without a next task, and say why.
+            finish(runId, result, error, e.refusal);
+            return;
+        }
         store.broadcast(written);
+        if (chained[0] != null) dispatch(chained[0].runId());
+    }
+
+    /** The dialogue rate the chain was accepted with (full ceiling); older tasks only kept their (possibly smaller) snapshot. */
+    private AiChatTokenPricing.Rate dialogueRate(JsonNode input, AiChatTokenPricing.Rate snapshot) {
+        JsonNode node = input.path("_exec").path("dialogueRate");
+        if (node.isObject()) try { return mapper.treeToValue(node, AiChatTokenPricing.Rate.class); }
+        catch (Exception e) { log.warn("[dialogue] unreadable dialogueRate snapshot, using the task's own rate: {}", e.toString()); }
+        return snapshot;
+    }
+
+    /**
+     * Can a next task do anything? It must at least pay for the call this task could not: that call's estimated input
+     * plus the minimum output, from the payer's balance after this task settled (locked in this transaction).
+     */
+    private ChainRefusal precheckChain(IpRun run, Settlement result, AiChatTokenPricing.Rate full) {
+        if (full == null) return new ChainRefusal(Refusal.TOO_LARGE, "计费配置不可读");
+        long minimum = full.cost(Math.max(1, result.blockedInput()), DialogueLoop.MIN_OUTPUT_TOKENS);
+        if (result.modelCalls() == 0 || full.maxCost() < minimum) {
+            log.warn("[dialogue] next task could not fit a full hold run={} modelCalls={} blockedInput={} minimum={} ceiling={}",
+                    run.getId(), result.modelCalls(), result.blockedInput(), minimum, full.maxCost());
+            return new ChainRefusal(Refusal.TOO_LARGE, "这次要处理的内容太多");
+        }
+        long balance = availableBalance(run);
+        if (balance < minimum) return new ChainRefusal(Refusal.BALANCE, "积分不够了");
+        return null;
+    }
+
+    /** The payer's available balance (the wallet this task was frozen on), read under the settlement lock. */
+    private long availableBalance(IpRun run) {
+        com.aistareco.aep.model.Wallet wallet = null;
+        if (wallets != null && run.getBillingWalletId() != null) wallet = wallets.findById(run.getBillingWalletId()).orElse(null);
+        if (wallet == null && run.getEnterpriseId() == null) wallet = credits.getOrCreateWallet(run.getOwnerUserId());
+        return wallet == null ? 0 : wallet.getTotalBalance();
+    }
+
+    private static ChainRefusal refusalOf(RuntimeException e) {
+        // CreditService refuses a hold the wallet cannot cover with 402; an execution's stage budget also answers 402, but
+        // with its own code and words (STUDIO_PLAN_BUDGET_EXCEEDED), which are kept.
+        if (e instanceof org.springframework.web.server.ResponseStatusException r && r.getStatusCode().value() == HttpStatus.PAYMENT_REQUIRED.value())
+            return new ChainRefusal(Refusal.BALANCE, "积分不够了");
+        if (e instanceof BusinessException b && b.getMessage() != null && !b.getMessage().isBlank()) return new ChainRefusal(Refusal.OTHER, b.getMessage());
+        if (e instanceof org.springframework.web.server.ResponseStatusException r && r.getReason() != null) return new ChainRefusal(Refusal.OTHER, r.getReason());
+        return new ChainRefusal(Refusal.OTHER, "服务暂时没有接上");
+    }
+
+    /**
+     * Create the next task of the chain inside the settlement transaction: the same request (input messages, skill, stage,
+     * payer, endpoint and prices), a new turn / run / assistant message, a hold of min(dialogue ceiling, balance) from
+     * the same payer, and the thread pointers moved to it. The previous authorization is completed first (its hold is
+     * settled by now), so an enterprise member's active-job count does not double. Throws when anything refuses.
+     */
+    private Chained chainNext(IpRun run, JsonNode input, IpDialogueThread thread, Settlement result, AiChatTokenPricing.Rate full) {
+        long balance = availableBalance(run);
+        long amount = Math.min(full.maxCost(), balance);
+        AiChatTokenPricing.Rate next = full.withinBudget(amount);
+        amount = next.maxCost();
+        String turnId = "TRN-" + StudioDialogueStore.uuid20(), nextRunId = "IPR-" + StudioDialogueStore.uuid20(), assistantId = "IDM-" + StudioDialogueStore.uuid20();
+        ObjectNode nextInput = input.deepCopy();
+        nextInput.put("turnId", turnId);
+        ObjectNode exec = nextInput.withObject("/_exec");
+        String root = exec.path("chainOf").asText(run.getId());
+        int index = exec.path("chainIndex").asInt(0) + 1;
+        ArrayNode chainRuns = mapper.createArrayNode();
+        exec.path("chainRunIds").forEach(chainRuns::add);
+        // A legacy 「继续」 continuation (continuationOf) is part of the same request: its operations stay listed.
+        if (chainRuns.isEmpty() && exec.hasNonNull("continuationOf")) chainRuns.add(exec.path("continuationOf").asText());
+        chainRuns.add(run.getId());
+        exec.set("chainRunIds", chainRuns);
+        exec.put("chainOf", root).put("chainIndex", index).put("chainModelCalls", result.chainModelCalls())
+                .put("chainStartedAt", exec.path("chainStartedAt").asText(String.valueOf(run.getCreatedAt() == null ? Instant.now() : run.getCreatedAt())))
+                .put("holdTotal", amount).put("unitCost", amount).put("assistantMessageId", assistantId);
+        exec.set("tokenPricing", mapper.valueToTree(next));
+        exec.set("dialogueRate", mapper.valueToTree(full));
+        exec.putArray("childRunIds");
+        exec.remove(List.of("continueUntilDone", "continuationOf", "attributedExecutionId", "attributedStage"));
+        String attributed = input.path("_exec").path("attributedExecutionId").asText(null);
+        var gate = gates == null ? null : gates.getIfAvailable();
+        if (attributed != null && gate != null) {
+            String stage = gate.attributeTurn(run.getOwnerUserId(), run.getProjectId(), attributed, nextRunId, amount);
+            if (stage != null) exec.put("attributedExecutionId", attributed).put("attributedStage", stage);
+        }
+        BillingSelection billing = input.hasNonNull("billing") ? mapper.convertValue(input.path("billing"), BillingSelection.class) : null;
+        String endpointId = exec.path("endpointId").asText(null);
+        if (enterpriseBilling != null) enterpriseBilling.complete(IpRunService.REF_TYPE, run.getId());
+        var account = enterpriseBilling == null ? null : enterpriseBilling.reserve(run.getOwnerUserId(), billing, IpRunService.REF_TYPE, nextRunId,
+                endpointId, amount, "Studio 对话");
+        if (enterpriseBilling == null && amount > 0) credits.hold(run.getOwnerUserId(), amount, IpRunService.REF_TYPE, nextRunId, "Studio 对话");
+        Instant now = Instant.now();
+        String rootMessage = input.path("dialogue").path("messageId").asText(run.getClientRequestId());
+        IpRun nextRun = IpRun.builder().id(nextRunId).projectId(run.getProjectId()).ownerUserId(run.getOwnerUserId()).nodeId(run.getNodeId())
+                .kind(KIND).status(IpRun.STATUS_RUNNING).stage("queued").cost(amount)
+                .clientRequestId(rootMessage + ":" + index).inputFingerprint(run.getInputFingerprint()).inputJson(nextInput.toString())
+                .outputJson("{}").createdAt(now).heartbeatAt(now).build();
+        if (account != null) {
+            nextRun.setBillingWalletId(account.walletId()); nextRun.setEnterpriseId(account.enterpriseId());
+            nextRun.setMembershipId(account.membershipId()); nextRun.setBillingAuthorizationId(account.billingAuthorizationId());
+        }
+        runs.save(nextRun);
+        messages.save(IpDialogueMessage.builder().id(assistantId).threadId(thread.getId()).seq(StudioDialogueStore.nextMessageSeq(thread))
+                .turnId(turnId).runId(nextRunId).role("assistant").text("").blocksJson("[]").settling(true).status(IpDialogueMessage.STREAMING)
+                .createdAt(now).updatedAt(now).build());
+        thread.setActiveTurnId(turnId); thread.setActiveRunId(nextRunId); thread.setUpdatedAt(now);
+        threads.save(thread);
+        log.info("[dialogue] chained run={} → {} thread={} root={} index={} hold={} chainModelCalls={}", run.getId(), nextRunId, thread.getId(),
+                root, index, amount, result.chainModelCalls());
+        return new Chained(turnId, nextRunId, assistantId);
+    }
+
+    private void dispatch(String runId) {
+        try {
+            if (dispatcher != null) dispatcher.accept(runId);
+            else if (self != null && self.getIfAvailable() != null) self.getObject().execute(runId);
+            else execute(runId);
+        } catch (RuntimeException e) { reject(runId, e); }
+    }
+
+    /** Where the recharge link of a 「积分不够了」 note goes: the payer of this chain. */
+    private static String rechargeNotice(JsonNode input) {
+        return "enterprise".equals(input.path("billing").path("mode").asText()) ? "recharge-enterprise" : "recharge";
     }
 
     /** Abandoned turn (no heartbeat for {@link #STALE}): finish failed and release, exactly like a failure. */
     public boolean expireIfStale(String runId) {
         IpRun run = runs.findById(runId).orElse(null);
         if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) return false;
-        Instant beat = run.getHeartbeatAt() == null ? run.getCreatedAt() : run.getHeartbeatAt();
-        if (beat != null && beat.isAfter(Instant.now().minus(STALE))) return false;
+        if (isLive(run, Instant.now())) return false;
         finish(runId, null, new BusinessException(HttpStatus.REQUEST_TIMEOUT, "IP_RUN_TIMEOUT", "这一轮回复中断了（服务重启或连接丢失），冻结积分已退回，可以再发一次"));
         return true;
     }
 
     static String wire(DialogueLoop.Outcome outcome, boolean cancelled) {
         if (outcome == null) return cancelled ? "interrupted" : "failed";
+        if (cancelled && outcome.reason() == DialogueLoop.Reason.LIMIT) return "interrupted";
         return switch (outcome.reason()) {
             case COMPLETED -> "completed";
-            case WAITING_USER, LIMIT -> "waiting_user";
+            case WAITING_USER -> "waiting_user";
+            case LIMIT -> "safeguard".equals(outcome.limit()) ? "failed" : "waiting_user";
             case HANDED_OFF -> "handed_off";
             case INTERRUPTED -> "interrupted";
         };
@@ -298,27 +503,26 @@ public class StudioDialogueTurnWorker {
             throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LOCKED", "这条对话正在制作，制作结束前不能换方法");
     }
 
-    /** The one-tap reply offered under a turn that stopped at a limit. */
-    static final String CONTINUE = "继续";
-
     /**
-     * The note after a turn stopped at a limit. It says why, in one line; what to do next is the 「继续」 button
-     * ({@link #limitSuggestions}), not an instruction to type something.
+     * The note after a task that ended at a protection (docs/ip-studio-dialogue-no-continue.md §2). One line, no 「继续」:
+     * there is nothing the user has to type, the work done so far is on the canvas.
      */
     static String limitNote(String limit) {
         return switch (String.valueOf(limit)) {
-            case "time" -> "这次处理时间较长，已暂停。已完成的内容已保留，点「继续」接着做。";
-            case "tokens" -> "本轮对话已达到用量保护上限，已暂停。已完成的内容已保留，点「继续」接着做；后续按实际用量计费。";
-            case "budget" -> "本次确认的对话预算已用完，已完成的内容已保留。点「继续」确认下一次对话费用后接着做。";
-            case "loop" -> "这一步重复了，先停在这里。";
-            case "protocol" -> "模型返回的执行格式有误，自动修复后仍未成功。已完成的内容已保留，请稍后重试。";
-            default -> "这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。"; // steps, calls (all model calls), tools
+            case "loop" -> "这一步一直在重复，先停在这里，已经做好的都留在画布上。";
+            case "protocol" -> "模型返回的执行格式有误，自动修复后仍未成功。已经做好的都留在画布上，请稍后重试。";
+            case "safeguard" -> "这次没做完，已经做好的都留在画布上。";
+            default -> "这次没做完，已经做好的都留在画布上。"; // budget without a next task (should not happen): same words
         };
     }
 
-    /** 「继续」 for every limit except a format failure, where continuing would repeat the same unparseable reply. */
-    static List<String> limitSuggestions(String limit) {
-        return "protocol".equals(limit) ? List.of() : List.of(CONTINUE);
+    /** The note when the chain could not start its next task. */
+    static String refusalNote(ChainRefusal refusal) {
+        return switch (refusal.kind()) {
+            case BALANCE -> "积分不够了，已经做好的都留在画布上。充值后跟我说一声，我接着做。";
+            case TOO_LARGE -> "这次要处理的内容太多，没能做完，已经做好的都留在画布上。可以把要求拆小一点再发给我。";
+            case OTHER -> "接下来的部分没能开始：" + refusal.message() + "。已经做好的都留在画布上。";
+        };
     }
 
     static String friendly(Exception error) {
@@ -355,7 +559,8 @@ public class StudioDialogueTurnWorker {
         private long cachedDocAt;
 
         Settlement settlement(DialogueLoop.Outcome outcome) {
-            return new Settlement(outcome, budget.inputTokens(), budget.outputTokens(), rate, budget.modelCalls(), latestPlan, List.copyOf(plans), budget.continued());
+            return new Settlement(outcome, budget.inputTokens(), budget.outputTokens(), rate, budget.modelCalls(), latestPlan, List.copyOf(plans),
+                    budget.chainModelCalls(), budget.lastBlockedInput());
         }
 
         Turn(IpRun run, AtomicBoolean stopFlag) throws Exception {
@@ -373,9 +578,12 @@ public class StudioDialogueTurnWorker {
             this.executionId = exec.hasNonNull("executionId") ? exec.path("executionId").asText() : thread.getActiveExecutionId();
             this.rate = exec.hasNonNull("tokenPricing") ? mapper.treeToValue(exec.path("tokenPricing"), AiChatTokenPricing.Rate.class) : null;
             int perCall = exec.path("maxTokens").asInt(4096);
-            this.budget = mock || rate == null ? DialogueLoop.TurnBudget.unmetered(perCall, clock)
-                    : exec.path("continueUntilDone").asBoolean(false) ? DialogueLoop.TurnBudget.continued(rate, perCall, clock)
-                    : DialogueLoop.TurnBudget.standard(rate.maxInputTokens(), rate.maxOutputTokens(), perCall, clock);
+            // A later task of a chain carries on the chain's safety net (calls so far, start of the first task).
+            int priorCalls = exec.path("chainModelCalls").asInt(0);
+            Instant chainStart = chainStart(exec, run);
+            // Every metered task is bounded by its hold only; an old 「继续」 continuation (continueUntilDone) is the same.
+            this.budget = mock || rate == null ? DialogueLoop.TurnBudget.unmetered(perCall, clock, priorCalls, chainStart)
+                    : DialogueLoop.TurnBudget.metered(rate, perCall, clock, priorCalls, chainStart);
             if (mock) this.endpoint = null;
             // D08: the rule acceptance used (default binding, or an enabled candidate), so an accepted turn is runnable.
             else this.endpoint = models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, exec.path("endpointId").asText(null), "studio")
@@ -410,7 +618,7 @@ public class StudioDialogueTurnWorker {
             vars.put("tools", tools.describe(mapper));
             vars.put("context", DialogueCanvasDigest.build(doc(), pinned, attachments));
             vars.put("history", history(thread, firstSeq));
-            vars.put("steering", continuationContext());
+            vars.put("steering", chainContext());
             vars.put("input", inputText);
             String system = exec.path("prompt").path("system").asText("");
             String user = PromptService.fill(exec.path("prompt").path("user").asText(""), vars);
@@ -519,21 +727,60 @@ public class StudioDialogueTurnWorker {
             return out.toString();
         }
 
-        /** Keep the original task and completed tool results explicit when the user resumes, even after history compaction. */
-        String continuationContext() {
-            if (!exec.path("continueUntilDone").asBoolean(false)) return "（无）";
-            var source = runs.findById(exec.path("continuationOf").asText("")).orElse(null);
-            if (source == null || !userId.equals(source.getOwnerUserId()) || !projectId.equals(source.getProjectId())
-                    || !threadId.equals(source.getNodeId()) || !KIND.equals(source.getKind())) return "（无）";
-            JsonNode input = parse(source.getInputJson());
-            StringBuilder out = new StringBuilder("用户已明确确认继续未完成的同一任务，沿用已完成的结果，从尚未完成的步骤接着做。\n原任务：")
-                    .append(input.path("prompt").asText()).append("\n已执行的操作（服务端记录，不要重复执行）：");
-            messages.findById(input.path("_exec").path("assistantMessageId").asText("")).ifPresent(message -> {
-                for (JsonNode block : store.blocks(message)) if ("tool_call".equals(block.path("type").asText()) && "done".equals(block.path("status").asText()))
-                    out.append('\n').append(block.path("toolName").asText()).append("：").append(block.path("result").path("summary").asText())
-                            .append("；对象 ").append(block.path("result").path("nodeIds")).append("；已有任务 ").append(block.path("childRunId").asText("无"));
-            });
-            return excerpt(out.toString(), 8000);
+        /**
+         * A later task of a chain (or an old 「继续」 continuation) carries on the same user request: what every earlier task
+         * of the chain already did, in order — operations with their result, objects and child tasks, what it told the
+         * user, and the adjustments the user sent meanwhile — so nothing is done twice (docs/ip-studio-dialogue-no-continue.md
+         * §3). The original request itself is {@code {{input}}}.
+         */
+        String chainContext() {
+            List<String> chain = new ArrayList<>();
+            exec.path("chainRunIds").forEach(id -> chain.add(id.asText()));
+            if (chain.isEmpty() && exec.path("continueUntilDone").asBoolean(false) && exec.hasNonNull("continuationOf"))
+                chain.add(exec.path("continuationOf").asText()); // legacy: one source task, still readable
+            if (chain.isEmpty()) return "（无）";
+            Set<String> inChain = new LinkedHashSet<>(chain);
+            List<String> sections = new ArrayList<>();
+            int part = 0;
+            for (String id : chain) {
+                var source = runs.findById(id).orElse(null);
+                if (source == null || !userId.equals(source.getOwnerUserId()) || !projectId.equals(source.getProjectId())
+                        || !threadId.equals(source.getNodeId()) || !KIND.equals(source.getKind())) continue;
+                StringBuilder out = new StringBuilder("第 ").append(++part).append(" 段已做的：");
+                var message = messages.findById(parse(source.getInputJson()).path("_exec").path("assistantMessageId").asText("")).orElse(null);
+                int ops = 0;
+                if (message != null) {
+                    for (JsonNode block : store.blocks(message)) {
+                        if (!"tool_call".equals(block.path("type").asText())) continue;
+                        String status = block.path("status").asText();
+                        if ("failed".equals(status) && "STUDIO_TURN_BUDGET".equals(block.path("errorCode").asText())) continue; // redone here
+                        ops++;
+                        out.append("\n- ").append(block.path("toolName").asText()).append("（").append("done".equals(status) ? "完成" : "running".equals(status) ? "已提交、在后台进行" : "没有完成")
+                                .append("）：").append(block.path("result").path("summary").asText(block.path("errorMessage").asText("")));
+                        JsonNode nodes = block.path("result").path("nodeIds");
+                        if (nodes.isArray() && !nodes.isEmpty()) out.append("；对象 ").append(nodes);
+                        if (block.hasNonNull("childRunId")) out.append("；任务 ").append(block.path("childRunId").asText());
+                    }
+                    String said = message.getText() == null ? "" : message.getText().strip();
+                    if (!said.isEmpty()) out.append("\n- 已经对用户说过：").append(said.length() > 600 ? said.substring(said.length() - 600) : said);
+                }
+                if (ops == 0 && (message == null || message.getText() == null || message.getText().isBlank())) out.append("（还没有做任何操作）");
+                sections.add(out.toString());
+            }
+            StringBuilder steeringLines = new StringBuilder();
+            long firstSeq = Long.MAX_VALUE;
+            for (JsonNode id : exec.path("userMessageIds")) firstSeq = Math.min(firstSeq, messages.findById(id.asText()).map(IpDialogueMessage::getSeq).orElse(Long.MAX_VALUE));
+            if (firstSeq != Long.MAX_VALUE)
+                for (var m : messages.findByThreadIdAndSeqGreaterThanOrderBySeqAsc(threadId, firstSeq, PageRequest.of(0, 400)))
+                    if ("user".equals(m.getRole()) && IpDialogueMessage.APPLIED.equals(m.getStatus()) && inChain.contains(m.getRunId()))
+                        steeringLines.append("\n- ").append(describe(m));
+            StringBuilder out = new StringBuilder("这是同一条用户消息的接续：前面的任务已经做了下面这些（服务端记录，不是你说过的话的原文）。不要重复执行，接着把没做完的做完；做完就直接告诉用户结果。\n");
+            String body = String.join("\n", sections);
+            // Long chains: keep the start (what was created first) and the most recent work; the middle is summarized away.
+            if (body.length() > 20000) body = body.substring(0, 6000) + "\n…（中间的操作省略，都已完成）…\n" + body.substring(body.length() - 14000);
+            out.append(body);
+            if (steeringLines.length() > 0) out.append("\n用户中途发来的调整（已经收到）：").append(steeringLines);
+            return out.toString();
         }
 
         boolean stopped() {
@@ -864,4 +1111,14 @@ public class StudioDialogueTurnWorker {
     };
 
     void useClock(Clock clock) { this.clock = clock; }
+
+    /** Tests: run a chained task here instead of on the dialogue executor. */
+    void useDispatcher(java.util.function.Consumer<String> dispatcher) { this.dispatcher = dispatcher; }
+
+    /** When the chain of this task started (its first task's creation); a task outside any chain starts its own. */
+    static Instant chainStart(JsonNode exec, IpRun run) {
+        String at = exec.path("chainStartedAt").asText(null);
+        if (at != null) try { return Instant.parse(at); } catch (RuntimeException ignored) { /* fall through to the run's own start */ }
+        return run.getCreatedAt();
+    }
 }

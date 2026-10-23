@@ -106,9 +106,11 @@ public class ViewImagesTool implements StudioDialogueTool {
             log.info("[dialogue] view_images over the visual budget run={} retry at {}px", ctx.runId, StudioVisualContext.BUDGET_EDGES[StudioVisualContext.BUDGET_EDGES.length - 1]);
             reply = look(StudioVisualContext.shrink(parts, StudioVisualContext.BUDGET_EDGES[StudioVisualContext.BUDGET_EDGES.length - 1]), images, ctx);
         }
-        if (reply == null) return ToolRun.failed("STUDIO_TURN_BUDGET", "本轮额度不够看图",
-                DialogueTools.fail(ctx.budget.continued() ? "已批准的对话费用不足以看这些图，需要用户确认下一次费用；不要凭名称描述画面。"
-                        : "本轮的模型额度不足以看这些图。告诉用户回复后继续，或一次少看几张；不要凭名称描述画面")).settlingInTurn();
+        // This task's hold cannot pay for the look: the task ends here and the next task of the chain looks again
+        // (docs/ip-studio-dialogue-no-continue.md §3). Nothing is asked of the user.
+        if (reply == null) return ToolRun.failed("STUDIO_TURN_BUDGET", "这一步换到下一段接着做",
+                DialogueTools.fail("本条任务冻结的积分用完了，看图会在接下来的任务里重新做；不要凭名称描述画面")).settlingInTurn()
+                .withEnd(com.aistareco.aep.ipstudio.dialogue.DialogueLoop.Reason.LIMIT);
         var body = DialogueTools.OM.createObjectNode();
         var seen = body.putArray("objects");
         for (JsonNode item : snapshot) {

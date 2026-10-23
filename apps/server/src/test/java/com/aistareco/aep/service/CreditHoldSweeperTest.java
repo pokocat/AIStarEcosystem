@@ -51,6 +51,24 @@ class CreditHoldSweeperTest {
         sweeper.sweep();verify(creditService,never()).releaseHold(eq(ref),eq("active"),anyString());verify(creditService).releaseHold(eq(ref),eq("missing"),anyString());
     }
 
+    /**
+     * docs/ip-studio-dialogue-no-continue.md §7: a dialogue task whose worker still heartbeats owns its hold (a chain can
+     * run up to two hours); one without a heartbeat is not protected here (the dialogue reconciler expires it).
+     */
+    @Test void aLiveDialogueTaskKeepsItsHoldWhileAnAbandonedOneIsReleased() {
+        var runs=mock(com.aistareco.aep.ipstudio.repository.IpRunRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(sweeper,"ipRuns",runs);
+        String ref=com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE;
+        when(holdRepo.findByStatusAndCreatedAtBefore(any(),any())).thenReturn(List.of(hold("live",ref,"live"),hold("dead",ref,"dead")));
+        when(runs.findById("live")).thenReturn(java.util.Optional.of(com.aistareco.aep.ipstudio.model.IpRun.builder().id("live").kind("studio-dialogue")
+                .status("running").heartbeatAt(Instant.now()).createdAt(Instant.EPOCH).build()));
+        when(runs.findById("dead")).thenReturn(java.util.Optional.of(com.aistareco.aep.ipstudio.model.IpRun.builder().id("dead").kind("studio-dialogue")
+                .status("running").heartbeatAt(Instant.now().minusSeconds(600)).createdAt(Instant.EPOCH).build()));
+        sweeper.sweep();
+        verify(creditService,never()).releaseHold(eq(ref),eq("live"),anyString());
+        verify(creditService).releaseHold(eq(ref),eq("dead"),anyString());
+    }
+
     private CreditHoldRepository holdRepo;
     private CreditService creditService;
     private CreditHoldSweeper sweeper;

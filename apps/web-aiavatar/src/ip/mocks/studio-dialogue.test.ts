@@ -237,6 +237,31 @@ test('写剧本与文案 writes a short draft straight onto the canvas: one text
   expect((await mockDialogueConversation('copy')).thread.skillKey).toBe('script-writing');
 });
 
+// docs/ip-studio-dialogue-no-continue.md §3: the demo shows a job larger than one task's hold the way the server runs
+// it: turn.done 「chained」 with the next turn, the conversation never idle in between, a second reply that goes on, and
+// no 「继续」 anywhere.
+test('a long writing job is carried on by the next task without anything to type', async () => {
+  const state = await mockDialogueConversation('long');
+  let store: DialogueStore = dialogueReducer(emptyDialogueStore(), { type: 'snapshot', state, mode: 'replace' });
+  const events: StudioDialogueEvent[] = [];
+  const idle: number[] = [];
+  const stop = mockDialogueSubscribe('long', state.thread.id, 0, e => {
+    events.push(e); store = dialogueReducer(store, { type: 'event', event: e });
+    if (!store.activeTurnId) idle.push(e.seq);
+  });
+  await mockDialoguePost('long', state.thread.id, { clientMessageId: 'l1', text: '写一个三集短剧剧本并拆镜', skillKey: 'script-writing' });
+  await until(events, e => e.type === 'turn.done' && (e.data as { reason: string }).reason === 'completed');
+  stop();
+  const done = events.filter(e => e.type === 'turn.done').map(e => e.data as { reason: string; nextTurnId?: string; suggestions?: string[] });
+  expect(done.map(d => d.reason)).toEqual(['chained', 'completed']);
+  expect(done[0].nextTurnId).toBeTruthy();
+  expect(idle).toEqual([events[events.length - 1].seq]);
+  expect(store.messages.filter(m => m.role === 'assistant')).toHaveLength(2);
+  expect(events.filter(e => e.type === 'node.upsert')).toHaveLength(2);
+  expect(JSON.stringify(events)).not.toContain('继续');
+  expect(store.messages.some(m => m.role === 'system')).toBe(false);
+});
+
 test('a canvas whose recreation finished while it was closed: nodes come back from the execution, not from pruned events', async () => {
   const seeded = mockSeedCompletedExecution('closed');
   const state = await mockDialogueConversation('closed');

@@ -16,7 +16,7 @@ public class ReadProductionStatusTool implements StudioDialogueTool {
     private final IpProjectService projects;
     private final IpRunRepository runs;
     public ReadProductionStatusTool(IpProjectService projects, IpRunRepository runs) { this.projects=projects;this.runs=runs; }
-    public String name(){return "read_production_status";}
+    public String name() { return "read_production_status"; }
     public String title(){return "查看制作进度";}
     public String description(){return "免费查询当前画布各对象的最新制作结果、排队及失败状态。用户问做到哪里、缺什么、下一步时先查此工具；已有采用内容与最新一次制作状态分开，不按标题或受理记录判断已完成。";}
     public ObjectNode parameters(ObjectMapper mapper){return DialogueTools.schema(mapper);}

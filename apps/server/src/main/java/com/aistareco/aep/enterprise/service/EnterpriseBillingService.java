@@ -87,6 +87,15 @@ public class EnterpriseBillingService {
         if(amount>0)credits.holdWallet(wallet.getId(),amount,referenceType,referenceId,description,actor,member.getId(),authorization.getId());
         return account(authorization);
     }
+    /**
+     * Available credits of the account this payer would freeze on, read without locks. Only a sizing hint (a Studio
+     * dialogue holds min(its ceiling, this)); {@link #reserve} under its locks stays the decision.
+     */
+    public long availableBalance(String actor,BillingSelection selection) {
+        var payer=normalize(selection);
+        if("personal".equals(payer.mode()))return credits.getOrCreateWallet(actor).getTotalBalance();
+        return wallets.findByAccountKey("enterprise_member:"+payer.enterpriseId()+":"+actor).map(Wallet::getTotalBalance).orElse(0L);
+    }
     @Transactional
     public void requireDispatchAllowed(String referenceType,String referenceId){requireDispatchAllowed(referenceType,referenceId,null);}
     @Transactional

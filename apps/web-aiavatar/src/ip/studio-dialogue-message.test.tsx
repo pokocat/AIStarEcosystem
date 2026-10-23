@@ -81,3 +81,18 @@ test('a message still on its way shows a spinning icon named 「发送中」', (
   expect(icon.getAttribute('class')).toContain('studio-dialogue-action-spin');
   expect(screen.getByRole('status').textContent).toBe('');
 });
+
+// docs/ip-studio-dialogue-no-continue.md §9: the chain ran out of credits. The note offers the payer's top-up page (the
+// same pages as the wallet badge and the enterprise workspace). An old note without a notice (an old 「点继续接着做」
+// line in saved history) still shows as it was, with no link and no error.
+test('a recharge note links to the payer\'s top-up page, an old note shows as it was', () => {
+  const note: StudioDialogueMessage = { id: 's1', threadId: 'th', seq: 3, role: 'system', status: 'done', createdAt: '2026-10-23T13:00:00Z',
+    text: '积分不够了，已经做好的都留在画布上。充值后跟我说一声，我接着做。', blocks: [], notice: 'recharge' };
+  const { container, rerender } = render(<StudioDialogueMessageView message={note} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+  expect(screen.getByRole('link', { name: '去充值' }).getAttribute('href')).toBe('/studio#/membership');
+  rerender(<StudioDialogueMessageView message={{ ...note, notice: 'recharge-enterprise' }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+  expect(screen.getByRole('link', { name: '去申请企业充值' }).getAttribute('href')).toBe('/enterprise');
+  rerender(<StudioDialogueMessageView message={{ ...note, notice: undefined, text: '这次处理步骤较多，已暂停。已完成的内容已保留，点「继续」接着做。' }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+  expect(container.querySelector('.studio-dialogue-recharge')).toBeNull();
+  expect(container.textContent).toContain('已暂停');
+});

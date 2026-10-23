@@ -290,8 +290,11 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
       const d = event.data as StudioTurnDoneData;
       const [next, id] = ensureAssistantMessage(s, event, d.messageId);
       const updated = replaceMessage(next, id, m => ({ ...m, status: turnDoneStatus(d.reason), billing: d.billing ?? m.billing, settling: d.settling ?? m.settling }));
+      // A chained task hands the same request to the next task (docs/ip-studio-dialogue-no-continue.md §3): the
+      // conversation goes straight on with that turn, never idle in between.
+      const handedTo = d.nextTurnId && !updated.doneTurns.includes(d.nextTurnId) ? d.nextTurnId : undefined;
       return { ...updated, doneTurns: [...updated.doneTurns.filter(t => t !== event.turnId), event.turnId].slice(-200),
-        activeTurnId: updated.activeTurnId === event.turnId ? undefined : updated.activeTurnId,
+        activeTurnId: updated.activeTurnId === event.turnId || (handedTo && !updated.activeTurnId) ? handedTo : updated.activeTurnId,
         suggestions: d.suggestions?.length ? { ...updated.suggestions, [id]: d.suggestions.slice(0, 3) } : updated.suggestions };
     }
     default: return s;

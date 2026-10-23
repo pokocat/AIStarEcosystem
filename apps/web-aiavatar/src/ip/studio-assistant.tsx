@@ -302,12 +302,14 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
    * only reaches the next render).
    */
   const reportSendRejection = async (error: unknown, project: string) => {
+    // The dialogue itself no longer answers STUDIO_PRICE_CHANGED (docs/ip-studio-dialogue-no-continue.md §8); kept for a
+    // server that still runs the older rule during a rolling deploy.
     if (error instanceof ApiError && error.code === "STUDIO_PRICE_CHANGED") {
       try {
         const fresh = await studioCapabilities();
         if (!same(project)) return;
         setFreshCapabilities(fresh);
-        setComposerError({ code: error.code, logId: error.logId, message: "对话计费配置已更新，原消息已保留，请点发送继续。" });
+        setComposerError({ code: error.code, logId: error.logId, message: "对话计费配置已更新，原消息已保留，再点一次发送。" });
         return;
       } catch { /* keep the original refusal and draft if the new quote cannot be read */ }
     }

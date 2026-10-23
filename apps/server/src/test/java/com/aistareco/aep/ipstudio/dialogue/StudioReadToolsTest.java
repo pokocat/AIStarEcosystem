@@ -37,6 +37,46 @@ class StudioReadToolsTest {
         assertNotNull(tool.validate(om.readTree("{\"offset\":-1}"),context(effects)));
         assertNotNull(tool.validate(om.readTree("{\"limit\":17000}"),context(effects)));
     }
+    /**
+     * docs/ip-studio-dialogue-no-continue.md §5 (IPP-6e051b9d 15:13): an 8000-character script pinned to a message. The
+     * digest says how long it is and how to read on; the model follows nextOffset through the loop and reads it all, and
+     * the loop never calls that a repeat.
+     */
+    @Test void an8000CharacterScriptIsReadToTheEndInSegmentsWithoutALoop() throws Exception {
+        String script = "甲".repeat(5000) + "乙".repeat(2999) + "终";
+        var doc=om.createObjectNode();doc.putArray("nodes").addObject().put("id","script").put("type","text")
+                .put("title","三集剧本").putObject("metadata").put("content",script);
+        String digest=DialogueCanvasDigest.build(doc,List.of("script"),List.of());
+        assertTrue(digest.contains("全文 8000 字"), digest.substring(0, 200));
+        assertTrue(digest.contains("offset=4000"));
+        assertFalse(digest.contains("已截断"));
+        var effects=mock(ToolContext.Effects.class);when(effects.readDoc()).thenReturn(doc);
+        var tool=new ReadCanvasTool();var ctx=context(effects);StringBuilder read=new StringBuilder(script.substring(0,4000));
+        var budget=DialogueLoop.TurnBudget.unmetered(1024,Clock.systemUTC());
+        var model=new DialogueLoopTest.ScriptedModel(budget) {
+            int next=4000;
+            @Override public DialogueLoop.Reply call(java.util.List<java.util.Map<String,Object>> messages,int callIndex,int maxOutputTokens) {
+                if(next<0)return new DialogueLoop.Reply("读完了，开始拆镜。",List.of(),null,null);
+                var args=om.createObjectNode().put("offset",next).put("limit",3000);args.putArray("nodeIds").add("script");
+                return new DialogueLoop.Reply("接着读",List.of(new DialogueLoop.Action("a"+callIndex,"read_canvas",args)),null,null);
+            }
+        };
+        DialogueLoop.Tools tools=new DialogueLoop.Tools() {
+            public java.util.Optional<String> reject(DialogueLoop.Action a){return java.util.Optional.ofNullable(tool.validate(a.args(),ctx));}
+            public DialogueLoop.ToolOutcome run(DialogueLoop.Action a) throws Exception {
+                var page=om.readTree(tool.run(a.args(),ctx,null).forModel()).path("nodes").get(0);
+                assertEquals(8000,page.path("total").asInt());
+                read.append(page.path("text").asText());
+                model.next=page.path("nextOffset").isNull()?-1:page.path("nextOffset").asInt();
+                return DialogueLoop.ToolOutcome.of(page.toString());
+            }
+        };
+        var outcome=new DialogueLoop(model,tools,new DialogueLoopTest.Hooks(),budget).run(new java.util.ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED,outcome.reason());
+        assertNull(outcome.limit(),"reading on is not a repeat");
+        assertEquals(script,read.toString());
+        assertEquals(2,outcome.toolCalls(),"4000–7000 and 7000–8000");
+    }
     @Test void theCatalogCanReachNodesBeyondItsFirst120Entries() throws Exception {
         var doc=om.createObjectNode();var nodes=doc.putArray("nodes");
         for(int i=0;i<135;i++)nodes.addObject().put("id","n"+i).put("type","text").put("title","镜头"+i);

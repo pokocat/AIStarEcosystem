@@ -109,8 +109,12 @@ public final class DialogueCanvasDigest {
         JsonNode n = IpDocs.node(doc, id);
         if (n == null) return "[" + id + "]（已不在画布上）";
         String body = excerpt(n);
-        if (body.codePointCount(0,body.length()) > PINNED) body = body.substring(0, body.offsetByCodePoints(0,PINNED))
-                + "…（后续内容未读取；用 read_canvas 指定本对象 nodeIds、offset=" + PINNED + " 继续读取）";
+        int total = body.codePointCount(0, body.length());
+        // The model must be able to read the rest: a bare 「已截断」 made it read the same first part again and again until
+        // it was stopped as a loop (IPP-6e051b9d, 2026-10-23 15:13). Say how long it is and how to read on.
+        if (total > PINNED) body = "（全文 " + total + " 字，下面是第 1–" + PINNED + " 字；后面的内容用 read_canvas 带 nodeIds=[\"" + id
+                + "\"]、offset=" + PINNED + " 分段读取，每次返回 total 和 nextOffset，读到 nextOffset 为空为止）\n"
+                + body.substring(0, body.offsetByCodePoints(0, PINNED)) + "…（未完，接着从 offset=" + PINNED + " 读）";
         return "[" + id + "] " + typeLabel(n) + " · " + n.path("title").asText("未命名") + (body.isBlank() ? "" : "\n" + body);
     }
 

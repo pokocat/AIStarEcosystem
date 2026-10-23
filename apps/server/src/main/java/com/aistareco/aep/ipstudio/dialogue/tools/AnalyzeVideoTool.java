@@ -108,10 +108,12 @@ public class AnalyzeVideoTool implements StudioDialogueTool {
             return new ToolRun("failed", last.getErrorMessage() == null ? "拉片没有完成" : last.getErrorMessage(),
                     DialogueTools.fail("拉片没有完成：" + (last.getErrorMessage() == null ? last.getErrorCode() : last.getErrorMessage())),
                     List.of(targetId), List.of(), last.getId(), last.getCost(), false, last.getErrorCode(), last.getErrorMessage(), null);
+        // Still queued or running after the follow window: the task does not wait any longer. The model tells the user it
+        // was submitted and lands on the canvas by itself, and the turn ends normally (no limit, nothing to 「继续」).
         var body = DialogueTools.OM.createObjectNode().put("runId", last.getId()).put("reportNodeId", targetId)
-                .put("summary", "拉片仍在进行（" + ChildRuns.stageLabel(last) + "），完成后结果会出现在画布的拆解报告上");
-        return new ToolRun("running", "拉片仍在进行，完成后显示在画布上", DialogueTools.ok(body), List.of(targetId), List.of(), last.getId(),
-                null, true, null, null, ChildRuns.endFor(last));
+                .put("summary", "已提交，" + ChildRuns.stageLabel(last) + "，结果会自动放进画布的拆解报告。告诉用户这件事，这一轮不要再等它，也不要重复提交。");
+        return new ToolRun("running", "已提交，" + ChildRuns.stageLabel(last) + "，结果会自动放进画布", DialogueTools.ok(body), List.of(targetId), List.of(), last.getId(),
+                null, true, null, null, null);
     }
 
     private boolean awaitSaved(ToolContext ctx, String nodeId) throws InterruptedException {

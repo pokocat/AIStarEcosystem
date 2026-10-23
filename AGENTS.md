@@ -1143,7 +1143,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **新对话的四张填空卡**（2026-10-21，真源 §5；仅 web-aiavatar）：空对话、没有引用节点时开场是「制作个人 IP / 写剧本 / 做个短视频 / 复刻视频」四张卡（`src/ip/studio-assistant-starters.tsx`：卡片配置、填空卡组件、拼句纯函数 `composeStarter`）。点开是素材位（「从画布选」走输入框的 @，「上传」走输入框的附件，画布上正好一个合适素材时只给必填位自动选上）、默认已选好的选项按钮和一两行文字位，实时拼成一句话写进输入框；**原复刻清单 `studio-assistant-checklist.tsx` 已并入并删除，别再留两套**。发送仍是输入框那一个按钮，缺必填素材不能发、原因写在按钮旁；发送**显式带技能**（`image-generation` / `script-writing` / `video-generation` / `reference-video-recreation`），不靠关键词路由。用户改过输入框后选项不再覆盖（出现「按选项重写」），点开卡片时输入框已有的字不覆盖；首页需要参考视频的原话照旧打开复刻卡、保留原话、不自动发（即使素材被自动选齐）。有引用节点时的那组卡不变。纯前端引导，服务端与报价不变；演示数据里的复刻技能已改成与服务端同名的 `reference-video-recreation`。
 - **输入框下只有 @ 和附件**（2026-10-21 用户反馈，仅 web-aiavatar）：2026-10-21 起输入框下不再显示模型与技能，当前做法只在头部标签（`studio-assistant-mode`，显示技能名或「全能创作」；悬停写怎么选：有技能时「现在按「X」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。」，没有时「按你说的话自动选择做法。」；点它仍展开使用说明）。模型：线上只有一个对话模型，禁用的胶囊点不动，还让人以为做视频也用它，所以可选不可选都不显示；发送照旧带默认模型的 `maxCost`（可选场景且多于一个模型时才带 `model`），本浏览器以前存过的选择仍沿用，已下架就回落默认。技能：服务端每条消息按意图路由（`StudioSkillRouter`），「自动」下拉和绑定后点不动的静态胶囊都去掉；填空卡仍显式带 `skillKey`。400 `STUDIO_SKILL_REQUIRED`（路由已不再抛，处理保留）改成输入框上方几个做法按钮（`aria-label="选一种做法"`），点一个就以该技能重发草稿，不再有要去找的下拉。`studio-dialogue-wiring.test.ts` 钉住组件和样式里不再有 `<Select` / `studio-dialogue-chip`。
 - **结果落到助手准备的节点、首帧只裁不拉**（2026-10-21，真源 §6；server + web-aiavatar）：计划步骤可带 `targetNodeId`，确认时按已保存画布由 `StudioPlanValidator.bindTargets` 绑定（在画布上、类型对应、还空着、没被占用；模型没填时只在「本对话助手建的同类空对象唯一、同类步骤唯一」时自动绑定，有歧义不绑，不合格丢弃并写日志）；绑定后步骤 `nodeId` 就是那个对象，生成任务 `node_id`、`node.upsert`（`op=update`，保留标题 / 尺寸 / 规格 / 连线）、依赖连线、引用解析和恢复都用它，读步骤节点一律经 `StudioPlanExecutionIds.stepNodeId`，不再自己拼 `<执行>-p-<步骤>`。前端恢复（执行恢复与历史回放）按**结果是否已回填**判断，不按节点在不在：准备对象在画布上但空着（无媒体 / 文字 / 剧本、不在生成、无执行绑定，`nodeHoldsResult`）就补进去，与投影记录无关；不在画布上才看投影记录（删掉的不重建）；已绑定这一步的不覆盖（2026-10-21 `20261021-studio-restore-fix`）。每个结果节点带这一步实际发出的提示词（已有提示词不覆盖，照 keepText 作为可采纳建议）。图生视频首帧 / 尾帧比例与请求画幅差 2% 以上，`StudioVideoService.alignFrame` 先验归属再居中裁剪成本人派生图交给厂商，记 `_exec.firstFrameAdjusted`，裁不了就 400 `STUDIO_VIDEO_FRAME_CROP_FAILED`，不拉伸；生成面板就地提示「首帧图是 1:1，会按 9:16 居中裁剪」+「改成 1:1」（模型支持时），不挡发送。图片 / 视频结果落进节点时节点宽度不变、高度按产物比例（先按任务画幅，媒体加载后按真实尺寸，`studio.mediaFit` 标记一次性，`canvas-bridge/studio-media-fit.ts`）；卡片会记下所显示媒体的真实尺寸（`naturalWidth/Height`），素材清单因此能写出「1024×1024（1:1）」和草稿上的「设定 9:16、5 秒」。提示词 `SEED_VERSION` = `v23-2026-10-21-exec-target-node`。
-- **一轮对话尽量做完，步数只算对话回合**（2026-10-21，server；线上 `IPR-472ed89b5c174a95808f` 在确认卡发出前一步被 8 次调用上限截停，那 8 次里有 3 次是看图、规划工具自己的调用）：`DialogueLoop.TurnBudget` 分两种调用，循环里调对话模型走 `beginStep()`（算一步，`MAX_DIALOGUE_STEPS = 16`），工具内部调用与历史摘要走 `beginSubCall()`（不算步，只计入总调用保险 `MAX_MODEL_CALLS = 40`）；两种都照样计入 Token 与用时。工具运行上限 `MAX_TOOL_CALLS = 24`。真正管花费的是每轮积分上限（`rate.maxCost` 换算的 Token 总额）和 `MAX_DURATION` 10 分钟，步数只防死循环。新增模型调用必须二选一，不许绕开 budget。连续两步给出完全相同的动作批次（工具名 + 规范化参数，`DialogueLoop.batchSignature`；只读的 `view_images` / `read_canvas` 也算，中间被判格式错误的那次不算隔开，用户插话算）就停，原因 `loop`，重复的那批不执行。因上限停下（steps / calls / tools / time / tokens / loop）的说明只一句（「这一轮步骤太多，先停在这里。」「这一轮用时到上限了…」「这一轮的用量到上限了…」「这一步重复了…」），不再教用户打字；回复上附快捷答复「继续」（`StudioDialogueTurnWorker.limitSuggestions`，存进回复的 `requestJson.suggestions` 并随 `turn.done` 下发，与完成总结同一套）。格式错误（protocol）的说明不变、不给「继续」。
+- **一轮对话尽量做完，步数只算对话回合**（2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准）（2026-10-21，server；线上 `IPR-472ed89b5c174a95808f` 在确认卡发出前一步被 8 次调用上限截停，那 8 次里有 3 次是看图、规划工具自己的调用）：`DialogueLoop.TurnBudget` 分两种调用，循环里调对话模型走 `beginStep()`（算一步，`MAX_DIALOGUE_STEPS = 16`），工具内部调用与历史摘要走 `beginSubCall()`（不算步，只计入总调用保险 `MAX_MODEL_CALLS = 40`）；两种都照样计入 Token 与用时。工具运行上限 `MAX_TOOL_CALLS = 24`。真正管花费的是每轮积分上限（`rate.maxCost` 换算的 Token 总额）和 `MAX_DURATION` 10 分钟，步数只防死循环。新增模型调用必须二选一，不许绕开 budget。连续两步给出完全相同的动作批次（工具名 + 规范化参数，`DialogueLoop.batchSignature`；只读的 `view_images` / `read_canvas` 也算，中间被判格式错误的那次不算隔开，用户插话算）就停，原因 `loop`，重复的那批不执行。因上限停下（steps / calls / tools / time / tokens / loop）的说明只一句（「这一轮步骤太多，先停在这里。」「这一轮用时到上限了…」「这一轮的用量到上限了…」「这一步重复了…」），不再教用户打字；回复上附快捷答复「继续」（`StudioDialogueTurnWorker.limitSuggestions`，存进回复的 `requestJson.suggestions` 并随 `turn.done` 下发，与完成总结同一套）。格式错误（protocol）的说明不变、不给「继续」。
 
 ### 视频节点铺满与抽帧 · 2026-10-21（已生产发布 `20261021-studio-video-fit-frames`，仅 web-aiavatar）
 
@@ -1158,9 +1158,13 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 
+2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准。
+
 本节替代上文「一轮对话尽量做完」中的共用 Token 额度与旧提示文案：普通文本 `tokenPricing` 不变，对话使用 capabilities 的 `dialogueTokenPricing`；单价同源，累计上限来自 `studio.dialogue-token-budget`，缺省输入 1048576 / 输出 65536 Token，可全局 / 按端点覆盖。前端报价、服务端冻结、运行快照与阶段对话预留使用同一额度；受理后的任务仍用旧快照。用量保护只在累计额度不足继续时暂停，说明已完成内容保留、点「继续」接着做且后续按实际用量计费；16 步 / 40 次总调用 / 24 次工具 / 10 分钟与重复保护保留。格式与校验见 server README 同名章节。无需迁移。
 
 ### Studio 确认继续（2026-10-23 已生产发布）
+
+2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准。
 
 本人同线程受限任务之后明确回复「继续」时，服务端派生 `_exec.continueUntilDone` / `continuationOf`；新任务不继承，模型与客户端不能自行开启。继续期间按已确认的金额预算运行，不再因 Token 输入 / 输出分配、步数、总调用、工具次数或 10 分钟阈值反复暂停；仍保留真实预算、停止、付款授权、制作确认与重复动作保护。同一父 run / 助手消息 / 冻结不拆不重放，超出原 Token 分配但未超金额预算的真实用量可正常结算。支持并过滤实际出现的 `<studio-action name="…" args='JSON' />`，错误批次仍不执行、历史原文不补执行。线上证据与回放见 `docs/audits/studio-dialogue-continuation-replay-2026-10.md`。
 
@@ -1181,4 +1185,17 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
 
+2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准。
+
 对话 `maxCost` 是用户批准的金额上限；旧页面额度低于新默认值时，`Rate.withinBudget` 保留单价并缩减本轮 Token 额度，冻结与运行快照不超过原授权，不再要求用户被动接受更高默认额度。`read_canvas` 目录可翻过 120 个节点，正文以 Unicode 字符游标分页，不得把前 4000 字叫全文；相同只读请求有一次纠正机会，任何写/付费动作都不重放。`read_production_status` 复用 `IpProjectService.toRunDto` 的真实视频任务投影，旧内容已采用不等于最新重做成功。画布保存对网络/502/503/504 有界退避；丢回执后完全相同的业务文档视为已保存，真正不同版本仍拒绝覆盖。该恢复不等于发布无停机。依据与运行时替换建议见 `docs/audits/studio-agent-runtime-assessment-2026-10.md`。
+
+
+### Studio 对话去掉继续（2026-10-23，本地未发布）
+
+用户说一句话助手就做完，只有付费生成（确认卡）和必填问题才停下等用户；真源 `docs/ip-studio-dialogue-no-continue.md`，规则 `specs/BUSINESS_RULES.md` Studio 对话第 30 条。单条任务的 16 步 / 40 次调用 / 24 次工具 / 10 分钟 / Token 输入输出分配**删除**，`limitSuggestions`、`saysContinue` / `resumedTask` 删除；用户打「继续」只是普通消息，旧 `_exec.continueUntilDone / continuationOf` 只读兼容。
+
+- **一条任务一笔冻结，不追加**（`CreditService` 未改）：冻结 `min(findDialogue(...).maxCost(), 付款账户可用余额)`，连一次最小调用都不够照旧 402；客户端 `maxCost` 只记录，对话不再回 409 `STUDIO_PRICE_CHANGED`（付费生成的 `requireApprovedCost` 与确认卡不变）。
+- **冻结额用完由服务端自动接下一条任务**：`limit=budget` → 同一结算事务里完成旧授权、同一付款来源（同一个人钱包 / 同一企业成员的新授权，绝不回退个人钱包）冻结新任务、新 turn / run / 助手消息、线程指针直接换过去、`turn.done{reason:"chained", nextTurnId}`，提交后派发；任何拒绝 → 整个事务回滚、再按无接续结算一次，余额不够写「积分不够了…」并带 `notice=recharge|recharge-enterprise`（前端给充值入口）。新任务上下文列整条链的已做操作，不能只列第一条。
+- **还在的保护**：连续相同动作批次先给一次纠正，纠正后再相同才 `loop`；格式纠正两次仍错 `protocol`；整条链 300 次调用或 2 小时 `safeguard`（按失败结束、ERROR 日志、仍按真实用量结算）；结束语都不提「继续」。
+- **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`，没完成就告诉用户会自动放进画布）、`CreditHoldSweeper` 跳过心跳正常的对话任务、停止跟着线程指针再停一次接续出来的任务。
+- 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。

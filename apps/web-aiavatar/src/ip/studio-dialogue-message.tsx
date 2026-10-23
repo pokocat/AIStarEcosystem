@@ -201,6 +201,11 @@ export function StudioDialogueMessageView(props: MessageProps) {
   return <article className={`studio-dialogue-message is-${message.role}${latest ? ' is-latest' : ''}${activity?.phase === 'writing' ? ' is-writing' : ''}`} data-status={message.status} aria-label={user ? '你的消息' : message.role === 'assistant' ? 'Studio 的回复' : '系统消息'}>
     <small className="studio-dialogue-author">{user ? '你' : message.role === 'assistant' ? 'Studio' : '提示'}</small>
     {user ? <p className="studio-dialogue-text">{message.text}</p> : body}
+    {/* The chain ran out of credits (docs/ip-studio-dialogue-no-continue.md §9): the same top-up pages as the wallet badge
+        and the enterprise workspace, in a new tab so the canvas stays open. */}
+    {message.role === 'system' && message.notice && <p className="studio-dialogue-notice">
+      <a className="studio-dialogue-recharge" href={message.notice === 'recharge-enterprise' ? '/enterprise' : '/studio#/membership'} target="_blank" rel="noopener">
+        {message.notice === 'recharge-enterprise' ? '去申请企业充值' : '去充值'}</a></p>}
     {user && !!refs.length && <p className="studio-dialogue-refs">{refs.map(id => <span key={id} title={nodes.find(n => n.id === id)?.title}>{nodes.find(n => n.id === id)?.title || '已删除的画布对象'}</span>)}</p>}
     {user && queueState && <StudioDialogueQueueMark state={queueState}/>}
     {/* A running tool already says so on its own line (spinner, 「进行中」); the extra row is for thinking and writing. */}

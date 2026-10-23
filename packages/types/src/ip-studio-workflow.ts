@@ -445,6 +445,8 @@ export interface StudioDialogueMessage {
   legacyNodeId?: string;
   /** Follow-ups offered under an assistant message (an execution's completion summary keeps them across reloads). */
   suggestions?: string[];
+  /** A system note's one action: the chain ran out of credits, offer a recharge (personal or enterprise payer). */
+  notice?: "recharge" | "recharge-enterprise";
 }
 export interface StudioDialogueThread {
   id: string; projectId: string; parentThreadId?: string; branchFromMessageId?: string; title?: string;
@@ -494,7 +496,12 @@ export interface StudioCheckResultData { stepId?: string; runId: string; result:
 export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote";
   /** Parent-dialogue share already included in spent / inFlight (never add it again). */
   dialogueSpent?: number; dialogueInFlight?: number }
-export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[] }
+/**
+ * `chained` (docs/ip-studio-dialogue-no-continue.md §3): this task's frozen credits were used up and the server carried
+ * the same request on in the next task, whose turn is `nextTurnId`. The conversation stays 「进行中」; nothing to type.
+ */
+export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed" | "chained"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[];
+  nextTurnId?: string }
 
 export type StudioPlanExecutionStatus = "running" | "paused" | "needs_user" | "done" | "partial" | "failed" | "canceled";
 export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" | "done" | "failed" | "skipped" | "needs_user";

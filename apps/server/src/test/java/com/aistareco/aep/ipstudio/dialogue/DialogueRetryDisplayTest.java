@@ -59,7 +59,7 @@ class DialogueRetryDisplayTest {
         });
         AiModelEndpoint endpoint = AiModelEndpoint.builder().id("ep").name("chat").providerType(AiModelProviderType.OPENAI_COMPATIBLE)
                 .model("qwen38-27b").chatSupportsTools(false).chatSupportsStreaming(streaming).enabled(true).build();
-        var budget = DialogueLoop.TurnBudget.standard(100_000, 100_000, 1024, Clock.systemUTC());
+        var budget = DialogueLoop.TurnBudget.unmetered(1024, Clock.systemUTC());
         var model = new DialogueModels.Real(models, endpoint, List.of(), Set.of("view_images", "read_canvas"), budget, shown,
                 () -> false, () -> { }, 0.7, OM);
         return new DialogueLoop(model, tools, new DialogueLoopTest.Hooks(), budget).run(new ArrayList<>());

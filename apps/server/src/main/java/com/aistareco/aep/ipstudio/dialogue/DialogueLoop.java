@@ -10,29 +10,27 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The bounded agent loop of one dialogue turn: model → typed actions → validate and run tools → feed results back →
- * continue (docs/ip-studio-conversational-video-recreation-plan.md §一轮为有界agent循环).
+ * The agent loop of one dialogue task: model → typed actions → validate and run tools → feed results back → continue
+ * (docs/ip-studio-conversational-video-recreation-plan.md §一轮为有界agent循环; docs/ip-studio-dialogue-no-continue.md).
  *
  * <p>Pure state machine: no Spring, no repositories. The model, tools and side channels are injected so the ordering,
- * limits, stop priority and steering rules are unit-testable. It ends when the model returns no actions (and no steering
- * is pending), when a tool needs a user decision, when a limit is hit (dialogue steps, model calls, tool calls, wall time,
- * token budget), when the model repeats its previous action batch, or when a stop arrived. Actions from a reply are only
- * executed after that reply finished and parsed completely.
+ * stop priority, steering and repeat rules are unit-testable. It ends when the model returns no actions (and no steering
+ * is pending), when a tool needs a user decision, when the user stops, when this task's hold cannot cover the next model
+ * call (limit {@code budget}: the worker settles and hands the work to the next task of the chain; the user sees no
+ * pause), when the model repeats one action batch again after a correction ({@code loop}), when action formats stay
+ * unparseable ({@code protocol}), or at the hidden safety net of a whole task chain ({@code safeguard}:
+ * {@link #MAX_CHAIN_MODEL_CALLS} calls or {@link #MAX_CHAIN_DURATION}). Actions from a reply are only executed after that
+ * reply finished and parsed completely.
  *
- * <p>What bounds the spend of a turn is the token budget (the user-approved per-turn ceiling) and {@link #MAX_DURATION};
- * the step and call counts only guard against a runaway loop. Production 2026-10-21 (IPR-472ed89b5c174a95808f): a turn
- * stopped at 8 model calls one step before its confirmation card, because the cap also counted the calls tools make
- * themselves (looking at images, planning). Steps now count only the loop's own model calls; tool-internal calls still
- * spend tokens and time, and a looser total cap catches anything abnormal.
+ * <p>2026-10-23: the per-task step / call / tool / time / token-split stops are gone (users kept having to type 「继续」,
+ * docs/audits/studio-production-afternoon-evening-review-20261023.md). What bounds the spend is the money frozen for the
+ * task; what bounds a runaway is the chain safety net. Every model call sees a trimmed context
+ * ({@link DialogueContextWindow}): the full exchange keeps growing, the window the model sees does not.
  */
 public final class DialogueLoop {
-    /** Calls of the loop's model (dialogue steps) per turn. */
-    public static final int MAX_DIALOGUE_STEPS = 16;
-    /** Every model call of a turn: dialogue steps plus tool-internal calls and the history summary. A safety net only. */
-    public static final int MAX_MODEL_CALLS = 40;
-    /** Tool runs per turn (rejected actions are not runs). The batch that reaches it is cut there and the turn stops. */
-    public static final int MAX_TOOL_CALLS = 24;
-    public static final Duration MAX_DURATION = Duration.ofMinutes(10);
+    /** Hidden safety net over a whole chain of tasks started by one user message (every model call, also tool-internal). */
+    public static final int MAX_CHAIN_MODEL_CALLS = 300;
+    public static final Duration MAX_CHAIN_DURATION = Duration.ofHours(2);
     /** Smallest output budget worth another model call. */
     public static final int MIN_OUTPUT_TOKENS = 256;
 
@@ -49,7 +47,10 @@ public final class DialogueLoop {
         public Reply { actions = actions == null ? List.of() : List.copyOf(actions); }
     }
 
-    /** Outcome of one tool run: content goes back to the model; {@code end} set when the turn must stop afterwards. */
+    /**
+     * Outcome of one tool run: content goes back to the model; {@code end} set when the turn must stop afterwards. A tool
+     * whose own model call does not fit the task's hold ends with {@link Reason#LIMIT}: the next task of the chain redoes it.
+     */
     public record ToolOutcome(String content, Reason end) {
         public static ToolOutcome of(String content) { return new ToolOutcome(content, null); }
     }
@@ -57,8 +58,8 @@ public final class DialogueLoop {
     public record ToolResult(Action action, String content) {}
 
     /**
-     * {@code limit} is set for {@link Reason#LIMIT}: steps | calls | tools | time | tokens | loop | protocol.
-     * {@code modelCalls} counts every model call of the turn (steps plus tool-internal calls); {@code steps} the loop's own.
+     * {@code limit} is set for {@link Reason#LIMIT}: budget | safeguard | loop | protocol.
+     * {@code modelCalls} counts every model call of this task (steps plus tool-internal calls); {@code steps} the loop's own.
      */
     public record Outcome(Reason reason, String limit, int modelCalls, int steps, int toolCalls) {}
 
@@ -94,13 +95,9 @@ public final class DialogueLoop {
     private final Tools tools;
     private final Hooks hooks;
     private final TurnBudget budget;
-    private final int maxToolCalls;
 
-    public DialogueLoop(Model model, Tools tools, Hooks hooks, TurnBudget budget) { this(model, tools, hooks, budget, MAX_TOOL_CALLS); }
-
-    public DialogueLoop(Model model, Tools tools, Hooks hooks, TurnBudget budget, int maxToolCalls) {
+    public DialogueLoop(Model model, Tools tools, Hooks hooks, TurnBudget budget) {
         this.model = model; this.tools = tools; this.hooks = hooks; this.budget = budget;
-        this.maxToolCalls = budget.continued() ? Integer.MAX_VALUE : maxToolCalls;
     }
 
     /** Consecutive replies whose actions could not be parsed before the turn stops instead of paying for another try. */
@@ -117,23 +114,30 @@ public final class DialogueLoop {
         return outcome;
     }
 
+    /** The context the next model call sees: the whole exchange with older tool results reduced to one line each. */
+    private List<Map<String, Object>> window(List<Map<String, Object>> messages) {
+        return DialogueContextWindow.trim(messages, model::estimateInputTokens);
+    }
+
     private Outcome loop(List<Map<String, Object>> messages) throws Exception {
-        boolean readRecoveryUsed = false;
         int toolCalls = 0, protocolErrors = 0;
         // The previous step's action batch, normalized; cleared when user steering is added (new information).
         String lastBatch = null;
+        // The current repeat already got its correction: the next identical batch ends the turn.
+        boolean repeatCorrected = false;
         while (true) {
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
-            String limit = budget.stepBlockReason(model.estimateInputTokens(messages), MIN_OUTPUT_TOKENS);
+            List<Map<String, Object>> view = window(messages);
+            String limit = budget.stepBlockReason(model.estimateInputTokens(view), MIN_OUTPUT_TOKENS);
             if (limit != null) return outcome(Reason.LIMIT, limit, toolCalls);
             budget.beginStep();
-            Reply reply = model.call(messages, budget.steps(), budget.outputAllowance());
+            Reply reply = model.call(view, budget.steps(), budget.outputAllowance());
             hooks.heartbeat();
             // A stop that arrived while the model was answering wins over the reply's actions.
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
             if (reply.parseError() != null) {
                 // Nothing in a malformed batch runs. Two corrections are enough; a third paid call that repeats the same
-                // wrong spelling only spends the user's turn budget.
+                // wrong spelling only spends the user's money.
                 if (++protocolErrors > MAX_PROTOCOL_RETRIES) return outcome(Reason.LIMIT, "protocol", toolCalls);
                 model.appendExchange(messages, reply, List.of());
                 model.appendUser(messages, correctionText(reply.parseError()));
@@ -145,28 +149,27 @@ public final class DialogueLoop {
                 if (steering.isEmpty()) return outcome(Reason.COMPLETED, null, toolCalls);
                 model.appendExchange(messages, reply, List.of());
                 model.appendUser(messages, steeringText(steering));
-                lastBatch = null;
+                lastBatch = null; repeatCorrected = false;
                 continue;
             }
             // The same batch as the previous step, with no user message in between: the model is going round in circles
             // (also for read-only tools: another identical look at the canvas tells it nothing new). A reply rejected for
-            // its format in between does not count as a different step. Nothing of the repeated batch runs.
+            // its format in between does not count as a different step. Nothing of the repeated batch runs. The first
+            // repeat gets one correction and the turn goes on; the same batch again after it ends the turn.
             String batch = batchSignature(reply.actions());
             if (batch.equals(lastBatch)) {
-                // A read has no side effect. Give the model one chance to use the returned cursor or another source,
-                // rather than asking the user to rescue a truncated read. Paid/writing tools are never replayed here.
-                if (!readRecoveryUsed && reply.actions().stream().allMatch(a -> "read_canvas".equals(a.tool()))) {
-                    readRecoveryUsed = true;
-                    model.appendExchange(messages, reply, reply.actions().stream().map(a -> new ToolResult(a,
-                            "{\"ok\":false,\"code\":\"READ_ALREADY_RETURNED\",\"summary\":\"这一段已经读过，未重复执行。长文请用上次 nextOffset 作为 offset 读取下一段；如果 hasMore=false，正文已读完，请用已有内容继续任务。不得要求用户重复说继续。\"}")).toList());
-                    continue;
-                }
-                return outcome(Reason.LIMIT, "loop", toolCalls);
+                if (repeatCorrected) return outcome(Reason.LIMIT, "loop", toolCalls);
+                repeatCorrected = true;
+                boolean readsOnly = reply.actions().stream().allMatch(a -> "read_canvas".equals(a.tool()));
+                model.appendExchange(messages, reply, reply.actions().stream()
+                        .map(a -> new ToolResult(a, readsOnly ? READ_REPEATED : ACTION_REPEATED)).toList());
+                model.appendUser(messages, readsOnly ? READ_REPEAT_CORRECTION : REPEAT_CORRECTION);
+                continue;
             }
-            lastBatch = batch;
+            lastBatch = batch; repeatCorrected = false;
             List<ToolResult> results = new ArrayList<>();
             Reason end = null;
-            boolean toolLimit = false, interrupted = false;
+            boolean interrupted = false;
             for (Action action : reply.actions()) {
                 if (interrupted || hooks.stopRequested()) {
                     interrupted = true;
@@ -174,12 +177,8 @@ public final class DialogueLoop {
                     continue;
                 }
                 if (end != null) {
-                    results.add(new ToolResult(action, "{\"ok\":false,\"summary\":\"需要先等用户回复，本动作未执行\"}"));
-                    continue;
-                }
-                if (toolCalls >= maxToolCalls) {
-                    toolLimit = true;
-                    results.add(new ToolResult(action, "{\"ok\":false,\"summary\":\"本轮动作次数已用完，本动作未执行\"}"));
+                    results.add(new ToolResult(action, end == Reason.LIMIT ? "{\"ok\":false,\"summary\":\"本条任务的额度已用完，本动作未执行\"}"
+                            : "{\"ok\":false,\"summary\":\"需要先等用户回复，本动作未执行\"}"));
                     continue;
                 }
                 Optional<String> rejected = tools.reject(action);
@@ -195,22 +194,31 @@ public final class DialogueLoop {
             }
             model.appendExchange(messages, reply, results);
             if (interrupted) return outcome(Reason.INTERRUPTED, null, toolCalls);
+            // A tool's own model call did not fit this task's hold (or the chain's safety net): the task stops here and the
+            // worker decides; for budget the next task of the chain carries on.
+            if (end == Reason.LIMIT) return outcome(Reason.LIMIT, budget.lastBlock() == null ? "budget" : budget.lastBlock(), toolCalls);
             if (end != null) return outcome(end, null, toolCalls);
-            if (toolLimit) return outcome(Reason.LIMIT, "tools", toolCalls);
-            // Steering is only taken (and marked applied) when another model call can actually answer it in this turn;
-            // otherwise it stays queued and opens the next turn.
+            // Steering is only taken (and marked applied) when another model call can actually answer it in this task;
+            // otherwise it stays queued for the next task of the chain or opens the next turn.
             List<String> steering = canContinue(messages) ? hooks.drainSteering() : List.of();
-            if (!steering.isEmpty()) { model.appendUser(messages, steeringText(steering)); lastBatch = null; }
+            if (!steering.isEmpty()) { model.appendUser(messages, steeringText(steering)); lastBatch = null; repeatCorrected = false; }
         }
     }
 
     private boolean canContinue(List<Map<String, Object>> messages) {
-        return !hooks.stopRequested() && budget.stepBlockReason(model.estimateInputTokens(messages) + 200, MIN_OUTPUT_TOKENS) == null;
+        return !hooks.stopRequested() && budget.stepBlockReason(model.estimateInputTokens(window(messages)) + 200, MIN_OUTPUT_TOKENS) == null;
     }
 
     private Outcome outcome(Reason reason, String limit, int toolCalls) {
         return new Outcome(reason, limit, budget.modelCalls(), budget.steps(), toolCalls);
     }
+
+    static final String ACTION_REPEATED = "{\"ok\":false,\"code\":\"REPEATED_ACTION\",\"summary\":\"和上一步完全相同，未重复执行\"}";
+    static final String READ_REPEATED = "{\"ok\":false,\"code\":\"READ_ALREADY_RETURNED\",\"summary\":\"这一段已经读过，未重复执行\"}";
+    /** The one correction a repeated batch gets before a second repeat ends the turn (docs/ip-studio-dialogue-no-continue.md §2). */
+    static final String REPEAT_CORRECTION = "你刚才重复了同一个动作，换个做法，或者直接告诉用户结果。";
+    static final String READ_REPEAT_CORRECTION = "你刚才重复读取了同一段内容。长文请用上次返回的 nextOffset 作为 offset 读下一段；"
+            + "hasMore=false 表示已经读完，就用已有内容接着做，或者直接告诉用户结果。";
 
     /**
      * An action batch in a form that compares equal when it asks for the same work: tool names and arguments in order,
@@ -285,68 +293,68 @@ public final class DialogueLoop {
     }
 
     /**
-     * Shared per-turn budget: dialogue steps (the loop's own model calls), all model calls (steps plus tool-internal calls
-     * and the history summary), wall time and the token ceiling the user approved (the endpoint rate's maxInputTokens /
-     * maxOutputTokens, summed over every call of the turn).
+     * Shared per-task budget. A metered task is bounded by the money frozen for it: its rate snapshot's {@code maxCost()}
+     * (the hold), against the real usage of every model call of the task (loop steps, tool-internal calls, the history
+     * summary). The rate's input / output token split is no longer a limit of its own. Every task, metered or not, also
+     * counts toward the hidden safety net of its chain ({@link #MAX_CHAIN_MODEL_CALLS}, {@link #MAX_CHAIN_DURATION}).
      *
      * <p>Every model call goes through exactly one of {@link #beginStep()} (the loop) or {@link #beginSubCall()} (anything
-     * else); both count toward {@link #modelCalls()}, tokens and time, only steps toward the step limit.
+     * else); both count toward {@link #modelCalls()} and the chain's calls, only steps toward {@link #steps()}.
      */
     public static final class TurnBudget {
-        private final int maxSteps, maxModelCalls;
-        private final long maxInputTokens, maxOutputTokens;
+        private final com.aistareco.aep.service.AiChatTokenPricing.Rate rate;
         private final int desiredOutputTokens;
-        private final Instant deadline;
         private final Clock clock;
-        private com.aistareco.aep.service.AiChatTokenPricing.Rate continuedRate;
+        private final int priorChainCalls;
+        private final Instant chainDeadline;
         private long pendingInput;
         private int steps, modelCalls;
         private long inputTokens, outputTokens;
+        private String lastBlock;
+        private long lastBlockedInput;
 
-        public TurnBudget(int maxSteps, int maxModelCalls, long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Duration maxDuration, Clock clock) {
-            this.maxSteps = maxSteps; this.maxModelCalls = maxModelCalls; this.maxInputTokens = maxInputTokens; this.maxOutputTokens = maxOutputTokens;
-            this.desiredOutputTokens = desiredOutputTokens; this.clock = clock; this.deadline = clock.instant().plus(maxDuration);
+        private TurnBudget(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int desiredOutputTokens, Clock clock, int priorChainCalls, Instant chainStartedAt) {
+            this.rate = rate; this.desiredOutputTokens = desiredOutputTokens; this.clock = clock;
+            this.priorChainCalls = Math.max(0, priorChainCalls);
+            this.chainDeadline = (chainStartedAt == null ? clock.instant() : chainStartedAt).plus(MAX_CHAIN_DURATION);
         }
 
-        /** The standard limits with the token ceiling of the turn's rate. */
-        public static TurnBudget standard(long maxInputTokens, long maxOutputTokens, int desiredOutputTokens, Clock clock) {
-            return new TurnBudget(MAX_DIALOGUE_STEPS, MAX_MODEL_CALLS, maxInputTokens, maxOutputTokens, desiredOutputTokens, MAX_DURATION, clock);
+        /** A task billed by real token usage within its hold ({@code rate.maxCost()}). */
+        public static TurnBudget metered(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock) {
+            return metered(rate, perCall, clock, 0, null);
         }
 
-        /** A user-confirmed continuation keeps one loop and its tool results, bounded by its approved cost. */
-        public static TurnBudget continued(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock) {
-            var budget = new TurnBudget(Integer.MAX_VALUE, Integer.MAX_VALUE, Long.MAX_VALUE / 4, Long.MAX_VALUE / 4,
-                    perCall, MAX_DURATION, clock);
-            budget.continuedRate = rate;
-            return budget;
+        /** The same, as a later task of a chain: {@code priorChainCalls} calls were made since {@code chainStartedAt}. */
+        public static TurnBudget metered(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock, int priorChainCalls, Instant chainStartedAt) {
+            return new TurnBudget(java.util.Objects.requireNonNull(rate), perCall, clock, priorChainCalls, chainStartedAt);
         }
 
-        public boolean continued() { return continuedRate != null; }
+        /** No token budget (fixture mode: no vendor, zero cost); the chain safety net still applies. */
+        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) { return new TurnBudget(null, desiredOutputTokens, clock, 0, null); }
 
-        /** Unlimited token budget (fixture mode: no vendor, zero cost); step, call and time limits still apply. */
-        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) {
-            return standard(Long.MAX_VALUE / 4, Long.MAX_VALUE / 4, desiredOutputTokens, clock);
+        /** Unmetered, as a later task of a chain. */
+        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock, int priorChainCalls, Instant chainStartedAt) {
+            return new TurnBudget(null, desiredOutputTokens, clock, priorChainCalls, chainStartedAt);
         }
 
-        /** Null when another dialogue step (a call of the loop's model) fits; otherwise steps | calls | time | tokens. */
-        public synchronized String stepBlockReason(long estimatedInput, int minOutput) {
-            if (steps >= maxSteps) return "steps";
-            return blockReason(estimatedInput, minOutput);
-        }
+        public boolean metered() { return rate != null; }
+
+        /** Null when another dialogue step fits; otherwise budget | safeguard (the same rule as {@link #blockReason}). */
+        public synchronized String stepBlockReason(long estimatedInput, int minOutput) { return blockReason(estimatedInput, minOutput); }
 
         /**
-         * Null when another model call fits; otherwise calls | time | tokens. A tool's own model call and the history
-         * summary check only this: they are part of a step, not steps of their own.
+         * Null when another model call fits; otherwise {@code safeguard} (the chain's hidden net) or {@code budget} (this
+         * task's hold cannot cover the estimated input plus the minimum output on top of what was already used).
          */
         public synchronized String blockReason(long estimatedInput, int minOutput) {
-            if (continued()) {
+            String reason = null;
+            if (priorChainCalls + modelCalls >= MAX_CHAIN_MODEL_CALLS || !clock.instant().isBefore(chainDeadline)) reason = "safeguard";
+            else if (rate != null) {
                 pendingInput = Math.max(0, estimatedInput);
-                return continuedRate.cost(inputTokens + pendingInput, outputTokens + minOutput) > continuedRate.maxCost() ? "budget" : null;
+                if (rate.cost(inputTokens + pendingInput, outputTokens + minOutput) > rate.maxCost()) reason = "budget";
             }
-            if (modelCalls >= maxModelCalls) return "calls";
-            if (!clock.instant().isBefore(deadline)) return "time";
-            if (inputTokens + Math.max(0, estimatedInput) > maxInputTokens || outputTokens + minOutput > maxOutputTokens) return "tokens";
-            return null;
+            if (reason != null) { lastBlock = reason; lastBlockedInput = Math.max(0, estimatedInput); }
+            return reason;
         }
         /** The loop calls its model: one dialogue step, and one model call. */
         public synchronized void beginStep() { steps++; modelCalls++; }
@@ -354,23 +362,27 @@ public final class DialogueLoop {
         public synchronized void beginSubCall() { modelCalls++; }
         public synchronized int outputAllowance() { return outputAllowance(desiredOutputTokens); }
         public synchronized int outputAllowance(int desired) {
-            if (continued() && continuedRate.outputCreditsPerK().signum() > 0) {
-                var remaining = java.math.BigDecimal.valueOf(continuedRate.maxCost()).multiply(java.math.BigDecimal.valueOf(1000))
-                        .subtract(continuedRate.inputCreditsPerK().multiply(java.math.BigDecimal.valueOf(inputTokens + pendingInput)))
-                        .subtract(continuedRate.outputCreditsPerK().multiply(java.math.BigDecimal.valueOf(outputTokens)));
-                return remaining.signum() <= 0 ? 0 : remaining.divide(continuedRate.outputCreditsPerK(), 0, java.math.RoundingMode.DOWN)
+            if (rate != null && rate.outputCreditsPerK().signum() > 0) {
+                var remaining = java.math.BigDecimal.valueOf(rate.maxCost()).multiply(java.math.BigDecimal.valueOf(1000))
+                        .subtract(rate.inputCreditsPerK().multiply(java.math.BigDecimal.valueOf(inputTokens + pendingInput)))
+                        .subtract(rate.outputCreditsPerK().multiply(java.math.BigDecimal.valueOf(outputTokens)));
+                return remaining.signum() <= 0 ? 0 : remaining.divide(rate.outputCreditsPerK(), 0, java.math.RoundingMode.DOWN)
                         .min(java.math.BigDecimal.valueOf(desired)).intValueExact();
             }
-            return (int) Math.max(0, Math.min(desired, maxOutputTokens - outputTokens));
+            return Math.max(0, desired);
         }
         public synchronized void record(long input, long output) {
             inputTokens = Math.addExact(inputTokens, input); outputTokens = Math.addExact(outputTokens, output); pendingInput = 0;
         }
         public synchronized int steps() { return steps; }
         public synchronized int modelCalls() { return modelCalls; }
+        /** Calls of the whole chain so far, this task included. */
+        public synchronized int chainModelCalls() { return priorChainCalls + modelCalls; }
         public synchronized long inputTokens() { return inputTokens; }
         public synchronized long outputTokens() { return outputTokens; }
-        public Duration remainingTime() { var left = Duration.between(clock.instant(), deadline()); return left.isNegative() ? Duration.ZERO : left; }
-        public Instant deadline() { return continued() ? Instant.MAX : deadline; }
+        /** The last reason a call was refused (budget | safeguard), or null. */
+        public synchronized String lastBlock() { return lastBlock; }
+        /** The estimated input of the call refused last: what the next task of the chain must at least be able to pay for. */
+        public synchronized long lastBlockedInput() { return lastBlockedInput; }
     }
 }

@@ -138,6 +138,31 @@ describe('turn.done and execution events', () => {
     expect(s.canvasOps).toHaveLength(1);
     expect(s.executionTouchedSeq).toBe(8);
   });
+  // docs/ip-studio-dialogue-no-continue.md §3 / §9: a task whose frozen credits ran out hands the same request to the next
+  // task. The conversation never goes idle in between, and the next reply follows as a new message.
+  test('a chained turn hands the conversation straight to the next turn and its reply', () => {
+    const chained = fold(loaded(), delta(6, '剧本放进画布了，接着拆镜。'),
+      ev(7, 'turn.done', { reason: 'chained', messageId: 'm1', nextTurnId: 't2' }));
+    expect(chained.messages.find(m => m.id === 'm1')!.status).toBe('done');
+    expect(chained.activeTurnId).toBe('t2');
+    expect(dialogueActivity(chained)).toEqual({ phase: 'waiting' });
+    expect(messageSuggestions(chained, chained.messages.find(m => m.id === 'm1')!)).toBeUndefined();
+    const next = fold(chained, ev(8, 'message.delta', { messageId: 'm2', partId: 'p1', delta: '分镜拆好了。' }, { turnId: 't2', runId: 'r2' }));
+    expect(next.activeTurnId).toBe('t2');
+    expect(next.messages.filter(m => m.role === 'assistant').map(m => m.id)).toEqual(['m1', 'm2']);
+    expect(dialogueActivity(next)).toMatchObject({ phase: 'writing', messageId: 'm2' });
+    const done = fold(next, ev(9, 'turn.done', { reason: 'completed', messageId: 'm2' }, { turnId: 't2' }));
+    expect(done.activeTurnId).toBeUndefined();
+    expect(dialogueActivity(done)).toBeUndefined();
+  });
+  test('a snapshot read while the chain hands over keeps the next turn active', () => {
+    const chained = fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'chained', messageId: 'm1', nextTurnId: 't2' }));
+    const snap = dialogueReducer(chained, { type: 'snapshot', mode: 'merge', state: state({ thread: { ...thread, lastSeq: 7, activeTurnId: 't2' }, latestSeq: 7,
+      messages: [userMessage, { id: 'm1', threadId: 'th', seq: 6, turnId: 't1', role: 'assistant', text: 'x', blocks: [], status: 'done', createdAt: thread.createdAt },
+        { id: 'm2', threadId: 'th', seq: 7, turnId: 't2', role: 'assistant', text: '', blocks: [], status: 'streaming', createdAt: thread.createdAt }] }) });
+    expect(snap.activeTurnId).toBe('t2');
+    expect(dialogueActivity(snap)).toMatchObject({ messageId: 'm2' });
+  });
   test('interrupted and failed turns are visible as such', () => {
     expect(fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'interrupted', messageId: 'm1' })).messages.find(m => m.id === 'm1')!.status).toBe('interrupted');
     expect(fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'failed', messageId: 'm1' })).messages.find(m => m.id === 'm1')!.status).toBe('failed');

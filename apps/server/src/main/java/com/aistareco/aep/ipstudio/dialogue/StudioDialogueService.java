@@ -431,42 +431,31 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
 
     record Started(String turnId, String runId) {}
 
-    private static boolean saysContinue(String text) {
-        return text != null && text.strip().replaceAll("[\\s，。！？!?,.]", "")
-                .matches("继续|继续吧|可以继续|好的继续|继续下一步|继续完成|继续做完|把剩下的做完|完成剩下的|没有完成的部分帮我完成|(?i:continue)");
-    }
-
-    /** Server-derived consent: a continuation reply after a real limit, never model text or a client-supplied flag. */
-    private String resumedTask(IpDialogueThread thread, List<IpDialogueMessage> inputs) {
-        if (inputs.isEmpty() || inputs.stream().anyMatch(m -> !saysContinue(m.getText())
-                || !ids(m.getPinnedNodeIdsJson()).isEmpty() || !ids(m.getAttachmentNodeIdsJson()).isEmpty())) return null;
-        long before = inputs.stream().mapToLong(IpDialogueMessage::getSeq).min().orElse(0);
-        Set<String> seen = new HashSet<>();
-        for (var message : messages.findByThreadIdAndSeqLessThanOrderBySeqDesc(thread.getId(), before, PageRequest.of(0, 50))) {
-            if ("user".equals(message.getRole()) && !saysContinue(message.getText())) break; // a new task ends the old consent
-            if (message.getRunId() == null || !seen.add(message.getRunId())) continue;
-            var previous = runs.findById(message.getRunId()).orElse(null);
-            if (previous == null || !thread.getProjectId().equals(previous.getProjectId())
-                    || !thread.getOwnerUserId().equals(previous.getOwnerUserId()) || !thread.getId().equals(previous.getNodeId())
-                    || !StudioDialogueTurnWorker.KIND.equals(previous.getKind()) || !IpRun.STATUS_DONE.equals(previous.getStatus())) continue;
-            String limit = parse(previous.getOutputJson()).path("limit").asText("");
-            JsonNode exec = parse(previous.getInputJson()).path("_exec");
-            if (exec.path("continueUntilDone").asBoolean(false)) {
-                String origin = exec.path("continuationOf").asText(null);
-                var root = origin == null ? null : runs.findById(origin).orElse(null);
-                if (root != null && thread.getProjectId().equals(root.getProjectId()) && thread.getOwnerUserId().equals(root.getOwnerUserId())
-                        && thread.getId().equals(root.getNodeId()) && StudioDialogueTurnWorker.KIND.equals(root.getKind())) return root.getId();
-                return previous.getId();
-            }
-            if (Set.of("tokens", "steps", "calls", "tools", "time", "budget").contains(limit)) return previous.getId();
+    /**
+     * The payer's available balance, to size a dialogue hold. Unknown (no wallet service in a test, an invalid payer the
+     * reservation refuses anyway) → no cap: the reservation itself then answers with its real error.
+     */
+    private long availableBalance(String userId, BillingSelection billing) {
+        try {
+            if (enterpriseBilling != null) return enterpriseBilling.availableBalance(userId, billing);
+            var wallet = credits.getOrCreateWallet(userId);
+            return wallet == null ? Long.MAX_VALUE : wallet.getTotalBalance();
+        } catch (BusinessException e) {
+            log.info("[dialogue] balance unknown for sizing user={} code={}", userId, e.getCode());
+            return Long.MAX_VALUE;
         }
-        return null;
     }
 
     /**
      * Accept a parent dialogue turn inside the caller's transaction (project and thread locks held): resolve the endpoint
-     * and prompt, require the token price and the user's approved ceiling, hold credits, create the run and the
-     * streaming assistant message, and dispatch after commit.
+     * and prompt, require the token price, hold credits, create the run and the streaming assistant message, and dispatch
+     * after commit.
+     *
+     * <p>The dialogue is billed by real usage; the user no longer approves a per-turn ceiling (docs/ip-studio-dialogue-
+     * no-continue.md §8). The hold is min(the endpoint's dialogue ceiling, the payer's available balance), so a small
+     * balance still talks; when even one minimal call does not fit, the hold is refused with 402 as before. The client's
+     * {@code maxCost} is accepted (older pages send it) and recorded, but it no longer refuses the turn (it was 409
+     * {@code STUDIO_PRICE_CHANGED} whenever the server ceiling changed). Paid generations keep their own maxCost check.
      */
     private Started startTurn(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, BillingSelection billing, Long maxCost,
                               String skillKey, String requestedModel) {
@@ -519,7 +508,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         String stage = bound != null && bound.stage() != null ? bound.stage() : skill == null ? null : skill.firstStage();
         AiModelEndpoint endpoint = null;
         PromptService.ResolvedPrompt prompt = null;
-        AiChatTokenPricing.Rate rate = null;
+        AiChatTokenPricing.Rate rate = null, dialogueRate = null;
         long cost = 0;
         int perCall = 4096;
         if (!mock) {
@@ -541,8 +530,10 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
             rate = tokenPricing == null ? null : tokenPricing.findDialogue(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
-            if (maxCost == null) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "模型计费配置已更新，请刷新后重试");
-            rate = rate.withinBudget(maxCost);
+            dialogueRate = rate;
+            long available = availableBalance(userId, billing);
+            // Below one minimal call the full ceiling is asked for and the hold answers 402 (unchanged behavior).
+            if (available >= rate.cost(1, DialogueLoop.MIN_OUTPUT_TOKENS) && available < rate.maxCost()) rate = rate.withinBudget(available);
             cost = rate.maxCost();
             perCall = Math.min(Math.max(1024, prompt.params().maxTokensOrDefault()), rate.maxOutputTokens());
             if (endpoint.getChatMaxOutputTokens() != null) perCall = Math.min(perCall, endpoint.getChatMaxOutputTokens());
@@ -562,8 +553,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         input.put("prompt", excerpt(inputs.get(inputs.size() - 1).getText(), 500));
         ObjectNode exec = input.putObject("_exec").put("holdTotal", cost).put("unitCost", cost).put("billingUnit", mock ? "per_call" : "per_token")
                 .put("assistantMessageId", assistantId).put("maxTokens", perCall);
-        String resumed = resumedTask(thread, inputs);
-        if (resumed != null) exec.put("continueUntilDone", true).put("continuationOf", resumed);
+        // A typed 「继续」 is an ordinary message now; nothing is unlocked by it (docs/ip-studio-dialogue-no-continue.md §3).
         var ids = exec.putArray("userMessageIds");
         inputs.forEach(m -> ids.add(m.getId()));
         exec.putArray("childRunIds");
@@ -573,6 +563,8 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         if (!mock) {
             exec.put("endpointId", endpoint.getId()).put("temperature", prompt.params().temperatureOrDefault());
             exec.set("tokenPricing", mapper.valueToTree(rate));
+            // The full dialogue ceiling: a later task of the chain holds min(this, balance) again.
+            exec.set("dialogueRate", mapper.valueToTree(dialogueRate));
             exec.putObject("prompt").put("key", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE).put("system", prompt.system()).put("user", prompt.userTemplate());
             input.put("promptKey", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
         }
@@ -712,16 +704,20 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话没有绑定这次制作");
         String executionId = bound;
         if ("stop".equals(request.action())) {
-            String runId = thread.getActiveRunId();
             List<String> children = new ArrayList<>();
-            if (runId != null) {
-                tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
+            // The task the thread points at may hand over to the next task of its chain while this stop is on its way
+            // (docs/ip-studio-dialogue-no-continue.md §3): follow the pointer once more so the new task is stopped too.
+            Set<String> stopped = new LinkedHashSet<>();
+            for (String runId = thread.getActiveRunId(); runId != null && stopped.add(runId) && stopped.size() <= 3;
+                 runId = threads.findById(threadId).map(IpDialogueThread::getActiveRunId).orElse(null)) {
+                final String target = runId;
+                tx.executeWithoutResult(s -> runs.lockById(target).ifPresent(run -> {
                     if (!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
                     run.setCancelRequested(true);
                     runs.save(run);
                     parse(run.getInputJson()).path("_exec").path("childRunIds").forEach(id -> children.add(id.asText()));
                 }));
-                signals.stop(runId);
+                signals.stop(target);
             }
             store.write(threadId, t -> {
                 t.setLastControlId(request.controlId());
@@ -1109,7 +1105,14 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         return new Message(m.getId(), m.getThreadId(), m.getSeq(), m.getTurnId(), m.getRunId(), m.getRole(), m.getText() == null ? "" : m.getText(),
                 blocks, pinned.isEmpty() ? null : pinned, attachments.isEmpty() ? null : attachments, m.getClientMessageId(),
                 billing == null || billing.isEmpty() ? null : billing, m.isSettling() ? Boolean.TRUE : null, m.getStatus(), iso(m.getCreatedAt()), m.getLegacyNodeId(),
-                suggestions(m));
+                suggestions(m), notice(m));
+    }
+
+    /** A system note may name one action for the page (recharge after the chain ran out of credits). */
+    private String notice(IpDialogueMessage m) {
+        if (!"system".equals(m.getRole()) || m.getRequestJson() == null) return null;
+        String notice = parse(m.getRequestJson()).path("notice").asText(null);
+        return "recharge".equals(notice) || "recharge-enterprise".equals(notice) ? notice : null;
     }
 
     /** Assistant messages may carry follow-ups in requestJson ({@code {"suggestions":[...]}}); user messages carry settings there. */

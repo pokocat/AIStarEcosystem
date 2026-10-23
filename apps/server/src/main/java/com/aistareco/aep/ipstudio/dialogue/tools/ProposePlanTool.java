@@ -113,9 +113,11 @@ public class ProposePlanTool implements StudioDialogueTool {
                 Map.of("role", "user", "content", PromptService.fill(resolved.userTemplate(), vars)));
         long estimate = estimate(messages);
         String blocked = ctx.budget.blockReason(estimate, MIN_OUTPUT);
-        if (blocked != null) return ToolRun.failed("STUDIO_TURN_BUDGET", "本轮额度不够整理方案", DialogueTools.fail(
-                ctx.budget.continued() ? "已批准的对话费用不足以整理完整方案，需要用户确认下一次费用；不要声称是单轮用量、步数或用时限制。"
-                        : "本轮的模型额度不足以整理完整方案，请告诉用户回复后继续"));
+        // This task's hold cannot pay for the planner: the task ends here and the next task of the chain plans again
+        // (docs/ip-studio-dialogue-no-continue.md §3). Nothing is asked of the user.
+        if (blocked != null) return ToolRun.failed("STUDIO_TURN_BUDGET", "这一步换到下一段接着做",
+                DialogueTools.fail("本条任务冻结的积分用完了，方案会在接下来的任务里重新整理；不要告诉用户要回复什么"))
+                .withEnd(com.aistareco.aep.ipstudio.dialogue.DialogueLoop.Reason.LIMIT);
         ctx.effects.beforeModelCall();
         ctx.budget.beginSubCall();
         var options = new HashMap<String, Object>();

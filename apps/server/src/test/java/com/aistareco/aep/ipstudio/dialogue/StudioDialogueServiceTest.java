@@ -83,7 +83,11 @@ class StudioDialogueServiceTest {
 
     private PostMessageRequest request(String id, String text, Long maxCost) { return new PostMessageRequest(id, text, null, null, null, null, null, maxCost, null); }
 
-    @Test void onlyAnExplicitContinuationAfterARealLimitEnablesContinuousWorkAndTheConsentSurvivesReload() throws Exception {
+    /**
+     * docs/ip-studio-dialogue-no-continue.md §3: a typed 「继续」 after a limited turn is an ordinary message now. Nothing is
+     * unlocked by it (no continueUntilDone / continuationOf on the new run); the chain continues work by itself.
+     */
+    @Test void aTypedContinueIsAnOrdinaryMessageThatUnlocksNothing() throws Exception {
         when(fixtures.enabled()).thenReturn(true);
         var stopped=IpRun.builder().id("IPR-paused").projectId("P1").ownerUserId("u1").nodeId("IPT-P1").kind("studio-dialogue")
                 .status("done").inputJson("{}").outputJson("{\"limit\":\"tokens\"}").build();
@@ -92,20 +96,9 @@ class StudioDialogueServiceTest {
         var accepted=service.post("u1","P1","IPT-P1",request("resume-1","继续",null));
         var run=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(run.capture());
         var exec=mapper.readTree(run.getValue().getInputJson()).path("_exec");
-        assertTrue(exec.path("continueUntilDone").asBoolean());assertEquals("IPR-paused",exec.path("continuationOf").asText());
+        assertFalse(exec.has("continueUntilDone"));assertFalse(exec.has("continuationOf"));
         assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("resume-1","继续",null)).runId());
         verify(runs,times(1)).save(any());
-    }
-
-    @Test void anUnrelatedNewTaskOrARefusalDoesNotInheritContinuousConsent() throws Exception {
-        when(fixtures.enabled()).thenReturn(true);
-        var old=IpRun.builder().id("old").projectId("P1").ownerUserId("u1").nodeId("IPT-P1").kind("studio-dialogue")
-                .status("done").inputJson("{}").outputJson("{\"limit\":\"tokens\"}").build();
-        when(runs.findById("old")).thenReturn(Optional.of(old));message("paused",1,"assistant","[]").setRunId("old");
-        message("new-task",2,"user","[]").setText("画另一张海报");thread.setMessageSeq(2);
-        service.post("u1","P1","IPT-P1",request("other","继续",null));
-        var run=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(run.capture());
-        assertFalse(mapper.readTree(run.getValue().getInputJson()).path("_exec").path("continueUntilDone").asBoolean());
     }
 
     // Codex real-environment retest 2026-10-19: the home page brief (a conversation record with no turns) was imported as
@@ -314,7 +307,7 @@ class StudioDialogueServiceTest {
                 .thenThrow(new BusinessException(org.springframework.http.HttpStatus.PAYMENT_REQUIRED, "STUDIO_PLAN_BUDGET_EXCEEDED", "预算不够，还差 4 积分"));
         var refused = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-b1", "规划制作", 14L)));
         assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED", refused.getCode());
-        verifyNoInteractions(credits);
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
         verify(runs, never()).save(any());
 
         reset(gate);
@@ -369,7 +362,8 @@ class StudioDialogueServiceTest {
         verify(scenes).resolve(eq("studio"), eq("script"), isNull(), anyLong());
     }
 
-    @Test void realTurnNeedsATokenPriceAndTheApprovedCeiling() {
+    /** §8: the token price is required; the client's maxCost is not, and an old or low one no longer refuses (409). */
+    @Test void realTurnNeedsATokenPriceButNotTheClientsCeiling() {
         var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
@@ -377,26 +371,47 @@ class StudioDialogueServiceTest {
                 .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         var noPrice = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-5", "你好", 50L)));
         assertEquals("AI_TOKEN_PRICE_NOT_CONFIGURED", noPrice.getCode());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
 
         var pricing = mock(AiChatTokenPricing.class);
         var rate = new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000); // maxCost = 14
         when(pricing.findDialogue("ep-1")).thenReturn(rate);
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
-        var missingCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null)));
-        assertEquals("STUDIO_PRICE_CHANGED", missingCeiling.getCode());
-        var lowCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 0L)));
-        assertEquals("STUDIO_PRICE_CHANGED", lowCeiling.getCode());
-        verifyNoInteractions(credits);
-
-        var ok = service.post("u1", "P1", "IPT-P1", request("c-8", "你好", 14L));
+        var ok = service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null));
+        assertEquals("accepted", ok.queueState(), "no client ceiling: accepted, not STUDIO_PRICE_CHANGED");
         verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString());
         var run = ArgumentCaptor.forClass(IpRun.class);
         verify(runs).save(run.capture());
         assertEquals(14L, run.getValue().getCost());
         assertTrue(run.getValue().getInputJson().contains("\"tokenPricing\""));
+        assertTrue(run.getValue().getInputJson().contains("\"dialogueRate\""), "the full ceiling is kept for the next task of a chain");
     }
 
-    @Test void anOldPageCeilingRemainsUsableWithoutIncreasingConsent() throws Exception {
+    /** §8: only the dialogue stopped checking the client's ceiling; paid generations keep the shared check (409). */
+    @Test void paidGenerationsKeepTheirApprovedCostCheck() {
+        var e = assertThrows(BusinessException.class, () -> IpRunService.requireApprovedCost(7L, 8));
+        assertEquals("STUDIO_PRICE_CHANGED", e.getCode());
+        assertDoesNotThrow(() -> IpRunService.requireApprovedCost(8L, 8));
+    }
+
+    @Test void aLowClientCeilingNoLongerRefusesTheTurn() {
+        var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
+        when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
+        when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
+                .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
+        var pricing = mock(AiChatTokenPricing.class);
+        when(pricing.findDialogue("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000));
+        ReflectionTestUtils.setField(service, "tokenPricing", pricing);
+        var ok = service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 0L));
+        verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString());
+    }
+
+    /**
+     * §3 / §8: an old page that still sends 21 is not capped by it: the hold is min(the dialogue ceiling, the balance).
+     * With a balance of 21 that is at most 21; the snapshot keeps the unit prices; the hold bounds what is charged.
+     */
+    @Test void theHoldFollowsTheBalanceNotTheClientsNumber() throws Exception {
         var endpoint=AiModelEndpoint.builder().id("ep-1").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA),isNull(),eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
@@ -406,17 +421,21 @@ class StudioDialogueServiceTest {
         var current=new AiChatTokenPricing.Rate(new BigDecimal(".18"),new BigDecimal("1.08"),1048576,65536);
         when(pricing.findDialogue("ep-1")).thenReturn(current);
         ReflectionTestUtils.setField(service,"tokenPricing",pricing);
-        var accepted=service.post("u1","P1","IPT-P1",request("old-page","继续",21L));
+        var wallet=new com.aistareco.aep.model.Wallet();wallet.setTotalBalance(21);
+        when(credits.getOrCreateWallet("u1")).thenReturn(wallet);
+        var accepted=service.post("u1","P1","IPT-P1",request("old-page","继续",5L));
         var captor=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(captor.capture());
-        var run=captor.getValue();assertEquals(21,run.getCost());
-        var snapshot=mapper.treeToValue(mapper.readTree(run.getInputJson()).path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
+        var run=captor.getValue();assertTrue(run.getCost()>0&&run.getCost()<=21,"capped by the balance, not by the page's 5");
+        var exec=mapper.readTree(run.getInputJson()).path("_exec");
+        var snapshot=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);
         assertEquals(current.inputCreditsPerK(),snapshot.inputCreditsPerK());
         assertEquals(current.outputCreditsPerK(),snapshot.outputCreditsPerK());
-        assertEquals(21,snapshot.maxCost());
-        verify(credits).hold(eq("u1"),eq(21L),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString());
-        assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("old-page","继续",21L)).runId());
+        assertEquals(run.getCost(),snapshot.maxCost());
+        assertEquals(current.maxCost(),mapper.treeToValue(exec.path("dialogueRate"),AiChatTokenPricing.Rate.class).maxCost());
+        verify(credits).hold(eq("u1"),eq(run.getCost()),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString());
+        assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("old-page","继续",5L)).runId());
         verify(runs,times(1)).save(any());
-        var budget=DialogueLoop.TurnBudget.continued(snapshot,4096,java.time.Clock.systemUTC());
+        var budget=DialogueLoop.TurnBudget.metered(snapshot,4096,java.time.Clock.systemUTC());
         budget.record(110000,0);assertEquals("budget",budget.blockReason(10000,256));
         assertThrows(BusinessException.class,()->snapshot.settleContinued(200000L,0L));
     }
