@@ -311,3 +311,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [企业邀请链接复制上线验收](releases/enterprise-invitation-copy-release-20261023.md) — 纯文本复制、弹窗内备用复制与真实失败提示；原生/接口缺失/拒绝场景系统粘贴通过，2026-10-23 已发布。
 
 - [Studio 出图后接视频续接修复与验收](releases/studio-stage-continuation-release-20261023.md)（last-reviewed: 2026-10-23）
+
+- [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
