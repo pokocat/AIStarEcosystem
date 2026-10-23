@@ -1434,3 +1434,4 @@
 - [ ] **接续任务上下文的长度**：`chainContext` 超过 2 万字时保留开头 6000 字与最近 1.4 万字、中间省略；极长链（上百步）的早期细节会丢，靠画布对象本身兜底，未用真模型验证这种情况。
 - [ ] **前端在途接续的旧页面**：已打开的旧页面不认识 `reason:"chained"`，会在两段之间短暂显示空闲，新回复照常接上；发布后旧页面刷新即消失，不单独处理。
 - [ ] **`apps/admin/src/app/ai/audit/page.tsx` 用了原生 select**（与本改动无关，`src/ip/select-field-wiring.test.ts` 在本分支基线上就是红的）：按 select-field 规约换成 `SelectField`。
+- [ ] **`EnterpriseStudioBillingIntegrationTest` 两项在基线 070334d0 上就红**（2026-10-23 发现，与本改动无关，已在干净基线上复现）：`operatorCanBindMissingOriginalImageIdWithAuditAndNoSecondSubmission`（期望 200 实得 409）与 `supplierConfirmedUnknownRefundsOriginalEnterpriseAfterRemovalAndPreservesPartialSuccess`（期望 8 实得 0）。多半是「图片受理未知在同一结算事务内结束为 failed」之后测试没跟上，需核对后改测试或改实现。
