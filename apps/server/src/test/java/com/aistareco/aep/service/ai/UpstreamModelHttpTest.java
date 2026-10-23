@@ -112,6 +112,21 @@ class UpstreamModelHttpTest {
     }
 
     @Test
+    void streamHttpFailureRetainsResponseHeadersForSupplierDiagnostics() throws Exception {
+        AiModelUsageService usage = mock(AiModelUsageService.class);
+        var http = new UpstreamModelHttp(usage);
+        var server = stub(429, "{\"request_id\":\"remote-body-123\"}");
+        var result = http.sendStream(post(server.url(), "{}"), ctx(usage).build(), line -> true,
+                () -> false, Duration.ofSeconds(2), Duration.ofSeconds(5));
+        var error = ProviderResponseDiagnostics.attach(new IllegalStateException("safe"),
+                result.status(), result.headers(), result.errorBody());
+        var evidence = (ProviderResponseDiagnostics) error.getSuppressed()[0];
+        assertEquals(429, evidence.status());
+        assertTrue(evidence.identifiers().contains("x-request-id=remote-header-123"));
+        assertTrue(evidence.identifiers().contains("request_id=remote-body-123"));
+    }
+
+    @Test
     void non2xx_withRecordFailureUsageFalse_skipsRecording() throws Exception {
         AiModelUsageService usage = mock(AiModelUsageService.class);
         UpstreamModelHttp http = new UpstreamModelHttp(usage);
@@ -203,6 +218,7 @@ class UpstreamModelHttpTest {
             server.createContext("/", exchange -> {
                 exchange.getRequestBody().readAllBytes();
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
+                exchange.getResponseHeaders().add("X-Request-Id", "remote-header-123");
                 exchange.sendResponseHeaders(status, out.length);
                 try (OutputStream os = exchange.getResponseBody()) {
                     os.write(out);

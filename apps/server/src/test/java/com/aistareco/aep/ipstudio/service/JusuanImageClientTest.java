@@ -32,6 +32,20 @@ class JusuanImageClientTest {
                 .imageRequestSpecJson(spec.json()).upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).enabled(true).build();
     }
     HttpResponse<String> json(String value){var r=mock(HttpResponse.class);when(r.statusCode()).thenReturn(200);when(r.body()).thenReturn(value);return r;}
+    @Test void rejectedImageRetainsSupplierHeaderAndBodyTraceIds() {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"logid\":\"body-123\"}}");
+        when(response.statusCode()).thenReturn(429);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("X-Tt-Logid",List.of("header-123")),(k,v)->true));
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{}));
+        var evidence=(ProviderResponseDiagnostics)error.getSuppressed()[0];
+        assertEquals(429,evidence.status());
+        assertTrue(evidence.identifiers().contains("x-tt-logid=header-123"));
+        assertTrue(evidence.identifiers().contains("logid=body-123"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
     @Test void configuredAsyncImageProtocolDoesNotDependOnProviderHostname(){
         var ep=endpoint("flux2-klein-4b");
         ep.setBaseUrl("https://image-proxy.example/v1");

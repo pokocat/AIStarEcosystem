@@ -125,7 +125,11 @@ public class UpstreamModelHttp {
     public interface StreamLineHandler { boolean onLine(String line) throws Exception; }
 
     /** 流式调用结果：非 2xx 时 {@code errorBody} 为上游原始响应体（已 WARN + 落失败用量）；{@code cancelled} 表示调用方主动终止。 */
-    public record StreamResult(int status, String errorBody, boolean cancelled, long latencyMs) {}
+    public record StreamResult(int status, String errorBody, boolean cancelled, long latencyMs, java.net.http.HttpHeaders headers) {
+        public StreamResult(int status, String errorBody, boolean cancelled, long latencyMs) {
+            this(status,errorBody,cancelled,latencyMs,null);
+        }
+    }
 
     private static final ScheduledExecutorService STREAM_WATCHDOG = Executors.newSingleThreadScheduledExecutor(r -> {
         Thread t = new Thread(r, "upstream-stream-watchdog");
@@ -181,7 +185,7 @@ public class UpstreamModelHttp {
             log.warn("[upstream-http] http-error purpose={} endpoint={} model={} status={} durationMs={} requestId={} stream=true body={}",
                     ctx.purposeWire(), ctx.endpointName(), ctx.model(), resp.statusCode(), latency, ctx.requestId(), snippet(body, WARN_BODY_LIMIT));
             if (ctx.recordFailureUsage()) recordFailure(ctx, "HTTP_" + resp.statusCode(), snippet(body, WARN_BODY_LIMIT), body, latency);
-            return new StreamResult(resp.statusCode(), body, false, latency);
+            return new StreamResult(resp.statusCode(), body, false, latency, resp.headers());
         }
         long idleNanos = idleTimeout.toNanos(), totalNanos = totalTimeout.toNanos();
         AtomicLong lastActivity = new AtomicLong(System.nanoTime());
@@ -231,7 +235,7 @@ public class UpstreamModelHttp {
         if (ioLog.isInfoEnabled())
             ioLog.info("[upstream-io] RESPONSE requestId={} purpose={} endpoint={} model={} status={} durationMs={} stream=true cancelled={}",
                     ctx.requestId(), ctx.purposeWire(), ctx.endpointName(), ctx.model(), resp.statusCode(), latency, "cancelled".equals(reason));
-        return new StreamResult(resp.statusCode(), null, "cancelled".equals(reason), latency);
+        return new StreamResult(resp.statusCode(), null, "cancelled".equals(reason), latency, resp.headers());
     }
 
     private static String readBounded(InputStream in) {

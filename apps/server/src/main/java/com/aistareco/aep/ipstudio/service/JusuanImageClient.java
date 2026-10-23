@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
+
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.ai.*;
@@ -380,7 +382,7 @@ public class JusuanImageClient {
     }
     private JsonNode checkedSubmit(HttpResponse<String> response) {
         if(response.statusCode()>=400 && response.statusCode()<500)
-            throw new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）");
+            throw attach(new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
         return checked(response);
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
@@ -426,8 +428,8 @@ public class JusuanImageClient {
                 .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
-        if(response.statusCode()/100!=2)throw failure("聚算图片接口暂时不可用（"+response.statusCode()+"）");
-        try{return mapper.readTree(response.body());}catch(Exception e){throw failure("聚算图片接口返回了无效结果");}
+        if(response.statusCode()/100!=2)throw attach(failure("聚算图片接口暂时不可用（"+response.statusCode()+"）"),response);
+        try{return mapper.readTree(response.body());}catch(Exception e){throw attach(failure("聚算图片接口返回了无效结果"),response);}
     }
     static String assetId(JsonNode job) {
         for(String field:List.of("outputAssetId","output_asset_id","assetId"))if(job.hasNonNull(field))return job.path(field).asText();

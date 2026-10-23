@@ -1,5 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
+import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
+
 import com.aistareco.aep.config.MaterialVideoProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -422,15 +424,15 @@ public class MaterialVideoModelClient {
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
             // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
             if(resp.statusCode()>=500 && mappedError.isEmpty())
-                throw new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode());
+                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode()),resp);
             if(mappedError.filter(m->VideoProviderErrorMapper.VIDEO_MODEL_RETIRED.equals(m.code())).isPresent())
                 markRetired(p,model);
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
+            throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                     mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
                     mappedError.map(VideoProviderErrorMapper.MappedError::message)
                             .orElseGet(() -> submitFailureMessage(resp.statusCode(), resp.body())),
                     "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
-                            + " body=" + snippet(resp.body()));
+                            + " body=" + snippet(resp.body())),resp);
         }
         try {
             JsonNode root = OM.readTree(resp.body());
@@ -452,7 +454,7 @@ public class MaterialVideoModelClient {
                 log.warn("[material-video] submit missing-task-id endpoint={} model={} durationMs={} body={}",
                         p.getName(), model, elapsedMs(startNanos), snippet(resp.body()));
                 upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
-                throw new SubmissionUnknown("missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body()));
+                throw attach(new SubmissionUnknown("missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body())),resp);
             }
             log.info("[material-video] submit ok endpoint={} model={} protocol={} taskId={} videoId={} durationMs={}",
                     p.getName(), model, protocol, taskId, videoId, elapsedMs(startNanos));
@@ -469,7 +471,7 @@ public class MaterialVideoModelClient {
             log.warn("[material-video] submit bad-output endpoint={} model={} durationMs={} err={}",
                     p.getName(), model, elapsedMs(startNanos), e.toString());
             upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
-            throw new SubmissionUnknown("endpoint=" + p.getName() + " err=" + e);
+            throw attach(new SubmissionUnknown("endpoint=" + p.getName() + " err=" + e),resp);
         }
     }
 
@@ -575,10 +577,10 @@ public class MaterialVideoModelClient {
                     "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " err=" + ex.getCause());
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
+            throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
                     "视频生成失败，请稍后重试",
                     "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
-                            + " body=" + snippet(resp.body()));
+                            + " body=" + snippet(resp.body())),resp);
         }
         try {
             JsonNode root = OM.readTree(resp.body());

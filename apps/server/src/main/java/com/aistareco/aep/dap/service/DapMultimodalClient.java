@@ -446,12 +446,14 @@ public class DapMultimodalClient {
                     "大模型调用失败(" + path + "): " + (ex.getCause() == null ? ex.getMessage() : ex.getCause().getMessage()));
         }
         if (resp.statusCode() >= 400) {
-            throw new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(), upstreamMessage(resp));
+            throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
+                    new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(), upstreamMessage(resp)),resp);
         }
         try {
             return OM.readTree(resp.body());
         } catch (IOException e) {
-            throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage());
+            throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
+                    new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage()),resp);
         }
     }
 

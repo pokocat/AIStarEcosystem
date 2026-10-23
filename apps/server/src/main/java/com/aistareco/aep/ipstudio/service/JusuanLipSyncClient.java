@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
+
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.service.ai.*;
 import com.aistareco.common.*;
@@ -86,10 +88,10 @@ public class JusuanLipSyncClient {
     private JsonNode checked(HttpResponse<String> response,boolean create) {
         if(response.statusCode()/100!=2) {
             if(create&&response.statusCode()>=400&&response.statusCode()<500&&response.statusCode()!=408)
-                throw new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED","口型请求被拒绝，请检查源视频是否有清晰的单人正脸，以及配音时长");
-            throw fail("STUDIO_LIP_SYNC_UNAVAILABLE","口型服务暂时不可用，正在核对原任务");
+                throw attach(new JusuanSpeechClient.Rejected("STUDIO_LIP_SYNC_REJECTED","口型请求被拒绝，请检查源视频是否有清晰的单人正脸，以及配音时长"),response);
+            throw attach(fail("STUDIO_LIP_SYNC_UNAVAILABLE","口型服务暂时不可用，正在核对原任务"),response);
         }
-        try{return mapper.readTree(response.body());}catch(Exception e){throw fail("STUDIO_LIP_SYNC_BAD_OUTPUT","口型任务尚未确认，正在核对原请求");}
+        try{return mapper.readTree(response.body());}catch(Exception e){throw attach(fail("STUDIO_LIP_SYNC_BAD_OUTPUT","口型任务尚未确认，正在核对原请求"),response);}
     }
     private static String key(AiModelEndpoint e){return AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());}
     private static BusinessException fail(String code,String message){return new BusinessException(HttpStatus.BAD_GATEWAY,code,message);}

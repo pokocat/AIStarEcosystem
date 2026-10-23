@@ -10,7 +10,7 @@ class ModelAlertContextTest {
     JdbcTemplate db; ModelAlertContext context;
     @BeforeEach void setup() throws Exception {
         db = new JdbcTemplate(new DriverManagerDataSource("jdbc:h2:mem:context-"+java.util.UUID.randomUUID()+";MODE=MySQL;DB_CLOSE_DELAY=-1","sa",""));
-        db.execute("CREATE TABLE material_video_job(id VARCHAR PRIMARY KEY,provider_used VARCHAR,model_used VARCHAR,upstream_base_url_snapshot VARCHAR,variant_config_json VARCHAR,duration_sec INT,aspect_ratio VARCHAR)");
+        db.execute("CREATE TABLE material_video_job(id VARCHAR PRIMARY KEY,provider_used VARCHAR,model_used VARCHAR,upstream_base_url_snapshot VARCHAR,variant_config_json VARCHAR,duration_sec INT,aspect_ratio VARCHAR,external_task_id VARCHAR)");
         db.execute("CREATE TABLE ip_run(id VARCHAR PRIMARY KEY,kind VARCHAR,input_json VARCHAR,output_json VARCHAR)");
         db.execute("CREATE TABLE ai_generation_queue(id INT,task_id VARCHAR,endpoint_id VARCHAR)");
         // Use the entity's actual mapping, so a query using a Java property as a SQL column fails here too.
@@ -21,18 +21,18 @@ class ModelAlertContextTest {
         context = new ModelAlertContext(db);
     }
     @Test void videoUsesOriginalRouteModelAndTaskParametersEvenAfterEndpointChanges() {
-        db.update("INSERT INTO material_video_job VALUES (?,?,?,?,?,?,?)","video","原供应商","minimax-h3","https://old.example:10443/v1?token=secret","{\"endpoint_id\":\"ep\",\"generation_mode\":\"i2v\",\"seed\":42,\"first_frame_key\":\"private/key\"}",13,"9:16");
+        db.update("INSERT INTO material_video_job VALUES (?,?,?,?,?,?,?,?)","video","原供应商","minimax-h3","https://old.example:10443/v1?token=secret","{\"endpoint_id\":\"ep\",\"generation_mode\":\"i2v\",\"seed\":42,\"first_frame_key\":\"private/key\"}",13,"9:16","vendor-job-123");
         String text = context.describe("video");
-        for(String value: new String[]{"原供应商","minimax-h3","https://old.example:10443/v1","duration_sec\":13","i2v","9:16","seed\":42","非完整上游请求"}) assertTrue(text.contains(value),text);
+        for(String value: new String[]{"原供应商","minimax-h3","https://old.example:10443/v1","duration_sec\":13","i2v","9:16","seed\":42","非完整上游请求","远端任务 ID：vendor-job-123"}) assertTrue(text.contains(value),text);
         for(String value: new String[]{"new-model","new.example","secret","private/key"}) assertFalse(text.contains(value),text);
     }
     @Test void imageUsesFailedItemCheckpointRatherThanPreviouslyCompletedImage() throws Exception {
         var json = new ObjectMapper(); var input = json.createObjectNode(); var exec = input.putObject("_exec").put("endpointId","ep");
         var jobs = exec.putArray("imageJobs");jobs.addObject().put("model","completed-model").put("requestBody","{\"width\":512}");
-        jobs.addObject().put("baseUrl","https://images.example/v1").put("model","failed-model").put("requestBody","{\"model\":\"failed-model\",\"width\":1024,\"prompt\":\"private prompt\",\"api_key\":\"secret\",\"images\":[\"https://private?signature=secret\"]}");
+        jobs.addObject().put("jobId","failed-job-123").put("baseUrl","https://images.example/v1").put("model","failed-model").put("requestBody","{\"model\":\"failed-model\",\"width\":1024,\"prompt\":\"private prompt\",\"api_key\":\"secret\",\"images\":[\"https://private?signature=secret\"]}");
         db.update("INSERT INTO ip_run VALUES ('image','generate',?,?)",input.toString(),"{\"candidates\":[{}]}");
         String text = context.describe("image");
-        assertTrue(text.contains("failed-model"));assertTrue(text.contains("width\":1024"));assertTrue(text.contains("原请求快照"));assertTrue(text.contains("images_count\":1"));
+        assertTrue(text.contains("failed-job-123"));assertTrue(text.contains("failed-model"));assertTrue(text.contains("width\":1024"));assertTrue(text.contains("原请求快照"));assertTrue(text.contains("images_count\":1"));
         for(String value: new String[]{"completed-model","private prompt","api_key","signature","secret"}) assertFalse(text.contains(value),text);
     }
     @Test void speechBodyAndExplicitCurrentConfigFallbackAreVisible() {

@@ -3,6 +3,7 @@ package com.aistareco.aep.service.alerts;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.aistareco.aep.service.ai.ProviderResponseDiagnostics;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
@@ -32,11 +33,13 @@ public class ModelAlertContext {
 
     private String resolve(String taskId) {
         String endpointId = "", name = "", model = "", base = "", paramsSource = "任务参数（非完整上游请求）";
+        String remoteTask = "";
         JsonNode params = JSON.createObjectNode();
-        var videos = db.queryForList("SELECT provider_used,model_used,upstream_base_url_snapshot,variant_config_json,duration_sec,aspect_ratio FROM material_video_job WHERE id=?", taskId);
+        var videos = db.queryForList("SELECT provider_used,model_used,upstream_base_url_snapshot,variant_config_json,duration_sec,aspect_ratio,external_task_id FROM material_video_job WHERE id=?", taskId);
         if (!videos.isEmpty()) {
             var video = videos.get(0);
             name = value(video, "provider_used"); model = value(video, "model_used"); base = value(video, "upstream_base_url_snapshot");
+            remoteTask = value(video, "external_task_id");
             var variant = parse(value(video, "variant_config_json")); endpointId = variant.path("endpoint_id").asText("");
             ObjectNode selected = variant.isObject() ? ((ObjectNode) variant).deepCopy() : JSON.createObjectNode();
             selected.put("duration_sec", ((Number) video.get("duration_sec")).intValue());
@@ -49,6 +52,7 @@ public class ModelAlertContext {
                 int completed = parse(value(run, "output_json")).path("candidates").size();
                 var checkpoint = exec.path("imageJobs").path(completed);
                 if (!checkpoint.isObject()) checkpoint = exec;
+                remoteTask = checkpoint.path("jobId").asText("");
                 base = checkpoint.path("baseUrl").asText("");
                 model = checkpoint.path("model").asText("");
                 String body = checkpoint.path("requestBody").asText("");
@@ -72,7 +76,8 @@ public class ModelAlertContext {
                 if (base.isBlank()) { base = value(endpoint, "base_url"); baseSource = "当前端点配置，原调用未记录"; }
             }
         }
-        return "供应商 / 端点：" + label(name) + "（" + label(endpointId) + "）"
+        return "远端任务 ID：" + (ProviderResponseDiagnostics.safeId(remoteTask) == null ? "未获取" : remoteTask)
+                + "\n供应商 / 端点：" + label(name) + "（" + label(endpointId) + "）"
                 + "\nAPI 基础地址：" + safeUrl(base) + "（" + baseSource + "）"
                 + "\n模型：" + label(model) + "（" + modelSource + "）"
                 + "\n" + paramsSource + "：" + parameters(params)

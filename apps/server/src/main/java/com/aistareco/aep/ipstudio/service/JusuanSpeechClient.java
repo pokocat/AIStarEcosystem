@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
+
 import com.aistareco.aep.ipstudio.dto.StudioSpeechDtos.SpeechVoice;
 import com.aistareco.aep.model.*;
 import com.aistareco.aep.service.ai.*;
@@ -122,11 +124,11 @@ public class JusuanSpeechClient {
         var response=upstream.sendJson(builder.build(),ctx);
         if(response.statusCode()/100!=2) {
             if(body!=null && response.statusCode()>=400 && response.statusCode()<500 && response.statusCode()!=408)
-                throw new Rejected("STUDIO_SPEECH_REJECTED",safeMessage(response.body()));
-            throw fail("STUDIO_SPEECH_UNAVAILABLE","配音服务暂时不可用，正在核对原任务");
+                throw attach(new Rejected("STUDIO_SPEECH_REJECTED",safeMessage(response.body())),response);
+            throw attach(fail("STUDIO_SPEECH_UNAVAILABLE","配音服务暂时不可用，正在核对原任务"),response);
         }
         try {return mapper.readTree(response.body());}
-        catch(Exception e){upstream.recordBadOutput(ctx,response.body(),"STUDIO_SPEECH_BAD_OUTPUT");throw fail("STUDIO_SPEECH_BAD_OUTPUT","配音任务尚未确认，正在核对原请求");}
+        catch(Exception e){upstream.recordBadOutput(ctx,response.body(),"STUDIO_SPEECH_BAD_OUTPUT");throw attach(fail("STUDIO_SPEECH_BAD_OUTPUT","配音任务尚未确认，正在核对原请求"),response);}
     }
     private String safeMessage(String body) {
         try {String msg=mapper.readTree(body).path("error").path("message").asText();if(!msg.isBlank()&&msg.length()<300)return "配音请求被拒绝："+msg;}catch(Exception ignored){}

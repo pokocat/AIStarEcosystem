@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.alerts;
 
 import com.aistareco.common.BusinessException;
+import com.aistareco.aep.service.ai.ProviderResponseDiagnostics;
 import org.slf4j.*;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -24,10 +25,11 @@ public class FeishuModelAlerts {
         String actualCode=code==null?"MODEL_TASK_FAILED":code;
         String id=UUID.nameUUIDFromBytes((taskId+"\n"+actualCode).getBytes(StandardCharsets.UTF_8)).toString();
         // MySQL and H2 MySQL mode both support INSERT IGNORE; the primary key is the cross-process dedupe gate.
-        String text=message(taskId,actualCode,logId,error);
+        Instant occurredAt=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS);
+        String text=message(taskId,actualCode,logId,error,occurredAt);
         if(modelContext!=null)text=text.replace("\n后台：","\n"+modelContext.describe(taskId)+"\n后台：");
         db.update("INSERT IGNORE INTO model_alert_delivery (id,task_id,error_code,log_id,message_text,state,created_at,next_attempt_at) VALUES (?,?,?,?,?,'pending',?,?)",
-                id,taskId,actualCode,logId,text,Timestamp.from(Instant.now()),Timestamp.from(Instant.now()));
+                id,taskId,actualCode,logId,text,Timestamp.from(occurredAt),Timestamp.from(occurredAt));
     }
     @Scheduled(fixedDelay=10000,initialDelay=15000,scheduler="modelAlertScheduler")
     public void deliver() {
@@ -58,19 +60,34 @@ public class FeishuModelAlerts {
         }catch(Exception error){log.error("[model-alert] delivery storage unavailable type={}",error.getClass().getSimpleName());}
     }
     static String message(String task,String code,String logId,Throwable error) {
-        Integer status=error instanceof BusinessException be?be.getStatus().value():null;
+        return message(task,code,logId,error,Instant.now());
+    }
+    static String message(String task,String code,String logId,Throwable error,Instant occurredAt) {
+        Integer status=null;
+        Integer legacyStatus=null;
+        Integer localStatus=error instanceof BusinessException be?be.getStatus().value():null;
         String reason=code.endsWith("_SUBMISSION_UNKNOWN")?"生成服务未返回有效任务信息，已触发失败处理":"模型任务调用异常，请查看后台详情";
         // Extract only provider trace identifiers. Never send prompts, response bodies, URLs or internal credentials to chat.
         Set<String> ids=new LinkedHashSet<>();Set<Throwable> visited=Collections.newSetFromMap(new IdentityHashMap<>());
         for(Throwable cause=error;cause!=null&&visited.size()<8&&visited.add(cause);cause=cause.getCause()) {
-            String source=String.valueOf(cause.getMessage())+(cause instanceof BusinessException be?String.valueOf(be.getInternalDetail()):"");
-            var http=java.util.regex.Pattern.compile("HTTP\\s+(\\d{3})").matcher(source);
-            if(http.find())status=Integer.parseInt(http.group(1));
-            var matches=java.util.regex.Pattern.compile("\\breq_[A-Za-z0-9_-]{8,100}\\b|(?i:(?:request[_ -]?id|log[_ -]?id))[\\\"' :=]+([A-Za-z0-9_-]{8,100})").matcher(source);
-            while(matches.find()&&ids.size()<5)ids.add(matches.group(1)==null?matches.group():matches.group(1));
+            boolean hasResponseEvidence=false;
+            for(Throwable diagnostic:cause.getSuppressed()) if(diagnostic instanceof ProviderResponseDiagnostics evidence) {
+                hasResponseEvidence=true;
+                if(status==null)status=evidence.status();
+                ids.addAll(evidence.identifiers());
+            }
+            String source=String.valueOf(cause.getMessage())+"\n"+(cause instanceof BusinessException be?String.valueOf(be.getInternalDetail()):"");
+            var http=java.util.regex.Pattern.compile("(?i)\\b(?:HTTP\\s+|status[= :]+)([1-5]\\d{2})\\b").matcher(source);
+            if(legacyStatus==null&&http.find())legacyStatus=Integer.parseInt(http.group(1));
+            if(!hasResponseEvidence)ids.addAll(ProviderResponseDiagnostics.legacyIdentifiers(source));
         }
-        return "【模型任务告警】\n原因："+reason+"\n错误码："+code+"\n接口状态："+(status==null?"未记录 HTTP 状态":"HTTP "+status)+"\n我方任务："+task
-                +"\n追查号："+logId+(ids.isEmpty()?"":"\n供应商追踪号："+String.join("、",ids))
+        if(status==null)status=legacyStatus;
+        return "【模型任务告警】\n告警时间（UTC）："+occurredAt+"\n时间戳（Unix ms）："+occurredAt.toEpochMilli()
+                +"\n原因："+reason+"\n我方错误码："+code
+                +"\n远端 HTTP 状态："+(status==null?"未记录 HTTP 状态":"HTTP "+status)
+                +(localStatus==null?"":"\n我方 HTTP 状态：HTTP "+localStatus)
+                +"\n远端 logid / request_id / trace_id："+(ids.isEmpty()?"未获取（供应商未返回或原调用未记录）":String.join("；",ids.stream().limit(8).toList()))
+                +"\n我方任务："+task+"\n我方追查号："+logId
                 +"\n后台：https://admin.aibuzz.cn/admin/platform/ai-models\n同一任务同类错误只提醒一次；最终状态及积分以后台记录为准。";
     }
 }

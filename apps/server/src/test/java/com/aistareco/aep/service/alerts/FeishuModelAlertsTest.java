@@ -1,6 +1,7 @@
 package com.aistareco.aep.service.alerts;
 
 import com.aistareco.common.BusinessException;
+import com.aistareco.aep.service.ai.ProviderResponseDiagnostics;
 import db.migration.V64__model_alert_delivery;
 import org.flywaydb.core.api.migration.Context;
 import org.junit.jupiter.api.*;
@@ -55,6 +56,42 @@ class FeishuModelAlertsTest {
         assertTrue(missing.contains("未记录 HTTP 状态"));assertFalse(missing.contains("HTTP 500"));
         var error=new BusinessException(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN","safe",null,"provider HTTP 503");
         assertTrue(FeishuModelAlerts.message("task",error.getCode(),"ABCDEF234567",error).contains("HTTP 503"));
+        var localOnly=new BusinessException(HttpStatus.BAD_GATEWAY,"FAIL","safe");
+        String local=FeishuModelAlerts.message("task","FAIL","trace",localOnly);
+        assertTrue(local.contains("远端 HTTP 状态：未记录 HTTP 状态"));
+        assertTrue(local.contains("我方 HTTP 状态：HTTP 502"));
+    }
+    @Test void timeIsExplicitAndPersistedOnceEvenWhenDeliveryRetries() throws Exception {
+        var instant=java.time.Instant.parse("2026-10-23T16:25:30.123Z");
+        String message=FeishuModelAlerts.message("task","FAIL","trace",null,instant);
+        assertTrue(message.contains("告警时间（UTC）：2026-10-23T16:25:30.123Z"));
+        assertTrue(message.contains("时间戳（Unix ms）："+instant.toEpochMilli()));
+        alerts.enqueue("task","FAIL","trace",null);
+        String saved=db.queryForObject("SELECT message_text FROM model_alert_delivery",String.class);
+        var created=db.queryForObject("SELECT created_at FROM model_alert_delivery",java.sql.Timestamp.class).toInstant();
+        assertTrue(saved.contains("时间戳（Unix ms）："+created.toEpochMilli()));
+        when(client.send(anyString(),anyString())).thenThrow(new IllegalStateException("Feishu unavailable")).thenReturn("om_message");
+        alerts.deliver();db.update("UPDATE model_alert_delivery SET next_attempt_at=CURRENT_TIMESTAMP");alerts.deliver();
+        verify(client,times(2)).send(anyString(),eq(saved));
+    }
+    @Test void headerAndBodyIdsSurviveExceptionWrappingWithoutForwardingPrivateContent() {
+        var headers=java.net.http.HttpHeaders.of(java.util.Map.of(
+                "X-Tt-Logid",java.util.List.of("20261023ABC"),
+                "X-Request-Id",java.util.List.of("req-123"),
+                "Authorization",java.util.List.of("Bearer hidden-secret")),(k,v)->true);
+        var cause=ProviderResponseDiagnostics.attach(new IllegalStateException("safe"),429,headers,
+                "{\"error\":{\"logid\":\"remote-9\",\"message\":\"private-prompt\"},\"ResponseMetadata\":{\"RequestId\":\"body-123\"},\"prompt\":\"request_id=private-should-not-copy\"}");
+        String text=FeishuModelAlerts.message("task","FAIL","LOCAL123",new IllegalStateException("wrapper",cause));
+        for(String id:java.util.List.of("x-tt-logid=20261023ABC","x-request-id=req-123","logid=remote-9","RequestId=body-123"))assertTrue(text.contains(id),text);
+        assertTrue(text.contains("远端 HTTP 状态：HTTP 429"));
+        for(String secret:java.util.List.of("hidden-secret","private-prompt","private-should-not-copy"))assertFalse(text.contains(secret),text);
+    }
+    @Test void legacyDiagnosticsKeepIdNamesAndRejectSecretsOrTruncatedIds() {
+        String text=FeishuModelAlerts.message("task","FAIL","trace",new IllegalStateException(
+                "status=503 log_id=abc.123 requestId=req_456 x-tt-logid: 789ABC trace_id=trace:789 request_id=sk-secret-value logid="+"a".repeat(257)));
+        for(String id:java.util.List.of("log_id=abc.123","requestId=req_456","x-tt-logid=789ABC","trace_id=trace:789"))assertTrue(text.contains(id),text);
+        assertTrue(text.contains("远端 HTTP 状态：HTTP 503"));
+        assertFalse(text.contains("sk-secret"));assertFalse(text.contains("a".repeat(100)));
     }
     @Test void modelContextIsPersistedInTheOutgoingMessage() {
         var context=mock(ModelAlertContext.class);

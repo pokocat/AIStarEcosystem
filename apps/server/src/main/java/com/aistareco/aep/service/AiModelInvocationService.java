@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
+
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
 import com.aistareco.aep.dto.AiModelEntryDto;
 import com.aistareco.aep.model.AiAppEndpointCandidate;
@@ -349,7 +351,7 @@ public class AiModelInvocationService {
             } catch (UpstreamCallException ex) {
                 throw networkFailure(ex, internal);
             }
-            if (resp.statusCode() < 200 || resp.statusCode() >= 300) throw callFailed(resp.statusCode(), resp.body(), internal);
+            if (resp.statusCode() < 200 || resp.statusCode() >= 300) throw attach(callFailed(resp.statusCode(), resp.body(), internal),resp);
             try {
                 result = parseCompletion(OM.readTree(resp.body()), model);
             } catch (Exception parseEx) {
@@ -367,7 +369,8 @@ public class AiModelInvocationService {
             } catch (UpstreamCallException ex) {
                 throw networkFailure(ex, internal);
             }
-            if (outcome.status() < 200 || outcome.status() >= 300) throw callFailed(outcome.status(), outcome.errorBody(), internal);
+            if (outcome.status() < 200 || outcome.status() >= 300)
+                throw attach(callFailed(outcome.status(), outcome.errorBody(), internal),outcome.status(),outcome.headers(),outcome.errorBody());
             if (acc.error != null) {
                 upstreamHttp.recordBadOutput(ctx, acc.error, "AI_CALL_FAILED", elapsedMs(startNanos));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
@@ -707,12 +710,12 @@ public class AiModelInvocationService {
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             // 失败流水 + WARN 已由原语处理；不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏），
             // 技术细节进 ErrorLog 供「追查号」排障。
-            throw new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
+            throw attach(new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
                     resp.statusCode() == 404
                             ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
                             : "AI 生成失败，请稍后重试",
                     "endpoint=" + e.getName() + " purpose=" + (purpose == null ? null : purpose.wire())
-                            + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+                            + " model=" + model + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
         }
         Map<?, ?> parsed;
         try {
