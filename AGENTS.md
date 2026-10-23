@@ -1172,3 +1172,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 对话跨制作类型续接（2026-10-23）
 
 用户要做的产物优先于参考素材名称：出第一段视频 + 人物设定图不再路由到出图。「继续下一步」在 `ProposePlanTool` 用具体 brief 再选方法，走原线程锁和快照更新，活跃执行不切换。新计划失败时本轮纠正，`request_approval` 只能确认本轮成功保存且方法/阶段一致的计划，不准拿旧图片方案发卡。详见 `docs/ip-studio-dialogue-intents.md` 末节。
+
+
+### 发布期间 HTTP 连续性（2026-10-23 事故补充）
+
+当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
