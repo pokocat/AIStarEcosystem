@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.Objects;
 
 /**
  * Timeline approval card for the latest quoted plan revision. The numbers come only from the server quote on the plan;
@@ -36,9 +37,18 @@ public class RequestApprovalTool implements StudioDialogueTool {
     public boolean recorded() { return false; }
     public String safeInputSummary(JsonNode args, ToolContext ctx) { return "请你确认方案与预算"; }
     public ToolRun run(JsonNode args, ToolContext ctx, ToolHandle handle) {
+        if (ctx.planAttempted && !ctx.planReady)
+            return ToolRun.failed("STUDIO_PLAN_STALE", "新方案还没准备好",
+                    DialogueTools.fail("本轮新方案没有整理成功，不能给旧方案发确认卡。请先根据错误调整方法并重新 propose_plan，成功后再 request_approval。"));
         var latest = ctx.effects.latestPlanBlock().orElse(null);
         if (latest == null) return ToolRun.failed("STUDIO_PLAN_STALE", "还没有可确认的方案", DialogueTools.fail("还没有方案，请先用 propose_plan 整理方案"));
+        if (!ctx.runId.equals(latest.path("planRunId").asText()))
+            return ToolRun.failed("STUDIO_PLAN_STALE", "需要按当前需求更新方案",
+                    DialogueTools.fail("这是之前的方案。先按用户当前目标 propose_plan 获取新方案和报价，再 request_approval；不要重新确认已经做过的内容。"));
         JsonNode plan = latest.path("plan");
+        if (ctx.skill() != null && (!ctx.skill().key().equals(plan.path("skillKey").asText())
+                || !Objects.equals(ctx.stage(), plan.path("stage").asText())))
+            return ToolRun.failed("STUDIO_PLAN_STALE", "需要按当前需求更新方案", DialogueTools.fail("方案与当前做法不一致，请重新 propose_plan 后再确认"));
         if (!plan.path("budget").path("estimated").isIntegralNumber())
             return ToolRun.failed("STUDIO_PRICE_UNAVAILABLE", "方案还没有服务端报价，暂不能确认", DialogueTools.fail("方案没有服务端报价，不能发起确认；请如实告诉用户报价服务暂不可用"));
         long quoted = plan.path("budget").path("estimated").asLong();

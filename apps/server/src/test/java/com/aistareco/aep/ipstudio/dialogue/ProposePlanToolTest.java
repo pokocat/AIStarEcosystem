@@ -57,7 +57,7 @@ class ProposePlanToolTest {
         @SuppressWarnings("unchecked") ObjectProvider<StudioWorkflowService> workflow = mock(ObjectProvider.class);
         when(workflow.getIfAvailable()).thenReturn(planner);
         @SuppressWarnings("unchecked") ObjectProvider<StudioExecutionGate> gates = mock(ObjectProvider.class);
-        tool = new ProposePlanTool(models, prompts, workflow, gates, om);
+        tool = new ProposePlanTool(models, prompts, workflow, gates, om, new StudioSkillCatalog());
 
         effects = mock(ToolContext.Effects.class);
         when(effects.readDoc()).thenReturn(om.readTree("""
@@ -223,4 +223,102 @@ class ProposePlanToolTest {
         assertEquals("image-generation", appended.path("skillKey").asText());
         assertTrue(userPromptSentToTheModel().contains("没有分析阶段"), "the planner is told there is no analysis stage");
     }
+    @Test void nextVideoPlanSwitchesFromTheOldImageMethodBeforePlanningAndCanBeConfirmed() throws Exception {
+        var image = new StudioSkillCatalog().requireForNewSelection("image-generation");
+        ctx.bindSkill(image, "production");
+        doAnswer(call -> {
+            var selected = (com.aistareco.aep.ipstudio.skill.StudioSkill) call.getArgument(0);
+            ctx.bindSkill(selected, selected.firstStage());
+            return null;
+        }).when(effects).bindSkill(any());
+        modelReplies("""
+                {"summary":"发布会视频，16:9、8秒","steps":[{"id":"shot","operation":"video","title":"发布会视频","prompt":"人物从侧幕走向讲台",
+                 "settings":{"video":{"mode":"t2v","resolutionTier":"768p"},"durationSec":8,"aspectRatio":"16:9","count":1,"referenceBindings":[]},"referenceNodeIds":["img-1"],"dependsOn":[]}],"questions":[]}""");
+        var args = om.createObjectNode().put("brief", "按第1集剧本出第一段视频，用人物设定图做首帧").put("stage", "production");
+        assertNull(tool.validate(args, ctx));
+        var run = tool.run(args, ctx, HANDLE);
+        assertEquals("done", run.status(), run.forModel());
+        assertEquals("video-generation", ctx.skill().key());
+        assertEquals("video-generation", appended.path("skillKey").asText());
+        assertEquals("video", appended.path("steps").get(0).path("operation").asText());
+        assertTrue(ctx.planReady);
+        var block = om.createObjectNode().put("planRunId", ctx.runId).put("fingerprint", "fp");
+        appended.putObject("budget").put("estimated", 200);
+        block.set("plan", appended);
+        when(effects.latestPlanBlock()).thenReturn(java.util.Optional.of(block));
+        var approval = new com.aistareco.aep.ipstudio.dialogue.tools.RequestApprovalTool();
+        var request = om.createObjectNode(); request.putArray("scope").add("发布会视频，16:9、8秒");
+        assertEquals(DialogueLoop.Reason.WAITING_USER, approval.run(request, ctx, HANDLE).end());
+        verify(effects).appendBlock(any(), eq(StudioDialogueEventTypes.APPROVAL_REQUIRED), any());
+    }
+
+    @Test void aRunningExecutionKeepsItsMethodEvenWhenTheBriefNamesAnotherOutput() throws Exception {
+        var image = new StudioSkillCatalog().requireForNewSelection("image-generation");
+        var locked = new ToolContext("u1", "P1", "IPT-P1", "TRN-1", "IPR-1", "IDM-A", "IDM-U", "PEX-1", null, false, null, null,
+                DialogueLoop.TurnBudget.unmetered(8192, Clock.systemUTC()), image, "production", () -> false, effects);
+        modelReplies("""
+                {"summary":"视频","steps":[{"id":"v","operation":"video","title":"视频","prompt":"人物走向讲台",
+                 "settings":{"durationSec":8,"count":1},"referenceNodeIds":[],"dependsOn":[]}]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "出第一段视频"), locked, HANDLE);
+        assertEquals("STUDIO_SKILL_OPERATION_NOT_ALLOWED", run.errorCode());
+        assertFalse(run.summary().contains("当前阶段"));
+        assertFalse(locked.planReady);
+        verify(effects, never()).bindSkill(any());
+        verify(effects, never()).appendPlan(any(), any());
+    }
+
+    @Test void failedPlanAndApprovalInOneBatchRecoverInTheSameTurnWithoutAnOldCard() throws Exception {
+        ctx.bindSkill(new StudioSkillCatalog().requireForNewSelection("image-generation"), "production");
+        var valid = """
+                {"summary":"发布会视频","steps":[{"id":"v","operation":"video","title":"发布会视频","prompt":"人物走向讲台",
+                 "settings":{"video":{"mode":"t2v","resolutionTier":"768p"},"durationSec":8,"aspectRatio":"16:9","count":1},"referenceNodeIds":[],"dependsOn":[]}]}""";
+        modelReplies(valid);
+        doAnswer(call -> { var skill = (com.aistareco.aep.ipstudio.skill.StudioSkill) call.getArgument(0); ctx.bindSkill(skill, skill.firstStage()); return null; })
+                .when(effects).bindSkill(any());
+        var old = om.createObjectNode().put("planRunId", "IPR-old").put("fingerprint", "old-image");
+        old.putObject("plan").putObject("budget").put("estimated", 30);
+        when(effects.latestPlanBlock()).thenReturn(java.util.Optional.of(old));
+        when(effects.appendPlan(any(), any())).thenAnswer(call -> {
+            var plan = (ObjectNode) call.getArgument(0); plan.putObject("budget").put("estimated", 200);
+            var block = om.createObjectNode().put("planRunId", ctx.runId).put("revision", 5).put("fingerprint", "new-video");
+            block.set("plan", plan); when(effects.latestPlanBlock()).thenReturn(java.util.Optional.of(block)); return block;
+        });
+        var approval = new com.aistareco.aep.ipstudio.dialogue.tools.RequestApprovalTool();
+        var approvalArgs = om.createObjectNode(); approvalArgs.putArray("scope").add("发布会视频");
+        var exchanges = new java.util.ArrayList<DialogueLoop.ToolResult>();
+        var loopModel = new DialogueLoop.Model() {
+            public long estimateInputTokens(List<Map<String,Object>> messages) { return 10; }
+            public DialogueLoop.Reply call(List<Map<String,Object>> messages, int index, int max) {
+                String brief = index == 1 ? "继续下一步" : "按设定图出第一段视频";
+                return new DialogueLoop.Reply("", List.of(
+                        new DialogueLoop.Action("p" + index, "propose_plan", om.createObjectNode().put("brief", brief)),
+                        new DialogueLoop.Action("a" + index, "request_approval", approvalArgs)), null, null);
+            }
+            public void appendExchange(List<Map<String,Object>> messages, DialogueLoop.Reply reply, List<DialogueLoop.ToolResult> results) { exchanges.addAll(results); }
+            public void appendUser(List<Map<String,Object>> messages, String text) { }
+        };
+        var loopTools = new DialogueLoop.Tools() {
+            public java.util.Optional<String> reject(DialogueLoop.Action action) { return java.util.Optional.ofNullable(
+                    action.tool().equals("propose_plan") ? tool.validate(action.args(), ctx) : approval.validate(action.args(), ctx)); }
+            public DialogueLoop.ToolOutcome run(DialogueLoop.Action action) throws Exception {
+                var result = action.tool().equals("propose_plan") ? tool.run(action.args(), ctx, HANDLE) : approval.run(action.args(), ctx, HANDLE);
+                return new DialogueLoop.ToolOutcome(result.forModel(), result.end());
+            }
+        };
+        var hooks = new DialogueLoop.Hooks() {
+            public boolean stopRequested() { return false; }
+            public List<String> drainSteering() { return List.of(); }
+            public void heartbeat() { }
+        };
+        var outcome = new DialogueLoop(loopModel, loopTools, hooks, ctx.budget).run(new java.util.ArrayList<>());
+        assertEquals(DialogueLoop.Reason.WAITING_USER, outcome.reason());
+        assertEquals(2, outcome.steps(), "the failed batch must recover before asking the user");
+        assertTrue(exchanges.get(1).content().contains("不能给旧方案发确认卡"));
+        var card = org.mockito.ArgumentCaptor.forClass(ObjectNode.class);
+        verify(effects, times(1)).appendBlock(card.capture(), any(), any());
+        assertEquals("new-video", card.getValue().path("planFingerprint").asText());
+        assertEquals(200, card.getValue().path("quotedCost").asLong());
+        verify(effects, times(1)).appendPlan(any(), any());
+    }
+
 }

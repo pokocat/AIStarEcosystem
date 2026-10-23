@@ -1197,3 +1197,8 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 ### 对话确认继续（2026-10-23 已生产发布）
 
 服务端从真实受限 run 和明确的本人续接消息派生 `continueUntilDone` / `continuationOf`，不接收客户端开关；新任务不沿用。继续期间使用同一循环与父 run，原目标和完成的操作保留在上下文；取消单轮 Token 分配、步数 / 调用 / 工具次数和用时阈值，以已冻结的 `rate.maxCost` 为实际金额约束，按真实用量结算。调用前按剩余金额收敛输出，预算不足 reason=`budget`，停止、制作授权和重复保护保留。`<studio-action name="…" args='JSON' />` 进入原动作校验，流式隐藏、坏批次不执行。详见对话续接回放审计。
+
+
+### 对话跨制作类型续接（2026-10-23）
+
+`StudioSkillRouter` 优先识别明确的视频产物，避免首帧/人物参考图名称把视频需求分到出图。`ProposePlanTool` 对「继续下一步」整理出的具体 brief 再次选择有效方法，沿用 `Effects.bindSkill` 的线程锁、旧卡失效和父任务快照；活跃执行仍不切换。`RequestApprovalTool` 只为本轮成功整理、方法/阶段一致的计划发卡；规划失败后继续修正，不会拿历史计划发卡、重复原图片步骤。无新 API、迁移或生产配置。规则见 `docs/ip-studio-dialogue-intents.md`。

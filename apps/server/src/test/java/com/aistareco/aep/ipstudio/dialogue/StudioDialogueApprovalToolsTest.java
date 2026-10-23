@@ -77,7 +77,7 @@ class StudioDialogueApprovalToolsTest {
 
     @Test void theDefaultCardCapLeavesRoomForOneDialogueTurn() throws Exception {
         List<ObjectNode> appended = new ArrayList<>();
-        var plan = om.createObjectNode().put("type", "plan").put("fingerprint", "fp").put("revision", 2);
+        var plan = om.createObjectNode().put("type", "plan").put("fingerprint", "fp").put("revision", 2).put("planRunId", "IPR-1");
         plan.putObject("plan").put("stage", "analysis").putObject("budget").put("estimated", 30).put("autoFixCap", 0);
         var effects = mock(ToolContext.Effects.class);
         when(effects.latestPlanBlock()).thenReturn(Optional.of(plan));
@@ -96,4 +96,21 @@ class StudioDialogueApprovalToolsTest {
         assertEquals(30, appended.get(1).path("budgetCap").asLong(), "a cap the user named is used as is");
         assertFalse(appended.get(1).has("dialogueReserve"));
     }
+    @Test void aFailedReplacementPlanCannotConfirmThePreviousImagePlan() throws Exception {
+        var effects = mock(ToolContext.Effects.class);
+        var old = om.createObjectNode().put("planRunId", "IPR-old").put("fingerprint", "old-image");
+        old.putObject("plan").putObject("budget").put("estimated", 30);
+        when(effects.latestPlanBlock()).thenReturn(Optional.of(old));
+        var ctx = context(false, null, effects);
+        ctx.planAttempted = true;
+        var args = om.createObjectNode(); args.putArray("scope").add("发布会视频");
+        var result = new RequestApprovalTool().run(args, ctx, HANDLE);
+        assertEquals("failed", result.status());
+        assertNull(result.end(), "the loop must correct the plan in this turn rather than stop for the user");
+        assertTrue(result.forModel().contains("重新 propose_plan"));
+        verify(effects, never()).appendBlock(any(), any(), any());
+        ctx.planAttempted = false;
+        assertEquals("failed", new RequestApprovalTool().run(args, ctx, HANDLE).status(), "even without a planning attempt an old run cannot be reissued as new work");
+    }
+
 }

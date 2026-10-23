@@ -75,6 +75,15 @@ public final class StudioSkillRouter {
         StudioSkill writing = active.stream().filter(s -> s.key().equals(WRITING_SKILL)).findFirst().orElse(null);
         Writing intent = writing == null ? Writing.NONE : writingIntent(haystack);
         if (intent == Writing.FIRST) return Decision.match(writing, "writing");
+        // The requested output wins over nouns describing its materials (production 2026-10-23:
+        // 「按第1集剧本出第一段视频，用陈彬彬设定图做首帧」 matched only 设定图 and stayed 出图).
+        Matcher videoOutput = VIDEO_OUTPUT.matcher(haystack);
+        boolean recreationIntent = active.stream().filter(s -> s.key().equals("reference-video-recreation"))
+                .anyMatch(s -> keywordScore(s.triggers(), haystack) > 0);
+        if (videoOutput.find() && !recreationIntent) {
+            StudioSkill video = active.stream().filter(s -> s.key().equals("video-generation")).findFirst().orElse(null);
+            if (video != null) return Decision.match(video, "video-output");
+        }
         boolean anyKeyword = false;
         int best = 0;
         List<StudioSkill> leaders = new ArrayList<>();
@@ -112,6 +121,9 @@ public final class StudioSkillRouter {
      * 视频里的主角…」 must not read 剧本 as part of a video); the ASCII one is left alone for 「9:16」.
      */
     private static final String CLAUSE = "[^，。！？；：,.!?;\\n]";
+    private static final Pattern VIDEO_OUTPUT = Pattern.compile(
+            "(?:做|出|生成|拍|制作)(?![的了过好完])(?:成|第|一|二|三|四|五|六|七|八|九|十|两|几|[0-9]|个|段|条|集|部){0,8}(?:视频|短片|动画|成片)"
+                    + "(?!脚本|剧本|文案|的脚本|的剧本|的文案)");
     /** A piece of text someone writes (口播 covers 口播稿; no bare 稿, which is also 线稿 / 草稿 in a drawing). */
     private static final String TEXT = "(?:文案|卖点|标题|口播|脚本|台词|剧本|简介|广告语|旁白|分镜|小传|人设|标语|话术|大纲|故事|文字|文稿|稿子|讲稿)";
     /** Pictures and videos: a text noun followed by one of these is part of a visual product (标题海报, 口播视频, 分镜图). */

@@ -94,7 +94,7 @@ class StudioOriginalCreationDialogueTest {
     }
 
     @Test void proposePlanNeedsNoAnalysisForTheOriginalSkillButStillDoesForTheVideoSkill() {
-        var tool = new ProposePlanTool(null, null, null, null, om);
+        var tool = new ProposePlanTool(null, null, null, null, om, null);
         var brief = om.createObjectNode().put("brief", "原创女性角色正侧背三张图");
         assertNull(tool.validate(brief, ctx(original, "production", null, null)));
         assertNull(tool.validate(brief.deepCopy().put("stage", "production"), ctx(original, "production", null, null)));

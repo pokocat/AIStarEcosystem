@@ -143,6 +143,9 @@ class StudioSkillRouterTest {
     }
 
     static final List<Case> TABLE = List.of(
+            c("按第1集剧本出第一段视频（用刚出的场景图+陈彬彬设定图做首帧）", "image", VIDEO),
+            c("第1集场次2出第一段视频：环形发布厅做首帧，人物设定图定长相", "", VIDEO),
+            c("用海报和商品图生成两段视频", "image", VIDEO),
             // Production 2026-10-21, with and without the picture / video attached.
             c("用这张图做一段视频", "", VIDEO), c("用这张图做一段视频", "image", VIDEO), c("用这张图做一段视频", "video", VIDEO),
             // 出图's bare 「几张图 / 一张图」 tied these with 出视频 and the tie kept 出图 on the thread that had just made the
@@ -150,8 +153,8 @@ class StudioSkillRouterTest {
             c("用这几张图做一段视频", "", VIDEO), c("用这几张图做一段视频", "image", VIDEO), c("用这几张图做一段视频", "video", VIDEO),
             c("用一张图生成一段视频", "", VIDEO), c("用一张图生成一段视频", "image", VIDEO), c("用一张图生成一段视频", "video", VIDEO),
             c("再出几张图", "", IMAGE), c("生成一张图，国风少女", "", IMAGE),
-            // 「商品图」 is still an 出图 word: with a video word too it is a tie, the model's call (real calls: 出视频 3/3).
-            c("用这张商品图做一段视频", "image", OPEN),
+            // The requested video wins over its product-photo material.
+            c("用这张商品图做一段视频", "image", VIDEO),
             c("用这张商品图写三条卖点文案", "", SCRIPT), c("用这张商品图写三条卖点文案", "image", SCRIPT), c("用这张商品图写三条卖点文案", "video", SCRIPT),
             c("做个ip形象三视图", "", IMAGE), c("做个ip形象三视图", "image", IMAGE), c("做个ip形象三视图", "video", IMAGE),
             c("换个风格再出一张", "", IMAGE), c("换个风格再出一张", "image", IMAGE), c("换个风格再出一张", "video", IMAGE),

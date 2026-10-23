@@ -1167,3 +1167,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 发送恢复（2026-10-23 已生产发布）
 
 `useStudioDialogueSession.post` 对不确定送达先读同线程快照核对 clientMessageId，再同正文/同报价/同付款编号退避重试；明确业务拒绝不重试，网关 HTTP_ERROR 不视为确定拒绝。不要把结构化异常换成文案字符串；保留真实 logId，没有时以消息编号定位。报价更新只刷新并保留草稿，不替用户增加批准金额。发布与真实断连/账本证据见 `docs/releases/studio-message-delivery-release-20261023.md`。
+
+
+### Studio 对话跨制作类型续接（2026-10-23）
+
+用户要做的产物优先于参考素材名称：出第一段视频 + 人物设定图不再路由到出图。「继续下一步」在 `ProposePlanTool` 用具体 brief 再选方法，走原线程锁和快照更新，活跃执行不切换。新计划失败时本轮纠正，`request_approval` 只能确认本轮成功保存且方法/阶段一致的计划，不准拿旧图片方案发卡。详见 `docs/ip-studio-dialogue-intents.md` 末节。

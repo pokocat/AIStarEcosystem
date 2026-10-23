@@ -51,6 +51,8 @@ public final class ToolContext {
      * can name such an object as a step's {@code targetNodeId}.
      */
     public final java.util.Map<String, String> createdNodeLines = new java.util.LinkedHashMap<>();
+    /** A failed replacement plan must never fall through to a confirmation of an older, unrelated plan. */
+    public boolean planAttempted, planReady;
     private StudioSkill skill;
     private String stage;
     private int questions;

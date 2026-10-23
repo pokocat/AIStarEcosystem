@@ -8,6 +8,8 @@ import com.aistareco.aep.ipstudio.service.ModelJson;
 import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.aep.ipstudio.skill.StudioSkill;
+import com.aistareco.aep.ipstudio.skill.StudioSkillCatalog;
+import com.aistareco.aep.ipstudio.skill.StudioSkillRouter;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.PromptService;
@@ -43,10 +45,12 @@ public class ProposePlanTool implements StudioDialogueTool {
     private final ObjectProvider<StudioWorkflowService> workflow;
     private final ObjectProvider<StudioExecutionGate> quoter;
     private final ObjectMapper mapper;
+    private final StudioSkillCatalog catalog;
 
     public ProposePlanTool(AiModelInvocationService models, PromptService prompts, ObjectProvider<StudioWorkflowService> workflow,
-                           ObjectProvider<StudioExecutionGate> quoter, ObjectMapper mapper) {
+                           ObjectProvider<StudioExecutionGate> quoter, ObjectMapper mapper, StudioSkillCatalog catalog) {
         this.models = models; this.prompts = prompts; this.workflow = workflow; this.quoter = quoter; this.mapper = mapper;
+        this.catalog = catalog;
     }
 
     public String name() { return "propose_plan"; }
@@ -60,25 +64,35 @@ public class ProposePlanTool implements StudioDialogueTool {
         return s;
     }
     public String validate(JsonNode args, ToolContext ctx) {
-        if (ctx.skill() == null) return "还没有选定制作方法，请先 read_skill";
+        ctx.planAttempted = true;
+        ctx.planReady = false;
         String brief = DialogueTools.text(args, "brief");
         if (brief == null || brief.length() > 4000) return "brief 不能为空且不超过 4000 字";
+        StudioSkill skill = planningSkill(args, ctx);
+        if (skill == null) return "还没有选定制作方法，请先 read_skill";
         if (args.path("feedback").asText("").length() > 2000) return "feedback 不超过 2000 字";
         String stage = DialogueTools.text(args, "stage");
         if (stage != null && !java.util.Set.of("analysis", "production").contains(stage)) return "stage 只能是 analysis 或 production";
         // A direct skill (no analysis operations) proposes its production plan straight away; the others only after analysis.
-        if ("production".equals(stage) && ctx.executionId == null && !ctx.skill().direct()) return "还没有进行中的分析，先整理并确认分析方案";
-        if ("analysis".equals(stage) && ctx.skill().direct()) return "这个方法没有分析阶段，stage 请填 production";
+        if ("production".equals(stage) && ctx.executionId == null && !skill.direct()) return "还没有进行中的分析，先整理并确认分析方案";
+        if ("analysis".equals(stage) && skill.direct()) return "这个方法没有分析阶段，stage 请填 production";
         return null;
     }
     public String safeInputSummary(JsonNode args, ToolContext ctx) {
         String stage = DialogueTools.text(args, "stage") != null ? DialogueTools.text(args, "stage") : ctx.stage();
-        return "按「" + (ctx.skill() == null ? "制作方法" : ctx.skill().name()) + "」整理" + ("production".equals(stage) ? "制作" : "分析") + "方案";
+        var skill = planningSkill(args, ctx);
+        return "按「" + (skill == null ? "制作方法" : skill.name()) + "」整理" + ("production".equals(stage) ? "制作" : "分析") + "方案";
     }
 
     public ToolRun run(JsonNode args, ToolContext ctx, ToolHandle handle) throws Exception {
+        ctx.planAttempted = true;
+        ctx.planReady = false;
         if (ctx.mock) return ToolRun.failed("STUDIO_FIXTURE_UNAVAILABLE", "测试响应不生成制作方案", DialogueTools.fail("测试响应模式不生成制作方案，请如实告诉用户"));
-        StudioSkill skill = ctx.skill();
+        // A contextual 「继续下一步」 carries no output keyword. The model's concrete brief does;
+        // resolve it before giving the planner the operation whitelist, just as read_skill would.
+        StudioSkill skill = planningSkill(args, ctx);
+        if (skill == null) return ToolRun.failed("STUDIO_SKILL_REQUIRED", "还没确定要做什么", DialogueTools.fail("先按用户目标调用 read_skill，再继续整理方案"));
+        if (ctx.skill() == null || !ctx.skill().key().equals(skill.key())) ctx.effects.bindSkill(skill);
         String stage = DialogueTools.text(args, "stage") != null ? DialogueTools.text(args, "stage") : ctx.stage() == null ? skill.firstStage() : ctx.stage();
         var resolved = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_PLAN);
         if ("code".equals(resolved.origin()))
@@ -128,7 +142,10 @@ public class ProposePlanTool implements StudioDialogueTool {
         try { plan = StudioPlanValidator.validateSkillPlan(raw, rules, stage, contextIds); }
         catch (BusinessException e) {
             log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
-            return ToolRun.failed(e.getCode(), e.getMessage(), DialogueTools.fail(e.getMessage() + "。请按允许的操作和参数重新整理方案。")).settlingInTurn();
+            String message = "STUDIO_SKILL_OPERATION_NOT_ALLOWED".equals(e.getCode())
+                    ? "这份方案还没准备好，我会按你要做的内容重新整理。" : e.getMessage();
+            return ToolRun.failed(e.getCode(), message, DialogueTools.fail(e.getMessage()
+                    + "。不要把内部阶段或权限问题交给用户处理。没有进行中的制作时，先用 read_skill 选与用户目标一致的方法，再 propose_plan；成功后才能 request_approval，不能沿用旧方案。" )).settlingInTurn();
         }
         Set<String> offered = needsVideo(plan) ? offeredVideoModels() : null;
         if (offered != null && offered.isEmpty()) {
@@ -155,6 +172,7 @@ public class ProposePlanTool implements StudioDialogueTool {
         }
         String fingerprint = StudioPlanValidator.fingerprint(plan);
         ObjectNode block = ctx.effects.appendPlan(plan, fingerprint);
+        ctx.planReady = true;
         var body = DialogueTools.OM.createObjectNode().put("revision", block.path("revision").asInt()).put("summary", plan.path("summary").asText())
                 .put("steps", plan.path("steps").size()).put("quoted", quoted);
         if (quoted) body.put("estimatedCredits", plan.path("budget").path("estimated").asLong());
@@ -164,6 +182,12 @@ public class ProposePlanTool implements StudioDialogueTool {
         return new ToolRun("done", "方案第 " + block.path("revision").asInt() + " 版：" + plan.path("steps").size() + " 步"
                 + (quoted ? "，报价 " + plan.path("budget").path("estimated").asLong() + " 积分" : ""),
                 DialogueTools.ok(body), List.of(), List.of(), null, null, true, null, null, null);
+    }
+
+    private StudioSkill planningSkill(JsonNode args, ToolContext ctx) {
+        if (ctx.executionId != null || catalog == null) return ctx.skill();
+        var decision = StudioSkillRouter.decide(catalog.available(), Set.of(), DialogueTools.text(args, "brief"), ctx.skill());
+        return decision.kind() == StudioSkillRouter.Kind.MATCH ? decision.skill() : ctx.skill();
     }
 
     /**
