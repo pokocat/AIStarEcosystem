@@ -305,3 +305,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [超管直接发放积分](releases/super-admin-credit-grant-release-20261022.md) — 超管直接发放与本人历史待审单批准、其他角色独立复核、原单防重复入账；last-reviewed: 2026-10-22。
 
 - [Studio 对话用量中断与继续回放](audits/studio-dialogue-continuation-replay-2026-10.md) — 线上原始记录、精确用量回放、确认继续和格式兼容；2026-10-23 已生产发布，见[线上验收](releases/studio-dialogue-recovery-release-20261023.md)。
+
+- [Studio 消息发送恢复上线验收](releases/studio-message-delivery-release-20261023.md) — 请求/回执丢失自动核对、同编号重试、真实诊断与草稿恢复；两种真实网络故障注入验收通过（2026-10-23）。

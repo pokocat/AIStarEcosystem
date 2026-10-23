@@ -1163,3 +1163,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 确认继续（2026-10-23 已生产发布）
 
 本人同线程受限任务之后明确回复「继续」时，服务端派生 `_exec.continueUntilDone` / `continuationOf`；新任务不继承，模型与客户端不能自行开启。继续期间按已确认的金额预算运行，不再因 Token 输入 / 输出分配、步数、总调用、工具次数或 10 分钟阈值反复暂停；仍保留真实预算、停止、付款授权、制作确认与重复动作保护。同一父 run / 助手消息 / 冻结不拆不重放，超出原 Token 分配但未超金额预算的真实用量可正常结算。支持并过滤实际出现的 `<studio-action name="…" args='JSON' />`，错误批次仍不执行、历史原文不补执行。线上证据与回放见 `docs/audits/studio-dialogue-continuation-replay-2026-10.md`。
+
+### Studio 发送恢复（2026-10-23 已生产发布）
+
+`useStudioDialogueSession.post` 对不确定送达先读同线程快照核对 clientMessageId，再同正文/同报价/同付款编号退避重试；明确业务拒绝不重试，网关 HTTP_ERROR 不视为确定拒绝。不要把结构化异常换成文案字符串；保留真实 logId，没有时以消息编号定位。报价更新只刷新并保留草稿，不替用户增加批准金额。发布与真实断连/账本证据见 `docs/releases/studio-message-delivery-release-20261023.md`。
