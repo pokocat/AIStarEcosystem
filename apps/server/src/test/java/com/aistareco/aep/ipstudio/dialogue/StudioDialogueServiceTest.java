@@ -384,7 +384,7 @@ class StudioDialogueServiceTest {
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var missingCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null)));
         assertEquals("STUDIO_PRICE_CHANGED", missingCeiling.getCode());
-        var lowCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 13L)));
+        var lowCeiling = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 0L)));
         assertEquals("STUDIO_PRICE_CHANGED", lowCeiling.getCode());
         verifyNoInteractions(credits);
 
@@ -394,6 +394,31 @@ class StudioDialogueServiceTest {
         verify(runs).save(run.capture());
         assertEquals(14L, run.getValue().getCost());
         assertTrue(run.getValue().getInputJson().contains("\"tokenPricing\""));
+    }
+
+    @Test void anOldPageCeilingRemainsUsableWithoutIncreasingConsent() throws Exception {
+        var endpoint=AiModelEndpoint.builder().id("ep-1").enabled(true).build();
+        when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA),isNull(),eq("studio")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
+                .thenReturn(new PromptService.ResolvedPrompt("system","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        var pricing=mock(AiChatTokenPricing.class);
+        var current=new AiChatTokenPricing.Rate(new BigDecimal(".18"),new BigDecimal("1.08"),1048576,65536);
+        when(pricing.findDialogue("ep-1")).thenReturn(current);
+        ReflectionTestUtils.setField(service,"tokenPricing",pricing);
+        var accepted=service.post("u1","P1","IPT-P1",request("old-page","继续",21L));
+        var captor=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(captor.capture());
+        var run=captor.getValue();assertEquals(21,run.getCost());
+        var snapshot=mapper.treeToValue(mapper.readTree(run.getInputJson()).path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
+        assertEquals(current.inputCreditsPerK(),snapshot.inputCreditsPerK());
+        assertEquals(current.outputCreditsPerK(),snapshot.outputCreditsPerK());
+        assertEquals(21,snapshot.maxCost());
+        verify(credits).hold(eq("u1"),eq(21L),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString());
+        assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("old-page","继续",21L)).runId());
+        verify(runs,times(1)).save(any());
+        var budget=DialogueLoop.TurnBudget.continued(snapshot,4096,java.time.Clock.systemUTC());
+        budget.record(110000,0);assertEquals("budget",budget.blockReason(10000,256));
+        assertThrows(BusinessException.class,()->snapshot.settleContinued(200000L,0L));
     }
 
     /**

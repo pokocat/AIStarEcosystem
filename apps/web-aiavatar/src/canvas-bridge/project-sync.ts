@@ -22,6 +22,7 @@ import { loadServerModels } from "./models";
 import { announceSave, onRemoteSave } from "./project-channel";
 
 import { splitStudioConversations } from "./studio-conversations";
+import { saveWithRecovery } from "./save-recovery";
 
 const SAVE_DEBOUNCE_MS = 900;
 
@@ -370,11 +371,11 @@ export function useProjectSync(projectId: string) {
 
   /** 真正发那一次 PUT。状态只在同一代次里写（切项目 / 重开之后不许回头改界面）。 */
   const put = React.useCallback((snap: Snapshot, epoch: number): Promise<SaveResult> => {
-    const task: Promise<SaveResult> = IpStudioApi.updateProject(snap.id, {
+    const task: Promise<SaveResult> = saveWithRecovery(() => IpStudioApi.updateProject(snap.id, {
       name: snap.title,
       doc: snap.doc,
       baseDocVersion: snap.base ?? undefined,
-    })
+    }), () => epoch === epochRef.current && loadedRef.current && !conflictRef.current)
       .then((saved): SaveResult => {
         if (epoch === epochRef.current) {
           baseRef.current = saved.docVersion ?? baseRef.current;

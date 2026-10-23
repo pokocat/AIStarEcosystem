@@ -175,7 +175,7 @@ class DialogueLoopTest {
         assertEquals(DialogueLoop.Reason.INTERRUPTED,new DialogueLoop(model,new RecordingTools(),stopped,budget).run(new ArrayList<>()).reason());
         assertTrue(model.log.isEmpty());
         var other=DialogueLoop.TurnBudget.continued(rate,1024,Clock.systemUTC());
-        var repeated=new ScriptedModel(other).reply("看",act("read_canvas")).reply("再看",act("read_canvas"));
+        var repeated=new ScriptedModel(other).reply("看",act("read_canvas")).reply("再看",act("read_canvas")).reply("仍然重复",act("read_canvas"));
         var tools=new RecordingTools();assertEquals("loop",new DialogueLoop(repeated,tools,new Hooks(),other).run(new ArrayList<>()).limit());
         assertEquals(1,tools.ran.size());
     }
@@ -459,9 +459,22 @@ class DialogueLoopTest {
         assertEquals(2, outcome.steps());
     }
 
+    @Test void aTruncatedReadCanRecoverWithinTheSameTurnWithoutRepeatingTheTool() throws Exception {
+        var budget=budget(100_000,100_000);
+        var model=new ScriptedModel(budget).reply("读正文",act("read_canvas","{\"nodeIds\":[\"script\"]}"))
+                .reply("再读",act("read_canvas","{\"nodeIds\":[\"script\"]}"))
+                .reply("读下一段",act("read_canvas","{\"nodeIds\":[\"script\"],\"offset\":8000}"))
+                .reply("写完整稿",act("create_nodes")).reply("完成");
+        var tools=new RecordingTools();var messages=new ArrayList<Map<String,Object>>();
+        var result=new DialogueLoop(model,tools,new Hooks(),budget).run(messages);
+        assertEquals(DialogueLoop.Reason.COMPLETED,result.reason());
+        assertEquals(List.of("read_canvas","read_canvas","create_nodes"),tools.ran);
+        assertTrue(messages.stream().anyMatch(m->String.valueOf(m.get("content")).contains("READ_ALREADY_RETURNED")));
+    }
+
     @Test void aRepeatedReadOnlyLookIsALoopToo() throws Exception {
         var budget = budget(100_000, 100_000);
-        var model = new ScriptedModel(budget).reply("看画布", act("read_canvas")).reply("再看画布", act("read_canvas"));
+        var model = new ScriptedModel(budget).reply("看画布", act("read_canvas")).reply("再看画布", act("read_canvas")).reply("仍然重复", act("read_canvas"));
         var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
         assertEquals("loop", outcome.limit());
     }

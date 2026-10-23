@@ -1177,3 +1177,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### 发布期间 HTTP 连续性（2026-10-23 事故补充）
 
 当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
+
+
+### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
+
+对话 `maxCost` 是用户批准的金额上限；旧页面额度低于新默认值时，`Rate.withinBudget` 保留单价并缩减本轮 Token 额度，冻结与运行快照不超过原授权，不再要求用户被动接受更高默认额度。`read_canvas` 目录可翻过 120 个节点，正文以 Unicode 字符游标分页，不得把前 4000 字叫全文；相同只读请求有一次纠正机会，任何写/付费动作都不重放。`read_production_status` 复用 `IpProjectService.toRunDto` 的真实视频任务投影，旧内容已采用不等于最新重做成功。画布保存对网络/502/503/504 有界退避；丢回执后完全相同的业务文档视为已保存，真正不同版本仍拒绝覆盖。该恢复不等于发布无停机。依据与运行时替换建议见 `docs/audits/studio-agent-runtime-assessment-2026-10.md`。

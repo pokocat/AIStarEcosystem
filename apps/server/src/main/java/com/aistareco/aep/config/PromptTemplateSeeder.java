@@ -51,7 +51,7 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      （线上 2026-10-21 14:10 聚算 Qwen3.8 27B 三次都在数组后面又写了一遍 <<<studio-actions>>>，整轮被判格式错误）。
     // v23：方案提示词补 targetNodeId（结果放进助手为这一步准备的对象，不另建）与「有首帧图时画幅跟首帧」；对话提示词规则 11 同补画幅
     //      （线上 2026-10-21 IPP-655ea55a：执行器另建了结果节点，助手建的视频节点成了空壳；1:1 首帧被拉成 9:16）。
-    private static final String SEED_VERSION = "v23-2026-10-21-exec-target-node";
+    private static final String SEED_VERSION = "v24-2026-10-23-production-status-paged-read";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;

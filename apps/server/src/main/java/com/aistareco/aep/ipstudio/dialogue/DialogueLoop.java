@@ -118,6 +118,7 @@ public final class DialogueLoop {
     }
 
     private Outcome loop(List<Map<String, Object>> messages) throws Exception {
+        boolean readRecoveryUsed = false;
         int toolCalls = 0, protocolErrors = 0;
         // The previous step's action batch, normalized; cleared when user steering is added (new information).
         String lastBatch = null;
@@ -151,7 +152,17 @@ public final class DialogueLoop {
             // (also for read-only tools: another identical look at the canvas tells it nothing new). A reply rejected for
             // its format in between does not count as a different step. Nothing of the repeated batch runs.
             String batch = batchSignature(reply.actions());
-            if (batch.equals(lastBatch)) return outcome(Reason.LIMIT, "loop", toolCalls);
+            if (batch.equals(lastBatch)) {
+                // A read has no side effect. Give the model one chance to use the returned cursor or another source,
+                // rather than asking the user to rescue a truncated read. Paid/writing tools are never replayed here.
+                if (!readRecoveryUsed && reply.actions().stream().allMatch(a -> "read_canvas".equals(a.tool()))) {
+                    readRecoveryUsed = true;
+                    model.appendExchange(messages, reply, reply.actions().stream().map(a -> new ToolResult(a,
+                            "{\"ok\":false,\"code\":\"READ_ALREADY_RETURNED\",\"summary\":\"这一段已经读过，未重复执行。长文请用上次 nextOffset 作为 offset 读取下一段；如果 hasMore=false，正文已读完，请用已有内容继续任务。不得要求用户重复说继续。\"}")).toList());
+                    continue;
+                }
+                return outcome(Reason.LIMIT, "loop", toolCalls);
+            }
             lastBatch = batch;
             List<ToolResult> results = new ArrayList<>();
             Reason end = null;

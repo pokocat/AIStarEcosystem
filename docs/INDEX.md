@@ -313,3 +313,5 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 出图后接视频续接修复与验收](releases/studio-stage-continuation-release-20261023.md)（last-reviewed: 2026-10-23）
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
+
+- [Studio 读取、进度、保存恢复与 Agent 运行时评估](audits/studio-agent-runtime-assessment-2026-10.md) — 本地修复，未发布；AgentScope Java / LangGraph 替换边界与验收标准（last-reviewed: 2026-10-23）。

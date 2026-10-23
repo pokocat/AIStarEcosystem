@@ -7,6 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, renderHook } from "@testing-library/react";
+import { ApiError } from "@ai-star-eco/api-client";
 
 // 整个文件跑在假计时器上：900ms 防抖、1200ms「等过防抖窗口」都改成推进假时间，断言不变
 // （原来 13 条用例真睡，占了这个文件约 14 秒）。`until` 是假计时器下的 waitFor：
@@ -88,6 +89,25 @@ describe("加载", () => {
 });
 
 describe("自动保存", () => {
+  it("网关恢复后先重试原快照，再用新版本保存等待期间的编辑", async () => {
+    const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
+    getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc, docVersion: "v1" });
+    updateProjectMock.mockRejectedValueOnce(new ApiError({ code: "HTTP_ERROR", message: "unavailable" }, 502))
+      .mockResolvedValueOnce({ docVersion: "v2" }).mockResolvedValue({ docVersion: "v3" });
+    const view = renderHook(() => useProjectSync("IPP-1"));
+    try {
+      await until(() => expect(view.result.current.state).toBe("ready"));
+      act(() => useCanvasStore.getState().updateProject("IPP-1", { title: "第一笔" }));
+      await until(() => expect(updateProjectMock).toHaveBeenCalledTimes(1));
+      expect(view.result.current.saveState).toBe("saving");
+      act(() => useCanvasStore.getState().updateProject("IPP-1", { title: "等待时的第二笔" }));
+      await advance(3000);
+      await until(() => expect(view.result.current.saveState).toBe("saved"));
+      expect(updateProjectMock.mock.calls[1]).toEqual(updateProjectMock.mock.calls[0]);
+      expect(updateProjectMock.mock.calls[2]?.[1]).toMatchObject({ name: "等待时的第二笔", baseDocVersion: "v2" });
+      expect(notify).not.toHaveBeenCalled();
+    } finally { view.unmount(); unsubscribe(); }
+  });
   it("保存失败通知保留服务端诊断，原文档和失败状态仍可恢复", async () => {
     const notify = vi.fn(), unsubscribe = subscribeStudioErrors(notify); notify.mockClear();
     getProjectMock.mockResolvedValue({ id: "IPP-1", name: "我的 IP", doc: serverDoc });

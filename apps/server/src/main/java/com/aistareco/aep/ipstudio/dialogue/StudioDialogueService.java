@@ -541,9 +541,9 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
             rate = tokenPricing == null ? null : tokenPricing.findDialogue(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
-            cost = rate.maxCost();
             if (maxCost == null) throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_PRICE_CHANGED", "模型计费配置已更新，请刷新后重试");
-            IpRunService.requireApprovedCost(maxCost, cost);
+            rate = rate.withinBudget(maxCost);
+            cost = rate.maxCost();
             perCall = Math.min(Math.max(1024, prompt.params().maxTokensOrDefault()), rate.maxOutputTokens());
             if (endpoint.getChatMaxOutputTokens() != null) perCall = Math.min(perCall, endpoint.getChatMaxOutputTokens());
         }

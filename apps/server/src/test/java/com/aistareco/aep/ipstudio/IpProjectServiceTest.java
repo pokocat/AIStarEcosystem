@@ -322,7 +322,21 @@ class IpProjectServiceTest {
 
         assertEquals("IP_PROJECT_STALE", assertThrows(BusinessException.class,
                 () -> svc.update(USER, PID, new IpUpdateProjectRequest(
-                        null, new IpStudioFixtures.Doc().root, "0000000000000000"))).getCode());
+                        "旧窗口的标题", new IpStudioFixtures.Doc().root, "0000000000000000"))).getCode());
+    }
+
+    @Test void aCommittedSaveWithALostReplyCanBeRetriedButCannotOverwriteNewerContent() {
+        projects.repo.save(IpStudioFixtures.project(PID, USER, new IpStudioFixtures.Doc()));
+        String originalVersion=svc.detail(USER,PID).docVersion();
+        var doc=new IpStudioFixtures.Doc();doc.root.withObject("viewport").put("x",42);
+        var request=new IpUpdateProjectRequest("新标题",doc.root,originalVersion);
+        var first=svc.update(USER,PID,request);
+        var retried=svc.update(USER,PID,request);
+        assertEquals(first.docVersion(),retried.docVersion());
+        var newer=doc.root.deepCopy();newer.withObject("viewport").put("x",100);
+        svc.update(USER,PID,new IpUpdateProjectRequest("新标题",newer,first.docVersion()));
+        assertEquals("IP_PROJECT_STALE",assertThrows(BusinessException.class,()->svc.update(USER,PID,request)).getCode());
+        assertEquals(100,svc.detail(USER,PID).doc().path("viewport").path("x").asInt());
     }
 
     @Test

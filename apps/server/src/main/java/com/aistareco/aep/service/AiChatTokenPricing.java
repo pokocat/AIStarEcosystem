@@ -68,6 +68,23 @@ public class AiChatTokenPricing {
     private static BigDecimal decimal(JsonNode n,String key){var v=n.path(key);if(!v.isNumber()||v.decimalValue().signum()<0||v.decimalValue().compareTo(BigDecimal.valueOf(1000000))>0)throw new IllegalArgumentException();return v.decimalValue();}
     private static int positive(JsonNode n,String key){var v=n.path(key);if(!v.isIntegralNumber()||!v.canConvertToInt()||v.intValue()<1||v.intValue()>2000000)throw new IllegalArgumentException();return v.intValue();}
     public record Rate(BigDecimal inputCreditsPerK,BigDecimal outputCreditsPerK,int maxInputTokens,int maxOutputTokens) {
+        /** A dialogue ceiling is a spending limit, not a requirement to authorize the server's larger default. */
+        public Rate withinBudget(long ceiling) {
+            if (ceiling < 0) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "费用上限不能为负数");
+            if (maxCost() <= ceiling) return this;
+            if (cost(1, 256) > ceiling)
+                throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","本次费用上限不足以回复，请重新确认对话费用");
+            // Preserve the configured allocation ratio and unit prices. The accepted snapshot is used both by the
+            // invocation budget and settlement, including continued turns; nothing can spend above the old consent.
+            int low=0,high=1_000_000;
+            while(low<high) {
+                int mid=low+(high-low+1)/2;
+                if(cost(Math.max(1,(long)maxInputTokens*mid/1_000_000),Math.max(256,(long)maxOutputTokens*mid/1_000_000))<=ceiling) low=mid;
+                else high=mid-1;
+            }
+            return new Rate(inputCreditsPerK,outputCreditsPerK,Math.max(1,(int)((long)maxInputTokens*low/1_000_000)),
+                    Math.max(256,(int)((long)maxOutputTokens*low/1_000_000)));
+        }
         @com.fasterxml.jackson.annotation.JsonProperty(access=com.fasterxml.jackson.annotation.JsonProperty.Access.READ_ONLY)
         public long maxCost(){return cost(maxInputTokens,maxOutputTokens);}
         public long cost(long input,long output){return inputCreditsPerK.multiply(BigDecimal.valueOf(input)).add(outputCreditsPerK.multiply(BigDecimal.valueOf(output))).divide(BigDecimal.valueOf(1000),0,RoundingMode.CEILING).longValueExact();}

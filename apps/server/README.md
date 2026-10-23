@@ -1089,7 +1089,7 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 真源 [`docs/ip-studio-conversational-video-recreation-plan.md`](../../docs/ip-studio-conversational-video-recreation-plan.md)。
 
-**对话（`ipstudio/dialogue/**`）**：每轮对话是一条父 `IpRun`（kind `studio-dialogue`，nodeId = 线程 id，clientRequestId = 用户消息 id）。`DialogueLoop` 是纯状态机：模型 → 类型化动作 → 技能阶段白名单与参数校验 → 工具 → 结果回传 → 继续；上限 16 步对话（只数循环自己的模型调用；工具内部调用与历史摘要不算步，另有 40 次总调用保险）/ 24 次工具 / 10 分钟 / 费率 Token 总额，连续两步动作批次完全相同（`loop`），或收到停止；因上限停下时回复带快捷答复「继续」（格式错误除外，见 `specs/BUSINESS_RULES.md` Studio 对话 29）。端点 `chat_supports_tools=TRUE` 用原生 tool_calls，否则走 `<<<studio-actions>>>` JSON 动作协议（也接受模型常写的 `<tool_call>{"tool":…,"args":…}</tool_call>` 块，`name` / `arguments` 同义；正文与动作分开解析，动作块不出 wire，写不完整的块整批不执行）；`chat_supports_streaming=TRUE` 才 `stream:true` + `stream_options.include_usage` 真流式（`AiModelInvocationService.invokeChatTurnOnEndpoint` / `UpstreamModelHttp.sendStream`，看门狗处理空闲、总时长与停止；断流 `AI_STREAM_INCOMPLETE`），否则完整回复作为**一次** delta，不拆字不延时（§8.0）。计费：受理时要求按量售价（否则 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`）、`maxCost ≥ rate.maxCost`（否则 409 `STUDIO_PRICE_CHANGED`），按付款选择冻结，afterCommit 派发；本轮全部模型调用累计真实用量，结束时在同一个 REQUIRES_NEW 事务里条件更新 running → done/failed、结算 / 退回、关闭消息、追加 `turn.done`，提交后才广播。**用户停止**：已完成的调用按真实用量结算，被中断那段流不计费也不按字数估算（与现有 Studio 取消的全额退回不同，刻意为之）。线程活动轮次 3 分钟无心跳由 `StudioDialogueSweeper` 判失败并退回。
+**对话（`ipstudio/dialogue/**`）**：每轮对话是一条父 `IpRun`（kind `studio-dialogue`，nodeId = 线程 id，clientRequestId = 用户消息 id）。`DialogueLoop` 是纯状态机：模型 → 类型化动作 → 技能阶段白名单与参数校验 → 工具 → 结果回传 → 继续；上限 16 步对话（只数循环自己的模型调用；工具内部调用与历史摘要不算步，另有 40 次总调用保险）/ 24 次工具 / 10 分钟 / 费率 Token 总额，连续两步动作批次完全相同（`loop`），或收到停止；因上限停下时回复带快捷答复「继续」（格式错误除外，见 `specs/BUSINESS_RULES.md` Studio 对话 29）。端点 `chat_supports_tools=TRUE` 用原生 tool_calls，否则走 `<<<studio-actions>>>` JSON 动作协议（也接受模型常写的 `<tool_call>{"tool":…,"args":…}</tool_call>` 块，`name` / `arguments` 同义；正文与动作分开解析，动作块不出 wire，写不完整的块整批不执行）；`chat_supports_streaming=TRUE` 才 `stream:true` + `stream_options.include_usage` 真流式（`AiModelInvocationService.invokeChatTurnOnEndpoint` / `UpstreamModelHttp.sendStream`，看门狗处理空闲、总时长与停止；断流 `AI_STREAM_INCOMPLETE`），否则完整回复作为**一次** delta，不拆字不延时（§8.0）。计费：受理时要求按量售价（否则 503 `AI_TOKEN_PRICE_NOT_CONFIGURED`）、客户端 `maxCost` 必填；低于新默认额度时按原上限缩减本轮 Token 预算（保留现行单价），只有不足最低回复预算才 409 `STUDIO_PRICE_CHANGED`，按付款选择冻结，afterCommit 派发；本轮全部模型调用累计真实用量，结束时在同一个 REQUIRES_NEW 事务里条件更新 running → done/failed、结算 / 退回、关闭消息、追加 `turn.done`，提交后才广播。**用户停止**：已完成的调用按真实用量结算，被中断那段流不计费也不按字数估算（与现有 Studio 取消的全额退回不同，刻意为之）。线程活动轮次 3 分钟无心跳由 `StudioDialogueSweeper` 判失败并退回。
 
 工具（`dialogue/tools/`）：`read_canvas` / `read_skill` / `analyze_video`（子 run = recreation segments，带 `recreation.maxSegmentSec=model`）/ `propose_plan`（`skill_plan` 提示词，规划输入——阶段说明、操作白名单与各操作 `settings` 字段契约、视频模型合同——与执行侧、后台试跑共用 `StudioWorkflowService.skillPlanStageText/skillPlanConstraints/planCapabilities`，不再各写一份；回复经 `ModelJson` 去掉 ```json 围栏后解析 → `StudioPlanValidator.validateSkillPlan`（`questions` 接受字符串或 `{question, default}`）+ `quotePlan` 报价 → 消息块 `plan`，指纹 64 hex）/ `request_approval` / `confirm_approval`（用户在本轮明确用文字确认某张卡）/ `ask_question` / `propose_text` / `create_nodes` / `connect_nodes`（只发 `node.upsert` 事件，服务端不写画布文档）/ `submit_generation`（必须先过 `StudioExecutionGate` 且线程已绑定执行，否则回复「制作尚未授权」、不冻结）/ `stop`。
 
@@ -1204,3 +1204,14 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 ### 对话跨制作类型续接（2026-10-23）
 
 `StudioSkillRouter` 优先识别明确的视频产物，避免首帧/人物参考图名称把视频需求分到出图。`ProposePlanTool` 对「继续下一步」整理出的具体 brief 再次选择有效方法，沿用 `Effects.bindSkill` 的线程锁、旧卡失效和父任务快照；活跃执行仍不切换。`RequestApprovalTool` 只为本轮成功整理、方法/阶段一致的计划发卡；规划失败后继续修正，不会拿历史计划发卡、重复原图片步骤。无新 API、迁移或生产配置。规则见 `docs/ip-studio-dialogue-intents.md`。
+
+
+### Studio 读取与保存恢复（2026-10-23 本地修复，未发布）
+
+客户端仍持有较低旧 `maxCost` 时，`Rate.withinBudget` 保留现行单价、按原金额上限缩减本轮输入/输出额度；受理、冻结、执行与结算共用缩减后的快照。最低回复预算也放不下时才返回 `STUDIO_PRICE_CHANGED`，不自动增加用户授权。
+
+`read_canvas` 无 nodeIds 时提供目录分页，指定 nodeIds 时返回正文片段、`offset/nextOffset/hasMore/totalChars`；offset 按 Unicode code point 计算，不拆开 emoji。`DialogueLoop` 遇到第一次相同 read_canvas 批次时不重读，回传明确游标纠正，第二次仍不推进则停止；写入和付费工具的重复保护不放宽。
+
+`read_production_status` 免费查询当前项目的最新对象任务，必须走 `IpProjectService.toRunDto`，不能把 `studio-video` 的受理行 done 当作供应商成功。`hasAdoptedContent` 与 `latestStatus` 分开表示旧采用结果和最新任务状态，不暴露签名 URL 或 storageKey。仅有工具与提示词修复，真实模型行为尚待验收。
+
+项目 PUT 的基线过期但规范化 doc、请求中的名称和封面与当前完全一致时视为幂等成功，用于恢复已提交却丢失回执的保存；只要内容不同仍返回 `IP_PROJECT_STALE`。前端只对网络和临时网关状态做同快照重试，不强行更新基线。

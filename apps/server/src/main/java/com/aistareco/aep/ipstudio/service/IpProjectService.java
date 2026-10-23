@@ -34,6 +34,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -171,6 +172,10 @@ public class IpProjectService {
      */
     void applyUpdate(IpProject p, IpUpdateProjectRequest req) {
         if (req == null) return;
+        // A PUT may have committed before its response was lost. A byte-equivalent business document is a no-op,
+        // never a reason to overwrite a genuinely newer version or to force the user into a false conflict.
+        if (req.baseDocVersion()!=null && !req.baseDocVersion().equals(docVersion(p.getDocJson()))
+                && alreadySaved(p,req)) return;
         requireNotStale(p, req.baseDocVersion());
         // Cover updates never replace the canvas document or its published identity.
         if (req.coverStorageKey() != null) {
@@ -779,6 +784,16 @@ public class IpProjectService {
     }
 
     // ── 文档读写 ──────────────────────────────────────────────
+
+    /** Recognize a committed save whose response was lost, after stripping derived signed URLs. */
+    private boolean alreadySaved(IpProject p, IpUpdateProjectRequest req) {
+        if(req.doc()==null||!req.doc().isObject())return false;
+        String name=trimToNull(req.name());
+        if(name!=null && !Objects.equals(name.length()>128?name.substring(0,128):name,p.getName()))return false;
+        if(req.coverStorageKey()!=null && !Objects.equals(trimToNull(req.coverStorageKey()),p.getCoverKey()))return false;
+        JsonNode incoming=req.doc().deepCopy();IpDocs.requireValidDoc(incoming);stripDerivedUrls(incoming);
+        return incoming.equals(parseOrEmptyObject(p.getDocJson()));
+    }
 
     /**
      * 乐观并发：客户端带上「我加载的是哪一版」，服务端据此拒绝覆盖别人的编辑。
