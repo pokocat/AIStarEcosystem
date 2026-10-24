@@ -134,6 +134,8 @@ export function visibleFitPadding(shell: HTMLElement | null, room = 24) {
   const px = (n: number) => `${Math.round(n)}px` as const;
   return { top: px(64 + room), bottom: px(64 + room), left: px(rail + room), right: px(dock + room) };
 }
+/** How long a single click on a node title waits for a second one (a double click renames). */
+export const STUDIO_TITLE_CLICK_MS = 300;
 type Snapshot = { nodes: CanvasNodeData[]; connections: CanvasConnection[] };
 
 function FlowWorkspace({ projectId }: { projectId: string }) {
@@ -161,6 +163,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     editor.focus({ preventScroll: true, cursor: 'end' });
   }, [textId]);
   const [referencePick,setReferencePick]=useState(false),referenceOrigin=useRef<string|undefined>(undefined);
+  // A single click on a node title waits out the double-click window before opening the panel: opening it also brings
+  // the node into view, and a view that moves under the second click turned a rename into a click somewhere else.
+  const titleClick=useRef<ReturnType<typeof setTimeout>|undefined>(undefined);
+  const cancelTitleClick=useCallback(()=>{clearTimeout(titleClick.current);titleClick.current=undefined;},[]);
+  useEffect(()=>cancelTitleClick,[cancelTitleClick]);
   const [pendingFocus, setPendingFocus] = useState<string>(), [selectedEdges, setSelectedEdges] = useState(new Set<string>());
   const [context, setContext] = useState<{ x: number; y: number; nodeId?: string }>();
   const [pendingConnection,setPendingConnection]=useState<PendingStudioConnection>();
@@ -465,15 +472,26 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
         onConnect={c => {if(c.source&&c.target)connectReference(c.source,c.target);}}
         onNodeClick={(event,n)=>{
           if(event.button!==0)return;
+          cancelTitleClick();
           setContext(undefined);
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
-          if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
+          // A click on the clip itself (<video> / <audio>, native controls included) plays as usual *and* opens the node's
+          // panel: a fitted video fills the whole card, so skipping media left no place to click (2026-10-23). Real controls
+          // on the card (replace, upload, retry, links, ports) still keep their own click. The title is a button only for its
+          // double click / F2 rename; a single click on it is a click on the node.
+          if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button:not(.studio-flow-title),a,input,textarea,select,.react-flow__handle'))return;
           const node=n.data.document;if(node.type==='group')return;
-          const action=studioNodeCommand(node);if(action)dispatchStudioCommand(action,n.id);
+          const action=studioNodeCommand(node);if(!action)return;
+          if((event.target as HTMLElement).closest('.studio-flow-title')){
+            if(event.detail>1)return;
+            titleClick.current=setTimeout(()=>{titleClick.current=undefined;dispatchStudioCommand(action,n.id);},STUDIO_TITLE_CLICK_MS);
+            return;
+          }
+          dispatchStudioCommand(action,n.id);
         }}
         onNodeDoubleClick={(event, n) => { if ((event.target as HTMLElement).closest('.studio-flow-title,.studio-flow-title-input')) return; if (n.data.document.type === 'group') { checkpoint(); setRenameId(n.id); } else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
-        onNodeContextMenu={(event, n) => { event.preventDefault(); setTextId(undefined); window.dispatchEvent(new Event('studio-node-context-menu')); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
-        onPaneClick={event => { if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
+        onNodeContextMenu={(event, n) => { event.preventDefault(); cancelTitleClick(); setTextId(undefined); window.dispatchEvent(new Event('studio-node-context-menu')); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
+        onPaneClick={event => { cancelTitleClick(); if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
         onPaneContextMenu={event => { event.preventDefault();setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY}); }}
         defaultViewport={{ x: project.viewport.x, y: project.viewport.y, zoom: project.viewport.k }}
         onMoveStart={closeConnectionMenu} onMoveEnd={(_, v) => useCanvasStore.getState().updateProject(projectId, { viewport: { x: v.x, y: v.y, k: v.zoom } })}
