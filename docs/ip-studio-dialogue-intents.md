@@ -130,7 +130,7 @@
 4. **内部报错不到用户界面**：`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE` 与方案校验的「第 N 步…」在用户可见处一律换成「这份方案还没准备好，我会按你要做的内容重新整理。」（错误码换成 `STUDIO_PLAN_NOT_READY`），原文留在日志、`internalDetail` 与模型侧结果里。覆盖的路径：对话工作记录的标题 / 摘要 / 展开详情（`ProposePlanTool` 失败、工具抛出的业务错误 `StudioDialogueTurnWorker.toolFailure`、前端 `userFacingError` 兜底旧记录）、确认卡接口错误（`StudioPlanExecutionService` 计划校验）、对话子任务授权（`StudioPlanExecutionBridge.authorizeChild`）、执行器步骤原因（`StudioPlanSteps`、分析后编排制作方案的原生任务 `StudioWorkflowWorker.skillPlan`）、前端错误详情 / toast（`normalizeStudioError`）。
 5. 提示词（对话提示词「先判断用户要什么」一节与技能说明里「没有进行中的制作时可以换」）改为按意图换方法；`PromptTemplateSeeder.SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。
 
-## 2026-10-24：方案素材范围跨轮（本地，未发布）
+## 2026-10-24：方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`）
 
 **线上事故**：`PEX-fc87e85770074aa9ad51`（画布 `IPP-c2fe43a8`）。用户首轮点选「原视频」和「三视图」，要求只把中间主舞换成三视图人物；第二轮补充「脸和衣服都按三视图」，没再点选；之后某一轮才出分析方案。拉片成功（7 积分），「编排制作计划」三次失败（0 积分），日志都是「第 1 步引用了不存在的素材」，界面只说「这份方案还没准备好」。用户点了两次「继续」，撞同一个错，最后停止。
 

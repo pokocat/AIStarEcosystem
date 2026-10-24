@@ -313,6 +313,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 - [Studio 出图后接视频续接修复与验收](releases/studio-stage-continuation-release-20261023.md)（last-reviewed: 2026-10-23）
 - [Studio 对话去掉「继续」、不锁方法、单击弹浮层发布记录](releases/studio-dialogue-no-continue-release-20261023.md)（last-reviewed: 2026-10-24）
+- [Studio 方案素材范围跨轮发布记录](releases/studio-plan-material-scope-release-20261024.md)（last-reviewed: 2026-10-24）
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
 

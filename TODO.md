@@ -32,7 +32,7 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
-### 2026-10-24 · 方案素材范围跨轮（本地，未发布；真源 `docs/ip-studio-dialogue-intents.md` 末节）
+### 2026-10-24 · 方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md` 末节）
 
 - [ ] **新开一次制作会对同一条参考视频重新拉片、再次计费**：同一次制作里补素材重新编排已不重跑拉片；但用户结束这次制作、回对话重新确认分析方案时，`StudioPlanExecutionService#create` 新建执行，拉片步骤照样提交新任务。可考虑：同画布、同 `sourceNodeId` 且源文件 key 与拉片设置相同、已成功的 `studio-recreation` 结果直接复用（零费用），复用前核对归属与源文件未变。
 - [ ] **真模型未验证 `materialNodeIds`**：提示词 v27 要求分析方案写下后续素材、「编排制作计划」写全替换边界，尚未用线上同款聚算 Qwen 真调（§8.0.1 ⑦）。跨轮点选的兜底不依赖模型；用户只用文字点名、从没点选的素材仍依赖模型写进 `materialNodeIds`。

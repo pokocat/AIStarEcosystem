@@ -1509,7 +1509,7 @@ AiAvatar 发行入口共用当前 uid 的社交账号和历史发布任务：`/a
     - 切换方法时（线程锁内、与绑定新方法同一事务）：新方法与当前制作相同 → 不动；不同且旧制作没有在生成的子任务 → 作废其待确认卡、旧制作按停止收尾（canceled，产出留在画布，不发总结），线程执行指针与阶段清空，按新方法起始阶段出方案；不同且旧制作仍有在生成的子任务 → 不取消，旧制作暂停并与线程解绑，在生成的照常完成、结算并放进原线程的画布，不发任何消息，不占画布，生成完自行结束。
     - 方案含当前方法不允许的操作 → 先换到允许全部操作的方法（意图路由结果优先，其次目录顺序第一个能覆盖的）再校验；任何方法都不允许才失败，失败原因只给模型。
     - 内部原因（`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、`STUDIO_SKILL_LOCKED`、方案校验「第 N 步…」）不进用户界面：工作记录、确认卡接口、执行步骤原因、前端错误详情一律显示「这份方案还没准备好，我会按你要做的内容重新整理。」（工作记录码 `STUDIO_PLAN_NOT_READY`），原文留在日志与 `internalDetail`。
-32. **方案素材范围跨轮**（2026-10-24，本地未发布；真源 `docs/ip-studio-dialogue-intents.md`「2026-10-24：方案素材范围跨轮」；线上 `PEX-fc87e85770074aa9ad51` 首轮点名「三视图」、隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」两次撞同一个错）：
+32. **方案素材范围跨轮**（2026-10-24，已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md`「2026-10-24：方案素材范围跨轮」；线上 `PEX-fc87e85770074aa9ad51` 首轮点名「三视图」、隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」两次撞同一个错）：
     - 对话方案确认时的素材范围（`stepsJson.canvasContextIds`）只由 `StudioPlanMaterials.scope` 算，两条加载路径（dialogue run 的 `output.plan` 与对话消息里的方案块）一样：出方案那一轮点选 / 附带的节点 → 方案顶层 `materialNodeIds` → 方案步骤点名的画布节点 → 同一对话最近 200 条里**用户消息**点选 / 附带的节点（新的在前）；只保留当前画布上还在的，最多 16 个（请求的画布上下文上限），超出按这个顺序截断并写 info 日志。不把整张画布放进来。原生规划 run（`studio-text`）不变。
     - 技能计划可带 `materialNodeIds`（≤16，属于方案正文、计入指纹），分析阶段用它写下制作阶段才用到的素材（替换人物设定图、商品图）。
     - 技能计划引用素材范围以外的画布对象（`referenceNodeIds`、`referenceBindings[].nodeId`、拉片 `sourceNodeId`、`editTarget.nodeId`、`materialNodeIds`）→ 400 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`，`details.nodeIds` 列出全部越界 id（不是只报第一个）。执行里的「编排制作计划」不再把它包成 `STUDIO_PLAN_NOT_READY`：失败任务 `output.outOfScopeNodeIds` 记下 id，步骤带 `materials[{nodeId,title,onCanvas}]`，原因用画布标题说清是哪个（不出现 id），停下的说明给出两条路：加入这次制作重新编排，或不用它重新编排。不自动重试。
