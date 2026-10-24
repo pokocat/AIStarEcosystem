@@ -206,6 +206,11 @@ public final class DirectorPrompts {
         return switch (kind) { case "scene" -> "场景"; case "prop" -> "道具"; default -> "角色"; };
     }
 
+    /** 角色带形象参考照片时追加在出图提示词后：只取长相，版式、服装和背景仍按设定集来。 */
+    public static final String CHARACTER_REF_NOTE = "图1 是用户提供的形象参考照片，只用来确定这个人的长相：脸型、五官、发型、肤色和体型照着它画。"
+            + "不要照搬它的构图、角度、背景、光线或画质；服装和配饰以上面的角色设定为准，设定没写的才参考照片。"
+            + "按上面的设定集版式重新绘制完整的多视角设定图。";
+
     public static String assetPrompt(JsonNode settings, JsonNode asset) {
         String style = settings.path("style").asText("真人写实");
         String name = asset.path("name").asText();

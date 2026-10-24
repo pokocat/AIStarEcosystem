@@ -13609,7 +13609,7 @@ paths:
       description: >-
         用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
         asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
-        asset.setVoice / asset.clearVoice / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / notice.dismiss）。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。
+        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / notice.dismiss）。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。角色不接受 asset.upload（400 DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED）：上传的照片用 asset.setRef 设为形象参考（data.key），只在生成设定图时作为图1交给模型，角色参考图始终是系统生成的设定图。
         改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [op], properties: { op: { type: string }, targetId: { type: string, nullable: true }, rev: { type: integer, nullable: true }, data: { type: object } } } } } }

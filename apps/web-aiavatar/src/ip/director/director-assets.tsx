@@ -176,14 +176,42 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
           {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={14}/>确认</button>}
           {!audioOnly && <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate} title={costText(work.pricing.image, work.pricing.mock)}>
             <Wand2 size={14}/>{asset.image.candidates.length ? "重新生成" : "生成参考图"}</button>}
-          <button type="button" className="ip-brand-secondary director-icon-button" disabled={!!busy} aria-label="上传参考图" title="上传参考图" onClick={() => file.current?.click()}><Upload size={14}/></button>
+          {asset.kind !== "character" && <button type="button" className="ip-brand-secondary director-icon-button" disabled={!!busy} aria-label="上传参考图" title="上传参考图" onClick={() => file.current?.click()}><Upload size={14}/></button>}
           <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
           <button type="button" className="ip-brand-text-button director-danger" aria-label={`删除${asset.name}`} onClick={remove}><Trash2 size={14}/></button>
         </>}
         <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
       </div>
+      {!editing && !audioOnly && asset.kind === "character" && <CharacterRef work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
       {!editing && !audioOnly && <small className="director-cost">{work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.image, false)}`}</small>}
       {!editing && asset.kind === "character" && <VoicePanel work={work} asset={asset} apply={apply}/>}
     </div>
   </article>;
+}
+
+/**
+ * 角色的形象参考照片。照片不会直接当角色图用：生成或重新生成设定图时作为图1交给模型，只取长相，
+ * 版式按设定集重新画。分镜和视频认的始终是系统生成的设定图，前后才对得上。
+ */
+function CharacterRef({ work, asset, apply, setError, disabled }: Pick<WorkbenchProps, "work" | "apply" | "setError"> & { asset: DirectorAsset; disabled: boolean }) {
+  const { busy, run } = useBusy();
+  const file = useRef<HTMLInputElement>(null);
+  const ref = asset.refImage;
+  const upload = (f: File) => void run("ref", async () => {
+    const result = await IpStudioApi.uploadImage(f);
+    apply(await DirectorApi.edit(work.id, "asset.setRef", asset.id, null, { key: result.key }));
+  }, setError);
+  const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), setError);
+  return <div className="director-ref">
+    {ref?.url ? <img src={ref.url} alt={`${asset.name}的形象参考`}/> : <span className="director-ref-empty"><ImageIcon size={16}/></span>}
+    <div className="director-ref-text">
+      <strong>形象参考{ref ? "" : "（可选）"}</strong>
+      <small>{ref ? "生成设定图时照着它画长相，改了参考要重新生成" : "上传一张照片，生成设定图时照着它画长相"}</small>
+    </div>
+    <div className="director-ref-actions">
+      <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={() => file.current?.click()}>{ref ? "更换" : "上传"}</button>
+      {ref && <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={clear}>移除</button>}
+    </div>
+    <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
+  </div>;
 }

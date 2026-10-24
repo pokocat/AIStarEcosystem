@@ -435,3 +435,11 @@ html:not([data-layout="desktop"]) .director-shell :is(.director-notice button, .
 html:not([data-layout="desktop"]) .director-shell :is(.director-clip-check, .director-batch-all input) { width: 22px; height: 22px; }
 html:not([data-layout="desktop"]) .director-shell .director-clip-head .director-danger { min-width: 40px; min-height: 40px; }
 html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .director-video-gate .ip-brand-secondary, .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }
+/* 角色形象参考：只在生成设定图时交给模型，不直接当角色图 */
+.director-ref { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--ip-line); border-radius: 8px; background: var(--ip-soft); }
+.director-ref img, .director-ref-empty { width: 40px; height: 40px; flex: none; border-radius: 6px; object-fit: cover; }
+.director-ref-empty { display: grid; place-items: center; color: var(--ip-muted); background: var(--ip-paper); border: 1px solid var(--ip-line); }
+.director-ref-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.director-ref-text strong { font-size: 13px; font-weight: 600; }
+.director-ref-text small { font-size: 12px; color: var(--ip-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-ref-actions { display: flex; gap: 4px; flex: none; }
