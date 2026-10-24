@@ -18,10 +18,4 @@ public interface StudioExecutionMessages {
      * @return the message id
      */
     String postExecutionMessage(String threadId, String executionId, String key, String text, List<ObjectNode> blocks, List<String> suggestions);
-
-    /**
-     * Room one dialogue turn needs inside a stage budget: the current default dialogue endpoint's per-turn ceiling (its
-     * token rate's maxCost), so a card's default cap leaves space to keep talking during the stage (D06). 0 when unknown.
-     */
-    default long dialogueReserve(String userId) { return 0; }
 }

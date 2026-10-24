@@ -140,7 +140,7 @@ export function ShortCreateConsole({
     } catch (e) {
       inFlight.current = false;
       setStarting(false);
-      toast.error(aiErrorMessage(e, "没能开始制作，请重试"));
+      toast.error(aiErrorMessage(e, "开始制作失败，请重试"));
     }
   };
 

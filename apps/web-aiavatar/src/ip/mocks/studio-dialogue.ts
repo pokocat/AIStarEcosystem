@@ -502,30 +502,29 @@ function directTurn(projectId: string, p: MockProject, t: MockThread, request: S
     const tool = nextId("tool"), nodeId = nextId("dlg"), canvas = canvasSize(projectId), drama = /剧本/.test(request.text);
     const node = { id: nodeId, type: "text", title: drama ? "剧本 · 示例" : "口播稿 · 示例", width: 380, height: drama ? 420 : 320, position: { x: canvas.right + 40, y: 40 },
       metadata: { content: drama ? mockDrama(request.text) : MOCK_SCRIPT, studio: { mock: true } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
-    // A long job (several episodes, or a script plus its shots) costs more than one task's frozen credits on the server:
-    // it settles that task and carries on in the next one by itself (docs/ip-studio-dialogue-no-continue.md §3). The demo
-    // shows the same: turn.done 「chained」 with the next turn, a second reply that goes on, and no 「继续」 anywhere.
+    // A long job (several episodes, or a script plus its shots) is done in one reply, however many holds the server adds
+    // on the way (docs/ip-studio-dialogue-no-continue.md §3): the demo goes on in the same message, one turn.done, and no
+    // 「继续」 anywhere.
     const longJob = drama && /[二三四五两多]集|拆镜|分镜/.test(request.text);
-    const chained: Step[] = [];
+    const longSteps: Step[] = [];
     if (longJob) {
-      const second = nextId("msg"), shotsTool = nextId("tool"), shotsId = nextId("dlg");
+      const shotsTool = nextId("tool"), shotsId = nextId("dlg");
       const shots = { id: shotsId, type: "text", title: "分镜 · 示例", width: 380, height: 320, position: { x: canvas.right + 440, y: 40 },
         metadata: { content: "镜 1 · 街口 · 中景跟拍，主角赶路\n镜 2 · 门口 · 近景，对方愣住\n镜 3 · 屋内 · 双人中景，对视后笑出来", studio: { mock: true } } } as unknown as NonNullable<StudioNodeUpsertData["node"]>;
-      chained.push(
+      longSteps.push(
         ...say(t, messageId, "w0", "剧本先放在画布上了，接着拆镜。"),
-        { run: () => { const next = nextId("turn"); emit(t, "turn.done", { reason: "chained", messageId, billing: MOCK_BILLING, settling: false, nextTurnId: next }); t.turnId = next; t.runId = nextId("run"); } },
         { run: () => emit(t, "tool.started", { toolCallId: shotsTool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
         { run: () => { emit(t, "node.upsert", { nodeId: shotsId, op: "create", node: shots } satisfies StudioNodeUpsertData);
           emit(t, "tool.finished", { toolCallId: shotsTool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [shotsId] }, creditsActual: 0, settling: false }); } },
-        ...say(t, second, "w1", "分镜也拆好了，3 场 3 个镜头，放在剧本右边。"),
-        { run: () => emit(t, "turn.done", { reason: "completed", messageId: second, billing: MOCK_BILLING, settling: false, suggestions: ["按这个分镜出图", "第 2 场再紧凑一点"] }) },
+        ...say(t, messageId, "w1", "分镜也拆好了，3 场 3 个镜头，放在剧本右边。"),
+        { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false, suggestions: ["按这个分镜出图", "第 2 场再紧凑一点"] }) },
       );
     }
     play(p, t, [
       { run: () => emit(t, "tool.started", { toolCallId: tool, toolName: "create_nodes", title: "放进画布", safeInputSummary: "新建 1 个对象" }) },
       { run: () => { emit(t, "node.upsert", { nodeId, op: "create", node } satisfies StudioNodeUpsertData);
         emit(t, "tool.finished", { toolCallId: tool, toolName: "create_nodes", status: "done", result: { summary: "已在画布上新建 1 个对象", nodeIds: [nodeId] }, creditsActual: 0, settling: false }); } },
-      ...(longJob ? chained : [
+      ...(longJob ? longSteps : [
         ...say(t, messageId, "w1", drama ? "剧本放在画布上了，分 3 场，每场写了画面和台词。" : "口播稿放在画布上了，分开场问题、一个卖点、一个动作三段。"),
         { run: () => emit(t, "turn.done", { reason: "completed", messageId, billing: MOCK_BILLING, settling: false,
           suggestions: drama ? ["反转再提前一点", "改成 3 集", "按这个剧本出分镜图"] : ["开头再抓人一点", "缩短到 100 字以内", "按这段出一条视频"] }) },

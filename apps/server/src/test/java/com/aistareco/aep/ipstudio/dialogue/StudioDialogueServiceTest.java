@@ -286,15 +286,18 @@ class StudioDialogueServiceTest {
         verifyNoInteractions(steering);
     }
 
-    /** D06: a turn on a thread bound to an active execution is checked against that stage first; 402 freezes nothing. */
-    @Test void aBoundTurnMustFitTheStageBudgetBeforeAnythingIsHeld() {
+    /**
+     * 2026-10-23 (docs/ip-studio-dialogue-no-continue.md 对话费用不计入制作预算): a turn on a thread bound to an active
+     * execution is paid by the execution's fixed payer but not registered in its stage budget.
+     */
+    @Test void aBoundTurnIsNotCountedInTheStageBudget() {
         var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
                 .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         var pricing = mock(AiChatTokenPricing.class);
-        when(pricing.findDialogue("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000)); // maxCost = 14
+        when(pricing.find("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000)); // maxCost = 14
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var control = mock(StudioExecutionControl.class);
         when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "analysis", "needs_user")));
@@ -303,20 +306,13 @@ class StudioDialogueServiceTest {
         @SuppressWarnings("unchecked") org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates = mock(org.springframework.beans.factory.ObjectProvider.class);
         when(gates.getIfAvailable()).thenReturn(gate);
         ReflectionTestUtils.setField(service, "gates", gates);
-        when(gate.attributeTurn(eq("u1"), eq("P1"), eq("PEX-1"), anyString(), eq(14L)))
-                .thenThrow(new BusinessException(org.springframework.http.HttpStatus.PAYMENT_REQUIRED, "STUDIO_PLAN_BUDGET_EXCEEDED", "预算不够，还差 4 积分"));
-        var refused = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-b1", "规划制作", 14L)));
-        assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED", refused.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        verify(runs, never()).save(any());
-
-        reset(gate);
-        when(gate.attributeTurn(eq("u1"), eq("P1"), eq("PEX-1"), anyString(), eq(14L))).thenReturn("analysis");
         var ok = service.post("u1", "P1", "IPT-P1", request("c-b2", "规划制作", 14L));
-        verify(gate).attributeTurn("u1", "P1", "PEX-1", ok.runId(), 14L);
+        assertEquals("accepted", ok.queueState());
+        verify(gate).executionPayer("u1", "P1", "PEX-1");
+        verifyNoMoreInteractions(gate);
         var run = ArgumentCaptor.forClass(IpRun.class);
         verify(runs).save(run.capture());
-        assertTrue(run.getValue().getInputJson().contains("\"attributedExecutionId\":\"PEX-1\""));
+        assertFalse(run.getValue().getInputJson().contains("attributedExecutionId"));
         assertTrue(run.getValue().getInputJson().contains("\"executionId\":\"PEX-1\""));
     }
 
@@ -363,7 +359,7 @@ class StudioDialogueServiceTest {
     }
 
     /** §8: the token price is required; the client's maxCost is not, and an old or low one no longer refuses (409). */
-    @Test void realTurnNeedsATokenPriceButNotTheClientsCeiling() {
+    @Test void realTurnNeedsATokenPriceButNotTheClientsCeiling() throws Exception {
         var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
@@ -375,7 +371,7 @@ class StudioDialogueServiceTest {
 
         var pricing = mock(AiChatTokenPricing.class);
         var rate = new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000); // maxCost = 14
-        when(pricing.findDialogue("ep-1")).thenReturn(rate);
+        when(pricing.find("ep-1")).thenReturn(rate);
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var ok = service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null));
         assertEquals("accepted", ok.queueState(), "no client ceiling: accepted, not STUDIO_PRICE_CHANGED");
@@ -384,7 +380,10 @@ class StudioDialogueServiceTest {
         verify(runs).save(run.capture());
         assertEquals(14L, run.getValue().getCost());
         assertTrue(run.getValue().getInputJson().contains("\"tokenPricing\""));
-        assertTrue(run.getValue().getInputJson().contains("\"dialogueRate\""), "the full ceiling is kept for the next task of a chain");
+        var exec = mapper.readTree(run.getValue().getInputJson()).path("_exec");
+        assertEquals(14, exec.path("holdIncrement").asLong(), "the ordinary text ceiling is the increment");
+        assertEquals(ok.runId(), exec.path("holdRefs").get(0).path("ref").asText());
+        assertEquals(14, exec.path("holdRefs").get(0).path("amount").asLong());
     }
 
     /** §8: only the dialogue stopped checking the client's ceiling; paid generations keep the shared check (409). */
@@ -401,15 +400,15 @@ class StudioDialogueServiceTest {
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
                 .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         var pricing = mock(AiChatTokenPricing.class);
-        when(pricing.findDialogue("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000));
+        when(pricing.find("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000));
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var ok = service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 0L));
         verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString());
     }
 
     /**
-     * §3 / §8: an old page that still sends 21 is not capped by it: the hold is min(the dialogue ceiling, the balance).
-     * With a balance of 21 that is at most 21; the snapshot keeps the unit prices; the hold bounds what is charged.
+     * §3 / §8: the first hold is min(the ordinary text ceiling, the balance), not the client's number and not the million-token
+     * dialogue budget: with a balance of 21 it is 21. The snapshot keeps the unit prices; more is added while the turn works.
      */
     @Test void theHoldFollowsTheBalanceNotTheClientsNumber() throws Exception {
         var endpoint=AiModelEndpoint.builder().id("ep-1").enabled(true).build();
@@ -419,7 +418,7 @@ class StudioDialogueServiceTest {
                 .thenReturn(new PromptService.ResolvedPrompt("system","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var pricing=mock(AiChatTokenPricing.class);
         var current=new AiChatTokenPricing.Rate(new BigDecimal(".18"),new BigDecimal("1.08"),1048576,65536);
-        when(pricing.findDialogue("ep-1")).thenReturn(current);
+        when(pricing.find("ep-1")).thenReturn(current);
         ReflectionTestUtils.setField(service,"tokenPricing",pricing);
         var wallet=new com.aistareco.aep.model.Wallet();wallet.setTotalBalance(21);
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet);
@@ -430,14 +429,16 @@ class StudioDialogueServiceTest {
         var snapshot=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);
         assertEquals(current.inputCreditsPerK(),snapshot.inputCreditsPerK());
         assertEquals(current.outputCreditsPerK(),snapshot.outputCreditsPerK());
-        assertEquals(run.getCost(),snapshot.maxCost());
-        assertEquals(current.maxCost(),mapper.treeToValue(exec.path("dialogueRate"),AiChatTokenPricing.Rate.class).maxCost());
+        assertEquals(21,run.getCost());
+        assertEquals(current.maxCost(),exec.path("holdIncrement").asLong());
+        assertFalse(exec.has("dialogueRate"));
+        verify(pricing,never()).findDialogue(anyString());
         verify(credits).hold(eq("u1"),eq(run.getCost()),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString());
         assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("old-page","继续",5L)).runId());
         verify(runs,times(1)).save(any());
-        var budget=DialogueLoop.TurnBudget.metered(snapshot,4096,java.time.Clock.systemUTC());
-        budget.record(110000,0);assertEquals("budget",budget.blockReason(10000,256));
-        assertThrows(BusinessException.class,()->snapshot.settleContinued(200000L,0L));
+        var budget=DialogueLoop.TurnBudget.metered(snapshot,21,4096,java.time.Clock.systemUTC(),null,need->0);
+        budget.record(110000,0);assertEquals("budget",budget.blockReason(10000,256),"nothing added: stops");
+        assertThrows(BusinessException.class,()->snapshot.settleWithin(200000L,0L,21));
     }
 
     /**

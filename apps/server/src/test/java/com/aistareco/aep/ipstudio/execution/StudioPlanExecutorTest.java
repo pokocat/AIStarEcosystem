@@ -400,30 +400,22 @@ class StudioPlanExecutorTest {
         assertEquals(1,submitted.size());assertTrue(openedTurns.isEmpty());
     }
 
-    // ── D06: parent dialogue turns count in their stage ─────────────────────────────────────────────────────
-    @Test void dialogueTurnsCountInTheStageBudgetOnceWithTheParentShareVisible() throws Exception {
+    // ── 2026-10-23: dialogue turns are not part of a stage budget ─────────────────────────────────────────────
+    /** An old row still lists dialogueRuns[] and the dialogue share fields: ignored and dropped, the step goes ahead. */
+    @Test void dialogueTurnsNoLongerCountInTheStageBudget() throws Exception {
         execution("running",60,videoStep("v1",40));
         var state=(ObjectNode)state();
-        var turns=state.putArray("dialogueRuns");
-        turns.addObject().put("runId","IPR-turn").put("stage","production").put("maxCost",28).put("status","running");
-        turns.addObject().put("runId","IPR-turn").put("stage","production").put("maxCost",28).put("status","running"); // a duplicated registration
+        state.putArray("dialogueRuns").addObject().put("runId","IPR-turn").put("stage","production").put("maxCost",28).put("status","running");
         row.setStepsJson(state.toString());
+        var budget=(ObjectNode)om.readTree(row.getBudgetJson());
+        ((ObjectNode)budget.path("production")).put("dialogueSpent",5).put("dialogueInFlight",28);
+        row.setBudgetJson(budget.toString());
         dtos.put("IPR-turn",dto("IPR-turn","running",28,null));
         executor.advance("PEX-1");
-        assertTrue(submitted.isEmpty(),"0 + 28 (the running turn) + 40 > 60");
-        assertEquals("needs_user",row.getStatus());
-        assertEquals(28,budget().path("inFlight").asLong(),"one run id, counted once");
-        assertEquals(28,budget().path("dialogueInFlight").asLong());
-        assertEquals(8,budget().path("shortfall").asLong());
-        dtos.put("IPR-turn",dto("IPR-turn","done",2,null));
-        var resumed=(ObjectNode)state();((ObjectNode)resumed.path("steps").get(0)).put("status","pending"); // what resume does
-        row.setStepsJson(resumed.toString());row.setStatus("running");
-        published.clear();publishedData.clear();
-        executor.advance("PEX-1");
-        assertEquals(1,submitted.size(),"2 settled + 40 ≤ 60");
-        assertEquals(2,budget().path("spent").asLong());assertEquals(2,budget().path("dialogueSpent").asLong());assertEquals(0,budget().path("dialogueInFlight").asLong());
+        assertEquals(1,submitted.size(),"0 + 40 ≤ 60: the running turn is not in the stage");
+        assertFalse(budget().has("dialogueInFlight"));assertFalse(budget().has("dialogueSpent"));
         var update=publishedData.get(published.indexOf("budget.update"));
-        assertEquals(2,update.path("spent").asLong());assertEquals(2,update.path("dialogueSpent").asLong(),"the parent share is visible, already inside spent");
+        assertFalse(update.has("dialogueSpent"));assertFalse(update.has("dialogueInFlight"));
     }
 
     // ── D07: completion summary ─────────────────────────────────────────────────────────────────────────────

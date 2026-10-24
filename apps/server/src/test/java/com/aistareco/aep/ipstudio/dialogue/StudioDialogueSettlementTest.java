@@ -145,10 +145,17 @@ class StudioDialogueSettlementTest {
         return new StudioDialogueTurnWorker.Settlement(new DialogueLoop.Outcome(DialogueLoop.Reason.LIMIT, limit, 9, 6, 8), 100, 100, rate, 9, null, List.of());
     }
 
-    /** A task that used up its hold: 9000 input + 1000 output = 11 of 14 credits, the refused call needed 3000 input. */
-    private StudioDialogueTurnWorker.Settlement usedUp() {
+    /** The wallet ran out on the way: 9000 input + 1000 output = 11 credits used, the added hold refused. */
+    private StudioDialogueTurnWorker.Settlement outOfCredits(StudioDialogueTurnWorker.HoldRefusal refusal) {
         return new StudioDialogueTurnWorker.Settlement(new DialogueLoop.Outcome(DialogueLoop.Reason.LIMIT, "budget", 4, 3, 3), 9000, 1000, rate, 4,
-                null, List.of(), 4, 3000);
+                null, List.of(), refusal);
+    }
+
+    /** The run with three holds: its own (14), and IPR-1#1, IPR-1#2 (14 each) added while it worked. */
+    private void threeHolds() {
+        run.setInputJson("{\"turnId\":\"TRN-1\",\"dialogue\":{\"threadId\":\"IPT-P1\",\"messageId\":\"IDM-U\"},\"_exec\":{\"assistantMessageId\":\"IDM-A\","
+                + "\"holdIncrement\":14,\"holdRefs\":[{\"ref\":\"IPR-1\",\"amount\":14},{\"ref\":\"IPR-1#1\",\"amount\":14},{\"ref\":\"IPR-1#2\",\"amount\":14}]}}");
+        run.setCost(42);
     }
 
     private List<IpDialogueMessage> systemNotes() {
@@ -195,8 +202,7 @@ class StudioDialogueSettlementTest {
     @Test void notesNeverMentionContinuing() {
         for (String limit : List.of("loop", "protocol", "safeguard", "budget", "steps", "tokens", "time"))
             assertFalse(StudioDialogueTurnWorker.limitNote(limit).contains("继续"), limit);
-        for (var kind : StudioDialogueTurnWorker.Refusal.values())
-            assertFalse(StudioDialogueTurnWorker.refusalNote(new StudioDialogueTurnWorker.ChainRefusal(kind, "原因")).contains("继续"), kind.name());
+        assertFalse(StudioDialogueTurnWorker.OUT_OF_CREDITS.contains("继续"));
     }
 
     @Test void aLoopEndsAsWaitingForTheUserWithItsNote() throws Exception {
@@ -239,122 +245,118 @@ class StudioDialogueSettlementTest {
         assertEquals("TRN-1", thread.getActiveTurnId());
     }
 
-    // ── Task chain (docs/ip-studio-dialogue-no-continue.md §3) ───────────────────────────────────────────────────
+    // ── One run, holds added while it works (docs/ip-studio-dialogue-no-continue.md §3) ──────────────────────────
 
-    /**
-     * A task whose hold is used up is settled and, in the same transaction, the next task is created with its own hold from
-     * the same payer; the thread moves to it (never idle), turn.done says so, and it is dispatched after commit.
-     */
-    @Test void aUsedUpHoldHandsTheWorkToTheNextTaskInTheSameTransaction() throws Exception {
-        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
-        List<String> dispatched = new java.util.ArrayList<>();
-        worker.useDispatcher(dispatched::add);
-        var savedRuns = ArgumentCaptor.forClass(IpRun.class);
-        worker.finish("IPR-1", usedUp(), null);
-
-        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 11L, "Studio 对话实际结算");
-        verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
-        verify(runs, atLeastOnce()).save(savedRuns.capture());
-        IpRun next = savedRuns.getAllValues().stream().filter(r -> !"IPR-1".equals(r.getId())).findFirst().orElseThrow();
-        verify(credits).hold("u1", 14L, IpRunService.REF_TYPE, next.getId(), "Studio 对话");
-        assertEquals(14L, next.getCost());
-        assertEquals("running", next.getStatus());
-        assertEquals("studio-dialogue", next.getKind());
-        var exec = mapper.readTree(next.getInputJson()).path("_exec");
-        assertEquals("IPR-1", exec.path("chainOf").asText());
-        assertEquals(1, exec.path("chainIndex").asInt());
-        assertEquals(List.of("IPR-1"), mapper.convertValue(exec.path("chainRunIds"), List.class));
-        assertEquals(4, exec.path("chainModelCalls").asInt());
-        assertEquals("IDM-U:1", next.getClientRequestId());
-        assertEquals(next.getId(), thread.getActiveRunId());
-        String nextTurn = mapper.readTree(next.getInputJson()).path("turnId").asText();
-        assertEquals(nextTurn, thread.getActiveTurnId(), "the thread never goes idle in between");
-        assertEquals("done", assistant.getStatus());
-        assertEquals("chained", run.getStage());
-        var done = turnDone();
-        assertEquals("chained", done.path("reason").asText());
-        assertEquals(nextTurn, done.path("nextTurnId").asText());
-        assertTrue(systemNotes().isEmpty(), "no pause note, nothing to type");
-        var saved = ArgumentCaptor.forClass(IpDialogueMessage.class);
-        verify(messages, atLeastOnce()).save(saved.capture());
-        assertTrue(saved.getAllValues().stream().anyMatch(m -> "assistant".equals(m.getRole()) && next.getId().equals(m.getRunId())
-                && "streaming".equals(m.getStatus())), "the next task's reply is open");
-        assertEquals(List.of(next.getId()), dispatched);
+    /** Real usage is committed across the holds in order (the first used up, then the next); the rest goes back. */
+    @Test void addedHoldsAreSettledInOrderAndTheRestReleased() throws Exception {
+        threeHolds();
+        worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 20_000, 1_000), null); // 20 + 2 = 22 credits
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 14L, "Studio 对话实际结算");
+        verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1#1", 8L, "Studio 对话实际结算");
+        verify(credits, never()).commitHold(eq(IpRunService.REF_TYPE), eq("IPR-1#2"), anyLong(), anyString());
+        verify(credits, never()).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
+        verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1#1"), anyString());
+        verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1#2"), anyString());
+        assertEquals(22L, run.getCost());
+        assertEquals("completed", turnDone().path("reason").asText());
+        assertEquals(3, mapper.readTree(run.getOutputJson()).path("holds").asInt());
     }
 
-    /** The next hold is min(the dialogue ceiling, the balance): a small balance still carries on. */
-    @Test void theNextHoldIsCappedByTheBalance() {
-        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(9));
-        worker.useDispatcher(id -> { });
-        worker.finish("IPR-1", usedUp(), null);
-        verify(credits).hold(eq("u1"), longThat(a -> a > 0 && a <= 9), eq(IpRunService.REF_TYPE), anyString(), eq("Studio 对话"));
+    /** More than every hold together is never charged. */
+    @Test void usageBeyondAllHoldsIsNeverCharged() {
+        threeHolds();
+        worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 40_000, 2_000), null); // 44 > 42
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        assertEquals("AI_USAGE_LIMIT", run.getErrorCode());
+        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
     }
 
-    /** §2: the balance cannot pay for the next call: the chain ends, every hold is settled, a recharge note says so. */
-    @Test void aBalanceThatCannotPayTheNextCallEndsTheChainWithARechargeNote() throws Exception {
-        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(2)); // the refused call needs cost(3000, 256) = 4
-        List<String> dispatched = new java.util.ArrayList<>();
-        worker.useDispatcher(dispatched::add);
-        worker.finish("IPR-1", usedUp(), null);
+    /** A failure, a stop before any call and an abandoned turn release every added hold too. */
+    @Test void failureStopAndExpiryReleaseEveryAddedHold() {
+        threeHolds();
+        worker.finish("IPR-1", usage(DialogueLoop.Reason.COMPLETED, 1000, 500), new BusinessException(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "失败"));
+        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
+        clearInvocations(credits);
+        setUp(); threeHolds(); run.setCancelRequested(true);
+        worker.finish("IPR-1", null, null);
+        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
+        clearInvocations(credits);
+        setUp(); threeHolds(); run.setHeartbeatAt(Instant.now().minus(java.time.Duration.ofMinutes(10)));
+        when(runs.findById("IPR-1")).thenReturn(Optional.of(run));
+        assertTrue(worker.expireIfStale("IPR-1"));
+        for (String ref : List.of("IPR-1", "IPR-1#1", "IPR-1#2")) verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq(ref), anyString());
+        verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+    }
+
+    /** §2: the wallet ran out: one line, the recharge link, the work kept, every hold settled, no 「继续」. */
+    @Test void outOfCreditsEndsWithOneLineAndARechargeLink() throws Exception {
+        worker.finish("IPR-1", outOfCredits(new StudioDialogueTurnWorker.HoldRefusal(true, StudioDialogueTurnWorker.OUT_OF_CREDITS)), null);
         verify(credits).commitHold(IpRunService.REF_TYPE, "IPR-1", 11L, "Studio 对话实际结算");
         verify(credits).releaseHold(eq(IpRunService.REF_TYPE), eq("IPR-1"), anyString());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
         var notes = systemNotes();
         assertEquals(1, notes.size());
+        assertEquals("积分不够了，已经做好的都留在画布上。充值后跟我说一声，我接着做。", notes.get(0).getText());
         assertEquals("recharge", mapper.readTree(notes.get(0).getRequestJson()).path("notice").asText());
-        assertFalse(notes.get(0).getText().contains("继续"));
-        assertNull(thread.getActiveTurnId()); assertNull(thread.getActiveRunId());
-        assertEquals("waiting_user", turnDone().path("reason").asText());
-        assertEquals("balance", mapper.readTree(run.getOutputJson()).path("chainRefused").asText());
-        assertTrue(dispatched.isEmpty());
+        assertNull(thread.getActiveTurnId());
+        var done = turnDone();
+        assertEquals("waiting_user", done.path("reason").asText());
+        assertTrue(done.path("suggestions").isNull() || done.path("suggestions").isMissingNode());
+        assertEquals("balance", mapper.readTree(run.getOutputJson()).path("holdRefused").asText());
     }
 
-    /**
-     * A refused next hold (402 under the lock) rolls the whole attempt back; the task is then settled once more without a
-     * next task, with the recharge note. The mocks here return a fresh row per lock, the way a rolled-back database does.
-     */
-    @Test void aRefusedNextHoldRollsBackAndEndsWithARechargeNote() throws Exception {
+    /** Another refusal (an enterprise stopped the member's credits): the business error's own words, no canned prefix. */
+    @Test void anotherRefusalSaysTheBusinessReasonItself() throws Exception {
+        worker.finish("IPR-1", outOfCredits(new StudioDialogueTurnWorker.HoldRefusal(false, "企业成员关系已结束，不能继续使用企业积分")), null);
+        var notes = systemNotes();
+        assertEquals("企业成员关系已结束，不能继续使用企业积分", notes.get(0).getText());
+        assertNull(notes.get(0).getRequestJson());
+        assertEquals("other", mapper.readTree(run.getOutputJson()).path("holdRefused").asText());
+    }
+
+    /** A hold is added on the same run: reference runId#n, max(increment, need) within the balance, recorded on the run. */
+    @Test void addingAHoldUsesTheSameRunAndRecordsIt() throws Exception {
+        run.setInputJson("{\"turnId\":\"TRN-1\",\"dialogue\":{\"threadId\":\"IPT-P1\",\"messageId\":\"IDM-U\"},\"_exec\":{\"assistantMessageId\":\"IDM-A\","
+                + "\"holdIncrement\":14,\"holdRefs\":[{\"ref\":\"IPR-1\",\"amount\":14}]}}");
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
-        String input = run.getInputJson();
-        when(runs.lockById("IPR-1")).thenAnswer(i -> Optional.of(IpRun.builder().id("IPR-1").projectId("P1").ownerUserId("u1").nodeId("IPT-P1")
-                .kind("studio-dialogue").status("running").cost(14).inputJson(input).createdAt(Instant.now()).heartbeatAt(Instant.now()).build()));
-        when(threads.lockById("IPT-P1")).thenAnswer(i -> Optional.of(IpDialogueThread.builder().id("IPT-P1").projectId("P1").ownerUserId("u1")
-                .activeTurnId("TRN-1").activeRunId("IPR-1").createdAt(Instant.now()).updatedAt(Instant.now()).build()));
+        assertEquals(14L, worker.extendHold("IPR-1", 5));
+        verify(credits).hold("u1", 14L, IpRunService.REF_TYPE, "IPR-1#1", "Studio 对话 · 追加冻结");
+        assertEquals(30L, worker.extendHold("IPR-1", 30), "the call needs more than one increment");
+        verify(credits).hold("u1", 30L, IpRunService.REF_TYPE, "IPR-1#2", "Studio 对话 · 追加冻结");
+        var refs = mapper.readTree(run.getInputJson()).path("_exec").path("holdRefs");
+        assertEquals(3, refs.size());
+        assertEquals("IPR-1#2", refs.get(2).path("ref").asText());
+        assertEquals(58L, run.getCost(), "the run's cost is what is held until it settles");
+    }
+
+    /** Within the balance: a smaller balance that still pays the call is used; one that does not refuses, nothing held. */
+    @Test void anAddedHoldThatTheBalanceCannotPayIsRefused() {
+        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(9));
+        assertEquals(9L, worker.extendHold("IPR-1", 5), "capped by the balance");
+        clearInvocations(credits);
+        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(3));
+        var refused = assertThrows(StudioDialogueTurnWorker.HoldRefused.class, () -> worker.extendHold("IPR-1", 5));
+        assertTrue(refused.refusal.balance());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+    }
+
+    /** The ledger refuses (402 under its lock): a balance refusal too, and the run is left as it was. */
+    @Test void aLedgerRefusalIsABalanceRefusal() {
+        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
         when(credits.hold(anyString(), anyLong(), anyString(), anyString(), anyString()))
                 .thenThrow(new org.springframework.web.server.ResponseStatusException(HttpStatus.PAYMENT_REQUIRED, "积分余额不足"));
-        List<String> dispatched = new java.util.ArrayList<>();
-        worker.useDispatcher(dispatched::add);
-        worker.finish("IPR-1", usedUp(), null);
+        String before = run.getInputJson();
+        var refused = assertThrows(StudioDialogueTurnWorker.HoldRefused.class, () -> worker.extendHold("IPR-1", 5));
+        assertTrue(refused.refusal.balance());
+        assertEquals(before, run.getInputJson());
         verify(manager, atLeastOnce()).rollback(any());
-        var savedRuns = ArgumentCaptor.forClass(IpRun.class);
-        verify(runs, atLeastOnce()).save(savedRuns.capture());
-        IpRun last = savedRuns.getAllValues().get(savedRuns.getAllValues().size() - 1);
-        assertEquals("IPR-1", last.getId());
-        assertEquals("done", last.getStatus());
-        assertEquals("balance", mapper.readTree(last.getOutputJson()).path("chainRefused").asText());
-        assertTrue(systemNotes().stream().anyMatch(m -> m.getRequestJson() != null && m.getRequestJson().contains("recharge")));
-        assertTrue(dispatched.isEmpty());
     }
 
-    /** A stop that arrived before settlement wins: no next task. */
-    @Test void aStoppedTaskIsNotChained() throws Exception {
+    /** A turn being stopped adds nothing. */
+    @Test void aStoppingTurnAddsNoHold() {
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
         run.setCancelRequested(true);
-        worker.useDispatcher(id -> fail("a stopped chain must not dispatch"));
-        worker.finish("IPR-1", usedUp(), null);
+        assertEquals(0L, worker.extendHold("IPR-1", 5));
         verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        assertEquals("interrupted", turnDone().path("reason").asText());
-        assertNull(thread.getActiveTurnId());
-    }
-
-    /** A task that made no call cannot be helped by another one: no loop of empty tasks. */
-    @Test void aTaskThatMadeNoCallIsNotChained() throws Exception {
-        when(credits.getOrCreateWallet("u1")).thenReturn(wallet(100));
-        worker.useDispatcher(id -> fail("no progress, no next task"));
-        worker.finish("IPR-1", new StudioDialogueTurnWorker.Settlement(new DialogueLoop.Outcome(DialogueLoop.Reason.LIMIT, "budget", 0, 0, 0),
-                0, 0, rate, 0, null, List.of(), 0, 50_000), null);
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
-        assertEquals("too_large", mapper.readTree(run.getOutputJson()).path("chainRefused").asText());
     }
 
     /** §7: a running dialogue task with a live heartbeat owns its hold; without one it is not live. */

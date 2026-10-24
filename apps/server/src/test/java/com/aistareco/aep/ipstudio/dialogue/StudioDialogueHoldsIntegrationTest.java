@@ -44,16 +44,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 /**
  * docs/ip-studio-dialogue-no-continue.md §10, booted: real persistence, ledger, enterprise authorizations and a local
- * streaming vendor. One user message whose work costs more than one task's hold is carried through a chain of tasks
- * with one hold each; charges equal the real usage of every task; no hold stays frozen; nothing asks for 「继续」.
+ * streaming vendor. One user message whose work costs several hold increments is one run and one reply: the run adds
+ * holds while it works, settles real usage across them, and leaves nothing frozen; nothing asks for 「继续」.
  */
 @SpringBootTest(properties = {"spring.flyway.enabled=false", "spring.jpa.hibernate.ddl-auto=create-drop",
         "aep.seed.dev-data.enabled=false", "aep.cdn.driver=local", "aep.dev-auth.enabled=false", "aep.dev-fake-llm.enabled=false",
         "aep.dap.monthly-grant=0", "aep.enterprise.enabled=true"})
 @ActiveProfiles("test")
-class StudioDialogueChainIntegrationTest {
+class StudioDialogueHoldsIntegrationTest {
     @DynamicPropertySource static void database(DynamicPropertyRegistry r) {
-        r.add("spring.datasource.url", () -> "jdbc:h2:mem:studio-dialogue-chain;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=20000");
+        r.add("spring.datasource.url", () -> "jdbc:h2:mem:studio-dialogue-holds;MODE=MySQL;DB_CLOSE_DELAY=-1;LOCK_TIMEOUT=20000");
     }
 
     @Autowired StudioDialogueService dialogue;
@@ -99,8 +99,7 @@ class StudioDialogueChainIntegrationTest {
         endpoints.findAll().forEach(ep -> rates.putObject(ep.getId()).put("inputCreditsPerK", 1).put("outputCreditsPerK", 2)
                 .put("maxInputTokens", 30000).put("maxOutputTokens", 4000));
         configs.upsert(AiChatTokenPricing.KEY, price, "确定性测试价格", "test");
-        // A small dialogue ceiling (30 + 8 = 38 credits per task), so the scripted job needs several tasks.
-        configs.upsert(AiChatTokenPricing.DIALOGUE_BUDGET_KEY, json.readTree("{\"maxInputTokens\":30000,\"maxOutputTokens\":4000}"), "接续验收额度", "test");
+        // The ordinary text ceiling (30 + 8 = 38 credits) is the hold increment, so the scripted job needs several holds.
     }
 
     @AfterEach void stop() { if (http != null) http.stop(0); }
@@ -156,113 +155,97 @@ class StudioDialogueChainIntegrationTest {
             if (threads.findById(threadId).orElseThrow().getActiveTurnId() == null) return;
             Thread.sleep(100);
         }
-        fail("the chain did not finish");
+        fail("the turn did not finish");
     }
 
-    private List<IpRun> dialogueRuns(String project) {
-        List<IpRun> out = new ArrayList<>(runs.findByProjectIdOrderByCreatedAtDesc(project).stream()
-                .filter(r -> StudioDialogueTurnWorker.KIND.equals(r.getKind())).toList());
-        out.sort(Comparator.comparing(IpRun::getCreatedAt));
-        return out;
+    private IpRun onlyRun(String project) {
+        var dialogueRuns = runs.findByProjectIdOrderByCreatedAtDesc(project).stream().filter(r -> StudioDialogueTurnWorker.KIND.equals(r.getKind())).toList();
+        assertEquals(1, dialogueRuns.size(), "one user message = one run from start to end");
+        return dialogueRuns.get(0);
     }
 
-    /** Every task: settled, its charge = its real usage at the snapshot price, its hold no longer frozen. */
-    private long assertSettled(List<IpRun> chain) throws Exception {
-        long sum = 0;
-        for (IpRun r : chain) {
-            assertEquals("done", r.getStatus(), r.getId());
-            var billing = json.readTree(r.getOutputJson()).path("billing");
-            var rate = json.treeToValue(json.readTree(r.getInputJson()).path("_exec").path("tokenPricing"), AiChatTokenPricing.Rate.class);
-            assertEquals(rate.cost(billing.path("inputTokens").asLong(), billing.path("outputTokens").asLong()), r.getCost(), "charged = real usage");
-            assertTrue(r.getCost() <= json.readTree(r.getInputJson()).path("_exec").path("holdTotal").asLong(), "never above its own hold");
-            var hold = holds.findByReferenceTypeAndReferenceId("ip-run", r.getId()).orElseThrow();
-            assertNotEquals(CreditHold.Status.ACTIVE, hold.getStatus(), "no hold stays frozen: " + r.getId());
-            sum += r.getCost();
+    /** The run: settled, charge = real usage at the snapshot price, within its holds, and none of its holds still frozen. */
+    private List<DialogueHolds.Ref> assertSettled(IpRun run) throws Exception {
+        assertEquals("done", run.getStatus(), run.getId());
+        var billing = json.readTree(run.getOutputJson()).path("billing");
+        var input = json.readTree(run.getInputJson());
+        var rate = json.treeToValue(input.path("_exec").path("tokenPricing"), AiChatTokenPricing.Rate.class);
+        assertEquals(rate.cost(billing.path("inputTokens").asLong(), billing.path("outputTokens").asLong()), run.getCost(), "charged = real usage");
+        var refs = DialogueHolds.of(input, run.getId(), 0);
+        assertTrue(run.getCost() <= DialogueHolds.total(refs), "never above what was held");
+        for (var ref : refs) {
+            var hold = holds.findByReferenceTypeAndReferenceId("ip-run", ref.ref()).orElseThrow();
+            assertNotEquals(CreditHold.Status.ACTIVE, hold.getStatus(), "no hold stays frozen: " + ref.ref());
+            assertEquals(ref.amount(), hold.getAmount());
         }
-        return sum;
+        return refs;
     }
 
-    private void assertChained(List<IpRun> chain, String threadId) throws Exception {
-        String root = chain.get(0).getId();
-        for (int i = 1; i < chain.size(); i++) {
-            var exec = json.readTree(chain.get(i).getInputJson()).path("_exec");
-            assertEquals(root, exec.path("chainOf").asText());
-            assertEquals(i, exec.path("chainIndex").asInt());
-            assertEquals(chain.get(i - 1).getId(), exec.path("chainRunIds").get(i - 1).asText(), "every earlier task is listed");
-        }
+    private void assertOneReply(String threadId, IpRun run) {
+        var all = messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, 200));
+        assertEquals(1, all.stream().filter(m -> "assistant".equals(m.getRole())).count(), "one assistant reply");
+        assertTrue(all.stream().filter(m -> "assistant".equals(m.getRole())).allMatch(m -> run.getId().equals(m.getRunId())));
         var done = events.findByThreadIdAndSeqGreaterThanOrderBySeqAsc(threadId, 0, PageRequest.of(0, 1000)).stream()
                 .filter(e -> "turn.done".equals(e.getType())).toList();
-        assertEquals(chain.size(), done.size());
-        for (int i = 0; i < done.size() - 1; i++) {
-            JsonNode data = json.readTree(done.get(i).getDataJson());
-            assertEquals("chained", data.path("reason").asText());
-            assertEquals(json.readTree(chain.get(i + 1).getInputJson()).path("turnId").asText(), data.path("nextTurnId").asText());
-        }
-        // A later task knows what the earlier ones did (§3), the first one's included.
-        String later = bodies.stream().filter(b -> b.contains("第 1 段已做的")).findFirst().orElseThrow(() -> new AssertionError("no chain context sent"));
-        assertTrue(later.contains("read_canvas"));
-        assertTrue(later.contains("[\\\"n1\\\"]") || later.contains("[\"n1\"]") || later.contains("n1"), "the first task's objects are named");
-        // Not only the first task (the old continuationContext listed only that one): the third task sees both before it.
-        if (chain.size() >= 3)
-            assertTrue(bodies.stream().anyMatch(b -> b.contains("第 1 段已做的") && b.contains("第 2 段已做的")), "every earlier task is in the context");
-    }
-
-    private void assertNoContinue(String threadId) {
-        var all = messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, 200));
+        assertEquals(1, done.size(), "one turn.done");
         assertTrue(all.stream().noneMatch(m -> m.getText() != null && m.getText().contains("继续") && !"user".equals(m.getRole())), "nothing says 「继续」");
         assertTrue(all.stream().noneMatch(m -> m.getRequestJson() != null && m.getRequestJson().contains("继续") && !"user".equals(m.getRole())), "no 「继续」 reply");
     }
 
-    /** §10: one message, a job costing several holds, done by itself; total charge = real usage; nothing frozen. */
-    @Test void aJobLargerThanOneHoldIsDoneByAChainOfTasksFromOneMessage() throws Exception {
+    /** §10: one message, a job costing several increments: one run and one reply, holds added on the way, charge = usage. */
+    @Test void aLongJobIsOneRunThatAddsHoldsAndChargesTheRealUsage() throws Exception {
         String user = person(), project = project(user);
         credits.creditAccount(user, 400, LedgerEntry.LedgerEntryType.GIFT, "test", UUID.randomUUID().toString(), "测试积分");
         long before = wallets.findByUserId(user).orElseThrow().getTotalBalance();
         String threadId = dialogue.conversation(user, project).thread().id();
-        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("chain-1", "接续验收：写三集剧本并拆镜", null, null, null, null, null, null, null));
+        var posted = dialogue.post(user, project, threadId, new PostMessageRequest("long-1", "接续验收：写三集剧本并拆镜", null, null, null, null, null, null, null));
         assertEquals("accepted", posted.queueState());
+        assertEquals(38, runs.findById(posted.runId()).orElseThrow().getCost(), "the first hold is one ordinary text increment");
         awaitIdle(threadId);
         assertEquals(SCRIPTED_CALLS, calls.get(), "the whole job ran from one message");
-        var chain = dialogueRuns(project);
-        assertTrue(chain.size() >= 2, "the job needed more than one hold: " + chain.size());
-        assertEquals("completed", json.readTree(chain.get(chain.size() - 1).getOutputJson()).path("reason").asText());
-        long charged = assertSettled(chain);
+        var run = onlyRun(project);
+        assertEquals(posted.runId(), run.getId());
+        assertEquals("completed", json.readTree(run.getOutputJson()).path("reason").asText());
+        var refs = assertSettled(run);
+        assertTrue(refs.size() >= 2, "holds were added on the way: " + refs.size());
+        assertEquals(run.getId() + "#1", refs.get(1).ref());
         var wallet = wallets.findByUserId(user).orElseThrow();
-        assertEquals(before - charged, wallet.getTotalBalance(), "the ledger moved exactly the settled charges");
+        assertEquals(before - run.getCost(), wallet.getTotalBalance(), "the ledger moved exactly the settled charge");
         assertEquals(0, wallet.getPendingBalance());
-        assertChained(chain, threadId);
-        assertNoContinue(threadId);
-        assertTrue(messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, 200)).stream().noneMatch(m -> "system".equals(m.getRole())),
-                "no pause note in between");
-        // Resending the same message never starts another chain.
-        assertEquals(posted.runId(), dialogue.post(user, project, threadId, new PostMessageRequest("chain-1", "接续验收：写三集剧本并拆镜", null, null, null, null, null, null, null)).runId());
-        assertEquals(SCRIPTED_CALLS, calls.get());
+        assertOneReply(threadId, run);
+        assertTrue(messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, 200)).stream().noneMatch(m -> "system".equals(m.getRole())));
+        assertEquals(posted.runId(), dialogue.post(user, project, threadId, new PostMessageRequest("long-1", "接续验收：写三集剧本并拆镜", null, null, null, null, null, null, null)).runId());
+        assertEquals(SCRIPTED_CALLS, calls.get(), "a resend starts nothing");
     }
 
-    /** §10: the balance runs out on the way: the chain stops with a recharge note, work stays, every hold settles. */
-    @Test void aBalanceThatRunsOutEndsTheChainWithARechargeNoteAndSettlesEverything() throws Exception {
+    /** §10: the wallet runs out on the way: the turn stops with the recharge note, work stays, every hold settles. */
+    @Test void aWalletThatRunsOutStopsTheTurnWithARechargeNoteAndSettlesEverything() throws Exception {
         String user = person(), project = project(user);
         credits.creditAccount(user, 30, LedgerEntry.LedgerEntryType.GIFT, "test", UUID.randomUUID().toString(), "测试积分");
         String threadId = dialogue.conversation(user, project).thread().id();
-        dialogue.post(user, project, threadId, new PostMessageRequest("chain-2", "接续验收：写三集剧本并拆镜", null, null, null, null, null, 38L, null));
+        dialogue.post(user, project, threadId, new PostMessageRequest("long-2", "接续验收：写三集剧本并拆镜", null, null, null, null, null, 38L, null));
         awaitIdle(threadId);
         assertTrue(calls.get() < SCRIPTED_CALLS, "the job stopped before its end");
-        var chain = dialogueRuns(project);
-        long charged = assertSettled(chain);
+        var run = onlyRun(project);
+        assertSettled(run);
         var wallet = wallets.findByUserId(user).orElseThrow();
-        assertEquals(30 - charged, wallet.getTotalBalance());
+        assertEquals(30 - run.getCost(), wallet.getTotalBalance());
         assertEquals(0, wallet.getPendingBalance(), "nothing stays frozen");
-        var last = json.readTree(chain.get(chain.size() - 1).getOutputJson());
-        assertEquals("balance", last.path("chainRefused").asText());
+        var output = json.readTree(run.getOutputJson());
+        assertEquals("budget", output.path("limit").asText());
+        assertEquals("balance", output.path("holdRefused").asText());
         var notes = messages.findByThreadIdOrderBySeqDesc(threadId, PageRequest.of(0, 200)).stream().filter(m -> "system".equals(m.getRole())).toList();
         assertEquals(1, notes.size());
-        assertEquals("recharge", json.readTree(notes.get(0).getRequestJson()).path("notice").asText());
+        assertEquals(StudioDialogueTurnWorker.OUT_OF_CREDITS, notes.get(0).getText());
         assertEquals("recharge", dialogue.conversation(user, project).messages().stream().filter(m -> "system".equals(m.role())).findFirst().orElseThrow().notice());
-        assertNoContinue(threadId);
+        assertOneReply(threadId, run);
     }
 
-    /** §10: the same for an enterprise member's wallet: one authorization per task, all completed, the payer unchanged. */
-    @Test void anEnterpriseMembersChainKeepsItsPayerAndSettlesEveryAuthorization() throws Exception {
+    /**
+     * §10: the same for an enterprise member's wallet: every added hold has its own authorization on the same member wallet,
+     * all completed; the personal wallet is never touched; the added holds do not count against the active-job limit (2).
+     */
+    @Test void anEnterpriseMembersTurnAddsHoldsOnTheSameMemberWallet() throws Exception {
         var company = enterprises.create(person(), new CreateRequest("接续验收企业", UUID.randomUUID().toString()));
         var invite = enterprises.invite(company.member().userId(), company.enterprise().id(), new InvitationRequest(UUID.randomUUID().toString()));
         var member = enterprises.accept(person(), new AcceptRequest(invite.token()));
@@ -277,24 +260,26 @@ class StudioDialogueChainIntegrationTest {
         credits.creditAccount(actor, 999, LedgerEntry.LedgerEntryType.GIFT, "test", UUID.randomUUID().toString(), "个人积分");
         String project = project(actor);
         String threadId = dialogue.conversation(actor, project).thread().id();
-        dialogue.post(actor, project, threadId, new PostMessageRequest("chain-3", "接续验收：写三集剧本并拆镜", null, null, null, null,
+        dialogue.post(actor, project, threadId, new PostMessageRequest("long-3", "接续验收：写三集剧本并拆镜", null, null, null, null,
                 new BillingSelection("enterprise", enterprise), null, null));
         awaitIdle(threadId);
         assertEquals(SCRIPTED_CALLS, calls.get());
-        var chain = dialogueRuns(project);
-        assertTrue(chain.size() >= 2);
-        long charged = assertSettled(chain);
+        var run = onlyRun(project);
+        var refs = assertSettled(run);
+        assertTrue(refs.size() > 2, "more holds than the active-job limit: " + refs.size());
         var memberWallet = wallets.findByAccountKey("enterprise_member:" + enterprise + ":" + actor).orElseThrow();
-        assertEquals(400 - charged, memberWallet.getTotalBalance());
+        assertEquals(400 - run.getCost(), memberWallet.getTotalBalance());
         assertEquals(0, memberWallet.getPendingBalance());
         assertEquals(999, wallets.findByUserId(actor).orElseThrow().getTotalBalance(), "never falls back to the personal wallet");
-        for (IpRun r : chain) {
-            assertEquals(memberWallet.getId(), r.getBillingWalletId());
-            assertNotNull(r.getBillingAuthorizationId());
-            assertNotNull(authorizations.findByReferenceTypeAndReferenceId("ip-run", r.getId()).orElseThrow().getTerminalAt(), "authorization completed: " + r.getId());
+        Set<String> authorizationIds = new HashSet<>();
+        for (var ref : refs) {
+            var authorization = authorizations.findByReferenceTypeAndReferenceId("ip-run", ref.ref()).orElseThrow();
+            assertNotNull(authorization.getTerminalAt(), "authorization completed: " + ref.ref());
+            assertEquals(memberWallet.getId(), authorization.getWalletId());
+            assertEquals(holds.findByReferenceTypeAndReferenceId("ip-run", ref.ref()).orElseThrow().getWalletId(), memberWallet.getId());
+            authorizationIds.add(authorization.getId());
         }
-        assertEquals(chain.size(), chain.stream().map(IpRun::getBillingAuthorizationId).distinct().count(), "one authorization per task");
-        assertChained(chain, threadId);
-        assertNoContinue(threadId);
+        assertEquals(refs.size(), authorizationIds.size(), "one authorization per hold");
+        assertOneReply(threadId, run);
     }
 }

@@ -93,6 +93,16 @@ public class AiChatTokenPricing {
             if(input>maxInputTokens||output>maxOutputTokens)throw unavailable("AI_USAGE_LIMIT","模型返回用量超出已确认上限，本次未扣积分");
             return cost(input,output);
         }
+        /**
+         * A Studio dialogue turn: real usage at this rate's unit prices, bounded only by the credits frozen for the turn
+         * ({@code held}, every hold of its run), not by maxCost or the input / output split.
+         */
+        public long settleWithin(Long input,Long output,long held) {
+            if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");
+            long actual=cost(input,output);
+            if(actual>held)throw unavailable("AI_USAGE_LIMIT","模型返回费用超出已冻结积分，本次未扣积分");
+            return actual;
+        }
         /** Continued work shares the approved monetary ceiling, rather than fixed input/output partitions. */
         public long settleContinued(Long input,Long output) {
             if(input==null||output==null||input<0||output<0||input+output==0)throw unavailable("AI_USAGE_MISSING","模型未返回有效 Token 用量，本次未扣积分");

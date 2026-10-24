@@ -1424,14 +1424,13 @@
 
 设计真源 `docs/ip-studio-dialogue-no-continue.md`。
 
-- [x] ~~对话中途停下要用户说「继续」、报错（线上 2026-10-23 下午）~~ **2026-10-23 本地完成**：单条任务的步数 / 调用 / 工具 / 时间 / Token 分配上限删除；冻结额用完由服务端在结算事务里自动接下一条任务（同一付款来源、新冻结、线程指针直接交接、`turn.done{reason:chained}`），余额不够结束并给充值入口；相同动作先纠正一次再结束；整条链 300 次调用 / 2 小时隐形保险。测试：`DialogueLoopTest`、`StudioDialogueSettlementTest`（接续 / 余额不够 / 402 回滚 / 停止不接续 / 无进展不接续）、`StudioDialogueChainIntegrationTest`（个人与企业成员钱包的多任务链、余额中途用完）、`StudioDialogueIntegrationTest.aLongJobIsDoneFromOneMessageWithoutAnyContinue`。
-- [x] ~~对话因客户端 `maxCost` 与新额度不一致回 409 `STUDIO_PRICE_CHANGED`（线上下午 18 次）~~ **2026-10-23 本地完成**：对话不再据 `maxCost` 拒绝或限额，冻结 `min(对话额度, 可用余额)`；付费生成校验不变（`StudioDialogueServiceTest.paidGenerationsKeepTheirApprovedCostCheck`）。
+- [x] ~~对话中途停下要用户说「继续」、报错（线上 2026-10-23 下午）~~ **2026-10-23 本地完成**：单轮的步数 / 调用 / 工具 / 时间 / Token 分配上限删除；一条消息一个 run、一条回复，首笔冻结普通文本那一档，不够时在同一 run 上追加冻结（`runId#n`，企业成员走 `reserveExtension`），钱包没钱才停并给充值入口；相同动作先纠正一次再结束；单 run 300 次调用 / 2 小时隐形保险。测试：`DialogueLoopTest`（追加 / 拒绝 / 工具内部调用追加）、`StudioDialogueSettlementTest`（多笔依次结算 / 超额不扣 / 失败停止过期全部释放 / 追加金额与余额 / 402 回滚 / 停止不追加 / 文案）、`StudioDialogueHoldsIntegrationTest`（个人与企业成员钱包的多笔冻结、余额中途用完）、`StudioDialogueIntegrationTest.aLongJobIsDoneFromOneMessageWithoutAnyContinue`。
+- [x] ~~对话因客户端 `maxCost` 与新额度不一致回 409 `STUDIO_PRICE_CHANGED`（线上下午 18 次）~~ **2026-10-23 本地完成**：对话不再据 `maxCost` 拒绝或限额；付费生成校验不变（`StudioDialogueServiceTest.paidGenerationsKeepTheirApprovedCostCheck`）。
+- [x] ~~对话费用计入制作阶段预算、确认卡上限含对话预留~~ **2026-10-23 本地完成**：`attributeTurn` / `dialogueReserve` / 执行器 `dialogueRuns` 统计删除，卡片上限 = 报价 + 重做额度（`StudioDialogueApprovalToolsTest.theDefaultCardCapCoversThePaidStepsOnly`、`StudioPlanExecutorTest.dialogueTurnsNoLongerCountInTheStageBudget`、`StudioDialogueServiceTest.aBoundTurnIsNotCountedInTheStageBudget`）。
 - [x] ~~长剧本截断在 4000 字、模型反复读开头被判死循环（IPP-6e051b9d 15:13）~~ **2026-10-23 本地完成**：素材概要写明全文字数与 `read_canvas` 分段参数，返回 `total / nextOffset`（`StudioReadToolsTest.an8000CharacterScriptIsReadToTheEndInSegmentsWithoutALoop`）。
 - [x] ~~`ChildRuns.follow` 去掉时间上限后会无限等~~ **2026-10-23 本地完成**：最多 10 分钟（`ChildRunsFollowTest`）。
-- [x] ~~`CreditHoldSweeper` 可能释放运行中对话任务的冻结~~ **2026-10-23 本地完成**：跳过心跳 3 分钟内的对话任务（`CreditHoldSweeperTest.aLiveDialogueTaskKeepsItsHoldWhileAnAbandonedOneIsReleased`）。
-- [ ] **真模型长任务验收**（§8.0.1 ⑦）：用线上同款聚算 Qwen 至少真调一次「写三集剧本并拆镜」这类长任务，确认一条消息做完、接续任务的上下文足以不重复建节点、窗口裁剪后模型仍按 nextOffset 读完长文。本轮只有本机模拟厂商。
-- [ ] **任务链的逐段取整**：每条任务各自按 `ceil` 结算，链越长多收的不足 1 积分越多（每条最多 1 积分）。如需与「整条消息一次结算」完全一致，得改成链末统一结算（账本形态会变），本轮未做。
-- [ ] **接续任务上下文的长度**：`chainContext` 超过 2 万字时保留开头 6000 字与最近 1.4 万字、中间省略；极长链（上百步）的早期细节会丢，靠画布对象本身兜底，未用真模型验证这种情况。
-- [ ] **前端在途接续的旧页面**：已打开的旧页面不认识 `reason:"chained"`，会在两段之间短暂显示空闲，新回复照常接上；发布后旧页面刷新即消失，不单独处理。
+- [x] ~~`CreditHoldSweeper` 可能释放运行中对话任务的冻结~~ **2026-10-23 本地完成**：跳过心跳 3 分钟内的对话 run 及其 `runId#n`（`CreditHoldSweeperTest.aLiveDialogueTaskKeepsItsHoldWhileAnAbandonedOneIsReleased`）。
+- [ ] **真模型长任务验收**（§8.0.1 ⑦）：用线上同款聚算 Qwen 至少真调一次「写三集剧本并拆镜」这类长任务，确认一条回复做完、追加冻结与结算正确、窗口裁剪后模型仍按 nextOffset 读完长文。本轮只有本机模拟厂商。
+- [ ] **企业在途任务上限按引用里的 `#` 识别追加冻结**：`EnterpriseBillingService` 统计在途任务时排除引用含 `#` 的授权。其它业务的引用目前都不含 `#`；以后若有业务的引用带 `#`，会被少算，届时应改成授权上记父引用（需要迁移）。
 - [ ] **`apps/admin/src/app/ai/audit/page.tsx` 用了原生 select**（与本改动无关，`src/ip/select-field-wiring.test.ts` 在本分支基线上就是红的）：按 select-field 规约换成 `SelectField`。
 - [ ] **`EnterpriseStudioBillingIntegrationTest` 两项在基线 070334d0 上就红**（2026-10-23 发现，与本改动无关，已在干净基线上复现）：`operatorCanBindMissingOriginalImageIdWithAuditAndNoSecondSubmission`（期望 200 实得 409）与 `supplierConfirmedUnknownRefundsOriginalEnterpriseAfterRemovalAndPreservesPartialSuccess`（期望 8 实得 0）。多半是「图片受理未知在同一结算事务内结束为 failed」之后测试没跟上，需核对后改测试或改实现。

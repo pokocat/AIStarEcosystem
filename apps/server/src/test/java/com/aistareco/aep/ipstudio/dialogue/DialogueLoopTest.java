@@ -286,7 +286,6 @@ class DialogueLoopTest {
         var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
         assertEquals(21, outcome.steps());
         assertEquals(41, outcome.modelCalls(), "21 steps plus 20 looks");
-        assertEquals(41, budget.chainModelCalls());
         assertEquals(41 * 100L, budget.inputTokens(), "the looks' tokens are in the task budget");
     }
 
@@ -319,27 +318,25 @@ class DialogueLoopTest {
                 .reply("方案好了，请确认。", act("request_approval", "{\"scope\":\"production\"}"));
     }
 
-    /** The hidden safety net counts every call of the whole chain, the earlier tasks' too (300). */
-    @Test void theChainSafetyNetCountsEveryCallOfTheChain() throws Exception {
-        var budget = DialogueLoop.TurnBudget.metered(rate("1", "1", 1_000_000, 100_000), 1024, Clock.systemUTC(),
-                DialogueLoop.MAX_CHAIN_MODEL_CALLS - 5, null);
+    /** The hidden safety net of one turn counts every model call, tool-internal ones too (300). */
+    @Test void theSafetyNetCountsEveryCallOfTheTurn() throws Exception {
+        var budget = budget();
         var model = new ScriptedModel(budget);
-        for (int i = 0; i < 10; i++) model.reply("再看一处", act("view_images", "{\"nodeIds\":[\"n" + i + "\"]}"));
+        for (int i = 0; i < 200; i++) model.reply("再看一处", act("view_images", "{\"nodeIds\":[\"n" + i + "\"]}"));
         var tools = new SubCallingTools(budget);
         var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
         assertEquals("safeguard", outcome.limit());
-        // 295 before this task; three steps (each with its look) reach 301, the fourth step is not made.
-        assertEquals(3, outcome.steps());
-        assertEquals(6, outcome.modelCalls());
-        assertEquals(301, budget.chainModelCalls());
+        // Each step makes one look: 150 steps reach 300 calls, the 151st step is not made.
+        assertEquals(150, outcome.steps());
+        assertEquals(DialogueLoop.MAX_TURN_MODEL_CALLS, outcome.modelCalls());
     }
 
-    /** …and the chain's two hours since its first task started. */
-    @Test void theChainSafetyNetEndsAChainAfterTwoHours() throws Exception {
+    /** …and two hours since the turn was accepted. */
+    @Test void theSafetyNetEndsATurnAfterTwoHours() throws Exception {
         var clock = new MutableClock();
-        var budget = DialogueLoop.TurnBudget.metered(rate("1", "1", 1_000_000, 100_000), 1024, clock, 10,
-                clock.instant().minus(DialogueLoop.MAX_CHAIN_DURATION).plusSeconds(60));
+        var budget = DialogueLoop.TurnBudget.metered(rate("1", "1", 1_000_000, 100_000), 1_000_000, 1024, clock,
+                clock.instant().minus(DialogueLoop.MAX_TURN_DURATION).plusSeconds(60), null);
         var model = new ScriptedModel(budget).reply("拉片中", act("analyze_video")).reply("x");
         model.duringCall = () -> clock.advance(Duration.ofMinutes(2));
         var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
@@ -372,12 +369,27 @@ class DialogueLoopTest {
     }
 
     /**
-     * The hold bounds a task: the call that would exceed it is not made; the task ends with {@code budget} (the worker then
-     * starts the next task of the chain) and records what that call needed.
+     * §3: one turn, one run. A call that does not fit what is held first adds a hold of max(increment, need) to the same
+     * run; the turn goes on, and the total held covers the real usage.
      */
-    @Test void theHoldStopsBeforeACallThatCannotFit() throws Exception {
-        // 1 credit per input token, output free: a hold of 250 credits.
-        var budget = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 1024, Clock.systemUTC());
+    @Test void aCallThatDoesNotFitAddsAHoldAndTheTurnGoesOn() throws Exception {
+        List<Long> asked = new ArrayList<>();
+        // 1 credit per input token, output free; the first hold is 250 credits.
+        var budget = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 250, 1024, Clock.systemUTC(), null,
+                need -> { asked.add(need); return Math.max(250, need); });
+        var model = new ScriptedModel(budget);
+        for (int i = 0; i < 6; i++) model.reply("下一段", act("read_canvas", "{\"page\":" + i + "}"));
+        model.reply("读完了");
+        var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(7, outcome.modelCalls());
+        assertFalse(asked.isEmpty(), "holds were added on the way");
+        assertTrue(budget.held() >= budget.inputTokens(), "what is held covers the real usage");
+    }
+
+    /** The wallet is empty: the added hold is refused, the call is not made, the turn stops with budget. */
+    @Test void aRefusedAddedHoldStopsTheTurnBeforeTheCall() throws Exception {
+        var budget = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 250, 1024, Clock.systemUTC(), null, need -> 0);
         var model = new ScriptedModel(budget);
         for (int i = 0; i < 5; i++) model.reply("下一段", act("read_canvas", "{\"page\":" + i + "}"));
         var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
@@ -385,26 +397,29 @@ class DialogueLoopTest {
         assertEquals("budget", outcome.limit());
         // Each call uses 100 input tokens and the next one is estimated at 10: 0+10, 100+10, 200+10 fit 250; 300+10 does not.
         assertEquals(3, outcome.modelCalls());
-        assertEquals(10, budget.lastBlockedInput());
     }
 
-    /** A tool whose own call does not fit the hold ends the task the same way, for the chain to redo it. */
-    @Test void aToolThatCannotPayForItsCallEndsTheTaskForTheChain() throws Exception {
-        var budget = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 1024, Clock.systemUTC());
-        var model = new ScriptedModel(budget).reply("看图", act("view_images"), act("create_nodes"));
+    /**
+     * A tool's own call (view_images, propose_plan) adds a hold the same way: the tool runs normally, no failed record.
+     * Only when the wallet is empty does it end the turn.
+     */
+    @Test void aToolsOwnCallAddsAHoldInsteadOfFailing() throws Exception {
+        var budget = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 250, 1024, Clock.systemUTC(), null, need -> need);
+        assertNull(budget.blockReason(5000, 256), "the look's 5000 credits are added, not refused");
+        assertTrue(budget.held() >= 5000);
+        var empty = DialogueLoop.TurnBudget.metered(rate("1000", "0", 250, 1), 250, 1024, Clock.systemUTC(), null, need -> 0);
+        var model = new ScriptedModel(empty).reply("看图", act("view_images"), act("create_nodes"));
         DialogueLoop.Tools tools = new DialogueLoop.Tools() {
             public Optional<String> reject(DialogueLoop.Action a) { return Optional.empty(); }
             public DialogueLoop.ToolOutcome run(DialogueLoop.Action a) {
-                assertEquals("budget", budget.blockReason(5000, 256));
+                assertEquals("budget", empty.blockReason(5000, 256));
                 return new DialogueLoop.ToolOutcome("{\"ok\":false}", DialogueLoop.Reason.LIMIT);
             }
         };
-        var messages = new ArrayList<Map<String, Object>>();
-        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(messages);
+        var outcome = new DialogueLoop(model, tools, new Hooks(), empty).run(new ArrayList<>());
         assertEquals(DialogueLoop.Reason.LIMIT, outcome.reason());
         assertEquals("budget", outcome.limit());
         assertEquals(1, outcome.toolCalls(), "the second action did not run");
-        assertEquals(5000, budget.lastBlockedInput());
     }
 
     @Test void steeringAtTheToolBoundaryReachesTheNextModelCall() throws Exception {

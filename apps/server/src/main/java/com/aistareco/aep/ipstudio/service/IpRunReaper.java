@@ -31,6 +31,10 @@ public class IpRunReaper {
 
     @org.springframework.beans.factory.annotation.Autowired private IpRunWorker imageWorker;
 
+    /** A dialogue turn holds several credits (its run id and "runId#n"): only its own worker releases them all. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueTurnWorker> dialogueWorker;
+
     private static final Logger log = LoggerFactory.getLogger(IpRunReaper.class);
 
     private final IpRunRepository runRepo;
@@ -68,6 +72,11 @@ public class IpRunReaper {
                     queue.isWaiting(com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW,run.getId()))) continue;
             // Audio jobs have durable native checkpoints and resume their original provider Job.
             if(StudioSpeechWorker.manages(run.getKind()) || IpRunWorker.hasNativeSubmission(run)) continue;
+            if(com.aistareco.aep.ipstudio.dialogue.StudioDialogueTurnWorker.KIND.equals(run.getKind())) {
+                var worker=dialogueWorker==null?null:dialogueWorker.getIfAvailable();
+                if(worker!=null&&worker.expireIfStale(run.getId()))n++;
+                continue;
+            }
             if(run.getKind()!=null && run.getKind().startsWith("studio-") && studioWorker!=null) {
                 if(studioWorker.expire(run.getId(),cutoff)) n++;
                 continue;

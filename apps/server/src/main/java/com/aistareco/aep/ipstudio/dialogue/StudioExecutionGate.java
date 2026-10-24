@@ -28,19 +28,8 @@ public interface StudioExecutionGate {
     void quotePlan(String userId, String projectId, ObjectNode plan);
 
     /**
-     * A parent dialogue turn accepted while the thread is bound to an active execution belongs to the execution's
-     * current stage (plan §提交前预算与付款绑定: 父对话run也计入所属阶段). Under the execution lock, check
-     * {@code spent + inFlight + maxCost ≤ approvedCap} and register the run so its ceiling counts in flight until it
-     * settles and its real credits count as spent afterwards (deduplicated by run id). Throws 402
-     * {@code STUDIO_PLAN_BUDGET_EXCEEDED} with the shortfall and registers nothing when it does not fit.
-     *
-     * @return the stage the turn was attributed to, or null when the execution is no longer active (nothing registered)
-     */
-    default String attributeTurn(String userId, String projectId, String executionId, String runId, long maxCost) { return null; }
-
-    /**
      * The payer this active execution was confirmed with (D10: fixed for the whole execution). A parent turn on its thread
-     * counts against its stage budget, so it must be paid by the same account. Null when the execution is not active (or
+     * is paid by the same account (it is no longer counted in the stage budget, 2026-10-23). Null when the execution is not active (or
      * unknown): the turn is then an ordinary one with the message's own payer.
      */
     default com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection executionPayer(String userId, String projectId, String executionId) { return null; }

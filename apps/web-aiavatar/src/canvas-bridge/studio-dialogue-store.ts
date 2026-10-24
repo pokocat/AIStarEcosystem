@@ -279,8 +279,7 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
     }
     case 'budget.update': {
       const d = event.data as StudioBudgetUpdateData;
-      // dialogueSpent / dialogueInFlight are the dialogue's share already inside spent / inFlight, never added again.
-      const live = { approvedCap: d.approvedCap, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall, dialogueSpent: d.dialogueSpent, dialogueInFlight: d.dialogueInFlight };
+      const live = { approvedCap: d.approvedCap, spent: d.spent, inFlight: d.inFlight, remaining: d.remaining, shortfall: d.shortfall };
       const execution = s.execution?.id === d.executionId ? { ...s.execution, budgets: s.execution.budgets.some(b => b.stage === d.stage)
         ? s.execution.budgets.map(b => b.stage === d.stage ? { ...b, ...live } : b)
         : [...s.execution.budgets, { stage: d.stage, autoFixCap: 0, ...live }] } : s.execution;
@@ -290,11 +289,8 @@ function applyEvent(store: DialogueStore, event: StudioDialogueEvent): DialogueS
       const d = event.data as StudioTurnDoneData;
       const [next, id] = ensureAssistantMessage(s, event, d.messageId);
       const updated = replaceMessage(next, id, m => ({ ...m, status: turnDoneStatus(d.reason), billing: d.billing ?? m.billing, settling: d.settling ?? m.settling }));
-      // A chained task hands the same request to the next task (docs/ip-studio-dialogue-no-continue.md §3): the
-      // conversation goes straight on with that turn, never idle in between.
-      const handedTo = d.nextTurnId && !updated.doneTurns.includes(d.nextTurnId) ? d.nextTurnId : undefined;
       return { ...updated, doneTurns: [...updated.doneTurns.filter(t => t !== event.turnId), event.turnId].slice(-200),
-        activeTurnId: updated.activeTurnId === event.turnId || (handedTo && !updated.activeTurnId) ? handedTo : updated.activeTurnId,
+        activeTurnId: updated.activeTurnId === event.turnId ? undefined : updated.activeTurnId,
         suggestions: d.suggestions?.length ? { ...updated.suggestions, [id]: d.suggestions.slice(0, 3) } : updated.suggestions };
     }
     default: return s;

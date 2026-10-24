@@ -7,7 +7,7 @@ import java.util.*;
 
 /**
  * The closing message of an execution (D07, plan §时间线中的审批追问与收尾): one sentence with how it ended and what it
- * really cost (the refreshed spent of every stage, dialogue included, never quotes), the steps it did not finish, the
+ * really cost (the refreshed spent of every stage, never quotes; dialogue turns are billed on their own), the steps it did not finish, the
  * checks that did not pass or could not judge (with the check's own reason), and two or three follow-ups derived from
  * what was actually produced. What was finished is not listed again: the step list in the timeline already shows it,
  * each with 「在画布上看」 (docs/ip-studio-new-canvas-and-threads.md §4). Follow-ups are prompts the user can send;
@@ -46,7 +46,7 @@ final class StudioExecutionSummary {
         return new Summary(String.join("\n", lines), suggestions(e, state));
     }
 
-    /** 「做好了，花了 41 积分。」: how it ended and the total really spent (every stage, dialogue included). */
+    /** 「做好了，花了 41 积分。」: how it ended and the total really spent (every stage). */
     private static String headline(IpPlanExecution e, JsonNode budget) {
         long spent = 0, settling = 0;
         for (String stage : List.of("analysis", "production")) {

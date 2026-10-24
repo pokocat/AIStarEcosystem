@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.util.*;
 
 /**
- * Shape of {@code ip_plan_execution.steps_json}: {@code {skill, canvasContextIds[], steps[], children[], dialogueRuns[], steeringSeen[], summaryPosted?, needsUserReason?}}. Each step
+ * Shape of {@code ip_plan_execution.steps_json}: {@code {skill, canvasContextIds[], steps[], children[], steeringSeen[], summaryPosted?, needsUserReason?}} (an old row may still carry {@code dialogueRuns[]}: ignored). Each step
  * keeps its confirmed definition (identical to the fingerprinted plan run), orchestration status, native run ids,
  * attempt, request identity, quote/ceiling and the user's adoption pointer. Never prices, holds or outputs.
  */
@@ -75,11 +75,6 @@ final class PlanState {
     /** A dialogue child run authorized on this execution (by request identity). */
     static ObjectNode child(JsonNode state,String clientRequestId) {
         for(JsonNode child:state.path("children"))if(clientRequestId.equals(child.path("clientRequestId").asText()))return (ObjectNode)child;
-        return null;
-    }
-    /** A parent dialogue turn attributed to this execution's stage budget (D06), by run id. */
-    static ObjectNode dialogueRun(JsonNode state,String runId) {
-        for(JsonNode run:state.path("dialogueRuns"))if(runId.equals(run.path("runId").asText()))return (ObjectNode)run;
         return null;
     }
     /** Steering the executor (or a newer explicit user decision) already handled (D03); bounded to the latest 200. */

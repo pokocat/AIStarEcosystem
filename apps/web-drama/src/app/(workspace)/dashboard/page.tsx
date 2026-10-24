@@ -103,7 +103,7 @@ function HomeLanding() {
       router.push(`/dashboard?b=${encodeURIComponent(detail.meta.id)}`);
     } catch (e) {
       starting.current = false;
-      toast.error(aiErrorMessage(e, "没能开始对话，请重试"));
+      toast.error(aiErrorMessage(e, "开始对话失败，请重试"));
     }
   };
   const submit = () => void startChat(idea.trim());

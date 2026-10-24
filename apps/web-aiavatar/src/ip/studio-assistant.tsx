@@ -202,6 +202,8 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   const selectable = currentCapabilities?.textModelMode === "selectable" && textModels.length > 1;
   const selectedModel = textModels.find(m => m.endpointId === ((selectable && textModels.some(m => m.endpointId === model) ? model : undefined) || textModels.find(m => m.isDefault)?.endpointId || textModels[0]?.endpointId));
   const demo = USE_MOCK || !!currentCapabilities?.mock;
+  // Informational only since 2026-10-23: the dialogue is billed by real usage and the server neither refuses nor caps a turn
+  // by this number (it is still sent, older servers read it).
   const maxCost = demo ? 0 : selectedModel?.dialogueTokenPricing ? Math.ceil(selectedModel.dialogueTokenPricing.maxCost) : undefined;
   // ── Skill: routed by the server from what is said; a fill-in card or a 「which method」 quick reply names one explicitly ──
   // No picker under the composer (2026-10-21): the 「自动」 dropdown and the fixed pill a bound thread showed confused people

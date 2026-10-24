@@ -138,31 +138,6 @@ describe('turn.done and execution events', () => {
     expect(s.canvasOps).toHaveLength(1);
     expect(s.executionTouchedSeq).toBe(8);
   });
-  // docs/ip-studio-dialogue-no-continue.md §3 / §9: a task whose frozen credits ran out hands the same request to the next
-  // task. The conversation never goes idle in between, and the next reply follows as a new message.
-  test('a chained turn hands the conversation straight to the next turn and its reply', () => {
-    const chained = fold(loaded(), delta(6, '剧本放进画布了，接着拆镜。'),
-      ev(7, 'turn.done', { reason: 'chained', messageId: 'm1', nextTurnId: 't2' }));
-    expect(chained.messages.find(m => m.id === 'm1')!.status).toBe('done');
-    expect(chained.activeTurnId).toBe('t2');
-    expect(dialogueActivity(chained)).toEqual({ phase: 'waiting' });
-    expect(messageSuggestions(chained, chained.messages.find(m => m.id === 'm1')!)).toBeUndefined();
-    const next = fold(chained, ev(8, 'message.delta', { messageId: 'm2', partId: 'p1', delta: '分镜拆好了。' }, { turnId: 't2', runId: 'r2' }));
-    expect(next.activeTurnId).toBe('t2');
-    expect(next.messages.filter(m => m.role === 'assistant').map(m => m.id)).toEqual(['m1', 'm2']);
-    expect(dialogueActivity(next)).toMatchObject({ phase: 'writing', messageId: 'm2' });
-    const done = fold(next, ev(9, 'turn.done', { reason: 'completed', messageId: 'm2' }, { turnId: 't2' }));
-    expect(done.activeTurnId).toBeUndefined();
-    expect(dialogueActivity(done)).toBeUndefined();
-  });
-  test('a snapshot read while the chain hands over keeps the next turn active', () => {
-    const chained = fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'chained', messageId: 'm1', nextTurnId: 't2' }));
-    const snap = dialogueReducer(chained, { type: 'snapshot', mode: 'merge', state: state({ thread: { ...thread, lastSeq: 7, activeTurnId: 't2' }, latestSeq: 7,
-      messages: [userMessage, { id: 'm1', threadId: 'th', seq: 6, turnId: 't1', role: 'assistant', text: 'x', blocks: [], status: 'done', createdAt: thread.createdAt },
-        { id: 'm2', threadId: 'th', seq: 7, turnId: 't2', role: 'assistant', text: '', blocks: [], status: 'streaming', createdAt: thread.createdAt }] }) });
-    expect(snap.activeTurnId).toBe('t2');
-    expect(dialogueActivity(snap)).toMatchObject({ messageId: 'm2' });
-  });
   test('interrupted and failed turns are visible as such', () => {
     expect(fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'interrupted', messageId: 'm1' })).messages.find(m => m.id === 'm1')!.status).toBe('interrupted');
     expect(fold(loaded(), delta(6, 'x'), ev(7, 'turn.done', { reason: 'failed', messageId: 'm1' })).messages.find(m => m.id === 'm1')!.status).toBe('failed');
@@ -319,7 +294,7 @@ describe('execution messages, dialogue budget share and queued steering', () => 
     const s = fold(withCard(card('a1', 'pending')),
       ev(7, 'approval.required', { messageId: 'm-card', block: card('a1', 'superseded', { supersededAt: '2026-10-18T01:02:00Z' }) }, { turnId: 'EXS-1', executionId: 'e1' }),
       ev(8, 'message.delta', { messageId: 'm-raise', partId: 'p1', delta: '本阶段预算还差 30 积分。' }, { turnId: 'EXS-1', executionId: 'e1' }),
-      ev(9, 'approval.required', { messageId: 'm-raise', block: card('a2', 'pending', { budgetCap: 150, shortfall: 30, dialogueReserve: 20 }), shortfall: 30 }, { turnId: 'EXS-1', executionId: 'e1' }),
+      ev(9, 'approval.required', { messageId: 'm-raise', block: card('a2', 'pending', { budgetCap: 150, shortfall: 30 }), shortfall: 30 }, { turnId: 'EXS-1', executionId: 'e1' }),
       ev(10, 'turn.done', { reason: 'completed', messageId: 'm-raise', settling: false, suggestions: ['提高到 150 积分', '先停下'] }, { turnId: 'EXS-1', executionId: 'e1' }));
     expect(s.activeTurnId).toBeUndefined();
     const raise = s.messages.find(m => m.id === 'm-raise')!;
@@ -338,12 +313,15 @@ describe('execution messages, dialogue budget share and queued steering', () => 
     expect(messageSuggestions(live, userMessage)).toBeUndefined();
   });
 
-  test('the dialogue share of a stage budget is kept as a breakdown, never added to spent again', () => {
+  // 2026-10-23: dialogue turns are not part of a stage budget; an old event that still carries the dialogue share is
+  // folded without it.
+  test('budget updates carry the production budget only', () => {
     const execution = { id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production' as const, planRunId: 'pr', planRevision: 2, planFingerprint: 'f', status: 'running' as const, steps: [],
-      budgets: [{ stage: 'production' as const, approvedCap: 120, autoFixCap: 40, spent: 40, inFlight: 0, remaining: 80, dialogueSpent: 1 }], startedAt: thread.createdAt, deadlineAt: thread.createdAt, updatedAt: thread.createdAt };
+      budgets: [{ stage: 'production' as const, approvedCap: 120, autoFixCap: 40, spent: 40, inFlight: 0, remaining: 80 }], startedAt: thread.createdAt, deadlineAt: thread.createdAt, updatedAt: thread.createdAt };
     const s = fold(loaded({ execution }), ev(6, 'budget.update', { executionId: 'e1', stage: 'production', approvedCap: 120, spent: 43, inFlight: 20, remaining: 57, source: 'actual', dialogueSpent: 3, dialogueInFlight: 20 }, { executionId: 'e1' }));
-    expect(executionBudget(s)).toMatchObject({ spent: 43, inFlight: 20, dialogueSpent: 3, dialogueInFlight: 20, autoFixCap: 40 });
-    expect(s.execution!.budgets[0]).toMatchObject({ spent: 43, inFlight: 20, dialogueSpent: 3, dialogueInFlight: 20, autoFixCap: 40 });
+    expect(executionBudget(s)).toMatchObject({ spent: 43, inFlight: 20, autoFixCap: 40 });
+    expect(s.execution!.budgets[0]).not.toHaveProperty('dialogueSpent');
+    expect(s.execution!.budgets[0]).not.toHaveProperty('dialogueInFlight');
   });
 
   test('a message queued while an execution runs may come back without a turn: it waits as queued, nothing becomes active', () => {

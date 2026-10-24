@@ -476,7 +476,7 @@ test('the production strip pauses or stops through the execution endpoints, each
   const execution = { id: 'e1', projectId: 'p', threadId: 'th', skillKey: 'k', skillVersion: 1, stage: 'production' as const, planRunId: 'pr', planRevision: 2, planFingerprint: 'f', status: 'running' as const,
     steps: [{ id: 'v1', title: '第 1 段', operation: 'video' as const, stage: 'production' as const, dependsOn: [], status: 'done' as const, runIds: ['run-v1'], attempt: 1, quotedCost: 40 },
       { id: 'v2', title: '第 2 段', operation: 'video' as const, stage: 'production' as const, dependsOn: [], status: 'running' as const, runIds: ['run-v2'], attempt: 1, quotedCost: 40 }],
-    budgets: [{ stage: 'production' as const, approvedCap: 120, autoFixCap: 40, spent: 40, inFlight: 40, remaining: 40, dialogueSpent: 3, dialogueInFlight: 20 }], startedAt: at, deadlineAt: at, updatedAt: at };
+    budgets: [{ stage: 'production' as const, approvedCap: 120, autoFixCap: 40, spent: 40, inFlight: 40, remaining: 40 }], startedAt: at, deadlineAt: at, updatedAt: at };
   api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...thread, activeExecutionId: 'e1' }, execution });
   api.pause.mockResolvedValue({ ...execution, status: 'paused', updatedAt: '2026-10-18T01:00:05Z' });
   api.cancel.mockResolvedValue({ ...execution, status: 'canceled', updatedAt: '2026-10-18T01:00:09Z' });
@@ -488,7 +488,7 @@ test('the production strip pauses or stops through the execution endpoints, each
   expect(within(strip).getByText('已用 40 积分').getAttribute('title')).toBeNull();
   expect(strip.textContent).not.toMatch(/120|其中对话/);
   expect(within(screen.getByRole('list', { name: '各步进度' })).getAllByRole('listitem').map(li => li.getAttribute('data-status'))).toEqual(['done', 'running']);
-  emit(ev('budget.update', { executionId: 'e1', stage: 'production', approvedCap: 120, spent: 45, inFlight: 0, remaining: 75, source: 'actual', dialogueSpent: 5, dialogueInFlight: 0 }, { executionId: 'e1' }));
+  emit(ev('budget.update', { executionId: 'e1', stage: 'production', approvedCap: 120, spent: 45, inFlight: 0, remaining: 75, source: 'actual' }, { executionId: 'e1' }));
   expect(within(screen.getByLabelText('制作进度')).getByText('已用 45 积分')).toBeDefined();
   fireEvent.click(within(screen.getByLabelText('制作进度')).getByRole('button', { name: '暂停' }));
   await waitFor(() => expect(api.pause).toHaveBeenCalledWith('p', 'e1', { clientRequestId: expect.any(String), expectedStatus: 'running' }));
@@ -642,7 +642,7 @@ test('first open on this browser replays execution commands from the start: miss
 
 // ── Server follow-ups: card details (stage budget on send, dialogue share, saved follow-ups and synthetic turns are folded into earlier tests) ──
 test('a shortfall card asks for one number, the new cap (the proposed one by default); a replaced card says so and cannot start anything', async () => {
-  const raise = { ...approvalBlock, approvalId: 'a3', budgetCap: 150, quotedCost: 50, autoFixCap: 0, shortfall: 30, dialogueReserve: 20 };
+  const raise = { ...approvalBlock, approvalId: 'a3', budgetCap: 150, quotedCost: 50, autoFixCap: 0, shortfall: 30 };
   const replaced = { ...approvalBlock, approvalId: 'a1', planFingerprint: 'f1', status: 'superseded' as const, supersededAt: at };
   api.getConversation.mockResolvedValue({ ...emptyState, latestSeq: 4, messages: [{ ...planMessage([replaced]), id: 'm1', seq: 2 }, planMessage([planBlock, raise])] });
   api.createExecution.mockResolvedValue({ id: 'e1', projectId: 'p', skillKey: 'k', skillVersion: 1, stage: 'production', planRunId: 'plan-2', planRevision: 2, planFingerprint: 'f2', status: 'running', steps: [], budgets: [], startedAt: at, deadlineAt: at, updatedAt: at });
@@ -1282,7 +1282,7 @@ const imagePlan: Extract<StudioMessageBlock, { type: 'plan' }> = { type: 'plan',
     prompt: '三十岁的男性幸存者，左眼有旧疤，穿改装过的防化服，背一把自制弩，站在倒塌的高架桥下，黄昏逆光，写实偏插画，1:1 构图，人物居中，细节清楚，色调偏冷。' }],
   budget: { estimated: 30, autoFixCap: 0 } } };
 const imageCard: Extract<StudioMessageBlock, { type: 'approval' }> = { type: 'approval', approvalId: 'a-img', stage: 'production', planFingerprint: 'fi',
-  scope: ['范围清单里的一句'], quotedCost: 30, budgetCap: 40, autoFixCap: 0, dialogueReserve: 10, status: 'pending', expiresAt: '2099-01-01T00:00:00Z' };
+  scope: ['范围清单里的一句'], quotedCost: 30, budgetCap: 40, autoFixCap: 0, status: 'pending', expiresAt: '2099-01-01T00:00:00Z' };
 const reply = (blocks: StudioMessageBlock[], extra: Partial<StudioDialogueMessage> = {}): StudioDialogueMessage =>
   ({ id: 'm-img', threadId: 'th', seq: 2, turnId: 't-img', role: 'assistant', text: '按你的描述出一张。', blocks, status: 'done', createdAt: at, ...extra });
 

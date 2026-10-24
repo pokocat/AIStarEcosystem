@@ -67,7 +67,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     @Autowired(required = false) private com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     @Autowired(required = false) private AiChatTokenPricing tokenPricing;
     @Autowired(required = false) private StudioExecutionControl executionControl;
-    /** D06: a turn on a thread bound to an active execution is attributed to its stage budget through the gate. */
+    /** D10: a turn on a thread bound to an active execution is paid by that execution's fixed payer (not counted in its stage budget). */
     @Autowired(required = false) private org.springframework.beans.factory.ObjectProvider<StudioExecutionGate> gates;
 
     /** Execution bound to this thread: the stored pointer, else the canvas's active execution created from this thread. */
@@ -451,11 +451,13 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
      * and prompt, require the token price, hold credits, create the run and the streaming assistant message, and dispatch
      * after commit.
      *
-     * <p>The dialogue is billed by real usage; the user no longer approves a per-turn ceiling (docs/ip-studio-dialogue-
-     * no-continue.md §8). The hold is min(the endpoint's dialogue ceiling, the payer's available balance), so a small
-     * balance still talks; when even one minimal call does not fit, the hold is refused with 402 as before. The client's
-     * {@code maxCost} is accepted (older pages send it) and recorded, but it no longer refuses the turn (it was 409
-     * {@code STUDIO_PRICE_CHANGED} whenever the server ceiling changed). Paid generations keep their own maxCost check.
+     * <p>The dialogue is billed by real usage and has no budget of its own (docs/ip-studio-dialogue-no-continue.md §3 / §8):
+     * the first hold is a small increment, min(the endpoint's ordinary text ceiling {@code find(endpoint).maxCost()},
+     * the payer's available balance), so chatting never ties up a large amount while paid generations run; the worker
+     * adds more holds to the same run while it works ({@code _exec.holdRefs}) and stops only when the wallet is empty.
+     * When even one minimal call does not fit the balance, the hold is refused with 402 as before. The client's
+     * {@code maxCost} is accepted (older pages send it) and recorded, but it no longer refuses the turn. A turn is not
+     * counted in a bound execution's stage budget. Paid generations keep their own maxCost check.
      */
     private Started startTurn(String userId, IpDialogueThread thread, List<IpDialogueMessage> inputs, BillingSelection billing, Long maxCost,
                               String skillKey, String requestedModel) {
@@ -493,8 +495,8 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             }
         }
         var gate = gates == null ? null : gates.getIfAvailable();
-        // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread counts against its stage
-        // budget (D06), so the turn is paid by that same account. A message naming another payer is refused; one naming
+        // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread is paid by that same
+        // account (no longer counted in its stage budget, 2026-10-23). A message naming another payer is refused; one naming
         // none uses the fixed one (Codex 2026-10-19: a later personal selection was accepted and drew on the enterprise stage).
         BillingSelection fixedPayer = bound == null || gate == null ? null : gate.executionPayer(userId, thread.getProjectId(), bound.id());
         if (fixedPayer != null) {
@@ -508,7 +510,7 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         String stage = bound != null && bound.stage() != null ? bound.stage() : skill == null ? null : skill.firstStage();
         AiModelEndpoint endpoint = null;
         PromptService.ResolvedPrompt prompt = null;
-        AiChatTokenPricing.Rate rate = null, dialogueRate = null;
+        AiChatTokenPricing.Rate rate = null;
         long cost = 0;
         int perCall = 4096;
         if (!mock) {
@@ -528,13 +530,13 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             }
             prompt = prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
             if ("code".equals(prompt.origin())) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED", "尚未配置对话提示词");
-            rate = tokenPricing == null ? null : tokenPricing.findDialogue(endpoint.getId());
+            // The ordinary text rate: its unit prices bill every call, its ceiling is the hold increment.
+            rate = tokenPricing == null ? null : tokenPricing.find(endpoint.getId());
             if (rate == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "AI_TOKEN_PRICE_NOT_CONFIGURED", "此模型尚未配置按量积分售价");
-            dialogueRate = rate;
+            long increment = rate.maxCost();
             long available = availableBalance(userId, billing);
-            // Below one minimal call the full ceiling is asked for and the hold answers 402 (unchanged behavior).
-            if (available >= rate.cost(1, DialogueLoop.MIN_OUTPUT_TOKENS) && available < rate.maxCost()) rate = rate.withinBudget(available);
-            cost = rate.maxCost();
+            // Below one minimal call the full increment is asked for and the hold answers 402 (unchanged behavior).
+            cost = available >= rate.cost(1, DialogueLoop.MIN_OUTPUT_TOKENS) ? Math.min(increment, available) : increment;
             perCall = Math.min(Math.max(1024, prompt.params().maxTokensOrDefault()), rate.maxOutputTokens());
             if (endpoint.getChatMaxOutputTokens() != null) perCall = Math.min(perCall, endpoint.getChatMaxOutputTokens());
         }
@@ -563,17 +565,13 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         if (!mock) {
             exec.put("endpointId", endpoint.getId()).put("temperature", prompt.params().temperatureOrDefault());
             exec.set("tokenPricing", mapper.valueToTree(rate));
-            // The full dialogue ceiling: a later task of the chain holds min(this, balance) again.
-            exec.set("dialogueRate", mapper.valueToTree(dialogueRate));
+            exec.put("holdIncrement", rate.maxCost());
+            // Every hold of this run, in order; the worker appends runId#1, #2 … and settles them in this order.
+            exec.putArray("holdRefs").addObject().put("ref", runId).put("amount", cost);
             exec.putObject("prompt").put("key", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE).put("system", prompt.system()).put("user", prompt.userTemplate());
             input.put("promptKey", PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE);
         }
-        // D06: a turn on a thread bound to an active execution belongs to that stage: the same pre-submit check
-        // (spent + inFlight + this turn's ceiling ≤ approved cap) runs before anything is frozen; 402 when it does not fit.
-        if (bound != null && gate != null && cost > 0) {
-            String attributedStage = gate.attributeTurn(userId, thread.getProjectId(), bound.id(), runId, cost);
-            if (attributedStage != null) exec.put("attributedExecutionId", bound.id()).put("attributedStage", attributedStage);
-        }
+        // Dialogue turns are not part of a bound execution's stage budget (2026-10-23): nothing is registered there.
         var account = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId, billing, IpRunService.REF_TYPE, runId,
                 endpoint == null ? null : endpoint.getId(), cost, "Studio 对话");
         if (enterpriseBilling == null && cost > 0) credits.hold(userId, cost, IpRunService.REF_TYPE, runId, "Studio 对话");
@@ -663,10 +661,12 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             });
         } catch (BusinessException e) {
             log.info("[dialogue] follow-up turn refused thread={} code={}", threadId, e.getCode());
-            rejectQueued(threadId, "这几条消息没能开始回复：" + e.getMessage());
+            // The business error's own words, no canned prefix (docs/ip-studio-dialogue-no-continue.md §2).
+            rejectQueued(threadId, e.getMessage() == null || e.getMessage().isBlank() ? "这几条消息还没有回复，请重新发送" : e.getMessage());
         } catch (org.springframework.web.server.ResponseStatusException e) {
             log.info("[dialogue] follow-up turn refused thread={} status={}", threadId, e.getStatusCode());
-            rejectQueued(threadId, "这几条消息没能开始回复：" + (e.getReason() == null ? "积分或计费状态已变化" : e.getReason()) + "，请重新发送");
+            rejectQueued(threadId, e.getStatusCode().value() == 402 ? StudioDialogueTurnWorker.OUT_OF_CREDITS
+                    : e.getReason() == null ? "这几条消息还没有回复，请重新发送" : e.getReason());
         }
     }
 
@@ -704,20 +704,16 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话没有绑定这次制作");
         String executionId = bound;
         if ("stop".equals(request.action())) {
+            String runId = thread.getActiveRunId();
             List<String> children = new ArrayList<>();
-            // The task the thread points at may hand over to the next task of its chain while this stop is on its way
-            // (docs/ip-studio-dialogue-no-continue.md §3): follow the pointer once more so the new task is stopped too.
-            Set<String> stopped = new LinkedHashSet<>();
-            for (String runId = thread.getActiveRunId(); runId != null && stopped.add(runId) && stopped.size() <= 3;
-                 runId = threads.findById(threadId).map(IpDialogueThread::getActiveRunId).orElse(null)) {
-                final String target = runId;
-                tx.executeWithoutResult(s -> runs.lockById(target).ifPresent(run -> {
+            if (runId != null) {
+                tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
                     if (!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
                     run.setCancelRequested(true);
                     runs.save(run);
                     parse(run.getInputJson()).path("_exec").path("childRunIds").forEach(id -> children.add(id.asText()));
                 }));
-                signals.stop(target);
+                signals.stop(runId);
             }
             store.write(threadId, t -> {
                 t.setLastControlId(request.controlId());
@@ -907,21 +903,6 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
     }
 
     // ── Execution steering (D03) and execution-authored messages (D07) ─────────────────────────────────────────
-
-    @Override
-    public long dialogueReserve(String userId) {
-        if (fixtures.enabled() || tokenPricing == null) return 0;
-        try {
-            AiModelEndpoint endpoint = scenePolicies != null
-                    ? scenePolicies.resolve("studio", "script", null, pricing.ipIdentity()).resolved().endpoint()
-                    : models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, null, "studio").map(AiModelInvocationService.ResolvedEndpoint::endpoint).orElse(null);
-            var rate = endpoint == null ? null : tokenPricing.findDialogue(endpoint.getId());
-            return rate == null ? 0 : rate.maxCost();
-        } catch (RuntimeException e) {
-            log.info("[dialogue] dialogue reserve unknown: {}", e.toString());
-            return 0;
-        }
-    }
 
     @Override
     public List<Note> notes(String threadId, String executionId) {

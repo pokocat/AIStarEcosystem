@@ -427,8 +427,6 @@ export type StudioMessageBlock =
       approvedPlanRevision?: number;
       /** Set when a newer plan revision or a newer card replaced this pending card. */
       supersededAt?: string;
-      /** Part of the default budgetCap kept for dialogue turns during the stage (turns count against the stage budget). */
-      dialogueReserve?: number;
       /** Budget-raise cards posted by the executor: how much the next step was short. */
       shortfall?: number }
   | { type: "tool_call"; toolCallId: string; toolName: string; title: string; safeInputSummary: string; status: "running" | "done" | "failed"; childRunId?: string;
@@ -493,15 +491,9 @@ export interface StudioApprovalRequiredData { messageId: string; block: Extract<
 export interface StudioNodeUpsertData { nodeId: string; op: "create" | "update" | "connect" | "propose"; node?: import("./ip-studio").IpNode; connection?: { fromNodeId: string; toNodeId: string };
   executionId?: string; stepId?: string; runId?: string; expectedDocVersion?: string; proposal?: { field: "content" | "prompt" | "script"; content: string } }
 export interface StudioCheckResultData { stepId?: string; runId: string; result: StudioCheckResult }
-export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote";
-  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
-  dialogueSpent?: number; dialogueInFlight?: number }
-/**
- * `chained` (docs/ip-studio-dialogue-no-continue.md §3): this task's frozen credits were used up and the server carried
- * the same request on in the next task, whose turn is `nextTurnId`. The conversation stays 「进行中」; nothing to type.
- */
-export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed" | "chained"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[];
-  nextTurnId?: string }
+/** A stage's production budget; dialogue turns are billed on their own and are not part of it (2026-10-23). */
+export interface StudioBudgetUpdateData { executionId: string; stage: StudioPlanStage; approvedCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number; source: "actual" | "quote" }
+export interface StudioTurnDoneData { reason: "completed" | "waiting_user" | "handed_off" | "interrupted" | "failed"; messageId: string; billing?: StudioTokenBilling; settling?: boolean; suggestions?: string[] }
 
 export type StudioPlanExecutionStatus = "running" | "paused" | "needs_user" | "done" | "partial" | "failed" | "canceled";
 export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" | "done" | "failed" | "skipped" | "needs_user";
@@ -509,9 +501,7 @@ export interface StudioPlanExecutionStep { id: string; title: string; operation:
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
   /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
   nodeId?: string; reason?: string }
-export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number;
-  /** Parent-dialogue share already included in spent / inFlight (never add it again). */
-  dialogueSpent?: number; dialogueInFlight?: number }
+export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number }
 export interface StudioPlanExecution {
   id: string; projectId: string; threadId?: string; skillKey: string; skillVersion: number; stage: StudioPlanStage; planRunId: string; planRevision: number; planFingerprint: string;
   status: StudioPlanExecutionStatus; steps: StudioPlanExecutionStep[]; budgets: StudioPlanExecutionBudget[]; billing?: EnterpriseBillingSelection; needsUserReason?: string;

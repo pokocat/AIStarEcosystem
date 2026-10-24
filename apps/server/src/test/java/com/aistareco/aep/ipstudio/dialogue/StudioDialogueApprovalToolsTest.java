@@ -75,7 +75,8 @@ class StudioDialogueApprovalToolsTest {
         assertEquals("failed", tool.run(args, context(true, null, null), HANDLE).status(), "fixture mode never starts paid work");
     }
 
-    @Test void theDefaultCardCapLeavesRoomForOneDialogueTurn() throws Exception {
+    /** 2026-10-23: the card covers the paid steps only; dialogue turns are billed on their own (no dialogue reserve). */
+    @Test void theDefaultCardCapCoversThePaidStepsOnly() throws Exception {
         List<ObjectNode> appended = new ArrayList<>();
         var plan = om.createObjectNode().put("type", "plan").put("fingerprint", "fp").put("revision", 2).put("planRunId", "IPR-1");
         plan.putObject("plan").put("stage", "analysis").putObject("budget").put("estimated", 30).put("autoFixCap", 0);
@@ -89,8 +90,8 @@ class StudioDialogueApprovalToolsTest {
         tool.run(args, context(false, rate, effects), HANDLE);
         JsonNode card = appended.get(0);
         assertEquals(30, card.path("quotedCost").asLong());
-        assertEquals(44, card.path("budgetCap").asLong(), "quote + redo + one turn's ceiling");
-        assertEquals(14, card.path("dialogueReserve").asLong());
+        assertEquals(30, card.path("budgetCap").asLong(), "quote + redo, nothing reserved for the dialogue");
+        assertFalse(card.has("dialogueReserve"));
         args.put("budgetCap", 30);
         tool.run(args, context(false, rate, effects), HANDLE);
         assertEquals(30, appended.get(1).path("budgetCap").asLong(), "a cap the user named is used as is");

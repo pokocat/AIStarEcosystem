@@ -148,7 +148,7 @@ export function CreateDialog({
       router.push(`/dashboard?b=${encodeURIComponent(detail.meta.id)}&from=projects`);
     } catch (e) {
       chatting.current = false;
-      toast.error(aiErrorMessage(e, "没能开始对话，请重试"));
+      toast.error(aiErrorMessage(e, "开始对话失败，请重试"));
     }
   };
 

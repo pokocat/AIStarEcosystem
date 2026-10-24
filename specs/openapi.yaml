@@ -656,7 +656,7 @@ components:
         createdAt: { type: string, format: date-time }
         legacyNodeId: { type: string, nullable: true }
         suggestions: { type: array, nullable: true, items: { type: string }, description: 助手消息下的后续建议（后台制作结束时的总结消息会持久保存，刷新后仍在） }
-        notice: { type: string, nullable: true, enum: [recharge, recharge-enterprise], description: 系统提示附带的一个操作。任务链因付款账户余额不足结束时为 recharge（个人）/ recharge-enterprise（企业成员），页面给充值入口（docs/ip-studio-dialogue-no-continue.md §9）。 }
+        notice: { type: string, nullable: true, enum: [recharge, recharge-enterprise], description: 系统提示附带的一个操作。回复中途追加冻结因付款账户余额不足被拒时为 recharge（个人）/ recharge-enterprise（企业成员），页面给充值入口（docs/ip-studio-dialogue-no-continue.md §9）。 }
     StudioDialogueThread:
       type: object
       required: [id, projectId, lastSeq, createdAt, updatedAt]
@@ -693,19 +693,18 @@ components:
         expectedPlanRevision: { type: integer, nullable: true }
         skillKey: { type: string, nullable: true }
         billing: { type: object, nullable: true }
-        maxCost: { type: integer, nullable: true, description: '兼容字段（老页面照发）：服务端只记录，不再据此拒绝（不再回 409 STUDIO_PRICE_CHANGED），也不再用它限制冻结额。对话按实际 Token 用量结算，每条任务冻结 min(该端点对话额度换算的积分, 付款账户可用余额)；连一次最小调用都不够时 402。付费生成（出图 / 视频 / 配音）的 maxCost 校验不变。见 docs/ip-studio-dialogue-no-continue.md §8。' }
+        maxCost: { type: integer, nullable: true, description: '兼容字段（老页面照发）：服务端只记录，不再据此拒绝（不再回 409 STUDIO_PRICE_CHANGED），也不再用它限制冻结额。对话按实际 Token 用量结算，受理时先冻结 min(该端点普通文本额度 maxCost, 付款账户可用余额)，回复过程中放不下时在同一个 run 上追加冻结（引用 runId#n），钱包没钱才停；连一次最小调用都不够时 402。对话费用不计入制作阶段预算。付费生成（出图 / 视频 / 配音）的 maxCost 校验不变。见 docs/ip-studio-dialogue-no-continue.md §8。' }
         model: { type: string, nullable: true, description: 可选文本端点（账号允许选择时）；不代表付款授权。 }
     StudioTurnDoneData:
       type: object
       required: [reason, messageId]
-      description: turn.done 事件的 data。reason=chained：这条任务冻结的积分用完，服务端已在同一事务里接上下一条任务（新 turn / run / 助手消息），nextTurnId 是它的 turn，界面保持进行中（docs/ip-studio-dialogue-no-continue.md §3）。
+      description: turn.done 事件的 data。一条用户消息只有一个 run、一条助手回复、一个 turn.done（docs/ip-studio-dialogue-no-continue.md §3）。
       properties:
-        reason: { type: string, enum: [completed, waiting_user, handed_off, interrupted, failed, chained] }
+        reason: { type: string, enum: [completed, waiting_user, handed_off, interrupted, failed] }
         messageId: { type: string }
         billing: { type: object, nullable: true }
         settling: { type: boolean, nullable: true }
         suggestions: { type: array, nullable: true, items: { type: string } }
-        nextTurnId: { type: string, nullable: true }
     StudioPostMessageResult:
       type: object
       required: [messageId, queueState]
@@ -805,9 +804,7 @@ components:
               spent: { type: integer }
               inFlight: { type: integer }
               remaining: { type: integer }
-              shortfall: { type: integer, nullable: true }
-              dialogueSpent: { type: integer, nullable: true, description: 本阶段已计入的父对话 run 实际费用（已含在 spent 内，不要重复相加） }
-              dialogueInFlight: { type: integer, nullable: true, description: 本阶段进行中的父对话 run 费用上限（已含在 inFlight 内） }
+              shortfall: { type: integer, nullable: true, description: 只含制作步骤；对话费用不计入阶段预算（2026-10-23） }
         billing: { type: object, nullable: true }
         needsUserReason: { type: string, nullable: true }
         startedAt: { type: string, format: date-time }

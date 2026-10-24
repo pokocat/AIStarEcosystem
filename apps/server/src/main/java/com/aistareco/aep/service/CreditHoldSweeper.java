@@ -81,10 +81,11 @@ public class CreditHoldSweeper {
                 // Its hold is owned by the durable speech worker, not an orphan.
                 if(ipRuns!=null && com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE.equals(h.getReferenceType()) &&
                         ipRuns.findById(h.getReferenceId()).filter(r->"running".equals(r.getStatus()) && (com.aistareco.aep.ipstudio.service.StudioSpeechWorker.manages(r.getKind()) || com.aistareco.aep.ipstudio.service.IpRunWorker.hasNativeSubmission(r))).isPresent()) continue;
-                // A dialogue task whose worker still heartbeats owns its hold and settles it itself; a task without a
-                // heartbeat is expired (and released) by the dialogue reconciler, not here.
+                // A dialogue turn whose worker still heartbeats owns its holds (its own and the ones it added, "<run>#n")
+                // and settles them itself; a turn without a heartbeat is expired and released by the dialogue reconciler.
                 if(ipRuns!=null && com.aistareco.aep.ipstudio.service.IpRunService.REF_TYPE.equals(h.getReferenceType()) &&
-                        ipRuns.findById(h.getReferenceId()).filter(r->com.aistareco.aep.ipstudio.dialogue.StudioDialogueTurnWorker.isLive(r,Instant.now())).isPresent()) continue;
+                        ipRuns.findById(com.aistareco.aep.ipstudio.dialogue.DialogueHolds.runOf(h.getReferenceId()))
+                                .filter(r->com.aistareco.aep.ipstudio.dialogue.StudioDialogueTurnWorker.isLive(r,Instant.now())).isPresent()) continue;
                 creditService.releaseHold(h.getReferenceType(), h.getReferenceId(),
                         "超时自动释放（hold 超 " + ttlMinutes + " 分钟未结算）");
                 released++;

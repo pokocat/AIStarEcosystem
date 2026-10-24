@@ -42,9 +42,11 @@ public final class StudioPlanDtos {
     public record PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
                                     List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
                                     Integer acceptedCandidateIndex,String nodeId,String reason) {}
-    /** {@code dialogueSpent / dialogueInFlight}: the parent-dialogue share already included in spent / inFlight (D06). */
-    public record PlanExecutionBudget(String stage,long approvedCap,long autoFixCap,long spent,long inFlight,long remaining,Long shortfall,
-                                      Long dialogueSpent,Long dialogueInFlight) {}
+    /**
+     * A stage's approved cap and what its production steps spent / hold in flight. Dialogue turns are not part of it
+     * (2026-10-23, docs/ip-studio-dialogue-no-continue.md: 对话费用不计入制作预算).
+     */
+    public record PlanExecutionBudget(String stage,long approvedCap,long autoFixCap,long spent,long inFlight,long remaining,Long shortfall) {}
     public record PlanExecution(String id,String projectId,String threadId,String skillKey,int skillVersion,String stage,String planRunId,
                                 int planRevision,String planFingerprint,String status,List<PlanExecutionStep> steps,
                                 List<PlanExecutionBudget> budgets,BillingSelection billing,String needsUserReason,

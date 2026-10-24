@@ -200,7 +200,7 @@ public class StudioPlanExecutor {
 
     /** Refresh every step from its native runs, then the per-stage spent / in-flight summaries. */
     private void refresh(IpPlanExecution e,ObjectNode state,ObjectNode budget,List<Event> out) {
-        Map<String,Long> spent=new HashMap<>(),inFlight=new HashMap<>(),dialogueSpent=new HashMap<>(),dialogueInFlight=new HashMap<>();
+        Map<String,Long> spent=new HashMap<>(),inFlight=new HashMap<>();
         Set<String> counted=new HashSet<>(); // a charge is counted once, whichever list references it
         for(JsonNode raw:state.path("steps")) {
             ObjectNode step=(ObjectNode)raw;
@@ -272,22 +272,14 @@ public class StudioPlanExecutor {
             if("running".equals(dto.status()))inFlight.merge(stage,ceiling,Long::sum);
             else {spent.merge(stage,dto.cost(),Long::sum);child.put("status",dto.status());}
         }
-        // D06: parent dialogue turns attributed to a stage: ceiling in flight while running, real credits once settled.
-        for(JsonNode raw:state.path("dialogueRuns")) {
-            ObjectNode turn=(ObjectNode)raw;
-            String stage=turn.path("stage").asText();long ceiling=turn.path("maxCost").asLong();
-            var dto=outputs.run(e.getOwnerUserId(),e.getProjectId(),turn.path("runId").asText()).orElse(null);
-            if(dto==null||!counted.add(dto.id()))continue;
-            if("running".equals(dto.status())){inFlight.merge(stage,ceiling,Long::sum);dialogueInFlight.merge(stage,ceiling,Long::sum);}
-            else {spent.merge(stage,dto.cost(),Long::sum);dialogueSpent.merge(stage,dto.cost(),Long::sum);turn.put("status",dto.status()).put("cost",dto.cost());}
-        }
+        // Dialogue turns are not part of a stage budget (2026-10-23): an old row's dialogueRuns[] is left as it was and ignored.
         for(String stage:StudioSkillRules.STAGES) {
             JsonNode existing=budget.path(stage);
             if(!existing.isObject())continue;
-            long s=spent.getOrDefault(stage,0L),f=inFlight.getOrDefault(stage,0L),ds=dialogueSpent.getOrDefault(stage,0L),df=dialogueInFlight.getOrDefault(stage,0L);
-            if(existing.path("spent").asLong(-1)!=s||existing.path("inFlight").asLong(-1)!=f
-                    ||existing.path("dialogueSpent").asLong(0)!=ds||existing.path("dialogueInFlight").asLong(0)!=df) {
-                ((ObjectNode)existing).put("spent",s).put("inFlight",f).put("dialogueSpent",ds).put("dialogueInFlight",df);
+            long s=spent.getOrDefault(stage,0L),f=inFlight.getOrDefault(stage,0L);
+            // An old row may still carry the dialogue share fields: dropped on the next refresh.
+            if(existing.path("spent").asLong(-1)!=s||existing.path("inFlight").asLong(-1)!=f||existing.has("dialogueSpent")||existing.has("dialogueInFlight")) {
+                ((ObjectNode)existing).put("spent",s).put("inFlight",f).remove(List.of("dialogueSpent","dialogueInFlight"));
                 out.add(budgetEvent(e,stage,(ObjectNode)existing,null,"actual"));
             }
         }
@@ -648,9 +640,7 @@ public class StudioPlanExecutor {
     private Event budgetEvent(IpPlanExecution e,String stage,ObjectNode stageBudget,Long shortfall,String source) {
         long cap=stageBudget.path("approvedCap").asLong(),spent=stageBudget.path("spent").asLong(),inFlight=stageBudget.path("inFlight").asLong();
         var data=mapper.createObjectNode().put("executionId",e.getId()).put("stage",stage).put("approvedCap",cap).put("spent",spent)
-                .put("inFlight",inFlight).put("remaining",Math.max(0,cap-spent-inFlight)).put("source",source)
-                // the parent-dialogue share of spent / inFlight (already included in the totals, never added twice)
-                .put("dialogueSpent",stageBudget.path("dialogueSpent").asLong(0)).put("dialogueInFlight",stageBudget.path("dialogueInFlight").asLong(0));
+                .put("inFlight",inFlight).put("remaining",Math.max(0,cap-spent-inFlight)).put("source",source);
         if(shortfall!=null)data.put("shortfall",shortfall);
         return new Event("budget.update",data);
     }
@@ -677,13 +667,11 @@ public class StudioPlanExecutor {
         if(e.getThreadId()==null)return;
         String fingerprint=plan.plan().path("fingerprint").asText();
         long estimated=plan.plan().path("budget").path("estimated").asLong(),autoFix=plan.plan().path("budget").path("autoFixCap").asLong(0);
-        var target=messages==null?null:messages.getIfAvailable();
-        long reserve=target==null?0:Math.max(0,target.dialogueReserve(e.getOwnerUserId()));
         String approvalId=StudioPlanExecutionIds.approvalId(e.getId(),"production",plan.runId(),fingerprint);
         var planBlock=mapper.createObjectNode().put("type","plan").put("planRunId",plan.runId()).put("fingerprint",fingerprint);
         planBlock.set("plan",plan.plan().deepCopy());
-        var card=approvalBlock(e,"production",approvalId,fingerprint,titles(plan.plan()),estimated,estimated+autoFix+reserve,autoFix);
-        if(reserve>0)card.put("dialogueReserve",reserve);
+        // The cap covers the production steps only: dialogue turns are billed on their own (2026-10-23).
+        var card=approvalBlock(e,"production",approvalId,fingerprint,titles(plan.plan()),estimated,estimated+autoFix,autoFix);
         String text="分析做完了。我按分析结果整理了制作方案，共 "+plan.plan().path("steps").size()+" 步，当前报价 "+estimated+" 积分。确认方案和预算后开始制作。";
         String thread=e.getThreadId(),executionId=e.getId();
         after.add(()->postMessage(thread,executionId,"exec-card-"+approvalId,text,List.of(planBlock,card),null));

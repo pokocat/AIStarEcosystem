@@ -10,27 +10,26 @@ import java.util.Map;
 import java.util.Optional;
 
 /**
- * The agent loop of one dialogue task: model → typed actions → validate and run tools → feed results back → continue
+ * The agent loop of one dialogue turn: model → typed actions → validate and run tools → feed results back → continue
  * (docs/ip-studio-conversational-video-recreation-plan.md §一轮为有界agent循环; docs/ip-studio-dialogue-no-continue.md).
  *
  * <p>Pure state machine: no Spring, no repositories. The model, tools and side channels are injected so the ordering,
  * stop priority, steering and repeat rules are unit-testable. It ends when the model returns no actions (and no steering
- * is pending), when a tool needs a user decision, when the user stops, when this task's hold cannot cover the next model
- * call (limit {@code budget}: the worker settles and hands the work to the next task of the chain; the user sees no
- * pause), when the model repeats one action batch again after a correction ({@code loop}), when action formats stay
- * unparseable ({@code protocol}), or at the hidden safety net of a whole task chain ({@code safeguard}:
- * {@link #MAX_CHAIN_MODEL_CALLS} calls or {@link #MAX_CHAIN_DURATION}). Actions from a reply are only executed after that
- * reply finished and parsed completely.
+ * is pending), when a tool needs a user decision, when the user stops, when the payer cannot fund the next model call
+ * (limit {@code budget}: an added hold was refused, the wallet is empty), when the model repeats one action batch again
+ * after a correction ({@code loop}), when action formats stay unparseable ({@code protocol}), or at the hidden safety
+ * net of the turn ({@code safeguard}: {@link #MAX_TURN_MODEL_CALLS} calls or {@link #MAX_TURN_DURATION}). Actions from a
+ * reply are only executed after that reply finished and parsed completely.
  *
- * <p>2026-10-23: the per-task step / call / tool / time / token-split stops are gone (users kept having to type 「继续」,
- * docs/audits/studio-production-afternoon-evening-review-20261023.md). What bounds the spend is the money frozen for the
- * task; what bounds a runaway is the chain safety net. Every model call sees a trimmed context
- * ({@link DialogueContextWindow}): the full exchange keeps growing, the window the model sees does not.
+ * <p>2026-10-23: the per-turn step / call / tool / time / token-split stops are gone (users kept having to type 「继续」).
+ * One user message is one run and one reply from start to end; the dialogue has no budget of its own, its run only
+ * adds holds while it works. Every model call sees a trimmed context ({@link DialogueContextWindow}): the full exchange
+ * keeps growing, the window the model sees does not.
  */
 public final class DialogueLoop {
-    /** Hidden safety net over a whole chain of tasks started by one user message (every model call, also tool-internal). */
-    public static final int MAX_CHAIN_MODEL_CALLS = 300;
-    public static final Duration MAX_CHAIN_DURATION = Duration.ofHours(2);
+    /** Hidden safety net of one turn (every model call, also tool-internal). Normal use never reaches it. */
+    public static final int MAX_TURN_MODEL_CALLS = 300;
+    public static final Duration MAX_TURN_DURATION = Duration.ofHours(2);
     /** Smallest output budget worth another model call. */
     public static final int MIN_OUTPUT_TOKENS = 256;
 
@@ -49,7 +48,7 @@ public final class DialogueLoop {
 
     /**
      * Outcome of one tool run: content goes back to the model; {@code end} set when the turn must stop afterwards. A tool
-     * whose own model call does not fit the task's hold ends with {@link Reason#LIMIT}: the next task of the chain redoes it.
+     * whose own model call cannot be paid (the payer is out of credits) or hits the safety net ends with {@link Reason#LIMIT}.
      */
     public record ToolOutcome(String content, Reason end) {
         public static ToolOutcome of(String content) { return new ToolOutcome(content, null); }
@@ -177,7 +176,7 @@ public final class DialogueLoop {
                     continue;
                 }
                 if (end != null) {
-                    results.add(new ToolResult(action, end == Reason.LIMIT ? "{\"ok\":false,\"summary\":\"本条任务的额度已用完，本动作未执行\"}"
+                    results.add(new ToolResult(action, end == Reason.LIMIT ? "{\"ok\":false,\"summary\":\"积分不够了，本动作未执行\"}"
                             : "{\"ok\":false,\"summary\":\"需要先等用户回复，本动作未执行\"}"));
                     continue;
                 }
@@ -194,12 +193,12 @@ public final class DialogueLoop {
             }
             model.appendExchange(messages, reply, results);
             if (interrupted) return outcome(Reason.INTERRUPTED, null, toolCalls);
-            // A tool's own model call did not fit this task's hold (or the chain's safety net): the task stops here and the
-            // worker decides; for budget the next task of the chain carries on.
+            // A tool's own model call could not be paid (out of credits) or hit the safety net: the turn stops here and the
+            // worker writes the note.
             if (end == Reason.LIMIT) return outcome(Reason.LIMIT, budget.lastBlock() == null ? "budget" : budget.lastBlock(), toolCalls);
             if (end != null) return outcome(end, null, toolCalls);
             // Steering is only taken (and marked applied) when another model call can actually answer it in this task;
-            // otherwise it stays queued for the next task of the chain or opens the next turn.
+            // otherwise it stays queued and opens the next turn.
             List<String> steering = canContinue(messages) ? hooks.drainSteering() : List.of();
             if (!steering.isEmpty()) { model.appendUser(messages, steeringText(steering)); lastBatch = null; repeatCorrected = false; }
         }
@@ -292,78 +291,91 @@ public final class DialogueLoop {
         return out.append('"').toString();
     }
 
+    /** Adds credits to a turn's holds; returns how much was added (0 = refused or the turn is stopping). */
+    @FunctionalInterface
+    public interface HoldTopUp { long extend(long need); }
+
     /**
-     * Shared per-task budget. A metered task is bounded by the money frozen for it: its rate snapshot's {@code maxCost()}
-     * (the hold), against the real usage of every model call of the task (loop steps, tool-internal calls, the history
-     * summary). The rate's input / output token split is no longer a limit of its own. Every task, metered or not, also
-     * counts toward the hidden safety net of its chain ({@link #MAX_CHAIN_MODEL_CALLS}, {@link #MAX_CHAIN_DURATION}).
+     * Shared per-turn budget. A metered turn pays every model call (loop steps, tool-internal calls, the history summary)
+     * from the credits frozen for its run. When the next call would not fit what is held, it first asks {@link HoldTopUp}
+     * for at least the missing amount (another hold on the same run, docs/ip-studio-dialogue-no-continue.md §3); only
+     * when that is refused (the wallet is empty, the payment was revoked) is the call refused with {@code budget}. The
+     * rate's input / output token split is not a limit. Every turn also has the hidden safety net
+     * ({@link #MAX_TURN_MODEL_CALLS}, {@link #MAX_TURN_DURATION}).
      *
      * <p>Every model call goes through exactly one of {@link #beginStep()} (the loop) or {@link #beginSubCall()} (anything
-     * else); both count toward {@link #modelCalls()} and the chain's calls, only steps toward {@link #steps()}.
+     * else); both count toward {@link #modelCalls()}, only steps toward {@link #steps()}.
      */
     public static final class TurnBudget {
         private final com.aistareco.aep.service.AiChatTokenPricing.Rate rate;
+        private final HoldTopUp topUp;
         private final int desiredOutputTokens;
         private final Clock clock;
-        private final int priorChainCalls;
-        private final Instant chainDeadline;
+        private final Instant deadline;
+        private long held;
         private long pendingInput;
         private int steps, modelCalls;
         private long inputTokens, outputTokens;
         private String lastBlock;
-        private long lastBlockedInput;
 
-        private TurnBudget(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int desiredOutputTokens, Clock clock, int priorChainCalls, Instant chainStartedAt) {
-            this.rate = rate; this.desiredOutputTokens = desiredOutputTokens; this.clock = clock;
-            this.priorChainCalls = Math.max(0, priorChainCalls);
-            this.chainDeadline = (chainStartedAt == null ? clock.instant() : chainStartedAt).plus(MAX_CHAIN_DURATION);
+        private TurnBudget(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, long held, int desiredOutputTokens, Clock clock, Instant startedAt, HoldTopUp topUp) {
+            this.rate = rate; this.held = Math.max(0, held); this.desiredOutputTokens = desiredOutputTokens; this.clock = clock; this.topUp = topUp;
+            this.deadline = (startedAt == null ? clock.instant() : startedAt).plus(MAX_TURN_DURATION);
         }
 
-        /** A task billed by real token usage within its hold ({@code rate.maxCost()}). */
+        /** Metered with a fixed hold of {@code rate.maxCost()} and nothing added (tests, and the plain shape). */
         public static TurnBudget metered(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock) {
-            return metered(rate, perCall, clock, 0, null);
+            return new TurnBudget(java.util.Objects.requireNonNull(rate), rate.maxCost(), perCall, clock, null, null);
         }
 
-        /** The same, as a later task of a chain: {@code priorChainCalls} calls were made since {@code chainStartedAt}. */
-        public static TurnBudget metered(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, int perCall, Clock clock, int priorChainCalls, Instant chainStartedAt) {
-            return new TurnBudget(java.util.Objects.requireNonNull(rate), perCall, clock, priorChainCalls, chainStartedAt);
+        /** Metered: {@code held} credits frozen so far; {@code topUp} adds holds to the same run when a call needs more. */
+        public static TurnBudget metered(com.aistareco.aep.service.AiChatTokenPricing.Rate rate, long held, int perCall, Clock clock, Instant startedAt, HoldTopUp topUp) {
+            return new TurnBudget(java.util.Objects.requireNonNull(rate), held, perCall, clock, startedAt, topUp);
         }
 
-        /** No token budget (fixture mode: no vendor, zero cost); the chain safety net still applies. */
-        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) { return new TurnBudget(null, desiredOutputTokens, clock, 0, null); }
+        /** No token budget (fixture mode: no vendor, zero cost); the safety net still applies. */
+        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock) { return new TurnBudget(null, 0, desiredOutputTokens, clock, null, null); }
 
-        /** Unmetered, as a later task of a chain. */
-        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock, int priorChainCalls, Instant chainStartedAt) {
-            return new TurnBudget(null, desiredOutputTokens, clock, priorChainCalls, chainStartedAt);
+        public static TurnBudget unmetered(int desiredOutputTokens, Clock clock, Instant startedAt) {
+            return new TurnBudget(null, 0, desiredOutputTokens, clock, startedAt, null);
         }
 
         public boolean metered() { return rate != null; }
 
         /** Null when another dialogue step fits; otherwise budget | safeguard (the same rule as {@link #blockReason}). */
-        public synchronized String stepBlockReason(long estimatedInput, int minOutput) { return blockReason(estimatedInput, minOutput); }
+        public String stepBlockReason(long estimatedInput, int minOutput) { return blockReason(estimatedInput, minOutput); }
 
         /**
-         * Null when another model call fits; otherwise {@code safeguard} (the chain's hidden net) or {@code budget} (this
-         * task's hold cannot cover the estimated input plus the minimum output on top of what was already used).
+         * Null when another model call fits, adding a hold first when what is held does not cover it; otherwise
+         * {@code safeguard} (the hidden net) or {@code budget} (the added hold was refused).
          */
-        public synchronized String blockReason(long estimatedInput, int minOutput) {
-            String reason = null;
-            if (priorChainCalls + modelCalls >= MAX_CHAIN_MODEL_CALLS || !clock.instant().isBefore(chainDeadline)) reason = "safeguard";
-            else if (rate != null) {
+        public String blockReason(long estimatedInput, int minOutput) {
+            long missing;
+            synchronized (this) {
+                if (modelCalls >= MAX_TURN_MODEL_CALLS || !clock.instant().isBefore(deadline)) return block("safeguard");
+                if (rate == null) return null;
                 pendingInput = Math.max(0, estimatedInput);
-                if (rate.cost(inputTokens + pendingInput, outputTokens + minOutput) > rate.maxCost()) reason = "budget";
+                missing = rate.cost(inputTokens + pendingInput, outputTokens + minOutput) - held;
+                if (missing <= 0) return null;
+                if (topUp == null) return block("budget");
             }
-            if (reason != null) { lastBlock = reason; lastBlockedInput = Math.max(0, estimatedInput); }
-            return reason;
+            long added = Math.max(0, topUp.extend(missing)); // a database transaction: never inside this monitor
+            synchronized (this) {
+                held += added;
+                return rate.cost(inputTokens + pendingInput, outputTokens + minOutput) > held ? block("budget") : null;
+            }
         }
+
+        private String block(String reason) { lastBlock = reason; return reason; }
         /** The loop calls its model: one dialogue step, and one model call. */
         public synchronized void beginStep() { steps++; modelCalls++; }
         /** A model call that is not a dialogue step (view_images' look, propose_plan's planner, the history summary). */
         public synchronized void beginSubCall() { modelCalls++; }
         public synchronized int outputAllowance() { return outputAllowance(desiredOutputTokens); }
+        /** Output tokens the next call may use within what is held (after {@link #blockReason} topped it up). */
         public synchronized int outputAllowance(int desired) {
             if (rate != null && rate.outputCreditsPerK().signum() > 0) {
-                var remaining = java.math.BigDecimal.valueOf(rate.maxCost()).multiply(java.math.BigDecimal.valueOf(1000))
+                var remaining = java.math.BigDecimal.valueOf(held).multiply(java.math.BigDecimal.valueOf(1000))
                         .subtract(rate.inputCreditsPerK().multiply(java.math.BigDecimal.valueOf(inputTokens + pendingInput)))
                         .subtract(rate.outputCreditsPerK().multiply(java.math.BigDecimal.valueOf(outputTokens)));
                 return remaining.signum() <= 0 ? 0 : remaining.divide(rate.outputCreditsPerK(), 0, java.math.RoundingMode.DOWN)
@@ -376,13 +388,11 @@ public final class DialogueLoop {
         }
         public synchronized int steps() { return steps; }
         public synchronized int modelCalls() { return modelCalls; }
-        /** Calls of the whole chain so far, this task included. */
-        public synchronized int chainModelCalls() { return priorChainCalls + modelCalls; }
         public synchronized long inputTokens() { return inputTokens; }
         public synchronized long outputTokens() { return outputTokens; }
+        /** Credits frozen for the turn so far (all its holds). */
+        public synchronized long held() { return held; }
         /** The last reason a call was refused (budget | safeguard), or null. */
         public synchronized String lastBlock() { return lastBlock; }
-        /** The estimated input of the call refused last: what the next task of the chain must at least be able to pay for. */
-        public synchronized long lastBlockedInput() { return lastBlockedInput; }
     }
 }

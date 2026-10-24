@@ -760,8 +760,7 @@ public class StudioPlanExecutionService {
             if(!b.isObject())continue;
             long cap=b.path("approvedCap").asLong(),spent=b.path("spent").asLong(),inFlight=b.path("inFlight").asLong();
             budgets.add(new PlanExecutionBudget(stage,cap,b.path("autoFixCap").asLong(),spent,inFlight,Math.max(0,cap-spent-inFlight),
-                    b.hasNonNull("shortfall")?b.path("shortfall").asLong():null,
-                    b.hasNonNull("dialogueSpent")?b.path("dialogueSpent").asLong():null,b.hasNonNull("dialogueInFlight")?b.path("dialogueInFlight").asLong():null));
+                    b.hasNonNull("shortfall")?b.path("shortfall").asLong():null));
         }
         JsonNode billing=PlanState.parse(mapper,e.getBillingJson());
         var selection=new BillingSelection(billing.path("mode").asText("personal"),billing.path("enterpriseId").asText(null));

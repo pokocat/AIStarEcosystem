@@ -66,24 +66,6 @@ class StudioPlanExecutionBridgeTest {
         assertEquals("STUDIO_PLAN_STALE",assertThrows(BusinessException.class,()->bridge.authorizeChild("u","p","PEX-1","analysis",child("dlg-4","text"))).getCode());
     }
 
-    /** D06: a turn bound to the execution is checked with its own ceiling as the quote and registered once. */
-    @Test void aBoundDialogueTurnIsAttributedToTheStageOrRefusedWithTheShortfall() throws Exception {
-        assertEquals("analysis",bridge.attributeTurn("u","p","PEX-1","IPR-turn-1",14));
-        var budget=om.readTree(row.getBudgetJson()).path("analysis");
-        assertEquals(14,budget.path("inFlight").asLong());assertEquals(14,budget.path("dialogueInFlight").asLong());
-        var turn=om.readTree(row.getStepsJson()).path("dialogueRuns").get(0);
-        assertEquals("IPR-turn-1",turn.path("runId").asText());assertEquals(14,turn.path("maxCost").asLong());
-        assertEquals("analysis",bridge.attributeTurn("u","p","PEX-1","IPR-turn-1",14),"a replay registers nothing new");
-        assertEquals(14,om.readTree(row.getBudgetJson()).path("analysis").path("inFlight").asLong());
-        var over=assertThrows(BusinessException.class,()->bridge.attributeTurn("u","p","PEX-1","IPR-turn-2",20));
-        assertEquals("STUDIO_PLAN_BUDGET_EXCEEDED",over.getCode());assertEquals(402,over.getStatus().value());
-        assertEquals(4,((JsonNode)over.getDetails()).path("shortfall").asLong(),"14 in flight + 20 − 30");
-        assertEquals(1,om.readTree(row.getStepsJson()).path("dialogueRuns").size(),"a refused turn is not registered");
-        row.setStatus("done");
-        assertNull(bridge.attributeTurn("u","p","PEX-1","IPR-turn-3",1),"a finished execution no longer owns the thread's turns");
-        assertNull(bridge.attributeTurn("someone-else","p","PEX-1","IPR-turn-4",1));
-    }
-
     /** The payer a bound dialogue turn must use: the execution's fixed one while it is active, nobody's once it ended. */
     @Test void theExecutionPayerIsTheFixedOneWhileActive() {
         row.setBillingJson("{\"mode\":\"enterprise\",\"enterpriseId\":\"ent-1\"}");

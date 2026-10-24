@@ -53,17 +53,15 @@ public class RequestApprovalTool implements StudioDialogueTool {
             return ToolRun.failed("STUDIO_PRICE_UNAVAILABLE", "方案还没有服务端报价，暂不能确认", DialogueTools.fail("方案没有服务端报价，不能发起确认；请如实告诉用户报价服务暂不可用"));
         long quoted = plan.path("budget").path("estimated").asLong();
         long autoFix = plan.path("budget").path("autoFixCap").asLong(0);
-        // D06: turns during the stage count against its cap, so the default leaves room for one turn's ceiling.
-        long reserve = ctx.rate == null ? 0 : ctx.rate.maxCost();
+        // The cap covers the paid steps only; dialogue turns are billed on their own (2026-10-23, no dialogue reserve).
         boolean named = args.has("budgetCap");
-        long cap = named ? args.path("budgetCap").asLong() : quoted + autoFix + reserve;
+        long cap = named ? args.path("budgetCap").asLong() : quoted + autoFix;
         if (cap < quoted) return ToolRun.failed("STUDIO_PLAN_BUDGET_EXCEEDED", "上限低于当前报价",
                 DialogueTools.fail("用户给的上限 " + cap + " 低于服务端报价 " + quoted + "，差 " + (quoted - cap) + " 积分。请说明差额和可以缩小的范围。"));
         ObjectNode block = DialogueTools.OM.createObjectNode().put("type", "approval").put("approvalId", "APV-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16))
                 .put("stage", plan.path("stage").asText(ctx.stage())).put("planFingerprint", latest.path("fingerprint").asText());
         block.set("scope", args.path("scope").deepCopy());
         block.put("quotedCost", quoted).put("budgetCap", cap).put("autoFixCap", Math.min(autoFix, cap));
-        if (!named && reserve > 0) block.put("dialogueReserve", reserve);
         if (ctx.billing != null) block.set("billingSelection", DialogueTools.OM.valueToTree(ctx.billing));
         block.put("status", "pending");
         if (ctx.executionId != null) block.put("executionId", ctx.executionId);

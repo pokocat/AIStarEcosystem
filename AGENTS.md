@@ -1192,10 +1192,11 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### Studio 对话去掉继续（2026-10-23，本地未发布）
 
-用户说一句话助手就做完，只有付费生成（确认卡）和必填问题才停下等用户；真源 `docs/ip-studio-dialogue-no-continue.md`，规则 `specs/BUSINESS_RULES.md` Studio 对话第 30 条。单条任务的 16 步 / 40 次调用 / 24 次工具 / 10 分钟 / Token 输入输出分配**删除**，`limitSuggestions`、`saysContinue` / `resumedTask` 删除；用户打「继续」只是普通消息，旧 `_exec.continueUntilDone / continuationOf` 只读兼容。
+用户说一句话助手就做完，只有付费生成（确认卡）和必填问题才停下等用户；真源 `docs/ip-studio-dialogue-no-continue.md`，规则 `specs/BUSINESS_RULES.md` Studio 对话第 30 条。单轮的 16 步 / 40 次调用 / 24 次工具 / 10 分钟 / Token 输入输出分配**删除**，`limitSuggestions`、`saysContinue` / `resumedTask` 删除；用户打「继续」只是普通消息，旧 `_exec.continueUntilDone / continuationOf` 只读兼容。
 
-- **一条任务一笔冻结，不追加**（`CreditService` 未改）：冻结 `min(findDialogue(...).maxCost(), 付款账户可用余额)`，连一次最小调用都不够照旧 402；客户端 `maxCost` 只记录，对话不再回 409 `STUDIO_PRICE_CHANGED`（付费生成的 `requireApprovedCost` 与确认卡不变）。
-- **冻结额用完由服务端自动接下一条任务**：`limit=budget` → 同一结算事务里完成旧授权、同一付款来源（同一个人钱包 / 同一企业成员的新授权，绝不回退个人钱包）冻结新任务、新 turn / run / 助手消息、线程指针直接换过去、`turn.done{reason:"chained", nextTurnId}`，提交后派发；任何拒绝 → 整个事务回滚、再按无接续结算一次，余额不够写「积分不够了…」并带 `notice=recharge|recharge-enterprise`（前端给充值入口）。新任务上下文列整条链的已做操作，不能只列第一条。
-- **还在的保护**：连续相同动作批次先给一次纠正，纠正后再相同才 `loop`；格式纠正两次仍错 `protocol`；整条链 300 次调用或 2 小时 `safeguard`（按失败结束、ERROR 日志、仍按真实用量结算）；结束语都不提「继续」。
-- **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`，没完成就告诉用户会自动放进画布）、`CreditHoldSweeper` 跳过心跳正常的对话任务、停止跟着线程指针再停一次接续出来的任务。
+- **一条用户消息 = 一个 run = 一条助手回复**，从头做到尾；不接出新 run / 新消息 / 新 turn（没有 `chained`）。对话没有自己的预算，钱包真没钱才停。
+- **同一 run 追加冻结**（`CreditService` 未改）：受理先冻结 `min(find(endpoint).maxCost(), 可用余额)`（普通文本价那档，**不用** `findDialogue` 的百万 Token 额度）；每次模型调用（含 view_images、propose_plan、历史摘要）前放不下就追加一笔 `runId#n`，金额 `min(max(增量, 本次所需), 余额)`，企业成员走 `EnterpriseBillingService.reserveExtension`（同成员同钱包，不占在途任务上限，绝不回退个人钱包），记进 `_exec.holdRefs`；结束时按实际用量依次 commit、其余 release，企业授权逐笔 complete；失败 / 停止 / 过期全部释放。`CreditHoldSweeper` 按 `#` 前的 runId 跳过活着的对话；`IpRunReaper` 把对话交给对话 worker 回收。
+- **停下来的只有**：追加被拒（余额不够 → 「积分不够了，已经做好的都留在画布上。充值后跟我说一声，我接着做。」+ 充值入口；其它业务原因 → 该错误自己的中文原话，不加套话）；相同动作批次纠正后再重复（`loop`）；格式纠正两次仍错（`protocol`）；单个 run 300 次调用或 2 小时（`safeguard`，按失败结束、ERROR 日志、仍按真实用量结算）。结束语都不提「继续」。
+- **对话费用不计入制作预算**：`attributeTurn`、`dialogueReserve()`、执行器里的 `dialogueRuns` 统计和 `dialogueSpent / dialogueInFlight` 全部删除；确认卡上限 = 报价 + 重做额度。旧数据里这些字段读到不报错。绑定制作的线程，对话仍由制作的固定付款人付（D10）。
+- **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`）。
 - 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。

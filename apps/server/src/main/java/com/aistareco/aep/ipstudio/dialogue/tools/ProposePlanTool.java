@@ -113,10 +113,10 @@ public class ProposePlanTool implements StudioDialogueTool {
                 Map.of("role", "user", "content", PromptService.fill(resolved.userTemplate(), vars)));
         long estimate = estimate(messages);
         String blocked = ctx.budget.blockReason(estimate, MIN_OUTPUT);
-        // This task's hold cannot pay for the planner: the task ends here and the next task of the chain plans again
-        // (docs/ip-studio-dialogue-no-continue.md §3). Nothing is asked of the user.
-        if (blocked != null) return ToolRun.failed("STUDIO_TURN_BUDGET", "这一步换到下一段接着做",
-                DialogueTools.fail("本条任务冻结的积分用完了，方案会在接下来的任务里重新整理；不要告诉用户要回复什么"))
+        // The turn adds holds by itself; a refusal here means the payer is out of credits (or the safety net was hit): the
+        // turn stops with the recharge note (docs/ip-studio-dialogue-no-continue.md §3).
+        if (blocked != null) return ToolRun.failed("STUDIO_TURN_BUDGET", "积分不够了，没有整理方案",
+                DialogueTools.fail("积分不够了，没有整理方案"))
                 .withEnd(com.aistareco.aep.ipstudio.dialogue.DialogueLoop.Reason.LIMIT);
         ctx.effects.beforeModelCall();
         ctx.budget.beginSubCall();

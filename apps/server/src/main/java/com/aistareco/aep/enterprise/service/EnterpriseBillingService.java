@@ -75,7 +75,8 @@ public class EnterpriseBillingService {
         }
         var policy=currentPolicy(enterprise.getId());
         requireAllowed(policy,endpointId,amount);
-        long active=authorizations.activeInEnterprise(enterprise.getId()).stream().filter(a->actor.equals(a.getActorUserId())).count();
+        // A job's added holds (reference "<job>#n", reserveExtension) belong to that job, not to new jobs.
+        long active=authorizations.activeInEnterprise(enterprise.getId()).stream().filter(a->actor.equals(a.getActorUserId())&&!isExtension(a)).count();
         if(active>=policy.getMaxActiveJobs())throw conflict("ENTERPRISE_ACTIVE_JOB_LIMIT","已达到企业设定的在途任务上限，请等待已有任务完成");
         var wallet=wallets.findByAccountKey("enterprise_member:"+enterprise.getId()+":"+actor)
                 .orElseThrow(()->conflict("ENTERPRISE_WALLET_MISSING","成员企业账户不存在，请联系管理员"));
@@ -87,6 +88,39 @@ public class EnterpriseBillingService {
         if(amount>0)credits.holdWallet(wallet.getId(),amount,referenceType,referenceId,description,actor,member.getId(),authorization.getId());
         return account(authorization);
     }
+    /**
+     * Another hold of a job that is already paid by an enterprise member (a Studio dialogue turn adding credits while it
+     * works, docs/ip-studio-dialogue-no-continue.md §3): an authorization for {@code referenceId} with the parent's actor,
+     * enterprise, membership, wallet and endpoint, and its hold on that same member wallet. Checked like a dispatch
+     * (parent authorization alive, membership unchanged, model still allowed); not a new job for the active-job limit.
+     * Null when the parent is not enterprise-paid (the caller then holds on the personal wallet, as the parent did).
+     * Idempotent on {@code referenceId}.
+     */
+    @Transactional
+    public BillingAccount reserveExtension(String referenceType,String parentReferenceId,String referenceId,long amount,String description) {
+        if(amount<=0||amount>9_007_199_254_740_991L)throw BusinessException.badRequest("BILLING_AMOUNT_INVALID","积分金额无效");
+        var snapshot=authorizations.findByReferenceTypeAndReferenceId(referenceType,parentReferenceId).orElse(null);
+        if(snapshot==null)return null;
+        lockEnterprise(snapshot.getEnterpriseId());
+        var parent=authorizations.lockByReference(referenceType,parentReferenceId).orElseThrow();em.refresh(parent,LockModeType.PESSIMISTIC_WRITE);
+        if(parent.getTerminalAt()!=null||parent.getRevokedAt()!=null)throw denied("ENTERPRISE_BILLING_REVOKED","企业积分付款已停止，这一轮先停在这里");
+        EnterpriseMember member;
+        try{member=access.memberForUpdate(parent.getActorUserId(),parent.getEnterpriseId());}
+        catch(BusinessException e){throw denied("ENTERPRISE_BILLING_REVOKED","企业成员关系或产品开通已不可用，不能继续使用企业积分");}
+        if(!member.getId().equals(parent.getMembershipId()))throw denied("ENTERPRISE_BILLING_REVOKED","企业成员关系已结束，不能继续使用企业积分");
+        requireAllowed(currentPolicy(parent.getEnterpriseId()),parent.getEndpointId(),amount);
+        var prior=authorizations.lockByReference(referenceType,referenceId);
+        if(prior.isPresent())return account(prior.get());
+        var authorization=new EnterpriseBillingAuthorization();authorization.setId(UUID.randomUUID().toString());
+        authorization.setEnterpriseId(parent.getEnterpriseId());authorization.setActorUserId(parent.getActorUserId());authorization.setMembershipId(parent.getMembershipId());
+        authorization.setWalletId(parent.getWalletId());authorization.setReferenceType(referenceType);authorization.setReferenceId(referenceId);
+        authorization.setEndpointId(parent.getEndpointId());authorization.setAmount(amount);authorization.setStatus("dispatching");
+        authorization.setCreatedAt(Instant.now());authorization.setUpdatedAt(authorization.getCreatedAt());authorization.setDispatchedAt(authorization.getCreatedAt());
+        authorizations.saveAndFlush(authorization);
+        credits.holdWallet(parent.getWalletId(),amount,referenceType,referenceId,description,parent.getActorUserId(),parent.getMembershipId(),authorization.getId());
+        return account(authorization);
+    }
+    private static boolean isExtension(EnterpriseBillingAuthorization a){return a.getReferenceId()!=null&&a.getReferenceId().indexOf('#')>0;}
     /**
      * Available credits of the account this payer would freeze on, read without locks. Only a sizing hint (a Studio
      * dialogue holds min(its ceiling, this)); {@link #reserve} under its locks stays the decision.

@@ -107,38 +107,6 @@ public class StudioPlanExecutionBridge implements StudioExecutionGate {
         executions.save(e);
     }
 
-    /**
-     * D06: a dialogue turn on a thread bound to this active execution is part of the current stage. Same formula as a
-     * step ({@code spent + inFlight + ceiling ≤ approvedCap}); registered with its ceiling so the executor counts it in
-     * flight until it settles and its real credits as spent afterwards (one entry per run id).
-     */
-    @Override
-    @Transactional
-    public String attributeTurn(String userId,String projectId,String executionId,String runId,long maxCost) {
-        var e=executions.lockById(executionId).filter(x->userId.equals(x.getOwnerUserId())&&projectId.equals(x.getProjectId())).orElse(null);
-        if(e==null||!IpPlanExecution.active(e.getStatus()))return null;
-        String stage=e.getStage();
-        ObjectNode state=PlanState.parse(mapper,e.getStepsJson()),budget=PlanState.parse(mapper,e.getBudgetJson());
-        if(PlanState.dialogueRun(state,runId)!=null)return PlanState.dialogueRun(state,runId).path("stage").asText(stage);
-        if(!budget.path(stage).isObject())return null;
-        ObjectNode stageBudget=(ObjectNode)budget.path(stage);
-        long spent=stageBudget.path("spent").asLong(),inFlight=stageBudget.path("inFlight").asLong(),cap=stageBudget.path("approvedCap").asLong();
-        if(spent+inFlight+maxCost>cap) {
-            long shortfall=spent+inFlight+maxCost-cap;
-            publishAfterCommit(e,"budget.update",mapper.createObjectNode().put("executionId",e.getId()).put("stage",stage).put("approvedCap",cap)
-                    .put("spent",spent).put("inFlight",inFlight).put("remaining",Math.max(0,cap-spent-inFlight)).put("shortfall",shortfall).put("source","quote")
-                    .put("dialogueSpent",stageBudget.path("dialogueSpent").asLong()).put("dialogueInFlight",stageBudget.path("dialogueInFlight").asLong()));
-            throw StudioPlanExecutionService.budgetExceeded(stage,spent,inFlight,maxCost,cap);
-        }
-        state.withArray("dialogueRuns").addObject().put("runId",runId).put("stage",stage).put("maxCost",maxCost).put("status","running")
-                .put("attributedAt",Instant.now().toString());
-        stageBudget.put("inFlight",inFlight+maxCost).put("dialogueInFlight",stageBudget.path("dialogueInFlight").asLong()+maxCost);
-        e.setInFlight(e.getInFlight()+maxCost);
-        e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(Instant.now());
-        executions.save(e);
-        return stage;
-    }
-
     @Override
     @Transactional(readOnly=true)
     public com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection executionPayer(String userId,String projectId,String executionId) {

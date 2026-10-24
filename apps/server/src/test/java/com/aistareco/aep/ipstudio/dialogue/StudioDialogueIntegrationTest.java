@@ -256,7 +256,6 @@ class StudioDialogueIntegrationTest {
         var model=workflows.capabilities().textModels().stream().filter(m->m.isDefault()).findFirst().orElseThrow();
         assertEquals(28,model.tokenPricing().maxCost(),"ordinary text keeps its own ceiling");
         assertEquals(56,model.dialogueTokenPricing().maxCost(),"the client receives the independent dialogue reservation");
-        assertEquals(56,dialogue.dialogueReserve(user),"execution cards reserve the same dialogue ceiling");
         var posted = dialogue.post(user, project, threadId, new PostMessageRequest("c-1", "多步预算验收，帮我看看画布", List.of("text-1"), null, null, null, null, 56L, null));
         assertEquals("accepted", posted.queueState());
         awaitTurnEnd(threadId);
@@ -264,11 +263,11 @@ class StudioDialogueIntegrationTest {
         var run = runs.findById(posted.runId()).orElseThrow();
         assertEquals("done", run.getStatus());
         assertEquals("studio-dialogue", run.getKind());
-        // 32000 input + 5000 output exceed BOTH ordinary limits; charge 42, release 14 of the dialogue's 56 hold.
+        // 32000 input + 5000 output exceed the ordinary text ceiling (28): the run added a hold on the way and charged 42.
         assertEquals(42L, run.getCost());
-        var snapshot=json.readTree(run.getInputJson()).path("_exec").path("tokenPricing");
-        assertEquals(40000,snapshot.path("maxInputTokens").asInt());
-        assertEquals(8000,snapshot.path("maxOutputTokens").asInt());
+        var exec=json.readTree(run.getInputJson()).path("_exec");
+        assertEquals(28,exec.path("holdIncrement").asLong(),"the ordinary text ceiling is the increment");
+        assertTrue(exec.path("holdRefs").size()>=2,"a hold was added to the same run");
         var wallet = wallets.findByUserId(user).orElseThrow();
         assertEquals(58L, wallet.getTotalBalance());
         assertEquals(0L, wallet.getPendingBalance());
