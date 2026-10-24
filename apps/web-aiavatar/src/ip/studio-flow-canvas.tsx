@@ -467,7 +467,10 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           if(event.button!==0)return;
           setContext(undefined);
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
-          if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,audio,video,.react-flow__handle'))return;
+          // A click on the clip itself (<video> / <audio>, native controls included) plays as usual *and* opens the node's
+          // panel: a fitted video fills the whole card, so skipping media left no place to click (2026-10-23). Real controls
+          // on the card (replace, upload, retry, links, ports) still keep their own click.
+          if(event.shiftKey||event.metaKey||event.ctrlKey||(event.target as HTMLElement).closest('button,a,input,textarea,select,.react-flow__handle'))return;
           const node=n.data.document;if(node.type==='group')return;
           const action=studioNodeCommand(node);if(action)dispatchStudioCommand(action,n.id);
         }}

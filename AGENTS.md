@@ -1150,6 +1150,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **视频节点的形状跟视频走**：只要知道真实尺寸（`naturalWidth/Height`，或加载时读到的 `videoWidth/videoHeight`），节点就按视频比例定形，不再只限带 `studio.mediaFit` 的新结果；规则只在 `studio-media-fit.ts` 的 `fitStudioVideoNode` 一处：保宽改高，媒体区超过 640 就缩窄宽度（不低于 220）而不是留左右白边，已经合比例的框不动（包括用户拖得比上限还大的），差不到 2px 返回同一个对象、不触发保存。上传替换（`replaceStudioVideo`）和附件 / 素材库导入（`attachmentNode`）有服务端给的宽高就当场定形。合上比例的视频用 `object-fit:cover` 铺满（`.is-fitted`），图片节点不在这条规则里。
 - **拖大小保持比例**：已知尺寸的视频节点 `NodeResizer keepAspectRatio`，拖完 `fitStudioVideoToResize` 按新宽度校正高度（不封顶），和开始拖时的 checkpoint 是同一个撤销步骤；尺寸未知（空占位、还在生成）照旧自由拖。
 - **抽帧**（`studio-flow-video-frames.tsx`，命令 `video-frames`，入口在视频节点操作条 rank 2 和右键菜单）：免费、纯前端。视频一律经 `fetchAssetBlob` 取成 Blob 再截（线上 OSS 没配 CORS，签名地址画到 canvas 会被污染），截出的 JPEG 走 `uploadImage` 成为本人图片，新节点 `origin:'derived'`、连线 视频→图片。截取过程中的「处理中」占位**只是画布本地状态**（`pendingFrames`，不进文档），不能用 `metadata.status='loading'` 或任何 studio 任务字段，否则任务恢复和「确认原任务」会把它当生成任务；失败删占位并说明原因。演示模式下面板直接说不能抽帧，不假成功。
+- **单击视频 / 音频照常播放并弹出浮层**（2026-10-23）：`onNodeClick` 只跳过真控件（button / a / input / textarea / select / 连线端口），不跳过 `<video>` / `<audio>`，也不对它们 preventDefault —— 视频铺满后整张卡就是 `<video>`，跳过它等于单击永远不弹浮层（`studio-flow-node-click.test.tsx` 钉住）。
 - **右键菜单只放平铺的按钮**：`studio-flow-canvas.tsx` 的 `nodeMenu` 逐项直接调 `onClick`，不支持 `children`（「素材拆解」曾因此点了就报错，现拆成「解析视频」「拉片」两项，`studio-dialogue-wiring.test.ts` 钉住）。
 
 ### 超管直接发放积分（2026-10-22）
