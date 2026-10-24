@@ -1704,11 +1704,26 @@ public class DirectorService {
         return hash(b.toString());
     }
 
+    /**
+     * 先定画面比例，再按当前图片模型的出图规格选这个比例的尺寸：各模型同一比例的像素不一样
+     * （GPT Image 2 的 16:9 是 1360x768，聚算三款是 1365x768），写死尺寸会被规格校验拒掉（2026-10-25 线上）。
+     * 没有出图规格的模型（走 dap 多模态链）照旧用默认尺寸。
+     */
     private String sizeFor(ObjectNode c, String kind) {
-        if ("prop".equals(kind)) return "1024x1024";
-        if ("scene".equals(kind)) return "1365x768";
-        if ("character".equals(kind)) return "1365x768"; // 角色设定集是横版排版
-        return switch (c.path("settings").path("aspectRatio").asText("9:16")) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
+        String ratio = switch (kind) {
+            case "prop" -> "1:1";
+            case "scene", "character" -> "16:9"; // 场景是横向空间图，角色设定集是横版排版
+            default -> c.path("settings").path("aspectRatio").asText("9:16");
+        };
+        String fallback = switch (ratio) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
+        if (fixtures.enabled()) return fallback;
+        var endpoint = scenePolicies.resolve("studio", "image", null, 0).resolved().endpoint();
+        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
+        if (spec == null) return fallback;
+        return spec.outputs().stream().filter(o -> ratio.equals(o.aspectRatio()))
+                .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize).findFirst()
+                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED",
+                        "当前图片模型不支持 " + ratio + " 画幅，请在作品设置里换一个画幅，或联系管理员更换图片模型"));
     }
 
     // ── 内容小工具 ───────────────────────────────────────────────────────────
