@@ -327,6 +327,17 @@ public class VideoStudioService {
                 v.model().contract().seedMax());
     }
 
+    /**
+     * 还没有素材时的估价（AI 导演台一键制作推荐预算用）：同一张价表、同一个计价函数，
+     * 按模式、清晰度、时长和参考图张数算，不校验素材，不建任务。
+     */
+    public long estimateCanvas(String endpointId, String mode, String tier, int seconds, int referenceImages, String appCode) {
+        VideoStudioModel model = pickResolvedModel(resolvedModels(appCode), endpointId).model();
+        VideoStudioModeSpec modeSpec = model.contract().modes().stream().filter(m -> m.mode().equals(mode)).findFirst().orElse(null);
+        if (modeSpec == null) throw BusinessException.badRequest("VIDEO_STUDIO_MODE_INVALID", "所选模型不支持这个生成模式，请重新选择");
+        return VideoStudioPricing.total(model.pricing(), mode, tier, seconds, referenceImages, modeSpec.references() != null);
+    }
+
     private Validated validate(String userId, Draft d,
             java.util.function.BiConsumer<String, String> requireCanvasAsset) {
         return validate(userId, d,

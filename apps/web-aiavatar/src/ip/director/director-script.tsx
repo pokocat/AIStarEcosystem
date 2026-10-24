@@ -164,7 +164,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
     <StoryOutline work={work}/>
     {rewriting && <AiWorking compact title="AI 正在重新写剧本" task={rewriting} detail="写好后替换下面的剧本，当前版本保留在历史中。"/>}
     {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
-      <NextChoices work={work} shortcutDesc="把拆分集、提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。" title="下一步：拆分集" desc="AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。之后提取资产、写分镜脚本，每一步都能先看再改。"
+      <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集" desc="AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。之后提取资产、写分镜脚本，每一步都能先看再改。"
         onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
         <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
         <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>AI 拆分</button>
@@ -201,8 +201,7 @@ function EpisodeList(props: WorkbenchProps) {
     <StoryOutline work={work} defaultOpen={!work.assets.length}/>
     {runningTask(work, "script") && <AiWorking compact title="AI 正在重新写剧本" task={runningTask(work, "script")} detail="写好后替换当前剧本和分集，当前版本保留在历史中。"/>}
     {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
-      <NextChoices work={work} shortcutDesc={work.assets.length ? "按已有资产给每集写分镜脚本，可选继续出参考图和分镜图，需要确认的地方会停下。中间不能逐步检查。"
-        : "把提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。"} title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
+      <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
         desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成参考图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
           : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
         onShortcut={startPipeline} shortcutDisabled={!!busy}>

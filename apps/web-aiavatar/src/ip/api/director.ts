@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  DirectorAudioUpload, DirectorEditOp, DirectorPipelineAction, DirectorQuote, DirectorTaskType, DirectorWork, DirectorWorkSummary,
+  DirectorAudioUpload, DirectorEditOp, DirectorPipelineAction, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorQuote, DirectorTaskType, DirectorWork, DirectorWorkSummary,
 } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { ApiError } from "@ai-star-eco/api-client";
@@ -54,9 +54,14 @@ export async function runTask(id: string, body: { type: DirectorTaskType; target
 }
 
 export async function pipeline(id: string, body: { action: DirectorPipelineAction; scope?: "episode" | "work";
-  episodeId?: string | null; target?: "plan" | "board" | "video"; budget?: number; billing?: EnterpriseBillingSelection | null }): Promise<DirectorWork> {
+  episodeId?: string | null; target?: DirectorPipelineTarget; budget?: number; billing?: EnterpriseBillingSelection | null; auto?: boolean }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/pipeline`, { method: "POST", body: JSON.stringify(body) });
+}
+
+export async function estimatePipeline(id: string, body: { scope: "episode" | "work"; episodeId: string | null; target: DirectorPipelineTarget }): Promise<DirectorPipelineEstimate> {
+  if (USE_MOCK) demoUnavailable();
+  return apiFetch<DirectorPipelineEstimate>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/pipeline/estimate`, { method: "POST", body: JSON.stringify(body) });
 }
 
 export async function quote(id: string, targetIds: string[]): Promise<DirectorQuote> {

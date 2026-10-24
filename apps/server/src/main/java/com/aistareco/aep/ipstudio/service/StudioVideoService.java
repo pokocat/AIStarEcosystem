@@ -109,6 +109,10 @@ public class StudioVideoService {
     }
     /** Quote a recipe's declared geometry/mode/count before dependency outputs exist.
      * Asset bytes and ownership are verified by prepare() at actual submission, never bypassed there. */
+    /** 没有素材时按模式、清晰度、时长和参考图张数估价，和 {@link #quote} 用同一张价表。 */
+    public long estimate(String model,String mode,String tier,int seconds,int referenceImages) {
+        return videos.estimateCanvas(model(model),mode,tier,seconds,referenceImages,"studio");
+    }
     public long quote(String userId,IpRunService.IpVideoRequest request) {
         var v=request.video();
         var nativeRequest=new VideoStudioJobRequest(model(request.model()),v.mode(),request.prompt(),v.resolutionTier(),

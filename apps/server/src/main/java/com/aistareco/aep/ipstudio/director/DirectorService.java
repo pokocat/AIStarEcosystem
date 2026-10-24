@@ -1088,7 +1088,8 @@ public class DirectorService {
 
     // ── 一键连跑 ─────────────────────────────────────────────────────────────
 
-    public record PipelineRequest(String action, String scope, String episodeId, String target, Long budget, BillingSelection billing) {}
+    /** auto=true：全自动，资产清单、参考图、分镜图、片段视频都不停下来等确认（预算仍是硬上限）。 */
+    public record PipelineRequest(String action, String scope, String episodeId, String target, Long budget, BillingSelection billing, Boolean auto) {}
 
     @Transactional
     public JsonNode pipeline(String userId, String id, PipelineRequest req) {
@@ -1100,15 +1101,15 @@ public class DirectorService {
             case "start" -> {
                 if (current.isObject() && Set.of("running", "waiting", "paused").contains(current.path("status").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_RUNNING", "一键制作进行中");
-                String target = req.target() == null ? "plan" : req.target();
-                if (!Set.of("plan", "board", "video").contains(target)) throw invalid("一键制作仅支持到分镜脚本、分镜图或片段视频");
+                String target = req.target() == null ? "film" : req.target();
+                if (!Set.of("plan", "board", "video", "film").contains(target)) throw invalid("一键制作仅支持到分镜脚本、分镜图、片段视频或成片");
                 String scope = "work".equals(req.scope()) ? "work" : "episode";
-                if ("video".equals(target) && "work".equals(scope)) throw invalid("整部作品仅支持制作到分镜图，视频请按集制作");
                 if ("episode".equals(scope) && req.episodeId() != null) find(c, "episodes", req.episodeId(), "这一集");
                 if (req.budget() == null || req.budget() <= 0) throw invalid("请设置预算上限");
                 ObjectNode p = om.createObjectNode().put("id", "PL-" + UUID.randomUUID().toString().replace("-", "").substring(0, 12))
                         .put("scope", scope).put("target", target).put("status", "running").put("stage", "starting")
-                        .put("message", "启动中").put("budget", req.budget()).put("spent", 0).put("startedAt", Instant.now().toString());
+                        .put("message", "启动中").put("budget", req.budget()).put("spent", 0).put("startedAt", Instant.now().toString())
+                        .put("auto", Boolean.TRUE.equals(req.auto()));
                 if ("episode".equals(scope) && req.episodeId() != null) p.put("episodeId", req.episodeId()); else p.putNull("episodeId");
                 // 付款方在启动时定下来，整个连跑都用这一个（§10.2a）。
                 if (req.billing() != null) p.set("billing", om.valueToTree(req.billing())); else p.putNull("billing");
@@ -1142,6 +1143,12 @@ public class DirectorService {
                 p.put("status", "running").put("message", "分镜图已确认，继续生成片段视频");
                 advance(userId, w, c);
             }
+            case "confirm-videos" -> {
+                ObjectNode p = requirePipeline(current);
+                confirmVideos(c, p);
+                p.put("status", "running").put("message", "片段视频已确认，继续导出成片");
+                advance(userId, w, c);
+            }
             case "stop" -> requirePipeline(current).put("status", "stopped").put("message", "已停止，进行中的任务继续完成").put("finishedAt", Instant.now().toString());
             case "dismiss" -> c.putNull("pipeline");
             default -> throw invalid("不支持的操作");
@@ -1149,6 +1156,93 @@ public class DirectorService {
         reconcile(w, c);
         save(w, c);
         return view(userId, w, c);
+    }
+
+    public record EstimateRequest(String scope, String episodeId, String target) {}
+
+    /**
+     * 一键制作的推荐预算：按作品现状数还要做几次文字、几张图、多少秒视频，用和真正提交同一套单价算出来，
+     * 再留 15% 余量。还没规划的部分按默认篇幅估（没分集按 3 集、每集约 75 秒），结果里标明是估算。不建任务、不扣积分。
+     */
+    @Transactional(readOnly = true)
+    public JsonNode estimate(String userId, String id, EstimateRequest req) {
+        DirectorWork w = locked(userId, id);
+        ObjectNode c = read(w);
+        refresh(c);
+        String target = req.target() == null ? "film" : req.target();
+        boolean work = "work".equals(req.scope());
+        long[] prices = textRuns.directorPrices();
+        Limits lim = limits(c);
+        List<JsonNode> eps = new ArrayList<>();
+        for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
+        if (!work && req.episodeId() == null && eps.size() > 1) eps = List.of(eps.get(0));
+        int text = 0, images = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
+        long videoCredits = 0;
+        boolean rough = false;
+        String videoError = null;
+        boolean toVideo = Set.of("video", "film").contains(target);
+        int perClip = lim == null ? 0 : lim.max();
+        int estClipsPerEp = lim == null ? 0 : Math.max(1, (int) Math.ceil(75.0 / Math.max(1, lim.max())));
+        if (c.path("episodes").isEmpty()) {
+            rough = true;
+            if (c.path("draft").asText().isBlank()) text++;   // 写剧本
+            int n = work ? 3 : 1;
+            text += 2 + n;                                    // 拆分 + 提取 + 每集写分镜脚本
+            images += 6;                                      // 角色、场景、道具参考图
+            clipsTotal = n * estClipsPerEp;
+            images += clipsTotal;                             // 分镜图
+        } else {
+            if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) text++;
+            Set<String> epIds = new HashSet<>();
+            eps.forEach(e -> epIds.add(e.path("id").asText()));
+            boolean assetsKnown = c.path("assets").size() > 0;
+            if (!assetsKnown) { rough = true; images += 6; }
+            else for (JsonNode a : c.path("assets")) {
+                boolean inScope = work || a.path("episodeIds").isEmpty();
+                for (JsonNode e : a.path("episodeIds")) if (epIds.contains(e.asText())) inScope = true;
+                if (inScope && !audioOnly(a) && a.path("image").path("candidates").isEmpty()) images++;
+            }
+            for (JsonNode ep : eps) {
+                List<JsonNode> clips = clipsOf(c, List.of(ep));
+                if (clips.isEmpty()) { rough = true; text++; clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
+                for (JsonNode clip : clips) {
+                    if (clip.path("board").path("candidates").isEmpty()) images++;
+                    if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
+                    int sec = (int) Math.round(clip.path("durationSec").asDouble());
+                    seconds += sec;
+                    plannedVideos++;
+                    try {
+                        try { videoCredits += videoQuote(userId, c, clip); }
+                        catch (BusinessException notReady) { videoCredits += estimateVideo(lim, sec, 1 + clip.path("assetIds").size()); }
+                    } catch (BusinessException e) { videoError = e.getMessage(); }
+                }
+            }
+        }
+        if (toVideo && clipsTotal > 0) {
+            seconds += clipsTotal * perClip;
+            try { videoCredits += (long) clipsTotal * estimateVideo(lim, perClip, 4); }
+            catch (BusinessException e) { videoError = e.getMessage(); }
+        }
+        if (toVideo && lim == null) videoError = "暂无可用视频模型，无法估算视频费用";
+        if ("plan".equals(target)) images = 0;
+        long textCredits = (long) text * prices[0], imageCredits = (long) images * prices[1];
+        long total = textCredits + imageCredits + (toVideo ? videoCredits : 0);
+        long recommended = Math.max(10, (long) Math.ceil(total * 1.15 / 10.0) * 10);
+        ObjectNode out = om.createObjectNode().put("target", target).put("rough", rough).put("total", total).put("recommended", recommended);
+        out.putObject("text").put("count", text).put("credits", textCredits);
+        out.putObject("images").put("count", images).put("credits", imageCredits);
+        ObjectNode v = out.putObject("videos").put("included", toVideo).put("clips", toVideo ? clipsTotal + plannedVideos : 0)
+                .put("seconds", toVideo ? seconds : 0).put("credits", toVideo ? videoCredits : 0);
+        if (videoError != null && toVideo) v.put("error", videoError); else v.putNull("error");
+        return out;
+    }
+
+    /** 还没有分镜图时的视频估价：同一张价表，按时长和参考图张数算。 */
+    private long estimateVideo(Limits lim, int seconds, int refImages) {
+        if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE", "暂无可用视频模型");
+        if (fixtures.enabled()) return 0;
+        if (lim.frame()) return videoJobs.studioLegacyQuote(lim.model(), seconds);
+        return videoModels.estimate(lim.model(), VIDEO_MODE, lim.tier(), seconds, refImages);
     }
 
     /** 后台调度：回投结果并推进连跑。每个作品在自己的事务里、持行锁执行。 */
@@ -1205,6 +1299,18 @@ public class DirectorService {
             // 2. 资产提取
             List<JsonNode> notExtracted = eps.stream().filter(e -> !e.path("extracted").asBoolean(false)).toList();
             if (c.path("pendingExtract").isObject()) {
+                if (auto(p)) {
+                    // 全自动：清单原样全部入库（同名合并、对上已有资产照旧合并），下一轮接着做。
+                    JsonNode pending = c.path("pendingExtract");
+                    ArrayNode picks = om.createArrayNode();
+                    for (JsonNode it : pending.path("items")) picks.addObject().put("itemId", it.path("itemId").asText());
+                    int added = saveExtracted(c, pending, picks);
+                    markExtracted(c, pending.path("episodes"));
+                    c.putNull("pendingExtract");
+                    refresh(c);
+                    p.put("stage", "assets").put("message", "资产已自动保存（新增 " + added + " 项），继续制作");
+                    return;
+                }
                 p.put("status", "waiting").put("stage", "confirm-extract").put("message", "资产已识别，请确认后保存到资产库");
                 return;
             }
@@ -1250,6 +1356,14 @@ public class DirectorService {
                 JsonNode a = findOrNull(c, "assets", assetId);
                 if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) toConfirm.add(a.path("name").asText());
             }
+            if (!toConfirm.isEmpty() && auto(p)) {
+                for (String assetId : needed) {
+                    JsonNode a = findOrNull(c, "assets", assetId);
+                    if (a != null && "auto".equals(a.path("image").path("adoptedBy").asText())) ((ObjectNode) a.path("image")).put("adoptedBy", "user");
+                }
+                refresh(c);
+                toConfirm.clear();
+            }
             if (!toConfirm.isEmpty()) {
                 p.put("status", "waiting").put("stage", "confirm-assets")
                         .put("message", "参考图已生成（" + toConfirm.size() + " 张），请在「资产」中确认后继续");
@@ -1278,9 +1392,15 @@ public class DirectorService {
                                 + (all.size() > 3 ? " 等 " + all.size() + " 项" : "") + "。请在「分镜」中修改后继续");
                 return;
             }
-            if ("video".equals(p.path("target").asText())) {
+            boolean toVideo = Set.of("video", "film").contains(p.path("target").asText());
+            if (toVideo) {
                 List<String> boardsToConfirm = new ArrayList<>();
                 for (JsonNode clip : clipsOf(c, eps)) if ("auto".equals(clip.path("board").path("adoptedBy").asText())) boardsToConfirm.add("片段 " + clip.path("order").asInt());
+                if (!boardsToConfirm.isEmpty() && auto(p)) {
+                    for (JsonNode clip : clipsOf(c, eps)) if ("auto".equals(clip.path("board").path("adoptedBy").asText())) ((ObjectNode) clip.path("board")).put("adoptedBy", "user");
+                    refresh(c);
+                    boardsToConfirm.clear();
+                }
                 if (!boardsToConfirm.isEmpty()) {
                     p.put("status", "waiting").put("stage", "confirm-boards")
                             .put("message", "分镜图已生成（" + boardsToConfirm.size() + " 张），请在「分镜」中确认后继续");
@@ -1296,12 +1416,45 @@ public class DirectorService {
                 }
                 if (videoing) return;
             }
+            // 成片：每集的片段视频都有了 → 确认（全自动时直接确认）→ 导出整集（不扣积分）。
+            if ("film".equals(p.path("target").asText()) && failed.isEmpty()) {
+                List<String> missingVideo = new ArrayList<>();
+                for (JsonNode clip : clipsOf(c, eps)) if (adoptedKey(clip.path("video")) == null) missingVideo.add("片段 " + clip.path("order").asInt());
+                if (missingVideo.isEmpty()) {
+                    boolean unconfirmed = false;
+                    for (JsonNode clip : clipsOf(c, eps)) if ("auto".equals(clip.path("video").path("adoptedBy").asText())) unconfirmed = true;
+                    if (unconfirmed && auto(p)) { confirmVideos(c, p); unconfirmed = false; }
+                    if (unconfirmed) {
+                        p.put("status", "waiting").put("stage", "confirm-videos").put("message", "片段视频已生成，请在「分镜」中确认后导出成片");
+                        return;
+                    }
+                    int done = 0;
+                    List<String> exportFailed = new ArrayList<>();
+                    for (JsonNode ep : eps) {
+                        String state = exportState(c, ep);
+                        if ("done".equals(state)) { done++; continue; }
+                        if ("running".equals(state)) { p.put("stage", "export").put("message", "成片导出中"); continue; }
+                        if ("failed".equals(state) && failed.contains("export:" + ep.path("id").asText())) { exportFailed.add("第 " + ep.path("no").asInt() + " 集"); continue; }
+                        if ("failed".equals(state)) ((ArrayNode) p.withArray("failed")).add("export:" + ep.path("id").asText());
+                        step.send("export", ep.path("id").asText(), "成片导出中");
+                    }
+                    if (!exportFailed.isEmpty()) {
+                        p.put("status", "waiting").put("stage", "failed-items").put("message", String.join("、", exportFailed) + "成片导出失败。可点「重试失败项」");
+                        return;
+                    }
+                    if (done == eps.size()) { finish(p, "done", eps.size() + " 集成片已导出，可在「分镜」中预览和下载"); return; }
+                    return;
+                }
+                p.put("status", "waiting").put("stage", "blocked").put("message", "这些片段还没有视频：" + String.join("、", missingVideo.subList(0, Math.min(3, missingVideo.size())))
+                        + (missingVideo.size() > 3 ? " 等 " + missingVideo.size() + " 个" : "") + "。请在「分镜」中处理后点「继续」");
+                return;
+            }
             int boards = 0, videos = 0;
             for (JsonNode clip : clipsOf(c, eps)) {
                 if (clip.path("board").path("candidates").size() > 0) boards++;
                 if (clip.path("video").path("candidates").size() > 0) videos++;
             }
-            if ("video".equals(p.path("target").asText()) && failed.isEmpty()) {
+            if (toVideo && failed.isEmpty()) {
                 finish(p, "done", videos + " 个片段视频已生成，请在「分镜」中确认，之后可连播预览或导出整集");
                 return;
             }
@@ -1327,11 +1480,12 @@ public class DirectorService {
         boolean send(String type, String target, String stage) {
             String node = switch (type) {
                 case "asset-image" -> "asset:" + target; case "board" -> "board:" + target; case "video" -> "video:" + target;
-                case "plan" -> "plan:" + target; case "extract" -> target == null ? "extract" : "extract:" + target; default -> type;
+                case "plan" -> "plan:" + target; case "extract" -> target == null ? "extract" : "extract:" + target;
+                case "export" -> "export:" + target; default -> type;
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : Set.of("asset-image", "board").contains(type) ? prices[1] : prices[0];
+                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : prices[0];
             p.put("stage", stage).put("message", stage);
             if (inflight >= PIPELINE_INFLIGHT) return false;
             if (committed + estimate > p.path("budget").asLong()) {
@@ -1356,6 +1510,29 @@ public class DirectorService {
     private ObjectNode requirePipeline(JsonNode p) {
         if (!p.isObject()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_PIPELINE_MISSING", "没有进行中的一键制作");
         return (ObjectNode) p;
+    }
+
+    private static boolean auto(JsonNode p) { return p.path("auto").asBoolean(false); }
+
+    private void confirmVideos(ObjectNode c, JsonNode p) {
+        for (JsonNode clip : clipsOf(c, scopeEpisodes(c, p))) {
+            ObjectNode slot = (ObjectNode) clip.path("video");
+            if ("auto".equals(slot.path("adoptedBy").asText())) slot.put("adoptedBy", "user");
+        }
+    }
+
+    /** 这一集最近一次导出：done（且用的正是当前采用的视频）/ running / failed / none。 */
+    private String exportState(ObjectNode c, JsonNode ep) {
+        JsonNode last = null;
+        for (JsonNode e : c.path("exports")) if (ep.path("id").asText().equals(e.path("episodeId").asText())) last = e;
+        if (last == null) return "none";
+        String status = last.path("status").asText();
+        if (!"done".equals(status)) return "running".equals(status) ? "running" : "failed";
+        Map<String, String> used = new HashMap<>();
+        last.path("clips").forEach(u -> used.put(u.path("clipId").asText(), u.path("candidateId").asText()));
+        for (JsonNode clip : c.path("clips")) if (ep.path("id").asText().equals(clip.path("episodeId").asText())
+                && !clip.path("video").path("adoptedId").asText().equals(used.get(clip.path("id").asText()))) return "none";
+        return "done";
     }
 
     private List<JsonNode> scopeEpisodes(ObjectNode c, JsonNode p) {
