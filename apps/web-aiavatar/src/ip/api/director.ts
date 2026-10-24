@@ -54,7 +54,7 @@ export async function runTask(id: string, body: { type: DirectorTaskType; target
 }
 
 export async function pipeline(id: string, body: { action: DirectorPipelineAction; scope?: "episode" | "work";
-  episodeId?: string | null; target?: "board" | "video"; budget?: number; billing?: EnterpriseBillingSelection | null }): Promise<DirectorWork> {
+  episodeId?: string | null; target?: "plan" | "board" | "video"; budget?: number; billing?: EnterpriseBillingSelection | null }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/pipeline`, { method: "POST", body: JSON.stringify(body) });
 }

@@ -437,6 +437,13 @@ public class DirectorService {
             if (o.path("idea").asText().length() > 2000) throw invalid("创意不超过 2000 字");
             c.put("idea", o.path("idea").asText().trim());
         }
+        // 题材 / 调性：只认提示词里有追加规则的那几个，空串表示不限。
+        if ("script".equals(req.type())) for (var f : List.of(java.util.Map.entry("genre", DirectorPrompts.GENRES), java.util.Map.entry("tone", DirectorPrompts.TONES))) {
+            if (!o.has(f.getKey())) continue;
+            String v = o.path(f.getKey()).asText("").trim();
+            if (!v.isEmpty() && !f.getValue().containsKey(v)) throw invalid("不支持的" + ("genre".equals(f.getKey()) ? "题材" : "调性"));
+            if (v.isEmpty()) c.putNull(f.getKey()); else c.put(f.getKey(), v);
+        }
         refresh(c);
         dispatch(userId, w, c, req.type(), req.targetId(), "u-" + req.clientRequestId(), o, null, req.billing(), req.maxCost());
         save(w, c);
@@ -467,7 +474,7 @@ public class DirectorService {
                 nodeId = "script";
                 meta.put("draftRev", c.path("draftRev").asLong());
                 if (hasScript) meta.put("regenerate", true).put("baseHash", scriptBaseHash(c));
-                system = DirectorPrompts.SCRIPT;
+                system = DirectorPrompts.script(c.path("genre").asText(null), c.path("tone").asText(null));
                 // 篇幅不在这里给默认值：用户在创意里写的时长 / 集数要压过默认，默认写在提示词里「brief 没写时」。
                 ObjectNode in = om.createObjectNode().put("brief", idea).put("style", c.path("settings").path("style").asText());
                 if (!o.path("length").asText().isBlank()) in.put("length", o.path("length").asText());
@@ -1088,8 +1095,8 @@ public class DirectorService {
             case "start" -> {
                 if (current.isObject() && Set.of("running", "waiting", "paused").contains(current.path("status").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_RUNNING", "一键制作进行中");
-                String target = req.target() == null ? "board" : req.target();
-                if (!Set.of("board", "video").contains(target)) throw invalid("一键制作仅支持到分镜图或片段视频");
+                String target = req.target() == null ? "plan" : req.target();
+                if (!Set.of("plan", "board", "video").contains(target)) throw invalid("一键制作仅支持到分镜脚本、分镜图或片段视频");
                 String scope = "work".equals(req.scope()) ? "work" : "episode";
                 if ("video".equals(target) && "work".equals(scope)) throw invalid("整部作品仅支持制作到分镜图，视频请按集制作");
                 if ("episode".equals(scope) && req.episodeId() != null) find(c, "episodes", req.episodeId(), "这一集");
@@ -1209,6 +1216,20 @@ public class DirectorService {
                 if (!step.send("plan", ep.path("id").asText(), "片段规划中")) return;
             }
             if (planning) return;
+            // 只做到分镜脚本：分集、资产和每段的镜头、分镜图提示词、视频提示词都有了就停，不出图。
+            if ("plan".equals(p.path("target").asText())) {
+                List<String> planFailed = new ArrayList<>();
+                for (JsonNode ep : eps) if (!hasClips(c, ep.path("id").asText()) && failed.contains("plan:" + ep.path("id").asText()))
+                    planFailed.add("第 " + ep.path("no").asInt() + " 集");
+                if (!planFailed.isEmpty()) {
+                    p.put("status", "waiting").put("stage", "failed-items").put("message",
+                            String.join("、", planFailed) + "片段规划失败。可点「重试失败项」，或在「分镜」中单独规划");
+                    return;
+                }
+                int planned = clipsOf(c, eps).size();
+                finish(p, "done", "分镜脚本已完成：" + eps.size() + " 集 " + planned + " 个片段，镜头和提示词在「分镜」中");
+                return;
+            }
             // 4. 参考图
             Set<String> needed = neededAssets(c, p);
             boolean imaging = false;
@@ -1422,7 +1443,9 @@ public class DirectorService {
         v.put("id", w.getId()).put("title", w.getTitle()).put("revision", w.getRevision())
                 .put("createdAt", w.getCreatedAt().toString()).put("updatedAt", w.getUpdatedAt().toString());
         ArrayNode tasks = v.putArray("tasks");
-        List<IpRun> mine = runs.findByProjectIdOrderByCreatedAtDesc(w.getId());
+        // 在新事务里读：本次请求刚在独立事务里建的任务，MySQL 可重复读下外层事务的快照看不到，
+        // 页面会以为没在生成、也不轮询（2026-10-24 线上：点「生成剧本」没反应，再点报「该项生成中」）。
+        List<IpRun> mine = newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         for (IpRun r : mine.subList(0, Math.min(40, mine.size()))) {
             tasks.addObject().put("id", r.getId()).put("target", r.getNodeId()).put("status", r.getStatus())
                     .put("stage", r.getStage()).put("cost", r.getCost()).put("errorMessage", r.getErrorMessage())

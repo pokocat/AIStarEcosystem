@@ -443,3 +443,38 @@ html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .dir
 .director-ref-text strong { font-size: 13px; font-weight: 600; }
 .director-ref-text small { font-size: 12px; color: var(--ip-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-ref-actions { display: flex; gap: 4px; flex: none; }
+
+/* AI 正在生成：渐变描边 + 呼吸的星标 + 正在书写的骨架行。只给 AI 正在做的事用。 */
+.director-ai-working { --director-ai: #4f5bd5; --director-ai-2: #8b6cf0; position: relative; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 14px 16px; align-items: start; padding: 22px; border-radius: 14px; background: linear-gradient(var(--ip-paper), var(--ip-paper)) padding-box, linear-gradient(120deg, var(--director-ai), var(--director-ai-2), #c9b8ff, var(--director-ai)) border-box; border: 1.5px solid transparent; background-size: 100% 100%, 300% 300%; animation: director-ai-border 4s linear infinite; overflow: hidden; }
+.director-ai-working.is-compact { grid-template-columns: auto minmax(0, 1fr); padding: 12px 14px; gap: 10px; }
+.director-ai-orb { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg, var(--director-ai), var(--director-ai-2)); color: #fff; box-shadow: 0 0 0 0 rgba(79, 91, 213, .35); animation: director-ai-pulse 1.8s ease-out infinite; }
+.is-compact .director-ai-orb { width: 30px; height: 30px; }
+.director-ai-orb svg { animation: director-ai-spin 6s linear infinite; }
+.director-ai-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.director-ai-copy b { display: inline-flex; align-items: baseline; gap: 2px; font-size: 15px; color: var(--ip-ink); }
+.is-compact .director-ai-copy b { font-size: 14px; }
+.director-ai-copy p { color: var(--ip-ink); font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+.director-ai-copy small { color: var(--ip-muted); font-size: 12px; }
+.director-ai-dots { display: inline-flex; gap: 3px; margin-left: 4px; }
+.director-ai-dots span { width: 4px; height: 4px; border-radius: 50%; background: var(--director-ai); animation: director-ai-dot 1.2s ease-in-out infinite; }
+.director-ai-dots span:nth-child(2) { animation-delay: .15s; }
+.director-ai-dots span:nth-child(3) { animation-delay: .3s; }
+.director-ai-lines { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.director-ai-lines span { height: 10px; border-radius: 5px; background: linear-gradient(90deg, var(--ip-soft) 0%, #e4e1f8 40%, var(--ip-soft) 80%); background-size: 200% 100%; animation: director-ai-shimmer 1.6s ease-in-out infinite; }
+.director-ai-lines span:nth-child(1) { width: 42%; }
+.director-ai-lines span:nth-child(2) { width: 92%; animation-delay: .12s; }
+.director-ai-lines span:nth-child(3) { width: 78%; animation-delay: .24s; }
+.director-ai-lines span:nth-child(4) { width: 60%; animation-delay: .36s; }
+@keyframes director-ai-border { to { background-position: 0 0, 300% 0; } }
+@keyframes director-ai-pulse { 0% { box-shadow: 0 0 0 0 rgba(79, 91, 213, .35); } 70% { box-shadow: 0 0 0 12px rgba(79, 91, 213, 0); } 100% { box-shadow: 0 0 0 0 rgba(79, 91, 213, 0); } }
+@keyframes director-ai-spin { to { transform: rotate(360deg); } }
+@keyframes director-ai-dot { 0%, 80%, 100% { opacity: .25; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@keyframes director-ai-shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .director-ai-working, .director-ai-orb, .director-ai-orb svg, .director-ai-dots span, .director-ai-lines span { animation: none; } }
+.director-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.director-chips button { min-height: 30px; padding: 0 12px; border: 1px solid var(--ip-line); border-radius: 15px; background: var(--ip-paper); color: var(--ip-ink); font-size: 13px; cursor: pointer; }
+.director-chips button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-ink); color: var(--ip-paper); }
+.director-chips button:hover:not([aria-pressed="true"]) { background: var(--ip-soft); }
+.director-prompt-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgba(0, 0, 0, .06); }
+.director-prompt-tabs button { min-height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.director-prompt-tabs button[aria-pressed="true"] { background: var(--ip-paper); color: var(--ip-ink); box-shadow: 0 1px 2px rgba(0,0,0,.06); }

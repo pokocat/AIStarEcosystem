@@ -13667,10 +13667,10 @@ paths:
       tags: [ipstudio]
       operationId: directorPipeline
       description: >-
-        一键做到分镜图或本集视频（action：start / pause / resume / retry / confirm-assets / stop / dismiss）。后台调度推进，关页继续；
+        一键做到分镜脚本、分镜图或本集视频（target：plan 默认 = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图；board；video。action：start / pause / resume / retry / confirm-assets / confirm-boards / stop / dismiss）。后台调度推进，关页继续；
         付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string }, budget: { type: integer }, billing: { type: object, nullable: true } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video] }, budget: { type: integer }, billing: { type: object, nullable: true } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
   /v1/ip-studio/runs/{id}:

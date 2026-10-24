@@ -70,7 +70,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
       <label className="director-field"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
         <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} maxLength={mode === "idea" ? 2000 : 60000} onChange={e => setText(e.target.value)}
-          placeholder={mode === "idea" ? "例如：深夜的旧书店，店员林夏发现一封写给自己的红信封，门外传来敲门声。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
+          placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
       </label>
       <p className="director-dialog-note">{mode === "idea" ? "下一步：确认创意、看清所需积分，再由 AI 写剧本。" : "下一步：选择作为一集，或由 AI 拆分为多集。"}</p>
       <InlineError message={error}/>

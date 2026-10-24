@@ -7,7 +7,7 @@ import type { DirectorClip, DirectorShot, DirectorWork } from "@ai-star-eco/type
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus } from "./director-shared";
+import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
@@ -60,6 +60,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
           <LayoutGrid size={15}/>{clips.length ? "重新规划" : "规划片段"}</button>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
+      {planning && <AiWorking compact title={`AI 正在规划第 ${ep.no} 集片段`} task={planning} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
       {ep.planError && <InlineError message={ep.planError.message}/>}
       {ep.planStale && <div className="director-warn">正文在规划后有修改，片段可能与正文不一致。</div>}
       {pending && <div className="director-warn"><span>规划期间片段有修改，新规划（{pending.clips.length} 个片段）未覆盖现有内容。是否替换？</span>
@@ -227,6 +228,9 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const grid = clip.shots.length > 1;
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
+  // 分镜脚本阶段先看分镜图提示词；有了分镜图再看视频提示词。用户点过就按用户的来。
+  const [promptTab, setPromptTab] = useState<"board" | "video" | null>(null);
+  const shownPrompt = promptTab ?? (clip.board.adoptedId ? "video" : "board");
   return <article className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}/>
     {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
@@ -241,8 +245,15 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
           分镜图<small className={tone(boardStatus)}>{grid ? `${Math.min(clip.shots.length, 4)} 格 · ` : ""}{boardStatus}{clip.board.candidates.length > 1 ? ` · ${clip.board.candidates.length} 版` : ""}</small></button>
       </div>
       <section className="director-video-section" aria-label="视频">
-        <header><b>视频提示词</b><span>{grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成，宫格只作构图和形象参考` : "以分镜画面为构图参考生成"}</span></header>
-        <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
+        <header>
+          <div className="director-prompt-tabs" role="group" aria-label="提示词">
+            <button type="button" aria-pressed={shownPrompt === "board"} onClick={() => setPromptTab("board")}>分镜图提示词</button>
+            <button type="button" aria-pressed={shownPrompt === "video"} onClick={() => setPromptTab("video")}>视频提示词</button>
+          </div>
+          <span>{shownPrompt === "board" ? (grid ? `一张 2×2 宫格，第 1–${Math.min(clip.shots.length, 4)} 格依次是第 1–${Math.min(clip.shots.length, 4)} 镜` : "一张单幅分镜画面")
+            : grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成，宫格只作构图和形象参考` : "以分镜画面为构图参考生成"}</span>
+        </header>
+        <PromptEditor key={shownPrompt} work={work} clip={clip} which={shownPrompt} apply={apply} setError={setError}/>
         <div className="director-params" aria-label="生成设置">
           <span><small>风格</small>{work.settings.style}</span>
           <span><small>画幅</small>{work.settings.aspectRatio}</span>
