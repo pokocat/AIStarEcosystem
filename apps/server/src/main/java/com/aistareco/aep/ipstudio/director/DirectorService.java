@@ -1062,7 +1062,7 @@ public class DirectorService {
     /** 片段视频报价：逐个片段给价格，或者说明为什么现在还不能生成。不建任务、不扣积分。 */
     @Transactional(readOnly = true)
     public JsonNode quote(String userId, String id, QuoteRequest req) {
-        DirectorWork w = locked(userId, id);
+        DirectorWork w = owned(userId, id);
         ObjectNode c = read(w);
         refresh(c);
         if (!"video".equals(req.type())) throw invalid("仅支持片段视频报价");
@@ -1082,7 +1082,7 @@ public class DirectorService {
     /** 角色声音样本上传：沿用 Studio 媒体导入的格式与时长校验（字节嗅探、ffprobe）。 */
     @Transactional(readOnly = true)
     public StudioMediaImportService.MediaImportResult uploadAudio(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
-        locked(userId, id);
+        owned(userId, id);
         return mediaImport.upload(userId, file, "audio");
     }
 
@@ -1166,7 +1166,7 @@ public class DirectorService {
      */
     @Transactional(readOnly = true)
     public JsonNode estimate(String userId, String id, EstimateRequest req) {
-        DirectorWork w = locked(userId, id);
+        DirectorWork w = owned(userId, id);
         ObjectNode c = read(w);
         refresh(c);
         String target = req.target() == null ? "film" : req.target();
@@ -1897,8 +1897,11 @@ public class DirectorService {
         var endpoint = scenePolicies.resolve("studio", "image", null, 0).resolved().endpoint();
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
         if (spec == null) return fallback;
+        // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊；按张计费，价格不变。
+        // 线上 GPT Image 2 的 1360x768 偶尔被厂商按 4:3 出图、被尺寸校验拦下，2048x1152 一周内没有出过错（2026-10-25 日志）。
         return spec.outputs().stream().filter(o -> ratio.equals(o.aspectRatio()))
-                .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize).findFirst()
+                .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize)
+                .max(Comparator.comparingLong(DirectorService::pixels))
                 .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED",
                         "当前图片模型不支持 " + ratio + " 画幅，请在作品设置里换一个画幅，或联系管理员更换图片模型"));
     }
@@ -2106,6 +2109,11 @@ public class DirectorService {
         if (c.path("outline").isObject()) in.set("outline", c.path("outline"));
     }
 
+    private static long pixels(String size) {
+        String[] wh = size.split("x");
+        try { return Long.parseLong(wh[0].trim()) * Long.parseLong(wh[1].trim()); } catch (RuntimeException e) { return 0; }
+    }
+
     private static boolean audioOnly(JsonNode a) { return a.path("description").asText("").contains("只出声音"); }
 
     private ObjectNode find(ObjectNode c, String list, String id, String label) {
@@ -2169,6 +2177,17 @@ public class DirectorService {
         List<String> out = new ArrayList<>();
         for (String line : text.split("\\r?\\n")) if (!line.isBlank()) out.add(line.strip());
         return out;
+    }
+
+    /**
+     * 只读接口用：不加行锁。MySQL 的只读事务里不能 SELECT … FOR UPDATE（H2 可以，本地看不出来），
+     * 2026-10-25 线上报价 / 推荐预算 / 上传声音样本都因此 500。
+     */
+    private DirectorWork owned(String userId, String id) {
+        DirectorWork w = works.findById(id).orElse(null);
+        if (w == null || w.getDeletedAt() != null || !w.getOwnerUserId().equals(userId))
+            throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
+        return w;
     }
 
     private DirectorWork locked(String userId, String id) {
