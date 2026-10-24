@@ -27,11 +27,17 @@ public class ModelAlertContext {
 
     /** Diagnostic enrichment is best effort; it cannot prevent a failure/refund or the original alert. */
     public String describe(String taskId) {
-        try { return resolve(taskId); }
+        try { return resolve(taskId, false); }
         catch (Exception unavailable) { return "模型信息：暂时无法读取，请按任务号查看后台原始记录"; }
     }
 
-    private String resolve(String taskId) {
+    /** Compact bot context: omit empty fields and request summaries, retaining the route needed to diagnose the response. */
+    public String describeForAlert(String taskId) {
+        try { return resolve(taskId, true); }
+        catch (Exception unavailable) { return ""; }
+    }
+
+    private String resolve(String taskId, boolean compact) {
         String endpointId = "", name = "", model = "", base = "", paramsSource = "任务参数（非完整上游请求）";
         String remoteTask = "";
         JsonNode params = JSON.createObjectNode();
@@ -75,6 +81,14 @@ public class ModelAlertContext {
                 if (model.isBlank()) { model = value(endpoint, "model"); modelSource = "当前端点配置，原调用未记录"; }
                 if (base.isBlank()) { base = value(endpoint, "base_url"); baseSource = "当前端点配置，原调用未记录"; }
             }
+        }
+        if (compact) {
+            var lines = new java.util.ArrayList<String>();
+            if (ProviderResponseDiagnostics.safeId(remoteTask) != null) lines.add("远端任务 ID：" + remoteTask);
+            if (!name.isBlank() || !endpointId.isBlank()) lines.add("供应商 / 端点：" +
+                    (name.isBlank() ? label(endpointId) : label(name) + (endpointId.isBlank() ? "" : "（" + label(endpointId) + "）")));
+            if (!model.isBlank()) lines.add("模型：" + label(model) + (modelSource.startsWith("当前") ? "（当前配置）" : ""));
+            return String.join("\n", lines);
         }
         return "远端任务 ID：" + (ProviderResponseDiagnostics.safeId(remoteTask) == null ? "未获取" : remoteTask)
                 + "\n供应商 / 端点：" + label(name) + "（" + label(endpointId) + "）"

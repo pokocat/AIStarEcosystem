@@ -98,7 +98,10 @@ public class StudioSpeechWorker {
             JsonNode result=lip?lips.poll(endpoint,base,exec.path("jobUrl").asText(),id,run.getOwnerUserId()):client.poll(endpoint,base,exec.path("jobUrl").asText(),id,run.getOwnerUserId());
             String state=result.path("status").asText();
             if("failed".equals(state)||"canceled".equals(state)) {
-                finish(id,null,lip?"STUDIO_LIP_SYNC_PROVIDER_FAILED":"STUDIO_SPEECH_PROVIDER_FAILED",label+"引擎未完成本次生成，冻结积分已释放");return;
+                String code=lip?"STUDIO_LIP_SYNC_PROVIDER_FAILED":"STUDIO_SPEECH_PROVIDER_FAILED";
+                String message=label+"引擎未完成本次生成，冻结积分已释放";
+                finish(id,null,code,message,com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
+                        new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,code,message),result.toString()));return;
             }
             if(!"succeeded".equals(state)){update(id,e->e.put("leaseUntil",0),prefix+"."+("running".equals(state)?"running":"queued"),"running".equals(state)?45:15,null,null);return;}
             String contentUrl=result.path("outputs").path(0).path("contentUrl").asText();

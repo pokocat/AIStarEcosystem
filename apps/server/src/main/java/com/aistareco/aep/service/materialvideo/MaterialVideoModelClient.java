@@ -631,7 +631,7 @@ public class MaterialVideoModelClient {
                         elapsedMs(startNanos));
             }
             return new PollResult(status, videoUrl, thumb, rawStatus, progressPct, failReason, lastFrameUrl,
-                    outputAssetId, promptRewrite);
+                    outputAssetId, promptRewrite, com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
         } catch (BusinessException be) {
             throw be;
         } catch (Exception e) {
@@ -1808,7 +1808,12 @@ public class MaterialVideoModelClient {
     /** @param promptRewrite 厂商出片前改写提示词的结果（只有会改写的模型才有，见 {@link VideoPromptRewrite}） */
     public record PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
                              Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId,
-                             VideoPromptRewrite promptRewrite) {
+                             VideoPromptRewrite promptRewrite,
+                             @com.fasterxml.jackson.annotation.JsonIgnore com.aistareco.aep.service.ai.ProviderResponseDiagnostics diagnostics) {
+        public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
+                          Integer progressPct, String failReason, String lastFrameUrl, String outputAssetId, VideoPromptRewrite promptRewrite) {
+            this(status, videoUrl, thumbnailUrl, rawStatus, progressPct, failReason, lastFrameUrl, outputAssetId, promptRewrite, null);
+        }
         /** 兼容既有测试与 mock 构造。 */
         public PollResult(String status, String videoUrl, String thumbnailUrl, String rawStatus,
                           Integer progressPct, String failReason, String lastFrameUrl) {

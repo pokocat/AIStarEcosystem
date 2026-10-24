@@ -356,8 +356,8 @@ public class AiModelInvocationService {
                 result = parseCompletion(OM.readTree(resp.body()), model);
             } catch (Exception parseEx) {
                 upstreamHttp.recordBadOutput(ctx, resp.body(), "AI_BAD_OUTPUT", elapsedMs(startNanos));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回无法解析，请稍后重试",
-                        internal + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+                throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回无法解析，请稍后重试",
+                        internal + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
             }
             rawForUsage = resp.body();
         } else {
@@ -373,8 +373,8 @@ public class AiModelInvocationService {
                 throw attach(callFailed(outcome.status(), outcome.errorBody(), internal),outcome.status(),outcome.headers(),outcome.errorBody());
             if (acc.error != null) {
                 upstreamHttp.recordBadOutput(ctx, acc.error, "AI_CALL_FAILED", elapsedMs(startNanos));
-                throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
-                        internal + " streamError=" + snippet(acc.error));
+                throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
+                        internal + " streamError=" + snippet(acc.error)),outcome.status(),outcome.headers(),acc.error);
             }
             if (!outcome.cancelled() && !acc.done && acc.finishReason == null) {
                 upstreamHttp.recordBadOutput(ctx, acc.content.toString(), "AI_STREAM_INCOMPLETE", elapsedMs(startNanos));
@@ -723,9 +723,9 @@ public class AiModelInvocationService {
         } catch (Exception parseEx) {
             // 2xx 但响应体无法解析：记原始响应（日志 + 流水），便于排查上游协议变化 / 网关插话。
             upstreamHttp.recordBadOutput(ctx, resp.body(), "AI_BAD_OUTPUT", elapsedMs(startNanos));
-            throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
+            throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT",
                     "AI 返回无法解析，请稍后重试",
-                    "endpoint=" + e.getName() + " status=" + resp.statusCode() + " body=" + snippet(resp.body()));
+                    "endpoint=" + e.getName() + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
         }
         String upstreamId = parsed.get("id") != null ? String.valueOf(parsed.get("id")) : null;
         Object choices = parsed.get("choices");
@@ -775,7 +775,8 @@ public class AiModelInvocationService {
                 completionTokens,
                 content == null ? 0 : content.length(),
                 elapsedMs(startNanos));
-        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens);
+        return new AiModelResponse(content, finishReason, tokensUsed, e.getName(), model, promptTokens, completionTokens,
+                com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(resp.statusCode(),resp.headers(),resp.body()));
     }
 
     /** Model for a chat call on this endpoint; explicit wire capabilities apply only to the configured fixed model. */
@@ -935,8 +936,13 @@ public class AiModelInvocationService {
             String finishReason,
             Long tokensUsed,
             String endpointUsed,
-            String modelUsed, Long promptTokens, Long completionTokens
+            String modelUsed, Long promptTokens, Long completionTokens,
+            @com.fasterxml.jackson.annotation.JsonIgnore com.aistareco.aep.service.ai.ProviderResponseDiagnostics diagnostics
     ) {
+        public AiModelResponse(String content,String finishReason,Long tokensUsed,String endpointUsed,String modelUsed,Long promptTokens,Long completionTokens){this(content,finishReason,tokensUsed,endpointUsed,modelUsed,promptTokens,completionTokens,null);}
+        public <T extends Throwable> T attachDiagnostics(T error) {
+            return diagnostics == null ? error : diagnostics.attachTo(error);
+        }
         public AiModelResponse(String content,String finishReason,Long tokensUsed,String endpointUsed,String modelUsed){this(content,finishReason,tokensUsed,endpointUsed,modelUsed,null,null);}
     }
 }

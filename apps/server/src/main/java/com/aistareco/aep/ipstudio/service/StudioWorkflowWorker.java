@@ -68,6 +68,7 @@ public class StudioWorkflowWorker {
             if(admission==AiGenerationQueueService.Admission.BUSY)return;
         }
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
+        AiModelInvocationService.AiModelResponse lastReply=null;
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
             if(!progress(id,10,"studio.prepare")) return;
@@ -146,6 +147,7 @@ public class StudioWorkflowWorker {
                         reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
                         }
+                        lastReply=reply;
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
                         script=ModelJson.parse(mapper,reply.content());
                         if(tokenRate!=null) {
@@ -231,7 +233,7 @@ public class StudioWorkflowWorker {
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }
             finish(id,output,null);
-        } catch(Exception e) {log.warn("[studio] run failed id={}",id,e);finish(id,null,e);}
+        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,null,e);}
         finally {if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
