@@ -73,6 +73,11 @@ public class DirectorController {
     }
 
     /** 一键制作：开始 / 暂停 / 继续 / 确认参考图后继续 / 停止。 */
+    @PostMapping("/works/{id}/pipeline/estimate")
+    public ApiResponse<JsonNode> estimate(Principal principal, @PathVariable String id, @RequestBody DirectorService.EstimateRequest req) {
+        return ApiResponse.of(director.estimate(uid(principal), id, req));
+    }
+
     @PostMapping("/works/{id}/pipeline")
     public ApiResponse<JsonNode> pipeline(Principal principal, @PathVariable String id, @RequestBody DirectorService.PipelineRequest req) {
         return ApiResponse.of(director.pipeline(uid(principal), id, req));

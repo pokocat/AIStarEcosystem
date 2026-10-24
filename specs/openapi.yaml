@@ -13649,15 +13649,28 @@ paths:
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:
         '200': { description: ok }
+  /v1/ip-studio/director/works/{id}/pipeline/estimate:
+    post:
+      tags: [ipstudio]
+      operationId: directorPipelineEstimate
+      description: >-
+        一键制作的推荐预算：按作品现状数文字、图片、视频秒数，用与真正提交相同的单价计算，recommended 比 total 多约 15%。
+        还没规划的部分按默认篇幅估（rough=true）。不建任务、不扣积分。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video, film] } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: object, properties: { target: { type: string }, rough: { type: boolean }, total: { type: integer }, recommended: { type: integer }, text: { type: object }, images: { type: object }, videos: { type: object } } } } } }
   /v1/ip-studio/director/works/{id}/pipeline:
     post:
       tags: [ipstudio]
       operationId: directorPipeline
       description: >-
-        一键做到分镜脚本、分镜图或本集视频（target：plan 默认 = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图；board；video。action：start / pause / resume / retry / confirm-assets / confirm-boards / stop / dismiss）。后台调度推进，关页继续；
+        一键制作（target：film 默认 = 一路做到每集导出成片；video；board；plan = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图。
+        auto=true 为全自动：资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等 confirm-*。
+        action：start / pause / resume / retry / confirm-assets / confirm-boards / confirm-videos / stop / dismiss）。整部作品也可以做到视频。后台调度推进，关页继续；
         付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
-      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video] }, budget: { type: integer }, billing: { type: object, nullable: true } } } } } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string, enum: [plan, board, video, film] }, budget: { type: integer }, billing: { type: object, nullable: true }, auto: { type: boolean } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
   /v1/ip-studio/runs/{id}:

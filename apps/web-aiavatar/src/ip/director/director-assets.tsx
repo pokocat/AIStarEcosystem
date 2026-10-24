@@ -6,7 +6,7 @@ import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet } from "./director-shared";
+import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
@@ -173,7 +173,7 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
   const appears = nos.length === 0 ? "" : nos.length === work.episodes.length && nos.length > 1 ? "全剧" : `第 ${nos.join("、")} 集`;
   return <article className={`director-asset-card ${asset.image.adoptedBy === "auto" ? "is-pending" : ""}`}>
     <div className={`director-asset-image kind-${asset.kind}`}>
-      {current?.url ? <img src={current.url} alt={asset.name}/> : <div className="director-asset-placeholder"><ImageIcon size={22}/><span>{audioOnly ? "仅声音出场，无需参考图" : "暂无参考图"}</span></div>}
+      {current?.url ? <ZoomableImage src={current.url} alt={asset.name}/> : <div className="director-asset-placeholder"><ImageIcon size={22}/><span>{audioOnly ? "仅声音出场，无需参考图" : "暂无参考图"}</span></div>}
       {generating && <div className="director-asset-overlay"><Spinner label="生成中"/></div>}
       {asset.image.adoptedBy === "auto" && <span className="director-tag is-warn">待确认</span>}
       {asset.image.adoptedCheck === "outdated" && <span className="director-tag is-warn">需更新</span>}

@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Loader2, Sparkles, X } from "lucide-react";
+import { Check, Loader2, Maximize2, Sparkles, X } from "lucide-react";
+import { createPortal } from "react-dom";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError } from "../studio-errors";
@@ -154,6 +155,28 @@ export function dialogFocus(el: HTMLElement | null) {
   };
   el.addEventListener("keydown", onKey);
   return () => { el.removeEventListener("keydown", onKey); if (previous && document.contains(previous)) previous.focus({ preventScroll: true }); };
+}
+
+/**
+ * 点图放大：全屏查看原图，点任意处或按 Esc 关闭。Esc 在捕获阶段截下，只关大图，不连带关掉外面的抽屉或弹窗。
+ */
+export function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); setOpen(false); } };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [open]);
+  return <>
+    <button type="button" className={`director-zoom-trigger ${className ?? ""}`} onClick={() => setOpen(true)} aria-label={`放大查看${alt}`} title="点击放大">
+      <img src={src} alt={alt}/><span className="director-zoom-hint" aria-hidden><Maximize2 size={14}/>放大</span>
+    </button>
+    {open && createPortal(<div className="director-lightbox" role="dialog" aria-modal="true" aria-label={`${alt}大图`} onClick={() => setOpen(false)}>
+      <img src={src} alt={alt}/>
+      <button type="button" className="director-lightbox-close" aria-label="关闭大图" autoFocus onClick={() => setOpen(false)}><X size={20}/></button>
+    </div>, document.body)}
+  </>;
 }
 
 /** 右侧抽屉：就地查看详情，不离开当前页；点遮罩或 Esc 关闭。 */

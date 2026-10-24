@@ -171,8 +171,10 @@ export interface DirectorPipeline {
   id: string;
   scope: "episode" | "work";
   episodeId: string | null;
-  /** plan = 只做到分镜脚本（分集、资产、镜头与提示词，不出图） */
-  target: "plan" | "board" | "video";
+  /** plan = 只做到分镜脚本（分集、资产、镜头与提示词，不出图）；film = 一路做到每集导出成片 */
+  target: DirectorPipelineTarget;
+  /** 全自动：资产清单、参考图、分镜图、片段视频都不停下来等确认 */
+  auto?: boolean;
   status: DirectorPipelineStatus;
   /** confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
   stage: string;
@@ -284,7 +286,20 @@ export type DirectorEditOp =
   | "extract.save" | "extract.discard";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
-export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "stop" | "dismiss";
+export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
+
+export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";
+
+/** 一键制作的推荐预算：按作品现状和真实单价估算，还没规划的部分按默认篇幅估（rough=true）。 */
+export interface DirectorPipelineEstimate {
+  target: DirectorPipelineTarget;
+  rough: boolean;
+  total: number;
+  recommended: number;
+  text: { count: number; credits: number };
+  images: { count: number; credits: number };
+  videos: { included: boolean; clips: number; seconds: number; credits: number; error: string | null };
+}
 
 export interface DirectorQuote {
   items: Array<{ targetId: string; credits: number | null; error: string | null }>;

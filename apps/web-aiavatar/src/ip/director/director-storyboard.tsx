@@ -7,7 +7,7 @@ import type { DirectorClip, DirectorShot, DirectorWork } from "@ai-star-eco/type
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus } from "./director-shared";
+import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
@@ -228,9 +228,6 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const grid = clip.shots.length > 1;
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
-  // 分镜脚本阶段先看分镜图提示词；有了分镜图再看视频提示词。用户点过就按用户的来。
-  const [promptTab, setPromptTab] = useState<"board" | "video" | null>(null);
-  const shownPrompt = promptTab ?? (clip.board.adoptedId ? "video" : "board");
   return <article className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}/>
     {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
@@ -242,18 +239,11 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
           关联资产<b>{linked.length}</b>{assetIssue && <small>{assetIssue}</small>}</button>
         <button type="button" onClick={onBoard} className={`director-board-link ${boardStatus === "待确认" || boardStatus === "需更新" ? "is-warn" : ""}`} title="视频按这张分镜图逐格生成，保证前后镜头一致">
           <span className={`director-board-mini ${ratio}`}>{board?.url ? <img src={board.url} alt=""/> : <LayoutGrid size={13}/>}{generating && <Loader2 size={13} className="ip-loading-icon"/>}</span>
-          分镜图<small className={tone(boardStatus)}>{grid ? `${Math.min(clip.shots.length, 4)} 格 · ` : ""}{boardStatus}{clip.board.candidates.length > 1 ? ` · ${clip.board.candidates.length} 版` : ""}</small></button>
+          分镜图<small className={tone(boardStatus)}>{grid ? `${Math.min(clip.shots.length, 4)} 格 · ` : ""}{boardStatus === "未生成" ? "未生成，点击生成" : boardStatus}{clip.board.candidates.length > 1 ? ` · ${clip.board.candidates.length} 版` : ""}</small></button>
       </div>
       <section className="director-video-section" aria-label="视频">
-        <header>
-          <div className="director-prompt-tabs" role="group" aria-label="提示词">
-            <button type="button" aria-pressed={shownPrompt === "board"} onClick={() => setPromptTab("board")}>分镜图提示词</button>
-            <button type="button" aria-pressed={shownPrompt === "video"} onClick={() => setPromptTab("video")}>视频提示词</button>
-          </div>
-          <span>{shownPrompt === "board" ? (grid ? `一张 2×2 宫格，第 1–${Math.min(clip.shots.length, 4)} 格依次是第 1–${Math.min(clip.shots.length, 4)} 镜` : "一张单幅分镜画面")
-            : grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成，宫格只作构图和形象参考` : "以分镜画面为构图参考生成"}</span>
-        </header>
-        <PromptEditor key={shownPrompt} work={work} clip={clip} which={shownPrompt} apply={apply} setError={setError}/>
+        <header><b>视频提示词</b><span>{grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成，宫格只作构图和形象参考` : "以分镜画面为构图参考生成"}</span></header>
+        <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
         <div className="director-params" aria-label="生成设置">
           <span><small>风格</small>{work.settings.style}</span>
           <span><small>画幅</small>{work.settings.aspectRatio}</span>
@@ -305,7 +295,7 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
       <p className="director-dialog-note">{cells > 1 ? `2×2 宫格，第 1–${cells} 格依次对应第 1–${cells} 镜。生成视频时按格逐镜参考，保证前后镜头的人物和环境一致。` : "单幅分镜画面，生成视频时作为构图参考。"}</p>
       <div className="director-board-dialog-body">
         <div className={`director-board-big ${ratio}`}>
-          {shown?.url ? <img src={shown.url} alt={`片段 ${clip.order} 的分镜图`}/> : <span>{generating ? "生成中…" : "还没有分镜图"}</span>}
+          {shown?.url ? <ZoomableImage src={shown.url} alt={`片段 ${clip.order} 的分镜图`}/> : <span>{generating ? "生成中…" : "还没有分镜图"}</span>}
           {generating && <div className="director-board-busy"><Spinner label="生成中"/></div>}
           {shown && shown.id === clip.board.adoptedId && <span className={`director-tag-inline ${clip.board.adoptedBy === "auto" ? "is-warn" : ""}`}>{clip.board.adoptedBy === "auto" ? "采用中 · 待确认" : "采用中"}</span>}
         </div>
