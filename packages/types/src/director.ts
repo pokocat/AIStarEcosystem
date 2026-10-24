@@ -220,6 +220,15 @@ export interface DirectorPendingExtractItem {
 
 export interface DirectorPendingExtract { runId: string; at: string; items: DirectorPendingExtractItem[] }
 
+/** 剧本生成时一起写的整体故事大纲；导入的剧本和旧作品没有。 */
+export interface DirectorOutline {
+  world: string;
+  characters: Array<{ name: string; age: string; identity: string; secret: string; flaw: string; arc: string }>;
+  plot: string;
+  reversals: string;
+  theme: string;
+}
+
 export interface DirectorWork {
   id: string;
   title: string;
@@ -231,6 +240,7 @@ export interface DirectorWork {
   genre?: string | null;
   tone?: string | null;
   logline: string;
+  outline?: DirectorOutline | null;
   /** 拆集之前的整份剧本；拆集后为空，正文在各集里。 */
   draft: string;
   draftRev: number;

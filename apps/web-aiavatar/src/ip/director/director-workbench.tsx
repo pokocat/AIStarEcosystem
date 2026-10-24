@@ -28,6 +28,8 @@ export type WorkbenchProps = {
   openSettings: () => void;
   /** 切换当前集（分镜页左侧分集栏）。 */
   pickEpisode: (id: string) => void;
+  /** 打开「一键制作」弹窗。剧本页把它和「AI 拆分」并列放，说明它是快捷方式。 */
+  startPipeline: () => void;
 };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
@@ -38,13 +40,13 @@ function nextStep(work: DirectorWork, episodeId: string | null): { text: string;
   if (running.includes("split")) return { text: "AI 正在拆分集", tab: "script" };
   if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script" };
   const planning = running.find(t => t.startsWith("plan:"));
-  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在规划${ep ? `第 ${ep.no} 集` : ""}片段`, tab: "storyboard" }; }
+  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard" }; }
   if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
   if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script" };
   const clips = work.clips.filter(c => c.episodeId === ep.id);
-  if (clips.length === 0) return { text: `下一步：规划第 ${ep.no} 集片段`, tab: "storyboard" };
+  if (clips.length === 0) return { text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
   const needImage = work.assets.filter(a => used.has(a.id) && !a.image.adoptedId);
   if (needImage.length) return { text: `缺少 ${needImage.length} 张参考图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
@@ -83,6 +85,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const initialTab = useRef(false);
   const [reviewing, setReviewing] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
   const reviewedRun = useRef<string | null>(null);
 
   const apply = useCallback((next: DirectorWork) => {
@@ -132,7 +135,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
-  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: setTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId };
+  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: setTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
     assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
@@ -149,6 +152,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
         step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => setTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
       <PipelineBar {...props}/>
     </div>}
+    {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
     {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
     <InlineError message={error} onClose={() => setError("")}/>
     <div className="director-body">
@@ -212,7 +216,7 @@ function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork;
       <small>{!work.videoModels.length ? "暂无可用视频模型，无法确定片段时长。请联系管理员开通。"
         : work.videoModels.find(m => m.id === videoModel || (!videoModel && m.isDefault))?.mode === "frame"
           ? "仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"
-          : "同时参考分镜图、角色 / 场景 / 道具图和角色声音。片段时长按模型范围规划。"}</small>
+          : "同时参考分镜图、角色 / 场景 / 道具图和角色声音。片段时长按模型支持的范围来定。"}</small>
     </label>
     <p className="director-dialog-note">修改仅影响之后生成的内容，已生成的内容不变。</p>
     <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button><button type="button" className="ip-brand-button" disabled={busy === "settings"} onClick={save}>保存</button></footer>
@@ -223,7 +227,7 @@ function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork;
 
 type Target = "plan" | "board" | "video";
 const TARGET_NOTE: Record<Target, string> = {
-  plan: "自动写剧本、拆分集、提取资产，再把每集规划成片段：每段的镜头、分镜图提示词和视频提示词都写好，不生成图片。资产清单需要你确认。",
+  plan: "自动写剧本、拆分集、提取资产，再给每集写分镜脚本：每段的镜头、分镜图提示词和视频提示词都写好，不生成图片。资产清单需要你确认。",
   board: "在分镜脚本的基础上，继续生成参考图和分镜图；参考图确认后才出分镜图。",
   video: "做到片段视频：参考图和分镜图都需要你确认。",
 };
@@ -248,9 +252,8 @@ function estimate(work: DirectorWork, scope: "episode" | "work", episodeId: stri
   return { text, images, total: text * textMax + images * image, unknownClips };
 }
 
-function PipelineBar({ work, episodeId, apply, setError, goTab, reviewExtract }: WorkbenchProps) {
+function PipelineBar({ work, apply, setError, goTab, reviewExtract, startPipeline }: WorkbenchProps) {
   const p = work.pipeline;
-  const [starting, setStarting] = useState(false);
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "stop" | "dismiss", budget?: number) =>
     void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), setError);
@@ -260,7 +263,7 @@ function PipelineBar({ work, episodeId, apply, setError, goTab, reviewExtract }:
       {!live && <>
         {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
         {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
-        <button type="button" className="ip-brand-button director-oneclick" title="从剧本到分镜脚本、分镜图或片段视频，后台自动执行，关闭页面不中断。" onClick={() => setStarting(true)}><Sparkles size={15}/>一键制作</button>
+        <button type="button" className="ip-brand-secondary director-oneclick" title="快捷方式：自动连着做拆分集、提取资产和分镜脚本，只在需要确认的地方停下。想逐步检查每一步，就按剧本页的步骤来。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>
@@ -281,7 +284,6 @@ function PipelineBar({ work, episodeId, apply, setError, goTab, reviewExtract }:
         </div>
       </>}
     </div>
-    {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
   </>;
 }
 
@@ -321,12 +323,13 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
     <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-start-title">一键制作</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
+      <p className="director-shortcut-note">这是快捷方式，会把后面几步连着自动做完。正常的做法是先「AI 拆分」分集，再提取资产、写分镜脚本，每一步都能先看再改。</p>
       <div className="director-field"><span>制作到</span><div className="director-segmented">
         <button type="button" aria-pressed={target === "plan"} onClick={() => setTarget("plan")}>分镜脚本</button>
         <button type="button" aria-pressed={target === "board"} onClick={() => setTarget("board")}>分镜图</button>
         <button type="button" aria-pressed={target === "video"} onClick={() => setTarget("video")}>片段视频</button></div></div>
       <p className="director-dialog-note">{TARGET_NOTE[target]}已完成内容不重做，已有内容不覆盖。</p>
-      {target === "video" && <p className="director-dialog-note">视频按模型和时长计费，片段规划后显示准确价格。每次制作一集。</p>}
+      {target === "video" && <p className="director-dialog-note">视频按模型和时长计费，写好分镜脚本后显示准确价格。每次制作一集。</p>}
       {work.episodes.length > 1 && target !== "video" && <div className="director-field"><span>范围</span><div className="director-segmented">
         <button type="button" aria-pressed={scope === "episode"} onClick={() => setScope("episode")}>第 {ep?.no} 集</button>
         <button type="button" aria-pressed={scope === "work"} onClick={() => setScope("work")}>全部 {work.episodes.length} 集</button></div></div>}
@@ -335,7 +338,7 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
         {target === "plan" ? <div><span>图片</span><b>不生成</b><small>确认分镜脚本后再出图</small></div>
           : <div><span>图片</span><b>{est.unknownClips ? "约 " : ""}{est.images} 张</b><small>{costText(est.images * work.pricing.image, work.pricing.mock)}</small></div>}
       </div>
-      {est.unknownClips && target !== "plan" && <p className="director-dialog-note">片段尚未规划，图片数量为估算值。</p>}
+      {est.unknownClips && target !== "plan" && <p className="director-dialog-note">还没写分镜脚本，图片数量是估算的。</p>}
       <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={budget} onChange={e => { setBudgetTouched(true); setBudget(e.target.value.replace(/\D/g, "")); }}/>
         <small>达到上限即暂停，不会超支。{target !== "video" ? "不包含视频。" : ""}</small></label>
       <InlineError message={error}/>

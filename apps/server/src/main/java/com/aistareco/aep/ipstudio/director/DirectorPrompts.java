@@ -89,13 +89,22 @@ public final class DirectorPrompts {
             3. 关键道具给具体名称和一个可辨认的外观细节（如「掉漆的蓝色铁皮饼干盒」），出现、转手和去向都有交代。
             4. 每场写明出场人物、可见动作、对白和环境细节（烟火气元素）；心理活动转成可拍的行为，确需旁白时标明说话者。
 
+            【先写故事大纲，再写正文】
+            先在 outline 里写清整体故事，正文严格按大纲展开，人物、主线和反转与大纲一致：
+            - world：世界观 / 核心设定（含场景的隐藏信息、特殊规则或时间限定）
+            - characters：主要人物（2–5 人），每人写 name、age、identity（表面身份）、secret（隐藏身份 / 秘密，没有写「无」）、flaw（性格缺点 / 小毛病）、arc（全剧成长弧光）
+            - plot：全剧主线脉络，按起、承、转、合四段写，说清每集推进到哪
+            - reversals：反转排布，写明第几集什么反转、伏笔埋在哪一集哪个细节
+            - theme：核心主题，写具体的情绪落点，不喊口号
+            只有一集或几秒的短片时，大纲按篇幅写短，不为凑字段编多余的人物和反转。
+
             【写法】
             1. 按目标时长控制密度，不要用大量台词和连续复杂动作塞满几秒钟。
             2. 不写模型参数、宫格描述或生图提示词，只交付故事。
             3. 正文使用中文。多于一集时每集用「# 第N集 集名」做标题；每场用「## 第N场 地点 · 时间」做标题；对白写成「人物：台词」。
             4. 正文只写剧本本身：场标题下直接写动作、环境和对白，不用列表符号、不加粗，不写「出场人物」「环境细节」「钩子」「伏笔」「反转」这类策划标注；
                钩子、伏笔和反转用画面和台词表现出来。
-            输出 JSON：{"title":"剧名","logline":"一句话核心卖点","content":"完整剧本正文"}
+            输出 JSON：{"title":"剧名","logline":"一句话核心卖点","outline":{"world":"…","characters":[{"name":"…","age":"…","identity":"…","secret":"…","flaw":"…","arc":"…"}],"plot":"…","reversals":"…","theme":"…"},"content":"完整剧本正文"}
             """;
 
     /** 题材追加规则（用户在剧本页选的），原文照用。 */
@@ -230,8 +239,22 @@ public final class DirectorPrompts {
     private static JsonNode validateScript(ObjectMapper om, JsonNode out) {
         String content = text(out, "content");
         if (content.length() < 20) throw bad("模型未返回剧本正文");
-        return om.createObjectNode().put("title", clip(text(out, "title"), 60)).put("logline", clip(text(out, "logline"), 200))
+        ObjectNode r = om.createObjectNode().put("title", clip(text(out, "title"), 60)).put("logline", clip(text(out, "logline"), 200))
                 .put("content", content);
+        // 故事大纲是附带的：缺了或不完整不判失败，有什么存什么。
+        JsonNode o = out.path("outline");
+        if (o.isObject()) {
+            ObjectNode outline = r.putObject("outline");
+            for (String f : List.of("world", "plot", "reversals", "theme")) outline.put(f, clip(text(o, f), 2000));
+            ArrayNode people = outline.putArray("characters");
+            for (JsonNode p : o.path("characters")) {
+                String name = clip(text(p, "name"), 40);
+                if (name.isEmpty() || people.size() >= 8) continue;
+                ObjectNode person = people.addObject().put("name", name);
+                for (String f : List.of("age", "identity", "secret", "flaw", "arc")) person.put(f, clip(text(p, f), 400));
+            }
+        }
+        return r;
     }
 
     private static JsonNode validateSplit(ObjectMapper om, JsonNode meta, JsonNode out) {

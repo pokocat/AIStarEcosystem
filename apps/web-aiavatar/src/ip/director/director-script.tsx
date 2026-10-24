@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, Loader2, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
+import type { ReactNode } from "react";
+import { BookOpen, ChevronRight, Loader2, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
@@ -84,7 +85,55 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   </section>;
 }
 
-function DraftEditor({ work, apply, setError, splitting }: WorkbenchProps & { splitting: boolean }) {
+/** 整体故事大纲：先知道全剧在讲什么，再看分集正文。剧本生成时一起写，导入的剧本没有。 */
+function StoryOutline({ work, defaultOpen = true }: { work: DirectorWork; defaultOpen?: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  const o = work.outline;
+  if (!o) return null;
+  const rows: Array<[string, string]> = ([["世界观", o.world], ["主线", o.plot], ["反转与伏笔", o.reversals], ["主题", o.theme]] as Array<[string, string]>).filter(([, v]) => v?.trim());
+  return <section className={`director-outline ${open ? "is-open" : ""}`} aria-label="故事大纲">
+    <button type="button" className="director-outline-head" aria-expanded={open} onClick={() => setOpen(v => !v)}>
+      <BookOpen size={16}/><b>故事大纲</b>{work.logline && <span title={work.logline}>{work.logline}</span>}
+      <ChevronRight size={16} className="director-outline-chevron"/>
+    </button>
+    {open && <div className="director-outline-body">
+      {o.characters.length > 0 && <div className="director-outline-people">{o.characters.map(c =>
+        <article key={c.name}>
+          <h4>{c.name}{(c.age || c.identity) && <small>{[c.age && (/\d$/.test(c.age) ? `${c.age} 岁` : c.age), c.identity].filter(Boolean).join(" · ")}</small>}</h4>
+          {c.secret && c.secret !== "无" && <p><em>秘密</em>{c.secret}</p>}
+          {c.flaw && <p><em>毛病</em>{c.flaw}</p>}
+          {c.arc && <p><em>变化</em>{c.arc}</p>}
+        </article>)}</div>}
+      <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+    </div>}
+  </section>;
+}
+
+/**
+ * 剧本页的「下一步」：逐步做（正常路径）和一键制作（快捷方式）并排，位置固定在大纲下面、正文上面，
+ * 拆分前后都在同一个地方，不会一会在上一会在下。
+ */
+function NextChoices({ work, title, desc, children, onShortcut, shortcutDesc, shortcutDisabled, shortcutNote }: { work: DirectorWork; title: string; desc: string; children: ReactNode;
+  onShortcut: () => void; shortcutDesc: string; shortcutDisabled?: boolean; shortcutNote?: string }) {
+  const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
+  return <div className="director-next-choices" role="group" aria-label="下一步">
+    <div className="is-main">
+      <h4>{title}<small>推荐</small></h4>
+      <p>{desc}</p>
+      <div className="director-actions">{children}</div>
+    </div>
+    <div>
+      <h4>或者：一键制作<small className="is-shortcut">快捷</small></h4>
+      <p>{shortcutDesc}</p>
+      <div className="director-actions">
+        <button type="button" className="ip-brand-secondary" disabled={shortcutDisabled || live} onClick={onShortcut}><Sparkles size={15}/>一键制作</button>
+        {(live ? "一键制作进行中，进度在上方" : shortcutNote) && <span className="director-muted">{live ? "一键制作进行中，进度在上方" : shortcutNote}</span>}
+      </div>
+    </div>
+  </div>;
+}
+
+function DraftEditor({ work, apply, setError, splitting, startPipeline }: WorkbenchProps & { splitting: boolean }) {
   const draftKey = `${work.id}:draft`;
   const [text, setText, dirty] = useDraft(draftKey, work.draft);
   const [count, setCount] = useState("");
@@ -104,30 +153,31 @@ function DraftEditor({ work, apply, setError, splitting }: WorkbenchProps & { sp
     apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing, maxCost: cost }));
   }, setError);
   const rewriting = runningTask(work, "script");
-  return <section className="director-panel">
-    <div className="director-panel-head"><h3>剧本</h3>{work.logline && <p>{work.logline}</p>}</div>
-    {rewriting && <AiWorking compact title="AI 正在重新写剧本" task={rewriting} detail="写好后替换下面的剧本，当前版本保留在历史中。"/>}
-    {splitting && <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/>}
-    <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
-    <div className="director-actions">
-      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
-      {dirty && <span className="director-unsaved">未保存</span>}
+  return <section className="director-panel director-script-list">
+    <div className="director-toolbar">
+      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "还没拆分集"}</p></div>
       <span className="director-spacer"/>
+      {dirty && <span className="director-unsaved">未保存</span>}
+      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
       {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
-      {splitting ? null : <>
-        <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
+    </div>
+    <StoryOutline work={work}/>
+    {rewriting && <AiWorking compact title="AI 正在重新写剧本" task={rewriting} detail="写好后替换下面的剧本，当前版本保留在历史中。"/>}
+    {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
+      <NextChoices work={work} shortcutDesc="把拆分集、提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。" title="下一步：拆分集" desc="AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。之后提取资产、写分镜脚本，每一步都能先看再改。"
+        onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
         <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
         <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>AI 拆分</button>
+        <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
         <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
-      </>}
-    </div>
-    <p className="director-dialog-note">拆分只划定每集范围，不改写正文。拆分后在左侧选择分集编辑。</p>
+      </NextChoices>}
+    <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
   </section>;
 }
 
 /** 全部集一个视图：一集一行，点开原地编辑，可同时展开几集；资产一次按全剧提取。 */
 function EpisodeList(props: WorkbenchProps) {
-  const { work, episodeId, apply, setError } = props;
+  const { work, episodeId, apply, setError, goTab, startPipeline } = props;
   // 默认展开当前集（还没选过就第一集），以及有没保存修改的集。
   const [open, setOpen] = useState<Set<string>>(() => new Set(work.episodes.filter(e => e.id === (episodeId ?? work.episodes[0]?.id) || hasDrafts(`${work.id}:ep:${e.id}:`)).map(e => e.id)));
   const { busy, run } = useBusy();
@@ -143,18 +193,24 @@ function EpisodeList(props: WorkbenchProps) {
   }, setError);
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
-      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline ? ` · ${work.logline}` : ""}</p></div>
+      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline && !work.outline ? ` · ${work.logline}` : ""}</p></div>
       <span className="director-spacer"/>
       <button type="button" className="ip-brand-text-button" onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
       {work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
-      {extracting ? null : <>
-        <button type="button" className="ip-brand-button" disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
-          <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
-        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
-      </>}
     </div>
+    <StoryOutline work={work} defaultOpen={!work.assets.length}/>
     {runningTask(work, "script") && <AiWorking compact title="AI 正在重新写剧本" task={runningTask(work, "script")} detail="写好后替换当前剧本和分集，当前版本保留在历史中。"/>}
-    {extracting && <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/>}
+    {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
+      <NextChoices work={work} shortcutDesc={work.assets.length ? "按已有资产给每集写分镜脚本，可选继续出参考图和分镜图，需要确认的地方会停下。中间不能逐步检查。"
+        : "把提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。"} title={work.assets.length ? "资产已提取" : "下一步：提取全剧资产"}
+        desc={work.assets.length ? `已有 ${work.assets.length} 项资产。改了正文可以重新提取，同一人物不会重复新建；接着去「资产」生成参考图，或到「分镜」写分镜脚本。`
+          : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
+        onShortcut={startPipeline} shortcutDisabled={!!busy}>
+        <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
+          <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
+        {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
+        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
+      </NextChoices>}
     <InlineError message={extractError}/>
     <ol className="director-episode-list">{work.episodes.map(e =>
       <EpisodeRow key={e.id + ":" + e.rev} {...props} ep={e} open={open.has(e.id)} onToggle={() => toggle(e.id)}/>)}</ol>
@@ -173,7 +229,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
     clearDrafts(prefix); apply(next);
   }, setError);
   const clips = work.clips.filter(x => x.episodeId === ep.id);
-  const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待规划";
+  const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待写分镜";
   return <li className={`director-episode-item ${open ? "is-open" : ""}`}>
     <button type="button" className="director-episode-row" aria-expanded={open} onClick={onToggle}>
       <ChevronRight size={16} className="director-episode-chevron"/>
@@ -188,7 +244,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
         <Field label="集名"><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}/></Field>
         <Field label="本集摘要"><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
       </div>
-      {ep.planStale && <div className="director-warn">正文在规划后有修改，片段可能与正文不一致。可在「分镜」重新规划（已有分镜图的片段需先删除）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
+      {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。可在「分镜」重写分镜脚本（已有分镜图的片段要先删掉）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
       <textarea className="director-script-text" aria-label={`第 ${ep.no} 集正文`} value={content} maxLength={60000} onChange={e => setContent(e.target.value)}/>
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>

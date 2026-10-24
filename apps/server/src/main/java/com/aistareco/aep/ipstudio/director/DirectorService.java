@@ -502,6 +502,8 @@ public class DirectorService {
                 nodeId = targetId == null ? "extract" : "extract:" + targetId;
                 system = DirectorPrompts.EXTRACT;
                 ObjectNode in = om.createObjectNode().put("style", c.path("settings").path("style").asText());
+                // 大纲里的人物年龄、身份给资产统筹参考，角色描述和故事对得上。
+                if (c.path("outline").path("characters").isArray()) in.set("outlineCharacters", c.path("outline").path("characters"));
                 ArrayNode es = in.putArray("episodes"), nos = meta.putArray("episodeNos"), epHashes = meta.putArray("episodes");
                 for (JsonNode ep : eps) {
                     es.addObject().put("no", ep.path("no").asInt()).put("title", ep.path("title").asText()).put("content", ep.path("content").asText());
@@ -522,7 +524,7 @@ public class DirectorService {
                 if (ep.path("content").asText().isBlank()) throw invalid("本集暂无正文");
                 for (JsonNode clip : c.path("clips"))
                     if (targetId.equals(clip.path("episodeId").asText()) && hasMedia(clip))
-                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "本集片段已有分镜图或视频，重新规划将丢弃这些内容。请先删除不需要的片段");
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "本集片段已有分镜图或视频，重写分镜脚本会丢掉这些内容。请先删除不需要的片段");
                 if (c.path("assets").isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
                 Limits lim = limits(c);
                 if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
@@ -961,12 +963,14 @@ public class DirectorService {
                     ArrayNode history = c.withArray("scriptHistory");
                     StringBuilder old = new StringBuilder(c.path("draft").asText());
                     for (JsonNode ep : c.path("episodes")) { if (old.length() > 0) old.append("\n\n"); old.append(ep.path("content").asText()); }
-                    history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString()));
+                    history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString())
+                            .set("outline", c.path("outline").isObject() ? c.path("outline") : om.nullNode()));
                     while (history.size() > 3) history.remove(history.size() - 1);
                     c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract");
                     for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
                     c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
                     if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
+                    if (d.path("outline").isObject()) c.set("outline", d.path("outline")); else c.putNull("outline");
                     notice(c, "剧本已重新生成，旧版本保留在历史中；资产保留，请重新拆分并提取资产");
                     return;
                 }
@@ -975,6 +979,7 @@ public class DirectorService {
                 }
                 c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
                 if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
+                if (d.path("outline").isObject()) c.set("outline", d.path("outline"));
             }
             case "split" -> {
                 String draft = c.path("draft").asText();
@@ -1015,7 +1020,7 @@ public class DirectorService {
                 ObjectNode ep = (ObjectNode) findOrNull(c, "episodes", epId);
                 if (ep == null) return;
                 if (!hash(ep.path("content").asText()).equals(in.path("contentHash").asText())) {
-                    notice(c, "规划期间第 " + ep.path("no").asInt() + " 集正文有修改，本次结果未使用，请重新规划"); return;
+                    notice(c, "写分镜脚本期间第 " + ep.path("no").asInt() + " 集正文有修改，这次结果没有用上，请重写分镜脚本"); return;
                 }
                 // 规划期间用户改过本集片段（提示词、镜头、增删）：保留原片段，新计划留着让用户决定要不要换。
                 boolean touched = !clipsHash(c, epId).equals(in.path("clipsHash").asText());
@@ -1024,7 +1029,7 @@ public class DirectorService {
                 if (touched || media) {
                     ObjectNode pending = ep.putObject("pendingPlan").put("runId", run.getId()).put("at", Instant.now().toString());
                     pending.set("clips", d.path("clips").deepCopy());
-                    notice(c, "第 " + ep.path("no").asInt() + " 集片段在规划期间有修改，新计划未覆盖。可在「分镜」中选择替换");
+                    notice(c, "第 " + ep.path("no").asInt() + " 集片段在写分镜脚本期间有修改，新写的版本没有覆盖。可在「分镜」中选择换成新版本");
                     return;
                 }
                 replaceClips(c, ep, d.path("clips"));
@@ -1213,7 +1218,7 @@ public class DirectorService {
             for (JsonNode ep : eps) {
                 if (hasClips(c, ep.path("id").asText()) || ep.path("pendingPlan").isObject() || failed.contains("plan:" + ep.path("id").asText())) continue;
                 planning = true;
-                if (!step.send("plan", ep.path("id").asText(), "片段规划中")) return;
+                if (!step.send("plan", ep.path("id").asText(), "正在写分镜脚本")) return;
             }
             if (planning) return;
             // 只做到分镜脚本：分集、资产和每段的镜头、分镜图提示词、视频提示词都有了就停，不出图。
@@ -1223,7 +1228,7 @@ public class DirectorService {
                     planFailed.add("第 " + ep.path("no").asInt() + " 集");
                 if (!planFailed.isEmpty()) {
                     p.put("status", "waiting").put("stage", "failed-items").put("message",
-                            String.join("、", planFailed) + "片段规划失败。可点「重试失败项」，或在「分镜」中单独规划");
+                            String.join("、", planFailed) + "分镜脚本没写成。可点「重试失败项」，或在「分镜」中单独写");
                     return;
                 }
                 int planned = clipsOf(c, eps).size();
@@ -1537,7 +1542,7 @@ public class DirectorService {
                         : DirectorPrompts.videoPrompt(c.path("settings"), clip, videoRefs, names, voices, unvoiced, voiceDescs));
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
-            if (shots == 0) issues.add("暂无镜头：请添加镜头或重新规划本集");
+            if (shots == 0) issues.add("暂无镜头：请添加镜头或重写本集分镜脚本");
             if (lim != null && lim.frame() && shots > 1)
                 issues.add("视频模型「" + lim.name() + "」仅使用分镜首帧，每个片段限 1 个镜头，当前有 " + shots + " 个。请拆分或重新规划本集");
             else if (shots > DirectorPrompts.MAX_SHOTS) issues.add("有 " + shots + " 个镜头，分镜板最多 " + DirectorPrompts.MAX_SHOTS + " 格。请拆分片段或删除多余镜头");
@@ -1899,10 +1904,14 @@ public class DirectorService {
         return added;
     }
 
-    /** 用户最初的创意随分集、规划一起交给模型，让时长 / 集数 / 镜头数等要求一路生效；导入剧本没有创意就不放。 */
+    /**
+     * 用户最初的创意随分集、规划一起交给模型，让时长 / 集数 / 镜头数等要求一路生效；导入剧本没有创意就不放。
+     * 有故事大纲时一并给（人物身份、主线），分集和提取对得上整体故事。
+     */
     private static void putBrief(ObjectNode in, JsonNode c) {
         String idea = c.path("idea").asText();
         if (!idea.isBlank()) in.put("brief", idea);
+        if (c.path("outline").isObject()) in.set("outline", c.path("outline"));
     }
 
     private static boolean audioOnly(JsonNode a) { return a.path("description").asText("").contains("只出声音"); }
