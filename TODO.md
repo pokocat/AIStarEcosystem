@@ -30,6 +30,8 @@
 
 ## Studio 当前待办
 
+- [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
+
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。

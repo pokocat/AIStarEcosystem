@@ -459,15 +459,16 @@ function generalTurn(p: MockProject, t: MockThread) {
 const clip = (text: string, max: number) => { const t = text.replace(/\s+/g, " ").trim(); return Array.from(t).length > max ? `${Array.from(t).slice(0, max).join("")}…` : t; };
 const ratioIn = (text: string, fallback: string) => text.match(/(\d{1,2})\s*[:：]\s*(\d{1,2})/)?.slice(1, 3).join(":") || fallback;
 const secondsIn = (text: string) => Number(text.match(/(\d{1,2})\s*秒/)?.[1]) || 5;
-/** What kind of picture the request names (the 「制作个人 IP」 card asks for one of these three). */
-const pictureIn = (text: string) => /设定图/.test(text) ? "多视角设定图" : /三视图/.test(text) ? "三视图" : /头像/.test(text) ? "头像" : "图";
+/** Prefer the requested output to incidental references to other picture types inside a full prompt. */
+const pictureIn = (text: string) => text.match(/出一张(IP 全视角图鉴|标准三视图|场景化全身主视觉|胸像头像特写|多动作延展图)/)?.[1]
+  || (/设定图/.test(text) ? "多视角设定图" : /三视图/.test(text) ? "三视图" : /头像/.test(text) ? "头像" : "图");
 const shape = (ratio: string) => ratio === "9:16" ? "竖屏" : ratio === "16:9" ? "横屏" : ratio;
 const sentence = (text: string) => text.trim().replace(/[。.！!？?，,\s]+$/, "");
 type DirectSpec = { operation: "image" | "video"; ratio: string; quotedCost: (text: string) => number; title: (text: string, ratio: string) => string; summary: (text: string, ratio: string) => string; prompt: (text: string, ratio: string) => string; said: string };
 const DIRECT_STEP: Record<string, DirectSpec> = {
   "image-generation": { operation: "image", ratio: "1:1", quotedCost: () => 8, title: (text, ratio) => `一张 ${ratio} 的${pictureIn(text)}`,
     summary: (text, ratio) => `一张 ${ratio} 的${pictureIn(text)}：${clip(text, 24)}`,
-    prompt: (text, ratio) => `${sentence(text)}。${ratio} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
+    prompt: (text, ratio) => /制作个人 IP，出一张/.test(text) ? text.trim() : `${sentence(text)}。${ratio} 画幅，主体居中，画面干净，细节清楚。`, said: "按你的描述出一张。" },
   "video-generation": { operation: "video", ratio: "9:16", quotedCost: text => secondsIn(text) * 8, title: (text, ratio) => `一段 ${secondsIn(text)} 秒${shape(ratio)}视频`,
     summary: (text, ratio) => `一段 ${secondsIn(text)} 秒${shape(ratio)}视频：${clip(text, 22)}`,
     prompt: (text, ratio) => `${sentence(text)}。${ratio}，${secondsIn(text)} 秒，${/镜头/.test(text) ? "" : "镜头缓慢推近，"}光线自然。`, said: "按你的描述出一段。" },

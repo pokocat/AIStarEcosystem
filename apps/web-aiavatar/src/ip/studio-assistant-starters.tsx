@@ -8,6 +8,7 @@
 import type { ChangeEvent, KeyboardEvent } from "react";
 import { ArrowLeft, Check, Clapperboard, Repeat2, ScanFace, ScrollText, X, type LucideIcon } from "lucide-react";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
+import { IP_PICTURE_TYPES, IP_PROMPT_STYLES, composePersonalIpPrompt, ipPromptSelection } from "./personal-ip-prompts";
 
 export type StarterKey = "ip" | "script" | "video" | "recreation";
 /** Material taken from the message's references by node type. `min` 0 is optional. */
@@ -15,7 +16,8 @@ export type StarterSlot = { kind: "slot"; id: string; label: string; type: "imag
   /** What the slot takes, shown while it is empty: 「1–3 张图片」. */
   need: string; hint?: string; missing: string; tooMany: string };
 export type StarterChoice = { value: string; label: string; phrase?: string };
-export type StarterOptions = { kind: "option"; id: string; label: string; choices: StarterChoice[]; defaultValue: string };
+export type StarterOptions = { kind: "option"; id: string; label: string; choices: StarterChoice[]; defaultValue: string;
+  when?: { option: string; value: string } };
 export type StarterField = { kind: "field"; id: string; label: string; placeholder: string; required: boolean; missing?: string };
 export type StarterItem = StarterSlot | StarterOptions | StarterField;
 type Titled = Pick<CanvasNodeData, "title">;
@@ -44,11 +46,10 @@ const option = (items: StarterItem[], v: StarterValues, id: string) => {
 const IP_ITEMS: StarterItem[] = [
   { kind: "slot", id: "photos", label: "你的照片", type: "image", min: 1, max: 3, need: "1–3 张照片", missing: "还差照片", tooMany: "照片最多 3 张",
     hint: "正脸清晰、光线均匀、只有一个人，效果最好。只用本人或已获授权的照片。" },
-  { kind: "option", id: "style", label: "风格", defaultValue: "写实", choices: ["写实", "3D 卡通", "日系动漫", "国潮插画", "Q 版"].map(value => ({ value, label: value })) },
-  { kind: "option", id: "output", label: "要出的图", defaultValue: "sheet", choices: [
-    { value: "sheet", label: "多视角设定图", phrase: "多视角设定图（正面、侧面、背面加几个表情）" },
-    { value: "turnaround", label: "只要三视图", phrase: "三视图（正面、侧面、背面）" },
-    { value: "avatar", label: "头像", phrase: "头像" }] },
+  { kind: "option", id: "style", label: "风格", defaultValue: "business", choices: IP_PROMPT_STYLES.map(({ value, label }) => ({ value, label })) },
+  { kind: "option", id: "output", label: "要出的图", defaultValue: "sheet", choices: IP_PICTURE_TYPES.map(({ value, label, ratio }) => ({ value, label: `${label} · ${value === "scene" ? "横 / 竖" : ratio}` })) },
+  { kind: "option", id: "sceneRatio", label: "画幅", defaultValue: "9:16", when: { option: "output", value: "scene" }, choices: [
+    { value: "9:16", label: "9:16 竖版" }, { value: "16:9", label: "16:9 横版" }] },
 ];
 const SCRIPT_ITEMS: StarterItem[] = [
   { kind: "field", id: "synopsis", label: "一句梗概", placeholder: "比如：外卖员送错一单，意外救了老板的女儿", required: true, missing: "先写一句梗概" },
@@ -76,8 +77,7 @@ const RECREATION_ITEMS: StarterItem[] = [
 export const STUDIO_STARTERS: StarterConfig[] = [{
   key: "ip", title: "制作个人 IP", gets: "真人照片变成数字形象，出多角度设定图", needs: "1–3 张照片", skill: "image-generation", Icon: ScanFace, tone: "ip", items: IP_ITEMS,
   compose: v => {
-    const photos = v.slots.photos || [];
-    return `用${photos.length ? ` ${tags(photos)} ` : "我的照片"}做一个我的数字 IP 形象，保留脸型、发型和主要特征，${option(IP_ITEMS, v, "style")}风格，出一张${option(IP_ITEMS, v, "output")}。`;
+    return composePersonalIpPrompt((v.slots.photos || []).map(n => n.title), v.options);
   },
 }, {
   key: "script", title: "写剧本", gets: "一句梗概写成能拍的分场剧本", needs: "一句梗概", skill: "script-writing", Icon: ScrollText, tone: "text", items: SCRIPT_ITEMS,
@@ -154,13 +154,16 @@ type FormProps = {
   slots: Record<string, CanvasNodeData[]>; options: Record<string, string>; fields: Record<string, string>;
   /** The composer text is the user's own now: options no longer rewrite it, and 「按选项重写」 brings the sentence back. */
   edited: boolean;
+  /** The actual composer text, including any manual edits, shown without line clamping. */
+  prompt: string;
   onBack: () => void; onOption: (id: string, value: string) => void; onField: (id: string, value: string) => void;
   onPick: () => void; onUpload: () => void; onRemove: (node: CanvasNodeData) => void; onRewrite: () => void;
   /** Enter in a text line sends, like Enter in the composer. */
   onSubmit: () => void;
 };
 
-export function StudioAssistantStarterForm({ config, slots, options, fields, edited, onBack, onOption, onField, onPick, onUpload, onRemove, onRewrite, onSubmit }: FormProps) {
+export function StudioAssistantStarterForm({ config, slots, options, fields, edited, prompt, onBack, onOption, onField, onPick, onUpload, onRemove, onRewrite, onSubmit }: FormProps) {
+  const ipSelection = config.key === "ip" ? ipPromptSelection(options) : undefined;
   const enter = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
     e.preventDefault(); onSubmit();
@@ -192,6 +195,7 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
         </div>;
       }
       if (item.kind === "option") {
+        if (item.when && options[item.when.option] !== item.when.value) return null;
         const selected = item.choices.some(c => c.value === options[item.id]) ? options[item.id] : item.defaultValue;
         return <div key={item.id} className="studio-assistant-starter-option" role="group" aria-label={item.label}>
           <span className="studio-assistant-starter-label">{item.label}</span>
@@ -207,6 +211,15 @@ export function StudioAssistantStarterForm({ config, slots, options, fields, edi
           onChange={(e: ChangeEvent<HTMLInputElement>) => onField(item.id, e.target.value)} onKeyDown={enter}/>
       </label>;
     })}
+    {ipSelection && <div className="studio-assistant-starter-prompt-note" role="note" aria-label="提示词说明">
+      <strong>{ipSelection.ratio} · {ipSelection.picture.label}</strong>
+      <p>{ipSelection.picture.layout}</p>
+      <p>{edited ? "你已手动修改提示词，切换选项不会覆盖。点“按选项重写”可使用当前选择。" : "完整提示词已填入下方输入框，包含人物特征、风格、版式和需要避免的内容，可直接发送或修改。"}</p>
+    </div>}
+    {ipSelection && <details className="studio-assistant-starter-full-prompt" open>
+      <summary>完整提示词</summary>
+      <div role="region" aria-label="完整提示词正文">{prompt}</div>
+    </details>}
     {edited && <p className="studio-assistant-starter-rewrite"><button type="button" className="studio-dialogue-link" title="用上面的选项重新写输入框里的话" onClick={onRewrite}>按选项重写</button></p>}
   </section>;
 }
