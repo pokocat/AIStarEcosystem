@@ -21,6 +21,7 @@
 .impeccable/critique/*.md
 !.impeccable/critique/ignore.md
 figma/
+/design/
 *.ttf
 *.otf
 *.woff
