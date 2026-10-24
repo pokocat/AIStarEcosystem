@@ -78,6 +78,8 @@ modelCapabilities 指定本次模型实际能力；acceptedVersions 指定当前
 
 ## 3. A1 编剧：把想法写成可制作的故事
 
+> 2026-10-24 起线上 A1 不再用本节原文：策划与写法改用用户提供的竖屏短剧编剧提示词（去 AI 味、多集规则、创意发散、前 3 集功能、题材 / 调性追加规则），输出格式不变。现行文本在 `DirectorPrompts.SCRIPT / GENRES / TONES`。
+
 **输入：** `mode=create|revise`、`phase=outline|draft|revise`、用户创意 `brief`、时长／集数意向、目标受众与题材（如用户提供）、故事计划、当前写作范围、已有剧本、锁定段落、修改要求。没有用户时长要求时给出建议，并标为建议。
 
 ```text

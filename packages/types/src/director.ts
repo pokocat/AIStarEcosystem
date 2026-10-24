@@ -171,7 +171,8 @@ export interface DirectorPipeline {
   id: string;
   scope: "episode" | "work";
   episodeId: string | null;
-  target: "board" | "video";
+  /** plan = 只做到分镜脚本（分集、资产、镜头与提示词，不出图） */
+  target: "plan" | "board" | "video";
   status: DirectorPipelineStatus;
   /** confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
   stage: string;
@@ -226,6 +227,9 @@ export interface DirectorWork {
   createdAt: string;
   updatedAt: string;
   idea: string;
+  /** 剧本题材 / 调性（剧本页选的，空表示不限），决定编剧提示词追加哪组规则 */
+  genre?: string | null;
+  tone?: string | null;
   logline: string;
   /** 拆集之前的整份剧本；拆集后为空，正文在各集里。 */
   draft: string;

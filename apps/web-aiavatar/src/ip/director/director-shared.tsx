@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Loader2, X } from "lucide-react";
+import { Check, Loader2, Sparkles, X } from "lucide-react";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError } from "../studio-errors";
@@ -58,6 +58,30 @@ export function costText(n: number, mock: boolean) {
 
 export function Spinner({ label }: { label: string }) {
   return <span className="director-running" role="status"><Loader2 size={14} className="ip-loading-icon"/>{label}</span>;
+}
+
+/** 从任务开始算的已用时间，每秒走一次；时间来自服务端任务的 createdAt，不编进度。 */
+function useElapsed(since?: string | null) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const t = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(t); }, []);
+  const start = since ? Date.parse(since) : NaN;
+  if (!Number.isFinite(start)) return null;
+  const sec = Math.max(0, Math.floor((now - start) / 1000));
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, "0")}`;
+}
+
+/** AI 正在写：一块会动的卡片，说清在做什么、已经多久、关掉页面也不停。只写真实信息，没有假进度。 */
+export function AiWorking({ title, detail, task, compact }: { title: string; detail?: string; task?: DirectorTask; compact?: boolean }) {
+  const elapsed = useElapsed(task?.createdAt);
+  return <div className={`director-ai-working ${compact ? "is-compact" : ""}`} role="status" aria-live="polite">
+    <span className="director-ai-orb" aria-hidden><Sparkles size={compact ? 15 : 20}/></span>
+    <div className="director-ai-copy">
+      <b>{title}<i className="director-ai-dots" aria-hidden><span/><span/><span/></i></b>
+      {detail && <p>{detail}</p>}
+      <small>{elapsed ? `已用时 ${elapsed} · ` : ""}可以关闭页面，后台继续，完成后自动显示</small>
+    </div>
+    {!compact && <div className="director-ai-lines" aria-hidden><span/><span/><span/><span/></div>}
+  </div>;
 }
 
 export function InlineError({ message, onClose }: { message?: string | null; onClose?: () => void }) {

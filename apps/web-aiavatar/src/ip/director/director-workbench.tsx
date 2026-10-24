@@ -32,6 +32,13 @@ export type WorkbenchProps = {
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
 function nextStep(work: DirectorWork, episodeId: string | null): { text: string; tab: Tab } | null {
+  // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
+  const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
+  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script" };
+  if (running.includes("split")) return { text: "AI 正在拆分集", tab: "script" };
+  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script" };
+  const planning = running.find(t => t.startsWith("plan:"));
+  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在规划${ep ? `第 ${ep.no} 集` : ""}片段`, tab: "storyboard" }; }
   if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
@@ -214,7 +221,14 @@ function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork;
 
 // ── 一键制作 ────────────────────────────────────────────────────────────────
 
-function estimate(work: DirectorWork, scope: "episode" | "work", episodeId: string | null) {
+type Target = "plan" | "board" | "video";
+const TARGET_NOTE: Record<Target, string> = {
+  plan: "自动写剧本、拆分集、提取资产，再把每集规划成片段：每段的镜头、分镜图提示词和视频提示词都写好，不生成图片。资产清单需要你确认。",
+  board: "在分镜脚本的基础上，继续生成参考图和分镜图；参考图确认后才出分镜图。",
+  video: "做到片段视频：参考图和分镜图都需要你确认。",
+};
+
+function estimate(work: DirectorWork, scope: "episode" | "work", episodeId: string | null, target: Target) {
   const { textMax, image } = work.pricing;
   const eps = work.episodes.length === 0 ? [] : scope === "work" ? work.episodes : work.episodes.filter(e => e.id === (episodeId ?? work.episodes[0].id));
   let text = 0, images = 0, unknownClips = false;
@@ -230,6 +244,7 @@ function estimate(work: DirectorWork, scope: "episode" | "work", episodeId: stri
   const used = new Set(work.clips.filter(c => eps.some(e => e.id === c.episodeId)).flatMap(c => c.assetIds));
   images += work.assets.filter(a => (used.size ? used.has(a.id) : eps.some(e => a.episodeIds.includes(e.id))) && a.image.candidates.length === 0).length;
   if (unknownClips) images += 4 * Math.max(1, eps.length) + 3;
+  if (target === "plan") images = 0;
   return { text, images, total: text * textMax + images * image, unknownClips };
 }
 
@@ -245,7 +260,7 @@ function PipelineBar({ work, episodeId, apply, setError, goTab, reviewExtract }:
       {!live && <>
         {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
         {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
-        <button type="button" className="ip-brand-button director-oneclick" title="从剧本到分镜图或片段视频，后台自动执行，关闭页面不中断。" onClick={() => setStarting(true)}><Sparkles size={15}/>一键制作</button>
+        <button type="button" className="ip-brand-button director-oneclick" title="从剧本到分镜脚本、分镜图或片段视频，后台自动执行，关闭页面不中断。" onClick={() => setStarting(true)}><Sparkles size={15}/>一键制作</button>
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>
@@ -287,9 +302,13 @@ function BudgetRaise({ p, onResume, disabled }: { p: DirectorPipeline; onResume:
 
 function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: DirectorWork; episodeId: string | null; apply: (w: DirectorWork) => void; setError: (m: string) => void; onClose: () => void }) {
   const [scope, setScope] = useState<"episode" | "work">("episode");
-  const [target, setTarget] = useState<"board" | "video">("board");
-  const est = useMemo(() => estimate(work, scope, episodeId), [work, scope, episodeId]);
-  const [budget, setBudget] = useState(String(Math.max(100, Math.ceil(est.total * 1.3 / 10) * 10)));
+  const [target, setTarget] = useState<Target>("plan");
+  const est = useMemo(() => estimate(work, scope, episodeId, target), [work, scope, episodeId, target]);
+  const suggested = Math.max(100, Math.ceil(est.total * 1.3 / 10) * 10);
+  const [budget, setBudget] = useState(String(suggested));
+  const [budgetTouched, setBudgetTouched] = useState(false);
+  // 换了「制作到」，没手动改过预算就跟着估算走。
+  useEffect(() => { if (!budgetTouched) setBudget(String(suggested)); }, [suggested, budgetTouched]);
   const [error, setLocalError] = useState("");
   const { busy, run } = useBusy();
   useEscape(() => { if (!busy) onClose(); });
@@ -303,20 +322,22 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
     <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-start-title">一键制作</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <div className="director-field"><span>制作到</span><div className="director-segmented">
+        <button type="button" aria-pressed={target === "plan"} onClick={() => setTarget("plan")}>分镜脚本</button>
         <button type="button" aria-pressed={target === "board"} onClick={() => setTarget("board")}>分镜图</button>
         <button type="button" aria-pressed={target === "video"} onClick={() => setTarget("video")}>片段视频</button></div></div>
-      <p className="director-dialog-note">自动完成剧本、资产与分镜；参考图确认后继续。{target === "video" ? "分镜图也需确认。" : ""}已完成内容不重做，已有内容不覆盖。</p>
+      <p className="director-dialog-note">{TARGET_NOTE[target]}已完成内容不重做，已有内容不覆盖。</p>
       {target === "video" && <p className="director-dialog-note">视频按模型和时长计费，片段规划后显示准确价格。每次制作一集。</p>}
-      {work.episodes.length > 1 && target === "board" && <div className="director-field"><span>范围</span><div className="director-segmented">
+      {work.episodes.length > 1 && target !== "video" && <div className="director-field"><span>范围</span><div className="director-segmented">
         <button type="button" aria-pressed={scope === "episode"} onClick={() => setScope("episode")}>第 {ep?.no} 集</button>
         <button type="button" aria-pressed={scope === "work"} onClick={() => setScope("work")}>全部 {work.episodes.length} 集</button></div></div>}
       <div className="director-estimate">
         <div><span>文本生成</span><b>{est.text} 次</b><small>{costText(est.text * work.pricing.textMax, work.pricing.mock)}（按单次上限估算，实际按用量）</small></div>
-        <div><span>图片</span><b>{est.unknownClips ? "约 " : ""}{est.images} 张</b><small>{costText(est.images * work.pricing.image, work.pricing.mock)}</small></div>
+        {target === "plan" ? <div><span>图片</span><b>不生成</b><small>确认分镜脚本后再出图</small></div>
+          : <div><span>图片</span><b>{est.unknownClips ? "约 " : ""}{est.images} 张</b><small>{costText(est.images * work.pricing.image, work.pricing.mock)}</small></div>}
       </div>
-      {est.unknownClips && <p className="director-dialog-note">片段尚未规划，图片数量为估算值。</p>}
-      <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={budget} onChange={e => setBudget(e.target.value.replace(/\D/g, ""))}/>
-        <small>达到上限即暂停，不会超支。{target === "board" ? "不包含视频。" : ""}</small></label>
+      {est.unknownClips && target !== "plan" && <p className="director-dialog-note">片段尚未规划，图片数量为估算值。</p>}
+      <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={budget} onChange={e => { setBudgetTouched(true); setBudget(e.target.value.replace(/\D/g, "")); }}/>
+        <small>达到上限即暂停，不会超支。{target !== "video" ? "不包含视频。" : ""}</small></label>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || !(Number(budget) > 0)} onClick={start}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>启动中</> : "开始"}</button></footer>
