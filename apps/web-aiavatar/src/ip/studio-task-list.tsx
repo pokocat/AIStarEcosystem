@@ -4,7 +4,6 @@ import type { IpRun } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import { studioReviewNotice, studioRecoveryNotice, studioTaskRecovering, studioTaskHasProgress, studioTaskLabel, studioTaskNeedsReview, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 import { reportStudioError, studioRunError } from './studio-errors';
-import { studioRunRewrites } from '@/canvas-bridge/studio-video-prompt';
 
 type Filter = 'all' | 'active' | 'failed' | 'done';
 type Props = {
@@ -53,7 +52,6 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
         {(review || recovering) && <p className="studio-task-note" role="status">{review ? studioReviewNotice : studioRecoveryNotice}</p>}
         {queued && run.queue && <p className="studio-task-note">前面还有 {Math.max(0, run.queue.position - 1)} 项 · 有空位后自动开始</p>}
         {run.status === 'running' && refreshErrors[run.id] && <p className="studio-task-note" role="status">任务状态暂未更新，正在重试…</p>}
-        {run.kind === 'studio-video' && studioRunRewrites(run).some(take => take.lost.length) && <p className="studio-task-note">出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照</p>}
         {(state === 'failed' || state === 'partial' || (run.status === 'running' && (run.errorCode || run.errorMessage))) && <div className="studio-task-failure"><p>{run.errorMessage || run.output.videoCandidates?.find(c => c.status === 'failed')?.errorMessage || (run.status === 'running' ? '任务出现异常，可查看错误详情' : '本次创作未完成，可查看错误详情')}</p><button type="button" onClick={() => reportStudioError(studioRunError(run))}>查看错误详情</button></div>}
         <div className="studio-task-actions">
           {run.status==='running'&&onRefresh&&<button type="button" disabled={!!refreshing} onClick={()=>void refresh(run)}>{refreshing===run.id?'正在刷新…':review?'刷新状态':'刷新结果'}</button>}

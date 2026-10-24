@@ -408,20 +408,14 @@ html[data-layout="mobile"] .studio-library-use .ant-btn { grid-column:1; grid-ro
 .ip-surface .studio-video-frame span { overflow-wrap: anywhere; font-size: 12px; }
 .ip-surface .studio-video-reference-list { margin: 0; padding: 0; list-style: none; }
 .ip-surface .studio-video-reference-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
-/* 2026-10-20: the description the vendor actually used (H3 rewrites before encoding) and the lines it dropped. */
+/* Model-side smart optimization controls and the result used for each video take. */
 /* The form's generic `label {flex-direction:column}` also hits antd's checkbox wrapper (it is a <label>). */
 .ip-surface .studio-video-prompt-mode .ant-checkbox-wrapper { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-1); }
 .ip-surface .studio-video-prompt-mode p { margin: 4px 0 0 24px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
-.ip-surface .studio-video-prompt-note { overflow-wrap: anywhere; }
-.ip-surface .studio-video-prompt-note p { margin: 0; }
-.ip-surface .studio-video-prompt-note p + p { margin-top: 2px; }
-.ip-surface .studio-video-prompt-note .ant-btn-link { height: auto; padding: 0 0 0 4px; font-size: 12px; }
 .ip-surface .studio-video-rewrite-detail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ip-surface .studio-video-rewrite-detail section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.ip-surface .studio-video-rewrite-detail p { margin: 0; color: var(--ink-2); font-size: 12.5px; }
 .ip-surface .studio-video-rewrite-detail pre { margin: 0; max-height: 32vh; overflow: auto; padding: 10px 12px; border-radius: 8px;
   background: var(--surface-2); color: var(--ink-1); font-size: 12px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.ip-surface .studio-video-rewrite-detail ul { margin: 4px 0 0; padding-left: 18px; font-size: 12.5px; overflow-wrap: anywhere; }
 
 /* v0.210: stable candidate slots keep progress, failures and the adopted take visible together. */
 .ip-surface .studio-take-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr)); gap:24px; }

@@ -50,14 +50,12 @@ Studio 视频抽屉与原生画布视频参数面板均选择 1、2、4 条候�
 - **首尾帧没有用上，是因为请求里本来就没有图**：描述里写了「图1」「图2定为尾帧」，但节点模式是文生视频、没有连线，前端到厂商一张图都没带。写在文字里的「图1」不会绑定图片。
 
 本地做了什么：
-- **按原文生成**（`StudioVideoSettings.optimizePrompt=false` → `VideoGenSpec.optimizePrompt` → variant_config `optimize_prompt` → 聚算请求体 `optimizePrompt:false`）。只对 `supportsPromptOptimization` 的模型（聚算 H3）显示，别的模型带着它 400 `STUDIO_VIDEO_OPTION_UNSUPPORTED`，老路径 / 非聚算协议带着它 400 `VIDEO_MODE_UNSUPPORTED`，不静默丢。默认不勾（保持厂商默认），价格不变。节点重开时从这条节点已受理的请求恢复，不从模板预设读。
-- **厂商实际用的描述**：worker 每次轮询把 `promptOptimization`（状态、来源、`effectivePrompt`，没有就读 `optimizedPrompt`；记录号与版本只留库排障）写进任务 `payload_json.vendor_prompt`（只读旁路，写不进去只 WARN，不影响出片与结算；任务卡 `toCard` 不外露）。画布视频候选投影 `promptRewrite{state:off|running|done|failed, prompt?}`，解析 / 留存 / 投影只在 `VideoPromptRewrite` 一处。不用新迁移。
-- **事后核对台词**：前端 `studio-video-prompt.ts` 是唯一的识别规则 —— 「名字：台词」「名字说：“台词”」「台词 / 旁白：……」算台词，「表情 / 镜头 / 切镜与声音 / 图1……」这类说明标签和带数字的标签不算；引号里的整段取全，没引号取到第一个句号。成片后拿原文台词逐个分句去比厂商描述里的 `<d>…</d>`（没有标记就比全文），漏掉的在三处说：创作面板「上次出片前，模型改写描述时没有保留台词……」+「看模型实际用的描述」、任务列表一行提示、「本次创作输入」里的实际描述与丢失清单。**这是成片之后的解释，不是生成前的拦截**，文案也这么说。
-- **生成前**：面板识别到台词时提示一次「识别到 N 句台词：……要一字不差，可以勾选「按原文生成」」，不阻止生成；不默认再叠一层付费的智能优化。
-- **首尾帧意图**：提交前（存文档、冻结、请求之前）如果最终提示词写了「图N / 首帧 / 尾帧」而请求带的图片不够（或首帧模式却写了尾帧），弹一次确认：「仍按文字生成」/「改用「首尾帧」选图片」/ 关闭。后者只切模式并展开参数、焦点落到首帧位，**不替用户挑图**；没有能用图的模式就只引导去选模式。「地图 / 截图2 / 构图」之类不算；同一段描述 + 同一模式答过「仍按文字生成」就不再问。
+- **智能优化**：只对 `supportsPromptOptimization` 的模型显示，默认开启，沿用厂商原有默认行为且不另加一次优化请求。关闭时沿用 `keepPrompt=true` 的存储形状，提交 `StudioVideoSettings.optimizePrompt=false` → `VideoGenSpec.optimizePrompt` → variant_config `optimize_prompt` → 聚算 `optimizePrompt:false`；重新打开后仍按节点已保存的选择恢复，不改变老数据。其他模型不传此选项，原协议拒绝规则保留。
+- **查看结果**：「本次创作输入」保留各候选的智能优化状态与模型实际使用的提示词。没有返回提示词时明确显示「未返回内容」，不把空内容称为可查看的优化结果。生成面板、任务列表和详情不再重复展示台词识别、删词告警；底层原文与优化结果仍可追溯，首尾帧引用确认保持。
+
 - 视频生成区（带货）：用了「智能优化」结果的生成请求带 `optimizePrompt=false`（契约要求，原来会被厂商再改写一遍并再收一次厂商优化费）；换成不会改写的模型则不带。
 
-验证（本地，库副本 + 模拟聚算，不连真厂商、不花钱）：服务端 `VideoGenSpecTest`、`VideoPromptRewriteTest`、`MaterialVideoModelClientBodyTest` / `WireTest`（真实 HTTP 层请求体与查询响应）、`MaterialVideoWorkerSpecTest`、`MaterialVideoJobServiceStudioTest`、`StudioNativeVideoProjectionTest`、`StudioVideoPromptRewriteTest`、`VideoStudioServiceTest`；前端 `studio-video-prompt.test.ts`、`studio-video.test.ts`、`studio-video-prompt-notes.test.tsx`、`studio-video-prompt-wiring.test.ts`。浏览器走了三条路径：默认生成（先弹首尾帧确认 → 仍按文字生成 → 请求与线上同形、成片后三处显示丢失的台词）、勾选按原文生成（请求带 `optimizePrompt:false`、候选标「按原文生成」）、自己选好首尾两张图（不再弹问，请求带两个 assetId）；测试账号 3 条共扣 960，价格不变。
+历史验证（原界面，本地库副本 + 模拟聚算，不连真厂商、不花钱）：服务端 `VideoGenSpecTest`、`VideoPromptRewriteTest`、`MaterialVideoModelClientBodyTest` / `WireTest`（真实 HTTP 层请求体与查询响应）、`MaterialVideoWorkerSpecTest`、`MaterialVideoJobServiceStudioTest`、`StudioNativeVideoProjectionTest`、`StudioVideoPromptRewriteTest`、`VideoStudioServiceTest`；前端 `studio-video-prompt.test.ts`、`studio-video.test.ts`、`studio-video-prompt-notes.test.tsx`、`studio-video-prompt-wiring.test.ts`。浏览器走了三条路径：默认生成（先弹首尾帧确认 → 仍按文字生成 → 请求与线上同形、成片后三处显示丢失的台词）、勾选按原文生成（请求带 `optimizePrompt:false`、候选标「按原文生成」）、自己选好首尾两张图（不再弹问，请求带两个 assetId）；测试账号 3 条共扣 960，价格不变。
 
 Codex 复审（2026-10-20，提交 47c057ea 之后）修了三处：
 - **共用视频胶水也认这两件事**：`canvas-bridge/video.ts` 的 `createVideoGenerationTask` 接 `keepPrompt`（调用方用 `studioVideoKeepPrompt(node)` 从节点上次已受理的请求取，与重开面板同一条规则）和 `confirmFrames`（描述点名的图片没带上时问用户；没给回调就不提交，抛 `VideoFramesNotBound`，不保存、不扣费）。搬来的旧画布页（`canvas/pages/canvas/project.tsx`，目前没挂到任何路由）的生成与重试都经 `completeVideoNodeTask` 传入这两项，问法走 `confirmStudioFrames`（只有「仍按文字生成」才提交，关闭算返回）。Studio 面板的「重新生成」原样重发节点上保存的请求，`optimizePrompt` 跟着走。

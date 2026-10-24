@@ -1,10 +1,7 @@
-import { describe, expect, test, vi } from "vitest";
+import { describe, expect, test } from "vitest";
 import type { IpRun } from "@ai-star-eco/types";
 import type { VideoStudioModeSpec } from "@ai-star-eco/types/video-studio";
-import { studioComposerTake } from "@/ip/studio-video-prompt-notes";
-// studioComposerTake 跟对话框写在同一个 .tsx 里；这里只测它，别为它把 antd 整个加载进 node（实测 collect 多 6 秒）
-vi.mock("antd", () => ({ Button: () => null, Modal: () => null }));
-import { studioFrameIntent, studioFrameIntentCopy, studioFrameTarget, studioLostLines, studioPromptLines } from "./studio-video-prompt";
+import { studioFrameIntent, studioFrameIntentCopy, studioFrameTarget, studioLostLines, studioPromptLines, studioRunRewrites } from "./studio-video-prompt";
 
 // Same structure as the 2026-10-20 production prompt (a direction label with 图1, one spoken line, an expression
 // note that quotes the line's first word, 图2 as the last frame), with different words.
@@ -127,8 +124,7 @@ describe("which mode the frame question suggests", () => {
   });
 });
 
-// 原在 ip/studio-video-prompt-notes.test.tsx（jsdom）里，没渲染任何东西，2026-10-20 挪到 node。
-describe("which take the composer reports on", () => {
+describe("historical optimization reports", () => {
   const takeRun = (candidates: NonNullable<IpRun["output"]["videoCandidates"]>): IpRun => ({ id: "r1", projectId: "p", nodeId: "n", kind: "studio-video",
     status: "done", stage: "视频生成完成", pct: 100, cost: 320, createdAt: "2026-10-20T07:39:51Z",
     inputs: { prompt: "老周：等等？你说这片地要拆了，我怎么一点风声都没听到。表情：“等等”时愣住。" } as IpRun["inputs"], output: { videoCandidates: candidates } });
@@ -136,11 +132,13 @@ describe("which take the composer reports on", () => {
     promptRewrite: { state: "done" as const, ...(prompt ? { prompt } : {}) } });
   const REWRITTEN_ONE_WORD = "Lao Zhou freezes and says (S1) <d>[Chinese]等等</d>. He spreads his hands.";
 
-  test("the composer reads the adopted take, else the first take that reports a rewrite", () => {
-    const twoTakes = takeRun([take(0, "He says (S1) <d>[Chinese]等等？你说这片地要拆了，我怎么一点风声都没听到</d>"), take(1, REWRITTEN_ONE_WORD)]);
-    expect(studioComposerTake(twoTakes, "r1:1")?.lost).toHaveLength(1);
-    expect(studioComposerTake(twoTakes, "r1")?.lost).toEqual([]);
-    expect(studioComposerTake(twoTakes, undefined)?.index).toBe(0);
-    expect(studioComposerTake({ ...twoTakes, kind: "studio-image" }, "r1")).toBeUndefined();
+  test("reports remain tied to their original candidate indices and exclude older candidates without a report", () => {
+    const twoTakes = takeRun([take(0, "He says (S1) <d>[Chinese]等等？你说这片地要拆了，我怎么一点风声都没听到</d>"),
+      { ...take(2), promptRewrite: undefined }, take(4, REWRITTEN_ONE_WORD)]);
+    const reports = studioRunRewrites(twoTakes);
+    expect(reports.map(report => report.index)).toEqual([0, 4]);
+    expect(reports[0].lost).toEqual([]);
+    expect(reports[1].rewrite.prompt).toBe(REWRITTEN_ONE_WORD);
+    expect(reports[1].lost).toHaveLength(1);
   });
 });

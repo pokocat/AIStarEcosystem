@@ -1088,3 +1088,7 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 ## AI 导演台（2026-10-23，未发布）
 
 新增 `/director` 与 `/director/[id]`，入口位于 Studio 主导航；组件在 `src/ip/director/`，API 在 `src/ip/api/director.ts`，类型在 `packages/types/src/director.ts`。后端新增 V65 `director_work` 与 `ip_run.host_type`，复用既有生成、存储和结算；一键制作由后台调度推进。方案与实测边界见 [总方案](../../docs/ai-director-plan.md)及[本地验收](../../docs/audits/ai-director-local-acceptance-20261022.md)。
+
+### 视频智能优化界面精简（2026-10-23，本地，未发布）
+
+视频参数统一显示「智能优化」开关，默认和旧请求映射不变；去掉生成面板、任务列表的重复台词提醒，输入详情保留优化状态与实际提示词。优化结束但没有返回内容时准确标明。原首尾帧确认、绑定与报价保持，未调用模型。

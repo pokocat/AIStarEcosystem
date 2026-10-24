@@ -9,11 +9,11 @@ const read = (path: string) => readFileSync(resolve(process.cwd(), "src", path),
 
 test("the composer, the run input view and the dialog are mounted", () => {
   const workspace = read("ip/studio-workspace.tsx");
-  expect(workspace).toMatch(/<StudioVideoPromptNote model=\{nativeVideo\}/);
+  expect(workspace).not.toContain("StudioVideoPromptNote");
   expect(workspace).toMatch(/runDetail\.kind==="studio-video"&&<StudioVideoRewriteDetail run=\{runDetail\}\/>/);
   expect(workspace).toMatch(/<StudioFrameIntentDialog intent=\{frameIntent\?\.intent\}/);
   expect(read("ip/studio-video-controls.tsx")).toMatch(/model\.supportsPromptOptimization&&<div className="studio-video-prompt-mode">/);
-  expect(read("ip/studio-task-list.tsx")).toContain("studioRunRewrites(run)");
+  expect(read("ip/studio-task-list.tsx")).not.toContain("studioRunRewrites(run)");
 });
 
 test("the frame question is asked before saving the document or submitting, and the choice reaches the request", () => {
