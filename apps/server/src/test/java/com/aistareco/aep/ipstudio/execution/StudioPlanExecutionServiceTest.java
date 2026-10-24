@@ -603,4 +603,119 @@ class StudioPlanExecutionServiceTest {
         var created=service.confirmNatural("u","p",new com.aistareco.aep.ipstudio.dialogue.StudioExecutionGate.NaturalApproval("APV-IPR-o","IDM-ok",null,null,"nl-o"));
         assertEquals("production",created.stage());assertEquals("running",created.status());
     }
+
+    // ── Material scope across messages (production 2026-10-23, PEX-fc87e857…) ─────────────────────────────────────────
+    /** The canvas of these tests: the reference video, the product, the character sheet picked two messages earlier. */
+    void canvasWith(String... ids) throws Exception {
+        var doc=om.createObjectNode();var nodes=doc.putArray("nodes");
+        for(String id:ids)nodes.addObject().put("id",id).put("type","image").put("title","sheet".equals(id)?"三视图":id);
+        when(projects.readDoc(any())).thenReturn(doc);
+    }
+    /** The dialogue as a plan source: picks from earlier messages of thread-1, and (optionally) the plan block itself. */
+    StudioPlanSource dialogueSource(List<String> picks,StudioPlanSource.PlanRecord block) {
+        return new StudioPlanSource() {
+            @Override public Optional<PlanRecord> find(String u,String p,String run,String fp) {return Optional.ofNullable(block);}
+            @Override public List<String> conversationPicks(String threadId) {return "thread-1".equals(threadId)?picks:List.of();}
+        };
+    }
+    /** The plan turn picked nothing; the plan run is the dialogue's. */
+    void dialoguePlanTurnWithoutPicks(String runId) throws Exception {
+        var run=runs.get(runId);run.setKind("studio-dialogue");
+        var input=(ObjectNode)om.readTree(run.getInputJson());input.putArray("contextNodeIds");run.setInputJson(input.toString());
+    }
+    List<String> canvasContext(String executionId) throws Exception {
+        List<String> out=new ArrayList<>();om.readTree(rows.get(executionId).getStepsJson()).path("canvasContextIds").forEach(v->out.add(v.asText()));return out;
+    }
+
+    @Test void materialsPickedInAnEarlierMessageReachTheConfirmedExecution() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        dialoguePlanTurnWithoutPicks("IPR-a");
+        canvasWith("src","product","sheet");
+        extraSources.add(dialogueSource(List.of("sheet","deleted-node","src"),null));
+        var created=service.create("u","p",analysisRequest(fp,30));
+        assertEquals(List.of("src","sheet"),canvasContext(created.id()),"the step's source first, then the earlier pick; deleted objects never");
+    }
+
+    @Test void bothWaysOfLoadingADialoguePlanGiveTheSameMaterials() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        dialoguePlanTurnWithoutPicks("IPR-a");
+        canvasWith("src","product","sheet");
+        JsonNode plan=om.readTree(runs.get("IPR-a").getOutputJson()).path("plan");
+        // Its plan block (an earlier revision, read from the message): the run no longer carries output.plan.
+        runs.get("IPR-a").setOutputJson("{}");
+        extraSources.add(dialogueSource(List.of("sheet"),new StudioPlanSource.PlanRecord("IPR-a",plan,StudioSkillRules.snapshot(rules),List.of(),3,"thread-1","msg-IPR-a")));
+        var created=service.create("u","p",analysisRequest(fp,30));
+        assertEquals(List.of("src","sheet"),canvasContext(created.id()));
+    }
+
+    @Test void theMaterialsAreCappedAtTheRequestLimitInPriorityOrder() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        dialoguePlanTurnWithoutPicks("IPR-a");
+        List<String> picks=new ArrayList<>();for(int i=0;i<20;i++)picks.add("n"+i);
+        List<String> all=new ArrayList<>(picks);all.add("src");canvasWith(all.toArray(String[]::new));
+        extraSources.add(dialogueSource(picks,null));
+        var context=canvasContext(service.create("u","p",analysisRequest(fp,30)).id());
+        assertEquals(StudioPlanValidator.MAX_MATERIALS,context.size());assertEquals("src",context.get(0));assertEquals("n14",context.get(15));
+    }
+
+    /** The analysis execution stopped where the production log stopped: film study done, plan-compile refused for 「三视图」. */
+    String stoppedOnMaterial() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());
+        var state=(ObjectNode)om.readTree(row.getStepsJson());
+        ((ObjectNode)state.path("steps").get(0)).put("status","done").putArray("runIds").add("IPR-cut");
+        var compile=(ObjectNode)state.path("steps").get(1);
+        compile.put("status","failed").put("errorCode",StudioPlanValidator.MATERIAL_OUT_OF_SCOPE).put("reason","方案要用画布上的「三视图」，但这次制作没有带上它").putArray("runIds").add("IPR-plan-1");
+        var materials=compile.putArray("materials");
+        materials.addObject().put("nodeId","sheet").put("title","三视图").put("onCanvas",true);
+        materials.addObject().put("nodeId","gone").put("title","").put("onCanvas",false);
+        row.setStepsJson(state.toString());row.setStatus("needs_user");
+        return created.id();
+    }
+
+    @Test void aStoppedStepShowsItsMaterialsAndAddingOneRedoesOnlyThePlanning() throws Exception {
+        String id=stoppedOnMaterial();
+        canvasWith("src","product","sheet");
+        var shown=service.read("u","p",id).steps().get(1);
+        assertEquals(List.of(new PlanExecutionMaterial("sheet","三视图",true),new PlanExecutionMaterial("gone","",false)),shown.materials());
+        var resumed=service.resume("u","p",id,new PlanExecutionControlRequest("add-1",null,List.of("sheet")));
+        assertEquals("running",resumed.status());
+        assertTrue(canvasContext(id).contains("sheet"));
+        var state=om.readTree(rows.get(id).getStepsJson());
+        var cut=state.path("steps").get(0);var compile=state.path("steps").get(1);
+        assertEquals("done",cut.path("status").asText());assertEquals("[\"IPR-cut\"]",cut.path("runIds").toString(),"the film study is not redone or charged again");
+        assertEquals(1,cut.path("attempt").asInt(1));
+        assertEquals("pending",compile.path("status").asText());assertEquals(2,compile.path("attempt").asInt());
+        assertFalse(compile.has("materials"));
+        assertEquals(List.of("gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"),"what was not added is left out of the next plan");
+        assertEquals("running",service.resume("u","p",id,new PlanExecutionControlRequest("add-1",null,List.of("sheet"))).status(),"same request replays");
+        assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,
+                ()->service.resume("u","p",id,new PlanExecutionControlRequest("add-1",null,null))).getCode());
+    }
+
+    @Test void onlyNamedObjectsStillOnTheCanvasCanBeAddedWithinTheCap() throws Exception {
+        String id=stoppedOnMaterial();
+        canvasWith("src","product","sheet","unrelated");
+        for(var ids:List.of(List.of("unrelated"),List.of("gone")))
+            assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,
+                    ()->service.resume("u","p",id,new PlanExecutionControlRequest("bad-"+ids.get(0),null,ids))).getCode(),ids.toString());
+        assertEquals("STUDIO_INPUT_INVALID",assertThrows(BusinessException.class,
+                ()->service.pause("u","p",id,new PlanExecutionControlRequest("pause-add",null,List.of("sheet")))).getCode());
+        var row=rows.get(id);var state=(ObjectNode)om.readTree(row.getStepsJson());
+        var canvas=state.putArray("canvasContextIds");for(int i=0;i<StudioPlanValidator.MAX_MATERIALS;i++)canvas.add("full"+i);
+        row.setStepsJson(state.toString());
+        assertEquals("STUDIO_CONTEXT_LIMIT",assertThrows(BusinessException.class,
+                ()->service.resume("u","p",id,new PlanExecutionControlRequest("over",null,List.of("sheet")))).getCode());
+        assertEquals("needs_user",rows.get(id).getStatus(),"a refused add changes nothing");
+    }
+
+    @Test void replanningWithoutTheObjectsTellsThePlannerToLeaveThemOut() throws Exception {
+        String id=stoppedOnMaterial();
+        service.resume("u","p",id,new PlanExecutionControlRequest("without",null));
+        var compile=om.readTree(rows.get(id).getStepsJson()).path("steps").get(1);
+        assertEquals("pending",compile.path("status").asText());
+        assertEquals(List.of("sheet","gone"),compile.path("excludedMaterials").findValuesAsText("nodeId"));
+        assertFalse(canvasContext(id).contains("sheet"));
+    }
 }

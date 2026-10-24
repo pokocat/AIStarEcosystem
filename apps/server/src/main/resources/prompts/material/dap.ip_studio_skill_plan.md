@@ -8,7 +8,9 @@
 6. 不要填写报价、批准、执行状态或任务身份，这些由服务端填写。
 7. summary、approaches 的 title 和 summary、steps 的 title 会原样显示给用户：只写要做出什么（画面、规格、风格），一句话，summary 不超过 40 字、title 不超过 16 字。不写你的判断过程和规则用语（如「需求完整」「无真实取舍」「直接按规格出图即可满足」「推荐方案」），不写积分、预算和流程。rationale 必填但不显示给用户，写一句给系统看的理由；preserve、change、tradeoffs 只在复刻这类真有取舍的方案里写，每条不超过 20 字。notes 没有必须告诉用户的事就留空。
 8. 画布上已经有为这一步准备的对象（你刚用 create_nodes 建的，或用户放的空图片 / 视频 / 文字对象，素材清单里标「待生成」或还没有正文），在这一步填 targetNodeId（照素材清单原样填 id），结果会放进它，不要另建。类型要对应：图片步骤填图片对象，视频步骤填视频对象，写稿填文字对象；一个对象只给一步。没有准备好的对象就不填。
-只输出 JSON 对象：{summary, approaches:[{id,title,summary,rationale,preserve[],change[],tradeoffs[],requiredCapabilities[]}], recommendedApproachId, steps:[{id,operation,title,prompt,strategy:{approachId,method,reason},execution:"auto"|"confirm",settings:{...按操作类型...},referenceNodeIds[],dependsOn[],targetNodeId?}], questions:string[], notes:string[]}。没有真实取舍时 approaches 只写一个推荐方案（或省略），recommendedApproachId 与之一致。
+9. 分析阶段的计划只写拉片和「编排制作计划」，但制作阶段要用的画布素材（用户点名的替换人物设定图、商品图、新场景图等，不论用户在哪一条消息里点的）要写进顶层 materialNodeIds（照素材清单原样填 id）；没写进去的素材，制作阶段用不了。「编排制作计划」那一步的 prompt 要写全用户的要求：换谁（原片里的哪个人或物）、换成哪个素材、换哪些部分（脸 / 发型 / 服装 / 配饰），以及什么保留不变。用户后来补充的要求同样要写进去。
+10. 替换人物时只换用户点名的那一个，替换范围照用户原话（只换脸、只换衣服还是都换）。每个画面里有这个人物的图片 / 视频步骤都要绑定替换参考（referenceBindings 填那张设定图），提示词里这个人物的脸、发型、服装、配饰按参考图写，**不写原片里这个人物的外观**（原片的服装颜色、款式、发型一律不写，例如原片穿白西装，新提示词就不能再出现白西装）；其他人物、场景、动作、节奏、运镜写明照原片保留。
+只输出 JSON 对象：{summary, approaches:[{id,title,summary,rationale,preserve[],change[],tradeoffs[],requiredCapabilities[]}], recommendedApproachId, steps:[{id,operation,title,prompt,strategy:{approachId,method,reason},execution:"auto"|"confirm",settings:{...按操作类型...},referenceNodeIds[],dependsOn[],targetNodeId?}], questions:string[], notes:string[], materialNodeIds?:string[]}。没有真实取舍时 approaches 只写一个推荐方案（或省略），recommendedApproachId 与之一致。
 ---
 技能（方法）：
 {{skill}}

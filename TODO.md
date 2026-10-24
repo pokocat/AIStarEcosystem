@@ -32,6 +32,12 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-24 · 方案素材范围跨轮（本地，未发布；真源 `docs/ip-studio-dialogue-intents.md` 末节）
+
+- [ ] **新开一次制作会对同一条参考视频重新拉片、再次计费**：同一次制作里补素材重新编排已不重跑拉片；但用户结束这次制作、回对话重新确认分析方案时，`StudioPlanExecutionService#create` 新建执行，拉片步骤照样提交新任务。可考虑：同画布、同 `sourceNodeId` 且源文件 key 与拉片设置相同、已成功的 `studio-recreation` 结果直接复用（零费用），复用前核对归属与源文件未变。
+- [ ] **真模型未验证 `materialNodeIds`**：提示词 v27 要求分析方案写下后续素材、「编排制作计划」写全替换边界，尚未用线上同款聚算 Qwen 真调（§8.0.1 ⑦）。跨轮点选的兜底不依赖模型；用户只用文字点名、从没点选的素材仍依赖模型写进 `materialNodeIds`。
+- [ ] **制作计划的替换边界只在提示词里**：线上失败草稿里视频步骤仍写原片主舞的「白西装」。目前靠提示词规则约束，服务端没有检查（例如替换人物的步骤必须绑定设定图）；确认卡仍需用户看过才执行。
+
 ### 2026-10-21 · 结果落到助手准备的节点、首帧比例（`20261021-studio-exec-node`；真源 `docs/ip-studio-new-canvas-and-threads.md` §6）
 
 - [x] ~~**对话出视频后结果另起一个没有提示词的节点，助手准备的节点成了空壳；1:1 首帧被拉成 9:16**~~ **2026-10-21 已修**（线上 IPP-655ea55a）：计划步骤 `targetNodeId` + 确认时 `StudioPlanValidator.bindTargets` 绑定，读步骤节点统一经 `StudioPlanExecutionIds.stepNodeId`；结果节点带实际发出的提示词；`StudioVideoService.alignFrame` 居中裁剪首帧 / 尾帧并记 `_exec.firstFrameAdjusted`；生成面板裁剪提示；节点按产物比例（`studio-media-fit.ts`）；提示词 seed v23。测试：`StudioPlanTargetBindingTest`、`StudioPlanExecutorTest`（绑定步骤）、`StudioPlanExecutionServiceTest`（确认时绑定）、`StudioFrameCropTest`、`PlannerAssetCatalogTest`、`studio-plan-execution.test.ts`、`studio-media-fit.test.ts`、`studio-frame-crop-hint.test.tsx`。

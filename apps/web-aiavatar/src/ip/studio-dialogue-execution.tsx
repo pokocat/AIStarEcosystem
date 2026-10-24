@@ -32,7 +32,7 @@ const stageSteps = (execution: StudioPlanExecution) => execution.steps.filter(s 
  */
 export function StudioDialogueExecution({ execution, budget, checks, notice, onControl, queueOf }: {
   execution: StudioPlanExecution; budget?: Partial<StudioPlanExecutionBudget>; checks: StudioCheckResultData[]; notice?: string;
-  onControl: (action: 'pause' | 'resume' | 'cancel') => Promise<void>;
+  onControl: (action: 'pause' | 'resume' | 'cancel', options?: { addMaterialNodeIds?: string[] }) => Promise<void>;
   /** The real queue position of a step's task, when it is waiting for a slot (v0.221 queue tickets); never an estimate. */
   queueOf?: (step: StudioPlanExecutionStep) => number | undefined;
 }) {
@@ -42,10 +42,10 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   const done = steps.filter(s => s.status === 'done' || s.status === 'skipped').length;
   const active = activeStep(steps);
   const progress = steps.length ? Math.round(done / steps.length * 100) : 0;
-  const run = async (action: 'pause' | 'resume' | 'cancel') => {
+  const run = async (action: 'pause' | 'resume' | 'cancel', options?: { addMaterialNodeIds?: string[] }, key: string = action) => {
     if (busy) return;
-    setBusy(action); setError('');
-    try { await onControl(action); } catch (e) { setError(e); } finally { setBusy(undefined); }
+    setBusy(key); setError('');
+    try { await (options ? onControl(action, options) : onControl(action)); } catch (e) { setError(e); } finally { setBusy(undefined); }
   };
   const cancel = () => modal.confirm({ title: '停止这次制作？', content: '还没开始的会取消，已经在生成的会做完。', okText: '停止制作', cancelText: '再想想', okButtonProps: { danger: true }, onOk: () => run('cancel') });
   const live = execution.status === 'running', waiting = execution.status === 'paused' || execution.status === 'needs_user';
@@ -55,6 +55,10 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
   // and a run stopped for steering that had used the last credits could not go on (Codex retest 2026-10-19, R3).
   const failed = steps.some(s => s.status === 'failed');
   const canContinue = execution.status === 'needs_user' && !budget?.shortfall;
+  // A plan that used canvas objects this run does not carry (production 2026-10-23: 「三视图」 picked two messages earlier).
+  // Retrying the same request fails the same way, so the choice is add them, or re-plan without them.
+  const materials = execution.status === 'needs_user' ? steps.find(s => s.status === 'failed' && s.materials?.length)?.materials : undefined;
+  const addable = materials?.filter(m => m.onCanvas).map(m => m.nodeId) ?? [];
   const stage = execution.stage === 'analysis' ? '分析' : '制作';
   const position = active ? steps.indexOf(active) + 1 : Math.min(done + 1, steps.length);
   const where = steps.length ? `第 ${position} 步，共 ${steps.length} 步` : '';
@@ -70,15 +74,21 @@ export function StudioDialogueExecution({ execution, budget, checks, notice, onC
       {budget && <span className="studio-dialogue-execution-budget">已用 {formatCredits(budget.spent || 0)} 积分</span>}
     </div>
     <div className="studio-dialogue-execution-track" role="progressbar" aria-label="已完成的步骤" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={done}><span style={{ width: `${progress}%` }}/></div>
-    {(nowLine || controls) && <div className="studio-dialogue-execution-now">
+    {(nowLine || controls) && <div className={`studio-dialogue-execution-now${materials ? ' is-stacked' : ''}`}>
       <p className="studio-dialogue-note">{nowLine}</p>
       {controls && <div className="studio-dialogue-execution-actions">
         {live && <Button size="small" autoInsertSpace={false} loading={busy === 'pause'} disabled={!!busy} title="已经提交的任务会做完，之后不再提交新的" onClick={() => void run('pause')}>暂停</Button>}
         {execution.status === 'paused' && <Button size="small" autoInsertSpace={false} loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>继续制作</Button>}
-        {canContinue && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'resume'} disabled={!!busy} title={failed ? '重新提交没完成的那一步' : undefined} onClick={() => void run('resume')}>{failed ? '重试这一步' : '继续制作'}</Button>}
+        {canContinue && materials && addable.length > 0 && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'add'} disabled={!!busy} onClick={() => void run('resume', { addMaterialNodeIds: addable }, 'add')}>加入这次制作，重新编排</Button>}
+        {canContinue && materials && <Button size="small" autoInsertSpace={false} type={addable.length ? 'default' : 'primary'} loading={busy === 'resume'} disabled={!!busy} onClick={() => void run('resume')}>{addable.length ? '不用它，重新编排' : '重新编排'}</Button>}
+        {canContinue && !materials && <Button size="small" autoInsertSpace={false} type="primary" loading={busy === 'resume'} disabled={!!busy} title={failed ? '重新提交没完成的那一步' : undefined} onClick={() => void run('resume')}>{failed ? '重试这一步' : '继续制作'}</Button>}
         <Button size="small" autoInsertSpace={false} danger loading={busy === 'cancel'} disabled={!!busy} onClick={cancel}>停止</Button>
       </div>}
     </div>}
+    {materials && <ul className="studio-dialogue-execution-materials" aria-label="需要处理的素材">{materials.map(m => <li key={m.nodeId}>
+      <span title={m.title || undefined}>{m.title || '未命名的对象'}</span>
+      {m.onCanvas ? <button type="button" className="studio-dialogue-link" onClick={() => dispatchStudioCommand('focus', m.nodeId)}>在画布上看</button> : <small>已不在画布上</small>}
+    </li>)}</ul>}
     {budget?.shortfall ? <p className="studio-dialogue-warning" role="status">积分超出上限，已暂停</p> : null}
     {!!checks.length && <ul className="studio-dialogue-execution-checks" aria-label="检查结果">{checks.map(c => <li key={c.runId}>检查：{checkSummary(c)}</li>)}</ul>}
     {notice && <p className="studio-dialogue-warning" role="status">{notice}</p>}

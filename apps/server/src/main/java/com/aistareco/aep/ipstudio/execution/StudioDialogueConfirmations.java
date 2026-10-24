@@ -41,10 +41,8 @@ public class StudioDialogueConfirmations implements StudioPlanSource {
         if(message==null)return Optional.empty();
         for(JsonNode block:blocks(message)) {
             if(!"plan".equals(block.path("type").asText())||!planRunId.equals(block.path("planRunId").asText())||!fingerprint.equals(block.path("fingerprint").asText()))continue;
-            // The turn's own attachments plus the canvas nodes the plan names (attached in an earlier turn, still referenced).
-            LinkedHashSet<String> refs=new LinkedHashSet<>();input.path("contextNodeIds").forEach(v->refs.add(v.asText()));
-            for(JsonNode step:block.path("plan").path("steps"))PlanState.canvasRefs(step,refs);
-            List<String> context=new ArrayList<>(refs);
+            // The turn's own picks; the confirmed material scope is built from them by StudioPlanMaterials (one rule).
+            List<String> context=new ArrayList<>();input.path("contextNodeIds").forEach(v->context.add(v.asText()));
             return Optional.of(new PlanRecord(planRunId,block.path("plan"),input.path("_exec").path("skill"),context,block.path("revision").asInt(1),threadId,assistantId));
         }
         return Optional.empty();
@@ -62,6 +60,21 @@ public class StudioDialogueConfirmations implements StudioPlanSource {
                 block.path("result").path("nodeIds").forEach(id->{if(id.isTextual())out.add(id.asText());});
             }
         return out;
+    }
+
+    @Override
+    public List<String> conversationPicks(String threadId) {
+        var repository=messages.getIfAvailable();
+        if(repository==null||threadId==null)return List.of();
+        LinkedHashSet<String> out=new LinkedHashSet<>();
+        for(var message:repository.findByThreadIdOrderBySeqDesc(threadId,org.springframework.data.domain.PageRequest.of(0,RECENT))) {
+            if(!"user".equals(message.getRole()))continue;
+            for(String json:new String[]{message.getPinnedNodeIdsJson(),message.getAttachmentNodeIdsJson()}) {
+                JsonNode ids=PlanState.parse(mapper,"{\"ids\":"+(json==null||json.isBlank()?"[]":json)+"}").path("ids");
+                for(JsonNode id:ids)if(id.isTextual()&&!id.asText().isBlank())out.add(id.asText());
+            }
+        }
+        return List.copyOf(out);
     }
 
     private List<JsonNode> blocks(IpDialogueMessage message) {

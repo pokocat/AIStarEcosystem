@@ -1205,3 +1205,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
 真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法，有活跃制作时也一样（`requireSkillSwitchAllowed`、`ReadSkillTool` 的拒绝、`planningSkill` 的执行锁、受理处「有活跃执行时方法不变 / 显式换技能 400」全部删除）。切换只走 `StudioDialogueService.switchMethod`：同方法不动；换方法时作废待确认卡，旧制作没有在生成的就按停止收尾，有在生成的就暂停并解绑（不取消，完成的结果仍发到原线程的画布，不发消息，不占画布，生成完自行结束）。方案里有当前方法不允许的操作时先换到能覆盖的方法再校验。`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、「第 N 步…不在当前阶段允许的范围内」这类内部原因不进用户界面，统一说「这份方案还没准备好，我会按你要做的内容重新整理。」（`STUDIO_PLAN_NOT_READY`）。提示词 `SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。未用真模型验证。
+
+### Studio 方案素材范围跨轮（2026-10-24，本地未发布）
+
+线上 `PEX-fc87e857…`：首轮点选的「三视图」隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」撞同一个错。现在对话方案的素材范围只由 `StudioPlanMaterials.scope` 算（出方案那轮点选 → 方案 `materialNodeIds` → 步骤点名 → 同一对话更早用户消息的点选 / 附件；只留画布上还在的，≤16），两条加载路径共用，不放开校验、不加整张画布。越界报 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（列出全部 id），执行停下时用画布标题说清是哪个素材，进度条给「在画布上看 / 加入这次制作，重新编排（`resume.addMaterialNodeIds`）/ 不用它，重新编排」，都只重跑编排、不重跑拉片。提示词要求分析方案写 `materialNodeIds`、替换人物时外观按设定图写、不沿用原片外观。`SEED_VERSION=v27-2026-10-24-plan-material-scope`。真源 `docs/ip-studio-dialogue-intents.md` 末节，规则 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。未用真模型验证。

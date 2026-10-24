@@ -8,6 +8,7 @@ import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
 import com.aistareco.aep.ipstudio.service.IpRunService;
+import com.aistareco.aep.ipstudio.service.StudioPlanValidator;
 import com.aistareco.aep.ipstudio.service.StudioWorkflowService;
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -252,6 +253,11 @@ public class StudioPlanExecutor {
                     if(!"failed".equals(before)&&!"needs_user".equals(before)&&!"pending".equals(before)) {
                         step.put("status","failed").put("reason",latest.errorMessage()==null?"这一步没有完成":latest.errorMessage());
                         if(latest.errorCode()!=null)step.put("errorCode",latest.errorCode());
+                        if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(latest.errorCode())&&latest.output()!=null) {
+                            JsonNode doc=projects.readDoc(projects.required(e.getOwnerUserId(),e.getProjectId()));
+                            ArrayNode materials=StudioPlanMaterials.describe(doc,latest.output().path("outOfScopeNodeIds"));
+                            if(!materials.isEmpty()){step.set("materials",materials);step.put("reason",StudioPlanMaterials.reason(materials));}
+                        }
                     }
                 }
                 default -> {}
@@ -309,6 +315,10 @@ public class StudioPlanExecutor {
         String stage=e.getStage();
         for(JsonNode step:PlanState.stageSteps(state,stage)) {
             if("failed".equals(step.path("status").asText())) {
+                // Out of scope is deterministic: say what to do with the named objects, not 「重试」 (production 2026-10-23).
+                if(step.path("materials").isArray()&&!step.path("materials").isEmpty())
+                    return needsUser(e,state,"「"+step.path("title").asText()+"」停下了："+step.path("reason").asText()
+                            +(StudioPlanMaterials.anyOnCanvas(step.path("materials"))?"。可以把它加入这次制作重新编排，或者不用它重新编排。":"。可以不用它重新编排，或结束本次制作。"));
                 return needsUser(e,state,"「"+step.path("title").asText()+"」没有完成："+step.path("reason").asText("原因未知")+"。可以继续重试这一步，或结束本次制作。");
             }
             if(PlanState.unresolvedCheck(state,step)) {
@@ -500,6 +510,16 @@ public class StudioPlanExecutor {
             ObjectNode withTarget=definition.deepCopy();
             withTarget.put("prompt",StudioPlanSteps.checkTarget(plan,approach,target==null?null:target.path("definition"),definition.path("prompt").asText("")));
             compiled=withTarget;
+        }
+        // 「不用它，重新编排」 after a scope refusal: the planner is told which objects to leave out, so the retry is not the
+        // same request that failed (StudioPlanExecutionService#control, resume).
+        if(definition.path("settings").path("purpose").asText("").equals("plan-compile")&&step.path("excludedMaterials").isArray()&&!step.path("excludedMaterials").isEmpty()) {
+            List<String> names=new ArrayList<>();
+            for(JsonNode m:step.path("excludedMaterials"))names.add(m.path("title").asText("").isBlank()?"（未命名对象 "+m.path("nodeId").asText()+"）":"「"+m.path("title").asText()+"」（"+m.path("nodeId").asText()+"）");
+            ObjectNode withExclusion=compiled.deepCopy();
+            withExclusion.put("prompt",compiled.path("prompt").asText("")+"\n\n上一版计划用到了不在素材清单里的 "+String.join("、",names)
+                    +"，用户选择不用它：这次只用素材清单里的素材和本次制作的产物，不要再引用它。");
+            compiled=withExclusion;
         }
         List<String> canvas=PlanState.canvasContext(state);
         BillingSelection billing=billing(e);

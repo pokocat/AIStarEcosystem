@@ -489,4 +489,44 @@ class StudioPlanExecutorTest {
         assertTrue(text.contains("没做完：「片段 v1」「片段 v2」。"),text);
         assertEquals(1,posted.keySet().stream().filter(k->k.startsWith("exec-summary")).count());
     }
+
+    // ── Plan-compile stopped on materials outside the run (production 2026-10-23, PEX-fc87e857…) ─────────────────────
+    ObjectNode compileStep() {
+        var step=om.createObjectNode().put("id","compile").put("stage","production").put("title","编排制作计划").put("operation","text").put("execution","auto")
+                .put("status","pending").put("attempt",1).put("quotedCost",5).put("maxCost",5);
+        step.putArray("dependsOn");step.putArray("runIds");
+        step.putObject("definition").put("id","compile").put("operation","text").put("prompt","照原片拍法，只换中间主舞").put("title","编排制作计划")
+                .putObject("settings").put("operation","text").put("purpose","plan-compile");
+        return step;
+    }
+
+    // The user is told which object (by its canvas title) instead of 「方案还没准备好」 three times; ids stay for the buttons.
+    @Test void aPlanRefusedForMaterialsOutsideTheRunNamesThemAndStops() throws Exception {
+        execution("running",1000,compileStep());
+        when(projects.readDoc(any())).thenReturn(om.readTree("{\"nodes\":[{\"id\":\"sheet\",\"type\":\"image\",\"title\":\"三视图\"}]}"));
+        executor.advance("PEX-1");
+        String runId="IPR-PEX-1-p-compile";
+        dtos.put(runId,new IpRunDto(runId,"p","n","studio-text","failed","failed",0,0,"STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE","制作计划用到了这次制作没有带上的画布素材",
+                om.createObjectNode(),om.readTree("{\"outOfScopeNodeIds\":[\"sheet\",\"gone\"],\"logId\":\"E1\"}"),Instant.now().toString(),null,null));
+        executor.advance("PEX-1");
+        assertEquals("needs_user",row.getStatus());
+        var step=step("compile");
+        assertEquals("failed",step.path("status").asText());assertEquals("STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE",step.path("errorCode").asText());
+        assertEquals("sheet",step.path("materials").get(0).path("nodeId").asText());assertTrue(step.path("materials").get(0).path("onCanvas").asBoolean());
+        assertEquals("三视图",step.path("materials").get(0).path("title").asText());
+        assertFalse(step.path("materials").get(1).path("onCanvas").asBoolean());
+        assertTrue(state().path("needsUserReason").asText().contains("「三视图」"),"the stop names the object by its canvas title");
+        assertFalse(state().path("needsUserReason").asText().contains("sheet"),"never the id");
+        assertEquals(1,submitted.size(),"nothing is retried by itself");
+    }
+
+    @Test void replanningWithoutTheObjectsTellsThePlannerWhichToLeaveOut() throws Exception {
+        var step=compileStep();step.putArray("excludedMaterials").addObject().put("nodeId","sheet").put("title","三视图").put("onCanvas",true);
+        execution("running",1000,step);
+        executor.advance("PEX-1");
+        assertEquals(1,submitted.size());
+        String prompt=submitted.get(0).prompt();
+        assertTrue(prompt.startsWith("照原片拍法，只换中间主舞"));
+        assertTrue(prompt.contains("「三视图」（sheet）"),prompt);
+    }
 }

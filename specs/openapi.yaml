@@ -440,6 +440,7 @@ components:
               tradeoffs: { type: array, items: { type: string } }
               requiredCapabilities: { type: array, items: { type: string } }
         recommendedApproachId: { type: string, nullable: true }
+        materialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '技能计划可选：后续阶段要用、本阶段步骤没直接引用的画布素材（如分析阶段写下替换人物的设定图）。属于方案正文、计入指纹，确认后并入这次制作的素材范围。' }
         confirmedApproachId: { type: string, nullable: true, description: 服务端按用户确认绑定。 }
         budget:
           type: object
@@ -792,6 +793,17 @@ components:
               acceptedCandidateIndex: { type: integer, nullable: true }
               nodeId: { type: string, nullable: true, description: 这一步结果所在的画布节点：确认时绑定的已有对象（§6.1），否则是它自己的输出节点 <executionId>-<a|p>-<stepId>。生成任务的 node_id 与 node.upsert 都用它。 }
               reason: { type: string, nullable: true }
+              materials:
+                type: array
+                nullable: true
+                description: '「编排制作计划」因为用了这次制作没带上的画布素材而停下时，列出这些素材（STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE）。客户端据此提供「在画布上看」「加入这次制作，重新编排」「不用它，重新编排」。'
+                items:
+                  type: object
+                  required: [nodeId, title, onCanvas]
+                  properties:
+                    nodeId: { type: string }
+                    title: { type: string, description: 画布上的标题，可能为空 }
+                    onCanvas: { type: boolean, description: false 表示已从画布删除，不能加入 }
         budgets:
           type: array
           items:
@@ -833,6 +845,7 @@ components:
       properties:
         clientRequestId: { type: string, minLength: 1, maxLength: 64 }
         expectedStatus: { type: string, enum: [running, paused, needs_user, done, partial, failed, canceled], nullable: true }
+        addMaterialNodeIds: { type: array, nullable: true, maxItems: 16, items: { type: string }, description: '只用于 resume：把停下那一步 materials 里、仍在画布上的素材加入这次制作再重新编排。不在 materials 里或已删除 → 400 STUDIO_INPUT_INVALID；加入后超过 16 个 → 400 STUDIO_CONTEXT_LIMIT；其它操作带它 → 400。同一 clientRequestId 带不同的列表 → 409 STUDIO_REQUEST_CHANGED。' }
     StudioPlanExecutionAcceptRequest:
       type: object
       required: [clientRequestId, runId]

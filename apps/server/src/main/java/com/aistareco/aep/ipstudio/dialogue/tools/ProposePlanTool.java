@@ -58,7 +58,7 @@ public class ProposePlanTool implements StudioDialogueTool {
     public String description() { return "按已选制作方法为当前阶段整理制作方案：推荐方案、必要的替代方案、每一步做法与依赖。方案会显示给用户，不会自动执行；报价由服务端计算。出图、出视频、写剧本与文案这几种方法没有分析阶段，直接整理制作方案（stage 填 production）；只有参考视频复刻要先分析。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m, "brief");
-        DialogueTools.prop(s, "brief", "string", "用户目标、保留与替换范围、已知事实的整理，≤4000 字");
+        DialogueTools.prop(s, "brief", "string", "用户目标、保留与替换范围（换谁、换成画布上哪个素材、换哪些部分如脸 / 发型 / 服装）、已知事实的整理；用户在前面几条消息里点名的素材和补充的要求也写进来，≤4000 字");
         DialogueTools.prop(s, "feedback", "string", "用户对上一版方案的反馈，≤2000 字");
         DialogueTools.prop(s, "stage", "string", "analysis（分析方案）| production（制作方案：没有分析阶段的方法直接填它，否则要等分析完成）；省略为当前阶段").putArray("enum").add("analysis").add("production");
         return s;
@@ -159,9 +159,12 @@ public class ProposePlanTool implements StudioDialogueTool {
         catch (BusinessException e) {
             // The raw reason (「第 N 步…」, operation and stage names) is for the log and the model only; the work record says
             // it in plain words and carries no internal code (docs/ip-studio-dialogue-intents.md 「不锁方法」).
-            log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
+            log.info("[dialogue] plan rejected run={} code={} reason={} details={}", ctx.runId, e.getCode(), e.getMessage(), e.getDetails());
+            // Here every canvas object is in scope, so an out-of-scope id is one that is not on the canvas at all.
+            String why = StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(e.getCode()) && e.getDetails() instanceof JsonNode d
+                    ? "方案引用了画布上不存在的对象 " + d.path("nodeIds") + "，素材只能照素材清单里的 id 原样填" : e.getMessage();
             return ToolRun.failed(PLAN_NOT_READY, PLAN_NOT_READY_TEXT, DialogueTools.fail("（内部校验信息，只给你看，不要转述给用户）"
-                    + e.getCode() + "：" + e.getMessage() + "。按用户要做的内容选对方法（read_skill）后重新 propose_plan；成功后才能 request_approval，不能沿用旧方案。"))
+                    + e.getCode() + "：" + why + "。按用户要做的内容选对方法（read_skill）后重新 propose_plan；成功后才能 request_approval，不能沿用旧方案。"))
                     .settlingInTurn();
         }
         Set<String> offered = needsVideo(plan) ? offeredVideoModels() : null;

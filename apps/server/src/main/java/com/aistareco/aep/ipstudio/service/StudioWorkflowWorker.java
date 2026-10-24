@@ -426,7 +426,9 @@ public class StudioWorkflowWorker {
         // reason itself in the internal detail and the log (不锁方法 2026-10-23).
         try {plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);}
         catch(BusinessException e) {
-            log.info("[studio-run] skill plan rejected run={} code={} reason={}",run.getId(),e.getCode(),e.getMessage());
+            log.info("[studio-run] skill plan rejected run={} code={} reason={} details={}",run.getId(),e.getCode(),e.getMessage(),e.getDetails());
+            // Named, deterministic: the execution tells the user which canvas object, and asking the model again cannot fix it.
+            if(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(e.getCode()))throw e;
             throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,e.getCode()+": "+e.getMessage());
         }
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",exec.path("planRevision").asInt(1));
@@ -497,6 +499,11 @@ public class StudioWorkflowWorker {
             run.setCost(0);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
             run.setErrorCode(cancelled?"IP_RUN_CANCELLED":error instanceof BusinessException b?b.getCode():"STUDIO_RUN_FAILED");
             run.setErrorMessage(cancelled?"已停止创作":error instanceof BusinessException?error.getMessage():"这次创作没有完成，请重试");
+            // The canvas objects a rejected plan named outside its material scope: the plan execution names them to the user.
+            if(!cancelled&&error instanceof BusinessException b&&StudioPlanValidator.MATERIAL_OUT_OF_SCOPE.equals(b.getCode())&&b.getDetails() instanceof JsonNode d) {
+                ObjectNode failed=mapper.createObjectNode();failed.set("outOfScopeNodeIds",d.path("nodeIds"));
+                try {run.setOutputJson(mapper.writeValueAsString(failed));}catch(Exception e){throw new IllegalStateException(e);}
+            }
         }
         if (error != null && errorLog != null) errorLog.attach(run, error);
         run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);

@@ -449,7 +449,10 @@ public class StudioPlanExecutionService {
         projects.required(userId,projectId);
         var e=lockOwned(userId,projectId,executionId);
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
-        if(replayed(budget,req.clientRequestId(),action,null))return toDto(e);
+        List<String> added=req.addMaterialNodeIds()==null?List.of():req.addMaterialNodeIds().stream().filter(Objects::nonNull).distinct().toList();
+        if(!added.isEmpty()&&!"resume".equals(action))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","只有继续制作时才能加入素材");
+        String detail=added.isEmpty()?null:String.join(",",added.stream().sorted().toList());
+        if(replayed(budget,req.clientRequestId(),action,detail))return toDto(e);
         if(req.expectedStatus()!=null&&!req.expectedStatus().equals(e.getStatus()))throw stale("这次制作的状态已经变化，请刷新后再操作");
         ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
         Instant now=Instant.now();
@@ -471,12 +474,23 @@ public class StudioPlanExecutionService {
                 if("analysis".equals(e.getStage())&&stageFinished(state,"analysis"))throw stale("分析已经完成，请确认制作方案和预算后开始制作");
                 skills.requireActive(e.getSkillKey());
                 ObjectNode next=state.deepCopy();
+                if(!added.isEmpty())addMaterials(userId,projectId,next,e.getStage(),added);
                 for(JsonNode raw:PlanState.stageSteps(next,e.getStage())) {
                     ObjectNode step=(ObjectNode)raw;
                     switch(step.path("status").asText()) {
                         case "needs_user" -> {step.put("status","pending").put("confirmed",true);step.remove("reason");}
                         // Only the user's explicit continue starts a new attempt (new request identity).
-                        case "failed" -> {step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");}
+                        case "failed" -> {
+                            // Named objects the user did not add are left out of the next plan (StudioPlanExecutor#compile).
+                            if(step.path("materials").isArray()) {
+                                ArrayNode excluded=mapper.createArrayNode();
+                                for(JsonNode m:step.path("excludedMaterials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
+                                for(JsonNode m:step.path("materials"))if(!added.contains(m.path("nodeId").asText()))excluded.add(m);
+                                if(excluded.isEmpty())step.remove("excludedMaterials");else step.set("excludedMaterials",excluded);
+                                step.remove("materials");
+                            }
+                            step.put("status","pending").put("attempt",step.path("attempt").asInt(1)+1);step.remove("reason");step.remove("errorCode");
+                        }
                         default -> {if(PlanState.unresolvedCheck(next,step))step.put("acknowledged",true);}
                     }
                 }
@@ -490,11 +504,32 @@ public class StudioPlanExecutionService {
             }
             default -> throw new IllegalArgumentException(action);
         }
-        remember(budget,req.clientRequestId(),action,null);
+        remember(budget,req.clientRequestId(),action,detail);
         e.setStepsJson(write(state));e.setBudgetJson(write(budget));e.setUpdatedAt(now);bumpLease(e);
         executions.save(e);
         wakeAfterCommit(e.getId());
         return toDto(e);
+    }
+
+    /**
+     * 「加入这次制作，重新编排」: only objects a stopped step of this stage named outside the materials and still on the
+     * canvas, and the materials stay within the request cap. Nothing else widens an execution's materials.
+     */
+    private void addMaterials(String userId,String projectId,ObjectNode state,String stage,List<String> added) {
+        Set<String> named=new HashSet<>();
+        for(JsonNode step:PlanState.stageSteps(state,stage))
+            if("failed".equals(step.path("status").asText()))for(JsonNode m:step.path("materials"))named.add(m.path("nodeId").asText());
+        if(named.isEmpty())throw stale("这一步现在不需要加入素材，请刷新后再操作");
+        Set<String> onCanvas=new HashSet<>();
+        for(JsonNode node:com.aistareco.aep.ipstudio.service.IpDocs.nodes(projects.readDoc(projects.required(userId,projectId))))onCanvas.add(node.path("id").asText());
+        for(String id:added)if(!named.contains(id)||!onCanvas.contains(id))
+            throw BusinessException.badRequest("STUDIO_INPUT_INVALID","只能加入这一步提到、而且还在画布上的素材");
+        ArrayNode canvas=(ArrayNode)state.withArray("canvasContextIds");
+        Set<String> present=new LinkedHashSet<>();canvas.forEach(v->present.add(v.asText()));
+        for(String id:added)if(present.add(id))canvas.add(id);
+        if(present.size()>StudioPlanValidator.MAX_MATERIALS)
+            throw BusinessException.badRequest("STUDIO_CONTEXT_LIMIT","一次制作最多带上 "+StudioPlanValidator.MAX_MATERIALS+" 个画布素材");
+        log.info("[plan-exec] materials added before re-planning project={} added={}",projectId,added);
     }
 
     /** The user adopts a successful run / candidate of a step. Records the judgment; never rewrites an AI verdict. */
@@ -609,6 +644,7 @@ public class StudioPlanExecutionService {
     /** {@code stage} null: any stage (the caller compares it); otherwise the plan must belong to that stage. */
     private LoadedPlan loadPlan(String userId,String projectId,String planRunId,String fingerprint,String expectedStage) {
         LoadedPlan loaded=nativePlan(userId,projectId,planRunId);
+        boolean dialogue=loaded!=null&&projects.ownedRun(userId,projectId,planRunId).map(r->"studio-dialogue".equals(r.getKind())).orElse(false);
         // A dialogue run's output.plan is only the turn's latest plan; an earlier revision is read from its plan block.
         if(loaded!=null&&!fingerprint.equals(StudioPlanValidator.fingerprint(loaded.plan())))loaded=null;
         if(loaded==null)for(var source:sources.orderedStream().toList()) {
@@ -617,9 +653,12 @@ public class StudioPlanExecutionService {
             if(projects.ownedRun(userId,projectId,planRunId).isEmpty())continue;
             loaded=new LoadedPlan(planRunId,record.plan(),StudioSkillRules.fromSnapshot(record.skillSnapshot()),
                     record.contextNodeIds()==null?List.of():List.copyOf(record.contextNodeIds()),record.revision(),record.threadId());
+            dialogue=true;
             break;
         }
         if(loaded==null)throw stale("找不到这份计划，请刷新后再确认");
+        // A dialogue plan, by either path, gets its materials from the one rule (cross-message picks included).
+        if(dialogue)loaded=new LoadedPlan(loaded.planRunId(),loaded.plan(),loaded.rules(),materials(userId,projectId,loaded),loaded.revision(),loaded.threadId());
         JsonNode plan=loaded.plan();
         if(!StudioPlanValidator.isSkillPlan(plan))throw stale("这份计划不是可以连续执行的制作计划");
         String stage=expectedStage==null?plan.path("stage").asText():expectedStage;
@@ -636,6 +675,12 @@ public class StudioPlanExecutionService {
             if(!step.path("quotedCost").canConvertToLong())throw stale("计划还没有服务端报价，暂时不能确认");
         }
         return loaded;
+    }
+    private List<String> materials(String userId,String projectId,LoadedPlan loaded) {
+        List<String> picks=new ArrayList<>();
+        if(loaded.threadId()!=null)for(var source:sources.orderedStream().toList())picks.addAll(source.conversationPicks(loaded.threadId()));
+        JsonNode doc=projects.readDoc(projects.required(userId,projectId));
+        return StudioPlanMaterials.scope(doc,loaded.contextNodeIds(),loaded.plan(),picks);
     }
     private LoadedPlan nativePlan(String userId,String projectId,String planRunId) {
         var run=projects.ownedRun(userId,projectId,planRunId).orElse(null);
@@ -796,7 +841,7 @@ public class StudioPlanExecutionService {
                     depends,step.path("status").asText(),runIds,step.path("attempt").asInt(1),step.path("quotedCost").asLong(),
                     step.hasNonNull("maxCost")?step.path("maxCost").asLong():null,step.path("acceptedRunId").asText(null),
                     step.hasNonNull("acceptedCandidateIndex")?step.path("acceptedCandidateIndex").asInt():null,
-                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null)));
+                    StudioPlanExecutionIds.stepNodeId(e.getId(),step),step.path("reason").asText(null),materials(step)));
         }
         List<PlanExecutionBudget> budgets=new ArrayList<>();
         for(String stage:List.of("analysis","production")) {
@@ -811,6 +856,12 @@ public class StudioPlanExecutionService {
         return new PlanExecution(e.getId(),e.getProjectId(),e.getThreadId(),e.getSkillKey(),e.getSkillVersion(),e.getStage(),e.getPlanRunId(),
                 e.getPlanRevision(),e.getPlanFingerprint(),e.getStatus(),steps,budgets,selection,state.path("needsUserReason").asText(null),
                 iso(e.getStartedAt()),iso(e.getDeadlineAt()),iso(e.getUpdatedAt()),iso(e.getFinishedAt()));
+    }
+    private static List<PlanExecutionMaterial> materials(JsonNode step) {
+        if(!step.path("materials").isArray()||step.path("materials").isEmpty())return null;
+        List<PlanExecutionMaterial> out=new ArrayList<>();
+        for(JsonNode m:step.path("materials"))out.add(new PlanExecutionMaterial(m.path("nodeId").asText(),m.path("title").asText(""),m.path("onCanvas").asBoolean()));
+        return out;
     }
     private static String iso(Instant t){return t==null?null:t.toString();}
 

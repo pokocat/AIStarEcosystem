@@ -500,7 +500,11 @@ export type StudioPlanExecutionStepStatus = "pending" | "submitted" | "running" 
 export interface StudioPlanExecutionStep { id: string; title: string; operation: StudioPlanOperation; stage: StudioPlanStage; dependsOn: string[]; status: StudioPlanExecutionStepStatus;
   runIds: string[]; attempt: number; quotedCost: number; maxCost?: number; acceptedRunId?: string; acceptedCandidateIndex?: number;
   /** The canvas node this step's result goes to: the prepared object it was bound to at confirmation, else its own output node. */
-  nodeId?: string; reason?: string }
+  nodeId?: string; reason?: string;
+  /** A stopped plan-compile step: canvas objects its plan used that this execution does not carry (the user adds them or re-plans without). */
+  materials?: StudioPlanExecutionMaterial[] }
+/** A canvas object a stopped step named outside the execution's materials; `onCanvas: false` once it was deleted. */
+export interface StudioPlanExecutionMaterial { nodeId: string; title: string; onCanvas: boolean }
 export interface StudioPlanExecutionBudget { stage: StudioPlanStage; approvedCap: number; autoFixCap: number; spent: number; inFlight: number; remaining: number; shortfall?: number }
 export interface StudioPlanExecution {
   id: string; projectId: string; threadId?: string; skillKey: string; skillVersion: number; stage: StudioPlanStage; planRunId: string; planRevision: number; planFingerprint: string;
@@ -510,7 +514,9 @@ export interface StudioPlanExecution {
 /** Create an analysis execution, or confirm a new stage on the same execution (executionId + approachId + expectedRevision). */
 export interface StudioPlanExecutionCreateRequest { clientRequestId: string; stage: StudioPlanStage; planRunId: string; planFingerprint: string; approachId?: string; budgetCap: number; autoFixCap: number;
   billing?: EnterpriseBillingSelection; executionId?: string; expectedRevision?: number; approvalId?: string; confirmationMessageId?: string }
-export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus }
+export interface StudioPlanExecutionControlRequest { clientRequestId: string; expectedStatus?: StudioPlanExecutionStatus;
+  /** Resume only: add these objects (from the stopped step's `materials`, still on the canvas) before re-planning. */
+  addMaterialNodeIds?: string[] }
 export interface StudioPlanExecutionAcceptRequest { clientRequestId: string; runId: string; candidateIndex?: number }
 
 // ─── S3: skill registry with immutable versions, admin editing / dry-run, intent routing, distilled drafts ───
