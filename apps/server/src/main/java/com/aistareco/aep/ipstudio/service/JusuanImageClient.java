@@ -158,7 +158,7 @@ public class JusuanImageClient {
                 }
                 JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
                 String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
-                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw new ProviderRejected("图片任务失败，请检查提示词和参考图后重试");
+                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(new ProviderRejected("图片任务失败，请检查提示词和参考图后重试"),job.toString());
                 if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);

@@ -49,6 +49,24 @@ class StudioWorkflowWorkerSkillTest {
         return new Harness(worker,run,credits,models);
     }
 
+    @Test void invalidModelContentKeepsTheExactSupplierResponseForTheAlert() throws Exception {
+        var input=json.createObjectNode().put("operation","text");
+        var h=harness(input,"studio-text","invalid JSON",mock(FileStorageService.class));
+        var evidence=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(200,
+                java.net.http.HttpHeaders.of(Map.of("x-request-id",List.of("supplier-123")),(k,v)->true),
+                "{\"choices\":[{\"message\":{\"content\":\"invalid JSON\"}}]}");
+        when(h.models().invokeChatOnEndpoint(any(),any(),anyList(),anyMap())).thenReturn(
+                new AiModelInvocationService.AiModelResponse("invalid JSON","stop",1L,"ep","m",1L,0L,evidence));
+        var errors=mock(StudioRunErrorLog.class);ReflectionTestUtils.setField(h.worker(),"errorLog",errors);
+        h.worker().runBlocking("r");
+        assertEquals("failed",h.run().getStatus());
+        var failure=ArgumentCaptor.forClass(Throwable.class);verify(errors).attach(eq(h.run()),failure.capture());
+        assertSame(evidence,failure.getValue().getSuppressed()[0]);
+        assertTrue(evidence.responseBody().contains("invalid JSON"));
+        verify(h.credits()).releaseHold(anyString(),eq("r"),anyString());
+        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+    }
+
     @Test void checkRunSamplesTheRecordedTimesKeepsUnknownAndSettlesRealTokens() throws Exception {
         Path clip=directory.resolve("made.mp4");
         var ffmpeg=new ProcessBuilder("ffmpeg","-v","error","-y","-f","lavfi","-i","testsrc2=s=160x90:r=10:d=8","-c:v","libx264","-threads","2",clip.toString()).start();

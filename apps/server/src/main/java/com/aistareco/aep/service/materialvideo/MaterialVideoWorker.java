@@ -367,7 +367,10 @@ public class MaterialVideoWorker {
                         ? "：" + poll.failReason() : "";
                 log.warn("[material-video] job {} failed upstream status={} taskId={} reason={}",
                         jobId, poll.rawStatus(), submit.taskId(), poll.failReason());
-                markFailed(jobId, reason.isEmpty() ? "视频生成失败，模型没有给出原因" : "视频生成失败" + reason);
+                String message=reason.isEmpty() ? "视频生成失败，模型没有给出原因" : "视频生成失败" + reason;
+                var error=new BusinessException(HttpStatus.BAD_GATEWAY,"STUDIO_VIDEO_FAILED",message);
+                if(poll.diagnostics()!=null)poll.diagnostics().attachTo(error);
+                markFailed(jobId, null, message, error);
                 return;
             }
             // 仍在生成：优先采用服务商返回的真实进度；没有则按 elapsed/maxWait 估算。

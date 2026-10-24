@@ -45,6 +45,14 @@ class ModelAlertContextTest {
         assertTrue(context.describe("absent").contains("未记录"));
         db.execute("DROP TABLE material_video_job");assertTrue(context.describe("absent").contains("暂时无法读取"));
     }
+    @Test void botContextOmitsEmptyFieldsAndRequestBoilerplate() {
+        assertEquals("",context.describeForAlert("absent"));
+        db.update("INSERT INTO ai_generation_queue VALUES (1,'task','ep')");
+        String text=context.describeForAlert("task");
+        assertTrue(text.contains("当前端点（ep）"));assertTrue(text.contains("new-model（当前配置）"));
+        for(String value:new String[]{"未获取","未记录","任务参数","原始响应","API 基础地址"})assertFalse(text.contains(value),text);
+        db.execute("DROP TABLE material_video_job");assertEquals("",context.describeForAlert("task"));
+    }
     @Test void urlsDropUserInfoQueryAndFragmentAndUnsafeParameterValuesAreNotForwarded() throws Exception {
         assertEquals("https://api.example:8443/v1",ModelAlertContext.safeUrl("https://user:password@api.example:8443/v1?key=secret#token"));
         assertEquals("未记录",ModelAlertContext.safeUrl("file:///secret"));

@@ -40,6 +40,23 @@ class StudioSpeechLifecycleTest {
         verify(client,times(1)).submit(any(),anyString(),anyString(),anyString(),anyString());
         verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(8L),anyString());verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
     }
+    @Test void failedSpeechRetainsSupplierReasonsAndRefundsOnce() throws Exception { providerFailure(false); }
+    @Test void failedLipSyncRetainsSupplierReasonsAndRefundsOnce() throws Exception { providerFailure(true); }
+    private void providerFailure(boolean lip) throws Exception {
+            run.setKind(lip?"studio-lip-sync":"studio-audio");
+            run.setInputJson("{\"_exec\":{\"endpointId\":\"tts\",\"baseUrl\":\"https://api.jusuanhub.com/v1\",\"jobId\":\"job_r\",\"jobUrl\":\"url\"}}");
+            var result=mapper.readTree("{\"status\":\"failed\",\"error\":{\"message\":\"服务方余额不足\",\"code\":\"insufficient_balance\"}}");
+            when(client.poll(any(),anyString(),anyString(),anyString(),anyString())).thenReturn(result);
+            var lips=mock(JusuanLipSyncClient.class);when(lips.poll(any(),anyString(),anyString(),anyString(),anyString())).thenReturn(result);
+            org.springframework.test.util.ReflectionTestUtils.setField(worker,"lips",lips);
+            var errors=mock(StudioRunErrorLog.class);org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLog",errors);
+            worker.step("r");worker.step("r");
+            assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());
+            var failure=org.mockito.ArgumentCaptor.forClass(Throwable.class);verify(errors).attach(eq(run),failure.capture());
+            var response=(com.aistareco.aep.service.ai.ProviderResponseDiagnostics)failure.getValue().getSuppressed()[0];
+            assertTrue(response.responseBody().contains("服务方余额不足"));assertTrue(response.responseBody().contains("insufficient_balance"));
+            verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
+    }
     @Test void transientPollingFailureKeepsHoldAndOriginalJob() throws Exception {
         run.setInputJson("{\"_exec\":{\"endpointId\":\"tts\",\"baseUrl\":\"https://api.jusuanhub.com/v1\",\"jobId\":\"job_r\",\"jobUrl\":\"url\"}}");
         when(client.poll(any(),anyString(),anyString(),anyString(),anyString())).thenThrow(new IllegalStateException("network"));

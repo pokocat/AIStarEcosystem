@@ -31,6 +31,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -129,6 +130,20 @@ class MaterialVideoWorkerTest {
         ObjectProvider<CdnUploader> provider = mock(ObjectProvider.class);
         when(provider.getIfAvailable()).thenReturn(uploader);
         return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider, cover);
+    }
+
+    @Test void terminalProviderFailureRetainsTheCompleteResponseForTheAlert() {
+        var evidence=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(200,null,
+                "{\"status\":\"failed\",\"error\":{\"code\":\"content_filter\",\"message\":\"内容审核未通过\"}}");
+        when(modelClient.poll(any(MaterialVideoModelClient.SubmitResult.class))).thenReturn(
+                new MaterialVideoModelClient.PollResult("failed",null,null,"failed",100,"内容审核未通过",null,null,null,evidence));
+        var errors=mock(com.aistareco.aep.service.ErrorLogService.class);
+        var worker=worker(new FakeUploader(false));org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
+        worker.generateAsync("mvj_test");
+        assertEquals("failed",job.getStatus());
+        var failure=org.mockito.ArgumentCaptor.forClass(Throwable.class);
+        verify(errors).recordTask(failure.capture(),eq("STUDIO_VIDEO_FAILED"),eq("u1"),eq("mvj_test"));
+        assertSame(evidence,failure.getValue().getSuppressed()[0]);
     }
 
     @Test void successfulOriginalTaskPollingClearsAnEarlierRecoveryNotice() {

@@ -177,8 +177,9 @@ class JusuanImageClientTest {
     void JsonNodeCheck(String body)throws Exception {var json=mapper.readTree(body);assertEquals("768x1376",json.path("size").asText());assertEquals(List.of("ref1","ref2"),mapper.convertValue(json.path("input_image_asset_ids"),List.class));assertFalse(json.has("image"));}
     @Test void failedAsyncJobNeverProducesAnImage() {
         var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
-        var accepted=json("{\"id\":\"job\"}");var failed=json("{\"status\":\"failed\"}");when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
-        assertThrows(BusinessException.class,()->client.generate("ep","x","1024x1024",List.of(),"run","owner",s->{}));verifyNoInteractions(http);
+        var accepted=json("{\"id\":\"job\"}");var failed=json("{\"status\":\"failed\",\"error\":{\"message\":\"参考图不符合模型要求\"}}");when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
+        var error=assertThrows(BusinessException.class,()->client.generate("ep","x","1024x1024",List.of(),"run","owner",s0->{}));verifyNoInteractions(http);
+        assertTrue(((ProviderResponseDiagnostics)error.getSuppressed()[0]).responseBody().contains("参考图不符合模型要求"));
     }
     @Test void squareRequestUsesPersistedHdPresetAndMissingConfigFailsBeforeProvider() throws Exception {
         var ep=endpoint("ernie-Image");when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
