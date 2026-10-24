@@ -15,6 +15,19 @@ let sink: ((error: StudioError) => void) | undefined;
 const pending = new Map<string, StudioError>();
 const keyOf = (e: StudioError) => e.taskId || e.logId || e.clientMessageId || `${e.code}:${e.message}`;
 
+/**
+ * Internal method / stage refusals (不锁方法 2026-10-23, docs/ip-studio-dialogue-intents.md): never shown as such, also
+ * for work records saved before the server stopped sending them ('第 1 步的操作不在当前阶段允许的范围内' was seen live).
+ */
+const INTERNAL_CODES = new Set(['STUDIO_SKILL_OPERATION_NOT_ALLOWED', 'STUDIO_SKILL_LOCKED']);
+const INTERNAL_TEXT = /当前阶段允许的范围|当前阶段不允许|制作结束前不能换方法|按另一种方法制作/;
+export const PLAN_NOT_READY_TEXT = '这份方案还没准备好，我会按你要做的内容重新整理。';
+/** What a user sees for an error: internal refusals become one plain sentence and a neutral code. */
+export function userFacingError(code: string | undefined, message: string | undefined): { code?: string; message?: string } {
+  if ((code && INTERNAL_CODES.has(code)) || (message && INTERNAL_TEXT.test(message))) return { code: code ? 'STUDIO_PLAN_NOT_READY' : undefined, message: PLAN_NOT_READY_TEXT };
+  return { code, message };
+}
+
 /** Read structured errors and the older server's message suffix without inventing a log ID. */
 export function normalizeStudioError(input: ErrorInput, fallback = '操作未完成，请重试'): StudioError {
   if (typeof input === 'string' && remembered.has(input)) return remembered.get(input)!;
@@ -23,9 +36,11 @@ export function normalizeStudioError(input: ErrorInput, fallback = '操作未完
   const suffix = raw.match(/\s*[·。]?\s*追查号[：:\s]+([^\s，。]+)(?:\s*[—-]+.*)?$/);
   const details = value.details && typeof value.details === 'object' ? value.details as Record<string, unknown> : {};
   const logId = typeof value.logId === 'string' ? value.logId : typeof details.logId === 'string' ? details.logId : suffix && /^[A-HJ-NP-Z2-9]{12}$/.test(suffix[1]) ? suffix[1] : undefined;
+  const visible = userFacingError(typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : undefined,
+    suffix ? raw.slice(0, suffix.index).trim() || fallback : raw);
   const result = {
-    code: typeof value.errorCode === 'string' ? value.errorCode : typeof value.code === 'string' ? value.code : input instanceof TypeError && /fetch|network|load failed/i.test(raw) ? 'NETWORK_ERROR' : 'CLIENT_ERROR',
-    message: suffix ? raw.slice(0, suffix.index).trim() || fallback : raw,
+    code: visible.code ?? (input instanceof TypeError && /fetch|network|load failed/i.test(raw) ? 'NETWORK_ERROR' : 'CLIENT_ERROR'),
+    message: visible.message ?? fallback,
     logId,
     taskId: typeof value.taskId === 'string' ? value.taskId : typeof value.runId === 'string' ? value.runId : undefined,
     ...(typeof value.clientMessageId === 'string' ? { clientMessageId: value.clientMessageId } : {}),

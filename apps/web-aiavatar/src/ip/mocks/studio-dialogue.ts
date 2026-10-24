@@ -121,21 +121,27 @@ export function mockRouteSkill(active: StudioSkillSummary[], media: Set<string>,
 
 const workingExecution = (p: MockProject) => !!p.execution && ["running", "paused", "needs_user"].includes(p.execution.status);
 
+/** The thread changes method while an execution is bound: its pending cards are superseded, it no longer belongs here. */
+function releaseForSwitch(p: MockProject, t: MockThread) {
+  const generating = !!p.execution?.steps.some(s => s.status === "running" || s.status === "submitted");
+  updateExecution(p, e => ({ ...e, status: generating ? "paused" : "canceled", ...(generating ? {} : { finishedAt: now() }) }));
+  t.view = { ...t.view, messages: t.view.messages.map(m => ({ ...m, blocks: m.blocks.map(b => b.type === "approval" && b.status === "pending" ? { ...b, status: "superseded" as const } : b) })) };
+  p.execution = undefined;
+  t.thread.activeExecutionId = undefined;
+}
+
 /**
- * The skill for this message, like StudioDialogueService.startTurn: an explicit choice wins (switching away from the bound
- * skill only while no execution is active); with an active execution the method stays; otherwise every message is routed
- * again and a hit on another skill switches the thread. A tie or no hit keeps the current skill (or none).
+ * The skill for this message, like StudioDialogueService.startTurn: an explicit choice wins; otherwise every message is
+ * routed again, also while an execution is active (不锁方法 2026-10-23), and a hit on another skill switches the thread.
+ * A tie or no hit keeps the current skill (or none).
  */
 function pickSkill(projectId: string, p: MockProject, t: MockThread, request: StudioPostMessageRequest): StudioSkillSummary | undefined {
   const current = mockSkill(t.thread.skillKey);
   if (request.skillKey) {
     const chosen = current?.key === request.skillKey ? current : activeSkill(request.skillKey);
     if (!chosen) throw new ApiError({ code: "STUDIO_SKILL_NOT_FOUND", message: "这个技能已经停用了，换一个再发" }, 404);
-    if (current && current.key !== chosen.key && workingExecution(p))
-      throw new ApiError({ code: "STUDIO_INPUT_INVALID", message: "这条对话正在按另一种方法制作；要换方法，请先结束这次制作，或从某条消息重新开始" }, 400);
     return chosen;
   }
-  if (workingExecution(p)) return current;
   const nodes = mockStore().projects.get(projectId)?.doc.nodes || [];
   const ids = new Set([...(request.pinnedNodeIds || []), ...(request.attachmentNodeIds || [])]);
   const media = new Set(nodes.filter(n => ids.has(n.id)).map(n => mediaOf(n.type)).filter((m): m is NonNullable<typeof m> => !!m));
@@ -694,8 +700,12 @@ export function mockDialoguePost(projectId: string, threadId: string, request: S
   let result: StudioPostMessageResult;
   if (busy) { t.queued.push(message.id); result = { messageId: message.id, turnId: t.turnId, queueState: "queued" }; }
   else {
-    // The skill is bound per job: a different one switches the thread and starts its job from the beginning.
-    if (skill && skill.key !== t.thread.skillKey) { t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; p.stage = "idle"; }
+    // The skill is bound per job: a different one switches the thread and starts its job from the beginning. A bound
+    // execution is released like StudioDialogueService.switchMethod: ended when nothing generates, else left to finish.
+    if (skill && skill.key !== t.thread.skillKey) {
+      if (workingExecution(p)) releaseForSwitch(p, t);
+      t.thread.skillKey = skill.key; t.thread.skillVersion = skill.version; p.stage = "idle";
+    }
     if (!skill) generalTurn(p, t);
     else if (mockSkillIsDirect(skill) && (p.stage === "idle" || p.stage === "done")) directTurn(projectId, p, t, request, skill);
     else if (p.stage === "idle") firstTurn(projectId, p, t, request);

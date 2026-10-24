@@ -97,7 +97,7 @@ function canvasWith(projectId: string, nodes: { id: string; type: string }[]) {
     doc: { nodes: nodes.map(n => ({ ...n, title: n.id, position: { x: 0, y: 0 }, width: 320, height: 240, metadata: {} })), connections: [], viewport: { x: 0, y: 0, k: 1 } } } as unknown as IpProject);
 }
 
-test('skill routing: a tie binds nothing and answers without a 400; an explicit choice binds; switching is refused only during an active execution', async () => {
+test('skill routing: a tie binds nothing and answers without a 400; an explicit choice binds, also during an active execution', async () => {
   const state = await mockDialogueConversation('route'), id = state.thread.id, flow = await settled('route', id);
   // 「照着」 (复刻) and 「做一条」 (出视频) score the same: no skill, no question, a plain answer.
   expect((await mockDialoguePost('route', id, { clientMessageId: 'x1', text: '照着做一条' })).queueState).toBe('accepted');
@@ -110,14 +110,17 @@ test('skill routing: a tie binds nothing and answers without a 400; an explicit 
   expect(await mockDialoguePost('route', id, { clientMessageId: 'x3', text: '换成复刻', skillKey: 'reference-video-recreation' })).toMatchObject({ queueState: 'accepted' });
   expect((await mockDialogueConversation('route')).thread).toMatchObject({ skillKey: 'reference-video-recreation', skillVersion: 1 });
   await flow.done(3);
-  // Once the analysis runs, the method is fixed: an explicit switch is refused, a routed message keeps it.
+  // 不锁方法 (2026-10-23): once the analysis runs, an explicit switch is still accepted; the analysis is released and no
+  // longer belongs to the conversation.
   const store = (await mockDialogueConversation('route'));
   const card = store.messages.flatMap(m => m.blocks).filter((b): b is DialogueApprovalBlock => b.type === 'approval' && b.status === 'pending').at(-1)!;
   await mockExecutionCreate('route', { clientRequestId: 'r1', stage: 'analysis', planRunId: 'mock-plan-analysis', planFingerprint: card.planFingerprint, budgetCap: card.budgetCap, autoFixCap: 0, approvalId: card.approvalId });
   await flow.done(4);
-  expect(await mockDialoguePost('route', id, { clientMessageId: 'x4', text: '画一张海报', skillKey: 'image-generation' }).catch(e => e)).toMatchObject({ code: 'STUDIO_INPUT_INVALID', status: 400 });
-  await mockDialoguePost('route', id, { clientMessageId: 'x5', text: '画一张海报' });
-  expect((await mockDialogueConversation('route')).thread.skillKey).toBe('reference-video-recreation');
+  expect(await mockDialoguePost('route', id, { clientMessageId: 'x4', text: '画一张海报', skillKey: 'image-generation' })).toMatchObject({ queueState: 'accepted' });
+  const switched = await mockDialogueConversation('route');
+  expect(switched.thread.skillKey).toBe('image-generation');
+  expect(switched.thread.activeExecutionId).toBeUndefined();
+  expect(switched.execution).toBeUndefined();
   flow.stop();
 }, 20000);
 

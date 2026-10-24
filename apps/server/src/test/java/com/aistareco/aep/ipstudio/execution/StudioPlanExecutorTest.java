@@ -290,7 +290,7 @@ class StudioPlanExecutorTest {
         dtos.put("IPR-PEX-1-p-c1",dto("IPR-PEX-1-p-c1","done",3,om.readTree("{\"check\":{\"status\":\"pass\",\"items\":[]}}")));
         executor.advance("PEX-1");
         assertEquals("done",row.getStatus());assertNotNull(row.getFinishedAt());
-        verify(dialogue).bindExecution("t",null,null);
+        verify(dialogue).unbindExecution("t","PEX-1");
         assertEquals(43,budget().path("spent").asLong());assertEquals(0,budget().path("inFlight").asLong());
         JsonNode video=null,check=null;
         for(int i=0;i<published.size();i++)if("node.upsert".equals(published.get(i))) {
@@ -416,6 +416,31 @@ class StudioPlanExecutorTest {
         assertFalse(budget().has("dialogueInFlight"));assertFalse(budget().has("dialogueSpent"));
         var update=publishedData.get(published.indexOf("budget.update"));
         assertFalse(update.has("dialogueSpent"));assertFalse(update.has("dialogueInFlight"));
+    }
+
+    /**
+     * 不锁方法 (2026-10-23): a production detached when its thread switched method. What is generating finishes, settles
+     * and lands on the canvas of the old thread; nothing new is submitted, no message is posted, and once nothing
+     * generates any more it ends quietly.
+     */
+    @Test void aDetachedExecutionFinishesWhatGeneratesOnTheCanvasAndEndsQuietly() throws Exception {
+        var running=videoStep("v1",40);running.put("status","running");running.withArray("runIds").add("IPR-v1");
+        execution("paused",200,running,videoStep("v2",40));
+        row.setThreadId(null);
+        var state=(ObjectNode)state();state.put("detachedThreadId","t");row.setStepsJson(state.toString());
+        dtos.put("IPR-v1",dto("IPR-v1","running",0,null));
+        executor.advance("PEX-1");
+        assertTrue(submitted.isEmpty(),"no new step for a detached production");
+        assertEquals("paused",row.getStatus(),"still generating");
+        dtos.put("IPR-v1",dto("IPR-v1","done",40,videoOutput("ipstudio_gen/u/v1.mp4")));
+        published.clear();
+        executor.advance("PEX-1");
+        assertTrue(published.contains("node.upsert"),"the finished clip still lands on the canvas");
+        assertFalse(published.contains("budget.update"),"only canvas events reach the thread it left");
+        assertTrue(submitted.isEmpty());
+        assertEquals("canceled",row.getStatus(),"nothing generates any more: ended");
+        assertTrue(posted.isEmpty(),"no summary or card on the thread it left");
+        verify(dialogue,never()).unbindExecution(anyString(),anyString());
     }
 
     // ── D07: completion summary ─────────────────────────────────────────────────────────────────────────────

@@ -102,7 +102,8 @@ public final class StudioPlanSteps {
                 yield new RunRequest(requestId,nodeId,"assemble",prompt.isBlank()?"按计划顺序合成成片":prompt,clips,null,null,null,keys.aspectRatio(),null,null,null,null,null,null,maxCost,packaging,null,null,null,null,billing,
                         null,null,null,null,stage,executionId,null);
             }
-            default -> throw BusinessException.badRequest("STUDIO_SKILL_OPERATION_NOT_ALLOWED","这一步的操作不能自动执行");
+            default -> throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,"STUDIO_SKILL_OPERATION_NOT_ALLOWED","这一步现在还不能自动做",
+                    "no automatic submission for operation "+step.path("operation").asText());
         };
     }
 

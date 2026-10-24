@@ -1119,7 +1119,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **四个技能**：出图 `image-generation`、写剧本与文案 `script-writing`、出视频 `video-generation` 是**直达技能**（`operations.analysis: []`，起始阶段 production）；参考视频复刻 `reference-video-recreation` 仍是分析 → 制作两阶段。
 - **直达技能一张卡**：方案和制作确认卡同一轮发出，卡上不带 `executionId`，点按钮或回「可以」直接以 production 建执行；写剧本与文案的短稿（1500 字内）当轮 `create_nodes` 放进画布，不发卡。前端 `approve()` 只在卡上带 `executionId` 时才当阶段确认，**不再回退到面板上最近一次执行的 id**。
 - **路由**（`StudioSkillRouter.decide`）：写作意图（写 / 改 / 润色 / 出几条 / 想几个…直接带「文案 / 卖点 / 标题 / 口播 / 脚本 / 剧本…」）先判，带图带视频也归写剧本与文案，除非这句话先要了图或视频（「画一张海报，上面写标题」仍是出图）；其余关键词 ×2、素材类型 ×1，唯一最高分胜出；文字一个词都没命中 → 沿用当前技能、没有就不绑（**只有素材不选方法**）；**平手一律不绑**（2026-10-21 起，当前技能在平手里也不沿用），线程清掉技能，由模型 `read_skill` 选，**不再抛 400 `STUDIO_SKILL_REQUIRED`**（前端处理保留）。
-- **按任务绑定**：没有活跃执行时每条消息重新路由，命中别的技能就换；有活跃执行时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。
+- **按任务绑定**（2026-10-23 起以「不锁方法」为准：有活跃执行时也按意图换方法）：没有活跃执行时每条消息重新路由，命中别的技能就换；有活跃执行时方法不变，显式换技能 400 `STUDIO_INPUT_INVALID`。
 - **问题预算**：技能正文「必填与可选」是要不要问的唯一判据；必填缺且推不出才问，一轮一个，带候选和默认；可选项（画幅、张数、时长、风格、模型）一律用默认，不问不编。
 - **提示词改了**：`PromptTemplateSeeder.SEED_VERSION` 已升到 `v19-2026-10-20-dialogue-intent-direct-merged`，不升线上不生效。演示 mock（`src/ip/mocks/studio-dialogue.ts`）已照服务端补三个直达技能与新路由。
 - **未做**：真模型端到端（上线前按真源 §7 触发评测集至少真调一遍，§8.0.1 ⑦）；配音 / 口型技能接入对话。
@@ -1200,3 +1200,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **对话费用不计入制作预算**：`attributeTurn`、`dialogueReserve()`、执行器里的 `dialogueRuns` 统计和 `dialogueSpent / dialogueInFlight` 全部删除；确认卡上限 = 报价 + 重做额度。旧数据里这些字段读到不报错。绑定制作的线程，对话仍由制作的固定付款人付（D10）。
 - **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`）。
 - 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。
+
+### Studio 对话不锁方法（2026-10-23，本地未发布）
+
+真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法，有活跃制作时也一样（`requireSkillSwitchAllowed`、`ReadSkillTool` 的拒绝、`planningSkill` 的执行锁、受理处「有活跃执行时方法不变 / 显式换技能 400」全部删除）。切换只走 `StudioDialogueService.switchMethod`：同方法不动；换方法时作废待确认卡，旧制作没有在生成的就按停止收尾，有在生成的就暂停并解绑（不取消，完成的结果仍发到原线程的画布，不发消息，不占画布，生成完自行结束）。方案里有当前方法不允许的操作时先换到能覆盖的方法再校验。`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、「第 N 步…不在当前阶段允许的范围内」这类内部原因不进用户界面，统一说「这份方案还没准备好，我会按你要做的内容重新整理。」（`STUDIO_PLAN_NOT_READY`）。提示词 `SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。未用真模型验证。

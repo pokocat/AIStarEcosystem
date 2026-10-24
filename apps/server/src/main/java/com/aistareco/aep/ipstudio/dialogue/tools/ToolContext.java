@@ -36,7 +36,8 @@ public final class ToolContext {
     }
 
     public final String userId, projectId, threadId, turnId, runId, assistantMessageId, userMessageId;
-    public final String executionId;
+    /** The execution bound to the thread; cleared when the turn switches to another method (2026-10-23 不锁方法). */
+    public volatile String executionId;
     public final BillingSelection billing;
     public final boolean mock;
     public final AiModelEndpoint endpoint;

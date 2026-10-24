@@ -37,6 +37,15 @@ public interface StudioExecutionControl {
         return out;
     }
 
+    /**
+     * The thread this execution was bound to switches to another method (docs/ip-studio-dialogue-intents.md 「不锁方法」).
+     * Nothing generating → the execution ends the way a stop does (results stay on the canvas, nothing accepted by a
+     * vendor is cancelled); work still generating → it is paused (no new step is submitted, what is generating finishes,
+     * settles and lands on the canvas) and detached from the thread. Returns true when it ended, false when detached.
+     * Default: nothing to release.
+     */
+    default boolean releaseForSwitch(String userId, String projectId, String executionId) { return true; }
+
     /** Wake the shared advance entry (e.g. steering arrived, a bound dialogue turn settled). Best-effort; the scan recovers. */
     default void wake(String executionId) { }
 

@@ -28,6 +28,7 @@ public class StudioPlanExecutionControl implements StudioExecutionControl {
 
     @Override public void stop(String userId,String projectId,String executionId,String controlId){service.getObject().control(userId,executionId,"stop",controlId);}
     @Override public void pause(String userId,String projectId,String executionId,String controlId){service.getObject().control(userId,executionId,"pause",controlId);}
+    @Override public boolean releaseForSwitch(String userId,String projectId,String executionId){return service.getObject().releaseForSwitch(userId,projectId,executionId);}
     @Override public void resume(String userId,String projectId,String executionId,String controlId){service.getObject().control(userId,executionId,"resume",controlId);}
 
     @Override

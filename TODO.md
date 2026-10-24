@@ -1434,3 +1434,9 @@
 - [ ] **企业在途任务上限按引用里的 `#` 识别追加冻结**：`EnterpriseBillingService` 统计在途任务时排除引用含 `#` 的授权。其它业务的引用目前都不含 `#`；以后若有业务的引用带 `#`，会被少算，届时应改成授权上记父引用（需要迁移）。
 - [ ] **`apps/admin/src/app/ai/audit/page.tsx` 用了原生 select**（与本改动无关，`src/ip/select-field-wiring.test.ts` 在本分支基线上就是红的）：按 select-field 规约换成 `SelectField`。
 - [ ] **`EnterpriseStudioBillingIntegrationTest` 两项在基线 070334d0 上就红**（2026-10-23 发现，与本改动无关，已在干净基线上复现）：`operatorCanBindMissingOriginalImageIdWithAuditAndNoSecondSubmission`（期望 200 实得 409）与 `supplierConfirmedUnknownRefundsOriginalEnterpriseAfterRemovalAndPreservesPartialSuccess`（期望 8 实得 0）。多半是「图片受理未知在同一结算事务内结束为 failed」之后测试没跟上，需核对后改测试或改实现。
+
+### 2026-10-23 · Studio 对话不锁方法（本地，未发布）
+
+- [x] ~~有活跃制作时方法被锁死，「把第一段做成视频」得到「第 1 步的操作不在当前阶段允许的范围内」~~ **2026-10-23 本地完成**：`switchMethod` 一处切换（同方法不动 / 没在生成就停止收尾 / 在生成就暂停解绑不取消），四处锁删除，`propose_plan` 先换到能覆盖操作的方法，内部原因不进用户界面。测试：`StudioDialogueRoutingTest`（线上原形、同方法、显式切换、复刻分析中直接出视频）、`ProposePlanToolTest`（执行中换方法、按操作换方法、无方法可用时的用户文案）、`StudioOriginalCreationDialogueTest.readSkillSwitchesTheMethodAlsoDuringAProduction`、`StudioPlanExecutionServiceTest.aMethodSwitchEndsAnIdleExecutionAndDetachesOneThatStillGenerates`、`StudioPlanExecutorTest.aDetachedExecutionFinishesWhatGeneratesOnTheCanvasAndEndsQuietly`、前端 `studio-dialogue-message.test.tsx` 与 mock 路由测试。
+- [ ] **真模型验收**：线上同款模型下复测「出图制作等确认时说把第一段做成视频」，确认模型会 read_skill / propose_plan 到出视频、旧卡作废、不再出现内部原因。本轮只有单元测试。
+- [ ] **线上原话路径未用生产日志核对**：本地能到达用户的路径都已改；当时具体是哪一条（多半是 `propose_plan` 失败的工作记录，或模型转述了模型侧结果里的原文）没有用线上数据确认。

@@ -396,16 +396,6 @@ public class StudioDialogueTurnWorker {
     }
 
     /**
-     * A thread may change method only while no execution is bound to it, checked under the thread lock: an execution
-     * confirmed earlier in the same turn (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
-     * Same rule as turn start (StudioDialogueService.startTurn): a thread pointer to an execution means bound.
-     */
-    static void requireSkillSwitchAllowed(IpDialogueThread locked, boolean switching) {
-        if (switching && locked.getActiveExecutionId() != null)
-            throw new BusinessException(HttpStatus.CONFLICT, "STUDIO_SKILL_LOCKED", "这条对话正在制作，制作结束前不能换方法");
-    }
-
-    /**
      * The note after a turn that ended at a protection (docs/ip-studio-dialogue-no-continue.md §2). One line, no 「继续」:
      * there is nothing the user has to type, the work done so far is on the canvas.
      */
@@ -569,10 +559,9 @@ public class StudioDialogueTurnWorker {
             StringBuilder out = new StringBuilder();
             if (skill != null) {
                 out.append("已选定「").append(skill.name()).append("」v").append(skill.version()).append('\n').append(skill.body()).append('\n');
-                if (executionId == null) {
-                    out.append("\n用户这条消息要做的若是别的事，先用 read_skill 换成对应的方法（没有进行中的制作时可以换；换方法对用户无感，不要问他）。其它方法：\n");
-                    for (var s : catalog.available()) if (!s.key().equals(skill.key())) out.append(skillLine(s));
-                }
+                // 不锁方法 (2026-10-23): the other methods are listed also during a production; switching is the server's job.
+                out.append("\n用户这条消息要做的若是别的事，先用 read_skill 换成对应的方法（有进行中的制作时也可以换，原来的制作由服务端收尾；换方法对用户无感，不要问他）。其它方法：\n");
+                for (var s : catalog.available()) if (!s.key().equals(skill.key())) out.append(skillLine(s));
                 return out.toString();
             }
             // A routing tie lands here too (2026-10-21): the model binds the method. On qwen38-27b the old wording never bound
@@ -704,7 +693,7 @@ public class StudioDialogueTurnWorker {
                             StudioSkill skill = context.skill();
                             if (skill == null) return Optional.of("这是收费制作操作，需要先用 read_skill 选定制作方法");
                             if (!skill.allows(context.stage(), op))
-                                return Optional.of("当前阶段不允许这个操作（STUDIO_SKILL_OPERATION_NOT_ALLOWED）：" + op);
+                                return Optional.of("（内部校验信息，不要转述给用户）现在的做法不包含 " + op + "：先用 read_skill 换成能做这件事的做法，再 propose_plan 发确认卡");
                         }
                         return Optional.ofNullable(tool.validate(action.args(), context));
                     } catch (RuntimeException e) {
@@ -726,7 +715,7 @@ public class StudioDialogueTurnWorker {
                 try { return tool.run(action.args(), context, NOOP_HANDLE); }
                 catch (BusinessException e) {
                     if (fatal(e)) throw e;
-                    return ToolRun.failed(e.getCode(), e.getMessage(), failJson(e.getMessage()));
+                    return toolFailure(e);
                 }
             }
             String toolCallId = "tc-" + StudioDialogueStore.uuid20().substring(0, 12);
@@ -761,7 +750,7 @@ public class StudioDialogueTurnWorker {
             try { result = tool.run(action.args(), context, handle); }
             catch (BusinessException e) {
                 if (fatal(e)) fatal = e;
-                result = ToolRun.failed(e.getCode(), e.getMessage(), failJson(e.getMessage()));
+                result = toolFailure(e);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 result = ToolRun.failed("STUDIO_TOOL_INTERRUPTED", "这一步被中断了", failJson("这一步被中断了"));
@@ -814,16 +803,22 @@ public class StudioDialogueTurnWorker {
                 // refuses a switch during an execution). A switch drops the old method's stage and supersedes its pending
                 // cards: a plan for 「参考视频复刻」 must not stay confirmable once the thread is making an original image set.
                 boolean switching = context.skill() != null && !context.skill().key().equals(skill.key());
+                boolean[] released = new boolean[1];
                 store.write(threadId, t -> {
-                    // Checked again under the thread lock: an execution confirmed earlier in this same turn
-                    // (confirm_approval) is not in the turn-start snapshot (Codex review 2026-10-20).
-                    requireSkillSwitchAllowed(t, switching);
+                    // 不锁方法 (2026-10-23): an execution bound to the thread (also one confirmed earlier in this same turn,
+                    // which the turn-start snapshot does not know) is released through the one switch rule.
                     List<StudioDialogueStore.Pending> out = new ArrayList<>();
+                    if (switching && t.getActiveExecutionId() != null) {
+                        var switched = service.getObject().switchMethod(userId, t, skill, null, turnId, runId);
+                        out.addAll(switched.events());
+                        released[0] = switched.kept() == null;
+                    }
                     if (t.getSkillKey() == null || switching) { t.setSkillKey(skill.key()); t.setSkillVersion(skill.version()); t.setStage(skill.firstStage()); }
                     else if (t.getStage() == null) t.setStage(skill.firstStage());
-                    if (switching) out.addAll(store.supersedePendingApprovals(t, null, turnId, runId, executionId));
+                    if (switching && !released[0]) out.addAll(store.supersedePendingApprovals(t, null, turnId, runId, executionId));
                     return out;
                 });
+                if (released[0]) context.executionId = null; // paid steps now need the new method's confirmation
                 context.bindSkill(skill, switching || context.stage() == null ? skill.firstStage() : context.stage());
                 // The parent run carries the skill snapshot the plan executor reads back (plans proposed in this turn).
                 tx.executeWithoutResult(s -> runs.lockById(runId).ifPresent(run -> {
@@ -951,6 +946,21 @@ public class StudioDialogueTurnWorker {
     }
 
     private String failJson(String summary) { return mapper.createObjectNode().put("ok", false).put("summary", summary).toString(); }
+
+    /**
+     * Internal method / stage refusals never reach the work record as such (不锁方法 2026-10-23): the card says it in plain
+     * words without the internal code; the model gets the code and the reason to correct itself.
+     */
+    static final java.util.Set<String> INTERNAL_CODES = java.util.Set.of("STUDIO_SKILL_OPERATION_NOT_ALLOWED", "STUDIO_SKILL_LOCKED", "STUDIO_PLAN_STALE");
+
+    private ToolRun toolFailure(BusinessException e) {
+        if (!INTERNAL_CODES.contains(e.getCode())) return ToolRun.failed(e.getCode(), e.getMessage(), failJson(e.getMessage()));
+        log.info("[dialogue] tool refused internally code={} reason={} detail={}", e.getCode(), e.getMessage(), e.getInternalDetail());
+        return ToolRun.failed(com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,
+                com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,
+                failJson("（内部校验信息，不要转述给用户）" + e.getCode() + "：" + e.getMessage()
+                        + (e.getInternalDetail() == null ? "" : "（" + e.getInternalDetail() + "）") + "。按用户要做的内容选对方法后重新整理方案并确认"));
+    }
 
     private static String safe(java.util.function.Supplier<String> s, String fallback) {
         try { String v = s.get(); return v == null || v.isBlank() ? fallback : v; } catch (RuntimeException e) { return fallback; }

@@ -220,20 +220,102 @@ class StudioDialogueRoutingTest {
         assertEquals("script-rewrite", routedSkill());
     }
 
-    @Test void whileAnExecutionIsActiveTheMethodStaysAndAnExplicitSwitchIsRefused() throws Exception {
-        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production"); thread.setActiveExecutionId("PEX-1");
-        when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
-        when(catalog.requireForNewWork("script-rewrite")).thenReturn(script);
-        when(catalog.requireForNewSelection("video-recreation")).thenReturn(video);
+    // ── 2026-10-23 不锁方法 (docs/ip-studio-dialogue-intents.md) ─────────────────────────────────────────────────
+
+    private StudioSkill fileSkill(String key) throws Exception {
+        return StudioSkillCatalog.parse(Files.readString(Path.of("src/main/resources/studio/skills/" + key + ".md")));
+    }
+
+    private StudioExecutionControl boundExecution(String status, boolean ends) {
+        thread.setActiveExecutionId("PEX-1");
         var control = mock(StudioExecutionControl.class);
-        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", "production", "needs_user")));
+        when(control.active("u1", "P1", "IPT-P1")).thenReturn(Optional.of(new StudioExecutionControl.ExecutionView("PEX-1", thread.getStage(), status)));
+        when(control.releaseForSwitch("u1", "P1", "PEX-1")).thenReturn(ends);
         ReflectionTestUtils.setField(service, "executionControl", control);
-        service.post("u1", "P1", "IPT-P1", message("c-9", "复刻这条", List.of("v1"), null));
-        assertEquals("script-rewrite", thread.getSkillKey(), "routing never touches a thread whose execution is active");
-        verify(catalog, never()).available();
-        thread.setActiveTurnId(null); thread.setActiveRunId(null); // the mocked worker never ends the turn; free the thread for the next message
-        var e = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", message("c-10", "复刻这条", List.of("v1"), "video-recreation")));
-        assertEquals("STUDIO_INPUT_INVALID", e.getCode());
-        assertEquals("script-rewrite", thread.getSkillKey());
+        return control;
+    }
+
+    /** A pending image card on the thread, like the one the image production was waiting on. */
+    private IpDialogueMessage pendingCard() {
+        var card = IpDialogueMessage.builder().id("IDM-card").threadId("IPT-P1").seq(1).role("assistant").text("")
+                .blocksJson("[{\"type\":\"approval\",\"approvalId\":\"APV-img\",\"status\":\"pending\",\"stage\":\"production\"}]").status("done")
+                .createdAt(Instant.now()).build();
+        stored.put(card.getId(), card);
+        when(messages.findByThreadIdOrderBySeqDesc(eq("IPT-P1"), any())).thenAnswer(i -> new ArrayList<>(stored.values()));
+        return card;
+    }
+
+    /**
+     * The production case (2026-10-23): an image production waits for its card, the user says 「把第一段做成视频」. The thread
+     * switches to 出视频, the image card is superseded, the image production is released, and the new turn plans video from
+     * the method's first stage. Nothing about stages or ranges goes to the user.
+     */
+    @Test void aMessageForAnotherJobSwitchesTheMethodEvenDuringAProduction() throws Exception {
+        var image = fileSkill("image-generation");
+        var video = fileSkill("video-generation");
+        thread.setSkillKey("image-generation"); thread.setSkillVersion(image.version()); thread.setStage("production");
+        when(catalog.find("image-generation")).thenReturn(Optional.of(image));
+        when(catalog.available()).thenReturn(List.of(image, video));
+        var control = boundExecution("needs_user", true);
+        var card = pendingCard();
+        var accepted = service.post("u1", "P1", "IPT-P1", message("c-11", "把第一段做成视频", null, null));
+        assertEquals("accepted", accepted.queueState(), "no 409 / 400: the method follows the message");
+        assertEquals("video-generation", thread.getSkillKey());
+        assertNull(thread.getActiveExecutionId(), "the image production no longer belongs to the thread");
+        assertEquals("production", thread.getStage(), "the new method's first stage");
+        verify(control).releaseForSwitch("u1", "P1", "PEX-1");
+        assertTrue(card.getBlocksJson().contains("\"superseded\""), "the old image card can no longer start anything");
+        var exec = mapper.readTree(capturedRun().getInputJson()).path("_exec");
+        assertEquals("video-generation", exec.path("skill").path("key").asText());
+        assertFalse(exec.has("executionId"), "the turn is not inside the released production");
+    }
+
+    /** The same method again (「再来一张」 during an image production): the work stays in that production. */
+    @Test void theSameMethodStaysInTheBoundProduction() throws Exception {
+        var image = fileSkill("image-generation");
+        thread.setSkillKey("image-generation"); thread.setSkillVersion(image.version()); thread.setStage("production");
+        when(catalog.find("image-generation")).thenReturn(Optional.of(image));
+        when(catalog.available()).thenReturn(List.of(image, fileSkill("video-generation")));
+        var control = boundExecution("needs_user", true);
+        service.post("u1", "P1", "IPT-P1", message("c-12", "再画一张海报", null, null));
+        assertEquals("image-generation", thread.getSkillKey());
+        assertEquals("PEX-1", thread.getActiveExecutionId());
+        verify(control, never()).releaseForSwitch(anyString(), anyString(), anyString());
+        assertEquals("PEX-1", mapper.readTree(capturedRun().getInputJson()).path("_exec").path("executionId").asText());
+    }
+
+    /** An explicit skillKey for another method during a production is a switch, not a 400 / 409. */
+    @Test void anExplicitSwitchDuringAProductionIsAccepted() throws Exception {
+        thread.setSkillKey("script-rewrite"); thread.setSkillVersion(1); thread.setStage("production");
+        when(catalog.find("script-rewrite")).thenReturn(Optional.of(script));
+        when(catalog.requireForNewSelection("video-recreation")).thenReturn(video);
+        var control = boundExecution("paused", true);
+        var accepted = service.post("u1", "P1", "IPT-P1", message("c-13", "复刻这条", List.of("v1"), "video-recreation"));
+        assertEquals("accepted", accepted.queueState());
+        assertEquals("video-recreation", thread.getSkillKey());
+        assertEquals("analysis", thread.getStage());
+        verify(control).releaseForSwitch("u1", "P1", "PEX-1");
+    }
+
+    /** 复刻 still in its analysis, the user says 「直接出视频」: the thread goes to 出视频. */
+    @Test void aRecreationInAnalysisSwitchesToVideoWhenTheUserAsksForAVideoDirectly() throws Exception {
+        var recreation = fileSkill("reference-video-recreation");
+        var videoSkill = fileSkill("video-generation");
+        thread.setSkillKey("reference-video-recreation"); thread.setSkillVersion(recreation.version()); thread.setStage("analysis");
+        when(catalog.find("reference-video-recreation")).thenReturn(Optional.of(recreation));
+        when(catalog.available()).thenReturn(List.of(recreation, videoSkill, fileSkill("image-generation")));
+        var control = boundExecution("paused", false); // the analysis is still generating: detached, not cancelled
+        service.post("u1", "P1", "IPT-P1", message("c-14", "不用分析了，直接出视频", null, null));
+        assertEquals("video-generation", thread.getSkillKey());
+        assertEquals("production", thread.getStage());
+        assertNull(thread.getActiveExecutionId());
+        verify(control).releaseForSwitch("u1", "P1", "PEX-1");
+        verify(control, never()).stop(anyString(), anyString(), anyString(), anyString());
+    }
+
+    private IpRun capturedRun() {
+        var run = ArgumentCaptor.forClass(IpRun.class);
+        verify(runs).save(run.capture());
+        return run.getValue();
     }
 }

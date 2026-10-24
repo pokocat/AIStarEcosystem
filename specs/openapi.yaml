@@ -669,7 +669,7 @@ components:
         lastSeq: { type: integer }
         activeTurnId: { type: string, nullable: true }
         activeExecutionId: { type: string, nullable: true }
-        skillKey: { type: string, nullable: true, description: 线程当前的技能（显式选择或意图路由的结果；没有活跃执行时每条消息可能换）；还没有任何一轮选定时为空 }
+        skillKey: { type: string, nullable: true, description: 线程当前的技能（显式选择或意图路由的结果；每条消息都可能换，有活跃执行时也一样，2026-10-23「不锁方法」）；还没有任何一轮选定时为空 }
         skillVersion: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
@@ -13110,11 +13110,11 @@ paths:
     post:
       tags: [ipstudio]
       operationId: studioPostMessage
-      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。意图路由（2026-10-20「意图直达」，技能按任务绑定）：线程没有活跃执行（running / paused / needs_user）时每条消息都重新路由——带 skillKey 时换到别的方法必须是启用中的技能；不带则按消息关键词（每个 2 分）与钉住 / 附件节点的媒体类型（每命中一种 1 分，词优先于素材）给每个启用中的技能打分取唯一最高分；一个都没命中沿用线程当前技能，线程没有技能就不绑（全能创作，模型可用 read_skill 自己选）；最高分平局时当前技能在其中就沿用，否则不绑、由模型在回合内判断，不再返回 400。命中别的技能就改写 thread.skillKey / skillVersion，stage 改为新技能的起始阶段（出图 / 写剧本与文案 / 出视频直接 production，参考视频复刻 analysis）。有活跃执行时方法不变，显式带另一个 skillKey → 400 STUDIO_INPUT_INVALID。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
+      description: 幂等保存用户消息（owner, threadId, clientMessageId 唯一）。意图路由（2026-10-20「意图直达」；2026-10-23「不锁方法」起有活跃执行时也路由）：每条消息都重新路由——带 skillKey 时换到别的方法必须是启用中的技能；不带则按消息关键词（每个 2 分）与钉住 / 附件节点的媒体类型（每命中一种 1 分，词优先于素材）给每个启用中的技能打分取唯一最高分；一个都没命中沿用线程当前技能，线程没有技能就不绑（全能创作，模型可用 read_skill 自己选）；最高分平局时当前技能在其中就沿用，线程绑定活跃执行时也沿用当前技能，否则不绑、由模型在回合内判断，不再返回 400。命中别的技能就改写 thread.skillKey / skillVersion，stage 改为新技能的起始阶段（出图 / 写剧本与文案 / 出视频直接 production，参考视频复刻 analysis）。方法与绑定的活跃执行不同 → 在同一事务里切换：作废待确认卡；旧执行没有在生成的子任务就按停止收尾（canceled），有就暂停并与线程解绑（不取消，结果仍放进画布，不发消息）；线程执行指针与 stage 清空。显式带另一个 skillKey 同样切换，不再返回 400。线程空闲 → 启动父对话 turn（原生 assistant run，kind=studio-dialogue，带 dialogue 绑定）；线程忙，或绑定的后台制作正在进行（即使没有进行中的 turn）→ 加入有序转向队列（queueState=queued，不因忙碌拒绝）：后台制作在下一个安全点（提交下一步之前）读到它就不再提交新步骤、停在 needs_user（「收到新指令，等待重新确认」），并打开回复这条消息的 turn。线程绑定活跃执行时，turn 计入该执行当前阶段的预算：受理前核对 已花 + 在途 + 本轮费用上限 ≤ 本阶段上限，不够 → 402，不冻结。返回 message / turn / run 身份与 queueState。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageRequest' } } } }
       responses:
         '200': { description: 'ApiResponse<StudioPostMessageResult>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioPostMessageResult' } } } }
-        '400': { description: 'STUDIO_INPUT_INVALID（含：有活跃执行时显式换方法）/ STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）。STUDIO_SKILL_REQUIRED 自 2026-10-20 起路由不再返回（平局交给模型判断），错误码保留给将来的显式冲突，客户端仍应能处理（error.details.skills=[{key,name,summary}]）' }
+        '400': { description: 'STUDIO_INPUT_INVALID / STUDIO_CONTEXT_NOT_FOUND（钉住或附件节点不存在）。STUDIO_SKILL_REQUIRED 自 2026-10-20 起路由不再返回（平局交给模型判断），错误码保留给将来的显式冲突，客户端仍应能处理（error.details.skills=[{key,name,summary}]）' }
         '402': { description: 'STUDIO_PLAN_BUDGET_EXCEEDED（线程绑定的后台制作本阶段预算放不下这一轮对话；带 stage, spent, inFlight, quotedCost=本轮上限, approvedCap, shortfall）' }
         '409': { description: 'STUDIO_REQUEST_CHANGED（同 clientMessageId 不同正文）' }
         '404': { description: 'STUDIO_THREAD_NOT_FOUND / STUDIO_SKILL_NOT_FOUND（显式 skillKey 不存在、已停用，或在还没有技能的线程上选了非启用的方法）/ IP_PROJECT_NOT_FOUND' }

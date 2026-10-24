@@ -10,7 +10,7 @@ import { AlertCircle, Check, ChevronDown } from 'lucide-react';
 import { formatCredits } from '@ai-star-eco/api-client';
 import { formatDateTime } from '@/lib/datetime';
 import type { DialogueToolBlock } from '@/canvas-bridge/studio-dialogue-store';
-import { StudioErrorNotice } from './studio-errors';
+import { StudioErrorNotice, userFacingError } from './studio-errors';
 
 /** Display names for tool calls whose server title is missing. Never shows the raw tool id. */
 const TOOL_NAMES: Record<string, string> = { read_canvas: '读取画布', read_visual: '读取画面', recreation: '拉片', video: '制作视频', image: '制作图片', text: '整理文字',
@@ -53,6 +53,7 @@ export function StudioDialogueToolCard({ block, turnEnded }: { block: DialogueTo
   // The seconds tick outside the live region, so a screen reader hears the state change, not every second.
   const state = running ? '进行中' : cut ? (turnEnded === 'interrupted' ? '已停止' : '没有完成') : failed ? '没有完成' : '完成';
   const time = cut || failed || elapsed === undefined ? '' : ` · ${running ? '已用' : '用时'} ${elapsedText(elapsed)}`;
+  const shown = userFacingError(block.errorCode, block.errorMessage);
   return <div className="studio-dialogue-tool" data-status={cut ? 'failed' : block.status} data-open={open || undefined} role="group" aria-label={`工作记录：${title}`}>
     <div className="studio-dialogue-tool-row">
       <span className="studio-dialogue-tool-mark" aria-hidden="true">{running ? <i/> : failed ? <AlertCircle size={14}/> : <Check size={14}/>}</span>
@@ -61,15 +62,15 @@ export function StudioDialogueToolCard({ block, turnEnded }: { block: DialogueTo
       <button type="button" className="studio-dialogue-tool-toggle" aria-expanded={open} aria-controls={bodyId}
         aria-label={`${open ? '收起' : '展开'}详情：${title}`} title={open ? '收起详情' : '展开详情'} onClick={() => setOpen(v => !v)}><ChevronDown size={14} aria-hidden="true"/></button>
     </div>
-    {failed && !cut && !open && <p className="studio-dialogue-tool-reason">{block.errorMessage || '这一步没有完成，可以稍后重试'}</p>}
+    {failed && !cut && !open && <p className="studio-dialogue-tool-reason">{shown.message || '这一步没有完成，可以稍后重试'}</p>}
     <dl id={bodyId} className="studio-dialogue-tool-body" hidden={!open}>
       {!!block.safeInputSummary && <><dt>内容</dt><dd>{block.safeInputSummary}</dd></>}
       {!!block.progress && <><dt>进度</dt><dd>{block.progress}</dd></>}
-      {!!block.result?.summary && <><dt>结果</dt><dd>{block.result.summary}</dd></>}
+      {!!block.result?.summary && <><dt>结果</dt><dd>{userFacingError(undefined, block.result.summary).message}</dd></>}
       <dt>积分</dt><dd>{toolCreditsText(block)}</dd>
       <dt>开始</dt><dd>{formatDateTime(block.startedAt)}</dd>
-      {failed && !cut && <><dt>原因</dt><dd className="studio-dialogue-tool-error">{block.errorMessage || '这一步没有完成，可以稍后重试'}
-        {block.errorCode && <StudioErrorNotice error={{ code: block.errorCode, message: block.errorMessage || '这一步没有完成', taskId: block.childRunId }} autoReport={false} label="查看详情"/>}</dd></>}
+      {failed && !cut && <><dt>原因</dt><dd className="studio-dialogue-tool-error">{shown.message || '这一步没有完成，可以稍后重试'}
+        {shown.code && <StudioErrorNotice error={{ code: shown.code, message: shown.message || '这一步没有完成', taskId: block.childRunId }} autoReport={false} label="查看详情"/>}</dd></>}
     </dl>
   </div>;
 }

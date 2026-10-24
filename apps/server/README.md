@@ -1235,3 +1235,13 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **上下文窗口**：`DialogueContextWindow.trim`，最近 6 轮完整，更早的工具结果一行摘要、长参数换成合法占位 JSON（原生 tool_calls 与 tool 消息一一对应不变），估算超 80k 时降到 3 轮 / 1 轮；只影响发给模型的视图。
 - **其它**：`DialogueCanvasDigest.full` 写明全文字数与 `read_canvas` 分段参数，`read_canvas` 文字对象返回 `total`；`ChildRuns.follow` 最多等 10 分钟，拉片仍在进行时不再 `HANDED_OFF` 结束，交给模型告诉用户。提示词 `dap.ip_studio_skill_dialogue` 规则 14 + 分段读用法，`PromptTemplateSeeder.SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移、无新表。
 
+### Studio 对话不锁方法（2026-10-23，本地未发布）
+
+真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。
+
+- **受理**（`StudioDialogueService.startTurn`）：有活跃制作时也路由（显式 `skillKey` 或 `StudioSkillRouter`），平手且有活跃制作时沿用当前方法；方法与绑定制作不同 → `switchMethod`。
+- **`switchMethod(userId, lockedThread, nextSkill, bound, turnId, runId)`**：唯一的切换规则，返回 `MethodSwitch(kept, events)`。同方法 → `kept=bound`；不同 → `supersedePendingApprovals` + `StudioExecutionControl.releaseForSwitch` + 清 `activeExecutionId / stage`。`StudioDialogueTurnWorker.Effects.bindSkill`（read_skill、propose_plan 换方法）在线程锁内同样调用它，并把 `ToolContext.executionId` 置空。
+- **`StudioPlanExecutionService.releaseForSwitch`**：没有在生成（`inFlight==0` 且没有 submitted / running 步骤或子任务）→ `canceled`、`summaryPosted=true`；有在生成 → `paused`、`state.detachedThreadId=原线程`、`threadId=null`。`StudioPlanExecutor`：解绑的制作 `publish` 只发 `node.upsert / check.result` 到 `detachedThreadId`，暂停中不再生成时转 `canceled`；结束时清线程指针改为 `StudioDialogueService.unbindExecution(threadId, executionId)`（只在指针仍是它时清）。`create` 的画布占用检查跳过解绑的制作。
+- **`ProposePlanTool`**：`planningSkill` 不再看执行锁；校验前若方案操作不全在当前方法起始阶段 → `coveringSkill`（路由结果优先，其次目录顺序第一个能覆盖的）→ `bindSkill` 切换后再校验；失败的工作记录码 `STUDIO_PLAN_NOT_READY`、文案「这份方案还没准备好，我会按你要做的内容重新整理。」，原因只进日志与模型侧结果。
+- **用户可见文案**：`StudioDialogueTurnWorker.toolFailure`（`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE`）、`StudioPlanExecutionService` 计划校验、`StudioPlanExecutionBridge.authorizeChild`、`StudioPlanSteps`、`StudioWorkflowWorker.skillPlan` 均改为人话 + `internalDetail`；前端 `userFacingError`（`studio-errors.tsx`）兜底旧记录。
+

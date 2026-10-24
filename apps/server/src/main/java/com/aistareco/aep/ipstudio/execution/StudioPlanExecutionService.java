@@ -120,7 +120,8 @@ public class StudioPlanExecutionService {
             return toDto(prior);
         }
         if(!StudioSkillRules.STAGES.contains(req.stage()))throw BusinessException.badRequest("STUDIO_INPUT_INVALID","请先开始分析，再在同一次制作里确认制作阶段");
-        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE);
+        // A production detached by a method switch (不锁方法) only finishes what it generates: it does not hold the canvas.
+        var busy=executions.findByProjectIdAndStatusIn(projectId,ACTIVE).stream().filter(e->!detached(e)).toList();
         if(!busy.isEmpty())throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PLAN_EXECUTION_BUSY","这张画布已经有一项连续制作在进行，请先结束它",
                 mapper.createObjectNode().put("executionId",busy.get(0).getId()));
         // A new execution starts in its skill's first stage: analysis for the reference-video skill, production for a
@@ -389,6 +390,48 @@ public class StudioPlanExecutionService {
     }
 
     /**
+     * The thread switched to another method (docs/ip-studio-dialogue-intents.md 「2026-10-23：不锁方法」), called inside the
+     * dialogue's thread-lock transaction. Nothing generating (paused, waiting for a confirmation, a failed step): ended like a
+     * stop (status canceled, results stay on the canvas; no summary message: the conversation has moved on). Still
+     * generating: paused (no new submission; what is generating finishes, settles and is published to the canvas) and
+     * detached ({@code threadId} cleared, the old thread kept as {@code state.detachedThreadId} for canvas events only), so it
+     * no longer counts as the thread's execution. Returns true when ended, false when detached. Vendor-accepted work is never
+     * cancelled here.
+     */
+    @Transactional
+    public boolean releaseForSwitch(String userId,String projectId,String executionId) {
+        var e=executions.lockById(executionId).filter(x->userId.equals(x.getOwnerUserId())&&projectId.equals(x.getProjectId())).orElse(null);
+        if(e==null||!IpPlanExecution.active(e.getStatus()))return true;
+        ObjectNode state=PlanState.parse(mapper,e.getStepsJson());
+        Instant now=Instant.now();
+        boolean generating=e.getInFlight()>0||generating(state);
+        if(!generating) {
+            e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);
+            state.put("needsUserReason","换成了另一种做法，这次制作到此结束；已经做好的留在画布上。").put("summaryPosted",true);
+        } else {
+            e.setStatus(IpPlanExecution.PAUSED);
+            state.put("needsUserReason","换成了另一种做法：已经在生成的会做完并放进画布，后面的步骤不再提交。");
+            if(e.getThreadId()!=null)state.put("detachedThreadId",e.getThreadId());
+            state.put("detachedAt",now.toString());
+            e.setThreadId(null);
+        }
+        e.setStepsJson(write(state));e.setUpdatedAt(now);
+        executions.save(e);
+        log.info("[plan-exec] released for a method switch execution={} ended={}",executionId,!generating);
+        return !generating;
+    }
+    /** Detached from its thread by a method switch: it finishes what generates, holds neither the thread nor the canvas. */
+    boolean detached(IpPlanExecution e) {
+        return e.getThreadId()==null&&PlanState.parse(mapper,e.getStepsJson()).hasNonNull("detachedThreadId");
+    }
+    /** A step or a dialogue child of this execution is generating right now (submitted or running). */
+    static boolean generating(JsonNode state) {
+        for(JsonNode step:state.path("steps"))if(Set.of("submitted","running").contains(step.path("status").asText()))return true;
+        for(JsonNode child:state.path("children"))if("running".equals(child.path("status").asText()))return true;
+        return false;
+    }
+
+    /**
      * Priority control entry for the dialogue side (stop / pause / resume) without a project id; {@code stop} cancels.
      * Same idempotency and preemption as the REST controls.
      */
@@ -419,7 +462,7 @@ public class StudioPlanExecutionService {
             case "cancel" -> {
                 if(IpPlanExecution.CANCELED.equals(e.getStatus()))break;
                 if(!IpPlanExecution.active(e.getStatus()))throw stale("这次制作已结束");
-                e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);unbindThreadAfterCommit(e.getThreadId());
+                e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);unbindThreadAfterCommit(e.getThreadId(),e.getId());
                 state.put("needsUserReason","已停止：不会再提交新的步骤；还在排队的任务会取消，已交给生成引擎的任务按原链完成和结算。");
             }
             case "resume" -> {
@@ -545,10 +588,10 @@ public class StudioPlanExecutionService {
         if(queued){String thread=e.getThreadId();afterCommit(()->source.openTurn(thread),"steering reply");}
     }
     /** After commit: a terminal execution no longer occupies its thread. */
-    void unbindThreadAfterCommit(String threadId) {
+    void unbindThreadAfterCommit(String threadId,String executionId) {
         var target=dialogue==null?null:dialogue.getIfAvailable();
         if(threadId==null||target==null)return;
-        afterCommit(()->target.bindExecution(threadId,null,null),"thread unbinding");
+        afterCommit(()->target.unbindExecution(threadId,executionId),"thread unbinding");
     }
     private void afterCommit(Runnable action,String label) {
         Runnable safe=()->{try{action.run();}catch(RuntimeException e){log.warn("[plan-exec] {} failed after commit: {}",label,e.toString());}};
@@ -588,7 +631,8 @@ public class StudioPlanExecutionService {
         var allowed=new HashSet<>(loaded.rules().stageOperations(stage));
         for(JsonNode step:plan.path("steps")) {
             if(!allowed.contains(step.path("operation").asText()))
-                throw BusinessException.badRequest("STUDIO_SKILL_OPERATION_NOT_ALLOWED","计划里有当前阶段不允许的操作");
+                throw BusinessException.wrapped(HttpStatus.BAD_REQUEST,"STUDIO_SKILL_OPERATION_NOT_ALLOWED","这份方案还没准备好，我会按你要做的内容重新整理。",
+                        "plan step operation "+step.path("operation").asText()+" not allowed in "+loaded.rules().key()+"/"+stage);
             if(!step.path("quotedCost").canConvertToLong())throw stale("计划还没有服务端报价，暂时不能确认");
         }
         return loaded;

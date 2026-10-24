@@ -103,7 +103,8 @@ class StudioOriginalCreationDialogueTest {
         assertNotNull(tool.validate(brief, ctx(null, null, null, null)), "a plan still needs a method");
     }
 
-    @Test void readSkillSwitchesAWronglyBoundThreadWhileNothingRunsAndRefusesDuringAnExecution() throws Exception {
+    /** read_skill switches the method whenever the request needs another one, also during a production (不锁方法 2026-10-23). */
+    @Test void readSkillSwitchesTheMethodAlsoDuringAProduction() throws Exception {
         var catalog = mock(StudioSkillCatalog.class);
         when(catalog.requireForNewSelection("original-creation")).thenReturn(original);
         var tool = new ReadSkillTool(catalog);
@@ -114,16 +115,9 @@ class StudioOriginalCreationDialogueTest {
         assertEquals("done", run.status());
         verify(effects).bindSkill(original);
         assertTrue(run.forModel().contains("original-creation"));
-        assertNotNull(tool.validate(args, ctx(recreation, "production", "PEX-1", null)), "an execution keeps its method");
-    }
-
-    @Test void aMethodSwitchIsRefusedUnderTheThreadLockOnceAnExecutionIsBoundEvenInTheSameTurn() {
-        var thread = IpDialogueThread.builder().id("IPT-P1").skillKey("reference-video-recreation").build();
-        StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, true);
-        thread.setActiveExecutionId("PEX-confirmed-this-turn");
-        var e = assertThrows(BusinessException.class, () -> StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, true));
-        assertEquals("STUDIO_SKILL_LOCKED", e.getCode());
-        StudioDialogueTurnWorker.requireSkillSwitchAllowed(thread, false); // re-reading the bound method is fine
+        var producing = ctx(recreation, "production", "PEX-1", null);
+        assertNull(tool.validate(args, producing), "an execution no longer locks the method");
+        assertEquals("done", tool.run(args, producing, HANDLE).status());
     }
 
     // ── 2. specs land on nodes as structured settings and edges ─────────────────────────────────────────────────────

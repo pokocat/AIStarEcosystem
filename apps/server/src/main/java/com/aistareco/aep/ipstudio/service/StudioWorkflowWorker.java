@@ -421,7 +421,14 @@ public class StudioWorkflowWorker {
         var rules=com.aistareco.aep.ipstudio.execution.StudioSkillRules.fromSnapshot(exec.path("skill"));
         String stage=exec.path("planStage").asText();
         List<String> allowed=new ArrayList<>();exec.path("allowedNodeIds").forEach(v->allowed.add(v.asText()));
-        ObjectNode plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);
+        ObjectNode plan;
+        // The validator's reason (「第 N 步…」, stage words) reaches the user as a step's reason: plain words there, the
+        // reason itself in the internal detail and the log (不锁方法 2026-10-23).
+        try {plan=StudioPlanValidator.validateSkillPlan(answer,rules,stage,allowed);}
+        catch(BusinessException e) {
+            log.info("[studio-run] skill plan rejected run={} code={} reason={}",run.getId(),e.getCode(),e.getMessage());
+            throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY,com.aistareco.aep.ipstudio.dialogue.tools.ProposePlanTool.PLAN_NOT_READY_TEXT,e.getCode()+": "+e.getMessage());
+        }
         plan.put("skillKey",rules.key()).put("skillVersion",rules.version()).put("stage",stage).put("revision",exec.path("planRevision").asInt(1));
         var quoter=planQuoter==null?null:planQuoter.getIfAvailable();
         if(quoter==null)throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_PLAN_QUOTE_UNAVAILABLE","暂时无法为制作计划报价，本次未扣积分");

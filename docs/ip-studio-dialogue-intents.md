@@ -48,7 +48,7 @@
 2. 其余按关键词命中 +2、素材类型命中 +1 打分（**词优先于素材**）；唯一最高分胜出（MATCH）。素材只在文字点名了事之后加权：「照这条做一段视频」+ 参考视频是复刻（3 比 2）。
 3. **文字一个关键词都没命中 → KEEP**：沿用线程当前技能（「再来一张」接着出图；钉着做好的片段说「合成一条成片」不会因为钉的是视频就跳到复刻）；线程没有技能就不绑（全能创作，模型可用 `read_skill` 自己选）。**只有素材不选方法**（2026-10-21 起；此前素材单独计分，钉一条视频说「看看这条」就会绑成复刻、钉一段文字说「配张图」会绑成写稿）。
 4. **平手 → OPEN，一律不绑**（2026-10-21 起；此前当前技能在平手里就沿用，于是刚出完图说「用这几张图做一段视频」留在了出图）：线程清掉 `skillKey / skillVersion / stage`，本轮不带技能，模型看到「还没有选定方法」和全部技能摘要，按意图表 `read_skill` 选定（提示里要求先选定、可与看图同一批、选定前不向用户提问）。日志 `[dialogue] routing tie thread=… among [...]`。**不再抛 400 `STUDIO_SKILL_REQUIRED`**；`triggers.default` 只作为给模型的提示，不做平手裁决。
-5. **技能按任务绑定而不是按线程绑定**：线程没有活跃执行时每条消息都重新路由，命中别的技能就换（`thread.skillKey` 改写、`stage` 改为新技能起始阶段）；有活跃执行（running / paused / needs_user）时方法不变、不路由，显式换技能 400 `STUDIO_INPUT_INVALID`。执行结束解绑时清掉线程 `stage`。
+5. **技能按任务绑定而不是按线程绑定**（2026-10-23 起以「不锁方法」为准：有活跃执行时也按意图换方法）：线程没有活跃执行时每条消息都重新路由，命中别的技能就换（`thread.skillKey` 改写、`stage` 改为新技能起始阶段）；有活跃执行（running / paused / needs_user）时方法不变、不路由，显式换技能 400 `STUDIO_INPUT_INVALID`。执行结束解绑时清掉线程 `stage`。
 6. `read_skill` 在没有活跃执行时可以换方法（`Effects.bindSkill` 改为可覆盖）；线程没有技能时它直接绑定。
 
 ## 5. 一轮确认（直达技能）
@@ -116,3 +116,16 @@
 ## 2026-10-23 读取与进度纠正（本地修复，未发布）
 
 用户明确重新钉住的正文与本轮纠正优先；目录摘要和前 4000 字不得当成全文。`read_canvas` 必须按 `nextOffset` 读完任务所需内容。询问制作进度、缺哪段、下一步时先调用 `read_production_status`，按真实任务状态回答，区分旧采用作品与正在重做/失败的新任务，不把同一对象同时列为完成和缺失。这是业务工具修复，不代表 Agent 框架已替换或真模型表现已经验证。详见 [运行时评估](audits/studio-agent-runtime-assessment-2026-10.md)。
+
+## 2026-10-23：不锁方法（本地，未发布）
+
+线上：出图制作在等确认时用户说「把第一段做成视频」，助手说「这段视频对象之前建好连好了线，但生成还没提交成功。我重新发确认卡给你」，随后「整理制作方案」失败，界面显示「第 1 步的操作不在当前阶段允许的范围内」。原因是线程上只要有活跃制作（running / paused / needs_user），方法就被锁死：受理处只沿用当前技能、显式换技能 400，`read_skill` 拒绝换，`propose_plan` 不再按 brief 选方法，`bindSkill` 409 `STUDIO_SKILL_LOCKED`。用户要求：agent 不绑死技能，按每句话的实际意图选。
+
+1. **每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法**，有活跃制作也一样；路由器「文字没命中任何技能时沿用当前的」规则保留，平手而线程上有活跃制作时也沿用当前方法（没有哪件事被说清楚）。上面四处锁全部删除，`STUDIO_SKILL_LOCKED` 不再产生。
+2. **切换方法只有一处**（`StudioDialogueService.switchMethod`，线程锁内、与绑定新方法同一事务；受理、显式 `skillKey`、`read_skill`、`propose_plan` 都走它）：
+   - 新方法与当前制作的方法相同 → 不动，在原制作里接着做。
+   - 方法不同、旧制作没有正在生成的子任务（暂停 / 等确认 / 某步失败）→ 作废它的待确认卡，制作按停止收尾（`canceled`，已产出的留在画布，不发总结消息），线程 `activeExecutionId` 与 `stage` 清空，按新方法的起始阶段出方案。
+   - 方法不同、旧制作还有正在生成的子任务 → **不取消**：制作改为暂停（不再提交新步骤，在生成的照常完成、结算），并与线程解绑（`threadId` 清空，原线程记在 `state.detachedThreadId`）；它完成的结果仍作为 `node.upsert / check.result` 发到原线程放进画布，不发卡片、总结或其它消息；不再生成时自行结束（`canceled`）。解绑的制作不占画布（新方法的方案可以照常确认执行），执行器结束时只在线程指针仍指向它时才清指针（`unbindExecution`）。
+3. **方案里有当前方法不允许的操作**：`propose_plan` 在校验前按 brief 与方案里的操作选出允许全部操作的方法（优先意图路由结果，路由不出就按目录顺序选第一个能覆盖的），按第 2 条切换后再校验；只有任何方法都不允许时才失败，失败原因只给模型。
+4. **内部报错不到用户界面**：`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE` 与方案校验的「第 N 步…」在用户可见处一律换成「这份方案还没准备好，我会按你要做的内容重新整理。」（错误码换成 `STUDIO_PLAN_NOT_READY`），原文留在日志、`internalDetail` 与模型侧结果里。覆盖的路径：对话工作记录的标题 / 摘要 / 展开详情（`ProposePlanTool` 失败、工具抛出的业务错误 `StudioDialogueTurnWorker.toolFailure`、前端 `userFacingError` 兜底旧记录）、确认卡接口错误（`StudioPlanExecutionService` 计划校验）、对话子任务授权（`StudioPlanExecutionBridge.authorizeChild`）、执行器步骤原因（`StudioPlanSteps`、分析后编排制作方案的原生任务 `StudioWorkflowWorker.skillPlan`）、前端错误详情 / toast（`normalizeStudioError`）。
+5. 提示词（对话提示词「先判断用户要什么」一节与技能说明里「没有进行中的制作时可以换」）改为按意图换方法；`PromptTemplateSeeder.SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。

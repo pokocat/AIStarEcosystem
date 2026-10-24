@@ -10,8 +10,8 @@ import org.springframework.stereotype.Component;
 
 /**
  * Free: load a skill's method text. When the thread has no skill yet this binds it (stage = the skill's first stage:
- * analysis for 参考视频复刻, production for 原创创作). While no execution runs on the thread, a different key switches the
- * thread to that method: a thread once bound to the wrong method (原创三视图 bound to 参考视频复刻, IPP-51a92043) used to be
+ * analysis for 参考视频复刻, production for 原创创作). A different key switches the
+ * thread to that method (also during a production since 2026-10-23, StudioDialogueService.switchMethod): a thread once bound to the wrong method (原创三视图 bound to 参考视频复刻, IPP-51a92043) used to be
  * stuck with a stage whitelist that could never produce an image. Reading a skill never authorizes anything: operations
  * still pass the stage whitelist and paid steps still need authorization.
  */
@@ -21,7 +21,7 @@ public class ReadSkillTool implements StudioDialogueTool {
     public ReadSkillTool(StudioSkillCatalog catalog) { this.catalog = catalog; }
     public String name() { return "read_skill"; }
     public String title() { return "读取制作方法"; }
-    public String description() { return "读取制作方法（技能）的完整说明并选定它。给出 key 即选定该方法（没有进行中的制作时，也可以换成另一种更合适的方法）；已选定时可省略 key。只选和用户要做的事对得上的方法，不为过流程挂不相关的方法。免费。"; }
+    public String description() { return "读取制作方法（技能）的完整说明并选定它。给出 key 即选定该方法；用户这句话要做的事换了，就换成对应的方法（有进行中的制作时也可以换，服务端会处理原来的制作）；已选定且不换时可省略 key。只选和用户要做的事对得上的方法，不为过流程挂不相关的方法。免费。"; }
     public ObjectNode parameters(ObjectMapper m) {
         var s = DialogueTools.schema(m);
         DialogueTools.prop(s, "key", "string", "技能标识；已选定方法且不换时可省略");
@@ -30,8 +30,8 @@ public class ReadSkillTool implements StudioDialogueTool {
     public String validate(JsonNode args, ToolContext ctx) {
         String key = DialogueTools.text(args, "key");
         if (ctx.skill() == null && key == null) return "还没有选定制作方法，请给出技能 key";
-        if (ctx.skill() != null && key != null && !key.equals(ctx.skill().key()) && ctx.executionId != null)
-            return "本对话正在按「" + ctx.skill().name() + "」制作，制作结束前不能换方法";
+        // 不锁方法 (2026-10-23): another method is chosen whenever the user's request needs it, also during a production;
+        // the bound execution is released by the one switch rule (StudioDialogueService.switchMethod).
         return null;
     }
     public String safeInputSummary(JsonNode args, ToolContext ctx) {

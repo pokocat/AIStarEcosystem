@@ -82,6 +82,19 @@ test('a message still on its way shows a spinning icon named 「发送中」', (
   expect(screen.getByRole('status').textContent).toBe('');
 });
 
+// 不锁方法 (2026-10-23): 「第 1 步的操作不在当前阶段允许的范围内」 was seen live on a 「整理制作方案」 work record. A record saved
+// with an internal method / stage refusal shows one plain sentence and no internal code, also when it was saved before the
+// server stopped sending them.
+test('an internal method refusal on a work record shows plain words, not stages or step numbers', () => {
+  const failed: StudioMessageBlock = { type: 'tool_call', toolCallId: 't9', toolName: 'propose_plan', title: '整理制作方案', safeInputSummary: '按「出图」整理制作方案',
+    status: 'failed', startedAt: '2026-10-23T08:00:00Z', finishedAt: '2026-10-23T08:00:01Z', result: { summary: '第 1 步的操作不在当前阶段允许的范围内' },
+    errorCode: 'STUDIO_SKILL_OPERATION_NOT_ALLOWED', errorMessage: '第 1 步的操作不在当前阶段允许的范围内' };
+  const { container } = render(<StudioDialogueMessageView message={{ ...message, text: '', blocks: [failed] }} nodes={[]} shortfalls={{}} handlers={handlers}/>);
+  fireEvent.click(screen.getByRole('button', { name: '展开详情：整理制作方案' }));
+  expect(container.textContent).toContain('这份方案还没准备好，我会按你要做的内容重新整理。');
+  expect(container.textContent).not.toMatch(/阶段允许|范围内|第 ?1 ?步|STUDIO_SKILL_OPERATION_NOT_ALLOWED/);
+});
+
 // docs/ip-studio-dialogue-no-continue.md §9: the chain ran out of credits. The note offers the payer's top-up page (the
 // same pages as the wallet badge and the enterprise workspace). An old note without a notice (an old 「点继续接着做」
 // line in saved history) still shows as it was, with no link and no error.

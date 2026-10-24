@@ -463,20 +463,15 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                               String skillKey, String requestedModel) {
         boolean mock = fixtures.enabled();
         var bound = execution(userId, thread.getProjectId(), thread).filter(v -> v.status() == null || ACTIVE_EXECUTION.contains(v.status())).orElse(null);
-        // The skill is bound per job, not per thread for good (意图直达 2026-10-20): while an execution is active its method
-        // stays; otherwise each message is routed again and may switch the thread to another method (画完图再写文案).
+        // The skill follows what each message asks for (意图直达 2026-10-20; 不锁方法 2026-10-23): every message is routed
+        // again, also while an execution is bound; a switch to another method releases that execution (switchMethod).
         StudioSkill current = thread.getSkillKey() == null ? null : catalog.find(thread.getSkillKey()).filter(s -> !s.withdrawn()).orElse(null);
         StudioSkill skill;
         boolean rebound = false, unbind = false;
         if (skillKey != null && !skillKey.isBlank()) {
             // Keeping the bound method only needs it not withdrawn (a draft keeps working); choosing another needs an active one.
             skill = current != null && current.key().equals(skillKey) ? catalog.requireForNewWork(skillKey) : catalog.requireForNewSelection(skillKey);
-            if (current != null && !current.key().equals(skill.key())) {
-                if (bound != null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "这条对话正在按另一种方法制作；要换方法，请先结束这次制作，或从某条消息重新开始");
-                rebound = true;
-            } else rebound = current == null;
-        } else if (bound != null) {
-            skill = current;
+            rebound = current == null || !current.key().equals(skill.key());
         } else {
             // S3 routing (docs/ip-studio-dialogue-intents.md §4): the best match switches; nothing that names a job keeps the
             // current method; a tie unbinds the thread for this message and the model picks with read_skill (2026-10-21:
@@ -488,11 +483,20 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
                     rebound = current == null || !current.key().equals(skill.key());
                 }
                 case OPEN -> {
-                    skill = null;
-                    unbind = thread.getSkillKey() != null;
+                    // A tie while an execution is bound keeps its method: nothing named another job clearly enough.
+                    skill = bound != null ? current : null;
+                    unbind = bound == null && thread.getSkillKey() != null;
                 }
                 default -> skill = current;
             }
+        }
+        // Another method than the bound execution's: that execution is released in this transaction (ended, or detached
+        // while it still generates) and this turn starts the new method's first stage.
+        if (bound != null && skill != null && (current == null || !current.key().equals(skill.key()))) {
+            var switched = switchMethod(userId, thread, skill, bound, null, null);
+            bound = switched.kept();
+            var written = store.appendLocked(thread, switched.events());
+            afterCommit(() -> store.broadcast(written));
         }
         var gate = gates == null ? null : gates.getIfAvailable();
         // D10: an active execution's payer is fixed at its confirmation, and a turn on its thread is paid by that same
@@ -740,6 +744,45 @@ public class StudioDialogueService implements StudioDialogueApprovals, StudioExe
         else executionControl.resume(userId, projectId, executionId, request.controlId());
         store.write(threadId, t -> { t.setLastControlId(request.controlId()); return List.of(); });
         return snapshot(userId, threadId);
+    }
+
+    /** The result of {@link #switchMethod}: the execution still bound (same method) or null, and the card events to append. */
+    public record MethodSwitch(StudioExecutionControl.ExecutionView kept, List<StudioDialogueStore.Pending> events) {}
+
+    /**
+     * 2026-10-23 不锁方法 (docs/ip-studio-dialogue-intents.md): the one place a thread changes method while an execution may
+     * be bound; every entry (acceptance, an explicit skillKey, read_skill, propose_plan) goes through it, under the thread
+     * lock and in the transaction that binds the new method.
+     * <ul>
+     *   <li>No execution, or the same method as the bound one → nothing changes (the work goes on in that execution).</li>
+     *   <li>Another method → its pending cards are superseded, the execution is released ({@link StudioExecutionControl#releaseForSwitch}:
+     *   ended when nothing is generating, paused and detached when something is, vendor work is never cancelled), and the
+     *   thread's execution pointer and stage are cleared (the caller sets the new method's first stage).</li>
+     * </ul>
+     */
+    public MethodSwitch switchMethod(String userId, IpDialogueThread locked, StudioSkill next, StudioExecutionControl.ExecutionView bound,
+                                     String turnId, String runId) {
+        if (bound == null && locked.getActiveExecutionId() != null)
+            bound = new StudioExecutionControl.ExecutionView(locked.getActiveExecutionId(), locked.getStage(), null);
+        if (bound == null || next == null || next.key().equals(locked.getSkillKey())) return new MethodSwitch(bound, List.of());
+        List<StudioDialogueStore.Pending> events = new ArrayList<>(store.supersedePendingApprovals(locked, null, turnId, runId, bound.id()));
+        boolean ended = executionControl == null || executionControl.releaseForSwitch(userId, locked.getProjectId(), bound.id());
+        log.info("[dialogue] method switched thread={} from={} to={} execution={} {}", locked.getId(), locked.getSkillKey(), next.key(), bound.id(),
+                ended ? "ended" : "detached while generating");
+        locked.setActiveExecutionId(null);
+        locked.setStage(null);
+        return new MethodSwitch(null, events);
+    }
+
+    /** Clear the thread's execution pointer, only while it still names {@code executionId} (a newer one is left alone). */
+    public void unbindExecution(String threadId, String executionId) {
+        store.write(threadId, t -> {
+            if (t.getActiveExecutionId() == null || executionId == null || executionId.equals(t.getActiveExecutionId())) {
+                t.setActiveExecutionId(null);
+                t.setStage(null);
+            }
+            return List.of();
+        });
     }
 
     /** Bind (or clear with null) the plan execution this thread drives; called by the plan executor. */

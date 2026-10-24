@@ -141,8 +141,9 @@ class ProposePlanToolTest {
                 "\"videoId\":\"vid-1\",\"analysisType\":\"detailed_breakdown\""));
         var run = tool.run(om.createObjectNode().put("brief", "照参考视频复刻"), ctx, HANDLE);
         assertEquals("failed", run.status());
-        assertEquals("AI_BAD_OUTPUT", run.errorCode());
-        assertTrue(run.forModel().contains("参考视频"), "the model is told which step needs which choice");
+        assertEquals(ProposePlanTool.PLAN_NOT_READY, run.errorCode(), "the work record carries no internal code");
+        assertEquals(ProposePlanTool.PLAN_NOT_READY_TEXT, run.summary());
+        assertTrue(run.forModel().contains("AI_BAD_OUTPUT") && run.forModel().contains("参考视频"), "the model is told which step needs which choice");
         verify(effects, never()).appendPlan(any(), any());
     }
 
@@ -252,18 +253,60 @@ class ProposePlanToolTest {
         verify(effects).appendBlock(any(), eq(StudioDialogueEventTypes.APPROVAL_REQUIRED), any());
     }
 
-    @Test void aRunningExecutionKeepsItsMethodEvenWhenTheBriefNamesAnotherOutput() throws Exception {
+    /**
+     * 不锁方法 (2026-10-23): during an image production the brief asks for a video; the plan switches to 出视频 (through the
+     * one switch rule, which releases the image production) and validates, instead of 「第 1 步的操作不在当前阶段允许的范围内」.
+     */
+    @Test void aRunningExecutionNoLongerLocksTheMethodWhenTheBriefNamesAnotherOutput() throws Exception {
         var image = new StudioSkillCatalog().requireForNewSelection("image-generation");
-        var locked = new ToolContext("u1", "P1", "IPT-P1", "TRN-1", "IPR-1", "IDM-A", "IDM-U", "PEX-1", null, false, null, null,
+        var producing = new ToolContext("u1", "P1", "IPT-P1", "TRN-1", "IPR-1", "IDM-A", "IDM-U", "PEX-1", null, false, null, null,
                 DialogueLoop.TurnBudget.unmetered(8192, Clock.systemUTC()), image, "production", () -> false, effects);
+        doAnswer(call -> {
+            var selected = (com.aistareco.aep.ipstudio.skill.StudioSkill) call.getArgument(0);
+            producing.bindSkill(selected, selected.firstStage());
+            return null;
+        }).when(effects).bindSkill(any());
         modelReplies("""
                 {"summary":"视频","steps":[{"id":"v","operation":"video","title":"视频","prompt":"人物走向讲台",
-                 "settings":{"durationSec":8,"count":1},"referenceNodeIds":[],"dependsOn":[]}]}""");
-        var run = tool.run(om.createObjectNode().put("brief", "出第一段视频"), locked, HANDLE);
-        assertEquals("STUDIO_SKILL_OPERATION_NOT_ALLOWED", run.errorCode());
-        assertFalse(run.summary().contains("当前阶段"));
-        assertFalse(locked.planReady);
-        verify(effects, never()).bindSkill(any());
+                 "settings":{"video":{"mode":"t2v","resolutionTier":"768p"},"durationSec":8,"aspectRatio":"16:9","count":1},"referenceNodeIds":[],"dependsOn":[]}]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "出第一段视频"), producing, HANDLE);
+        assertEquals("done", run.status(), run.forModel());
+        assertEquals("video-generation", producing.skill().key());
+        assertEquals("video-generation", appended.path("skillKey").asText());
+        assertTrue(producing.planReady);
+    }
+
+    /**
+     * The brief names no other job, but the plan's operations are another method's: the method that allows all of them is
+     * chosen before validation (here 出视频 for a video step under 出图).
+     */
+    @Test void aPlanWhoseOperationsNeedAnotherMethodSwitchesToTheMethodThatAllowsThem() throws Exception {
+        ctx.bindSkill(new StudioSkillCatalog().requireForNewSelection("image-generation"), "production");
+        doAnswer(call -> {
+            var selected = (com.aistareco.aep.ipstudio.skill.StudioSkill) call.getArgument(0);
+            ctx.bindSkill(selected, selected.firstStage());
+            return null;
+        }).when(effects).bindSkill(any());
+        modelReplies("""
+                {"summary":"接着做","steps":[{"id":"v","operation":"video","title":"第一段","prompt":"人物走向讲台",
+                 "settings":{"video":{"mode":"t2v","resolutionTier":"768p"},"durationSec":8,"aspectRatio":"16:9","count":1},"referenceNodeIds":[],"dependsOn":[]}]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "接着做下一步"), ctx, HANDLE);
+        assertEquals("done", run.status(), run.forModel());
+        verify(effects).bindSkill(argThat(s -> "video-generation".equals(s.key())));
+        assertEquals("video", appended.path("steps").get(0).path("operation").asText());
+    }
+
+    /** No method allows the plan: it fails, and nothing about stages, ranges or 「第 N 步」 reaches the user. */
+    @Test void aPlanNoMethodAllowsFailsWithPlainWordsForTheUserOnly() throws Exception {
+        ctx.bindSkill(new StudioSkillCatalog().requireForNewSelection("image-generation"), "production");
+        modelReplies("""
+                {"summary":"传送","steps":[{"id":"t","operation":"teleport","title":"传送","prompt":"去月球","settings":{},"referenceNodeIds":[],"dependsOn":[]}]}""");
+        var run = tool.run(om.createObjectNode().put("brief", "把人物传送到月球"), ctx, HANDLE);
+        assertEquals("failed", run.status());
+        assertEquals(ProposePlanTool.PLAN_NOT_READY, run.errorCode());
+        for (String visible : new String[]{run.summary(), run.errorMessage()})
+            assertFalse(visible.contains("阶段") || visible.contains("范围") || visible.matches(".*第 ?\\d+ ?步.*"), visible);
+        assertTrue(run.forModel().contains("STUDIO_SKILL_OPERATION_NOT_ALLOWED"), "the model still gets the reason");
         verify(effects, never()).appendPlan(any(), any());
     }
 
@@ -312,8 +355,9 @@ class ProposePlanToolTest {
         };
         var outcome = new DialogueLoop(loopModel, loopTools, hooks, ctx.budget).run(new java.util.ArrayList<>());
         assertEquals(DialogueLoop.Reason.WAITING_USER, outcome.reason());
-        assertEquals(2, outcome.steps(), "the failed batch must recover before asking the user");
-        assertTrue(exchanges.get(1).content().contains("不能给旧方案发确认卡"));
+        // 不锁方法 (2026-10-23): 「继续下一步」 under 出图 with a video step now switches to the method that allows it, so the
+        // first batch already plans and sends the card; the old image card is never confirmed.
+        assertEquals(1, outcome.steps(), "the video plan is proposed in the first batch");
         var card = org.mockito.ArgumentCaptor.forClass(ObjectNode.class);
         verify(effects, times(1)).appendBlock(card.capture(), any(), any());
         assertEquals("new-video", card.getValue().path("planFingerprint").asText());

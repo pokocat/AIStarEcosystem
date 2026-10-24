@@ -112,7 +112,7 @@ public class StudioPlanExecutor {
                 for(Runnable action:after) {
                     try {action.run();} catch(RuntimeException e) {log.warn("[plan-exec] follow-up failed execution={} reason={}",executionId,e.toString());}
                 }
-                if(decision!=null&&decision.unbindThread()!=null)unbind(decision.unbindThread());
+                if(decision!=null&&decision.unbindThread()!=null)unbind(decision.unbindThread(),executionId);
                 if(decision==null||decision.submission()==null)break;
                 if(!submit(executionId,owner,version,decision.submission()))break;
                 if(executions.renewLease(executionId,owner,version,Instant.now().plus(LEASE))!=1)break;
@@ -149,6 +149,12 @@ public class StudioPlanExecutor {
                 } else next=advanceRunning(e,state,budget,out,after);
             }
             case IpPlanExecution.NEEDS_USER -> completeIfResolved(e,state,out,after);
+            // Detached when its thread switched method (不锁方法): once nothing is generating any more, it ends quietly.
+            case IpPlanExecution.PAUSED -> {
+                if(state.hasNonNull("detachedThreadId")&&e.getInFlight()==0&&!StudioPlanExecutionService.generating(state)) {
+                    e.setStatus(IpPlanExecution.CANCELED);e.setFinishedAt(now);state.put("summaryPosted",true);
+                }
+            }
             default -> {}
         }
         // D07: one completion summary per execution, posted once it reaches done / partial / failed / canceled.
@@ -191,10 +197,10 @@ public class StudioPlanExecutor {
         target.postExecutionMessage(threadId,executionId,key,text,blocks,suggestions);
     }
     private static String excerpt(String text,int max){if(text==null)return "";String t=text.strip();return t.length()<=max?t:t.substring(0,max)+"…";}
-    private void unbind(String threadId) {
+    private void unbind(String threadId,String executionId) {
         var target=dialogue==null?null:dialogue.getIfAvailable();
         if(target==null)return;
-        try {target.bindExecution(threadId,null,null);}
+        try {target.unbindExecution(threadId,executionId);}
         catch(RuntimeException e){log.warn("[plan-exec] thread unbinding failed thread={} reason={}",threadId,e.toString());}
     }
 
@@ -525,9 +531,14 @@ public class StudioPlanExecutor {
         var sink=events.getIfAvailable();
         if(sink==null)return;
         var e=executions.findById(executionId).orElse(null);
-        if(e==null||e.getThreadId()==null)return;
+        if(e==null)return;
+        // A detached execution (its thread switched method) still puts what it finishes on the canvas, nothing else.
+        String thread=e.getThreadId()!=null?e.getThreadId():PlanState.parse(mapper,e.getStepsJson()).path("detachedThreadId").asText(null);
+        if(thread==null)return;
+        boolean detached=e.getThreadId()==null;
         for(Event event:pending) {
-            try {sink.publish(e.getThreadId(),e.getId(),event.data().path("runId").asText(null),e.getId(),event.type(),event.data());}
+            if(detached&&!Set.of("node.upsert","check.result").contains(event.type()))continue;
+            try {sink.publish(thread,e.getId(),event.data().path("runId").asText(null),e.getId(),event.type(),event.data());}
             catch(RuntimeException error) {log.warn("[plan-exec] event publish failed execution={} type={}",executionId,event.type(),error);}
         }
     }

@@ -140,14 +140,29 @@ public class ProposePlanTool implements StudioDialogueTool {
         }
         Set<String> contextIds = DialogueCanvasDigest.nodeIds(doc);
         contextIds.addAll(ctx.createdNodeIds);
+        // 不锁方法 (2026-10-23): a plan whose operations the current method does not allow is a plan for another method
+        // (「把第一段做成视频」 while an image production waits). Switch to the method that allows all of them before
+        // validating; the bound execution is released by the one switch rule. Only when no method allows them does it fail.
+        Set<String> operations = operations(raw);
+        if (!new HashSet<>(skill.stageOperations(stage)).containsAll(operations)) {
+            StudioSkill covering = coveringSkill(DialogueTools.text(args, "brief"), ctx, operations);
+            if (covering != null && !covering.key().equals(skill.key())) {
+                log.info("[dialogue] plan operations {} need another method run={} from={} to={}", operations, ctx.runId, skill.key(), covering.key());
+                ctx.effects.bindSkill(covering);
+                skill = covering;
+                stage = covering.firstStage();
+                rules = StudioSkillRules.fromSnapshot(skill.snapshot(mapper));
+            }
+        }
         ObjectNode plan;
         try { plan = StudioPlanValidator.validateSkillPlan(raw, rules, stage, contextIds); }
         catch (BusinessException e) {
+            // The raw reason (「第 N 步…」, operation and stage names) is for the log and the model only; the work record says
+            // it in plain words and carries no internal code (docs/ip-studio-dialogue-intents.md 「不锁方法」).
             log.info("[dialogue] plan rejected run={} code={} reason={}", ctx.runId, e.getCode(), e.getMessage());
-            String message = "STUDIO_SKILL_OPERATION_NOT_ALLOWED".equals(e.getCode())
-                    ? "这份方案还没准备好，我会按你要做的内容重新整理。" : e.getMessage();
-            return ToolRun.failed(e.getCode(), message, DialogueTools.fail(e.getMessage()
-                    + "。不要把内部阶段或权限问题交给用户处理。没有进行中的制作时，先用 read_skill 选与用户目标一致的方法，再 propose_plan；成功后才能 request_approval，不能沿用旧方案。" )).settlingInTurn();
+            return ToolRun.failed(PLAN_NOT_READY, PLAN_NOT_READY_TEXT, DialogueTools.fail("（内部校验信息，只给你看，不要转述给用户）"
+                    + e.getCode() + "：" + e.getMessage() + "。按用户要做的内容选对方法（read_skill）后重新 propose_plan；成功后才能 request_approval，不能沿用旧方案。"))
+                    .settlingInTurn();
         }
         Set<String> offered = needsVideo(plan) ? offeredVideoModels() : null;
         if (offered != null && offered.isEmpty()) {
@@ -186,10 +201,39 @@ public class ProposePlanTool implements StudioDialogueTool {
                 DialogueTools.ok(body), List.of(), List.of(), null, null, true, null, null, null);
     }
 
+    /** The code and words a failed plan shows the user; the reason stays in the log and the model's result. */
+    public static final String PLAN_NOT_READY = "STUDIO_PLAN_NOT_READY";
+    public static final String PLAN_NOT_READY_TEXT = "这份方案还没准备好，我会按你要做的内容重新整理。";
+
+    /** The method for this plan: what the brief asks for, also during a production (不锁方法 2026-10-23); else the bound one. */
     private StudioSkill planningSkill(JsonNode args, ToolContext ctx) {
-        if (ctx.executionId != null || catalog == null) return ctx.skill();
+        if (catalog == null) return ctx.skill();
         var decision = StudioSkillRouter.decide(catalog.available(), Set.of(), DialogueTools.text(args, "brief"), ctx.skill());
         return decision.kind() == StudioSkillRouter.Kind.MATCH ? decision.skill() : ctx.skill();
+    }
+
+    /** The operations a raw model plan asks for. */
+    static Set<String> operations(JsonNode raw) {
+        Set<String> out = new LinkedHashSet<>();
+        if (raw != null) for (JsonNode step : raw.path("steps")) if (step.path("operation").isTextual()) out.add(step.path("operation").asText());
+        return out;
+    }
+
+    /**
+     * A method whose first stage allows every operation of the plan: the brief's routed method when it does, else the first
+     * such method in the routing order (the catalog order); null when none does.
+     */
+    StudioSkill coveringSkill(String brief, ToolContext ctx, Set<String> operations) {
+        if (catalog == null || operations.isEmpty()) return null;
+        List<StudioSkill> available = catalog.available();
+        var decision = StudioSkillRouter.decide(available, Set.of(), brief, ctx.skill());
+        if (decision.skill() != null && covers(decision.skill(), operations)) return decision.skill();
+        for (StudioSkill s : available) if (covers(s, operations)) return s;
+        return null;
+    }
+
+    static boolean covers(StudioSkill skill, Set<String> operations) {
+        return new HashSet<>(skill.stageOperations(skill.firstStage())).containsAll(operations);
     }
 
     /**

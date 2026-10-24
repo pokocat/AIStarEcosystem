@@ -60,7 +60,8 @@ public class StudioPlanExecutionBridge implements StudioExecutionGate {
         var rules=StudioSkillRules.fromSnapshot(state.path("skill"));
         skills.requireActive(rules.key());
         if(!rules.stageOperations(current).contains(request.operation()))
-            throw BusinessException.badRequest("STUDIO_SKILL_OPERATION_NOT_ALLOWED","这一步的操作不在当前阶段允许的范围内");
+            throw BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_REQUEST,"STUDIO_SKILL_OPERATION_NOT_ALLOWED","这一步不在已确认的方案里，需要先确认新的方案",
+                    "operation "+request.operation()+" not allowed in "+rules.key()+"/"+current);
         ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
         JsonNode existing=PlanState.child(state,request.clientRequestId());
         long quote;

@@ -206,7 +206,7 @@ class StudioPlanExecutionServiceTest {
         when(dialogues.getIfAvailable()).thenReturn(dialogue);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"dialogue",dialogues);
         service.cancel("u","p",created.id(),new PlanExecutionControlRequest("stop-1",null));
-        verify(dialogue).bindExecution("thread-1",null,null);
+        verify(dialogue).unbindExecution(eq("thread-1"),anyString());
     }
 
     /** D01: after a newer plan revision exists, the older card (its own plan and fingerprint intact) starts nothing. */
@@ -422,6 +422,38 @@ class StudioPlanExecutionServiceTest {
         var e=assertThrows(BusinessException.class,()->service.create("u","p",new PlanExecutionCreateRequest("c-run","production","IPR-c",revised,"rewrite",200L,0L,null,id,3,"APV-more","msg-more")));
         assertEquals("STUDIO_PLAN_STALE",e.getCode());assertTrue(e.getMessage().contains("还在生成中"));
         assertEquals("IPR-b",rows.get(id).getPlanRunId(),"nothing changed");
+    }
+
+    /**
+     * 不锁方法 (2026-10-23): the thread switches to another method. Nothing generating → the execution ends like a stop
+     * (canceled, no summary). Something generating → paused and detached from its thread (no new submission; what is
+     * generating finishes on the canvas), and the thread's execution lookup no longer finds it.
+     */
+    @Test void aMethodSwitchEndsAnIdleExecutionAndDetachesOneThatStillGenerates() throws Exception {
+        String fp=currentPlan("IPR-a","analysis",ANALYSIS,20,10);
+        var created=service.create("u","p",analysisRequest(fp,30));
+        var row=rows.get(created.id());row.setThreadId("IPT-1");
+        var state=(ObjectNode)om.readTree(row.getStepsJson());
+        ((ObjectNode)state.path("steps").get(0)).put("status","running");row.setStepsJson(state.toString());
+        assertFalse(service.releaseForSwitch("u","p",created.id()),"still generating: detached, not cancelled");
+        assertEquals("paused",row.getStatus());
+        assertNull(row.getThreadId(),"no longer the thread's execution");
+        state=(ObjectNode)om.readTree(row.getStepsJson());
+        assertEquals("IPT-1",state.path("detachedThreadId").asText(),"its canvas events still reach the thread");
+        assertEquals("running",state.path("steps").get(0).path("status").asText(),"nothing generating is cancelled");
+        // The new method's plan can be confirmed while the detached production finishes what it generates.
+        cards.put("msg-new","APV-new","analysis",fp,30,30);
+        var next=service.create("u","p",new PlanExecutionCreateRequest("create-new","analysis","IPR-a",fp,null,30L,0L,null,null,null,"APV-new","msg-new"));
+        assertNotEquals(created.id(),next.id(),"not STUDIO_PLAN_EXECUTION_BUSY: a detached production does not hold the canvas");
+        assertEquals("running",next.status());
+        rows.remove(next.id());
+
+        ((ObjectNode)state.path("steps").get(0)).put("status","done");state.remove("detachedThreadId");
+        row.setStepsJson(state.toString());row.setStatus("needs_user");row.setThreadId("IPT-1");row.setInFlight(0);
+        assertTrue(service.releaseForSwitch("u","p",created.id()),"nothing generating: ended");
+        assertEquals("canceled",row.getStatus());
+        assertTrue(om.readTree(row.getStepsJson()).path("summaryPosted").asBoolean(),"no summary message: the conversation moved on");
+        assertTrue(service.releaseForSwitch("u","p",created.id()),"an ended execution has nothing left to release");
     }
 
     /**
