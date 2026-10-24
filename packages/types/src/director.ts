@@ -237,6 +237,8 @@ export interface DirectorWork {
   notice: { message: string; at: string } | null;
   /** 提取出来、还没保存进资产库的清单；用户勾选、改名后保存（extract.save）或不保存（extract.discard）。 */
   pendingExtract?: DirectorPendingExtract | null;
+  /** 重新生成剧本前的旧稿，新的在前，最多 3 版；只读留底。 */
+  scriptHistory?: { at: string; logline: string; draft: string }[];
   textError: DirectorError | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };

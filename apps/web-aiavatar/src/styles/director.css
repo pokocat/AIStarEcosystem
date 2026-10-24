@@ -428,3 +428,10 @@ html:not([data-layout="desktop"]) .director-board-big { max-height: 46dvh; }
 .director-asset-tile.kind-character .director-asset-tile-image img { object-fit: contain; object-position: center; background: #eceef0; }
 .director-voice-chip { display: inline-flex; align-items: center; gap: 3px; min-height: 26px; padding: 2px 8px; border: 1px solid var(--ip-line); border-radius: 7px; background: var(--ip-paper); color: var(--ip-muted); font-size: 12px; font-weight: 600; }
 .director-voice-chip.is-set { border-color: #bcd9c8; color: var(--ip-green); }
+.director-regen-notes { margin: 0; padding-left: 18px; color: var(--ip-muted); font-size: 12px; line-height: 1.8; }
+/* 弹窗容器拿焦点时不画框（里面的控件仍有焦点环）；手机上把小控件放大到可触控的尺寸 */
+.director-dialog:focus, .director-sheet:focus, .director-popover:focus { outline: none; }
+html:not([data-layout="desktop"]) .director-shell :is(.director-notice button, .director-next button, .director-output-toggle) { min-height: 36px; padding-inline: 10px; }
+html:not([data-layout="desktop"]) .director-shell :is(.director-clip-check, .director-batch-all input) { width: 22px; height: 22px; }
+html:not([data-layout="desktop"]) .director-shell .director-clip-head .director-danger { min-width: 40px; min-height: 40px; }
+html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .director-video-gate .ip-brand-secondary, .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }

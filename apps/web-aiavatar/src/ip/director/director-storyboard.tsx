@@ -1,12 +1,13 @@
 "use client";
 
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
 import type { DirectorClip, DirectorShot, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet } from "./director-shared";
+import { InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
@@ -288,7 +289,7 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
   const adopt = (id: string) => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptBoard", clip.id, null, { candidateId: id })), setLocalError);
   const confirm = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmBoard", clip.id, null)), setLocalError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-    <div className="director-dialog director-board-dialog" role="dialog" aria-modal="true" aria-labelledby="director-board-title">
+    <div className="director-dialog director-board-dialog" role="dialog" aria-modal="true" aria-labelledby="director-board-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-board-title">分镜图 · 片段 {clip.order}</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <p className="director-dialog-note">{cells > 1 ? `2×2 宫格，第 1–${cells} 格依次对应第 1–${cells} 镜。生成视频时按格逐镜参考，保证前后镜头的人物和环境一致。` : "单幅分镜画面，生成视频时作为构图参考。"}</p>
       <div className="director-board-dialog-body">
@@ -447,11 +448,11 @@ function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWor
       <label className="director-field"><span>动作（起始 → 过程 → 结束）</span><textarea rows={2} maxLength={1000} value={s.action} onChange={e => update(i, { action: e.target.value })}/></label>
       <label className="director-field"><span>机位与构图</span><input value={s.camera} maxLength={1000} onChange={e => update(i, { camera: e.target.value })}/></label>
       {s.dialogue.map((l, j) => <div key={j} className="director-line-editor">
-        <select aria-label="说话人" value={l.speakerId ?? ""} onChange={e => update(i, { dialogue: s.dialogue.map((x, k) => k === j ? { ...x, speakerId: e.target.value || null } : x) })}>
+        <SelectField aria-label="说话人" value={l.speakerId ?? ""} onChange={e => update(i, { dialogue: s.dialogue.map((x, k) => k === j ? { ...x, speakerId: e.target.value || null } : x) })}>
           <option value="">旁白 / 画外音</option>
           {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
           {l.speakerId && !characters.some(c => c.id === l.speakerId) && <option value={l.speakerId}>未知角色（{l.speakerId}）</option>}
-        </select>
+        </SelectField>
         <input aria-label="台词" value={l.text} maxLength={1000} onChange={e => update(i, { dialogue: s.dialogue.map((x, k) => k === j ? { ...x, text: e.target.value } : x) })}/>
         <button type="button" className="ip-brand-text-button" aria-label="删除台词" onClick={() => update(i, { dialogue: s.dialogue.filter((_, k) => k !== j) })}><X size={13}/></button>
       </div>)}

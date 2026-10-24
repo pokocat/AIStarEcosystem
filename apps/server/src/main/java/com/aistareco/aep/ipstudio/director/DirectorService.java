@@ -433,12 +433,18 @@ public class DirectorService {
         int maxTokens = 8192;
         switch (type == null ? "" : type) {
             case "script" -> {
-                if (!c.path("draft").asText().isBlank() || c.path("episodes").size() > 0)
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_EXISTS", "已有剧本，请直接修改正文");
+                boolean regenerate = o.path("regenerate").asBoolean(false);
+                boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
+                if (hasScript && !regenerate)
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_EXISTS", "已有剧本，请直接修改正文或重新生成");
+                // 重新生成会替换剧本和分集：已花钱做出的分镜图 / 视频跟新剧本对不上，先让用户删掉这些片段。
+                if (regenerate) for (JsonNode clip : c.path("clips")) if (hasMedia(clip))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "已有分镜图或视频的片段，重新生成剧本前请先删除这些片段");
                 String idea = c.path("idea").asText();
                 if (idea.isBlank()) throw invalid("请先填写创意");
                 nodeId = "script";
                 meta.put("draftRev", c.path("draftRev").asLong());
+                if (hasScript) meta.put("regenerate", true).put("baseHash", scriptBaseHash(c));
                 system = DirectorPrompts.SCRIPT;
                 // 篇幅不在这里给默认值：用户在创意里写的时长 / 集数要压过默认，默认写在提示词里「brief 没写时」。
                 ObjectNode in = om.createObjectNode().put("brief", idea).put("style", c.path("settings").path("style").asText());
@@ -912,6 +918,25 @@ public class DirectorService {
         JsonNode in = parse(run.getInputJson()).path("_director");
         switch (in.path("task").asText()) {
             case "script" -> {
+                if (in.path("regenerate").asBoolean(false)) {
+                    // 重新生成：提交后剧本、分集、片段都没动过才替换；旧剧本进历史（最近 3 版），资产保留、解除与旧分集的关联。
+                    boolean media = false;
+                    for (JsonNode clip : c.path("clips")) if (hasMedia(clip)) media = true;
+                    if (media || !scriptBaseHash(c).equals(in.path("baseHash").asText())) {
+                        notice(c, "生成期间剧本或片段有修改，新剧本未替换当前内容"); return;
+                    }
+                    ArrayNode history = c.withArray("scriptHistory");
+                    StringBuilder old = new StringBuilder(c.path("draft").asText());
+                    for (JsonNode ep : c.path("episodes")) { if (old.length() > 0) old.append("\n\n"); old.append(ep.path("content").asText()); }
+                    history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString()));
+                    while (history.size() > 3) history.remove(history.size() - 1);
+                    c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract");
+                    for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
+                    c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
+                    if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
+                    notice(c, "剧本已重新生成，旧版本保留在历史中；资产保留，请重新拆分并提取资产");
+                    return;
+                }
                 if (!c.path("draft").asText().isBlank() || c.path("episodes").size() > 0 || c.path("draftRev").asLong() != in.path("draftRev").asLong()) {
                     notice(c, "生成期间剧本已有内容，新生成的剧本未覆盖"); return;
                 }
@@ -1747,6 +1772,14 @@ public class DirectorService {
     private boolean hasClips(ObjectNode c, String episodeId) {
         for (JsonNode clip : c.path("clips")) if (episodeId.equals(clip.path("episodeId").asText())) return true;
         return false;
+    }
+
+    /** 剧本现状的指纹：整份草稿、各集正文与修订号、片段列表。重新生成回来时比对它，变了就不替换。 */
+    private String scriptBaseHash(ObjectNode c) {
+        StringBuilder b = new StringBuilder(c.path("draft").asText()).append('|').append(c.path("draftRev").asLong());
+        for (JsonNode ep : c.path("episodes")) b.append('|').append(ep.path("id").asText()).append(':').append(ep.path("rev").asLong()).append(':').append(hash(ep.path("content").asText()));
+        for (JsonNode clip : c.path("clips")) b.append('|').append(clip.path("id").asText()).append(':').append(clip.path("rev").asLong());
+        return hash(b.toString());
     }
 
     /** 提取结果对上已有资产：先认模型给的 existingId，再认同类同名。 */

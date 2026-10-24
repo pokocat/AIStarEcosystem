@@ -6,7 +6,7 @@ import type { DirectorAsset, DirectorWork } from "@ai-star-eco/types";
 import type { StudioVoiceProfile } from "@ai-star-eco/types/ip-studio-workflow";
 import { studioVoiceProfiles } from "@/canvas-bridge/studio-api";
 import { DirectorApi } from "../api";
-import { InlineError, errorText, useBusy, useEscape } from "./director-shared";
+import { InlineError, errorText, useBusy, useEscape, dialogFocus } from "./director-shared";
 
 /** 资产卡里的音色摘要：说清现在是参考音频、文字描述还是都没有，点「设置音色」打开单独的配置弹窗。 */
 export function VoicePanel({ work, asset, apply }: { work: DirectorWork; asset: DirectorAsset; apply: (w: DirectorWork) => void }) {
@@ -55,7 +55,7 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
     onClose();
   }, setError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-    <div className="director-dialog director-voice-dialog" role="dialog" aria-modal="true" aria-labelledby="director-voice-dialog-title">
+    <div className="director-dialog director-voice-dialog" role="dialog" aria-modal="true" aria-labelledby="director-voice-dialog-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-voice-dialog-title">角色音色</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <div className="director-field"><span>角色</span><p className="director-voice-name">{asset.name}</p></div>
       <label className="director-field"><span>音色描述</span>
@@ -95,7 +95,7 @@ function VoiceLibrary({ onClose, onPick }: { onClose: () => void; onPick: (p: St
     void studioVoiceProfiles().then(c => setProfiles(c.profiles.filter(p => p.demoStorageKey))).catch(e => setError(errorText(e)));
   }
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-voice-title">
+    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-voice-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-voice-title">选择声音</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <p className="director-dialog-note">Studio 中已保存的人物声音，将以试听音频作为参考。</p>
       <InlineError message={error}/>
