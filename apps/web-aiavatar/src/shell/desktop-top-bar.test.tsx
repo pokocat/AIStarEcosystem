@@ -56,7 +56,7 @@ test("Projects follows Home and owns its active navigation state", () => {
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
   const links = nav.getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href")).slice(0,4)).toEqual(["/dashboard","/projects","/create","/scenes"]);
+  expect(links.map(link => link.getAttribute("href")).slice(0,4)).toEqual(["/dashboard","/projects","/create","/director"]);
   expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
   expect(nav.getByRole("link", {name:"画布·自由创作"}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/projects/demos";

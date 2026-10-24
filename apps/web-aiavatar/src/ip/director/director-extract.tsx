@@ -4,7 +4,7 @@ import { useState } from "react";
 import { X } from "lucide-react";
 import type { DirectorAssetKind, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
-import { InlineError, kindLabel, useBusy, useEscape } from "./director-shared";
+import { InlineError, kindLabel, useBusy, useEscape, dialogFocus } from "./director-shared";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
 
@@ -26,7 +26,7 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
   const discard = () => void run("discard", async () => { apply(await DirectorApi.edit(work.id, "extract.discard", pending.runId, null)); onClose(); }, setError);
   const set = (key: string, patch: Partial<{ include: boolean; name: string }>) => setPicks(p => ({ ...p, [key]: { ...picks[key], ...patch } }));
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-    <div className="director-dialog director-extract" role="dialog" aria-modal="true" aria-labelledby="director-extract-title">
+    <div className="director-dialog director-extract" role="dialog" aria-modal="true" aria-labelledby="director-extract-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-extract-title">确认资产</h2><button type="button" aria-label="稍后再看" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
       <p className="director-dialog-note">从全剧识别到 {pending.items.length} 项。勾选要保存的，名字可以直接改；已有的同一项会合并，不重复新建。</p>
       <div className="director-extract-list">{KINDS.map(kind => {

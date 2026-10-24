@@ -275,9 +275,22 @@ public class DirectorService {
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_ASSET_IN_USE", "该资产仍被片段使用，请先取消关联");
                 remove(c, "assets", req.targetId());
             }
-            case "asset.adopt" -> adopt(find(c, "assets", req.targetId(), "这个资产"), "image", d.path("candidateId").asText());
+            case "asset.adopt" -> {
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                String cid = d.path("candidateId").asText();
+                // 之前上传进角色图历史的照片不能再采用，只能当形象参考。
+                if ("character".equals(a.path("kind").asText()))
+                    for (JsonNode m : a.path("image").path("candidates"))
+                        if (cid.equals(m.path("id").asText()) && "upload".equals(m.path("source").asText()))
+                            throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED",
+                                    "上传的照片不能直接作为角色图，请设为「形象参考」后生成设定图");
+                adopt(a, "image", cid);
+            }
             case "asset.upload" -> {
                 ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                // 角色图必须是系统按设定集版式生成的多视角图，前后才对得上；上传的照片只能当生成时的形象参考。
+                if ("character".equals(a.path("kind").asText())) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED",
+                        "角色图需要由系统生成设定图。上传的照片请设为「形象参考」，再生成设定图");
                 String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
                 if (key == null) throw invalid("请先上传图片");
                 ObjectNode m = addCandidate(c, (ObjectNode) a.path("image"), key, null, "upload");
@@ -351,6 +364,15 @@ public class DirectorService {
                 if (d.hasNonNull("voiceId")) v.put("voiceId", d.path("voiceId").asText()); else v.putNull("voiceId");
                 bump(a);
             }
+            case "asset.setRef" -> {
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                if (!"character".equals(a.path("kind").asText())) throw invalid("只有角色可以设置形象参考");
+                String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
+                if (key == null) throw invalid("请先上传图片");
+                a.putObject("refImage").put("key", key);
+                bump(a);
+            }
+            case "asset.clearRef" -> { ObjectNode a = find(c, "assets", req.targetId(), "这个资产"); a.putNull("refImage"); bump(a); }
             case "asset.clearVoice" -> { ObjectNode a = find(c, "assets", req.targetId(), "这个资产"); a.putNull("voice"); bump(a); }
             case "clip.adoptVideo" -> adopt(find(c, "clips", req.targetId(), "这个片段"), "video", d.path("candidateId").asText());
             case "clip.confirmVideo" -> {
@@ -433,12 +455,18 @@ public class DirectorService {
         int maxTokens = 8192;
         switch (type == null ? "" : type) {
             case "script" -> {
-                if (!c.path("draft").asText().isBlank() || c.path("episodes").size() > 0)
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_EXISTS", "已有剧本，请直接修改正文");
+                boolean regenerate = o.path("regenerate").asBoolean(false);
+                boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
+                if (hasScript && !regenerate)
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_EXISTS", "已有剧本，请直接修改正文或重新生成");
+                // 重新生成会替换剧本和分集：已花钱做出的分镜图 / 视频跟新剧本对不上，先让用户删掉这些片段。
+                if (regenerate) for (JsonNode clip : c.path("clips")) if (hasMedia(clip))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "已有分镜图或视频的片段，重新生成剧本前请先删除这些片段");
                 String idea = c.path("idea").asText();
                 if (idea.isBlank()) throw invalid("请先填写创意");
                 nodeId = "script";
                 meta.put("draftRev", c.path("draftRev").asLong());
+                if (hasScript) meta.put("regenerate", true).put("baseHash", scriptBaseHash(c));
                 system = DirectorPrompts.SCRIPT;
                 // 篇幅不在这里给默认值：用户在创意里写的时长 / 集数要压过默认，默认写在提示词里「brief 没写时」。
                 ObjectNode in = om.createObjectNode().put("brief", idea).put("style", c.path("settings").path("style").asText());
@@ -515,7 +543,11 @@ public class DirectorService {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
                 String prompt = a.path("prompt").asText();
                 if (prompt.isBlank()) throw invalid("请先填写资产描述");
-                return image(userId, w, c, "asset:" + targetId, requestId, prompt, List.of(), sizeFor(c, a.path("kind").asText()),
+                String refKey = characterRefKey(a);
+                List<Bound> refs = refKey == null ? List.of()
+                        : List.of(new Bound(targetId, a.path("name").asText() + "的形象参考", "character", refKey, "图1"));
+                if (refKey != null) prompt = prompt + "\n" + DirectorPrompts.CHARACTER_REF_NOTE;
+                return image(userId, w, c, "asset:" + targetId, requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
                         assetFingerprint(a), pipeline, billing, maxCost);
             }
             case "board" -> {
@@ -912,6 +944,25 @@ public class DirectorService {
         JsonNode in = parse(run.getInputJson()).path("_director");
         switch (in.path("task").asText()) {
             case "script" -> {
+                if (in.path("regenerate").asBoolean(false)) {
+                    // 重新生成：提交后剧本、分集、片段都没动过才替换；旧剧本进历史（最近 3 版），资产保留、解除与旧分集的关联。
+                    boolean media = false;
+                    for (JsonNode clip : c.path("clips")) if (hasMedia(clip)) media = true;
+                    if (media || !scriptBaseHash(c).equals(in.path("baseHash").asText())) {
+                        notice(c, "生成期间剧本或片段有修改，新剧本未替换当前内容"); return;
+                    }
+                    ArrayNode history = c.withArray("scriptHistory");
+                    StringBuilder old = new StringBuilder(c.path("draft").asText());
+                    for (JsonNode ep : c.path("episodes")) { if (old.length() > 0) old.append("\n\n"); old.append(ep.path("content").asText()); }
+                    history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString()));
+                    while (history.size() > 3) history.remove(history.size() - 1);
+                    c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract");
+                    for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
+                    c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
+                    if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
+                    notice(c, "剧本已重新生成，旧版本保留在历史中；资产保留，请重新拆分并提取资产");
+                    return;
+                }
                 if (!c.path("draft").asText().isBlank() || c.path("episodes").size() > 0 || c.path("draftRev").asLong() != in.path("draftRev").asLong()) {
                     notice(c, "生成期间剧本已有内容，新生成的剧本未覆盖"); return;
                 }
@@ -1499,7 +1550,15 @@ public class DirectorService {
     }
 
     private String assetFingerprint(JsonNode a) {
-        return hash(a.path("prompt").asText() + "|" + a.path("kind").asText());
+        String ref = characterRefKey(a);
+        // 没有形象参考时保持旧指纹，已采用的图不会因为这次改动被标成「需更新」。
+        return hash(a.path("prompt").asText() + "|" + a.path("kind").asText() + (ref == null ? "" : "|ref:" + ref));
+    }
+
+    private static String characterRefKey(JsonNode a) {
+        if (!"character".equals(a.path("kind").asText())) return null;
+        String key = a.path("refImage").path("key").asText(null);
+        return key == null || key.isBlank() ? null : key;
     }
 
     private String boardFingerprint(JsonNode clip, List<Bound> refs) {
@@ -1747,6 +1806,14 @@ public class DirectorService {
     private boolean hasClips(ObjectNode c, String episodeId) {
         for (JsonNode clip : c.path("clips")) if (episodeId.equals(clip.path("episodeId").asText())) return true;
         return false;
+    }
+
+    /** 剧本现状的指纹：整份草稿、各集正文与修订号、片段列表。重新生成回来时比对它，变了就不替换。 */
+    private String scriptBaseHash(ObjectNode c) {
+        StringBuilder b = new StringBuilder(c.path("draft").asText()).append('|').append(c.path("draftRev").asLong());
+        for (JsonNode ep : c.path("episodes")) b.append('|').append(ep.path("id").asText()).append(':').append(ep.path("rev").asLong()).append(':').append(hash(ep.path("content").asText()));
+        for (JsonNode clip : c.path("clips")) b.append('|').append(clip.path("id").asText()).append(':').append(clip.path("rev").asLong());
+        return hash(b.toString());
     }
 
     /** 提取结果对上已有资产：先认模型给的 existingId，再认同类同名。 */

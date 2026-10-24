@@ -10,7 +10,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { StudioPage } from "../studio-page";
 import { GalleryState, useStudioList } from "../studio-gallery";
-import { InlineError, errorText, useEscape } from "./director-shared";
+import { InlineError, errorText, useEscape, dialogFocus } from "./director-shared";
 
 function progressText(w: DirectorWorkSummary) {
   if (!w.hasScript) return "待写剧本";
@@ -61,7 +61,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
-    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title">
+    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-create-title">新建作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={busy}><X size={18}/></button></header>
       <div className="director-segmented" role="tablist" aria-label="创建方式">
         <button type="button" role="tab" aria-selected={mode === "idea"} onClick={() => setMode("idea")}>从创意开始</button>

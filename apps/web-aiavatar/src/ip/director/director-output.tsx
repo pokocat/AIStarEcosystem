@@ -6,7 +6,7 @@ import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/t
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
-import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, newRequestId, runningTask, useBusy, useEscape } from "./director-shared";
+import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, newRequestId, runningTask, useBusy, useEscape, dialogFocus } from "./director-shared";
 
 export type ClipQuote = { credits: number | null; error: string | null };
 
@@ -102,7 +102,7 @@ function SequencePlayer({ work, clips, onClose }: { work: DirectorWork; clips: D
   const next = () => { if (nextIndex >= 0) { setFinished(false); setIndex(nextIndex); } else setFinished(true); };
   useEffect(() => { const v = ref.current; if (v && current?.url) { v.load(); void v.play().catch(() => { /* 浏览器拦了自动播放，用户点播放即可 */ }); } }, [index, current?.url]);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-    <div className="director-dialog director-player" role="dialog" aria-modal="true" aria-labelledby="director-player-title">
+    <div className="director-dialog director-player" role="dialog" aria-modal="true" aria-labelledby="director-player-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-player-title">连播预览</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <div className={`director-player-stage ratio-${work.settings.aspectRatio.replace(":", "x")}`}>
         {current?.url ? <video ref={ref} src={current.url} controls playsInline onEnded={next}/> : <p>该片段暂无视频</p>}

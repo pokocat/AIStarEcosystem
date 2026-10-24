@@ -117,6 +117,8 @@ export interface DirectorAsset {
   voice: DirectorVoice | null;
   /** 角色音色的文字描述（如「女声，青年音色，语调中偏低，温柔清晰」）；没有参考音频时视频按它配音。 */
   voiceDesc?: string;
+  /** 角色的形象参考照片（用户上传）：只在生成设定图时作为参考交给模型，不会直接当角色参考图用。 */
+  refImage?: { key: string; url?: string | null } | null;
   rev: number;
 }
 
@@ -237,6 +239,8 @@ export interface DirectorWork {
   notice: { message: string; at: string } | null;
   /** 提取出来、还没保存进资产库的清单；用户勾选、改名后保存（extract.save）或不保存（extract.discard）。 */
   pendingExtract?: DirectorPendingExtract | null;
+  /** 重新生成剧本前的旧稿，新的在前，最多 3 版；只读留底。 */
+  scriptHistory?: { at: string; logline: string; draft: string }[];
   textError: DirectorError | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
@@ -262,7 +266,7 @@ export type DirectorEditOp =
   | "draft.asEpisode" | "episode.update" | "episode.usePendingPlan" | "episode.discardPendingPlan"
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
-  | "asset.setVoice" | "asset.clearVoice" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
+  | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";

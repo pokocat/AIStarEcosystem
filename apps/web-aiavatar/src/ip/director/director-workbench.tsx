@@ -1,5 +1,6 @@
 "use client";
 
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
@@ -11,7 +12,7 @@ import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
-import { InlineError, chooseDirectorBilling, costText, errorText, hasDrafts, secRange, useBusy, useEscape } from "./director-shared";
+import { InlineError, chooseDirectorBilling, costText, errorText, hasDrafts, secRange, useBusy, useEscape, dialogFocus } from "./director-shared";
 
 export type Tab = "script" | "assets" | "storyboard";
 const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", storyboard: "前往分镜" };
@@ -191,16 +192,16 @@ function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork;
     apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null } }));
     onClose();
   }, setError);
-  return <div className="director-popover" role="dialog" aria-label="作品设置">
+  return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
     <header><h3>作品设置</h3><button type="button" aria-label="关闭" onClick={onClose}><X size={16}/></button></header>
     <label className="director-field"><span>画面风格</span><input value={style} maxLength={30} onChange={e => setStyle(e.target.value)}/></label>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
     <label className="director-field"><span>视频模型</span>
-      <select value={videoModel} onChange={e => setVideoModel(e.target.value)}>
+      <SelectField value={videoModel} onChange={e => setVideoModel(e.target.value)}>
         <option value="">默认{work.videoModels.find(m => m.isDefault) ? `（${work.videoModels.find(m => m.isDefault)!.name}）` : ""}</option>
         {work.videoModels.map(m => <option key={m.id} value={m.id}>{m.name} · {secRange(m.minSec, m.maxSec)}{m.mode === "frame" ? " · 仅分镜首帧" : ""}</option>)}
-      </select>
+      </SelectField>
       <small>{!work.videoModels.length ? "暂无可用视频模型，无法确定片段时长。请联系管理员开通。"
         : work.videoModels.find(m => m.id === videoModel || (!videoModel && m.isDefault))?.mode === "frame"
           ? "仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"
@@ -299,7 +300,7 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
     onClose();
   }, setLocalError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
-    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title">
+    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-start-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-start-title">一键制作</h2><button type="button" aria-label="关闭" onClick={onClose}><X size={18}/></button></header>
       <div className="director-field"><span>制作到</span><div className="director-segmented">
         <button type="button" aria-pressed={target === "board"} onClick={() => setTarget("board")}>分镜图</button>

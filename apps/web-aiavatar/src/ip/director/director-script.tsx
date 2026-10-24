@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronRight, PenLine, Scissors, Sparkles, Wand2 } from "lucide-react";
+import { ChevronRight, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
 import type { DirectorEpisode } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, Spinner, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft } from "./director-shared";
+import { Field, InlineError, Spinner, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
@@ -13,7 +13,7 @@ export function DirectorScript(props: WorkbenchProps) {
   const splitting = runningTask(work, "split");
   const textError = work.textError && ["script", "split"].includes(work.textError.task ?? "") ? work.textError.message : null;
   if (work.episodes.length > 0) return <EpisodeList {...props}/>;
-  if (writing) return <div className="director-panel director-wait"><Spinner label="剧本生成中，完成后自动显示。可关闭页面，后台继续"/></div>;
+  if (writing && !work.draft.trim()) return <div className="director-panel director-wait"><Spinner label="剧本生成中，完成后自动显示。可关闭页面，后台继续"/></div>;
   if (!work.draft.trim()) return <><InlineError message={textError}/><StartScript {...props}/></>;
   return <><InlineError message={textError}/><DraftEditor key={work.draftRev} {...props} splitting={!!splitting}/></>;
 }
@@ -87,6 +87,7 @@ function DraftEditor({ work, apply, setError, splitting }: WorkbenchProps & { sp
       <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
       {dirty && <span className="director-unsaved">未保存</span>}
       <span className="director-spacer"/>
+      {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
       {splitting ? <Spinner label="拆分中，正文保持不变"/> : <>
         <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
         <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
@@ -119,6 +120,7 @@ function EpisodeList(props: WorkbenchProps) {
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline ? ` · ${work.logline}` : ""}</p></div>
       <span className="director-spacer"/>
       <button type="button" className="ip-brand-text-button" onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
+      {work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
       {extracting ? <Spinner label="资产提取中"/> : <>
         <button type="button" className="ip-brand-button" disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
           <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
@@ -166,4 +168,51 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
       </div>
     </div>}
   </li>;
+}
+
+/** 重新生成剧本：可改创意；会替换剧本和分集，资产保留；已有分镜图或视频的片段时不能用。 */
+export function RegenerateScript({ work, apply, setError }: Pick<WorkbenchProps, "work" | "apply" | "setError">) {
+  const [open, setOpen] = useState(false);
+  const blocked = work.clips.some(c => c.board.candidates.length || c.video.candidates.length);
+  const writing = runningTask(work, "script");
+  if (writing) return <Spinner label="剧本重新生成中"/>;
+  return <>
+    <button type="button" className="ip-brand-secondary" disabled={blocked} title={blocked ? "已有分镜图或视频的片段，先删除这些片段才能重新生成剧本" : "按创意让 AI 重新写一版剧本"} onClick={() => setOpen(true)}><RefreshCw size={14}/>重新生成剧本</button>
+    {open && <RegenerateDialog work={work} apply={apply} setError={setError} onClose={() => setOpen(false)}/>}
+  </>;
+}
+
+function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProps, "work" | "apply" | "setError"> & { onClose: () => void }) {
+  const [idea, setIdea] = useState(work.idea);
+  const [error, setLocalError] = useState("");
+  const { busy, run } = useBusy();
+  useEscape(() => { if (!busy) onClose(); });
+  const hasEpisodes = work.episodes.length > 0;
+  const go = () => void run("regen", async () => {
+    const cost = work.pricing.textMax;
+    const billing = await chooseDirectorBilling("script", cost);
+    apply(await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), regenerate: true }, billing, maxCost: cost }));
+    onClose();
+  }, e => { setLocalError(e); setError(""); });
+  return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
+    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-regen-title" ref={dialogFocus} tabIndex={-1}>
+      <header><h2 id="director-regen-title">重新生成剧本</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
+      <label className="director-field"><span>创意</span>
+        <textarea rows={5} maxLength={2000} value={idea} onChange={e => setIdea(e.target.value)}/>
+        <small>写明时长、集数、人物或「不要对白」等要求，会照做。</small>
+      </label>
+      <ul className="director-regen-notes">
+        <li>新剧本会替换当前{hasEpisodes ? `的剧本和 ${work.episodes.length} 集分集（片段一并清除）` : "剧本"}，旧版本保留在历史中。</li>
+        {work.assets.length > 0 && <li>已有的 {work.assets.length} 项资产保留，生成后需要重新拆分并提取资产。</li>}
+        <li>生成期间如果改了剧本或片段，新剧本不会替换当前内容。</li>
+      </ul>
+      <InlineError message={error}/>
+      <footer>
+        <small className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</small>
+        <span className="director-spacer"/>
+        <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
+        <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={go}><Sparkles size={14}/>{busy ? "提交中" : "重新生成"}</button>
+      </footer>
+    </div>
+  </div>;
 }
