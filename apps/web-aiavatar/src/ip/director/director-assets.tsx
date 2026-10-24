@@ -1,12 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, ImageIcon, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
+import { Check, ChevronRight, ImageIcon, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
 import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet } from "./director-shared";
+import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
@@ -30,21 +30,45 @@ export function DirectorAssets(props: WorkbenchProps) {
     const billing = await chooseDirectorBilling("asset-extract", cost);
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setError);
+  // 一次给所有还没有参考图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
+  const { modal } = useStudioApp();
+  const missing = work.assets.filter(a => !a.image.adoptedId && !a.description.includes("只出声音") && !runningTask(work, `asset:${a.id}`))
+    .sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
+  const generateAll = () => {
+    const total = missing.length * work.pricing.image;
+    modal.confirm({
+      title: `为 ${missing.length} 项资产生成参考图？`,
+      content: <div className="director-batch-confirm"><p>{missing.map(a => a.name).join("、")}</p>
+        <p className="director-muted">每项一张，{costText(total, work.pricing.mock)}。生成后逐张确认，分镜图会照着确认过的参考图画。</p></div>,
+      okText: "开始生成", cancelText: "取消",
+      onOk: () => run("all", async () => {
+        const billing = await chooseDirectorBilling("image", total);
+        const failed: string[] = [];
+        for (const a of missing) {
+          try { apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.image })); }
+          catch (e) { failed.push(`${a.name}：${errorText(e)}`); }
+        }
+        if (failed.length) setError(`${failed.length} 项没有提交成功。${failed.join("；")}`);
+      }, setError),
+    });
+  };
   const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), setError);
 
   if (work.episodes.length === 0) return <div className="director-panel director-empty-panel"><p>请先在「剧本」完成剧本并拆分集。</p></div>;
   return <div className="director-assets">
     <div className="director-toolbar">
-      <div className="director-kind-tabs" role="tablist" aria-label="资产类型">
+      <div className="director-segmented director-kind-tabs" role="tablist" aria-label="资产类型">
         {(["all", ...KINDS] as const).map(k => <button key={k} type="button" role="tab" aria-selected={kind === k} onClick={() => setKind(k)}>
           {k === "all" ? "全部" : kindLabel[k]}<small>{k === "all" ? scoped.length : scoped.filter(a => a.kind === k).length}</small></button>)}
       </div>
       <span className="director-spacer"/>
       {extracting ? <Spinner label="资产提取中"/> : <>
-        <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
         <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
+        <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
       </>}
-      <button type="button" className="ip-brand-secondary" onClick={() => setAdding(true)}><Plus size={15}/>添加</button>
+      <button type="button" className="ip-brand-secondary" onClick={() => setAdding(true)}><Plus size={15}/>添加资产</button>
+      {missing.length > 0 && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={generateAll}
+        title={`给还没有参考图的 ${missing.length} 项资产各生成一张，${costText(missing.length * work.pricing.image, work.pricing.mock)}`}><Wand2 size={15}/>生成全部参考图<small className="director-count">{missing.length}</small></button>}
     </div>
     <InlineError message={extractError}/>
     {waiting.length > 0 && <div className="director-confirm-bar"><span>{waiting.length} 张参考图待确认。分镜图将以此为参考，请确认后再继续。</span>
@@ -86,9 +110,9 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
       </span>
     </button>
     <footer>
-      <small className={tone}>{status}</small>
-      <span className="director-spacer"/>
-      {asset.kind === "character" && <button type="button" className={`director-voice-chip ${asset.voice || asset.voiceDesc ? "is-set" : ""}`} onClick={() => setVoiceOpen(true)} title={asset.voice || asset.voiceDesc ? "已设置音色，点开修改" : "设置角色音色"}><Mic size={13}/>音色</button>}
+      <small className={`director-tile-status ${tone}`}>{status}</small>
+      {asset.kind === "character" && <button type="button" className={`director-voice-chip ${asset.voice || asset.voiceDesc ? "is-set" : ""}`} onClick={() => setVoiceOpen(true)}
+        aria-label={asset.voice || asset.voiceDesc ? `${asset.name}的音色已设置，点开修改` : `设置${asset.name}的音色`} title={asset.voice || asset.voiceDesc ? "音色已设置，点开修改" : "设置角色音色"}><Mic size={14}/></button>}
       {asset.image.adoptedBy === "auto" && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={13}/>确认</button>}
       {!asset.image.adoptedId && !audioOnly && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} title={costText(work.pricing.image, work.pricing.mock)} onClick={generate}><Wand2 size={13}/>生成</button>}
     </footer>
@@ -145,6 +169,8 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
   const resetPrompt = () => void run("reset", async () => apply(await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, { resetPrompt: true })), setError);
   const remove = () => modal.confirm({ title: `删除「${asset.name}」？`, content: "其参考图版本将一并移除。如有片段正在使用，请先取消关联。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
     onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "asset.delete", asset.id, null)), setError) });
+  const nos = work.episodes.filter(e => asset.episodeIds.includes(e.id)).map(e => e.no);
+  const appears = nos.length === 0 ? "" : nos.length === work.episodes.length && nos.length > 1 ? "全剧" : `第 ${nos.join("、")} 集`;
   return <article className={`director-asset-card ${asset.image.adoptedBy === "auto" ? "is-pending" : ""}`}>
     <div className={`director-asset-image kind-${asset.kind}`}>
       {current?.url ? <img src={current.url} alt={asset.name}/> : <div className="director-asset-placeholder"><ImageIcon size={22}/><span>{audioOnly ? "仅声音出场，无需参考图" : "暂无参考图"}</span></div>}
@@ -154,36 +180,45 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
       {current?.mock && <span className="director-tag">测试图</span>}
     </div>
     <div className="director-asset-body">
-      {!editing ? <>
-        <h4 title={asset.name}><span className="director-kind">{kindLabel[asset.kind]}</span>{asset.name}{asset.aliases.length > 0 && <small>别名：{asset.aliases.join("、")}</small>}</h4>
-        <p className="director-clamp" title={asset.description}>{asset.description || "暂无描述"}</p>
-      </> : <>
+      {!editing ? <header className="director-asset-head">
+        <div className="director-asset-title">
+          <h4 title={asset.name}><span className="director-kind">{kindLabel[asset.kind]}</span>{asset.name}</h4>
+          <small>{[appears, asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
+        </div>
+        <div className="director-asset-head-actions">
+          <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
+          <button type="button" className="ip-brand-text-button director-danger director-icon-button" aria-label={`删除${asset.name}`} title="删除" onClick={remove}><Trash2 size={14}/></button>
+        </div>
+      </header> : <>
         <Field label="名称"><input value={name} maxLength={40} onChange={e => setName(e.target.value)}/></Field>
         <Field label="外观与设定" hint="修改描述后，出图提示词同步更新（单独编辑过的除外）"><textarea rows={4} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-      </>}
-      <button type="button" className="director-disclosure" aria-expanded={showPrompt || editing} onClick={() => setShowPrompt(s => !s)}>出图提示词{asset.promptCustom && <em>已自定义</em>}</button>
-      {(showPrompt || editing) && (editing ? <textarea className="director-prompt" rows={6} maxLength={4000} value={prompt} onChange={e => setPrompt(e.target.value)} aria-label="出图提示词"/> :
-        <pre className="director-prompt">{asset.prompt}</pre>)}
-      {asset.promptCustom && !editing && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={resetPrompt}><RefreshCw size={13}/>恢复自动生成</button>}
-      <InlineError message={asset.image.error?.message}/>
-      <OutdatedNote slot={asset.image} what="张参考图" onRegenerate={audioOnly || generating ? undefined : generate} disabled={!!busy}/>
-      <VersionStrip slot={asset.image} label={asset.name} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), setError)}/>
-      <div className="director-card-actions">
-        {editing ? <>
+        <Field label="出图提示词"><textarea className="director-prompt" rows={6} maxLength={4000} value={prompt} onChange={e => setPrompt(e.target.value)}/></Field>
+        <div className="director-card-actions">
           <button type="button" className="ip-brand-button" disabled={!!busy} onClick={save}>保存</button>
           <button type="button" className="ip-brand-secondary" onClick={() => { setEditing(false); clearDrafts(prefix); }}><X size={14}/>取消</button>
-        </> : <>
-          {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={14}/>确认</button>}
-          {!audioOnly && <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate} title={costText(work.pricing.image, work.pricing.mock)}>
-            <Wand2 size={14}/>{asset.image.candidates.length ? "重新生成" : "生成参考图"}</button>}
-          {asset.kind !== "character" && <button type="button" className="ip-brand-secondary director-icon-button" disabled={!!busy} aria-label="上传参考图" title="上传参考图" onClick={() => file.current?.click()}><Upload size={14}/></button>}
-          <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
-          <button type="button" className="ip-brand-text-button director-danger" aria-label={`删除${asset.name}`} onClick={remove}><Trash2 size={14}/></button>
-        </>}
-        <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
-      </div>
-      {!editing && !audioOnly && asset.kind === "character" && <CharacterRef work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
-      {!editing && !audioOnly && <small className="director-cost">{work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.image, false)}`}</small>}
+        </div>
+      </>}
+      {!editing && <p className="director-asset-desc">{asset.description || "暂无描述"}</p>}
+      {!editing && !audioOnly && <section className="director-sheet-section" aria-label="参考图">
+        <h5>参考图</h5>
+        <InlineError message={asset.image.error?.message}/>
+        <OutdatedNote slot={asset.image} what="张参考图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>
+        <VersionStrip slot={asset.image} label={asset.name} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), setError)}/>
+        {asset.kind === "character" && <CharacterRef work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
+        <div className="director-card-actions">
+          {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={14}/>确认使用</button>}
+          <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate}>
+            <Wand2 size={14}/>{generating ? "生成中" : asset.image.candidates.length ? "重新生成" : "生成参考图"}</button>
+          {asset.kind !== "character" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => file.current?.click()}><Upload size={14}/>上传</button>}
+          <span className="director-spacer"/>
+          <small className="director-cost">{work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.image, false)}`}</small>
+        </div>
+        <button type="button" className="director-disclosure" aria-expanded={showPrompt} onClick={() => setShowPrompt(s => !s)}>
+          <ChevronRight size={14}/>出图提示词{asset.promptCustom && <em>已自定义</em>}</button>
+        {showPrompt && <pre className="director-prompt">{asset.prompt}</pre>}
+        {showPrompt && asset.promptCustom && <button type="button" className="ip-brand-text-button director-self-start" disabled={!!busy} onClick={resetPrompt}><RefreshCw size={13}/>恢复自动生成</button>}
+      </section>}
+      <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
       {!editing && asset.kind === "character" && <VoicePanel work={work} asset={asset} apply={apply}/>}
     </div>
   </article>;

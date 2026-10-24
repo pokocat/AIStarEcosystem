@@ -202,8 +202,8 @@ function EpisodeList(props: WorkbenchProps) {
     {runningTask(work, "script") && <AiWorking compact title="AI 正在重新写剧本" task={runningTask(work, "script")} detail="写好后替换当前剧本和分集，当前版本保留在历史中。"/>}
     {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
       <NextChoices work={work} shortcutDesc={work.assets.length ? "按已有资产给每集写分镜脚本，可选继续出参考图和分镜图，需要确认的地方会停下。中间不能逐步检查。"
-        : "把提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。"} title={work.assets.length ? "资产已提取" : "下一步：提取全剧资产"}
-        desc={work.assets.length ? `已有 ${work.assets.length} 项资产。改了正文可以重新提取，同一人物不会重复新建；接着去「资产」生成参考图，或到「分镜」写分镜脚本。`
+        : "把提取资产、分镜脚本连着自动做完，只在资产清单那一步停下等你确认，中间不能逐步检查。"} title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
+        desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成参考图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
           : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
         onShortcut={startPipeline} shortcutDisabled={!!busy}>
         <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">

@@ -135,7 +135,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
-  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: setTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
+  // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
+  const switchTab = (next: Tab) => { setTab(next); setError(""); };
+  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
     assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
@@ -149,7 +151,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
     {live ? <PipelineBar {...props}/> : <div className="director-status">
       {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存到资产库</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
-        step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => setTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
+        step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
       <PipelineBar {...props}/>
     </div>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
@@ -158,7 +160,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     <div className="director-body">
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
         {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
-          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => switchTab(key)}>
             <Icon size={18}/><span>{label}</span>
             {key !== "script" && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
       </nav>
