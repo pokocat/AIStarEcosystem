@@ -1434,6 +1434,7 @@
 - [ ] **企业在途任务上限按引用里的 `#` 识别追加冻结**：`EnterpriseBillingService` 统计在途任务时排除引用含 `#` 的授权。其它业务的引用目前都不含 `#`；以后若有业务的引用带 `#`，会被少算，届时应改成授权上记父引用（需要迁移）。
 - [ ] **`apps/admin/src/app/ai/audit/page.tsx` 用了原生 select**（与本改动无关，`src/ip/select-field-wiring.test.ts` 在本分支基线上就是红的）：按 select-field 规约换成 `SelectField`。
 - [ ] **`EnterpriseStudioBillingIntegrationTest` 两项在基线 070334d0 上就红**（2026-10-23 发现，与本改动无关，已在干净基线上复现）：`operatorCanBindMissingOriginalImageIdWithAuditAndNoSecondSubmission`（期望 200 实得 409）与 `supplierConfirmedUnknownRefundsOriginalEnterpriseAfterRemovalAndPreservesPartialSuccess`（期望 8 实得 0）。多半是「图片受理未知在同一结算事务内结束为 failed」之后测试没跟上，需核对后改测试或改实现。
+- [ ] **`EnterpriseVideoBillingIntegrationTest` 8 项在基线 070334d0 上就红**（2026-10-24 发布前对照发现，与对话改动无关）：受理结果不确定 / 人工补绑原任务号 / 确认未受理退款那一组（`genericCreateGatewayFailure…`、`operatorEvidenceBindsOriginalUnknownTask…`、`noAcceptanceConfirmationRejects…`、`lateNoAcceptanceEvidence…`、`operatorConfirmationOfNoAcceptedTask…`、`uncertainSupplierAcceptanceRetains…`、`evidenceCannotBind…`、`zeroCostUncertainConfirmation…`）。与上一条同源，多半是「受理未知」流程改过后测试没跟上，需一起核对。
 
 ### 2026-10-23 · Studio 对话不锁方法（本地，未发布）
 
