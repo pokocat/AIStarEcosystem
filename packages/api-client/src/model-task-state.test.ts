@@ -9,7 +9,8 @@ describe('durable model task exceptions', () => {
     expect(modelTaskException({status:'rendering',error_code:code})?.notice).toContain('冻结积分');
   });
   it.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_IMAGE_RECOVERING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP_SYNC_RECOVERING'])('%s is original-task recovery',errorCode => {
-    expect(modelTaskException({status:'running',errorCode})).toMatchObject({needsReview:false,label:'正在重新查询结果'});
+    expect(modelTaskException({status:'running',errorCode,errorMessage:'模型端仍在处理，请稍后查看状态 · 追查号 X'}))
+      .toMatchObject({needsReview:false,label:'模型端仍在处理',notice:'模型端仍在处理，请稍后查看状态'});
   });
   it('never reclassifies completed or failed tasks, normal progress, or arbitrary errors', () => {
     for (const status of ['failed','done','ready','succeeded']) expect(modelTaskException({status,errorCode:'VIDEO_SUBMISSION_UNKNOWN'})).toBeNull();

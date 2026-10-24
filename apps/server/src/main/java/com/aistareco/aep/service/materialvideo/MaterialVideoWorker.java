@@ -382,7 +382,7 @@ public class MaterialVideoWorker {
                 log.warn("[material-video] job {} timed out after {}s taskId={}", jobId, props.getMaxWaitSeconds(), submit.taskId());
                 terminal[0]=false;
                 markPending(jobId,"VIDEO_RECONCILIATION_PENDING",new BusinessException(HttpStatus.GATEWAY_TIMEOUT,
-                        "VIDEO_POLL_TIMEOUT","等待生成结果超时，正在查询原视频任务，请勿重复生成"));
+                        "VIDEO_POLL_TIMEOUT","等待生成结果超时，继续查询原视频任务"));
                 return;
             }
         }
@@ -655,7 +655,8 @@ public class MaterialVideoWorker {
     private void markPending(String jobId,String code,Throwable cause) {
         inTransaction(()->jobRepo.findById(jobId).ifPresent(j->{
             if(isTerminal(j.getStatus()))return;
-            String message=cause instanceof BusinessException business?business.getMessage():"生成服务调用异常，正在查询原任务，请勿重复生成";
+            // Users see one plain sentence; the cause (timeout, provider error) goes to ErrorLog under the 追查号.
+            String message=MaterialVideoJobService.STILL_PROCESSING;
             // Retain a stable lookup ID while the same recovery error repeats; raw provider details stay in ErrorLog.
             if(code.equals(j.getErrorCode()) && j.getErrorMessage()!=null && j.getErrorMessage().startsWith(message+" · 追查号 "))return;
             String logId=errorLogs==null?null:errorLogs.recordTask(cause,code,j.getOwnerUserId(),j.getId());
