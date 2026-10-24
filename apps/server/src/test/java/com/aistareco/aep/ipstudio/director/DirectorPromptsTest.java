@@ -44,4 +44,16 @@ class DirectorPromptsTest {
         JsonNode without = DirectorPrompts.validate(om, meta, om.readTree("{\"title\":\"泥与光\"," + body + "}"));
         assertTrue(without.path("outline").isMissingNode());
     }
+
+    @Test
+    void planPromptFollowsTheModelLimits() {
+        String multi = DirectorPrompts.plan(5, 15, 4);
+        assertTrue(multi.contains("12–15 秒"), "range ends at the model maximum");
+        assertTrue(multi.contains("3–4 个镜头"));
+        assertTrue(multi.contains("正反打") && multi.contains("生成前自检"));
+        assertTrue(DirectorPrompts.plan(4, 10, 4).contains("7–10 秒"), "a shorter model moves the range with it");
+        String frame = DirectorPrompts.plan(5, 10, 1);
+        assertTrue(frame.contains("只能有 1 个镜头"));
+        assertFalse(frame.contains("禁止少于"), "first-frame models keep one shot per clip");
+    }
 }
