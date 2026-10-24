@@ -459,10 +459,11 @@ export function useStudioDialogueSession({ projectId, open, autoload = false }: 
     return execution;
   }), [projectId, confirmation]);
 
-  const controlExecution = useCallback((action: 'pause' | 'resume' | 'cancel') => confirmation(async () => {
+  const controlExecution = useCallback((action: 'pause' | 'resume' | 'cancel', options?: { addMaterialNodeIds?: string[] }) => confirmation(async () => {
     const execution = ref.current.execution, at = scope();
     if (!execution) return;
-    const request = { clientRequestId: nanoid(), expectedStatus: execution.status };
+    const added = action === 'resume' && options?.addMaterialNodeIds?.length ? { addMaterialNodeIds: options.addMaterialNodeIds } : {};
+    const request = { clientRequestId: nanoid(), expectedStatus: execution.status, ...added };
     const next = action === 'pause' ? await pauseStudioPlanExecution(at.projectId, execution.id, request)
       : action === 'resume' ? await resumeStudioPlanExecution(at.projectId, execution.id, request) : await cancelStudioPlanExecution(at.projectId, execution.id, request);
     if (stillShown(at)) dispatch({ type: 'execution', execution: next });

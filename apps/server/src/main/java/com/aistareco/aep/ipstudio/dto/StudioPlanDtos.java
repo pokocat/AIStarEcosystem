@@ -41,7 +41,15 @@ public final class StudioPlanDtos {
 
     public record PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
                                     List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
-                                    Integer acceptedCandidateIndex,String nodeId,String reason) {}
+                                    Integer acceptedCandidateIndex,String nodeId,String reason,List<PlanExecutionMaterial> materials) {
+        public PlanExecutionStep(String id,String title,String operation,String stage,List<String> dependsOn,String status,
+                                 List<String> runIds,int attempt,long quotedCost,Long maxCost,String acceptedRunId,
+                                 Integer acceptedCandidateIndex,String nodeId,String reason) {
+            this(id,title,operation,stage,dependsOn,status,runIds,attempt,quotedCost,maxCost,acceptedRunId,acceptedCandidateIndex,nodeId,reason,null);
+        }
+    }
+    /** A canvas object a stopped step named outside this execution's materials; {@code onCanvas=false} once deleted. */
+    public record PlanExecutionMaterial(String nodeId,String title,boolean onCanvas) {}
     /**
      * A stage's approved cap and what its production steps spent / hold in flight. Dialogue turns are not part of it
      * (2026-10-23, docs/ip-studio-dialogue-no-continue.md: 对话费用不计入制作预算).
@@ -54,6 +62,12 @@ public final class StudioPlanDtos {
     public record PlanExecutionCreateRequest(String clientRequestId,String stage,String planRunId,String planFingerprint,String approachId,
                                              Long budgetCap,Long autoFixCap,BillingSelection billing,String executionId,Integer expectedRevision,
                                              String approvalId,String confirmationMessageId) {}
-    public record PlanExecutionControlRequest(String clientRequestId,String expectedStatus) {}
+    /**
+     * {@code addMaterialNodeIds} (resume only): canvas objects a stopped plan-compile step named outside the material scope
+     * that the user chose to add to this execution before it re-plans (docs/ip-studio-dialogue-intents.md 「方案素材范围跨轮」).
+     */
+    public record PlanExecutionControlRequest(String clientRequestId,String expectedStatus,List<String> addMaterialNodeIds) {
+        public PlanExecutionControlRequest(String clientRequestId,String expectedStatus) {this(clientRequestId,expectedStatus,null);}
+    }
     public record PlanExecutionAcceptRequest(String clientRequestId,String runId,Integer candidateIndex) {}
 }

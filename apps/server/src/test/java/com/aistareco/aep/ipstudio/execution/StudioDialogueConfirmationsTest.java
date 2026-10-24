@@ -37,6 +37,14 @@ class StudioDialogueConfirmationsTest {
     void message(String id,String thread,long seq,String role,String blocks) {
         messages.put(id,IpDialogueMessage.builder().id(id).threadId(thread).seq(seq).role(role).blocksJson(blocks).status("done").createdAt(Instant.now()).build());
     }
+    @Test void conversationPicksAreTheUserMessagesPicksAndAttachmentsNewestFirst() {
+        message("U1","T1",1,"user","[]");messages.get("U1").setPinnedNodeIdsJson("[\"video\",\"sheet\"]");
+        message("A1","T1",2,"assistant","[]");messages.get("A1").setPinnedNodeIdsJson("[\"not-a-pick\"]");
+        message("U2","T1",3,"user","[]");messages.get("U2").setAttachmentNodeIdsJson("[\"upload\",\"video\"]");
+        message("U3","T1",4,"user","[]");
+        assertEquals(List.of("upload","video","sheet"),confirmations.conversationPicks("T1"));
+        assertEquals(List.of(),confirmations.conversationPicks(null));
+    }
     @Test void planBlocksOfAnOwnedParentDialogueRunAreFoundWithTheirSkillSnapshot() throws Exception {
         var input=om.createObjectNode();input.putObject("dialogue").put("threadId","T1");input.putArray("contextNodeIds").add("src");
         input.putObject("_exec").put("assistantMessageId","A9").putObject("skill").put("key","reference-video-recreation").put("version",1);

@@ -103,6 +103,31 @@ class StudioPlanValidatorSkillTest {
         assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(untyped,rules(),"production",context));
     }
 
+    // Production 2026-10-23: plan-compile named 「三视图」, outside the run's materials, and was refused three times as a
+    // generic bad output. The refusal now names the objects, so the execution can tell the user which one.
+    @Test void canvasObjectsOutsideTheMaterialsAreOneNamedRefusal() throws Exception {
+        var ghost=production();((ObjectNode)ghost.path("steps").get(0).path("settings").path("referenceBindings").get(0)).put("nodeId","sheet");
+        ((ObjectNode)ghost.path("steps").get(1)).putArray("referenceNodeIds").add("other").add("product-img");
+        var e=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(ghost,rules(),"production",context));
+        assertEquals(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE,e.getCode());
+        assertEquals("[\"sheet\",\"other\"]",((JsonNode)e.getDetails()).path("nodeIds").toString());
+        var source=analysis();((ObjectNode)source.path("steps").get(0).path("settings")).put("sourceNodeId","elsewhere");
+        assertEquals(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE,assertThrows(BusinessException.class,
+                ()->StudioPlanValidator.validateSkillPlan(source,rules(),"analysis",context)).getCode());
+    }
+
+    @Test void laterStageMaterialsArePartOfTheApprovedPlan() throws Exception {
+        var raw=analysis();raw.putArray("materialNodeIds").add("person-img").add("person-img").add("product-img");
+        var plan=StudioPlanValidator.validateSkillPlan(raw,rules(),"analysis",context);
+        assertEquals("[\"person-img\",\"product-img\"]",plan.path("materialNodeIds").toString());
+        var without=StudioPlanValidator.validateSkillPlan(analysis(),rules(),"analysis",context);
+        assertFalse(without.has("materialNodeIds"));
+        assertNotEquals(StudioPlanValidator.fingerprint(without),StudioPlanValidator.fingerprint(plan));
+        var outside=analysis();outside.putArray("materialNodeIds").add("sheet");
+        var e=assertThrows(BusinessException.class,()->StudioPlanValidator.validateSkillPlan(outside,rules(),"analysis",context));
+        assertEquals(StudioPlanValidator.MATERIAL_OUT_OF_SCOPE,e.getCode());
+    }
+
     @Test void fingerprintCoversContentAndQuotesButNotServerBindings() throws Exception {
         var plan=StudioPlanValidator.validateSkillPlan(production(),rules(),"production",context);
         plan.put("skillKey","reference-video-recreation").put("skillVersion",1).put("stage","production");
