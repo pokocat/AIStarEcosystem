@@ -48,7 +48,10 @@
 .director-muted { color: var(--ip-muted); }
 .director-inline-field { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ip-muted); }
 .director-inline-field input { width: 56px !important; text-align: center; }
-.director-disclosure { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ip-muted); font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.director-disclosure { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; min-height: 28px; padding: 0; border: 0; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 600; cursor: pointer; }
+.director-disclosure:hover { color: var(--ip-ink); }
+.director-disclosure svg { transition: transform 160ms var(--ip-ease); }
+.director-disclosure[aria-expanded="true"] svg { transform: rotate(90deg); }
 .director-disclosure em { margin-left: 6px; font-style: normal; color: var(--ip-gold); text-decoration: none; }
 .director-prompt { margin: 0; padding: 10px 12px; border-radius: 8px; background: var(--ip-soft); font-family: var(--ip-ui); font-size: 12px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ip-ink); }
 pre.director-prompt { max-height: 220px; overflow: auto; }
@@ -163,36 +166,35 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 
 /* ── 资产 ── */
 .director-assets { display: flex; flex-direction: column; gap: 10px; }
-.director-asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 180px), 1fr)); gap: 10px; }
-.director-kind-tabs { display: flex; gap: 16px; border-bottom: 1px solid var(--ip-line); }
-.director-kind-tabs button { display: inline-flex; align-items: baseline; gap: 4px; height: 34px; padding: 0 1px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ip-muted); font-size: 13px; font-weight: 600; }
-.director-kind-tabs button[aria-selected="true"] { border-bottom-color: var(--ip-ink); color: var(--ip-ink); }
-.director-kind-tabs small { font-size: 11px; font-weight: 500; }
+.director-asset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 12px; }
+.director-kind-tabs { flex-wrap: nowrap; }
+.director-kind-tabs button { display: inline-flex; align-items: baseline; gap: 5px; min-height: 30px; white-space: nowrap; }
+.director-kind-tabs small { font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; }
 /* 资产卡一律等高：固定图片比例 + 两行描述 + 一行状态。 */
 .director-asset-tile { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line); border-radius: 10px; overflow: hidden; background: var(--ip-paper); transition: border-color 140ms var(--ip-ease); }
 .director-asset-tile:hover { border-color: var(--ip-muted); }
 .director-asset-tile.is-warn { border-color: #e3cfa9; }
 .director-asset-tile.is-error { border-color: #efc9ce; }
-.director-asset-tile-open { display: flex; flex-direction: column; padding: 0; border: 0; background: transparent; text-align: left; }
+.director-asset-tile-open { display: flex; flex: 1; flex-direction: column; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
 .director-asset-tile-image { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--ip-soft); }
 .director-asset-tile-image img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 20%; }
-.director-asset-tile-copy { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px 0; min-width: 0; }
+.director-asset-tile-copy { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 0; min-width: 0; }
 .director-asset-tile-copy b { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-asset-tile-copy b small { margin-left: 6px; color: var(--ip-muted); font-size: 11px; font-weight: 500; }
 .director-asset-tile-copy span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; min-height: 3.2em; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
-.director-asset-tile footer { display: flex; align-items: center; gap: 6px; min-height: 40px; padding: 6px 8px 8px 10px; color: var(--ip-muted); }
-.director-asset-tile footer small { font-size: 12px; font-weight: 600; }
+.director-asset-tile footer { display: flex; align-items: center; gap: 6px; height: 48px; margin-top: auto; padding: 0 10px 0 12px; color: var(--ip-muted); }
+.director-asset-tile footer .director-tile-status { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .director-asset-tile footer small.is-done { color: var(--ip-green); }
 .director-asset-tile footer small.is-warn { color: var(--ip-gold); }
 .director-asset-tile footer small.is-error { color: var(--ip-error); }
-.director-asset-tile footer :is(.ip-brand-button, .ip-brand-secondary) { min-height: 28px; padding: 3px 10px; font-size: 12px; }
+.director-asset-tile footer :is(.ip-brand-button, .ip-brand-secondary) { flex: none; height: 30px; min-height: 30px; padding: 0 11px; font-size: 12px; white-space: nowrap; }
 .director-kind.is-floating { position: absolute; top: 6px; left: 6px; background: rgba(255, 255, 255, .9); }
 .director-kind.is-floating.is-right { left: auto; right: 6px; }
 .director-sheet-backdrop { position: fixed; inset: 0; z-index: 900; display: flex; justify-content: flex-end; background: rgba(25, 34, 41, .24); }
 .director-sheet { position: relative; width: min(440px, 100%); height: 100%; overflow: auto; background: var(--ip-paper); box-shadow: -12px 0 40px rgba(25, 34, 41, .16); }
 .director-sheet-close { position: absolute; top: 10px; right: 10px; z-index: 2; display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .9); color: var(--ip-ink); }
 .director-sheet .director-asset-card { border: 0; border-radius: 0; }
-.director-sheet .director-asset-image { aspect-ratio: auto; height: 300px; }
+.director-sheet .director-asset-image { aspect-ratio: auto; height: 280px; }
 .director-sheet .director-asset-image img { object-fit: contain; object-position: center; }
 .director-sheet .director-clamp { -webkit-line-clamp: unset; display: block; }
 .director-asset-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line); border-radius: 11px; overflow: hidden; background: var(--ip-paper); }
@@ -204,6 +206,7 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-asset-placeholder { display: flex; flex-direction: column; align-items: center; gap: 6px; color: var(--ip-muted); font-size: 12px; text-align: center; padding: 10px; }
 .director-asset-overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(255, 255, 255, .78); }
 .director-asset-body { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px 12px; min-width: 0; }
+.director-sheet .director-asset-body { gap: 14px; padding: 16px 20px 24px; }
 .director-asset-body h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 14px; min-width: 0; overflow-wrap: anywhere; }
 .director-asset-body h4 small { color: var(--ip-muted); font-size: 11px; font-weight: 400; }
 .director-kind { flex-shrink: 0; padding: 0 6px; border-radius: 5px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; font-weight: 600; line-height: 1.8; }
@@ -251,10 +254,6 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-video { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .director-voice-warn { display: flex; gap: 6px; padding: 8px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-gold); font-size: 12px; line-height: 1.7; }
 .director-voice-warn svg { flex-shrink: 0; margin-top: 3px; }
-.director-voice { display: flex; flex-direction: column; gap: 6px; padding-top: 8px; border-top: 1px solid var(--ip-line); }
-.director-voice-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
-.director-voice-head em { font-style: normal; font-weight: 500; color: var(--ip-green); }
-.director-voice-head em.is-muted { color: var(--ip-muted); }
 .director-voice audio, .director-voice-list audio { width: 100%; height: 34px; }
 .director-voice small { color: var(--ip-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .director-voice-list { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 0; list-style: none; }
@@ -426,15 +425,16 @@ html:not([data-layout="desktop"]) .director-board-big { max-height: 46dvh; }
 
 /* 角色图是横版设定集：卡片里完整显示，不裁切 */
 .director-asset-tile.kind-character .director-asset-tile-image img { object-fit: contain; object-position: center; background: #eceef0; }
-.director-voice-chip { display: inline-flex; align-items: center; gap: 3px; min-height: 26px; padding: 2px 8px; border: 1px solid var(--ip-line); border-radius: 7px; background: var(--ip-paper); color: var(--ip-muted); font-size: 12px; font-weight: 600; }
-.director-voice-chip.is-set { border-color: #bcd9c8; color: var(--ip-green); }
+.director-voice-chip { display: inline-grid; flex: none; place-items: center; width: 30px; height: 30px; padding: 0; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-muted); cursor: pointer; transition: border-color 140ms var(--ip-ease), color 140ms var(--ip-ease); }
+.director-voice-chip:hover { border-color: var(--ip-muted); color: var(--ip-ink); }
+.director-voice-chip.is-set { border-color: #bcd9c8; background: var(--ip-green-soft); color: var(--ip-green); }
 .director-regen-notes { margin: 0; padding-left: 18px; color: var(--ip-muted); font-size: 12px; line-height: 1.8; }
 /* 弹窗容器拿焦点时不画框（里面的控件仍有焦点环）；手机上把小控件放大到可触控的尺寸 */
 .director-dialog:focus, .director-sheet:focus, .director-popover:focus { outline: none; }
 html:not([data-layout="desktop"]) .director-shell :is(.director-notice button, .director-next button, .director-output-toggle) { min-height: 36px; padding-inline: 10px; }
 html:not([data-layout="desktop"]) .director-shell :is(.director-clip-check, .director-batch-all input) { width: 22px; height: 22px; }
 html:not([data-layout="desktop"]) .director-shell .director-clip-head .director-danger { min-width: 40px; min-height: 40px; }
-html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .director-video-gate .ip-brand-secondary, .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }
+html:not([data-layout="desktop"]) .director-shell :is(.director-video-gate .ip-brand-secondary, .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }
 /* 角色形象参考：只在生成设定图时交给模型，不直接当角色图 */
 .director-ref { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--ip-line); border-radius: 8px; background: var(--ip-soft); }
 .director-ref img, .director-ref-empty { width: 40px; height: 40px; flex: none; border-radius: 6px; object-fit: cover; }
@@ -510,3 +510,26 @@ html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .dir
 .director-shortcut-tag { margin-left: 2px; }
 .director-shortcut-note { margin: -4px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-ink); font-size: 12px; line-height: 1.7; }
 html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns: minmax(0, 1fr); }
+
+/* 资产详情抽屉：头部（名字 + 编辑 / 删除）→ 描述 → 参考图 → 角色音色，每段同一种小标题和分隔线。 */
+.director-asset-head { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.director-asset-title { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+.director-asset-title h4 { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 17px; overflow-wrap: anywhere; }
+.director-asset-title small { color: var(--ip-muted); font-size: 12px; }
+.director-asset-title small:empty { display: none; }
+.director-asset-head-actions { display: flex; flex: none; align-items: center; gap: 2px; margin-right: -6px; }
+.director-asset-head-actions .ip-brand-text-button { min-height: 30px; padding: 0 8px; }
+.director-asset-desc { color: var(--ip-ink); font-size: 13px; line-height: 1.8; overflow-wrap: anywhere; }
+.director-sheet-section { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--ip-line); }
+.director-sheet-section h5 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 700; }
+.director-sheet-section h5 em { font-style: normal; font-size: 12px; font-weight: 500; color: var(--ip-green); }
+.director-sheet-section h5 em.is-muted { color: var(--ip-muted); }
+.director-sheet-section > small { color: var(--ip-muted); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.director-sheet-section .director-card-actions { gap: 8px; }
+.director-sheet-section .director-card-actions :is(.ip-brand-button, .ip-brand-secondary) { min-height: 34px; padding: 0 13px; }
+.director-sheet-section .director-prompt { max-height: 260px; overflow: auto; }
+.director-sheet-section .director-ref { border-style: solid; }
+.director-self-start { align-self: flex-start; }
+.director-sheet .director-asset-image .director-tag { top: auto; bottom: 10px; left: 12px; }
+.director-sheet .director-asset-image .director-tag + .director-tag { left: auto; right: 12px; }
+.director-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 2px; padding: 0 5px; border-radius: 9px; background: rgba(255, 255, 255, .22); font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums; }

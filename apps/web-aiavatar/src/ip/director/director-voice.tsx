@@ -13,13 +13,13 @@ export function VoicePanel({ work, asset, apply }: { work: DirectorWork; asset: 
   const [open, setOpen] = useState(false);
   const voice = asset.voice;
   const desc = asset.voiceDesc?.trim();
-  return <div className="director-voice">
-    <div className="director-voice-head"><Mic size={14}/><span>角色音色</span>{voice || desc ? <em>已设置</em> : <em className="is-muted">未设置</em>}</div>
-    <small>{voice ? `参考音频：${voice.name}${voice.durationSec ? ` · ${Math.round(voice.durationSec * 10) / 10} 秒` : ""}` : "没有参考音频"}{desc ? ` · 描述：${desc}` : ""}</small>
-    {!voice && !desc && <small>未设置时按人物身份自然配音，各片段音色可能不一致。</small>}
-    <div className="director-card-actions"><button type="button" className="ip-brand-secondary" onClick={() => setOpen(true)}><Mic size={14}/>设置音色</button></div>
+  return <section className="director-sheet-section director-voice" aria-label="角色音色">
+    <h5>角色音色{voice || desc ? <em>已设置</em> : <em className="is-muted">未设置</em>}</h5>
+    {voice || desc ? <small>{voice ? `参考音频：${voice.name}${voice.durationSec ? ` · ${Math.round(voice.durationSec * 10) / 10} 秒` : ""}` : "没有参考音频"}{desc ? ` · 描述：${desc}` : ""}</small>
+      : <small>还没设置。不设置时按人物身份自然配音，各片段的声音可能不一样。</small>}
+    <div className="director-card-actions"><button type="button" className="ip-brand-secondary" onClick={() => setOpen(true)}><Mic size={14}/>{voice || desc ? "修改音色" : "设置音色"}</button></div>
     {open && <VoiceDialog work={work} asset={asset} apply={apply} onClose={() => setOpen(false)}/>}
-  </div>;
+  </section>;
 }
 
 type Pending = { kind: "file"; file: File } | { kind: "library"; profile: StudioVoiceProfile } | { kind: "remove" } | null;
