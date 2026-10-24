@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Loader2 } from "lucide-react";
+import { Check, Loader2, X } from "lucide-react";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError } from "../studio-errors";
@@ -106,6 +106,17 @@ export function hasDrafts(prefix: string) {
 
 export function clearDrafts(prefix: string) {
   for (const k of [...drafts.keys()]) if (k.startsWith(prefix)) drafts.delete(k);
+}
+
+/** 右侧抽屉：就地查看详情，不离开当前页；点遮罩或 Esc 关闭。 */
+export function DirectorSheet({ onClose, label, children }: { onClose: () => void; label: string; children: ReactNode }) {
+  useEscape(onClose);
+  return <div className="director-sheet-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
+    <div className="director-sheet" role="dialog" aria-modal="true" aria-label={label}>
+      <button type="button" className="director-sheet-close" aria-label="关闭" onClick={onClose}><X size={18}/></button>
+      {children}
+    </div>
+  </div>;
 }
 
 /** 弹窗开着时按 Esc 关闭，不要求焦点在弹窗里。 */

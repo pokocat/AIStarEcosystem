@@ -1161,6 +1161,13 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 入口 `/director`（Studio 主导航「AI 导演台」），方案真源 `docs/ai-director-plan.md` v1.1。作品是**服务端拥有**的结构化对象（V65 `director_work.content_json`），不放进 `IpProject.doc`，不依赖分镜编辑方案。用户编辑带对象 `rev`，超长直接 400 不截断；生成结果回投前比对提交时的输入指纹（提示词 + 实际参考图 key / 正文哈希 / 本集片段修订基线），没变才填空着的采用位（`adoptedBy=auto`，要用户确认），变了只追加 `stale` 历史版本或留 `pendingPlan` 让用户决定。任务就是原生 `IpRun`（`host_type=director`，`project_id` 存作品 id，`node_id` 存目标），文字走 `StudioWorkflowService.submitDirectorText`、出图走 `IpRunService.generateForDirector`，付款选择与 `maxCost` 报价校验同 Studio。片段规划只做结构校验，镜头数 / 时长 / 未知资产与说话人一律原样保留，由片段 `issues` 阻止出图、就地修改。片段时长来自所选视频模型（`StudioVideoService.models()` 里支持全能参考的），没有可用模型时规划 503。一键连跑 `DirectorRunner` 每 3 秒推进，最多 2 个在途、预算硬上限、参考图（做到视频时还有分镜图）生成后停下等确认；做到视频只按集。片段视频走 `IpRunService.generateVideoForDirector`（全能参考：图1 采用并确认的分镜图，之后是资产参考图和说话角色绑定的声音样本 `asset.voice`，可选的供应商改写默认关闭），先 `quote` 报价再提交；原生视频任务记在片段 `video.pending`，读作品 / 后台推进时查询回投。整集导出按每个片段当前采用并确认的视频，走 Studio 合成（`studio-assemble`，不扣积分），导出记录保存所用版本，换过片段就标「这版是旧的」。连播预览在前端按顺序播已采用的视频，缺段跳过并标明。只支持首帧的视频模型（没有保存视频规格、走旧首帧路径的端点，如 Agnes Video 2.5）按「首帧出片」模式：一镜一段、采用的单张分镜画面作真正首帧（refKey 路径），不带参考图和声音；绑了声音的片段要用户显式勾「不带声音参考生成」，绑定保留。采用版本按生成指纹核对，与当前设置不一致时标原因、给重新生成入口，不自动重跑。
 
+
+2026-10-24 改版（`20261024-ai-director`）：
+- **资产提取：** 结果先存为 `pendingExtract`。用户在「确认资产」弹窗里勾选、改名后，`extract.save` 才入库；改名时原名记成别名。`extract.discard` 丢弃清单，一键制作在 `confirm-extract` 停下等，丢弃时停止。注意：清单项编号叫 `itemId`，不能叫 `key`，出参时名叫 `key` 的字段会被当成素材地址签名。
+- **视频提示词：** 按分镜图写。每镜写「画面参考宫格图第 N 格」，后面是【语音轨】和【参考图说明】，参考图 2 起是资产标准照。
+- **角色音色：** `asset.voiceDesc` 文字描述写进语音轨，参考音频可选。
+- **角色出图：** 改为横版 16:9 设定集，含全身三视图、头部正左右侧、喜怒哀乐四宫格、面部特征特写和半身展示。
+- **页面外壳：** 导演台页面必须包 antd `App`（`director-antd.tsx`）。
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 
 2026-10-23 起与「Studio 对话去掉继续」一节冲突的部分以该节为准。

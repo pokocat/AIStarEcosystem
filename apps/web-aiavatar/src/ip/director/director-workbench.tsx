@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Pause, Play, Settings2, Sparkles, Square, X } from "lucide-react";
+import { ArrowLeft, Clapperboard, FileText, Loader2, Pause, Play, Settings2, Shapes, Sparkles, Square, X } from "lucide-react";
 import type { DirectorPipeline, DirectorWork } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
@@ -10,6 +10,7 @@ import { DirectorApi } from "../api";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
+import { ExtractReview } from "./director-extract";
 import { InlineError, chooseDirectorBilling, costText, errorText, hasDrafts, secRange, useBusy, useEscape } from "./director-shared";
 
 export type Tab = "script" | "assets" | "storyboard";
@@ -20,14 +21,20 @@ export type WorkbenchProps = {
   apply: (next: DirectorWork) => void;
   setError: (message: string) => void;
   goTab: (tab: Tab) => void;
+  /** 打开「确认资产」弹窗（有待保存的提取清单时）。 */
+  reviewExtract: () => void;
+  /** 打开顶栏的作品设置（风格、画幅、视频模型）。 */
+  openSettings: () => void;
+  /** 切换当前集（分镜页左侧分集栏）。 */
+  pickEpisode: (id: string) => void;
 };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
 function nextStep(work: DirectorWork, episodeId: string | null): { text: string; tab: Tab } | null {
-  if (!work.draft.trim() && work.episodes.length === 0) return { text: "第一步：生成或导入剧本", tab: "script" };
+  if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
-  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: `下一步：提取第 ${ep.no} 集资产`, tab: "assets" };
+  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script" };
   const clips = work.clips.filter(c => c.episodeId === ep.id);
   if (clips.length === 0) return { text: `下一步：规划第 ${ep.no} 集片段`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
@@ -66,6 +73,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const [episodeId, setEpisodeId] = useState<string | null>(null);
   const revision = useRef(0);
   const initialTab = useRef(false);
+  const [reviewing, setReviewing] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const reviewedRun = useRef<string | null>(null);
 
   const apply = useCallback((next: DirectorWork) => {
     if (next.revision < revision.current) return;
@@ -104,38 +114,43 @@ export function DirectorWorkbench({ id }: { id: string }) {
     if (!initialTab.current) { initialTab.current = true; const step = nextStep(work, work.episodes[0]?.id ?? null); if (step) setTab(step.tab); }
   }, [work, episodeId]);
 
+  // 提取结果一回来就弹出确认；关掉后这一份不再自动弹，可从状态线或资产页再打开。
+  const pendingRun = work?.pendingExtract?.runId ?? null;
+  useEffect(() => {
+    if (pendingRun && pendingRun !== reviewedRun.current) { reviewedRun.current = pendingRun; setReviewing(true); }
+    if (!pendingRun) setReviewing(false);
+  }, [pendingRun]);
+
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
-  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: setTab };
+  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: setTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId };
   const step = nextStep(work, episodeId);
   const counts = {
     assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
     storyboard: work.clips.filter(c => c.episodeId === episodeId && (c.issues.length || c.board.adoptedBy === "auto" || c.video.adoptedBy === "auto"
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
+  const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
   return <main className="ip-brand-surface director-shell">
-    <DirectorHeader {...props}/>
-    {work.pricing.mock && <div className="director-mock-banner">测试模式：剧本、图片和视频均为固定样例，不调用模型，不扣积分。</div>}
-    <PipelineBar {...props}/>
+    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}/>
+    {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
+    {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
+    {live ? <PipelineBar {...props}/> : <div className="director-status">
+      {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存到资产库</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
+        step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => setTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
+      <PipelineBar {...props}/>
+    </div>}
     {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
     <InlineError message={error} onClose={() => setError("")}/>
     <div className="director-body">
-      <aside className="director-rail" aria-label="分集">
-        <h2>分集</h2>
-        {work.episodes.length === 0 ? <p className="director-rail-empty">{work.draft.trim() ? "待拆分集" : "暂无剧本"}</p> :
-          <ol>{work.episodes.map(e => <li key={e.id}><button type="button" aria-current={e.id === episodeId ? "true" : undefined} onClick={() => setEpisodeId(e.id)}>
-            <strong>第 {e.no} 集</strong><span title={e.title}>{e.title}</span>
-            <small>{(() => { const clips = work.clips.filter(c => c.episodeId === e.id); return clips.length ? `分镜图 ${clips.filter(c => c.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(c => c.video.adoptedId).length}/${clips.length}` : "待规划"; })()}</small>
-          </button></li>)}</ol>}
-      </aside>
+      <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
+        {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
+          <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>
+            <Icon size={18}/><span>{label}</span>
+            {key !== "script" && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
+      </nav>
       <section className="director-main">
-        <nav className="director-tabs" role="tablist" aria-label="工作区">
-          {([["script", "剧本"], ["assets", "资产"], ["storyboard", "分镜"]] as const).map(([key, label]) =>
-            <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => setTab(key)}>{label}
-              {key !== "script" && counts[key] > 0 && <small aria-label={`${counts[key]} 项待处理`}>{counts[key]}</small>}</button>)}
-        </nav>
-        {step && <div className="director-next"><Sparkles size={15}/><span>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => setTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
         {tab === "script" && <DirectorScript {...props}/>}
         {tab === "assets" && <DirectorAssets {...props}/>}
         {tab === "storyboard" && <DirectorStoryboard {...props}/>}
@@ -144,9 +159,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   </main>;
 }
 
-function DirectorHeader({ work, apply, setError }: WorkbenchProps) {
+function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
   const [title, setTitle] = useState(work.title);
-  const [open, setOpen] = useState(false);
   const { busy, run } = useBusy();
   useEffect(() => setTitle(work.title), [work.title]);
   const saveTitle = () => {
@@ -159,6 +173,8 @@ function DirectorHeader({ work, apply, setError }: WorkbenchProps) {
     <Link href="/director" className="director-back" aria-label="返回作品列表"><ArrowLeft size={18}/></Link>
     <input className="director-title" aria-label="作品名" value={title} maxLength={60} onChange={e => setTitle(e.target.value)} onBlur={saveTitle}
       onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} disabled={busy === "title"}/>
+    <span className="director-spacer"/>
+    {work.pricing.mock && <span className="director-mock-tag" title="剧本、图片和视频均为固定样例，不调用模型，不扣积分。">测试模式</span>}
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open}>
       <Settings2 size={15}/>{settings.style} · {settings.aspectRatio}
     </button>
@@ -216,7 +232,7 @@ function estimate(work: DirectorWork, scope: "episode" | "work", episodeId: stri
   return { text, images, total: text * textMax + images * image, unknownClips };
 }
 
-function PipelineBar({ work, episodeId, apply, setError, goTab }: WorkbenchProps) {
+function PipelineBar({ work, episodeId, apply, setError, goTab, reviewExtract }: WorkbenchProps) {
   const p = work.pipeline;
   const [starting, setStarting] = useState(false);
   const { busy, run } = useBusy();
@@ -226,13 +242,14 @@ function PipelineBar({ work, episodeId, apply, setError, goTab }: WorkbenchProps
   return <>
     <div className={`director-pipeline ${p ? `is-${p.status}` : ""}`}>
       {!live && <>
-        <button type="button" className="ip-brand-button director-oneclick" onClick={() => setStarting(true)}><Sparkles size={16}/>一键制作</button>
-        <span className="director-pipeline-hint">{p ? <PipelineSummary p={p}/> : "从剧本到分镜图或片段视频，后台自动执行，关闭页面不中断。"}</span>
+        {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
         {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
+        <button type="button" className="ip-brand-button director-oneclick" title="从剧本到分镜图或片段视频，后台自动执行，关闭页面不中断。" onClick={() => setStarting(true)}><Sparkles size={15}/>一键制作</button>
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>
         <div className="director-pipeline-actions">
+          {p.stage === "confirm-extract" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={reviewExtract}>查看清单</button>}
           {p.stage === "confirm-assets" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>查看参考图</button>
             <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-assets")}>全部确认并继续</button></>}
           {p.stage === "confirm-boards" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("storyboard")}>查看分镜图</button>

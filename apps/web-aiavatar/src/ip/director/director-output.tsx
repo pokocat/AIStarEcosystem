@@ -1,16 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Check, Download, Film, Play, SkipForward, Wand2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Download, Film, Play, SkipForward, Wand2, X } from "lucide-react";
 import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
-import { InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, costText, newRequestId, runningTask, useBusy, useEscape } from "./director-shared";
+import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, newRequestId, runningTask, useBusy, useEscape } from "./director-shared";
 
 export type ClipQuote = { credits: number | null; error: string | null };
 
-/** 片段卡里的视频区：报价、生成、进度、版本与确认。 */
+/** 片段的视频操作：报价、生成、进度与确认。画面和历史版本在左侧画面区。 */
 export function ClipVideo({ work, clip, quote, apply, setError }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
   const { busy, run } = useBusy();
   const current = adopted(clip.video);
@@ -28,11 +28,7 @@ export function ClipVideo({ work, clip, quote, apply, setError }: { work: Direct
   const reason = !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
   const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), setError);
   return <div className="director-video">
-    <div className="director-video-head"><Film size={15}/><b>片段视频</b>{clip.video.adoptedBy === "auto" && <span className="director-tag-inline is-warn">待确认</span>}{current?.mock && <span className="director-tag-inline">测试视频</span>}</div>
-    {current?.url ? <video className={`director-video-player ratio-${work.settings.aspectRatio.replace(":", "x")}`} src={current.url} controls preload="metadata" playsInline/> :
-      !pending && !fixtureRun && <p className="director-muted">{reason ? `${reason}。` : "分镜图已确认，可生成片段视频。"}</p>}
     {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。约需数分钟，关闭页面不中断` : "视频生成中"}/>}
-    {frame && <p className="director-frame-note">仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。</p>}
     {frame && (clip.voiced?.length ?? 0) > 0 && <div className="director-voice-warn">
       <AlertTriangle size={13}/>
       <span>当前视频模型不支持声音参考，{clip.voiced!.join("、")} 的声音本次不使用，声音绑定保留。</span>
@@ -41,14 +37,12 @@ export function ClipVideo({ work, clip, quote, apply, setError }: { work: Direct
     {!frame && (clip.unvoiced?.length ?? 0) > 0 && <p className="director-voice-warn"><AlertTriangle size={13}/>{clip.unvoiced.join("、")} 未绑定声音，各片段音色可能不一致。可在「资产」中绑定。</p>}
     <InlineError message={clip.video.error?.message}/>
     <OutdatedNote slot={clip.video} what="条视频" onRegenerate={reason || pending || fixtureRun ? undefined : generate} disabled={!!busy}/>
-    <VersionStrip video slot={clip.video} label={`片段 ${clip.order} 视频`} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptVideo", clip.id, null, { candidateId: id })), setError)}/>
     <div className="director-card-actions">
       {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
       <button type="button" className={current ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!reason} onClick={generate}>
         <Wand2 size={14}/>{clip.video.candidates.length ? "重新生成视频" : "生成片段视频"}</button>
-      <span className="director-cost">{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}` : "报价中…")}</span>
+      <span className="director-cost" title={current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}` : "报价中…")}</span>
     </div>
-    {current?.refs && current.refs.length > 0 && <p className="director-used-refs">参考：{current.refs.map(r => `${r.label} ${r.name}`).join("、")}</p>}
   </div>;
 }
 
@@ -65,18 +59,18 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
   const exporting = runningTask(work, `export:${ep.id}`);
   const exportReason = !clips.length ? "暂无片段" : missing.length ? `缺少视频：${missing.join("、")}` : unconfirmed.length ? `待确认视频：${unconfirmed.join("、")}` : "";
   const exportNow = () => void run("export", async () => apply(await DirectorApi.runTask(work.id, { type: "export", targetId: ep.id, clientRequestId: newRequestId() })), setError);
+  const [showExports, setShowExports] = useState(false);
   if (!clips.length) return null;
-  return <section className="director-output">
-    <div className="director-output-head">
-      <div><h3>本集成片</h3><p>{withVideo.length}/{clips.length} 个片段已有视频{missing.length ? `，缺少 ${missing.join("、")}` : ""}</p></div>
-      <span className="director-spacer"/>
-      <button type="button" className="ip-brand-secondary" disabled={!withVideo.length} onClick={() => setPlaying(true)}><Play size={14}/>连播预览</button>
-      {exporting ? <Spinner label="整集合成中"/> :
-        <button type="button" className="ip-brand-button" disabled={!!busy || !!exportReason} title={exportReason || undefined} onClick={exportNow}><Film size={14}/>导出整集</button>}
-    </div>
-    {exportReason && withVideo.length > 0 && <p className="director-muted">{exportReason}。导出免费。</p>}
-    {!exportReason && outdated.length > 0 && <p className="director-outdated-inline">{outdated.join("、")} 的视频需更新。导出将使用当前版本，如需新设置请先重新生成并采用。</p>}
-    {exports.length > 0 && <ul className="director-exports">{exports.slice(0, 5).map(e => {
+  const latest = exports[0];
+  return <div className="director-output">
+    <span className="director-output-count" title={missing.length ? `缺少视频：${missing.join("、")}` : undefined}>视频 {withVideo.length}/{clips.length}</span>
+    <button type="button" className="ip-brand-secondary" disabled={!withVideo.length} onClick={() => setPlaying(true)}><Play size={14}/>连播预览</button>
+    {exporting ? <Spinner label="整集合成中"/> :
+      <button type="button" className="ip-brand-button" disabled={!!busy || !!exportReason}
+        title={exportReason ? `${exportReason}。导出免费。` : outdated.length ? `${outdated.join("、")} 的视频需更新。导出将使用当前版本，如需新设置请先重新生成并采用。` : "导出免费"} onClick={exportNow}><Film size={14}/>导出整集</button>}
+    {!exportReason && outdated.length > 0 && <span className="director-output-warn" title={`${outdated.join("、")} 的视频需更新。导出将使用当前版本，如需新设置请先重新生成并采用。`}><AlertTriangle size={13}/>含需更新视频</span>}
+    {latest && <button type="button" className="director-output-toggle" aria-expanded={showExports} onClick={() => setShowExports(s => !s)}>导出记录 {exports.length}<ChevronDown size={13}/></button>}
+    {showExports && <ul className="director-exports">{exports.slice(0, 5).map(e => {
       const stale = e.status === "done" && (e.clips.length !== clips.length || e.clips.some(x => clips.find(c => c.id === x.clipId)?.video.adoptedId !== x.candidateId));
       const oldInside = e.status === "done" && !stale && e.clips.some(x => clips.find(c => c.id === x.clipId)?.video.adoptedCheck === "outdated");
       return <li key={e.id}>
@@ -93,7 +87,7 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
       </li>;
     })}</ul>}
     {playing && <SequencePlayer work={work} clips={clips} onClose={() => setPlaying(false)}/>}
-  </section>;
+  </div>;
 }
 
 function SequencePlayer({ work, clips, onClose }: { work: DirectorWork; clips: DirectorClip[]; onClose: () => void }) {

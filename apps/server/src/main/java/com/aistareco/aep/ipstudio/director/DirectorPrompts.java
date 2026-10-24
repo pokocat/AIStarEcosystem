@@ -217,9 +217,16 @@ public final class DirectorPrompts {
             case "prop" -> style + "风格的道具「" + name + "」单件参考图。" + desc
                     + "\n用能看清关键特征的角度和景别，光照均匀，背景简洁。"
                     + "\n不出现人物或手，不表现使用动作，不生成重复物件、文字或商标。";
-            default -> style + "风格的角色「" + name + "」半身参考图。" + desc
-                    + "\n正面半身，自然中性表情，面部和关键特征清楚无遮挡，柔和均匀的光线，简洁背景。"
-                    + "\n画面只出现这一个角色，不添加剧情动作、未指定的配饰、文字或多视图拼版。";
+            // 角色设定集：一张横版图拼五个区，后面的分镜图和视频都拿它锁定长相、服装和表情。
+            default -> style + "风格的角色设定集「" + name + "」，一张横版 16:9 设定板，浅灰纯色背景，统一柔和的棚拍光，各分区之间用细白边分隔，按以下排版：\n"
+                    + "1. 左侧约三分之一：全身三视图，从左到右依次为正面、正侧面、背面，同一自然站姿，双臂下垂，从头顶到鞋完整入画。\n"
+                    + "2. 中间上部：颈部以上的头部细节，正面、左侧面、右侧面各一张。\n"
+                    + "3. 中间中部：表情四宫格，同一角度的胸像，依次为喜、怒、哀、乐。\n"
+                    + "4. 右侧一列：面部特征特写 2–3 张，按设定挑最能辨认的部位（眼睛、鼻子、嘴唇，或痣、疤痕、随身配饰等身体特征）。\n"
+                    + "5. 中间下部：正面半身展示图，自然姿态，看清上身服装与气质。\n"
+                    + "角色设定：" + desc + "\n"
+                    + "所有分区都是同一个人：脸型、五官、发型、肤色、体型、服装和配饰完全一致；画面里不出现其他人物、剧情场景或未设定的道具。\n"
+                    + "图中不写任何文字、标注、编号、色板或水印。";
         };
     }
 
@@ -252,51 +259,89 @@ public final class DirectorPrompts {
         return b.toString();
     }
 
-    /** 视频提示词：图1 是采用的分镜板，后面是角色 / 场景 / 道具参考；逐镜写动作过程和台词。 */
     /** 声音参考：audio 是本次请求里的编号（音频1、音频2…），只绑定在说话的角色上。 */
     public record VoiceRef(String label, String name) {}
 
+    /**
+     * 视频提示词按分镜图来写：参考图1 是采用的分镜图（宫格整图或单幅画面），第 N 镜对应第 N 格；
+     * 参考图2 起是资产标准照。结构参照可用的多镜头范式：时间轴逐镜（构图 / 画面 / 动作）→【语音轨】→【参考图说明】。
+     * 「声音参考：」开头和「没有声音参考…」结尾的两行是指纹比对时要忽略的声音行（见 DirectorService），措辞别改。
+     */
     public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
-                                     List<VoiceRef> voices, List<String> unvoiced) {
+                                     List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs) {
         String style = settings.path("style").asText("真人写实");
         String aspect = settings.path("aspectRatio").asText("9:16");
         JsonNode shots = clip.path("shots");
-        int[] layout = boardLayout(shots.size());
+        int n = Math.min(shots.size(), MAX_SHOTS);
+        boolean grid = boardLayout(shots.size())[0] == 2;
         StringBuilder b = new StringBuilder();
-        b.append("生成 ").append(clip.path("durationSec").asInt()).append(" 秒、").append(aspect).append("、").append(style)
-                .append("风格的剧情片段，共 ").append(shots.size()).append(" 个镜头，按以下时间顺序呈现。\n");
-        b.append(layout[0] == 1 ? "图1 是采用的分镜画面，指定构图和人物造型。\n"
-                : "图1 是采用的 2×2 分镜板，左上、右上、左下、右下依次对应各镜头。最终视频每一时刻只呈现一个完整镜头，不展示宫格或分屏。\n");
-        appendRefs(b, refs);
-        b.append("分镜图里的画面不一定是动作的起点，按下面写的开始与结束状态完成动作。\n");
+        b.append("本视频为一个剧情片段").append(n > 1 ? "的多镜头连贯视频" : "").append("，总时长约 ").append(fmt(clip.path("durationSec").asDouble()))
+                .append(" 秒，共 ").append(n).append(" 个镜头，").append(style).append("风格，画幅 ").append(aspect).append("，请严格按以下时间轴依次呈现：\n");
         double t = 0;
-        for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
+        StringBuilder voice = new StringBuilder();
+        for (int i = 0; i < n; i++) {
             JsonNode s = shots.get(i);
             double end = t + s.path("durationSec").asDouble();
-            b.append(fmt(t)).append("–").append(fmt(end)).append(" 秒").append(layout[0] == 1 ? "" : "，对应" + CELL_NAMES[i] + "格")
-                    .append("：").append(s.path("size").asText()).append("，").append(s.path("camera").asText()).append("。")
-                    .append(s.path("action").asText()).append("\n");
+            b.append("第").append(i + 1).append("镜（").append(clock(t)).append("-").append(clock(end))
+                    .append(grid ? "，画面参考宫格图第" + (i + 1) + "格" : "，画面参考分镜图").append("）：构图：").append(s.path("size").asText());
+            if (!s.path("camera").asText().isBlank()) b.append("，").append(s.path("camera").asText());
+            if (!s.path("still").asText().isBlank()) b.append("；画面：").append(s.path("still").asText());
+            b.append("；动作：").append(s.path("action").asText()).append("\n");
             for (JsonNode line : s.path("dialogue")) {
                 String speaker = speakerNames.getOrDefault(line.path("speakerId").asText(), "旁白");
-                b.append("  ").append(speaker).append("说：“").append(line.path("text").asText()).append("”\n");
+                voice.append("第").append(i + 1).append("镜 · @").append(speaker).append(" · “").append(line.path("text").asText()).append("”\n");
             }
             t = end;
         }
+        b.append("\n【语音轨】\n");
+        if (voice.length() == 0) b.append("本片段没有台词，不生成人声对白。\n"); else b.append(voice);
         if (!voices.isEmpty()) {
             b.append("声音参考：");
             for (VoiceRef v : voices) b.append(v.label()).append(" 只为「").append(v.name()).append("」提供音色、口音和声音身份；");
             b.append("只说本段列出的新台词，不复制样本里的台词、背景音乐或噪声，角色之间不交换声音。\n");
         }
-        if (!unvoiced.isEmpty()) b.append(String.join("、", unvoiced)).append(" 没有声音参考，按人物身份自然配音。\n");
-        b.append("只说上面列出的台词，不朗读镜号或参考说明。保持已采用的人物、造型、场景布局和道具外观，不增加人物或剧情，不生成字幕。");
+        voiceDescs.forEach((name, desc) -> b.append("@").append(name).append(" 的音色：").append(desc).append("\n"));
+        List<String> plain = unvoiced.stream().filter(who -> !voiceDescs.containsKey(who)).toList();
+        if (!plain.isEmpty()) b.append(String.join("、", plain)).append(" 没有声音参考，按人物身份自然配音。\n");
+        b.append("\n【参考图说明】\n");
+        if (grid) {
+            b.append("参考图1为本片段的 2×2 宫格分镜整图，共 ").append(n).append(" 格有画面，格子编号从左到右、从上到下依次为第1格……第").append(n)
+                    .append("格，与上文第1镜至第").append(n).append("镜一一对应，作为各镜的构图参考。\n");
+            b.append("重要：宫格图仅作为各镜头的构图与形象参考，输出视频为连续的全屏单镜头画面，禁止在视频中出现格线、边框、白边、多格并排或漫画分镜样式；"
+                    + "每一镜直接以全屏画面呈现，禁止先展示整图再放大进入某一格；同一角色在同一镜头画面中只能出现一次；"
+                    + "取某一格参考时，只采用该格的构图与人物状态，不把其他格子的人物形象和构图混入本镜画面。\n");
+            if (n < 4) b.append("空白格无对应镜头，忽略不取。\n");
+            b.append("分镜图里的画面不一定是动作的起点，按上文写的动作完成。\n");
+        } else {
+            b.append("参考图1为本片段的分镜画面，作为本镜的构图与形象参考，输出为全屏画面，不出现边框或分镜样式。\n");
+        }
+        if (!refs.isEmpty()) {
+            b.append("参考图2起为资产标准照，逐张对应：");
+            for (int i = 0; i < refs.size(); i++) {
+                Ref r = refs.get(i);
+                if (i > 0) b.append(" / ");
+                b.append("参考").append(r.label()).append(" = ").append(kindLabel(r.kind())).append("「").append(r.name()).append("」");
+            }
+            b.append("。\n这些图仅用于锁定长相、服装、气质与环境风格，其构图、站姿和纯色背景不得出现在视频画面中。\n");
+        }
+        b.append(n > 1 ? "相邻镜头之间画面需连贯过渡。" : "")
+                .append("只说语音轨里列出的台词，不朗读镜号或参考说明；不增加人物或剧情，不生成字幕。");
         return b.toString();
+    }
+
+    /** 时间轴里的时间：00:03、00:02.5。 */
+    private static String clock(double sec) {
+        int m = (int) (sec / 60);
+        double s = sec - m * 60;
+        String ss = s == Math.floor(s) ? String.format("%02d", (int) s) : String.format("%04.1f", s);
+        return String.format("%02d:", m) + ss;
     }
 
     /**
      * 首帧出片：视频从采用的分镜画面开始动。只有这一张图交给模型，不带角色 / 场景 / 道具参考图，也不带声音参考，
      * 所以提示词里不写「图N」「音频N」，只写从这张画面出发要发生的动作和台词。
      */
-    public static String framePrompt(JsonNode settings, JsonNode clip, java.util.Map<String, String> speakerNames) {
+    public static String framePrompt(JsonNode settings, JsonNode clip, java.util.Map<String, String> speakerNames, java.util.Map<String, String> voiceDescs) {
         String style = settings.path("style").asText("真人写实");
         String aspect = settings.path("aspectRatio").asText("9:16");
         StringBuilder b = new StringBuilder();
@@ -309,6 +354,7 @@ public final class DirectorPrompts {
                 b.append("  ").append(speaker).append("说：“").append(line.path("text").asText()).append("”\n");
             }
         }
+        voiceDescs.forEach((name, desc) -> b.append(name).append(" 的音色：").append(desc).append("\n"));
         b.append("只说上面列出的台词，不增加人物或剧情，不生成字幕。");
         return b.toString();
     }

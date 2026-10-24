@@ -263,6 +263,8 @@ public class DirectorService {
                 ObjectNode a = requireRev(find(c, "assets", req.targetId(), "这个资产"), req.rev());
                 if (d.has("name")) { String n = limited(d.path("name").asText(), 40, "名称"); if (!n.isEmpty()) a.put("name", n); }
                 if (d.has("description")) a.put("description", limited(d.path("description").asText(), 2000, "描述"));
+                // 角色音色的文字描述：没有参考音频时视频按它配音，有参考音频时作补充。
+                if (d.has("voiceDesc")) a.put("voiceDesc", limited(d.path("voiceDesc").asText(), 200, "音色描述"));
                 if (d.path("resetPrompt").asBoolean(false)) a.put("promptCustom", false);
                 else if (d.has("prompt")) a.put("prompt", limited(d.path("prompt").asText(), 4000, "提示词")).put("promptCustom", true);
                 bump(a);
@@ -364,6 +366,27 @@ public class DirectorService {
                 for (JsonNode clip : c.path("clips")) if (req.targetId() == null || req.targetId().equals(clip.path("episodeId").asText())) {
                     ObjectNode slot = (ObjectNode) clip.path("board");
                     if ("auto".equals(slot.path("adoptedBy").asText())) slot.put("adoptedBy", "user");
+                }
+            }
+            case "extract.save", "extract.discard" -> {
+                JsonNode pending = c.path("pendingExtract");
+                if (!pending.isObject()) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EXTRACT_EXPIRED", "这份资产清单已失效，请重新提取");
+                if (req.targetId() != null && !req.targetId().equals(pending.path("runId").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EXTRACT_EXPIRED", "资产清单已更新，请查看最新一份");
+                ObjectNode p = c.path("pipeline").isObject() ? (ObjectNode) c.path("pipeline") : null;
+                boolean waiting = p != null && "waiting".equals(p.path("status").asText()) && "confirm-extract".equals(p.path("stage").asText());
+                // 一键制作可能还没推进到「待确认」这一步（清单刚回投、下一次推进还没到）：不保存时一样要停，否则它会再提交一次付费提取。
+                boolean live = p != null && Set.of("running", "waiting", "paused").contains(p.path("status").asText());
+                if ("extract.save".equals(req.op())) {
+                    int added = saveExtracted(c, pending, d.path("items"));
+                    List<String> changed = markExtracted(c, pending.path("episodes"));
+                    c.putNull("pendingExtract");
+                    if (!changed.isEmpty()) notice(c, String.join("、", changed) + "在提取期间正文有修改，新增内容可能未提取，可重新提取");
+                    else notice(c, added > 0 ? "已保存到资产库，新增 " + added + " 项" : "已保存到资产库");
+                    if (waiting) { p.put("status", "running").put("stage", "assets").put("message", "资产已保存，继续制作"); w.setActive(true); }
+                } else {
+                    c.putNull("pendingExtract");
+                    if (live) finish(p, "stopped", "资产清单未保存，一键制作已停止");
                 }
             }
             case "notice.dismiss" -> c.putNull("notice");
@@ -913,33 +936,21 @@ public class DirectorService {
                 c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
             }
             case "extract" -> {
-                Map<Integer, String> epByNo = new HashMap<>();
-                for (JsonNode ep : c.path("episodes")) epByNo.put(ep.path("no").asInt(), ep.path("id").asText());
-                int added = 0;
+                // 提取结果先放进待确认清单：用户在弹窗里勾选、改名后才写进资产库，这里不改任何资产。
+                ArrayNode items = om.createArrayNode();
                 for (JsonNode a : d.path("assets")) {
-                    ObjectNode target = a.hasNonNull("existingId") ? (ObjectNode) findOrNull(c, "assets", a.path("existingId").asText()) : null;
-                    if (target == null) for (JsonNode x : c.path("assets"))
-                        if (x.path("kind").asText().equals(a.path("kind").asText()) && x.path("name").asText().equals(a.path("name").asText())) { target = (ObjectNode) x; break; }
-                    if (target == null) {
-                        target = newAsset(c, a.path("kind").asText(), a.path("name").asText(), a.path("description").asText());
-                        ((ArrayNode) c.path("assets")).add(target);
-                        added++;
-                    } else if (target.path("description").asText().isBlank()) target.put("description", a.path("description").asText());
-                    Set<String> aliases = ids(target.path("aliases"));
-                    for (JsonNode al : a.path("aliases")) if (aliases.add(al.asText())) ((ArrayNode) target.path("aliases")).add(al.asText());
-                    Set<String> eps = ids(target.path("episodeIds"));
-                    for (JsonNode n : a.path("episodeNos")) { String ep = epByNo.get(n.asInt()); if (ep != null && eps.add(ep)) ((ArrayNode) target.path("episodeIds")).add(ep); }
+                    // 编号不能叫 key：出 wire 时名叫 key 的字段会被当成素材地址去签名。
+                    ObjectNode it = items.addObject().put("itemId", "x" + items.size()).put("kind", a.path("kind").asText())
+                            .put("name", a.path("name").asText()).put("description", a.path("description").asText());
+                    it.set("aliases", a.path("aliases").isArray() ? a.path("aliases").deepCopy() : om.createArrayNode());
+                    it.set("episodeNos", a.path("episodeNos").isArray() ? a.path("episodeNos").deepCopy() : om.createArrayNode());
+                    JsonNode match = matchAsset(c, a.path("existingId").asText(null), a.path("kind").asText(), a.path("name").asText());
+                    if (match == null) it.putNull("matchId"); else it.put("matchId", match.path("id").asText()).put("matchName", match.path("name").asText());
                 }
-                // 只给提交后没改过正文的集打「已提取」：改过的集要按新正文再提取。
-                List<String> changedEps = new ArrayList<>();
-                for (JsonNode ep : in.path("episodes")) {
-                    JsonNode e = findOrNull(c, "episodes", ep.path("id").asText());
-                    if (e == null) continue;
-                    if (hash(e.path("content").asText()).equals(ep.path("contentHash").asText())) ((ObjectNode) e).put("extracted", true);
-                    else changedEps.add("第 " + e.path("no").asInt() + " 集");
-                }
-                if (!changedEps.isEmpty()) notice(c, String.join("、", changedEps) + "在提取期间正文有修改，新增内容可能未提取，可补充提取");
-                else if (added == 0) notice(c, "未发现新的角色、场景或道具");
+                if (items.isEmpty()) { markExtracted(c, in.path("episodes")); notice(c, "未发现新的角色、场景或道具"); return; }
+                ObjectNode pending = c.putObject("pendingExtract").put("runId", run.getId()).put("at", Instant.now().toString());
+                pending.set("items", items);
+                pending.set("episodes", in.path("episodes").deepCopy());
             }
             case "plan" -> {
                 String epId = in.path("episodeId").asText();
@@ -1130,6 +1141,10 @@ public class DirectorService {
             List<JsonNode> eps = scopeEpisodes(c, p);
             // 2. 资产提取
             List<JsonNode> notExtracted = eps.stream().filter(e -> !e.path("extracted").asBoolean(false)).toList();
+            if (c.path("pendingExtract").isObject()) {
+                p.put("status", "waiting").put("stage", "confirm-extract").put("message", "资产已识别，请确认后保存到资产库");
+                return;
+            }
             if (!notExtracted.isEmpty()) {
                 String target = notExtracted.size() == eps.size() && "work".equals(p.path("scope").asText()) ? null : notExtracted.get(0).path("id").asText();
                 if (failed.contains(target == null ? "extract" : "extract:" + target)) { finish(p, "failed", "资产提取失败，请在「资产」中重试"); return; }
@@ -1433,7 +1448,9 @@ public class DirectorService {
             for (DirectorPrompts.Ref r : refs) videoRefs.add(new DirectorPrompts.Ref("图" + (videoRefs.size() + 2), r.kind(), r.name()));
             List<DirectorPrompts.VoiceRef> voices = new ArrayList<>();
             List<String> unvoiced = new ArrayList<>();
+            Map<String, String> voiceDescs = new LinkedHashMap<>();
             for (JsonNode a : speakers(c, clip)) {
+                if (!a.path("voiceDesc").asText().isBlank()) voiceDescs.put(a.path("name").asText(), a.path("voiceDesc").asText().trim());
                 if (a.path("voice").path("key").isTextual()) voices.add(new DirectorPrompts.VoiceRef("音频" + (voices.size() + 1), a.path("name").asText()));
                 else unvoiced.add(a.path("name").asText());
             }
@@ -1442,8 +1459,8 @@ public class DirectorService {
             ArrayNode voicedNode = clip.putArray("voiced");
             voices.forEach(v -> voicedNode.add(v.name()));
             if (!clip.path("videoPromptCustom").asBoolean(false))
-                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names)
-                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, videoRefs, names, voices, unvoiced));
+                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names, voiceDescs)
+                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, videoRefs, names, voices, unvoiced, voiceDescs));
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
             if (shots == 0) issues.add("暂无镜头：请添加镜头或重新规划本集");
@@ -1603,7 +1620,7 @@ public class DirectorService {
     private String sizeFor(ObjectNode c, String kind) {
         if ("prop".equals(kind)) return "1024x1024";
         if ("scene".equals(kind)) return "1365x768";
-        if ("character".equals(kind)) return "768x1024";
+        if ("character".equals(kind)) return "1365x768"; // 角色设定集是横版排版
         return switch (c.path("settings").path("aspectRatio").asText("9:16")) { case "16:9" -> "1365x768"; case "1:1" -> "1024x1024"; default -> "768x1365"; };
     }
 
@@ -1730,6 +1747,66 @@ public class DirectorService {
     private boolean hasClips(ObjectNode c, String episodeId) {
         for (JsonNode clip : c.path("clips")) if (episodeId.equals(clip.path("episodeId").asText())) return true;
         return false;
+    }
+
+    /** 提取结果对上已有资产：先认模型给的 existingId，再认同类同名。 */
+    private JsonNode matchAsset(ObjectNode c, String existingId, String kind, String name) {
+        if (existingId != null && !existingId.isBlank()) { JsonNode hit = findOrNull(c, "assets", existingId); if (hit != null) return hit; }
+        for (JsonNode x : c.path("assets")) if (x.path("kind").asText().equals(kind) && x.path("name").asText().equals(name)) return x;
+        for (JsonNode x : c.path("assets")) if (x.path("kind").asText().equals(kind) && ids(x.path("aliases")).contains(name)) return x;
+        return null;
+    }
+
+    /** 只给提交后没改过正文的集打「已提取」：改过的集要按新正文再提取。返回正文改过的集。 */
+    private List<String> markExtracted(ObjectNode c, JsonNode episodes) {
+        List<String> changed = new ArrayList<>();
+        for (JsonNode ep : episodes) {
+            JsonNode e = findOrNull(c, "episodes", ep.path("id").asText());
+            if (e == null) continue;
+            if (hash(e.path("content").asText()).equals(ep.path("contentHash").asText())) ((ObjectNode) e).put("extracted", true);
+            else changed.add("第 " + e.path("no").asInt() + " 集");
+        }
+        return changed;
+    }
+
+    /** 把用户在确认弹窗里勾选的项写进资产库：对上的合并别名和出现集，新的建资产。返回新建数。 */
+    private int saveExtracted(ObjectNode c, JsonNode pending, JsonNode picks) {
+        Map<String, JsonNode> chosen = new HashMap<>();
+        for (JsonNode p : picks) if (p.path("include").asBoolean(true)) chosen.put(p.path("itemId").asText(), p);
+        Map<Integer, String> epByNo = new HashMap<>();
+        for (JsonNode ep : c.path("episodes")) epByNo.put(ep.path("no").asInt(), ep.path("id").asText());
+        int added = 0;
+        for (JsonNode a : pending.path("items")) {
+            JsonNode pick = chosen.get(a.path("itemId").asText());
+            if (pick == null) continue;
+            String name = limited(pick.hasNonNull("name") ? pick.path("name").asText() : a.path("name").asText(), 40, "名称");
+            if (name.isEmpty()) throw invalid("请填写资产名称");
+            JsonNode hit = matchAsset(c, a.path("matchId").asText(null), a.path("kind").asText(), name);
+            ObjectNode target;
+            if (hit == null) {
+                target = newAsset(c, a.path("kind").asText(), name, a.path("description").asText());
+                ((ArrayNode) c.path("assets")).add(target);
+                added++;
+            } else {
+                target = (ObjectNode) hit;
+                if (target.path("description").asText().isBlank()) target.put("description", a.path("description").asText());
+                // 对上已有资产、用户在弹窗里改了名：按新名字保存，原名留作别名。
+                String old = target.path("name").asText();
+                if (pick.hasNonNull("name") && !name.equals(old)) {
+                    if (!ids(target.path("aliases")).contains(old)) ((ArrayNode) target.path("aliases")).add(old);
+                    target.put("name", name);
+                }
+            }
+            Set<String> aliases = ids(target.path("aliases"));
+            for (JsonNode al : a.path("aliases")) if (aliases.add(al.asText())) ((ArrayNode) target.path("aliases")).add(al.asText());
+            // 用户在弹窗里改了名：剧本里的原名记成别名，下次提取还能认出是同一个。
+            String original = a.path("name").asText();
+            if (!original.isBlank() && !original.equals(target.path("name").asText()) && aliases.add(original)) ((ArrayNode) target.path("aliases")).add(original);
+            Set<String> eps = ids(target.path("episodeIds"));
+            for (JsonNode n : a.path("episodeNos")) { String ep = epByNo.get(n.asInt()); if (ep != null && eps.add(ep)) ((ArrayNode) target.path("episodeIds")).add(ep); }
+            bump(target);
+        }
+        return added;
     }
 
     /** 用户最初的创意随分集、规划一起交给模型，让时长 / 集数 / 镜头数等要求一路生效；导入剧本没有创意就不放。 */

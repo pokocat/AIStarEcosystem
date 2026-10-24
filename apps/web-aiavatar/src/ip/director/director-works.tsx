@@ -72,10 +72,10 @@ function CreateWork({ onClose }: { onClose: () => void }) {
         <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} maxLength={mode === "idea" ? 2000 : 60000} onChange={e => setText(e.target.value)}
           placeholder={mode === "idea" ? "例如：深夜的旧书店，店员林夏发现一封写给自己的红信封，门外传来敲门声。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
       </label>
-      <p className="director-dialog-note">{mode === "idea" ? "创建后在「剧本」中生成，生成前显示所需积分。" : "创建后可直接作为一集，或由 AI 拆分为多集。"}</p>
+      <p className="director-dialog-note">{mode === "idea" ? "下一步：确认创意、看清所需积分，再由 AI 写剧本。" : "下一步：选择作为一集，或由 AI 拆分为多集。"}</p>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={busy}>取消</button>
-        <button type="button" className="ip-brand-button" disabled={busy || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建"}</button></footer>
+        <button type="button" className="ip-brand-button" disabled={busy || !text.trim()} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>创建中</> : "创建并继续"}</button></footer>
     </div>
   </div>;
 }
