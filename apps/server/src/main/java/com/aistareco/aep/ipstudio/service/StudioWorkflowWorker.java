@@ -85,9 +85,10 @@ public class StudioWorkflowWorker {
                 filmStudy(id,run,input,output);return;
             }
             switch(operation) {
-                case "text","script","storyboard","assistant","asset-extract","recreation","check" -> {
+                case "text","script","storyboard","assistant","asset-extract","recreation","check","director" -> {
                     JsonNode script;StudioRecreation.Study recreationStudy=null;ObjectNode recreationFallback=mapper.createObjectNode();
-                    if(mock) script=fixtureScript(input);
+                    if(mock&&"director".equals(operation)) script=com.aistareco.aep.ipstudio.director.DirectorFixtures.output(mapper,input.path("_director"));
+                    else if(mock) script=fixtureScript(input);
                     else {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
@@ -154,7 +155,10 @@ public class StudioWorkflowWorker {
                                     .put("credits",actual).put("inputCreditsPerK",tokenRate.inputCreditsPerK()).put("outputCreditsPerK",tokenRate.outputCreditsPerK());
                         }
                     }
-                    if("recreation".equals(operation)) {
+                    if("director".equals(operation)) {
+                        // 结构不对的输出在这里判失败（全额退回），不把残缺结果交给导演作品。
+                        output.set("director",com.aistareco.aep.ipstudio.director.DirectorPrompts.validate(mapper,input.path("_director"),script));
+                    } else if("recreation".equals(operation)) {
                         var report=StudioRecreation.validate(script,input.path("_exec").path("recreationSource"));
                         StudioRecreation.attachReferences(report,recreationStudy,storage,run.getOwnerUserId());
                         output.set("recreation",report);output.put("text",StudioRecreation.markdown(report));

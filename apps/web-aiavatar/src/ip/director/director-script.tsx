@@ -1,0 +1,169 @@
+"use client";
+
+import { useState } from "react";
+import { ChevronRight, PenLine, Scissors, Sparkles, Wand2 } from "lucide-react";
+import type { DirectorEpisode } from "@ai-star-eco/types";
+import { DirectorApi } from "../api";
+import type { WorkbenchProps } from "./director-workbench";
+import { Field, InlineError, Spinner, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft } from "./director-shared";
+
+export function DirectorScript(props: WorkbenchProps) {
+  const { work, episodeId } = props;
+  const writing = runningTask(work, "script");
+  const splitting = runningTask(work, "split");
+  const textError = work.textError && ["script", "split"].includes(work.textError.task ?? "") ? work.textError.message : null;
+  if (work.episodes.length > 0) return <EpisodeList {...props}/>;
+  if (writing) return <div className="director-panel director-wait"><Spinner label="剧本生成中，完成后自动显示。可关闭页面，后台继续"/></div>;
+  if (!work.draft.trim()) return <><InlineError message={textError}/><StartScript {...props}/></>;
+  return <><InlineError message={textError}/><DraftEditor key={work.draftRev} {...props} splitting={!!splitting}/></>;
+}
+
+/** 还没有剧本：新建时给了创意，这里就接着确认创意、生成剧本；没给创意（或用户改主意）才是粘贴剧本。 */
+function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & { openSettings?: () => void }) {
+  const [idea, setIdea] = useDraft(`${work.id}:idea`, work.idea);
+  const [paste, setPaste] = useDraft(`${work.id}:paste`, "");
+  const [mode, setMode] = useState<"idea" | "paste">(() => work.idea.trim() || !paste ? "idea" : "paste");
+  const { busy, run } = useBusy();
+  const write = () => void run("write", async () => {
+    const cost = work.pricing.textMax;
+    const billing = await chooseDirectorBilling("script", cost);
+    const next = await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim() }, billing, maxCost: cost });
+    clearDrafts(`${work.id}:idea`); apply(next);
+  }, setError);
+  const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, setError);
+  if (mode === "paste") return <section className="director-panel director-start">
+    <h3><PenLine size={16}/>粘贴剧本</h3>
+    <Field label="剧本正文" hint="免费。保存后可直接作为一集，或由 AI 拆分为多集。">
+      <textarea rows={10} maxLength={60000} value={paste} onChange={e => setPaste(e.target.value)} placeholder="场次、动作与对白" autoFocus/>
+    </Field>
+    <div className="director-actions">
+      <button type="button" className="ip-brand-button" disabled={!!busy || !paste.trim()} onClick={save}>保存剧本</button>
+      <span className="director-spacer"/>
+      <button type="button" className="ip-brand-text-button" onClick={() => setMode("idea")}>返回，用创意生成</button>
+    </div>
+  </section>;
+  return <section className="director-panel director-start">
+    <h3><Sparkles size={16}/>确认创意，生成剧本</h3>
+    <Field label="创意" hint="AI 按这段创意写分场剧本。写明时长、集数、人物或「不要对白」等要求，会照做；没写的按约 1–3 分钟、1–3 集。">
+      <textarea rows={5} maxLength={2000} value={idea} onChange={e => setIdea(e.target.value)} placeholder="例如：深夜的旧书店，店员林夏发现一封写给自己的红信封。"/>
+    </Field>
+    <div className="director-start-settings">
+      <span><small>画面风格</small>{work.settings.style}</span>
+      <span><small>画幅</small>{work.settings.aspectRatio}</span>
+      {openSettings && <button type="button" className="ip-brand-text-button" onClick={openSettings}>修改</button>}
+    </div>
+    <div className="director-actions">
+      <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={write}><Sparkles size={15}/>生成剧本</button>
+      <span className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</span>
+      <span className="director-spacer"/>
+      <button type="button" className="ip-brand-text-button" onClick={() => setMode("paste")}>已有剧本？改为粘贴</button>
+    </div>
+  </section>;
+}
+
+function DraftEditor({ work, apply, setError, splitting }: WorkbenchProps & { splitting: boolean }) {
+  const draftKey = `${work.id}:draft`;
+  const [text, setText, dirty] = useDraft(draftKey, work.draft);
+  const [count, setCount] = useState("");
+  const { busy, run } = useBusy();
+  const persist = async () => { const w = await DirectorApi.patchWork(work.id, { draft: text, draftRev: work.draftRev }); clearDrafts(draftKey); return w; };
+  const save = () => run("save", async () => apply(await persist()), setError);
+  const asEpisode = () => void run("one", async () => {
+    let w = work;
+    if (dirty) w = await persist();
+    apply(await DirectorApi.edit(w.id, "draft.asEpisode", null, null));
+  }, setError);
+  const split = () => void run("split", async () => {
+    let w = work;
+    if (dirty) { w = await persist(); apply(w); }
+    const cost = work.pricing.textMax;
+    const billing = await chooseDirectorBilling("script", cost);
+    apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing, maxCost: cost }));
+  }, setError);
+  return <section className="director-panel">
+    <div className="director-panel-head"><h3>剧本</h3>{work.logline && <p>{work.logline}</p>}</div>
+    <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
+    <div className="director-actions">
+      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
+      {dirty && <span className="director-unsaved">未保存</span>}
+      <span className="director-spacer"/>
+      {splitting ? <Spinner label="拆分中，正文保持不变"/> : <>
+        <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
+        <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
+        <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>AI 拆分</button>
+        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
+      </>}
+    </div>
+    <p className="director-dialog-note">拆分只划定每集范围，不改写正文。拆分后在左侧选择分集编辑。</p>
+  </section>;
+}
+
+/** 全部集一个视图：一集一行，点开原地编辑，可同时展开几集；资产一次按全剧提取。 */
+function EpisodeList(props: WorkbenchProps) {
+  const { work, episodeId, apply, setError } = props;
+  // 默认展开当前集（还没选过就第一集），以及有没保存修改的集。
+  const [open, setOpen] = useState<Set<string>>(() => new Set(work.episodes.filter(e => e.id === (episodeId ?? work.episodes[0]?.id) || hasDrafts(`${work.id}:ep:${e.id}:`)).map(e => e.id)));
+  const { busy, run } = useBusy();
+  const extracting = work.tasks.find(t => t.status === "running" && t.target.startsWith("extract"));
+  const extractError = work.textError?.task === "extract" ? work.textError.message : null;
+  const chars = work.episodes.reduce((n, e) => n + e.content.replace(/\s/g, "").length, 0);
+  const allOpen = open.size === work.episodes.length;
+  const toggle = (id: string) => setOpen(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
+  const extract = () => void run("extract", async () => {
+    const cost = work.pricing.textMax;
+    const billing = await chooseDirectorBilling("asset-extract", cost);
+    apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
+  }, setError);
+  return <section className="director-panel director-script-list">
+    <div className="director-toolbar">
+      <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline ? ` · ${work.logline}` : ""}</p></div>
+      <span className="director-spacer"/>
+      <button type="button" className="ip-brand-text-button" onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
+      {extracting ? <Spinner label="资产提取中"/> : <>
+        <button type="button" className="ip-brand-button" disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
+          <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
+        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
+      </>}
+    </div>
+    <InlineError message={extractError}/>
+    <ol className="director-episode-list">{work.episodes.map(e =>
+      <EpisodeRow key={e.id + ":" + e.rev} {...props} ep={e} open={open.has(e.id)} onToggle={() => toggle(e.id)}/>)}</ol>
+  </section>;
+}
+
+function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: WorkbenchProps & { ep: DirectorEpisode; open: boolean; onToggle: () => void }) {
+  const prefix = `${work.id}:ep:${ep.id}:`;
+  const [title, setTitle, t] = useDraft(prefix + "title", ep.title);
+  const [summary, setSummary, s] = useDraft(prefix + "summary", ep.summary);
+  const [content, setContent, c] = useDraft(prefix + "content", ep.content);
+  const { busy, run } = useBusy();
+  const dirty = t || s || c;
+  const save = () => void run("save", async () => {
+    const next = await DirectorApi.edit(work.id, "episode.update", ep.id, ep.rev, { title, summary, content });
+    clearDrafts(prefix); apply(next);
+  }, setError);
+  const clips = work.clips.filter(x => x.episodeId === ep.id);
+  const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待规划";
+  return <li className={`director-episode-item ${open ? "is-open" : ""}`}>
+    <button type="button" className="director-episode-row" aria-expanded={open} onClick={onToggle}>
+      <ChevronRight size={16} className="director-episode-chevron"/>
+      <b>第 {ep.no} 集</b>
+      <span className="director-episode-name" title={ep.title}>{ep.title}</span>
+      <span className="director-episode-summary" title={ep.summary}>{ep.summary}</span>
+      {dirty && <em className="director-unsaved">未保存</em>}
+      <small>{ep.content.replace(/\s/g, "").length.toLocaleString("zh-CN")} 字 · {progress}</small>
+    </button>
+    {open && <div className="director-episode-body">
+      <div className="director-two">
+        <Field label="集名"><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}/></Field>
+        <Field label="本集摘要"><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
+      </div>
+      {ep.planStale && <div className="director-warn">正文在规划后有修改，片段可能与正文不一致。可在「分镜」重新规划（已有分镜图的片段需先删除）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
+      <textarea className="director-script-text" aria-label={`第 ${ep.no} 集正文`} value={content} maxLength={60000} onChange={e => setContent(e.target.value)}/>
+      <div className="director-actions">
+        <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
+        {dirty && <button type="button" className="ip-brand-text-button" onClick={() => { setTitle(ep.title); setSummary(ep.summary); setContent(ep.content); }}>撤销</button>}
+      </div>
+    </div>}
+  </li>;
+}

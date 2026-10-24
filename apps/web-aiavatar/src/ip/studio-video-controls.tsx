@@ -14,6 +14,7 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
   model:VideoStudioModel;draft:StudioVideoDraft;onChange:(next:StudioVideoDraft)=>void;nodes:CanvasNodeData[];
   referenceIds:string[];onReferences:(ids:string[])=>void;onLibrary:()=>void;libraryButtonRef?:Ref<HTMLButtonElement>;section?:"all"|"references"|"settings";
 }) {
+  const optimizationHintId=useId();
   const images=nodes.filter(n=>n.type===CanvasNodeType.Image&&n.metadata?.storageKey);
   const usable=nodes.filter(n=>[CanvasNodeType.Image,CanvasNodeType.Video,CanvasNodeType.Audio].some(type=>type===n.type)&&n.metadata?.storageKey);
   const spec=model.contract.modes.find(m=>m.mode===draft.mode);
@@ -40,8 +41,8 @@ export function StudioVideoControls({model,draft,onChange,nodes,referenceIds,onR
     <StudioChoiceGroup<string> label="清晰度" ariaLabel="视频清晰度" value={draft.tier} onChange={tier=>onChange({...draft,tier})} options={model.contract.tiers.map(t=>({value:t.tier,label:t.tier}))}/>
     {/* 只有出片前会改写描述的模型（聚算 H3，厂商契约 optimizePrompt）才有这个选择；价格不变。 */}
     {model.supportsPromptOptimization&&<div className="studio-video-prompt-mode">
-      <Checkbox checked={!!draft.keepPrompt} onChange={e=>onChange({...draft,keepPrompt:e.target.checked})}>按原文生成</Checkbox>
-      <p>{draft.keepPrompt?"描述和台词原样交给模型，不再改写。画面细节要靠你自己写清楚。":"不勾选时，模型出片前会先改写一遍你的描述，台词偶尔会被删掉。"}</p>
+      <Checkbox aria-describedby={optimizationHintId} checked={!draft.keepPrompt} onChange={e=>onChange({...draft,keepPrompt:!e.target.checked})}>智能优化</Checkbox>
+      <p id={optimizationHintId}>由模型端自动优化提示词，可自行选择是否开启。</p>
     </div>}
     {section==="all"&&<StudioVideoSeedControl seed={draft.seed} max={model.contract.seedMax} onChange={seed=>onChange({...draft,seed})}/>}
     </>}

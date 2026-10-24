@@ -46,6 +46,14 @@ components:
 
   # ── Reusable response wrappers ──────────
   schemas:
+    DirectorWorkSummary:
+      type: object
+      description: '见 packages/types/src/director.ts DirectorWorkSummary。'
+      properties: { id: { type: string }, title: { type: string }, episodeCount: { type: integer }, assetCount: { type: integer }, clipCount: { type: integer }, boardCount: { type: integer }, videoCount: { type: integer }, hasScript: { type: boolean }, running: { type: boolean }, updatedAt: { type: string, format: date-time }, coverUrl: { type: string, nullable: true } }
+    DirectorWork:
+      type: object
+      description: '服务端拥有的导演作品（docs/ai-director-plan.md §10.3）；完整形状见 packages/types/src/director.ts DirectorWork。媒体只存 key，url 为出 wire 时的短期签名。'
+      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true } }
 
     StudioVideoEffect:
       type: object
@@ -13569,6 +13577,102 @@ paths:
         v0.177 之前前端轮询的是 `/me/material/videos/jobs/{jobId}` —— 那条路径服务端从来没有实现过。
       responses:
         "200": { description: 任务卡（id / status / video_url / video_key / thumbnail_url / error_message） }
+  /v1/ip-studio/director/works:
+    get:
+      tags: [ipstudio]
+      operationId: directorListWorks
+      description: 'AI 导演台作品列表（本人）。封面取第一张已采用的分镜图或参考图，出 wire 时签名。'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DirectorWorkSummary' } } } } }
+    post:
+      tags: [ipstudio]
+      operationId: directorCreateWork
+      description: '新建作品：一句创意（idea）或已有剧本（script）。不调用模型、不扣积分。'
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, maxLength: 60000 } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+  /v1/ip-studio/director/works/{id}:
+    get:
+      tags: [ipstudio]
+      operationId: directorGetWork
+      description: '读作品。读之前把已结束的任务结果回投：输入指纹未变才填空着的采用位（adoptedBy=auto，需用户确认）；变了只追加 stale 历史版本。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+        '404': { description: DIRECTOR_WORK_NOT_FOUND }
+    patch:
+      tags: [ipstudio]
+      operationId: directorPatchWork
+      description: '改作品名、创意、拆集前的整份剧本（带 draftRev）或设置（风格 / 画幅 / 片段视频模型）。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { title: { type: string }, idea: { type: string }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+        '409': { description: DIRECTOR_EDIT_CONFLICT }
+    delete:
+      tags: [ipstudio]
+      operationId: directorDeleteWork
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok }
+  /v1/ip-studio/director/works/{id}/edits:
+    post:
+      tags: [ipstudio]
+      operationId: directorEdit
+      description: >-
+        用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
+        asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
+        asset.setVoice / asset.clearVoice / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / notice.dismiss）。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。
+        改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [op], properties: { op: { type: string }, targetId: { type: string, nullable: true }, rev: { type: integer, nullable: true }, data: { type: object } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+        '400': { description: DIRECTOR_INPUT_INVALID }
+        '409': { description: DIRECTOR_EDIT_CONFLICT / DIRECTOR_ASSET_IN_USE / DIRECTOR_CLIP_HAS_MEDIA / DIRECTOR_CLIPS_HAVE_MEDIA }
+  /v1/ip-studio/director/works/{id}/tasks:
+    post:
+      tags: [ipstudio]
+      operationId: directorTask
+      description: >-
+        发生成任务（type：script / split / extract / plan / asset-image / board / video / export）。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。任务是原生 IpRun（host_type=director），
+        计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
+        必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，未确认 400 DIRECTOR_REFERENCE_UNCONFIRMED，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；
+        没有可用的全能参考或单首帧视频模型时规划 503 DIRECTOR_VIDEO_MODEL_UNAVAILABLE。首帧模式一镜一段，仅传已确认的分镜首帧，不带额外资产图或声音；绑定声音时需显式确认本次不带声音参考。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, clientRequestId], properties: { type: { type: string }, targetId: { type: string, nullable: true }, clientRequestId: { type: string, maxLength: 48 }, options: { type: object }, billing: { type: object, nullable: true }, maxCost: { type: integer, nullable: true } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+        '409': { description: DIRECTOR_TASK_RUNNING / STUDIO_PRICE_CHANGED / DIRECTOR_SCRIPT_EXISTS / DIRECTOR_EPISODES_EXIST / DIRECTOR_CLIPS_HAVE_MEDIA }
+  /v1/ip-studio/director/works/{id}/quote:
+    post:
+      tags: [ipstudio]
+      operationId: directorQuote
+      description: '片段视频报价：与真正提交用同一份输入（采用的分镜图 + 资产参考图 + 说话角色声音样本）和同一个报价函数；逐个片段返回积分或还差什么。不建任务、不扣积分。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type], properties: { type: { type: string, enum: [video] }, targetIds: { type: array, items: { type: string } } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { type: object, properties: { targetId: { type: string }, credits: { type: integer, nullable: true }, error: { type: string, nullable: true } } } } } } } } }
+  /v1/ip-studio/director/works/{id}/uploads:
+    post:
+      tags: [ipstudio]
+      operationId: directorUploadAudio
+      description: '角色声音样本上传（mp3 / wav / m4a），沿用 Studio 媒体导入的字节嗅探与 ffprobe 校验；返回 key 与实测时长，再用 asset.setVoice 绑定。'
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses:
+        '200': { description: ok }
+  /v1/ip-studio/director/works/{id}/pipeline:
+    post:
+      tags: [ipstudio]
+      operationId: directorPipeline
+      description: >-
+        一键做到分镜图或本集视频（action：start / pause / resume / retry / confirm-assets / stop / dismiss）。后台调度推进，关页继续；
+        付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [action], properties: { action: { type: string }, scope: { type: string, enum: [episode, work] }, episodeId: { type: string, nullable: true }, target: { type: string }, budget: { type: integer }, billing: { type: object, nullable: true } } } } } }
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
   /v1/ip-studio/runs/{id}:
     get:
       tags: [ipstudio]

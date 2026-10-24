@@ -35,7 +35,7 @@ import { adaptStudioVideoReferences, studioVideoAcceptsReferences, studioVideoSe
 import { StudioReferencePicker, StudioReferenceStrip } from "./studio-composer-references";
 import { StudioDurationControl } from "./studio-duration-control";
 import { studioVideoModeName } from "@/canvas-bridge/studio-video";
-import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
+import { StudioFrameIntentDialog, StudioVideoRewriteDetail, type StudioFrameIntentChoice } from "./studio-video-prompt-notes";
 import { studioFrameIntent, studioFrameTarget, type StudioFrameIntent } from "@/canvas-bridge/studio-video-prompt";
 import { studioDurationIssue, studioSpecConflict, studioSpecConflictText, studioSpecVideoDraft, type StudioSpecConflict } from "@/canvas-bridge/studio-composer-spec";
 import { StudioFrameCropHint } from "./studio-frame-crop-hint";
@@ -1024,9 +1024,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     return node.id;
   };
   const directorOrigin=nodes.find(n=>n.id===originId);
-  // The last finished take of this video node, for what the vendor actually used (read-only, after acceptance).
-  const composerRun=operation==="video"&&directorOrigin?.type===CanvasNodeType.Video?runs.find(r=>r.id===directorOrigin.metadata?.studio?.runId):undefined;
-  const composerTake=studioComposerTake(composerRun,directorOrigin?.metadata?.primaryVideoId);
   const directorPending=studioGenerationPending(directorOrigin)?directorOrigin:undefined;
   const referenceComposer=["script","storyboard","image","video"].includes(operation);
   type ContextAction={key:string;node:ReactNode};
@@ -1152,7 +1149,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     :nodes.find(n=>n.id===referenceIds[0]&&n.type===CanvasNodeType.Image);
   const cropRatios=nativeVideo?nativeVideo.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.map(c=>c.aspectRatio)||[]:['9:16','16:9','1:1'];
   const frameCropHint=cropFrame?<StudioFrameCropHint frame={cropFrame} ratio={ratio} ratios={cropRatios} onFix={changeComposerRatio}/>:null;
-  const composerParameterSummary=operation==="image"?[ratio,studioImageSizeLabel(selectedImageSize),`${imageCount} 张`].filter(Boolean).join(' · '):operation==="video"?[ratio,nativeVideo?videoDraft.tier:undefined,`${duration}秒`,`${videoCount}条`,nativeVideo?.supportsPromptOptimization&&videoDraft.keepPrompt?"按原文":undefined].filter(Boolean).join(' · '):[settings.genre||'创作设定',`${settings.episodeCount||1} 集`,`${settings.episodeDurationSec||30} 秒`].join(' · ');
+  const composerParameterSummary=operation==="image"?[ratio,studioImageSizeLabel(selectedImageSize),`${imageCount} 张`].filter(Boolean).join(' · '):operation==="video"?[ratio,nativeVideo?videoDraft.tier:undefined,`${duration}秒`,`${videoCount}条`,nativeVideo?.supportsPromptOptimization?(videoDraft.keepPrompt?"智能优化关":"智能优化开"):undefined].filter(Boolean).join(' · '):[settings.genre||'创作设定',`${settings.episodeCount||1} 集`,`${settings.episodeDurationSec||30} 秒`].join(' · ');
   const directorPanel = operation==="text" ? <StudioTextComposer actions={nodeActions(originId,["confirm"])} open={director} embedded={mode==="storyboard"} nodeId={originId} value={prompt} onChange={setPrompt}
     model={model} onModelChange={setModel} capabilities={capabilities} busy={busy||directorSaving}
     pending={directorPending?(directorPending.metadata?.studio?.runId?studioTaskLabel(directorPending.metadata.studio.task):busy?"正在提交修改要求…":"提交结果尚未确认，请确认原任务"):undefined}
@@ -1199,8 +1196,6 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
 
         {(operation==="image"||operation==="video")&&!capabilities?.mock&&model&&!chosenModel&&<p role="status">所选模型已不可用，请重新选择模型。</p>}
 </div>
-      {nativeVideo&&<StudioVideoPromptNote model={nativeVideo} prompt={prompt} keepPrompt={!!videoDraft.keepPrompt} lastTake={composerTake}
-        onShowRewrite={composerRun?()=>setRunDetail(composerRun):undefined}/>}
       {nativeVideo&&videoValidationError&&<p className="studio-composer-validation" role="status">{videoValidationError}</p>}{legacyVideoError&&<p className="studio-composer-validation" role="status">{legacyVideoError}</p>}
     </StudioFloatingPanel>;
   const activeRunCount=runs.filter(run=>run.status==="running").length;

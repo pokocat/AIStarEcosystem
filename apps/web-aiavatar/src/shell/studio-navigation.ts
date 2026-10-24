@@ -3,6 +3,7 @@ export const studioNavigation = [
   { href: '/dashboard', label: '首页' },
   { href: '/projects', label: '项目' },
   { href: '/create', label: '画布·自由创作' },
+  { href: '/director', label: 'AI 导演台' },
   { href: '/scenes', label: '场景·专项创作' },
   { href: '/templates', label: '灵感' },
   { href: '/assets', label: '资产' },

@@ -1,9 +1,12 @@
 // @vitest-environment jsdom
+import { useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { IpRun } from "@ai-star-eco/types";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import { StudioFrameIntentDialog, StudioVideoPromptNote, StudioVideoRewriteDetail, studioComposerTake } from "./studio-video-prompt-notes";
+import { StudioFrameIntentDialog, StudioVideoRewriteDetail } from "./studio-video-prompt-notes";
+import { StudioVideoControls } from "./studio-video-controls";
+import { studioVideoSettings, type StudioVideoDraft } from "@/canvas-bridge/studio-video";
 import { StudioTaskList } from "./studio-task-list";
 vi.mock("./studio-errors", () => ({ reportStudioError: vi.fn(), studioRunError: (r: IpRun) => r.errorMessage }));
 afterEach(cleanup);
@@ -11,7 +14,7 @@ afterEach(cleanup);
 const modes = [{ mode: "t2v", label: "文生视频" }, { mode: "i2v", label: "首帧", needsFirstFrame: true },
   { mode: "first_last_frame_video", label: "首尾帧", needsFirstFrame: true, needsLastFrame: true },
   { mode: "universal_reference_video", label: "全能参考", references: { image: { maxCount: 9 }, video: { maxCount: 1 }, audio: { maxCount: 3 }, maxTotal: 12 } }];
-const h3 = { endpointId: "h3", supportsPromptOptimization: true, contract: { modes } } as unknown as VideoStudioModel;
+const h3 = { endpointId: "h3", supportsPromptOptimization: true, contract: { modes, tiers: [{ tier: "768p" }] } } as unknown as VideoStudioModel;
 const other = { ...h3, endpointId: "other", supportsPromptOptimization: false } as VideoStudioModel;
 const PROMPT = "老周：等等？你说这片地要拆了，我怎么一点风声都没听到。表情：“等等”时愣住。";
 const REWRITTEN = "Lao Zhou freezes and says (S1) <d>[Chinese]等等</d>. He spreads his hands.";
@@ -21,33 +24,42 @@ const run = (candidates: NonNullable<IpRun["output"]["videoCandidates"]>): IpRun
 const done = (index: number, prompt?: string) => ({ index, jobId: `j${index}`, status: "done" as const, pct: 100, durationSec: 8,
   promptRewrite: { state: "done" as const, ...(prompt ? { prompt } : {}) } });
 
-test("before a run: recognised lines and the option to keep the text, only for models that rewrite", () => {
-  const { rerender, container } = render(<StudioVideoPromptNote model={h3} prompt={PROMPT} keepPrompt={false}/>);
-  expect(container.textContent).toContain("识别到1句台词：「老周：等等？你说这片地要拆了，我怎么一点风声都没听到」");
-  expect(container.textContent).toContain("勾选「按原文生成」");
-  rerender(<StudioVideoPromptNote model={h3} prompt={PROMPT} keepPrompt/>);
-  expect(container.textContent).toBe("");
-  rerender(<StudioVideoPromptNote model={other} prompt={PROMPT} keepPrompt={false}/>);
-  expect(container.textContent).toBe("");
-  rerender(<StudioVideoPromptNote model={h3} prompt="一只猫在窗台上打盹" keepPrompt={false}/>);
-  expect(container.textContent).toBe("");
+test.each([false, true, undefined])("smart optimization reflects a saved keepPrompt=%s and toggles the submitted option", (keepPrompt) => {
+  const submitted = vi.fn();
+  function Host() {
+    const [draft, setDraft] = useState<StudioVideoDraft>({ mode: "t2v", tier: "768p", keepPrompt });
+    return <><StudioVideoControls model={h3} draft={draft} onChange={setDraft} nodes={[]} referenceIds={[]} onReferences={vi.fn()} onLibrary={vi.fn()} section="settings"/>
+      <button onClick={() => submitted(studioVideoSettings(draft.mode, draft.tier, [], undefined, undefined, draft.keepPrompt))}>生成</button></>;
+  }
+  const { container } = render(<Host/>);
+  const checkbox = screen.getByRole("checkbox", { name: "智能优化" }) as HTMLInputElement;
+  expect(checkbox.checked).toBe(!keepPrompt);
+  expect(screen.getByText("由模型端自动优化提示词，可自行选择是否开启。")).toBeDefined();
+  expect(container.textContent).not.toMatch(/按原文生成|台词|删掉|改写/);
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  expect(submitted.mock.lastCall?.[0].optimizePrompt).toBe(keepPrompt ? false : undefined);
+  fireEvent.click(checkbox);
+  fireEvent.click(screen.getByRole("button", { name: "生成" }));
+  expect(submitted.mock.lastCall?.[0].optimizePrompt).toBe(keepPrompt ? undefined : false);
 });
 
-test("after a run: the lines the vendor dropped, said as after-the-fact, with the real description one click away", () => {
-  const take = studioComposerTake(run([done(0, REWRITTEN)]), "r1");
-  const onShow = vi.fn();
-  render(<StudioVideoPromptNote model={h3} prompt={PROMPT} keepPrompt={false} lastTake={take} onShowRewrite={onShow}/>);
-  expect(screen.getByRole("status").textContent).toContain("上次出片前，模型改写描述时没有保留台词「你说这片地要拆了」「我怎么一点风声都没听到」");
-  fireEvent.click(screen.getByRole("button", { name: "看模型实际用的描述" }));
-  expect(onShow).toHaveBeenCalledOnce();
+test("models without automatic optimization do not show the option", () => {
+  render(<StudioVideoControls model={other} draft={{ mode: "t2v", tier: "768p" }} onChange={vi.fn()} nodes={[]} referenceIds={[]} onReferences={vi.fn()} onLibrary={vi.fn()} section="settings"/>);
+  expect(screen.queryByRole("checkbox", { name: "智能优化" })).toBeNull();
 });
 
 test("the run input view shows what each take was generated from", () => {
   render(<StudioVideoRewriteDetail run={run([done(0, REWRITTEN), { ...done(1), promptRewrite: { state: "off" } }])}/>);
-  expect(screen.getByText("候选 1 · 模型实际用的描述")).toBeDefined();
+  expect(screen.getByText("候选 1 · 智能优化结果")).toBeDefined();
   expect(screen.getByText(REWRITTEN)).toBeDefined();
-  expect(screen.getByRole("status").textContent).toContain("老周：「你说这片地要拆了」「我怎么一点风声都没听到」（只留下了「等等」）");
-  expect(screen.getByText("候选 2 · 按原文生成")).toBeDefined();
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByText("候选 2 · 智能优化 · 已关闭")).toBeDefined();
+});
+
+test("a completed optimization without returned content is not shown as an available result", () => {
+  render(<StudioVideoRewriteDetail run={run([done(0)])}/>);
+  expect(screen.getByText("智能优化 · 未返回内容")).toBeDefined();
+  expect(screen.queryByText("智能优化结果")).toBeNull();
 });
 
 test("a model or older job without a rewrite report shows nothing extra", () => {
@@ -55,11 +67,11 @@ test("a model or older job without a rewrite report shows nothing extra", () => 
   expect(container.textContent).toBe("");
 });
 
-test("the task list points out a take that lost lines", () => {
+test("the task list omits dialogue rewrite warnings", () => {
   const props = { runs: [run([done(0, REWRITTEN)])], nodes: [], unconfirmed: [], loading: false, busy: false, hasMore: false, refreshErrors: {},
     titleFor: () => "视频", onInput: vi.fn(), onLocate: vi.fn(), onCancel: vi.fn(), onRetry: vi.fn(), onReload: vi.fn(), onMore: vi.fn() };
   render(<StudioTaskList {...props}/>);
-  expect(screen.getByText("出片前模型改写描述时删掉了部分台词，可在「查看输入」里对照")).toBeDefined();
+  expect(screen.queryByText(/台词|删掉|改写描述/)).toBeNull();
 });
 
 test("frame question: three explicit answers; the offer names the mode that holds the pictures", () => {

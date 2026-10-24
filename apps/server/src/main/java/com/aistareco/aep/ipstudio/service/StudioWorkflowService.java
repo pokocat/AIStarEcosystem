@@ -330,6 +330,82 @@ public class StudioWorkflowService {
         return projects.toRunDto(run);
     }
 
+    /**
+     * AI 导演台的文字任务（写剧本 / 拆集 / 提取资产 / 规划片段）。
+     *
+     * <p>和画布文字创作是同一条链：默认文本模型、按量计价、先冻结最大额度、afterCommit 派发、
+     * worker 按实际 Token 结算、失败全退。宿主是导演作品（{@code hostId}），归属与加锁由调用方做。
+     * 测试响应模式下 worker 走 {@code DirectorFixtures}，零成本并标 mock。
+     *
+     * @param meta 写进 inputs._director：任务名、目标、提交时的内容指纹，结果回投时据此判断是否还能用
+     */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt,
+                                       int maxTokens, String clientRequestId, ObjectNode meta,
+                                       com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
+        requireText(clientRequestId, 64, "请求编号");
+        ObjectNode canonical=mapper.createObjectNode().put("nodeId",nodeId).put("system",systemPrompt).put("user",userPrompt);
+        String fingerprint=hash(write(canonical));
+        IpRun prior=runs.findByProjectIdAndClientRequestId(hostId,clientRequestId).orElse(null);
+        if(prior!=null) {
+            StudioRunBilling.requireSamePayer(prior,billingSelection);
+            if(!fingerprint.equals(prior.getInputFingerprint()))throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的内容已改变，请重新提交");
+            return projects.toRunDto(prior);
+        }
+        AiModelInvocationService.ResolvedEndpoint textEndpoint=null;
+        long cost=0;
+        var chatRate=(com.aistareco.aep.service.AiChatTokenPricing.Rate)null;
+        if(!fixtures.enabled()) {
+            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,null,"studio").orElseThrow(()->
+                    new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系管理员配置"));
+            else textEndpoint=scenePolicies.resolve("studio","script",null,pricing.ipIdentity()).resolved();
+            chatRate=chatRate(textEndpoint.endpoint().getId());
+            if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+            cost=chatRate.maxCost();
+            if(maxCost==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
+        }
+        IpRunService.requireApprovedCost(maxCost,cost);
+        String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
+        ObjectNode inputs=mapper.createObjectNode();
+        inputs.put("operation","director").put("mock",fixtures.enabled());
+        if(billingSelection!=null)inputs.set("billing",mapper.valueToTree(billingSelection));
+        inputs.set("_director",meta);
+        var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
+        execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
+        if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
+        int budget=maxTokens;
+        if(chatRate!=null) {
+            execution.set("tokenPricing",mapper.valueToTree(chatRate));
+            execution.put("billingUnit","per_token");
+            budget=Math.min(budget,chatRate.maxOutputTokens());
+            if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
+        }
+        execution.put("maxTokens",budget);
+        var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,billingSelection,IpRunService.REF_TYPE,id,
+                execution.path("endpointId").asText(null),cost,"AI 导演台");
+        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"AI 导演台");
+        IpRun run=IpRun.builder().id(id).projectId(hostId).hostType(IpRun.HOST_DIRECTOR).ownerUserId(userId).nodeId(nodeId)
+                .kind("studio-director").status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
+                .clientRequestId(clientRequestId).inputFingerprint(fingerprint).inputJson(write(inputs))
+                .outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
+        StudioRunBilling.apply(run,billing);
+        runs.save(run);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try {worker.execute(id);} catch(RuntimeException e){worker.reject(id,e);}
+            }
+        });
+        return projects.toRunDto(run);
+    }
+
+    /** 导演台估价用：默认文本模型一次调用最多冻结多少、默认出图模型每张多少。 */
+    public long[] directorPrices() {
+        var caps=capabilities();
+        long text=caps.textModels().stream().filter(TextModel::isDefault).findFirst()
+                .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().maxCost()).orElse(caps.textCost());
+        return new long[]{text,caps.imageCost()};
+    }
+
     private void validateCreativeRequest(RunRequest request) {
         if("recreation".equals(request.operation()) && (request.scriptEdit()!=null||request.textEdit()!=null||Boolean.TRUE.equals(request.readVisuals())||request.settings()!=null||request.episodeNo()!=null||request.history()!=null||request.references()!=null&&!request.references().isEmpty()||request.mode()!=null&&!"segments".equals(request.mode())||request.packaging()!=null))
             throw bad("STUDIO_INPUT_INVALID","复刻创作只接受所选参考视频和分析要求");

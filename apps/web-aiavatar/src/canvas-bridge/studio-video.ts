@@ -38,7 +38,7 @@ export function studioVideoCanvasForConfig(model:VideoStudioModel,tier:string,si
   return canvas;
 }
 export type StudioVideoAsset = {mediaType:VideoStudioMediaType;storageKey?:string};
-/** keepPrompt：「按原文生成」，请厂商出片前不改写描述（只对 supportsPromptOptimization 的模型生效）。 */
+/** keepPrompt：智能优化开关的反向存储值，true 表示不让厂商改写描述（只对 supportsPromptOptimization 的模型生效）。 */
 export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firstId?:string;lastId?:string;keepPrompt?:boolean};
 
 /**
