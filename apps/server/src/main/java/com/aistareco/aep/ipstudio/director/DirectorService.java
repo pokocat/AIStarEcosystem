@@ -585,18 +585,28 @@ public class DirectorService {
     private record Bound(String assetId, String name, String kind, String key, String label) {}
 
     /** 片段实际用到的参考图：角色 → 场景 → 道具，每个都要有已采用的图；缺了就报具体是哪个。 */
+    /**
+     * 片段要交给模型的画面资产，固定顺序：角色 → 场景 → 道具，同类按片段里的顺序，只出声音的不算。
+     * 提示词里的「图N」（refresh）和真正提交的参考图（boundRefs）都从这里取，两边编号不会错位。
+     */
+    private List<JsonNode> visualAssets(ObjectNode c, JsonNode clip) {
+        List<JsonNode> out = new ArrayList<>();
+        for (String kind : List.of("character", "scene", "prop"))
+            for (JsonNode idNode : clip.path("assetIds")) {
+                JsonNode a = findOrNull(c, "assets", idNode.asText());
+                if (a != null && kind.equals(a.path("kind").asText()) && !audioOnly(a)) out.add(a);
+            }
+        return out;
+    }
+
     private List<Bound> boundRefs(ObjectNode c, JsonNode clip, boolean requireConfirmed) {
         List<Bound> out = new ArrayList<>();
         List<String> missing = new ArrayList<>(), unconfirmed = new ArrayList<>();
-        for (String kind : List.of("character", "scene", "prop")) {
-            for (JsonNode idNode : clip.path("assetIds")) {
-                JsonNode a = findOrNull(c, "assets", idNode.asText());
-                if (a == null || !kind.equals(a.path("kind").asText()) || audioOnly(a)) continue;
-                String key = adoptedKey(a.path("image"));
-                if (key == null) { missing.add(a.path("name").asText()); continue; }
-                if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(a.path("name").asText());
-                out.add(new Bound(a.path("id").asText(), a.path("name").asText(), kind, key, "图" + (out.size() + 1)));
-            }
+        for (JsonNode a : visualAssets(c, clip)) {
+            String key = adoptedKey(a.path("image"));
+            if (key == null) { missing.add(a.path("name").asText()); continue; }
+            if (requireConfirmed && "auto".equals(a.path("image").path("adoptedBy").asText())) unconfirmed.add(a.path("name").asText());
+            out.add(new Bound(a.path("id").asText(), a.path("name").asText(), a.path("kind").asText(), key, "图" + (out.size() + 1)));
         }
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_REFERENCE_MISSING",
                 "缺少参考图：" + String.join("、", missing) + "。请在「资产」中生成或上传", Map.of("names", missing));
@@ -1692,12 +1702,8 @@ public class DirectorService {
         for (JsonNode clipNode : c.path("clips")) {
             ObjectNode clip = (ObjectNode) clipNode;
             List<DirectorPrompts.Ref> refs = new ArrayList<>();
-            for (String kind : List.of("character", "scene", "prop"))
-                for (JsonNode idNode : clip.path("assetIds")) {
-                    JsonNode a = findOrNull(c, "assets", idNode.asText());
-                    if (a == null || !kind.equals(a.path("kind").asText()) || audioOnly(a)) continue;
-                    refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), kind, a.path("name").asText()));
-                }
+            for (JsonNode a : visualAssets(c, clip))
+                refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
             if (!clip.path("boardPromptCustom").asBoolean(false))
                 clip.put("boardPrompt", DirectorPrompts.boardPrompt(c.path("settings"), clip, refs, names));
             List<DirectorPrompts.Ref> videoRefs = new ArrayList<>();
