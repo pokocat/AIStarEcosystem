@@ -18,8 +18,15 @@ public final class DirectorFixtures {
     public static JsonNode output(ObjectMapper om, JsonNode meta) {
         ObjectNode out = om.createObjectNode();
         switch (meta.path("task").asText()) {
-            case "script" -> out.put("title", "旧书店的红信封").put("logline", "林夏在旧书店找到一封写给自己的信。")
-                    .put("content", """
+            case "script" -> {
+                out.put("title", "旧书店的红信封").put("logline", "林夏在旧书店找到一封写给自己的信。");
+                ObjectNode o = out.putObject("outline").put("world", "老城区一家快关门的旧书店，夜里十点后店里的信会自己出现。")
+                        .put("plot", "起：林夏收到写给自己的信。承：信里写着明天会发生的小事。转：信的笔迹是她自己的。合：她决定给过去的自己回信。")
+                        .put("reversals", "第 2 集：敲门的人不在门外；伏笔是第 1 集桌上那盏一直亮着的灯。")
+                        .put("theme", "没说出口的道歉，晚一点说也算数。");
+                o.putArray("characters").addObject().put("name", "林夏").put("age", "28").put("identity", "书店夜班店员")
+                        .put("secret", "三年前没能参加父亲的葬礼").put("flaw", "嘴笨，一紧张就抠手指").put("arc", "从逃避到主动回信");
+                out.put("content", """
                             ## 第1场 旧书店 · 夜
                             林夏推开旧书店的木门走进来，店里只亮着桌上一盏灯。中央木桌上放着一个暗红色信封。
                             林夏：这么晚了，怎么还有人留东西？
@@ -30,6 +37,7 @@ public final class DirectorFixtures {
                             林夏：谁在外面？
                             门外没有回答，只有风声。
                             """);
+            }
             case "split" -> {
                 int count = Math.max(1, meta.path("paragraphCount").asInt(1));
                 ArrayNode episodes = out.putArray("episodes");

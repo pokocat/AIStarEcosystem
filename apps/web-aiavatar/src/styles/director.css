@@ -478,3 +478,35 @@ html:not([data-layout="desktop"]) .director-shell :is(.director-voice-chip, .dir
 .director-prompt-tabs { display: inline-flex; gap: 2px; padding: 2px; border-radius: 8px; background: rgba(0, 0, 0, .06); }
 .director-prompt-tabs button { min-height: 26px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 600; cursor: pointer; }
 .director-prompt-tabs button[aria-pressed="true"] { background: var(--ip-paper); color: var(--ip-ink); box-shadow: 0 1px 2px rgba(0,0,0,.06); }
+
+/* 故事大纲：剧本页最上面，先说清全剧讲什么。 */
+.director-outline { border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); }
+.director-outline-head { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 10px 12px; border: 0; background: transparent; color: var(--ip-ink); text-align: left; cursor: pointer; }
+.director-outline-head b { flex-shrink: 0; font-size: 14px; }
+.director-outline-head span { flex: 1; min-width: 0; overflow: hidden; color: var(--ip-muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.director-outline.is-open .director-outline-head span { white-space: normal; }
+.director-outline-chevron { flex-shrink: 0; margin-left: auto; color: var(--ip-muted); transition: transform 160ms ease; }
+.director-outline.is-open .director-outline-chevron { transform: rotate(90deg); }
+.director-outline-body { display: flex; flex-direction: column; gap: 12px; padding: 0 12px 12px; }
+.director-outline-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 8px; }
+.director-outline-people article { min-width: 0; padding: 10px 12px; border-radius: 8px; background: var(--ip-soft); }
+.director-outline-people h4 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin-bottom: 4px; font-size: 14px; }
+.director-outline-people h4 small { color: var(--ip-muted); font-size: 12px; font-weight: 500; }
+.director-outline-people p { font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
+.director-outline-people em, .director-outline dt { color: var(--ip-muted); font-style: normal; }
+.director-outline-people em { margin-right: 6px; }
+.director-outline dl { display: flex; flex-direction: column; gap: 8px; }
+.director-outline dl > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; font-size: 13px; line-height: 1.7; }
+.director-outline dd { margin: 0; overflow-wrap: anywhere; white-space: pre-line; }
+/* 下一步：逐步做和一键制作并排。 */
+.director-next-choices { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 10px; }
+.director-next-choices > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 12px; border: 1px solid var(--ip-line); border-radius: 10px; }
+.director-next-choices > div.is-main { border-color: var(--ip-ink); }
+.director-next-choices h4 { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.director-next-choices h4 small { padding: 1px 6px; border-radius: 4px; background: var(--ip-green-soft); color: var(--ip-green); font-size: 11px; font-weight: 600; }
+.director-next-choices h4 small.is-shortcut, .director-shortcut-tag { padding: 1px 6px; border-radius: 4px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; font-style: normal; font-weight: 600; }
+.director-next-choices p { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.director-next-choices .director-actions { margin-top: auto; }
+.director-shortcut-tag { margin-left: 2px; }
+.director-shortcut-note { margin: -4px 0 4px; padding: 8px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-ink); font-size: 12px; line-height: 1.7; }
+html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns: minmax(0, 1fr); }

@@ -39,7 +39,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
       const billing = await chooseDirectorBilling("storyboard", cost);
       apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
     }, setError);
-    if (clips.length) modal.confirm({ title: `重新规划第 ${ep.no} 集？`, content: "现有片段和镜头（含手动修改）将被新规划替换。", okText: "重新规划", cancelText: "取消", onOk: go });
+    if (clips.length) modal.confirm({ title: `重写第 ${ep.no} 集分镜脚本？`, content: "现有片段和镜头（含手动修改）会被新写的分镜脚本替换。", okText: "重写", cancelText: "取消", onOk: go });
     else void go();
   };
   const pending = ep.pendingPlan;
@@ -55,20 +55,20 @@ export function DirectorStoryboard(props: WorkbenchProps) {
             {lim ? ` · 每段 ${secRange(lim.minSec, lim.maxSec)} · ${lim.name}` : " · 暂无可用视频模型，无法确定片段时长"}
             {lim?.mode === "frame" && <span className="director-frame-note" title="仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"> · 仅分镜首帧</span>}</p></div>
         <span className="director-spacer"/>
-        {planning ? <Spinner label="片段规划中"/> : <button type="button" className={clips.length ? "ip-brand-text-button" : "ip-brand-button"} disabled={!!busy || hasMedia || !lim}
+        {planning ? <Spinner label="正在写分镜脚本"/> : <button type="button" className={clips.length ? "ip-brand-text-button" : "ip-brand-button"} disabled={!!busy || hasMedia || !lim}
           title={hasMedia ? "请先删除已有分镜图的片段" : costText(work.pricing.textMax, work.pricing.mock)} onClick={plan}>
-          <LayoutGrid size={15}/>{clips.length ? "重新规划" : "规划片段"}</button>}
+          <LayoutGrid size={15}/>{clips.length ? "重写分镜脚本" : "写分镜脚本"}</button>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
-      {planning && <AiWorking compact title={`AI 正在规划第 ${ep.no} 集片段`} task={planning} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
+      {planning && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={planning} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
       {ep.planError && <InlineError message={ep.planError.message}/>}
-      {ep.planStale && <div className="director-warn">正文在规划后有修改，片段可能与正文不一致。</div>}
-      {pending && <div className="director-warn"><span>规划期间片段有修改，新规划（{pending.clips.length} 个片段）未覆盖现有内容。是否替换？</span>
-        <button type="button" disabled={!!busy || hasMedia} title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={() => void run("pending", async () => apply(await DirectorApi.edit(work.id, "episode.usePendingPlan", ep.id, null)), setError)}>替换为新规划</button>
+      {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。</div>}
+      {pending && <div className="director-warn"><span>写分镜脚本期间你改过片段，新写的版本（{pending.clips.length} 个片段）没有覆盖现有内容。要换成新版本吗？</span>
+        <button type="button" disabled={!!busy || hasMedia} title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={() => void run("pending", async () => apply(await DirectorApi.edit(work.id, "episode.usePendingPlan", ep.id, null)), setError)}>换成新版本</button>
         <button type="button" disabled={!!busy} onClick={() => void run("discard", async () => apply(await DirectorApi.edit(work.id, "episode.discardPendingPlan", ep.id, null)), setError)}>保留现有</button></div>}
       {clips.length === 0 && !planning && <div className="director-panel director-empty-panel">
         <Clapperboard size={26}/>
-        <p>将本集拆分为若干片段，每个片段生成一条视频。规划前请先在「资产」准备角色、场景和道具。</p>
+        <p>分镜脚本把本集切成几个片段，每段写好镜头、分镜图提示词和视频提示词，一段对应一条视频。写之前先在「资产」准备好角色、场景和道具。</p>
         {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
       </div>}
       {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
@@ -139,7 +139,7 @@ function EpisodeSidebar({ work, episodeId, onPick }: { work: DirectorWork; episo
       const done = clips.length > 0 && videos === clips.length;
       return <li key={e.id}><button type="button" aria-current={e.id === episodeId ? "true" : undefined} onClick={() => onPick(e.id)} title={`第 ${e.no} 集 · ${e.title}`}>
         <b>第 {e.no} 集</b><span>{e.title}</span>
-        <small className={done ? "is-done" : undefined}>{clips.length ? `视频 ${videos}/${clips.length}` : "待规划"}</small>
+        <small className={done ? "is-done" : undefined}>{clips.length ? `视频 ${videos}/${clips.length}` : "待写分镜"}</small>
       </button></li>;
     })}</ol>
   </nav>;
