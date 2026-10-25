@@ -181,7 +181,9 @@ class MaterialVideoWorkerTest {
         when(errors.recordTask(eq(error),eq("VIDEO_RECONCILIATION_PENDING"),eq("u1"),eq("mvj_test"))).thenReturn("ABCDEF234567");
         var worker=worker(new FakeUploader(false));org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLogs",errors);
         worker.recoverQueuedGeneration("mvj_test");worker.recoverQueuedGeneration("mvj_test");
-        assertEquals("VIDEO_RECONCILIATION_PENDING",job.getErrorCode());assertTrue(job.getErrorMessage().contains("HTTP 503"));
+        assertEquals("VIDEO_RECONCILIATION_PENDING",job.getErrorCode());
+        // The user sees one plain sentence plus the 追查号; the provider's own reason stays in the error log.
+        assertEquals(MaterialVideoJobService.STILL_PROCESSING+" · 追查号 ABCDEF234567",job.getErrorMessage());
         verify(errors).recordTask(error,"VIDEO_RECONCILIATION_PENDING","u1","mvj_test");
         verify(modelClient,never()).submit(any(),anyInt(),any(),any(),any(),any(),any(),any());
         verify(creditService,never()).releaseHold(anyString(),anyString(),anyString());

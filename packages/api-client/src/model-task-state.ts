@@ -7,6 +7,8 @@ export function modelTaskException(task?: { status?: string; errorCode?: string 
   if (['STUDIO_IMAGE_SUBMISSION_UNKNOWN', 'VIDEO_SUBMISSION_UNKNOWN', 'STUDIO_SPEECH_SUBMISSION_UNKNOWN', 'STUDIO_LIP_SYNC_SUBMISSION_UNKNOWN'].includes(code))
     return { needsReview: true, label: '生成遇到问题', detail: task.errorMessage || task.error_message, notice: notice('生成服务没有返回有效结果，系统正在结束本次任务并退回未完成部分的冻结积分。请刷新查看最新状态，显示失败后可以重新生成。') };
   if (['STUDIO_IMAGE_RECOVERING', 'VIDEO_RECONCILIATION_PENDING', 'STUDIO_SPEECH_RECOVERING', 'STUDIO_LIP_SYNC_RECOVERING'].includes(code))
-    return { needsReview: false, label: '正在重新查询结果', detail: task.errorMessage || task.error_message, notice: notice('暂时没有查到生成结果，系统会继续查询。你也可以刷新查看最新状态；刷新不会重新生成或再次扣费。') };
+    // One plain sentence (2026-10-24, the user's wording): the backend keeps querying the original task; how it does that
+    // is not the user's concern. The stored message (with its 追查号) stays in detail for error reports, not in the notice.
+    return { needsReview: false, label: '模型端仍在处理', detail: task.errorMessage || task.error_message, notice: '模型端仍在处理，请稍后查看状态' };
   return null;
 }

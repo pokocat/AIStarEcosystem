@@ -96,8 +96,9 @@ test('queue and unconfirmed submission do not show misleading percentages', () =
 test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING'])('video %s is explicit after refresh and has no 5 percent progress',errorCode=>{
   const task={status:'running',pct:5,errorCode};
   const view=render(<StudioMediaGenerationState media="video" task={task} confirmed/>);
-  expect(screen.getByRole('status').textContent).toContain(errorCode==='VIDEO_SUBMISSION_UNKNOWN'?'生成遇到问题':'正在重新查询结果');
+  expect(screen.getByRole('status').textContent).toContain(errorCode==='VIDEO_SUBMISSION_UNKNOWN'?'生成遇到问题':'模型端仍在处理');
   expect(screen.queryByRole('progressbar')).toBeNull();expect(screen.getByRole('status').textContent).not.toContain('5%');
-  expect(screen.getByRole('status').textContent).toContain('刷新');
+  expect(screen.getByRole('button',{name:'查看任务状态'})).toBeDefined();
+  if(errorCode==='VIDEO_SUBMISSION_UNKNOWN')expect(screen.getByRole('status').textContent).toContain('刷新');
   if(errorCode==='VIDEO_SUBMISSION_UNKNOWN')expect(view.container.querySelector('.studio-flow-generation-ring')).toBeNull();
 });

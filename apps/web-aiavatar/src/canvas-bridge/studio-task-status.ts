@@ -24,7 +24,7 @@ export function studioQueueNotice(queue?: AiGenerationQueuePosition | null): str
 }
 export function studioTaskLabel(task?: Task, compact = false): string {
   if (studioTaskNeedsReview(task)) return '生成遇到问题';
-  if (studioTaskRecovering(task)) return '正在重新查询结果';
+  if (studioTaskRecovering(task)) return '模型端仍在处理';
   if (studioTaskQueued(task)) return compact ? task?.queue?`排队第 ${task.queue.position} 位`:'排队中' : studioQueueNotice(task?.queue);
   if(task?.stage==='image.provider.recovering')return '正在查询原图片任务';
   if(task?.stage==='image.provider.queued')return '生成服务排队中';

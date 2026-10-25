@@ -1125,7 +1125,7 @@ class VideoStudioServiceTest {
             assertEquals("VIDEO_SUBMISSION_UNKNOWN",dto.errorCode());assertEquals("受理结果待核对",dto.stage());
             assertEquals("受理结果待核对",dto.errorMessage());
             pending.setStatus("generating");pending.setErrorCode("VIDEO_RECONCILIATION_PENDING");
-            assertEquals("正在查询原视频任务",svc.getJob(USER,"mvj_9").stage());
+            assertEquals("模型端仍在处理",svc.getJob(USER,"mvj_9").stage());
         }
 
         @Test
