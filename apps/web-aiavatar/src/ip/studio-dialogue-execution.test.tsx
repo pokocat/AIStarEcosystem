@@ -6,6 +6,20 @@ import { StudioDialogueExecution } from './studio-dialogue-execution';
 
 afterEach(cleanup);
 
+test('insufficient balance shows amounts and waits for an explicit continue without a settling occupation', async () => {
+  const onControl = vi.fn(async () => {});
+  const reason = '「开场钩子」没有提交：积分余额不足，本次操作需 320，当前可用 16。请补足积分后点击“继续”。本步尚未提交，未扣积分。';
+  const execution = { ...failedAnalysis, stage: 'production' as const, needsUserReason: reason,
+    steps: [{ ...failedAnalysis.steps[0], stage: 'production' as const, operation: 'video' as const,
+      status: 'needs_user' as const, errorCode: 'STUDIO_PAYMENT_REQUIRED', reason, runIds: [], quotedCost: 320 }] };
+  render(<StudioDialogueExecution execution={execution} budget={{ approvedCap: 320, spent: 0, inFlight: 0 }} checks={[]} onControl={onControl}/>);
+  expect(screen.getByText(reason)).toBeDefined();
+  expect(screen.queryByText(/90 分钟|积分在结算/)).toBeNull();
+  expect(onControl).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: '继续制作' }));
+  await waitFor(() => expect(onControl).toHaveBeenCalledWith('resume'));
+});
+
 // Shape of the production execution of 2026-10-18: the film study failed and the strip only offered 「停止」.
 const failedAnalysis = {
   id: 'PEX-1', projectId: 'P1', skillKey: 'reference-video-recreation', skillVersion: 1, stage: 'analysis', planRunId: 'IPR-1', planRevision: 2,

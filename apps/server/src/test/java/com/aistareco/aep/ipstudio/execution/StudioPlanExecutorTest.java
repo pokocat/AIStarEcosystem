@@ -239,6 +239,51 @@ class StudioPlanExecutorTest {
         assertEquals("[\"IPR-created\"]",step("v1").path("runIds").toString());assertEquals("running",step("v1").path("status").asText());
     }
 
+    @Test void insufficientBalanceStopsImmediatelyWithoutGhostOccupationOrAutomaticRetry() throws Exception {
+        execution("running",1000,videoStep("v1",320));
+        onSubmit=request->{throw new org.springframework.web.server.ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
+                "积分余额不足，本次操作需 320，当前可用 16");};
+        executor.advance("PEX-1");
+        assertEquals("needs_user",row.getStatus());
+        assertEquals("needs_user",step("v1").path("status").asText());
+        assertEquals(StudioPaymentMessage.CODE,step("v1").path("errorCode").asText());
+        assertFalse(step("v1").has("pendingRequestId"));
+        assertTrue(step("v1").path("runIds").isEmpty());
+        assertEquals(0,budget().path("inFlight").asLong());assertEquals(0,row.getInFlight());
+        assertTrue(state().path("needsUserReason").asText().contains("本次操作需 320，当前可用 16"));
+        assertTrue(state().path("needsUserReason").asText().contains("未扣积分"));
+        assertEquals("budget.update",published.get(published.size()-1));
+        assertEquals(0,publishedData.get(publishedData.size()-1).path("inFlight").asLong());
+        executor.advance("PEX-1");executor.advance("PEX-1");
+        assertEquals(1,submitted.size(),"insufficient balance never retries on a scheduled wake");
+        assertTrue(posted.isEmpty(),"no misleading 90-minute completion summary");
+        // Only an explicit user continuation permits the same still-unaccepted request to be submitted.
+        row.setStatus("running");
+        var resumed=(ObjectNode) state();((ObjectNode)resumed.path("steps").get(0)).put("status","pending");row.setStepsJson(resumed.toString());
+        onSubmit=request->"IPR-resumed";
+        executor.advance("PEX-1");
+        assertEquals(2,submitted.size());assertEquals("running",step("v1").path("status").asText());
+    }
+
+    @Test void rejectedPaymentKeepsOtherAcceptedRunsInFlight() throws Exception {
+        execution("running",1000,videoStep("v1",40),videoStep("v2",320));
+        onSubmit=request->{if(request.nodeId().endsWith("v2"))throw new org.springframework.web.server.ResponseStatusException(
+                HttpStatus.PAYMENT_REQUIRED,"积分余额不足，本次操作需 320，当前可用 16");return "IPR-"+request.nodeId();};
+        executor.advance("PEX-1");
+        assertEquals("needs_user",row.getStatus());assertEquals("running",step("v1").path("status").asText());
+        assertEquals(40,budget().path("inFlight").asLong());assertEquals(40,row.getInFlight());
+        verifyNoInteractions(runs);
+    }
+
+    @Test void otherHttpErrorsRemainUncertainAndPaymentReasonsAreSanitized() throws Exception {
+        execution("running",1000,videoStep("v1",320));
+        onSubmit=request->{throw new org.springframework.web.server.ResponseStatusException(HttpStatus.BAD_GATEWAY,"provider body");};
+        executor.advance("PEX-1");
+        assertEquals("submitted",step("v1").path("status").asText());assertEquals(320,row.getInFlight());
+        assertFalse(StudioPaymentMessage.message("secret upstream body").contains("secret"));
+        assertTrue(StudioPaymentMessage.message(null).contains("未扣积分"));
+    }
+
     @Test void aLostLeaseNeitherSubmitsNorOverwrites() throws Exception {
         execution("running",1000,videoStep("v1",40),videoStep("v2",40));
         row.setLeaseOwner("other");row.setLeaseUntil(Instant.now().plusSeconds(60));
