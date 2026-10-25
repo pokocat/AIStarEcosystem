@@ -28,6 +28,10 @@
 - [已定位问题与后续限制](#已定位问题与后续限制)
 - [早期候选计划](#早期候选计划)
 
+## 一次性运维入口待删除
+
+- [ ] **删除 `InternalGrantConversionController`**（`/api/internal/ops/grant-conversion/{preview,run}`，2026-10-26 用户让 Claude 直接在服务器上把客户积分转成 H3 赠款时加的）。只能在服务器本机带 `X-Internal-Secret` 调用，带 nginx 代理头一律 403；转换做完后随下一次 server 发布删掉，连同 `InternalGrantConversionControllerTest`。
+
 ## 模型赠款发布前待定（2026-10-25 评审）
 
 评审里的逻辑问题已修（见 `docs/model-billing-design.md`「评审后修正」）。下面是没改、发布前要拍板或处理的：
