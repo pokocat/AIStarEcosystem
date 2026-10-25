@@ -45,6 +45,9 @@ public class StudioWorkflowWorker {
     private final ObjectMapper mapper;
     private final TransactionTemplate transactions;
     private final DapAssetService assets;
+    // Only synchronous director text calls: accepted image/video/audio jobs keep their native recovery rules.
+    private final java.util.concurrent.ConcurrentMap<String,Thread> activeDirectorCalls = new java.util.concurrent.ConcurrentHashMap<>();
+    private volatile boolean stoppingForShutdown;
     public StudioWorkflowWorker(IpRunRepository runs,StudioFixtureProvider fixtures,FileStorageService storage,
             AiModelInvocationService models,DramaAssembleService assembly,CreditService credits,ObjectMapper mapper,
             PlatformTransactionManager manager,DapAssetService assets) {
@@ -72,6 +75,10 @@ public class StudioWorkflowWorker {
         AiModelInvocationService.AiModelResponse lastReply=null;
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
+            if("studio-director".equals(run.getKind())) {
+                activeDirectorCalls.put(id,Thread.currentThread());
+                if(stoppingForShutdown){interruptDirectorTask(id,true);return;}
+            }
             if(!progress(id,10,"studio.prepare")) return;
             JsonNode input=mapper.readTree(run.getInputJson());
             boolean mock=input.path("mock").asBoolean();
@@ -243,7 +250,7 @@ public class StudioWorkflowWorker {
             }
             finish(id,output,null);
         } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,null,e);}
-        finally {if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
+        finally {activeDirectorCalls.remove(id,Thread.currentThread());if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
         var exec=input.path("_exec");
@@ -406,6 +413,36 @@ public class StudioWorkflowWorker {
             terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.REQUEST_TIMEOUT,"IP_RUN_TIMEOUT","创作超时，冻结积分已释放，可重新生成"));
             return true;
         }));
+    }
+    /** Settle before interrupting: a late HTTP reply cannot overwrite the stopped run or charge it again. */
+    public boolean stopDirectorTask(String id) { return interruptDirectorTask(id,false); }
+
+    private boolean interruptDirectorTask(String id,boolean shutdown) {
+        boolean stopped=Boolean.TRUE.equals(transactions.execute(tx->{
+            IpRun run=billingLockedRun(id).orElse(null);
+            if(run==null||!"studio-director".equals(run.getKind()))
+                throw BusinessException.badRequest("DIRECTOR_TASK_NOT_STOPPABLE","这项任务不能在这里停止");
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
+            if(!shutdown)run.setCancelRequested(true);
+            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,
+                    shutdown?"STUDIO_RUN_INTERRUPTED":"IP_RUN_CANCELLED",
+                    shutdown?"服务更新中断了本次创作，冻结积分已释放，请重新生成":"已停止创作"));
+            return true;
+        }));
+        if(stopped) {
+            Thread call=activeDirectorCalls.get(id);
+            if(call!=null&&call!=Thread.currentThread())call.interrupt();
+            else if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);
+        }
+        return stopped;
+    }
+
+    @org.springframework.context.event.EventListener(org.springframework.context.event.ContextClosedEvent.class)
+    @org.springframework.core.annotation.Order(org.springframework.core.Ordered.HIGHEST_PRECEDENCE)
+    public void interruptDirectorsBeforeShutdown() {
+        stoppingForShutdown=true;
+        for(String id:List.copyOf(activeDirectorCalls.keySet()))try {interruptDirectorTask(id,true);}
+        catch(Exception error){log.warn("[studio] director shutdown settlement failed id={} reason={}",id,error.getClass().getSimpleName());}
     }
     private boolean progress(String id,int pct,String stage) {
         return Boolean.TRUE.equals(transactions.execute(tx->{

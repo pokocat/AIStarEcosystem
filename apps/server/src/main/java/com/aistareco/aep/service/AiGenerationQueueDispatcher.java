@@ -78,7 +78,7 @@ public class AiGenerationQueueDispatcher {
             switch(run.getKind()) {
                 case "generate" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE;}
                 case "identity" -> {type=AiGenerationQueueService.IMAGE;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
-                case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-asset-extract" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
+                case "studio-director","studio-text","studio-script","studio-storyboard","studio-assistant","studio-asset-extract" -> {type=AiGenerationQueueService.WORKFLOW;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_PERSONA;}
                 case "studio-audio" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_AUDIO;}
                 case "studio-lip-sync" -> {type=AiGenerationQueueService.SPEECH;purpose=com.aistareco.aep.model.AiModelPurpose.DAP_LIP_SYNC;}
                 default -> {continue;}

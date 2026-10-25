@@ -43,4 +43,21 @@ class StudioWorkerLifecycleTest {
         var run=run();var worker=worker();assertFalse(worker.expire("r",Instant.now().minusSeconds(60)));
         run.setStatus("done");run.setHeartbeatAt(Instant.now().minusSeconds(600));assertFalse(worker.expire("r",Instant.now().minusSeconds(60)));verifyNoInteractions(credits);
     }
+    @Test void stoppingAnOrphanDirectorReleasesItsHoldAndAllowsNoNewDispatch() {
+        var run=run();run.setKind("studio-director");run.setStartedAt(Instant.now().minusSeconds(60));
+        var worker=worker();assertTrue(worker.stopDirectorTask("r"));assertFalse(worker.stopDirectorTask("r"));
+        worker.runBlocking("r");
+        assertEquals("failed",run.getStatus());assertEquals("IP_RUN_CANCELLED",run.getErrorCode());
+        assertEquals(0,run.getCost());assertNotNull(run.getFinishedAt());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq("r"),anyString());verifyNoInteractions(models,fixtures);
+    }
+    @Test void stoppingAnAlreadyCompletedDirectorDoesNotRefundItsConsumption() {
+        var run=run();run.setKind("studio-director");run.setStatus("done");
+        assertFalse(worker().stopDirectorTask("r"));assertEquals(2,run.getCost());verifyNoInteractions(credits);
+    }
+    @Test void directorStopCannotCancelNativeMedia() {
+        var run=run();run.setKind("studio-video");
+        assertThrows(com.aistareco.common.BusinessException.class,()->worker().stopDirectorTask("r"));
+        assertEquals("running",run.getStatus());verifyNoInteractions(credits);
+    }
 }

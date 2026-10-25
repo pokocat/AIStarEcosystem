@@ -160,6 +160,20 @@ public class DirectorService {
         return view(userId, w, c);
     }
 
+    /** Validate ownership in a separate transaction; read the committed stop result in a fresh snapshot. */
+    public JsonNode stopTask(String userId,String id,String runId) {
+        newTx.executeWithoutResult(tx->{
+            locked(userId,id);
+            var run=runs.findById(runId).orElseThrow(()->BusinessException.notFound("IP_RUN_NOT_FOUND","任务不存在"));
+            if(!id.equals(run.getProjectId())||!userId.equals(run.getOwnerUserId()))
+                throw BusinessException.notFound("IP_RUN_NOT_FOUND","任务不存在");
+            if(!"studio-director".equals(run.getKind()))
+                throw invalid("这项任务不能在这里停止");
+        });
+        workflowWorker.stopDirectorTask(runId);
+        return newTx.execute(tx->get(userId,id));
+    }
+
     public record PatchRequest(String title, String idea, String draft, Long draftRev, JsonNode settings) {}
 
     @Transactional
@@ -1760,6 +1774,7 @@ public class DirectorService {
         List<IpRun> mine = newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         for (IpRun r : mine.subList(0, Math.min(40, mine.size()))) {
             tasks.addObject().put("id", r.getId()).put("target", r.getNodeId()).put("status", r.getStatus())
+                    .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&"studio-director".equals(r.getKind()))
                     .put("stage", r.getStage()).put("cost", r.getCost()).put("errorMessage", r.getErrorMessage())
                     .put("createdAt", r.getCreatedAt() == null ? null : r.getCreatedAt().toString());
         }

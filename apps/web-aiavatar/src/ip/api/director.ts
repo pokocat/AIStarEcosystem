@@ -61,6 +61,11 @@ export async function runTask(id: string, body: { type: DirectorTaskType; target
   return apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/tasks`, { method: "POST", body: JSON.stringify(body) });
 }
 
+export async function stopTask(id: string, runId: string): Promise<DirectorWork> {
+  if (USE_MOCK) demoUnavailable();
+  return apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}/tasks/${encodeURIComponent(runId)}/stop`, { method: "POST" });
+}
+
 export async function pipeline(id: string, body: { action: DirectorPipelineAction; scope?: "episode" | "work";
   episodeId?: string | null; target?: DirectorPipelineTarget; budget?: number; billing?: EnterpriseBillingSelection | null; auto?: boolean }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();

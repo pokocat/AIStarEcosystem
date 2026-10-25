@@ -196,6 +196,8 @@ export interface DirectorPipeline {
 
 export interface DirectorTask {
   id: string;
+  /** Only synchronous text tasks; native media jobs retain their own submission and cancellation rules. */
+  canStop?: boolean;
   /** script / split / extract[:ep] / plan:ep / asset:id / board:clip / video:clip / export:ep */
   target: string;
   status: "running" | "done" | "failed";

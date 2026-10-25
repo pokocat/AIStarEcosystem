@@ -155,6 +155,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
         step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
       <PipelineBar {...props}/>
     </div>}
+    {!live && <StopTextTasks {...props}/>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
     {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
     <InlineError message={error} onClose={() => setError("")}/>
@@ -172,6 +173,18 @@ export function DirectorWorkbench({ id }: { id: string }) {
       </section>
     </div>
   </main>;
+}
+
+function StopTextTasks({work,apply,setError}:WorkbenchProps) {
+  const {busy,run}=useBusy();
+  const tasks=work.tasks.filter(task=>task.status==="running"&&task.canStop);
+  if(!tasks.length)return null;
+  const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":"本次创作";
+  return <div className="director-notice"><span>可以停止后重新生成，已有内容会保留。</span>
+    {tasks.map(task=><button key={task.id} type="button" disabled={!!busy}
+      onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),setError)}>
+      {busy===task.id?"正在停止…":`停止${label(task.target)}`}</button>)}
+  </div>;
 }
 
 function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {

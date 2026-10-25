@@ -1216,6 +1216,8 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
 
+2026-10-26 导演台补充（本地修复，未发布）：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品的单次文字任务通过 `/director/works/{id}/tasks/{runId}/stop` 原子停止并释放冻结，已完成任务不退款，迟到响应不得覆盖终态；进程关闭时结清本进程仍在执行的导演文字任务。原生图片/视频/音频仍按各自受理和恢复规则处理。事件与限制见 `docs/audits/director-script-stale-and-latency-20261026.md`。
+
 
 ### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
 

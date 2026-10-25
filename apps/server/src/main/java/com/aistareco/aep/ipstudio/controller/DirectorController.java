@@ -59,6 +59,12 @@ public class DirectorController {
         return ApiResponse.of(director.task(uid(principal), id, req));
     }
 
+    /** 停止本人的同步文字任务，结清冻结后允许重新确认生成；不取消已受理的媒体任务。 */
+    @PostMapping("/works/{id}/tasks/{runId}/stop")
+    public ApiResponse<JsonNode> stopTask(Principal principal,@PathVariable String id,@PathVariable String runId) {
+        return ApiResponse.of(director.stopTask(uid(principal),id,runId));
+    }
+
     /** 片段视频报价：逐个片段给价格或说明还差什么，不建任务、不扣积分。 */
     @PostMapping("/works/{id}/quote")
     public ApiResponse<JsonNode> quote(Principal principal, @PathVariable String id, @RequestBody DirectorService.QuoteRequest req) {
