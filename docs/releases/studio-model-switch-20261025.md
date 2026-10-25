@@ -28,4 +28,17 @@
 
 ## 发布
 
-已合并原导演台分支的资产库导入、画布分组和下载入口，保留最新 main 的停止结算修复；正式构建与线上检查待记录。
+已合并原导演台分支的资产库导入、画布分组和下载入口，保留最新 main 的停止结算修复；正式构建 main SHA `a0dc63c3c638a812cd4c647a6c4168ee1e0809da`，发布号 `20261025-studio-model-selector`，仅 server + web-aiavatar。构建时工作区干净，mock/dev-login=0、enterprise=1、OIDC=id。
+
+
+### 线上结果
+
+- 正式运行 JAR 与 release 的 SHA256 同为 `509af4e22a0549f56d0d37ab20d0d6c75f615ab686a2477879668f04934c2916`。server / web-aiavatar active；全站 verify 最终 ALL GREEN。
+- 从生产域名获取模型按钮所在 chunk `5794.709b1e4242a57bd7.js` 返回 200，647999 字节，与构建内容 SHA256 一致，包含新按钮。
+- script 场景已改 selectable，DeepSeek 默认、Qwen3.8 27B 可选；image 场景默认 Seedream 4.5，其他已配置图片候选保留。sceneCatalog 两场景均 available；此状态只表示配置可用，不代表旧供应商余额已恢复。
+- 本次重启观察到后端 API 502 共 7 次采样，UTC 17:53:30.303–17:53:43.577，随后恢复 200；`/projects` 36 次采样全部 200。不能描述为无停机发布。
+- 初次 verify 把 `aistar.aibuzz.cn/admin` 当作后台探针得到 404；改用标准 IP 网关后 `/admin` 正常跳转，verify 全绿。未修改无关路由来迎合探针。
+- 生产浏览器进入 `/projects` 正常跳统一账号中心登录；当前没有已登录验收会话，既有测试身份 SUSPENDED，未绕过登录 / 身份状态。实际按钮交互与 360px 样式是本地组件验收；线上确认了运行制品、公开入口、实际配置和模型供应商调用，未声称完成真实账号端到端生成。
+- 无新迁移、发布前活跃 ip_run 为 0；未重提客户任务。保留旧供应商候选不代表其余额可用。
+
+证据位于同名目录：`manifest.env`、`runtime-acceptance.txt`、`verify.txt`、`restart-monitor.json`、`model-button-local.png`。旧运行 JAR 备份 `/opt/ai-star-eco/backups/studio-model-selector-before-20261025/server/app.jar`，旧前端制品在之前的 release 目录；模型配置回滚使用切换前备份，经管理接口恢复场景与费率，不删除客户任务 / 新端点 / 账本记录。
