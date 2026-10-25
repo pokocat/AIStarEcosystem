@@ -5,7 +5,7 @@ const PRIVATE = /预扣费|用户剩余额度|供应商.{0,12}(?:余额|额度|�
 const CONTEXT = /上游|供应商|服务方|生成服务|模型服务|模型端|数字人服务|引擎|provider|upstream|channel/i;
 const CODE = /^(?:AI_(?:CALL|PROVIDER)|IMAGE_|VIDEO_|MUSIC_|DAP_MODEL_|STUDIO_(?:IMAGE|SPEECH|LIP_SYNC)|CLIP_ENGINE_|DRAMA_(?:IMAGE|VIDEO|RENDER|AI)).*/i;
 const COST = /(?:USD|CNY|RMB|[¥￥$])\s*[+-]?(?:[0-9]|\.[0-9])/i;
-const WALLET = /^(?:PAYMENT_REQUIRED|STUDIO_PAYMENT_REQUIRED|INSUFFICIENT_CREDITS|INSUFFICIENT_BALANCE|BALANCE_INSUFFICIENT|(?:CREDITS?|WALLET|RECHARGE|WITHDRAW|ENTERPRISE_(?:POINTS|CREDITS?))_.*)$/;
+const WALLET = /^(?:PAYMENT_REQUIRED|STUDIO_PAYMENT_REQUIRED|STUDIO_USAGE_PENDING|INSUFFICIENT_CREDITS|INSUFFICIENT_BALANCE|BALANCE_INSUFFICIENT|(?:CREDITS?|WALLET|RECHARGE|WITHDRAW|ENTERPRISE_(?:POINTS|CREDITS?))_.*)$/;
 const TRACE = /(?:[·。]\s*)?追查号[：:\s]+([A-HJ-NP-Z2-9]{12})(?:\s*[—-].*)?$/;
 
 export function publicModelErrorMessage(message: string, code?: string): string {

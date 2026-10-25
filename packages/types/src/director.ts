@@ -200,7 +200,7 @@ export interface DirectorTask {
   canStop?: boolean;
   /** script / split / extract[:ep] / plan:ep / asset:id / board:clip / video:clip / export:ep */
   target: string;
-  status: "running" | "done" | "failed";
+  status: "running" | "stopping" | "done" | "failed";
   stage: string | null;
   cost: number;
   errorMessage: string | null;

@@ -110,7 +110,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   }, [id]);
 
   // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。
-  const active = !!work && (work.tasks.some(t => t.status === "running") || work.pipeline?.status === "running");
+  const active = !!work && (work.tasks.some(t => t.status === "running"||t.status==="stopping") || work.pipeline?.status === "running");
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 2500);
@@ -178,9 +178,10 @@ export function DirectorWorkbench({ id }: { id: string }) {
 function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const {busy,run}=useBusy();
   const tasks=work.tasks.filter(task=>task.status==="running"&&task.canStop);
-  if(!tasks.length)return null;
+  const settling=work.tasks.some(task=>task.status==="stopping");
+  if(!tasks.length&&!settling)return null;
   const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":"本次创作";
-  return <div className="director-notice"><span>可以停止后重新生成，已有内容会保留。</span>
+  return <div className="director-notice"><span>{settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。"}</span>
     {tasks.map(task=><button key={task.id} type="button" disabled={!!busy}
       onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),setError)}>
       {busy===task.id?"正在停止…":`停止${label(task.target)}`}</button>)}
