@@ -39,17 +39,12 @@ public final class DirectorFixtures {
                             """);
             }
             case "split" -> {
+                // 与真模型同一个契约：只给每集起点和正文起点，区间由程序构造。
                 int count = Math.max(1, meta.path("paragraphCount").asInt(1));
+                out.put("bodyStart", 0);
                 ArrayNode episodes = out.putArray("episodes");
-                if (count < 4) episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。")
-                        .put("startParagraph", 0).put("endParagraph", count - 1);
-                else {
-                    int half = count / 2;
-                    episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。")
-                            .put("startParagraph", 0).put("endParagraph", half - 1);
-                    episodes.addObject().put("title", "门外的人").put("summary", "敲门声响起，林夏回头。")
-                            .put("startParagraph", half).put("endParagraph", count - 1);
-                }
+                episodes.addObject().put("title", "红信封").put("summary", "林夏在旧书店发现写给自己的信。").put("startParagraph", 0);
+                if (count >= 4) episodes.addObject().put("title", "门外的人").put("summary", "敲门声响起，林夏回头。").put("startParagraph", count / 2);
             }
             case "extract" -> {
                 ArrayNode assets = out.putArray("assets");

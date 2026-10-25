@@ -7,6 +7,7 @@ import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { DirectorScriptFile } from "./director-script-file";
+import { ReferenceNotes, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
 import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
@@ -151,10 +152,13 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   const split = () => void run("split", async () => {
     let w = work;
     if (dirty) { w = await persist(); apply(w); }
-    const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("script", cost);
+    // 剧本里标好了分集：服务端按标题分、不扣积分，不用选付款方。
+    const free = splitsByHeadings(w, count);
+    const cost = free ? 0 : work.pricing.textMax;
+    const billing = free ? undefined : await chooseDirectorBilling("script", cost);
     apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing, maxCost: cost }));
   }, setError);
+  const byHeadings = splitsByHeadings(work, count);
   const rewriting = runningTask(work, "script");
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
@@ -165,14 +169,18 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
     <StoryOutline work={work}/>
+    <ReferenceNotes work={work} apply={apply} setError={setError}/>
     {rewriting && <AiWorking compact title="AI 正在重新写剧本" task={rewriting} detail="写好后替换下面的剧本，当前版本保留在历史中。"/>}
     {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
-      <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集" desc="AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。之后提取资产、写分镜脚本，每一步都能先看再改。"
+      work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
+      <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
+        desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
+          : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。"}
         onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
         <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
-        <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>AI 拆分</button>
+        <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
         <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
-        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
+        <span className="director-cost">{byHeadings ? "免费" : costText(work.pricing.textMax, work.pricing.mock)}</span>
       </NextChoices>}
     <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
   </section>;
@@ -199,9 +207,11 @@ function EpisodeList(props: WorkbenchProps) {
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline && !work.outline ? ` · ${work.logline}` : ""}</p></div>
       <span className="director-spacer"/>
       <button type="button" className="ip-brand-text-button" onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
+      <UndoSplit work={work} apply={apply} setError={setError}/>
       {work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
     <StoryOutline work={work} defaultOpen={!work.assets.length}/>
+    <ReferenceNotes work={work} apply={apply} setError={setError}/>
     {runningTask(work, "script") && <AiWorking compact title="AI 正在重新写剧本" task={runningTask(work, "script")} detail="写好后替换当前剧本和分集，当前版本保留在历史中。"/>}
     {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
       <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}

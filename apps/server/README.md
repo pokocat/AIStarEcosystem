@@ -1238,6 +1238,10 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **上下文窗口**：`DialogueContextWindow.trim`，最近 6 轮完整，更早的工具结果一行摘要、长参数换成合法占位 JSON（原生 tool_calls 与 tool 消息一一对应不变），估算超 80k 时降到 3 轮 / 1 轮；只影响发给模型的视图。
 - **其它**：`DialogueCanvasDigest.full` 写明全文字数与 `read_canvas` 分段参数，`read_canvas` 文字对象返回 `total`；`ChildRuns.follow` 最多等 10 分钟，拉片仍在进行时不再 `HANDED_OFF` 结束，交给模型告诉用户。提示词 `dap.ip_studio_skill_dialogue` 规则 14 + 分段读用法，`PromptTemplateSeeder.SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移、无新表。
 
+### 导演台分集与设定资料（2026-10-25，本地未发布）
+
+`DirectorPrompts.validateSplit` 只认每集 `startParagraph` 与 `bodyStart`，按起点构造首尾相接的区间（附 `headFrom / dropped / duplicates / modelEnd` 供说明）；`headingStarts` 识别剧本里标好的「第N集」，`DirectorService.splitByHeadings` 据此免费出结果。`director_work.content_json` 新增 `pendingSplit`、`reference / referenceRev`、`splitUndo`（只在服务端，出 wire 换成 `canUndoSplit`），view 另给 `draftEpisodeHeadings`；无迁移。edit op 新增 `split.save / split.discard / split.undo / reference.update / reference.toEpisode`，一键制作新增等待阶段 `confirm-split`。规则见 `specs/BUSINESS_RULES.md`「导演台分集」与导演台方案 §14。
+
 ### 导演长剧本任务容量（2026-10-24）
 
 导演剧本文件导入（2026-10-25，本地未发布）：`DirectorScriptImportController` 的 `POST /v1/ip-studio/director/script-import` 返回 `{text,format}`，可在创建作品前调用。`StudioStoryImportService.extractScript` 复用 Word/PDF 并支持 PPT/PPTX、RTF、常见文本文件；8 MiB、60000 字、PDF/PPT 100 页。现有画布 `extract` 保持 24000 字且只接受 PDF/Word。无新增依赖、表、模型调用、文件持久化或计费；格式、权限及预览保存语义见导演台方案 §3.1。

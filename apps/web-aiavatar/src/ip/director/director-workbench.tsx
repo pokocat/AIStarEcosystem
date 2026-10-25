@@ -42,6 +42,7 @@ function nextStep(work: DirectorWork, episodeId: string | null): { text: string;
   const planning = running.find(t => t.startsWith("plan:"));
   if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard" }; }
   if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
+  if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
   if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script" };
@@ -249,6 +250,7 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract, startPipelin
       {live && p && <>
         <PipelineSummary p={p}/>
         <div className="director-pipeline-actions">
+          {p.stage === "confirm-split" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={() => goTab("script")}>查看分集</button>}
           {p.stage === "confirm-extract" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={reviewExtract}>查看清单</button>}
           {p.stage === "confirm-assets" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>查看参考图</button>
             <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-assets")}>全部确认并继续</button></>}
