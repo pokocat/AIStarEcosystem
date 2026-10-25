@@ -105,6 +105,35 @@ class DirectorSplitTest {
     }
 
     @Test
+    void saveAndDiscardRequireTheExactPreviewIdentity() throws Exception {
+        create(headed(1));
+        String preview = splitTask("{}").path("pendingSplit").path("id").asText();
+        for (String op : List.of("split.save", "split.discard")) {
+            for (String target : new String[]{null, "stale-preview"}) {
+                BusinessException failure = assertThrows(BusinessException.class, () -> edit(op, target, null, "{}"));
+                assertEquals("DIRECTOR_SPLIT_EXPIRED", failure.getCode());
+                JsonNode current = service.get(USER, work.getId());
+                assertEquals(preview, current.path("pendingSplit").path("id").asText());
+                assertTrue(current.path("episodes").isEmpty());
+            }
+        }
+    }
+
+    @Test
+    void splitPreservesTheStoredDraftCharactersIncludingBlankLinesIndentationAndCrlf() throws Exception {
+        String original = "设定资料：保留这段。\r\n\r\n  # 第1集 下山\r\n\t师父：去吧。  \r\n\r\n  # 第2集 进城\r\n    掌柜：客官里边请。";
+        create(original);
+        String preview = splitTask("{}").path("pendingSplit").path("id").asText();
+        JsonNode v = edit("split.save", preview, null, "{}");
+        String reconstructed = v.path("reference").asText() + v.path("episodes").get(0).path("content").asText()
+                + v.path("episodes").get(1).path("content").asText();
+        assertEquals(original, reconstructed);
+        assertTrue(v.path("episodes").get(0).path("content").asText().contains("\r\n\t师父：去吧。  \r\n\r\n"));
+        v = edit("split.undo", null, null, "{}");
+        assertEquals(original, v.path("draft").asText());
+    }
+
+    @Test
     void aDifferentRequestedCountGoesToTheModel() throws Exception {
         create(headed(1));
         when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))

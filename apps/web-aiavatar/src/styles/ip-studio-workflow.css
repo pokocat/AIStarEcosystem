@@ -751,6 +751,12 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-starters button { paddi
 .ip-surface .studio-assistant-starter-field input::placeholder { color:var(--ink-3); opacity:1; }
 .ip-surface .studio-assistant-starter-field input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-tint); }
 .ip-surface .studio-assistant-starter-rewrite { margin:-4px 0 0; }
+.ip-surface .studio-assistant-starter-prompt-note { min-width:0; padding:12px 14px; border-radius:10px; background:var(--surface-2); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }
+.ip-surface .studio-assistant-starter-prompt-note strong { color:var(--ink); font-weight:600; }
+.ip-surface .studio-assistant-starter-prompt-note p { margin:4px 0 0; color:var(--ink-2); }
+.ip-surface .studio-assistant-starter-full-prompt { min-width:0; padding:12px 14px; border:1px solid var(--line-2); border-radius:10px; font-size:12px; line-height:1.8; }
+.ip-surface .studio-assistant-starter-full-prompt summary { cursor:pointer; color:var(--ink); font-weight:600; }
+.ip-surface .studio-assistant-starter-full-prompt>div { margin-top:10px; white-space:pre-wrap; overflow-wrap:anywhere; color:var(--ink-2); }
 @media (prefers-reduced-motion:reduce) { .ip-surface .studio-assistant-starter-option button { transition:none; } }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel.is-docked { border-radius:16px; border:1px solid var(--line-2); }
 html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-resize { display:none; }

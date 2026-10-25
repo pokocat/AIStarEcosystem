@@ -234,7 +234,7 @@ public class DirectorService {
             }
             case "split.save", "split.discard" -> {
                 JsonNode pending = c.path("pendingSplit");
-                if (!pending.isObject() || req.targetId() != null && !req.targetId().equals(pending.path("id").asText()))
+                if (!pending.isObject() || req.targetId() == null || !req.targetId().equals(pending.path("id").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_EXPIRED", "这份分集结果已失效，请重新拆分");
                 ObjectNode p = c.path("pipeline").isObject() ? (ObjectNode) c.path("pipeline") : null;
                 boolean live = p != null && Set.of("running", "waiting", "paused").contains(p.path("status").asText());
@@ -2072,10 +2072,18 @@ public class DirectorService {
         return t.length() <= 30 ? t : t.substring(0, 30) + "…";
     }
 
-    private static String joinParagraphs(List<String> ps, int from, int to) {
-        StringBuilder b = new StringBuilder();
-        for (int i = from; i <= to && i < ps.size(); i++) { if (b.length() > 0) b.append("\n\n"); b.append(ps.get(i)); }
-        return b.toString();
+    /** Numbered nonblank lines locate slices; copying the source retains indentation, blank lines and CRLF. */
+    private static String sliceParagraphs(String original, int from, int to) {
+        List<Integer> offsets = new ArrayList<>();
+        int offset = 0;
+        for (String line : original.split("(?<=\\n)", -1)) {
+            if (!line.isBlank()) offsets.add(offset);
+            offset += line.length();
+        }
+        if (from < 0 || to < from || to >= offsets.size()) throw new IllegalArgumentException("Invalid split paragraph range");
+        int start = from == 0 ? 0 : offsets.get(from);
+        int end = to + 1 < offsets.size() ? offsets.get(to + 1) : original.length();
+        return original.substring(start, end);
     }
 
     /**
@@ -2086,19 +2094,18 @@ public class DirectorService {
         String draft = c.path("draft").asText();
         if (c.path("episodes").size() > 0 || !hash(draft).equals(pending.path("draftHash").asText()))
             throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_EXPIRED", "剧本已修改，这份分集结果已失效，请重新拆分");
-        List<String> ps = paragraphs(draft);
         keepSplitUndo(c);
         JsonNode eps = pending.path("episodes");
         int bodyStart = eps.get(0).path("startParagraph").asInt();
         if (bodyStart > 0 && !preambleAsEpisode) {
-            String old = c.path("reference").asText().strip(), pre = joinParagraphs(ps, 0, bodyStart - 1);
+            String old = c.path("reference").asText().strip(), pre = sliceParagraphs(draft, 0, bodyStart - 1);
             c.put("reference", old.isEmpty() ? pre : old + "\n\n" + pre).put("referenceRev", c.path("referenceRev").asLong() + 1);
         }
         int no = 1;
         for (JsonNode e : eps) {
             int start = no == 1 && preambleAsEpisode ? 0 : e.path("startParagraph").asInt();
             ((ArrayNode) c.path("episodes")).add(newEpisode(c, no++, e.path("title").asText(), e.path("summary").asText(),
-                    joinParagraphs(ps, start, e.path("endParagraph").asInt())));
+                    sliceParagraphs(draft, start, e.path("endParagraph").asInt())));
         }
         c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
         c.putNull("pendingSplit");

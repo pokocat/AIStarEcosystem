@@ -796,7 +796,7 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
           <ChevronRight size={16} aria-hidden="true"/></button>)}</div> : <StudioAssistantStarterCards onPick={openStarter}/>}
       </div>}
       {starter && starterConfig && <StudioAssistantStarterForm config={starterConfig} slots={starterNodes} options={starter.options} fields={starter.fields}
-        edited={starterEdited && !sending && !store.outbox.length} onBack={leaveStarter} onRewrite={rewriteStarter}
+        prompt={text} edited={starterEdited && !sending && !store.outbox.length} onBack={leaveStarter} onRewrite={rewriteStarter}
         onOption={(id, value) => setStarter(current => current && { ...current, options: { ...current.options, [id]: value } })}
         onField={(id, value) => setStarter(current => current && { ...current, fields: { ...current.fields, [id]: value } })}
         onPick={() => composer.current?.mention()} onUpload={() => composer.current?.attach()} onRemove={unreference} onSubmit={() => void send()}/>}

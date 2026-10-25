@@ -30,6 +30,8 @@
 
 ## Studio 当前待办
 
+- [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
+
 - [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。
 
 ### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）

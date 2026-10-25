@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { composeStarter } from './studio-assistant-starters';
 import { StrictMode, cloneElement, forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -868,7 +869,7 @@ const clip = { ...character, id: 'clip', type: 'video', title: '带货样片', m
 const starterSkills = () => [skill('image-generation', '出图'), skill('script-writing', '写剧本与文案'), skill('video-generation', '出视频'), skill('reference-video-recreation', '参考视频复刻')];
 const card = (title: string) => screen.getByRole('button', { name: new RegExp(`^${title}`) });
 const starterForm = (title: string) => screen.getByRole('region', { name: title });
-const IP_DEFAULT = (photo: string) => `用${photo}做一个我的数字 IP 形象，保留脸型、发型和主要特征，写实风格，出一张多视角设定图（正面、侧面、背面加几个表情）。`;
+const IP_DEFAULT = (photo: string) => composeStarter('ip', { slots: { photos: photo === '我的照片' ? [] : [{ title: photo.trim().slice(1) }] } }).text;
 
 test('an empty conversation opens on four cards and what the canvas holds; with a node referenced the cards work on it', async () => {
   await ready(<Host initial={[character, text, clip]}/>);
@@ -908,21 +909,51 @@ test('制作个人 IP picks the only photo, writes the default sentence, follows
   expect(within(form).getByRole('group', { name: '你的照片' }).textContent).toContain('角色 A');
   expect(within(form).getByText('正脸清晰、光线均匀、只有一个人，效果最好。只用本人或已获授权的照片。')).toBeDefined();
   expect(composer().value).toBe(IP_DEFAULT(' @角色 A '));
-  expect(within(form).getByRole('button', { name: '写实' }).getAttribute('aria-pressed')).toBe('true');
-  expect(within(form).getByRole('button', { name: '多视角设定图' }).getAttribute('aria-pressed')).toBe('true');
+  expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(composer().value);
+  expect(form.querySelector('details')?.open).toBe(true);
+  expect(within(form).getByRole('button', { name: '超写实商务知性风' }).getAttribute('aria-pressed')).toBe('true');
+  expect(within(form).getByRole('button', { name: 'IP 全视角图鉴 · 3:4' }).getAttribute('aria-pressed')).toBe('true');
   await waitFor(() => expect(modeLabel().textContent).toBe('出图'));
-  fireEvent.click(within(form).getByRole('button', { name: 'Q 版' }));
-  fireEvent.click(within(form).getByRole('button', { name: '头像' }));
-  expect(composer().value).toBe('用 @角色 A 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。');
-  expect(within(form).getByRole('button', { name: 'Q 版' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(within(form).getByRole('button', { name: '3D潮玩Q版风' }));
+  fireEvent.click(within(form).getByRole('button', { name: '胸像头像特写 · 1:1' }));
+  const sentPrompt = composer().value;
+  expect(sentPrompt).toContain('出一张胸像头像特写。画幅比例：1:1。风格：3D潮玩Q版风。');
+  expect(sentPrompt).toContain('C4D渲染');
+  expect(sentPrompt).toContain('避免出现：');
+  expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(sentPrompt);
+  expect(within(form).getByRole('button', { name: '3D潮玩Q版风' }).getAttribute('aria-pressed')).toBe('true');
   expect(screen.queryByRole('button', { name: '按选项重写' })).toBeNull();
   expect(sendButton().disabled).toBe(false);
   fireEvent.click(sendButton());
   await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
-  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '用 @角色 A 做一个我的数字 IP 形象，保留脸型、发型和主要特征，Q 版风格，出一张头像。', skillKey: 'image-generation', pinnedNodeIds: ['c'] });
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: sentPrompt, skillKey: 'image-generation', pinnedNodeIds: ['c'] });
   // Sent: the card is gone and the cleared composer is not filled again.
   await waitFor(() => expect(screen.queryByRole('region', { name: '制作个人 IP' })).toBeNull());
   expect(composer().value).toBe('');
+});
+
+test('个人 IP scene ratio follows the selection, and hand edits survive until an explicit rewrite', async () => {
+  await ready();
+  fireEvent.click(card('制作个人 IP'));
+  const form = starterForm('制作个人 IP');
+  expect(within(form).queryByRole('group', { name: '画幅' })).toBeNull();
+  fireEvent.click(within(form).getByRole('button', { name: '场景化全身主视觉 · 横 / 竖' }));
+  expect(composer().value).toContain('画幅比例：9:16');
+  fireEvent.click(within(form).getByRole('button', { name: '16:9 横版' }));
+  expect(composer().value).toContain('16:9横版');
+  expect(composer().value).not.toContain('9:16');
+  fireEvent.change(composer(), { target: { value: composer().value + '\n服装改为深绿色。' } });
+  const edited = composer().value;
+  fireEvent.click(within(form).getByRole('button', { name: '未来科技元宇宙风' }));
+  fireEvent.click(within(form).getByRole('button', { name: '胸像头像特写 · 1:1' }));
+  expect(composer().value).toBe(edited);
+  expect(within(form).getByRole('region', { name: '完整提示词正文' }).textContent).toBe(edited);
+  expect(within(form).queryByRole('group', { name: '画幅' })).toBeNull();
+  expect(within(form).getByRole('note', { name: '提示词说明' }).textContent).toContain('你已手动修改提示词');
+  fireEvent.click(within(form).getByRole('button', { name: '按选项重写' }));
+  expect(composer().value).toContain('画幅比例：1:1。风格：未来科技元宇宙风。');
+  expect(composer().value).not.toMatch(/16:9|深绿色/);
+  expect(screen.queryByRole('button', { name: '按选项重写' })).toBeNull();
 });
 
 test('a card holds the send until its material is there; 「从画布选」 picks through the @ list and the sentence takes it in', async () => {
