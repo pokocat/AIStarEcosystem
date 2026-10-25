@@ -49,4 +49,3 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button><button type="button" className="ip-brand-button" disabled={busy === "settings" || unavailableImage} onClick={save}>保存</button></footer>
   </div>;
 }
-

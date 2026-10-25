@@ -22,10 +22,10 @@
 
 ## 本地验证
 
-- 前端助手 / 导演设置 / wiring 83 项通过；后端 DirectorImageModelTest、DirectorSplitTest、DirectorLibraryImportTest 共 26 项通过。
+- 前端助手 / 导演设置 / wiring 83 项通过；后端 DirectorImageModelTest、DirectorSplitTest、DirectorLibraryImportTest 均通过。
 - pnpm typecheck:all、typecheck:admin、后端离线 compile、check:api-contract 通过（契约扫描保留 24 个既有 handler 警告）。
 - 浏览器验证菜单切换、刷新恢复和 360px 面板布局；底部模型按钮与发送按钮同一行，不覆盖输入。测试预览页只用于本地验收，正式制品不包含。
 
 ## 发布
 
-待合入最新 main 后记录正式构建 SHA、服务范围和线上检查。
+已合并原导演台分支的资产库导入、画布分组和下载入口，保留最新 main 的停止结算修复；正式构建与线上检查待记录。
