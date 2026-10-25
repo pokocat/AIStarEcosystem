@@ -185,7 +185,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 用途 |
 |---|---|
 | [Studio JSON 的 JVM-Sandbox 临时热修复](runbooks/studio-json-jvm-sandbox.md) | 不重启的单方法异常恢复、隔离验证、冻结 / 激活 / 卸载与回退；官方 1.4.0、环回管理、无模型或账本调用（last-reviewed 2026-10-24） |
-| [`docs/runbooks/cost-pricing-feishu.md`](runbooks/cost-pricing-feishu.md) | 飞书供应商/模型/规格成本核算、积分自动计算、AI 维护与系统配置映射；未知报价留空，表格更新不等于生产发布（2026-10-22） |
+| [`docs/runbooks/cost-pricing-feishu.md`](runbooks/cost-pricing-feishu.md) | 飞书供应商/模型/规格成本核算、积分自动计算、AI 维护与系统配置映射；「快速定价」页输入报价直接出积分价；未知报价留空，表格更新不等于生产发布（2026-10-25） |
 | [`infra/README.md`](../infra/README.md) ★ | 阿里云 ECS + RDS + OSS 部署**单一真值源**：拓扑、环境拉起 SOP、env / nginx / systemd 索引、§5 vhost 与证书硬规则 |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | agent 部署技能：本地 artifact / 按应用 / GitHub Actions 三条链路 + 验证排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) · [`infra/oss/README.md`](../infra/oss/README.md) | RDS 创建 / 白名单 / Flyway baseline；OSS Bucket / CDN / RAM / 生命周期 |
@@ -219,6 +219,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
 
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
+- [Studio 图片分档配置](releases/studio-image-tiers-config-20261025.md)：GPT Image 2 / 2.5（flare）的 1K/2K/4K 端点、规格与分档售价已上生产配置，前台模型接口回读一致；未做付费出图实测，界面名待下次发版（last-reviewed 2026-10-25）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
 
