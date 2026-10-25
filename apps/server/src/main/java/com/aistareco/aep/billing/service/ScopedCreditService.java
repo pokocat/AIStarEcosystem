@@ -104,6 +104,10 @@ public class ScopedCreditService {
             throw conflict("SCOPED_GRANT_LIMIT","已达到活动或该账户的发放上限");
     }
 
+    public Instant campaignExpiry(String campaignId) {
+        return campaigns.expiryOf(campaignId).orElseThrow(()->bad("SCOPED_CAMPAIGN_NOT_FOUND","赠款活动不存在"));
+    }
+
     public List<CreditGrant> list(String walletId) { return grants.findByWalletIdOrderByExpiresAtAscIdAsc(walletId); }
 
     public Plan preview(String walletId,ModelBillingTarget target,long payable,boolean allowGrants,Instant now) {

@@ -1277,6 +1277,8 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 当前代码与定向回归证据均在设计稿中；此前分规格和供应商资源方案已归档，不作为交付要求。
 
+通用积分转赠款：`GET /admin/model-billing/conversions/candidates`、`POST .../conversions/preview`、`POST .../conversions`（仅 SUPER_ADMIN）。`ModelGrantConversionService` 每客户 REQUIRES_NEW：`CreditService.withdrawNonCashForGrant`（只扣个人钱包的 gift→license，ADJUST 流水，充值不动）+ `ScopedCreditService.grant`（`source=ops_grant_conversion`）。测试 `ModelGrantConversionIntegrationTest`（可加 `-Dmodel-scoped.jdbc` 指向 MySQL）。
+
 评审后修正：企业报价用 `EnterpriseBillingAuthorizationRepository.activeForActorWithoutLock`（只读事务不能加锁）；`ScopedCreditService.reserve` 只锁 `findSpendable` 里适用的赠款行，带资源计数的活动经 `CreditCampaignRepository.meteredIds` 先锁再读；`ModelBillingConfigService` 拒绝修改已发放活动的适用接入点（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；视频对账恢复只在 `ModelChargeService.usedPromotion` 为真时要求人工复核；赠款全额抵扣时不写零金额 FREEZE / SPEND / UNFREEZE。
 
 ### Studio JSON 格式自动恢复与临时热修复（2026-10-24）

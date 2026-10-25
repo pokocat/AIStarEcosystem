@@ -17,6 +17,10 @@ public interface CreditAdjustmentRequestRepository extends JpaRepository<CreditA
     /** 审批队列：按状态列出（最新在前）。 */
     List<CreditAdjustmentRequest> findByStatusOrderByCreatedAtDesc(CreditAdjustmentRequest.Status status);
 
+    /** Approved ordinary gifts/compensations since a time, used to find customers whose credits may be converted to model grants. */
+    List<CreditAdjustmentRequest> findByTypeInAndStatusAndCreatedAtGreaterThanEqualOrderByCreatedAtAsc(
+            java.util.Collection<CreditAdjustmentRequest.Type> types, CreditAdjustmentRequest.Status status, java.time.Instant since);
+
     /** 全部（最新在前）。 */
     List<CreditAdjustmentRequest> findAllByOrderByCreatedAtDesc();
 

@@ -583,6 +583,33 @@ components:
         resourceUsed:
           type: number
           minimum: 0
+    ModelGrantConversionLine:
+      type: object
+      description: 通用积分转模型赠款的单个客户。只动赠送与激活码积分，充值积分不参与。
+      required: [userId, walletId, displayName, phone, giftBalance, licenseBalance, rechargeBalance, totalBalance, keep, amount, status, message]
+      properties:
+        userId: {type: string}
+        walletId: {type: string, nullable: true}
+        displayName: {type: string, nullable: true}
+        phone: {type: string, nullable: true}
+        giftBalance: {type: integer, format: int64}
+        licenseBalance: {type: integer, format: int64}
+        rechargeBalance: {type: integer, format: int64}
+        totalBalance: {type: integer, format: int64}
+        keep: {type: integer, format: int64, minimum: 0}
+        amount: {type: integer, format: int64, minimum: 0, description: 本次转入赠款的积分}
+        status: {type: string, enum: [ready, nothing, converted, already, failed]}
+        message: {type: string, nullable: true}
+    ModelGrantConversionRequest:
+      type: object
+      required: [requestId, campaignId, keep, validDays, userIds, reason]
+      properties:
+        requestId: {type: string, pattern: '^[A-Za-z0-9_-]{8,64}$', description: 重试用同一个编号；本批已转换的客户跳过，不重复扣}
+        campaignId: {type: string}
+        keep: {type: integer, format: int64, minimum: 0}
+        validDays: {type: integer, minimum: 1, maximum: 365}
+        userIds: {type: array, maxItems: 200, items: {type: string}}
+        reason: {type: string, maxLength: 200}
     ScopedCreditGrant:
       type: object
       required:
@@ -6790,6 +6817,92 @@ paths:
           description: 配置无效
         '403':
           description: 无配置权限
+  /admin/model-billing/conversions/candidates:
+    get:
+      operationId: listModelGrantConversionCandidates
+      tags: [model-billing]
+      description: 最近 N 天有已批准赠送 / 补偿单的客户，按保留额算出可转换积分。只读。
+      parameters:
+      - in: query
+        name: days
+        schema: {type: integer, default: 3, minimum: 1, maximum: 90}
+      - in: query
+        name: keep
+        schema: {type: integer, format: int64, default: 1000, minimum: 0}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
+  /admin/model-billing/conversions/preview:
+    post:
+      operationId: previewModelGrantConversion
+      tags: [model-billing]
+      description: 只读预览指定客户的可转换积分。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userIds, keep]
+              properties:
+                userIds: {type: array, maxItems: 200, items: {type: string}}
+                keep: {type: integer, format: int64, minimum: 0}
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
+  /admin/model-billing/conversions:
+    post:
+      operationId: convertToModelGrant
+      tags: [model-billing]
+      description: 仅 SUPER_ADMIN。每个客户独立事务：扣赠送 / 激活码积分（ADJUST 账本）并发同额模型赠款；单个失败只回滚该客户。同 requestId 幂等。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ModelGrantConversionRequest'
+      responses:
+        '200':
+          description: 成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ModelGrantConversionLine'
+        '403':
+          description: 仅 SUPER_ADMIN
   /admin/model-billing/campaigns/{id}:
     put:
       operationId: updateCreditCampaign
