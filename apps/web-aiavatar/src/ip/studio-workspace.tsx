@@ -1100,16 +1100,19 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         setNodes(current=>current.map(n=>n.id===selected.id||n.id===original?{...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,includeInWork:n.id===selected.id}}}:n));setMode("work");
       }}>采用口型片段</button>);
     if(selected.type===CanvasNodeType.Audio && studio?.speechRequest && studio?.runId && meta?.status==="success") add("voice",<button type="button" onClick={()=>setVoiceAdoptId(selected.id)}>设为人物声音</button>);
-    if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey)}>下载配音</button>);
+    if(selected.type===CanvasNodeType.Audio && meta?.content) add("download-audio",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata?.storageKey).catch(e=>message.error(e))}><Download size={15}/>下载配音</button>);
     if((selected.type===CanvasNodeType.Image||selected.type===CanvasNodeType.Video)&&meta?.storageKey&&meta.content) add("download",<button type="button" onClick={()=>void downloadMedia(selected.metadata!.content!,selected.title,selected.metadata?.mimeType,selected.metadata!.storageKey).catch(e=>message.error(e))}><Download size={15}/>{selected.type===CanvasNodeType.Image?"下载图片":"下载视频"}</button>);
     if(selectedTakes && selectedTakes.length>1){
       add("compare",<button type="button" onClick={()=>setTakePicker(selected.id)}>比较版本</button>);
       add("take",<Select aria-label="采用版本" value={selected.type===CanvasNodeType.Image?meta?.primaryImageId:meta?.primaryVideoId} getPopupContainer={containers}
         onChange={id => chooseTake(selected.id,id)} options={selectedTakes.map((v,i) => ({value:v.id,label:v.id.endsWith(":comparison")?"原始对照结果":`版本 ${i+1}${v.status==="loading"?" · 生成中":v.status==="error"?" · 失败":""}`,disabled:v.status!=="success"||!v.storageKey}))}/>);
     }
-    const contextMore=contextItems.filter(a=>!excluded.includes(a.key));
+    // 下载放在「⋯」外面：收进去以后很多人找不到（2026-10-25 用户反馈）。
+    const shown=contextItems.filter(a=>!excluded.includes(a.key)),inlineKeys=["download","download-audio"];
+    const contextInline=shown.filter(a=>inlineKeys.includes(a.key)),contextMore=shown.filter(a=>!inlineKeys.includes(a.key));
     return <div className="studio-node-editor-actions" aria-label="节点编辑操作">
       <button type="button" className="studio-ask-assistant" title="把这个节点带进对话，让助手改它或接着做" onClick={()=>dispatchStudioCommand('assistant',selected.id)}><AiMark size={13}/>问助手</button>
+      {contextInline.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}
       {!!contextMore.length&&<Popover trigger="click" placement="bottomLeft" arrow={false} open={contextMoreOpen===selected.id} onOpenChange={open=>setContextMoreOpen(open?selected.id:undefined)} getPopupContainer={containers}
         content={<div className="studio-context-more" role="group" aria-label="更多操作" onClick={e=>{if((e.target as HTMLElement).closest('button'))setContextMoreOpen(undefined);}}>{contextMore.map(a=><Fragment key={a.key}>{a.node}</Fragment>)}</div>}>
         <button type="button" className="studio-context-more-button" aria-label="更多操作" title="更多操作" aria-expanded={contextMoreOpen===selected.id}><Ellipsis size={18}/></button>

@@ -40,6 +40,7 @@ import { StudioConnectionCreateMenu, type PendingStudioConnection } from './stud
 import { replaceStudioImage, STUDIO_IMAGE_UPLOAD_ACCEPT, validateStudioImageUpload } from '@/canvas-bridge/studio-image-upload';
 import { placeNodeInViewport } from '@/canvas-bridge/viewport-placement';
 import { StudioNodeTitle } from './studio-node-title';
+import { downloadMedia } from '@/canvas-bridge/download-media';
 import { replaceStudioVideo, STUDIO_VIDEO_UPLOAD_ACCEPT, validateStudioVideoUpload } from '@/canvas-bridge/studio-video-upload';
 import { StudioMediaGenerationState } from './studio-media-generation-state';
 import { StudioGroupDescription } from './studio-group-description';
@@ -443,6 +444,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     ...(target.type === CanvasNodeType.Video ? [{ key: 'upload-video', label: target.metadata?.storageKey ? '替换视频' : '上传视频', onClick: () => dispatchStudioCommand('upload-video', target.id) }] : []),
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
     ...(target.type === 'image' && target.metadata?.storageKey ? ['crop', 'mask', 'split-image'].map(action => ({ key: action, label: { crop: '裁剪图片', mask: '局部重绘', 'split-image': '拆分图片' }[action], onClick: () => dispatchStudioCommand(action, target.id) })) : []),
+    ...((target.type === CanvasNodeType.Image || target.type === CanvasNodeType.Video || target.type === CanvasNodeType.Audio) && target.metadata?.content && (target.type === CanvasNodeType.Audio || target.metadata.storageKey) ? [{ key: 'download', label: { image: '下载图片', video: '下载视频', audio: '下载音频' }[target.type as 'image'|'video'|'audio'], onClick: () => { const m = target.metadata!; void downloadMedia(m.content!, target.title, m.mimeType, m.storageKey).catch(e => message.error(e)); } }] : []),
     { key: 'copy', label: '复制节点', onClick: () => paste(true) },
     ...(canGroupSelectedNodes(selected, project.nodes) ? [{ key: 'group', label: '建立分组', onClick: () => group() }] : []),
     ...(canUngroupSelectedNodes(selected, project.nodes) ? [{ key: 'ungroup', label: '解除分组', onClick: () => group(true) }] : []),
