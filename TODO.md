@@ -47,6 +47,12 @@
 
 - [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。
 
+### 2026-10-26 · 积分切换到 1 元 = 100 积分
+
+- [ ] **后台改充值套餐与文本 Token 价**：99/299/799/2399 元 → 10,000/30,000/80,000/240,000 积分、不赠送；`ai.chat-token-pricing` qwen38 0.59/2.36、qwen3.6 0.27/1.59 积分/千 Token。数值见 `docs/releases/credit-ratio-switch-20261026.md`。
+- [ ] **没有成本数据的功能售价重定**：短剧文本、数字资产形象与衍生、带货脚本/素材视频、混剪、分发、旧数字人引擎、视频 720p、`studio.script` 仍是旧积分数字，按新比率折合人民币偏低，部分可能低于成本；需先补成本（飞书成本表）再定价。
+- [ ] **账户页「本月赠送 0」**：`AEP_DAP_MONTHLY_GRANT=0` 后账户页仍显示「本月赠送 0 · 已用 …」（`apps/web-aiavatar/src/proto/screen-more.tsx`），可改为不显示。
+
 ### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）
 
 - [ ] **补齐三个系列的正式配置和真实出图验收**（2026-10-25 进展：GPT Image 2 与 GPT Image 2.5〔flare〕的 1K/2K/4K 已配置上线，售价 30/30/40、35/35/45 旧积分，见 `docs/releases/studio-image-tiers-config-20261025.md`；仍缺 sunburst 报价与配置、4K 方图等其他画幅、各档真实出图尺寸验收，界面名「GPT Image 2 / 2.5」在 main `384fb9bb` 待发版）：代码已支持 GPT Image 2 / Flare / Sunburst 按 1K、2K、4K 路由与冻结报价；生产目前只有 GPT Image 2 的 1K/2K、30 积分/张。需核实并配置其余供应商型号、合法输出规格、场景开放及运营确认售价，再逐系列/档位核对前端选择、报价、供应商原图尺寸和唯一积分结算；禁止把代码发布当作真实出图已验收。证据见 `docs/releases/studio-image-resolution-release-20261025.md`。

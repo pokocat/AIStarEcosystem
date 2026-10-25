@@ -219,6 +219,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
 
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
+- [积分切换到 1 元 = 100 积分](releases/credit-ratio-switch-20261026.md)：有成本数据的售价按新比率上线（图片、视频、配音、口型、短剧分镜），停月赠送，服务端 `20261026-credit-ratio`；套餐与文本 Token 价待后台修改（last-reviewed 2026-10-26）。
 - [Studio 图片分档配置](releases/studio-image-tiers-config-20261025.md)：GPT Image 2 / 2.5（flare）的 1K/2K/4K 端点、规格与分档售价已上生产配置，前台模型接口回读一致；未做付费出图实测，界面名待下次发版（last-reviewed 2026-10-25）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
