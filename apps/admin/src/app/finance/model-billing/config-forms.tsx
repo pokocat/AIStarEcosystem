@@ -5,6 +5,7 @@ import type { CreditCampaign, ModelBillingTarget, ModelBillingTargetOption, Mode
 import { Input } from '@/components/ui/input';
 import * as api from '@/api/model-billing';
 import { AccountPicker, control, Field, isoInput, localInput, SaveForm, targetKey, targetLabel, TargetPicker } from './shared';
+import { SelectField } from '@ai-star-eco/ui/ui/select-field';
 
 type Common = { defaultTarget?:ModelBillingTarget; options: ModelBillingTargetOption[]; onSaved: () => void; onCancel: () => void };
 function Active({ value, set }: { value: boolean; set: (value: boolean) => void }) {
@@ -26,8 +27,8 @@ export function DiscountForm({ row, options, onSaved, onCancel,defaultTarget }: 
     <Field label="优惠名称"><Input required maxLength={128} value={name} onChange={e => setName(e.target.value)} placeholder="如 企业客户八折" /></Field>
     <TargetPicker options={options} value={target} onChange={setTarget} />
     <Field label="折扣（几折）" hint="8 表示八折。同一收费项取适用的最低折扣价，不重复叠加。"><Input required type="number" min="0.00001" max="10" step="0.00001" value={factor} onChange={e => setFactor(e.target.value)} /></Field>
-    <Field label="优惠对象" hint={audience==='enterprise'?'对企业主账号和所有子账号的企业积分消费生效，新加入的子账号自动继承。':undefined}><select className={control} value={audience} onChange={e => { setAudience(e.target.value as typeof audience); setAudienceId(''); }}>
-      <option value="all">所有客户</option><option value="user">指定个人</option><option value="enterprise">指定企业</option></select></Field>
+    <Field label="优惠对象" hint={audience==='enterprise'?'对企业主账号和所有子账号的企业积分消费生效，新加入的子账号自动继承。':undefined}><SelectField className={control} value={audience} onChange={e => { setAudience(e.target.value as typeof audience); setAudienceId(''); }}>
+      <option value="all">所有客户</option><option value="user">指定个人</option><option value="enterprise">指定企业</option></SelectField></Field>
     {audience !== 'all' && <AccountPicker key={audience} kind={audience} value={audienceId} valueLabel={audienceId === row?.audienceId ? row?.audienceLabel : undefined} onChange={setAudienceId} />}
     <Field label="开始时间"><Input required type="datetime-local" value={start} onChange={e => setStart(e.target.value)} /></Field>
     <Field label="结束时间"><Input required type="datetime-local" value={end} onChange={e => setEnd(e.target.value)} /></Field>

@@ -27,6 +27,8 @@ beforeEach(() => {
   mocks.grants.mockResolvedValue(page([])); mocks.savePrice.mockResolvedValue({}); mocks.saveDiscount.mockResolvedValue({}); mocks.saveCampaign.mockResolvedValue({});
 });
 afterEach(()=>{cleanup();window.history.replaceState({},'', '/');});
+/** SelectField keeps a hidden native select (data-select-native) that receives the same change events. */
+const nativeSelect = (label: string) => document.getElementById(screen.getByLabelText(label).getAttribute('data-select-native')!) as HTMLSelectElement;
 
 test('opening allowance settings from an endpoint row preselects that same endpoint',async()=>{
   window.history.replaceState({},'', '/finance/model-billing?endpointId=image-channel');
@@ -90,8 +92,8 @@ test('a personal discount can be configured before a customer has a wallet', asy
   render(<Page />); fireEvent.click(screen.getByRole('button', { name: '客户折扣' }));
   fireEvent.click(await screen.findByRole('button', { name: '新增折扣' }));
   fireEvent.change(screen.getByLabelText('优惠名称'), { target: { value: '新客户八折' } });
-  fireEvent.change(screen.getByLabelText('模型接入点'), { target: { value: targetKey(image.target) } });
-  fireEvent.change(screen.getByLabelText('优惠对象'), { target: { value: 'user' } });
+  fireEvent.change(nativeSelect('模型接入点'), { target: { value: targetKey(image.target) } });
+  fireEvent.change(nativeSelect('优惠对象'), { target: { value: 'user' } });
   fireEvent.click(await screen.findByRole('button', { name: '尚未消费的新客户' }));
   fireEvent.submit(screen.getByRole('form', { name: '新增客户折扣' }));
   await waitFor(() => expect(mocks.saveDiscount).toHaveBeenCalledWith(undefined, expect.objectContaining({ audience: 'user', audienceId: 'new-user', factor: 0.8 })));

@@ -23,7 +23,7 @@ class MusicGenUsageTest {
         var reason=org.mockito.ArgumentCaptor.forClass(String.class);verify(state).markFailed(eq("rejected"),reason.capture());
         assertTrue(reason.getValue().contains("provider rejected lyrics"));assertFalse(reason.getValue().contains("private-token"));
         verify(credits,times(1)).releaseHold(eq(MusicGenJobService.CREDIT_REF_TYPE),eq("rejected"),anyString());
-        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());
     }
     @Test void recordsActualVendorDurationAndOwnerEvenWhenDeliveryFails() {
         var state = mock(MusicGenJobState.class);

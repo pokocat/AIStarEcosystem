@@ -68,7 +68,7 @@ class StudioWorkflowWorkerJsonTest {
         assertEquals("两人相视一笑，没有言语。远处，孩子们的笑声传来，清脆悦耳。",
                 json.readTree(h.run().getOutputJson()).path("director").path("content").asText());
         assertEquals(2, h.run().getCost());
-        verify(h.credits()).commitHold(eq(IpRunService.REF_TYPE), eq("r"), eq(2L), anyString());
+        verify(h.credits()).commitHold(eq(IpRunService.REF_TYPE), eq("r"), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
     }
 
@@ -86,7 +86,7 @@ class StudioWorkflowWorkerJsonTest {
         assertFalse(h.run().getErrorMessage().contains("JsonParseException"));
         assertEquals(0, h.run().getCost());
         verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
         verify(h.errors()).attach(eq(h.run()), argThat(e -> e instanceof BusinessException && e.getCause() instanceof JsonProcessingException));
     }
 
@@ -98,7 +98,7 @@ class StudioWorkflowWorkerJsonTest {
         assertTrue(h.run().getErrorMessage().contains("截断"));
         assertEquals(0, h.run().getCost());
         verify(h.credits()).releaseHold(eq(IpRunService.REF_TYPE), eq("r"), anyString());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void syntaxRecoveryDoesNotBypassBusinessValidation() {
@@ -107,6 +107,6 @@ class StudioWorkflowWorkerJsonTest {
         assertEquals("failed", h.run().getStatus());
         assertEquals("AI_BAD_OUTPUT", h.run().getErrorCode());
         assertEquals(0, h.run().getCost());
-        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(h.credits(), never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

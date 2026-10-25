@@ -568,7 +568,7 @@ class IpRunWorkerTest {
         assertTrue(reload().getErrorMessage().contains(reason));assertEquals(0,reload().getCost());
         verify(upstream,times(1)).sendJson(any(),any());
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
-        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());
     }
     @Test void nativeAcceptedSecondImageRecoversOriginalCheckpointWithoutRepeatingFirstSpend() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);

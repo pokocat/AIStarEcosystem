@@ -6,6 +6,7 @@ import type { PaginationMeta } from '@/types/_shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import * as api from '@/api/model-billing';
+import { SelectField } from '@ai-star-eco/ui/ui/select-field';
 
 export const control = 'h-10 w-full rounded-md border border-input bg-background px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50';
 export const targetKey = (t: ModelBillingTarget) => t.endpointId;
@@ -33,11 +34,11 @@ export function Pager({ meta, onPage, disabled }: { meta?: PaginationMeta; onPag
 }
 export function TargetPicker({ options, value, onChange }: { options: ModelBillingTargetOption[]; value?: ModelBillingTarget; onChange: (target: ModelBillingTarget) => void }) {
   const selected = value ? targetKey(value) : '';
-  return <Field label="模型接入点"><select className={control} required value={selected} onChange={e => {
+  return <Field label="模型接入点"><SelectField className={control} required value={selected} onChange={e => {
     const option = options.find(o => targetKey(o.target) === e.target.value); if (option) onChange(option.target);
   }}><option value="">选择已有模型接入点</option>
     {value && !options.some(o => targetKey(o.target) === selected) && <option value={selected}>{targetLabel(value, options)}</option>}
-    {options.map(o => <option key={o.id} value={targetKey(o.target)}>{o.label} · 渠道：{o.channelName}</option>)}</select></Field>;
+    {options.map(o => <option key={o.id} value={targetKey(o.target)}>{o.label} · 渠道：{o.channelName}</option>)}</SelectField></Field>;
 }
 export function SaveForm({ title, children, save, onSaved, onCancel }: { title: string; children: React.ReactNode; save: () => Promise<unknown>; onSaved: () => void; onCancel: () => void }) {
   const [busy, setBusy] = React.useState(false), [error, setError] = React.useState('');
