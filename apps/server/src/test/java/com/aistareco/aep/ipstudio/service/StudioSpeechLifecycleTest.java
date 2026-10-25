@@ -52,7 +52,7 @@ class StudioSpeechLifecycleTest {
             var errors=mock(StudioRunErrorLog.class);org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLog",errors);
             worker.step("r");worker.step("r");
             assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());
-            assertTrue(run.getErrorMessage().contains("服务方余额不足"));
+            assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE,run.getErrorMessage());
             var failure=org.mockito.ArgumentCaptor.forClass(Throwable.class);verify(errors).attach(eq(run),failure.capture());
             var response=(com.aistareco.aep.service.ai.ProviderResponseDiagnostics)failure.getValue().getSuppressed()[0];
             assertTrue(response.responseBody().contains("服务方余额不足"));assertTrue(response.responseBody().contains("insufficient_balance"));

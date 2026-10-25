@@ -20,7 +20,7 @@ class ProviderErrorMessageTest {
         String raw="额度不足 token=private-token Bearer private-bearer sk-privatekey https://provider.example/file?signature=secret data:image/png;base64,YWJjZA==";
         String body=json.createObjectNode().put("message",raw).toString();
         String safe=ProviderErrorMessage.reason(body);
-        assertTrue(safe.contains("额度不足"));
+        assertEquals(PublicModelErrorPolicy.UNAVAILABLE, safe);
         for(String secret:new String[]{"private-token","private-bearer","sk-privatekey","provider.example","signature=secret","YWJjZA=="})assertFalse(safe.contains(secret));
     }
 

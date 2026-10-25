@@ -6,6 +6,7 @@ import { Copy, Check } from 'lucide-react';
 import copy from 'copy-to-clipboard';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
 import type { IpRun } from '@ai-star-eco/types/ip-studio';
+import { publicModelErrorMessage } from '@ai-star-eco/api-client';
 
 export type StudioError = { code: string; message: string; logId?: string; taskId?: string; clientMessageId?: string };
 type ErrorInput = unknown;
@@ -25,7 +26,7 @@ export const PLAN_NOT_READY_TEXT = '这份方案还没准备好，我会按你�
 /** What a user sees for an error: internal refusals become one plain sentence and a neutral code. */
 export function userFacingError(code: string | undefined, message: string | undefined): { code?: string; message?: string } {
   if ((code && INTERNAL_CODES.has(code)) || (message && INTERNAL_TEXT.test(message))) return { code: code ? 'STUDIO_PLAN_NOT_READY' : undefined, message: PLAN_NOT_READY_TEXT };
-  return { code, message };
+  return { code, message: message === undefined ? undefined : publicModelErrorMessage(message, code) };
 }
 
 /** Read structured errors and the older server's message suffix without inventing a log ID. */

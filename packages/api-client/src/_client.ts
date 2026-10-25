@@ -15,6 +15,7 @@ import { findMockHandler, type MockMethod } from "./_mock-registry";
 import { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK, idIssuer, isIdMode } from "./config";
 import { clearAuthTokens, getAuthToken } from "./token-store";
 import { beginLogin, isTransientOidcError, refreshAccessToken } from "./oidc";
+import { publicModelErrorMessage, sanitizeModelErrorFields } from "./public-model-error";
 
 export { API_BASE_URL, ENABLE_DEV_LOGIN, USE_MOCK };
 export {
@@ -60,10 +61,10 @@ export class ApiError extends Error {
   details?: unknown;
   status?: number;
   constructor(shape: ApiErrorShape, status?: number) {
-    super(shape.message);
+    super(publicModelErrorMessage(shape.message, shape.code));
     this.code = shape.code;
     this.logId = shape.logId;
-    this.details = shape.details;
+    this.details = sanitizeModelErrorFields(shape.details, true, shape.code);
     this.status = status;
   }
 }
@@ -291,19 +292,14 @@ export async function apiFetch<T>(
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = path.startsWith('/admin/') ? JSON.parse(raw) : sanitizeModelErrorFields(JSON.parse(raw));
   } catch {
-    // 把 body 前 240 字符贴出来，方便排查 —— 否则只看到 "Invalid JSON" 一句
-    // 啥也定位不了（HTML 错误页 / Next 代理 504 / sau timeout / 空体 等都会
-    // 触发同一句）。
-    const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
+    // Supplier/gateway response bodies may contain operating balances or credentials. Keep them off browser errors.
     const contentType = res.headers.get("content-type") ?? "<missing>";
     if (!suppressParseErrorLog && typeof console !== "undefined") {
       // eslint-disable-next-line no-console
       console.error(
-        `[apiFetch] non-JSON body from ${path}  status=${res.status}  ` +
-          `content-type=${contentType}\n` +
-          snippet,
+        `[apiFetch] non-JSON response status=${res.status} content-type=${contentType}`,
       );
     }
     if (!res.ok) {
@@ -314,7 +310,7 @@ export async function apiFetch<T>(
             res.status >= 500
               ? `服务器处理请求失败（HTTP ${res.status}）`
               : `请求失败（HTTP ${res.status}）`,
-          details: { contentType, snippet },
+          details: { contentType },
         },
         res.status,
       );
@@ -322,9 +318,7 @@ export async function apiFetch<T>(
     throw new ApiError(
       {
         code: "PARSE_ERROR",
-        message:
-          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
-          `Body starts with: ${snippet || "<empty>"}`,
+        message: "服务返回了无法识别的响应，请稍后再试或联系平台处理。",
       },
       res.status,
     );
@@ -433,16 +427,14 @@ export async function apiFetchPaginated<T>(
   const raw = await res.text();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = path.startsWith('/admin/') ? JSON.parse(raw) : sanitizeModelErrorFields(JSON.parse(raw));
   } catch {
-    const snippet = raw.length > 240 ? raw.slice(0, 240) + "…" : raw;
     const contentType = res.headers.get("content-type") ?? "<missing>";
     throw new ApiError(
       {
         code: "PARSE_ERROR",
-        message:
-          `Invalid JSON from ${path} (status=${res.status}, content-type=${contentType}). ` +
-          `Body starts with: ${snippet || "<empty>"}`,
+        message: "服务返回了无法识别的响应，请稍后再试或联系平台处理。",
+        details: { contentType },
       },
       res.status,
     );
