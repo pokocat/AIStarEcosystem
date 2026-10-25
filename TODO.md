@@ -40,7 +40,7 @@
 
 ### 2026-10-25 · 图片按分辨率选模型后测试没跟上（`eab29339`，未发布）
 
-- [ ] **`IpRunWorkerTest` 4 条在 main 上红**（2026-10-25 合并视频文案时发现，在 `eab29339^` 上全绿、`eab29339` 起红）：`nativeAcceptedSecondImageRecovers…`、`acceptedImageCheckpointWriteFailure…`、`jusuanUsesOriginalPrompt…`、`unknownNativeAcceptanceKeepsHold…`。原因：`IpRunWorker` 改调 `JusuanImageClient.generate(…, providerModel, previous, checkpoint)` 新重载，测试仍模拟旧的 10 参数重载，模拟没命中返回 null，被判 `DAP_MODEL_BAD_OUTPUT`。生产路径本身看起来没坏，但同一件事留了两个调法（§8.0.1 ④），建议删掉旧重载或让它委托新重载，再把测试改到新签名；发布 `eab29339` 前要修。
+- [x] ~~**`IpRunWorkerTest` 4 条在 main 上红**~~ **已修，2026-10-25**：删掉 `JusuanImageClient.generate` 不带 providerModel 的 10 参数重载，7/8 参数的简便入口委托唯一的 11 参数入口；`IpRunWorkerTest`、`JusuanImageClientTest`、`EnterpriseStudioBillingIntegrationTest` 改到新签名（模拟多一位 providerModel，取 previous / checkpoint 的下标后移一位）。`IpRunWorkerTest` 26/26 通过；企业计费那两条老失败（见下文 070334d0 那条）不变。原记录：（2026-10-25 合并视频文案时发现，在 `eab29339^` 上全绿、`eab29339` 起红）：`nativeAcceptedSecondImageRecovers…`、`acceptedImageCheckpointWriteFailure…`、`jusuanUsesOriginalPrompt…`、`unknownNativeAcceptanceKeepsHold…`。原因：`IpRunWorker` 改调 `JusuanImageClient.generate(…, providerModel, previous, checkpoint)` 新重载，测试仍模拟旧的 10 参数重载，模拟没命中返回 null，被判 `DAP_MODEL_BAD_OUTPUT`。生产路径本身看起来没坏，但同一件事留了两个调法（§8.0.1 ④），建议删掉旧重载或让它委托新重载，再把测试改到新签名；发布 `eab29339` 前要修。
 
 ### 2026-10-24 · 方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md` 末节）
 
