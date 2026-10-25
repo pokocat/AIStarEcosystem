@@ -317,6 +317,8 @@ enterprise → 全部无限制
 
 ## 4. 错误码列表
 
+模型错误说明（2026-10-25）：所有模型调用共用 `ProviderErrorMessage`，将上游 JSON 中可读的具体原因脱敏、限长后返回用户；覆盖 HTTP 4xx / 5xx、流式错误和异步失败，前端不得用通用提示或用户钱包提示覆盖。没有可读原因时才回退通用提示，保留追查号。错误说明不改变错误码、原任务恢复、冻结结算或重试规则；供应商余额不足不能误当作用户积分不足。非 JSON / HTML 错误页不直接展示。当前本地实现与验证见 `docs/audits/model-error-propagation-validation-20261025.md`，未部署。
+
 | HTTP | 业务码 | 说明 |
 |---|---|---|
 | 400 | `VALIDATION_ERROR` | 字段校验失败 |
@@ -639,6 +641,9 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 - （v0.197）短视频合成的就绪判定**仍然**是每一镜 `flow=done` 且有 `videoUrl`（短剧只要有视频）。两条线口径不一致已记 TODO；放宽时服务端 `buildPlan` / `preflight` 与前端 `readyToAssemble` / mock 必须一起改。
 
 ### 6.6 AI IP 工作台（ipstudio，v0.151 / 设计真源 `docs/ip-studio-plan.md` · TS 真源 `packages/types/src/ip-studio.ts`）
+
+- **导演台分集（2026-10-25）**：模型只给每集起点 `startParagraph` 和正文起点 `bodyStart`，区间由程序首尾相接地构造（最后一集到最后一段），不会漏段或重叠；越界起点忽略、重复起点合并、写了 bodyStart 但第一集更晚开始则中间几段并入第一集，都写进预览的修正说明；一个有效起点都没有才 `AI_BAD_OUTPUT` 并释放冻结。剧本里已有从「第1集」起编号连续的标题（≥2，取最后一组，段落 ≤40 字）且用户没指定不同集数时，程序直接按标题分，不调模型、不扣积分。结果先存 `pendingSplit`，`split.save`（`data.preamble`=`reference` 默认 / `episode`）采用、`split.discard` 放弃（一键制作随之停止）；采用或放弃必须带最新 `pendingSplit.id` 作为 `targetId`，缺失 / 不匹配或剧本改过均作废（409 `DIRECTOR_SPLIT_EXPIRED`）；分集正文按原稿字符区间复制，保留缩进、空行与原换行符。第一集之前的内容默认存为作品的设定资料 `reference`（`referenceRev` 修订保护，`reference.update` / `reference.toEpisode`），作为创作材料交给提取资产和写分镜脚本，不计入输入指纹。一键制作全自动按默认采用并在 notice 说明，否则停在 `confirm-split`；全自动下拆分失败作为一集继续。`split.undo` 恢复拆分前原稿与设定资料、清空集与片段（资产保留），已有分镜图 / 视频时 409 `DIRECTOR_CLIPS_HAVE_MEDIA`、有任务进行时 409 `DIRECTOR_TASK_RUNNING`。模型拆分出了结果即按用量结算，放弃 / 撤销不退款、不自动重跑。
+- **导演剧本文件导入（2026-10-25）**：`POST /v1/ip-studio/director/script-import` 复用 aiavatar 的登录、开通与手机号闸；文件 8 MiB / 正文 60000 字 / PDF、PPT 100 页上限，失败不返回截断内容。提取免费、不调用模型、不存储原文件或修改作品。前端预览后确认导入；替换现有正文须明确点击，再走原有创建或 draftRev 修订保护保存。画布故事导入的格式与 24000 字限制不随此接口扩大。支持格式、文字编码及扫描 / 加密文件的处理边界见 `docs/ai-director-plan.md` §3.1。
 
 领域 `com.aistareco.aep.ipstudio.*`，表 `ip_project` / `ip_run`（迁移 **V27**）。挂 `/api/v1/ip-studio/**`，
 **共用 aiavatar 开通**（`X-App-Code: aiavatar`），已被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，不新增产品码。
@@ -1210,7 +1215,7 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 - 所有模型入口区分失败、查询中和正常生成。无有效供应商任务回执的异常以失败结束并释放未完成部分冻结，明确告知可重新生成；禁止用 5% / 10% 掩盖异常。
 - 图片、视频、配音和口型的 `*_SUBMISSION_UNKNOWN` 在同一结算事务内结束为 failed、释放剩余原冻结并结束付款授权，之后释放排队名额。保留原请求、模型快照、诊断和排队记录用于告警；用户重试创建新任务，系统不得自动重复提交。已返回供应商任务 ID 的查询异常继续查询原任务。
-- Studio 单任务、批次候选、节点、任务列表及各视频入口透出错误码和安全原因；失败允许用户主动重试。查询中显示“正在重新查询结果”，可刷新原记录，不重新生成、不再次扣费。
+- Studio 单任务、批次候选、节点、任务列表及各视频入口透出错误码和安全原因；失败允许用户主动重试。查询中显示“模型端仍在处理，请稍后查看状态”（2026-10-24 起，短标签“模型端仍在处理”），可刷新原记录，不重新生成、不再次扣费；具体原因与追查号留在错误详情和错误日志里。
 - 配音/口型的 HTTP 业务异常和网络异常都持久化；原幂等键/正文的恢复窗口仍为最多三次、两分钟，结束后进入人工核对并停止自动派发。提交前准备失败明确结束并释放冻结；已提交的查询故障保留冻结。既有运营证据恢复与确认未受理流程不变。
 - 通用同步调用在异常/超时的 finally 释放调用票据；文本/多模态工作流、智能优化、短剧首帧、音乐和 clip 保留各自明确失败及超时终态，不用假成功内容覆盖异常。
 
@@ -1570,7 +1575,7 @@ capabilities 每个文本模型分别回 `tokenPricing` / `dialogueTokenPricing`
 - 普通积分部分为 0 的模型任务（赠款全额抵扣）不写「冻结 0 / 扣除 0 / 退回 0」的普通流水，记录由赠款流水承担。赠款流水的 `balanceAfter` 是这一笔赠款的余额，界面单独标「赠款余额」，不与积分余额混在一列含义里。
 - 零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`（报价和提交都拒绝，不建授权、不冻结、不调供应商）。想免费送用户体验，只能发模型赠款；这样免费额度有总量和有效期，不会因为把售价配成 0 变成无限免费。
 - 接入点没填 `model` 时，计费记录里的模型名用 `endpoint:<接入点 ID>`（`ModelBillingTarget.providerModelOf`），不因此拒绝扣费；资格只看接入点 ID。
-- `aep_ledger_entries.entry_type` 是 VARCHAR（V66 + 实体 `@JdbcTypeCode(VARCHAR)`），启动加宽只处理当前是 ENUM 的列，不能把它改回 ENUM。
+- `aep_ledger_entries.entry_type` 是 VARCHAR（V67 + 实体 `@JdbcTypeCode(VARCHAR)`），启动加宽只处理当前是 ENUM 的列，不能把它改回 ENUM。
 - 企业成员报价在只读事务里运行，在途任务数用不加锁的查询（MySQL 只读事务里执行 `SELECT … FOR UPDATE` 会报 ERROR 1792）；真正冻结时 `reserve` 在锁内再判一次。
 - `/admin/model-billing/{discounts|campaigns}` 分页读写；SUPER_ADMIN、OPERATOR 配置，FINANCE_ADMIN 只读。修改携带 expectedVersion，同事务记录审计；旧价格写入拒绝，现有接入点价格仍为真源。
 - 发放沿用原赠送审批、日限额和幂等编号；个人优惠对象不要求已有钱包，企业发放只到成员消费账户。`/me/model-credits` 只允许查看本人钱包。

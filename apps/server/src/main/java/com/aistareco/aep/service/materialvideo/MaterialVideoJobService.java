@@ -465,7 +465,7 @@ public class MaterialVideoJobService {
         audits.record(actorId,null,"admin.video.bind_original_task","material_video_job",id,null,null,
                 com.aistareco.aep.model.AuditLog.AuditResult.SUCCESS,write(detail));
         job.setExternalTaskId(external);job.setStatus("generating");job.setErrorCode("VIDEO_RECONCILIATION_PENDING");
-        job.setErrorMessage("正在核对生成结果，请稍后查看");job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
+        job.setErrorMessage(STILL_PROCESSING);job.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(job);
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override public void afterCommit(){
                 try {worker.recoverQueuedGeneration(id);}
@@ -707,10 +707,16 @@ public class MaterialVideoJobService {
         };
     }
 
+    /**
+     * 已交给厂商、但暂时拿不到结果时给用户看的话（{@code VIDEO_RECONCILIATION_PENDING}）。只说状态，不讲内部机制：
+     * 后台照原任务继续查询、不会重新生成或重复扣费，原因与追查号留在错误日志里（2026-10-24 用户定的文案）。
+     */
+    public static final String STILL_PROCESSING="模型端仍在处理，请稍后查看状态";
+
     /** 进度文案（已入队 / 提交生成请求 / AI 生成中 / 已完成 / 生成失败）。视频生成区的任务卡用同一套。 */
     public static String stageLabel(MaterialVideoJob job) {
         if("VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode()))return "受理结果待核对";
-        if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "正在查询原视频任务";
+        if("VIDEO_RECONCILIATION_PENDING".equals(job.getErrorCode()))return "模型端仍在处理";
         return stageLabel(job.getStatus());
     }
     public static String stageLabel(String jobStatus) {

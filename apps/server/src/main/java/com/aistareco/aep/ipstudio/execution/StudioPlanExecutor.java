@@ -21,6 +21,8 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
@@ -432,9 +434,16 @@ public class StudioPlanExecutor {
         } catch(BusinessException error) {
             rejected=error;
         } catch(RuntimeException unknown) {
-            // Outcome unknown: keep the persisted request and its budget occupation; the next wake looks it up first.
-            log.warn("[plan-exec] submit outcome unknown execution={} step={} request={}",id,submission.stepId(),submission.clientRequestId(),unknown);
-            return false;
+            if(unknown instanceof ResponseStatusException refusal && refusal.getStatusCode().value()==402) {
+                // CreditService rejects before creating a native job. It is not an uncertain accepted submission.
+                rejected=new BusinessException(HttpStatus.PAYMENT_REQUIRED,StudioPaymentMessage.CODE,
+                        StudioPaymentMessage.message(refusal.getReason()));
+                rejected.initCause(unknown);
+            } else {
+                // Outcome unknown: keep the persisted request and its budget occupation; the next wake looks it up first.
+                log.warn("[plan-exec] submit outcome unknown execution={} step={} request={}",id,submission.stepId(),submission.clientRequestId(),unknown);
+                return false;
+            }
         }
         final String accepted=runId;final BusinessException failure=rejected;
         List<Event> pending=new ArrayList<>();
@@ -452,7 +461,10 @@ public class StudioPlanExecutor {
                 e.setStatus(IpPlanExecution.NEEDS_USER);
                 state.put("needsUserReason","「"+step.path("title").asText()+"」没有提交："+failure.getMessage());
             }
-            save(e,state,PlanState.parse(mapper,e.getBudgetJson()));
+            ObjectNode budget=PlanState.parse(mapper,e.getBudgetJson());
+            // A rejected request has no hold. Recompute immediately, retaining every other accepted task's occupation.
+            if(failure!=null)refresh(e,state,budget,pending);
+            save(e,state,budget);
             return accepted!=null;
         });
         publish(id,pending);

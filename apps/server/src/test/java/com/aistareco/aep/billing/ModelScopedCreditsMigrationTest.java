@@ -53,9 +53,9 @@ class ModelScopedCreditsMigrationTest {
     private static void migrate(Connection connection)throws Exception {
         var context=org.mockito.Mockito.mock(org.flywaydb.core.api.migration.Context.class);
         org.mockito.Mockito.when(context.getConnection()).thenReturn(connection);
-        var migration=new db.migration.V66__model_scoped_credits();assertNotNull(migration.getChecksum());migration.migrate(context);
-        var approval=new db.migration.V67__scoped_grant_approvals();assertNotNull(approval.getChecksum());approval.migrate(context);
+        var migration=new db.migration.V67__model_scoped_credits();assertNotNull(migration.getChecksum());migration.migrate(context);
+        var approval=new db.migration.V68__scoped_grant_approvals();assertNotNull(approval.getChecksum());approval.migrate(context);
         org.springframework.jdbc.datasource.init.ScriptUtils.executeSqlScript(connection,
-                new org.springframework.core.io.ClassPathResource("db/migration/V68__model_credit_reservation_groups.sql"));
+                new org.springframework.core.io.ClassPathResource("db/migration/V69__model_credit_reservation_groups.sql"));
     }
 }

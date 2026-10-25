@@ -535,10 +535,40 @@ class IpRunWorkerTest {
         var run=seedGenerateRun(1,30L,30L,"source");var input=(ObjectNode)OM.readTree(run.getInputJson());
         input.put("prompt","legacy template ".repeat(100)).put("userPrompt","保持同一个人物，生成三视图");((ObjectNode)input.path("_exec")).put("endpointId","jusuan");
         run.setInputJson(input.toString());runs.repo.save(run);when(nativeImages.supportsEndpoint("jusuan")).thenReturn(true);
-        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
         worker.runBlocking(RID);assertEquals(IpRun.STATUS_DONE,reload().getStatus());assertEquals(30,reload().getCost());
         verify(credits).commitHold(eq(IpRunService.REF_TYPE),eq(RID),eq(30L),anyString(), org.mockito.ArgumentMatchers.any());
         verify(multimodal,never()).generateImage(anyString(),anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(), eq("studio"));
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
+    void providerReasonReachesFailedRunAndReleasesHoldWithoutRetry(int status) throws Exception {
+        var models=mock(com.aistareco.aep.service.AiModelInvocationService.class);
+        var upstream=mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(2048,0,0,"none",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("768x1024","3:4",java.util.Map.of())));
+        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("native").name("image")
+                .baseUrl("https://image.example/v1").model("image").enabled(true).imageRequestSpecJson(spec.json())
+                .upstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("test-key")).build();
+        when(models.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"native","studio"))
+                .thenReturn(java.util.Optional.of(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        var nativeImages=new com.aistareco.aep.ipstudio.service.JusuanImageClient(models,storage,upstream,OM);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,30L,30L);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);
+        when(response.body()).thenReturn(OM.createObjectNode().set("error",OM.createObjectNode()
+                .put("code","content_policy_violation").put("message",reason)).toString());
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        worker.runBlocking(RID);
+        assertEquals(IpRun.STATUS_FAILED,reload().getStatus());
+        assertEquals(status==400?"STUDIO_IMAGE_PROVIDER_FAILED":"STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
+        assertTrue(reload().getErrorMessage().contains(reason));assertEquals(0,reload().getCost());
+        verify(upstream,times(1)).sendJson(any(),any());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
     }
     @Test void nativeAcceptedSecondImageRecoversOriginalCheckpointWithoutRepeatingFirstSpend() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);

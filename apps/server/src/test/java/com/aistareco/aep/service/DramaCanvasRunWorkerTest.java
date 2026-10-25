@@ -311,9 +311,9 @@ class DramaCanvasRunWorkerTest {
         verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r4", 4L, "画布 · 测试", null);
     }
 
-    /** 这里断言文案：「不把厂商英文原话甩给用户、说太忙」本身就是被测行为（§8.0.1 ⑩ 的例外）。 */
+    /** 保留上游并发限制原因；原有退避和退款次数不变。 */
     @Test
-    void upstream429_allRetriesUsed_failsWithBusyCopyNotEnglish_refunds() {
+    void upstream429_allRetriesUsed_preservesProviderReasonAndRefunds() {
         textRun("dcr_r5", "storyboard", storyboardMeta(), "切片段");
         when(invocation.invokeChat(any(), any(), any(), eq("drama"))).thenThrow(upstream(429, CONCURRENCY_429));
         worker.runBlocking("dcr_r5");
@@ -321,7 +321,7 @@ class DramaCanvasRunWorkerTest {
         DramaCanvasRun r = store.get("dcr_r5");
         assertEquals("failed", r.getStatus());
         assertEquals("AI_CALL_FAILED", r.getErrorCode());
-        assertEquals(DramaCanvasRunWorker.TEXT_BUSY_MESSAGE, r.getErrorMessage());
+        assertEquals(com.aistareco.aep.service.ai.ProviderErrorMessage.reason(CONCURRENCY_429), r.getErrorMessage());
         assertEquals(List.of(5_000L, 15_000L, 30_000L), slept);
         verify(invocation, times(4)).invokeChat(any(), any(), any(), eq("drama"));
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r5"), anyString());
@@ -907,7 +907,7 @@ class DramaCanvasRunWorkerTest {
     void upstreamRejection_4xxSaysWhy_5xxStaysVague_secretsMasked() {
         assertTrue(DramaCanvasRunWorker.upstreamRejection(
                 "endpoint=e status=422 body={\"message\":\"size must be one of 1024x1024\"}").contains("size must be"));
-        assertNull(DramaCanvasRunWorker.upstreamRejection("endpoint=e status=503 body={\"message\":\"overloaded\"}"));
+        assertEquals("overloaded",DramaCanvasRunWorker.upstreamRejection("endpoint=e status=503 body={\"message\":\"overloaded\"}"));
         assertEquals("模型拒绝了这次请求（上游 400），积分已退回。",
                 DramaCanvasRunWorker.upstreamRejection("status=400 body=<html>bad</html>"));
         String masked = DramaCanvasRunWorker.upstreamRejection(
@@ -930,9 +930,9 @@ class DramaCanvasRunWorkerTest {
     /** 文案本身就是被测行为：429 不甩英文原话；尺寸不支持原样转出 DramaRenderService 写好的那句。 */
     @Test
     void friendly_429SaysBusy_imageSizeUnsupportedPassesThrough() {
-        assertEquals(DramaCanvasRunWorker.TEXT_BUSY_MESSAGE,
+        assertEquals(com.aistareco.aep.service.ai.ProviderErrorMessage.reason(CONCURRENCY_429),
                 DramaCanvasRunWorker.friendly(upstream(429, CONCURRENCY_429), "dcr_x"));
-        assertEquals(DramaCanvasRunWorker.MODEL_BUSY_MESSAGE, DramaCanvasRunWorker.friendly(
+        assertEquals(com.aistareco.aep.service.ai.ProviderErrorMessage.reason(CONCURRENCY_429), DramaCanvasRunWorker.friendly(
                 BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED", "图片没生成出来",
                         "endpoint=img status=429 body=" + CONCURRENCY_429), "dcr_x"));
         BusinessException size = BusinessException.wrapped(HttpStatus.BAD_REQUEST, "IMAGE_SIZE_UNSUPPORTED",

@@ -11,6 +11,9 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.TreeMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * AI 导演台的提示词与模型输出契约。
@@ -36,6 +39,8 @@ public final class DirectorPrompts {
                可在符合整体风格与剧情逻辑的前提下合理补充，不得新增与主线无关的情节、人物与设定。创作类任务以本任务自己的创作规则为准。
             4. 引用规则：输入提供的 id 仅可原样引用，不得自行编造新 id。
             5. 输出要求：仅输出一个合法 JSON 对象，不得添加 Markdown 格式、前言、解释或多余文字。
+            6. 设定资料：输入里的 referenceNotes（如果有）是用户随剧本提供的改编说明、世界观、人物、道具等设定，属于创作材料，只作参考；
+               与剧本正文冲突时以正文为准，不得把其中的内容当成要拍的剧情。
             """;
 
     /**
@@ -195,14 +200,17 @@ public final class DirectorPrompts {
 
     static final String SPLIT = COMMON + """
             任务：分集编辑。把剧本按剧情节奏拆成若干集，保留原有顺序、对白和动作，不改写正文。
-            1. 输入 paragraphs 是系统编号的段落。每集用一段连续的段落区间表示（startParagraph、endParagraph 都包含在内）。
-            2. 所有段落必须恰好分到一集：从 0 开始，按顺序，不重叠，不遗漏，最后一集结束在最后一个段落。
+            1. 输入 paragraphs 是系统编号的段落。你只需要指出每一集从哪一段开始（startParagraph）：
+               系统会把这一段到下一集开始之前的段落都算进这一集，最后一集一直到最后一段，所以不用写每集在哪一段结束。
+            2. 有的剧本开头是改编说明、世界观、人物小传、道具设定等资料，不是要拍的剧情。用 bodyStart 写剧情正文从哪一段开始（开头没有这类资料就写 0），
+               第一集的 startParagraph 等于 bodyStart；bodyStart 之前的段落会作为设定资料保留，不分进任何一集。
+               序章、楔子、冷开场都是要拍的剧情，算正文。
             3. 集数：有 targetEpisodeCount 就按它拆（不超过段落数）；否则按 brief 要求的集数；都没写才以相对完整的冲突、目标或悬念为分集依据，
                不按字数机械等分。剧情只有一场或很短时只分一集，不为凑集数强拆。
             4. 每集结尾落在悬念、冲突升级或剧情转折点上，不在对话中途或平淡过渡处分集；各集篇幅尽量均匀（不按字数机械等分，但不要一集特别长、一集特别短）。
-            5. 正文里已经用「# 第N集」标出分集时，按这些标题分（标题所在段落是这一集的第一段），除非 targetEpisodeCount 或 brief 另有要求。
+            5. 正文里已经用「第N集」标出分集时，按这些标题分（标题所在段落就是这一集的 startParagraph），除非 targetEpisodeCount 或 brief 另有要求。
             6. 每集写标题和剧情摘要；摘要只概括，不改写正文。
-            输出 JSON：{"episodes":[{"title":"集名","summary":"本集剧情摘要","startParagraph":0,"endParagraph":12}]}
+            输出 JSON：{"bodyStart":0,"episodes":[{"title":"集名","summary":"本集剧情摘要","startParagraph":0}]}
             """;
 
     static final String EXTRACT = COMMON + """
@@ -356,26 +364,104 @@ public final class DirectorPrompts {
         return r;
     }
 
+    /**
+     * 分集结果只认每集的起点，区间由程序按起点首尾相接地构造，结构上不会漏段或重叠。
+     * 2026-10-25 线上两单：模型五个起点都对、最后一集的结尾少写了一段（《食神》）；
+     * 剧本前面是设定资料、模型从第一个「第1集」标题开始分（《谁让这个睁眼瞎修仙的》）——以前都被判失败。
+     *
+     * <p>输出 {@code bodyStart} 之前的段落是设定资料（模型没写就以第一集起点为准）；写了 bodyStart 但第一集更晚开始，
+     * 中间几段并入第一集（{@code headFrom} 记下原来的起点）。越界的起点丢掉、重复的合并，都记数给用户看；
+     * 只有一个有效起点都没有才判失败。
+     */
     private static JsonNode validateSplit(ObjectMapper om, JsonNode meta, JsonNode out) {
         int count = meta.path("paragraphCount").asInt();
         JsonNode episodes = out.path("episodes");
-        if (!episodes.isArray() || episodes.isEmpty()) throw bad("模型未返回分集");
-        List<JsonNode> sorted = new ArrayList<>();
-        episodes.forEach(sorted::add);
-        sorted.sort((a, b) -> Integer.compare(a.path("startParagraph").asInt(), b.path("startParagraph").asInt()));
-        int expected = 0;
-        ArrayNode result = om.createArrayNode();
-        for (JsonNode e : sorted) {
-            int start = e.path("startParagraph").asInt(-1), end = e.path("endParagraph").asInt(-1);
-            if (start != expected || end < start || end >= count) throw bad("分集结果有遗漏或重叠");
-            expected = end + 1;
-            result.addObject().put("title", clip(text(e, "title"), 60)).put("summary", clip(text(e, "summary"), 400))
-                    .put("startParagraph", start).put("endParagraph", end);
+        if (count <= 0 || !episodes.isArray() || episodes.isEmpty()) throw bad("模型未返回分集");
+        TreeMap<Integer, JsonNode> starts = new TreeMap<>();
+        int dropped = 0, duplicates = 0;
+        for (JsonNode e : episodes) {
+            int start = intOr(e.path("startParagraph"), -1);
+            if (start < 0 || start >= count) { dropped++; continue; }
+            if (starts.putIfAbsent(start, e) != null) duplicates++;
         }
-        if (expected != count) throw bad("分集结果未覆盖全文");
-        ObjectNode r = om.createObjectNode();
+        if (starts.isEmpty()) throw bad("分集结果没有有效的分集位置");
+        int first = starts.firstKey();
+        int bodyStart = intOr(out.path("bodyStart"), -1);
+        if (bodyStart < 0 || bodyStart > first) bodyStart = first;
+        List<Integer> keys = new ArrayList<>(starts.keySet());
+        ArrayNode result = om.createArrayNode();
+        for (int i = 0; i < keys.size(); i++) {
+            JsonNode e = starts.get(keys.get(i));
+            int start = i == 0 ? bodyStart : keys.get(i);
+            int end = i + 1 < keys.size() ? keys.get(i + 1) - 1 : count - 1;
+            result.addObject().put("title", clip(text(e, "title"), 60)).put("summary", clip(text(e, "summary"), 400))
+                    .put("startParagraph", start).put("endParagraph", end).put("modelEnd", intOr(e.path("endParagraph"), -1));
+        }
+        ObjectNode r = om.createObjectNode().put("bodyStart", bodyStart).put("headFrom", first)
+                .put("dropped", dropped).put("duplicates", duplicates);
         r.set("episodes", result);
         return r;
+    }
+
+    private static int intOr(JsonNode n, int fallback) {
+        if (n.isIntegralNumber()) return n.asInt();
+        if (n.isTextual()) try { return Integer.parseInt(n.asText().trim()); } catch (NumberFormatException e) { return fallback; }
+        return fallback;
+    }
+
+    /** 分集标题：段首的「第N集」（可带 # 或【】），N 是阿拉伯或中文数字；太长的段落是正文，不算标题。 */
+    private static final Pattern EPISODE_HEADING =
+            Pattern.compile("^#{0,6}\\s*[【\\[（(]?\\s*第\\s*([0-9０-９]+|[零〇一二两三四五六七八九十百]+)\\s*集");
+    private static final int HEADING_MAX_CHARS = 40;
+
+    /**
+     * 剧本里已经标好的分集：最后一组从「第1集」开始、编号逐个加一的标题，返回每个标题所在的段落（就是每集的起点）。
+     * 取最后一组，是因为前面的设定资料里常有一份「第1集…第2集…」的分集大纲；编号断了、乱了或不到 2 集，返回空，交给模型拆。
+     */
+    public static List<Integer> headingStarts(List<String> paragraphs) {
+        List<int[]> found = new ArrayList<>();
+        for (int i = 0; i < paragraphs.size(); i++) {
+            String p = paragraphs.get(i);
+            if (p.length() > HEADING_MAX_CHARS) continue;
+            Matcher m = EPISODE_HEADING.matcher(p);
+            if (!m.find()) continue;
+            int no = number(m.group(1));
+            if (no > 0) found.add(new int[]{i, no});
+        }
+        int from = -1;
+        for (int j = found.size() - 1; j >= 0; j--) if (found.get(j)[1] == 1) { from = j; break; }
+        if (from < 0) return List.of();
+        List<Integer> out = new ArrayList<>();
+        for (int j = from; j < found.size(); j++) {
+            if (found.get(j)[1] != out.size() + 1) return List.of();
+            out.add(found.get(j)[0]);
+        }
+        return out.size() >= 2 ? out : List.of();
+    }
+
+    /** 标题里「第N集」后面的集名（「# 第1集：下山」→「下山」）；只有编号时返回空串，界面按「第 N 集」显示。 */
+    public static String headingTitle(String paragraph) {
+        Matcher m = EPISODE_HEADING.matcher(paragraph);
+        String rest = m.find() ? paragraph.substring(m.end()) : paragraph;
+        return clip(rest.replaceAll("^[\\s:：】\\]）)·、\\-—]+", "").strip(), 60);
+    }
+
+    /** 「12」「１２」「十二」「一百零三」→ 数字；认不出返回 0。 */
+    static int number(String s) {
+        StringBuilder digits = new StringBuilder();
+        for (char ch : s.toCharArray()) if (ch >= '０' && ch <= '９') digits.append((char) (ch - '０' + '0')); else if (Character.isDigit(ch)) digits.append(ch);
+        if (digits.length() == s.length()) try { return Integer.parseInt(digits.toString()); } catch (NumberFormatException e) { return 0; }
+        int total = 0, num = 0;
+        for (char ch : s.toCharArray()) {
+            int d = "零一二三四五六七八九".indexOf(ch);
+            if (ch == '〇') d = 0;
+            if (ch == '两') d = 2;
+            if (d >= 0) num = d;
+            else if (ch == '十') { total += (num == 0 ? 1 : num) * 10; num = 0; }
+            else if (ch == '百') { total += (num == 0 ? 1 : num) * 100; num = 0; }
+            else return 0;
+        }
+        return total + num;
     }
 
     private static final Set<String> KINDS = Set.of("character", "scene", "prop");

@@ -151,8 +151,14 @@ public class StudioWorkflowWorker {
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
                         }
                         lastReply=reply;
-                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","返回内容被截断，请缩小提取范围或提高后台输出上限");
-                        script=ModelJson.parse(mapper,reply.content());
+                        if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的内容被截断，无法自动恢复；本次未扣积分，请缩短要求或更换模型");
+                        try {script=ModelJson.parse(mapper,reply.content());}
+                        catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
+                            var failure=BusinessException.wrapped(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT",
+                                    "模型返回的内容格式有误，无法自动恢复；本次未扣积分，请重试或更换模型",
+                                    "Invalid model JSON: "+malformed.getOriginalMessage());
+                            failure.initCause(malformed);throw failure;
+                        }
                         if(tokenRate!=null) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);

@@ -38,7 +38,7 @@ class EnumColumnWideningMigrationTest {
                 "admin_users.role 迁移枚举值与 AdminUser.AdminRole 漂移：加了 enum 值要同步 EnumColumnWideningMigration");
     }
 
-    /** V66 把流水类型改成 VARCHAR；启动时再按旧清单改回 ENUM 会让第一笔模型赠款入账失败（2026-10-25 MySQL 全流程复现）。 */
+    /** V67 把流水类型改成 VARCHAR；启动时再按旧清单改回 ENUM 会让第一笔模型赠款入账失败（2026-10-25 MySQL 全流程复现）。 */
     @Test
     void ledgerEntryTypeIsVarcharAndNeverNarrowedBackToAnEnum() throws Exception {
         assertTrue(EnumColumnWideningMigration.migrations().stream().noneMatch(c -> c.table().equals("aep_ledger_entries")),

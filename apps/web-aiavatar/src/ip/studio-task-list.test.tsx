@@ -56,8 +56,9 @@ test('failed assistant tasks offer reopening the conversation without a misleadi
 
 test.each(['VIDEO_RECONCILIATION_PENDING','STUDIO_SPEECH_RECOVERING','STUDIO_LIP_SYNC_RECOVERING'])('%s shows recovery without frozen percent or stop',errorCode=>{
   render(<StudioTaskList {...makeProps()} runs={[run('recover','running',{pct:5,errorCode})]}/>);
-  expect(screen.getByText('正在重新查询结果')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
-  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toContain('不会重新生成');
+  expect(screen.getByText('模型端仍在处理')).toBeDefined();expect(screen.queryByRole('progressbar')).toBeNull();
+  expect(screen.queryByRole('button',{name:'停止'})).toBeNull();expect(screen.getByRole('status').textContent).toBe('模型端仍在处理，请稍后查看状态');
+
 });
 
 test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED_MODEL_ERROR'])('%s remains inspectable before terminal failure',errorCode=>{

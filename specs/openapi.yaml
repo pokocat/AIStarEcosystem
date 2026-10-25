@@ -645,6 +645,12 @@ components:
         createdAt:
           type: string
           format: date-time
+    DirectorScriptImportResult:
+      type: object
+      required: [text, format]
+      properties:
+        text: { type: string, maxLength: 60000, description: 已提取的可编辑正文，不静默截断 }
+        format: { type: string, enum: [pdf, doc, docx, ppt, pptx, rtf, txt, md, markdown, csv, tsv, json, xml, yaml, yml, log, srt, vtt] }
     DirectorWorkSummary:
       type: object
       description: '见 packages/types/src/director.ts DirectorWorkSummary。'
@@ -652,7 +658,7 @@ components:
     DirectorWork:
       type: object
       description: '服务端拥有的导演作品（docs/ai-director-plan.md §10.3）；完整形状见 packages/types/src/director.ts DirectorWork。媒体只存 key，url 为出 wire 时的短期签名。'
-      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true } }
+      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
 
     StudioVideoEffect:
       type: object
@@ -14915,6 +14921,32 @@ paths:
         v0.177 之前前端轮询的是 `/me/material/videos/jobs/{jobId}` —— 那条路径服务端从来没有实现过。
       responses:
         "200": { description: 任务卡（id / status / video_url / video_key / thumbnail_url / error_message） }
+  /v1/ip-studio/director/script-import:
+    post:
+      tags: [ipstudio]
+      operationId: directorImportScript
+      summary: 从剧本文件提取文字
+      description: >
+        已登录且开通 aiavatar 的用户上传不超过 8 MiB 的文本、Word、PPT、PDF 或 RTF 文件。
+        PDF/PPT 最多 100 页；提取正文不超过 60000 字，超限直接拒绝而非截断。
+        纯文本支持 UTF-8、带 BOM 的 UTF-16/32、GB18030；不执行宏或外部内容。
+        只返回提取文字，不存储原文件、不创建作品、不调用模型、不扣积分。
+        前端先预览，用户确认后填入正文，再经创建或带修订号的 PATCH 保存。
+        扫描 PDF、受密码保护或禁止复制的 PDF、空文件、损坏文件均明确报错。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: 可编辑正文, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorScriptImportResult' } } } }
+        '400': { description: STUDIO_STORY_INVALID，格式、大小、字数、页数或可提取文字不符合要求 }
+        '401': { description: 未登录 }
+        '403': { description: 未开通产品或未验证手机号 }
   /v1/ip-studio/director/works:
     get:
       tags: [ipstudio]
@@ -14960,7 +14992,7 @@ paths:
       description: >-
         用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
         asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
-        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / notice.dismiss）。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。角色不接受 asset.upload（400 DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED）：上传的照片用 asset.setRef 设为形象参考（data.key），只在生成设定图时作为图1交给模型，角色参考图始终是系统生成的设定图。
+        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / extract.save / extract.discard / split.save / split.discard / split.undo / reference.update / reference.toEpisode / notice.dismiss）。拆分结果先存为 pendingSplit，split.save（data.preamble=reference|episode）采用，split.discard 放弃；两者都必须带 targetId=pendingSplit.id，缺失或不匹配、剧本改过均 409 DIRECTOR_SPLIT_EXPIRED；split.undo 恢复拆分前原稿（已有分镜图 / 视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reference.update / reference.toEpisode 带 rev=referenceRev。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。角色不接受 asset.upload（400 DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED）：上传的照片用 asset.setRef 设为形象参考（data.key），只在生成设定图时作为图1交给模型，角色参考图始终是系统生成的设定图。
         改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [op], properties: { op: { type: string }, targetId: { type: string, nullable: true }, rev: { type: integer, nullable: true }, data: { type: object } } } } } }
@@ -14973,7 +15005,7 @@ paths:
       tags: [ipstudio]
       operationId: directorTask
       description: >-
-        发生成任务（type：script / split / extract / plan / asset-image / board / video / export）。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
+        发生成任务（type：script / split / extract / plan / asset-image / board / video / export）。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。split 只让模型给每集起点和正文起点 bodyStart，区间由程序构造，结果存为 pendingSplit 等确认；剧本里已标好「第N集」且 options.episodeCount 未指定其他集数时直接按标题分，不建任务、不扣积分；已有待确认结果 409 DIRECTOR_SPLIT_PENDING。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
         计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
         必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，未确认 400 DIRECTOR_REFERENCE_UNCONFIRMED，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；
         没有可用的全能参考或单首帧视频模型时规划 503 DIRECTOR_VIDEO_MODEL_UNAVAILABLE。首帧模式一镜一段，仅传已确认的分镜首帧，不带额外资产图或声音；绑定声音时需显式确认本次不带声音参考。
@@ -15017,7 +15049,7 @@ paths:
       operationId: directorPipeline
       description: >-
         一键制作（target：film 默认 = 一路做到每集导出成片；video；board；plan = 分集 + 资产 + 片段镜头与分镜图 / 视频提示词，不出图。
-        auto=true 为全自动：资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等 confirm-*。
+        auto=true 为全自动：分集按默认采用（开头资料保留为设定资料，拆分失败则作为一集继续），资产清单原样入库，参考图、分镜图、片段视频自动确认；否则在这几处停下等确认（分集是 stage=confirm-split，用 edits 的 split.save 继续），其余用 confirm-*。
         action：start / pause / resume / retry / confirm-assets / confirm-boards / confirm-videos / stop / dismiss）。整部作品也可以做到视频。后台调度推进，关页继续；
         付款方在 start 时定下；预算是硬上限，同时最多 2 个在途子任务；参考图生成后停下等用户确认。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]

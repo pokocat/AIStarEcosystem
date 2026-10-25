@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Locale;
 
 /** Extend existing operations approvals; fresh development tables are created later by Hibernate. */
-public class V67__scoped_grant_approvals extends BaseJavaMigration {
+public class V68__scoped_grant_approvals extends BaseJavaMigration {
     @Override public Integer getChecksum() { return 670001; }
     @Override public void migrate(Context context) throws Exception {
         var connection=context.getConnection();

@@ -33,15 +33,19 @@
 评审里的逻辑问题已修（见 `docs/model-billing-design.md`「评审后修正」）。下面是没改、发布前要拍板或处理的：
 
 - [ ] **与 main 的三处冲突**：`specs/openapi.yaml`、`apps/server/README.md`、`apps/server/src/test/java/com/aistareco/aep/ipstudio/IpRunWorkerTest.java`（main 已改成单一 `JusuanImageClient.generate` 入口）。合并前解决。
-- [ ] **V66 会建出用不到的表和列**：`aep_model_prices` 与 `/admin/model-billing/prices` 读写（写入一律 `MODEL_PRICE_USE_ENDPOINT_CONFIG`），`aep_credit_resource_reservations` 与活动的 `resource_*` 列（后台只建积分型活动）。上线后再删要另写迁移，发布前决定是否从 `db/schema/model-scoped-credits.sql` 拿掉。
-- [ ] **V66 校验和按 `db/schema/model-scoped-credits.sql` 的内容计算**：上线后这个文件一个字都不能改，否则 Flyway 启动校验失败。在文件头写明已冻结。
-- [ ] **MySQL 上 V66 把 `aep_ledger_entries.entry_type` 改成 VARCHAR**：整表重写，锁表时间随账本行数增长，发布前查线上行数估窗口。
+- [ ] **V67 会建出用不到的表和列**：`aep_model_prices` 与 `/admin/model-billing/prices` 读写（写入一律 `MODEL_PRICE_USE_ENDPOINT_CONFIG`），`aep_credit_resource_reservations` 与活动的 `resource_*` 列（后台只建积分型活动）。上线后再删要另写迁移，发布前决定是否从 `db/schema/model-scoped-credits.sql` 拿掉。
+- [ ] **V67 校验和按 `db/schema/model-scoped-credits.sql` 的内容计算**：上线后这个文件一个字都不能改，否则 Flyway 启动校验失败。在文件头写明已冻结。
+- [ ] **MySQL 上 V67 把 `aep_ledger_entries.entry_type` 改成 VARCHAR**：整表重写，锁表时间随账本行数增长，发布前查线上行数估窗口。
 - [x] ~~零价接入点怎么处理~~ **2026-10-25 用户拍板**：零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，想免费送用户体验只能发模型赠款。出图每张至少按 1 积分冻结、由计费层拒绝零价；视频在规划时就拒绝。企业零价用例改为断言「报错、不建授权、不冻结、不调供应商、不占在途名额」（`EnterpriseStudioBillingIntegrationTest.zeroPriceIsRejectedBeforeAuthorizationHoldOrSupplierCall`、`EnterpriseVideoBillingIntegrationTest.zeroCostVideoIsRejected*`），删掉已不存在的「零价任务受理不明后核对」用例。上线前要确认线上没有零价接入点，有的话先配售价，否则这些模型会直接报错。
 - [ ] **main 上 10 项旧测试红着**（判定：与本分支无关，2026-10-25）：`EnterpriseStudioBillingIntegrationTest` 3 项、`EnterpriseVideoBillingIntegrationTest` 7 项仍断言「受理结果不明时保留冻结」，而 `GenerationSubmissionFailure` 已改为「没有有效受理回执即判失败并退款」。在本分支基线 `7b012061` 上同样失败，应在 main 上按现行政策改测试。
 - [ ] **小清理**：折扣 `allowGrants` 服务端恒为 true（字段可删）；`ModelBillingConfigService` 注入了没用到的 `MaterialVideoModelClient`。
 - [ ] **celebrity 不处理**（判定：用户 2026-10-25 明确「celebrity 子应用不用管，主要用 Studio」）：素材运营视频弹窗仍按普通余额拦截（`apps/web-celebrity/src/components/material-ops/VideoGenDialog.tsx` `insufficient`），celebrity 看不到赠款余额、流水仍叫「专享额度」。
 
 ## Studio 当前待办
+
+- [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
+
+- [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。
 
 ### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）
 
@@ -50,6 +54,10 @@
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
+
+### 2026-10-25 · 图片按分辨率选模型后测试没跟上（`eab29339`，未发布）
+
+- [x] ~~**`IpRunWorkerTest` 4 条在 main 上红**~~ **已修，2026-10-25**：删掉 `JusuanImageClient.generate` 不带 providerModel 的 10 参数重载，7/8 参数的简便入口委托唯一的 11 参数入口；`IpRunWorkerTest`、`JusuanImageClientTest`、`EnterpriseStudioBillingIntegrationTest` 改到新签名（模拟多一位 providerModel，取 previous / checkpoint 的下标后移一位）。`IpRunWorkerTest` 26/26 通过；企业计费那两条老失败（见下文 070334d0 那条）不变。原记录：（2026-10-25 合并视频文案时发现，在 `eab29339^` 上全绿、`eab29339` 起红）：`nativeAcceptedSecondImageRecovers…`、`acceptedImageCheckpointWriteFailure…`、`jusuanUsesOriginalPrompt…`、`unknownNativeAcceptanceKeepsHold…`。原因：`IpRunWorker` 改调 `JusuanImageClient.generate(…, providerModel, previous, checkpoint)` 新重载，测试仍模拟旧的 10 参数重载，模拟没命中返回 null，被判 `DAP_MODEL_BAD_OUTPUT`。生产路径本身看起来没坏，但同一件事留了两个调法（§8.0.1 ④），建议删掉旧重载或让它委托新重载，再把测试改到新签名；发布 `eab29339` 前要修。
 
 ### 2026-10-24 · 方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md` 末节）
 
@@ -63,6 +71,12 @@
 
 - [x] ~~**实现导演作品及生成宿主适配**~~ **2026-10-23 完成**：V65 独立作品、原生任务宿主、个人／企业付款接入、采用版本与修订保护。
 - [x] ~~**接通剧本到分镜及后台连跑**~~ **2026-10-23 完成**：剧本／资产／分镜三工作区、一键推进、人工确认、暂停与局部续跑；Agnes 真实剧本、资产图和单镜头首帧已验。
+- [x] ~~**剧本 JSON 格式错误导致整单失败且提示不清**~~ **永久修复已合 main；2026-10-25 UTC 已无重启启用 JVM-Sandbox 临时模块**：`ModelJson` 有界组合恢复、`AI_BAD_OUTPUT` 明确错误；模块只处理原解析方法抛出的 JSON 异常，不调模型 / 账本。正常发布与临时热修复边界见 `docs/runbooks/studio-json-jvm-sandbox.md`。
+- [x] **长剧本任务存储容量修复**（2026-10-24）：生产 `ip_run.input_json/output_json` 已在线恢复为 LONGTEXT，无重启；实体映射及幂等 V66 迁移已补齐，待低峰发布。见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
+- [x] **模型 JSON 格式自动恢复与明确失败提示**（2026-10-24）：只修复可确定的语法错误，不重复调用模型；不可恢复或截断时明确提示并释放冻结。代码待低峰发布，见 server README「Studio 模型 JSON 自动恢复」。
+- [x] **导演台剧本文件导入**（2026-10-25，本地未发布）：两个粘贴入口支持文本、Word、PPT、PDF、RTF，全文预览后明确采用，保存继续走修订保护；真实浏览器导入、扫描件失败、保存刷新已验，见 `docs/audits/director-script-file-import-validation-20261025.md`。
+- [x] ~~**AI 拆分集两类 AI_BAD_OUTPUT**~~ **2026-10-25 修复，本地未发布**（分支 `fix/director-split-boundaries`）：线上《食神》（模型最后一集少写一段）与《谁让这个睁眼瞎修仙的》（前 252 段是设定资料）都被「必须从第 0 段首尾相接」的校验判失败。改为模型只给每集起点和正文起点、程序构造区间；剧本里标好「第N集」时程序直接按标题分（免费）；开头资料存为设定资料 `reference`（可编辑、可并入第 1 集，作为参考交给提取和规划）；结果先存 `pendingSplit` 预览确认，全自动一键制作按默认直接采用并说明，拆分失败时作为一集继续；新增撤销拆分（未出图 / 视频前）。两单线上数据未改动。测试：`DirectorPromptsTest`、`DirectorSplitTest`、`director-split.test.tsx`。
+- [x] ~~**导演台拆分新输出格式未用真模型验证**~~ **2026-10-25 本地真调通过**：本地后端（库副本）接聚算 qwen38-27b 各跑一次，回复都是新格式（`finish=stop`，只有 `bodyStart` + `startParagraph`，没写结尾）。① 开头 12 段设定资料、无分集标题：`bodyStart=12`，3 集分在场景切换处；② 4 个「第N集」标题、要求 2 集：`bodyStart=0`，第 2 集从「第3集」标题所在段开始。每次 1 积分。注意聚算 Qwen 端点要声明不支持 response_format（`chat_supports_response_format=false`），否则上游 400「response_format requires json_schema」。
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。

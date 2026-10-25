@@ -183,6 +183,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 用途 |
 |---|---|
+| [Studio JSON 的 JVM-Sandbox 临时热修复](runbooks/studio-json-jvm-sandbox.md) | 不重启的单方法异常恢复、隔离验证、冻结 / 激活 / 卸载与回退；官方 1.4.0、环回管理、无模型或账本调用（last-reviewed 2026-10-24） |
 | [`docs/runbooks/cost-pricing-feishu.md`](runbooks/cost-pricing-feishu.md) | 飞书供应商/模型/规格成本核算、积分自动计算、AI 维护与系统配置映射；未知报价留空，表格更新不等于生产发布（2026-10-22） |
 | [`infra/README.md`](../infra/README.md) ★ | 阿里云 ECS + RDS + OSS 部署**单一真值源**：拓扑、环境拉起 SOP、env / nginx / systemd 索引、§5 vhost 与证书硬规则 |
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | agent 部署技能：本地 artifact / 按应用 / GitHub Actions 三条链路 + 验证排障 |
@@ -198,6 +199,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 结论一句话 |
 |---|---|
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
+| [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |
 | [`docs/audits/admin-alignment-audit-2026-06.md`](audits/admin-alignment-audit-2026-06.md) | admin ↔ server ↔ 子应用三端对齐审计：10 项全部处置；文末「长期防 drift 约定」仍有效 |
 | [`docs/audits/face-beauty-research-2026-06.md`](audits/face-beauty-research-2026-06.md) | 形象精调 / 美颜方案调研：浏览器端确定性美颜（已采纳）vs 云 API vs i2i |
@@ -212,6 +214,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/web-aiavatar-test-suite-audit-2026-10.md`](audits/web-aiavatar-test-suite-audit-2026-10.md) | web-aiavatar vitest 审计：耗时来自 jsdom 并发争用而非条数；限并发 + 假计时器 + 1056→963 条（2026-10-20，已实施） |
 
 ## 7. 发布与验收记录（`docs/releases/`）
+
+- [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
 
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
 

@@ -11,7 +11,7 @@ import java.util.Locale;
 import java.util.zip.CRC32;
 
 /** Existing production ledgers are altered; fresh development ledgers are created later by Hibernate. */
-public class V66__model_scoped_credits extends BaseJavaMigration {
+public class V67__model_scoped_credits extends BaseJavaMigration {
     private static final String SCHEMA="db/schema/model-scoped-credits.sql";
     @Override public Integer getChecksum() {
         try(var input=new ClassPathResource(SCHEMA).getInputStream()) {

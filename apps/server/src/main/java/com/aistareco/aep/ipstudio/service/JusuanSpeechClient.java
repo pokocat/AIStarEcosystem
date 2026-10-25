@@ -1,5 +1,7 @@
 package com.aistareco.aep.ipstudio.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
 
 import com.aistareco.aep.ipstudio.dto.StudioSpeechDtos.SpeechVoice;
@@ -75,7 +77,7 @@ public class JusuanSpeechClient {
             if(response.statusCode()/100!=2) {
                 String body=new String(stream.readNBytes(4096),StandardCharsets.UTF_8);
                 org.slf4j.LoggerFactory.getLogger(getClass()).warn("[speech] download failed endpoint={} model=qwen3-tts request={} status={} body={}",endpoint.getId(),id,response.statusCode(),body);
-                throw fail("STUDIO_SPEECH_DOWNLOAD_FAILED","音频暂未取回，正在恢复原任务");
+                throw fail("STUDIO_SPEECH_DOWNLOAD_FAILED",ProviderErrorMessage.message(body,"音频暂未取回，正在恢复原任务"));
             }
             bytes=stream.readNBytes(20*1024*1024+1);
         }
@@ -125,14 +127,13 @@ public class JusuanSpeechClient {
         if(response.statusCode()/100!=2) {
             if(body!=null && response.statusCode()>=400 && response.statusCode()<500 && response.statusCode()!=408)
                 throw attach(new Rejected("STUDIO_SPEECH_REJECTED",safeMessage(response.body())),response);
-            throw attach(fail("STUDIO_SPEECH_UNAVAILABLE","配音服务暂时不可用，正在核对原任务"),response);
+            throw attach(fail("STUDIO_SPEECH_UNAVAILABLE",ProviderErrorMessage.message(response.body(),"配音服务暂时不可用，正在核对原任务")),response);
         }
         try {return mapper.readTree(response.body());}
         catch(Exception e){upstream.recordBadOutput(ctx,response.body(),"STUDIO_SPEECH_BAD_OUTPUT");throw attach(fail("STUDIO_SPEECH_BAD_OUTPUT","配音任务尚未确认，正在核对原请求"),response);}
     }
     private String safeMessage(String body) {
-        try {String msg=mapper.readTree(body).path("error").path("message").asText();if(!msg.isBlank()&&msg.length()<300)return "配音请求被拒绝："+msg;}catch(Exception ignored){}
-        return "配音请求被拒绝，请检查文案与音色";
+        return ProviderErrorMessage.message(body,"配音请求被拒绝，请检查文案与音色");
     }
     public static class Rejected extends BusinessException {
         public Rejected(String code,String message){super(HttpStatus.BAD_REQUEST,code,message);}

@@ -3,10 +3,12 @@ package com.aistareco.aep.ipstudio.service;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Model replies come back fenced or wrapped in a sentence; the object inside is read as-is. Only missing final brackets are added. */
+/** Recover syntax without inventing values; ambiguous or incomplete model output remains an error. */
 class ModelJsonTest {
     final ObjectMapper om = new ObjectMapper();
 
@@ -47,5 +49,47 @@ class ModelJsonTest {
     interface Thrower<T> { T get() throws Exception; }
     static <T> T assertDoesNotThrowValue(Thrower<T> thrower) {
         try { return thrower.get(); } catch (Exception e) { throw new AssertionError(e); }
+    }
+
+    @Test void productionScriptWithStrayHanEscapeAndMissingFinalBraceIsRecoveredWithoutRewriting() throws Exception {
+        // 2026-10-25 Qwen: finish=stop, invalid \\远 plus a missing final }. Minimal excerpt of the real failure.
+        String reply = "{\"title\":\"账本\",\"content\":\"两人相视一笑，没有言语。\\远处，孩子们的笑声传来。\"";
+        var result = ModelJson.parse(om, reply);
+        assertEquals("账本", result.path("title").asText());
+        assertEquals("两人相视一笑，没有言语。远处，孩子们的笑声传来。", result.path("content").asText());
+        assertThrows(JsonProcessingException.class, () -> om.readTree(reply), "the shared mapper remains strict");
+    }
+
+    @Test void literalLineBreaksAndTabsKeepTheirExactStringValue() throws Exception {
+        String value = "第一行\n第二行\r\n\t缩进";
+        assertEquals(value, ModelJson.parse(om, "{\"content\":\"" + value + "\"}").path("content").asText());
+    }
+
+    @Test void validEscapesAndLiteralBackslashesAreNeverReinterpretedDuringRepair() throws Exception {
+        String value = "原有\\远处、C:\\new\\file、引号\"、换行\n、制表\t、/";
+        String valid = om.createObjectNode().put("content", value).toString();
+        assertEquals(value, ModelJson.parse(om, valid.substring(0, valid.length() - 1)).path("content").asText());
+        assertEquals("远处", ModelJson.parse(om, "{\"content\":\"\\u8fdc处\",}").path("content").asText());
+    }
+
+    @Test void trailingCommasAreRemovedOnlyAfterCompleteValues() throws Exception {
+        var result = ModelJson.parse(om, "```json\n{\"items\":[{\"text\":\"保留 ,} 和 ,]\",},],}\n```");
+        assertEquals(1, result.path("items").size());
+        assertEquals("保留 ,} 和 ,]", result.path("items").get(0).path("text").asText());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "{\"content\":\"未知\\q转义\"}", "{\"content\":\"\\u12汉\"}",
+            "{\"content\":\"不能补全的台词", "{\"outline\":{\"a\":1},\"content\":\"半句",
+            "{\"a\":1,", "{\"a\":}", "{\"a\":,}", "{\"a\":1 \"b\":2}",
+            "[,]", "[1,,]", "[{\"a\":1},{\"b\":", "说明：[{\"a\":1},{\"b\":", "{\"a\":[1}",
+            "{\"a\":1} {\"b\":2}", "{\"a\":1} false", "{\"a\":1} ]",
+            "null {\"a\":1}", "true {\"a\":1}", "123 {\"a\":1}", "{\"a\":1},", "} {\"a\":1}",
+            "\"这还是一个半截字符串 {\"a\":1}",
+            "{\"a\":1,\"a\":2}", "说明：{\"a\":1} 后面还有 {\"b\":2}"
+    })
+    void ambiguousIncompleteOrMultipleDocumentsAreRefused(String reply) {
+        assertThrows(JsonProcessingException.class, () -> ModelJson.parse(om, reply));
     }
 }

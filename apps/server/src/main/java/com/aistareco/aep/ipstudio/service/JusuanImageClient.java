@@ -70,8 +70,14 @@ public class JusuanImageClient {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
-        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null);
+        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null,null);
     }
+    /**
+     * The one Studio entry: {@code providerModel} (nullable) is the family model the output resolution routed to
+     * (StudioImageModelRouting); null keeps the endpoint's own model. Callback checkpoints are committed before submission
+     * and as soon as the original job ID is known. There is no overload without providerModel on purpose (§8.0.1 ④):
+     * a mock of a second overload silently stopped matching when the worker moved to this one (IpRunWorkerTest, 2026-10-25).
+     */
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
                            Consumer<String> progress,AiImageRequestSpec snapshot,String providerModel,
                            JsonNode previous,Consumer<ObjectNode> checkpoint) {
@@ -88,21 +94,18 @@ public class JusuanImageClient {
     /** A provider request may have been accepted even when its HTTP reply is lost. Never re-POST that checkpoint. */
     public static final class Pending extends RuntimeException {
         private final boolean known;
-        public Pending(boolean known,Throwable cause){super(known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成",cause);this.known=known;}
+        public Pending(boolean known,Throwable cause){super((known?"正在恢复原图片任务，请勿重新生成":"图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成")+upstreamReason(cause),cause);this.known=known;}
+        private static String upstreamReason(Throwable cause) {
+            if(cause instanceof BusinessException error && error.getDetails() instanceof Map<?,?> details
+                    && details.get("reason") instanceof String reason && !reason.isBlank())return "；上游原因："+reason;
+            return "";
+        }
         public String code(){return known?"STUDIO_IMAGE_RECOVERING":"STUDIO_IMAGE_SUBMISSION_UNKNOWN";}
     }
     public static final class ProviderRejected extends BusinessException {
         ProviderRejected(String message){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
+        ProviderRejected(String message,Map<String,String> details){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message,details);}
     }
-    /** Callback checkpoints are committed before submission and as soon as the original job ID is known. */
-    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
-                           Consumer<String> progress,AiImageRequestSpec snapshot,JsonNode previous,Consumer<ObjectNode> checkpoint) {
-        boolean attempted=previous!=null && previous.path("submitAttempted").asBoolean();
-        var configured=attempted?models.storedEndpoint(endpointId):models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").map(r->r.endpoint());
-        return generateResolved(configured.orElseThrow(()->failure("图片模型已停用")),prompt,size,keys,requestId,
-                new Invocation(AiModelPurpose.DAP_IMAGE,"studio",owner),progress,snapshot,previous,checkpoint);
-    }
-
     /** Business callers have already resolved their own purpose/application access and keep their own credit rules. */
     public byte[] generateResolved(AiModelEndpoint endpoint,AiModelPurpose purpose,String appCode,String prompt,String size,
                                   List<String> inputs,String requestId) {
@@ -171,7 +174,7 @@ public class JusuanImageClient {
                 }
                 JsonNode job=json(endpoint,wire,pollPath,pollBody,requestId,owner,pollMethod,false);
                 String status=wire!=null && wire.statusPointer()!=null?pointerText(job,wire.statusPointer()):job.path("status").asText();
-                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(new ProviderRejected("图片任务失败，请检查提示词和参考图后重试"),job.toString());
+                if(statusIn(status,wire==null?null:wire.failed(),Set.of("failed","cancelled","canceled","expired")))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(rejected(job,"图片任务失败，请检查提示词和参考图后重试"),job.toString());
                 if(statusIn(status,wire==null?null:wire.succeeded(),Set.of("succeeded","completed","done"))) {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
@@ -361,7 +364,10 @@ public class JusuanImageClient {
                     .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),
                     HttpResponse.BodyHandlers.ofInputStream());
             try(var input=response.body()) {
-                if(response.statusCode()/100!=2)throw failure("图片结果下载失败");
+                if(response.statusCode()/100!=2) {
+                    String body=new String(input.readNBytes(4096),StandardCharsets.UTF_8);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                }
                 int maxBytes=setting(wire.maxOutputBytes(),64*1024*1024);
                 return checkedImage(input.readNBytes(maxBytes+1),maxBytes);
             }
@@ -395,8 +401,31 @@ public class JusuanImageClient {
     }
     private JsonNode checkedSubmit(HttpResponse<String> response) {
         if(response.statusCode()>=400 && response.statusCode()<500)
-            throw attach(new ProviderRejected("图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
+            throw attach(rejected(response.body(),"图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
         return checked(response);
+    }
+
+    // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
+    private ProviderRejected rejected(String body,String fallback) {
+        try { return rejected(mapper.readTree(body),fallback); }
+        catch(Exception ignored) { return new ProviderRejected(fallback); }
+    }
+    private ProviderRejected rejected(JsonNode body,String fallback) {
+        if(body==null || !body.isObject())return new ProviderRejected(fallback);
+        JsonNode error=body.path("error");
+        if(error.isMissingNode() || error.isNull()) {
+            for(String wrapper:List.of("data","result"))
+                if(body.path(wrapper).path("error").isObject()) {error=body.path(wrapper).path("error");break;}
+        }
+        String reason=ProviderErrorMessage.reason(body);
+        if(reason==null)return new ProviderRejected(fallback);
+        String code=error.path("code").asText("");
+        if(!code.matches("[A-Za-z0-9_.:-]{1,96}"))code="";
+        boolean moderation=Set.of("content_policy_violation","content_filter","safety_violation","moderation_blocked")
+                .contains(code.toLowerCase(Locale.ROOT));
+        String prefix=moderation?"图片未通过生成服务的内容审核：":"图片生成服务返回错误：";
+        return new ProviderRejected(prefix+reason,Map.of("providerCode",code,"reason",reason,
+                "category",moderation?"content_moderation":"provider_rejection"));
     }
     private HttpRequest.Builder request(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String path) {
         String queryName=wire==null?"model":configured(wire.modelQueryParam(),"model");
@@ -413,7 +442,10 @@ public class JusuanImageClient {
             String path=fillPath(configured(wire==null?null:wire.downloadPathTemplate(),"/assets/{id}/content"),id,endpoint.getModel());
             var response=http.send(request(endpoint,wire,path).GET().build(),HttpResponse.BodyHandlers.ofInputStream());
             try(var in=response.body()) {
-                if(response.statusCode()/100!=2)throw failure("图片结果下载失败");
+                if(response.statusCode()/100!=2) {
+                    String body=new String(in.readNBytes(4096),StandardCharsets.UTF_8);
+                    throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(failure(ProviderErrorMessage.message(body,"图片结果下载失败（上游 "+response.statusCode()+"）")),body);
+                }
                 int maxBytes=setting(wire==null?null:wire.maxOutputBytes(),64*1024*1024);
                 byte[] bytes=in.readNBytes(maxBytes+1);
                 if(bytes.length==0 || bytes.length>maxBytes || MediaBytes.sniff("image",bytes)==null)throw failure("图片结果不可用");
@@ -441,7 +473,11 @@ public class JusuanImageClient {
                 .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
-        if(response.statusCode()/100!=2)throw attach(failure("聚算图片接口暂时不可用（"+response.statusCode()+"）"),response);
+        if(response.statusCode()/100!=2) {
+            var error=rejected(response.body(),"图片生成服务返回错误（"+response.statusCode()+"）");
+            // Keep recoverable failures distinct from a definitive submission rejection.
+            throw attach(new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails()),response);
+        }
         try{return mapper.readTree(response.body());}catch(Exception e){throw attach(failure("聚算图片接口返回了无效结果"),response);}
     }
     static String assetId(JsonNode job) {

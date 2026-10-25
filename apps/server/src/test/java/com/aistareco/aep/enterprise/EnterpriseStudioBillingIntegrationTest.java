@@ -186,8 +186,8 @@ class EnterpriseStudioBillingIntegrationTest {
         ReflectionTestUtils.setField(imageWorker,"jusuanImages",nativeClient);
         org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(true);
         var submissions=new AtomicInteger();
-        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
-            JsonNode previous=inv.getArgument(8);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(9);
+        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
+            JsonNode previous=inv.getArgument(9);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             if(!previous.path("submitAttempted").asBoolean()) {
                 submissions.incrementAndGet();checkpoint.accept(json.createObjectNode().put("submitAttempted",true).put("jobId","original-native-job").put("requestBody","original-body").put("baseUrl",base).put("model","original-model"));
                 throw new JusuanImageClient.Pending(true,new IllegalStateException("poll outage"));
@@ -204,8 +204,8 @@ class EnterpriseStudioBillingIntegrationTest {
     @Test void operatorCanBindMissingOriginalImageIdWithAuditAndNoSecondSubmission() throws Exception {
         var c=funded(100,1);var nativeClient=org.mockito.Mockito.mock(JusuanImageClient.class);ReflectionTestUtils.setField(imageWorker,"jusuanImages",nativeClient);
         org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(true);var submissions=new AtomicInteger();
-        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
-            JsonNode previous=inv.getArgument(8);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(9);
+        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
+            JsonNode previous=inv.getArgument(9);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             if(!previous.path("submitAttempted").asBoolean()) {
                 submissions.incrementAndGet();checkpoint.accept(json.createObjectNode().put("submitAttempted",true).put("requestBody","immutable-body").put("baseUrl",base).put("model","original-model"));
                 throw new JusuanImageClient.Pending(false,new IllegalStateException("submission reply lost"));
@@ -227,8 +227,8 @@ class EnterpriseStudioBillingIntegrationTest {
     @Test void supplierConfirmedUnknownRefundsOriginalEnterpriseAfterRemovalAndPreservesPartialSuccess() throws Exception {
         var c=funded(100,1);var nativeClient=org.mockito.Mockito.mock(JusuanImageClient.class);ReflectionTestUtils.setField(imageWorker,"jusuanImages",nativeClient);
         org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(true);var submissions=new AtomicInteger();
-        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
-            submissions.incrementAndGet();String key=inv.getArgument(4);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(9);
+        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
+            submissions.incrementAndGet();String key=inv.getArgument(4);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             var state=json.createObjectNode().put("submitAttempted",true).put("requestBody","original-"+key).put("baseUrl",base).put("model","original-model");
             if(key.endsWith("-image-0")){state.put("jobId","already-successful");checkpoint.accept(state);return Base64.getDecoder().decode(PNG);}
             checkpoint.accept(state);throw new JusuanImageClient.Pending(false,new IllegalStateException("submission reply lost"));

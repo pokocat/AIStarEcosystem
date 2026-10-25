@@ -1238,6 +1238,20 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **上下文窗口**：`DialogueContextWindow.trim`，最近 6 轮完整，更早的工具结果一行摘要、长参数换成合法占位 JSON（原生 tool_calls 与 tool 消息一一对应不变），估算超 80k 时降到 3 轮 / 1 轮；只影响发给模型的视图。
 - **其它**：`DialogueCanvasDigest.full` 写明全文字数与 `read_canvas` 分段参数，`read_canvas` 文字对象返回 `total`；`ChildRuns.follow` 最多等 10 分钟，拉片仍在进行时不再 `HANDED_OFF` 结束，交给模型告诉用户。提示词 `dap.ip_studio_skill_dialogue` 规则 14 + 分段读用法，`PromptTemplateSeeder.SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移、无新表。
 
+### 导演台分集与设定资料（2026-10-25，本地未发布）
+
+`DirectorPrompts.validateSplit` 只认每集 `startParagraph` 与 `bodyStart`，按起点构造首尾相接的区间（附 `headFrom / dropped / duplicates / modelEnd` 供说明）；`headingStarts` 识别剧本里标好的「第N集」，`DirectorService.splitByHeadings` 据此免费出结果。`director_work.content_json` 新增 `pendingSplit`、`reference / referenceRev`、`splitUndo`（只在服务端，出 wire 换成 `canUndoSplit`），view 另给 `draftEpisodeHeadings`；无迁移。edit op 新增 `split.save / split.discard / split.undo / reference.update / reference.toEpisode`，一键制作新增等待阶段 `confirm-split`。规则见 `specs/BUSINESS_RULES.md`「导演台分集」与导演台方案 §14。
+
+### 导演长剧本任务容量（2026-10-24）
+
+导演剧本文件导入（2026-10-25，本地未发布）：`DirectorScriptImportController` 的 `POST /v1/ip-studio/director/script-import` 返回 `{text,format}`，可在创建作品前调用。`StudioStoryImportService.extractScript` 复用 Word/PDF 并支持 PPT/PPTX、RTF、常见文本文件；8 MiB、60000 字、PDF/PPT 100 页。现有画布 `extract` 保持 24000 字且只接受 PDF/Word。无新增依赖、表、模型调用、文件持久化或计费；格式、权限及预览保存语义见导演台方案 §3.1。
+
+`IpRun.inputJson/outputJson` 必须映射为 LONGTEXT，与 V27 建表契约一致；TEXT 的 65,535 字节上限容纳不了允许导入的 60,000 字剧本及任务 JSON。V66 只扩容 MySQL 中尚未为 LONGTEXT 的列，兼容已执行的生产应急扩容，不修改旧迁移或 Flyway 历史。生产数据库已扩容且未重启，实体和 V66 尚待发布；证据见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
+
+### Studio 模型 JSON 自动恢复（2026-10-24，待发布）
+
+`ModelJson` 在本地解析时修复汉字前的非法反斜杠、字符串内裸换行/制表符、完整值后的尾逗号和末尾缺失括号；保留原文，不增加模型请求。严格拒绝重复键、多份 JSON、半截字符串、缺值、非法 ASCII 转义或括号不匹配，并保留业务结构校验。`StudioWorkflowWorker` 对 `finish_reason=length` 直接拒绝；不能恢复的格式错误返回 `AI_BAD_OUTPUT` 与明确提示，继续走现有冻结释放、零扣费及错误日志链路。
+
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
 真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。
@@ -1253,7 +1267,7 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 真源：[设计与当前状态](../../docs/model-billing-design.md)。适用资格只按 `ai_model_providers.id` 判断；应用、动作、规格、模型名和计量单位仅保留在任务快照，不能限制同一接入点的赠款。售价沿用现有服务端价格，命中多条折扣取最优惠一条，折后依次扣赠款与普通积分。企业折扣按 enterpriseId 覆盖全部成员的企业消费钱包，个人钱包独立。
 
-新领域 `aep.billing` 统一报价、冻结、结算、释放、到期与流水。`ModelChargeContext.forCredits` 接收已经按现有价格折算好的积分费用；原有按张、秒和 Token 的计量流程继续使用同一服务。V66 建立折扣、活动、赠款、冻结与成交快照；V67 扩展赠款审批；V68 增加 `aep_model_charges.parent_hold_id`，使追加冻结沿用原折扣且整笔只取整一次。历史 `aep_model_prices` 不参与售价查询，其写入口拒绝另造价格源；新赠款活动不预占供应商资源。原钱包 gift/license/recharge/pending 不混入赠款，企业充值来源保持不变。
+新领域 `aep.billing` 统一报价、冻结、结算、释放、到期与流水。`ModelChargeContext.forCredits` 接收已经按现有价格折算好的积分费用；原有按张、秒和 Token 的计量流程继续使用同一服务。V67 建立折扣、活动、赠款、冻结与成交快照；V68 扩展赠款审批；V69 增加 `aep_model_charges.parent_hold_id`，使追加冻结沿用原折扣且整笔只取整一次。历史 `aep_model_prices` 不参与售价查询，其写入口拒绝另造价格源；新赠款活动不预占供应商资源。原钱包 gift/license/recharge/pending 不混入赠款，企业充值来源保持不变。
 
 后台 `/admin/model-billing/{targets|user-options|wallet-options|enterprise-options|discounts|campaigns|grants}` 提供目录、分页查询与管理，发放走 `/admin/finance/adjustments/scoped-grant` 与现有审批。个人优惠不要求钱包已建立。`/me/model-credits` 只返回当前本人个人或企业成员钱包的额度。
 
@@ -1264,3 +1278,9 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 当前代码与定向回归证据均在设计稿中；此前分规格和供应商资源方案已归档，不作为交付要求。
 
 评审后修正：企业报价用 `EnterpriseBillingAuthorizationRepository.activeForActorWithoutLock`（只读事务不能加锁）；`ScopedCreditService.reserve` 只锁 `findSpendable` 里适用的赠款行，带资源计数的活动经 `CreditCampaignRepository.meteredIds` 先锁再读；`ModelBillingConfigService` 拒绝修改已发放活动的适用接入点（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；视频对账恢复只在 `ModelChargeService.usedPromotion` 为真时要求人工复核；赠款全额抵扣时不写零金额 FREEZE / SPEND / UNFREEZE。
+
+### Studio JSON 格式自动恢复与临时热修复（2026-10-24）
+
+`ModelJson` 先严格读取单份 JSON，再组合恢复汉字前多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号与缺少的末尾括号；合法转义不变，不放宽共享 ObjectMapper。缺值、半截字符串、未知 ASCII / 残缺 Unicode 转义、重复字段和多份 JSON 拒绝，恢复后仍走业务结构校验。`finish_reason=length` 不靠补括号伪造成功。工作流不能恢复时返回 `AI_BAD_OUTPUT` 和明确的格式错误 / 本次未扣积分提示，原解析异常及上游诊断保留，继续走失败退款路径，不新增模型重试。
+
+用户要求不重启时可临时使用 `infra/hotfix/studio-json-sandbox/`：官方 JVM-Sandbox 1.4.0，模块从仓库解析器生成，只观察 `ModelJson.parse` 的 Jackson 异常。正常返回保持原样，因此临时模块不是正常发布后的全部严格规则；模块只在环回管理、默认冻结、验证后激活，卸载即撤销，不改 app.jar。2026-10-25 UTC 已在原生产进程启用，应用 JAR 未变；固定探针通过，44 次健康采样均 200，模块可卸载回退。发布证据见 [热修复记录](../../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。构建、验证与回退见 [操作手册](../../docs/runbooks/studio-json-jvm-sandbox.md)。

@@ -65,7 +65,7 @@ public class EnumColumnWideningMigration implements CommandLineRunner {
             // AdminUser.AdminRole（C2：+FINANCE_ADMIN）
             new EnumColumn("admin_users", "role",
                     List.of("SUPER_ADMIN", "OPERATOR", "FINANCE_ADMIN"))
-            // aep_ledger_entries.entry_type 不在这里：V66 已把它改成 VARCHAR，实体也标了 @JdbcTypeCode(VARCHAR)。
+            // aep_ledger_entries.entry_type 不在这里：V67 已把它改成 VARCHAR，实体也标了 @JdbcTypeCode(VARCHAR)。
             // 留在清单里会在每次启动时把 VARCHAR 改回缺 SCOPED_* 的 ENUM，第一笔模型赠款入账就报 Data truncated。
     );
 

@@ -116,6 +116,7 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
       {asset.image.adoptedBy === "auto" && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={13}/>确认</button>}
       {!asset.image.adoptedId && !audioOnly && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} title={costText(work.pricing.image, work.pricing.mock)} onClick={generate}><Wand2 size={13}/>生成</button>}
     </footer>
+    {!generating && <InlineError message={asset.image.error?.message}/>}
     {voiceOpen && <VoiceDialog work={work} asset={asset} apply={apply} onClose={() => setVoiceOpen(false)}/>}
   </article>;
 }

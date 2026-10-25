@@ -4,6 +4,11 @@
 export type DirectorAssetKind = "character" | "scene" | "prop";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
 
+export interface DirectorScriptImportResult {
+  text: string;
+  format: "pdf" | "doc" | "docx" | "ppt" | "pptx" | "rtf" | "txt" | "md" | "markdown" | "csv" | "tsv" | "json" | "xml" | "yaml" | "yml" | "log" | "srt" | "vtt";
+}
+
 export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
@@ -178,7 +183,7 @@ export interface DirectorPipeline {
   /** 全自动：资产清单、参考图、分镜图、片段视频都不停下来等确认 */
   auto?: boolean;
   status: DirectorPipelineStatus;
-  /** confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
+  /** confirm-split / confirm-extract / confirm-assets / budget / fix-clips / failed-items / blocked / 进行中的阶段 */
   stage: string;
   message: string;
   budget: number;
@@ -224,6 +229,26 @@ export interface DirectorPendingExtractItem {
 
 export interface DirectorPendingExtract { runId: string; at: string; items: DirectorPendingExtractItem[] }
 
+/** 待确认分集里的一段范围：篇幅和开头、结尾各一句，正文确认时才从剧本里取。 */
+export interface DirectorSplitRangeView { paragraphs: number; chars: number; head: string; tail: string }
+
+/**
+ * 拆好、还没采用的分集。headings = 剧本里标好了「第N集」，按标题分，不花积分；model = AI 拆的。
+ * preamble 是第一集之前的内容（设定资料），确认时选择保留为设定资料（默认）或并入第一集。
+ * notes 是程序补过的段落，warnings 是和要求不一致的地方（如集数）。
+ */
+export interface DirectorPendingSplit {
+  id: string;
+  runId: string | null;
+  source: "headings" | "model";
+  at: string;
+  paragraphCount: number;
+  preamble: DirectorSplitRangeView | null;
+  episodes: Array<DirectorSplitRangeView & { title: string; summary: string; startParagraph: number; endParagraph: number }>;
+  notes: string[];
+  warnings: string[];
+}
+
 /** 剧本生成时一起写的整体故事大纲；导入的剧本和旧作品没有。 */
 export interface DirectorOutline {
   world: string;
@@ -248,6 +273,15 @@ export interface DirectorWork {
   /** 拆集之前的整份剧本；拆集后为空，正文在各集里。 */
   draft: string;
   draftRev: number;
+  /** 剧本里标好的「第N集」标题数（拆分前）；≥2 时按标题分集，不花积分。 */
+  draftEpisodeHeadings: number;
+  /** 设定资料：拆分时从剧本开头分出来的改编说明、世界观、人物等，不拍成画面，写分镜和提取资产时作为参考。 */
+  reference: string;
+  referenceRev: number;
+  /** 拆好、等确认的分集（split.save / split.discard）。 */
+  pendingSplit: DirectorPendingSplit | null;
+  /** 还能撤销拆分：拆分前的原稿还在，而且还没有分镜图或视频。 */
+  canUndoSplit: boolean;
   settings: DirectorSettings;
   episodes: DirectorEpisode[];
   assets: DirectorAsset[];
@@ -285,7 +319,8 @@ export type DirectorEditOp =
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
-  | "extract.save" | "extract.discard";
+  | "extract.save" | "extract.discard"
+  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";

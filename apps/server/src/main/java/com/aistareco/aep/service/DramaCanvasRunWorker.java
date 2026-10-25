@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.service.AiModelUsageContext;
 
 import com.aistareco.aep.config.MdcTaskDecorator;
@@ -1070,7 +1072,7 @@ public class DramaCanvasRunWorker {
     /**
      * 给用户看的失败原因：上游 4xx 把它的原话（截断、脱敏）说出来 —— 那是「我们请求哪儿不对」，用户据此改；
      * 429 例外（同时在跑的太多，不是请求写错了）：说「太忙，过一分钟再试」，不甩厂商的英文原话；
-     * 5xx / 网络问题笼统说（细节在日志）；我们自己写过文案的直出；其余给异常类型 + 追查号。
+     * 所有可读上游原因统一保留；网络层无响应时才使用通用提示。
      */
     static String friendly(Throwable e, String runId) {
         if (e instanceof BusinessException be) {
@@ -1079,7 +1081,7 @@ public class DramaCanvasRunWorker {
                 return be.getMessage();
             }
             Integer status = upstreamStatus(be.getInternalDetail());
-            if (status != null && status == 429) {
+            if (status != null && status == 429 && !hasUpstreamReason(be.getInternalDetail())) {
                 // chat 的上游非 2xx 一律是 AI_CALL_FAILED（AiModelInvocationService）；出图等其它调用另一句
                 return "AI_CALL_FAILED".equals(be.getCode()) ? TEXT_BUSY_MESSAGE : MODEL_BUSY_MESSAGE;
             }
@@ -1102,37 +1104,20 @@ public class DramaCanvasRunWorker {
         return "生成失败（" + (e == null ? "未知原因" : e.getClass().getSimpleName()) + "）· 追查号 " + runId;
     }
 
-    /** internalDetail 里带着上游 4xx 的状态码与响应体时，抽出给用户看的那句；5xx / 没有 → null。 */
+    /** 从 internalDetail 提取所有状态的上游原因；未记录上游响应时返回 null。 */
     static String upstreamRejection(String internalDetail) {
         if (internalDetail == null) return null;
         Matcher m = UPSTREAM_STATUS.matcher(internalDetail);
         if (!m.find()) return null;
         int status = Integer.parseInt(m.group(1));
-        if (status < 400 || status >= 500) return null;
-        String body = m.group(2).strip();
-        String msg = null;
-        try {
-            JsonNode root = JSON.readTree(body.endsWith("…") ? body.substring(0, body.length() - 1) : body);
-            for (JsonNode cand : new JsonNode[]{root.path("error").path("message"), root.path("message"), root.path("error")}) {
-                if (cand.isTextual() && !cand.asText().isBlank()) {
-                    msg = cand.asText().strip();
-                    break;
-                }
-            }
-        } catch (Exception ignore) {
-            // 响应体不是 JSON（网关的 HTML 错误页）或被截断：下面按字段抽；抽不到不外泄，给笼统的
-        }
-        if (msg == null) {
-            // 出图客户端会截断响应体，整体解析不了；第一个 "message" 字段往往还是完整的
-            Matcher mm = MESSAGE_FIELD.matcher(body);
-            if (mm.find()) {
-                String v = mm.group(1).replace("\\\"", "\"").replace("\\n", " ").strip();
-                if (!v.isBlank()) msg = v;
-            }
-        }
-        if (msg == null) return genericRejection(status);
-        msg = SECRET_LIKE.matcher(msg).replaceAll("$1***");
-        return "模型拒绝了这次请求：" + truncate(msg, 200) + "（积分已退回）";
+        if (status < 400) return null;
+        return ProviderErrorMessage.message(m.group(2).strip(),genericRejection(status));
+    }
+
+    private static boolean hasUpstreamReason(String detail) {
+        if(detail==null)return false;
+        Matcher match=UPSTREAM_STATUS.matcher(detail);
+        return match.find() && ProviderErrorMessage.reason(match.group(2).strip())!=null;
     }
 
     /** 上游 4xx 但抽不出它的原话时给用户的那句。 */

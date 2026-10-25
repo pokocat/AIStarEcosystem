@@ -244,15 +244,8 @@ public class MusicGenWorker {
 
     /** 上游失败原因转成用户看得懂的话（不暴露内部枚举）。 */
     private static String mapFailReason(String raw) {
-        if (raw == null) return "音乐生成失败，请重试。";
-        String s = raw.toLowerCase();
-        if (s.contains("plagiar") || s.contains("copy")) {
-            return "歌词涉嫌与已有作品重复，请修改后重试。";
-        }
-        if (s.contains("sensitive") || s.contains("risk") || s.contains("audit")) {
-            return "内容未通过安全审核，请调整创作内容后重试。";
-        }
-        return "音乐生成失败，请调整创作内容后重试。";
+        String reason=com.aistareco.aep.service.ai.ProviderErrorMessage.sanitize(raw);
+        return reason==null?"音乐生成失败，上游未提供具体原因":reason;
     }
 
     private static String userFacing(Exception e) {

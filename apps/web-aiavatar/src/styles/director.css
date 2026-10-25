@@ -61,6 +61,15 @@ pre.director-prompt { max-height: 220px; overflow: auto; }
 .director-tag + .director-tag { left: auto; right: 8px; }
 
 /* ── 工作台外壳：一行顶栏 + 一条状态线 + 左侧竖栏 ── */
+.director-script-file { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.director-script-file-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.director-script-file-toolbar > span, .director-script-file-hint, .director-script-file-preview small { color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.director-script-file-hint { margin: 0; }
+.director-script-file-preview { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-soft); }
+.director-script-file-preview > div:first-child { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.director-script-file-preview strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.director-script-file-preview textarea { width: 100%; max-height: 240px; resize: vertical; font-size: 13px; line-height: 1.8; }
+.director-script-file-preview > div:first-child > button { flex-shrink: 0; padding: 4px; border: 0; background: transparent; }
 .director-shell { min-height: 100dvh; padding: 10px 12px 32px; background: var(--ip-paper); }
 html[data-layout="desktop"] .director-shell { max-width: 1600px; margin: 0 auto; padding: 12px 20px 40px; min-height: calc(100dvh - var(--desktop-bar-h, 84px)); }
 .director-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 80px 16px; color: var(--ip-muted); }
@@ -187,6 +196,7 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-asset-tile footer small.is-done { color: var(--ip-green); }
 .director-asset-tile footer small.is-warn { color: var(--ip-gold); }
 .director-asset-tile footer small.is-error { color: var(--ip-error); }
+.director-asset-tile > .director-inline-error { margin: 0 10px 10px; min-width: 0; overflow-wrap: anywhere; }
 .director-asset-tile footer :is(.ip-brand-button, .ip-brand-secondary) { flex: none; height: 30px; min-height: 30px; padding: 0 11px; font-size: 12px; white-space: nowrap; }
 .director-kind.is-floating { position: absolute; top: 6px; left: 6px; background: rgba(255, 255, 255, .9); }
 .director-kind.is-floating.is-right { left: auto; right: 6px; }
@@ -577,3 +587,21 @@ html:not([data-layout="desktop"]) .director-clip-stage { width: 120px; }
 .director-video-cost { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .director-clip-stage:has(.director-clip-stage-empty) { border-style: dashed; background: var(--ip-soft); color: var(--ip-muted); }
 .director-clip-stage:has(.director-clip-stage-empty) .director-clip-stage-tag { background: var(--ip-paper); color: var(--ip-muted); border: 1px solid var(--ip-line); }
+
+/* 分集预览：确认前先看每集多长、从哪句到哪句，程序补过什么；开头的设定资料选保留还是并入第 1 集。 */
+.director-split-preview { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 12px; border: 1px solid var(--ip-ink); border-radius: 10px; }
+.director-split-preview header h4 { display: flex; align-items: center; gap: 6px; font-size: 14px; }
+.director-split-preview header p { margin-top: 2px; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.director-split-preamble { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px; border-radius: 8px; background: var(--ip-gold-soft); }
+.director-split-preamble p { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; line-height: 1.7; }
+.director-split-preamble p span { overflow: hidden; color: var(--ip-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.director-split-preamble small { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.director-split-notes { display: flex; flex-direction: column; gap: 4px; padding-left: 18px; color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.director-split-notes li.is-warn { color: var(--ip-gold); font-weight: 600; }
+.director-split-episodes { display: flex; flex-direction: column; gap: 4px; max-height: 320px; overflow: auto; margin: 0; padding: 0; list-style: none; }
+.director-split-episodes li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 2px 10px; min-width: 0; padding: 8px 10px; border-radius: 8px; background: var(--ip-soft); font-size: 13px; }
+.director-split-episodes b { white-space: nowrap; }
+.director-split-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-split-episodes small { color: var(--ip-muted); font-size: 12px; white-space: nowrap; }
+.director-split-range { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: var(--ip-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.director-reference .director-outline-head em { flex-shrink: 0; }

@@ -1,5 +1,7 @@
 package com.aistareco.aep.service.materialvideo;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
 
 import com.aistareco.aep.config.MaterialVideoProperties;
@@ -431,17 +433,17 @@ public class MaterialVideoModelClient {
             // 而这里跑在 @Async worker 里，不写这一行就等于什么都没记。
             log.warn("[material-video] submit rejected endpoint={} model={} protocol={} status={} durationMs={} body={}",
                     p.getName(), model, protocol, resp.statusCode(), elapsedMs(startNanos), snippet(resp.body()));
-            // 4xx 是「我们请求哪儿不对」，厂商原话直出给用户；5xx 是厂商自己的问题，只给状态码。
+            // Message propagation is independent of status classification and settlement.
             var mappedError = VideoProviderErrorMapper.submit(resp.statusCode(), resp.body());
             // A generic gateway/server failure cannot prove the supplier rejected a non-idempotent create.
             // Documented queue rejection is definitive; all other 5xx keep the original hold for evidence/recovery.
             if(resp.statusCode()>=500 && mappedError.isEmpty())
-                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode()),resp);
+                throw attach(new SubmissionUnknown("endpoint="+p.getName()+" status="+resp.statusCode()+" body="+snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
             if(mappedError.filter(m->VideoProviderErrorMapper.VIDEO_MODEL_RETIRED.equals(m.code())).isPresent())
                 markRetired(p,model);
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY,
                     mappedError.map(VideoProviderErrorMapper.MappedError::code).orElse("VIDEO_SUBMIT_FAILED"),
-                    mappedError.map(VideoProviderErrorMapper.MappedError::message)
+                    mappedError.map(m->ProviderErrorMessage.append(resp.body(),m.message()))
                             .orElseGet(() -> submitFailureMessage(resp.statusCode(), resp.body())),
                     "endpoint=" + p.getName() + " model=" + model + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body())),resp);
@@ -466,7 +468,7 @@ public class MaterialVideoModelClient {
                 log.warn("[material-video] submit missing-task-id endpoint={} model={} durationMs={} body={}",
                         p.getName(), model, elapsedMs(startNanos), snippet(resp.body()));
                 upstreamHttp.recordBadOutput(ctx, resp.body(), "VIDEO_SUBMIT_FAILED", elapsedMs(startNanos));
-                throw attach(new SubmissionUnknown("missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body())),resp);
+                throw attach(new SubmissionUnknown("missing task/video id; endpoint=" + p.getName() + " body=" + snippet(resp.body()),resp.statusCode(),ProviderErrorMessage.reason(resp.body())),resp);
             }
             log.info("[material-video] submit ok endpoint={} model={} protocol={} taskId={} videoId={} durationMs={}",
                     p.getName(), model, protocol, taskId, videoId, elapsedMs(startNanos));
@@ -492,8 +494,10 @@ public class MaterialVideoModelClient {
         public SubmissionUnknown(String detail) {
             this(detail,null);
         }
-        public SubmissionUnknown(String detail,Integer status) {
-            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE+(status==null?"":" 错误原因：HTTP "+status),null,detail);
+        public SubmissionUnknown(String detail,Integer status) { this(detail,status,null); }
+        public SubmissionUnknown(String detail,Integer status,String reason) {
+            super(HttpStatus.BAD_GATEWAY,"VIDEO_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE
+                    +(status==null?"":" 错误原因：HTTP "+status)+(reason==null?"":"；"+reason),null,detail);
         }
     }
 
@@ -590,7 +594,7 @@ public class MaterialVideoModelClient {
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
             throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_POLL_FAILED",
-                    "视频生成失败，请稍后重试",
+                    ProviderErrorMessage.message(resp.body(), "视频生成服务返回错误（上游 " + resp.statusCode() + "）"),
                     "poll; endpoint=" + p.getName() + " taskId=" + idForLog + " status=" + resp.statusCode()
                             + " body=" + snippet(resp.body())),resp);
         }
@@ -619,7 +623,7 @@ public class MaterialVideoModelClient {
             VideoPromptRewrite promptRewrite = VideoPromptRewrite.fromVendor(root);
             String failReason = "failed".equals(status)
                     ? responseSpec != null && responseSpec.error() != null
-                        ? pointerText(root, responseSpec.error()) : extractFailReason(root)
+                        ? ProviderErrorMessage.sanitize(pointerText(root, responseSpec.error())) : extractFailReason(root)
                     : null;
             if ("failed".equals(status)) {
                 // 上游判失败：记原始响应体，方便排查（agnes 等可能不给结构化原因字段）。
@@ -1481,21 +1485,10 @@ public class MaterialVideoModelClient {
      */
     static String extractFailReason(JsonNode root) {
         if (root == null) return null;
-        JsonNode data = root.get("data");
-        String message = failMessageIn(root);
-        if (message == null) message = failMessageIn(data);
-        if (message != null) return message;
-        String code = failCodeIn(root);
-        return code != null ? code : failCodeIn(data);
-    }
-
-    private static String failMessageIn(JsonNode node) {
-        if (node == null) return null;
-        String direct = firstText(node, "fail_reason", "failReason", "error_message", "errorMessage",
-                "error", "message", "msg", "reason", "detail");
-        if (direct != null) return direct;
-        JsonNode error = node.get("error");
-        return error != null && error.isObject() ? firstText(error, "message", "msg", "detail", "reason") : null;
+        String message=ProviderErrorMessage.reason(root);
+        if(message!=null)return message;
+        String code=failCodeIn(root);
+        return ProviderErrorMessage.sanitize(code!=null?code:failCodeIn(root.path("data")));
     }
 
     private static String failCodeIn(JsonNode node) {
@@ -2058,13 +2051,14 @@ public class MaterialVideoModelClient {
         try {
             long backoffMs = OPTIMIZE_FIRST_BACKOFF_MS;
             String lastProblem = "no attempt";
+            String lastProviderReason = null;
             for (int attempt = 1; ; attempt++) {
                 long remainingMs = (deadline - optimizeNanoClock.getAsLong()) / 1_000_000L;
                 if (remainingMs < OPTIMIZE_MIN_ATTEMPT_MS) {
                     log.warn("[material-video] 智能优化重试预算用完 endpoint={} key={} attempts={} last={}",
                             p.getName(), idempotencyKey, attempt - 1, lastProblem);
                     throw BusinessException.wrapped(HttpStatus.GATEWAY_TIMEOUT, "VIDEO_STUDIO_OPTIMIZATION_TIMEOUT",
-                            "智能优化超时", "key=" + idempotencyKey + " last=" + lastProblem);
+                            lastProviderReason == null ? "智能优化超时" : "智能优化超时；上游原因：" + lastProviderReason, "key=" + idempotencyKey + " last=" + lastProblem);
                 }
                 Duration timeout = Duration.ofMillis(Math.min(OPTIMIZE_ATTEMPT_TIMEOUT.toMillis(), remainingMs));
                 HttpRequest req = HttpRequest.newBuilder(uri)
@@ -2117,6 +2111,7 @@ public class MaterialVideoModelClient {
                 if (status == 409 || status == 429 || status >= 500) {
                     // 409 = 同一操作还在处理（optimization_in_progress）；429 / 5xx = 厂商忙。同一正文同一键重发。
                     lastProblem = "status=" + status + " body=" + snippet(resp.body());
+                    lastProviderReason = ProviderErrorMessage.reason(resp.body());
                     log.warn("[material-video] 智能优化暂时没结果，同一键重发 endpoint={} key={} attempt={} status={} body={}",
                             p.getName(), idempotencyKey, attempt, status, snippet(resp.body()));
                     backoffMs = pause(backoffMs, retryAfterMs(resp), deadline);
@@ -2275,65 +2270,25 @@ public class MaterialVideoModelClient {
 
     // ── 上游拒绝时给用户看的话（§8.0.1 ①）────────────────────────────
     //
-    // 4xx 说的是「我们请求哪儿不对」，是用户唯一据以行动的信息：厂商原话直出（截断、脱敏）。
-    // 对一个永远不会自己好的 400 说「请稍后重试」本身就是错的。5xx 是厂商自己的问题，只给状态码。
-    // 响应体不是 JSON（网关的 HTML 错误页之类）时不外泄。上传与创建共用 vendorMessage 这一处解析。
+    // All model errors share extraction/redaction; raw HTML remains diagnostic-only.
 
     /** 素材上传被拒。 */
     static String uploadFailureMessage(String label, int status, String rawBody) {
-        if (!isClientError(status)) return label + "上传失败（上游 " + status + "），请稍后重试";
-        String msg = vendorMessage(rawBody);
-        return msg == null ? label + "被上游拒收（" + status + "）" : label + "被上游拒收：" + msg;
+        return ProviderErrorMessage.append(rawBody, label + "上传失败（上游 " + status + "）");
     }
 
     /** 创建生成任务被拒（POST /media/generations 等）。 */
     static String submitFailureMessage(int status, String rawBody) {
-        if (!isClientError(status)) return "视频生成失败（上游 " + status + "），请稍后重试";
-        String msg = vendorMessage(rawBody);
-        return msg == null ? "视频模型拒绝了这次请求（" + status + "）" : "视频模型拒绝了这次请求：" + msg;
+        return ProviderErrorMessage.message(rawBody, "视频生成服务返回错误（上游 " + status + "）");
     }
 
     /** 智能优化被拒（POST /media/prompt-optimizations 的 4xx；409 / 429 / 5xx 会重发，到不了这里）。 */
     static String optimizationFailureMessage(int status, String rawBody) {
-        if (!isClientError(status)) return "智能优化失败（上游 " + status + "），请稍后重试";
-        String msg = vendorMessage(rawBody);
-        return msg == null ? "智能优化被拒（" + status + "）" : "智能优化被拒：" + msg;
+        return ProviderErrorMessage.message(rawBody, "智能优化失败（上游 " + status + "）");
     }
-
-    private static boolean isClientError(int status) {
-        return status >= 400 && status < 500;
-    }
-
-    private static final int VENDOR_MESSAGE_MAX_CHARS = 200;
-    /** 脱敏：Bearer 凭据与看起来像密钥 / 签名的长串，不上屏。 */
-    private static final Pattern BEARER = Pattern.compile("(?i)bearer\\s+\\S+");
-    private static final Pattern LONG_TOKEN = Pattern.compile("[A-Za-z0-9_\\-]{32,}");
 
     /** 从上游错误体里取出厂商那句原话；不是 JSON、或没有可读的字段 → null。 */
     static String vendorMessage(String rawBody) {
-        if (rawBody == null || rawBody.isBlank()) return null;
-        JsonNode body;
-        try {
-            body = OM.readTree(rawBody);
-        } catch (Exception ignore) {
-            return null;   // 网关的 HTML 错误页之类：退回笼统文案，别糊到界面上
-        }
-        if (body == null || !body.isObject()) return null;
-        String msg = null;
-        for (JsonNode c : new JsonNode[]{body.path("error").path("message"), body.path("message"),
-                body.path("error").path("msg"), body.path("msg"), body.path("errorMessage"),
-                body.path("detail"), body.path("error")}) {
-            if (c.isTextual() && !c.asText().isBlank()) {
-                msg = c.asText();
-                break;
-            }
-        }
-        if (msg == null) return null;
-        msg = msg.replaceAll("\\s+", " ").trim();
-        msg = LONG_TOKEN.matcher(BEARER.matcher(msg).replaceAll("***")).replaceAll("***");
-        if (msg.codePointCount(0, msg.length()) > VENDOR_MESSAGE_MAX_CHARS) {
-            msg = msg.substring(0, msg.offsetByCodePoints(0, VENDOR_MESSAGE_MAX_CHARS)) + "…";
-        }
-        return msg;
+        return ProviderErrorMessage.reason(rawBody);
     }
 }

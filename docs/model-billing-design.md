@@ -51,7 +51,7 @@
 - Studio、后台、短剧与服务端报错统一叫「模型赠款」；celebrity 按用户要求不改。
 - **零价接入点报错（用户 2026-10-25 拍板）**：零价一律 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款，免费额度因此有总量和有效期。企业零价测试改为断言拒绝且不留授权、冻结和在途占用。上线前要确认线上没有零价接入点。
 - 接入点没填 `model` 时，计费记录用 `endpoint:<接入点 ID>` 作模型名，构造与比对都走 `ModelBillingTarget.providerModelOf`；后台活动也能选到这类接入点。
-- **上线即坏的隐患（已修）**：V66 在 MySQL 上把流水类型列改成 VARCHAR，但启动时的 `EnumColumnWideningMigration` 会把它改回不含 SCOPED_* 的 ENUM，第一笔赠款入账就报 `Data truncated`（MySQL 全流程场景测试复现）。流水类型已从启动加宽清单移除，加宽也只处理当前确实是 ENUM 的列；守门测试改为钉住「流水类型保持 VARCHAR、不被改回 ENUM」。
+- **上线即坏的隐患（已修）**：V67 在 MySQL 上把流水类型列改成 VARCHAR，但启动时的 `EnumColumnWideningMigration` 会把它改回不含 SCOPED_* 的 ENUM，第一笔赠款入账就报 `Data truncated`（MySQL 全流程场景测试复现）。流水类型已从启动加宽清单移除，加宽也只处理当前确实是 ENUM 的列；守门测试改为钉住「流水类型保持 VARCHAR、不被改回 ENUM」。
 
 初始复杂方案已移到 `docs/archive/model-scoped-credits-initial-design.md`，仅作历史追溯。实现状态以当前代码和最终核验结果为准；历史开发记录不能作为现行设计的交付证明。
 

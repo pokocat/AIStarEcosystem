@@ -100,7 +100,7 @@ public class StudioSpeechWorker {
             String state=result.path("status").asText();
             if("failed".equals(state)||"canceled".equals(state)) {
                 String code=lip?"STUDIO_LIP_SYNC_PROVIDER_FAILED":"STUDIO_SPEECH_PROVIDER_FAILED";
-                String message=label+"引擎未完成本次生成，冻结积分已释放";
+                String message=com.aistareco.aep.service.ai.ProviderErrorMessage.message(result.toString(),label+"引擎未完成本次生成，冻结积分已释放");
                 finish(id,null,code,message,com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attachBody(
                         new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,code,message),result.toString()));return;
             }
