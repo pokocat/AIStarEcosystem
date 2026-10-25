@@ -1,10 +1,10 @@
 'use client';
 import { useStudioApp, StudioErrorNotice, studioNodeError } from './studio-errors';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type Dispatch, type SetStateAction, type SyntheticEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type Dispatch, type SetStateAction, type SyntheticEvent } from 'react';
 import { ReactFlow, ReactFlowProvider, Background, BackgroundVariant, Handle, Position, NodeResizer, MiniMap, SelectionMode,
   BaseEdge, EdgeLabelRenderer, getBezierPath, useReactFlow, useViewport, type EdgeProps, type OnConnectEnd, type NodeProps, type NodeChange, type EdgeChange } from '@xyflow/react';
 import { App, Button, Dropdown, Input, Modal, type GetRef } from 'antd';
-import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, RotateCcw, Scissors, Search, ShoppingBag, Trash2, Upload, Video, X } from 'lucide-react';
+import { AlertCircle, AlignLeft, ArrowLeft, Copy, FileText, Group, Hand, ImagePlus, LayoutGrid, Maximize, Minus, MousePointer2, Music2, Plus, RotateCcw, Scissors, Search, ShoppingBag, SquareDashed, Trash2, Upload, Video, X } from 'lucide-react';
 import { AiMark } from './studio-ai-icon';
 import { nanoid } from 'nanoid';
 import { useIdentity } from '@/proto/api';
@@ -43,8 +43,9 @@ import { StudioNodeTitle } from './studio-node-title';
 import { downloadMedia } from '@/canvas-bridge/download-media';
 import { replaceStudioVideo, STUDIO_VIDEO_UPLOAD_ACCEPT, validateStudioVideoUpload } from '@/canvas-bridge/studio-video-upload';
 import { StudioMediaGenerationState } from './studio-media-generation-state';
-import { StudioGroupDescription } from './studio-group-description';
+import { StudioFlowArea } from './studio-flow-area';
 import { describeStudioGroup } from '@/canvas-bridge/studio-group-description';
+import { drawStudioArea, keepEmptyStudioAreas, nextStudioAreaTitle, settleStudioAreaMembership, studioAreaAt, studioAreaCandidates, studioAreaMemberCounts, studioAreaRect, STUDIO_AREA_MIN_SIZE } from '@/canvas-bridge/studio-areas';
 
 const icons = { image: ImagePlus, video: Video, audio: Music2, text: FileText };
 export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
@@ -57,11 +58,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
     {!data.readOnly && <span className="studio-flow-port-icon" aria-hidden><Plus size={16}/></span>}
   </Handle>;
   const title = <StudioNodeTitle title={node.title} onRename={!data.readOnly && data.onRename ? value => data.onRename!(node.id, value) : undefined}/>;
-  if (node.type === CanvasNodeType.Group) return <article className={`studio-flow-group${selected ? ' is-selected' : ''}`} aria-label={`${node.title} · 分组`}>
-    {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))}/>}
-    <header className="studio-flow-drag"><Group size={15}/>{title}</header>{port('source')}
-    <StudioGroupDescription title={node.title} description={meta?.groupDescription} onChange={!data.readOnly && data.onDescribeGroup ? value => data.onDescribeGroup!(node.id, value) : undefined}/>
-  </article>;
+  if (node.type === CanvasNodeType.Group) return <StudioFlowArea node={node} selected={!!selected} data={data} port={port('source')}/>;
   // Template input constraints do not turn a plain text node into a script summary.
   const studioText = node.type === CanvasNodeType.Config || node.type === CanvasNodeType.Text && !!meta?.studio && !meta.studio.templateInput;
   const imageLocked = data.uploading || studioGenerationPending(node);
@@ -88,7 +85,7 @@ export function StudioFlowCard({ data, selected }: NodeProps<StudioFlowNode>) {
     <header className="studio-flow-drag"><Icon size={15}/><StudioNodeTitle title={node.title}/></header>
     <div className="studio-flow-media"><div className="studio-flow-placeholder" role="status"><span className="studio-flow-processing-spin" aria-hidden/><span>处理中</span></div></div>
   </article>;
-  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${videoFitted ? ' is-fitted' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}`} aria-label={`${node.title} · ${node.type}`}>
+  return <article className={`studio-flow-card${node.type === CanvasNodeType.Video ? ' studio-flow-video-card' : ''}${videoFitted ? ' is-fitted' : ''}${selected ? ' is-selected' : ''}${aiMade ? ' is-ai' : ''}${generating ? ' is-generating' : ''}${data.fresh ? ' is-fresh' : ''}${data.areaCandidate ? ' is-area-candidate' : ''}`} aria-label={`${node.title} · ${node.type}`}>
     {!data.readOnly&&<NodeResizer isVisible={selected} minWidth={220} minHeight={140} keepAspectRatio={videoShaped} onResizeStart={() => window.dispatchEvent(new Event('studio-canvas-checkpoint'))} onResizeEnd={videoShaped ? () => data.onVideoResized?.(node.id) : undefined}/>}
     {port('target')}{port('source')}
     <header className="studio-flow-drag"><Icon size={15}/>{title}{aiMade ? <span className="studio-flow-ai-badge" title={generating ? 'AI 正在生成' : 'AI 生成的'}><AiMark size={10}/>{generating ? studioTaskNeedsReview(meta?.studio?.task) ? '需处理' : '生成中' : 'AI'}</span> : uploaded && <span className="studio-flow-origin">你上传的</span>}{data.uploading ? <small role="status">上传中…</small> : meta?.status === 'loading' && !mediaGenerating && <small title={studioTaskLabel(meta.studio?.task)}>{(meta.studio?.kind==='recreation'?studioTaskLabel(meta.studio?.task,true).replace('生成','拆解'):studioTaskLabel(meta.studio?.task,true))}</small>}</header>
@@ -148,7 +145,17 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const [fresh, setFresh] = useState<Set<string>>(() => new Set());
   const freshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [selected, setSelected] = useState(new Set<string>()), [handTool, setHandTool] = useState(true), [spaceHeld, setSpaceHeld] = useState(false), [minimap, setMinimap] = useState(false);
-  const hand = handTool || spaceHeld;
+  // 圈选分组：选了这个工具，在画布上按住拖出一块区域（空格照旧临时平移）。用一次就回到原来的工具。
+  const [areaTool, setAreaTool] = useState(false), [areaDraft, setAreaDraft] = useState<{ x0: number; y0: number; x1: number; y1: number; id: number }>();
+  const [areaCandidates, setAreaCandidates] = useState<Set<string>>(() => new Set());
+  const [namingId, setNamingId] = useState<string>(), [drawnId, setDrawnId] = useState<string>(), [dropArea, setDropArea] = useState<string>();
+  const drawnTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  // The start point lives in a ref: moves that arrive before React re-renders must not read a stale (empty) draft.
+  // Every way out of a drawing (Esc, G, the rail button, pointercancel) clears it, or the release would still make an area.
+  const stageRef = useRef<HTMLDivElement>(null), areaPointer = useRef<{ id: number; x: number; y: number } | undefined>(undefined);
+  const resetArea = useCallback(() => { areaPointer.current = undefined; setAreaDraft(undefined); setAreaCandidates(new Set()); }, []);
+  useEffect(() => () => clearTimeout(drawnTimer.current), []);
+  const hand = (handTool && !areaTool) || spaceHeld, drawingArea = areaTool && !spaceHeld;
   const [find, setFind] = useState(false), [query, setQuery] = useState(''), [textId, setTextId] = useState<string>(), [renameId, setRenameId] = useState<string>();
   const [textExpanded,setTextExpanded]=useState(false);
   useEffect(()=>{setTextExpanded(false);},[textId]);
@@ -220,6 +227,22 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     if ((current().nodes.find(n => n.id === id)?.metadata?.groupDescription || '') === description.trim()) return;
     checkpoint(); setNodes(old => describeStudioGroup(old, id, description));
   }, [current, checkpoint, setNodes]);
+  const toneGroup = useCallback((id: string, tone: string) => {
+    if ((current().nodes.find(n => n.id === id)?.metadata?.groupTone || 'slate') === tone) return;
+    checkpoint(); setNodes(old => old.map(n => n.id === id ? { ...n, metadata: { ...n.metadata, groupTone: tone === 'slate' ? undefined : tone } } : n));
+  }, [current, checkpoint, setNodes]);
+  const endNaming = useCallback(() => setNamingId(undefined), []);
+  // 画完一块区域：圈住的节点收进去，名字输入框打开；工具回到原来的平移 / 选择。
+  const finishArea = useCallback((a: { x: number; y: number }, b: { x: number; y: number }) => {
+    const p = current(), rect = studioAreaRect(flow.screenToFlowPosition(a), flow.screenToFlowPosition(b));
+    setAreaTool(false); setAreaCandidates(new Set());
+    if (rect.width < STUDIO_AREA_MIN_SIZE || rect.height < STUDIO_AREA_MIN_SIZE) return;
+    const result = drawStudioArea(p.nodes, rect, nanoid());
+    checkpoint(); setNodes(result.nodes);
+    setSelected(new Set([result.area.id])); setSelectedEdges(new Set()); setContext(undefined); setTextId(undefined);
+    setNamingId(result.area.id); setDrawnId(result.area.id);
+    clearTimeout(drawnTimer.current); drawnTimer.current = setTimeout(() => setDrawnId(undefined), 700);
+  }, [current, flow, checkpoint, setNodes]);
   const focusNode = useCallback((id: string) => { setSelected(new Set([id])); setSelectedEdges(new Set()); setPendingFocus(id); }, []);
   const connectReference=(source:string,target:string)=>{
     const p=current();if(source===target||!p.nodes.some(n=>n.id===source)||!p.nodes.some(n=>n.id===target)||p.connections.some(c=>c.fromNodeId===source&&c.toNodeId===target))return;
@@ -281,7 +304,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     checkpoint(); const node = makeStudioNode(type === CanvasNodeType.Video ? 'video' : type === CanvasNodeType.Text ? 'script' : 'image');
     node.type = type; node.title = type === CanvasNodeType.Text ? '文字' : type === CanvasNodeType.Video ? '视频' : '图片';
     if (type === CanvasNodeType.Text) node.metadata = { content: '', status: 'idle' };
-    setNodes(old => [...old, placeVisibleNode(node, old, at)]);
+    // 放进了某块区域的空白处，就算这块区域的。
+    setNodes(old => settleStudioAreaMembership([...old, placeVisibleNode(node, old, at)], [node.id]));
     setSelected(new Set([node.id])); setSelectedEdges(new Set()); setPendingFocus(undefined);
     if (type === CanvasNodeType.Text) { focusNewText.current = node.id; setTextId(node.id); } else setPendingCreator({ id: node.id, operation: type });
   };
@@ -299,9 +323,11 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   const group = useCallback((release = false) => {
     const p = current();
     const members = collectGroupMemberNodes(selected, p.nodes), rect = getGroupWrapRect(members);
-    const frame: CanvasNodeData = { id: nanoid(), type: CanvasNodeType.Group, title: '分组', position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height, metadata: { status: 'idle' } };
+    const frame: CanvasNodeData = { id: nanoid(), type: CanvasNodeType.Group, title: nextStudioAreaTitle(p.nodes), position: { x: rect.x, y: rect.y }, width: rect.width, height: rect.height, metadata: { status: 'idle' } };
     const result = release ? applyUngroupSelection(selected, p.nodes, p.connections) : applyGroupSelection(selected, p.nodes, p.connections, frame);
-    if (!result) return; checkpoint(); useCanvasStore.getState().updateProject(projectId, { nodes: result.nodes, connections: result.connections }); setSelected(new Set(result.selectedIds)); setContext(undefined);
+    if (!result) return; checkpoint(); useCanvasStore.getState().updateProject(projectId, keepEmptyStudioAreas(p, result, selected)); setSelected(new Set(result.selectedIds)); setContext(undefined);
+    // 新建的分组和圈出来的区域一样，名字直接可改。
+    if (!release) setNamingId(frame.id);
   }, [current, selected, checkpoint, projectId]);
   const arrange = useCallback(() => { checkpoint(); setNodes(old => arrangeFlowNodes(old, selected.size > 1 ? selected : undefined)); setContext(undefined); requestAnimationFrame(() => void flow.fitView({ padding: visibleFitPadding(shellRef.current), duration: 260 })); }, [checkpoint, setNodes, selected, flow]);
   const remove = useCallback(() => {
@@ -354,15 +380,16 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       if (mod && e.key.toLowerCase() === 'd') { e.preventDefault(); paste(true); }
       if (mod && e.key.toLowerCase() === 'a') { e.preventDefault(); setSelected(new Set(current().nodes.map(n => n.id))); }
       if (mod && e.key.toLowerCase() === 'g') { e.preventDefault(); group(e.shiftKey); }
+      if (!mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'g') { e.preventDefault(); resetArea(); setAreaTool(v => !v); }
       if (mod && e.key.toLowerCase() === 's') { e.preventDefault(); void saveStudioDocument(projectId).catch(error => message.error(error)); }
       if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); remove(); }
-      if (e.key === 'Escape') { setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); setPendingConnection(undefined); }
+      if (e.key === 'Escape') { setAreaTool(false); resetArea(); setSelected(new Set()); setSelectedEdges(new Set()); setFind(false); setTextId(undefined); setContext(undefined); setPendingConnection(undefined); }
     };
     const keyup = (e: KeyboardEvent) => { if (e.code === 'Space') setSpaceHeld(false); };
     const blur = () => setSpaceHeld(false);
     window.addEventListener('studio-command', command); window.addEventListener('studio-canvas-checkpoint', checkpoint); window.addEventListener('keydown', keydown); window.addEventListener('keyup', keyup); window.addEventListener('blur', blur);
     return () => { window.removeEventListener('studio-reference-mode',referenceMode); window.removeEventListener('studio-command', command); window.removeEventListener('studio-canvas-checkpoint', checkpoint); window.removeEventListener('keydown', keydown); window.removeEventListener('keyup', keyup); window.removeEventListener('blur', blur); };
-  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading, flow]);
+  }, [travel, copy, paste, remove, group, checkpoint, current, projectId, message, reading, flow, resetArea]);
   const uploadImageIntoNode = async (file: File) => {
     const nodeId = imageUploadTarget.current;
     if (!nodeId || reading) return;
@@ -414,10 +441,12 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
   }, [setNodes]);
   // 抽帧 placeholders live only here (never in the document, so autosave and task recovery never see them).
   const [pendingFrames, setPendingFrames] = useState<StudioPendingFrame[]>([]);
+  const memberCounts = useMemo(() => studioAreaMemberCounts(project?.nodes || []), [project?.nodes]);
   const graphNodes = useMemo(() => [
-    ...flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup, onMediaSize: mediaSize, onVideoResized: videoResized } })),
+    ...flowNodes(project?.nodes || [], selected).map(n => ({ ...n, data: { ...n.data, uploading: n.id === uploadingImageId, fresh: fresh.has(n.id), onRename: renameNode, onDescribeGroup: describeGroup, onMediaSize: mediaSize, onVideoResized: videoResized,
+      memberCount: memberCounts.get(n.id), naming: n.id === namingId, justDrawn: n.id === drawnId, dropTarget: n.id === dropArea, areaCandidate: areaCandidates.has(n.id), onNamingEnd: endNaming, onToneGroup: toneGroup } })),
     ...flowNodes(pendingFrames.map(p => p.node), new Set()).map(n => ({ ...n, draggable: false, selectable: false, connectable: false, deletable: false, data: { ...n.data, readOnly: true, processing: true } })),
-  ], [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup, mediaSize, videoResized, pendingFrames]);
+  ], [project?.nodes, selected, uploadingImageId, fresh, renameNode, describeGroup, mediaSize, videoResized, pendingFrames, memberCounts, namingId, drawnId, dropArea, areaCandidates, endNaming, toneGroup]);
   const graphEdges = useMemo(() => [
     ...flowEdges(project?.connections || []).map(e => ({ ...e, type:'reference',selected: selectedEdges.has(e.id) })),
     ...flowEdges(pendingFrames.map(p => p.connection)).map(e => ({ ...e, selectable: false, deletable: false })),
@@ -432,15 +461,38 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     const selections = changes.filter(c => c.type === 'select');
     if (selections.length) setSelectedEdges(old => { const next = new Set(old); selections.forEach(c => { if (c.type === 'select') c.selected ? next.add(c.id) : next.delete(c.id); }); return next; });
   }, [setConnections, checkpoint]);
+  // 圈选在舞台上捕获指针：画框期间 React Flow 不平移、不框选、不拖节点（这几个开关下面也关了，双保险）。
+  const areaPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    if (!drawingArea || e.button !== 0) return;
+    const at = e.target as HTMLElement;
+    if (!at.closest('.react-flow') || at.closest('.react-flow__panel,.react-flow__minimap')) return;
+    e.preventDefault(); e.stopPropagation();
+    // Capture keeps the box following the pointer past the stage edge; a refused capture only loses that, not the drawing.
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not an active pointer */ }
+    areaPointer.current = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    setContext(undefined); closeConnectionMenu(); setTextId(undefined);
+    setAreaDraft({ x0: e.clientX, y0: e.clientY, x1: e.clientX, y1: e.clientY, id: e.pointerId });
+  };
+  const areaPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = areaPointer.current; if (start?.id !== e.pointerId) return;
+    const next = { x0: start.x, y0: start.y, x1: e.clientX, y1: e.clientY, id: start.id }; setAreaDraft(next);
+    const rect = studioAreaRect(flow.screenToFlowPosition({ x: next.x0, y: next.y0 }), flow.screenToFlowPosition({ x: next.x1, y: next.y1 }));
+    const ids = studioAreaCandidates(rect, current().nodes).map(n => n.id);
+    setAreaCandidates(old => old.size === ids.length && ids.every(id => old.has(id)) ? old : new Set(ids));
+  };
+  const areaPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const start = areaPointer.current; if (start?.id !== e.pointerId) return;
+    resetArea(); finishArea({ x: start.x, y: start.y }, { x: e.clientX, y: e.clientY });
+  };
   if (!project) return null;
   const text = project.nodes.find(n => n.id === textId);
   const named = project.nodes.find(n => n.id === renameId), target = project.nodes.find(n => n.id === (context?.nodeId || [...selected][0]));
   // 右键菜单是一排平铺的按钮，每项都要有 onClick；不支持 children（「素材拆解」曾因此点了就报错）。
   const nodeMenu = target ? [
-    { key: 'edit', label: target.type === CanvasNodeType.Group ? '编辑分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) { checkpoint(); setRenameId(target.id); } else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
+    { key: 'edit', label: target.type === CanvasNodeType.Group ? '修改分组名称' : '编辑内容', onClick: () => { if (target.type === CanvasNodeType.Group) setNamingId(target.id); else dispatchStudioCommand(studioNodeCommand(target,true)||'edit-text', target.id); } },
     ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'video-frames',label:'抽帧',onClick:()=>dispatchStudioCommand('video-frames',target.id)}]:[]),
     ...(target.type===CanvasNodeType.Video&&target.metadata?.storageKey?[{key:'analyze',label:'解析视频',onClick:()=>dispatchStudioCommand('recreation',target.id)},{key:'film-study',label:'拉片',onClick:()=>dispatchStudioCommand('film-study',target.id)}]:[]),
-    { key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } },
+    ...(target.type === CanvasNodeType.Group ? [] : [{ key: 'rename', label: '重命名', onClick: () => { checkpoint(); setRenameId(target.id); } }]),
     ...(target.type === CanvasNodeType.Video ? [{ key: 'upload-video', label: target.metadata?.storageKey ? '替换视频' : '上传视频', onClick: () => dispatchStudioCommand('upload-video', target.id) }] : []),
     ...(target.type === CanvasNodeType.Image ? [{ key: 'upload', label: target.metadata?.storageKey ? '替换图片' : '上传图片', onClick: () => dispatchStudioCommand('upload-image', target.id) }] : []),
     ...(target.type === 'image' && target.metadata?.storageKey ? ['crop', 'mask', 'split-image'].map(action => ({ key: action, label: { crop: '裁剪图片', mask: '局部重绘', 'split-image': '拆分图片' }[action], onClick: () => dispatchStudioCommand(action, target.id) })) : []),
@@ -454,6 +506,7 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     {key:'text',label:'添加文字',onClick:()=>add(CanvasNodeType.Text,context)},
     {key:'image',label:'添加图片',onClick:()=>add(CanvasNodeType.Image,context)},
     {key:'video',label:'添加视频',onClick:()=>add(CanvasNodeType.Video,context)},
+    {key:'area',label:'圈选分组',onClick:()=>{setAreaTool(true);}},
     {key:'templates',label:'套用画布模板',onClick:()=>dispatchStudioCommand('templates')},
     // 画布页改版：缩放条只留缩放和适应（设计稿 Main 画板），撤销 / 重做 / 小地图挪到这里；快捷键 Ctrl/Cmd+Z、Shift+Ctrl/Cmd+Z 照旧。
     ...(history.current.past.length?[{key:'undo',label:'撤销',onClick:()=>travel('past')}]:[]),
@@ -466,9 +519,18 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
       <HostActionsSlot/>
       <div className="studio-canvas-credit"><WalletBadge account={identity?.uid ?? null} location={`/projects/${projectId}`}/></div>
     </header>
-    <div className={`studio-flow-stage${referencePick?' is-picking-reference':''}`} data-studio-floating-root>
+    <div ref={stageRef} className={`studio-flow-stage${referencePick?' is-picking-reference':''}${drawingArea?' is-drawing-area':''}`} data-studio-floating-root
+      onPointerDownCapture={areaPointerDown} onPointerMove={areaPointerMove} onPointerUp={areaPointerUp} onPointerCancel={e => { if (areaPointer.current?.id === e.pointerId) resetArea(); }}>
       <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false}
-        onNodesChange={changeNodes} onEdgesChange={changeEdges} onNodeDragStart={checkpoint}
+        onNodesChange={changeNodes} onEdgesChange={changeEdges}
+        onNodeDragStart={(_, n) => { checkpoint(); if (n.data.document.type === 'group' && !selected.has(n.id)) { setSelected(new Set([n.id])); setSelectedEdges(new Set()); } }}
+        // 拖着节点经过一块区域时，那块区域亮起来：松手就进去了；离开区域就从里面出来。
+        onNodeDrag={(_, n, dragged) => {
+          const p = current(), lead = p.nodes.find(d => d.id === (n.data.document.type === 'group' ? dragged.find(x => x.data.document.type !== 'group')?.id : n.id));
+          const own = lead?.metadata?.groupId, target = lead && !(own && dragged.some(x => x.id === own)) ? studioAreaAt(lead, p.nodes)?.id : undefined;
+          setDropArea(old => old === target ? old : target);
+        }}
+        onNodeDragStop={(_, __, dragged) => { setDropArea(undefined); setNodes(old => settleStudioAreaMembership(old, dragged.map(x => x.id))); }}
         onConnectStart={()=>{closeConnectionMenu();setContext(undefined);}} onConnectEnd={finishConnection}
         isValidConnection={c=>c.source!==c.target&&!current().connections.some(edge=>edge.fromNodeId===c.source&&edge.toNodeId===c.target)}
         onConnect={c => {if(c.source&&c.target)connectReference(c.source,c.target);}}
@@ -477,6 +539,14 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           cancelTitleClick();
           setContext(undefined);
           if(referencePick){if(referenceOrigin.current)setSelected(new Set([referenceOrigin.current]));window.dispatchEvent(new CustomEvent('studio-reference-selected',{detail:{nodeId:n.id}}));return;}
+          // 分组不参与 React Flow 自己的选中（flow-document：selectable:false），点名字标签在这里选中它。
+          if(n.data.document.type==='group'){
+            if((event.target as HTMLElement).closest('button:not(.studio-flow-title),input,.react-flow__handle'))return;
+            const multi=event.shiftKey||event.metaKey||event.ctrlKey;
+            setSelected(old=>{if(!multi)return new Set([n.id]);const next=new Set(old);if(next.has(n.id))next.delete(n.id);else next.add(n.id);return next;});
+            if(!multi)setSelectedEdges(new Set());
+            return;
+          }
           // A click on the clip itself (<video> / <audio>, native controls included) plays as usual *and* opens the node's
           // panel: a fitted video fills the whole card, so skipping media left no place to click (2026-10-23). Real controls
           // on the card (replace, upload, retry, links, ports) still keep their own click. The title is a button only for its
@@ -491,23 +561,38 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
           }
           dispatchStudioCommand(action,n.id);
         }}
-        onNodeDoubleClick={(event, n) => { if ((event.target as HTMLElement).closest('.studio-flow-title,.studio-flow-title-input')) return; if (n.data.document.type === 'group') { checkpoint(); setRenameId(n.id); } else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
+        onNodeDoubleClick={(event, n) => { if ((event.target as HTMLElement).closest('.studio-flow-title,.studio-flow-title-input')) return; if (n.data.document.type === 'group') setNamingId(n.id); else dispatchStudioCommand(studioNodeCommand(n.data.document,true)||'edit-text', n.id); }}
         onNodeContextMenu={(event, n) => { event.preventDefault(); cancelTitleClick(); setTextId(undefined); window.dispatchEvent(new Event('studio-node-context-menu')); if (!selected.has(n.id)) setSelected(new Set([n.id])); setContext({ x: event.clientX, y: event.clientY, nodeId: n.id }); }}
         onPaneClick={event => { cancelTitleClick(); if(event.detail===2) {setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY});} else {setContext(undefined);if(!referencePick)setTextId(undefined);window.dispatchEvent(new Event('studio-dismiss-composer'));} }}
         onPaneContextMenu={event => { event.preventDefault();setSelected(new Set());setSelectedEdges(new Set());setContext({x:event.clientX,y:event.clientY}); }}
         defaultViewport={{ x: project.viewport.x, y: project.viewport.y, zoom: project.viewport.k }}
         onMoveStart={closeConnectionMenu} onMoveEnd={(_, v) => useCanvasStore.getState().updateProject(projectId, { viewport: { x: v.x, y: v.y, k: v.zoom } })}
-        panOnDrag={hand ? true : [1, 2]} panOnScroll selectionOnDrag={!hand} selectionMode={SelectionMode.Partial}
+        panOnDrag={drawingArea ? false : hand ? true : [1, 2]} panOnScroll selectionOnDrag={!hand && !areaTool} selectionMode={SelectionMode.Partial}
         zoomOnScroll={false} zoomOnPinch zoomOnDoubleClick={false} minZoom={.15} maxZoom={2.5} deleteKeyCode={null}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']} selectionKeyCode={null} panActivationKeyCode={null} snapToGrid snapGrid={[8, 8]}
-        nodesDraggable={!spaceHeld /* Pan the background with the hand tool; reserve whole-canvas panning for Space. */}>
+        nodesDraggable={!spaceHeld && !drawingArea /* Pan the background with the hand tool; reserve whole-canvas panning for Space. */}>
         <Background variant={BackgroundVariant.Dots} gap={24} size={1} color="var(--line-3)"/>
         {minimap && <MiniMap pannable zoomable position="bottom-right" nodeColor="var(--paper-2)" maskColor="var(--canvas-mask)"/>}
       </ReactFlow>
+      {areaDraft && stageRef.current && (() => {
+        const box = stageRef.current.getBoundingClientRect(), width = Math.abs(areaDraft.x1 - areaDraft.x0), height = Math.abs(areaDraft.y1 - areaDraft.y0);
+        const radius = Math.max(4, 12 * zoom), big = width * height > 0 && width / zoom >= STUDIO_AREA_MIN_SIZE && height / zoom >= STUDIO_AREA_MIN_SIZE;
+        const left = Math.min(areaDraft.x0, areaDraft.x1), top = Math.min(areaDraft.y0, areaDraft.y1);
+        // 标签跟着光标；贴近舞台右边 / 下边时翻到光标另一侧。
+        const flipX = areaDraft.x1 > box.right - 180, flipY = areaDraft.y1 > box.bottom - 80;
+        return <div className={`studio-flow-area-draft${big ? '' : ' is-small'}`} aria-hidden
+          style={{ left: left - box.left, top: top - box.top, width, height, borderRadius: radius }}>
+          <svg width="100%" height="100%"><rect x=".75" y=".75" width={Math.max(0, width - 1.5)} height={Math.max(0, height - 1.5)} rx={radius} ry={radius}/></svg>
+          {big && <span className="studio-flow-area-draft-count" style={{ left: areaDraft.x1 - left, top: areaDraft.y1 - top, transform: `translate(${flipX ? 'calc(-100% - 12px)' : '14px'}, ${flipY ? 'calc(-100% - 12px)' : '16px'})` }}>
+            {areaCandidates.size ? `收进 ${areaCandidates.size} 个节点` : '空白区域'}</span>}
+        </div>;
+      })()}
+      {areaTool && !areaDraft && <div className="studio-flow-area-hint" role="status">按住拖动，圈出一块区域<span className="studio-flow-area-hint-key"><kbd>Esc</kbd>退出</span></div>}
       {pendingConnection&&project.nodes.find(n=>n.id===pendingConnection.sourceId)&&<StudioConnectionCreateMenu pending={pendingConnection} source={project.nodes.find(n=>n.id===pendingConnection.sourceId)!} viewport={viewport} onClose={closeConnectionMenu} onCreate={createReference}/>}
       <nav className="studio-flow-tools" aria-label="画布工具">
-        <button aria-label="拖动画布" title="平移" aria-pressed={hand} onClick={() => setHandTool(true)}><Hand size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">平移</span></button>
-        <button aria-label="选择工具" title="选择" aria-pressed={!hand} onClick={() => setHandTool(false)}><MousePointer2 size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">选择</span></button><hr/>
+        <button aria-label="拖动画布" title="平移" aria-pressed={hand} onClick={() => { setAreaTool(false); setHandTool(true); }}><Hand size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">平移</span></button>
+        <button aria-label="选择工具" title="选择" aria-pressed={!hand && !areaTool} onClick={() => { setAreaTool(false); setHandTool(false); }}><MousePointer2 size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">选择</span></button>
+        <button aria-label="圈选分组" title="圈选分组（G）" aria-pressed={areaTool} onClick={() => { resetArea(); setAreaTool(v => !v); }}><SquareDashed size={19} strokeWidth={1.75}/><span className="studio-flow-tool-label">分组</span></button><hr/>
         {/* 画布页改版（2026-10-19，设计稿 Main 画板）：贴边通高的一列，七个工具 —— 平移、选择、＋添加、素材库、模板、查找、整理；
             创作任务在这列最底下（工作台渲染，见 studio-tasks-launch）。复制、删除、更多节点操作只在右键菜单和多选条里。
             原第二排「更多」里的四项都有去处：商品 / 数字人视频模板在「模板」里，解析视频、口型同步在视频节点的「⋯」里，

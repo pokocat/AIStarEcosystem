@@ -715,7 +715,7 @@ const openGuide = () => fireEvent.click(modeLabel());
 const AUTO_TITLE = '按你说的话自动选择做法。';
 const skillTitle = (name: string) => `现在按「${name}」做。按你说的话自动选择；有制作在进行时保持不变，想换做法可以开一段新对话。`;
 
-test('nothing under the composer picks the skill or the model: a typed message carries no skillKey, the header label says how the method is chosen', async () => {
+test('the input toolbar only picks the reply model: a typed message carries no skillKey, the header label says how the method is chosen', async () => {
   api.skills.mockResolvedValue([recreation, seeding, skill('old', '旧技能', { status: 'withdrawn' })]);
   await ready();
   await waitFor(() => expect(api.skills).toHaveBeenCalled());
@@ -862,6 +862,25 @@ test.each(['fixed', 'selectable'] as const)('no model control with a single %s m
   await waitFor(() => expect(api.post).toHaveBeenCalled());
   expect(api.post.mock.calls[0][2]).toMatchObject({ maxCost: 260 });
   expect(api.post.mock.calls[0][2].model).toBeUndefined();
+});
+
+test('a selectable dialogue model updates the next request, its price and the saved canvas preference', async () => {
+  await ready();
+  const control = screen.getByRole('combobox', { name: '对话模型' });
+  expect(control.getAttribute('title')).toContain('每千 Token：输入 0.18 积分 · 输出 1.08 积分');
+  expect(control.closest('.studio-assistant-context-actions')).toBeTruthy();
+  fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target: { value: 'two' } });
+  expect(localStorage.getItem('studio-assistant:model:p')).toBe('two');
+  fireEvent.change(composer(), { target: { value: '简单介绍一下画布' } });
+  fireEvent.click(sendButton());
+  await waitFor(() => expect(api.post).toHaveBeenCalled());
+  expect(api.post.mock.calls[0][2]).toMatchObject({ model: 'two', maxCost: 130 });
+});
+
+test('the model choice cannot change an active reply', async () => {
+  api.getConversation.mockResolvedValue({ ...emptyState, thread: { ...emptyState.thread, activeTurnId: 'turn1' } });
+  await ready();
+  expect((screen.getByRole('combobox', { name: '对话模型' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 // ── Opening guidance: inventory chips, the four cards and their fill-in cards (docs/ip-studio-new-canvas-and-threads.md §5) ──

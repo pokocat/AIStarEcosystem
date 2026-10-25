@@ -15,6 +15,8 @@ export interface DirectorSettings {
   language: string;
   /** 片段视频用的模型；null = 后台默认。 */
   videoModel: string | null;
+  /** 资产参考图和分镜图使用的模型；未设置或 null = 后台默认。 */
+  imageModel?: string | null;
 }
 
 export interface DirectorError {
@@ -36,7 +38,7 @@ export interface DirectorMedia {
   key: string;
   url?: string | null;
   runId: string | null;
-  source: "generated" | "upload";
+  source: "generated" | "upload" | "library";
   createdAt: string;
   prompt?: string;
   refs?: DirectorRefUsed[];
@@ -124,6 +126,8 @@ export interface DirectorAsset {
   voiceDesc?: string;
   /** 角色的形象参考照片（用户上传）：只在生成设定图时作为参考交给模型，不会直接当角色参考图用。 */
   refImage?: { key: string; url?: string | null } | null;
+  /** 从个人资产库导入时记下的资产库对象 id；再导入同一项时据此对上，不重复建。 */
+  libraryObjectId?: string;
   rev: number;
 }
 
@@ -205,6 +209,13 @@ export interface DirectorTask {
   cost: number;
   errorMessage: string | null;
   createdAt: string | null;
+}
+
+export interface DirectorImageModel {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  creditCost: number;
 }
 
 export interface DirectorVideoModel {
@@ -298,6 +309,7 @@ export interface DirectorWork {
   textError: DirectorError | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
+  imageModels?: DirectorImageModel[];
   videoModels: DirectorVideoModel[];
   videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number } | null;
 }
@@ -322,7 +334,7 @@ export type DirectorEditOp =
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
-  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode";
+  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.import";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";

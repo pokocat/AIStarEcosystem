@@ -1178,6 +1178,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **角色音色：** `asset.voiceDesc` 文字描述写进语音轨，参考音频可选。
 - **角色出图：** 改为横版 16:9 设定集，含全身三视图、头部正左右侧、喜怒哀乐四宫格、面部特征特写和半身展示。
 - **角色图只能由系统生成：** 角色不接受 `asset.upload`，也不能采用历史里的上传图，返回 400 `DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED`。上传的照片用 `asset.setRef` 设为形象参考 `refImage`，生成或重新生成设定图时作为图1交给模型，只取长相，版式照旧。形象参考计入资产指纹，改了参考，已采用的图就标「需更新」。分镜和视频引用的始终是生成的设定图。上传图不经过版式约束，前后对不上。场景和道具仍可直接上传。
+- **从资产库导入（2026-10-25，本地未发布）：** 资产页「从资产库导入」和资产详情里的「从资产库选」都走 `asset.import`，只传资产库对象 id 和版本，名字、描述、图由服务端按本人资产库读（`IpLibraryService.object`），不信客户端带的文字。场景、道具的图直接作为采用的参考图（候选 `source=library`，与上传同样视为不过期）；角色的图只写 `refImage`，仍要生成设定图。按 `libraryObjectId` 或同类同名对上已有资产就合并（补上本次的集），不覆盖已采用的图和已有形象参考；给别的资产借图（带 targetId）不改它的 `libraryObjectId`；名称超过 40 字直接报错不截断。选择器复用 `LibraryReferencePicker`（`objectsOnly` / `max=1`）。
 - **剧本重新生成：** 剧本任务带 `regenerate:true` 可以重写。旧稿进 `scriptHistory`（最多 3 版），集、片段和待确认清单清空；资产保留，但要解绑集数。已有分镜图或视频候选的片段会让请求被拒（`DIRECTOR_CLIPS_HAVE_MEDIA`），不会悄悄丢掉已付费的产物。
 - **编剧提示词：** 策划与写法按用户给的竖屏短剧编剧提示词（去 AI 味铁则、多集规则、创意发散、前 3 集功能、人物 / 场景 / 道具要具体到能画），输出格式仍是 `{title, logline, content}`。剧本页可选题材（6 个）和调性（5 个），存为作品的 `genre / tone`，各追加一组规则（`DirectorPrompts.GENRES / TONES`）；没写篇幅默认 3 集、每集 60–90 秒。
 - **故事大纲：** 编剧同一次生成写 `outline`（世界观、人物的身份 / 秘密 / 毛病 / 变化、起承转合主线、反转与伏笔、主题），存在作品上，剧本页最上面显示；缺了不判失败。分集、规划的输入带上它，提取资产带上大纲里的人物。重新生成时旧大纲随旧剧本进 `scriptHistory`。
@@ -1254,3 +1255,9 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 通用积分转赠款（2026-10-25）：后台「积分转赠款」仅 SUPER_ADMIN，把客户的赠送 / 激活码积分（充值永不动）按 ADJUST 流水扣出、同事务发成所选活动的模型赠款，每人默认保留 1000 通用积分；每客户独立事务，`ops_grant_conversion:<requestId>:<userId>` 幂等。见 `specs/BUSINESS_RULES.md` 同节。
 
 评审后修正（2026-10-25）：企业成员报价是只读事务，在途任务数改用不加锁的查询（MySQL 只读事务里 `SELECT … FOR UPDATE` 报 ERROR 1792，`EnterpriseModelQuoteReadOnlyTest` 可指向 MySQL 复现）；视频对账恢复只拦当初用过赠款或折扣的任务；冻结只锁本钱包可用且适用的赠款行，只有带资源计数的活动才锁活动行，且用只取 ID 的查询先锁再读（先读再锁会被 Hibernate 按旧版本号校验）；活动发出赠款后适用接入点锁定（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；赠款全额抵扣不写零金额普通流水；Studio / 后台 / 短剧 / 服务端报错统一叫「模型赠款」，celebrity 按用户要求不改。另修了一个上线即坏的问题：启动时的 `EnumColumnWideningMigration` 会把 V67 改成 VARCHAR 的流水类型列改回不含 SCOPED_* 的 ENUM，第一笔赠款就报 `Data truncated`；现在流水类型不在加宽清单里，加宽也只处理当前是 ENUM 的列。**往 Hibernate 原生 ENUM 列加值时，要么同步加宽清单，要么像这里一样改成 VARCHAR 并移出清单，两头都不做就会在 MySQL 上坏，H2 测不出来。** 零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款（用户 2026-10-25 拍板）；接入点没填 `model` 时计费记录用 `endpoint:<ID>`（`ModelBillingTarget.providerModelOf`），不拒绝扣费。
+
+
+### Studio 模型选择（2026-10-25）
+
+用户明确要求恢复模型入口：创作助手输入框底部的 @ / 附件之后是紧凑胶囊按钮，点击切换「对话模型」，不要单独在输入框上方排表单。仅场景 `selectable` 且至少两候选时展示；当前回复期间不可切，按画布记住选择，仅影响后续对话，不替用户改出图 / 视频模型。单价放悬停说明，必须保留小数。此前「不显示模型按钮」的约束被本条取代，技能仍只在头部。
+导演台「作品设置 → 图片模型」保存 `settings.imageModel`（null 跟随默认），候选 `imageModels` 只来自 Studio image 场景白名单；资产图 / 分镜图、参考图上限、画幅尺寸、估价、实际生成都用该选择。原模型下架时需重新选择，不悄悄换模型。Seedream 4.5 的真实 ID 是 `doubao-seedream-4-5-251128`，不能把名称含 4.5、实际 model 为 4.0 的旧端点当成它。供应商配置与验收见 `docs/releases/studio-model-switch-20261025.md`。

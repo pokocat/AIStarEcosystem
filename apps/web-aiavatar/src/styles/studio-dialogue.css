@@ -214,3 +214,10 @@ html[data-layout="mobile"] .ip-surface .studio-dialogue-tool-toggle { width: 32p
   .ip-surface .studio-dialogue-tool-mark > i, .ip-surface .studio-dialogue-action-spin, .ip-surface .studio-dialogue-tool[data-status="running"] .studio-dialogue-tool-title, .ip-surface .studio-dialogue-message.is-writing > p.studio-dialogue-text:last-of-type::after { animation: none; }
   .ip-surface .studio-dialogue-activity-dots i { opacity: .7; }
 }
+
+/* Reply-model choice: only displayed for scenes with multiple selectable models. */
+/* Restore the compact model button from the former composer, in its bottom toolbar (2026-10-25). */
+.ip-surface .studio-assistant-panel .studio-assistant-context-actions:has(.studio-dialogue-model-button) { flex-wrap:nowrap; }
+.ip-surface .studio-assistant-panel .studio-dialogue-model-button { flex:0 1 auto; min-width:0; max-width:220px; height:30px; padding:4px 10px; margin-left:4px; gap:6px; border:0; border-radius:999px; background:var(--surface-3); color:var(--ink-2); font-size:12px; font-weight:500; box-shadow:none; }
+.ip-surface .studio-assistant-panel .studio-dialogue-model-button:not(:disabled):hover { background:var(--surface-2); color:var(--ink); }
+html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-dialogue-model-button { min-height:40px; }

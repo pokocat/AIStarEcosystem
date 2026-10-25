@@ -21,9 +21,9 @@ test('the dialogue is actually mounted and wired', () => {
   expect(assistant).toContain('window.addEventListener(STUDIO_CHECK_COMMAND');
   expect(read('ip/studio-dialogue-session.tsx')).toContain('subscribeStudioDialogue(');
   // S3: the plan badge and the operator draft action are reachable from the panel. 2026-10-21 (user feedback): no skill or
-  // model control under the composer; the method shows only in the header label, whose hover text says how it is chosen,
+  // model button in the input toolbar; the method shows only in the header label, whose hover text says how it is chosen,
   // and the 「which method」 rejection offers the skills as quick replies instead of a dropdown.
-  expect(assistant).not.toContain('<Select');
+  expect(assistant).toContain('className="studio-dialogue-model-button" aria-label="对话模型"');
   expect(assistant).not.toContain('aria-label="助手模型"');
   expect(assistant).not.toMatch(/studio-dialogue-chip(?!s)/);
   expect(assistant).toContain('title={modeLabelTitle(modeSkill?.name)}');
@@ -67,16 +67,16 @@ test('the dialogue is actually mounted and wired', () => {
   expect(read('ip/studio-workspace.tsx')).toContain('useState(readAssistantOpenPreference)');
   expect(read('ip/studio-floating-panel.tsx')).toContain("host.classList.add('has-docked-panel')");
   expect(read('styles/studio-flow.css')).toContain('.studio-flow-shell.has-docked-panel .studio-view-switch');
-  // Canvas page redesign: no second toolbar row; the rail is seven tools; AI marks on nodes; the orb when the assistant is closed.
+  // Canvas page redesign: no second toolbar row; the rail is seven tools plus 圈选分组 (2026-10-25); AI marks on nodes; the orb when the assistant is closed.
   const workspace = read('ip/studio-workspace.tsx'), canvas = read('ip/studio-flow-canvas.tsx');
   expect(workspace).not.toContain('className="studio-command-strip"');
   expect(workspace).toContain('className="studio-ai-orb"');
   expect(workspace).toContain('className="studio-tasks-launch"');
   const rail = canvas.slice(canvas.indexOf('<nav className="studio-flow-tools"'), canvas.indexOf('</nav>', canvas.indexOf('<nav className="studio-flow-tools"')));
   // Design Main board: seven tools. 专项创作 is not one of them (its items live in 模板, the video node's 「⋯」 and 素材库).
-  for (const label of ['拖动画布', '选择工具', '添加内容', '素材库', '画布模板', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
+  for (const label of ['拖动画布', '选择工具', '圈选分组', '添加内容', '素材库', '画布模板', '查找节点', '整理画布']) expect(rail).toContain(`aria-label="${label}"`);
   // Every rail tool carries a visible name that slides out on hover (icons alone were not recognisable).
-  for (const name of ['平移', '选择', '添加', '素材库', '模板', '查找', '整理']) expect(rail).toContain(`<span className="studio-flow-tool-label">${name}</span>`);
+  for (const name of ['平移', '选择', '分组', '添加', '素材库', '模板', '查找', '整理']) expect(rail).toContain(`<span className="studio-flow-tool-label">${name}</span>`);
   expect(rail).not.toContain('aria-label="专项创作"');
   expect(rail).not.toContain("label: '从资产库添加'");
   // Node operations left the rail for the context menu and the multi-select bar.

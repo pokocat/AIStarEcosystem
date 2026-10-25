@@ -143,6 +143,8 @@ export type CanvasNodeMetadata = {
     groupId?: string;
     /** 本仓：分组的使用说明，独立于参与生成的正文和提示词。 */
     groupDescription?: string;
+    /** 本仓：圈选分组的底色（`canvas-bridge/studio-areas` 的 STUDIO_AREA_TONES）。只是画布显示，不参与生成。 */
+    groupTone?: string;
     interactive?: boolean; // Plugin node interaction/move state; see CanvasNodeDefinition.interactionToggle.
 };
 

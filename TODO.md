@@ -61,6 +61,8 @@
 
 - [ ] **补齐三个系列的正式配置和真实出图验收**（2026-10-25 进展：GPT Image 2 与 GPT Image 2.5〔flare〕的 1K/2K/4K 已配置上线，售价 30/30/40、35/35/45 旧积分，见 `docs/releases/studio-image-tiers-config-20261025.md`；仍缺 sunburst 报价与配置、4K 方图等其他画幅、各档真实出图尺寸验收，界面名「GPT Image 2 / 2.5」在 main `384fb9bb` 待发版）：代码已支持 GPT Image 2 / Flare / Sunburst 按 1K、2K、4K 路由与冻结报价；生产目前只有 GPT Image 2 的 1K/2K、30 积分/张。需核实并配置其余供应商型号、合法输出规格、场景开放及运营确认售价，再逐系列/档位核对前端选择、报价、供应商原图尺寸和唯一积分结算；禁止把代码发布当作真实出图已验收。证据见 `docs/releases/studio-image-resolution-release-20261025.md`。
 
+- [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。
+
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。

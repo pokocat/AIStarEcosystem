@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { ApiError, formatCredits } from "@ai-star-eco/api-client";
 import { Button } from "antd";
+import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { ChevronRight, FileText, Image, PenLine, Video, Workflow } from "lucide-react";
 import { AiMark } from "./studio-ai-icon";
 import { nanoid } from "nanoid";
@@ -48,7 +49,7 @@ import { StudioDialogueLegacy, type LegacyGroup } from "./studio-dialogue-legacy
 import type { DialogueMessageHandlers } from "./studio-dialogue-message";
 import { StudioDialogueSkillDraft } from "./studio-dialogue-skill-draft";
 import { StudioAssistantStarterCards, StudioAssistantStarterForm, composeStarter, isMentionResidue, starterDefaults, starterSlotNodes, starterSlots, studioStarter, type StarterKey } from "./studio-assistant-starters";
-import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantDraft } from "@/canvas-bridge/studio-assistant-memory";
+import { clearAssistantDraft, readAssistantDraft, readAssistantModel, writeAssistantModel, writeAssistantDraft } from "@/canvas-bridge/studio-assistant-memory";
 import { studioBriefNeedsReference, studioCanvasHasDefaultTitle, studioTitleFromBrief } from "./studio-entry";
 import { useCanvasStore } from "@/canvas/stores/canvas/use-canvas-store";
 import { splitReplyActions } from "@/canvas-bridge/studio-reply-actions";
@@ -111,10 +112,13 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
   // The composer starts from this canvas's saved draft (a refresh keeps what was typed, runbook 2.7).
   const [initialDraft] = useState(() => readAssistantDraft(projectId, new Set(assistantContextNodes(nodes).map(n => n.id))));
   const [text, setText] = useState(initialDraft?.text ?? ""), [pinnedIds, setPinnedIds] = useState<string[]>(initialDraft?.pinnedIds ?? []), [attachmentIds, setAttachmentIds] = useState<string[]>(initialDraft?.attachmentIds ?? []);
-  // The reply model has no control under the composer (2026-10-21, user feedback): there is one dialogue model online, the
-  // disabled pill could not be changed, and its name read as if videos were made with it too. A choice this browser saved
-  // for the canvas earlier (when the picker existed) still applies where the scene offers that model.
-  const model = useMemo(() => readAssistantModel(projectId), [projectId]);
+  // 2026-10-25: users can choose the reply model when multiple models are offered. It never selects image/video models.
+  const [modelChoice, setModelChoice] = useState(() => ({ projectId, endpointId: readAssistantModel(projectId) }));
+  const model = modelChoice.projectId === projectId ? modelChoice.endpointId : readAssistantModel(projectId);
+  const chooseModel = (endpointId: string) => {
+    writeAssistantModel(projectId, endpointId);
+    setModelChoice({ projectId, endpointId });
+  };
   const [guideOpen, setGuideOpen] = useState(false), [legacyOpen, setLegacyOpen] = useState(false), [starter, setStarter] = useState<Starter>();
   // References added while a fill-in card is open belong to that card and leave the message with it (「换一个」).
   // `starterWritten` is the sentence the card last put in the composer; text that is still that sentence (or it plus a
@@ -772,7 +776,12 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
         {!!skillReplies.length && <div className="studio-dialogue-suggestions">{skillReplies.map(s => <button key={s.key} type="button" title={s.summary || undefined}
           disabled={sending || !!sendDisabledReason} onClick={() => { chooseSkill(s.key); void send(undefined, s.key); }}><span>{s.name}</span></button>)}</div>}
       </div>}
-      <StudioDialogueComposer ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
+      <StudioDialogueComposer modelControl={selectable && selectedModel ? <SelectField className="studio-dialogue-model-button" aria-label="对话模型" value={selectedModel.endpointId}
+        disabled={sending || !!store.activeTurnId || !!session.switching || !!session.verifying}
+        title={`${selectedModel.name} · 仅影响后续对话${selectedModel.tokenPricing ? ` · 每千 Token：输入 ${selectedModel.tokenPricing.inputCreditsPerK.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分 · 输出 ${selectedModel.tokenPricing.outputCreditsPerK.toLocaleString("zh-CN", { maximumFractionDigits: 6 })} 积分` : ""}${store.activeTurnId ? " · 本轮回复结束后可切换" : ""}`}
+        onChange={event => chooseModel(event.target.value)}>
+        {textModels.map(option => <option key={option.endpointId} value={option.endpointId}>{option.name}{option.isDefault ? " · 默认" : ""}</option>)}
+      </SelectField> : undefined} ref={composer} projectId={projectId} text={text} onText={setText} contextNodes={contextNodes} pinnedIds={pinnedIds} attachmentIds={attachmentIds}
         onPin={pin} onUnpin={id => setPinnedIds(ids => ids.filter(value => value !== id))} onRemoveAttachment={id => setAttachmentIds(ids => ids.filter(value => value !== id))}
         onFiles={files => void addAttachments(files).catch(() => {})} onAssets={addAttachments} reading={reading} attachmentsUnsaved={attachmentsUnsaved} onRetrySave={() => void retryAttachmentSave()}
         sendDisabledReason={sendDisabledReason} sending={sending} onSend={() => void send()} canStop={!!store.activeTurnId} stopping={stopping} onStop={() => void stop()} demo={demo}
