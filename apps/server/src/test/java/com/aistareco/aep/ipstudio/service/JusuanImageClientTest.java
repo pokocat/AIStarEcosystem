@@ -46,6 +46,71 @@ class JusuanImageClientTest {
         assertTrue(evidence.identifiers().contains("logid=body-123"));
         verify(upstream,times(1)).sendJson(any(),any());
     }
+    @Test void moderationRejectionReturnsProviderReasonWithoutRetryingDurableSubmission() throws Exception {
+        String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
+        var error=rejectedResponse(400,mapper.createObjectNode().set("error",mapper.createObjectNode()
+                .put("code","content_policy_violation").put("message",reason)).toString(),true);
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
+        assertEquals(Map.of("providerCode","content_policy_violation","reason",reason,"category","content_moderation"),error.getDetails());
+        assertTrue(error.getMessage().contains(reason));
+        assertEquals(400,((ProviderResponseDiagnostics)error.getSuppressed()[0]).status());
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void otherJsonRejectionsExposeSanitizedBoundedReason() throws Exception {
+        String reason="invalid parameter; token=private-token; https://private.example/file?signature=secret; sk-testsecret "+"字".repeat(450);
+        var error=rejectedResponse(400,mapper.createObjectNode().put("message",reason).toString(),false);
+        var details=(Map<?,?>)error.getDetails();String safe=(String)details.get("reason");
+        assertEquals("provider_rejection",details.get("category"));
+        assertTrue(safe.contains("invalid parameter"));
+        for(String secret:List.of("private-token","private.example","signature=secret","sk-testsecret"))assertFalse(error.getMessage().contains(secret));
+        assertTrue(safe.codePointCount(0,safe.length())<=301);
+        assertTrue(error.getMessage().contains(safe));
+    }
+    @Test void malformedHtmlKeepsGenericMessageAndStructuredServerErrorsExposeTheirReason() throws Exception {
+        for(String body:List.of("<html>private gateway detail</html>","not json","{\"error\":{\"message\":\"<html>private gateway detail</html>\"}}","{}")) {
+            reset(upstream);
+            var error=rejectedResponse(400,body,false);
+            assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());assertNull(error.getDetails());
+            assertFalse(error.getMessage().contains("private gateway detail"));
+        }
+        reset(upstream);
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"message\":\"private server detail\"}}");when(response.statusCode()).thenReturn(503);
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(BusinessException.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{}));
+        assertEquals("private server detail",((Map<?,?>)error.getDetails()).get("reason"));
+        assertTrue(error.getMessage().contains("private server detail"));
+    }
+    @Test void serverErrorReasonSurvivesDurableRecoveryWithoutBecomingDefinitiveRejection() {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json("{\"error\":{\"message\":\"provider capacity exhausted\"}}");when(response.statusCode()).thenReturn(503);
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,state->{}));
+        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",pending.code());
+        assertTrue(pending.getMessage().contains("provider capacity exhausted"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void asyncJobModerationFailureUsesSamePublicReason() throws Exception {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        String reason="参考图未通过内容审核";
+        var accepted=json("{\"id\":\"job1\"}");
+        var failed=json(mapper.createObjectNode().put("status","failed").set("error",mapper.createObjectNode().put("code","content_policy_violation").put("message",reason)).toString());
+        when(upstream.sendJson(any(),any())).thenReturn(accepted,failed);
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,state->{}));
+        assertEquals("content_moderation",((Map<?,?>)error.getDetails()).get("category"));
+        assertEquals(reason,((Map<?,?>)error.getDetails()).get("reason"));
+        assertTrue(error.getMessage().contains(reason));
+        verify(upstream,times(2)).sendJson(any(),any());verifyNoInteractions(http);
+    }
+    private JusuanImageClient.ProviderRejected rejectedResponse(int status,String body,boolean durable) {
+        var ep=endpoint("ernie-Image");
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        var response=json(body);when(response.statusCode()).thenReturn(status);when(upstream.sendJson(any(),any())).thenReturn(response);
+        return assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","image","1024x1024",List.of(),"request","owner",s->{},null,null,durable?state->{}:null));
+    }
     @Test void configuredAsyncImageProtocolDoesNotDependOnProviderHostname(){
         var ep=endpoint("flux2-klein-4b");
         ep.setBaseUrl("https://image-proxy.example/v1");

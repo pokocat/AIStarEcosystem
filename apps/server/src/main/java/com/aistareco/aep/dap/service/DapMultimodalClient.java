@@ -1,5 +1,8 @@
 package com.aistareco.aep.dap.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+import java.nio.charset.StandardCharsets;
+
 import com.aistareco.aep.dap.config.DapProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -344,7 +347,7 @@ public class DapMultimodalClient {
             if (resp.statusCode() >= 400) {
                 log.warn("[dap-ai] download http-error host={} status={} durationMs={}",
                         hostOf(url), resp.statusCode(), elapsedMs(startNanos));
-                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", "下载产物失败 HTTP " + resp.statusCode() + " " + url);
+                throw new DapModelException("DAP_MODEL_DOWNLOAD_FAILED", ProviderErrorMessage.message(new String(resp.body(), StandardCharsets.UTF_8),"下载产物失败（上游 " + resp.statusCode() + "）"));
             }
             byte[] body = resp.body();
             if (body.length > maxBytes) {
@@ -450,7 +453,10 @@ public class DapMultimodalClient {
                     new DapModelException("DAP_MODEL_HTTP_" + resp.statusCode(), upstreamMessage(resp)),resp);
         }
         try {
-            return OM.readTree(resp.body());
+            JsonNode body=OM.readTree(resp.body());
+            if(ProviderErrorMessage.hasError(body))throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
+                    new DapModelException("DAP_MODEL_CALL_FAILED",ProviderErrorMessage.message(resp.body(),"模型服务返回错误")),resp);
+            return body;
         } catch (IOException e) {
             throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(
                     new DapModelException("DAP_MODEL_BAD_OUTPUT", "大模型返回不是合法 JSON(" + path + "): " + e.getMessage()),resp);
@@ -544,37 +550,9 @@ public class DapMultimodalClient {
         return r == 0 ? n : n + (8 - r);
     }
 
-    /** 上游 4xx 响应体里那句人话的最大长度 —— 够说清问题，又不至于把整段 JSON 糊到界面上。 */
-    private static final int UPSTREAM_MSG_MAX = 200;
-
-    /**
-     * 给用户看的上游失败原因。
-     *
-     * <p>此前一律返回「AI 生成失败，请稍后重试」，理由是「不把上游响应体直出给用户」。
-     * 方向对，做过头了：OpenAI 兼容的厂商对 **4xx** 回的是结构化的 {@code {code,message}}，
-     * 而且那句 message 恰恰是**我们请求哪里不对**——
-     * 比如 {@code unsupported FLUX.2 Klein 4B size "768x1024"}（换了模型之后画幅不被支持）。
-     * 把它抹成「请稍后重试」，用户既不知道该改什么，而且那句话本身还是错的
-     * （上游明确 {@code retryable:false}，重试永远不会成）。
-     *
-     * <p>分寸：**4xx 直出厂商那句 message**（是我们的请求造成的，可操作），截断到 200 字；
-     * **5xx 保持笼统 + 状态码**（厂商自己出问题，用户做不了什么，细节在 WARN 日志里）。
-     */
+    /** All structured model errors retain the safe provider reason, including server errors. */
     private static String upstreamMessage(HttpResponse<String> resp) {
-        int status = resp.statusCode();
-        if (status >= 500) return "模型服务暂时不可用（上游 " + status + "），请稍后重试";
-        String msg = null;
-        try {
-            JsonNode body = OM.readTree(resp.body());
-            for (JsonNode candidate : new JsonNode[]{body.path("error").path("message"), body.path("message")}) {
-                if (candidate.isTextual() && !candidate.asText().isBlank()) { msg = candidate.asText().trim(); break; }
-            }
-        } catch (Exception ignore) {
-            // 响应体不是 JSON：退回笼统文案，别把 HTML 错误页糊到界面上
-        }
-        if (msg == null || msg.isBlank()) return "模型拒绝了这次请求（上游 " + status + "）";
-        if (msg.length() > UPSTREAM_MSG_MAX) msg = msg.substring(0, UPSTREAM_MSG_MAX) + "…";
-        return "模型拒绝了这次请求：" + msg;
+        return ProviderErrorMessage.message(resp.body(), "模型服务返回错误（上游 " + resp.statusCode() + "）");
     }
 
     private Target require(Target t, String channel) {

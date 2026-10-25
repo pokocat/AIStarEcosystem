@@ -1,5 +1,7 @@
 package com.aistareco.aep.service.music;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.config.MusicGenProperties;
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -251,7 +253,7 @@ public class MusicGenModelClient {
         String failReason = null;
         JsonNode fr = result.path("FailureReason");
         if (!fr.isMissingNode() && !fr.isNull()) {
-            failReason = fr.path("Msg").asText(null);
+            failReason = ProviderErrorMessage.sanitize(fr.path("Msg").asText(null));
         }
         return new PollResult(status, progress, audioUrl, duration, lyrics, captions, failReason);
     }
@@ -295,7 +297,7 @@ public class MusicGenModelClient {
             log.warn("[music-gen] {} http {} endpoint={} body={}", action, resp.statusCode(),
                     ep.getId(), truncate(resp.body(), 500));
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "MUSIC_CALL_FAILED",
-                    "音乐生成服务返回异常，请稍后重试。");
+                    ProviderErrorMessage.message(resp.body(), "音乐生成服务返回异常（上游 " + resp.statusCode() + "）"));
         }
         JsonNode root;
         try {
@@ -310,7 +312,7 @@ public class MusicGenModelClient {
             String upstream = err.path("Message").asText(root.path("Message").asText(""));
             log.warn("[music-gen] {} biz error endpoint={} code={} msg={}", action, ep.getId(), code, upstream);
             throw new BusinessException(HttpStatus.BAD_GATEWAY, "MUSIC_CALL_FAILED",
-                    "音乐生成失败：" + (upstream.isBlank() ? "上游返回错误" : upstream));
+                    ProviderErrorMessage.message(root.toString(), "音乐生成失败，上游未提供具体原因"));
         }
         return root;
     }

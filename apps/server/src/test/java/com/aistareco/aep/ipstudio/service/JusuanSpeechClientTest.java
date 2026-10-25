@@ -15,6 +15,21 @@ import static org.mockito.Mockito.*;
 
 class JusuanSpeechClientTest {
     private final ObjectMapper mapper=new ObjectMapper();
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
+    void providerErrorReasonSurvivesSubmitAndPoll(int status) {
+        var upstream=mock(UpstreamModelHttp.class);
+        var endpoint=AiModelEndpoint.builder().id("tts").upstreamApiKeyEncrypted(AepCryptoUtil.encrypt("test-key")).build();
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);when(response.body()).thenReturn("{\"error\":{\"message\":\"voice unavailable token=private-token\"}}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var client=new JusuanSpeechClient(upstream,mapper);
+        for(boolean submit:new boolean[]{true,false}) {
+            var error=assertThrows(BusinessException.class,()->{if(submit)client.submit(endpoint,"https://speech.example/v1","{}","id","owner");else client.poll(endpoint,"https://speech.example/v1","https://speech.example/v1/jobs/id?model=qwen3-tts","id","owner");});
+            assertTrue(error.getMessage().contains("voice unavailable"));assertFalse(error.getMessage().contains("private-token"));
+            assertEquals(submit&&status==400?"STUDIO_SPEECH_REJECTED":"STUDIO_SPEECH_UNAVAILABLE",error.getCode());
+        }
+    }
     @Test void nativeContractPreservesBodyAndIdempotencyAndModelScope() throws Exception {
         var server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
         var body=new AtomicReference<String>();var auth=new AtomicReference<String>();var key=new AtomicReference<String>();

@@ -196,6 +196,7 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-asset-tile footer small.is-done { color: var(--ip-green); }
 .director-asset-tile footer small.is-warn { color: var(--ip-gold); }
 .director-asset-tile footer small.is-error { color: var(--ip-error); }
+.director-asset-tile > .director-inline-error { margin: 0 10px 10px; min-width: 0; overflow-wrap: anywhere; }
 .director-asset-tile footer :is(.ip-brand-button, .ip-brand-secondary) { flex: none; height: 30px; min-height: 30px; padding: 0 11px; font-size: 12px; white-space: nowrap; }
 .director-kind.is-floating { position: absolute; top: 6px; left: 6px; background: rgba(255, 255, 255, .9); }
 .director-kind.is-floating.is-right { left: auto; right: 6px; }

@@ -410,7 +410,7 @@ class MaterialVideoModelClientWireTest {
     }
 
     @Test
-    @DisplayName("创建 4xx 但回的是网关 HTML：不外泄；未明确拒绝的 5xx 保留未知受理并只给状态码")
+    @DisplayName("创建 4xx 但回的是网关 HTML：不外泄；未明确拒绝的 5xx 保留未知受理与具体原因")
     void createRejectionDoesNotLeakHtml() {
         useJusuan();
         createStatus = 404;
@@ -427,7 +427,7 @@ class MaterialVideoModelClientWireTest {
                 "celebrity", null, VideoGenSpec.EMPTY));
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",unavailable.getCode());
         assertTrue(unavailable.getMessage().contains("503"), unavailable.getMessage());
-        assertFalse(unavailable.getMessage().contains("overloaded"));
+        assertTrue(unavailable.getMessage().contains("overloaded"));
     }
 
     @Test
@@ -440,7 +440,7 @@ class MaterialVideoModelClientWireTest {
                 "celebrity", null, VideoGenSpec.EMPTY));
         assertEquals("VIDEO_PROVIDER_QUEUE_FULL", full.getCode());
         assertTrue(full.getMessage().contains("模型提供方"));
-        assertFalse(full.getMessage().contains("video queue"));
+        assertTrue(full.getMessage().contains("video queue is full"));
     }
 
     @Test

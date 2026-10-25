@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.model.AiModelBillingMode;
 import com.aistareco.aep.model.AiAppEndpointCandidate;
 import com.aistareco.aep.model.AiModelEndpoint;
@@ -456,14 +458,10 @@ public class DramaRenderService {
     /** 上游报的固定画幅，如 {@code size must match preset image_standard_square_1x (768x768)}。 */
     private static final Pattern SIZE_PRESET_HINT =
             Pattern.compile("(?i)size must match preset\\s+\\S+\\s*\\((\\d+)\\s*[x×]\\s*(\\d+)\\)");
-    /** 响应体被截断、整段解析不了 JSON 时，退一步找第一个 "message":"…" 字段。 */
-    private static final Pattern JSON_MESSAGE_FIELD = Pattern.compile("\"message\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"");
-    /** 上游原话里像密钥的片段（sk-… / key=… / Bearer …）打码后再给用户看。与画布 worker 同口径。 */
-    private static final Pattern SECRET_LIKE = Pattern.compile("(?i)(sk-|key[=:]\\s*|bearer\\s+)[A-Za-z0-9._-]{8,}");
     /** internalDetail 里留多少响应体：要够画布 worker 整段解析出 JSON（以前 300 字把它截坏了）。 */
     static final int INTERNAL_BODY_LIMIT = 1000;
     /** 给用户看的上游原话最多多长。 */
-    static final int UPSTREAM_MESSAGE_LIMIT = 120;
+    static final int UPSTREAM_MESSAGE_LIMIT = 200;
     /** 要的比例和端点固定画幅的比例相差多少以内算一致。 */
     private static final double RATIO_TOLERANCE = 0.02;
 
@@ -561,19 +559,12 @@ public class DramaRenderService {
 
     /**
      * 上游非 2xx → 502 IMAGE_CALL_FAILED（错误码不变，调用方照旧按它处理）。
-     * 4xx 把上游原话（打码、截断）说给用户 —— 是我们的请求哪儿不对，重试不会好；
-     * 5xx 笼统说，细节在日志和 internalDetail（格式 {@code endpoint=… model=… status=NNN body=…}，画布 worker 按它解析）。
+     * All statuses preserve the safe upstream reason; raw diagnostics remain in internalDetail.
      */
     static BusinessException upstreamRejected(String endpointName, String model, int status, String body) {
         String detail = "endpoint=" + endpointName + " model=" + model + " status=" + status
                 + " body=" + truncate(body, INTERNAL_BODY_LIMIT);
-        String message;
-        if (status >= 400 && status < 500) {
-            String up = upstreamMessage(body);
-            message = up == null ? "出图模型拒绝了这次请求（" + status + "）。" : "出图模型拒绝了这次请求：" + up;
-        } else {
-            message = "图片没生成出来，稍后再试一次";
-        }
+        String message = ProviderErrorMessage.message(body, "图片生成服务返回错误（上游 " + status + "）");
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "IMAGE_CALL_FAILED", message, detail);
     }
 
@@ -582,32 +573,7 @@ public class DramaRenderService {
      * 整段不是合法 JSON（被截断）时找第一个 {@code "message":"…"}。HTML 错误页之类取不出 → null（不外泄）。
      */
     static String upstreamMessage(String body) {
-        if (body == null || body.isBlank()) return null;
-        String msg = null;
-        try {
-            JsonNode root = JSON.readTree(body);
-            for (JsonNode c : new JsonNode[]{root.path("error").path("message"), root.path("message"), root.path("error")}) {
-                if (c.isTextual() && !c.asText().isBlank()) {
-                    msg = c.asText();
-                    break;
-                }
-            }
-        } catch (Exception ignore) {
-            // 不是完整 JSON：下面按字段找
-        }
-        if (msg == null) {
-            Matcher m = JSON_MESSAGE_FIELD.matcher(body);
-            if (m.find()) {
-                try {
-                    msg = JSON.readValue("\"" + m.group(1) + "\"", String.class);
-                } catch (Exception e) {
-                    msg = m.group(1);
-                }
-            }
-        }
-        if (msg == null || msg.isBlank()) return null;
-        msg = SECRET_LIKE.matcher(msg.strip()).replaceAll("$1***");
-        return truncate(msg, UPSTREAM_MESSAGE_LIMIT);
+        return ProviderErrorMessage.reason(body);
     }
 
     /** 记进 [upstream-io] 的请求体：参考图地址去掉查询串（签名不进日志），其余原样。 */

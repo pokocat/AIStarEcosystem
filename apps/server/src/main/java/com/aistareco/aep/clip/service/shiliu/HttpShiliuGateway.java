@@ -1,5 +1,7 @@
 package com.aistareco.aep.clip.service.shiliu;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.aep.clip.config.ClipProperties;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -197,7 +199,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
         JsonNode data = firstObject(post("/" + kind + "/status", body));
         String status = normalizedStatus(text(data, "status"));
         String output = "video".equals(kind) && "succeeded".equals(status) ? text(data, "videoUrl") : id;
-        String error = "failed".equals(status) ? firstNonBlank(text(data, "failReason"), text(data, "error"), "上游任务失败") : null;
+        String error = "failed".equals(status) ? ProviderErrorMessage.message(data.toString(), "上游任务失败") : null;
         return new Task(kind + ":" + id, status, durationFrom(data), output, error, progress(data, status));
     }
 
@@ -267,13 +269,13 @@ public class HttpShiliuGateway implements ShiliuGateway {
                     .build();
             HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                log.warn("[clip-shiliu] http failure path={} status={}", path, response.statusCode());
-                throw upstreamFailure("石榴 AI 请求失败（HTTP " + response.statusCode() + "）", "status=" + response.statusCode());
+                log.warn("[clip-shiliu] http failure path={} status={} body={}", path, response.statusCode(), clamp(response.body(),500));
+                throw com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach(upstreamFailure(ProviderErrorMessage.message(response.body(),"数字人服务返回错误（上游 " + response.statusCode() + "）"), "status=" + response.statusCode()),response);
             }
             JsonNode envelope = OM.readTree(response.body());
             int code = envelope.path("code").asInt(Integer.MIN_VALUE);
             if (code != 0) {
-                String message = clamp(text(envelope, "msg"), 180);
+                String message = ProviderErrorMessage.reason(envelope);
                 log.warn("[clip-shiliu] upstream rejected path={} code={} msg={}", path, code, message);
                 throw mappedUpstreamFailure(code, message);
             }
@@ -430,8 +432,9 @@ public class HttpShiliuGateway implements ShiliuGateway {
 
     /** 包级可见：供 HttpShiliuGatewayErrorMappingTest 直接覆盖各错误码分支。 */
     static BusinessException mappedUpstreamFailure(int code, String message) {
+        message = ProviderErrorMessage.sanitize(message);
         String suffix = message == null || message.isBlank() ? "" : "：" + message;
-        return switch (code) {
+        BusinessException mapped = switch (code) {
             case 1002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_INPUT_INVALID", "采集内容不符合数字人引擎要求" + suffix, "code=" + code);
             case 2001 -> BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID", "数字人服务鉴权失效，请联系运营处理", "code=" + code);
             case 2002 -> BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_BALANCE_INSUFFICIENT", "数字人服务额度不足，请联系运营处理", "code=" + code);
@@ -444,6 +447,8 @@ public class HttpShiliuGateway implements ShiliuGateway {
             case 3007 -> BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_MEDIA_URL_INVALID", "数字人服务暂时无法读取采集文件，请稍后重试", "code=" + code);
             default -> byMessage(code, message, suffix);
         };
+        String publicMessage = message == null || mapped.getMessage().contains(message) ? mapped.getMessage() : mapped.getMessage() + suffix;
+        return new BusinessException(mapped.getStatus(),mapped.getCode(),publicMessage,mapped.getDetails(),mapped.getInternalDetail());
     }
 
     /**

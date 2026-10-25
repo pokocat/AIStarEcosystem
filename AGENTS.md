@@ -590,9 +590,8 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
 - `BusinessException.internalDetail` **不算**留下 —— 它只在走 `GlobalExceptionHandler` 的
   请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
   等于什么都没记（v0.184 就是这么丢的）。
-- 4xx 的 message **直出给用户**（截断，脱敏）：它说的是「我们请求哪儿不对」，
-  是用户唯一据以行动的信息，而对一个永远不会自己好的 400 说「请稍后重试」本身就是错的。
-  5xx 才笼统 + 状态码（厂商自己的问题，细节留日志）。响应体不是 JSON 时不外泄
+- **所有模型调用的具体错误原因都要展示**（2026-10-25 用户明确扩大范围）：文字、视觉、图片、视频、配音、口型、音乐、数字人等，无论 4xx、5xx、流中错误或异步失败，都使用 `ProviderErrorMessage` 提取上游消息、脱敏并限长；不能再按错误码统一替换成「请稍后重试」，前端也不能再次覆盖。没有可读原因才使用通用提示，真实追查号保留。此规则替代旧的「5xx 只显示通用提示」。
+  上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。响应体不是 JSON 时不外泄
   （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
   `MaterialVideoModelClient#uploadFailureMessage`。
 - 发出去的**请求体**也要记（`ModelCallCtx.requestBodyJson` → `[upstream-io] REQUEST`）。

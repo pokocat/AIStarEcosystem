@@ -535,10 +535,40 @@ class IpRunWorkerTest {
         var run=seedGenerateRun(1,30L,30L,"source");var input=(ObjectNode)OM.readTree(run.getInputJson());
         input.put("prompt","legacy template ".repeat(100)).put("userPrompt","保持同一个人物，生成三视图");((ObjectNode)input.path("_exec")).put("endpointId","jusuan");
         run.setInputJson(input.toString());runs.repo.save(run);when(nativeImages.supportsEndpoint("jusuan")).thenReturn(true);
-        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
+        when(nativeImages.generate(eq("jusuan"),eq("保持同一个人物，生成三视图"),eq("768x1024"),anyList(),eq(RID+"-image-0"),eq(USER),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.isNull(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenReturn(IpStudioFixtures.pngBytes());
         worker.runBlocking(RID);assertEquals(IpRun.STATUS_DONE,reload().getStatus());assertEquals(30,reload().getCost());
         verify(credits).commitHold(eq(IpRunService.REF_TYPE),eq(RID),eq(30L),anyString());
         verify(multimodal,never()).generateImage(anyString(),anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(), eq("studio"));
+    }
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(ints={400,503})
+    void providerReasonReachesFailedRunAndReleasesHoldWithoutRetry(int status) throws Exception {
+        var models=mock(com.aistareco.aep.service.AiModelInvocationService.class);
+        var upstream=mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class);
+        var spec=new com.aistareco.aep.model.AiImageRequestSpec(2048,0,0,"none",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("768x1024","3:4",java.util.Map.of())));
+        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("native").name("image")
+                .baseUrl("https://image.example/v1").model("image").enabled(true).imageRequestSpecJson(spec.json())
+                .upstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("test-key")).build();
+        when(models.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"native","studio"))
+                .thenReturn(java.util.Optional.of(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        var nativeImages=new com.aistareco.aep.ipstudio.service.JusuanImageClient(models,storage,upstream,OM);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,30L,30L);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        String reason="生成的图片可能违反了关于青少年与儿童形象适当描绘的防护限制";
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(status);
+        when(response.body()).thenReturn(OM.createObjectNode().set("error",OM.createObjectNode()
+                .put("code","content_policy_violation").put("message",reason)).toString());
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        worker.runBlocking(RID);
+        assertEquals(IpRun.STATUS_FAILED,reload().getStatus());
+        assertEquals(status==400?"STUDIO_IMAGE_PROVIDER_FAILED":"STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
+        assertTrue(reload().getErrorMessage().contains(reason));assertEquals(0,reload().getCost());
+        verify(upstream,times(1)).sendJson(any(),any());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
     }
     @Test void nativeAcceptedSecondImageRecoversOriginalCheckpointWithoutRepeatingFirstSpend() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
@@ -547,9 +577,9 @@ class IpRunWorkerTest {
         ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
         when(nativeImages.supportsEndpoint("native")).thenReturn(true);
         java.util.concurrent.atomic.AtomicInteger second=new java.util.concurrent.atomic.AtomicInteger();
-        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any())).thenAnswer(inv->{
-            String request=inv.getArgument(4);com.fasterxml.jackson.databind.JsonNode previous=inv.getArgument(8);
-            java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(9);
+        when(nativeImages.generate(eq("native"),anyString(),anyString(),anyList(),anyString(),eq(USER),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            String request=inv.getArgument(4);com.fasterxml.jackson.databind.JsonNode previous=inv.getArgument(9);
+            java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             if(request.endsWith("-0")){checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-first").put("requestBody","original-first-body"));return IpStudioFixtures.pngBytes();}
             if(second.getAndIncrement()==0){checkpoint.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-second").put("requestBody","original-second-body"));throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(true,new IllegalStateException("poll outage"));}
             assertEquals("original-second",previous.path("jobId").asText());assertEquals("original-second-body",previous.path("requestBody").asText());return IpStudioFixtures.pngBytes();
@@ -559,7 +589,7 @@ class IpRunWorkerTest {
         verify(credits,never()).releaseHold(anyString(),anyString(),anyString());assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));
         when(nativeImages.supportsEndpoint("native")).thenReturn(false);worker.recoverNative(RID);
         assertEquals("done",reload().getStatus());assertEquals(16,reload().getCost());assertEquals(2,candidates(reload()).size());
-        verify(nativeImages,times(1)).generate(eq("native"),anyString(),anyString(),anyList(),eq(RID+"-image-0"),eq(USER),any(),any(),any(),any());
+        verify(nativeImages,times(1)).generate(eq("native"),anyString(),anyString(),anyList(),eq(RID+"-image-0"),eq(USER),any(),any(),any(),any(),any());
         verify(credits,times(2)).commitHold(eq("ip-run"),eq(RID),eq(8L),anyString());verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
     }
     @Test void unknownNativeAcceptanceKeepsHoldAndNeverAttemptsAnotherSubmitOrTimeoutRefund() throws Exception {
@@ -567,14 +597,14 @@ class IpRunWorkerTest {
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
         var run=seedGenerateRun(1,8L,8L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
         when(nativeImages.supportsEndpoint("native")).thenReturn(true);
-        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any())).thenAnswer(inv->{
-            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(9);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original-body"));
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(10);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original-body"));
             throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(false,new IllegalStateException("reply lost"));
         });
         worker.runBlocking(RID);assertEquals("failed",reload().getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
         assertEquals(0,reload().getCost());assertTrue(reload().getInputJson().contains("original-body"));assertFalse(IpRunWorker.hasNativeSubmission(reload()));assertFalse(worker.canResumeNative(reload()));worker.recoverNative(RID);
         assertFalse(worker.expire(RID,Instant.now().plusSeconds(1)));verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
-        verify(nativeImages,times(1)).generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any());
+        verify(nativeImages,times(1)).generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any(),any());
     }
     @Test void historicalUnknownImageRefundsOnlyUndeliveredPartAndNeverCallsProvider() throws Exception {
         var run=seedGenerateRun(2,8L,16L,"source");
@@ -595,8 +625,8 @@ class IpRunWorkerTest {
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
         var run=seedGenerateRun(1,8L,8L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
         when(nativeImages.supportsEndpoint("native")).thenReturn(true);
-        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any())).thenAnswer(inv->{
-            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(9);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-job").put("requestBody","original-body"));
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(10);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("jobId","original-job").put("requestBody","original-body"));
             throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(true,new IllegalStateException("poll outage"));
         });
         var failed=new java.util.concurrent.atomic.AtomicBoolean();

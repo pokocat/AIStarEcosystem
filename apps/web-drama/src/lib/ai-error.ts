@@ -8,6 +8,7 @@
 //   ① 优先按 ApiError.code 给**可操作的友好文案**（超时/未配置/调用失败/积分不足…）；
 //   ② 干净的业务引导文案原样透出，但**抹掉尾部「· 追查号 XXXX」**（对用户是噪声）；
 //   ③ 只有真·技术泄漏才回落兜底文案，并**保留编号**供用户找客服复述（界面上叫「问题编号」）。
+// 2026-10-25：模型失败优先展示服务端已脱敏的上游原因，保留追查号；不按错误码覆盖。
 // v0.197：写给运营的「去管理后台配置 X」一律换成「还没开通」（FEATURE_NOT_READY）。
 // 服务端日志/错误日志后台仍有完整追查号，不影响排障。
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +55,10 @@ const CREDIT_RE = /INSUFFICIENT|BALANCE|NOT_ENOUGH|余额不足|积分不足|积
 // 用户打不开后台，换成「还没开通」。注意别误伤「生成仍在后台进行」这类说明。
 const ADMIN_GUIDE_RE = /管理后台|(?:去|到)\s*后台|后台\s*[「→]|模型端点|绑定.{0,12}端点/;
 
+// Model services already extract and redact upstream reasons. Do not overwrite them or mistake
+// a provider's balance/quota failure for the user's wallet balance.
+const PROVIDER_FAILURE_CODE = /^(?:AI_CALL_FAILED|AI_PROVIDER_ERROR|IMAGE_CALL_FAILED|VIDEO_(?:SUBMIT_FAILED|POLL_FAILED|SUBMISSION_UNKNOWN|PROVIDER_.+)|MUSIC_CALL_FAILED|DAP_MODEL_.+|STUDIO_(?:IMAGE|SPEECH|LIP_SYNC)_.+|CLIP_ENGINE_(?!NOT_CONFIGURED).+)$/;
+
 /** 抹掉消息尾部的「· 追查号 XXXX」（对用户是噪声；服务端日志仍有）。 */
 function stripTrace(s: string): string {
   return s.replace(/\s*[·•・|]?\s*追查号\s*[A-Za-z0-9]+\s*$/u, "").trim();
@@ -66,10 +71,11 @@ function stripTrace(s: string): string {
  */
 export function aiErrorMessage(e: unknown, fallback = "AI 生成失败，请稍后重试"): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code?: unknown }).code ?? "") : "";
+  const raw = (e && typeof e === "object" && "message" in e && typeof e.message === "string" ? e.message : typeof e === "string" ? e : "").trim();
+  if (PROVIDER_FAILURE_CODE.test(code) && raw && !raw.startsWith("{") && !/<\/?html\b/i.test(raw)) return raw;
   if (code && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (code && CREDIT_RE.test(code)) return CREDIT_HINT;
 
-  const raw = (e instanceof Error ? e.message : typeof e === "string" ? e : "").trim();
   const trace = raw.match(/追查号\s*([A-Za-z0-9]+)/)?.[1];
   const clean = stripTrace(raw);
   if (!clean) return fallback;
