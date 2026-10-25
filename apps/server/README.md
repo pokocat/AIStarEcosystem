@@ -1263,7 +1263,7 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **用户可见文案**：`StudioDialogueTurnWorker.toolFailure`（`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE`）、`StudioPlanExecutionService` 计划校验、`StudioPlanExecutionBridge.authorizeChild`、`StudioPlanSteps`、`StudioWorkflowWorker.skillPlan` 均改为人话 + `internalDetail`；前端 `userFacingError`（`studio-errors.tsx`）兜底旧记录。
 
 
-## 模型接入点赠款与折扣（本地完成，未发布）
+## 模型接入点赠款与折扣（2026-10-25 已生产发布 `20261025-model-grants`）
 
 真源：[设计与当前状态](../../docs/model-billing-design.md)。适用资格只按 `ai_model_providers.id` 判断；应用、动作、规格、模型名和计量单位仅保留在任务快照，不能限制同一接入点的赠款。售价沿用现有服务端价格，命中多条折扣取最优惠一条，折后依次扣赠款与普通积分。企业折扣按 enterpriseId 覆盖全部成员的企业消费钱包，个人钱包独立。
 

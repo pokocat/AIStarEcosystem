@@ -1243,7 +1243,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 线上 `PEX-fc87e857…`：首轮点选的「三视图」隔两轮才出方案，确认后执行的素材名单里没有它，「编排制作计划」三次被拒、用户点「继续」撞同一个错。现在对话方案的素材范围只由 `StudioPlanMaterials.scope` 算（出方案那轮点选 → 方案 `materialNodeIds` → 步骤点名 → 同一对话更早用户消息的点选 / 附件；只留画布上还在的，≤16），两条加载路径共用，不放开校验、不加整张画布。越界报 `STUDIO_PLAN_MATERIAL_OUT_OF_SCOPE`（列出全部 id），执行停下时用画布标题说清是哪个素材，进度条给「在画布上看 / 加入这次制作，重新编排（`resume.addMaterialNodeIds`）/ 不用它，重新编排」，都只重跑编排、不重跑拉片。提示词要求分析方案写 `materialNodeIds`、替换人物时外观按设定图写、不沿用原片外观。`SEED_VERSION=v27-2026-10-24-plan-material-scope`。真源 `docs/ip-studio-dialogue-intents.md` 末节，规则 `specs/BUSINESS_RULES.md` Studio 对话第 32 条。未用真模型验证。
 
-### 模型接入点赠款与折扣（2026-10-25，独立 worktree 本地完成，未发布）
+### 模型接入点赠款与折扣（2026-10-25，已生产发布 `20261025-model-grants`）
 
 真源 `docs/model-billing-design.md`。唯一适用标识为现有 `ai_model_providers.id`；后台每个接入点行可进入「赠款与折扣」。价格沿用既有配置，折扣取适用的最优惠一条、不叠加；折后优先扣该接入点未过期赠款，再扣普通积分。企业折扣自动覆盖其主账号、现有和新成员的企业消费钱包；个人钱包独立。赠款批次、冻结、流水分开记账，不改变原钱包余额。
 

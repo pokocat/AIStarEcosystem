@@ -1,6 +1,6 @@
 # 模型赠款与折扣：收敛设计稿
 
-状态：已按用户确认的接入点范围与分账规则完成本地实现和核验，未合主线、未发布。2026-10-25。
+状态：2026-10-25 已合入 main（`94afa651`）并生产发布 `20261025-model-grants`（server / web-aiavatar / admin / web-drama），发布记录见 `docs/releases/model-scoped-credits-production-release-20261025.md`。
 
 ## 唯一标识与价格来源
 
