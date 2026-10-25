@@ -4,9 +4,11 @@ import { changeFlowNodes, copyFlowSelection, flowNodes, changeFlowEdges, arrange
 const image: CanvasNodeData = { id:'image', type:CanvasNodeType.Image, title:'角色', position:{x:20,y:40}, width:320,height:400,
   metadata:{storageKey:'owned/image.png',content:'signed-url',studio:{kind:'shot',runId:'done-run',request:{clientRequestId:'accepted',nodeId:'image',operation:'image',prompt:'角色',references:[]}}} };
 describe('React Flow document bridge',()=>{
-  it('node cards have no header-only drag restriction',()=>{
+  it('node cards have no header-only drag restriction; an area moves only by its name label and is not marquee-selected',()=>{
     const nodes=flowNodes([image,{...image,id:'text',type:CanvasNodeType.Text},{...image,id:'group',type:CanvasNodeType.Group}],new Set());
-    expect(nodes.every(node=>node.dragHandle===undefined)).toBe(true);
+    expect(nodes.filter(node=>node.id!=='group').every(node=>node.dragHandle===undefined&&node.selectable===undefined)).toBe(true);
+    // The blank inside an area stays the canvas: pan and box-select there (studio-areas / studio-flow-area).
+    expect(nodes.find(node=>node.id==='group')).toMatchObject({dragHandle:'.studio-flow-area-label',selectable:false});
   });
   it.each([undefined,'known-revision'])('cannot duplicate an active script edit regardless of whether its run ID is known: %s',runId=>{
     const script={...image,id:'script',type:CanvasNodeType.Text,metadata:{status:'success' as const,studio:{kind:'script' as const,scriptEditor:{draft:'# 草稿',turns:[],pending:{request:{nodeId:'script',clientRequestId:'one-paid-key',operation:'assistant' as const,prompt:'改稿'},baseMarkdown:'# 草稿',runId}}}}};

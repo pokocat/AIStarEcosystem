@@ -55,12 +55,68 @@ html[data-layout="desktop"] .studio-canvas-credit :focus-visible { outline:2px s
   --primary-soft:#eee8dd;
 }
 .studio-flow-card.is-selected { border:2px solid var(--primary); }
-.studio-flow-group { position:relative; height:100%; border:1px dashed var(--ink-3); border-radius:12px; background:var(--primary-soft); }
-.studio-flow-group.is-selected { border-color:var(--primary); }
+/* 圈选分组（ip/studio-flow-area.tsx）：一块区域。框本身不挡操作 —— 里面的空白照样能平移、框选；
+   只有上沿外侧的名字标签、说明、缩放手柄和引用端口接收指针。颜色是用户自选的低饱和色，只铺一层极淡的底。
+   React Flow 把 pointer-events 写在节点的行内样式上，所以这里要 !important。 */
+.studio-flow-stage .react-flow__node:has(>.studio-flow-group),.studio-template-preview-canvas .react-flow__node:has(>.studio-flow-group) { pointer-events:none !important; }
+.studio-flow-group { --tone:var(--studio-area-tone,#6b7690); position:relative; height:100%; box-sizing:border-box; padding-top:10px; container-type:size; border:1px solid color-mix(in srgb, var(--tone) 32%, transparent); border-radius:12px; background:color-mix(in srgb, var(--tone) 6%, transparent); transition:background-color 160ms ease-out, border-color 160ms ease-out, box-shadow 160ms ease-out; }
+.studio-flow-group :is(.studio-flow-area-label,.studio-group-description,.react-flow__resize-control,.react-flow__handle) { pointer-events:auto; }
+.studio-flow-group.is-selected { border-color:var(--primary); box-shadow:inset 0 0 0 1px var(--primary); }
+/* 拖着节点经过：底色加深、边框跟着区域颜色走，松手就进去了。 */
+.studio-flow-group.is-drop-target { background:color-mix(in srgb, var(--tone) 14%, transparent); border-color:color-mix(in srgb, var(--tone) 75%, transparent); }
+/* 刚圈出来：从画框时的群青落到区域自己的颜色。 */
+.studio-flow-group.is-just-drawn { animation:studio-area-settle 520ms cubic-bezier(.16,1,.3,1); }
+@keyframes studio-area-settle { from { border-color:var(--primary); background-color:color-mix(in srgb, var(--primary) 9%, transparent); } }
+.studio-flow-area-label { position:absolute; left:-1px; bottom:100%; display:flex; min-width:0; padding-bottom:6px; transform-origin:left bottom; cursor:grab; }
+.react-flow__node.dragging .studio-flow-area-label { cursor:grabbing; }
+.studio-template-preview-canvas .studio-flow-area-label { cursor:pointer; }
+.studio-flow-area-chip { display:flex; align-items:center; gap:4px; min-width:0; height:28px; padding:0 6px 0 3px; border-radius:8px; background:color-mix(in srgb, var(--tone) 14%, var(--surface)); color:var(--ink); font-size:13px; font-weight:600; line-height:1; white-space:nowrap; box-shadow:0 1px 2px rgb(20 24 40 / 6%); transition:background-color 140ms ease-out, color 140ms ease-out; }
+.studio-flow-area-label:hover .studio-flow-area-chip { background:color-mix(in srgb, var(--tone) 22%, var(--surface)); }
+.studio-flow-group.is-selected .studio-flow-area-chip { background:var(--primary); color:var(--on-primary); }
+.studio-flow-area-chip .studio-flow-title { padding:4px 3px; font-weight:600; cursor:inherit; }
+.studio-flow-area-chip .studio-flow-title:focus-visible { outline:2px solid var(--primary); outline-offset:1px; }
+.studio-flow-area-chip .studio-flow-title-input { flex:none; field-sizing:content; width:auto; min-width:6em; max-width:22em; height:22px; padding:0 6px; border:1px solid var(--primary); border-radius:5px; background:var(--surface); color:var(--ink); font-weight:600; outline:0; box-shadow:0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent); }
+.studio-flow-area-chip .studio-flow-title-input::selection { background:color-mix(in srgb, var(--primary) 26%, transparent); }
+.studio-flow-area-tone { position:relative; flex:none; display:grid; place-items:center; width:22px; height:22px; padding:0; border:0; border-radius:6px; background:transparent; }
+.studio-flow-area-tone::before { content:''; width:10px; height:10px; border-radius:3px; background:var(--tone); box-shadow:inset 0 0 0 1px rgb(0 0 0 / 10%); transition:transform 140ms cubic-bezier(.16,1,.3,1); }
+button.studio-flow-area-tone { cursor:pointer; }
+button.studio-flow-area-tone:hover::before { transform:scale(1.3); }
+button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); outline-offset:0; }
+.studio-flow-group.is-selected .studio-flow-area-tone::before { box-shadow:0 0 0 1.5px rgb(255 255 255 / 85%); }
+.studio-flow-area-count { flex:none; display:grid; place-items:center; min-width:18px; height:18px; margin-left:2px; padding:0 5px; border-radius:9px; background:color-mix(in srgb, var(--tone) 16%, var(--surface)); color:var(--ink-2); font-size:11px; font-weight:600; font-variant-numeric:tabular-nums; }
+.studio-flow-group.is-selected .studio-flow-area-count { background:rgb(255 255 255 / 18%); color:var(--on-primary); }
+.studio-flow-area-palette .ant-popover-inner { padding:8px; border-radius:10px; }
+.studio-flow-area-palette [role="group"] { display:flex; gap:6px; }
+.studio-flow-area-palette button { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; border-radius:7px; background:var(--studio-area-tone); color:#fff; cursor:pointer; box-shadow:inset 0 0 0 1px rgb(0 0 0 / 10%); transition:transform 140ms cubic-bezier(.16,1,.3,1); }
+.studio-flow-area-palette button:hover { transform:scale(1.12); }
+.studio-flow-area-palette button[aria-pressed="true"] { box-shadow:0 0 0 2px var(--surface), 0 0 0 3.5px var(--studio-area-tone); }
+.studio-flow-area-palette button:focus-visible { outline:2px solid var(--primary); outline-offset:2px; }
+.studio-flow-area-empty { position:absolute; inset:0; display:grid; place-items:center; margin:0; color:color-mix(in srgb, var(--tone) 62%, var(--ink-3)); font-size:12px; letter-spacing:.06em; pointer-events:none; }
+@container (max-height:110px) { .studio-flow-area-empty { display:none; } }
+.studio-flow-group .react-flow__resize-control.handle.studio-flow-area-handle { width:9px; height:9px; border:1.5px solid var(--primary); border-radius:2px; background:var(--surface); }
+.studio-flow-group .react-flow__resize-control.line.studio-flow-area-edge { border-color:transparent; }
+/* 正在圈的框会收进去的节点。 */
+.studio-flow-card.is-area-candidate { outline:2px solid color-mix(in srgb, var(--primary) 55%, transparent); outline-offset:4px; }
+/* 画框：群青虚线慢慢流动，跟着光标的一枚小标签说会收进几个节点。 */
+.studio-flow-stage.is-drawing-area .react-flow,.studio-flow-stage.is-drawing-area .react-flow * { cursor:crosshair !important; }
+.studio-flow-area-draft { position:absolute; z-index:72; pointer-events:none; background:color-mix(in srgb, var(--primary) 3%, transparent); }
+.studio-flow-area-draft>svg { position:absolute; inset:0; overflow:visible; }
+.studio-flow-area-draft rect { fill:none; stroke:var(--primary); stroke-width:1.5; stroke-dasharray:6 5; animation:studio-area-ants 700ms linear infinite; }
+.studio-flow-area-draft.is-small { background:transparent; }
+.studio-flow-area-draft.is-small rect { stroke:var(--ink-3); }
+@keyframes studio-area-ants { to { stroke-dashoffset:-11; } }
+.studio-flow-area-draft-count { position:absolute; padding:4px 9px; border-radius:7px; background:var(--ink); color:var(--surface); font-size:12px; font-weight:500; white-space:nowrap; font-variant-numeric:tabular-nums; box-shadow:0 4px 14px rgb(20 24 40 / 18%); }
+.studio-flow-area-hint { position:absolute; z-index:80; top:124px; left:50%; display:flex; align-items:center; gap:6px; padding:7px 10px 7px 13px; border-radius:10px; background:var(--ink); color:var(--surface); font-size:12.5px; white-space:nowrap; box-shadow:0 8px 24px rgb(20 24 40 / 16%); pointer-events:none; transform:translateX(-50%); animation:studio-area-hint-in 220ms cubic-bezier(.16,1,.3,1); }
+.studio-flow-area-hint-key { display:contents; }
+@media (pointer:coarse) { .studio-flow-area-hint-key { display:none; } }
+.studio-flow-area-hint kbd { margin-left:8px; padding:1px 6px; border-radius:5px; background:rgb(255 255 255 / 14%); font:inherit; font-size:11px; }
+@keyframes studio-area-hint-in { from { opacity:0; transform:translate(-50%, -4px); } }
+@media (prefers-reduced-motion:reduce) { .studio-flow-area-draft rect,.studio-flow-group.is-just-drawn,.studio-flow-area-hint { animation:none; } }
 .studio-group-description { display:flex; align-items:flex-start; gap:10px; width:calc(100% - 24px); margin:0 12px; padding:2px 0; border:0; background:transparent; color:var(--ink-2); font:inherit; font-size:12px; line-height:20px; text-align:left; cursor:pointer; }
 .studio-group-description>span { flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; }
 .studio-group-description:not(.has-description) { position:absolute; top:8px; right:12px; width:auto; margin:0; padding:0; }
-.studio-flow-group:has(.studio-group-description:not(.has-description))>.studio-flow-drag { padding-right:100px; }
+/* 没写说明时「添加说明」只在选中区域时出现，平时不在框里占眼。 */
+.studio-flow-group:not(.is-selected) .studio-group-description:not(.has-description):not(:focus-visible) { opacity:0; pointer-events:none; }
 .studio-group-description.has-description { height:76px; padding-top:4px; }
 .studio-group-description.has-description>span { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
 .studio-group-description>svg { flex-shrink:0; margin-top:3px; }
@@ -212,7 +268,8 @@ html[data-layout="desktop"] .studio-asset-sidebar footer { padding-top:12px; bor
 html[data-layout="desktop"] .studio-flow-shell .studio-focused-view { inset:124px 18px 20px; }
 .studio-flow-shell:has(.studio-focused-view) .studio-flow-tools,
 .studio-flow-shell:has(.studio-focused-view) .studio-flow-controls,
-.studio-flow-shell:has(.studio-focused-view) .studio-flow-selection { display:none; }
+.studio-flow-shell:has(.studio-focused-view) .studio-flow-selection,
+.studio-flow-shell:has(.studio-focused-view) .studio-flow-area-hint { display:none; }
 html[data-layout="desktop"] .studio-flow-shell:has(.studio-focused-view) .react-flow { content-visibility:hidden; visibility:hidden; }
 .studio-flow-shell .studio-view-switch { top:72px; }
 .studio-flow-shell .studio-command-strip { top:72px; }
@@ -249,7 +306,7 @@ html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-error-no
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-director-launch,
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-ip-library,
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-commerce-launch { right:calc(var(--studio-docked-panel,0px) + 18px); }
-html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-flow-selection { left:calc((100% - var(--studio-docked-panel,0px)) / 2); }
+html[data-layout="desktop"] .studio-flow-shell.has-docked-panel :is(.studio-flow-selection,.studio-flow-area-hint) { left:calc((100% - var(--studio-docked-panel,0px)) / 2); }
 /* 视图切换居中在左栏（56px）和助手之间的画布区（设计稿 Main 画板）。 */
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-view-switch { left:calc((100% - var(--studio-docked-panel,0px) + 56px) / 2); }
 html[data-layout="desktop"] .studio-flow-shell.has-docked-panel .studio-test-note { right:calc(var(--studio-docked-panel,0px) + 16px); left:auto; transform:none; }

@@ -9,11 +9,18 @@ export type StudioFlowNode = Node<{ document: CanvasNodeData; readOnly?: boolean
   /** A video node the user just resized: its height follows the clip again (studio-media-fit `fitStudioVideoToResize`). */
   onVideoResized?: (id:string)=>void;
   /** A local placeholder that is not in the document (抽帧 while the frame is being captured): drawn, never saved. */
-  processing?: boolean }, 'studio'>;
+  processing?: boolean;
+  /** 圈选分组（ip/studio-flow-area）：区域里的节点数、刚圈出来时直接改名、拖动中会落进来、改颜色。 */
+  memberCount?: number; naming?: boolean; justDrawn?: boolean; dropTarget?: boolean;
+  onNamingEnd?: () => void; onToneGroup?: (id:string,tone:string)=>void;
+  /** 正在圈的框会把这个节点收进去。 */
+  areaCandidate?: boolean }, 'studio'>;
 export function flowNodes(nodes: CanvasNodeData[], selected: Set<string>): StudioFlowNode[] {
   return nodes.map(document => ({ id: document.id, type: 'studio', position: document.position,
     width: document.width, height: document.height, style: { width: document.width, height: document.height },
     zIndex: document.type === CanvasNodeType.Group ? -1 : 0,
+    // 分组是一块区域：只能从名字标签拖动；不参与框选（框选框里的几个节点时不该把整块区域一起选上，点标签才选中它）。
+    ...(document.type === CanvasNodeType.Group ? { dragHandle: '.studio-flow-area-label', selectable: false } : {}),
     selected: selected.has(document.id), data: { document } }));
 }
 /** React Flow is an interaction projection; saved documents keep the existing wire shape. */

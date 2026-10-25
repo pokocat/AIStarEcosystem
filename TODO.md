@@ -30,6 +30,8 @@
 
 ## Studio 当前待办
 
+- [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。
+
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
