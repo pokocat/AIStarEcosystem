@@ -676,17 +676,18 @@ test.each(['image','video'])('the %s download uses the newly adopted take and ne
 });
 
 // Selection alone must never mount a floating action bar.
-test('video editing retains frame extraction and versions under 更多操作 without a second generation launcher',()=>{
+test('video editing keeps download outside 更多操作 and frame extraction and versions inside it, without a second generation launcher',()=>{
  const takes=[{id:'old',status:'success',storageKey:'old-media',content:'/old'},{id:'new',status:'success',storageKey:'new-media',content:'/new'}];
  render(<Host initial={{...node,type:'video',metadata:{status:'success',storageKey:'old-media',content:'/old',videos:takes,primaryVideoId:'old',studio:{kind:'shot'}}}}/>);
  expect(screen.queryByLabelText('节点编辑操作')).toBeNull();
  openVideo();
  const bar=screen.getByLabelText('节点编辑操作'),more=within(bar).getByRole('group',{name:'更多操作'});
  const inline=[...bar.querySelectorAll(':scope>button')].map(b=>b.textContent);
- expect(inline).toEqual(['问助手','']);
+ expect(inline).toEqual(['问助手','下载视频','']);
  expect(screen.queryByRole('button',{name:'重新生成视频'})).toBeNull();
  expect(within(bar).getByRole('button',{name:'更多操作'})).toBeDefined();
- for(const label of ['替换视频','解析视频','拉片','口型同步','抽帧','加入成片','下载视频','比较版本'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
+ for(const label of ['替换视频','解析视频','拉片','口型同步','抽帧','加入成片','比较版本'])expect(within(more).getByRole('button',{name:label})).toBeDefined();
+ expect(within(more).queryByRole('button',{name:'下载视频'})).toBeNull();
  expect(within(more).getByRole('combobox',{name:'采用版本'})).toBeDefined();
 });
 

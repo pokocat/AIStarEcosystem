@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { useCanvasStore } from '@/canvas/stores/canvas/use-canvas-store';
 import StudioFlowCanvas from './studio-flow-canvas';
-const api=vi.hoisted(()=>({upload:vi.fn(),save:vi.fn(),error:vi.fn(),success:vi.fn(),info:vi.fn()}));
+const api=vi.hoisted(()=>({upload:vi.fn(),save:vi.fn(),error:vi.fn(),success:vi.fn(),info:vi.fn(),download:vi.fn()}));
+vi.mock('@/canvas-bridge/download-media',()=>({downloadMedia:api.download}));
 vi.mock('@/canvas-bridge/studio-api',()=>({importStudioMedia:api.upload,importStudioStory:vi.fn()}));
 vi.mock('@/canvas-bridge/studio-save',()=>({saveStudioDocument:api.save}));
 vi.mock('./studio-errors',()=>({useStudioApp:()=>({message:{error:api.error,success:api.success,info:api.info}}),StudioErrorNotice:()=>null}));
@@ -62,4 +63,18 @@ test('right-click only opens the menu; left-click clears it and requests the nod
   expect(screen.queryByRole('button',{name:'编辑内容'})).toBeNull();
   expect(commands).toHaveBeenCalledOnce();expect(commands.mock.calls[0][0].detail).toEqual({action:'video',nodeId:'source'});
  } finally {window.removeEventListener('studio-command',commands);window.removeEventListener('studio-node-context-menu',dismiss);}
+});
+
+test('right-click offers download for a finished video and downloads the adopted file',()=>{
+ api.download.mockResolvedValue(undefined);
+ useCanvasStore.setState({projects:[{id:'p',title:'下载',nodes:[{id:'source',title:'成片',type:'video',position:{x:0,y:0},width:360,height:270,metadata:{status:'success',storageKey:'own/v.mp4',content:'/v.mp4',mimeType:'video/mp4'}}],connections:[],viewport:{x:0,y:0,k:1}} as any]});
+ render(<StudioFlowCanvas projectId="p"/>);
+ fireEvent.contextMenu(screen.getByTestId('card-source'),{button:2,clientX:100,clientY:100});
+ fireEvent.click(screen.getByRole('button',{name:'下载视频'}));
+ expect(api.download).toHaveBeenCalledWith('/v.mp4','成片','video/mp4','own/v.mp4');
+});
+test('right-click has no download before the video exists',()=>{
+ render(<StudioFlowCanvas projectId="p"/>);
+ fireEvent.contextMenu(screen.getByTestId('card-source'),{button:2,clientX:100,clientY:100});
+ expect(screen.queryByRole('button',{name:'下载视频'})).toBeNull();
 });
