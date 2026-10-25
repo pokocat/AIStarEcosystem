@@ -1216,7 +1216,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 当前单实例 `systemctl restart` 会使用户读取/保存短暂 502；保护在途生成不等于 HTTP 无中断。发布必须同时记录重启窗口的公网 5xx 与恢复结果，不能把发布后 `verify ALL GREEN` 描述为发布期间无中断。无停机切流尚未实施，见 TODO 与 `docs/releases/studio-stage-continuation-release-20261023.md` 末节。
 
-2026-10-26 导演台补充：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品可通过 `/director/works/{id}/tasks/{runId}/stop` 停止后续创作。**用户纠正：已提交模型有真实消耗，不能因停止全额退款。** 未提交才释放冻结；已提交则保留调用直到真实用量回执，按实际用量结算、仅退余量，停止后的内容不回投；用量不明必须 `STUDIO_USAGE_PENDING` 保留冻结待核对，不猜费用、不自动退款，hold sweeper 不得误释放。进程关闭中断同样按提交与用量处理。原生图片/视频/音频仍按各自受理和恢复规则处理。此前 `20261026-director-stop` 的全额释放行为已被用户否定；本轮修正尚未发布。见 `docs/audits/director-script-stale-and-latency-20261026.md`。
+2026-10-26 导演台补充：发布前必须检查 `ip_run` 的在途 `studio-director`，不能只查原生视频任务。同步文字调用没有可查询的外部任务号，重启后不得自动重新提交付费请求。本人作品可通过 `/director/works/{id}/tasks/{runId}/stop` 停止后续创作。**用户纠正：已提交模型有真实消耗，不能因停止全额退款。** 未提交才释放冻结；已提交则保留调用直到真实用量回执，按实际用量结算、仅退余量，停止后的内容不回投；用量不明必须 `STUDIO_USAGE_PENDING` 保留冻结待核对，不猜费用、不自动退款，hold sweeper 不得误释放。进程关闭中断同样按提交与用量处理。原生图片/视频/音频仍按各自受理和恢复规则处理。此前 `20261026-director-stop` 的全额释放行为已被用户否定；修正已发布为 `20261025-director-stop-usage`（main `6ff1835d`）。见 `docs/audits/director-script-stale-and-latency-20261026.md`。
 
 
 ### Studio 读取、进度与保存恢复（2026-10-23，本地修复，未发布）
