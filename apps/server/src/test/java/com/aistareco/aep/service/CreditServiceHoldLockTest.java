@@ -69,7 +69,7 @@ class CreditServiceHoldLockTest {
         when(holdRepo.findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID))
                 .thenReturn(Optional.of(activeHold(100)));
 
-        svc.commitHold(REF_TYPE, REF_ID, 100, "commit");
+        svc.commitHold(REF_TYPE, REF_ID, 100, "commit", null);
 
         verify(holdRepo).findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID);
         // An unlocked snapshot locates the wallet; terminal mutation still requires the locked hold.
@@ -117,7 +117,7 @@ class CreditServiceHoldLockTest {
         when(holdRepo.findByReferenceTypeAndReferenceIdForUpdate(REF_TYPE, REF_ID))
                 .thenReturn(Optional.of(activeHold(100)));
 
-        CreditHold result = svc.hold(USER, 100, REF_TYPE, REF_ID, "hold");
+        CreditHold result = svc.hold(USER, 100, REF_TYPE, REF_ID, "hold", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
 
         org.junit.jupiter.api.Assertions.assertEquals("h1", result.getId(), "应直接返回已存在的 hold，不重复创建");
         InOrder order = inOrder(walletRepo, holdRepo);

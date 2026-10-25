@@ -36,7 +36,7 @@ class DapJobDispatchTest {
         when(support.newId("JOB")).thenReturn("JOB-1");
         when(jobRepo.existsById("JOB-1")).thenReturn(false);
         return new DapJobService(jobRepo, creditService, accountService, support, props,
-                pricing, runner, multimodal);
+                pricing, runner, multimodal,mock(DapModelBilling.class));
     }
 
     @AfterEach

@@ -126,7 +126,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals(4, r.getCost(), "失败后仍显示冻结时的原值");
         assertNotNull(r.getFinishedAt());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_t1"), anyString());
-        verify(credits, never()).commitHold(any(), any(), anyLong(), any());
+        verify(credits, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
         verify(invocation, times(2)).invokeChat(any(), any(), any(), eq("drama")); // 不合格先重试一次，两次都不行才判失败
     }
 
@@ -142,7 +142,7 @@ class DramaCanvasRunWorkerTest {
         JsonNode res = OM.readTree(r.getResultJson());
         assertEquals(1, res.path("storyboard").path("episodeNo").asInt());
         assertEquals(4, res.path("storyboard").path("segments").get(0).path("durationSec").asInt());
-        verify(credits).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_t2", 4L, "画布 · 测试");
+        verify(credits).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_t2", 4L, "画布 · 测试", null);
     }
 
     @Test
@@ -220,7 +220,7 @@ class DramaCanvasRunWorkerTest {
         ArgumentCaptor<List<Map<String, String>>> msgs = ArgumentCaptor.forClass((Class) List.class);
         verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), msgs.capture(), any(), eq("drama"));
         assertEquals(msgs.getAllValues().get(0), msgs.getAllValues().get(1), "重试用同样的消息");
-        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r1", 4L, "画布 · 测试");
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r1", 4L, "画布 · 测试", null);
         assertTrue(slept.isEmpty(), "输出不合格不是上游临时错误，不退避");
     }
 
@@ -236,7 +236,7 @@ class DramaCanvasRunWorkerTest {
 
         assertEquals("succeeded", store.get("dcr_r9").getStatus());
         verify(invocation, times(2)).invokeChat(eq(AiModelPurpose.DRAMA_SCRIPT_DRAFT), any(), any(), eq("drama"));
-        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试");
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r9", 4L, "画布 · 测试", null);
     }
 
     @Test
@@ -308,7 +308,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals(List.of(5_000L), slept);
         assertEquals(List.of(2), permitsWhileWaiting, "退避等待时不占许可");
         assertEquals(2, worker.textGate.availablePermits(), "用完都还回去");
-        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r4", 4L, "画布 · 测试");
+        verify(credits, times(1)).commitHold(DramaCanvasRunService.REF_TYPE, "dcr_r4", 4L, "画布 · 测试", null);
     }
 
     /** 这里断言文案：「不把厂商英文原话甩给用户、说太忙」本身就是被测行为（§8.0.1 ⑩ 的例外）。 */
@@ -434,7 +434,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("dcr_i1", images.get(0).path("runId").asText());
         String notes = OM.readTree(r.getRefsJson()).path("notes").toString();
         assertTrue(notes.contains("出了 1 张") && notes.contains("prompt rejected"), notes);
-        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_i1"), eq(2L), anyString());
+        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_i1"), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_i1"), anyString());
         verify(ownership, times(1)).record(eq(USER), startsWith("drama/canvas/looks/"), eq(16L), eq("image/png"));
         // 参考图按 key 重签后送给模型
@@ -451,7 +451,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("failed", r.getStatus());
         assertEquals("IMAGE_BAD_OUTPUT", r.getErrorCode());
         verify(render, never()).storeImageBytes(any(), any(), any());
-        verify(credits, never()).commitHold(any(), any(), anyLong(), any());
+        verify(credits, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
         verify(credits).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_i2"), anyString());
     }
 
@@ -467,7 +467,7 @@ class DramaCanvasRunWorkerTest {
 
         assertEquals("succeeded", store.get("dcr_b1").getStatus());
         assertEquals("failed", store.get("dcr_b2").getStatus());
-        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcb_x"), eq(2L), anyString());
+        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcb_x"), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits, times(1)).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcb_x"), anyString());
         verify(credits, never()).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_b1"), anyString());
         verify(credits, never()).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_b2"), anyString());
@@ -642,7 +642,7 @@ class DramaCanvasRunWorkerTest {
     void imageRun_commitThrowsOnSecond_thatImageIsNotInResult_firstIsKeptAndCharged() throws Exception {
         imageRun("dcr_a1", 3, "dcr_a1", null);
         when(render.generateImageBytes(any(), any(), any(), any())).thenReturn(pngBytes());
-        when(credits.commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_a1"), eq(2L), anyString()))
+        when(credits.commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_a1"), eq(2L), anyString(), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(null)
                 .thenThrow(new org.springframework.web.server.ResponseStatusException(HttpStatus.CONFLICT, "hold 已是终态"));
         worker.runBlocking("dcr_a1");
@@ -669,7 +669,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals(1, OM.readTree(after.getResultJson()).path("images").size());
         assertTrue(after.getRefsJson().contains("只出了 1 张"), after.getRefsJson());
         verify(credits, times(1)).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_a2"), anyString());
-        verify(credits, never()).commitHold(any(), any(), anyLong(), any());
+        verify(credits, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
     }
 
     // ── P1-2 回收与完成：只有一方生效 ─────────────────────────────────────────
@@ -689,7 +689,7 @@ class DramaCanvasRunWorkerTest {
         assertFalse(worker.expireStale(seenBySweeper, true)); // 回收器拿旧值收尾 → 影响 0 行
 
         assertEquals("succeeded", store.get("dcr_r1").getStatus());
-        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r1"), eq(4L), anyString());
+        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r1"), eq(4L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits, never()).releaseHold(any(), any(), any());
     }
 
@@ -707,7 +707,7 @@ class DramaCanvasRunWorkerTest {
         assertEquals("failed", r.getStatus());
         assertEquals("DRAMA_CANVAS_RUN_TIMEOUT", r.getErrorCode());
         assertNull(r.getResultJson(), "worker 的结果没写进去");
-        verify(credits, never()).commitHold(any(), any(), anyLong(), any());
+        verify(credits, never()).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
         verify(credits, times(1)).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r2"), anyString());
     }
 
@@ -724,7 +724,7 @@ class DramaCanvasRunWorkerTest {
         DramaCanvasRun r = store.get("dcr_r3");
         assertEquals("succeeded", r.getStatus(), "回收时已有 1 张结算过 → 部分成功");
         assertEquals(1, OM.readTree(r.getResultJson()).path("images").size());
-        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r3"), eq(2L), anyString());
+        verify(credits, times(1)).commitHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r3"), eq(2L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits, times(1)).releaseHold(eq(DramaCanvasRunService.REF_TYPE), eq("dcr_r3"), anyString());
     }
 

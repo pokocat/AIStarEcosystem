@@ -98,7 +98,7 @@ class VideoStudioDtosContractTest {
     @DisplayName("T | null 字段出 wire 是 null，不是消失；isDefault / selectableById 按原名序列化")
     void nullsStayOnTheWireAndBooleansKeepTheirNames() throws Exception {
         VideoStudioJob job = new VideoStudioJob("mvj_1", "t2v", "p", "768p", "9:16", null, null, 5, null, null,
-                "queued", 0, "已入队", List.of(), null, null, null, null, 0L, null, null, "2026-09-30T12:00Z", null);
+                "queued", 0, "已入队", List.of(), null, null, null, null, 0L, null, null, "2026-09-30T12:00Z", null,null);
         JsonNode j = springLike.readTree(springLike.writeValueAsString(job));
         for (String f : List.of("width", "height", "seed", "modelName", "videoUrl", "thumbnailUrl", "errorMessage",
                 "originalPrompt", "templateId", "completedAt")) {

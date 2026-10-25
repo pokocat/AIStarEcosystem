@@ -91,7 +91,7 @@ class DramaCanvasRunServiceTest {
     void setUp() throws Exception {
         useDoc(sampleDoc(), "9:16");
         when(configs.getLong(anyString(), anyLong())).thenAnswer(inv -> inv.getArgument(1));
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(true);
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,"drama")).thenReturn(Optional.of(AiModelEndpoint.builder().id("qwen").model("qwen").enabled(true).build()));
         // 以 someone/ 开头的 key 不是本人的，其余都是
         when(assets.findOwnedCdnKeys(eq("drama"), eq(USER), any())).thenAnswer(inv ->
                 ((Collection<String>) inv.getArgument(2)).stream().filter(k -> !k.startsWith("someone/")).toList());
@@ -145,7 +145,7 @@ class DramaCanvasRunServiceTest {
         assertEquals("queued", first.status());
         assertEquals("script:setting", first.target());
         assertEquals(2, first.cost());
-        verify(credits, times(1)).hold(eq(USER), eq(2L), eq(DramaCanvasRunService.REF_TYPE), eq(first.id()), anyString());
+        verify(credits, times(1)).hold(eq(USER), eq(2L), eq(DramaCanvasRunService.REF_TYPE), eq(first.id()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(worker, times(1)).dispatch(List.of(first.id()));
         assertEquals(1, store.size());
     }
@@ -187,7 +187,7 @@ class DramaCanvasRunServiceTest {
                     () -> svc.submitScript(USER, CANVAS, new CanvasScriptRunBody(bad, ver(), "setting", null, null))).getCode(), bad);
         }
         assertNotNull(svc.submitScript(USER, CANVAS, new CanvasScriptRunBody("x".repeat(64), ver(), "setting", null, null)));
-        verify(credits, times(1)).hold(any(), anyLong(), any(), any(), any());
+        verify(credits, times(1)).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     private CanvasImageBatchBody oneSceneBatch(String cri) {
@@ -205,7 +205,7 @@ class DramaCanvasRunServiceTest {
         svc.submitScript(USER, CANVAS, new CanvasScriptRunBody("request-ns2", ver(), "setting", null, null));
         assertEquals("DRAMA_CANVAS_REQUEST_ID_REUSED", assertThrows(BusinessException.class,
                 () -> svc.submitImageBatch(USER, CANVAS, oneSceneBatch("request-ns2"))).getCode(), "单条用过的键不能再当批量");
-        verify(credits, times(2)).hold(any(), anyLong(), any(), any(), any());
+        verify(credits, times(2)).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -298,7 +298,7 @@ class DramaCanvasRunServiceTest {
         BusinessException e = assertThrows(BusinessException.class, () -> svc.submitImage(USER, CANVAS,
                 new CanvasImageRunBody("request-3", ver(), new CanvasImageTarget("look", "lk1", null, null), 1, null, null)));
         assertEquals("DRAMA_CANVAS_ASSET_NOT_OWNED", e.getCode());
-        verify(credits, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(credits, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertTrue(store.isEmpty());
     }
 
@@ -312,7 +312,7 @@ class DramaCanvasRunServiceTest {
 
     @Test
     void llmNotConfigured_503_nothingFrozen() {
-        when(invocation.hasEndpointFor(AiModelPurpose.DRAMA_SCRIPT_DRAFT, "drama")).thenReturn(false);
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,"drama")).thenReturn(Optional.empty());
         BusinessException e = assertThrows(BusinessException.class, () -> svc.submitScript(USER, CANVAS,
                 new CanvasScriptRunBody("request-5", ver(), "outline", null, null)));
         assertEquals("AI_NOT_CONFIGURED", e.getCode());
@@ -338,7 +338,7 @@ class DramaCanvasRunServiceTest {
         DramaCanvasRunDto r = svc.submitImage(USER, CANVAS,
                 new CanvasImageRunBody("request-7", ver(), new CanvasImageTarget("look", "lk1", null, null), 3, null, "ep-img"));
         assertEquals(6, r.cost(), "单价 2 × 3 张");
-        verify(credits).hold(eq(USER), eq(6L), eq(DramaCanvasRunService.REF_TYPE), eq(r.id()), anyString());
+        verify(credits).hold(eq(USER), eq(6L), eq(DramaCanvasRunService.REF_TYPE), eq(r.id()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals(2, r.refs().requested());
         assertEquals(2, r.refs().applied());
         JsonNode exec = OM.readTree(store.get(r.id()).getInputJson()).path("_exec");
@@ -377,7 +377,7 @@ class DramaCanvasRunServiceTest {
                 new CanvasImageBatchItem(new CanvasImageTarget("scene", "sc1", null, null), 1, null)), null);
         List<DramaCanvasRunDto> out = svc.submitImageBatch(USER, CANVAS, body);
         assertEquals(2, out.size());
-        verify(credits, times(1)).hold(eq(USER), eq(6L), eq(DramaCanvasRunService.REF_TYPE), startsWith("dcb_"), anyString());
+        verify(credits, times(1)).hold(eq(USER), eq(6L), eq(DramaCanvasRunService.REF_TYPE), startsWith("dcb_"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals("request-b", store.get(out.get(0).id()).getClientRequestId(), "第 0 项占用原始键");
         assertEquals("request-b:1", store.get(out.get(1).id()).getClientRequestId());
         assertEquals(4, out.get(0).cost());
@@ -386,7 +386,7 @@ class DramaCanvasRunServiceTest {
 
         List<DramaCanvasRunDto> again = svc.submitImageBatch(USER, CANVAS, body);
         assertEquals(List.of(out.get(0).id(), out.get(1).id()), again.stream().map(DramaCanvasRunDto::id).toList());
-        verify(credits, times(1)).hold(any(), anyLong(), any(), any(), any());
+        verify(credits, times(1)).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     // ── 视频 ───────────────────────────────────────────────────────────────────

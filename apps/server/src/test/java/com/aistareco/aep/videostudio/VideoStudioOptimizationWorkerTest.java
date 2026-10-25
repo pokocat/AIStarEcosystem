@@ -219,18 +219,18 @@ class VideoStudioOptimizationWorkerTest {
         void succeedChargesOnlyWhenItWonTheTransition() {
             assertTrue(settlement.succeed(row, "一只橘猫", "opt_v1", "智能优化 · 全能参考"));
             verify(repo).finishSucceeded(eq("vso_1"), eq("一只橘猫"), eq("opt_v1"), any());
-            verify(credits).commitHold(REF, "vso_1", 5L, "智能优化 · 全能参考");
+            verify(credits).commitHold(REF, "vso_1", 5L, "智能优化 · 全能参考", null);
 
             when(repo.finishSucceeded(eq("vso_1"), anyString(), any(), any())).thenReturn(0);
             assertFalse(settlement.succeed(row, "一只橘猫", "opt_v1", "智能优化 · 全能参考"));
-            verify(credits).commitHold(anyString(), anyString(), anyLong(), anyString());   // 仍只有第一次
+            verify(credits).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());   // 仍只有第一次
         }
 
         @Test
         @DisplayName("扣积分抛异常原样往外抛（让事务回滚），不吞")
         void chargeFailurePropagates() {
             IllegalStateException boom = new IllegalStateException("账本暂时写不进去");
-            doThrow(boom).when(credits).commitHold(anyString(), anyString(), anyLong(), anyString());
+            doThrow(boom).when(credits).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
             assertSame(boom, assertThrows(IllegalStateException.class,
                     () -> settlement.succeed(row, "一只橘猫", null, "智能优化 · 全能参考")));
         }
@@ -272,7 +272,7 @@ class VideoStudioOptimizationWorkerTest {
             row.setCreditsHeld(0L);
             assertTrue(settlement.succeed(row, "p", null, "l"));
             assertTrue(settlement.fail(row, " "));
-            verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+            verify(credits, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
             verify(credits, never()).releaseHold(anyString(), anyString(), anyString());
             verify(repo).finishFailed(eq("vso_1"), eq("智能优化失败，请稍后重新优化"), any());
 

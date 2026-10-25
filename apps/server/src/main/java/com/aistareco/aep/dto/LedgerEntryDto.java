@@ -25,12 +25,13 @@ public record LedgerEntryDto(
         String enterpriseId,
         String actorUserId,
         String membershipId,
-        String billingAuthorizationId
+        String billingAuthorizationId,
+        String grantId
 ) {
     /** Compatibility for existing personal-ledger callers. */
     public LedgerEntryDto(String id,String walletId,String userId,String username,String displayName,String phone,
             String type,long amount,long balanceAfter,String description,String referenceId,String referenceType,Instant createdAt) {
-        this(id,walletId,userId,username,displayName,phone,type,amount,balanceAfter,description,referenceId,referenceType,createdAt,null,null,null,null);
+        this(id,walletId,userId,username,displayName,phone,type,amount,balanceAfter,description,referenceId,referenceType,createdAt,null,null,null,null,null);
     }
     public static LedgerEntryDto from(LedgerEntry e) {
         return from(e, null);
@@ -45,7 +46,7 @@ public record LedgerEntryDto(
                 owner != null ? owner.getPhone() : null,
                 lower(e.getEntryType()), e.getAmount(), e.getBalanceAfter(),
                 e.getDescription(), e.getReferenceId(), e.getReferenceType(),
-                e.getCreatedAt(), e.getEnterpriseId(), e.getActorUserId(), e.getMembershipId(), e.getBillingAuthorizationId()
+                e.getCreatedAt(), e.getEnterpriseId(), e.getActorUserId(), e.getMembershipId(), e.getBillingAuthorizationId(), e.getGrantId()
         );
     }
 

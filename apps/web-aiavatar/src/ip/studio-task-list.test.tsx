@@ -80,3 +80,11 @@ test('refreshes the original running task once, reports completion, and never re
   finish();await screen.findByText('已读取最新状态，未重新生成或扣费。');
   expect(props.onRetry).not.toHaveBeenCalled();expect(props.onCancel).not.toHaveBeenCalled();
 });
+
+test('shows actual grant and ordinary spend with the released remainder',()=>{
+ const props={...makeProps(),runs:[run('priced','done',{cost:16,output:{billingBreakdown:{spent:{scopedCredits:15,walletCredits:1},pending:{scopedCredits:0,walletCredits:0},released:{scopedCredits:0,walletCredits:8}}}})]};
+ render(<StudioTaskList {...props}/>);
+ expect(screen.getByText('已消耗 16 积分')).toBeDefined();
+ const detail=screen.getByLabelText('费用明细');expect(detail.textContent).toContain('模型赠款 15 积分 + 普通积分 1 积分');
+ expect(detail.textContent).toContain('已解除冻结：普通积分 8 积分');expect(detail.textContent).not.toContain('冻结中');
+});

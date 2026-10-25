@@ -1,5 +1,5 @@
 import { prepareStudioImageUpload } from './studio-image-file';
-import { withStudioBilling } from "./studio-billing";
+import { withStudioBilling, invalidateStudioModelQuote } from "./studio-billing";
 import type { StudioVoiceCatalog,StudioVoiceProfile,StudioAdoptVoiceRequest,StudioBindVoiceRequest } from "@ai-star-eco/types/ip-studio-workflow";
 import { apiFetch } from "@ai-star-eco/api-client";
 import { USE_MOCK } from "@/ip/api/_client";
@@ -31,8 +31,11 @@ export const submitStudioSpeech = async (projectId: string, request: StudioSpeec
   apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/speech-runs`, { method: "POST", body: await withStudioBilling(projectId, request, { operation: "speech" }) });
 
 export const studioCapabilities = () => apiFetch<StudioCapabilities>("/v1/ip-studio/studio/capabilities");
-export const submitStudioRun = async (projectId: string, request: StudioRunRequest) =>
-  apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`, { method: "POST", body: await withStudioBilling(projectId, request) });
+export const submitStudioRun = async (projectId: string, request: StudioRunRequest) => {
+  const body=await withStudioBilling(projectId,request);
+  try{return await apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/studio-runs`,{method:"POST",body});}
+  catch(error){invalidateStudioModelQuote(projectId,request,error);throw error;}
+};
 export const adoptStudioImage = (projectId: string, request: StudioAdoptRequest) =>
   apiFetch<StudioAdoptResult>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/adopt`, { method: "POST", body: request });
 // Mock-aware: the workspace reads the run list through this helper to decide whether finished execution outputs must be

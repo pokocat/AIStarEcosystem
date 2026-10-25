@@ -10,7 +10,7 @@ import type { ID, ISODate, ISODateTime } from "./_shared";
 // ── 业务交易（前端展示用，源自 wallet.LedgerEntry 的派生） ────────────────────
 
 export type TransactionStatus = "completed" | "pending" | "processing";
-export type TransactionType = "income" | "withdrawal" | "spend" | "recharge" | "license_grant" | "transfer";
+export type TransactionType = "income" | "withdrawal" | "spend" | "recharge" | "license_grant" | "transfer" | "scoped";
 
 export interface Transaction {
   id: ID;

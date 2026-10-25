@@ -98,8 +98,8 @@ public class MusicGenModelClient {
         }
     }
 
-    public void ensureConfigured(String endpointId) {
-        requireEndpoint(endpointId);
+    public AiModelEndpoint ensureConfigured(String endpointId) {
+        return requireEndpoint(endpointId);
     }
 
     /** AK/SK 以 "AK:SK" 形式存在端点的加密 Key 字段里。 */

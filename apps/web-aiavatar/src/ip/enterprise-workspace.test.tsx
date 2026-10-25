@@ -7,7 +7,7 @@ import { EnterpriseWorkspace } from "./enterprise-workspace";
 const api = vi.hoisted(() => ({ mine: vi.fn(), wallet: vi.fn(), memberBalances: vi.fn(), myBalance: vi.fn(), recharges: vi.fn(), previewPoints: vi.fn(), transferPoints: vi.fn(), requestRecharge: vi.fn(), create: vi.fn(), accept: vi.fn() }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <div>需要开通</div> }));
-vi.mock("@/proto/api", () => ({ WalletApi: { balance: vi.fn().mockResolvedValue({ totalBalance: 200 }) } }));
+vi.mock("@/proto/api", () => ({ useIdentity: () => null, WalletApi: { balance: vi.fn().mockResolvedValue({ totalBalance: 200 }) } }));
 vi.mock("next/link", () => ({ default: (props: any) => <a {...props}/> }));
 vi.mock("./studio-page", () => ({ StudioPage: ({ title, actions, children }: any) => <main><h1>{title}</h1>{actions}{children}</main>, StudioPageFilters: ({ items, onChange }: any) => <nav>{items.map((item: any) => <button key={item.value} onClick={() => onChange(item.value)}>{item.label}</button>)}</nav> }));
 vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ code: error.code || "ERROR", message: error.message || String(error) }) }));

@@ -163,15 +163,16 @@ class EnterpriseStudioBillingIntegrationTest {
     @Test void insufficientEnterpriseFundsCannotFallbackToWellFundedPersonalWallet() throws Exception {
         var c=funded(4,2);submit(c,image(c,1,true),402);assertEquals(4,memberWallet(c).getTotalBalance());assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(999,wallets.findByUserId(c.actor()).orElseThrow().getTotalBalance());assertEquals(0,imageCalls.get());
     }
-    @Test void zeroPriceActualSupplierStillCountsUntilItsAuthorizationCompletes() throws Exception {
+    /** Free use comes only from model grants (user decision 2026-10-25): a zero list price is rejected before any authorization or supplier call. */
+    @Test void zeroPriceIsRejectedBeforeAuthorizationHoldOrSupplierCall() throws Exception {
         var c=funded(100,1);
         scenePolicies.save("studio","image",new AiAppSceneModelPolicyDto("studio","image","selectable",imageEndpoint,
                 List.of(new AiAppSceneModelPolicyDto.Candidate(imageEndpoint,0L,"per_image"))),"test");
-        String id=submit(c,image(c,1,true),200).path("data").path("id").asText();
-        assertTrue(holds.findByReferenceTypeAndReferenceId("ip-run",id).isEmpty());
-        assertEquals("ENTERPRISE_ACTIVE_JOB_LIMIT",submit(c,image(c,1,true).put("nodeId","another-image-node"),409).path("error").path("code").asText());
-        imageWorker.runBlocking(id);assertEquals("done",runs.findById(id).orElseThrow().getStatus());settled(c,id,0);
-        submit(c,image(c,1,true),200);assertEquals(1,imageCalls.get());assertEquals(100,memberWallet(c).getTotalBalance());
+        assertEquals("MODEL_PRICE_NOT_CONFIGURED",submit(c,image(c,1,true),503).path("error").path("code").asText());
+        // Nothing is left behind, so the rejected attempt does not occupy the only in-flight slot either.
+        assertEquals("MODEL_PRICE_NOT_CONFIGURED",submit(c,image(c,1,true).put("nodeId","another-image-node"),503).path("error").path("code").asText());
+        assertTrue(authorizations.findAll().stream().noneMatch(a->c.enterprise().equals(a.getEnterpriseId())));
+        assertEquals(0,memberWallet(c).getPendingBalance());assertEquals(100,memberWallet(c).getTotalBalance());assertEquals(0,imageCalls.get());
     }
     @Test void finalModelWhitelistRejectsBeforeAnyWalletFreezeOrSupplierCall() throws Exception {
         var c=funded(100,2);var policy=enterprises.policy(c.company().member().userId(),c.enterprise());

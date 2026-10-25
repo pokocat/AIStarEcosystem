@@ -33,6 +33,6 @@ class StudioScenePriceTest {
   try {service.submit("u","p",om.treeToValue(json,RunRequest.class));}finally{TransactionSynchronizationManager.clearSynchronization();}
   var captured=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(captured.capture());var run=captured.getValue();
   var exec=om.readTree(run.getInputJson()).path("_exec");assertEquals("fixed-text",exec.path("endpointId").asText());assertEquals(21,exec.path("unitCost").asLong());assertEquals(21,run.getCost());
-  verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString());verifyNoInteractions(worker);
+  verify(credits).hold(eq("u"),eq(21L),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));verifyNoInteractions(worker);
  }
 }

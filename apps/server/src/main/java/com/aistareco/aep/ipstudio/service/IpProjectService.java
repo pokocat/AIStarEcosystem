@@ -69,6 +69,7 @@ public class IpProjectService {
     private final ObjectMapper om;
     private final com.aistareco.aep.ipstudio.repository.IpProjectRevisionRepository revisions;
     private final StudioIpAssetService studioAssets;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
 
     public IpProjectService(IpProjectRepository projectRepo,
@@ -585,6 +586,11 @@ public class IpProjectService {
      * run → wire。候选图的 key 是真值，出 wire 时逐条派生签名 URL（§4.7.7）；
      * {@code inputs._exec} 是服务端执行参数（含 storage key），不出 wire。
      */
+    private java.util.List<String> billingReferences(IpRun run) {
+        var refs=new java.util.ArrayList<String>();
+        parseOrEmptyObject(run.getInputJson()).path("_exec").path("holdRefs").forEach(r->{if(r.path("ref").isTextual())refs.add(r.path("ref").asText());});
+        return refs.isEmpty()?java.util.List.of(run.getId()):refs;
+    }
     public IpRunDto toRunDto(IpRun r) {
         JsonNode inputs = parseOrEmptyObject(r.getInputJson());
         if(r.getClientRequestId()!=null && inputs instanceof ObjectNode on) on.put("clientRequestId",r.getClientRequestId());
@@ -592,9 +598,11 @@ public class IpProjectService {
         if (inputs instanceof com.fasterxml.jackson.databind.node.ObjectNode on) on.remove("_exec");
         if(!videoJobIds.isEmpty()) return videoBindingDto(r,inputs,videoJobIds);
         JsonNode output = signCandidates(parseOrEmptyObject(r.getOutputJson()));
+        var billing=modelCharges==null?null:modelCharges.breakdown("ip-run",billingReferences(r));
+        if(billing!=null)((ObjectNode)output).set("billingBreakdown",om.valueToTree(billing));
         var queue=runQueuePosition(r);
         return new IpRunDto(r.getId(), r.getProjectId(), r.getNodeId(), r.getKind(),
-                r.getStatus(), queue==null?r.getStage():"endpoint.queued", queue==null?r.getPct():0, r.getCost(),
+                r.getStatus(), queue==null?r.getStage():"endpoint.queued", queue==null?r.getPct():0, billing==null?r.getCost():billing.displayedCost(),
                 r.getErrorCode(), r.getErrorMessage(), inputs, output,
                 iso(r.getCreatedAt()), iso(r.getFinishedAt()),queue);
     }
@@ -677,6 +685,8 @@ public class IpProjectService {
         String stage=active?(allQueued?"endpoint.queued":"视频生成中")
                 :allFailed?"视频生成失败":successes<ids.size()?"部分视频生成失败":"视频生成完成";
         if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
+        var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
+        if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
                 stage,pct/ids.size(),cost,pendingCode!=null?pendingCode:allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
                 pendingMessage!=null?pendingMessage:allFailed?firstError:null,inputs,output,

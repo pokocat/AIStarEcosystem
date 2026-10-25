@@ -45,6 +45,11 @@ const ENTRY_META: Record<LedgerEntryType, { label: string; tone: ChipTone }> = {
   transfer_in: { label: "积分转入", tone: "success" },
   transfer_out: { label: "积分转出", tone: "neutral" },
   refund_cash:   { label: "现金退款",     tone: "warning" },
+  scoped_grant: { label: "专享额度到账", tone: "info" },
+  scoped_freeze: { label: "专享额度冻结", tone: "neutral" },
+  scoped_spend: { label: "专享额度使用", tone: "neutral" },
+  scoped_release: { label: "专享额度退回", tone: "info" },
+  scoped_expire: { label: "专享额度到期", tone: "warning" },
 };
 const ENTRY_FALLBACK = { label: "其它变动", tone: "neutral" as ChipTone };
 

@@ -34,7 +34,7 @@ class StudioEnterpriseWorkflowTest {
         when(runs.findByProjectIdAndClientRequestId("p","key")).thenAnswer(i->Optional.ofNullable(saved.get()));
         when(runs.save(any())).thenAnswer(i->{saved.set(i.getArgument(0));return saved.get();});
         when(prices.ipIdentity()).thenReturn(2L);
-        var endpoint=AiModelEndpoint.builder().id("final-text").enabled(true).build();
+        var endpoint=AiModelEndpoint.builder().id("final-text").model("text-v1").enabled(true).build();
         when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,"chosen","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("创作","{{input}}",new PromptParamsDto(null,null,null),"resource"));
         var tokenPrices=mock(AiChatTokenPricing.class);var rate=new AiChatTokenPricing.Rate(new BigDecimal("0.18"),new BigDecimal("1.08"),65536,8192);
@@ -42,7 +42,7 @@ class StudioEnterpriseWorkflowTest {
         var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,prices,models,null,credits,null,null,null,null,json,null,prompts);
         ReflectionTestUtils.setField(service,"enterpriseBilling",billing);ReflectionTestUtils.setField(service,"tokenPricing",tokenPrices);
         var selected=new BillingSelection("enterprise","company");
-        when(billing.reserve(eq("actor"),eq(selected),eq("ip-run"),anyString(),eq("final-text"),eq(21L),anyString()))
+        when(billing.reserve(eq("actor"),eq(selected),eq("ip-run"),anyString(),eq("final-text"),eq(21L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenReturn(new EnterpriseBillingService.BillingAccount("member-wallet","company","membership-v1","authorization"));
         var body=json.createObjectNode().put("clientRequestId","key").put("nodeId","n").put("operation",operation)
                 .put("prompt","创作内容").put("model","chosen").put("maxCost",21);
@@ -58,7 +58,7 @@ class StudioEnterpriseWorkflowTest {
             reset(models,tokenPrices);service.submit("actor","p",request);verifyNoInteractions(models,tokenPrices);
             body.remove("billing");
             assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("actor","p",json.treeToValue(body,RunRequest.class))).getCode());
-            verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
+            verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(saved.get().getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }

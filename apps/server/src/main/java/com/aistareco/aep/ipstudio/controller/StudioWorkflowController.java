@@ -59,6 +59,16 @@ public class StudioWorkflowController {
     public ApiResponse<IpRunDto> submit(Principal principal, @PathVariable String id, @RequestBody RunRequest request) {
         return ApiResponse.of(workflow.submit(principal.getName(), id, request));
     }
+    @PostMapping("/projects/{id}/studio-video-quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteVideo(Principal principal,@PathVariable String id,
+            @RequestBody RunRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {
+        return ApiResponse.of(workflow.quoteVideo(principal.getName(),id,request,freeOnly));
+    }
+    @PostMapping("/projects/{id}/studio-image-quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quoteImage(Principal principal,@PathVariable String id,
+            @RequestBody RunRequest request,@RequestParam(defaultValue="false") boolean freeOnly) {
+        return ApiResponse.of(workflow.quoteImage(principal.getName(),id,request,freeOnly));
+    }
     @PostMapping("/projects/{id}/adopt")
     public ApiResponse<AdoptResult> adopt(Principal principal, @PathVariable String id, @RequestBody AdoptRequest request) {
         return ApiResponse.of(workflow.adopt(principal.getName(), id, request));

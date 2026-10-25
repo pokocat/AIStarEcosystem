@@ -17,7 +17,14 @@ import java.util.List;
 public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String>,
         PagingAndSortingRepository<LedgerEntry, String> {
 
+    @Query("SELECT COALESCE(-SUM(e.amount),0) FROM LedgerEntry e WHERE e.userId=:userId AND e.referenceType=:referenceType AND e.createdAt>=:since " +
+            "AND e.entryType IN (com.aistareco.aep.model.LedgerEntry.LedgerEntryType.SPEND,com.aistareco.aep.model.LedgerEntry.LedgerEntryType.SCOPED_SPEND)")
+    long actualCreditsSpentSince(@Param("userId") String userId,@Param("referenceType") String referenceType,@Param("since") Instant since);
+
+
     Page<LedgerEntry> findByWalletId(String walletId, Pageable pageable);
+
+    java.util.Optional<LedgerEntry> findByGrantIdAndEntryType(String grantId, LedgerEntry.LedgerEntryType entryType);
 
     /** v0.51 dap：月度赠送幂等检查（referenceId = userId:yyyyMM）。 */
     boolean existsByReferenceTypeAndReferenceId(String referenceType, String referenceId);
@@ -30,7 +37,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * Sum of all positive credits ever issued (license grants + recharges + gifts + income + refunds + adjusts).
      * Used by admin stats dashboards.
      */
-    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN")
+    @Query("SELECT COALESCE(SUM(e.amount), 0) FROM LedgerEntry e WHERE e.amount > 0 AND e.grantId IS NULL AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN")
     long sumTotalCreditsIssued();
 
     /**
@@ -38,7 +45,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * 避免数据库方言差异（H2 / MySQL / PostgreSQL 日期函数不一致）。
      */
     @Query("SELECT e FROM LedgerEntry e " +
-            "WHERE e.userId = :userId AND e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
+            "WHERE e.userId = :userId AND e.amount > 0 AND e.grantId IS NULL AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
             "ORDER BY e.createdAt ASC")
     List<LedgerEntry> findPositiveSince(@Param("userId") String userId,
                                          @Param("since") Instant since);
@@ -49,7 +56,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      */
     @Query("SELECT e.entryType, COALESCE(SUM(e.amount), 0) " +
             "FROM LedgerEntry e " +
-            "WHERE e.userId = :userId AND e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
+            "WHERE e.userId = :userId AND e.amount > 0 AND e.grantId IS NULL AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
             "GROUP BY e.entryType")
     List<Object[]> aggregateIncomeByType(@Param("userId") String userId);
 
@@ -58,7 +65,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      * 用于 admin 财务图表。
      */
     @Query("SELECT e FROM LedgerEntry e " +
-            "WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
+            "WHERE e.amount > 0 AND e.grantId IS NULL AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN AND e.createdAt >= :since " +
             "ORDER BY e.createdAt ASC")
     List<LedgerEntry> findAllPositiveSince(@Param("since") Instant since);
 
@@ -67,7 +74,7 @@ public interface LedgerEntryRepository extends JpaRepository<LedgerEntry, String
      */
     @Query("SELECT e.entryType, COALESCE(SUM(e.amount), 0) " +
             "FROM LedgerEntry e " +
-            "WHERE e.amount > 0 AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
+            "WHERE e.amount > 0 AND e.grantId IS NULL AND e.entryType <> com.aistareco.aep.model.LedgerEntry.LedgerEntryType.TRANSFER_IN " +
             "GROUP BY e.entryType")
     List<Object[]> aggregateIncomeByTypeAll();
 

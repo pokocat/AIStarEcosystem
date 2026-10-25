@@ -185,7 +185,7 @@ class MaterialVideoModelClientTest {
         AiModelInvocationService invocation = mock(AiModelInvocationService.class);
         AiModelEndpoint endpoint = AiModelEndpoint.builder().id("h3").billingMode(AiModelBillingMode.PER_SECOND).build();
         AiAppEndpointCandidate candidate = AiAppEndpointCandidate.builder().creditCostOverride(40L).build();
-        when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3"), eq("celebrity")))
+        when(invocation.resolveAcceptedEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("h3"), eq("celebrity")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         MaterialVideoModelClient client = new MaterialVideoModelClient(invocation, new MaterialVideoProperties(), null, null, null);
 
@@ -201,6 +201,9 @@ class MaterialVideoModelClientTest {
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         when(invocation.resolveEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),
+                org.mockito.ArgumentMatchers.<String>nullable(String.class), eq("celebrity")))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
+        when(invocation.resolveAcceptedEndpoint(eq(AiModelPurpose.VIDEO_GENERATION),
                 org.mockito.ArgumentMatchers.<String>nullable(String.class), eq("celebrity")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, candidate, true)));
         when(invocation.resolveDefaultEndpoint(eq(AiModelPurpose.VIDEO_GENERATION), eq("celebrity")))

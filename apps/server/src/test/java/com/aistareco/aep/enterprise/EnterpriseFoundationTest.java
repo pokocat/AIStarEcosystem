@@ -173,11 +173,11 @@ class EnterpriseFoundationTest {
         String owner=person(true);var e=company(owner);var w=wallets.findByAccountKey("enterprise_member:"+e.enterprise().id()+":"+owner).orElseThrow();
         credits.creditWallet(w.getId(),60,LedgerEntry.LedgerEntryType.GIFT,"test","g","赠额");
         credits.creditWallet(w.getId(),140,LedgerEntry.LedgerEntryType.RECHARGE,"test","r","实收");
-        String ref=UUID.randomUUID().toString();var h=credits.holdWallet(w.getId(),100,"enterprise_test",ref,"生成",owner,e.member().id(),"auth-"+ref);
+        String ref=UUID.randomUUID().toString();var h=credits.holdWallet(w.getId(),100,"enterprise_test",ref,"生成",owner,e.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         assertNull(h.getUserId());assertEquals(e.enterprise().id(),h.getEnterpriseId());
-        assertEquals(h.getId(),credits.holdWallet(w.getId(),100,"enterprise_test",ref,"重试",owner,e.member().id(),"auth-"+ref).getId());
-        assertThrows(ResponseStatusException.class,()->credits.holdWallet(w.getId(),90,"enterprise_test",ref,"改金额",owner,e.member().id(),"auth-"+ref));
-        credits.commitHold("enterprise_test",ref,40,"部分成功");credits.releaseHold("enterprise_test",ref,"释放余量");
+        assertEquals(h.getId(),credits.holdWallet(w.getId(),100,"enterprise_test",ref,"重试",owner,e.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE).getId());
+        assertThrows(ResponseStatusException.class,()->credits.holdWallet(w.getId(),90,"enterprise_test",ref,"改金额",owner,e.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE));
+        credits.commitHold("enterprise_test",ref,40,"部分成功", null);credits.releaseHold("enterprise_test",ref,"释放余量");
         var after=wallets.findById(w.getId()).orElseThrow();assertEquals(160,after.getTotalBalance());assertEquals(0,after.getPendingBalance());
         assertEquals(36,after.getGiftBalance());assertEquals(124,after.getRechargeBalance());assertNull(credits.releaseHold("enterprise_test",ref,"重复释放"));
         assertNotNull(credits.listWallets(org.springframework.data.domain.PageRequest.of(0,100)));
@@ -186,16 +186,16 @@ class EnterpriseFoundationTest {
     }
     @Test void personalAndCorporateReferencesCannotCrossAndMasterCannotSpend() {
         String owner=person(true);var e=company(owner);credits.creditAccount(owner,100,LedgerEntry.LedgerEntryType.GIFT,"test",owner,"个人");
-        String ref=UUID.randomUUID().toString();credits.hold(owner,10,"cross",ref,"个人冻结");
+        String ref=UUID.randomUUID().toString();credits.hold(owner,10,"cross",ref,"个人冻结", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var member=wallets.findByAccountKey("enterprise_member:"+e.enterprise().id()+":"+owner).orElseThrow();
-        assertThrows(ResponseStatusException.class,()->credits.holdWallet(member.getId(),10,"cross",ref,"串账户",owner,e.member().id(),"auth"));
+        assertThrows(ResponseStatusException.class,()->credits.holdWallet(member.getId(),10,"cross",ref,"串账户",owner,e.member().id(),"auth", com.aistareco.aep.billing.service.ModelChargeContext.NONE));
         var master=wallets.findByAccountKey("enterprise:"+e.enterprise().id()).orElseThrow();
-        assertThrows(ResponseStatusException.class,()->credits.holdWallet(master.getId(),1,"bad","r","主账户",owner,null,null));
+        assertThrows(ResponseStatusException.class,()->credits.holdWallet(master.getId(),1,"bad","r","主账户",owner,null,null, com.aistareco.aep.billing.service.ModelChargeContext.NONE));
     }
     @Test void concurrentCorporateHoldsCannotOverspend()throws Exception {
         String owner=person(true);var e=company(owner);var w=wallets.findByAccountKey("enterprise_member:"+e.enterprise().id()+":"+owner).orElseThrow();
         credits.creditWallet(w.getId(),100,LedgerEntry.LedgerEntryType.GIFT,"test",owner,"并发验收");
-        Callable<Boolean> submit=()->{try{String ref=UUID.randomUUID().toString();credits.holdWallet(w.getId(),80,"race",ref,"并发",owner,e.member().id(),ref);return true;}catch(ResponseStatusException ex){assertEquals(402,ex.getStatusCode().value());return false;}};
+        Callable<Boolean> submit=()->{try{String ref=UUID.randomUUID().toString();credits.holdWallet(w.getId(),80,"race",ref,"并发",owner,e.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);return true;}catch(ResponseStatusException ex){assertEquals(402,ex.getStatusCode().value());return false;}};
         assertEquals(1,race(submit,submit).stream().filter(Boolean::booleanValue).count());
         var after=wallets.findById(w.getId()).orElseThrow();assertEquals(20,after.getTotalBalance());assertEquals(80,after.getPendingBalance());
     }

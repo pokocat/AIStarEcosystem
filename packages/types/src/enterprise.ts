@@ -52,7 +52,7 @@ export interface EnterpriseRechargeRejectRequest { reason: string; }
 export interface EnterpriseRechargeOrder { id: string; enterpriseId: string; enterpriseName: string; initiatorUserId: string; initiatorName: string; targetWalletId: string; priceCents: number; credits: number; status: "pending" | "paid" | "rejected" | "refunded"; createdAt: string; paidAt?: string; reviewedAt?: string; reviewerName?: string; receiptReference?: string; note?: string; refundedCredits: number; refundedPriceCents: number; refundReceiptReference?: string; }
 export type EnterpriseBillingSelection = { mode: "personal" } | { mode: "enterprise"; enterpriseId: string };
 export interface EnterpriseUsage { id: string; enterpriseId: string; actorUserId: string; actorName: string; billingWalletId: string; referenceType: string; referenceId: string; cost: number; pendingCredits: number; status: string; modelName: string; createdAt: string; }
-export interface EnterpriseBillingReplaySelection { found: boolean; billing?: EnterpriseBillingSelection | null; }
+export interface EnterpriseBillingReplaySelection { found: boolean; billing?: EnterpriseBillingSelection | null; modelBilling?: import('./model-billing').ModelBillingApproval | null; }
 export type EnterpriseLifecycleAction = "suspend" | "resume" | "remove" | "leave" | "close";
 export interface EnterpriseLifecyclePreviewRequest { action: EnterpriseLifecycleAction; memberId?: string; }
 export interface EnterpriseLifecyclePreview { action: EnterpriseLifecycleAction; memberId?: string; availableCredits: number; pendingCredits: number; activeJobs: number; cancellableJobs: number; acceptedJobs: number; canProceed: boolean; blockers: string[]; confirmationFingerprint: string; }

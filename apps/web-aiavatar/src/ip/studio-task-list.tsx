@@ -1,4 +1,5 @@
 'use client';
+import {StudioBillingBreakdown} from './studio-billing-breakdown';
 import { useRef, useState } from 'react';
 import type { IpRun } from '@ai-star-eco/types';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -47,7 +48,8 @@ export function StudioTaskList({ runs, nodes, unconfirmed, loading, busy, hasMor
       return <article className="studio-task-item" key={run.id} data-task-id={run.id}>
         <div className="studio-task-heading"><strong title={title}>{title}</strong><span className="studio-task-status" data-status={state}>{label}</span></div>
         {detail && <p className="studio-task-brief" title={detail}>{detail}</p>}
-        <div className="studio-task-meta"><time dateTime={run.createdAt}>{timestamp}</time><span title={run.id}>#{run.id.slice(-6)}</span><span>{run.output.mock ? '测试响应' : run.status === 'running' ? `冻结 ${run.cost} 积分` : `已消耗 ${run.cost} 积分`}</span></div>
+        <div className="studio-task-meta"><time dateTime={run.createdAt}>{timestamp}</time><span title={run.id}>#{run.id.slice(-6)}</span><span>{run.output.mock ? '测试响应' : run.status === 'running' ? `${run.output.billingBreakdown?'本次':'冻结'} ${run.cost} 积分` : `已消耗 ${run.cost} 积分`}</span></div>
+        {run.output.billingBreakdown&&<StudioBillingBreakdown value={run.output.billingBreakdown}/>}
         {state === 'running' && studioTaskHasProgress(run) && <div className="studio-task-progress" role="progressbar" aria-label={`${title}生成进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct}><span style={{ transform: `scaleX(${pct / 100})` }}/></div>}
         {(review || recovering) && <p className="studio-task-note" role="status">{review ? studioReviewNotice : studioRecoveryNotice}</p>}
         {queued && run.queue && <p className="studio-task-note">前面还有 {Math.max(0, run.queue.position - 1)} 项 · 有空位后自动开始</p>}

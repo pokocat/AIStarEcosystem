@@ -190,7 +190,7 @@ public class MusicGenWorker {
             payable = Math.min(held, Math.max(1L, Math.round(perSec * actualDurationSec)));
         }
         try {
-            creditService.commitHold(MusicGenJobService.CREDIT_REF_TYPE, job.getId(), payable, "音乐创作结算");
+            creditService.commitHold(MusicGenJobService.CREDIT_REF_TYPE, job.getId(), payable, "音乐创作结算", null);
         } catch (RuntimeException e) {
             log.warn("[music-gen] job={} commit failed: {}", job.getId(), e.toString());
             return 0L;

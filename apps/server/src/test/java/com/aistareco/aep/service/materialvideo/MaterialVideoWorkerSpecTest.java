@@ -135,7 +135,7 @@ class MaterialVideoWorkerSpecTest {
         assertEquals(2, spec.getValue().references().size());
 
         verify(creditService).commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, "mvj_studio", 200L,
-                "视频生成 · 全能参考 · 768p · 9:16 · 5 秒");
+                "视频生成 · 全能参考 · 768p · 9:16 · 5 秒", null);
         verify(storage).record(eq("celebrity"), eq("u1"), eq("视频生成"), isNull(),
                 eq("material-videos/mvj_studio/video.mp4"), anyLong());
     }
@@ -171,7 +171,7 @@ class MaterialVideoWorkerSpecTest {
         assertEquals("She dances (S1) <d>[Chinese]走吧</d>", payload.path(VideoPromptRewrite.PAYLOAD_KEY).path("prompt").asText());
         assertEquals("popt_9", payload.path(VideoPromptRewrite.PAYLOAD_KEY).path("optimizationId").asText());
         verify(creditService).commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, "mvj_studio", 200L,
-                "视频生成 · 全能参考 · 768p · 9:16 · 5 秒");
+                "视频生成 · 全能参考 · 768p · 9:16 · 5 秒", null);
     }
 
     @Test
@@ -210,7 +210,7 @@ class MaterialVideoWorkerSpecTest {
         assertEquals("视频模型拒绝了这次请求：orientation square is not supported", job.getErrorMessage());
         verify(creditService).releaseHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("mvj_studio"),
                 startsWith("视频生成失败 · 退回积分 · 视频模型拒绝了这次请求"));
-        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString());
+        verify(creditService, never()).commitHold(anyString(), anyString(), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test

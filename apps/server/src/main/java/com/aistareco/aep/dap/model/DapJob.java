@@ -19,7 +19,7 @@ import java.util.Map;
 
 /**
  * 异步生成作业（JOB-xxxx）。wire 状态只有 running | done | failed。
- * 扣费三段式：提交时 hold（referenceType=dap-job, referenceId=id:rN），成功 commit、失败/取消 release。
+ * 扣费三段式：提交时 hold（referenceType=dap-job, referenceId=id:rN），文本与媒体分别结算；失败/取消释放各自未用部分，已完成文本费用保留。
  */
 @Entity
 @Table(name = "dap_job", indexes = {

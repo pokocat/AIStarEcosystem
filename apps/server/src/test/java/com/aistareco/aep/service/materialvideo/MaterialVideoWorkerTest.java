@@ -361,7 +361,7 @@ class MaterialVideoWorkerTest {
         assertNull(job.getThumbnailUrl());
         assertNull(job.getErrorMessage());
         assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
-        verify(creditService).commitHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("mvj_test"), eq(200L), anyString());
+        verify(creditService).commitHold(eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq("mvj_test"), eq(200L), anyString(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(anyString(), anyString(), anyString());
     }
 
@@ -390,7 +390,7 @@ class MaterialVideoWorkerTest {
         when(creditService.findHold(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE, "mvj_test"))
                 .thenReturn(null);
         when(creditService.hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString())).thenReturn(hold);
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class))).thenReturn(hold);
 
         @SuppressWarnings("unchecked")
         HttpResponse<Path> response = mock(HttpResponse.class);
@@ -411,9 +411,9 @@ class MaterialVideoWorkerTest {
         assertEquals(600L, recovered.getCreditsHeld());
         assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", recovered.getVideoUrl());
         verify(creditService).hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString());
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(creditService).commitHold(eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), eq(600L), anyString());
+                eq("mvj_test"), eq(600L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -441,7 +441,7 @@ class MaterialVideoWorkerTest {
                 .status(CreditHold.Status.ACTIVE).build();
         when(creditService.findHold(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE, "mvj_test")).thenReturn(null);
         when(creditService.hold(eq("u1"), eq(100L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString())).thenReturn(hold);
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class))).thenReturn(hold);
 
         @SuppressWarnings("unchecked")
         HttpResponse<Path> response = mock(HttpResponse.class);
@@ -462,9 +462,9 @@ class MaterialVideoWorkerTest {
         assertEquals(100L, recovered.getCreditsHeld());
         verify(modelClient, never()).resolveCreditCostOverride(any(), anyInt());
         verify(creditService).hold(eq("u1"), eq(100L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString());
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(creditService).commitHold(eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), eq(100L), anyString());
+                eq("mvj_test"), eq(100L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -479,7 +479,7 @@ class MaterialVideoWorkerTest {
         var failure=org.junit.jupiter.api.Assertions.assertThrows(com.aistareco.common.BusinessException.class,
                 ()->worker(new FakeUploader(false)).reconcileSucceeded("mvj_test"));
         assertEquals("ENTERPRISE_VIDEO_RECOVERY_REQUIRES_REVIEW",failure.getCode());
-        verify(creditService,never()).hold(anyString(),org.mockito.ArgumentMatchers.anyLong(),anyString(),anyString(),anyString());
+        verify(creditService,never()).hold(anyString(),org.mockito.ArgumentMatchers.anyLong(),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -522,7 +522,7 @@ class MaterialVideoWorkerTest {
         when(creditService.findHold(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE, "mvj_test"))
                 .thenReturn(null);
         when(creditService.hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString())).thenReturn(hold);
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class))).thenReturn(hold);
 
         @SuppressWarnings("unchecked")
         HttpResponse<Path> response = mock(HttpResponse.class);
@@ -543,8 +543,8 @@ class MaterialVideoWorkerTest {
         assertEquals(600L, recovered.getCreditsHeld());
         assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", recovered.getVideoUrl());
         verify(creditService).hold(eq("u1"), eq(600L), eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), anyString());
+                eq("mvj_test"), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(creditService).commitHold(eq(MaterialVideoWorker.RECOVERY_CREDIT_REF_TYPE),
-                eq("mvj_test"), eq(600L), anyString());
+                eq("mvj_test"), eq(600L), anyString(), org.mockito.ArgumentMatchers.any());
     }
 }

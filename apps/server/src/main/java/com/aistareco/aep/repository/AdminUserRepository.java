@@ -9,6 +9,10 @@ import java.util.Optional;
 @Repository
 public interface AdminUserRepository extends JpaRepository<AdminUser, String> {
 
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @org.springframework.data.jpa.repository.Query("select a from AdminUser a where a.id=:id")
+    Optional<AdminUser> lockById(@org.springframework.data.repository.query.Param("id") String id);
+
     Optional<AdminUser> findByUsername(String username);
 
     Optional<AdminUser> findByEmail(String email);

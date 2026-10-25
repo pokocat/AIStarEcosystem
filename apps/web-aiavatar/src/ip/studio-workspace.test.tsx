@@ -257,7 +257,7 @@ test('refresh restores cancelled queue semantics without replaying adopted resul
 });
 // Codex review of 47c057ea: retrying a failed take resubmits the saved request, so 「按原文生成」 must survive it.
 test('retrying a failed native video keeps 按原文生成 from the saved request under a new request key',async()=>{
- const kept={...request,video:{mode:'t2v' as const,resolutionTier:'768p',optimizePrompt:false}};
+ const kept={...request,video:{mode:'t2v' as const,resolutionTier:'768p',optimizePrompt:false},modelBilling:{walletId:'old-wallet',target:{appCode:'aiavatar',action:'video',endpointId:'model',providerModel:'model',specKey:'t2v',unit:'second' as const},usage:{quantity:5,outputQuantity:0},priceVersion:'old-version',freeOnly:true,maxWalletCredits:0}};
  render(<Host initial={{...node,metadata:{...node.metadata,status:'error',errorDetails:'生成失败',studio:{...node.metadata!.studio,request:kept}}}}/>);
  openVideo();
  await waitFor(()=>expect(api.capabilities).toHaveBeenCalled());
@@ -265,7 +265,7 @@ test('retrying a failed native video keeps 按原文生成 from the saved reques
  await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
  const sent=api.submit.mock.calls[0][1];
  expect(sent.video).toEqual({mode:'t2v',resolutionTier:'768p',optimizePrompt:false});
- expect(sent.clientRequestId).not.toBe('original-key');expect(sent.prompt).toBe('original prompt');
+ expect(sent.clientRequestId).not.toBe('original-key');expect(sent.prompt).toBe('original prompt');expect(sent.modelBilling).toBeUndefined();
 });
 test('refresh with an active accepted batch offers its existing task rather than a new submit',async()=>{
  render(<Host initial={{...node,metadata:{...node.metadata,status:'loading',studio:{...node.metadata!.studio,request,runId:'accepted'}}}}/>);openVideo();
@@ -1074,4 +1074,19 @@ test('finished works keep unique media actions inside their result in the work e
  try{fireEvent.click(within(result).getByRole('button',{name:'抽帧'}));expect(commands.mock.calls[0][0].detail).toEqual({action:'video-frames',nodeId:'work'});}
  finally{window.removeEventListener('studio-command',commands);}
  expect(api.submit).not.toHaveBeenCalled();
+});
+
+test('cancelling image payment restores the draft without marking a failed or unconfirmed task',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:8});
+ api.models.mockResolvedValue({image:[{endpointId:'gpt',name:'GPT Image',isDefault:true,creditCost:8,capability:{imageRatios:['1:1'],imageSizes:[{size:'1024x1024',aspectRatio:'1:1'}]}}],video:[]});
+ api.submit.mockRejectedValue(new ApiError({code:'STUDIO_BILLING_CANCELLED',message:'cancelled'},400));
+ const image={...node,type:'image' as never,title:'设定图',metadata:{status:'idle' as const,prompt:'画一只猫',studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'1:1'}));
+ const submit=within(panel).getByRole('button',{name:'生成图片'});await waitFor(()=>expect(submit).toHaveProperty('disabled',false));fireEvent.click(submit);
+ await waitFor(()=>expect(api.submit).toHaveBeenCalledOnce());
+ await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.status).toBe('idle'));
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.request).toBeUndefined();
+ expect(snapshot.find(n=>n.id==='v')?.metadata?.errorCode).toBeUndefined();expect(api.error).not.toHaveBeenCalled();
 });

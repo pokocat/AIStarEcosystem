@@ -226,9 +226,12 @@ public class StudioDialogueTurnWorker {
             ObjectNode billing = null;
             if (finalError == null) {
                 DialogueHolds.settle(credits, IpRunService.REF_TYPE, refs, settled);
-                run.setCost(settled);
+                var receipt=credits.modelBillingBreakdown(IpRunService.REF_TYPE,refs.stream().map(DialogueHolds.Ref::ref).toList());
+                long charged=receipt==null?settled:receipt.displayedCost();
+                if(receipt!=null)output.set("billingBreakdown",mapper.valueToTree(receipt));
+                run.setCost(charged);
                 if (rate != null) {
-                    billing = output.putObject("billing").put("inputTokens", in).put("outputTokens", out).put("credits", settled);
+                    billing = output.putObject("billing").put("inputTokens", in).put("outputTokens", out).put("credits", charged);
                     billing.put("inputCreditsPerK", rate.inputCreditsPerK()).put("outputCreditsPerK", rate.outputCreditsPerK());
                 }
                 run.setStatus(IpRun.STATUS_DONE); run.setStage(reason); run.setPct(100);
@@ -324,11 +327,17 @@ public class StudioDialogueTurnWorker {
                 long amount = Math.min(Math.max(increment, need), balance);
                 if (amount < need) throw new HoldRefused(new HoldRefusal(true, OUT_OF_CREDITS), null);
                 String ref = runId + "#" + refs.size();
+                var accepted=exec.path("modelCharge");
+                var context=accepted.path("target").isObject()?new com.aistareco.aep.billing.service.ModelChargeContext(
+                        mapper.convertValue(accepted.path("target"),com.aistareco.aep.billing.service.ModelBillingTarget.class),
+                        new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(amount),null),java.math.BigDecimal.ONE,null,
+                        accepted.path("priceVersion").asText(),false,amount,null):com.aistareco.aep.billing.service.ModelChargeContext.NONE;
                 boolean enterprise = "enterprise".equals(input.path("billing").path("mode").asText());
-                var account = enterpriseBilling == null ? null : enterpriseBilling.reserveExtension(IpRunService.REF_TYPE, runId, ref, amount, "Studio 对话 · 追加冻结");
+                var account = enterpriseBilling == null ? null : enterpriseBilling.reserveExtension(IpRunService.REF_TYPE, runId, ref, amount, "Studio 对话 · 追加冻结", context);
                 if (account == null) {
                     if (enterprise) throw new HoldRefused(new HoldRefusal(false, "企业积分付款授权已不可用，这一轮先停在这里"), null);
-                    credits.hold(run.getOwnerUserId(), amount, IpRunService.REF_TYPE, ref, "Studio 对话 · 追加冻结");
+                    if(context.target()!=null)credits.holdExtension(IpRunService.REF_TYPE,runId,ref,amount,"Studio dialogue extension",null);
+                    else credits.hold(run.getOwnerUserId(), amount, IpRunService.REF_TYPE, ref, "Studio 对话 · 追加冻结", com.aistareco.aep.billing.service.ModelChargeContext.NONE);
                 }
                 ArrayNode stored = mapper.createArrayNode();
                 refs.forEach(r -> stored.addObject().put("ref", r.ref()).put("amount", r.amount()));
@@ -363,6 +372,8 @@ public class StudioDialogueTurnWorker {
 
     /** The payer's available balance (the wallet the first hold was frozen on), read under the settlement lock. */
     private long availableBalance(IpRun run) {
+        if(parse(run.getInputJson()).path("_exec").path("modelCharge").path("target").path("unit").asText().equals("credit"))
+            return credits.availableExtensionCredits(IpRunService.REF_TYPE,run.getId());
         com.aistareco.aep.model.Wallet wallet = null;
         if (wallets != null && run.getBillingWalletId() != null) wallet = wallets.findById(run.getBillingWalletId()).orElse(null);
         if (wallet == null && run.getEnterpriseId() == null) wallet = credits.getOrCreateWallet(run.getOwnerUserId());

@@ -203,10 +203,16 @@ public class MaterialVideoWorker {
         // 调用方自己定的价（视频生成区按清晰度 / 参考图张数、短剧按自己的单价）按冻结价结算 ——
         // 拿端点单价 × 秒数重算会把 544p 收成 768p 的价、把多参考图的加价丢掉。
         // 其余任务沿用 v0.131：按端点当前每秒价重算，那一版是为了补收计费规则上线前按每条 30 冻结的老任务。
-        Long override = job.getBillingWalletId()!=null || callerPriced(job) ? null : modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
+        var charge=MaterialVideoBilling.read(job);
+        Long override = charge!=null || job.getBillingWalletId()!=null || callerPriced(job) ? null : modelClient.resolveCreditCostOverride(endpointId, job.getDurationSec());
         long expectedCredits = override != null ? override : Math.max(0L, job.getCreditsHeld());
         CreditHold originalHold=creditService.findHold(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
         boolean useOriginal=originalHold!=null && originalHold.getStatus()!=CreditHold.Status.RELEASED;
+        // Only a job that actually used a grant or discount needs manual review: re-charging the list price would
+        // overcharge it, and the original grant may have expired. A plain list-price job keeps the legacy recovery hold.
+        if(charge!=null&&!useOriginal&&expectedCredits>0&&creditService.usedModelPromotion(originalHold))
+            throw new BusinessException(HttpStatus.CONFLICT,"VIDEO_MODEL_RECOVERY_REQUIRES_REVIEW",
+                    "原任务用了模型赠款或折扣，冻结已退回。请先核对原付款来源再恢复，不能按当前价格重新扣费");
         if(job.getEnterpriseId()!=null && !useOriginal && expectedCredits>0)
             throw new BusinessException(HttpStatus.CONFLICT,"ENTERPRISE_VIDEO_RECOVERY_REQUIRES_REVIEW",
                     "原企业冻结已退回，请核对原企业资金后处理，不能改用个人积分恢复");
@@ -215,7 +221,7 @@ public class MaterialVideoWorker {
             recoveryHold = creditService.findHold(RECOVERY_CREDIT_REF_TYPE, jobId);
             if (recoveryHold == null) {
                 recoveryHold = creditService.hold(job.getOwnerUserId(), expectedCredits,
-                        RECOVERY_CREDIT_REF_TYPE, jobId, "视频任务成功对账 · " + safe(job.getName()));
+                        RECOVERY_CREDIT_REF_TYPE, jobId, "视频任务成功对账 · " + safe(job.getName()), com.aistareco.aep.billing.service.ModelChargeContext.NONE);
             }
             if (recoveryHold.getStatus() == CreditHold.Status.RELEASED) {
                 throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_RECOVERY_HOLD_RELEASED",
@@ -234,7 +240,7 @@ public class MaterialVideoWorker {
                 if("succeeded".equals(current.getStatus()))return;
                 if (recovery != null && recovery.getStatus() == CreditHold.Status.ACTIVE)
                     creditService.commitHold(RECOVERY_CREDIT_REF_TYPE,jobId,expectedCredits,
-                            "视频生成成功对账 · " + safe(job.getName()));
+                            "视频生成成功对账 · " + safe(job.getName()), null);
                 current.setCreditsHeld(expectedCredits);
                 // Legacy recovery has a separate hold; modern jobs always settle their original reference.
                 succeedLocked(current,mirror.videoUrl(),mirror.thumbnailUrl(),poll.lastFrameUrl(),mirror.lastFrameKey(),useOriginal);
@@ -591,15 +597,19 @@ public class MaterialVideoWorker {
 
     private void recordSubmissionRoute(String jobId,MaterialVideoModelClient.SubmitResult context) {
         if(enterpriseBilling!=null)enterpriseBilling.requireEndpointAllowed(MaterialVideoJobService.CREDIT_REF_TYPE,jobId,context.endpointId());
-        MaterialVideoJob j=jobRepo.findById(jobId).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在"));
-        j.setProviderUsed(context.providerUsed());j.setModelUsed(context.modelUsed());
-        j.setUpstreamBaseUrlSnapshot(context.baseUrlSnapshot());j.setVideoRequestSpecSnapshotJson(context.requestSpecSnapshotJson());
-        try {
-            JsonNode value=j.getVariantConfigJson()==null?OM.createObjectNode():OM.readTree(j.getVariantConfigJson());
-            var variant=value.isObject()?(com.fasterxml.jackson.databind.node.ObjectNode)value:OM.createObjectNode();
-            variant.put("endpoint_id",context.endpointId());j.setVariantConfigJson(OM.writeValueAsString(variant));
-        }catch(java.io.IOException invalid){throw BusinessException.badRequest("VIDEO_SUBMISSION_ROUTE_INVALID","视频提交路由无法保存，请重新检查任务");}
-        j.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(j);
+        inTransaction(()->{
+            MaterialVideoJob j=settlementJob(jobId).orElseThrow(()->BusinessException.notFound("VIDEO_JOB_NOT_FOUND","视频任务不存在"));
+            MaterialVideoBilling.requireRoute(j,context);
+            creditService.markModelDispatched(MaterialVideoJobService.CREDIT_REF_TYPE,jobId);
+            j.setProviderUsed(context.providerUsed());j.setModelUsed(context.modelUsed());
+            j.setUpstreamBaseUrlSnapshot(context.baseUrlSnapshot());j.setVideoRequestSpecSnapshotJson(context.requestSpecSnapshotJson());
+            try {
+                JsonNode value=j.getVariantConfigJson()==null?OM.createObjectNode():OM.readTree(j.getVariantConfigJson());
+                var variant=value.isObject()?(com.fasterxml.jackson.databind.node.ObjectNode)value:OM.createObjectNode();
+                variant.put("endpoint_id",context.endpointId());j.setVariantConfigJson(OM.writeValueAsString(variant));
+            }catch(java.io.IOException invalid){throw BusinessException.badRequest("VIDEO_SUBMISSION_ROUTE_INVALID","视频提交路由无法保存，请重新检查任务");}
+            j.setUpdatedAt(OffsetDateTime.now());jobRepo.saveAndFlush(j);
+        });
     }
 
     private void markSucceeded(String jobId, String videoUrl, String thumb, String lastFrameUrl, String lastFrameCdnKey) {
@@ -691,8 +701,10 @@ public class MaterialVideoWorker {
         if(hold!=null && hold.getStatus()==CreditHold.Status.COMMITTED)return;
         if(hold!=null && hold.getStatus()==CreditHold.Status.RELEASED)
             throw new BusinessException(HttpStatus.CONFLICT,"VIDEO_ORIGINAL_HOLD_RELEASED","原任务冻结已释放，请从原任务对账恢复");
+        var charge=MaterialVideoBilling.read(job);
         creditService.commitHold(MaterialVideoJobService.CREDIT_REF_TYPE, job.getId(),
-                job.getCreditsHeld(), creditLabelOf(job) + " · " + safe(job.getName()));
+                job.getCreditsHeld(), creditLabelOf(job) + " · " + safe(job.getName()),
+                charge==null?null:charge.usage());
     }
 
     private void releaseCredits(MaterialVideoJob job, String reason) {

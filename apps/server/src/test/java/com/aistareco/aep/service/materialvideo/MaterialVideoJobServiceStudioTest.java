@@ -53,6 +53,7 @@ class MaterialVideoJobServiceStudioTest {
         jobRepo = mock(MaterialVideoJobRepository.class);
         modelClient = mock(MaterialVideoModelClient.class);
         creditService = mock(CreditService.class);
+        when(modelClient.billingRoute(any(),any())).thenAnswer(i->new MaterialVideoModelClient.BillingRoute(i.getArgument(0)==null?"ep":i.getArgument(0),"video-test",true,"https://provider.invalid",""));
         actionPricing = mock(CelebrityActionPricingService.class);
         svc = new MaterialVideoJobService(jobRepo, modelClient, mock(MaterialVideoWorker.class), creditService,
                 actionPricing, mock(ProductService.class), mock(AiModelInvocationService.class), om,
@@ -87,7 +88,7 @@ class MaterialVideoJobServiceStudioTest {
             // 「按原文生成」也是原生规格：素材运营透传客户端的 variant_config，不许夹带
             assertRejected("{\"optimize_prompt\":false}", app);
         }
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any());
     }
 
@@ -112,7 +113,7 @@ class MaterialVideoJobServiceStudioTest {
                 MaterialVideoJobService.APP_CELEBRITY);
         svc.submit(body("{\"target\":\"shot\",\"scene_id\":\"s1\",\"endpoint_id\":\"ep\"}"), "u1",
                 MaterialVideoJobService.APP_DRAMA);
-        verify(creditService, org.mockito.Mockito.times(2)).hold(eq("u1"), eq(200L), any(), any(), any());
+        verify(creditService, org.mockito.Mockito.times(2)).hold(eq("u1"), eq(200L), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test
@@ -124,7 +125,7 @@ class MaterialVideoJobServiceStudioTest {
                 body("{\"endpoint_id\":\"ep\",\"first_frame_key\":\"ipstudio_gen/u1/a.png\"}"),
                 "u1", MaterialVideoJobService.APP_IPSTUDIO));
         assertEquals("VIDEO_STUDIO_SPEC_INVALID", error.getCode());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any());
     }
 
@@ -143,8 +144,24 @@ class MaterialVideoJobServiceStudioTest {
         assertEquals(200L, job.getCreditsHeld());
         assertEquals("视频生成", MaterialVideoWorker.creditLabelOf(job));
         verify(creditService).hold(eq("u1"), eq(200L), eq(MaterialVideoJobService.CREDIT_REF_TYPE), eq(job.getId()),
-                eq("视频生成 · v"));
+                eq("视频生成 · v"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertFalse(cards.get(0).has("credit_label"));
+    }
+
+    @Test void enterpriseVideoKeepsItsMemberWalletAndExactModelChargeContext() {
+        var enterprise=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"enterpriseBilling",enterprise);
+        var selection=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
+        when(enterprise.reserve(eq("u1"),eq(selection),eq("material_video_job"),any(),eq("ep-h3"),eq(200L),any(),any()))
+                .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership","authorization"));
+        svc.submit(body("{\"endpoint_id\":\"ep-h3\",\"generation_mode\":\"t2v\",\"resolution_tier\":\"768p\"}"),"u1",MaterialVideoJobService.APP_IPSTUDIO,selection);
+        var charge=ArgumentCaptor.forClass(com.aistareco.aep.billing.service.ModelChargeContext.class);
+        verify(enterprise).reserve(eq("u1"),eq(selection),eq("material_video_job"),any(),eq("ep-h3"),eq(200L),any(),charge.capture());
+        assertEquals("aiavatar",charge.getValue().target().appCode());assertEquals("ep-h3",charge.getValue().target().endpointId());
+        assertEquals("second",charge.getValue().target().unit());assertEquals(0,charge.getValue().usage().quantity().compareTo(java.math.BigDecimal.valueOf(5)));
+        var saved=ArgumentCaptor.forClass(MaterialVideoJob.class);verify(jobRepo).save(saved.capture());
+        assertEquals("member-wallet",saved.getValue().getBillingWalletId());assertEquals("company",saved.getValue().getEnterpriseId());
+        org.mockito.Mockito.verifyNoInteractions(creditService);
     }
 
     @Test

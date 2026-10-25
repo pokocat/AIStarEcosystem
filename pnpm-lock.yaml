@@ -26,6 +26,12 @@ importers:
 
   apps/admin:
     dependencies:
+      '@ai-star-eco/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
+      '@ai-star-eco/types':
+        specifier: workspace:*
+        version: link:../../packages/types
       '@ai-star-eco/ui':
         specifier: workspace:*
         version: link:../../packages/ui

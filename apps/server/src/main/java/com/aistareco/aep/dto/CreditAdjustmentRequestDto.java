@@ -20,14 +20,17 @@ public record CreditAdjustmentRequestDto(
         String ledgerEntryId,
         String decideNote,
         Instant createdAt,
-        Instant decidedAt
+        Instant decidedAt,
+        String walletId,
+        Instant expiresAt,
+        String grantId
 ) {
     public static CreditAdjustmentRequestDto from(CreditAdjustmentRequest r) {
         return new CreditAdjustmentRequestDto(
                 r.getId(), lower(r.getType()), r.getTargetUserId(), r.getAmount(), r.getReason(),
                 r.getIncidentRef(), r.getCampaignId(), lower(r.getStatus()), r.getMakerId(),
                 r.getCheckerId(), r.getLedgerEntryId(), r.getDecideNote(),
-                r.getCreatedAt(), r.getDecidedAt());
+                r.getCreatedAt(), r.getDecidedAt(), r.getWalletId(), r.getExpiresAt(), r.getGrantId());
     }
 
     private static String lower(Enum<?> e) {

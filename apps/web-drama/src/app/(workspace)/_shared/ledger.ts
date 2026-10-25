@@ -15,9 +15,10 @@ import type { LedgerEntry } from "@ai-star-eco/types/wallet";
  *   - StoreService.redeem → CreditService.debit(…, SPEND, "store_<type>", …)：商店买断，直接扣余额。
  * 其余直接扣费（DramaRenderService 的首帧等）走 debit 的默认类型 ADJUST，不是 SPEND。
  * 所以「SPEND + 有引用 + 引用不是 store_*」就是结算。服务端再加直接扣费的 SPEND 调用时要同步这里。
+ * 模型赠款同理：SCOPED_FREEZE 已经从这笔赠款里扣掉，SCOPED_SPEND 只把冻结转为扣除（只由结算写，必带任务引用）。
  */
 export function isHoldSettlement(e: Pick<LedgerEntry, "type" | "referenceType" | "referenceId">): boolean {
-  if (e.type !== "spend") return false;
+  if (e.type !== "spend" && e.type !== "scoped_spend") return false;
   const refType = e.referenceType?.trim();
   if (!refType || !e.referenceId?.trim()) return false;
   return !refType.toLowerCase().startsWith("store_");

@@ -35,6 +35,7 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.skill.StudioSkillDraftSink> skillDrafts;
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
     private final FileStorageService storage;
@@ -95,6 +96,7 @@ public class StudioWorkflowWorker {
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
                         var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
                         int finalTokens=input.path("_exec").path("maxTokens").asInt(8192);
@@ -144,6 +146,7 @@ public class StudioWorkflowWorker {
                                     input.path("_exec").path("temperature").asDouble(.7),List.of(source.path("frameTimes").size()-1),source,recreationFallback,output);
                         } else {
                         if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+                        markModelDispatched(id);
                         reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
                         }
@@ -243,6 +246,7 @@ public class StudioWorkflowWorker {
         if(!progress(id,15,"recreation.frames"))return;
         var source=exec.path("recreationSource");var evidence=StudioRecreation.study(source,storage,hypitMedia);
         if(!checkpointRecreation(id,source))return;
+        StudioTokenBilling.requireRoute(input,endpoint.endpoint());
         var rate=mapper.treeToValue(exec.path("tokenPricing"),AiChatTokenPricing.Rate.class);long[][] used={new long[]{0,0}};
         var capNode=exec.path("segmentCap");
         var cap=capNode.isObject()?new StudioFilmStudy.SegmentCap(capNode.path("maxSegmentSec").asDouble(),capNode.path("maxSegments").asInt(8)):null;
@@ -280,6 +284,7 @@ public class StudioWorkflowWorker {
                 AiModelInvocationService.AiModelResponse reply;
                 for(int next=budgetRung+1;;next++) {
                     try {
+                        markModelDispatched(id);
                         reply=models.invokeChatOnEndpoint(endpoint,AiModelPurpose.DAP_PERSONA,List.of(
                                 Map.of("role","system","content",system+(requestFocus.isBlank()?"":"\n用户补充分析重点："+requestFocus)),
                                 Map.of("role","user","content",content)),params);
@@ -480,15 +485,37 @@ public class StudioWorkflowWorker {
             if(executor!=null&&executionId!=null)executor.wake(executionId);
         } catch(Exception e) {log.warn("[studio] post-terminal notify failed id={} reason={}",id,e.toString());}
     }
+    private void markModelDispatched(String id) {
+        var run=runs.findById(id).orElseThrow();
+        try {
+            if(StudioTokenBilling.applies(mapper.readTree(run.getInputJson())))credits.markModelDispatched(IpRunService.REF_TYPE,id);
+        } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {throw new IllegalStateException(invalid);}
+    }
     private void terminal(IpRun run,ObjectNode output,Exception error) {
         boolean cancelled=run.isCancelRequested();
         long cost=run.getCost();
         if(error==null&&!cancelled) {
             long actual=output.has("billing")?output.path("billing").path("credits").longValue():cost;
             if(actual<0||actual>cost)throw new IllegalStateException("Token settlement exceeds reservation");
-            if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算");
+            JsonNode accepted;
+            try {accepted=mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            boolean modelBilling=StudioTokenBilling.applies(accepted);
+            var usage=modelBilling&&!"credit".equals(accepted.path("_exec").path("modelCharge").path("target").path("unit").asText())?StudioTokenBilling.measured(output):null;
+            if(usage!=null) {
+                credits.finishModelResources(IpRunService.REF_TYPE,run.getId(),usage.total());
+                // A zero cost component can still have a published selling price; keep a positive internal settlement marker.
+                actual=Math.max(1,actual);
+            }
+            if(actual>0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),actual,"Studio 创作实际结算", usage);
             if(actual<cost) credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 实际用量结算 · 退回余量");
             run.setCost(actual);
+            if(modelBilling&&modelCharges!=null) {
+                var paid=modelCharges.breakdown(IpRunService.REF_TYPE,List.of(run.getId()));
+                if(paid!=null) {
+                    output.set("billingBreakdown",mapper.valueToTree(paid));
+                    output.withObject("/billing").put("credits",paid.displayedCost());
+                }
+            }
             try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception e){throw new IllegalStateException(e);}
             if("studio-assemble".equals(run.getKind())) {
                 try {

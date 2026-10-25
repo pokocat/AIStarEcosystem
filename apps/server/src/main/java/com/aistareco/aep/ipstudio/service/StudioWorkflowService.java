@@ -79,7 +79,7 @@ public class StudioWorkflowService {
         var run=runs.findByProjectIdAndClientRequestId(projectId,clientRequestId).orElse(null);
         if(run==null)return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(false,null);
         var selection=StudioRunBilling.selection(run,mapper);
-        return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(true,selection);
+        return new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.ReplaySelection(true,selection,StudioRunBilling.approval(run,mapper));
     }
 
     public List<IpAsset> ipAssets(String userId) {return ipAssets.list(userId);}
@@ -109,6 +109,7 @@ public class StudioWorkflowService {
     public IpRunDto submit(String userId, String projectId, RunRequest request) {
         var project=projects.requiredForUpdate(userId, projectId);
         if (request == null || !OPERATIONS.contains(request.operation())) throw bad("STUDIO_OPERATION_INVALID", "请选择创作方式");
+        if(request.modelBilling()!=null&&!("image".equals(request.operation())||"video".equals(request.operation())))throw bad("MODEL_QUOTE_NOT_SUPPORTED","当前操作尚不支持模型报价确认");
         requireText(request.clientRequestId(), 64, "请求编号");
         requireText(request.nodeId(), 64, "创作对象");
         String fingerprint=hash(write(canonicalRequest(mapper.valueToTree(request),mapper.valueToTree(request))));
@@ -168,8 +169,7 @@ public class StudioWorkflowService {
         }
         if(!fixtures.enabled() && "image".equals(request.operation())) {
             // Reuse model whitelist, quote, hold and worker from the established image pipeline.
-            IpRunDto dto=imageRuns.generate(userId,projectId,new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt(),
-                    references.stream().map(Reference::storageKey).toList(),request.count()==null?1:request.count(),imageSize(request),request.model(),request.maxCost(),request.billing(),request.clientRequestId()));
+            IpRunDto dto=imageRuns.generate(userId,projectId,imageRequest(request));
             IpRun run=runs.findById(dto.id()).orElseThrow();
             ObjectNode imageInputs=(ObjectNode)projects.parseOrEmptyObject(run.getInputJson());
             imageInputs.set("studioRequest",mapper.valueToTree(request));run.setInputJson(write(imageInputs));
@@ -179,8 +179,7 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "video".equals(request.operation())) {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
-            var batch=imageRuns.generateVideoBatch(userId,projectId,new IpRunService.IpVideoRequest(request.prompt(),
-                    references.isEmpty()?null:references.get(0).storageKey(),request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video(),request.billing()),request.count()==null?1:request.count());
+            var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             ObjectNode exec=inputs.putObject("_exec");
             var ids=exec.putArray("nativeVideoJobIds");
@@ -315,9 +314,11 @@ public class StudioWorkflowService {
             if("recreation".equals(request.operation())&&budget<4096)throw bad("STUDIO_RECREATION_TOKEN_BUDGET","全片拆解需要至少4096输出Token预算，请调整模型配置");
             execution.put("maxTokens",budget);
         }
+        var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
+        StudioTokenBilling.store(execution,modelCharge,textEndpoint==null?null:textEndpoint.endpoint());
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,
-                execution.path("endpointId").asText(null),cost,"Studio 创作");
-        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作");
+                execution.path("endpointId").asText(null),cost,"Studio 创作", modelCharge);
+        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 创作", modelCharge);
         IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())
                 .kind("studio-"+request.operation()).status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).inputJson(write(inputs))
@@ -383,9 +384,11 @@ public class StudioWorkflowService {
             if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
         }
         execution.put("maxTokens",budget);
+        var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
+        StudioTokenBilling.store(execution,modelCharge,textEndpoint==null?null:textEndpoint.endpoint());
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,billingSelection,IpRunService.REF_TYPE,id,
-                execution.path("endpointId").asText(null),cost,"AI 导演台");
-        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"AI 导演台");
+                execution.path("endpointId").asText(null),cost,"AI 导演台", modelCharge);
+        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"AI 导演台", modelCharge);
         IpRun run=IpRun.builder().id(id).projectId(hostId).hostType(IpRun.HOST_DIRECTOR).ownerUserId(userId).nodeId(nodeId)
                 .kind("studio-director").status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .clientRequestId(clientRequestId).inputFingerprint(fingerprint).inputJson(write(inputs))
@@ -758,6 +761,36 @@ public class StudioWorkflowService {
                 yield rate.maxCost();
             }
         };
+    }
+
+    private IpRunService.IpVideoRequest videoRequest(RunRequest request) {
+        return new IpRunService.IpVideoRequest(request.prompt(),request.references()==null||request.references().isEmpty()?null:request.references().get(0).storageKey(),
+                request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video(),request.billing(),request.clientRequestId(),request.modelBilling());
+    }
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideo(String user,String projectId,RunRequest request,boolean freeOnly) {
+        projects.required(user,projectId);
+        if(request==null||!"video".equals(request.operation())||fixtures.enabled())throw bad("MODEL_QUOTE_NOT_SUPPORTED","请选择视频生成");
+        var refs=request.references()==null?List.<Reference>of():request.references();
+        if(request.video()==null&&refs.size()>1)throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图");
+        if(request.video()!=null&&!refs.isEmpty())throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择参考素材");
+        for(var ref:refs)requireReference(user,ref);
+        return imageRuns.quoteVideo(user,projectId,videoRequest(request),request.count()==null?1:request.count(),freeOnly);
+    }
+
+    private IpRunService.IpGenerateRequest imageRequest(RunRequest request) {
+        return new IpRunService.IpGenerateRequest(request.nodeId(),request.prompt(),
+                request.references()==null?List.of():request.references().stream().map(Reference::storageKey).toList(),
+                request.count()==null?1:request.count(),imageSize(request),request.model(),request.maxCost(),request.billing(),request.clientRequestId(),request.modelBilling());
+    }
+    @org.springframework.transaction.annotation.Transactional(readOnly=true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteImage(String user,String projectId,RunRequest request,boolean freeOnly) {
+        projects.required(user,projectId);
+        if(request==null||!"image".equals(request.operation()))throw bad("MODEL_QUOTE_NOT_SUPPORTED","请选择图片生成");
+        if(fixtures.enabled())throw bad("MODEL_QUOTE_NOT_SUPPORTED","测试响应无需扣费报价");
+        if(request.count()!=null&&!Set.of(1,2,4).contains(request.count()))throw bad("STUDIO_IMAGE_COUNT_INVALID","一次可生成 1、2 或 4 张图片");
+        if(request.references()!=null)for(var reference:request.references())requireReference(user,reference);
+        return imageRuns.quoteImage(user,projectId,imageRequest(request),freeOnly);
     }
 
     // New nullable fields must not make a saved, accepted request look different after an upgrade.

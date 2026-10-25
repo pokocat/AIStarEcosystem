@@ -28,6 +28,19 @@
 - [已定位问题与后续限制](#已定位问题与后续限制)
 - [早期候选计划](#早期候选计划)
 
+## 模型赠款发布前待定（2026-10-25 评审）
+
+评审里的逻辑问题已修（见 `docs/model-billing-design.md`「评审后修正」）。下面是没改、发布前要拍板或处理的：
+
+- [ ] **与 main 的三处冲突**：`specs/openapi.yaml`、`apps/server/README.md`、`apps/server/src/test/java/com/aistareco/aep/ipstudio/IpRunWorkerTest.java`（main 已改成单一 `JusuanImageClient.generate` 入口）。合并前解决。
+- [ ] **V66 会建出用不到的表和列**：`aep_model_prices` 与 `/admin/model-billing/prices` 读写（写入一律 `MODEL_PRICE_USE_ENDPOINT_CONFIG`），`aep_credit_resource_reservations` 与活动的 `resource_*` 列（后台只建积分型活动）。上线后再删要另写迁移，发布前决定是否从 `db/schema/model-scoped-credits.sql` 拿掉。
+- [ ] **V66 校验和按 `db/schema/model-scoped-credits.sql` 的内容计算**：上线后这个文件一个字都不能改，否则 Flyway 启动校验失败。在文件头写明已冻结。
+- [ ] **MySQL 上 V66 把 `aep_ledger_entries.entry_type` 改成 VARCHAR**：整表重写，锁表时间随账本行数增长，发布前查线上行数估窗口。
+- [x] ~~零价接入点怎么处理~~ **2026-10-25 用户拍板**：零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，想免费送用户体验只能发模型赠款。出图每张至少按 1 积分冻结、由计费层拒绝零价；视频在规划时就拒绝。企业零价用例改为断言「报错、不建授权、不冻结、不调供应商、不占在途名额」（`EnterpriseStudioBillingIntegrationTest.zeroPriceIsRejectedBeforeAuthorizationHoldOrSupplierCall`、`EnterpriseVideoBillingIntegrationTest.zeroCostVideoIsRejected*`），删掉已不存在的「零价任务受理不明后核对」用例。上线前要确认线上没有零价接入点，有的话先配售价，否则这些模型会直接报错。
+- [ ] **main 上 10 项旧测试红着**（判定：与本分支无关，2026-10-25）：`EnterpriseStudioBillingIntegrationTest` 3 项、`EnterpriseVideoBillingIntegrationTest` 7 项仍断言「受理结果不明时保留冻结」，而 `GenerationSubmissionFailure` 已改为「没有有效受理回执即判失败并退款」。在本分支基线 `7b012061` 上同样失败，应在 main 上按现行政策改测试。
+- [ ] **小清理**：折扣 `allowGrants` 服务端恒为 true（字段可删）；`ModelBillingConfigService` 注入了没用到的 `MaterialVideoModelClient`。
+- [ ] **celebrity 不处理**（判定：用户 2026-10-25 明确「celebrity 子应用不用管，主要用 Studio」）：素材运营视频弹窗仍按普通余额拦截（`apps/web-celebrity/src/components/material-ops/VideoGenDialog.tsx` `insufficient`），celebrity 看不到赠款余额、流水仍叫「专享额度」。
+
 ## Studio 当前待办
 
 ### 2026-10-25 · 图片系列与分辨率路由（代码已生产发布）

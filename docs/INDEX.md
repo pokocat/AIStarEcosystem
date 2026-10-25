@@ -48,6 +48,10 @@
 
 ### 1.3 现行设计真源（`docs/` 根）
 
+- [模型接入点赠款与折扣](model-billing-design.md)：接入点唯一范围、沿用原价、企业折扣、文本/媒体分账及本地核验；本地完成，未发布，last-reviewed 2026-10-25。
+- [模型计费后台本地验收](releases/model-scoped-credits-admin-validation-20261025.md)：价格/折扣/活动/发放的真实页面、接口与余额证据；局部验收，未发布，last-reviewed 2026-10-25。
+- [通用视频模型计费本地验证](releases/model-scoped-credits-video-validation-20261025.md)：精确范围/快照、资源与失败恢复的数据库和服务回归；部分接入，未发布，last-reviewed 2026-10-25。
+
 按产品线分组。每行只写「它定了什么」，状态以文档头注为准。
 
 **AI IP 工作台 · 数字资产 · 数字名片**（都在 `apps/web-aiavatar`）
@@ -272,6 +276,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 用途 |
 |---|---|
 | [`TODO.md`](../TODO.md) ★ | 已定位未修的问题 + 候选排期，**只留还有未勾项的段**；维护纪律见 AGENTS.md §9 |
+| [模型额度初始设计](archive/model-scoped-credits-initial-design.md) | 已被接入点赠款与折扣设计取代；旧分场景、第二套标准价和供应商资源方案仅供历史追溯（last-reviewed 2026-10-25） |
 | [`docs/archive/todo-closed.md`](archive/todo-closed.md) | 从 TODO.md 整段移出的已关闭段（条目原样保留） |
 | [TODO 历史记录 · 2026-10-13](archive/todo-2026-10-13.md) | 整理前完整快照、已完成记录、过时状态核对与重复条目去向；当前排期以根目录 TODO 为准（last-reviewed 2026-10-13） |
 | [`docs/archive/ip-studio-generalize-proposal.md`](archive/ip-studio-generalize-proposal.md) | IP 工作台「一个提示词框 + 模板库」提案，v0.153 已落地；留「为什么改」 |

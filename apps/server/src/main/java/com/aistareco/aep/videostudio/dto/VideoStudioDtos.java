@@ -124,7 +124,8 @@ public final class VideoStudioDtos {
     public record VideoStudioJobRequest(String endpointId, String mode, String prompt, String resolutionTier,
                                         String aspectRatio, Integer seconds, Long seed, String firstFrameKey,
                                         String lastFrameKey, List<VideoStudioReferenceInput> references,
-                                        String templateId, String optimizationId) {}
+                                        String templateId, String optimizationId, String clientRequestId,
+                                        com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {}
 
     /** 任务用到的一个输入素材（回显用）。 */
     @JsonInclude(JsonInclude.Include.ALWAYS)
@@ -137,7 +138,7 @@ public final class VideoStudioDtos {
                                  String status, int progressPct, String stage, List<VideoStudioJobInput> inputs,
                                  String videoUrl, String thumbnailUrl, String errorMessage, String errorCode, long credits,
                                  String originalPrompt, String templateId,
-                                 String createdAt, String completedAt) {}
+                                 String createdAt, String completedAt,com.aistareco.aep.billing.service.ModelChargeService.Breakdown billingBreakdown) {}
 
     // ── 智能优化 ──────────────────────────────────────────────────────────────
 

@@ -86,6 +86,7 @@ export interface StudioReference {
   role: "character" | "scene" | "product" | "frame" | "clip";
 }
 export interface StudioRunRequest {
+  modelBilling?: import('./model-billing').ModelBillingApproval;
   billing?: EnterpriseBillingSelection;
   clientRequestId: string;
   nodeId: string;

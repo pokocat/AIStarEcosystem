@@ -91,6 +91,10 @@ public class VideoStudioService {
             JusuanH3Contract.MODE_FIRST_LAST_FRAME, "studio-flf",
             JusuanH3Contract.MODE_UNIVERSAL_REFERENCE, "studio-ref");
 
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.repository.AepUserRepository users;
+
     private final AiModelInvocationService invocation;
     private final MaterialVideoModelClient modelClient;
     private final MaterialVideoJobService videoJobs;
@@ -285,6 +289,12 @@ public class VideoStudioService {
         }
     }
 
+    com.aistareco.aep.billing.service.ModelChargeContext optimizationCharge(Validated v,long credits) {
+        var route=modelClient.billingRoute(v.model().selectableById()?v.model().endpointId():null,"celebrity");
+        return com.aistareco.aep.billing.service.ModelChargeContext.forCredits(
+                AiModelEndpoint.builder().id(route.endpointId()).model(route.providerModel()).build(),credits);
+    }
+
     /**
      * 唯一的校验器。顺序固定：模型 → 模式 → 提示词 → 清晰度 / 比例 / 时长 → 种子（有才看）→ 该模式的素材 →
      * 素材归属与类型（做同款时模板素材也算）→ 音频合计。全部在冻结积分之前。
@@ -430,6 +440,57 @@ public class VideoStudioService {
 
     @Transactional
     public VideoStudioJob submit(String userId, VideoStudioJobRequest req) {
+        String requestId = blankToNull(req == null ? null : req.clientRequestId());
+        if (requestId == null && req != null && req.modelBilling() != null)
+            throw BusinessException.badRequest("VIDEO_STUDIO_REQUEST_ID_INVALID", "请重新确认本次生成费用");
+        String jobIdForRequest = null;
+        String requestDigest = null;
+        if (requestId != null) {
+            if (!requestId.matches("[A-Za-z0-9_-]{8,128}"))
+                throw BusinessException.badRequest("VIDEO_STUDIO_REQUEST_ID_INVALID", "这次请求的编号不对，请刷新页面再试");
+            // Serialize this owner's submissions before reading the durable request; never lock on read-only quotes.
+            users.findByIdForUpdate(userId).orElseThrow(() -> BusinessException.notFound("USER_NOT_FOUND", "账号不存在"));
+            jobIdForRequest = "mvjs_" + digest(userId + "\n" + requestId).substring(0, 48);
+            requestDigest = digest(om.valueToTree(req).toString());
+            var existing = jobRepo.lockById(jobIdForRequest).orElse(null);
+            if (existing != null) {
+                if (!userId.equals(existing.getOwnerUserId()) || !MaterialVideoJobService.APP_VIDEO_STUDIO.equals(existing.getApp())
+                        || !requestDigest.equals(readPayload(existing).path("_studio_request_digest").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_STUDIO_REQUEST_CHANGED", "同一次提交的内容已改变，请先核对原任务");
+                return toJob(existing);
+            }
+        }
+        PreparedSubmission prepared = prepareSubmission(userId, req);
+        Validated v = prepared.validated();
+        StudioPromptOptimization optimization = prepared.optimization();
+        long price = prepared.price();
+        ObjectNode body = prepared.body();
+        if (req != null && req.modelBilling() != null) body.set("modelBilling", om.valueToTree(req.modelBilling()));
+        if (jobIdForRequest != null) body.put("_video_studio_job_id", jobIdForRequest);
+        List<JsonNode> created = videoJobs.submit(body, userId, MaterialVideoJobService.APP_VIDEO_STUDIO);
+        String jobId = created.isEmpty() ? null : created.get(0).path("id").asText(null);
+        MaterialVideoJob job = jobId == null ? null : jobRepo.findById(jobId).orElse(null);
+        if (job == null) {
+            throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "VIDEO_STUDIO_SUBMIT_FAILED",
+                    "任务没有建起来，请稍后再试");
+        }
+        if (requestDigest != null) {
+            ObjectNode payload = readPayload(job);
+            payload.put("_studio_request_digest", requestDigest);
+            job.setPayloadJson(payload.toString());
+            jobRepo.save(job);
+        }
+        // 做同款成功建出任务才计数（同一事务：提交失败回滚时计数一起回滚）。
+        if (v.template() != null) templates.countUse(v.template().getId());
+        log.info("[video-studio] 已提交 user={} job={} mode={} tier={} aspect={} seconds={} refs={} price={} template={} optimization={}",
+                userId, job.getId(), v.mode(), v.tier(), v.aspectRatio(), v.seconds(), v.inputs().references().size(),
+                price, v.template() == null ? null : v.template().getId(), optimization == null ? null : optimization.getId());
+        return toJob(job);
+    }
+
+    private record PreparedSubmission(Validated validated, StudioPromptOptimization optimization, long price, ObjectNode body) {}
+
+    private PreparedSubmission prepareSubmission(String userId, VideoStudioJobRequest req) {
         Validated v = validate(userId, Draft.of(req));
         StudioPromptOptimization optimization = requireUsableOptimization(userId, req == null ? null : req.optimizationId());
 
@@ -470,19 +531,24 @@ public class VideoStudioService {
 
         ObjectNode body = om.createObjectNode();
         body.putArray("items").add(item);
-        List<JsonNode> created = videoJobs.submit(body, userId, MaterialVideoJobService.APP_VIDEO_STUDIO);
-        String jobId = created.isEmpty() ? null : created.get(0).path("id").asText(null);
-        MaterialVideoJob job = jobId == null ? null : jobRepo.findById(jobId).orElse(null);
-        if (job == null) {
-            throw new BusinessException(HttpStatus.INTERNAL_SERVER_ERROR, "VIDEO_STUDIO_SUBMIT_FAILED",
-                    "任务没有建起来，请稍后再试");
-        }
-        // 做同款成功建出任务才计数（同一事务：提交失败回滚时计数一起回滚）。
-        if (v.template() != null) templates.countUse(v.template().getId());
-        log.info("[video-studio] 已提交 user={} job={} mode={} tier={} aspect={} seconds={} refs={} price={} template={} optimization={}",
-                userId, job.getId(), v.mode(), v.tier(), v.aspectRatio(), v.seconds(), v.inputs().references().size(),
-                price, v.template() == null ? null : v.template().getId(), optimization == null ? null : optimization.getId());
-        return toJob(job);
+        return new PreparedSubmission(v, optimization, price, body);
+    }
+
+    @Transactional(readOnly = true)
+    public com.aistareco.aep.billing.service.ModelChargeService.Quote quote(String userId, VideoStudioJobRequest request, boolean freeOnly) {
+        var prepared = prepareSubmission(userId, request);
+        return videoJobs.quote(prepared.body(), userId, MaterialVideoJobService.APP_VIDEO_STUDIO, null, freeOnly);
+    }
+
+    private ObjectNode readPayload(MaterialVideoJob job) {
+        try { return (ObjectNode) om.readTree(job.getPayloadJson() == null ? "{}" : job.getPayloadJson()); }
+        catch (Exception invalid) { throw new IllegalStateException("Invalid persisted video payload", invalid); }
+    }
+
+    private static String digest(String value) {
+        try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
+        catch (java.security.NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 
     /**
@@ -783,6 +849,7 @@ public class VideoStudioService {
         Integer height = hasCanvasSnapshot ? Integer.valueOf(configuredHeight)
                 : legacyCanvas == null ? null : Integer.valueOf(legacyCanvas.height());
         String status = wireStatus(job.getStatus());
+        var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,List.of(job.getId()));
         return new VideoStudioJob(
                 job.getId(),
                 nz(mode),
@@ -802,11 +869,11 @@ public class VideoStudioService {
                 signUrl(job.getThumbnailUrl()),
                 "failed".equals(status)||"running".equals(status)?job.getErrorMessage():null,
                 "failed".equals(status)||"running".equals(status)?job.getErrorCode():null,
-                Math.max(0L, job.getCreditsHeld()),
+                billing==null?Math.max(0L,job.getCreditsHeld()):billing.displayedCost(),
                 textOrNull(vc, VC_ORIGINAL_PROMPT),
                 textOrNull(vc, VC_TEMPLATE_ID),
                 iso(job.getCreatedAt()),
-                iso(job.getCompletedAt()));
+                iso(job.getCompletedAt()),billing);
     }
 
     private List<VideoStudioJobInput> inputsOf(VideoGenSpec spec) {

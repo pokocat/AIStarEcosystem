@@ -94,7 +94,10 @@ public class EnterpriseCreditLotService {
     public static long remainingRecharge(CreditHold hold,long remaining) {
         if(remaining<=0)return 0;
         long nonRecharge=Math.addExact(hold.getFromGift(),hold.getFromLicense());
-        return remaining-BigInteger.valueOf(remaining).multiply(BigInteger.valueOf(nonRecharge)).divide(BigInteger.valueOf(hold.getAmount())).longValueExact();
+        // For scoped/discounted jobs hold.amount is the worker's base price; only wallet buckets have cash provenance.
+        long ordinary=Math.addExact(nonRecharge,hold.getFromRecharge());
+        if(ordinary<=0)throw conflict("企业普通积分冻结来源为空");
+        return remaining-BigInteger.valueOf(remaining).multiply(BigInteger.valueOf(nonRecharge)).divide(BigInteger.valueOf(ordinary)).longValueExact();
     }
     private EnterpriseCreditLot newLot(Wallet wallet,String orderId,Instant createdAt) {
         var lot=new EnterpriseCreditLot();lot.setId(UUID.randomUUID().toString());lot.setEnterpriseId(wallet.getEnterpriseId());

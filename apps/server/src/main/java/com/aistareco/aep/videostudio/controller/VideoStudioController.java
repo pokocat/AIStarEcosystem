@@ -85,6 +85,12 @@ public class VideoStudioController {
         return ApiResponse.of(uploads.upload(userId, file, mediaType, rule));
     }
 
+    @PostMapping("/quote")
+    public ApiResponse<com.aistareco.aep.billing.service.ModelChargeService.Quote> quote(Principal principal,
+            @RequestBody VideoStudioJobRequest request, @RequestParam(defaultValue = "false") boolean freeOnly) {
+        return ApiResponse.of(studio.quote(uid(principal), request, freeOnly));
+    }
+
     @PostMapping("/jobs")
     public ApiResponse<VideoStudioJob> submit(Principal principal, @RequestBody VideoStudioJobRequest request) {
         return ApiResponse.of(studio.submit(uid(principal), request));

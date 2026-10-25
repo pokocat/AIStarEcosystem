@@ -138,6 +138,9 @@ public class MaterialVideoModelClient {
         return props.getDefaultModel();
     }
 
+    /** Public billing/configuration identity follows the same identifier as the actual video request. */
+    public String billingModel(AiModelEndpoint endpoint) {return modelOf(endpoint);}
+
     /**
      * 提交/冻结积分前的时长策略收口（同一归一值供校验、报价、落库、供应商请求四处使用）：
      *   1) duration 必填且 &gt;0（400 VIDEO_DURATION_REQUIRED）——不同协议默认时长各异，
@@ -282,7 +285,7 @@ public class MaterialVideoModelClient {
 
     public Long resolveCreditCostOverride(String endpointId, int durationSec, String appCode) {
         AiModelInvocationService.ResolvedEndpoint resolved =
-                invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode).orElse(null);
+                invocation.resolveAcceptedEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode).orElse(null);
         if (resolved == null || resolved.candidate() == null
                 || resolved.candidate().getCreditCostOverride() == null) {
             return null;
@@ -652,7 +655,7 @@ public class MaterialVideoModelClient {
 
     private AiModelEndpoint pickEndpoint(String endpointId, String appCode) {
         if (endpointId != null && !endpointId.isBlank()) {
-            return invocation.resolveEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode)
+            return invocation.resolveAcceptedEndpoint(AiModelPurpose.VIDEO_GENERATION, endpointId, appCode)
                     .map(AiModelInvocationService.ResolvedEndpoint::endpoint)
                     .filter(p -> p.getBaseUrl() != null && !p.getBaseUrl().isBlank())
                     .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "ENDPOINT_NOT_ALLOWED",
@@ -689,9 +692,14 @@ public class MaterialVideoModelClient {
                 "这个视频模型已被提供方下架，不能再用它生成，请换一个模型");
     }
 
-    /** Resolve once before billing so queued enterprise jobs retain their exact approved model. */
-    public String resolvedEndpointId(String endpointId,String appCode) {
-        return requireEndpoint(endpointId,appCode).getId();
+    public record BillingRoute(String endpointId,String providerModel,boolean perSecondPrice,String baseUrl,String requestSpecJson) {}
+    public BillingRoute billingRoute(String endpointId,String appCode) {
+        AiModelEndpoint endpoint=requireEndpoint(endpointId,appCode);
+        var selected=invocation.resolveAcceptedEndpoint(AiModelPurpose.VIDEO_GENERATION,endpoint.getId(),appCode).orElse(null);
+        boolean perSecond=selected!=null&&selected.candidate()!=null&&selected.candidate().getCreditCostOverride()!=null
+                &&endpoint.getBillingMode()==AiModelBillingMode.PER_SECOND;
+        return new BillingRoute(endpoint.getId(),modelOf(endpoint),perSecond,endpoint.getBaseUrl(),
+                endpoint.getVideoRequestSpecJson()==null?"":endpoint.getVideoRequestSpecJson());
     }
 
     private AiModelEndpoint requireEndpoint(String endpointId, String appCode) {

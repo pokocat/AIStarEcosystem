@@ -1,0 +1,154 @@
+{
+  "environment": "isolated local H2 dev database",
+  "ordinaryWalletUnchanged": true,
+  "ordinaryWalletBefore": {
+    "id": "742526d1-6493-46e6-bb33-853692e3caf3",
+    "userId": "49a2655e-9d29-47fc-a18d-2fb643805bfa",
+    "accountType": "personal",
+    "totalBalance": 500,
+    "licenseBalance": 500,
+    "rechargeBalance": 0,
+    "giftBalance": 0,
+    "pendingBalance": 0,
+    "createdAt": "2026-10-18T07:27:00.265474Z",
+    "updatedAt": "2026-10-18T07:27:00.265474Z"
+  },
+  "ordinaryWalletAfter": {
+    "id": "742526d1-6493-46e6-bb33-853692e3caf3",
+    "userId": "49a2655e-9d29-47fc-a18d-2fb643805bfa",
+    "accountType": "personal",
+    "totalBalance": 500,
+    "licenseBalance": 500,
+    "rechargeBalance": 0,
+    "giftBalance": 0,
+    "pendingBalance": 0,
+    "createdAt": "2026-10-18T07:27:00.265474Z",
+    "updatedAt": "2026-10-18T07:27:00.265474Z"
+  },
+  "prices": [
+    {
+      "id": "719bc91a-075f-4498-89f8-6745426778b1",
+      "name": "验收图片标准价",
+      "target": {
+        "appCode": "aiavatar",
+        "action": "image",
+        "endpointId": "ai-76da2928-81f",
+        "providerModel": "local-image-test",
+        "specKey": "1024x1024",
+        "unit": "image"
+      },
+      "unitPrice": 10.0,
+      "active": true,
+      "version": 0,
+      "updatedAt": "2026-10-25T07:28:44.128450Z"
+    }
+  ],
+  "discounts": [
+    {
+      "id": "e56a38e3-73b0-4889-b0c9-3e2cf19461e0",
+      "name": "验收八折",
+      "target": {
+        "appCode": "aiavatar",
+        "action": "image",
+        "endpointId": "ai-76da2928-81f",
+        "providerModel": "local-image-test",
+        "specKey": "1024x1024",
+        "unit": "image"
+      },
+      "audience": "all",
+      "factor": 0.8,
+      "allowGrants": true,
+      "startsAt": "2026-10-25T07:32:00Z",
+      "expiresAt": "2026-11-24T07:32:00Z",
+      "active": true,
+      "version": 0,
+      "updatedAt": "2026-10-25T07:32:40.038855Z",
+      "audienceLabel": "所有客户"
+    }
+  ],
+  "campaigns": [
+    {
+      "id": "d32cf982-77d8-48bc-bdf1-c82cc0f4492d",
+      "name": "验收图片体验",
+      "targets": [
+        {
+          "appCode": "aiavatar",
+          "action": "image",
+          "endpointId": "ai-76da2928-81f",
+          "providerModel": "local-image-test",
+          "specKey": "1024x1024",
+          "unit": "image"
+        }
+      ],
+      "totalIssueLimit": 10000,
+      "perWalletIssueLimit": 1000,
+      "resourceLimit": 100.0,
+      "perWalletDailyResourceLimit": 10.0,
+      "maxConcurrentPerWallet": 1,
+      "startsAt": "2026-10-25T07:32:00Z",
+      "expiresAt": "2026-11-24T07:32:00Z",
+      "active": true,
+      "version": 2,
+      "issued": 125,
+      "resourceReserved": 0.0,
+      "resourceUsed": 0.0,
+      "updatedAt": "2026-10-25T07:37:50.291274Z"
+    }
+  ],
+  "grants": [
+    {
+      "id": "c1385d9a-be37-4505-a7e5-06cbcdfd6bfd",
+      "walletId": "742526d1-6493-46e6-bb33-853692e3caf3",
+      "campaignId": "d32cf982-77d8-48bc-bdf1-c82cc0f4492d",
+      "campaignName": "验收图片体验",
+      "targets": [
+        {
+          "appCode": "aiavatar",
+          "action": "image",
+          "endpointId": "ai-76da2928-81f",
+          "providerModel": "local-image-test",
+          "specKey": "1024x1024",
+          "unit": "image"
+        }
+      ],
+      "targetLabels": [
+        "验收图片模型 · 1024x1024"
+      ],
+      "campaignActive": true,
+      "amount": 100,
+      "available": 100,
+      "frozen": 0,
+      "spent": 0,
+      "expired": 0,
+      "expiresAt": "2026-11-24T07:32:00Z",
+      "createdAt": "2026-10-25T07:34:41.070259Z"
+    },
+    {
+      "id": "cad69380-5ec7-4066-b57e-884eacad02d1",
+      "walletId": "742526d1-6493-46e6-bb33-853692e3caf3",
+      "campaignId": "d32cf982-77d8-48bc-bdf1-c82cc0f4492d",
+      "campaignName": "验收图片体验",
+      "targets": [
+        {
+          "appCode": "aiavatar",
+          "action": "image",
+          "endpointId": "ai-76da2928-81f",
+          "providerModel": "local-image-test",
+          "specKey": "1024x1024",
+          "unit": "image"
+        }
+      ],
+      "targetLabels": [
+        "验收图片模型 · 1024x1024"
+      ],
+      "campaignActive": true,
+      "amount": 25,
+      "available": 25,
+      "frozen": 0,
+      "spent": 0,
+      "expired": 0,
+      "expiresAt": "2026-11-24T07:32:00Z",
+      "createdAt": "2026-10-25T07:37:50.291274Z"
+    }
+  ]
+}

@@ -64,7 +64,7 @@ class StudioWorkflowWorkerSkillTest {
         assertSame(evidence,failure.getValue().getSuppressed()[0]);
         assertTrue(evidence.responseBody().contains("invalid JSON"));
         verify(h.credits()).releaseHold(anyString(),eq("r"),anyString());
-        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+        verify(h.credits(),never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void checkRunSamplesTheRecordedTimesKeepsUnknownAndSettlesRealTokens() throws Exception {
@@ -91,7 +91,7 @@ class StudioWorkflowWorkerSkillTest {
         String sent=messages.getValue().toString();
         assertTrue(sent.contains("时间 3.00 秒")&&sent.contains("时间 7.00 秒"),"the model sees exactly the recorded sample times");
         long expected=rate.settle(1000L,1000L);
-        verify(h.credits()).commitHold(anyString(),eq("r"),eq(expected),anyString());
+        verify(h.credits()).commitHold(anyString(),eq("r"),eq(expected),anyString(), org.mockito.ArgumentMatchers.any());
         assertEquals(List.of("check.result@t/m"),events);
     }
 

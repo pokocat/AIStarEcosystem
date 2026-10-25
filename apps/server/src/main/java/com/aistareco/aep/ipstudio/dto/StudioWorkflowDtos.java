@@ -16,7 +16,16 @@ public final class StudioWorkflowDtos {
                              String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
                              String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
                              RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
+                             EditTimeline edit,com.aistareco.aep.billing.service.ModelBillingApproval modelBilling) {
+        public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
+                             List<Reference> references, String model, String size, Integer durationSec,
+                             String aspectRatio, Integer count, ScriptSettings settings, Integer episodeNo,
+                             String mode, List<String> contextNodeIds, List<Turn> history, Long maxCost, Packaging packaging, VideoSettings video, Boolean readVisuals, ScriptEdit scriptEdit, TextEdit textEdit, com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billing,
+                             RecreationSettings recreation, CheckSettings check, String skillKey, Integer skillVersion, String stage, String executionId, DialogueBinding dialogue,
                              EditTimeline edit) {
+            this(clientRequestId,nodeId,operation,prompt,references,model,size,durationSec,aspectRatio,count,settings,episodeNo,mode,contextNodeIds,history,maxCost,packaging,video,readVisuals,scriptEdit,textEdit,billing,recreation,check,skillKey,skillVersion,stage,executionId,dialogue,edit,null);
+        }
+
         /** 29-arg shape before 成片高级编辑 (2026-10-19). */
         public RunRequest(String clientRequestId, String nodeId, String operation, String prompt,
                           List<Reference> references, String model, String size, Integer durationSec,

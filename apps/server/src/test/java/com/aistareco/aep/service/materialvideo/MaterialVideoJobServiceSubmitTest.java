@@ -48,6 +48,8 @@ class MaterialVideoJobServiceSubmitTest {
         creditService = mock(CreditService.class);
         invocation = mock(AiModelInvocationService.class);
         actionPricing = mock(CelebrityActionPricingService.class);
+        when(modelClient.billingRoute(any(),any())).thenAnswer(i->new MaterialVideoModelClient.BillingRoute(i.getArgument(0)==null?"ep":i.getArgument(0),"video-test",true,"https://provider.invalid",""));
+        when(modelClient.resolveCreditCostOverride(any(),anyInt(),any())).thenReturn(30L);
         CdnUrlSigner signer = mock(CdnUrlSigner.class);
         svc = new MaterialVideoJobService(jobRepo, modelClient, mock(MaterialVideoWorker.class),
                 creditService, actionPricing, mock(ProductService.class), invocation, om, signer);
@@ -64,9 +66,9 @@ class MaterialVideoJobServiceSubmitTest {
     @Test
     void batch_with_invalid_item_holds_nothing_and_saves_nothing() {
         // 第 2 个 item 时长非法（modelClient 校验抛 400）——第 1 个合法 item 也不得先 hold。
-        doNothing().when(modelClient).validateRequest(isNull(), eq(10),eq("celebrity"));
+        doNothing().when(modelClient).validateRequest(eq("ep"), eq(10),eq("celebrity"));
         doThrow(new BusinessException(org.springframework.http.HttpStatus.BAD_REQUEST,
-                "VIDEO_DURATION_UNSUPPORTED", "超限")).when(modelClient).validateRequest(isNull(), eq(40),eq("celebrity"));
+                "VIDEO_DURATION_UNSUPPORTED", "超限")).when(modelClient).validateRequest(eq("ep"), eq(40),eq("celebrity"));
 
         BusinessException e = assertThrows(BusinessException.class, () -> svc.submit(body("""
             {"items":[
@@ -74,14 +76,14 @@ class MaterialVideoJobServiceSubmitTest {
               {"script_id":"s1","name":"v2","duration_sec":40}
             ]}"""), "user-1", MaterialVideoJobService.APP_CELEBRITY));
         assertEquals("VIDEO_DURATION_UNSUPPORTED", e.getCode());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         verify(jobRepo, never()).save(any());
     }
 
     @Test
     void per_second_quote_equals_credits_held() {
         doNothing().when(modelClient).validateRequest(any(), anyInt(),eq("celebrity"));
-        when(modelClient.resolveCreditCostOverride(isNull(), eq(15),eq("celebrity"))).thenReturn(600L); // 40/s × 15s
+        when(modelClient.resolveCreditCostOverride(eq("ep"), eq(15),eq("celebrity"))).thenReturn(600L); // 40/s × 15s
         when(jobRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         List<com.fasterxml.jackson.databind.JsonNode> cards = svc.submit(body("""
@@ -89,18 +91,18 @@ class MaterialVideoJobServiceSubmitTest {
                 "user-1", MaterialVideoJobService.APP_CELEBRITY);
 
         assertEquals(1, cards.size());
-        verify(creditService).hold(eq("user-1"), eq(600L), eq("material_video_job"), any(), any());
+        verify(creditService).hold(eq("user-1"), eq(600L), eq("material_video_job"), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         ArgumentCaptor<MaterialVideoJob> saved = ArgumentCaptor.forClass(MaterialVideoJob.class);
         verify(jobRepo).save(saved.capture());
         assertEquals(600L, saved.getValue().getCreditsHeld());
     }
     @Test void studioApprovalIsACeilingAndNeverOverridesTheNativePrice() {
-        when(modelClient.resolveCreditCostOverride(isNull(),eq(5),eq("studio"))).thenReturn(40L);
+        when(modelClient.resolveCreditCostOverride(eq("ep"),eq(5),eq("studio"))).thenReturn(40L);
         BusinessException e=assertThrows(BusinessException.class,()->svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":30}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO));
         assertEquals("STUDIO_PRICE_CHANGED",e.getCode());verifyNoInteractions(creditService,jobRepo);
         when(jobRepo.save(any())).thenAnswer(inv->inv.getArgument(0));
         svc.submit(body("{\"items\":[{\"duration_sec\":5,\"max_credit_cost\":50}]}"),"user-1",MaterialVideoJobService.APP_IPSTUDIO);
-        verify(creditService).hold(eq("user-1"),eq(40L),eq("material_video_job"),any(),any());
+        verify(creditService).hold(eq("user-1"),eq(40L),eq("material_video_job"),any(),any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test

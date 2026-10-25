@@ -32,7 +32,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @ActiveProfiles("dev")
 @TestPropertySource(properties = {
-        "spring.datasource.url=jdbc:h2:mem:route-table;MODE=MySQL;DB_CLOSE_DELAY=-1",
+        "spring.datasource.url=jdbc:h2:mem:route-table;MODE=MySQL;DB_CLOSE_DELAY=-1;NON_KEYWORDS=CAST",
         "spring.jpa.hibernate.ddl-auto=update",
         "aep.seed.dev-data.enabled=false",
         "aep.cdn.driver=local"

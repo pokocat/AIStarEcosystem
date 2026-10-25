@@ -350,7 +350,7 @@ public class CelebrityZoneService {
                     "celebrity_generation",
                     jobId,
                     "AI 明星视频生成 · " + engine + (templateId.isBlank() ? "" : " · " + templateId)
-            );
+            , com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         }
 
         int estimatedMinutes = switch (engine) {
@@ -434,7 +434,7 @@ public class CelebrityZoneService {
                             jobId,
                             s.getCreditCost(),
                             "AI 明星视频生成完成 · " + s.getEngine()
-                    );
+                    , null);
                 } catch (Exception ce) {
                     // commitHold failed after winning the CAS — reset committed flag so the next
                     // progress poll can retry, preventing credits from being frozen forever.

@@ -1248,3 +1248,19 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **`ProposePlanTool`**：`planningSkill` 不再看执行锁；校验前若方案操作不全在当前方法起始阶段 → `coveringSkill`（路由结果优先，其次目录顺序第一个能覆盖的）→ `bindSkill` 切换后再校验；失败的工作记录码 `STUDIO_PLAN_NOT_READY`、文案「这份方案还没准备好，我会按你要做的内容重新整理。」，原因只进日志与模型侧结果。
 - **用户可见文案**：`StudioDialogueTurnWorker.toolFailure`（`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE`）、`StudioPlanExecutionService` 计划校验、`StudioPlanExecutionBridge.authorizeChild`、`StudioPlanSteps`、`StudioWorkflowWorker.skillPlan` 均改为人话 + `internalDetail`；前端 `userFacingError`（`studio-errors.tsx`）兜底旧记录。
 
+
+## 模型接入点赠款与折扣（本地完成，未发布）
+
+真源：[设计与当前状态](../../docs/model-billing-design.md)。适用资格只按 `ai_model_providers.id` 判断；应用、动作、规格、模型名和计量单位仅保留在任务快照，不能限制同一接入点的赠款。售价沿用现有服务端价格，命中多条折扣取最优惠一条，折后依次扣赠款与普通积分。企业折扣按 enterpriseId 覆盖全部成员的企业消费钱包，个人钱包独立。
+
+新领域 `aep.billing` 统一报价、冻结、结算、释放、到期与流水。`ModelChargeContext.forCredits` 接收已经按现有价格折算好的积分费用；原有按张、秒和 Token 的计量流程继续使用同一服务。V66 建立折扣、活动、赠款、冻结与成交快照；V67 扩展赠款审批；V68 增加 `aep_model_charges.parent_hold_id`，使追加冻结沿用原折扣且整笔只取整一次。历史 `aep_model_prices` 不参与售价查询，其写入口拒绝另造价格源；新赠款活动不预占供应商资源。原钱包 gift/license/recharge/pending 不混入赠款，企业充值来源保持不变。
+
+后台 `/admin/model-billing/{targets|user-options|wallet-options|enterprise-options|discounts|campaigns|grants}` 提供目录、分页查询与管理，发放走 `/admin/finance/adjustments/scoped-grant` 与现有审批。个人优惠不要求钱包已建立。`/me/model-credits` 只返回当前本人个人或企业成员钱包的额度。
+
+Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio-image-quote}`、`POST .../nodes/{nodeId}/image-quote`；视频生成区为 `POST /api/me/celebrity/video-studio/quote`。报价复用既有价格；确认绑定付款账户、实际接入点、用量、费用决定和普通积分上限；额度被其他任务使用时不得静默加扣。任务按受理时快照结算，失败原路释放，过期赠款不会因释放恢复。通用视频的已释放原冻结仍不能用新优惠自动补扣，返回 `VIDEO_MODEL_RECOVERY_REQUIRES_REVIEW`。
+
+数字人组合任务按用户确认拆成文本和媒体两笔：`DapModelBilling` 使用现有 Token 价与媒体生成价，分别冻结，实际调用固定受理时接入点；文本实际用量与媒体成功各自结算。媒体失败不抹去已完成文本费用。两笔冻结和作业受理同事务，重试使用新的尝试编号，结算回调幂等。月度用量从 SPEND/SCOPED_SPEND 流水取实际消费。无需新增表或新的价格源。
+
+当前代码与定向回归证据均在设计稿中；此前分规格和供应商资源方案已归档，不作为交付要求。
+
+评审后修正：企业报价用 `EnterpriseBillingAuthorizationRepository.activeForActorWithoutLock`（只读事务不能加锁）；`ScopedCreditService.reserve` 只锁 `findSpendable` 里适用的赠款行，带资源计数的活动经 `CreditCampaignRepository.meteredIds` 先锁再读；`ModelBillingConfigService` 拒绝修改已发放活动的适用接入点（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；视频对账恢复只在 `ModelChargeService.usedPromotion` 为真时要求人工复核；赠款全额抵扣时不写零金额 FREEZE / SPEND / UNFREEZE。

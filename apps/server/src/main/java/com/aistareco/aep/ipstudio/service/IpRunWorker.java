@@ -224,7 +224,7 @@ public class IpRunWorker {
         // 先扣款，再落产物（顺序见类注释）；单价只认 hold 时的快照
         atomic(()->{
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-            if (unit > 0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 人物特征卡抽取");
+            if (unit > 0) credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 人物特征卡抽取", null);
             ObjectNode out=om.createObjectNode();
             if(text!=null)out.put("text",text);if(promptEn!=null)out.put("promptEn",promptEn);
             run.setOutputJson(write(out));run.setCost(unit);finishAtomically(run);
@@ -297,6 +297,7 @@ public class IpRunWorker {
                             checkpoint,state->nativeCheckpoint(run,current,state));
                 } else {
                     if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),endpointId);
+                    credits.markModelDispatched(IpRunService.REF_TYPE,run.getId());
                     bytes=multimodal.generateImage(prompt,size,refs.isEmpty()?null:refs,endpointId,"studio");
                 }
                 requireDecodableImage(bytes);
@@ -315,7 +316,8 @@ public class IpRunWorker {
                 final int candidateNo=i+1;
                 atomic(()->{
                 if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,run.getId());
-                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张");
+                if(unit>0)credits.commitHold(IpRunService.REF_TYPE,run.getId(),unit,"IP 形象出图 · 第 "+candidateNo+" 张",
+                        new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.valueOf(candidateNo),null));
                 // commit 成功之后才承认这张图。
                 // 带上宽高：画布拿它算节点尺寸 —— 不给的话只能按上限铺成正方形，
                 // 竖图会被撑成方框（「框很大图很小」）。文件头里就有，不用整图解码。
@@ -380,6 +382,8 @@ public class IpRunWorker {
                 if(state.path("submitAttempted").asBoolean()&&!before.path("imageJobs").path(index).path("submitAttempted").asBoolean())
                     enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),before.path("endpointId").asText(null));
             }
+            // Acquire wallet/hold before the job row, matching settlement and enterprise cancellation.
+            if(state.path("submitAttempted").asBoolean())credits.markModelDispatched(IpRunService.REF_TYPE,run.getId());
             var fresh=runRepo.lockById(run.getId()).orElseThrow();
             if(!IpRun.STATUS_RUNNING.equals(fresh.getStatus()))throw new IllegalStateException("Image run is terminal");
             if(fresh.isCancelRequested()&&!hasNativeSubmission(fresh))throw com.aistareco.common.BusinessException.badRequest("IP_RUN_CANCELLED","已停止生成");

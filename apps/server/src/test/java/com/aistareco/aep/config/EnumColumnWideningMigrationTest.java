@@ -11,6 +11,8 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /**
  * 守门 {@link EnumColumnWideningMigration}：
@@ -36,11 +38,23 @@ class EnumColumnWideningMigrationTest {
                 "admin_users.role 迁移枚举值与 AdminUser.AdminRole 漂移：加了 enum 值要同步 EnumColumnWideningMigration");
     }
 
+    /** V66 把流水类型改成 VARCHAR；启动时再按旧清单改回 ENUM 会让第一笔模型赠款入账失败（2026-10-25 MySQL 全流程复现）。 */
     @Test
-    void entryTypeMigrationMatchesEntityEnumExactly() {
-        List<String> entity = Arrays.stream(LedgerEntry.LedgerEntryType.values()).map(Enum::name).toList();
-        assertEquals(entity, targetValuesFor("aep_ledger_entries"),
-                "aep_ledger_entries.entry_type 迁移枚举值与 LedgerEntry.LedgerEntryType 漂移：加了 enum 值要同步 EnumColumnWideningMigration");
+    void ledgerEntryTypeIsVarcharAndNeverNarrowedBackToAnEnum() throws Exception {
+        assertTrue(EnumColumnWideningMigration.migrations().stream().noneMatch(c -> c.table().equals("aep_ledger_entries")),
+                "aep_ledger_entries.entry_type 已是 VARCHAR，不能再放进启动加宽清单");
+        var mapping = LedgerEntry.class.getDeclaredField("entryType").getAnnotation(org.hibernate.annotations.JdbcTypeCode.class);
+        assertNotNull(mapping, "LedgerEntry.entryType 必须保持 @JdbcTypeCode(VARCHAR)，否则 MySQL 建表会生成缺值的原生 ENUM");
+        assertEquals(org.hibernate.type.SqlTypes.VARCHAR, mapping.value());
+    }
+
+    @Test
+    void onlyEnumColumnsMissingValuesAreWidened() {
+        var values = List.of("SUPER_ADMIN", "OPERATOR", "FINANCE_ADMIN");
+        assertTrue(EnumColumnWideningMigration.shouldWiden("enum('SUPER_ADMIN','OPERATOR')", values));
+        assertFalse(EnumColumnWideningMigration.shouldWiden("enum('SUPER_ADMIN','OPERATOR','FINANCE_ADMIN')", values));
+        assertFalse(EnumColumnWideningMigration.shouldWiden("varchar(255)", values), "VARCHAR 列不能被改回 ENUM");
+        assertFalse(EnumColumnWideningMigration.shouldWiden(null, values));
     }
 
     @Test

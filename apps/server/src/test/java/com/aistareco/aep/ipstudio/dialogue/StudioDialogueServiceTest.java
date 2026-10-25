@@ -291,7 +291,7 @@ class StudioDialogueServiceTest {
      * execution is paid by the execution's fixed payer but not registered in its stage budget.
      */
     @Test void aBoundTurnIsNotCountedInTheStageBudget() {
-        var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
+        var endpoint = AiModelEndpoint.builder().id("ep-1").model("qwen").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
@@ -345,7 +345,7 @@ class StudioDialogueServiceTest {
 
     @Test void aModelChoiceIsIgnoredWhereTheSceneIsFixed() {
         var scenes = mock(AiAppSceneModelPolicyService.class);
-        var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
+        var endpoint = AiModelEndpoint.builder().id("ep-1").model("qwen").name("对话").enabled(true).build();
         when(scenes.mode("studio", "script")).thenReturn("fixed");
         when(scenes.resolve(eq("studio"), eq("script"), isNull(), anyLong()))
                 .thenReturn(new AiAppSceneModelPolicyService.Selection(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true), 2, "per_call"));
@@ -360,14 +360,14 @@ class StudioDialogueServiceTest {
 
     /** §8: the token price is required; the client's maxCost is not, and an old or low one no longer refuses (409). */
     @Test void realTurnNeedsATokenPriceButNotTheClientsCeiling() throws Exception {
-        var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
+        var endpoint = AiModelEndpoint.builder().id("ep-1").model("qwen").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
                 .thenReturn(new PromptService.ResolvedPrompt("系统", "{{input}}", new PromptParamsDto(null, null, null), "resource"));
         var noPrice = assertThrows(BusinessException.class, () -> service.post("u1", "P1", "IPT-P1", request("c-5", "你好", 50L)));
         assertEquals("AI_TOKEN_PRICE_NOT_CONFIGURED", noPrice.getCode());
-        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        verify(credits, never()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
 
         var pricing = mock(AiChatTokenPricing.class);
         var rate = new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000); // maxCost = 14
@@ -375,7 +375,7 @@ class StudioDialogueServiceTest {
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var ok = service.post("u1", "P1", "IPT-P1", request("c-6", "你好", null));
         assertEquals("accepted", ok.queueState(), "no client ceiling: accepted, not STUDIO_PRICE_CHANGED");
-        verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString());
+        verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         var run = ArgumentCaptor.forClass(IpRun.class);
         verify(runs).save(run.capture());
         assertEquals(14L, run.getValue().getCost());
@@ -394,7 +394,7 @@ class StudioDialogueServiceTest {
     }
 
     @Test void aLowClientCeilingNoLongerRefusesTheTurn() {
-        var endpoint = AiModelEndpoint.builder().id("ep-1").name("对话").enabled(true).build();
+        var endpoint = AiModelEndpoint.builder().id("ep-1").model("qwen").name("对话").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA), isNull(), eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
@@ -403,7 +403,7 @@ class StudioDialogueServiceTest {
         when(pricing.find("ep-1")).thenReturn(new AiChatTokenPricing.Rate(BigDecimal.ONE, BigDecimal.valueOf(2), 10_000, 2_000));
         ReflectionTestUtils.setField(service, "tokenPricing", pricing);
         var ok = service.post("u1", "P1", "IPT-P1", request("c-7", "你好", 0L));
-        verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString());
+        verify(credits).hold(eq("u1"), eq(14L), eq(IpRunService.REF_TYPE), eq(ok.runId()), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     /**
@@ -411,7 +411,7 @@ class StudioDialogueServiceTest {
      * dialogue budget: with a balance of 21 it is 21. The snapshot keeps the unit prices; more is added while the turn works.
      */
     @Test void theHoldFollowsTheBalanceNotTheClientsNumber() throws Exception {
-        var endpoint=AiModelEndpoint.builder().id("ep-1").enabled(true).build();
+        var endpoint=AiModelEndpoint.builder().id("ep-1").model("qwen").enabled(true).build();
         when(models.resolveAcceptedEndpoint(eq(AiModelPurpose.DAP_PERSONA),isNull(),eq("studio")))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
         when(prompts.resolve(PromptService.KEY_DAP_IP_STUDIO_SKILL_DIALOGUE))
@@ -422,6 +422,7 @@ class StudioDialogueServiceTest {
         ReflectionTestUtils.setField(service,"tokenPricing",pricing);
         var wallet=new com.aistareco.aep.model.Wallet();wallet.setTotalBalance(21);
         when(credits.getOrCreateWallet("u1")).thenReturn(wallet);
+        when(credits.availableModelCredits(eq(wallet), any())).thenReturn(21L);
         var accepted=service.post("u1","P1","IPT-P1",request("old-page","继续",5L));
         var captor=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(captor.capture());
         var run=captor.getValue();assertTrue(run.getCost()>0&&run.getCost()<=21,"capped by the balance, not by the page's 5");
@@ -433,7 +434,7 @@ class StudioDialogueServiceTest {
         assertEquals(current.maxCost(),exec.path("holdIncrement").asLong());
         assertFalse(exec.has("dialogueRate"));
         verify(pricing,never()).findDialogue(anyString());
-        verify(credits).hold(eq("u1"),eq(run.getCost()),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString());
+        verify(credits).hold(eq("u1"),eq(run.getCost()),eq(IpRunService.REF_TYPE),eq(accepted.runId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals(accepted.runId(),service.post("u1","P1","IPT-P1",request("old-page","继续",5L)).runId());
         verify(runs,times(1)).save(any());
         var budget=DialogueLoop.TurnBudget.metered(snapshot,21,4096,java.time.Clock.systemUTC(),null,need->0);

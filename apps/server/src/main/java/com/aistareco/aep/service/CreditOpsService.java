@@ -9,6 +9,8 @@ import com.aistareco.aep.model.LedgerEntry;
 import com.aistareco.aep.repository.CreditAdjustmentRequestRepository;
 import com.aistareco.aep.repository.AdminUserRepository;
 import com.aistareco.aep.repository.LedgerEntryRepository;
+import com.aistareco.aep.billing.service.ScopedCreditService;
+import com.aistareco.aep.billing.service.ModelBillingMath;
 import com.aistareco.common.BusinessException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,15 +28,14 @@ import java.util.UUID;
 /**
  * 运营调差 / 赠送（v2 §5 / §9 积分面 lane）+ maker-checker（§9.2）。
  *
- * 两个动作都只往 {@code giftBalance} 加正积分（经 {@link CreditService#creditAccount} 的 GIFT 分支），
- * 物理上够不到资金面 —— 即「调差 / 赠送不碰真实资金」的结构性保证。
+ * 普通补偿/赠送进入 {@code giftBalance}；模型赠款单独进入 CreditGrant，均不改充值余额。
  *
  * maker-checker：小额（≤ 阈值 {@code aep.credit.adjust.threshold-credits}，默认 5000）由 OPERATOR 单人
  * 直接发放；大额（&gt; 阈值）先落 PENDING_APPROVAL 审批单（**不入账**），需第二个不同身份的
  * FINANCE_ADMIN / SUPER_ADMIN 复核后才入账。当前有效 SUPER_ADMIN 可直接发放，并可批准本人历史待审单；
  * 其他角色仍校验 maker != checker。原因、日限额、GIFT 桶与审计保持一致。
  *
- * 后续（非本阶段）：批量 campaign 幂等 + 独立 AdminAuditLog。
+ * 模型赠款的请求编号同时覆盖待审批和直发重试；全量审批单记录发起、复核及账本来源。
  */
 @Service
 public class CreditOpsService {
@@ -52,6 +53,7 @@ public class CreditOpsService {
     private final CreditAdjustmentRequestRepository requestRepo;
     private final LedgerEntryRepository ledgerRepo;
     private final AdminUserRepository admins;
+    private final ScopedCreditService scopedCredits;
     private final long threshold;
     private final long actorDailyLimit;
 
@@ -59,12 +61,14 @@ public class CreditOpsService {
                             CreditAdjustmentRequestRepository requestRepo,
                             LedgerEntryRepository ledgerRepo,
                             AdminUserRepository admins,
+                            ScopedCreditService scopedCredits,
                             @Value("${aep.credit.adjust.threshold-credits:5000}") long threshold,
                             @Value("${aep.credit.adjust.actor-daily-limit-credits:50000}") long actorDailyLimit) {
         this.creditService = creditService;
         this.requestRepo = requestRepo;
         this.ledgerRepo = ledgerRepo;
         this.admins = admins;
+        this.scopedCredits = scopedCredits;
         this.threshold = threshold;
         this.actorDailyLimit = actorDailyLimit;
     }
@@ -113,6 +117,49 @@ public class CreditOpsService {
 
     // ── 复核（checker：FINANCE_ADMIN / SUPER_ADMIN，controller @PreAuthorize 门禁） ──
 
+    /** Restricted grants share approval/day limits but never enter the ordinary gift bucket. */
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
+    public CreditAdjustmentRequestDto grantScoped(String walletId,String campaignId,long amount,Instant expiresAt,
+                                                  String clientRequestId,String reason,String operatorId) {
+        String actor=requireText(operatorId,"ACTOR_REQUIRED","请登录后台后操作");
+        String wallet=requireBounded(walletId,255,"请选择消费账户");
+        String campaign=requireBounded(campaignId,64,"请选择赠款活动");
+        String request=requireBounded(clientRequestId,128,"请提供发放请求编号");
+        String why=requireBounded(reason,512,"请填写赠送原因");
+        if(amount<=0 || amount>ModelBillingMath.MAX_CREDITS || expiresAt==null)
+            throw BusinessException.badRequest("SCOPED_GRANT_INVALID","请填写有效的赠送额度和有效期");
+        Instant expiry=expiresAt.truncatedTo(ChronoUnit.MICROS);
+        var staff=admins.lockById(actor).orElseThrow(()->new BusinessException(HttpStatus.FORBIDDEN,"ADMIN_INACTIVE","管理员不可用"));
+        if(staff.getStatus()!=AdminUser.AdminStatus.ACTIVE)
+            throw new BusinessException(HttpStatus.FORBIDDEN,"ADMIN_INACTIVE","管理员不可用");
+        // Actor-scoped deterministic key protects both direct issuance and pending requests on retry.
+        String id="csg-"+UUID.nameUUIDFromBytes((actor.length()+":"+actor+request).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        var existing=requestRepo.lockById(id).orElse(null);
+        if(existing!=null) {
+            if(existing.getType()!=CreditAdjustmentRequest.Type.SCOPED_GRANT
+                    || !wallet.equals(existing.getWalletId()) || !campaign.equals(existing.getCampaignId())
+                    || amount!=existing.getAmount() || !expiry.equals(existing.getExpiresAt())
+                    || !why.equals(existing.getReason()) || !actor.equals(existing.getMakerId()))
+                throw new BusinessException(HttpStatus.CONFLICT,"SCOPED_GRANT_REPLAY_MISMATCH","这次发放编号已用于其他内容");
+            return CreditAdjustmentRequestDto.from(existing);
+        }
+        enforceActorDailyLimit(actor,amount);
+        var destination=scopedCredits.validateGrant(wallet,campaign,amount,expiry);
+        boolean directSuperAdmin=staff.getRole()==AdminUser.AdminRole.SUPER_ADMIN;
+        var row=CreditAdjustmentRequest.builder().id(id).type(CreditAdjustmentRequest.Type.SCOPED_GRANT)
+                .targetUserId("personal".equals(destination.getAccountType())?destination.getUserId():destination.getMemberUserId())
+                .walletId(wallet).campaignId(campaign).amount(amount).expiresAt(expiry).reason(why)
+                .makerId(actor).createdAt(Instant.now()).status(CreditAdjustmentRequest.Status.PENDING_APPROVAL).build();
+        requestRepo.save(row);
+        if(amount<=threshold || directSuperAdmin) {
+            doScopedGrant(row,actor);
+            row.setStatus(CreditAdjustmentRequest.Status.APPROVED);row.setDecidedAt(Instant.now());
+            row.setDecideNote(directSuperAdmin?"超管直接发放，无需独立复核":"小额直发（≤阈值），单人即时");
+            requestRepo.save(row);
+        }
+        return CreditAdjustmentRequestDto.from(row);
+    }
+
     public List<CreditAdjustmentRequestDto> listRequests(String status) {
         List<CreditAdjustmentRequest> rows;
         if (status != null && !status.isBlank() && !"all".equalsIgnoreCase(status)) {
@@ -130,7 +177,7 @@ public class CreditOpsService {
     }
 
     /** 批准：仅当前有效超管可自批；锁原单，避免并发批准重复入账。 */
-    @Transactional
+    @Transactional(isolation=org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public CreditAdjustmentRequestDto approve(String requestId, String checkerId) {
         CreditAdjustmentRequest req = requirePending(requestId);
         boolean superAdmin = isActiveSuperAdmin(checkerId);
@@ -138,17 +185,21 @@ public class CreditOpsService {
             throw new BusinessException(HttpStatus.FORBIDDEN, "MAKER_CHECKER_SAME", "复核人不能是发起人");
         }
         String actor = (superAdmin ? "超管批准入账" : "审批通过") + " · 复核 " + nz(checkerId) + " · 发起 " + nz(req.getMakerId());
-        LedgerEntryDto e = req.getType() == CreditAdjustmentRequest.Type.COMPENSATE
-                ? doCompensate(req.getTargetUserId(), req.getAmount(), req.getIncidentRef(), req.getReason(), actor)
-                : doGrant(req.getTargetUserId(), req.getAmount(), req.getCampaignId(), req.getReason(), actor);
+        if(req.getType()==CreditAdjustmentRequest.Type.SCOPED_GRANT) {
+            doScopedGrant(req,checkerId);
+        } else {
+            LedgerEntryDto e = req.getType() == CreditAdjustmentRequest.Type.COMPENSATE
+                    ? doCompensate(req.getTargetUserId(), req.getAmount(), req.getIncidentRef(), req.getReason(), actor)
+                    : doGrant(req.getTargetUserId(), req.getAmount(), req.getCampaignId(), req.getReason(), actor);
+            req.setLedgerEntryId(e.id());
+        }
         req.setStatus(CreditAdjustmentRequest.Status.APPROVED);
         req.setCheckerId(checkerId);
-        req.setLedgerEntryId(e.id());
         if (superAdmin) req.setDecideNote("超管批准入账（允许本人发起）");
         req.setDecidedAt(Instant.now());
         requestRepo.save(req);
         log.info("[credit-ops] approved request={} maker={} checker={} ledger={}",
-                requestId, req.getMakerId(), checkerId, e.id());
+                requestId, req.getMakerId(), checkerId, req.getLedgerEntryId());
         return CreditAdjustmentRequestDto.from(req);
     }
 
@@ -176,8 +227,11 @@ public class CreditOpsService {
             return;
         }
         Instant since = Instant.now().minus(24, ChronoUnit.HOURS);
-        long already = requestRepo.sumAmountByMakerSince(operatorId, since, DAILY_COUNTED);
-        if (already + amount > actorDailyLimit) {
+        // Serialize requests by maker; use a locking current read under MySQL REPEATABLE READ.
+        admins.lockById(operatorId);
+        long already = requestRepo.lockByMakerSince(operatorId, since, DAILY_COUNTED).stream()
+                .mapToLong(CreditAdjustmentRequest::getAmount).reduce(0,Math::addExact);
+        if (amount > actorDailyLimit || already > actorDailyLimit - amount) {
             throw new BusinessException(HttpStatus.TOO_MANY_REQUESTS, "ACTOR_DAILY_LIMIT",
                     "超出本人单日调差/赠送上限（近 24h 已 " + already + " + 本次 " + amount
                             + " > 上限 " + actorDailyLimit + "）。请明日再发或交他人/拆分复核。");
@@ -269,6 +323,20 @@ public class CreditOpsService {
 
     private static void requirePositive(long amount) {
         if (amount <= 0) throw BusinessException.badRequest("AMOUNT_POSITIVE", "积分数必须为正数");
+    }
+
+    private void doScopedGrant(CreditAdjustmentRequest request,String actor) {
+        var grant=scopedCredits.grant(request.getWalletId(),request.getCampaignId(),request.getAmount(),request.getExpiresAt(),
+                "ops_scoped_grant",request.getId(),request.getReason(),actor);
+        request.setGrantId(grant.getId());
+        request.setLedgerEntryId(ledgerRepo.findByGrantIdAndEntryType(grant.getId(),LedgerEntry.LedgerEntryType.SCOPED_GRANT)
+                .orElseThrow(()->new IllegalStateException("Scoped grant ledger missing")).getId());
+    }
+
+    private static String requireBounded(String value,int max,String message) {
+        String result=requireText(value,"SCOPED_GRANT_INVALID",message);
+        if(result.length()>max)throw BusinessException.badRequest("SCOPED_GRANT_INVALID",message+"（最多 "+max+" 字）");
+        return result;
     }
 
     private static String requireText(String s, String code, String msg) {

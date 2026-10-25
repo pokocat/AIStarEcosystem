@@ -86,7 +86,9 @@ public final class ProductRouteTable {
             "/api/me/messages-overview",
             "/api/me/password",
             "/api/me/tenants",
-            "/api/me/ledger");
+            "/api/me/ledger",
+            // Read-only scoped balances share the account, while enterprise access is checked by the query service.
+            "/api/me/model-credits");
 
     /**
      * 前缀白名单：命中 {@code path.equals(p) || path.startsWith(p + "/")} 即放行。

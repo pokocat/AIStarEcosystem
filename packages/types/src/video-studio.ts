@@ -161,6 +161,9 @@ export interface VideoStudioReferenceInput {
 
 /** 提交一条生成任务（POST /me/celebrity/video-studio/jobs）。 */
 export interface VideoStudioJobRequest {
+  /** 同一次提交与结果不明的重试复用同一编号；确认报价时必填。 */
+  clientRequestId?: string | null;
+  modelBilling?: import("./model-billing").ModelBillingApproval | null;
   /** 省略 = 默认端点；selectableById=false 的模型必须省略。 */
   endpointId?: string | null;
   mode: VideoStudioMode;
@@ -200,6 +203,7 @@ export interface VideoStudioJobInput {
 
 /** 一条生成任务（GET /me/celebrity/video-studio/jobs[/{id}]）。 */
 export interface VideoStudioJob {
+  billingBreakdown?: import('./model-billing').ModelBillingBreakdown | null;
   id: ID;
   mode: VideoStudioMode;
   prompt: string;
@@ -225,7 +229,7 @@ export interface VideoStudioJob {
   errorCode?: string | null;
   /** 失败或恢复说明（可直接给用户看）。 */
   errorMessage: string | null;
-  /** 本条冻结 / 扣除的积分：进行中 = 已冻结，成功 = 已扣，失败 = 已退回。 */
+  /** 本条已消费与仍冻结的积分合计；终态为实际消费，明细区分模型赠款与普通余额。 */
   credits: number;
   /** 用了智能优化时的原提示词（prompt 是最终送去生成的那版）；没优化为 null。 */
   originalPrompt: string | null;

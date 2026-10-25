@@ -840,8 +840,8 @@ public class DramaRenderService {
      * 503 PROMPT_NOT_CONFIGURED（均在 hold 之前抛，故不冻结、不扣费）；存储配额前置。
      * 调用方（DramaAssetService）在 creditService.hold 之前调用。
      */
-    public void preflightCharacterReferenceSheet(String userId) {
-        invocation.resolveDefaultEndpoint(AiModelPurpose.IMAGE_GENERATION, "drama")
+    public AiModelEndpoint preflightCharacterReferenceSheet(String userId) {
+        var endpoint=invocation.resolveDefaultEndpoint(AiModelPurpose.IMAGE_GENERATION, "drama")
                 .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
                         "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
@@ -851,6 +851,7 @@ public class DramaRenderService {
                             + "）。请在管理后台「短剧专区 · 提示词设置」补全后再试。");
         }
         storage.checkQuota("drama", userId, 0);
+        return endpoint;
     }
 
     /**
@@ -860,11 +861,8 @@ public class DramaRenderService {
      * lockRefImages 用角色已有定妆图锁脸（本地/相对 URL 会被过滤，仅生产 OSS https 生效）。
      * §8.0 与 preflight 同口径：端点/提示词未配 503（应在 hold 前由 preflight 拦下，这里兜底）。
      */
-    public String renderCharacterReferenceFrame(String userId, Map<String, String> vars,
+    public String renderCharacterReferenceFrame(AiModelEndpoint ep,String userId, Map<String, String> vars,
                                                 String ratio, List<String> lockRefImages) {
-        AiModelEndpoint ep = invocation.resolveDefaultEndpoint(AiModelPurpose.IMAGE_GENERATION, "drama")
-                .orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "IMAGE_NOT_CONFIGURED",
-                        "生成角色参考图还没接入图像模型：请在管理后台为「图像生成」用途绑定一个模型端点后再试。"));
         PromptService.ResolvedPrompt p = promptService.resolve(PromptService.KEY_DRAMA_CHARACTER_FRAME_IMAGE);
         if ("code".equals(p.origin())) {
             throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "PROMPT_NOT_CONFIGURED",

@@ -166,6 +166,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "积分运营",
     items: [
+      { href: "/finance/model-billing", label: "模型赠款与折扣", icon: Coins, roles: ["OPERATOR", "FINANCE_ADMIN"], description: "客户折扣、赠款活动和模型赠款发放" },
       { href: "/finance/adjustments",       label: "调差 / 赠送", icon: Gift,          roles: ["OPERATOR", "FINANCE_ADMIN"], description: "v2：给用户补发 / 赠送积分（积分面，不碰真实资金）" },
     ],
   },

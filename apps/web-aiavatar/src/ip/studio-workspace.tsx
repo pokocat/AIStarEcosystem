@@ -1,4 +1,5 @@
 "use client";
+import { isStudioBillingCancelled } from '@/canvas-bridge/studio-billing-cancel';
 import {filmStudyConnections} from '@/canvas-bridge/studio-film-study';
 import { StudioErrorNotice, reportStudioError, reportStudioRunFailures, studioRunError, studioNodeError, studioErrorMetadata, normalizeStudioError, useStudioApp, useStudioErrorState } from './studio-errors';
 import { StudioRecreation } from "./studio-recreation";
@@ -648,6 +649,10 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       setNodes(nodes => applyStudioRunToDocument(nodes,connectionsRef.current,target.id,run)); if(panelSession.current===session){if(mode==="storyboard")setStoryboardNodeId(target.id);else setDirector(false);} void watch(run,target.id);
     } catch (e) {
       if(epoch.current!==submissionEpoch)return;
+      if(isStudioBillingCancelled(e)) {
+        patch(target.id,n=>({...n,metadata:{...retainedTarget.metadata,prompt:request.prompt}}));
+        return;
+      }
       message.error(e);
       // Preserve the request key so an uncertain network outcome can recover the original task.
       const rejected=!posted || e instanceof ApiError && (typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408 || e.code==="AI_NOT_CONFIGURED" || e.code==="PROMPT_NOT_CONFIGURED" || e.code==="ENDPOINT_NOT_ALLOWED" || e.code==="AI_TOKEN_PRICE_NOT_CONFIGURED" || e.code==="AI_TOKEN_PRICE_INVALID");
@@ -689,7 +694,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     const confirmingKnownRun=node.metadata?.status!=="error"&&!!node.metadata?.studio?.runId;
     const confirmingPendingRequest=studioGenerationPending(node);
     try {
-      const next = node.metadata?.status === "error" ? { ...request, clientRequestId: nanoid() } : request;
+      const next = node.metadata?.status === "error" ? { ...request, clientRequestId: nanoid(), modelBilling: undefined } : request;
       patch(node.id,n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails:undefined, studio: { ...n.metadata!.studio!, request: next,runId:next===request?n.metadata?.studio?.runId:undefined } } }));
       await saveStudioDocument(projectId);
       if(epoch.current!==submissionEpoch)return;
@@ -700,6 +705,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
       patch(node.id,n=>applyStudioRun(n,run));void watch(run,node.id);
     } catch(e) {
       if(epoch.current!==submissionEpoch)return;
+      if(isStudioBillingCancelled(e)){patch(node.id,n=>({...n,metadata:node.metadata}));return;}
       // A failed local save cannot reject an earlier possibly accepted request.
       const rejected=!posted ? !confirmingPendingRequest : !confirmingKnownRun&&e instanceof ApiError && typeof e.status==="number"&&e.status>=400&&e.status<500&&e.status!==408;
       patch(node.id,n=>({...n,metadata:{...n.metadata,...studioErrorMetadata(e),status:rejected?"error":"loading",errorDetails:e instanceof Error?e.message:"任务未确认，请确认原任务"}}));

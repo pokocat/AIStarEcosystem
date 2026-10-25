@@ -237,12 +237,14 @@ class EnterpriseVideoBillingIntegrationTest {
         assertTrue(holds.findByReferenceTypeAndReferenceId("material_video_job_recovery",id).isEmpty());
     }
 
-    @Test void zeroCostStillReservesCapAndQueuedCancellationReleasesIt() {
-        var context=funded(1,100);String id=submit(context,0);
-        assertNotNull(rows.findById(id).orElseThrow().getBillingAuthorizationId());assertThrows(BusinessException.class,()->submit(context,0));
-        assertTrue(jobs.cancelBeforeDispatch(id));assertFalse(jobs.cancelBeforeDispatch(id));
-        assertEquals("failed",rows.findById(id).orElseThrow().getStatus());assertNotNull(submit(context,0));
-        assertEquals(0,submitted.get());assertEquals(100,memberWallet(context).getTotalBalance());
+    /** Free use comes only from model grants (user decision 2026-10-25): a zero-price video is rejected before any authorization. */
+    @Test void zeroCostVideoIsRejectedBeforeAnyAuthorizationOrSupplierCall() {
+        var context=funded(1,100);
+        assertEquals("MODEL_PRICE_NOT_CONFIGURED",assertThrows(BusinessException.class,()->submit(context,0)).getCode());
+        assertTrue(rows.findScoped(context.member().member().userId(),MaterialVideoJobService.APP_IPSTUDIO).isEmpty());
+        assertTrue(authorizations.findAll().stream().noneMatch(a->context.company().enterprise().id().equals(a.getEnterpriseId())));
+        assertEquals(100,memberWallet(context).getTotalBalance());assertEquals(0,memberWallet(context).getPendingBalance());assertEquals(0,submitted.get());
+        assertNotNull(submit(context,30)); // The rejected attempt left nothing behind, so the only in-flight slot is still free.
     }
 
     @Test void supplierFailureReleasesOriginalEnterpriseHoldAndAllowsTheNextJob() {
@@ -252,11 +254,13 @@ class EnterpriseVideoBillingIntegrationTest {
         assertNotNull(submit(context,30));assertEquals(999,wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance());
     }
 
-    @Test void zeroCostSupplierSuccessCompletesAuthorizationWithoutCreatingMoneyEntries() {
-        var context=funded(1,100);String id=submit(context,0);worker.generateAsync(id);
-        assertEquals("succeeded",rows.findById(id).orElseThrow().getStatus());assertNotNull(submit(context,0));
-        assertTrue(holds.findByReferenceTypeAndReferenceId("material_video_job",id).isEmpty());
-        assertTrue(ledger.findAll().stream().noneMatch(l->id.equals(l.getReferenceId())));assertEquals(100,memberWallet(context).getTotalBalance());
+    @Test void zeroCostVideoIsRejectedForPersonalPayersToo() {
+        var context=funded(1,100);String user=context.member().member().userId();
+        var personal=new BillingSelection("personal",null);
+        assertEquals("MODEL_PRICE_NOT_CONFIGURED",assertThrows(BusinessException.class,
+                ()->jobs.submit(body(0),user,MaterialVideoJobService.APP_IPSTUDIO,personal)).getCode());
+        assertTrue(rows.findScoped(user,MaterialVideoJobService.APP_IPSTUDIO).isEmpty());
+        assertEquals(999,wallets.findByUserId(user).orElseThrow().getTotalBalance());assertEquals(0,submitted.get());
     }
 
     @Test void batchCapFailureRollsBackEarlierCandidateHoldAndAuthorization() {
@@ -332,18 +336,6 @@ class EnterpriseVideoBillingIntegrationTest {
         assertEquals("VIDEO_RECOVERY_EVIDENCE_IMMUTABLE",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(id,
                 new com.aistareco.aep.dto.MaterialVideoReconcileRequest(null,"different supplier evidence receipt",true),"platform-operator")).getCode());
         worker.generateAsync(id);worker.recoverQueuedGeneration(id);assertEquals(1,submitted.get());assertNotNull(submit(context,30));
-    }
-
-    @Test void zeroCostUncertainConfirmationCompletesOnlyItsOriginalActiveAuthorization() {
-        var context=funded(1,100);submitResponse="{}";String id=submit(context,0);worker.generateAsync(id);
-        assertThrows(BusinessException.class,()->submit(context,0));
-        jobs.bindOriginalSupplierTask(id,new com.aistareco.aep.dto.MaterialVideoReconcileRequest(null,
-                "Supplier support explicitly confirmed original request was not accepted, no task exists",true),"platform-operator");
-        assertEquals("VIDEO_CONFIRMED_NOT_ACCEPTED",rows.findById(id).orElseThrow().getErrorCode());
-        assertNotNull(authorizations.findByReferenceTypeAndReferenceId("material_video_job",id).orElseThrow().getTerminalAt());
-        assertTrue(holds.findByReferenceTypeAndReferenceId("material_video_job",id).isEmpty());
-        assertTrue(ledger.findAll().stream().noneMatch(l->id.equals(l.getReferenceId())));assertEquals(100,memberWallet(context).getTotalBalance());
-        assertNotNull(submit(context,0));assertEquals(1,submitted.get());
     }
 
     @Test void noAcceptanceConfirmationRejectsQueuedKnownSupplierIdAndSettledFunds() {

@@ -40,8 +40,12 @@ describe("isHoldSettlement · 结算判定不依赖窗口里有没有对应的�
     expect(isHoldSettlement({ type: "spend", referenceType: "DRAMA_AI", referenceId: "  " })).toBe(false);
   });
 
+  it("模型赠款的扣除也是冻结的结算（赠款冻结时已经扣掉）", () => {
+    expect(isHoldSettlement(entry("scoped_spend", -50, { type: "material_video_job", id: "mvj-1" }))).toBe(true);
+  });
+
   it("其他类型一律不是结算", () => {
-    for (const t of ["freeze", "unfreeze", "adjust", "withdraw", "income", "recharge"] as const) {
+    for (const t of ["freeze", "unfreeze", "adjust", "withdraw", "income", "recharge", "scoped_freeze", "scoped_grant"] as const) {
       expect(isHoldSettlement(entry(t, -10, { type: "DRAMA_AI", id: "r" }))).toBe(false);
     }
   });

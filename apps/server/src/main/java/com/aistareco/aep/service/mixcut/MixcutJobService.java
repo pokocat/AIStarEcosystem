@@ -259,7 +259,7 @@ public class MixcutJobService {
                     "mixcut_job",
                     job.getId(),
                     "混剪生成 · " + variants + " 条变体 · 模板 " + safe(req.templateName(), req.templateId())
-            );
+            , com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         }
 
         jobRepo.save(job);

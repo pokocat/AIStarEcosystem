@@ -33,7 +33,7 @@ class StudioWorkerLifecycleTest {
     @Test void duplicateDispatchInvokesOnlyOnceAndCommitsOneHold() throws Exception {
         var run=run();var worker=worker();when(fixtures.script()).thenReturn(new ObjectMapper().readTree(Files.readString(Path.of("../../scripts/studio/fixtures/script.json"))));
         worker.runBlocking("r");worker.runBlocking("r");
-        assertEquals("done",run.getStatus());verify(fixtures,times(1)).script();verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString());verifyNoInteractions(models);
+        assertEquals("done",run.getStatus());verify(fixtures,times(1)).script();verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(2L),anyString(), org.mockito.ArgumentMatchers.any());verifyNoInteractions(models);
     }
     @Test void cancelledBeforeDispatchDoesNotInvokeTheProvider() {
         var run=run();run.setCancelRequested(true);worker().runBlocking("r");

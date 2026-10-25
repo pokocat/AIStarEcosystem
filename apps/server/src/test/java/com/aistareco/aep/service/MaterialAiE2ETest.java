@@ -91,6 +91,8 @@ class MaterialAiE2ETest {
 
     @BeforeEach
     void setUp() {
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.SCRIPT_DRAFT,"celebrity")).thenReturn(java.util.Optional.of(
+                com.aistareco.aep.model.AiModelEndpoint.builder().id("script").model("qwen").enabled(true).build()));
         // 默认「已绑定端点」，个别测试再覆盖为 false。
         when(invocation.hasEndpointFor(any(), eq("celebrity"))).thenReturn(true);
     }
@@ -110,7 +112,7 @@ class MaterialAiE2ETest {
     // ── 脚本起稿 ───────────────────────────────────────────────────────────────
     @Test
     void aiDraft_validJson_returnsStructuredScripts() throws Exception {
-        when(invocation.invokeChat(any(), any(), any(), eq("celebrity"))).thenReturn(resp(VALID_SCRIPTS));
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.SCRIPT_DRAFT),any(),any())).thenReturn(resp(VALID_SCRIPTS));
         String body = """
                 {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":2}
                 """;
@@ -128,7 +130,7 @@ class MaterialAiE2ETest {
     @Test
     void aiDraft_dirtyThenValid_selfRepairs() throws Exception {
         // 第一次脏输出（解析失败）→ 自修复重试 → 第二次合法 JSON
-        when(invocation.invokeChat(any(), any(), any(), eq("celebrity")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.SCRIPT_DRAFT),any(),any()))
                 .thenReturn(resp("这不是 JSON，只是一段闲聊。"))
                 .thenReturn(resp(VALID_SCRIPTS));
         String body = """
@@ -143,6 +145,7 @@ class MaterialAiE2ETest {
     void aiDraft_noProvider_surfacesConfigError() throws Exception {
         // 未为该用途绑定端点 → 明确 503 + AI_NOT_CONFIGURED（不再静默兜底占位池）
         when(invocation.hasEndpointFor(AiModelPurpose.SCRIPT_DRAFT, "celebrity")).thenReturn(false);
+        when(invocation.resolveDefaultEndpoint(AiModelPurpose.SCRIPT_DRAFT,"celebrity")).thenReturn(java.util.Optional.empty());
         String body = """
                 {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":3}
                 """;
@@ -155,7 +158,7 @@ class MaterialAiE2ETest {
     @Test
     void aiDraft_invokeFails_surfacesCallError() throws Exception {
         // provider 已配但调用失败（如 401 token 无效）→ 502 + AI_CALL_FAILED
-        when(invocation.invokeChat(any(), any(), any(), eq("celebrity")))
+        when(invocation.invokeChatOnEndpoint(any(),eq(AiModelPurpose.SCRIPT_DRAFT),any(),any()))
                 .thenThrow(new BusinessException(HttpStatus.UNAUTHORIZED, "AI_PROVIDER_HTTP_401", "provider HTTP 401"));
         String body = """
                 {"product_id":"p4","tone":"情感故事","audience":["打工人"],"duration_sec":38,"count":2}

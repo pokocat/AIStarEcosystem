@@ -11,6 +11,7 @@ import { StudioPage, StudioPageFilters } from "./studio-page";
 import { normalizeStudioError } from "./studio-errors";
 import { studioOverlayContainer } from "./studio-overlay";
 import { EnterpriseManagement } from "./enterprise-management";
+import { ScopedCreditsPanel } from "./scoped-credits-panel";
 import { EnterpriseReports } from "./enterprise-reports";
 import { WalletApi } from "@/proto/api";
 
@@ -158,6 +159,7 @@ function EnterpriseWorkspaceEnabled() {
         {actionError && <Alert type="error" title={actionError} showIcon />}
       </section> : <>
         <section className="enterprise-own-balances" aria-label="我的两份积分"><div><span>我的个人积分</span><strong>{personalBalance === undefined ? "读取中" : number(personalBalance)}</strong><small>个人充值与消费，企业无权回收</small></div><div><span>我的企业积分</span><strong>{myBalance ? number(myBalance.totalBalance) : "暂未读取"}</strong><small>{context.member.status === "suspended" ? "已停用，仍可选择个人积分创作" : `由 ${context.enterprise.name} 分配，可由企业回收`}</small></div></section>
+        <ScopedCreditsPanel enterpriseId={context.enterprise.id} />
         {context.member.status === "suspended" && <Alert type="warning" showIcon title="企业积分使用已停用" description="你仍可查看本人记录，并选择个人积分继续创作。企业在途任务按原账户结算。" />}
         {wallet && <section className="enterprise-balances" aria-label="企业积分汇总">{[
           ["企业待分配积分", wallet.unallocated, "可分配给成员"], ["成员可用积分", wallet.allocated, "已分配，仍归企业"], ["冻结积分", wallet.pending, "在途任务占用，不可回收"], ["实际消耗", wallet.spent, "已结算的企业积分"],

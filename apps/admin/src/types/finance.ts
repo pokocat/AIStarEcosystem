@@ -15,7 +15,7 @@ export type TransactionType =
   | "withdrawal"
   | "spend"
   | "recharge"
-  | "license_grant" | "transfer";
+  | "license_grant" | "transfer" | "scoped";
 
 export interface Transaction {
   id: ID;

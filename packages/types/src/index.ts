@@ -47,3 +47,5 @@ export * from "./enterprise";
 export * from "./generation-reconciliation";
 export * from "./invitation";
 export * from "./director";
+
+export * from "./model-billing";

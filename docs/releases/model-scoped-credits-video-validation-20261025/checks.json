@@ -1,0 +1,154 @@
+{
+  "scope": "video charge adapter increment; not full feature acceptance",
+  "testBatches": "Full MaterialVideo and scoped ledger run followed by targeted reruns; latest successful report for each suite",
+  "totalTests": 204,
+  "suites": [
+    {
+      "suite": "com.aistareco.aep.billing.ScopedCreditServiceIntegrationTest",
+      "tests": 22,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.config.MaterialVideoCoverBackfillTest",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.enterprise.EnterpriseLifecycleScenarioTest",
+      "tests": 5,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.ipstudio.IpVideoModelChoiceWiringTest",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoBillingTest",
+      "tests": 5,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoCoverTest",
+      "tests": 9,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoJobAppScopeTest",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoJobClaimTest",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoJobServiceCdnSignTest",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoJobServiceStudioTest",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoJobServiceSubmitTest",
+      "tests": 5,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoModelClientBodyTest",
+      "tests": 16,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoModelClientOptimizeTest",
+      "tests": 11,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoModelClientRetryHintTest",
+      "tests": 3,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoModelClientTest",
+      "tests": 38,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoModelClientWireTest",
+      "tests": 27,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoPromptRewriteRaceTest",
+      "tests": 2,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoQueueAdmissionTest",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoScopedBillingIntegrationTest",
+      "tests": 4,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoWorkerMirrorClaimTest",
+      "tests": 6,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoWorkerSpecTest",
+      "tests": 7,
+      "errors": 0,
+      "failures": 0
+    },
+    {
+      "suite": "com.aistareco.aep.service.materialvideo.MaterialVideoWorkerTest",
+      "tests": 17,
+      "errors": 0,
+      "failures": 0
+    }
+  ],
+  "gates": {
+    "pnpm typecheck:all": "passed",
+    "pnpm typecheck:admin": "passed",
+    "apps/server ./mvnw compile -q -o": "passed",
+    "pnpm check:api-contract": "passed with pre-existing endpoint warnings"
+  },
+  "paidModelCalls": 0,
+  "deployed": false,
+  "pending": [
+    "released model hold restoration from original funding sources",
+    "video target configuration UI",
+    "quote split and free-only approval",
+    "browser consumption flow",
+    "remaining model adapters"
+  ]
+}

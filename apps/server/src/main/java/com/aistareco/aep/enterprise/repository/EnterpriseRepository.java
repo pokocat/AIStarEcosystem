@@ -6,6 +6,8 @@ import org.springframework.data.domain.*;
 import jakarta.persistence.LockModeType;
 import java.util.Optional;
 public interface EnterpriseRepository extends JpaRepository<Enterprise,String> {
+    @Query("select e from Enterprise e where lower(e.name) like :pattern escape '!' or e.id=:exact")
+    Page<Enterprise> searchForBilling(@Param("pattern") String pattern,@Param("exact") String exact,Pageable page);
     Optional<Enterprise> findByCreatedByAndCreateRequestId(String createdBy,String createRequestId);
     @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select e from Enterprise e where e.id=:id")
     Optional<Enterprise> lockById(@Param("id") String id);

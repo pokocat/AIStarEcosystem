@@ -50,6 +50,7 @@ class VideoStudioControllerTest {
                 () -> controller.models(null),
                 () -> controller.upload(null, null, "image", null, null, null),
                 () -> controller.submit(null, null),
+                () -> controller.quote(null, null, false),
                 () -> controller.jobs(null),
                 () -> controller.job(null, "mvj_1"),
                 () -> controller.jobs(() -> " "),
@@ -73,8 +74,10 @@ class VideoStudioControllerTest {
     @DisplayName("用登录身份的 uid 调服务；删除模板回 204")
     void delegatesWithPrincipalName() {
         VideoStudioJobRequest req = new VideoStudioJobRequest(null, "t2v", "p", "768p", "9:16", 5, null, null, null,
-                null, null, null);
+                null, null, null, null, null);
         controller.submit(alice, req);
+        controller.quote(alice, req, true);
+        verify(studio).quote("u1", req, true);
         controller.jobs(alice);
         controller.job(alice, "mvj_1");
         controller.upload(alice, null, "audio", null, null, null);

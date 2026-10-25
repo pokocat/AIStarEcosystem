@@ -259,7 +259,7 @@ public class DramaReferenceAssetService {
 
         List<String> angles = parseAngles(body);
         // §8.0：hold 之前做端点/提示词/配额前置校验（未配 503，不 hold、不扣费）。
-        renderService.preflightCharacterReferenceSheet(ownerUserId);
+        var endpoint=renderService.preflightCharacterReferenceSheet(ownerUserId);
 
         long frameCost = configs.getLong(DramaConfigSeeder.KEY_FRAME, 2);
         long total = frameCost * angles.size();
@@ -268,8 +268,8 @@ public class DramaReferenceAssetService {
         List<String> lockRefs = lockRefsFor(ch);
 
         String ref = "cs_" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
-        creditService.hold(ownerUserId, total, REF_TYPE_CHAR_SHEET, ref,
-                "多角度参考图（" + orDefault(ch.getName(), "角色") + "）");
+        if(total>0)creditService.hold(ownerUserId, total, REF_TYPE_CHAR_SHEET, ref,
+                "多角度参考图（" + orDefault(ch.getName(), "角色") + "）", com.aistareco.aep.billing.service.ModelChargeContext.forCredits(endpoint,total));
 
         ArrayNode refImages = readRefImages(ch.getRefImagesJson());
         int committed = 0;
@@ -277,8 +277,8 @@ public class DramaReferenceAssetService {
         for (String angle : angles) {
             try {
                 String cdnKey = renderService.renderCharacterReferenceFrame(
-                        ownerUserId, charVars(ch, angle, appearanceHint), ratio, lockRefs);
-                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "多角度参考图 · " + angleLabel(angle));
+                        endpoint,ownerUserId, charVars(ch, angle, appearanceHint), ratio, lockRefs);
+                creditService.commitHold(REF_TYPE_CHAR_SHEET, ref, frameCost, "多角度参考图 · " + angleLabel(angle), null);
                 // 只在 commitHold 真成功之后才落 refImages：commitHold 也在 try 块内、也会抛异常
                 // （见下方 catch 注释），先前的实现在 render 成功后就无条件 addObject，一旦随后
                 // commitHold 失败（未提交扣费、已 release），这条「未付费」的图仍会残留在数组里，

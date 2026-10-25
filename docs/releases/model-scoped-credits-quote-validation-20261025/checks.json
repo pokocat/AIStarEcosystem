@@ -1,0 +1,94 @@
+{
+  "environment": "isolated localhost, H2 dev and real Next Studio; no vendor generation or deployment",
+  "backend": {
+    "suites": [
+      {
+        "name": "EnterpriseLifecycleScenarioTest",
+        "tests": 26,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "ScopedCreditServiceIntegrationTest",
+        "tests": 25,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "ModelPricingServiceTest",
+        "tests": 6,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "IpRunServiceTest",
+        "tests": 41,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "IpRunWorkerTest",
+        "tests": 26,
+        "failures": 0,
+        "errors": 0
+      },
+      {
+        "name": "ProductRouteTableCoverageTest",
+        "tests": 4,
+        "failures": 0,
+        "errors": 0
+      }
+    ],
+    "tests": 128,
+    "failures": 0,
+    "errors": 0
+  },
+  "frontend": [
+    {
+      "files": [
+        "studio-workspace.test.tsx",
+        "studio-billing.test.ts",
+        "studio-billing-dialog.test.tsx",
+        "studio-model-quote-dialog.test.tsx"
+      ],
+      "tests": 108,
+      "failures": 0
+    },
+    {
+      "files": [
+        "generation.test.ts",
+        "studio-batch.test.ts"
+      ],
+      "tests": 20,
+      "failures": 0
+    }
+  ],
+  "gates": {
+    "pnpm typecheck:all": 0,
+    "pnpm typecheck:admin": 0,
+    "apps/server ./mvnw compile -q -o": 0,
+    "pnpm check:api-contract": 0,
+    "git diff --check": 0,
+    "OpenAPI quote paths, approval schemas and request fields parse": 0
+  },
+  "browser": {
+    "standard": 10,
+    "discounted": 8,
+    "firstScoped": 5,
+    "firstWallet": 3,
+    "freeOnlyInsufficientDisabled": true,
+    "afterTopupScoped": 8,
+    "afterTopupWallet": 0,
+    "cancelRestoresDraftAfterRefresh": true,
+    "createdGenerationRuns": 0,
+    "ordinaryBalance": 3000,
+    "remainingScoped": 15
+  },
+  "limitations": [
+    "No H3/Seedance video quote acceptance in this increment",
+    "No supplier output or billing quality verification",
+    "Existing Antd maskClosable deprecation warning in surrounding Studio UI",
+    "Shared resource pools, remaining adapters, automatic issuance, complete spend breakdown and recovery remain pending"
+  ],
+  "temporaryServersStopped": true
+}

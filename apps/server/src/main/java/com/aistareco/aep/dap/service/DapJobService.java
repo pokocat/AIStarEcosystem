@@ -22,7 +22,7 @@ import java.util.UUID;
 
 /**
  * 异步作业编排：建单（含积分 hold）→ 派发 runner → 重试 / 取消。
- * 扣费三段式：referenceType=dap-job，referenceId=jobId:rN（重试各自独立冻结）。
+ * 扣费三段式：referenceType=dap-job，模型任务以 jobId:rN:text / :media 分别冻结，历史任务保留 jobId:rN。
  */
 @Service
 public class DapJobService {
@@ -38,6 +38,7 @@ public class DapJobService {
     private final DapPricingService pricing;
     private final DapJobRunner runner;
     private final DapMultimodalClient multimodal;
+    private final DapModelBilling modelBilling;
 
     public DapJobService(DapJobRepository jobRepo,
                          CreditService creditService,
@@ -46,7 +47,7 @@ public class DapJobService {
                          DapProperties props,
                          DapPricingService pricing,
                          @Lazy DapJobRunner runner,
-                         DapMultimodalClient multimodal) {
+                         DapMultimodalClient multimodal,DapModelBilling modelBilling) {
         this.jobRepo = jobRepo;
         this.creditService = creditService;
         this.accountService = accountService;
@@ -55,10 +56,12 @@ public class DapJobService {
         this.pricing = pricing;
         this.runner = runner;
         this.multimodal = multimodal;
+        this.modelBilling=modelBilling;
     }
 
     // ── 建单 + 派发 ────────────────────────────────────────────
 
+    @org.springframework.transaction.annotation.Transactional
     public DapJob submit(String userId, DapAvatar avatar, String type, String kind, String engine,
                          long cost, String eta, Map<String, Object> payload) {
         return submit(userId, avatar, null, null, type, kind, engine, cost, eta, payload);
@@ -68,6 +71,7 @@ public class DapJobService {
      * 非人物资产作业（场景 / 产品 / 合成）—— 没有 DapAvatar 实体，用 assetId + 展示名建单。
      * 扣费 / 派发 / 重试语义与人物作业完全一致。
      */
+    @org.springframework.transaction.annotation.Transactional
     public DapJob submitAsset(String userId, String assetId, String assetName, String type, String kind,
                               String engine, long cost, String eta, Map<String, Object> payload) {
         return submit(userId, null, assetId, assetName, type, kind, engine, cost, eta, payload);
@@ -81,10 +85,6 @@ public class DapJobService {
 
         String subject = avatar != null ? avatar.getId() : (assetId != null ? assetId : "-");
         String id = uniqueId();
-        if (cost > 0) {
-            // 余额不足在此抛 402，作业不落库
-            creditService.hold(userId, cost, REF_TYPE, id + ":r0", kind + "（" + subject + "）");
-        }
         DapJob job = DapJob.builder()
                 .id(id)
                 .ownerUserId(userId)
@@ -105,6 +105,10 @@ public class DapJobService {
                 .heartbeatAt(Instant.now())
                 .stageUpdatedAt(Instant.now())
                 .build();
+        if(cost>0) {
+            if(multimodal.isConfigured())modelBilling.reserve(job,cost);
+            else creditService.hold(userId,cost,REF_TYPE,id+":r0",kind+"（"+subject+"）",com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+        }
         jobRepo.save(job);
         dispatch(id);
         log.info("[dap-job] submitted id={} type={} subject={} mode={} engine={} cost={} stage=queued",
@@ -166,6 +170,7 @@ public class DapJobService {
 
     // ── 重试 / 取消 ────────────────────────────────────────────
 
+    @org.springframework.transaction.annotation.Transactional
     public JobDto retry(String userId, String jobId) {
         requireEngineOrPlaceholderAllowed();
         DapJob job = requiredJob(userId, jobId);
@@ -173,13 +178,15 @@ public class DapJobService {
             throw BusinessException.badRequest("DAP_JOB_NOT_FAILED", "只有失败任务可以重试");
         }
         int r = job.getRetryCount() + 1;
-        if (job.getCost() > 0) {
-            String subject = job.getAvatarId() != null ? job.getAvatarId()
-                    : (job.getAssetId() != null ? job.getAssetId() : "-");
-            creditService.hold(userId, job.getCost(), REF_TYPE, job.getId() + ":r" + r,
-                    job.getKind() + " 重试（" + subject + "）");
-        }
+        var previous=modelBilling.plan(job);
+        long primary=previous==null?job.getCost():previous.primaryCredits();
         job.setRetryCount(r);
+        if(primary>0) {
+            // Previously accepted legacy supplier jobs retain their original ordinary-credit contract.
+            boolean legacyVideo=previous==null&&job.getPayload()!=null&&job.getPayload().get("_mediaVideoJobId") instanceof String;
+            if(!legacyVideo&&(previous!=null||multimodal.isConfigured()))modelBilling.reserve(job,primary);
+            else creditService.hold(userId,primary,REF_TYPE,job.getId()+":r"+r,job.getKind()+" 重试",com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+        }
         job.setStatus("running");
         job.setStage("queued");
         job.setPct(2);

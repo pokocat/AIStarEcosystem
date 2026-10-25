@@ -52,7 +52,7 @@ class CreditOpsServiceTest {
                 .thenAnswer(inv -> Optional.ofNullable(db.get(inv.getArgument(0, String.class))));
         // 默认日限额 50000、actor 当日累计 0（未 stub → Mockito long 默认 0）
         admins = mock(com.aistareco.aep.repository.AdminUserRepository.class);
-        svc = new CreditOpsService(creditService, requestRepo, ledgerRepo, admins, 5000, 50000);
+        svc = new CreditOpsService(creditService, requestRepo, ledgerRepo, admins, mock(com.aistareco.aep.billing.service.ScopedCreditService.class), 5000, 50000);
     }
 
     @Test
@@ -101,9 +101,9 @@ class CreditOpsServiceTest {
 
     @Test void superAdminStillHasDailyLimitAndCampaignDuplicateProtection() {
         staff("root", com.aistareco.aep.model.AdminUser.AdminRole.SUPER_ADMIN, com.aistareco.aep.model.AdminUser.AdminStatus.ACTIVE);
-        when(requestRepo.sumAmountByMakerSince(eq("root"),any(),anyList())).thenReturn(45000L);
+        when(requestRepo.lockByMakerSince(eq("root"),any(),anyList())).thenReturn(List.of(CreditAdjustmentRequest.builder().amount(45000).build()));
         assertEquals("ACTOR_DAILY_LIMIT",assertThrows(BusinessException.class,()->svc.grantGift("u1",10000,"campaign","r","root")).getCode());
-        when(requestRepo.sumAmountByMakerSince(eq("root"),any(),anyList())).thenReturn(0L);
+        when(requestRepo.lockByMakerSince(eq("root"),any(),anyList())).thenReturn(List.of());
         when(ledgerRepo.existsByReferenceTypeAndReferenceId("ops_gift_campaign:campaign","campaign:u1")).thenReturn(true);
         assertEquals("DUPLICATE_CAMPAIGN_GRANT",assertThrows(BusinessException.class,()->svc.grantGift("u1",10000,"campaign","r","root")).getCode());
         verifyNoInteractions(creditService);
@@ -172,7 +172,7 @@ class CreditOpsServiceTest {
     @Test
     void actorDailyLimitBlocksWhenExceeded() {
         // 该发起人近 24h 已累计 48000，本次 3000 → 51000 > 50000 上限 → 拒，不入账
-        when(requestRepo.sumAmountByMakerSince(eq("op1"), any(), anyList())).thenReturn(48000L);
+        when(requestRepo.lockByMakerSince(eq("op1"), any(), anyList())).thenReturn(List.of(CreditAdjustmentRequest.builder().amount(48000).build()));
         BusinessException ex = assertThrows(BusinessException.class,
                 () -> svc.grantGift("u1", 3000, null, "激励", "op1"));
         assertEquals("ACTOR_DAILY_LIMIT", ex.getCode());
@@ -182,7 +182,7 @@ class CreditOpsServiceTest {
     @Test
     void actorDailyLimitAllowsAtBoundary() {
         // 已 41000 + 本次 9000 = 50000，恰好等于上限 → 放行（> 才拒）。大额 → 进审批
-        when(requestRepo.sumAmountByMakerSince(eq("op1"), any(), anyList())).thenReturn(41000L);
+        when(requestRepo.lockByMakerSince(eq("op1"), any(), anyList())).thenReturn(List.of(CreditAdjustmentRequest.builder().amount(41000).build()));
         AdjustmentResult r = svc.grantGift("u1", 9000, null, "激励", "op1");
         assertTrue(r.pending());
     }
@@ -235,7 +235,7 @@ class CreditOpsServiceTest {
         @SuppressWarnings("unchecked")
         org.mockito.ArgumentCaptor<List<CreditAdjustmentRequest.Status>> cap =
                 org.mockito.ArgumentCaptor.forClass(List.class);
-        verify(requestRepo).sumAmountByMakerSince(eq("op1"), any(), cap.capture());
+        verify(requestRepo).lockByMakerSince(eq("op1"), any(), cap.capture());
         assertTrue(cap.getValue().contains(CreditAdjustmentRequest.Status.APPROVED));
         assertTrue(cap.getValue().contains(CreditAdjustmentRequest.Status.PENDING_APPROVAL));
     }

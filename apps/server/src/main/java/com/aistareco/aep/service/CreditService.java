@@ -1,5 +1,8 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.billing.service.ModelChargeContext;
+import com.aistareco.aep.billing.service.ModelChargeService;
+import com.aistareco.aep.billing.service.ModelBillingMath;
 import com.aistareco.aep.dto.LedgerEntryDto;
 import com.aistareco.aep.dto.WalletDto;
 import com.aistareco.aep.model.AepUser;
@@ -46,6 +49,9 @@ public class CreditService {
     private final LedgerEntryRepository ledgerRepo;
     private final CreditHoldRepository holdRepo;
     private final AepUserRepository userRepo;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    private ModelChargeService modelCharges;
 
     @jakarta.persistence.PersistenceContext
     private jakarta.persistence.EntityManager enterpriseEntityManager;
@@ -394,8 +400,8 @@ public class CreditService {
     /**
      * 预冻结积分（任务创建时调用）。
      *
-     * 把 amount 从可用桶（gift→license→recharge）抽走 → pendingBalance；写一条 FREEZE LedgerEntry；
-     * 记一条 ACTIVE 状态的 {@link CreditHold} 留存桶分布，供 release 时按比例退回。
+     * 模型任务先按用途计算成交价并冻结模型赠款批次；仅普通积分部分从可用桶抽走进入 pendingBalance。
+     * CreditHold.amount 保留任务原计价单位，ModelCharge 保存成交价及用量快照，释放按原资金来源退回。
      *
      * 幂等：同 (referenceType, referenceId) 重复调用直接返回已存在记录（不重复扣费）。
      *
@@ -403,7 +409,7 @@ public class CreditService {
      */
     @Transactional
     public CreditHold hold(String userId, long amount, String referenceType,
-                            String referenceId, String description) {
+                            String referenceId, String description, ModelChargeContext context) {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "冻结积分必须为正数");
         }
@@ -417,12 +423,12 @@ public class CreditService {
         // 第二次落 CreditHold 时撞 (referenceType, referenceId) 唯一约束报 500，而不是幂等返回。
         // 钱包行锁把同一 userId 的并发 hold 调用串行化——后到者拿到锁时，先到者已提交，此时再查一定能读到。
         return holdWalletLocked(getOrCreateWalletForUpdate(userId), amount, referenceType, referenceId,
-                description, userId, null, null);
+                description, userId, null, null, context,null);
     }
 
     @Transactional
     public CreditHold holdWallet(String walletId, long amount, String referenceType, String referenceId,
-                                  String description, String actorUserId, String membershipId, String authorizationId) {
+                                  String description, String actorUserId, String membershipId, String authorizationId, ModelChargeContext context) {
         if (amount <= 0 || referenceType == null || referenceType.isBlank() || referenceId == null || referenceId.isBlank())
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "冻结参数无效");
         walletRepo.findById(walletId).ifPresent(w->lockEnterpriseMoney(w.getEnterpriseId()));
@@ -434,11 +440,60 @@ public class CreditService {
         if (wallet.getEnterpriseId()!=null && (actorUserId==null || !actorUserId.equals(wallet.getMemberUserId())
                 || membershipId==null || authorizationId==null))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "企业冻结缺少成员及付款授权");
-        return holdWalletLocked(wallet,amount,referenceType,referenceId,description,actorUserId,membershipId,authorizationId);
+        return holdWalletLocked(wallet,amount,referenceType,referenceId,description,actorUserId,membershipId,authorizationId,context,null);
+    }
+
+    /** Extend one original payer and endpoint reservation without re-resolving its discount. */
+    @Transactional
+    public CreditHold holdExtension(String referenceType,String parentReference,String referenceId,long amount,String description,String authorizationId) {
+        if(amount<=0)throw new IllegalArgumentException("Extension must be positive");
+        lockReferencedWallet(referenceType,parentReference);
+        var parent=holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType,parentReference).orElseThrow();refreshLocked(parent);
+        if(parent.getStatus()!=CreditHold.Status.ACTIVE)throw new ResponseStatusException(HttpStatus.CONFLICT,"Original reservation is closed");
+        if(parent.getEnterpriseId()!=null&&authorizationId==null)throw new ResponseStatusException(HttpStatus.FORBIDDEN,"Enterprise payment authorization is required");
+        var extension=modelCharges.extension(parent,amount);
+        return holdWalletLocked(requiredWalletForUpdate(parent.getWalletId()),amount,referenceType,referenceId,description,
+                parent.getActorUserId()==null?parent.getUserId():parent.getActorUserId(),parent.getMembershipId(),authorizationId,extension.context(),extension.accepted()==null?null:extension);
+    }
+    public ModelChargeService.Breakdown modelBillingBreakdown(String referenceType,java.util.List<String> references) {
+        return modelCharges==null?null:modelCharges.breakdown(referenceType,references);
+    }
+    /** See {@link ModelChargeService#usedPromotion}; false for legacy holds and holds without a model charge. */
+    public boolean usedModelPromotion(CreditHold hold) {
+        return hold!=null&&modelCharges!=null&&modelCharges.usedPromotion(hold.getId());
+    }
+    public long availableModelCredits(Wallet wallet,com.aistareco.aep.billing.service.ModelBillingTarget target) {
+        return modelCharges==null?wallet.getTotalBalance():modelCharges.availableCredits(wallet,target,null,0,0);
+    }
+    public long availableExtensionCredits(String referenceType,String referenceId) {
+        var parent=holdRepo.findByReferenceTypeAndReferenceId(referenceType,referenceId).orElseThrow();
+        var wallet=walletRepo.findById(parent.getWalletId()).orElseThrow();var extension=modelCharges.extension(parent,1);
+        return extension.accepted()==null?wallet.getTotalBalance():modelCharges.availableCredits(wallet,extension.context().target(),extension.accepted(),extension.reservedPayable(),extension.reservedBase());
+    }
+    /** A shared terminal settlement for credit-denominated model reservations; legacy callers keep their old path. */
+    @Transactional
+    public boolean settleModelCredits(String referenceType,java.util.List<String> references,long actual) {
+        if(references==null||references.isEmpty()||modelCharges==null)return false;
+        lockReferencedWallet(referenceType,references.get(0));
+        var holds=new java.util.ArrayList<CreditHold>();
+        for(String ref:references.stream().distinct().toList()) {
+            var hold=holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType,ref).orElse(null);refreshLocked(hold);
+            if(hold==null)return false;holds.add(hold);
+        }
+        var wallet=requiredWalletForUpdate(holds.get(0).getWalletId());
+        if(holds.stream().anyMatch(h->!wallet.getId().equals(h.getWalletId())))throw new IllegalArgumentException("Mixed payment wallets");
+        var now=Instant.now();var slices=modelCharges.consumeCreditBatch(wallet,holds,actual,now);
+        if(slices==null)return false;
+        for(var slice:slices) {
+            if(slice.base()>0)commitRecorded(wallet,slice.hold(),slice.base(),"Model usage settlement",slice.settlement(),true,now);
+            if(slice.base()<slice.hold().getAmount())releaseHold(referenceType,slice.hold().getReferenceId(),"Unused model reservation released");
+        }
+        return true;
     }
 
     private CreditHold holdWalletLocked(Wallet wallet, long amount, String referenceType, String referenceId,
-                                         String description, String actorUserId, String membershipId, String authorizationId) {
+                                         String description, String actorUserId, String membershipId, String authorizationId, ModelChargeContext context,ModelChargeService.Extension inherited) {
+        java.util.Objects.requireNonNull(context,"Every hold must explicitly declare its billing context");
         // Lock order for money operations: wallet -> hold. New references are serialized by wallet.
         // 幂等：已存在 ACTIVE / 终态 hold → 直接返回，不再扣
         CreditHold existing = holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType, referenceId).orElse(null);
@@ -451,15 +506,23 @@ public class CreditService {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,"冻结引用的账户、金额或付款授权不一致");
             log.info("[credit] hold idempotent hit ref={}:{} status={} amount={}",
                     referenceType, referenceId, existing.getStatus(), existing.getAmount());
+            if(modelCharges!=null)modelCharges.verifyReplay(existing,context);
             return existing;
         }
 
-        if (wallet.getTotalBalance() < amount) {
+        Instant now=Instant.now();
+        CreditHold hold=CreditHold.builder().id(UUID.randomUUID().toString()).walletId(wallet.getId()).userId(wallet.getUserId())
+                .actorUserId(actorUserId).enterpriseId(wallet.getEnterpriseId()).membershipId(membershipId).billingAuthorizationId(authorizationId)
+                .referenceType(referenceType).referenceId(referenceId).amount(amount).remainingAmount(amount).status(CreditHold.Status.ACTIVE)
+                .description(description).createdAt(now).updatedAt(now).build();
+        // Model amounts remain the workers' base-price units. Only ordinary credits enter Wallet.pendingBalance.
+        long walletAmount=context.target()==null?amount:modelCharges.reserve(wallet,hold,context,now,inherited);
+        if (wallet.getTotalBalance() < walletAmount) {
             throw new ResponseStatusException(HttpStatus.PAYMENT_REQUIRED,
-                    "积分余额不足，本次操作需 " + amount + "，当前可用 " + wallet.getTotalBalance());
+                    "积分余额不足，本次操作需 " + walletAmount + "，当前可用 " + wallet.getTotalBalance());
         }
 
-        long remaining = amount;
+        long remaining = walletAmount;
         long fromGift = Math.min(wallet.getGiftBalance(), remaining);
         remaining -= fromGift;
         long fromLicense = Math.min(wallet.getLicenseBalance(), remaining);
@@ -475,9 +538,8 @@ public class CreditService {
         wallet.setGiftBalance(wallet.getGiftBalance() - fromGift);
         wallet.setLicenseBalance(wallet.getLicenseBalance() - fromLicense);
         wallet.setRechargeBalance(wallet.getRechargeBalance() - fromRecharge);
-        wallet.setTotalBalance(wallet.getTotalBalance() - amount);
-        wallet.setPendingBalance(wallet.getPendingBalance() + amount);
-        Instant now = Instant.now();
+        wallet.setTotalBalance(wallet.getTotalBalance() - walletAmount);
+        wallet.setPendingBalance(Math.addExact(wallet.getPendingBalance(),walletAmount));
         wallet.setUpdatedAt(now);
         walletRepo.save(wallet);
 
@@ -489,33 +551,17 @@ public class CreditService {
                 .actorUserId(actorUserId).enterpriseId(wallet.getEnterpriseId())
                 .membershipId(membershipId).billingAuthorizationId(authorizationId)
                 .entryType(LedgerEntry.LedgerEntryType.FREEZE)
-                .amount(-amount)
+                .amount(-walletAmount)
                 .balanceAfter(wallet.getTotalBalance())
                 .description(description)
                 .referenceId(referenceId)
                 .referenceType(referenceType)
                 .createdAt(now)
                 .build();
-        ledgerRepo.save(entry);
+        // A model job fully covered by a grant moves no ordinary credits; its grant rows carry the record instead of a "freeze 0".
+        if(walletAmount>0)ledgerRepo.save(entry);
 
-        CreditHold hold = CreditHold.builder()
-                .id(UUID.randomUUID().toString())
-                .walletId(wallet.getId())
-                .userId(wallet.getUserId())
-                .actorUserId(actorUserId).enterpriseId(wallet.getEnterpriseId())
-                .membershipId(membershipId).billingAuthorizationId(authorizationId)
-                .referenceType(referenceType)
-                .referenceId(referenceId)
-                .amount(amount)
-                .fromGift(fromGift)
-                .fromLicense(fromLicense)
-                .fromRecharge(fromRecharge)
-                .remainingAmount(amount)
-                .status(CreditHold.Status.ACTIVE)
-                .description(description)
-                .createdAt(now)
-                .updatedAt(now)
-                .build();
+        hold.setFromGift(fromGift);hold.setFromLicense(fromLicense);hold.setFromRecharge(fromRecharge);
         holdRepo.save(hold);
         if(wallet.getEnterpriseId()!=null && fromRecharge>0) enterpriseCreditLots.reserve(wallet,hold);
         log.info("[credit] hold ok user={} ref={}:{} amount={} gift={} license={} recharge={}",
@@ -526,8 +572,8 @@ public class CreditService {
     /**
      * 真扣（commit）一笔已 hold 的额度（或其中一部分）。
      *
-     * <p>amount 必须 ≤ hold.remainingAmount；commit 后 pendingBalance 减少 amount，
-     * 写一条 SPEND LedgerEntry（amount 为负），hold.remainingAmount 减；
+     * <p>amount 必须 ≤ hold.remainingAmount；模型任务按累计实际用量和原价格快照结算，
+     * pendingBalance 仅减普通积分消费额，赠款消费另记流水；hold.remainingAmount 按原计价金额减；
      * 若减到 0，hold.status = COMMITTED 且 completedAt 落时间。
      *
      * <p>同 (referenceType, referenceId) 重复 commit 累计金额，不会再次校验幂等
@@ -537,7 +583,7 @@ public class CreditService {
      */
     @Transactional
     public LedgerEntryDto commitHold(String referenceType, String referenceId,
-                                      long amount, String description) {
+                                      long amount, String description, ModelBillingMath.Usage cumulativeUsage) {
         if (amount <= 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "commit 金额必须为正数");
         }
@@ -556,11 +602,20 @@ public class CreditService {
         }
 
         Wallet wallet = requiredWalletForUpdate(hold.getWalletId());
-        if (wallet.getPendingBalance() < amount) {
+        Instant now = Instant.now();
+        boolean modelCharge=modelCharges!=null && modelCharges.isModelCharge(hold.getId());
+        var settled=modelCharge?modelCharges.consume(wallet,hold,amount,cumulativeUsage,now)
+                :new ModelChargeService.Settlement(0,amount,hold.getRemainingAmount()-amount);
+        return commitRecorded(wallet,hold,amount,description,settled,modelCharge,now);
+    }
+
+    private LedgerEntryDto commitRecorded(Wallet wallet,CreditHold hold,long amount,String description,
+            ModelChargeService.Settlement settled,boolean modelCharge,Instant now) {
+        String referenceType=hold.getReferenceType(),referenceId=hold.getReferenceId();
+        if (wallet.getPendingBalance() < settled.ordinary()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,"钱包冻结余额与任务不一致，请核对");
         }
-        Instant now = Instant.now();
-        wallet.setPendingBalance(Math.max(0, wallet.getPendingBalance() - amount));
+        wallet.setPendingBalance(wallet.getPendingBalance() - settled.ordinary());
         wallet.setUpdatedAt(now);
         walletRepo.save(wallet);
 
@@ -571,19 +626,28 @@ public class CreditService {
                 .actorUserId(hold.getActorUserId()).enterpriseId(hold.getEnterpriseId())
                 .membershipId(hold.getMembershipId()).billingAuthorizationId(hold.getBillingAuthorizationId())
                 .entryType(LedgerEntry.LedgerEntryType.SPEND)
-                .amount(-amount)
+                .amount(-settled.ordinary())
                 .balanceAfter(wallet.getTotalBalance())
                 .description(description)
                 .referenceId(referenceId)
                 .referenceType(referenceType)
                 .createdAt(now)
                 .build();
-        ledgerRepo.save(entry);
+        // Grant-paid model usage is recorded by SCOPED_SPEND; skip an ordinary "spend 0" row.
+        boolean recorded=!modelCharge||settled.ordinary()>0;
+        if(recorded)ledgerRepo.save(entry);
 
-        if(hold.getEnterpriseId()!=null) enterpriseCreditLots.commit(hold,hold.getRemainingAmount()-amount);
+        if(hold.getEnterpriseId()!=null) enterpriseCreditLots.commit(hold,settled.ordinaryRemaining());
         hold.setRemainingAmount(hold.getRemainingAmount() - amount);
         hold.setUpdatedAt(now);
         if (hold.getRemainingAmount() == 0) {
+            if(modelCharge) {
+                // Rounded base credits may be exhausted before all reserved usage is consumed.
+                // Close both allocations now; a later releaseHold sees this terminal hold and is a no-op.
+                long unused=modelCharges.release(wallet,hold,now);
+                if(unused>0)releaseWalletRemainder(wallet,hold,unused,"任务完成 · 退回未用积分",now,true);
+                modelCharges.finishResources(hold.getId(),null,now);
+            }
             hold.setStatus(CreditHold.Status.COMMITTED);
             hold.setCompletedAt(now);
         }
@@ -592,7 +656,7 @@ public class CreditService {
             enterpriseBilling.complete(referenceType,referenceId);
         log.info("[credit] commit ok ref={}:{} amount={} remaining={} status={}",
                 referenceType, referenceId, amount, hold.getRemainingAmount(), hold.getStatus());
-        return LedgerEntryDto.from(entry);
+        return recorded?LedgerEntryDto.from(entry):null;
     }
 
     /**
@@ -630,15 +694,34 @@ public class CreditService {
 
         Wallet wallet = requiredWalletForUpdate(hold.getWalletId());
 
-        // 按 hold 时桶分布的比例退回。已 commit 一部分时，按剩余比例算每桶退多少。
-        long originalAmount = hold.getAmount();
+        boolean modelCharge=modelCharges!=null && modelCharges.isModelCharge(hold.getId());
+        if(modelCharge)remaining=modelCharges.release(wallet,hold,now);
+
+        LedgerEntryDto released=releaseWalletRemainder(wallet,hold,remaining,description,now,modelCharge);
+        hold.setRemainingAmount(0);
+        hold.setStatus(CreditHold.Status.RELEASED);
+        hold.setCompletedAt(now);
+        hold.setUpdatedAt(now);
+        holdRepo.save(hold);
+        if(modelCharge)modelCharges.finishResources(hold.getId(),null,now);
+        if(hold.getEnterpriseId()!=null) {
+            if(enterpriseBilling!=null)enterpriseBilling.complete(referenceType,referenceId);
+        }
+        log.info("[credit] release ok ref={}:{} remaining={}",referenceType,referenceId,remaining);
+        return released;
+    }
+
+    private LedgerEntryDto releaseWalletRemainder(Wallet wallet,CreditHold hold,long remaining,
+                                                   String description,Instant now,boolean modelCharge) {
+        // Refund only the ordinary allocation, preserving original buckets and enterprise recharge provenance.
+        long originalAmount = modelCharge?modelCharges.ordinaryTotal(hold):hold.getAmount();
         long backGift, backLicense, backRecharge;
         if (remaining == originalAmount) {
             backGift = hold.getFromGift();
             backLicense = hold.getFromLicense();
             backRecharge = hold.getFromRecharge();
-        } else if (hold.getEnterpriseId()!=null) {
-            // Cumulative bucket boundaries keep each enterprise source monotonic under partial settlement.
+        } else if (modelCharge || hold.getEnterpriseId()!=null) {
+            // Cumulative bucket boundaries keep every original source monotonic under partial settlement.
             var rem=java.math.BigInteger.valueOf(remaining);var original=java.math.BigInteger.valueOf(originalAmount);
             backGift=rem.multiply(java.math.BigInteger.valueOf(hold.getFromGift())).divide(original).longValueExact();
             long giftAndLicense=rem.multiply(java.math.BigInteger.valueOf(hold.getFromGift()+hold.getFromLicense())).divide(original).longValueExact();
@@ -670,25 +753,43 @@ public class CreditService {
                 .amount(remaining)
                 .balanceAfter(wallet.getTotalBalance())
                 .description(description)
-                .referenceId(referenceId)
-                .referenceType(referenceType)
+                .referenceId(hold.getReferenceId())
+                .referenceType(hold.getReferenceType())
                 .createdAt(now)
                 .build();
-        ledgerRepo.save(entry);
+        // Nothing ordinary to return (the grant release has its own SCOPED_RELEASE row): no "unfreeze 0".
+        boolean recorded=!modelCharge||remaining>0;
+        if(recorded)ledgerRepo.save(entry);
 
         if(hold.getEnterpriseId()!=null) enterpriseCreditLots.release(hold);
-        hold.setRemainingAmount(0);
-        hold.setStatus(CreditHold.Status.RELEASED);
-        hold.setCompletedAt(now);
-        hold.setUpdatedAt(now);
-        holdRepo.save(hold);
-        if(hold.getEnterpriseId()!=null) {
-            if(enterpriseRecovery!=null)enterpriseRecovery.afterRelease(hold,remaining,backGift,backLicense,backRecharge);
-            if(enterpriseBilling!=null)enterpriseBilling.complete(referenceType,referenceId);
-        }
-        log.info("[credit] release ok ref={}:{} remaining={} backGift={} backLicense={} backRecharge={}",
-                referenceType, referenceId, remaining, backGift, backLicense, backRecharge);
-        return LedgerEntryDto.from(entry);
+        if(hold.getEnterpriseId()!=null && enterpriseRecovery!=null)
+            enterpriseRecovery.afterRelease(hold,remaining,backGift,backLicense,backRecharge);
+        return recorded?LedgerEntryDto.from(entry):null;
+    }
+
+
+    /** Provider calls must mark reservations before dispatch so uncertain failures cannot replenish supplier capacity. */
+    @Transactional
+    public void markModelDispatched(String referenceType,String referenceId) {
+        lockReferencedWallet(referenceType,referenceId);
+        var hold=holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType,referenceId).orElse(null);
+        if(hold==null)return;
+        refreshLocked(hold);
+        if(hold.getStatus()!=CreditHold.Status.ACTIVE)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"任务冻结已结束，不能再次提交");
+        if(modelCharges!=null && modelCharges.isModelCharge(hold.getId()))modelCharges.markDispatched(hold.getId(),Instant.now());
+    }
+
+    /** Server-measured successful supplier usage. Must join the job's terminal settlement transaction. */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void finishModelResources(String referenceType,String referenceId,java.math.BigDecimal measuredUsage) {
+        java.util.Objects.requireNonNull(measuredUsage,"Actual provider usage is required");
+        lockReferencedWallet(referenceType,referenceId);
+        var hold=holdRepo.findByReferenceTypeAndReferenceIdForUpdate(referenceType,referenceId).orElse(null);
+        if(hold==null)return;
+        refreshLocked(hold);
+        if(hold.getStatus()==CreditHold.Status.ACTIVE && modelCharges!=null && modelCharges.isModelCharge(hold.getId()))
+            modelCharges.finishResources(hold.getId(),measuredUsage,Instant.now());
     }
 
     /** Internal account creation: serialized by EnterpriseService's enterprise/user locks. */

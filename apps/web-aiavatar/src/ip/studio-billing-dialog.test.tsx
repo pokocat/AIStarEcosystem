@@ -86,3 +86,11 @@ test("settings can change a default to personal or restore asking each time", as
   await selectFieldValue(select, "ask");
   expect(readStudioBillingPreference(await api.account())).toBeUndefined();
 });
+
+test("image quote selection permits a zero ordinary balance so matching grants can be evaluated by the server", async () => {
+  api.myBalance.mockResolvedValue({totalBalance:0,pendingBalance:0});
+  const confirm=vi.fn();render(<StudioBillingDialog details={{operation:"image",expectedCost:8,model:"studio-image:gpt-image-2",modelQuote:true}} onConfirm={confirm} onCancel={vi.fn()}/>);
+  const enterprise=await screen.findByRole("radio",{name:/创作公司/});fireEvent.click(enterprise);
+  const button=screen.getByRole("button",{name:"确认账户并核对报价"});await waitFor(()=>expect(button.hasAttribute("disabled")).toBe(false));
+  fireEvent.click(button);expect(confirm).toHaveBeenCalledWith({mode:"enterprise",enterpriseId:"team"});
+});

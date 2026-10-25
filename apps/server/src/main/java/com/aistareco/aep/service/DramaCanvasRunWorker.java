@@ -343,7 +343,7 @@ public class DramaCanvasRunWorker {
                         OffsetDateTime.now()) != 1) {
                     return false;
                 }
-                if (unit > 0) credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label);
+                if (unit > 0) credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label, null);
                 return true;
             });
             if (Boolean.TRUE.equals(settled)) {
@@ -428,7 +428,15 @@ public class DramaCanvasRunWorker {
      * 一次 chat（含并发闸与临时错误的退避重试）。每次尝试之前看运行时限、刷心跳；许可只在 HTTP 调用期间持有。
      * 不是临时错误、或重试用完了 → 抛最后那次的错（非业务异常包成 {@code AI_CALL_FAILED}）。
      */
+    private com.aistareco.aep.model.AiModelEndpoint textEndpoint(DramaCanvasRun run) {
+        String id=execOf(run).path("endpointId").asText("");
+        if(id.isBlank())return null; // Runs accepted before endpoint-scoped billing.
+        return invocation.resolveAcceptedEndpoint(AiModelPurpose.DRAMA_SCRIPT_DRAFT,id,"drama")
+                .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","已扣费的写作模型现在不可用")).endpoint();
+    }
+
     private AiModelInvocationService.AiModelResponse chat(DramaCanvasRun run, JsonNode call, String user) {
+        var endpoint=textEndpoint(run);
         List<Map<String, String>> messages = new ArrayList<>();
         String system = call.path("system").asText("");
         if (!system.isBlank()) messages.add(Map.of("role", "system", "content", system));
@@ -445,7 +453,9 @@ public class DramaCanvasRunWorker {
             RuntimeException err;
             try {
                 AiModelInvocationService.AiModelResponse resp =
-                        invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama");
+                        endpoint == null
+                                ? invocation.invokeChat(AiModelPurpose.DRAMA_SCRIPT_DRAFT, messages, options, "drama")
+                                : invocation.invokeChatOnEndpoint(endpoint,AiModelPurpose.DRAMA_SCRIPT_DRAFT,messages,options);
                 return resp;
             } catch (RuntimeException e) {
                 err = e;
@@ -611,7 +621,7 @@ public class DramaCanvasRunWorker {
             }
             ownership.record(run.getOwnerUserId(), stored.key(), stored.bytes(), stored.contentType());
             if (unit > 0) {
-                credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label + " · 第 " + (index + 1) + " 张");
+                credits.commitHold(DramaCanvasRunService.REF_TYPE, holdRef, unit, label + " · 第 " + (index + 1) + " 张", null);
             }
             return true;
         });

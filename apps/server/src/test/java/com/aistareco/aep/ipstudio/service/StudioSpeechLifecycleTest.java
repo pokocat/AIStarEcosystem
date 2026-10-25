@@ -38,7 +38,7 @@ class StudioSpeechLifecycleTest {
         worker.step("r");worker.step("r");
         assertEquals("done",run.getStatus());assertEquals(4.2,mapper.readTree(run.getOutputJson()).path("durationSec").asDouble());
         verify(client,times(1)).submit(any(),anyString(),anyString(),anyString(),anyString());
-        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(8L),anyString());verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
+        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(8L),anyString(), org.mockito.ArgumentMatchers.any());verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
     }
     @Test void failedSpeechRetainsSupplierReasonsAndRefundsOnce() throws Exception { providerFailure(false); }
     @Test void failedLipSyncRetainsSupplierReasonsAndRefundsOnce() throws Exception { providerFailure(true); }
@@ -115,7 +115,7 @@ class StudioSpeechLifecycleTest {
         var bytes=org.mockito.ArgumentCaptor.forClass(String.class);verify(lips,times(1)).submit(any(),anyString(),bytes.capture(),eq("r"),anyString());
         JsonBody.assertNativeLipBody(mapper,bytes.getValue());
         verify(lips,times(2)).upload(any(),anyString(),any(),anyString(),anyString(),anyString());verifyNoInteractions(client);
-        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(40L),anyString());
+        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(40L),anyString(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test void mirroredProfileAudioSettlesAndRecordsUsageExactlyOnce() {
@@ -123,7 +123,7 @@ class StudioSpeechLifecycleTest {
         run.setProjectId("p");run.setInputJson("{\"appliedVoice\":{\"voiceId\":\"v1\",\"name\":\"声音\",\"version\":1},\"_exec\":{\"endpointId\":\"tts\"}}");run.setOutputJson("{\"storageKey\":\"owned/audio.wav\"}");
         worker.step("r");worker.step("r");assertEquals("done",run.getStatus());
         verify(assets,times(1)).recordUsage(eq("owner"),eq("voice"),eq("v1"),eq("studio-project"),eq("p"),anyString(),eq("声音 · v1"),isNull());
-        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(8L),anyString());verifyNoInteractions(client);
+        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(8L),anyString(), org.mockito.ArgumentMatchers.any());verifyNoInteractions(client);
     }
     @Test void actualDurationSettlesSnapshotAndRefundsTheUnusedReservationOnlyOnce() {
         run.setCost(30);
@@ -131,7 +131,7 @@ class StudioSpeechLifecycleTest {
         run.setOutputJson("{\"storageKey\":\"owned/audio.wav\",\"durationSec\":3.52}");
         worker.step("r");worker.step("r");
         assertEquals("done",run.getStatus());assertEquals(6,run.getCost());
-        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(6L),anyString());
+        verify(credits,times(1)).commitHold(anyString(),eq("r"),eq(6L),anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());verifyNoInteractions(client,storage);
     }
     @Test void audioBeyondApprovedCeilingFailsWithoutChargingMore() {
@@ -141,7 +141,7 @@ class StudioSpeechLifecycleTest {
         worker.step("r");worker.step("r");
         assertEquals("failed",run.getStatus());assertEquals(0,run.getCost());
         assertEquals("STUDIO_SPEECH_COST_LIMIT_EXCEEDED",run.getErrorCode());assertEquals("{}",run.getOutputJson());
-        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());
         verify(credits,times(1)).releaseHold(anyString(),eq("r"),anyString());
     }
     @Test void admittedSpeechBindsItsSlotForNestedHttpAndClosesItAfterFailure() {

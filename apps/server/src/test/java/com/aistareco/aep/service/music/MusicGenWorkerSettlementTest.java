@@ -57,7 +57,7 @@ class MusicGenWorkerSettlementTest {
         assertEquals(180L, settled);
         var amount = ArgumentCaptor.forClass(Long.class);
         verify(creditService).commitHold(eq(MusicGenJobService.CREDIT_REF_TYPE), eq("mgj_1"),
-                amount.capture(), any());
+                amount.capture(), any(), org.mockito.ArgumentMatchers.any());
         assertEquals(180L, amount.getValue());
         verify(creditService).releaseHold(eq(MusicGenJobService.CREDIT_REF_TYPE), eq("mgj_1"), any());
     }
@@ -67,7 +67,7 @@ class MusicGenWorkerSettlementTest {
         long settled = settle(job(240L, 120), 120);
 
         assertEquals(240L, settled);
-        verify(creditService).commitHold(any(), any(), eq(240L), any());
+        verify(creditService).commitHold(any(), any(), eq(240L), any(), org.mockito.ArgumentMatchers.any());
         verify(creditService, never()).releaseHold(any(), any(), any());
     }
 
@@ -77,7 +77,7 @@ class MusicGenWorkerSettlementTest {
         long settled = settle(job(240L, 120), 200);
 
         assertEquals(240L, settled);
-        verify(creditService).commitHold(any(), any(), eq(240L), any());
+        verify(creditService).commitHold(any(), any(), eq(240L), any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -85,7 +85,7 @@ class MusicGenWorkerSettlementTest {
         long settled = settle(job(240L, 120), null);
 
         assertEquals(240L, settled);
-        verify(creditService).commitHold(any(), any(), eq(240L), any());
+        verify(creditService).commitHold(any(), any(), eq(240L), any(), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -97,7 +97,7 @@ class MusicGenWorkerSettlementTest {
     @Test
     void commitFailureDoesNotReportPhantomCharge() throws Exception {
         doThrow(new RuntimeException("ledger down"))
-                .when(creditService).commitHold(any(), any(), anyLong(), any());
+                .when(creditService).commitHold(any(), any(), anyLong(), any(), org.mockito.ArgumentMatchers.any());
 
         // 结算失败时不能对外声称扣了钱
         assertEquals(0L, settle(job(240L, 120), 90));

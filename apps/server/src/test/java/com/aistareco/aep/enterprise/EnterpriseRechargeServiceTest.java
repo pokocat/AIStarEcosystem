@@ -85,7 +85,7 @@ class EnterpriseRechargeServiceTest {
     @Test void refundRecallsOnlyOriginalAvailableCreditsAndExcludesFrozenGiftAndPersonal() {
         String owner=person(),user=person();var c=company(owner);var m=join(owner,c,user);var order=paid(owner,c,999,1000);allocate(c,user,600);
         var wallet=member(c,user);credits.creditWallet(wallet.getId(),50,LedgerEntry.LedgerEntryType.GIFT,"test","g","赠送");credits.creditAccount(user,800,LedgerEntry.LedgerEntryType.RECHARGE,"test","p","个人");
-        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet.getId(),150,"enterprise-recharge-test",ref,"冻结",user,m.member().id(),"auth-"+ref);
+        String ref=UUID.randomUUID().toString();credits.holdWallet(wallet.getId(),150,"enterprise-recharge-test",ref,"冻结",user,m.member().id(),"auth-"+ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
         var preview=service.refundPreview(order.id());assertEquals(900,preview.reclaimableCredits());assertEquals(899,preview.refundPriceCents());assertEquals(500,preview.memberRecallCredits());assertEquals(100,preview.pendingCredits());
         var failure=assertThrows(BusinessException.class,()->service.refund("finance",order.id(),refundRequest(preview)));assertTrue(failure.getMessage().contains("在途任务"));
         assertEquals(400,root(c).getTotalBalance());assertEquals(150,member(c,user).getPendingBalance());
@@ -96,7 +96,7 @@ class EnterpriseRechargeServiceTest {
     }
     @Test void spentOriginalOrderCannotBeRefundedUsingLaterRecharge() {
         String owner=person();var c=company(owner);var original=paid(owner,c,100,100);allocate(c,owner,100);String ref=UUID.randomUUID().toString();
-        credits.holdWallet(member(c,owner).getId(),100,"enterprise-recharge-test",ref,"生成",owner,c.member().id(),ref);credits.commitHold("enterprise-recharge-test",ref,100,"成功");
+        credits.holdWallet(member(c,owner).getId(),100,"enterprise-recharge-test",ref,"生成",owner,c.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);credits.commitHold("enterprise-recharge-test",ref,100,"成功", null);
         var later=paid(owner,c,250,100);var preview=service.refundPreview(original.id());assertEquals(0,preview.reclaimableCredits());assertEquals(100,preview.spentCredits());
         assertThrows(BusinessException.class,()->service.refund("finance",original.id(),refundRequest(preview)));assertEquals(100,service.refundPreview(later.id()).reclaimableCredits());
     }
@@ -109,13 +109,13 @@ class EnterpriseRechargeServiceTest {
     @Test void proportionalMixedBucketReleaseCannotCreateCashBackedCredits() {
         String owner=person();var c=company(owner);var order=paid(owner,c,100,1);allocate(c,owner,1);var w=member(c,owner);
         credits.creditWallet(w.getId(),1,LedgerEntry.LedgerEntryType.GIFT,"test","gift","gift");credits.creditWallet(w.getId(),1,LedgerEntry.LedgerEntryType.LICENSE_GRANT,"test","license","license");
-        String ref=UUID.randomUUID().toString();credits.holdWallet(w.getId(),3,"enterprise-rounding",ref,"冻结",owner,c.member().id(),ref);credits.commitHold("enterprise-rounding",ref,1,"部分成功");credits.releaseHold("enterprise-rounding",ref,"余量");
+        String ref=UUID.randomUUID().toString();credits.holdWallet(w.getId(),3,"enterprise-rounding",ref,"冻结",owner,c.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);credits.commitHold("enterprise-rounding",ref,1,"部分成功", null);credits.releaseHold("enterprise-rounding",ref,"余量");
         assertEquals(1,member(c,owner).getRechargeBalance());assertEquals(1,service.refundPreview(order.id()).reclaimableCredits());assertEquals(2,member(c,owner).getTotalBalance());
     }
     @Test void multipleDifferentlyPricedSourcesSettleFifoAndKeepTheirOwnRefundRatios() {
         String owner=person();var c=company(owner);var first=paid(owner,c,100,100);var second=paid(owner,c,900,100);allocate(c,owner,200);
-        String ref=UUID.randomUUID().toString();credits.holdWallet(member(c,owner).getId(),200,"enterprise-source-fifo",ref,"两来源冻结",owner,c.member().id(),ref);
-        credits.commitHold("enterprise-source-fifo",ref,120,"部分成功");credits.releaseHold("enterprise-source-fifo",ref,"失败余量");
+        String ref=UUID.randomUUID().toString();credits.holdWallet(member(c,owner).getId(),200,"enterprise-source-fifo",ref,"两来源冻结",owner,c.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);
+        credits.commitHold("enterprise-source-fifo",ref,120,"部分成功", null);credits.releaseHold("enterprise-source-fifo",ref,"失败余量");
         assertEquals(0,service.refundPreview(first.id()).reclaimableCredits());var remaining=service.refundPreview(second.id());assertEquals(80,remaining.reclaimableCredits());assertEquals(720,remaining.refundPriceCents());assertEquals(80,member(c,owner).getRechargeBalance());
     }
     @Test void legacyFinanceAndPaymentEntryPointsCannotBypassEnterpriseConfirmation() {
@@ -163,7 +163,7 @@ class EnterpriseRechargeServiceTest {
     }
     @Test void oneShotPartialRefundPreservesConsumedCreditsAndRejectsChangedReplayBody() {
         String owner=person();var c=company(owner);var order=paid(owner,c,999,1000);allocate(c,owner,100);String ref=UUID.randomUUID().toString();
-        credits.holdWallet(member(c,owner).getId(),100,"enterprise-partial-refund",ref,"生成",owner,c.member().id(),ref);credits.commitHold("enterprise-partial-refund",ref,100,"已交付");
+        credits.holdWallet(member(c,owner).getId(),100,"enterprise-partial-refund",ref,"生成",owner,c.member().id(),ref, com.aistareco.aep.billing.service.ModelChargeContext.NONE);credits.commitHold("enterprise-partial-refund",ref,100,"已交付", null);
         var preview=service.refundPreview(order.id());assertEquals(100,preview.spentCredits());assertEquals(900,preview.reclaimableCredits());assertEquals(899,preview.refundPriceCents());
         var input=refundRequest(preview);var refunded=service.refund("finance",order.id(),input);assertEquals(899,refunded.refundedPriceCents());assertEquals(100,service.wallet(owner,c.enterprise().id()).spent());
         assertThrows(BusinessException.class,()->service.refund("finance",order.id(),new RefundRequest(input.clientRequestId(),input.previewToken(),"更换原因",input.receiptReference())));

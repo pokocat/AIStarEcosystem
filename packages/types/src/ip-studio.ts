@@ -99,6 +99,7 @@ export interface IpVideoCandidate {
   promptRewrite?: IpVideoPromptRewrite;
 }
 export interface IpRunOutput {
+  billingBreakdown?: import('./model-billing').ModelBillingBreakdown;
   /** Persisted async ErrorLog lookup ID, alongside partial output when applicable. */
   logId?: string;
   billing?: import("./ip-studio-workflow").StudioTokenBilling;
@@ -141,7 +142,7 @@ export interface IpRunInputs {
 export interface IpRun {
   id: string; projectId: string; nodeId: string; kind: IpRunKind;
   status: IpRunStatus; stage: string; pct: number;
-  cost: number;                   // 实际提交（commit）的积分；running 时为冻结额
+  cost: number;                   // 有模型明细时为已消费 + 仍冻结，终态为实付；旧任务保留原历史金额
   errorCode?: string; errorMessage?: string; logId?: string;
   inputs: IpRunInputs; output: IpRunOutput;
   createdAt: string; finishedAt?: string;
@@ -213,7 +214,25 @@ export interface IpUpdateProjectRequest {
    */
   baseDocVersion?: string;
 }
-export interface IpRunNodeRequest { doc?: IpProjectDoc; billing?: import("./enterprise").EnterpriseBillingSelection; clientRequestId?: string; maxCost?: number }   // 运行前保存最新文档；旧请求默认个人。
+export interface IpRunNodeRequest { doc?: IpProjectDoc; billing?: import("./enterprise").EnterpriseBillingSelection; clientRequestId?: string; maxCost?: number; modelBilling?: import('./model-billing').ModelBillingApproval }   // 运行前保存最新文档；旧请求默认个人。
+export interface IpVideoRequest {
+  billing?: import('./enterprise').EnterpriseBillingSelection;
+  modelBilling?: import('./model-billing').ModelBillingApproval;
+  clientRequestId?: string;
+  prompt: string;
+  refKey?: string;
+  durationSec?: number;
+  aspectRatio?: string;
+  model?: string;
+  video?: import('./ip-studio-workflow').StudioVideoSettings;
+  maxCost?: number;
+}
+export interface IpGenerateRequest {
+  billing?: import('./enterprise').EnterpriseBillingSelection;
+  modelBilling?: import('./model-billing').ModelBillingApproval;
+  clientRequestId?: string; maxCost?: number; nodeId?: string; prompt: string;
+  refKeys?: string[]; count?: number; size?: string; model?: string;
+}
 export interface IpPublishRequest { avatarName: string; masterNodeId: string; lookNodeIds: string[] }
 export interface IpPublishResult { avatarId: string; lookIds: string[] }
 export interface IpUploadResult { key: string; url: string; width?: number; height?: number; fileName: string }

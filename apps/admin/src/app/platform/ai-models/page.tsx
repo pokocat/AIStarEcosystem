@@ -11,6 +11,7 @@ import { GenerationTaskReconciliation } from "./material-video-reconciliation";
 // ─────────────────────────────────────────────────────────────────────────────
 
 import * as React from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -1359,6 +1360,9 @@ export default function AdminAiModelsPage() {
                           </TableCell>
                           <TableCell className="py-3 text-right">
                             <div className="flex flex-nowrap justify-end gap-1 [&>*]:shrink-0 [&>*]:whitespace-nowrap">
+                              <Button size="sm" variant="outline" className="h-7 px-2" asChild>
+                                <Link href={`/finance/model-billing?endpointId=${encodeURIComponent(p.id)}`}>赠款与折扣</Link>
+                              </Button>
                               <Button
                                 size="sm"
                                 variant="outline"

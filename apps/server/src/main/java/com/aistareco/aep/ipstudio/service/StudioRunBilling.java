@@ -31,4 +31,12 @@ final class StudioRunBilling {
                 || enterprise&&!Objects.equals(run.getEnterpriseId(),requested.enterpriseId()))
             throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_REQUEST_CHANGED","同一请求的付款账户已改变，请重新提交");
     }
+    static com.aistareco.aep.billing.service.ModelBillingApproval approval(IpRun run,com.fasterxml.jackson.databind.ObjectMapper mapper) {
+        try {
+            var input=mapper.readTree(run.getInputJson());
+            var value=input.path("_exec").path("modelCharge").path("approval");
+            if(value.isMissingNode()||value.isNull())value=(input.has("studioRequest")?input.path("studioRequest"):input).path("modelBilling");
+            return value.isMissingNode()||value.isNull()?null:mapper.treeToValue(value,com.aistareco.aep.billing.service.ModelBillingApproval.class);
+        }catch(Exception invalid){throw new IllegalStateException("Cannot restore the original model quote",invalid);}
+    }
 }

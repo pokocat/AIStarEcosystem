@@ -48,7 +48,7 @@ public final class IpStudioDtos {
         }
     }
 
-    /** 一次运行。{@code cost} 恒为真实账本值（running=冻结额 / done=已提交之和）。 */
+    /** 一次运行。模型计费的 cost 为已消费 + 仍冻结，终态为实付；旧任务保留历史金额。 */
     public record IpRunDto(String id, String projectId, String nodeId, String kind,
                            String status, String stage, int pct, long cost,
                            String errorCode, String errorMessage,

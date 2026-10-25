@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.*;
 
+import com.aistareco.aep.billing.service.*;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
@@ -88,8 +90,15 @@ public class StudioSpeechService {
         input.putObject("_exec").put("endpointId",resolved.endpoint().getId()).put("baseUrl",resolved.endpoint().getBaseUrl().replaceAll("/$",""))
                 .put("requestBody",write(body)).put("holdTotal",price);
         if(rate!=null)((ObjectNode)input.path("_exec")).set("pointPricing",mapper.valueToTree(rate));
-        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,resolved.endpoint().getId(),price,"Studio 配音");
-        if(enterpriseBilling==null&&price>0)credits.hold(user,price,IpRunService.REF_TYPE,id,"Studio 配音");
+        long reservedUnits=rate==null?1:StudioPointPricing.speechReservationSeconds(request.text().trim());
+        var charge=new ModelChargeContext(new ModelBillingTarget("aiavatar","speech",resolved.endpoint().getId(),
+                ModelBillingTarget.providerModelOf(resolved.endpoint()),"standard",rate==null?"call":"second"),
+                new ModelBillingMath.Usage(BigDecimal.valueOf(reservedUnits),null),
+                rate==null?BigDecimal.valueOf(price):rate.platformPointsPerSecond(),null,
+                rate==null || rate.platformReleaseId()==null?"studio.speech":rate.platformReleaseId(),false,request.maxCost(),null);
+        ((ObjectNode)input.path("_exec")).set("modelCharge",mapper.valueToTree(charge));
+        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(user,request.billing(),IpRunService.REF_TYPE,id,resolved.endpoint().getId(),price,"Studio 配音", charge);
+        if(enterpriseBilling==null&&price>0)credits.hold(user,price,IpRunService.REF_TYPE,id,"Studio 配音", charge);
         var run=IpRun.builder().id(id).projectId(projectId).ownerUserId(user).nodeId(request.nodeId()).kind("studio-audio")
                 .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).status(IpRun.STATUS_RUNNING).stage("queued")
                 .cost(price).pct(0).inputJson(write(input)).outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();

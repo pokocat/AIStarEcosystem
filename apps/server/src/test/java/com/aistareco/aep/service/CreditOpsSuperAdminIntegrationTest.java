@@ -19,6 +19,10 @@ import static org.junit.jupiter.api.Assertions.*;
 @Import({CreditOpsService.class,CreditService.class})
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 class CreditOpsSuperAdminIntegrationTest {
+    @org.springframework.boot.test.mock.mockito.MockBean com.aistareco.aep.billing.service.ModelChargeService modelCharges;
+    // CreditOpsService also issues model grants; this test covers ordinary gifts only.
+    @org.springframework.boot.test.mock.mockito.MockBean com.aistareco.aep.billing.service.ScopedCreditService scopedCredits;
+
     @Autowired CreditOpsService service;
     @Autowired AdminUserRepository admins;
     @Autowired WalletRepository wallets;

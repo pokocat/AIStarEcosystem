@@ -125,6 +125,7 @@ public class FinanceController {
             case UNFREEZE -> "解冻";
             case ADJUST -> "调整";
             case TRANSFER_IN, TRANSFER_OUT -> "积分划拨";
+            case SCOPED_GRANT, SCOPED_FREEZE, SCOPED_SPEND, SCOPED_RELEASE, SCOPED_EXPIRE -> "模型赠款";
         };
     }
 
@@ -153,6 +154,7 @@ public class FinanceController {
             case LICENSE_GRANT -> "license_grant";
             case WITHDRAW -> "withdrawal";
             case TRANSFER_IN, TRANSFER_OUT -> "transfer";
+            case SCOPED_GRANT, SCOPED_FREEZE, SCOPED_SPEND, SCOPED_RELEASE, SCOPED_EXPIRE -> "scoped";
             case SPEND, FREEZE -> "spend";
             default -> "income";
         };

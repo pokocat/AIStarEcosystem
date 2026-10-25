@@ -37,7 +37,7 @@ class StudioLipSyncServiceTest {
         service.submit("owner","p",request);verifyNoInteractions(worker);String id=saved.get().getId();
         TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(id);
         reset(models,media,storage);service.submit("owner","p",request);verifyNoInteractions(models,media,storage);
-        verify(credits,times(1)).hold(eq("owner"),eq(40L),anyString(),eq(id),anyString());
+        verify(credits,times(1)).hold(eq("owner"),eq(40L),anyString(),eq(id),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",new LipSyncRequest("original","node","lips","owned/another.mp4",request.audioStorageKey(),40L))).getCode());
     }
     @Test void ForeignAssetsAndPriceChangesCannotFreezeOrDispatch() {
@@ -69,13 +69,13 @@ class StudioLipSyncServiceTest {
         var billing=mock(com.aistareco.aep.enterprise.service.EnterpriseBillingService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(service,"enterpriseBilling",billing);
         var selected=new com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection("enterprise","company");
-        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("lips"),eq(40L),anyString()))
+        when(billing.reserve(eq("owner"),eq(selected),eq("ip-run"),anyString(),eq("lips"),eq(40L),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class)))
                 .thenReturn(new com.aistareco.aep.enterprise.service.EnterpriseBillingService.BillingAccount("member-wallet","company","membership","authorization"));
         var enterprise=new LipSyncRequest("original","node","lips",request.videoStorageKey(),request.audioStorageKey(),40L,selected);
         service.submit("owner","p",enterprise);assertEquals("company",saved.get().getEnterpriseId());
         reset(models,media,storage);service.submit("owner","p",enterprise);verifyNoInteractions(models,media,storage,credits);
         assertEquals("STUDIO_REQUEST_CHANGED",assertThrows(BusinessException.class,()->service.submit("owner","p",request)).getCode());
-        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString());
+        verify(billing,times(1)).reserve(anyString(),any(),anyString(),anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
 }

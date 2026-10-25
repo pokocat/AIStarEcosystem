@@ -28,6 +28,8 @@ import static org.mockito.Mockito.*;
 @Transactional(propagation=Propagation.NOT_SUPPORTED)
 @EnabledIfEnvironmentVariable(named="STUDIO_PRICING_FIXTURE_CREDENTIAL",matches=".+")
 class StudioPlatformPricingAcceptanceTest {
+    @org.springframework.boot.test.mock.mockito.MockBean com.aistareco.aep.billing.service.ModelChargeService modelCharges;
+
  @Autowired IpRunRepository runs;@Autowired CreditService credits;@Autowired WalletRepository wallets;
  @Autowired LedgerEntryRepository ledger;@Autowired AiModelEndpointRepository endpoints;
  @Autowired PlatformTransactionManager manager;

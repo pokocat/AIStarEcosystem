@@ -270,7 +270,7 @@ class DramaRenderServiceTest {
         assertEquals("DRAMA_FRAME_NOT_OWNED", ex.getCode());
         // 不建任务、不冻结（hold 只发生在 videoJobs.submit 里）
         verify(videoJobs, never()).submit(any(), any(), any());
-        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any());
+        verify(creditService, never()).hold(any(), anyLong(), any(), any(), any(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test

@@ -1,4 +1,4 @@
-import { legacyImageBillingDetails, withStudioBilling } from "@/canvas-bridge/studio-billing";
+import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuote } from "@/canvas-bridge/studio-billing";
 // ─────────────────────────────────────────────────────────────────────────────
 // api/ip-studio.ts — AI IP 工作台 API 调用层。
 //
@@ -146,10 +146,9 @@ export async function runNode(id: string, nodeId: string, doc?: IpProjectDoc): P
     return mockDelay(mockStartRun(id, nodeId, effective), 220);
   }
   const details = await legacyImageBillingDetails(doc, nodeId);
-  return apiFetch<IpRun>(`/v1/ip-studio/projects/${id}/nodes/${nodeId}/run`, {
-    method: "POST",
-    body: await withStudioBilling(id, { ...(doc ? { doc } : {}), ...(details.expectedCost === undefined ? {} : { maxCost: details.expectedCost }) }, { operation: "image", ...details }),
-  });
+  const request=await withStudioBilling(id,{...(doc?{doc}:{}),...(details.expectedCost===undefined?{}:{maxCost:details.expectedCost})},{operation:"image",nodeId,...details});
+  try{return await apiFetch<IpRun>(`/v1/ip-studio/projects/${id}/nodes/${nodeId}/run`,{method:"POST",body:request});}
+  catch(error){invalidateStudioModelQuote(id,request,error);throw error;}
 }
 
 export async function getRun(id: string): Promise<IpRun> {

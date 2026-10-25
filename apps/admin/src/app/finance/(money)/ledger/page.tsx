@@ -26,6 +26,7 @@ const TXN_TYPE_LABEL: Record<string, string> = {
   recharge: "充值",
   license_grant: "秘钥入账",
   transfer: "积分划拨",
+  scoped: "模型赠款",
 };
 
 /** 账号单元格：昵称 + 登录名 + 手机号 + 用户 ID，server 未回填（老数据）时退回 userId。 */
@@ -292,7 +293,9 @@ export default function LedgerPage() {
                       <TableCell className={"text-right tabular-nums font-medium " + (e.amount >= 0 ? "text-emerald-700" : "text-rose-700")}>
                         {formatSignedCredits(e.amount)}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground">{formatCredits(e.balanceAfter)}</TableCell>
+                      <TableCell className="text-right tabular-nums text-sm text-muted-foreground" title={e.type.startsWith("scoped_") ? "这一笔模型赠款的剩余额度，不是钱包余额" : undefined}>
+                        {e.type.startsWith("scoped_") ? <><span className="text-xs">赠款余额 </span>{formatCredits(e.balanceAfter)}</> : formatCredits(e.balanceAfter)}
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground whitespace-nowrap">{formatDateTimeCN(e.createdAt)}</TableCell>
                     </TableRow>
                   ))}

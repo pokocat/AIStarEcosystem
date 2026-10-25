@@ -127,7 +127,7 @@ class StudioWorkflowSkillRequestTest {
         assertEquals("system:"+PromptService.KEY_DAP_IP_STUDIO_SKILL_CHECK,exec.path("systemPrompt").asText());
         assertTrue(exec.path("userPrompt").asText().contains("subject-replaced")&&exec.path("userPrompt").asText().contains("[1.0,3.0,5.0,7.0]"));
         assertEquals("reference-video-recreation",exec.path("skill").path("key").asText());
-        verify(credits).hold(eq("u"),eq(21L),anyString(),eq(run.getId()),anyString());
+        verify(credits).hold(eq("u"),eq(21L),anyString(),eq(run.getId()),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     RunRequest recreation(String maxSegmentSec,String model) throws Exception {
@@ -155,7 +155,7 @@ class StudioWorkflowSkillRequestTest {
         JsonNode exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
         assertEquals(15.0,exec.path("segmentCap").path("maxSegmentSec").asDouble(),"H3 contract maximum");
         assertEquals("model",exec.path("segmentCap").path("requested").asText());assertEquals(15,exec.path("segmentCap").path("contract").path("maxSeconds").asInt());
-        verify(credits).hold(eq("u"),eq(21L),anyString(),anyString(),anyString());
+        verify(credits).hold(eq("u"),eq(21L),anyString(),anyString(),anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
     }
 
     @Test void callersWithoutACapKeepTheirExactRequestIdentity() throws Exception {

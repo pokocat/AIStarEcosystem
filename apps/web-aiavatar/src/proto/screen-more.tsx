@@ -6,6 +6,7 @@ import { DATA, LicenseApi, AccountApi, WalletApi, AvatarApi, VoiceApi, AuthApi, 
 import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
+import { ScopedCreditsPanel } from "@/ip/scoped-credits-panel";
 import { StudioBillingSettings } from "@/ip/studio-billing-settings";
 import { useHubData } from "@/components/hub/data";
 
@@ -147,6 +148,7 @@ function MMembership({ ctx }) {
             hMM('span', { style: { fontSize: 11.5, opacity: .8 } }, '本月赠送 ' + (acct.monthlyGrant || 0).toLocaleString() + ' · 已用 ' + (acct.creditsUsed || 0) + ' · ' + (acct.refreshDate || '') + '刷新'),
             hMM('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 12, fontWeight: 700 } }, '约可生成 ' + (acct.generatableEstimate || 0) + ' 个', hMM(Icons.user, { size: 13 }))))),
 
+      hMM(ScopedCreditsPanel),
       hMM(GroupTitle, null, '充值积分'),
       (packageState.loading || packageState.error || !packages.length) && hMM('div', { role: packageState.error ? 'alert' : 'status', style: { padding: '18px 0', color: 'var(--ink-2)', fontSize: 14 } },
         packageState.loading ? '正在加载充值套餐…' : (packageState.error ? '充值套餐加载失败，请重试。' : '暂无可用充值套餐，请稍后再试。'),

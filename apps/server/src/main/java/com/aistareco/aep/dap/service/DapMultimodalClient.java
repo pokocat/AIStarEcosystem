@@ -101,14 +101,22 @@ public class DapMultimodalClient {
     }
 
     private Target resolveTarget(AiModelPurpose purpose, String endpointId, String appCode) {
+        var billing="aiavatar".equals(appCode)?DapModelBilling.current():null;
+        if(billing!=null) {
+            String accepted=billing.endpointId(purpose);
+            if(endpointId!=null&&!endpointId.isBlank()&&!accepted.equals(endpointId))
+                throw new DapModelException("MODEL_BILLING_ROUTE_CHANGED","模型接入点与已确认费用不一致");
+            endpointId=accepted;
+        }
         var resolved = (endpointId == null || endpointId.isBlank())
                 ? java.util.Optional.<com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint>empty()
-                : aiModels.resolveEndpoint(purpose, endpointId,appCode);
+                : billing==null?aiModels.resolveEndpoint(purpose, endpointId,appCode):aiModels.resolveAcceptedEndpoint(purpose,endpointId,appCode);
         AiModelEndpoint e = (endpointId == null || endpointId.isBlank())
                 ? aiModels.resolveDefaultEndpoint(purpose,appCode).orElse(null)
                 : resolved.map(r -> r.endpoint()).orElse(null);
         Integer minPixels = resolved.map(r -> r.candidate() == null ? null : r.candidate().getMinImagePixels()).orElse(null);
         if (e == null) return null;
+        if(billing!=null)billing.requireRoute(purpose,e);
         try {
             String key = AepCryptoUtil.decrypt(e.getUpstreamApiKeyEncrypted());
             if (key == null || key.isBlank()) {
@@ -137,6 +145,8 @@ public class DapMultimodalClient {
 
     /** 图片 + 文本任一通道可用即视为已配置(视频是衍生能力,运行链路按各自通道再精确判定)。 */
     public boolean isConfigured() {
+        // A paid task must resolve its accepted routes or fail; changing defaults must never select placeholders.
+        if(DapModelBilling.current()!=null)return true;
         return aiModels.hasEndpointFor(AiModelPurpose.DAP_IMAGE,"aiavatar")
                 || aiModels.hasEndpointFor(AiModelPurpose.DAP_PERSONA,"aiavatar");
     }
@@ -160,28 +170,39 @@ public class DapMultimodalClient {
 
     /** 单轮 chat;返回 assistant content。 */
     public String chat(String systemPrompt, String userPrompt) {
-        return chatResult(systemPrompt,userPrompt,false);
+        var response=chatResult(systemPrompt,userPrompt,false);
+        recordText(response);return response.content();
     }
 
-    private String chatResult(String systemPrompt,String userPrompt,boolean json) {
+    private AiModelInvocationService.AiModelResponse chatResult(String systemPrompt,String userPrompt,boolean json) {
         Target target=require(chatTarget(),"chat");
         List<java.util.Map<String,String>> messages=new java.util.ArrayList<>();
         if(systemPrompt!=null && !systemPrompt.isBlank())messages.add(java.util.Map.of("role","system","content",systemPrompt));
         messages.add(java.util.Map.of("role","user","content",userPrompt==null?"":userPrompt));
         var options=new java.util.HashMap<String,Object>();options.put("temperature",0.6);
-        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        options.put("max_tokens",textOutputLimit(target.endpoint()));
         if(json)options.put("response_format",java.util.Map.of("type","json_object"));
         var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
         if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","文本模型没有返回有效内容");
-        return response.content();
+        return response;
+    }
+
+    private static int textOutputLimit(AiModelEndpoint endpoint) {
+        int configured=endpoint.getDefaultMaxTokens()!=null?endpoint.getDefaultMaxTokens():4096;
+        var billing=DapModelBilling.current();return billing==null?configured:billing.outputLimit(configured);
+    }
+    private static void recordText(AiModelInvocationService.AiModelResponse response) {
+        var billing=DapModelBilling.current();if(billing!=null)billing.record(response);
     }
 
     /** chat 并解析 JSON 产物(剥 markdown 围栏 + 截取首个 {...})。 */
     public JsonNode chatJson(String systemPrompt, String userPrompt) {
-        String raw = chatResult(systemPrompt, userPrompt, true);
+        var response=chatResult(systemPrompt,userPrompt,true);
+        String raw = response.content();
         String cleaned = extractJson(raw);
         try {
-            return OM.readTree(cleaned);
+            JsonNode parsed=OM.readTree(cleaned);
+            recordText(response);return parsed;
         } catch (IOException e) {
             throw new DapModelException("DAP_MODEL_BAD_OUTPUT", "chat 输出不是合法 JSON: " + truncate(raw, 300));
         }
@@ -210,11 +231,11 @@ public class DapMultimodalClient {
         }
         messages.add(java.util.Map.of("role","user","content",parts));
         var options=new java.util.HashMap<String,Object>();options.put("temperature",0.4);
-        options.put("max_tokens",target.endpoint().getDefaultMaxTokens()!=null?target.endpoint().getDefaultMaxTokens():4096);
+        options.put("max_tokens",textOutputLimit(target.endpoint()));
         options.put("response_format",java.util.Map.of("type","json_object"));
         var response=aiModels.invokeChatOnEndpoint(target.endpoint(),AiModelPurpose.DAP_PERSONA,messages,options);
         if(response.content()==null || response.content().isBlank())throw new DapModelException("DAP_MODEL_BAD_OUTPUT","看图模型没有返回有效内容");
-        return response.content();
+        recordText(response);return response.content();
     }
 
     /** 带图 chat 并解析 JSON 产物（剥 markdown 围栏 + 截取首个 {...}）。 */

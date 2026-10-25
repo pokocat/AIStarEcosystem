@@ -135,6 +135,9 @@ class VideoStudioOptimizationTransactionTest {
         when(modelClient.isEndpointReady(any())).thenReturn(true);
         when(modelClient.isJusuanMedia(any())).thenReturn(true);
         when(modelClient.protocolDurationBounds(any())).thenReturn(new MaterialVideoModelClient.DurationBounds(5, 15));
+        // Optimization charges name the real route (endpoint + model) so grants and discounts can match it.
+        when(modelClient.billingRoute(any(), any())).thenReturn(new MaterialVideoModelClient.BillingRoute("ep-h3", "minimax-h3", true,
+                "https://api.jusuanhub.com/v1", ""));
         pricing.replace(new VideoStudioPricingConfig(new LinkedHashMap<>(), 0, 0L, PRICE), "test");
     }
 
@@ -175,7 +178,7 @@ class VideoStudioOptimizationTransactionTest {
                 secondWaitedOnTheKey.set(awaitAnotherSessionInsertingAnOptimization(Duration.ofSeconds(10)));
             }
             return inv.callRealMethod();
-        }).when(creditTarget()).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
+        }).when(creditTarget()).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
 
         ExecutorService pool = Executors.newFixedThreadPool(2);
         try {
@@ -204,9 +207,11 @@ class VideoStudioOptimizationTransactionTest {
     void holdFailureRollsBackTheInsertedRow() {
         String crid = newCrid();
 
-        ResponseStatusException e = assertThrows(ResponseStatusException.class, () -> optimizations.create(user, t2v(crid)));
+        // Model billing reports the shortfall with a code; the contract is still a 402 that rolls the row back.
+        com.aistareco.common.BusinessException e = assertThrows(com.aistareco.common.BusinessException.class, () -> optimizations.create(user, t2v(crid)));
 
-        assertEquals(HttpStatus.PAYMENT_REQUIRED.value(), e.getStatusCode().value());
+        assertEquals(HttpStatus.PAYMENT_REQUIRED, e.getStatus());
+        assertEquals("MODEL_CREDITS_INSUFFICIENT", e.getCode());
         assertTrue(repo.findByOwnerUserIdAndClientRequestId(user, crid).isEmpty(), "402 之后不该留下记录");
         assertTrue(ledger.findByUserIdOrderByCreatedAtDesc(user).stream().noneMatch(x -> REF.equals(x.getReferenceType())));
 
@@ -249,7 +254,7 @@ class VideoStudioOptimizationTransactionTest {
         String id = optimizations.create(user, t2v(newCrid())).id();
         vendorReturns("优化后的提示词");
         doThrow(new IllegalStateException("账本暂时写不进去"))
-                .when(creditTarget()).commitHold(eq(REF), eq(id), anyLong(), anyString());
+                .when(creditTarget()).commitHold(eq(REF), eq(id), anyLong(), anyString(), org.mockito.ArgumentMatchers.any());
 
         worker.run(id);
 
