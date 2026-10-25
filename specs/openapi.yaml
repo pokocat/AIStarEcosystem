@@ -15117,7 +15117,7 @@ paths:
     post:
       tags: [ip-studio]
       operationId: directorStopTextTask
-      description: 停止本人作品的同步文字任务，原子释放冻结并阻止迟到结果覆盖或再次扣款；重复停止已结束任务仅返回当前作品，不重试生成。已受理的图片、音频和视频不走此入口。
+      description: 停止本人作品的同步文字后续处理；未提交模型才释放冻结，已提交的保留请求等待真实用量，按实际用量结算并只释放未使用部分。用量不明为 STUDIO_USAGE_PENDING，冻结保留待核对，不按上限扣款也不自动退款。重复停止不重复计费，不自动重试生成；已受理的图片、音频和视频不走此入口。
       parameters:
         - { in: path, name: id, required: true, schema: { type: string } }
         - { in: path, name: runId, required: true, schema: { type: string } }
