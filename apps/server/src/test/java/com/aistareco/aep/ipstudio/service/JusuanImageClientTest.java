@@ -301,7 +301,7 @@ class JusuanImageClientTest {
         var reply=json("{\"data\":[{\"b64_json\":\""+image+"\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
         var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
-        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,state::set));
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,null,state::set));
         assertTrue(error.getMessage().contains("1x1"));assertTrue(error.getMessage().contains("2048x2048"));
         assertTrue(state.get().path("submitAttempted").asBoolean());
         verify(upstream,times(1)).sendJson(any(),any());
@@ -365,13 +365,13 @@ class JusuanImageClientTest {
             case 2 -> throw new UpstreamCallException(false,new java.io.IOException("poll unavailable"));
             default -> json("{\"status\":\"succeeded\",\"outputs\":[{\"assetId\":\"original-asset\"}]}");
         };});
-        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,state::set));
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,null,state::set));
         assertEquals("STUDIO_IMAGE_RECOVERING",pending.code());assertEquals("original-job",state.get().path("jobId").asText());
         String originalBody=state.get().path("requestBody").asText();ep.setBaseUrl("https://new-config.example/v1");ep.setModel("new-model");
         when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio")).thenReturn(Optional.empty());
         byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
         var downloaded=mock(HttpResponse.class);when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));when(http.send(any(),any())).thenReturn(downloaded);
-        assertArrayEquals(bytes,client.generate("ep","changed caller prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,state.get(),state::set));
+        assertArrayEquals(bytes,client.generate("ep","changed caller prompt","1024x1024",List.of(),"original-key","owner",stage->{},null,null,state.get(),state::set));
         assertEquals(originalBody,state.get().path("requestBody").asText());assertEquals(1,requests.stream().filter(r->r.method().equals("POST")).count());
         assertEquals("/v1/jobs/original-job",requests.get(2).uri().getPath());assertEquals("api.jusuanhub.com",requests.get(2).uri().getHost());assertEquals("model=ernie-Image",requests.get(2).uri().getQuery());
     }
@@ -380,9 +380,9 @@ class JusuanImageClientTest {
         when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
         var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
         when(upstream.sendJson(any(),any())).thenThrow(new UpstreamCallException(true,new java.io.IOException("submit reply lost")));
-        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,state::set)).code());
+        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,null,state::set)).code());
         assertTrue(state.get().path("submitAttempted").asBoolean());assertFalse(state.get().has("jobId"));
-        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,state.get(),state::set));
+        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","original","1024x1024",List.of(),"key","owner",stage->{},null,null,state.get(),state::set));
         verify(upstream,times(1)).sendJson(any(),any());verifyNoInteractions(http);
     }
 

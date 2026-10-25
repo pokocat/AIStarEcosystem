@@ -70,8 +70,14 @@ public class JusuanImageClient {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,null);
     }
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
-        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null);
+        return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null,null);
     }
+    /**
+     * The one Studio entry: {@code providerModel} (nullable) is the family model the output resolution routed to
+     * (StudioImageModelRouting); null keeps the endpoint's own model. Callback checkpoints are committed before submission
+     * and as soon as the original job ID is known. There is no overload without providerModel on purpose (§8.0.1 ④):
+     * a mock of a second overload silently stopped matching when the worker moved to this one (IpRunWorkerTest, 2026-10-25).
+     */
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
                            Consumer<String> progress,AiImageRequestSpec snapshot,String providerModel,
                            JsonNode previous,Consumer<ObjectNode> checkpoint) {
@@ -94,15 +100,6 @@ public class JusuanImageClient {
     public static final class ProviderRejected extends BusinessException {
         ProviderRejected(String message){super(HttpStatus.BAD_GATEWAY,"STUDIO_IMAGE_PROVIDER_FAILED",message);}
     }
-    /** Callback checkpoints are committed before submission and as soon as the original job ID is known. */
-    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
-                           Consumer<String> progress,AiImageRequestSpec snapshot,JsonNode previous,Consumer<ObjectNode> checkpoint) {
-        boolean attempted=previous!=null && previous.path("submitAttempted").asBoolean();
-        var configured=attempted?models.storedEndpoint(endpointId):models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").map(r->r.endpoint());
-        return generateResolved(configured.orElseThrow(()->failure("图片模型已停用")),prompt,size,keys,requestId,
-                new Invocation(AiModelPurpose.DAP_IMAGE,"studio",owner),progress,snapshot,previous,checkpoint);
-    }
-
     /** Business callers have already resolved their own purpose/application access and keep their own credit rules. */
     public byte[] generateResolved(AiModelEndpoint endpoint,AiModelPurpose purpose,String appCode,String prompt,String size,
                                   List<String> inputs,String requestId) {
