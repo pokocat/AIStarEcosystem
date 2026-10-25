@@ -1,5 +1,7 @@
 package com.aistareco.aep.service;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import static com.aistareco.aep.service.ai.ProviderResponseDiagnostics.attach;
 
 import com.aistareco.aep.dto.AiModelDiscoveryResultDto;
@@ -353,8 +355,11 @@ public class AiModelInvocationService {
             }
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) throw attach(callFailed(resp.statusCode(), resp.body(), internal),resp);
             try {
-                result = parseCompletion(OM.readTree(resp.body()), model);
-            } catch (Exception parseEx) {
+                JsonNode parsed=OM.readTree(resp.body());
+                if(ProviderErrorMessage.hasError(parsed))throw attach(callFailed(resp.statusCode(),resp.body(),internal),resp);
+                result = parseCompletion(parsed, model);
+            } catch (BusinessException providerError) { throw providerError; }
+            catch (Exception parseEx) {
                 upstreamHttp.recordBadOutput(ctx, resp.body(), "AI_BAD_OUTPUT", elapsedMs(startNanos));
                 throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_BAD_OUTPUT", "AI 返回无法解析，请稍后重试",
                         internal + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
@@ -373,7 +378,7 @@ public class AiModelInvocationService {
                 throw attach(callFailed(outcome.status(), outcome.errorBody(), internal),outcome.status(),outcome.headers(),outcome.errorBody());
             if (acc.error != null) {
                 upstreamHttp.recordBadOutput(ctx, acc.error, "AI_CALL_FAILED", elapsedMs(startNanos));
-                throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", "AI 生成失败，请稍后重试",
+                throw attach(BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", ProviderErrorMessage.message(acc.error, "AI 生成失败，请稍后重试"),
                         internal + " streamError=" + snippet(acc.error)),outcome.status(),outcome.headers(),acc.error);
             }
             if (!outcome.cancelled() && !acc.done && acc.finishReason == null) {
@@ -407,7 +412,7 @@ public class AiModelInvocationService {
 
     private static BusinessException callFailed(int status, String body, String internal) {
         return BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED",
-                status == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试",
+                ProviderErrorMessage.message(body, status == 404 ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置" : "AI 生成失败，请稍后重试"),
                 internal + " status=" + status + " body=" + snippet(body));
     }
 
@@ -523,7 +528,7 @@ public class AiModelInvocationService {
             }
             if (resp.statusCode() == 200) return Map.of("ok", true, "statusCode", 200);
             return Map.of("ok", false, "statusCode", resp.statusCode(),
-                    "error", "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。");
+                    "error", ProviderErrorMessage.message(resp.body(), "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。"));
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
             log.warn("[ai-model] test-connection interrupted endpointId={}", e.getId());
@@ -576,7 +581,7 @@ public class AiModelInvocationService {
                 log.warn("[ai-model] discover-models failed providerType={} status={}",
                         type == null ? null : type.wire(), resp.statusCode());
                 return AiModelDiscoveryResultDto.fail(resp.statusCode(),
-                        "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。");
+                        ProviderErrorMessage.message(resp.body(), "模型目录返回 HTTP " + resp.statusCode() + "，请检查目录路径和密钥权限。"));
             }
             List<AiModelEntryDto> models = parseModelsResponse(resp.body(), catalogSpec);
             log.info("[ai-model] discover-models ok providerType={} status={} count={}",
@@ -708,8 +713,7 @@ public class AiModelInvocationService {
                             + " model=" + model + " err=" + ex.getCause());
         }
         if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-            // 失败流水 + WARN 已由原语处理；不把上游响应体 / 端点名 / HTTP 状态直出给用户（脱敏），
-            // 技术细节进 ErrorLog 供「追查号」排障。
+            // Keep the safe provider message public, and the raw response in ErrorLog diagnostics.
             throw attach(new com.aistareco.aep.service.ai.AiChatHttpException(resp.statusCode(), resp.body(),
                     resp.statusCode() == 404
                             ? "当前模型服务不可用（HTTP 404），请联系管理员更新模型配置"
@@ -727,6 +731,8 @@ public class AiModelInvocationService {
                     "AI 返回无法解析，请稍后重试",
                     "endpoint=" + e.getName() + " status=" + resp.statusCode() + " body=" + snippet(resp.body())),resp);
         }
+        if(ProviderErrorMessage.hasError(OM.valueToTree(parsed)))
+            throw attach(callFailed(resp.statusCode(),resp.body(),"endpoint="+e.getName()+" model="+model),resp);
         String upstreamId = parsed.get("id") != null ? String.valueOf(parsed.get("id")) : null;
         Object choices = parsed.get("choices");
         String content = "";

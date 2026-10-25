@@ -28,14 +28,19 @@ describe("aiErrorMessage", () => {
       "IMAGE_NOT_CONFIGURED",
       "VIDEO_NOT_CONFIGURED",
       "DRAMA_SHORT_TTS_NOT_CONFIGURED",
-      "AI_CALL_FAILED",
-      "VIDEO_SUBMIT_FAILED",
       "AI_BAD_OUTPUT",
     ]) {
       const out = aiErrorMessage({ code, message: "raw-upstream-text" }, fallback);
       expect(out, code).not.toBe(fallback);
       expect(out, code).not.toContain("raw-upstream-text");
       expect(out, code).not.toContain(code);
+    }
+  });
+
+  it("preserves provider reasons and trace identifiers instead of replacing them with generic or wallet hints", () => {
+    const reason = "供应商账户余额不足，请联系服务方 · 追查号 ABC123";
+    for (const code of ["AI_CALL_FAILED", "IMAGE_CALL_FAILED", "VIDEO_SUBMIT_FAILED", "VIDEO_POLL_FAILED", "MUSIC_CALL_FAILED", "STUDIO_SPEECH_REJECTED", "CLIP_ENGINE_BALANCE_INSUFFICIENT"]) {
+      expect(aiErrorMessage({ code, message: reason })).toBe(reason);
     }
   });
 

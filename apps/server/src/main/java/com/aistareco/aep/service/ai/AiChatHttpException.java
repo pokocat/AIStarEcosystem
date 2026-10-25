@@ -1,5 +1,7 @@
 package com.aistareco.aep.service.ai;
 
+import com.aistareco.aep.service.ai.ProviderErrorMessage;
+
 import com.aistareco.common.BusinessException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.http.HttpStatus;
@@ -11,7 +13,7 @@ public final class AiChatHttpException extends BusinessException {
     private final String upstreamMessage;
 
     public AiChatHttpException(int status, String body, String friendly, String detail) {
-        super(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", friendly, null, detail);
+        super(HttpStatus.BAD_GATEWAY, "AI_CALL_FAILED", ProviderErrorMessage.message(body, friendly), null, detail);
         upstreamStatus = status;
         String code = null, message = null;
         try {
