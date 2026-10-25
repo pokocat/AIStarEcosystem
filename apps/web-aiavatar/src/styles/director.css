@@ -555,3 +555,8 @@ html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns
 .director-budget-card li { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; }
 .director-budget-card li em { color: var(--ip-muted); font-style: normal; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .director-budget-card > small { color: var(--ip-muted); font-size: 12px; line-height: 1.7; }
+.director-shot-hints { display: flex; gap: 8px; padding: 8px 12px; border-radius: 8px; background: var(--ip-soft); color: var(--ip-ink); font-size: 12px; line-height: 1.7; }
+.director-shot-hints > svg { flex: none; margin-top: 3px; color: var(--ip-gold); }
+.director-shot-hints b { font-size: 12px; }
+.director-shot-hints ul { margin: 2px 0; padding-left: 16px; }
+.director-shot-hints small { color: var(--ip-muted); font-size: 12px; }

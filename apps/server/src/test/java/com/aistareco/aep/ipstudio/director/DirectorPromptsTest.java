@@ -20,6 +20,7 @@ class DirectorPromptsTest {
     @Test
     void scriptPromptWithoutTagsIsTheBasePrompt() {
         assertEquals(DirectorPrompts.SCRIPT, DirectorPrompts.script(null, null));
+        assertFalse(DirectorPrompts.SCRIPT.contains("三层反转"), "the reversal line is not a default for every genre");
         assertEquals(DirectorPrompts.SCRIPT, DirectorPrompts.script("不存在的题材", ""));
     }
 
@@ -55,5 +56,13 @@ class DirectorPromptsTest {
         String frame = DirectorPrompts.plan(5, 10, 1);
         assertTrue(frame.contains("只能有 1 个镜头"));
         assertFalse(frame.contains("禁止少于"), "first-frame models keep one shot per clip");
+    }
+
+    @Test
+    void reversalLineOnlyForTwistToneAndSuspenseGenres() {
+        assertTrue(DirectorPrompts.script(null, "反转烧脑").contains("【反转线】"));
+        assertTrue(DirectorPrompts.script("都市悬疑", null).contains("【反转线】"));
+        assertFalse(DirectorPrompts.script("市井情感", "治愈温情").contains("【反转线】"));
+        assertTrue(DirectorPrompts.SCRIPT.contains("所有反转必须在前序剧情埋下可回溯的伏笔"), "foreshadowing rule stays for everyone");
     }
 }
