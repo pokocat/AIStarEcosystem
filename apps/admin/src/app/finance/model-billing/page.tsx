@@ -11,23 +11,25 @@ import { useAdminIdentity } from '@/lib/useAdminRole';
 import * as api from '@/api/model-billing';
 import { CampaignForm, DiscountForm } from './config-forms';
 import { Grants } from './grants';
+import { Conversions } from './conversions';
 import { errorMessage, Pager, targetLabel } from './shared';
 
-type Tab = 'prices' | 'discounts' | 'campaigns' | 'grants';
+type Tab = 'prices' | 'discounts' | 'campaigns' | 'grants' | 'conversions';
 type Row = ModelDiscount | CreditCampaign;
 const tabs: { id: Tab; name: string; note: string }[] = [
   { id: 'prices', name: '模型价格', note: '价格沿用现有模型接入点及其价格配置。' },
   { id: 'discounts', name: '客户折扣', note: '可指定个人、企业或全体客户；多条优惠不叠加，取适用的最低折扣价。' },
   { id: 'campaigns', name: '赠款活动', note: '选择适用接入点，设置发放额度、每账户限额与有效期。' },
   { id: 'grants', name: '发放与查询', note: '模型赠款单独记账，只能用在指定的模型接入点上。' },
+  { id: 'conversions', name: '积分转赠款', note: '把客户的通用积分转成模型赠款，只有超级管理员可用。' },
 ];
 export default function ModelBillingPage() {
   const identity = useAdminIdentity();
   // Remount on an identity change so another staff member never inherits drafts or response state.
   if (!identity.role) return <p role="status">正在确认后台身份…</p>;
-  return <Workspace key={identity.id ?? identity.role} actorId={identity.id ?? identity.role} canConfigure={identity.role === 'SUPER_ADMIN' || identity.role === 'OPERATOR'} />;
+  return <Workspace key={identity.id ?? identity.role} actorId={identity.id ?? identity.role} canConfigure={identity.role === 'SUPER_ADMIN' || identity.role === 'OPERATOR'} superAdmin={identity.role === 'SUPER_ADMIN'} />;
 }
-function Workspace({ canConfigure, actorId }: { canConfigure: boolean; actorId: string }) {
+function Workspace({ canConfigure, actorId, superAdmin }: { canConfigure: boolean; actorId: string; superAdmin: boolean }) {
   const [tab, setTab] = React.useState<Tab>('prices'), [options, setOptions] = React.useState<ModelBillingTargetOption[]>([]);
   const [catalogError, setCatalogError] = React.useState(''), [catalogBusy, setCatalogBusy] = React.useState(true), [catalogReload, setCatalogReload] = React.useState(0);
   const [grantLocked, setGrantLocked] = React.useState(false);
@@ -45,15 +47,15 @@ function Workspace({ canConfigure, actorId }: { canConfigure: boolean; actorId: 
     return () => abort.abort();
   }, [catalogReload]);
   return <div className="space-y-5"><PageHeader title="模型赠款与折扣" description="先按折扣算出价格，再用这个模型的赠款抵扣，不够的部分扣普通积分。" />
-    <div className="flex flex-wrap gap-2 border-b pb-3" aria-label="计费管理分类">{tabs.map(item => <Button key={item.id} variant={tab === item.id ? 'default' : 'outline'}
+    <div className="flex flex-wrap gap-2 border-b pb-3" aria-label="计费管理分类">{tabs.filter(item => item.id !== 'conversions' || superAdmin).map(item => <Button key={item.id} variant={tab === item.id ? 'default' : 'outline'}
       aria-pressed={tab === item.id} disabled={grantLocked && tab !== item.id} onClick={() => setTab(item.id)}>{item.name}</Button>)}</div>
     {catalogBusy ? <p role="status" className="text-sm text-muted-foreground">读取可配置模型…</p> : catalogError ? <div role="alert" className="flex items-center gap-3 text-sm text-destructive">{catalogError}<Button variant="outline" onClick={() => setCatalogReload(x => x + 1)}>重新读取模型</Button></div>
       : !options.length && <p className="text-sm text-muted-foreground">暂无已启用的模型接入点。可先在 <Link className="underline" href="/platform/ai-models">LLM API 与用量</Link> 中检查模型与用途配置。</p>}
     {endpointId && <p className="text-sm text-muted-foreground">当前接入点：{defaultTarget ? targetLabel(defaultTarget,options) : endpointId}。新建折扣和赠款活动时默认选择此接入点。</p>}
-    {tab === 'prices' ? <section className="space-y-3 rounded-lg border bg-card p-5"><p>售价沿用已有接入点和价格配置，不在这里重复配置。</p><div className="flex gap-4 text-sm"><Link className="underline" href="/platform/ai-models">管理模型接入点</Link><Link className="underline" href="/celebrity/engine-pricing">现有引擎价格配置</Link></div></section> : tab === 'grants' ? <Grants actorId={actorId} onLockChange={setGrantLocked} /> : <Configuration key={tab} tab={tab} defaultTarget={defaultTarget} options={options} canConfigure={canConfigure && !catalogBusy && !catalogError} />}
+    {tab === 'conversions' ? (superAdmin ? <Conversions actorId={actorId} /> : null) : tab === 'prices' ? <section className="space-y-3 rounded-lg border bg-card p-5"><p>售价沿用已有接入点和价格配置，不在这里重复配置。</p><div className="flex gap-4 text-sm"><Link className="underline" href="/platform/ai-models">管理模型接入点</Link><Link className="underline" href="/celebrity/engine-pricing">现有引擎价格配置</Link></div></section> : tab === 'grants' ? <Grants actorId={actorId} onLockChange={setGrantLocked} /> : <Configuration key={tab} tab={tab} defaultTarget={defaultTarget} options={options} canConfigure={canConfigure && !catalogBusy && !catalogError} />}
   </div>;
 }
-function Configuration({ tab, options, canConfigure,defaultTarget }: { defaultTarget?:ModelBillingTarget; tab: Exclude<Tab, 'grants' | 'prices'>; options: ModelBillingTargetOption[]; canConfigure: boolean }) {
+function Configuration({ tab, options, canConfigure,defaultTarget }: { defaultTarget?:ModelBillingTarget; tab: Exclude<Tab, 'grants' | 'prices' | 'conversions'>; options: ModelBillingTargetOption[]; canConfigure: boolean }) {
   const [rows, setRows] = React.useState<Row[]>([]), [meta, setMeta] = React.useState<PaginationMeta>();
   const [page, setPage] = React.useState(0), [reload, setReload] = React.useState(0), [busy, setBusy] = React.useState(true), [error, setError] = React.useState('');
   const [edit, setEdit] = React.useState<Row | 'new'>(), [saved, setSaved] = React.useState(false);

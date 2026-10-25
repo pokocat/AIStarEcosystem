@@ -18,7 +18,24 @@ public class AdminModelBillingController {
     private final ModelBillingConfigService config;
     private final ModelBillingQueryService query;
     private final com.aistareco.aep.billing.service.ModelBillingAdminCatalog catalog;
-    public AdminModelBillingController(ModelBillingConfigService config,ModelBillingQueryService query,com.aistareco.aep.billing.service.ModelBillingAdminCatalog catalog){this.config=config;this.query=query;this.catalog=catalog;}
+    private final com.aistareco.aep.billing.service.ModelGrantConversionService conversions;
+    public AdminModelBillingController(ModelBillingConfigService config,ModelBillingQueryService query,com.aistareco.aep.billing.service.ModelBillingAdminCatalog catalog,
+            com.aistareco.aep.billing.service.ModelGrantConversionService conversions){this.config=config;this.query=query;this.catalog=catalog;this.conversions=conversions;}
+
+    /** Converting general credits into a model grant moves customer balances, so only super admins may preview or run it. */
+    @GetMapping("/conversions/candidates") @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<java.util.List<com.aistareco.aep.billing.service.ModelGrantConversionService.Line>> conversionCandidates(
+            @RequestParam(defaultValue="3") int days,@RequestParam(defaultValue="1000") long keep){return ApiResponse.of(conversions.candidates(days,keep));}
+    @PostMapping("/conversions/preview") @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<java.util.List<com.aistareco.aep.billing.service.ModelGrantConversionService.Line>> previewConversion(
+            @RequestBody com.aistareco.aep.billing.service.ModelGrantConversionService.Request request){
+        return ApiResponse.of(conversions.preview(request==null?null:request.userIds(),request==null?0:request.keep()));
+    }
+    @PostMapping("/conversions") @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ApiResponse<java.util.List<com.aistareco.aep.billing.service.ModelGrantConversionService.Line>> convert(
+            @RequestBody com.aistareco.aep.billing.service.ModelGrantConversionService.Request request,Principal actor){
+        return ApiResponse.of(conversions.execute(request,actor.getName()));
+    }
     @GetMapping("/targets") public ApiResponse<java.util.List<TargetOption>> targets(){return ApiResponse.of(catalog.targets());}
     @GetMapping("/user-options") public PageEnvelope<UserOption> users(@RequestParam(required=false) String q,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return PageEnvelope.from(catalog.users(q,page(page,size)));}

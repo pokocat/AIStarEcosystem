@@ -187,6 +187,21 @@ public class CreditService {
         return debitWalletLocked(wallet, amount, entryType, referenceType, referenceId, description);
     }
 
+    /**
+     * Moves non-cash credits (gift, then license) out of a personal wallet so they can become a model grant.
+     * Recharge credits are paid money and are never touched; pending holds are unaffected. Joins the caller's
+     * transaction so the withdrawal and the grant commit or roll back together.
+     */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public LedgerEntryDto withdrawNonCashForGrant(String walletId,long amount,String referenceType,String referenceId,String description) {
+        if(amount<=0)throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"转换积分必须为正数");
+        Wallet wallet=requiredWalletForUpdate(walletId);
+        if(!"personal".equals(wallet.getAccountType()))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"只能转换个人账户的积分");
+        if(Math.addExact(wallet.getGiftBalance(),wallet.getLicenseBalance())<amount)
+            throw new ResponseStatusException(HttpStatus.CONFLICT,"可转换的赠送和激活码积分不足，充值积分不参与转换");
+        return debitWalletLocked(wallet,amount,LedgerEntry.LedgerEntryType.ADJUST,referenceType,referenceId,description);
+    }
+
     private LedgerEntryDto debitWalletLocked(Wallet wallet, long amount, LedgerEntry.LedgerEntryType entryType,
                                             String referenceType, String referenceId, String description) {
         if (wallet.getTotalBalance() < amount) {

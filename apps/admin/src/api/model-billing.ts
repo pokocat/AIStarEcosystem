@@ -1,5 +1,5 @@
 import type { CreditCampaign, CreditCampaignInput, ModelBillingEnterpriseOption, ModelBillingTargetOption, ModelBillingWalletOption, ModelBillingUserOption,
-  ModelDiscount, ModelDiscountInput, ModelPrice, ModelPriceInput, ScopedCreditGrant } from '@ai-star-eco/types';
+  ModelDiscount, ModelDiscountInput, ModelGrantConversionLine, ModelGrantConversionRequest, ModelPrice, ModelPriceInput, ScopedCreditGrant } from '@ai-star-eco/types';
 import { apiFetch, apiFetchPage } from './_client';
 
 const base = '/admin/model-billing';
@@ -16,4 +16,9 @@ export const enterpriseOptions = (q: string, page = 0, signal?: AbortSignal) =>
   apiFetchPage<ModelBillingEnterpriseOption>(`${base}/enterprise-options`, { query: { q, page, size: 10 }, signal });
 export const savePrice = (id: string | undefined, body: ModelPriceInput) => apiFetch<ModelPrice>(`${base}/prices${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PUT' : 'POST', body });
 export const saveDiscount = (id: string | undefined, body: ModelDiscountInput) => apiFetch<ModelDiscount>(`${base}/discounts${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PUT' : 'POST', body });
+export const conversionCandidates = (days: number, keep: number, signal?: AbortSignal) =>
+  apiFetch<ModelGrantConversionLine[]>(`${base}/conversions/candidates`, { query: { days, keep }, signal });
+export const previewConversion = (userIds: string[], keep: number) =>
+  apiFetch<ModelGrantConversionLine[]>(`${base}/conversions/preview`, { method: 'POST', body: { userIds, keep } });
+export const convertToGrant = (body: ModelGrantConversionRequest) => apiFetch<ModelGrantConversionLine[]>(`${base}/conversions`, { method: 'POST', body });
 export const saveCampaign = (id: string | undefined, body: CreditCampaignInput) => apiFetch<CreditCampaign>(`${base}/campaigns${id ? `/${encodeURIComponent(id)}` : ''}`, { method: id ? 'PUT' : 'POST', body });

@@ -3,7 +3,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { CreditCampaign, ModelBillingTargetOption, ModelDiscount, ModelPrice } from '@ai-star-eco/types';
 const mocks = vi.hoisted(() => ({ identity: { id: 'operator', role: 'OPERATOR' }, targets: vi.fn(), prices: vi.fn(), discounts: vi.fn(), campaigns: vi.fn(), grants: vi.fn(),
-  walletOptions: vi.fn(), userOptions: vi.fn(), enterpriseOptions: vi.fn(), savePrice: vi.fn(), saveDiscount: vi.fn(), saveCampaign: vi.fn(), grantScoped: vi.fn() }));
+  walletOptions: vi.fn(), userOptions: vi.fn(), enterpriseOptions: vi.fn(), savePrice: vi.fn(), saveDiscount: vi.fn(), saveCampaign: vi.fn(), grantScoped: vi.fn(),
+  conversionCandidates: vi.fn(), previewConversion: vi.fn(), convertToGrant: vi.fn() }));
 vi.mock('@/lib/useAdminRole', () => ({ useAdminIdentity: () => mocks.identity }));
 vi.mock('@/api/model-billing', () => mocks);
 vi.mock('@/api/adjustments', () => ({ grantScoped: mocks.grantScoped }));
@@ -148,4 +149,47 @@ test('a confirmed grant refreshes issuance totals and preserves the selected cam
   fireEvent.click(within(form).getByRole('button', { name: '再发一笔' }));
   expect((within(form).getByRole('button', { name: '确认发放' }) as HTMLButtonElement).disabled).toBe(true);
   expect((within(form).getByRole('radio') as HTMLInputElement).checked).toBe(false);
+});
+
+const line = (userId: string, amount: number, status: 'ready' | 'nothing' | 'converted' = 'ready') => ({ userId, walletId: `w-${userId}`, displayName: `客户${userId}`, phone: '138****0001',
+  giftBalance: amount + 1000, licenseBalance: 0, rechargeBalance: 0, totalBalance: amount + 1000, keep: 1000, amount, status, message: null });
+
+test('only super admins see the conversion tab', async () => {
+  render(<Page />); await screen.findByRole('button', { name: '发放与查询' });
+  expect(screen.queryByRole('button', { name: '积分转赠款' })).toBeNull();
+});
+
+test('a super admin previews customers and converts the selected ones with the chosen campaign, keep and expiry', async () => {
+  mocks.identity = { id: 'root', role: 'SUPER_ADMIN' };
+  mocks.conversionCandidates.mockResolvedValue([line('a', 4000), line('b', 0, 'nothing')]);
+  mocks.convertToGrant.mockResolvedValue([line('a', 4000, 'converted'), line('b', 0, 'nothing')]);
+  render(<Page />); fireEvent.click(await screen.findByRole('button', { name: '积分转赠款' }));
+  fireEvent.click(await screen.findByRole('button', { name: '读取客户' }));
+  await screen.findByRole('table', { name: '转换预览' });
+  expect(mocks.conversionCandidates).toHaveBeenCalledWith(3, 1000);
+  expect((screen.getByRole('checkbox', { name: '转换 客户b' }) as HTMLInputElement).disabled).toBe(true);
+  fireEvent.change(nativeSelect('转入的赠款活动'), { target: { value: 'trial' } });
+  fireEvent.change(screen.getByLabelText('转换原因'), { target: { value: 'H3 体验' } });
+  fireEvent.click(screen.getByRole('button', { name: '转换 1 位客户' }));
+  fireEvent.click(screen.getByRole('button', { name: '确认转换 4,000 积分' }));
+  await waitFor(() => expect(mocks.convertToGrant).toHaveBeenCalledWith(expect.objectContaining({
+    campaignId: 'trial', keep: 1000, validDays: 30, userIds: ['a'], reason: 'H3 体验', requestId: expect.stringMatching(/^conv-/) })));
+  expect(await screen.findByText(/1 位转换成功/)).toBeDefined();
+  expect(sessionStorage.getItem('model-grant-conversion:root')).toBeNull();
+});
+
+test('an uncertain conversion is retried with the same batch id', async () => {
+  mocks.identity = { id: 'root', role: 'SUPER_ADMIN' };
+  mocks.conversionCandidates.mockResolvedValue([line('a', 4000)]);
+  mocks.convertToGrant.mockRejectedValueOnce(new Error('连接中断')).mockResolvedValueOnce([line('a', 4000, 'converted')]);
+  render(<Page />); fireEvent.click(await screen.findByRole('button', { name: '积分转赠款' }));
+  fireEvent.click(await screen.findByRole('button', { name: '读取客户' }));
+  await screen.findByRole('table', { name: '转换预览' });
+  fireEvent.change(nativeSelect('转入的赠款活动'), { target: { value: 'trial' } });
+  fireEvent.change(screen.getByLabelText('转换原因'), { target: { value: 'H3 体验' } });
+  fireEvent.click(screen.getByRole('button', { name: '转换 1 位客户' }));
+  fireEvent.click(screen.getByRole('button', { name: '确认转换 4,000 积分' }));
+  fireEvent.click(await screen.findByRole('button', { name: '重试上一次转换' }));
+  await waitFor(() => expect(mocks.convertToGrant).toHaveBeenCalledTimes(2));
+  expect(mocks.convertToGrant.mock.calls[1][0].requestId).toBe(mocks.convertToGrant.mock.calls[0][0].requestId);
 });

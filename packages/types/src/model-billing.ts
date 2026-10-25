@@ -149,3 +149,29 @@ export interface CreditAdjustmentRequest {
   createdAt: string;
   decidedAt?: string | null;
 }
+
+/** One customer in a general-credit → model-grant conversion. Amount only ever comes from gift and license credits. */
+export type ModelGrantConversionStatus = 'ready' | 'nothing' | 'converted' | 'already' | 'failed';
+export interface ModelGrantConversionLine {
+  userId: string;
+  walletId: string | null;
+  displayName: string | null;
+  phone: string | null;
+  giftBalance: number;
+  licenseBalance: number;
+  rechargeBalance: number;
+  totalBalance: number;
+  keep: number;
+  amount: number;
+  status: ModelGrantConversionStatus;
+  message: string | null;
+}
+export interface ModelGrantConversionRequest {
+  /** Same id on retry: customers already converted in this batch are skipped, never charged twice. */
+  requestId: string;
+  campaignId: string;
+  keep: number;
+  validDays: number;
+  userIds: string[];
+  reason: string;
+}

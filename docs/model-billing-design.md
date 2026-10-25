@@ -49,6 +49,7 @@
 - 活动发出赠款后适用接入点锁定（`SCOPED_CAMPAIGN_TARGETS_LOCKED`），后台表单同步置灰。
 - 赠款全额抵扣时不再写零金额的普通流水；短剧积分明细与后台流水把赠款行的余额标为「赠款余额」，短剧把「模型赠款扣除」也当作冻结结算显示。
 - Studio、后台、短剧与服务端报错统一叫「模型赠款」；celebrity 按用户要求不改。
+- **通用积分转模型赠款（2026-10-25）**：`ModelGrantConversionService` + `/admin/model-billing/conversions{/candidates,/preview,}`，仅 SUPER_ADMIN。只转赠送与激活码积分、保留 1000 通用积分、充值积分不动；每客户独立事务，ADJUST 扣款与赠款发放同事务，`ops_grant_conversion:<requestId>:<userId>` 幂等。规则见 `specs/BUSINESS_RULES.md`「模型折扣与模型赠款」。
 - **零价接入点报错（用户 2026-10-25 拍板）**：零价一律 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款，免费额度因此有总量和有效期。企业零价测试改为断言拒绝且不留授权、冻结和在途占用。上线前要确认线上没有零价接入点。
 - 接入点没填 `model` 时，计费记录用 `endpoint:<接入点 ID>` 作模型名，构造与比对都走 `ModelBillingTarget.providerModelOf`；后台活动也能选到这类接入点。
 - **上线即坏的隐患（已修）**：V67 在 MySQL 上把流水类型列改成 VARCHAR，但启动时的 `EnumColumnWideningMigration` 会把它改回不含 SCOPED_* 的 ENUM，第一笔赠款入账就报 `Data truncated`（MySQL 全流程场景测试复现）。流水类型已从启动加宽清单移除，加宽也只处理当前确实是 ENUM 的列；守门测试改为钉住「流水类型保持 VARCHAR、不被改回 ENUM」。

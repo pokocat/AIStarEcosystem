@@ -1249,4 +1249,6 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 `ModelChargeContext.forCredits` 接收实际接入点和现有服务端已算好的积分费用；统一计费层处理优惠与资金来源，不分对话、脚本、画布或工作流。追加冻结沿用原价格决定，整笔结算一次取整。V67/V68 建立账务与审批，V69 关联追加冻结；历史资源字段和价格表不作为新配置入口。后台无第二套标准售价和供应商资源配置。用户已确认数字人组合任务按文本与媒体分两笔费用；`DapModelBilling` 编排独立接入点冻结、Token 用量结算和释放，优惠仍归统一计费层。文本完成后媒体失败保留文本实际费用，月用量读真实消费流水。当前验证状态见真源；未上线。
 
+通用积分转赠款（2026-10-25）：后台「积分转赠款」仅 SUPER_ADMIN，把客户的赠送 / 激活码积分（充值永不动）按 ADJUST 流水扣出、同事务发成所选活动的模型赠款，每人默认保留 1000 通用积分；每客户独立事务，`ops_grant_conversion:<requestId>:<userId>` 幂等。见 `specs/BUSINESS_RULES.md` 同节。
+
 评审后修正（2026-10-25）：企业成员报价是只读事务，在途任务数改用不加锁的查询（MySQL 只读事务里 `SELECT … FOR UPDATE` 报 ERROR 1792，`EnterpriseModelQuoteReadOnlyTest` 可指向 MySQL 复现）；视频对账恢复只拦当初用过赠款或折扣的任务；冻结只锁本钱包可用且适用的赠款行，只有带资源计数的活动才锁活动行，且用只取 ID 的查询先锁再读（先读再锁会被 Hibernate 按旧版本号校验）；活动发出赠款后适用接入点锁定（`SCOPED_CAMPAIGN_TARGETS_LOCKED`）；赠款全额抵扣不写零金额普通流水；Studio / 后台 / 短剧 / 服务端报错统一叫「模型赠款」，celebrity 按用户要求不改。另修了一个上线即坏的问题：启动时的 `EnumColumnWideningMigration` 会把 V67 改成 VARCHAR 的流水类型列改回不含 SCOPED_* 的 ENUM，第一笔赠款就报 `Data truncated`；现在流水类型不在加宽清单里，加宽也只处理当前是 ENUM 的列。**往 Hibernate 原生 ENUM 列加值时，要么同步加宽清单，要么像这里一样改成 VARCHAR 并移出清单，两头都不做就会在 MySQL 上坏，H2 测不出来。** 零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，免费只能发模型赠款（用户 2026-10-25 拍板）；接入点没填 `model` 时计费记录用 `endpoint:<ID>`（`ModelBillingTarget.providerModelOf`），不拒绝扣费。
