@@ -54,6 +54,7 @@ class DirectorPromptsTest {
         assertTrue(multi.contains("正反打") && multi.contains("输出前强制校验") && multi.contains("去 AI 味镜头写实规则"));
         assertFalse(multi.contains("极致"), "no wording that pushes exaggerated expressions");
         assertFalse(multi.contains("放宽至 2 个镜头"), "shot count is not relaxed");
+        assertTrue(multi.contains("action 不超过 80 字"), "length caps keep one episode inside the request time limit");
         assertTrue(DirectorPrompts.plan(4, 10, 4).contains("7–10 秒"), "a shorter model moves the range with it");
         String frame = DirectorPrompts.plan(5, 10, 1);
         assertTrue(frame.contains("只能有 1 个镜头"));
