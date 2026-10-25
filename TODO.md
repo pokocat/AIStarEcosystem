@@ -49,7 +49,7 @@
 
 ### 2026-10-26 · 积分切换到 1 元 = 100 积分
 
-- [ ] **后台改充值套餐与文本 Token 价**：99/299/799/2399 元 → 10,000/30,000/80,000/240,000 积分、不赠送；`ai.chat-token-pricing` qwen38 0.59/2.36、qwen3.6 0.27/1.59 积分/千 Token。数值见 `docs/releases/credit-ratio-switch-20261026.md`。
+- [x] **后台改充值套餐与文本 Token 价**（2026-10-25 完成，America/Los_Angeles）：99/299/799/2399 元 → 10,000/30,000/80,000/240,000 积分、不赠送；`ai.chat-token-pricing` qwen38 0.59/2.36、qwen3.6 0.27/1.59 积分/千 Token。数值、原值与回读证据见 `docs/releases/credit-ratio-switch-20261026.md`。
 - [ ] **没有成本数据的功能售价重定**：短剧文本、数字资产形象与衍生、带货脚本/素材视频、混剪、分发、旧数字人引擎、视频 720p、`studio.script` 仍是旧积分数字，按新比率折合人民币偏低，部分可能低于成本；需先补成本（飞书成本表）再定价。
 - [ ] **账户页「本月赠送 0」**：`AEP_DAP_MONTHLY_GRANT=0` 后账户页仍显示「本月赠送 0 · 已用 …」（`apps/web-aiavatar/src/proto/screen-more.tsx`），可改为不显示。
 
