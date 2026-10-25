@@ -1240,6 +1240,8 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 ### 导演长剧本任务容量（2026-10-24）
 
+导演剧本文件导入（2026-10-25，本地未发布）：`DirectorScriptImportController` 的 `POST /v1/ip-studio/director/script-import` 返回 `{text,format}`，可在创建作品前调用。`StudioStoryImportService.extractScript` 复用 Word/PDF 并支持 PPT/PPTX、RTF、常见文本文件；8 MiB、60000 字、PDF/PPT 100 页。现有画布 `extract` 保持 24000 字且只接受 PDF/Word。无新增依赖、表、模型调用、文件持久化或计费；格式、权限及预览保存语义见导演台方案 §3.1。
+
 `IpRun.inputJson/outputJson` 必须映射为 LONGTEXT，与 V27 建表契约一致；TEXT 的 65,535 字节上限容纳不了允许导入的 60,000 字剧本及任务 JSON。V66 只扩容 MySQL 中尚未为 LONGTEXT 的列，兼容已执行的生产应急扩容，不修改旧迁移或 Flyway 历史。生产数据库已扩容且未重启，实体和 V66 尚待发布；证据见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
 
 ### Studio 模型 JSON 自动恢复（2026-10-24，待发布）

@@ -640,6 +640,8 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 
 ### 6.6 AI IP 工作台（ipstudio，v0.151 / 设计真源 `docs/ip-studio-plan.md` · TS 真源 `packages/types/src/ip-studio.ts`）
 
+- **导演剧本文件导入（2026-10-25）**：`POST /v1/ip-studio/director/script-import` 复用 aiavatar 的登录、开通与手机号闸；文件 8 MiB / 正文 60000 字 / PDF、PPT 100 页上限，失败不返回截断内容。提取免费、不调用模型、不存储原文件或修改作品。前端预览后确认导入；替换现有正文须明确点击，再走原有创建或 draftRev 修订保护保存。画布故事导入的格式与 24000 字限制不随此接口扩大。支持格式、文字编码及扫描 / 加密文件的处理边界见 `docs/ai-director-plan.md` §3.1。
+
 领域 `com.aistareco.aep.ipstudio.*`，表 `ip_project` / `ip_run`（迁移 **V27**）。挂 `/api/v1/ip-studio/**`，
 **共用 aiavatar 开通**（`X-App-Code: aiavatar`），已被 `ProductRouteTable` 的 `any("/api/v1/**", AIAVATAR)` 兜底，不新增产品码。
 生成链路全部复用 dap 域（`DapMultimodalClient` / `DapImageInput` / `FileStorageService` / `PromptService` / `CreditService` / `DapPricingService`），

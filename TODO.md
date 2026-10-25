@@ -53,6 +53,7 @@
 - [x] ~~**剧本 JSON 格式错误导致整单失败且提示不清**~~ **永久修复已合 main；2026-10-25 UTC 已无重启启用 JVM-Sandbox 临时模块**：`ModelJson` 有界组合恢复、`AI_BAD_OUTPUT` 明确错误；模块只处理原解析方法抛出的 JSON 异常，不调模型 / 账本。正常发布与临时热修复边界见 `docs/runbooks/studio-json-jvm-sandbox.md`。
 - [x] **长剧本任务存储容量修复**（2026-10-24）：生产 `ip_run.input_json/output_json` 已在线恢复为 LONGTEXT，无重启；实体映射及幂等 V66 迁移已补齐，待低峰发布。见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
 - [x] **模型 JSON 格式自动恢复与明确失败提示**（2026-10-24）：只修复可确定的语法错误，不重复调用模型；不可恢复或截断时明确提示并释放冻结。代码待低峰发布，见 server README「Studio 模型 JSON 自动恢复」。
+- [x] **导演台剧本文件导入**（2026-10-25，本地未发布）：两个粘贴入口支持文本、Word、PPT、PDF、RTF，全文预览后明确采用，保存继续走修订保护；真实浏览器导入、扫描件失败、保存刷新已验，见 `docs/audits/director-script-file-import-validation-20261025.md`。
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。

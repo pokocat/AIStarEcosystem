@@ -6,6 +6,7 @@ import { BookOpen, ChevronRight, Loader2, PenLine, RefreshCw, Scissors, Sparkles
 import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
+import { DirectorScriptFile } from "./director-script-file";
 import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
@@ -46,6 +47,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   const [mode, setMode] = useState<"idea" | "paste">(() => work.idea.trim() || !paste ? "idea" : "paste");
   const [genre, setGenre] = useState(work.genre ?? "");
   const [tone, setTone] = useState(work.tone ?? "");
+  const [reading, setReading] = useState(false);
   const { busy, run } = useBusy();
   const write = () => void run("write", async () => {
     const cost = work.pricing.textMax;
@@ -55,14 +57,15 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   }, setError);
   const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, setError);
   if (mode === "paste") return <section className="director-panel director-start">
-    <h3><PenLine size={16}/>粘贴剧本</h3>
+    <h3><PenLine size={16}/>粘贴或上传剧本</h3>
+    <DirectorScriptFile hasText={!!paste.trim()} disabled={!!busy} onImport={setPaste} onReadingChange={setReading}/>
     <Field label="剧本正文" hint="免费。保存后可直接作为一集，或由 AI 拆分为多集。">
-      <textarea rows={10} maxLength={60000} value={paste} onChange={e => setPaste(e.target.value)} placeholder="场次、动作与对白" autoFocus/>
+      <textarea rows={10} maxLength={60000} disabled={!!busy} value={paste} onChange={e => setPaste(e.target.value)} placeholder="场次、动作与对白" autoFocus/>
     </Field>
     <div className="director-actions">
-      <button type="button" className="ip-brand-button" disabled={!!busy || !paste.trim()} onClick={save}>保存剧本</button>
+      <button type="button" className="ip-brand-button" disabled={!!busy || reading || !paste.trim()} onClick={save}>保存剧本</button>
       <span className="director-spacer"/>
-      <button type="button" className="ip-brand-text-button" onClick={() => setMode("idea")}>返回，用创意生成</button>
+      <button type="button" className="ip-brand-text-button" disabled={!!busy || reading} onClick={() => setMode("idea")}>返回，用创意生成</button>
     </div>
   </section>;
   return <section className="director-panel director-start">
@@ -80,7 +83,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
       <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={write}>{busy === "write" ? <><Loader2 size={15} className="ip-loading-icon"/>提交中</> : <><Sparkles size={15}/>生成剧本</>}</button>
       <span className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</span>
       <span className="director-spacer"/>
-      <button type="button" className="ip-brand-text-button" onClick={() => setMode("paste")}>已有剧本？改为粘贴</button>
+      <button type="button" className="ip-brand-text-button" onClick={() => setMode("paste")}>已有剧本？粘贴或上传</button>
     </div>
   </section>;
 }

@@ -4,7 +4,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type {
-  DirectorAudioUpload, DirectorEditOp, DirectorPipelineAction, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorQuote, DirectorTaskType, DirectorWork, DirectorWorkSummary,
+  DirectorAudioUpload, DirectorEditOp, DirectorPipelineAction, DirectorPipelineEstimate, DirectorPipelineTarget, DirectorQuote, DirectorScriptImportResult, DirectorTaskType, DirectorWork, DirectorWorkSummary,
 } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { ApiError } from "@ai-star-eco/api-client";
@@ -22,6 +22,14 @@ export async function listWorks(): Promise<DirectorWorkSummary[]> {
 export async function createWork(body: { title?: string; idea?: string; script?: string }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>("/v1/ip-studio/director/works", { method: "POST", body: JSON.stringify(body) });
+}
+
+/** Free, stateless extraction. Importing a file does not create or change a work. */
+export async function importScript(file: File, signal?: AbortSignal): Promise<DirectorScriptImportResult> {
+  if (USE_MOCK) demoUnavailable();
+  const form = new FormData();
+  form.append("file", file);
+  return apiFetch<DirectorScriptImportResult>("/v1/ip-studio/director/script-import", { method: "POST", body: form, signal });
 }
 
 export async function getWork(id: string): Promise<DirectorWork> {

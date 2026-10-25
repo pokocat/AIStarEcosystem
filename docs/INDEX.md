@@ -195,6 +195,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | 文档 | 结论一句话 |
 |---|---|
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
+| [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |
 | [`docs/audits/admin-alignment-audit-2026-06.md`](audits/admin-alignment-audit-2026-06.md) | admin ↔ server ↔ 子应用三端对齐审计：10 项全部处置；文末「长期防 drift 约定」仍有效 |
 | [`docs/audits/face-beauty-research-2026-06.md`](audits/face-beauty-research-2026-06.md) | 形象精调 / 美颜方案调研：浏览器端确定性美颜（已采纳）vs 云 API vs i2i |

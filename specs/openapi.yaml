@@ -46,6 +46,12 @@ components:
 
   # ── Reusable response wrappers ──────────
   schemas:
+    DirectorScriptImportResult:
+      type: object
+      required: [text, format]
+      properties:
+        text: { type: string, maxLength: 60000, description: 已提取的可编辑正文，不静默截断 }
+        format: { type: string, enum: [pdf, doc, docx, ppt, pptx, rtf, txt, md, markdown, csv, tsv, json, xml, yaml, yml, log, srt, vtt] }
     DirectorWorkSummary:
       type: object
       description: '见 packages/types/src/director.ts DirectorWorkSummary。'
@@ -13579,6 +13585,32 @@ paths:
         v0.177 之前前端轮询的是 `/me/material/videos/jobs/{jobId}` —— 那条路径服务端从来没有实现过。
       responses:
         "200": { description: 任务卡（id / status / video_url / video_key / thumbnail_url / error_message） }
+  /v1/ip-studio/director/script-import:
+    post:
+      tags: [ipstudio]
+      operationId: directorImportScript
+      summary: 从剧本文件提取文字
+      description: >
+        已登录且开通 aiavatar 的用户上传不超过 8 MiB 的文本、Word、PPT、PDF 或 RTF 文件。
+        PDF/PPT 最多 100 页；提取正文不超过 60000 字，超限直接拒绝而非截断。
+        纯文本支持 UTF-8、带 BOM 的 UTF-16/32、GB18030；不执行宏或外部内容。
+        只返回提取文字，不存储原文件、不创建作品、不调用模型、不扣积分。
+        前端先预览，用户确认后填入正文，再经创建或带修订号的 PATCH 保存。
+        扫描 PDF、受密码保护或禁止复制的 PDF、空文件、损坏文件均明确报错。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+      responses:
+        '200': { description: 可编辑正文, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorScriptImportResult' } } } }
+        '400': { description: STUDIO_STORY_INVALID，格式、大小、字数、页数或可提取文字不符合要求 }
+        '401': { description: 未登录 }
+        '403': { description: 未开通产品或未验证手机号 }
   /v1/ip-studio/director/works:
     get:
       tags: [ipstudio]

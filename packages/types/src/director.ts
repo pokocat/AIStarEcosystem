@@ -4,6 +4,11 @@
 export type DirectorAssetKind = "character" | "scene" | "prop";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
 
+export interface DirectorScriptImportResult {
+  text: string;
+  format: "pdf" | "doc" | "docx" | "ppt" | "pptx" | "rtf" | "txt" | "md" | "markdown" | "csv" | "tsv" | "json" | "xml" | "yaml" | "yml" | "log" | "srt" | "vtt";
+}
+
 export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
