@@ -228,45 +228,52 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const grid = clip.shots.length > 1;
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
+  const shownVideo = adopted(clip.video) ?? clip.video.candidates[clip.video.candidates.length - 1];
+  const videoTag = shownVideo ? (shownVideo.id === clip.video.adoptedId ? (clip.video.adoptedBy === "auto" ? "待确认" : clip.video.adoptedCheck === "outdated" ? "需更新" : "采用中") : "未采用")
+    : videoBusy ? "视频生成中" : null;
   return <article className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}/>
-    {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
-    {clip.issues.length > 0 && <div className="director-issues" role="alert"><AlertTriangle size={15}/><ul>{clip.issues.map(i => <li key={i}>{i}</li>)}</ul></div>}
-    {clip.issues.length === 0 && (clip.warnings?.length ?? 0) > 0 && <div className="director-shot-hints" role="note">
-      <Lightbulb size={14}/><div><b>镜头节奏建议</b><ul>{clip.warnings!.map(i => <li key={i}>{i}</li>)}</ul>
-        <small>不影响生成。要调整就点「编辑镜头」，或重写本集分镜脚本。</small></div></div>}
-    {editing ? <ClipEditor work={work} clip={clip} apply={apply} setError={setError} onDone={() => setEditing(false)}/> : <>
-      <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
-        <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="角色、场景、道具的标准照，用来锁定长相和环境">
-          <span className="director-avatar-stack">{linked.slice(0, 4).map(a => { const img = adopted(a.image); return img?.url ? <img key={a.id} src={img.url} alt=""/> : <i key={a.id}>{a.name.slice(0, 1)}</i>; })}</span>
-          关联资产<b>{linked.length}</b>{assetIssue && <small>{assetIssue}</small>}</button>
-        <button type="button" onClick={onBoard} className={`director-board-link ${boardStatus === "待确认" || boardStatus === "需更新" ? "is-warn" : ""}`} title="视频按这张分镜图逐格生成，保证前后镜头一致">
-          <span className={`director-board-mini ${ratio}`}>{board?.url ? <img src={board.url} alt=""/> : <LayoutGrid size={13}/>}{generating && <Loader2 size={13} className="ip-loading-icon"/>}</span>
-          分镜图<small className={tone(boardStatus)}>{grid ? `${Math.min(clip.shots.length, 4)} 格 · ` : ""}{boardStatus === "未生成" ? "未生成，点击生成" : boardStatus}{clip.board.candidates.length > 1 ? ` · ${clip.board.candidates.length} 版` : ""}</small></button>
-      </div>
-      <section className="director-video-section" aria-label="视频">
-        <header><b>视频提示词</b><span>{grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成，宫格只作构图和形象参考` : "以分镜画面为构图参考生成"}</span></header>
-        <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
-        <div className="director-params" aria-label="生成设置">
-          <span><small>风格</small>{work.settings.style}</span>
-          <span><small>画幅</small>{work.settings.aspectRatio}</span>
-          <span><small>时长</small>{clip.durationSec} 秒</span>
-          <span title={work.videoLimits?.name}><small>模型</small>{work.videoLimits?.name ?? "未开通"}</span>
+    {editing ? <>
+      {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
+      <ClipEditor work={work} clip={clip} apply={apply} setError={setError} onDone={() => setEditing(false)}/>
+    </> : <div className={`director-clip-body ${ratio}`}>
+      {/* 左：成片画面（有视频看视频，没有就看分镜图），下面是生成视频用到的两样参考。 */}
+      <aside className="director-clip-media">
+        <button type="button" className={`director-clip-stage ${ratio}`} onClick={() => shownVideo ? onPreview("video", shownVideo.id) : onBoard()}
+          aria-label={shownVideo ? `播放片段 ${clip.order} 的视频` : `查看片段 ${clip.order} 的分镜图`}>
+          {board?.url ? <img src={board.url} alt=""/> : <span className="director-clip-stage-empty"><LayoutGrid size={18}/>{generating ? "分镜图生成中" : "还没有分镜图"}</span>}
+          {shownVideo && <i className="director-clip-play"><Play size={20}/></i>}
+          {(generating || videoBusy) && <span className="director-clip-stage-busy"><Loader2 size={16} className="ip-loading-icon"/></span>}
+          <span className={`director-clip-stage-tag ${videoTag === "待确认" || videoTag === "需更新" ? "is-warn" : ""}`}>{videoTag ?? (board ? "分镜图 · 还没有视频" : "未生成")}</span>
+        </button>
+        {clip.video.candidates.length > 1 && <div className="director-clip-versions" role="group" aria-label="视频版本">
+          {clip.video.candidates.map((m, i) => <button key={m.id} type="button" aria-pressed={m.id === clip.video.adoptedId} onClick={() => onPreview("video", m.id)}
+            title={m.stale ? "生成期间设置有变动，此版本需更新" : m.id === clip.video.adoptedId ? "采用中" : `第 ${i + 1} 版`}>{i + 1}{m.stale ? "·旧" : ""}</button>)}
+        </div>}
+        <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
+          <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="角色、场景、道具的标准照，用来锁定长相和环境">
+            <span className="director-avatar-stack">{linked.slice(0, 3).map(a => { const img = adopted(a.image); return img?.url ? <img key={a.id} src={img.url} alt=""/> : <i key={a.id}>{a.name.slice(0, 1)}</i>; })}</span>
+            <span>关联资产 <b>{linked.length}</b></span>{assetIssue && <small>{assetIssue}</small>}</button>
+          <button type="button" onClick={onBoard} className={`director-board-link ${boardStatus === "待确认" || boardStatus === "需更新" ? "is-warn" : ""}`} title="视频按这张分镜图逐格生成，保证前后镜头一致">
+            <LayoutGrid size={14}/><span>分镜图</span>
+            <small className={tone(boardStatus)}>{grid ? `${Math.min(clip.shots.length, 4)} 格 · ` : ""}{boardStatus === "未生成" ? "点击生成" : boardStatus}{clip.board.candidates.length > 1 ? ` · ${clip.board.candidates.length} 版` : ""}</small></button>
         </div>
-        {!boardReady && !videoBusy && <div className="director-video-gate">
-          <LayoutGrid size={15}/><span>{!clip.board.adoptedId ? "先生成分镜图，视频按它逐格生成。" : "先确认分镜图，再生成视频。"}</span>
-          <button type="button" className="ip-brand-secondary" onClick={onBoard}>{!clip.board.adoptedId ? "去生成分镜图" : "查看并确认分镜图"}</button>
-        </div>}
-        <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError}/>
-        {clip.video.candidates.length > 0 && <div className="director-video-results" aria-label="视频结果">
-          {clip.video.candidates.map((m, i) => <button key={m.id} type="button" className={`${ratio} ${m.id === clip.video.adoptedId ? "is-adopted" : ""}`} onClick={() => onPreview("video", m.id)} title={m.stale ? "生成期间设置有变动，此版本需更新" : `第 ${i + 1} 版`}>
-            {board?.url ? <img src={board.url} alt=""/> : <Film size={16}/>}
-            <Play size={18}/>
-            <small>视频 {i + 1}{m.id === clip.video.adoptedId ? " · 采用中" : ""}{m.stale ? " · 需更新" : ""}</small>
-          </button>)}
-        </div>}
-      </section>
-    </>}
+      </aside>
+      {/* 右：说明、提示、视频提示词，最后一行是生成设置和操作。 */}
+      <div className="director-clip-main">
+        {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
+        {clip.issues.length > 0 && <div className="director-issues" role="alert"><AlertTriangle size={15}/><ul>{clip.issues.map(i => <li key={i}>{i}</li>)}</ul></div>}
+        {clip.issues.length === 0 && (clip.warnings?.length ?? 0) > 0 && <div className="director-shot-hints" role="note">
+          <Lightbulb size={14}/><div><b>镜头节奏建议</b><ul>{clip.warnings!.map(i => <li key={i}>{i}</li>)}</ul>
+            <small>不影响生成。要调整就点「编辑镜头」，或重写本集分镜脚本。</small></div></div>}
+        <section className="director-video-section" aria-label="视频">
+          <header><b>视频提示词</b><span>{grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成` : "以分镜画面为构图参考"}{work.videoLimits?.mode === "frame" ? "，只用分镜首帧" : "，图1 是分镜图，图2 起是关联资产"}</span></header>
+          <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
+        </section>
+        <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError} onBoard={boardReady || videoBusy ? undefined : onBoard}
+          settings={`${work.settings.style} · ${work.settings.aspectRatio} · ${clip.durationSec} 秒 · ${work.videoLimits?.name ?? "视频模型未开通"}`}/>
+      </div>
+    </div>}
   </article>;
 }
 
@@ -398,7 +405,6 @@ function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWo
       <span className="director-spacer"/>
       <small className="director-muted">{custom ? (which === "board" ? "已自定义，镜头修改不再同步" : "已自定义") : "随镜头自动生成"}</small>
     </div>
-    <p className="director-dialog-note">{which === "board" ? "「图N」按顺序对应角色、场景和道具参考图。" : frame ? "视频仅使用已确认的分镜首帧。" : "「图N」按顺序对应实际提交的参考图：图1 为分镜图，其后依次为关联资产。"}</p>
   </div>;
 }
 
