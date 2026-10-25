@@ -51,6 +51,7 @@
 - [模型接入点赠款与折扣](model-billing-design.md)：接入点唯一范围、沿用原价、企业折扣、文本/媒体分账及本地核验；本地完成，未发布，last-reviewed 2026-10-25。
 - [模型计费后台本地验收](releases/model-scoped-credits-admin-validation-20261025.md)：价格/折扣/活动/发放的真实页面、接口与余额证据；局部验收，未发布，last-reviewed 2026-10-25。
 - [模型赠款与折扣生产发布](releases/model-scoped-credits-production-release-20261025.md)：`20261025-model-grants`，合并处理、发布前检查、线上验收与回滚，last-reviewed 2026-10-25。
+- [通用积分转模型赠款生产发布](releases/model-grant-conversion-production-release-20261026.md)：`20261026-model-grant-conversion`，后台积分转赠款上线、线上验收与运营执行步骤，last-reviewed 2026-10-26。
 - [通用视频模型计费本地验证](releases/model-scoped-credits-video-validation-20261025.md)：精确范围/快照、资源与失败恢复的数据库和服务回归；部分接入，未发布，last-reviewed 2026-10-25。
 
 按产品线分组。每行只写「它定了什么」，状态以文档头注为准。
