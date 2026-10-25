@@ -257,6 +257,37 @@ class JusuanImageClientTest {
             verify(storage,never()).upstreamFetchUrl(any());
         }finally{Files.deleteIfExists(first);Files.deleteIfExists(second);}
     }
+    @Test void resolvedProviderModelSnapshotIsTheModelSentInTheFinalRequest() throws Exception {
+        var ep=endpoint("gpt-image-2-1k-pic");
+        var spec=AiImageRequestSpec.read("""
+                {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"4096x4096","aspectRatio":"1:1","providerFields":{"size":"4096x4096"}}],
+                 "wire":{"submitPath":"/images/generations","inputMode":"multipart","resultMode":"sync-base64","outputPointer":"/data/0/b64_json"}}
+                """);
+        ep.setImageRequestSpecJson(spec.json());
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        byte[] bytes=Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=");
+        var response=json("{\"data\":[{\"b64_json\":\""+Base64.getEncoder().encodeToString(bytes)+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        assertArrayEquals(bytes,client.generate("ep","draw","4096x4096",List.of(),"route-4k","owner",s->{},spec,
+                "gpt-image-2-4k-pic",null,null));
+        var request=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(upstream).sendJson(request.capture(),any());
+        String requestBody=httpBody(request.getValue());
+        assertEquals("gpt-image-2-4k-pic",mapper.readTree(requestBody).path("model").asText());
+        assertEquals("4096x4096",mapper.readTree(requestBody).path("size").asText());
+    }
+    private static String httpBody(HttpRequest request) throws Exception {
+        var subscriber=HttpResponse.BodySubscribers.ofByteArray();
+        request.bodyPublisher().orElseThrow().subscribe(new java.util.concurrent.Flow.Subscriber<java.nio.ByteBuffer>() {
+            public void onSubscribe(java.util.concurrent.Flow.Subscription subscription){subscriber.onSubscribe(subscription);}
+            public void onNext(java.nio.ByteBuffer item){subscriber.onNext(List.of(item));}
+            public void onError(Throwable error){subscriber.onError(error);}
+            public void onComplete(){subscriber.onComplete();}
+        });
+        return new String(subscriber.getBody().toCompletableFuture().get(),java.nio.charset.StandardCharsets.UTF_8);
+    }
     @Test void completedWrongSizeIsRejectedBeforeSettlementRatherThanParkedAsUnknown() {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""

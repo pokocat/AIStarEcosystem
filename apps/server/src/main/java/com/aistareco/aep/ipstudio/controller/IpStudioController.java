@@ -254,26 +254,72 @@ public class IpStudioController {
     private java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> modelOptions(
             com.aistareco.aep.model.AiModelPurpose purpose, long defaultCost) {
         boolean video = purpose == com.aistareco.aep.model.AiModelPurpose.VIDEO_GENERATION;
+        if (!video) return studioImageModelOptions(defaultCost);
         java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> out = new java.util.ArrayList<>();
-        var selections = !video ? scenePolicies.available("studio","image",defaultCost) : null;
-        var candidates = !video ? selections.stream().map(com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection::resolved).toList() : scenePolicies.studioVideoCandidates();
+        var candidates = scenePolicies.studioVideoCandidates();
         for (var r : candidates) {
             if (!r.candidate().isEnabled() || !r.endpoint().isEnabled()) continue;
-            var imageSpec=video?null:com.aistareco.aep.model.AiImageRequestSpec.read(r.endpoint().getImageRequestSpecJson());
-            if(!video && com.aistareco.aep.ipstudio.service.JusuanImageClient.supports(r.endpoint()) && imageSpec==null)continue;
             long cost = r.candidate().getCreditCostOverride() != null
                     ? Math.max(0L, r.candidate().getCreditCostOverride()) : defaultCost;
-            if(!video) cost=selections.stream().filter(s->s.resolved().endpoint().getId().equals(r.endpoint().getId())).findFirst().orElseThrow().creditCost();
             // 视频候选带上**有效**时长区间（协议硬边界 ∩ 候选配置）——
             // 下限只有协议知道（聚算媒体 5 秒起），后台那张表里根本没有这一列。
             // 不给的话画布的时长滑杆是 4–30，用户选个 4 秒点发送就撞 400。
-            var caps = video
-                    ? capabilityWithDuration(r)
-                    : com.aistareco.aep.dto.EndpointCapabilityDto.image(r.candidate(),
-                            imageSpec);
+            var caps = capabilityWithDuration(r);
             out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
                     r.endpoint().getId(), r.endpoint().publicModelName(), r.isDefault(),
-                    caps, cost, video ? com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate()) : "per_image"));
+                    caps, cost, com.aistareco.aep.service.AiModelInvocationService.videoBillingUnit(r.endpoint(), r.candidate())));
+        }
+        return out;
+    }
+
+    /** Collapse the six supplier endpoints into stable product model families for Studio users. */
+    private java.util.List<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto> studioImageModelOptions(long defaultCost) {
+        var selections=scenePolicies.available("studio","image",defaultCost);
+        var out=new java.util.ArrayList<com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto>();
+        var consumed=new java.util.HashSet<String>();
+        for(var family:com.aistareco.aep.ipstudio.service.StudioImageModelRouting.FAMILIES) {
+            var sizes=new java.util.LinkedHashMap<String,com.aistareco.aep.dto.EndpointCapabilityDto.ImageSize>();
+            var costs=new java.util.LinkedHashMap<String,Long>();
+            var legacyEndpointIds=new java.util.LinkedHashSet<String>();
+            com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection representative=null;
+            boolean isDefault=false;
+            for(String tier:com.aistareco.aep.ipstudio.service.StudioImageModelRouting.TIERS) {
+                String providerModel=family.providerModels().get(tier);
+                var route=selections.stream().filter(s->providerModel.equalsIgnoreCase(s.resolved().endpoint().getModel()))
+                        .filter(s->com.aistareco.aep.ipstudio.service.JusuanImageClient.supports(s.resolved().endpoint()))
+                        .filter(s->com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson())!=null)
+                        .findFirst().orElse(null);
+                if(route==null)continue;
+                consumed.add(route.resolved().endpoint().getId());
+                legacyEndpointIds.add(route.resolved().endpoint().getId());
+                representative=representative==null?route:representative;
+                isDefault|=route.resolved().isDefault();
+                costs.put(tier,route.creditCost());
+                var spec=com.aistareco.aep.model.AiImageRequestSpec.read(route.resolved().endpoint().getImageRequestSpecJson());
+                spec.outputs().stream().filter(o->tier.equals(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.tierForSize(o.canvasSize())))
+                        .forEach(o->sizes.putIfAbsent(o.canvasSize()+"/"+o.aspectRatio(),new com.aistareco.aep.dto.EndpointCapabilityDto.ImageSize(o.canvasSize(),o.aspectRatio())));
+            }
+            if(representative==null||sizes.isEmpty())continue;
+            var base=com.aistareco.aep.dto.EndpointCapabilityDto.image(representative.resolved().candidate(),
+                    com.aistareco.aep.model.AiImageRequestSpec.read(representative.resolved().endpoint().getImageRequestSpecJson()));
+            var caps=new com.aistareco.aep.dto.EndpointCapabilityDto(base.maxRefImages(),base.supportsFirstLastFrame(),base.supportsSubjectReference(),
+                    base.maxDurationSec(),base.minDurationSec(),base.minImagePixels(),base.videoResolutions(),base.videoRatios(),
+                    sizes.values().stream().map(com.aistareco.aep.dto.EndpointCapabilityDto.ImageSize::aspectRatio).distinct().toList(),
+                    base.imagePromptMaxChars(),base.imageBatchCounts(),java.util.List.copyOf(sizes.values()));
+            long defaultTierCost=costs.getOrDefault("1K",costs.values().iterator().next());
+            out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(
+                    com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX+family.id(),family.label(),isDefault,
+                    caps,defaultTierCost,"per_image",family.id(),java.util.Map.copyOf(costs),java.util.List.copyOf(legacyEndpointIds)));
+        }
+        // Keep unrelated legacy image models selectable with their existing endpoint IDs and behavior.
+        for(var selection:selections) {
+            var endpoint=selection.resolved().endpoint();
+            if(consumed.contains(endpoint.getId()))continue;
+            var spec=com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
+            if(com.aistareco.aep.ipstudio.service.JusuanImageClient.supports(endpoint)&&spec==null)continue;
+            out.add(new com.aistareco.aep.dto.RenderModelsDto.RenderModelOptionDto(endpoint.getId(),endpoint.publicModelName(),
+                    selection.resolved().isDefault(),com.aistareco.aep.dto.EndpointCapabilityDto.image(selection.resolved().candidate(),spec),
+                    selection.creditCost(),"per_image"));
         }
         return out;
     }

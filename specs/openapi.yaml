@@ -13381,6 +13381,8 @@ paths:
         **不是用户自己填的 API Key** —— 与短剧线 `GET /me/drama/render/models` 同一形态。
         图片 capability.imageSizes 返回 {size, aspectRatio}，与 imageRatios、提示词/参考图上限同源于端点规格；
         客户端显式提交 size 时，报价和生成按同一允许尺寸校验并保存执行快照。
+        GPT Image 2、Flare、Sunburst 端点按产品系列折叠展示；请求使用稳定系列标识 `studio-image:<family>` 与图片 size。
+        服务端依据系列、size 和后台开放候选权威路由到供应商 1k/4k 模型，并按实际候选售价计费；供应商模型名不作为客户端选择值。
         一个都没配时返回空数组，前端据此提示「尚未开通」并禁用生成，不假装能跑（§8.0）。
       responses:
         "200": { description: "{ image: 候选[], video: 候选[] }" }

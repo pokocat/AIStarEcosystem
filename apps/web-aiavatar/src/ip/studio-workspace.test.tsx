@@ -139,7 +139,7 @@ test('image composer submits the exact chosen resolution and retains it in the s
  const panel=await screen.findByRole('dialog',{name:'生成图片'});
  await waitFor(()=>expect(within(panel).getByRole('button',{name:'生成模型'})).toHaveProperty('textContent',expect.stringContaining('GPT Image')));
  fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'1:1'}));
- const sizes=within(panel).getByRole('radiogroup',{name:'图片输出尺寸'});
+ const sizes=within(panel).getByRole('radiogroup',{name:'图片输出分辨率'});
  expect(within(sizes).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1K1024 × 1024','2K2048 × 2048']);
  fireEvent.click(within(sizes).getByRole('radio',{name:'2K 2048 × 2048'}));
  await waitFor(()=>expect(snapshot.find(n=>n.id==='v')?.metadata?.studio?.composerDraft?.size).toBe('2048x2048'));
@@ -149,6 +149,23 @@ test('image composer submits the exact chosen resolution and retains it in the s
  fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
  await waitFor(()=>expect(api.submit).toHaveBeenCalled());
  expect(api.submit.mock.calls[0][1]).toMatchObject({model:'gpt',size:'2048x2048',aspectRatio:'1:1',count:1,maxCost:30});
+});
+test('image composer offers the stable 4K resolution choice and submits its exact size',async()=>{
+ api.capabilities.mockResolvedValue({mock:false,operations:['image'],imageCost:30});
+ api.models.mockResolvedValue({image:[{endpointId:'studio-image:gpt-image-2',imageFamily:'gpt-image-2',name:'gpt-image-2',isDefault:true,creditCost:30,
+   imageResolutionCosts:{'1K':30,'2K':30,'4K':45},capability:{imageRatios:['1:1'],imageSizes:[
+    {size:'1024x1024',aspectRatio:'1:1'},{size:'2048x2048',aspectRatio:'1:1'},{size:'4096x4096',aspectRatio:'1:1'}]}}],video:[]});
+ const image={...node,type:'image' as never,title:'高分辨率图',metadata:{status:'idle' as const,prompt:'画一只猫',studio:{kind:'shot' as const}}};
+ render(<Host initial={image}/>);
+ fireEvent(window,new CustomEvent('studio-command',{detail:{action:'image',nodeId:'v'}}));
+ const panel=await screen.findByRole('dialog',{name:'生成图片'});
+ fireEvent.click(within(within(panel).getByRole('radiogroup',{name:'创作画幅'})).getByRole('radio',{name:'1:1'}));
+ const resolutions=within(panel).getByRole('radiogroup',{name:'图片输出分辨率'});
+ expect(within(resolutions).getAllByRole('radio').map(option=>option.textContent)).toEqual(['1K1024 × 1024','2K2048 × 2048','4K4096 × 4096']);
+ fireEvent.click(within(resolutions).getByRole('radio',{name:'4K 4096 × 4096'}));
+ fireEvent.click(within(panel).getByRole('button',{name:'生成图片'}));
+ await waitFor(()=>expect(api.submit).toHaveBeenCalled());
+ expect(api.submit.mock.calls[0][1]).toMatchObject({model:'studio-image:gpt-image-2',size:'4096x4096',aspectRatio:'1:1',count:1,maxCost:45});
 });
 test('image selection has no toolbar and its editor contains the unique result actions',async()=>{
  const image={...node,type:'image' as never,title:'商品图',metadata:{status:'success' as const,storageKey:'product.png',content:'/product.png',studio:{kind:'shot' as const}}};

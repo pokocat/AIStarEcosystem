@@ -35,6 +35,11 @@ export type IpModelOption = {
   } | null;
   creditCost: number;
   billingUnit: string;
+  /** Stable Studio image series; provider model suffixes stay server-side. */
+  imageFamily?: string | null;
+  imageResolutionCosts?: Record<string, number> | null;
+  /** Internal IDs accepted when reopening pre-family Studio drafts. */
+  legacyEndpointIds?: string[] | null;
 };
 
 export type IpModels = { image: IpModelOption[]; video: IpModelOption[] };
@@ -107,7 +112,9 @@ export const generate = async (projectId: string, req: IpGenerateRequest) => {
     prompt:req.prompt,references:(req.refKeys||[]).map(storageKey=>({storageKey,role:"frame"})),count:req.count,size:req.size,model:req.model,maxCost:0});
   const choices = process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" ? (await fetchModels()).image : [];
   const chosen = choices.find(model => model.endpointId === req.model) || choices.find(model => model.isDefault) || choices[0];
-  const expectedCost = req.maxCost ?? (chosen ? chosen.creditCost * (req.count || 1) : undefined);
+  const resolution = req.size ? (Math.max(...req.size.split("x").map(Number)) >= 3840 ? "4K" : Math.max(...req.size.split("x").map(Number)) >= 1920 ? "2K" : "1K") : "1K";
+  const unitCost = chosen?.imageResolutionCosts?.[resolution] ?? chosen?.creditCost;
+  const expectedCost = req.maxCost ?? (unitCost != null ? unitCost * (req.count || 1) : undefined);
   if (process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && expectedCost !== undefined) req.maxCost = expectedCost;
   return apiFetch<IpRun>(`/v1/ip-studio/projects/${encodeURIComponent(projectId)}/generate`, {
     method: "POST",

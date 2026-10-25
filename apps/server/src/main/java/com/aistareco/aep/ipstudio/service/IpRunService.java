@@ -540,7 +540,8 @@ public class IpRunService {
 
         String nodeEndpoint=IpDocs.text(md,"endpointId");
         if(nodeEndpoint == null) nodeEndpoint=IpDocs.text(md.path("studio").path("request"),"model");
-        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", nodeEndpoint, pricing.ipImage());
+        String requestedSize=IpDocs.text(md,"size");
+        var selected = resolveImageSelection(nodeEndpoint, requestedSize==null?DEFAULT_SIZE:requestedSize);
         boolean configuredImage = selected != null && JusuanImageClient.supports(selected.resolved().endpoint());
 
         // ── 参考图：上游连进来的图，近的排前面 ────────────────────────────
@@ -607,7 +608,7 @@ public class IpRunService {
                 }
             }
             JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
-            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("providerModel",selected.resolved().endpoint().getModel()).put("billingUnit", selected.billingUnit());
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
@@ -652,7 +653,8 @@ public class IpRunService {
      */
     Compiled compileExplicit(String userId, IpGenerateRequest req) {
         String requestedEndpoint = req.model() == null || req.model().isBlank() ? null : req.model().trim();
-        var selected = scenePolicies == null ? null : scenePolicies.resolve("studio", "image", requestedEndpoint, pricing.ipImage());
+        String size = req.size() == null || req.size().isBlank() ? DEFAULT_SIZE : req.size();
+        var selected = resolveImageSelection(requestedEndpoint, size);
         boolean configuredImage = selected != null && JusuanImageClient.supports(selected.resolved().endpoint());
         List<Ref> refs = new ArrayList<>();
         if (req.refKeys() != null) {
@@ -669,8 +671,7 @@ public class IpRunService {
                 ? imageBatchCount(req.count()==null?1:req.count(),
                     com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson()))
                 : req.count() == null ? 1 : Math.max(1, Math.min(4, req.count()));
-        String size = req.size() == null || req.size().isBlank() ? DEFAULT_SIZE : req.size();
-        if (!ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
+        if (!StudioImageModelRouting.isProductRequest(requestedEndpoint) && !ALLOWED_SIZES.contains(size)) size = DEFAULT_SIZE;
 
         PromptService.ResolvedPrompt p = prompts.resolve(PromptService.KEY_DAP_IP_CANVAS_IMAGE);
         Map<String, String> vars = new LinkedHashMap<>();
@@ -707,12 +708,36 @@ public class IpRunService {
                 }
             }
             JusuanImageClient.validate(selected.resolved().endpoint(), inputs.path("userPrompt").asText(), refs.size(), size);
-            exec.put("endpointId", selected.resolved().endpoint().getId()).put("billingUnit", selected.billingUnit());
+            exec.put("endpointId", selected.resolved().endpoint().getId()).put("providerModel",selected.resolved().endpoint().getModel()).put("billingUnit", selected.billingUnit());
             if(JusuanImageClient.supports(selected.resolved().endpoint()))exec.set("imageRequestSpec",om.valueToTree(com.aistareco.aep.model.AiImageRequestSpec.read(selected.resolved().endpoint().getImageRequestSpecJson())));
         }
         return new Compiled(IpRun.KIND_GENERATE, selected == null ? pricing.ipImage() : selected.creditCost(), count,
                 "画布出图 ×" + count, inputs, false, true,
                 PromptService.KEY_DAP_IP_CANVAS_IMAGE);
+    }
+
+    /** Resolve product family + requested output size through the server-owned provider mapping. */
+    private com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection resolveImageSelection(String requestedModel, String size) {
+        if (StudioImageModelRouting.isProductRequest(requestedModel)) {
+            String tier = StudioImageModelRouting.tierForSize(size);
+            if (tier == null) throw BusinessException.badRequest("STUDIO_IMAGE_RESOLUTION_INVALID", "请选择 1K、2K 或 4K 图片分辨率");
+            var family = StudioImageModelRouting.family(requestedModel);
+            String providerModel = family.providerModels().get(tier);
+            if (providerModel == null) throw BusinessException.badRequest("STUDIO_IMAGE_MODEL_RESOLUTION_INVALID", "所选模型不支持该分辨率");
+            var route = scenePolicies.available("studio", "image", pricing.ipImage()).stream()
+                    .filter(s -> providerModel.equalsIgnoreCase(s.resolved().endpoint().getModel()))
+                    .filter(s -> JusuanImageClient.supports(s.resolved().endpoint()))
+                    .filter(s -> {
+                        var spec = com.aistareco.aep.model.AiImageRequestSpec.read(s.resolved().endpoint().getImageRequestSpecJson());
+                        return spec != null && spec.outputs().stream().anyMatch(o -> o.canvasSize().equals(size));
+                    }).findFirst().orElseThrow(() -> new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                            "STUDIO_IMAGE_ROUTE_UNAVAILABLE", "所选模型暂未开放该分辨率，请重新选择模型或联系运营"));
+            return route;
+        }
+        if (requestedModel != null && requestedModel.startsWith(StudioImageModelRouting.REQUEST_PREFIX)) {
+            throw BusinessException.badRequest("STUDIO_IMAGE_MODEL_INVALID", "图片模型系列无效，请重新选择");
+        }
+        return scenePolicies == null ? null : scenePolicies.resolve("studio", "image", requestedModel, pricing.ipImage());
     }
 
     /** 参考图说明：让模型知道每张参考图是干嘛的，也让用户在提示词原文里看得见。 */
