@@ -1,6 +1,7 @@
 package com.aistareco.aep.ipstudio.director;
 
 import com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection;
+import com.aistareco.aep.ipstudio.dto.IpLibraryDtos;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpProjectService;
@@ -71,6 +72,7 @@ public class DirectorService {
     private final com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final com.aistareco.aep.service.storage.FileStorageService storage;
     private final com.aistareco.aep.ipstudio.config.IpStudioProperties studioProps;
+    private final com.aistareco.aep.ipstudio.service.IpLibraryService library;
     private final ObjectMapper om;
     private final TransactionTemplate newTx;
 
@@ -81,11 +83,12 @@ public class DirectorService {
                            com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,
                            com.aistareco.aep.service.storage.FileStorageService storage,
                            com.aistareco.aep.ipstudio.config.IpStudioProperties studioProps,
+                           com.aistareco.aep.ipstudio.service.IpLibraryService library,
                            ObjectMapper om, PlatformTransactionManager txManager) {
         this.works = works; this.runs = runs; this.projects = projects; this.imageRuns = imageRuns; this.textRuns = textRuns;
         this.workflowWorker = workflowWorker; this.videoModels = videoModels; this.fixtures = fixtures;
         this.mediaImport = mediaImport; this.videoJobs = videoJobs; this.videoClient = videoClient; this.scenePolicies = scenePolicies;
-        this.storage = storage; this.studioProps = studioProps; this.om = om;
+        this.storage = storage; this.studioProps = studioProps; this.library = library; this.om = om;
         this.newTx = new TransactionTemplate(txManager);
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
@@ -281,7 +284,7 @@ public class DirectorService {
                 // 之前上传进角色图历史的照片不能再采用，只能当形象参考。
                 if ("character".equals(a.path("kind").asText()))
                     for (JsonNode m : a.path("image").path("candidates"))
-                        if (cid.equals(m.path("id").asText()) && "upload".equals(m.path("source").asText()))
+                        if (cid.equals(m.path("id").asText()) && Set.of("upload", "library").contains(m.path("source").asText()))
                             throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED",
                                     "上传的照片不能直接作为角色图，请设为「形象参考」后生成设定图");
                 adopt(a, "image", cid);
@@ -295,6 +298,18 @@ public class DirectorService {
                 if (key == null) throw invalid("请先上传图片");
                 ObjectNode m = addCandidate(c, (ObjectNode) a.path("image"), key, null, "upload");
                 adopt(a, "image", m.path("id").asText());
+            }
+            case "asset.import" -> {
+                // 从个人资产库导入：只收资产库对象的 id 和版本，名字、描述、图都由服务端按本人资产库读出来。
+                // 带 targetId 是给已有资产换成资产库里的图（一次一项），否则按名字对上已有资产或新建。
+                JsonNode items = d.path("items");
+                if (items.size() == 0) throw invalid("请选择要导入的资产");
+                if (items.size() > 16) throw invalid("一次最多导入 16 项");
+                ObjectNode explicit = req.targetId() == null ? null : find(c, "assets", req.targetId(), "这个资产");
+                if (explicit != null && items.size() != 1) throw invalid("请只选择一项资产");
+                String episodeId = d.hasNonNull("episodeId") ? d.path("episodeId").asText() : null;
+                for (JsonNode item : items) importFromLibrary(userId, c, explicit, library.object(userId, item.path("objectId").asText()),
+                        item.path("versionId").asText(null), episodeId);
             }
             case "assets.confirm" -> {
                 Set<String> only = new HashSet<>();
@@ -1869,7 +1884,7 @@ public class DirectorService {
         String id = slot.path("adoptedId").asText(null);
         for (JsonNode x : slot.path("candidates")) if (x.path("id").asText().equals(id)) m = x;
         if (m == null) { slot.putNull("adoptedCheck"); return; }
-        if ("upload".equals(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
+        if (Set.of("upload", "library").contains(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
         boolean hasRefs = m.has("refs") && m.has("prompt");
         if (!m.hasNonNull("fingerprint") && !hasRefs) { slot.put("adoptedCheck", "unknown"); return; }
         if (m.hasNonNull("fingerprint") && m.path("fingerprint").asText().equals(now.fingerprint())) { slot.put("adoptedCheck", "current"); return; }
@@ -1898,7 +1913,7 @@ public class DirectorService {
         String id = slot.path("adoptedId").asText(null);
         for (JsonNode x : slot.path("candidates")) if (x.path("id").asText().equals(id)) m = x;
         if (m == null) { slot.putNull("adoptedCheck"); return; }
-        if ("upload".equals(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
+        if (Set.of("upload", "library").contains(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
         if (m.hasNonNull("fingerprint")) {
             boolean same = m.path("fingerprint").asText().equals(assetFingerprint(a));
             if (!same) reasons.add("描述或出图提示词已修改");
@@ -2082,6 +2097,54 @@ public class DirectorService {
         for (JsonNode x : c.path("assets")) if (x.path("kind").asText().equals(kind) && x.path("name").asText().equals(name)) return x;
         for (JsonNode x : c.path("assets")) if (x.path("kind").asText().equals(kind) && ids(x.path("aliases")).contains(name)) return x;
         return null;
+    }
+
+    /**
+     * 资产库对象写进作品。场景、道具的图直接成为采用的参考图；角色的图（没有图时用资产库的形象参考）只当「形象参考」，
+     * 设定图仍由系统按设定集版式生成，与上传照片同一条规则。按导入（换图）时总是用新图；按名字对上已有资产时
+     * 不动它已采用的图和已有的形象参考，只补空着的。
+     */
+    void importFromLibrary(String userId, ObjectNode c, ObjectNode explicit, IpLibraryDtos.LibraryObject o, String versionId, String episodeId) {
+        IpLibraryDtos.LibraryVersion version = null;
+        if (versionId != null && !versionId.isBlank()) {
+            for (IpLibraryDtos.LibraryVersion v : o.versions()) if (versionId.equals(v.id())) version = v;
+            if (version == null) throw BusinessException.notFound("DIRECTOR_LIBRARY_VERSION_NOT_FOUND", "「" + o.name() + "」的这一版图片已不存在，请刷新资产库后重选");
+        } else for (IpLibraryDtos.LibraryVersion v : o.versions()) if (v.id().equals(o.mainVersionId())) version = v;
+        String key = projects.requireOwnedAssetKey(userId, version == null ? null : version.storageKey());
+        if (explicit != null && key == null && !("character".equals(explicit.path("kind").asText()) && o.referenceKey() != null))
+            throw invalid("「" + o.name() + "」在资产库里还没有图片，请换一项");
+        ObjectNode target = explicit;
+        if (target == null) {
+            if (!Set.of("character", "scene", "prop").contains(o.kind())) throw invalid("「" + o.name() + "」不是角色、场景或道具");
+            String name = o.name() == null ? "" : o.name().trim();
+            if (name.isEmpty()) throw invalid("资产库里有一项没有名称，请先补上名称");
+            if (name.length() > 40) throw invalid("「" + name + "」的名称超过 40 字，请先在资产库里改短");
+            String description = o.description() == null ? "" : o.description().trim();
+            if (description.length() > 2000) throw invalid("「" + name + "」的描述超过 2000 字，请先在资产库里改短");
+            JsonNode hit = null;
+            for (JsonNode x : c.path("assets"))
+                if (hit == null && o.id().equals(x.path("libraryObjectId").asText()) && o.kind().equals(x.path("kind").asText())) hit = x;
+            if (hit == null) hit = matchAsset(c, null, o.kind(), name);
+            if (hit == null) {
+                target = newAsset(c, o.kind(), name, description);
+                ((ArrayNode) c.path("assets")).add(target);
+            } else {
+                target = (ObjectNode) hit;
+                if (target.path("description").asText().isBlank()) target.put("description", description);
+            }
+            if (episodeId != null && !ids(target.path("episodeIds")).contains(episodeId)) ((ArrayNode) target.path("episodeIds")).add(episodeId);
+            // 只记「这项资产就是资产库里的那一项」；给别的资产借图（explicit）不改它，免得之后正常导入时对错资产。
+            target.put("libraryObjectId", o.id());
+        }
+        if ("character".equals(target.path("kind").asText())) {
+            String ref = key != null ? key : projects.requireOwnedAssetKey(userId, o.referenceKey());
+            if (ref != null && (explicit != null || target.path("refImage").path("key").asText("").isEmpty())) target.putObject("refImage").put("key", ref);
+        } else if (key != null) {
+            ObjectNode slot = (ObjectNode) target.path("image");
+            ObjectNode m = addCandidate(c, slot, key, null, "library");
+            if (explicit != null || slot.path("adoptedId").isNull() || slot.path("adoptedId").isMissingNode()) adopt(target, "image", m.path("id").asText());
+        }
+        bump(target);
     }
 
     /** 只给提交后没改过正文的集打「已提取」：改过的集要按新正文再提取。返回正文改过的集。 */

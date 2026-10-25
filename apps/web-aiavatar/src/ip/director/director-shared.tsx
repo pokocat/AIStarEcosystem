@@ -95,7 +95,7 @@ export function VersionStrip({ slot, onAdopt, disabled, label, video }: { slot: 
   if (slot.candidates.length < 2 && !slot.candidates.some(m => m.stale)) return null;
   return <div className="director-versions" role="group" aria-label={`${label}的历史版本`}>
     {slot.candidates.map((m, i) => <button key={m.id} type="button" disabled={disabled} aria-pressed={m.id === slot.adoptedId}
-      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : `第 ${i + 1} 版`}
+      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : m.source === "library" ? "资产库" : `第 ${i + 1} 版`}
       onClick={() => m.id !== slot.adoptedId && onAdopt(m.id)}>
       {m.url && !video ? <img src={m.url} alt=""/> : <span>{i + 1}</span>}
       {m.id === slot.adoptedId && <i><Check size={11}/></i>}
@@ -196,7 +196,8 @@ export function useEscape(onClose: () => void, enabled = true) {
   latest.current = onClose;
   useEffect(() => {
     if (!enabled) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") latest.current(); };
+    // 叠在上面的 antd 弹窗（资产库选择器、二次确认）自己处理 Esc，这里不跟着把底下的抽屉也关掉。
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !(e.target instanceof Element && e.target.closest(".ant-modal-wrap"))) latest.current(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [enabled]);

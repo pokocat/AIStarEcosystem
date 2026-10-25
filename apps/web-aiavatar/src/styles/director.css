@@ -424,7 +424,7 @@ html:not([data-layout="desktop"]) .director-shell :is(.director-prompts .directo
 .director-ref-empty { display: grid; place-items: center; color: var(--ip-muted); background: var(--ip-paper); border: 1px solid var(--ip-line); }
 .director-ref-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
 .director-ref-text strong { font-size: 13px; font-weight: 600; }
-.director-ref-text small { font-size: 12px; color: var(--ip-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-ref-text small { font-size: 12px; line-height: 1.45; color: var(--ip-muted); }
 .director-ref-actions { display: flex; gap: 4px; flex: none; }
 
 /* AI 正在生成：渐变描边 + 呼吸的星标 + 正在书写的骨架行。只给 AI 正在做的事用。 */

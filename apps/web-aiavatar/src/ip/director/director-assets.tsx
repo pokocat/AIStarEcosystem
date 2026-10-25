@@ -1,10 +1,11 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, ChevronRight, ImageIcon, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
-import type { DirectorAsset, DirectorAssetKind } from "@ai-star-eco/types";
+import { Check, ChevronRight, ImageIcon, Library, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
+import type { DirectorAsset, DirectorAssetKind, DirectorWork, IpSavedAsset } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
+import { LibraryReferencePicker } from "../library-reference-picker";
 import type { WorkbenchProps } from "./director-workbench";
 import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
@@ -16,6 +17,7 @@ export function DirectorAssets(props: WorkbenchProps) {
   const [kind, setKind] = useState<DirectorAssetKind | "all">("all");
   const [openId, setOpenId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [importing, setImporting] = useState(false);
   const { busy, run } = useBusy();
   const extracting = work.tasks.find(t => t.status === "running" && t.target.startsWith("extract"));
   const extractError = work.textError?.task === "extract" ? work.textError.message : null;
@@ -31,7 +33,18 @@ export function DirectorAssets(props: WorkbenchProps) {
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setError);
   // 一次给所有还没有参考图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
-  const { modal } = useStudioApp();
+  const { modal, message } = useStudioApp();
+  const importAssets = async (picked: IpSavedAsset[]) => {
+    const before = new Set(work.assets.map(a => a.id));
+    const items = libraryItems(picked);
+    const next = await DirectorApi.edit(work.id, "asset.import", null, null, { items, episodeId });
+    apply(next);
+    // 只数这次导入的对象新建出来的资产，别的页面同时加删的不算进来。
+    const objectIds = new Set(items.map(i => i.objectId));
+    const added = next.assets.filter(a => !before.has(a.id) && a.libraryObjectId && objectIds.has(a.libraryObjectId)).length;
+    const merged = items.length - added;
+    message.success(merged > 0 ? `导入 ${picked.length} 项：新建 ${added} 项，${merged} 项与已有资产同名，已合并` : `已导入 ${added} 项`);
+  };
   const missing = work.assets.filter(a => !a.image.adoptedId && !a.description.includes("只出声音") && !runningTask(work, `asset:${a.id}`))
     .sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
   const generateAll = () => {
@@ -67,6 +80,7 @@ export function DirectorAssets(props: WorkbenchProps) {
         <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
       </>}
       <button type="button" className="ip-brand-secondary" onClick={() => setAdding(true)}><Plus size={15}/>添加资产</button>
+      <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => setImporting(true)}><Library size={15}/>从资产库导入</button>
       {missing.length > 0 && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={generateAll}
         title={`给还没有参考图的 ${missing.length} 项资产各生成一张，${costText(missing.length * work.pricing.image, work.pricing.mock)}`}><Wand2 size={15}/>生成全部参考图<small className="director-count">{missing.length}</small></button>}
     </div>
@@ -74,6 +88,8 @@ export function DirectorAssets(props: WorkbenchProps) {
     {waiting.length > 0 && <div className="director-confirm-bar"><span>{waiting.length} 张参考图待确认。分镜图将以此为参考，请确认后再继续。</span>
       <button type="button" className="ip-brand-button" disabled={!!busy} onClick={confirmAll}><Check size={15}/>全部确认</button></div>}
     {adding && <AddAsset {...props} onClose={() => setAdding(false)}/>}
+    <LibraryReferencePicker open={importing} objectsOnly title="从资产库导入" confirmLabel="导入" onClose={() => setImporting(false)} onAssets={importAssets}
+      intro="从「资产」里挑角色、场景和道具，连同选定版本的图一起导入。场景、道具的图直接作为参考图；角色的图作为形象参考，还需生成一次设定图。和已有资产同名的会合并到那一项。"/>
     {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!work.assets.length ? "暂无资产。点击「提取」，从正文识别角色、场景和道具。" : scoped.length ? "这一类暂无资产。" : "暂无资产。"}</p></div> :
       <div className="director-asset-grid">{[...shown].sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind)).map(a => <AssetTile key={a.id} {...props} asset={a} onOpen={() => setOpenId(a.id)}/>)}</div>}
     {open && <DirectorSheet onClose={() => setOpenId(null)} label="资产详情"><AssetCard key={open.id} {...props} asset={open}/></DirectorSheet>}
@@ -159,6 +175,7 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
     const result = await IpStudioApi.uploadImage(f);
     apply(await DirectorApi.edit(work.id, "asset.upload", asset.id, null, { key: result.key }));
   }, setError);
+  const [picking, setPicking] = useState(false);
   const save = () => void run("save", async () => {
     const data: Record<string, unknown> = { name, description };
     if (prompt !== asset.prompt) data.prompt = prompt;
@@ -210,6 +227,7 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
           <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate}>
             <Wand2 size={14}/>{generating ? "生成中" : asset.image.candidates.length ? "重新生成" : "生成参考图"}</button>
           {asset.kind !== "character" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => file.current?.click()}><Upload size={14}/>上传</button>}
+          {asset.kind !== "character" && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)}><Library size={14}/>从资产库选</button>}
           <span className="director-spacer"/>
           <small className="director-cost">{work.pricing.mock ? costText(0, true) : `每张${costText(work.pricing.image, false)}`}</small>
         </div>
@@ -219,6 +237,7 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
         {showPrompt && asset.promptCustom && <button type="button" className="ip-brand-text-button director-self-start" disabled={!!busy} onClick={resetPrompt}><RefreshCw size={13}/>恢复自动生成</button>}
       </section>}
       <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
+      {asset.kind !== "character" && <PickFromLibrary work={work} asset={asset} apply={apply} open={picking} onClose={() => setPicking(false)}/>}
       {!editing && asset.kind === "character" && <VoicePanel work={work} asset={asset} apply={apply}/>}
     </div>
   </article>;
@@ -237,6 +256,7 @@ function CharacterRef({ work, asset, apply, setError, disabled }: Pick<Workbench
     apply(await DirectorApi.edit(work.id, "asset.setRef", asset.id, null, { key: result.key }));
   }, setError);
   const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), setError);
+  const [picking, setPicking] = useState(false);
   return <div className="director-ref">
     {ref?.url ? <img src={ref.url} alt={`${asset.name}的形象参考`}/> : <span className="director-ref-empty"><ImageIcon size={16}/></span>}
     <div className="director-ref-text">
@@ -244,9 +264,28 @@ function CharacterRef({ work, asset, apply, setError, disabled }: Pick<Workbench
       <small>{ref ? "生成设定图时照着它画长相，改了参考要重新生成" : "上传一张照片，生成设定图时照着它画长相"}</small>
     </div>
     <div className="director-ref-actions">
-      <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={() => file.current?.click()}>{ref ? "更换" : "上传"}</button>
+      <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={() => file.current?.click()}>上传</button>
+      <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={() => setPicking(true)}>从资产库选</button>
       {ref && <button type="button" className="ip-brand-text-button" disabled={disabled || !!busy} onClick={clear}>移除</button>}
     </div>
     <input ref={file} type="file" accept="image/png,image/jpeg" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) upload(f); }}/>
+    <PickFromLibrary work={work} asset={asset} apply={apply} open={picking} onClose={() => setPicking(false)}/>
   </div>;
+}
+
+/** 资产库选择器回来的是快照；导入只交对象 id 和选定版本，名字、描述、图由服务端按本人资产库读。 */
+function libraryItems(picked: IpSavedAsset[]) {
+  return picked.flatMap(a => {
+    const ref = a.metadata?.libraryReference as { objectId: string; versionId?: string } | undefined;
+    return ref ? [{ objectId: ref.objectId, versionId: ref.versionId ?? null }] : [];
+  });
+}
+
+/** 给一项已有资产换成资产库里的一张图：场景、道具直接作为参考图，角色作为形象参考。 */
+function PickFromLibrary({ work, asset, apply, open, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: WorkbenchProps["apply"]; open: boolean; onClose: () => void }) {
+  const character = asset.kind === "character";
+  return <LibraryReferencePicker open={open} objectsOnly max={1} query={asset.name} onClose={onClose}
+    title={character ? `为「${asset.name}」选形象参考` : `为「${asset.name}」选参考图`} confirmLabel="使用这张"
+    intro={character ? "选一张图作为形象参考，生成设定图时照着它画长相。" : "选一张图作为参考图，分镜图会照着它画。"}
+    onAssets={async picked => apply(await DirectorApi.edit(work.id, "asset.import", asset.id, null, { items: libraryItems(picked) }))}/>;
 }

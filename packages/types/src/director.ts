@@ -31,7 +31,7 @@ export interface DirectorMedia {
   key: string;
   url?: string | null;
   runId: string | null;
-  source: "generated" | "upload";
+  source: "generated" | "upload" | "library";
   createdAt: string;
   prompt?: string;
   refs?: DirectorRefUsed[];
@@ -119,6 +119,8 @@ export interface DirectorAsset {
   voiceDesc?: string;
   /** 角色的形象参考照片（用户上传）：只在生成设定图时作为参考交给模型，不会直接当角色参考图用。 */
   refImage?: { key: string; url?: string | null } | null;
+  /** 从个人资产库导入时记下的资产库对象 id；再导入同一项时据此对上，不重复建。 */
+  libraryObjectId?: string;
   rev: number;
 }
 
@@ -285,7 +287,7 @@ export type DirectorEditOp =
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
-  | "extract.save" | "extract.discard";
+  | "extract.save" | "extract.discard" | "asset.import";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
