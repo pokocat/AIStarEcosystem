@@ -20,4 +20,12 @@
 - 进程关闭事件在事务依赖关闭前结清仍在本进程执行的导演文字任务，明确提示服务更新中断与积分释放。崩溃场景仍由 reaper 和手动停止兜底；没有把已受理图片、音频、视频改成文字取消语义。
 - 补齐队列发现的 studio-director 分支，重启后未执行的排队文字任务可重新派发；已经开始的文字调用不自动重新计费请求。
 
-状态：本地代码已改，尚未发布。按用户「不要验证了」要求，没有运行新增测试或额外检查；停止后的客户真实页面操作尚未代为验收。原截图任务已由生产原有机制收尾。
+状态：已从干净 main `32a43113a5ffdb441db51574528b9e4b6c0f150e` 构建并生产发布，制品 `20261026-director-stop`（server、web-aiavatar）。按用户「不要验证了」要求，没有运行新增测试或额外检查，正式构建与必要发布健康检查已完成；未用客户身份发起或停止付费任务，停止按钮的客户实际点击尚未代为验收。
+
+## 发布结果（2026-10-25 17:18 UTC / 2026-10-26 01:18 CST）
+
+- 发布前及发布后，数据库 running 的 ip_run 与在途原生视频任务均为空；没有再次中断创作。新进程 PID `2713653`，NRestarts=0，Spring 启动 16.863 秒；Flyway 仍为 V69，无迁移。
+- server/app.jar SHA-256 `4b0d48ea7d8b161cdc6ebc2ec9a550fbd893754b0a8ce1f79274c6c4cf76976b`；Studio 包 `84caafc0bb3732bfb809caf146a400cba49b7b166356fc5f494729ab692bfa37`，远端与本地匹配。
+- 两个服务 active；公网 HTTPS `/api/config` 与首页返回 200。17:18:08–17:18:25 UTC nginx 记录 16 次 502（含探测），17:18:27 起探测恢复，不能描述为零停机。
+- 原截图任务在 17:19 UTC 再查仍为 failed / IP_RUN_TIMEOUT、cost=0，账本只有一笔 FREEZE -58 与一笔 UNFREEZE +58，没有 SPEND。
+- 回滚 JAR：`/opt/ai-star-eco/releases/20261026-director-stop-before/server/app.jar`，SHA-256 `d5a5e80c4950e366098f3611644e2ae6057b1bd98b3c8ec0878800ab71c55dc9`。前端可恢复此前 `20261025-provider-error-privacy` 归档；回滚会撤掉停止入口与关闭时结算保护。
