@@ -2,7 +2,7 @@
 
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useState } from "react";
-import { AlertTriangle, Check, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
+import { AlertTriangle, Check, Lightbulb, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
 import type { DirectorClip, DirectorShot, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
@@ -232,6 +232,9 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}/>
     {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
     {clip.issues.length > 0 && <div className="director-issues" role="alert"><AlertTriangle size={15}/><ul>{clip.issues.map(i => <li key={i}>{i}</li>)}</ul></div>}
+    {clip.issues.length === 0 && (clip.warnings?.length ?? 0) > 0 && <div className="director-shot-hints" role="note">
+      <Lightbulb size={14}/><div><b>镜头节奏建议</b><ul>{clip.warnings!.map(i => <li key={i}>{i}</li>)}</ul>
+        <small>不影响生成。要调整就点「编辑镜头」，或重写本集分镜脚本。</small></div></div>}
     {editing ? <ClipEditor work={work} clip={clip} apply={apply} setError={setError} onDone={() => setEditing(false)}/> : <>
       <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
         <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="角色、场景、道具的标准照，用来锁定长相和环境">

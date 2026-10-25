@@ -586,6 +586,34 @@ public class DirectorService {
 
     /** 片段实际用到的参考图：角色 → 场景 → 道具，每个都要有已采用的图；缺了就报具体是哪个。 */
     /**
+     * 分镜节奏的程序检查（不靠模型自检）：镜头数、单镜时长、相邻景别、片段时长，规则同「写分镜脚本」提示词。
+     * 只是提示，不进 issues、不拦截出图，也不自动重写；只按首帧出片的模型一段一个镜头，不查。
+     */
+    private ArrayNode shotWarnings(JsonNode clip, Limits lim, double total, int lastOrderInEpisode) {
+        ArrayNode out = om.createArrayNode();
+        JsonNode shots = clip.path("shots");
+        if (lim == null || lim.frame() || shots.isEmpty()) return out;
+        int lo = Math.min(3, lim.maxShots());
+        if (shots.size() < lo) out.add("只有 " + shots.size() + " 个镜头，每段至少 " + lo + " 个：补一个反应镜头或细节特写");
+        List<String> longShots = new ArrayList<>(), sameSize = new ArrayList<>();
+        String prev = null;
+        for (int i = 0; i < shots.size(); i++) {
+            JsonNode s = shots.get(i);
+            double d = s.path("durationSec").asDouble();
+            if (d > 4) longShots.add("第 " + (i + 1) + " 镜 " + fmt(d) + " 秒");
+            String size = s.path("size").asText().trim();
+            if (prev != null && !size.isEmpty() && size.equals(prev)) sameSize.add("第 " + i + "、" + (i + 1) + " 镜都是" + size);
+            prev = size;
+        }
+        if (!longShots.isEmpty()) out.add(String.join("、", longShots) + "：常规镜头 2–4 秒，更长要有理由（长动作、情绪定格）");
+        if (!sameSize.isEmpty()) out.add(String.join("；", sameSize) + "：相邻镜头要换景别");
+        int target = Math.max(lim.min(), lim.max() - 3);
+        if (total < target && clip.path("order").asInt() != lastOrderInEpisode)
+            out.add("片段 " + fmt(total) + " 秒，建议 " + target + "–" + lim.max() + " 秒，用满单段时长");
+        return out;
+    }
+
+    /**
      * 片段要交给模型的画面资产，固定顺序：角色 → 场景 → 道具，同类按片段里的顺序，只出声音的不算。
      * 提示词里的「图N」（refresh）和真正提交的参考图（boundRefs）都从这里取，两边编号不会错位。
      */
@@ -1699,6 +1727,8 @@ public class DirectorService {
             names.put(a.path("id").asText(), a.path("name").asText());
             if ("character".equals(a.path("kind").asText())) characters.add(a.path("id").asText());
         }
+        Map<String, Integer> lastOrder = new HashMap<>();
+        for (JsonNode clip : c.path("clips")) lastOrder.merge(clip.path("episodeId").asText(), clip.path("order").asInt(), Math::max);
         for (JsonNode clipNode : c.path("clips")) {
             ObjectNode clip = (ObjectNode) clipNode;
             List<DirectorPrompts.Ref> refs = new ArrayList<>();
@@ -1743,6 +1773,7 @@ public class DirectorService {
                 if (sp != null && !characters.contains(sp)) badSpeakers.add(names.getOrDefault(sp, sp));
             }
             for (String sp : badSpeakers) issues.add("台词说话人「" + sp + "」不是角色，请重新选择说话人");
+            clip.set("warnings", shotWarnings(clip, lim, total, lastOrder.getOrDefault(clip.path("episodeId").asText(), 0)));
             check((ObjectNode) clip.path("board"), boardCurrent(c, clip), false);
             check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), true);
         }

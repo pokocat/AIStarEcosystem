@@ -156,6 +156,8 @@ export interface DirectorClip {
   video: DirectorMediaSlot;
   /** 需要用户修改才能出分镜图的问题（镜头太多、时长超出视频模型、引用对不上）。 */
   issues: string[];
+  /** 分镜节奏的程序检查（镜头数、单镜时长、相邻景别、片段时长）：只是提示，不拦截出图 */
+  warnings?: string[];
   /** 有台词但没绑声音参考的角色名：视频照样能生成，但跨片段音色不保证。 */
   unvoiced: string[];
   /** 有台词并且绑了声音的角色名。 */
