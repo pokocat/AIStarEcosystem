@@ -1261,4 +1261,4 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 `ModelJson` 先严格读取单份 JSON，再组合恢复汉字前多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号与缺少的末尾括号；合法转义不变，不放宽共享 ObjectMapper。缺值、半截字符串、未知 ASCII / 残缺 Unicode 转义、重复字段和多份 JSON 拒绝，恢复后仍走业务结构校验。`finish_reason=length` 不靠补括号伪造成功。工作流不能恢复时返回 `AI_BAD_OUTPUT` 和明确的格式错误 / 本次未扣积分提示，原解析异常及上游诊断保留，继续走失败退款路径，不新增模型重试。
 
-用户要求不重启时可临时使用 `infra/hotfix/studio-json-sandbox/`：官方 JVM-Sandbox 1.4.0，模块从仓库解析器生成，只观察 `ModelJson.parse` 的 Jackson 异常。正常返回保持原样，因此临时模块不是正常发布后的全部严格规则；模块只在环回管理、默认冻结、验证后激活，卸载即撤销，不改 app.jar。当前隔离验证中，生产尚未激活。构建、验证与回退见 [操作手册](../../docs/runbooks/studio-json-jvm-sandbox.md)。
+用户要求不重启时可临时使用 `infra/hotfix/studio-json-sandbox/`：官方 JVM-Sandbox 1.4.0，模块从仓库解析器生成，只观察 `ModelJson.parse` 的 Jackson 异常。正常返回保持原样，因此临时模块不是正常发布后的全部严格规则；模块只在环回管理、默认冻结、验证后激活，卸载即撤销，不改 app.jar。2026-10-25 UTC 已在原生产进程启用，应用 JAR 未变；固定探针通过，44 次健康采样均 200，模块可卸载回退。发布证据见 [热修复记录](../../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。构建、验证与回退见 [操作手册](../../docs/runbooks/studio-json-jvm-sandbox.md)。

@@ -670,7 +670,8 @@ v0.163：前端手抄了一份 `IpRun`，把 `output` 写成 `outputs`，于是�
   2026-10-21 第五种：动作本身完全对，但数组后面又写了一遍 `<<<studio-actions>>>` 当结束标记，严格解析连判三次格式错误、什么都没做还扣了积分；每次失败的回复正文都显示了出来（同一句三遍）；而用户点的「用这张图做一段视频」是我们自己给的完成后建议，出视频却没有这个说法的关键词，和出图平手就留在了出图。判据补充：只在动作块末尾容忍明显的收尾、其它多余内容仍判错；格式错误重试时被判错那次的正文不追加、正文只出现一次；我们自己给的每一条建议都要有测试证明它路由到对的技能或明确不切换（`StudioSuggestionRoutingTest`）。
 
   2026-10-24 第六种（AI 导演台编剧，聚算 Qwen3.8 27B）：剧本 JSON 写完了、字符串也闭合了，finish=stop，只漏了最外层的 `}`，严格解析判失败、整单退款，用户只看到「这次创作没有完成」。`ModelJson` 现在只在「文本停在一个完整的值上、只缺结尾括号」时补括号，截在字符串中间或逗号、冒号后面照样失败（`ModelJsonTest`）。
-  同类补充（2026-10-24，本地修复、未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
+  同类补充（2026-10-24，永久修复已合 main、普通 JAR 未发布；厂商响应 UTC 2026-10-25）：`finish=stop` 的剧本同时出现非法 `\远处` 和缺末尾 `}`。`ModelJson` 可组合恢复汉字前的多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号和末尾括号；合法转义保持原样。未知 ASCII 转义、残缺 Unicode 转义、半截字符串、缺值 / 缺分隔逗号、重复字段和多份 JSON 一律拒绝，不能从残缺数组里截一个对象冒充整份结果。恢复后仍走业务校验；`finish=length` 不进入修复。`StudioWorkflowWorker` 对不能修复的 JSON 保留原异常及上游诊断，以 `AI_BAD_OUTPUT` 明确提示「格式有误，无法自动恢复；本次未扣积分」，释放冻结、不自动重调模型。回归：`ModelJsonTest` / `StudioWorkflowWorkerJsonTest`。
+  2026-10-25 UTC 已按用户要求无重启启用官方 JVM-Sandbox 1.4.0 临时模块（namespace `aep-json-20261024`，仅环回 `24769`）：只处理原 `ModelJson.parse` 的 Jackson 异常，正常返回不变，不能恢复则交原工作流按 `AI_BAD_OUTPUT` 退款。固定生产探针通过，PID / 启动时间 / JAR 均未变。临时模块不等同于永久严格解析规则；下次正常发布先卸载模块，再发布含永久修复的 main。见 `docs/runbooks/studio-json-jvm-sandbox.md` 和 `docs/releases/studio-json-jvm-sandbox-release-20261025.md`。
 
 **⑧ 用脚本改代码时，锚点必须包住"不能被拆开的那一对"。**
 2026-09-09 生产事故：用 python 往 `IpDemoTemplate` 里插两个常量，锚点选的是

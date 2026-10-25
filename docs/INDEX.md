@@ -210,6 +210,8 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
+
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
