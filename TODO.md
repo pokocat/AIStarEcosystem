@@ -38,6 +38,10 @@
 
 统一 Studio 的后续事项。旧画布适配层的历史限制另按原主题保留，不能据此推断当前 Studio 也缺少同一功能。
 
+### 2026-10-25 · 图片按分辨率选模型后测试没跟上（`eab29339`，未发布）
+
+- [ ] **`IpRunWorkerTest` 4 条在 main 上红**（2026-10-25 合并视频文案时发现，在 `eab29339^` 上全绿、`eab29339` 起红）：`nativeAcceptedSecondImageRecovers…`、`acceptedImageCheckpointWriteFailure…`、`jusuanUsesOriginalPrompt…`、`unknownNativeAcceptanceKeepsHold…`。原因：`IpRunWorker` 改调 `JusuanImageClient.generate(…, providerModel, previous, checkpoint)` 新重载，测试仍模拟旧的 10 参数重载，模拟没命中返回 null，被判 `DAP_MODEL_BAD_OUTPUT`。生产路径本身看起来没坏，但同一件事留了两个调法（§8.0.1 ④），建议删掉旧重载或让它委托新重载，再把测试改到新签名；发布 `eab29339` 前要修。
+
 ### 2026-10-24 · 方案素材范围跨轮（已生产发布 `20261024-studio-plan-material-scope`；真源 `docs/ip-studio-dialogue-intents.md` 末节）
 
 - [ ] **新开一次制作会对同一条参考视频重新拉片、再次计费**：同一次制作里补素材重新编排已不重跑拉片；但用户结束这次制作、回对话重新确认分析方案时，`StudioPlanExecutionService#create` 新建执行，拉片步骤照样提交新任务。可考虑：同画布、同 `sourceNodeId` 且源文件 key 与拉片设置相同、已成功的 `studio-recreation` 结果直接复用（零费用），复用前核对归属与源文件未变。
