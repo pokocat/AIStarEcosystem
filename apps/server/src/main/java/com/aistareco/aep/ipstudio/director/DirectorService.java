@@ -180,6 +180,7 @@ public class DirectorService {
             if (req.draftRev() == null || req.draftRev() != c.path("draftRev").asLong()) throw conflict("剧本已在其他页面修改");
             if (c.path("episodes").size() > 0) throw invalid("已拆分集，请在各集中修改正文");
             if (req.draft().length() > 60000) throw invalid("剧本过长，请拆分为多部作品导入");
+            if (!req.draft().equals(c.path("draft").asText())) c.putNull("pendingSplit");
             c.put("draft", req.draft()).put("draftRev", c.path("draftRev").asLong() + 1);
         }
         if (req.settings() != null && req.settings().isObject()) {
@@ -229,8 +230,54 @@ public class DirectorService {
                 if (c.path("episodes").size() > 0) throw invalid("已有分集");
                 String draft = c.path("draft").asText();
                 if (draft.isBlank()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SCRIPT_MISSING", "请先生成或导入剧本");
-                ((ArrayNode) c.path("episodes")).add(newEpisode(c, 1, w.getTitle(), "", draft));
-                c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
+                asOneEpisode(w, c);
+            }
+            case "split.save", "split.discard" -> {
+                JsonNode pending = c.path("pendingSplit");
+                if (!pending.isObject() || req.targetId() != null && !req.targetId().equals(pending.path("id").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_EXPIRED", "这份分集结果已失效，请重新拆分");
+                ObjectNode p = c.path("pipeline").isObject() ? (ObjectNode) c.path("pipeline") : null;
+                boolean live = p != null && Set.of("running", "waiting", "paused").contains(p.path("status").asText());
+                if ("split.save".equals(req.op())) {
+                    int n = applySplit(c, pending, "episode".equals(d.path("preamble").asText()));
+                    notice(c, "已分成 " + n + " 集");
+                    if (p != null && "waiting".equals(p.path("status").asText()) && "confirm-split".equals(p.path("stage").asText())) {
+                        p.put("status", "running").put("stage", "split").put("message", "分集已确认，继续制作"); w.setActive(true);
+                    }
+                } else {
+                    c.putNull("pendingSplit");
+                    // 一键制作可能还没推进到「待确认」：不停下它会再提交一次付费拆分。
+                    if (live) finish(p, "stopped", "分集结果未采用，一键制作已停止");
+                }
+            }
+            case "split.undo" -> {
+                JsonNode undo = c.path("splitUndo");
+                if (c.path("episodes").isEmpty() || !undo.isObject()) throw invalid("这次拆分不能撤销");
+                for (JsonNode clip : c.path("clips")) if (hasMedia(clip))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_CLIPS_HAVE_MEDIA", "已有分镜图或视频的片段，不能撤销拆分。请先删除这些片段");
+                if (w.isActive()) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "有任务正在进行，完成后再撤销拆分");
+                c.put("draft", undo.path("draft").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
+                c.put("reference", undo.path("reference").asText()).put("referenceRev", c.path("referenceRev").asLong() + 1);
+                c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract"); c.putNull("splitUndo");
+                for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
+                ObjectNode p = c.path("pipeline").isObject() ? (ObjectNode) c.path("pipeline") : null;
+                if (p != null && Set.of("waiting", "paused").contains(p.path("status").asText())) finish(p, "stopped", "已撤销拆分，一键制作已停止");
+                notice(c, "已撤销拆分，剧本恢复到拆分前；资产保留，重新拆分后可再提取");
+            }
+            case "reference.update" -> {
+                if (req.rev() == null || req.rev() != c.path("referenceRev").asLong()) throw conflict("设定资料已在其他页面修改");
+                c.put("reference", limited(d.path("text").asText(), 60000, "设定资料")).put("referenceRev", c.path("referenceRev").asLong() + 1);
+            }
+            case "reference.toEpisode" -> {
+                if (req.rev() == null || req.rev() != c.path("referenceRev").asLong()) throw conflict("设定资料已在其他页面修改");
+                String ref = c.path("reference").asText();
+                if (ref.isBlank() || c.path("episodes").isEmpty()) throw invalid("没有可以并入的设定资料");
+                ObjectNode first = (ObjectNode) c.path("episodes").get(0);
+                first.put("content", limited(ref + "\n\n" + first.path("content").asText(), 60000, "第 1 集正文"));
+                if (hasClips(c, first.path("id").asText())) first.put("planStale", true);
+                bump(first);
+                c.put("reference", "").put("referenceRev", c.path("referenceRev").asLong() + 1);
+                notice(c, "设定资料已并入第 1 集开头");
             }
             case "episode.update" -> {
                 ObjectNode ep = requireRev(find(c, "episodes", req.targetId(), "这一集"), req.rev());
@@ -484,9 +531,15 @@ public class DirectorService {
                 String draft = c.path("draft").asText();
                 if (draft.isBlank()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SCRIPT_MISSING", "请先生成或导入剧本");
                 if (c.path("episodes").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EPISODES_EXIST", "已拆分集");
+                if (c.path("pendingSplit").isObject())
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_PENDING", "有一份分集结果待确认，请先确认或放弃");
+                requireIdle(w, "split");
                 List<String> paragraphs = paragraphs(draft);
+                int target = o.path("episodeCount").asInt(0);
+                if (splitByHeadings(c, target)) { clearError(c, "split"); return null; }
                 nodeId = "split";
                 meta.put("paragraphCount", paragraphs.size()).put("draftHash", hash(draft));
+                if (target > 0) meta.put("targetEpisodeCount", target);
                 system = DirectorPrompts.SPLIT;
                 ObjectNode in = om.createObjectNode();
                 putBrief(in, c);
@@ -504,6 +557,7 @@ public class DirectorService {
                 ObjectNode in = om.createObjectNode().put("style", c.path("settings").path("style").asText());
                 // 大纲里的人物年龄、身份给资产统筹参考，角色描述和故事对得上。
                 if (c.path("outline").path("characters").isArray()) in.set("outlineCharacters", c.path("outline").path("characters"));
+                putReference(in, c);
                 ArrayNode es = in.putArray("episodes"), nos = meta.putArray("episodeNos"), epHashes = meta.putArray("episodes");
                 for (JsonNode ep : eps) {
                     es.addObject().put("no", ep.path("no").asInt()).put("title", ep.path("title").asText()).put("content", ep.path("content").asText());
@@ -1004,7 +1058,7 @@ public class DirectorService {
                     history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString())
                             .set("outline", c.path("outline").isObject() ? c.path("outline") : om.nullNode()));
                     while (history.size() > 3) history.remove(history.size() - 1);
-                    c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract");
+                    c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract"); c.putNull("pendingSplit"); c.putNull("splitUndo");
                     for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
                     c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
                     if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
@@ -1021,20 +1075,30 @@ public class DirectorService {
             }
             case "split" -> {
                 String draft = c.path("draft").asText();
-                if (c.path("episodes").size() > 0 || !hash(draft).equals(in.path("draftHash").asText())) {
+                if (c.path("episodes").size() > 0 || c.path("pendingSplit").isObject() || !hash(draft).equals(in.path("draftHash").asText())) {
                     notice(c, "拆分期间剧本有修改，本次结果未使用，请重新拆分"); return;
                 }
+                // 校验已把起点构造成首尾相接的区间；这里把程序做过的修正写成用户看得懂的话，结果先给用户确认。
                 List<String> ps = paragraphs(draft);
-                int no = 1;
-                for (JsonNode e : d.path("episodes")) {
-                    StringBuilder body = new StringBuilder();
-                    for (int i = e.path("startParagraph").asInt(); i <= e.path("endParagraph").asInt() && i < ps.size(); i++) {
-                        if (body.length() > 0) body.append("\n\n");
-                        body.append(ps.get(i));
-                    }
-                    ((ArrayNode) c.path("episodes")).add(newEpisode(c, no++, e.path("title").asText(), e.path("summary").asText(), body.toString()));
+                List<SplitRange> ranges = new ArrayList<>();
+                List<String> notes = new ArrayList<>(), warnings = new ArrayList<>();
+                JsonNode eps = d.path("episodes");
+                int headFrom = d.path("headFrom").asInt(), bodyStart = d.path("bodyStart").asInt();
+                if (headFrom > bodyStart) notes.add("第 1 集开头补入 " + (headFrom - bodyStart) + " 段（从「" + snippet(ps.get(bodyStart)) + "」开始）");
+                for (int i = 0; i < eps.size(); i++) {
+                    JsonNode e = eps.get(i);
+                    int start = e.path("startParagraph").asInt(), end = e.path("endParagraph").asInt(), modelEnd = e.path("modelEnd").asInt(-1);
+                    ranges.add(new SplitRange(e.path("title").asText(), e.path("summary").asText(), start, end));
+                    if (modelEnd >= start && modelEnd < end)
+                        notes.add("第 " + (i + 1) + " 集结尾补入 " + (end - modelEnd) + " 段（从「" + snippet(ps.get(modelEnd + 1)) + "」开始）");
+                    else if (modelEnd > end && i + 1 < eps.size())
+                        notes.add("第 " + (i + 1) + " 集和第 " + (i + 2) + " 集的范围有重叠，按第 " + (i + 2) + " 集的开头分开");
                 }
-                c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
+                if (d.path("dropped").asInt() > 0) notes.add("有 " + d.path("dropped").asInt() + " 个分集位置超出了剧本范围，已忽略");
+                if (d.path("duplicates").asInt() > 0) notes.add("有 " + d.path("duplicates").asInt() + " 个重复的分集位置，已合并");
+                int target = in.path("targetEpisodeCount").asInt(0);
+                if (target > 0 && target != ranges.size()) warnings.add("你要求分成 " + target + " 集，这次分成了 " + ranges.size() + " 集。不合适可以放弃后重新拆分");
+                c.set("pendingSplit", pendingSplit(c, run.getId(), "model", ps, ranges, notes, warnings));
             }
             case "extract" -> {
                 // 提取结果先放进待确认清单：用户在弹窗里勾选、改名后才写进资产库，这里不改任何资产。
@@ -1225,7 +1289,8 @@ public class DirectorService {
             rough = true;
             if (c.path("draft").asText().isBlank()) text++;   // 写剧本
             int n = work ? 3 : 1;
-            text += 2 + n;                                    // 拆分 + 提取 + 每集写分镜脚本
+            // 拆分（剧本里标好分集就不调模型）+ 提取 + 每集写分镜脚本
+            text += (DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).isEmpty() ? 1 : 0) + 1 + n;
             images += 6;                                      // 角色、场景、道具参考图
             clipsTotal = n * estClipsPerEp;
             images += clipsTotal;                             // 分镜图
@@ -1330,7 +1395,24 @@ public class DirectorService {
                     if (failed.contains("script")) { finish(p, "failed", "剧本生成失败，请在「剧本」中重试"); return; }
                     step.send("script", null, "剧本生成中"); return;
                 }
-                if (failed.contains("split")) { finish(p, "failed", "拆分失败，请在「剧本」中重试或作为一集"); return; }
+                // 分集结果：全自动就按默认（开头资料保留为设定资料）直接采用并说明做了什么，否则停下等确认。
+                JsonNode pendingSplit = c.path("pendingSplit");
+                if (pendingSplit.isObject()) {
+                    if (!auto(p)) { p.put("status", "waiting").put("stage", "confirm-split").put("message", "分集已拆好，请确认后继续"); return; }
+                    int n = applySplit(c, pendingSplit, false);
+                    notice(c, splitNotice(n, pendingSplit));
+                    p.put("stage", "split").put("message", "已分成 " + n + " 集，继续制作");
+                    return;
+                }
+                if (failed.contains("split")) {
+                    if (!auto(p)) { finish(p, "failed", "拆分失败，请在「剧本」中重试或作为一集"); return; }
+                    // 全自动不因拆分失败停下：原文完整地作为一集继续，之后可以撤销重新拆分。
+                    asOneEpisode(w, c);
+                    notice(c, "没能自动拆分，已作为一集继续；可以在「剧本」中撤销拆分后重新拆分");
+                    p.put("stage", "split").put("message", "已作为一集，继续制作");
+                    return;
+                }
+                if (splitByHeadings(c, 0)) { p.put("stage", "split").put("message", "已按剧本里的分集标题拆好"); return; }
                 step.send("split", null, "拆分集中"); return;
             }
             List<JsonNode> eps = scopeEpisodes(c, p);
@@ -1659,7 +1741,17 @@ public class DirectorService {
 
     private JsonNode view(String userId, DirectorWork w, ObjectNode c) {
         ObjectNode v = c.deepCopy();
-        v.remove("applied"); v.remove("taskMeta"); v.remove("seq");
+        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("splitUndo");
+        if (!v.path("reference").isTextual()) v.put("reference", "");
+        if (!v.has("referenceRev")) v.put("referenceRev", 0);
+        if (!v.has("pendingSplit")) v.putNull("pendingSplit");
+        // 撤销拆分：拆分前的原稿还在、还没出过分镜图或视频才可用。
+        boolean media = false;
+        for (JsonNode clip : c.path("clips")) media |= hasMedia(clip);
+        v.put("canUndoSplit", c.path("splitUndo").isObject() && c.path("episodes").size() > 0 && !media);
+        // 剧本里标好的分集数：拆分按钮据此说明「按标题分、不花积分」。
+        int heads = c.path("episodes").isEmpty() ? DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).size() : 0;
+        v.put("draftEpisodeHeadings", heads);
         v.put("id", w.getId()).put("title", w.getTitle()).put("revision", w.getRevision())
                 .put("createdAt", w.getCreatedAt().toString()).put("updatedAt", w.getUpdatedAt().toString());
         ArrayNode tasks = v.putArray("tasks");
@@ -1945,6 +2037,111 @@ public class DirectorService {
 
     // ── 内容小工具 ───────────────────────────────────────────────────────────
 
+    /** 一集的段落区间（都含）。 */
+    record SplitRange(String title, String summary, int start, int end) {}
+
+    /**
+     * 待确认的分集：每集的范围、篇幅、开头结尾各一句，以及程序做过的修正。不放正文，确认时按范围从当前剧本取，
+     * 剧本在这期间改过（哈希对不上）就作废。第一集之前的段落是设定资料，确认时由用户决定保留还是并入第一集。
+     */
+    private ObjectNode pendingSplit(ObjectNode c, String runId, String source, List<String> ps, List<SplitRange> ranges,
+                                    List<String> notes, List<String> warnings) {
+        ObjectNode p = om.createObjectNode().put("id", nextId(c, "sp")).put("runId", runId).put("source", source)
+                .put("at", Instant.now().toString()).put("draftHash", hash(c.path("draft").asText())).put("paragraphCount", ps.size());
+        int bodyStart = ranges.get(0).start();
+        if (bodyStart > 0) p.set("preamble", rangeView(ps, 0, bodyStart - 1)); else p.putNull("preamble");
+        ArrayNode eps = p.putArray("episodes");
+        for (SplitRange r : ranges) {
+            ObjectNode e = rangeView(ps, r.start(), r.end()).put("title", r.title()).put("summary", r.summary());
+            e.put("startParagraph", r.start()).put("endParagraph", r.end());
+            eps.add(e);
+        }
+        p.set("notes", om.valueToTree(notes));
+        p.set("warnings", om.valueToTree(warnings));
+        return p;
+    }
+
+    private ObjectNode rangeView(List<String> ps, int from, int to) {
+        int chars = 0;
+        for (int i = from; i <= to; i++) chars += ps.get(i).replaceAll("\\s", "").length();
+        return om.createObjectNode().put("paragraphs", to - from + 1).put("chars", chars).put("head", snippet(ps.get(from))).put("tail", snippet(ps.get(to)));
+    }
+
+    private static String snippet(String p) {
+        String t = p.replaceAll("^#+\\s*", "").strip();
+        return t.length() <= 30 ? t : t.substring(0, 30) + "…";
+    }
+
+    private static String joinParagraphs(List<String> ps, int from, int to) {
+        StringBuilder b = new StringBuilder();
+        for (int i = from; i <= to && i < ps.size(); i++) { if (b.length() > 0) b.append("\n\n"); b.append(ps.get(i)); }
+        return b.toString();
+    }
+
+    /**
+     * 采用待确认的分集：按范围从当前剧本取正文建集；第一集之前的设定资料默认存进 {@code reference}，
+     * {@code preambleAsEpisode} 时并入第一集。拆分前的原稿留底（{@code splitUndo}），还没出图出视频时可以撤销。
+     */
+    private int applySplit(ObjectNode c, JsonNode pending, boolean preambleAsEpisode) {
+        String draft = c.path("draft").asText();
+        if (c.path("episodes").size() > 0 || !hash(draft).equals(pending.path("draftHash").asText()))
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_EXPIRED", "剧本已修改，这份分集结果已失效，请重新拆分");
+        List<String> ps = paragraphs(draft);
+        keepSplitUndo(c);
+        JsonNode eps = pending.path("episodes");
+        int bodyStart = eps.get(0).path("startParagraph").asInt();
+        if (bodyStart > 0 && !preambleAsEpisode) {
+            String old = c.path("reference").asText().strip(), pre = joinParagraphs(ps, 0, bodyStart - 1);
+            c.put("reference", old.isEmpty() ? pre : old + "\n\n" + pre).put("referenceRev", c.path("referenceRev").asLong() + 1);
+        }
+        int no = 1;
+        for (JsonNode e : eps) {
+            int start = no == 1 && preambleAsEpisode ? 0 : e.path("startParagraph").asInt();
+            ((ArrayNode) c.path("episodes")).add(newEpisode(c, no++, e.path("title").asText(), e.path("summary").asText(),
+                    joinParagraphs(ps, start, e.path("endParagraph").asInt())));
+        }
+        c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
+        c.putNull("pendingSplit");
+        return eps.size();
+    }
+
+    /**
+     * 剧本里已经标好「第N集」：直接按标题分，不调模型、不扣积分（结果同样先给用户确认）。
+     * 用户另外指定了不同的集数（{@code target > 0}）才交给模型。
+     */
+    private boolean splitByHeadings(ObjectNode c, int target) {
+        List<String> ps = paragraphs(c.path("draft").asText());
+        List<Integer> heads = DirectorPrompts.headingStarts(ps);
+        if (heads.isEmpty() || target > 0 && target != heads.size()) return false;
+        List<SplitRange> ranges = new ArrayList<>();
+        for (int i = 0; i < heads.size(); i++)
+            ranges.add(new SplitRange(DirectorPrompts.headingTitle(ps.get(heads.get(i))), "",
+                    heads.get(i), i + 1 < heads.size() ? heads.get(i + 1) - 1 : ps.size() - 1));
+        c.set("pendingSplit", pendingSplit(c, null, "headings", ps, ranges, List.of(), List.of()));
+        return true;
+    }
+
+    /** 全自动采用分集时的说明：分了几集、开头资料放哪了、程序补了什么，用户据此决定要不要改回。 */
+    private static String splitNotice(int n, JsonNode pending) {
+        StringBuilder b = new StringBuilder("已自动分成 ").append(n).append(" 集");
+        JsonNode pre = pending.path("preamble");
+        if (pre.isObject()) b.append("；剧本开头 ").append(pre.path("paragraphs").asInt()).append(" 段放进了设定资料，不会拍成画面，如果是正片可在「剧本」中并入第 1 集");
+        pending.path("notes").forEach(x -> b.append("；").append(x.asText()));
+        pending.path("warnings").forEach(x -> b.append("；").append(x.asText()));
+        return b.toString();
+    }
+
+    private void asOneEpisode(DirectorWork w, ObjectNode c) {
+        keepSplitUndo(c);
+        ((ArrayNode) c.path("episodes")).add(newEpisode(c, 1, w.getTitle(), "", c.path("draft").asText()));
+        c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1);
+        c.putNull("pendingSplit");
+    }
+
+    private void keepSplitUndo(ObjectNode c) {
+        c.putObject("splitUndo").put("draft", c.path("draft").asText()).put("reference", c.path("reference").asText()).put("at", Instant.now().toString());
+    }
+
     private ObjectNode newEpisode(ObjectNode c, int no, String title, String summary, String content) {
         String t = title == null || title.isBlank() ? "第 " + no + " 集" : title.trim();
         ObjectNode ep = om.createObjectNode().put("id", nextId(c, "ep")).put("no", no).put("title", t)
@@ -2144,6 +2341,16 @@ public class DirectorService {
         String idea = c.path("idea").asText();
         if (!idea.isBlank()) in.put("brief", idea);
         if (c.path("outline").isObject()) in.set("outline", c.path("outline"));
+        putReference(in, c);
+    }
+
+    /** 用户随剧本提供的设定资料（拆分时从正文前面分出来的），作为创作材料给模型；太长只给前面一部分，作品里的原文不动。 */
+    static final int REFERENCE_PROMPT_MAX = 12000;
+
+    private static void putReference(ObjectNode in, JsonNode c) {
+        String ref = c.path("reference").asText().strip();
+        if (ref.isEmpty()) return;
+        in.put("referenceNotes", ref.length() <= REFERENCE_PROMPT_MAX ? ref : ref.substring(0, REFERENCE_PROMPT_MAX) + "\n（设定资料较长，后面省略）");
     }
 
     private static long pixels(String size) {

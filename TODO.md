@@ -54,6 +54,8 @@
 - [x] **长剧本任务存储容量修复**（2026-10-24）：生产 `ip_run.input_json/output_json` 已在线恢复为 LONGTEXT，无重启；实体映射及幂等 V66 迁移已补齐，待低峰发布。见 `docs/releases/director-json-capacity-hotfix-20261024.md`。
 - [x] **模型 JSON 格式自动恢复与明确失败提示**（2026-10-24）：只修复可确定的语法错误，不重复调用模型；不可恢复或截断时明确提示并释放冻结。代码待低峰发布，见 server README「Studio 模型 JSON 自动恢复」。
 - [x] **导演台剧本文件导入**（2026-10-25，本地未发布）：两个粘贴入口支持文本、Word、PPT、PDF、RTF，全文预览后明确采用，保存继续走修订保护；真实浏览器导入、扫描件失败、保存刷新已验，见 `docs/audits/director-script-file-import-validation-20261025.md`。
+- [x] ~~**AI 拆分集两类 AI_BAD_OUTPUT**~~ **2026-10-25 修复，本地未发布**（分支 `fix/director-split-boundaries`）：线上《食神》（模型最后一集少写一段）与《谁让这个睁眼瞎修仙的》（前 252 段是设定资料）都被「必须从第 0 段首尾相接」的校验判失败。改为模型只给每集起点和正文起点、程序构造区间；剧本里标好「第N集」时程序直接按标题分（免费）；开头资料存为设定资料 `reference`（可编辑、可并入第 1 集，作为参考交给提取和规划）；结果先存 `pendingSplit` 预览确认，全自动一键制作按默认直接采用并说明，拆分失败时作为一集继续；新增撤销拆分（未出图 / 视频前）。两单线上数据未改动。测试：`DirectorPromptsTest`、`DirectorSplitTest`、`director-split.test.tsx`。
+- [ ] **导演台拆分新输出格式未用真模型验证**（2026-10-25）：`DirectorPrompts.SPLIT` 改为 `{bodyStart, episodes:[{startParagraph}]}`，上线前用 qwen38-27b 真调一次（含开头带设定资料、带「第N集」标题但要求不同集数两种剧本），确认 bodyStart 写法与旧格式兼容路径（§8.0.1 ⑦）。
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。

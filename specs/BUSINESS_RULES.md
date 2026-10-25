@@ -640,6 +640,7 @@ GET /v1/avatars/{id}/references（v0.61 反向「应用于」视图）
 
 ### 6.6 AI IP 工作台（ipstudio，v0.151 / 设计真源 `docs/ip-studio-plan.md` · TS 真源 `packages/types/src/ip-studio.ts`）
 
+- **导演台分集（2026-10-25）**：模型只给每集起点 `startParagraph` 和正文起点 `bodyStart`，区间由程序首尾相接地构造（最后一集到最后一段），不会漏段或重叠；越界起点忽略、重复起点合并、写了 bodyStart 但第一集更晚开始则中间几段并入第一集，都写进预览的修正说明；一个有效起点都没有才 `AI_BAD_OUTPUT` 并释放冻结。剧本里已有从「第1集」起编号连续的标题（≥2，取最后一组，段落 ≤40 字）且用户没指定不同集数时，程序直接按标题分，不调模型、不扣积分。结果先存 `pendingSplit`，`split.save`（`data.preamble`=`reference` 默认 / `episode`）采用、`split.discard` 放弃（一键制作随之停止）；剧本改过即作废（409 `DIRECTOR_SPLIT_EXPIRED`）。第一集之前的内容默认存为作品的设定资料 `reference`（`referenceRev` 修订保护，`reference.update` / `reference.toEpisode`），作为创作材料交给提取资产和写分镜脚本，不计入输入指纹。一键制作全自动按默认采用并在 notice 说明，否则停在 `confirm-split`；全自动下拆分失败作为一集继续。`split.undo` 恢复拆分前原稿与设定资料、清空集与片段（资产保留），已有分镜图 / 视频时 409 `DIRECTOR_CLIPS_HAVE_MEDIA`、有任务进行时 409 `DIRECTOR_TASK_RUNNING`。模型拆分出了结果即按用量结算，放弃 / 撤销不退款、不自动重跑。
 - **导演剧本文件导入（2026-10-25）**：`POST /v1/ip-studio/director/script-import` 复用 aiavatar 的登录、开通与手机号闸；文件 8 MiB / 正文 60000 字 / PDF、PPT 100 页上限，失败不返回截断内容。提取免费、不调用模型、不存储原文件或修改作品。前端预览后确认导入；替换现有正文须明确点击，再走原有创建或 draftRev 修订保护保存。画布故事导入的格式与 24000 字限制不随此接口扩大。支持格式、文字编码及扫描 / 加密文件的处理边界见 `docs/ai-director-plan.md` §3.1。
 
 领域 `com.aistareco.aep.ipstudio.*`，表 `ip_project` / `ip_run`（迁移 **V27**）。挂 `/api/v1/ip-studio/**`，
