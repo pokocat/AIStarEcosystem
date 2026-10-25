@@ -30,7 +30,7 @@ import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/stud
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,StudioVideoSeedControl,type StudioVideoDraft } from "./studio-video-controls";
-import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover, studioImageSizeLabel } from "./studio-generation-controls";
+import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover, studioImageResolution, studioImageSizeLabel } from "./studio-generation-controls";
 import { adaptStudioVideoReferences, studioVideoAcceptsReferences, studioVideoSelectionIds } from "@/canvas-bridge/studio-video-selection";
 import { StudioReferencePicker, StudioReferenceStrip } from "./studio-composer-references";
 import { StudioDurationControl } from "./studio-duration-control";
@@ -680,7 +680,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     // A model the last failure (or the model list) proved gone is not tried again: open the composer to pick another,
     // with the prompt, references and settings kept. Three 640-credit holds on a retired model were three failures.
     const offered=node.type===CanvasNodeType.Video?models.video:node.type===CanvasNodeType.Image?models.image:undefined;
-    if(node.metadata?.status==="error"&&(request.operation==="image"||request.operation==="video")&&studioUnusableModel(node,offered?.length?offered.map(m=>m.endpointId):undefined)){
+    if(node.metadata?.status==="error"&&(request.operation==="image"||request.operation==="video")&&studioUnusableModel(node,offered?.length?offered.flatMap(m=>[m.endpointId,...(m.legacyEndpointIds||[])]):undefined)){
       message.info("上次用的模型已不可用，请换一个模型再生成。");openDirector(request.operation,node);return;
     }
     setBusy(true);
@@ -865,10 +865,11 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   // Models a failure on this canvas proved gone (VIDEO_MODEL_RETIRED …): never preselected again, shown disabled.
   const goneModels=new Set(nodes.flatMap(n=>{const m=studioUnusableModel(n);return m?[m]:[];}));
   const candidates=(operation==="video"?models.video:models.image).filter(m=>!goneModels.has(m.endpointId));
-  const chosenModel=(operation!=="image"||capabilities?.imageModelMode!=="fixed")&&model&&candidates.some(m=>m.endpointId===model)?candidates.find(m=>m.endpointId===model):candidates.find(m=>m.isDefault) || candidates[0];
+  const modelMatches=(candidate:typeof candidates[number],value:string)=>candidate.endpointId===value||candidate.legacyEndpointIds?.includes(value)||candidate.endpointId===endpointIdFor(value);
+  const chosenModel=(operation!=="image"||capabilities?.imageModelMode!=="fixed")&&model&&candidates.some(m=>modelMatches(m,model))?candidates.find(m=>modelMatches(m,model)):candidates.find(m=>m.isDefault) || candidates[0];
   // The node's last model cannot be used again: say which one the composer uses instead, before anything is paid.
   const lastRequestModel=(operation==="image"||operation==="video")?nodes.find(n=>n.id===originId)?.metadata?.studio?.request?.model:undefined;
-  const replacedModelNotice=lastRequestModel&&chosenModel&&lastRequestModel!==chosenModel.endpointId&&model===lastRequestModel&&!candidates.some(m=>m.endpointId===lastRequestModel)
+  const replacedModelNotice=lastRequestModel&&chosenModel&&lastRequestModel!==chosenModel.endpointId&&model===lastRequestModel&&!candidates.some(m=>modelMatches(m,lastRequestModel))
     ?`上次用的模型已不可用，这次改用「${chosenModel.name}」，费用以下方为准。`:undefined;
   const chosenTextModel=studioChosenTextModel(capabilities,model);
   const imagePromptMaxChars=operation==="image"?chosenModel?.capability?.imagePromptMaxChars??null:null;
@@ -876,6 +877,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const imageRatioChoices=["3:4","9:16","16:9","1:1"].map(value=>({value,label:imageRatioLabel(value)}));
   const allowedImageRatios=chosenModel?.capability?.imageRatios;
   const imageSizeOptions=chosenModel?.capability?.imageSizes?.filter(output=>output.aspectRatio===ratio)||[];
+  const imageResolutionOptions=[...new Map(imageSizeOptions.map(output=>[studioImageResolution(output.size),output])).values()].filter((output):output is NonNullable<typeof output>=>!!output&&!!studioImageResolution(output.size));
   const selectedImageSize=imageSizeOptions.some(output=>output.size===imageSize)?imageSize:imageSizeOptions[0]?.size;
   const imageRatioUnsupported=operation==="image"&&!!allowedImageRatios?.length&&!allowedImageRatios.includes(ratio);
   const imageRatioOptions:{value:string;label:string;disabled?:boolean}[]=allowedImageRatios?.length
@@ -1000,7 +1002,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   // (4 秒 said in the conversation used to become the model's minimum or the first preset without a word).
   const durationIssue=operation==="video"?studioDurationIssue(duration,nativeVideo?{min:nativeVideo.contract.minSeconds,max:nativeVideo.contract.maxSeconds}:{options:durationOptions}):undefined;
   const videoUnitQuote=nativeVideo?studioVideoQuote(nativeVideo,videoSettings||{mode:videoDraft.mode,resolutionTier:videoDraft.tier},duration):chosenModel?chosenModel.creditCost*(chosenModel.billingUnit==="per_second"?duration:1):null;
-  const quote=capabilities?.mock?0:operation==="image"?((chosenModel?.creditCost ?? capabilities?.imageCost ?? 0)*imageCount):operation==="video"?
+  const imageUnitCost=chosenModel?.imageResolutionCosts?.[studioImageResolution(selectedImageSize)||""]??chosenModel?.creditCost??capabilities?.imageCost??0;
+  const quote=capabilities?.mock?0:operation==="image"?(imageUnitCost*imageCount):operation==="video"?
     (videoUnitQuote==null?null:videoUnitQuote*videoCount):chosenTextModel?.tokenPricing?.maxCost;
   const episodeNumbers=[...new Set([...allShots,...allClips].map(n=>n.metadata?.studio?.episodeNo||n.metadata?.studio?.shot?.episodeNo||1))].sort((a,b)=>a-b);
   const usePlanStep=(step:StudioPlan["steps"][number])=>{
@@ -1118,7 +1121,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const composerParameterContent=<div className="studio-director-form studio-parameter-form">
         {nativeVideo&&<StudioVideoControls section="settings" model={nativeVideo} draft={videoDraft} onChange={changeVideoDraft} nodes={nodes} referenceIds={referenceIds} onReferences={setReferenceIds}
           libraryButtonRef={directorLibraryButton} onLibrary={()=>openIpLibrary({kind:"director"})}/>}
-        {operation==="image"&&imageSizeOptions.length>0&&<StudioChoiceGroup<string> label="清晰度" ariaLabel="图片输出尺寸" value={selectedImageSize} onChange={setImageSize} options={imageSizeOptions.map(output=>({value:output.size,label:studioImageSizeLabel(output.size),description:output.size.replace('x',' × ')}))}/>}
+      {operation==="image"&&imageResolutionOptions.length>0&&<StudioChoiceGroup<string> label="分辨率" ariaLabel="图片输出分辨率" value={studioImageResolution(selectedImageSize)} onChange={resolution=>setImageSize(imageResolutionOptions.find(output=>studioImageResolution(output.size)===resolution)?.size)} options={imageResolutionOptions.map(output=>({value:studioImageResolution(output.size)!,label:studioImageResolution(output.size)!,description:output.size.replace('x',' × ')}))}/>}
 
         {(operation==="script"||operation==="storyboard")&&<>
           {operation==="script"&&!rewriteScope&&<StudioChoiceGroup<"original"|"adapt"> label="创作模式" ariaLabel="剧本创作模式" value={scriptMode} onChange={setScriptMode} options={[{value:"original",label:"原创剧本"},{value:"adapt",label:"故事改编"}]}/>}

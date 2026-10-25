@@ -561,6 +561,54 @@ class IpRunServiceTest {
         verify(credits).hold(eq(USER),eq(30L),eq(IpRunService.REF_TYPE),eq(result.id()),anyString());
     }
 
+    @Test void productImageFamilyRoutesResolutionAndPersistsTheResolvedProviderModel() throws Exception {
+        var doc=new IpStudioFixtures.Doc();
+        doc.node("n-family","image").put("prompt","cat").put("endpointId","studio-image:gpt-image-2")
+                .put("size","4096x4096").put("count",1);
+        seedProject(doc);
+        var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);
+        var oneKSpec=new com.aistareco.aep.model.AiImageRequestSpec(32000,0,16,"multiple",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("1024x1024","1:1",Map.of("size","1024x1024")),
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("2048x2048","1:1",Map.of("size","2048x2048"))));
+        var fourKSpec=new com.aistareco.aep.model.AiImageRequestSpec(32000,0,16,"multiple",List.of(
+                new com.aistareco.aep.model.AiImageRequestSpec.Output("4096x4096","1:1",Map.of("size","4096x4096"))));
+        var oneK=com.aistareco.aep.model.AiModelEndpoint.builder().id("gpt-1k").model("gpt-image-2-1k-pic")
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(oneKSpec.json()).enabled(true).build();
+        var fourK=com.aistareco.aep.model.AiModelEndpoint.builder().id("gpt-4k").model("gpt-image-2-4k-pic")
+                .baseUrl("https://image-proxy.example/v1").imageRequestSpecJson(fourKSpec.json()).enabled(true).build();
+        var oneKSelection=new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
+                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(oneK,null,true),30L,"per_image");
+        var fourKSelection=new com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection(
+                new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(fourK,null,false),45L,"per_image");
+        when(policy.available("studio","image",8L)).thenReturn(List.of(oneKSelection,fourKSelection));
+        org.springframework.test.util.ReflectionTestUtils.setField(svc,"scenePolicies",policy);
+
+        var twoK=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","cat",List.of(),1,"2048x2048",
+                "studio-image:gpt-image-2",30L));
+        var twoKExec=OM.readTree(runs.rows.get(twoK.id()).getInputJson()).path("_exec");
+        assertEquals("gpt-1k",twoKExec.path("endpointId").asText());
+        assertEquals("gpt-image-2-1k-pic",twoKExec.path("providerModel").asText());
+        assertEquals("2048x2048",OM.readTree(runs.rows.get(twoK.id()).getInputJson()).path("size").asText());
+
+        var fourKRun=svc.generate(USER,PID,new IpRunService.IpGenerateRequest("adhoc","cat",List.of(),1,"4096x4096",
+                "studio-image:gpt-image-2",45L));
+        var fourKExec=OM.readTree(runs.rows.get(fourKRun.id()).getInputJson()).path("_exec");
+        assertEquals("gpt-4k",fourKExec.path("endpointId").asText());
+        assertEquals("gpt-image-2-4k-pic",fourKExec.path("providerModel").asText());
+        assertEquals(45L,fourKExec.path("unitCost").asLong());
+
+        var nodeRun=svc.run(USER,PID,"n-family",null);
+        var nodeExec=OM.readTree(runs.rows.get(nodeRun.id()).getInputJson()).path("_exec");
+        assertEquals("gpt-4k",nodeExec.path("endpointId").asText());
+        assertEquals("gpt-image-2-4k-pic",nodeExec.path("providerModel").asText());
+        assertEquals("4096x4096",OM.readTree(runs.rows.get(nodeRun.id()).getInputJson()).path("size").asText());
+
+        var invalid=assertThrows(BusinessException.class,()->svc.generate(USER,PID,new IpRunService.IpGenerateRequest(
+                "adhoc","cat",List.of(),1,"768x768","studio-image:gpt-image-2",30L)));
+        assertEquals("STUDIO_IMAGE_RESOLUTION_INVALID",invalid.getCode());
+        verify(credits,org.mockito.Mockito.times(3)).hold(eq(USER),anyLong(),eq(IpRunService.REF_TYPE),anyString(),anyString());
+    }
+
     @Test void configuredImageKeepsReferencesBeyondLegacyCanvasLimit() throws Exception {
         seedProject(new IpStudioFixtures.Doc());
         var policy=mock(com.aistareco.aep.service.AiAppSceneModelPolicyService.class);

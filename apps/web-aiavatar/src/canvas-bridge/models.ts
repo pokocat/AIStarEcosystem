@@ -118,6 +118,7 @@ export function videoDurationBoundsFor(value: string | undefined | null): { min?
 function toChannelModels(list: IpModelOption[], capability: ChannelModel["capability"]): ChannelModel[] {
   return list.map((m) => {
     endpointIdByName.set(m.endpointId, m.endpointId);
+    for(const legacyId of m.legacyEndpointIds||[])endpointIdByName.set(legacyId,m.endpointId);
     if (!endpointIdByName.has(m.name)) endpointIdByName.set(m.name, m.endpointId);
     creditByEndpointId.set(m.endpointId, m.creditCost);
     billingByEndpointId.set(m.endpointId,m.billingUnit||"per_call");

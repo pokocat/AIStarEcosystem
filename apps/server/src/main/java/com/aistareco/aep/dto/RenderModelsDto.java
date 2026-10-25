@@ -18,6 +18,14 @@ public record RenderModelsDto(
             boolean isDefault,
             EndpointCapabilityDto capability,
             long creditCost,
-            String billingUnit
-    ) {}
+            String billingUnit,
+            String imageFamily,
+            java.util.Map<String, Long> imageResolutionCosts,
+            java.util.List<String> legacyEndpointIds
+    ) {
+        public RenderModelOptionDto(String endpointId, String name, boolean isDefault, EndpointCapabilityDto capability,
+                                    long creditCost, String billingUnit) {
+            this(endpointId, name, isDefault, capability, creditCost, billingUnit, null, null, null);
+        }
+    }
 }

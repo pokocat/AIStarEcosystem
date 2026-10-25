@@ -59,6 +59,11 @@ export function studioImageSizeLabel(size?:string){
   const [w,h]=size.split('x').map(Number),edge=Math.max(w,h);
   return edge>=3840?'4K':edge>=1920?'2K':edge>=1024?'1K':size.replace('x',' × ');
 }
+export function studioImageResolution(size?:string){
+  if(!size)return undefined;
+  const [w,h]=size.split('x').map(Number),edge=Math.max(w,h);
+  return edge>=3840?'4K':edge>=1920?'2K':edge>=1024?'1K':undefined;
+}
 /** Shared, non-modal settings surface. It stays open while values change. */
 export function StudioSettingsPopover({summary,label="生成参数",children,disabled=false,open:controlled,onOpenChange}:{
   summary:ReactNode;label?:string;children:ReactNode;disabled?:boolean;open?:boolean;onOpenChange?:(open:boolean)=>void;

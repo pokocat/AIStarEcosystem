@@ -1178,7 +1178,7 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 ### Studio 原生 GPT 图片接入（2026-10-20）
 
-图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
+图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。GPT Image 2、Flare、Sunburst 使用稳定系列值 `studio-image:<family>`；服务端按系列和尺寸从 `DAP_IMAGE` 开放候选选择匹配的 `*-1k-pic` / `*-4k-pic` 供应商模型，并将端点、供应商模型、规格及价格快照写入执行记录，worker 使用该快照提交，避免后台候选变更使已受理任务改路由。各分辨率只在端点规格明确开放时出现在模型 capability 中。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
 
 `wire.requireExactOutputSize=true` 按原始图片字节校验返回尺寸；不匹配作为供应商已完成但无效的结果在结算前拒绝，不重投、不伪装尺寸。
 

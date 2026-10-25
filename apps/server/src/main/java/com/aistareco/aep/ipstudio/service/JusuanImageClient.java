@@ -72,6 +72,19 @@ public class JusuanImageClient {
     public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,Consumer<String> progress,AiImageRequestSpec snapshot) {
         return generate(endpointId,prompt,size,keys,requestId,owner,progress,snapshot,null,null);
     }
+    public byte[] generate(String endpointId,String prompt,String size,List<String> keys,String requestId,String owner,
+                           Consumer<String> progress,AiImageRequestSpec snapshot,String providerModel,
+                           JsonNode previous,Consumer<ObjectNode> checkpoint) {
+        boolean attempted=previous!=null && previous.path("submitAttempted").asBoolean();
+        var configured=attempted?models.storedEndpoint(endpointId):models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,endpointId,"studio").map(r->r.endpoint());
+        var endpoint=configured.orElseThrow(()->failure("图片模型已停用"));
+        if(providerModel!=null&&!providerModel.equals(endpoint.getModel()))endpoint=AiModelEndpoint.builder()
+                .id(endpoint.getId()).name(endpoint.getName()).baseUrl(endpoint.getBaseUrl()).model(providerModel)
+                .upstreamApiKeyEncrypted(endpoint.getUpstreamApiKeyEncrypted()).imageRequestSpecJson(endpoint.getImageRequestSpecJson())
+                .enabled(endpoint.isEnabled()).build();
+        return generateResolved(endpoint,prompt,size,keys,requestId,new Invocation(AiModelPurpose.DAP_IMAGE,"studio",owner),progress,
+                snapshot,previous,checkpoint);
+    }
     /** A provider request may have been accepted even when its HTTP reply is lost. Never re-POST that checkpoint. */
     public static final class Pending extends RuntimeException {
         private final boolean known;

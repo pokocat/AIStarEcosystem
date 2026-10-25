@@ -293,6 +293,7 @@ public class IpRunWorker {
                     var imageSpec=exec.hasNonNull("imageRequestSpec")
                             ? com.aistareco.aep.model.AiImageRequestSpec.read(exec.path("imageRequestSpec").toString()):null;
                     bytes=jusuanImages.generate(endpointId,inputs.path("userPrompt").asText(prompt),size,keys,run.getId()+"-image-"+i,run.getOwnerUserId(),stage->progress(run,10+(int)Math.round(80.0*current/count),stage),imageSpec,
+                            exec.path("providerModel").asText(null),
                             checkpoint,state->nativeCheckpoint(run,current,state));
                 } else {
                     if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,run.getId(),endpointId);

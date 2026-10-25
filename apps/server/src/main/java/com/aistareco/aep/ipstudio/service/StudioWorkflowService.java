@@ -124,7 +124,9 @@ public class StudioWorkflowService {
         ExecutionBinding executionBinding=executionBinding(userId,projectId,request);
         com.aistareco.aep.ipstudio.execution.StudioSkillRules.Rules skill=skillRules(request,skillPlan,check,executionBinding);
         boolean configuredImage = "image".equals(request.operation()) && !fixtures.enabled() && scenePolicies != null
-                && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint());
+                && (com.aistareco.aep.ipstudio.service.StudioImageModelRouting.isProductRequest(request.model())
+                    || (request.model()==null || !request.model().startsWith(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX))
+                    && JusuanImageClient.supports(scenePolicies.resolve("studio", "image", request.model(), pricing.ipImage()).resolved().endpoint()));
         // Native video validates promptRequired against the selected endpoint mode in StudioVideoService.
         if (!"assemble".equals(request.operation()) && !check
                 && !("video".equals(request.operation()) && request.video() != null) && !configuredImage)
@@ -840,6 +842,14 @@ public class StudioWorkflowService {
     }
     private String imageSize(RunRequest request) {
         String ratio=request.aspectRatio()==null?"3:4":request.aspectRatio();
+        if(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.isProductRequest(request.model())) {
+            if(request.size()==null||request.size().isBlank())return null;
+            if(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.tierForSize(request.size())==null)
+                throw bad("STUDIO_IMAGE_RESOLUTION_INVALID","请选择 1K、2K 或 4K 图片分辨率");
+            return request.size(); // IpRunService resolves the provider endpoint and validates its exact spec.
+        }
+        if(request.model()!=null&&request.model().startsWith(com.aistareco.aep.ipstudio.service.StudioImageModelRouting.REQUEST_PREFIX))
+            throw bad("STUDIO_IMAGE_MODEL_INVALID","图片模型系列无效，请重新选择");
         if(scenePolicies!=null) {
             var endpoint=scenePolicies.resolve("studio","image",request.model(),pricing.ipImage()).resolved().endpoint();
             if(JusuanImageClient.supports(endpoint)) {
