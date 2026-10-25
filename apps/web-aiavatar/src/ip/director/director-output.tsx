@@ -11,7 +11,9 @@ import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, cos
 export type ClipQuote = { credits: number | null; error: string | null };
 
 /** 片段的视频操作：报价、生成、进度与确认。画面和历史版本在左侧画面区。 */
-export function ClipVideo({ work, clip, quote, apply, setError }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
+/** 片段视频的操作区：提示（生成中、声音、旧版本）在上，最后一行是生成设置 + 按钮 + 价格。onBoard：分镜图还没好时给「去生成分镜图」。 */
+export function ClipVideo({ work, clip, quote, apply, setError, onBoard, settings }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: (m: string) => void;
+  onBoard?: () => void; settings?: string }) {
   const { busy, run } = useBusy();
   const current = adopted(clip.video);
   const pending = clip.video.pending?.[0];
@@ -25,7 +27,7 @@ export function ClipVideo({ work, clip, quote, apply, setError }: { work: Direct
   }, setError);
   const frame = work.videoLimits?.mode === "frame";
   const voiceBlocked = frame && (clip.voiced?.length ?? 0) > 0 && !clip.videoWithoutVoice;
-  const reason = !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
+  const reason = clip.issues.length ? "先处理上面标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
   const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), setError);
   return <div className="director-video">
     {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。约需数分钟，关闭页面不中断` : "视频生成中"}/>}
@@ -37,11 +39,14 @@ export function ClipVideo({ work, clip, quote, apply, setError }: { work: Direct
     {!frame && (clip.unvoiced?.length ?? 0) > 0 && <p className="director-voice-warn"><AlertTriangle size={13}/>{clip.unvoiced.join("、")} 未绑定声音，各片段音色可能不一致。可在「资产」中绑定。</p>}
     <InlineError message={clip.video.error?.message}/>
     <OutdatedNote slot={clip.video} what="条视频" onRegenerate={reason || pending || fixtureRun ? undefined : generate} disabled={!!busy}/>
-    <div className="director-card-actions">
+    <div className="director-card-actions director-video-actions">
+      {settings && <span className="director-video-settings" title={settings}>{settings}</span>}
+      <span className="director-spacer"/>
+      {onBoard && <button type="button" className="ip-brand-button" onClick={onBoard}>{!clip.board.adoptedId ? "去生成分镜图" : "确认分镜图"}</button>}
       {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
-      <button type="button" className={current ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!reason} onClick={generate}>
+      <button type="button" className={current || onBoard ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!reason} onClick={generate}>
         <Wand2 size={14}/>{clip.video.candidates.length ? "重新生成视频" : "生成片段视频"}</button>
-      <span className="director-cost" title={current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}` : "报价中…")}</span>
+      <span className="director-cost director-video-cost" title={reason || (current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined)}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}` : "报价中…")}</span>
     </div>
   </div>;
 }

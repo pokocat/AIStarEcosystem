@@ -354,9 +354,6 @@ html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: ro
 
 /* 分镜图入口与弹窗：分镜图是生成视频的参考，不是资产，单独一个入口。 */
 .director-board-link { padding-left: 4px !important; }
-.director-board-mini { position: relative; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 5px; overflow: hidden; background: #e4e7ea; color: var(--ip-muted); }
-.director-board-mini img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.director-board-mini img ~ svg { position: relative; color: #fff; }
 .director-video-section { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 10px 12px; border-radius: 10px; background: var(--ip-soft); }
 .director-video-section > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
 .director-video-section > header b { font-size: 13px; }
@@ -364,20 +361,6 @@ html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: ro
 .director-video-section .director-prompt { width: 100%; min-height: 150px; resize: vertical; background: var(--ip-paper); }
 .director-video-section .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary) { min-height: 28px; padding: 3px 10px; font-size: 12px; }
 .director-video-section .director-card-actions :is(.ip-brand-button, .ip-brand-secondary) { min-height: 32px; padding: 5px 12px; }
-.director-params { display: flex; flex-wrap: wrap; gap: 6px; }
-.director-params > span { display: inline-flex; align-items: center; gap: 6px; max-width: 240px; padding: 3px 9px; border-radius: 7px; background: var(--ip-paper); font-size: 12px; font-weight: 600; color: var(--ip-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.director-params small { color: var(--ip-muted); font-weight: 500; font-size: 11px; }
-.director-video-gate { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-gold); font-size: 13px; }
-.director-video-gate span { flex: 1; min-width: 180px; }
-.director-video-gate .ip-brand-secondary { min-height: 30px; padding: 4px 12px; font-size: 12px; }
-.director-video-results { display: flex; flex-wrap: wrap; gap: 8px; }
-.director-video-results button { position: relative; display: grid; place-items: center; width: 96px; aspect-ratio: 9 / 16; padding: 0; border: 2px solid transparent; border-radius: 8px; overflow: hidden; background: #15181c; color: #fff; }
-.director-video-results button.ratio-16x9 { width: 150px; aspect-ratio: 16 / 9; }
-.director-video-results button.ratio-1x1 { aspect-ratio: 1 / 1; }
-.director-video-results button.is-adopted { border-color: var(--ip-ink); }
-.director-video-results img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .7; }
-.director-video-results svg { position: relative; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6)); }
-.director-video-results small { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; background: rgba(0, 0, 0, .55); font-size: 10px; font-weight: 600; text-align: center; }
 .director-board-dialog { width: min(980px, 100%); }
 .director-board-dialog-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 html[data-layout="desktop"] .director-board-dialog-body { grid-template-columns: minmax(0, 1fr) 260px; }
@@ -434,7 +417,7 @@ html:not([data-layout="desktop"]) .director-board-big { max-height: 46dvh; }
 html:not([data-layout="desktop"]) .director-shell :is(.director-notice button, .director-next button, .director-output-toggle) { min-height: 36px; padding-inline: 10px; }
 html:not([data-layout="desktop"]) .director-shell :is(.director-clip-check, .director-batch-all input) { width: 22px; height: 22px; }
 html:not([data-layout="desktop"]) .director-shell .director-clip-head .director-danger { min-width: 40px; min-height: 40px; }
-html:not([data-layout="desktop"]) .director-shell :is(.director-video-gate .ip-brand-secondary, .director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }
+html:not([data-layout="desktop"]) .director-shell :is(.director-prompts .director-actions :is(.ip-brand-button, .ip-brand-secondary)) { min-height: 36px; }
 /* 角色形象参考：只在生成设定图时交给模型，不直接当角色图 */
 .director-ref { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--ip-line); border-radius: 8px; background: var(--ip-soft); }
 .director-ref img, .director-ref-empty { width: 40px; height: 40px; flex: none; border-radius: 6px; object-fit: cover; }
@@ -560,3 +543,37 @@ html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns
 .director-shot-hints b { font-size: 12px; }
 .director-shot-hints ul { margin: 2px 0; padding-left: 16px; }
 .director-shot-hints small { color: var(--ip-muted); font-size: 12px; }
+
+/* 片段卡：左边成片画面（视频或分镜图）+ 两个参考入口，右边说明、提示词和操作。画面宽度跟画幅走。 */
+.director-clip-body { --clip-media: 188px; display: grid; grid-template-columns: var(--clip-media) minmax(0, 1fr); gap: 16px; align-items: start; }
+.director-clip-body.ratio-1x1 { --clip-media: 220px; }
+.director-clip-body.ratio-16x9 { --clip-media: 300px; }
+.director-clip-media { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.director-clip-stage { position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 9 / 16; padding: 0; border: 1px solid var(--ip-line); border-radius: 10px; overflow: hidden; background: #15181c; color: #9aa3ab; cursor: pointer; }
+.director-clip-stage.ratio-16x9 { aspect-ratio: 16 / 9; }
+.director-clip-stage.ratio-1x1 { aspect-ratio: 1 / 1; }
+.director-clip-stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.director-clip-stage:hover { border-color: var(--ip-ink); }
+.director-clip-stage-empty { display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; }
+.director-clip-play { position: relative; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; background: rgba(12, 16, 20, .55); color: #fff; font-style: normal; backdrop-filter: blur(2px); transition: transform 140ms var(--ip-ease); }
+.director-clip-stage:hover .director-clip-play { transform: scale(1.06); }
+.director-clip-stage-busy { position: absolute; top: 8px; right: 8px; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: rgba(255, 255, 255, .9); color: var(--ip-ink); }
+.director-clip-stage-tag { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 6px; background: rgba(12, 16, 20, .62); color: #fff; font-size: 11px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-clip-stage-tag.is-warn { background: var(--ip-gold); }
+.director-clip-versions { display: flex; flex-wrap: wrap; gap: 4px; }
+.director-clip-versions button { min-width: 28px; height: 24px; padding: 0 6px; border: 1px solid var(--ip-line); border-radius: 6px; background: var(--ip-paper); color: var(--ip-muted); font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer; }
+.director-clip-versions button[aria-pressed="true"] { border-color: var(--ip-ink); color: var(--ip-ink); }
+.director-clip-media .director-clip-links { flex-direction: column; flex-wrap: nowrap; }
+.director-clip-media .director-clip-links > button { width: 100%; justify-content: flex-start; }
+.director-clip-media .director-clip-links > button > span:not(.director-avatar-stack) { white-space: nowrap; }
+.director-clip-media .director-clip-links small { margin-left: auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-clip-main { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.director-clip-main .director-video-section .director-prompt { min-height: 132px; }
+.director-video-actions { gap: 8px; }
+.director-video-settings { min-width: 0; overflow: hidden; color: var(--ip-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+html:not([data-layout="desktop"]) .director-clip-body { grid-template-columns: minmax(0, 1fr); }
+html:not([data-layout="desktop"]) .director-clip-media { flex-direction: row; flex-wrap: wrap; }
+html:not([data-layout="desktop"]) .director-clip-stage { width: 120px; }
+.director-video-cost { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-clip-stage:has(.director-clip-stage-empty) { border-style: dashed; background: var(--ip-soft); color: var(--ip-muted); }
+.director-clip-stage:has(.director-clip-stage-empty) .director-clip-stage-tag { background: var(--ip-paper); color: var(--ip-muted); border: 1px solid var(--ip-line); }
