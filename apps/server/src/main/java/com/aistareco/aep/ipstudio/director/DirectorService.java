@@ -975,7 +975,7 @@ public class DirectorService {
     }
 
     private void requireIdle(DirectorWork w, String nodeId) {
-        if (!runs.findByProjectIdAndNodeIdAndStatus(w.getId(), nodeId, IpRun.STATUS_RUNNING).isEmpty())
+        if (runs.findByProjectIdAndNodeIdAndStatus(w.getId(), nodeId, IpRun.STATUS_RUNNING).stream().anyMatch(r->!r.isCancelRequested()))
             throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该项生成中，请稍候");
     }
 
@@ -1019,6 +1019,7 @@ public class DirectorService {
         if (node.startsWith("export:")) { applyExport(c, run, parse(run.getOutputJson())); return; }
         if (node.startsWith("video:") && "video.bound".equals(run.getStage())) return; // 真实视频由 pollVideos 跟踪原生任务
         if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
+            if("IP_RUN_CANCELLED".equals(run.getErrorCode())){notice(c,run.getErrorMessage());return;}
             setError(c, node, run.getErrorMessage() == null ? "生成失败，请重试" : run.getErrorMessage());
             JsonNode p = c.path("pipeline");
             if (p.isObject() && contains(p.path("runIds"), run.getId())) ((ObjectNode) p).withArray("failed").add(node);
@@ -1773,8 +1774,8 @@ public class DirectorService {
         // 页面会以为没在生成、也不轮询（2026-10-24 线上：点「生成剧本」没反应，再点报「该项生成中」）。
         List<IpRun> mine = newTx.execute(tx -> runs.findByProjectIdOrderByCreatedAtDesc(w.getId()));
         for (IpRun r : mine.subList(0, Math.min(40, mine.size()))) {
-            tasks.addObject().put("id", r.getId()).put("target", r.getNodeId()).put("status", r.getStatus())
-                    .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&"studio-director".equals(r.getKind()))
+            tasks.addObject().put("id", r.getId()).put("target", r.getNodeId()).put("status",IpRun.STATUS_RUNNING.equals(r.getStatus())&&r.isCancelRequested()?"stopping":r.getStatus())
+                    .put("canStop",IpRun.STATUS_RUNNING.equals(r.getStatus())&&!r.isCancelRequested()&&"studio-director".equals(r.getKind()))
                     .put("stage", r.getStage()).put("cost", r.getCost()).put("errorMessage", r.getErrorMessage())
                     .put("createdAt", r.getCreatedAt() == null ? null : r.getCreatedAt().toString());
         }

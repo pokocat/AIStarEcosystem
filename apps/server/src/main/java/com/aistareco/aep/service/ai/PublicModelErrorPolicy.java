@@ -16,7 +16,7 @@ public final class PublicModelErrorPolicy {
     private static final Pattern CONTEXT = Pattern.compile("(?i)上游|供应商|服务方|生成服务|模型服务|模型端|数字人服务|引擎|provider|upstream|channel");
     private static final Pattern CODE = Pattern.compile("(?i)^(?:AI_(?:CALL|PROVIDER)|IMAGE_|VIDEO_|MUSIC_|DAP_MODEL_|STUDIO_(?:IMAGE|SPEECH|LIP_SYNC)|CLIP_ENGINE_|DRAMA_(?:IMAGE|VIDEO|RENDER|AI)).*");
     private static final Pattern COST = Pattern.compile("(?i)(?:USD|CNY|RMB|[¥￥$])\\s*[+-]?(?:[0-9]|\\.[0-9])");
-    private static final Pattern WALLET = Pattern.compile("^(?:PAYMENT_REQUIRED|STUDIO_PAYMENT_REQUIRED|INSUFFICIENT_CREDITS|INSUFFICIENT_BALANCE|BALANCE_INSUFFICIENT|(?:CREDITS?|WALLET|RECHARGE|WITHDRAW|ENTERPRISE_(?:POINTS|CREDITS?))_.*)$");
+    private static final Pattern WALLET = Pattern.compile("^(?:PAYMENT_REQUIRED|STUDIO_PAYMENT_REQUIRED|STUDIO_USAGE_PENDING|INSUFFICIENT_CREDITS|INSUFFICIENT_BALANCE|BALANCE_INSUFFICIENT|(?:CREDITS?|WALLET|RECHARGE|WITHDRAW|ENTERPRISE_(?:POINTS|CREDITS?))_.*)$");
     private static final Pattern TRACE = Pattern.compile("(?:[·。]\\s*)?追查号[：:\\s]+([A-HJ-NP-Z2-9]{12})(?:\\s*[—-].*)?$");
     private static final Pattern EXTERNAL_ID = Pattern.compile("(?i)\\s*\\(?\\b(?:request|trace|log)[ _-]?id\\s*[:=]\\s*(?:\\[已脱敏\\]|[A-Za-z0-9_.:-]+)\\)?");
     private PublicModelErrorPolicy() {}

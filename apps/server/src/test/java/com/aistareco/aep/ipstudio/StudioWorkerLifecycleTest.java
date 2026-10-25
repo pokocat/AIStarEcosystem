@@ -43,13 +43,29 @@ class StudioWorkerLifecycleTest {
         var run=run();var worker=worker();assertFalse(worker.expire("r",Instant.now().minusSeconds(60)));
         run.setStatus("done");run.setHeartbeatAt(Instant.now().minusSeconds(600));assertFalse(worker.expire("r",Instant.now().minusSeconds(60)));verifyNoInteractions(credits);
     }
-    @Test void stoppingAnOrphanDirectorReleasesItsHoldAndAllowsNoNewDispatch() {
-        var run=run();run.setKind("studio-director");run.setStartedAt(Instant.now().minusSeconds(60));
+    @Test void stoppingAnUnsubmittedDirectorReleasesItsHoldAndAllowsNoNewDispatch() {
+        var run=run();run.setKind("studio-director");
         var worker=worker();assertTrue(worker.stopDirectorTask("r"));assertFalse(worker.stopDirectorTask("r"));
         worker.runBlocking("r");
         assertEquals("failed",run.getStatus());assertEquals("IP_RUN_CANCELLED",run.getErrorCode());
         assertEquals(0,run.getCost());assertNotNull(run.getFinishedAt());
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq("r"),anyString());verifyNoInteractions(models,fixtures);
+    }
+    @Test void stoppingASubmittedOrphanKeepsItsHoldUntilUsageIsKnown() {
+        var run=run();run.setKind("studio-director");run.setStartedAt(Instant.now().minusSeconds(60));
+        var worker=worker();assertTrue(worker.stopDirectorTask("r"));assertFalse(worker.stopDirectorTask("r"));
+        assertEquals("STUDIO_USAGE_PENDING",run.getErrorCode());assertEquals("settlement.pending",run.getStage());
+        assertTrue(run.getOutputJson().contains("reservedCredits"));verifyNoInteractions(credits,models,fixtures);
+    }
+    @Test void stoppedRequestWithUsageCommitsActualCreditsOnceAndReleasesOnlyUnusedReservation() {
+        var run=run();run.setKind("studio-director");run.setStartedAt(Instant.now().minusSeconds(60));run.setCost(20);
+        var worker=worker();worker.stopDirectorTask("r");
+        var receipt=new ObjectMapper().createObjectNode();receipt.putObject("billing").put("inputTokens",1000).put("outputTokens",500).put("credits",4);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(worker,"finish","r",receipt,null);
+        org.springframework.test.util.ReflectionTestUtils.invokeMethod(worker,"finish","r",receipt,null);
+        assertEquals("IP_RUN_CANCELLED",run.getErrorCode());assertEquals(4,run.getCost());assertEquals("failed",run.getStatus());
+        verify(credits,times(1)).commitHold(eq("ip-run"),eq("r"),eq(4L),anyString(),isNull());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq("r"),anyString());
     }
     @Test void stoppingAnAlreadyCompletedDirectorDoesNotRefundItsConsumption() {
         var run=run();run.setKind("studio-director");run.setStatus("done");

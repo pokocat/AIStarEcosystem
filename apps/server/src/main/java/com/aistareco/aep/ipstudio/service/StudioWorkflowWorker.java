@@ -73,6 +73,7 @@ public class StudioWorkflowWorker {
         }
         var context=queue==null?null:queue.bind(AiGenerationQueueService.WORKFLOW,id);
         AiModelInvocationService.AiModelResponse lastReply=null;
+        ObjectNode directorReceipt=null;
         try (var attribution = AiModelUsageContext.bind(run.getOwnerUserId(), "aiavatar", id)) {
             if(!claim(id))return;
             if("studio-director".equals(run.getKind())) {
@@ -158,6 +159,14 @@ public class StudioWorkflowWorker {
                                 Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
                         }
                         lastReply=reply;
+                        if("director".equals(operation)&&tokenRate!=null) {
+                            consumed=consumeUsage(reply,consumed,tokenRate);
+                            output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
+                                    .put("credits",tokenRate.settle(consumed[0],consumed[1]))
+                                    .put("inputCreditsPerK",tokenRate.inputCreditsPerK()).put("outputCreditsPerK",tokenRate.outputCreditsPerK());
+                            directorReceipt=mapper.createObjectNode();directorReceipt.set("billing",output.path("billing").deepCopy());
+                            if(runs.findById(id).map(IpRun::isCancelRequested).orElse(false)){finish(id,output,null);return;}
+                        }
                         if("length".equals(reply.finishReason()))throw new BusinessException(org.springframework.http.HttpStatus.BAD_GATEWAY,"AI_BAD_OUTPUT","模型返回的内容被截断，无法自动恢复；本次未扣积分，请缩短要求或更换模型");
                         try {script=ModelJson.parse(mapper,reply.content());}
                         catch(com.fasterxml.jackson.core.JsonProcessingException malformed) {
@@ -166,7 +175,7 @@ public class StudioWorkflowWorker {
                                     "Invalid model JSON: "+malformed.getOriginalMessage());
                             failure.initCause(malformed);throw failure;
                         }
-                        if(tokenRate!=null) {
+                        if(tokenRate!=null&&!"director".equals(operation)) {
                             consumed=consumeUsage(reply,consumed,tokenRate);
                             long actual=tokenRate.settle(consumed[0],consumed[1]);
                             output.putObject("billing").put("inputTokens",consumed[0]).put("outputTokens",consumed[1])
@@ -249,7 +258,7 @@ public class StudioWorkflowWorker {
                 default -> throw new IllegalArgumentException("Unknown Studio operation");
             }
             finish(id,output,null);
-        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,null,e);}
+        } catch(Exception e) {if(lastReply!=null)lastReply.attachDiagnostics(e);log.warn("[studio] run failed id={}",id,e);finish(id,directorReceipt,e);}
         finally {activeDirectorCalls.remove(id,Thread.currentThread());if(context!=null)context.close();if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);}
     }
     private void filmStudy(String id,IpRun run,JsonNode input,ObjectNode output) throws Exception {
@@ -403,6 +412,10 @@ public class StudioWorkflowWorker {
             IpRun run=billingLockedRun(id).orElse(null);
             if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || run.getStartedAt()!=null)return false;
             if(run.isCancelRequested()){terminal(run,null,new IllegalStateException("cancelled"));return false;}
+            if("studio-director".equals(run.getKind()))try {
+                ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());input.withObject("/_exec").put("modelDispatchTracked",true);
+                run.setInputJson(mapper.writeValueAsString(input));
+            }catch(Exception invalid){throw new IllegalStateException(invalid);}
             run.setStartedAt(Instant.now());run.setHeartbeatAt(Instant.now());runs.save(run);return true;
         }));
     }
@@ -414,7 +427,7 @@ public class StudioWorkflowWorker {
             return true;
         }));
     }
-    /** Settle before interrupting: a late HTTP reply cannot overwrite the stopped run or charge it again. */
+    /** Stop downstream work; an already submitted request keeps its hold until measured usage arrives. */
     public boolean stopDirectorTask(String id) { return interruptDirectorTask(id,false); }
 
     private boolean interruptDirectorTask(String id,boolean shutdown) {
@@ -423,16 +436,17 @@ public class StudioWorkflowWorker {
             if(run==null||!"studio-director".equals(run.getKind()))
                 throw BusinessException.badRequest("DIRECTOR_TASK_NOT_STOPPABLE","这项任务不能在这里停止");
             if(!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;
-            if(!shutdown)run.setCancelRequested(true);
-            terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,
-                    shutdown?"STUDIO_RUN_INTERRUPTED":"IP_RUN_CANCELLED",
-                    shutdown?"服务更新中断了本次创作，冻结积分已释放，请重新生成":"已停止创作"));
+            if(run.isCancelRequested()&&!shutdown)return false;
+            run.setCancelRequested(true);
+            if(directorDispatched(run)) {
+                if(shutdown||!activeDirectorCalls.containsKey(id))pendingDirectorUsage(run);
+                else {run.setStage("studio.stopping");run.setHeartbeatAt(Instant.now());runs.save(run);}
+            } else terminal(run,null,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"IP_RUN_CANCELLED","已停止创作"));
             return true;
         }));
         if(stopped) {
-            Thread call=activeDirectorCalls.get(id);
-            if(call!=null&&call!=Thread.currentThread())call.interrupt();
-            else if(queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);
+            // Do not abort an accepted non-streaming call: that would throw away its usage receipt.
+            if(!activeDirectorCalls.containsKey(id)&&queue!=null)queue.finish(AiGenerationQueueService.WORKFLOW,id);
         }
         return stopped;
     }
@@ -455,7 +469,8 @@ public class StudioWorkflowWorker {
     private void finish(String id,ObjectNode output,Exception error) {
         transactions.executeWithoutResult(tx->{
             IpRun run=billingLockedRun(id).orElse(null);
-            if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) return;
+            if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())
+                    &&!("STUDIO_USAGE_PENDING".equals(run.getErrorCode())&&output!=null&&output.has("billing"))) return;
             // A distill run commits its credits only together with its saved draft; if saving fails this transaction rolls
             // back and the caller's catch fails the run with a full refund.
             if(error==null&&output!=null&&output.path("skillDraft").isObject()&&!run.isCancelRequested())saveSkillDraft(run,(ObjectNode)output.path("skillDraft"));
@@ -529,15 +544,48 @@ public class StudioWorkflowWorker {
         } catch(Exception e) {log.warn("[studio] post-terminal notify failed id={} reason={}",id,e.toString());}
     }
     private void markModelDispatched(String id) {
+        var allowed=transactions.execute(tx->{
+            var run=billingLockedRun(id).orElseThrow();
+            if(!"studio-director".equals(run.getKind()))return true;
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())return false;
+            try {
+                ObjectNode input=(ObjectNode)mapper.readTree(run.getInputJson());
+                input.withObject("/_exec").put("modelDispatchedAt",Instant.now().toString());
+                run.setInputJson(mapper.writeValueAsString(input));runs.save(run);return true;
+            }catch(Exception invalid){throw new IllegalStateException(invalid);}
+        });
+        if(!Boolean.TRUE.equals(allowed))throw BusinessException.badRequest("IP_RUN_CANCELLED","已停止创作");
         var run=runs.findById(id).orElseThrow();
         try {
             if(StudioTokenBilling.applies(mapper.readTree(run.getInputJson())))credits.markModelDispatched(IpRunService.REF_TYPE,id);
         } catch(com.fasterxml.jackson.core.JsonProcessingException invalid) {throw new IllegalStateException(invalid);}
     }
+    private boolean directorDispatched(IpRun run) {
+        if(!"studio-director".equals(run.getKind()))return false;
+        try {
+            JsonNode exec=mapper.readTree(run.getInputJson()).path("_exec");
+            return exec.hasNonNull("modelDispatchedAt")||run.getStartedAt()!=null&&!exec.path("modelDispatchTracked").asBoolean(false);
+        }catch(Exception invalid){return run.getStartedAt()!=null;}
+    }
+    private void pendingDirectorUsage(IpRun run) {
+        long reserved=run.getCost();
+        run.setCancelRequested(true);
+        run.setStatus(IpRun.STATUS_FAILED);run.setStage("settlement.pending");
+        run.setErrorCode("STUDIO_USAGE_PENDING");run.setErrorMessage("创作已停止，模型费用待核对，冻结积分暂未释放");
+        run.setCost(0);run.setFinishedAt(Instant.now());run.setHeartbeatAt(Instant.now());
+        ObjectNode output=mapper.createObjectNode();output.putObject("billing").put("state","pending").put("reservedCredits",reserved);
+        try {run.setOutputJson(mapper.writeValueAsString(output));}catch(Exception invalid){throw new IllegalStateException(invalid);}
+        if(errorLog!=null)errorLog.attach(run,new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"STUDIO_USAGE_PENDING",run.getErrorMessage()));
+        runs.save(run);
+    }
     private void terminal(IpRun run,ObjectNode output,Exception error) {
         boolean cancelled=run.isCancelRequested();
         long cost=run.getCost();
-        if(error==null&&!cancelled) {
+        if("STUDIO_USAGE_PENDING".equals(run.getErrorCode()))try {
+            cost=mapper.readTree(run.getOutputJson()).path("billing").path("reservedCredits").asLong(cost);
+        }catch(Exception invalid){throw new IllegalStateException(invalid);}
+        if(error==null&&!cancelled||cancelled&&output!=null&&output.has("billing")) {
+            if(cancelled) {ObjectNode billingOnly=mapper.createObjectNode();billingOnly.set("billing",output.path("billing").deepCopy());output=billingOnly;}
             long actual=output.has("billing")?output.path("billing").path("credits").longValue():cost;
             if(actual<0||actual>cost)throw new IllegalStateException("Token settlement exceeds reservation");
             JsonNode accepted;
@@ -569,8 +617,12 @@ public class StudioWorkflowWorker {
                     }
                 } catch(com.fasterxml.jackson.core.JsonProcessingException e) {throw new IllegalStateException(e);}
             }
-            run.setStatus(IpRun.STATUS_DONE);run.setStage("done");run.setPct(100);
+            run.setStatus(cancelled?IpRun.STATUS_FAILED:IpRun.STATUS_DONE);run.setStage(cancelled?"failed":"done");run.setPct(100);
+            if(cancelled){run.setErrorCode("IP_RUN_CANCELLED");run.setErrorMessage("已停止创作，已按模型实际用量结算");}
         } else {
+            if(directorDispatched(run)&&(cancelled||error instanceof BusinessException b&&"IP_RUN_TIMEOUT".equals(b.getCode()))) {
+                pendingDirectorUsage(run);return;
+            }
             credits.releaseHold(IpRunService.REF_TYPE,run.getId(),"Studio 失败或取消 · 释放冻结");
             run.setCost(0);run.setStatus(IpRun.STATUS_FAILED);run.setStage("failed");
             run.setErrorCode(cancelled?"IP_RUN_CANCELLED":error instanceof BusinessException b?b.getCode():"STUDIO_RUN_FAILED");
