@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError } from "../studio-errors";
+import { publicModelErrorMessage } from "@ai-star-eco/api-client";
 
 export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
 
@@ -87,7 +88,7 @@ export function AiWorking({ title, detail, task, compact }: { title: string; det
 
 export function InlineError({ message, onClose }: { message?: string | null; onClose?: () => void }) {
   if (!message) return null;
-  return <div className="ip-brand-error director-inline-error" role="alert"><span>{message}</span>{onClose && <button type="button" onClick={onClose}>关闭</button>}</div>;
+  return <div className="ip-brand-error director-inline-error" role="alert"><span>{publicModelErrorMessage(message)}</span>{onClose && <button type="button" onClick={onClose}>关闭</button>}</div>;
 }
 
 /** 历史版本条：点一下用这一版；「按旧设置生成」的版本有标记，不会被自动用上。 */

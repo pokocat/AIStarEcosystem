@@ -432,7 +432,8 @@ public class HttpShiliuGateway implements ShiliuGateway {
 
     /** 包级可见：供 HttpShiliuGatewayErrorMappingTest 直接覆盖各错误码分支。 */
     static BusinessException mappedUpstreamFailure(int code, String message) {
-        message = ProviderErrorMessage.sanitize(message);
+        // Retain the original diagnostic for existing quota/capacity classification, sanitize only public output.
+        message = ProviderErrorMessage.diagnostic(message);
         String suffix = message == null || message.isBlank() ? "" : "：" + message;
         BusinessException mapped = switch (code) {
             case 1002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_INPUT_INVALID", "采集内容不符合数字人引擎要求" + suffix, "code=" + code);
@@ -448,7 +449,8 @@ public class HttpShiliuGateway implements ShiliuGateway {
             default -> byMessage(code, message, suffix);
         };
         String publicMessage = message == null || mapped.getMessage().contains(message) ? mapped.getMessage() : mapped.getMessage() + suffix;
-        return new BusinessException(mapped.getStatus(),mapped.getCode(),publicMessage,mapped.getDetails(),mapped.getInternalDetail());
+        return new BusinessException(mapped.getStatus(),mapped.getCode(),
+                com.aistareco.aep.service.ai.PublicModelErrorPolicy.stored(publicMessage,mapped.getCode()),mapped.getDetails(),mapped.getInternalDetail());
     }
 
     /**

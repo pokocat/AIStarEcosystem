@@ -8,12 +8,14 @@
 //   ① 优先按 ApiError.code 给**可操作的友好文案**（超时/未配置/调用失败/积分不足…）；
 //   ② 干净的业务引导文案原样透出，但**抹掉尾部「· 追查号 XXXX」**（对用户是噪声）；
 //   ③ 只有真·技术泄漏才回落兜底文案，并**保留编号**供用户找客服复述（界面上叫「问题编号」）。
-// 2026-10-25：模型失败优先展示服务端已脱敏的上游原因，保留追查号；不按错误码覆盖。
+// 2026-10-25：可操作原因保留；供应商计费、余额等经营信息先过滤，保留我方追查号。
 // v0.197：写给运营的「去管理后台配置 X」一律换成「还没开通」（FEATURE_NOT_READY）。
 // 服务端日志/错误日志后台仍有完整追查号，不影响排障。
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 命中即判定为「疑似后台技术细节泄漏」，替换成友好兜底文案。
+import { publicModelErrorMessage } from '@ai-star-eco/api-client';
+
 const TECHNICAL_LEAK =
   /HTTP\s*\d{3}|upstream_error|OpenAIException|NotFoundError|\{\s*"?error"?\s*:|"type"\s*:\s*"|status[_-]?code|Traceback|\b[A-Za-z][A-Za-z.]*Exception\b/;
 
@@ -72,6 +74,8 @@ function stripTrace(s: string): string {
 export function aiErrorMessage(e: unknown, fallback = "AI 生成失败，请稍后重试"): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code?: unknown }).code ?? "") : "";
   const raw = (e && typeof e === "object" && "message" in e && typeof e.message === "string" ? e.message : typeof e === "string" ? e : "").trim();
+  const protectedMessage = publicModelErrorMessage(raw, code);
+  if (protectedMessage !== raw) return protectedMessage;
   if (PROVIDER_FAILURE_CODE.test(code) && raw && !raw.startsWith("{") && !/<\/?html\b/i.test(raw)) return raw;
   if (code && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (code && CREDIT_RE.test(code)) return CREDIT_HINT;

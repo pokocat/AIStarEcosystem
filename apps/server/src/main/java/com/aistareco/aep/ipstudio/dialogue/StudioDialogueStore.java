@@ -203,7 +203,8 @@ public class StudioDialogueStore implements StudioDialogueEvents {
 
     public Event toDto(IpDialogueEvent row) {
         JsonNode data;
-        try { data = mapper.readTree(row.getDataJson()); } catch (Exception e) { data = mapper.createObjectNode(); }
+        try { data = com.aistareco.aep.service.ai.PublicModelErrorPolicy.response(mapper.readTree(row.getDataJson())); }
+        catch (Exception e) { data = mapper.createObjectNode(); }
         String turn = row.getTurnId() != null ? row.getTurnId() : row.getExecutionId() != null ? row.getExecutionId() : "";
         return new StudioDialogueDtos.Event(row.getId(), row.getSeq(), row.getThreadId(), turn, row.getRunId(), row.getExecutionId(),
                 row.getCreatedAt().toString(), row.getType(), data);

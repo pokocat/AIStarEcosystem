@@ -11,6 +11,7 @@ import type {
   StudioDialogueThreadSummary, StudioPostMessageRequest, StudioPostMessageResult,
 } from '@ai-star-eco/types/ip-studio-workflow';
 import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
+import { sanitizeModelErrorFields } from '@ai-star-eco/api-client';
 import { API_BASE_URL, USE_MOCK, apiFetch, getAuthToken } from '@/ip/api/_client';
 import { withStudioBilling } from './studio-billing';
 import {
@@ -200,7 +201,7 @@ export async function runDialogueStream(options: DialogueStreamOptions, signal: 
     const parser = createSseParser(message => {
       if (!message.data) return;
       let event: StudioDialogueEvent;
-      try { event = JSON.parse(message.data) as StudioDialogueEvent; } catch { return; }
+      try { event = sanitizeModelErrorFields(JSON.parse(message.data)) as StudioDialogueEvent; } catch { return; }
       if (!event || typeof event.seq !== 'number' || typeof event.type !== 'string') return;
       received++;
       onEvent(event);

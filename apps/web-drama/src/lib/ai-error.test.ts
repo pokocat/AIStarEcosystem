@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { aiErrorMessage, FEATURE_NOT_READY } from "./ai-error";
+import { MODEL_SERVICE_UNAVAILABLE } from '@ai-star-eco/api-client';
 
 // §8.0.1 ⑩：断契约（技术细节不外泄、编号保留、按码映射、引导去哪），不断具体措辞。
 describe("aiErrorMessage", () => {
@@ -37,10 +38,10 @@ describe("aiErrorMessage", () => {
     }
   });
 
-  it("preserves provider reasons and trace identifiers instead of replacing them with generic or wallet hints", () => {
-    const reason = "供应商账户余额不足，请联系服务方 · 追查号 ABC123";
+  it("hides supplier finances without turning them into customer wallet instructions", () => {
+    const reason = "供应商账户余额不足，请联系服务方 · 追查号 ABCDEF234567";
     for (const code of ["AI_CALL_FAILED", "IMAGE_CALL_FAILED", "VIDEO_SUBMIT_FAILED", "VIDEO_POLL_FAILED", "MUSIC_CALL_FAILED", "STUDIO_SPEECH_REJECTED", "CLIP_ENGINE_BALANCE_INSUFFICIENT"]) {
-      expect(aiErrorMessage({ code, message: reason })).toBe(reason);
+      expect(aiErrorMessage({ code, message: reason })).toBe(MODEL_SERVICE_UNAVAILABLE + ' · 追查号 ABCDEF234567');
     }
   });
 

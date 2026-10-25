@@ -15,12 +15,13 @@ public final class ProviderErrorMessage {
 
     public static String message(String body, String fallback) {
         String reason = reason(body);
-        return reason == null ? fallback : reason;
+        return reason == null ? PublicModelErrorPolicy.stored(fallback, "AI_PROVIDER_ERROR") : reason;
     }
 
     public static String append(String body, String context) {
         String reason = reason(body);
-        return reason == null || context.contains(reason) ? context : context + "；上游原因：" + reason;
+        String combined = reason == null || context.contains(reason) ? context : context + "；" + reason;
+        return PublicModelErrorPolicy.stored(combined, "AI_PROVIDER_ERROR");
     }
 
     public static boolean hasError(JsonNode body) {
@@ -67,6 +68,12 @@ public final class ProviderErrorMessage {
     }
 
     public static String sanitize(String text) {
+        String safe = PublicModelErrorPolicy.upstream(diagnostic(text));
+        return safe == null || safe.isBlank() ? null : safe;
+    }
+
+    /** Internal classification only; do not return this value through a customer DTO or exception message. */
+    public static String diagnostic(String text) {
         if (text == null || text.isBlank() || HTML.matcher(text).find()) return null;
         String safe;
         try {
