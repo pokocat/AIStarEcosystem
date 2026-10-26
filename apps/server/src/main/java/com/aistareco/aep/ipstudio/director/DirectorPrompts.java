@@ -599,12 +599,124 @@ public final class DirectorPrompts {
     /** 声音参考：audio 是本次请求里的编号（音频1、音频2…），只绑定在说话的角色上。 */
     public record VoiceRef(String label, String name) {}
 
+    /** 新格式视频提示词的版本号：候选上记了它，才按当前模板核对；没记的是旧格式生成的，按 {@link #legacyVideoPrompt} 核对。 */
+    public static final int VIDEO_PROMPT_FORMAT = 2;
+
+    private static final String[] CELL_ORDER = {"左上格", "右上格", "左下格", "右下格"};
+
     /**
-     * 视频提示词按分镜图来写：参考图1 是采用的分镜图（宫格整图或单幅画面），第 N 镜对应第 N 格；
-     * 参考图2 起是资产标准照。结构参照可用的多镜头范式：时间轴逐镜（构图 / 画面 / 动作）→【语音轨】→【参考图说明】。
-     * 「声音参考：」开头和「没有声音参考…」结尾的两行是指纹比对时要忽略的声音行（见 DirectorService），措辞别改。
+     * 视频提示词（中文，用户看到、能改的就是这一份）。写法照 H3 官方提示词指南，2026-10-26 用《敦煌飞仙》「飞仙之眼」对比实测：
+     * 旧写法两条在两人同框的第 1 镜都出了事（一条穿模、一条把宫格原样拍进画面），按这个结构写的两条都没有
+     * （见 docs/audits/director-h3-video-prompt-ab-2026-10.md）。
+     * <ul>
+     *   <li>【人物】每个角色对应哪张参考图，参考图里的人像都是同一个人；</li>
+     *   <li>【分镜参考】宫格每格对应哪一镜、只取构图机位和人物位置 —— 不写「禁止出现格线」这类否定句，H3 没有负面提示词，旧写法写了照样拍出宫格；</li>
+     *   <li>【画面】逐镜：景别机位、画面、动作；只有一个角色时写明「画面里只有」；台词写进说话的那一句，
+     *       说话人不在画面里就写画外，听的人嘴闭着；最后一镜写收尾；</li>
+     *   <li>【声音】【配乐】：配乐写无，整集拼起来不会每段一首曲子。</li>
+     * </ul>
+     * 画幅、时长走请求参数，不写进提示词。以「声音参考：」开头和「没有声音参考，按人物身份自然配音。」结尾的行
+     * 是指纹比对时要忽略的声音行（见 DirectorService#withoutVoiceLines），措辞别改。
      */
     public static String videoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
+                                     List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs) {
+        String style = settings.path("style").asText("真人写实");
+        JsonNode shots = clip.path("shots");
+        int n = Math.min(shots.size(), MAX_SHOTS);
+        boolean grid = boardLayout(shots.size())[0] == 2;
+        List<String> characters = new ArrayList<>();
+        StringBuilder people = new StringBuilder();
+        for (Ref r : refs) {
+            switch (r.kind()) {
+                case "scene" -> people.append("场景「").append(r.name()).append("」：空间布局和光线照参考").append(r.label()).append("。\n");
+                case "prop" -> people.append("道具「").append(r.name()).append("」：外观照参考").append(r.label()).append("。\n");
+                default -> {
+                    characters.add(r.name());
+                    people.append(r.name()).append("：长相、发型和衣服都照参考").append(r.label()).append("。参考").append(r.label())
+                            .append(" 是").append(r.name()).append("的设定图，图里的人像都是").append(r.name()).append("一个人。\n");
+                }
+            }
+        }
+        if (!characters.isEmpty())
+            people.append(String.join("和", characters)).append(characters.size() > 1 ? "在画面里各只出现一个" : "在画面里只出现一个")
+                    .append("，长相和衣服从头到尾保持一致。\n");
+        StringBuilder b = new StringBuilder();
+        if (!people.isEmpty()) b.append("【人物】\n").append(people).append('\n');
+        b.append("【分镜参考】\n");
+        if (grid) {
+            b.append("参考图1 是 2×2 分镜：");
+            for (int i = 0; i < n; i++) b.append(i > 0 ? "，" : "").append(CELL_ORDER[i]).append("对应第").append(i + 1).append("镜");
+            if (n < 4) b.append("，其余格子是空的");
+            b.append("。每格只参考构图、机位和人物位置，每一镜都是一个完整的全屏画面。\n\n");
+        } else {
+            b.append("参考图1 是这一段的分镜画面，参考它的构图、机位和人物位置，视频是一个完整的全屏画面。\n\n");
+        }
+        b.append("【画面】\n").append(style).append("风格。\n");
+        boolean anyLine = false;
+        double t = 0;
+        for (int i = 0; i < n; i++) {
+            JsonNode s = shots.get(i);
+            double end = t + s.path("durationSec").asDouble();
+            b.append("第").append(i + 1).append("镜（").append(i == 0 ? "0–" + fmt(end) + " 秒" : fmt(t) + " 秒切").append("）：");
+            b.append(sentence(s.path("size").asText() + (s.path("camera").asText().isBlank() ? "" : "，" + s.path("camera").asText())));
+            b.append(sentence(s.path("still").asText())).append(sentence(s.path("action").asText()));
+            List<String> cast = castOf(s, characters);
+            if (cast.size() == 1) b.append("画面里只有").append(cast.get(0)).append("。");
+            Set<String> speaking = new HashSet<>();
+            for (JsonNode line : s.path("dialogue")) {
+                anyLine = true;
+                String who = line.path("speakerId").isTextual() ? speakerNames.get(line.path("speakerId").asText()) : null;
+                boolean offscreen = who == null || !characters.contains(who) || (!cast.isEmpty() && !cast.contains(who));
+                if (who != null && !offscreen) speaking.add(who);
+                b.append(who == null ? "旁白" : who).append(offscreen ? "在画外说：「" : "说：「").append(line.path("text").asText()).append("」");
+                b.append(offscreen && !cast.isEmpty() ? "画面里的人嘴闭着。" : "");
+            }
+            List<String> listeners = cast.stream().filter(who -> !speaking.contains(who)).toList();
+            if (!speaking.isEmpty() && !listeners.isEmpty()) b.append(String.join("、", listeners)).append("听着，嘴闭着。");
+            if (i == n - 1) b.append("最后保持这个画面到结束。");
+            b.append('\n');
+            t = end;
+        }
+        b.append("\n【声音】\n");
+        if (!anyLine) b.append("这一段没有对白。\n");
+        for (VoiceRef v : voices)
+            b.append("声音参考：").append(v.name()).append("的音色、口音照").append(v.label()).append("，只借声音，说的是上面引号里的台词。\n");
+        voiceDescs.forEach((name, desc) -> b.append(name).append("的音色：").append(desc).append("\n"));
+        List<String> plain = unvoiced.stream().filter(who -> !voiceDescs.containsKey(who)).toList();
+        if (!plain.isEmpty()) b.append(String.join("、", plain)).append(" 没有声音参考，按人物身份自然配音。\n");
+        b.append("\n【配乐】\n无\n\n人物只说引号里的台词，画面里没有字幕。");
+        return b.toString();
+    }
+
+    /** 补成一句：去掉首尾空白，没有句末标点就补一个句号；空串原样返回。 */
+    private static String sentence(String s) {
+        String t = s == null ? "" : s.strip();
+        if (t.isEmpty()) return "";
+        return "。！？!?；…".indexOf(t.charAt(t.length() - 1)) >= 0 ? t : t + "。";
+    }
+
+    /**
+     * 这一镜画面里有哪些角色：景别机位、画面、动作里点了名的（长名字先认，「林小雅」不会再被认成「小雅」）。
+     * 分镜脚本还没有逐镜的出镜人字段，先按名字认；一个都没认出来就返回空，提示词里不写「画面里只有」。
+     */
+    static List<String> castOf(JsonNode shot, List<String> characters) {
+        String text = shot.path("camera").asText() + "\n" + shot.path("still").asText() + "\n" + shot.path("action").asText();
+        List<String> byLength = new ArrayList<>(characters);
+        byLength.sort((a, b) -> b.length() - a.length());
+        Set<String> found = new HashSet<>();
+        for (String name : byLength) {
+            if (name.isBlank() || !text.contains(name)) continue;
+            found.add(name);
+            text = text.replace(name, "\u0000");
+        }
+        return characters.stream().filter(found::contains).toList();
+    }
+
+    /**
+     * 旧格式（2026-10-26 之前）的视频提示词，只用来核对旧格式生成的视频还是不是当前这一版：换了模板不该把它们都标成「已修改」。
+     * 不要拿它生成新视频。
+     */
+    static String legacyVideoPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames,
                                      List<VoiceRef> voices, List<String> unvoiced, java.util.Map<String, String> voiceDescs) {
         String style = settings.path("style").asText("真人写实");
         String aspect = settings.path("aspectRatio").asText("9:16");

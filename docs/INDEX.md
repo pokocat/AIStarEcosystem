@@ -350,5 +350,6 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 读取、进度、保存恢复与 Agent 运行时评估](audits/studio-agent-runtime-assessment-2026-10.md) — 本地修复，未发布；AgentScope Java / LangGraph 替换边界与验收标准（last-reviewed: 2026-10-23）。
 
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
+- [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》「飞仙之眼」同一片段五条：旧写法第 1 镜穿模 / 宫格上屏，新中文 H3 结构三条都没有，中文英文无差别，厂商智能优化超时退回原文；last-reviewed: 2026-10-26。
 
 - [Studio 下午至晚间线上使用复盘](audits/studio-production-afternoon-evening-review-20261023.md) — 2026-10-23 北京时间生产查询快照；记录用户旅程、任务／账本、排队与发布窗口及待核证据，不代表本轮已修复或重测；last-reviewed: 2026-10-23。

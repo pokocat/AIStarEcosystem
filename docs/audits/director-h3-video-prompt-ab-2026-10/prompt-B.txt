@@ -1,0 +1,21 @@
+## subject_definitions:
+<Subject 1> is the young man shown in <Picture 2>, exactly as pictured: same face, hair, stubble and clothes. <Picture 2> is a character sheet of this one man seen from several angles; it shows a single person.
+<Subject 2> is the young woman shown in <Picture 3>, exactly as pictured: same face, glasses, ponytail, clothes, backpack and camera. <Picture 3> is a character sheet of this one woman seen from several angles; it shows a single person.
+<Subject 1> and <Subject 2> are the only two people in the target video.
+<Picture 1> is a 2x2 storyboard: the top-left panel is the keyframe for [Shot 1], the top-right panel for [Shot 2], the bottom-left panel for [Shot 3], and the bottom-right panel for [Shot 4].
+## summary:
+[reference generation] Create a fifteen-second cinematic live-action scene inside a dim Mogao cave: <Subject 1> is restoring an ancient mural with a fine brush while <Subject 2>, a tourist, tells him that the flying apsara painted on the mural seems to be looking at her.
+## retention_analysis:
+<Subject 1> (appears in [Shot 1], [Shot 3], [Shot 4]): fully_preserved - his face, hair, stubble, jacket and sweater from <Picture 2> are retained in every shot.
+<Subject 2> (appears in [Shot 1], [Shot 2], [Shot 4]): fully_preserved - her face, glasses, ponytail, hoodie, backpack and camera from <Picture 3> are retained in every shot.
+<Picture 1> (keyframes for [Shot 1] to [Shot 4]): weak_reference - only the framing, camera angle and character positions of each panel are followed; every shot is one full-screen image.
+## detailed_description:
+Cinematic live-action, 35mm film look, a single shaft of warm sunlight cutting through a dark cave whose walls are covered with faded Dunhuang murals.
+[Shot 1] A low-angle wide shot looks up through a beam of sunlight falling from a small opening in the cave ceiling; dust drifts slowly in the beam. On the left, <Subject 1> stands with his back to the camera, facing the mural wall, and moves a fine brush slowly along the bottom edge of the mural. On the right, about two steps behind him, <Subject 2> stands in profile facing the same wall and raises her camera to photograph the mural. The two of them stand apart; their bodies and hands stay clear of each other. The camera holds a static shot.
+[Shot 2] At 00:04.000, the camera cuts to an eye-level close shot of <Subject 2> alone. She leans forward, her eyes lock onto the mural on the right side of the frame, and she points at it with her right index finger; the warm light catches her glasses. <Subject 2>, with a bright, curious young female voice (S1), says: <d>[Chinese] 小哥，你看这个飞仙的眼睛，是不是特别有神？感觉她在看我。</d>
+[Shot 3] At 00:07.000, the camera cuts to a side close-up of <Subject 1> alone, in profile facing right, his eyes lowered to the brush in his hand. The brush stops for a moment; he keeps his eyes on the mural and does not look up. <Subject 1>, with a low, flat, tired male voice (S2), says: <d>[Chinese] 那是光影效果。颜料氧化后会有这种视觉误差。</d>
+[Shot 4] At 00:10.000, the camera cuts to a medium over-the-shoulder shot from behind <Subject 1>; his dark shoulder fills the left foreground. <Subject 2> leans closer to the mural, and her fingertip stops just short of the corner of the apsara's mouth. <Subject 2> (S1) says: <d>[Chinese] 真的吗？我怎么觉得她嘴角在笑呢？</d> <Subject 1> listens with his mouth closed. Toward the end, she stays still with her finger near the mural, and the camera holds the medium shot until the clip ends.
+## overall_soundscape:
+Quiet cave ambience with a faint draft of wind; soft brush bristles whisper across dry plaster, and a single camera shutter clicks during the opening shot.
+## non_diegetic_music:
+N/A

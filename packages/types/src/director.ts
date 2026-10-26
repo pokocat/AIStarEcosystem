@@ -49,6 +49,8 @@ export interface DirectorMedia {
   mock?: boolean;
   /** 生成时的输入指纹，用来核对是否跟当前设置一致。 */
   fingerprint?: string;
+  /** 视频提示词格式版本；没有的是 2026-10-26 改版前的旧格式，服务端按旧模板核对，不因换模板标成已修改。 */
+  promptFormat?: number;
   /** 生成期间改过设置，按旧设置生成；不会自动使用。 */
   stale?: boolean;
 }

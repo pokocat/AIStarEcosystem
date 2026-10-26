@@ -853,10 +853,6 @@ public class DirectorService {
         return new VideoInput(prompt, duration, aspect, lim, refs, meta, videoCurrent(c, clip, lim).fingerprint(), null);
     }
 
-    private String videoFingerprintOrNull(ObjectNode c, JsonNode clip) {
-        return videoCurrent(c, clip, limits(c)).fingerprint();
-    }
-
     /** 片段视频报价：和真正提交走同一份输入与同一个报价函数。测试响应下为 0。 */
     long videoQuote(String userId, ObjectNode c, JsonNode clip) {
         Limits lim = limits(c);
@@ -884,7 +880,8 @@ public class DirectorService {
         requireIdle(w, node);
         if (clip.path("video").path("pending").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该片段视频生成中，请稍候");
         VideoInput in = videoInput(c, clip);
-        ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint());
+        ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
+                .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
         m.set("refs", in.refsMeta());
         clearError(c, node);
         w.setActive(true);
@@ -944,10 +941,14 @@ public class DirectorService {
 
     private void addVideoCandidate(ObjectNode c, ObjectNode clip, String key, String runId, JsonNode meta, boolean mock) {
         ObjectNode slot = (ObjectNode) clip.path("video");
-        String now = videoFingerprintOrNull(c, clip);
+        // 换模板之前提交、之后才完成的任务没有 promptFormat：按旧模板核对，免得被当成「生成期间设置有变动」。
+        Limits lim = limits(c);
+        String legacy = meta.has("promptFormat") ? null : legacyVideoPrompt(c, clip, lim);
+        String now = (legacy == null ? videoCurrent(c, clip, lim) : videoCurrent(c, clip, lim, legacy)).fingerprint();
         boolean stale = !meta.hasNonNull("fingerprint") || !meta.path("fingerprint").asText().equals(now);
         ObjectNode m = addCandidate(c, slot, key, runId, "generated");
         if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
+        if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
         if (meta.has("prompt")) m.put("prompt", meta.path("prompt").asText());
         if (meta.has("refs")) m.set("refs", meta.path("refs").deepCopy());
         if (mock) m.put("mock", true);
@@ -1986,8 +1987,8 @@ public class DirectorService {
 
     // ── 编译媒体提示词与片段检查 ─────────────────────────────────────────────
 
-    /** 重新编译没被改写过的提示词，并按当前视频模型重算每个片段「需要修改」的问题。 */
-    private void refresh(ObjectNode c) {
+    /** 重新编译没被改写过的提示词，并按当前视频模型重算每个片段「需要修改」的问题。包内可见供测试。 */
+    void refresh(ObjectNode c) {
         Limits lim = limits(c);
         Map<String, String> names = new HashMap<>();
         Set<String> characters = new HashSet<>();
@@ -2006,23 +2007,14 @@ public class DirectorService {
                 refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
             if (!clip.path("boardPromptCustom").asBoolean(false))
                 clip.put("boardPrompt", DirectorPrompts.boardPrompt(c.path("settings"), clip, refs, names));
-            List<DirectorPrompts.Ref> videoRefs = new ArrayList<>();
-            for (DirectorPrompts.Ref r : refs) videoRefs.add(new DirectorPrompts.Ref("图" + (videoRefs.size() + 2), r.kind(), r.name()));
-            List<DirectorPrompts.VoiceRef> voices = new ArrayList<>();
-            List<String> unvoiced = new ArrayList<>();
-            Map<String, String> voiceDescs = new LinkedHashMap<>();
-            for (JsonNode a : speakers(c, clip)) {
-                if (!a.path("voiceDesc").asText().isBlank()) voiceDescs.put(a.path("name").asText(), a.path("voiceDesc").asText().trim());
-                if (a.path("voice").path("key").isTextual()) voices.add(new DirectorPrompts.VoiceRef("音频" + (voices.size() + 1), a.path("name").asText()));
-                else unvoiced.add(a.path("name").asText());
-            }
+            VideoParts parts = videoParts(c, clip, refs, names);
             ArrayNode unvoicedNode = clip.putArray("unvoiced");
-            unvoiced.forEach(unvoicedNode::add);
+            parts.unvoiced().forEach(unvoicedNode::add);
             ArrayNode voicedNode = clip.putArray("voiced");
-            voices.forEach(v -> voicedNode.add(v.name()));
+            parts.voices().forEach(v -> voicedNode.add(v.name()));
             if (!clip.path("videoPromptCustom").asBoolean(false))
-                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names, voiceDescs)
-                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, videoRefs, names, voices, unvoiced, voiceDescs));
+                clip.put("videoPrompt", lim != null && lim.frame() ? DirectorPrompts.framePrompt(c.path("settings"), clip, names, parts.voiceDescs())
+                        : DirectorPrompts.videoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs()));
             ArrayNode issues = clip.putArray("issues");
             int shots = clip.path("shots").size();
             if (shots == 0) issues.add("暂无镜头：请添加镜头或重写本集分镜脚本");
@@ -2044,9 +2036,46 @@ public class DirectorService {
             }
             for (String sp : badSpeakers) issues.add("台词说话人「" + sp + "」不是角色，请重新选择说话人");
             clip.set("warnings", shotWarnings(clip, lim, total, lastOrder.getOrDefault(clip.path("episodeId").asText(), 0)));
-            check((ObjectNode) clip.path("board"), boardCurrent(c, clip), false);
-            check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), true);
+            check((ObjectNode) clip.path("board"), boardCurrent(c, clip), null, false);
+            String legacy = legacyVideoPrompt(c, clip, lim, parts, names);
+            check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
         }
+    }
+
+    /** 编视频提示词要用的东西：参考图编号（图1 是分镜图，资产从图2 起）、绑了声音的说话人、没绑的、音色描述。 */
+    private record VideoParts(List<DirectorPrompts.Ref> videoRefs, List<DirectorPrompts.VoiceRef> voices, List<String> unvoiced,
+                              Map<String, String> voiceDescs) {}
+
+    private VideoParts videoParts(ObjectNode c, JsonNode clip, List<DirectorPrompts.Ref> refs, Map<String, String> names) {
+        List<DirectorPrompts.Ref> videoRefs = new ArrayList<>();
+        for (DirectorPrompts.Ref r : refs) videoRefs.add(new DirectorPrompts.Ref("图" + (videoRefs.size() + 2), r.kind(), r.name()));
+        List<DirectorPrompts.VoiceRef> voices = new ArrayList<>();
+        List<String> unvoiced = new ArrayList<>();
+        Map<String, String> voiceDescs = new LinkedHashMap<>();
+        for (JsonNode a : speakers(c, clip)) {
+            if (!a.path("voiceDesc").asText().isBlank()) voiceDescs.put(a.path("name").asText(), a.path("voiceDesc").asText().trim());
+            if (a.path("voice").path("key").isTextual()) voices.add(new DirectorPrompts.VoiceRef("音频" + (voices.size() + 1), a.path("name").asText()));
+            else unvoiced.add(a.path("name").asText());
+        }
+        return new VideoParts(videoRefs, voices, unvoiced, voiceDescs);
+    }
+
+    /**
+     * 按旧模板（2026-10-26 之前的格式）编出的这一段提示词，只用来核对旧格式生成的视频：换模板本身不算「镜头、台词或提示词已修改」。
+     * 用户改写过提示词、或首帧出片（模板没换）时两边一样，返回 null。
+     */
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim, VideoParts parts, Map<String, String> names) {
+        if (clip.path("videoPromptCustom").asBoolean(false) || (lim != null && lim.frame())) return null;
+        return DirectorPrompts.legacyVideoPrompt(c.path("settings"), clip, parts.videoRefs(), names, parts.voices(), parts.unvoiced(), parts.voiceDescs());
+    }
+
+    private String legacyVideoPrompt(ObjectNode c, JsonNode clip, Limits lim) {
+        Map<String, String> names = new HashMap<>();
+        for (JsonNode a : c.path("assets")) names.put(a.path("id").asText(), a.path("name").asText());
+        List<DirectorPrompts.Ref> refs = new ArrayList<>();
+        for (JsonNode a : visualAssets(c, clip))
+            refs.add(new DirectorPrompts.Ref("图" + (refs.size() + 1), a.path("kind").asText(), a.path("name").asText()));
+        return legacyVideoPrompt(c, clip, lim, videoParts(c, clip, refs, names), names);
     }
 
     /** 片段里说台词的角色（按第一次开口的顺序），视频的声音参考按这个顺序编号。 */
@@ -2111,7 +2140,10 @@ public class DirectorService {
     }
 
     private Current videoCurrent(ObjectNode c, JsonNode clip, Limits lim) {
-        String prompt = clip.path("videoPrompt").asText();
+        return videoCurrent(c, clip, lim, clip.path("videoPrompt").asText());
+    }
+
+    private Current videoCurrent(ObjectNode c, JsonNode clip, Limits lim, String prompt) {
         int duration = (int) Math.round(clip.path("durationSec").asDouble());
         String aspect = c.path("settings").path("aspectRatio").asText("9:16");
         List<String> images = new ArrayList<>();
@@ -2133,12 +2165,14 @@ public class DirectorService {
     }
 
     /** 给采用位写 adoptedCheck（current / outdated / unknown）和 staleReasons（说人话的原因）。 */
-    private void check(ObjectNode slot, Current now, boolean video) {
+    private void check(ObjectNode slot, Current current, Current legacy, boolean video) {
         ArrayNode reasons = slot.putArray("staleReasons");
         JsonNode m = null;
         String id = slot.path("adoptedId").asText(null);
         for (JsonNode x : slot.path("candidates")) if (x.path("id").asText().equals(id)) m = x;
         if (m == null) { slot.putNull("adoptedCheck"); return; }
+        // 旧格式提示词生成的视频按旧模板核对，换模板本身不算修改（legacy 为 null 表示两种格式一样）。
+        Current now = legacy != null && !m.has("promptFormat") ? legacy : current;
         if (Set.of("upload", "library").contains(m.path("source").asText())) { slot.put("adoptedCheck", "current"); return; }
         boolean hasRefs = m.has("refs") && m.has("prompt");
         if (!m.hasNonNull("fingerprint") && !hasRefs) { slot.put("adoptedCheck", "unknown"); return; }
