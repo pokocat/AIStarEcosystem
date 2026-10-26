@@ -63,7 +63,7 @@ class DirectorH3VideoFlowTest {
         when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(5L);
         when(textRuns.directorPrices(any())).thenReturn(new long[]{3, 8});
         when(textRuns.submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any()))
-                .thenReturn(new IpRunDto("IPR-rw", "DW-1", "videoPrompt:cl1", "studio-director", "running", "queued", 0, 5, null, null, null, null, "t", null, null));
+                .thenReturn(runDto("IPR-rw"), runDto("IPR-rw2"), runDto("IPR-rw3"));
         when(imageRuns.generateVideoForDirector(anyString(), anyString(), anyString(), any()))
                 .thenReturn(om.createObjectNode().put("id", "mvj_1").put("stage", "queued").put("progress_pct", 0));
         when(videoJobs.getJob(any(), any(), any())).thenReturn(om.createObjectNode().put("status", "queued").put("stage", "排队中"));
@@ -87,6 +87,10 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
     }
 
+    private static IpRunDto runDto(String id) {
+        return new IpRunDto(id, "DW-1", "videoPrompt:cl1", "studio-director", "running", "queued", 0, 5, null, null, null, null, "t", null, null);
+    }
+
     private void h3(boolean optimizable) {
         var contract = new VideoStudioContract(List.of(new VideoStudioModeSpec("universal_reference_video", false, false, null, null)),
                 List.of(new VideoStudioTier("768p", List.of(new VideoStudioCanvas("9:16", 768, 1344)))), 4, 15, 7000, 0L);
@@ -107,16 +111,34 @@ class DirectorH3VideoFlowTest {
     }
 
     /** 让改写任务「完成」：worker 里校验组装后的输出，原样交给 reconcile 回投。 */
-    private void finishRewrite(JsonNode meta) throws Exception {
+    private void finishRewrite(JsonNode meta) throws Exception { finishRewrite(meta, 0); }
+
+    private void finishRewrite(JsonNode meta, long cost) throws Exception {
         ObjectNode input = om.createObjectNode();
         input.set("_director", meta);
         ObjectNode output = om.createObjectNode();
         output.set("director", DirectorPrompts.validate(om, meta, modelOutput()));
         IpRun run = IpRun.builder().id("IPR-rw").projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId("u1").nodeId("videoPrompt:cl1")
-                .kind("studio-director").status(IpRun.STATUS_DONE).stage("done").inputJson(om.writeValueAsString(input))
+                .kind("studio-director").status(IpRun.STATUS_DONE).stage("done").cost(cost).inputJson(om.writeValueAsString(input))
                 .outputJson(om.writeValueAsString(output)).createdAt(Instant.now()).build();
         when(runs.findByProjectIdOrderByCreatedAtDesc("DW-1")).thenReturn(List.of(run));
+        when(runs.findById("IPR-rw")).thenReturn(java.util.Optional.of(run));
         service.reconcile(w, c);
+    }
+
+    /** 一键制作进行中，改写由它发出。 */
+    private ObjectNode pipeline(long budget) {
+        ObjectNode p = c.putObject("pipeline").put("id", "PL-1").put("status", "running").put("budget", budget);
+        p.putArray("runIds"); p.putArray("videoJobs"); p.putArray("failed");
+        return p;
+    }
+
+    private ObjectNode dispatchRewriteIn(ObjectNode p) {
+        assertEquals("IPR-rw", service.dispatch("u1", w, c, "video", "cl1", "PL-1-video-cl1-1", om.createObjectNode(), p, null, 600L));
+        ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        assertEquals("PL-1", meta.getValue().path("then").path("pipelineId").asText());
+        return meta.getValue();
     }
 
     private ObjectNode dispatchRewrite() {
@@ -184,21 +206,72 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
         finishRewrite(meta);
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
-        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写期间有改动"), clip().path("video").toString());
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写期间"), clip().path("video").toString());
         assertEquals("needed", clip().path("videoPromptRewrite").asText(), "画面改了要重新改写");
     }
 
     @Test
-    void aDialogueOnlyEditKeepsTheRewriteAndSendsTheNewWords() throws Exception {
+    void aDialogueOnlyEditStopsThisSubmissionButKeepsTheRewrite() throws Exception {
         ObjectNode meta = dispatchRewrite();
         ((ObjectNode) clip().path("shots").get(1).path("dialogue").get(2)).put("text", "昨晚你听见什么没有？");
         service.refresh(c);
         finishRewrite(meta);
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写期间"), "确认价格时的内容变了，不替用户提交");
+        assertEquals("ready", clip().path("videoPromptRewrite").asText(), "只改台词不用重新改写");
+
+        // 用户再点一次：直接按新台词提交，不再改写
+        service.dispatch("u1", w, c, "video", "cl1", "u-r2", om.createObjectNode(), null, null, 600L);
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("(S1) <d>[Chinese] 昨晚你听见什么没有？</d>"), "台词按提交时的文字填：" + req.getValue().prompt());
         assertFalse(req.getValue().prompt().contains("那你昨晚听见啥动静没"));
         verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aReferenceSwappedDuringTheRewriteStopsTheVideo() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        // 换了角色图：改写用的文字一样（只有名字和描述），但要付费提交的素材变了
+        ObjectNode image = (ObjectNode) c.path("assets").get(0).path("image");
+        ((ArrayNode) image.path("candidates")).addObject().put("id", "m9").put("key", "k/chen-v2.png").put("source", "generated");
+        image.put("adoptedId", "m9");
+        service.refresh(c);
+        finishRewrite(meta);
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("参考素材"), clip().path("video").toString());
+    }
+
+    @Test
+    void inAPipelineTheRewriteCostCountsAgainstTheBudget() throws Exception {
+        ObjectNode p = pipeline(600);
+        ObjectNode meta = dispatchRewriteIn(p);
+        finishRewrite(meta, 2);
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertEquals("budget", p.path("stage").asText(), "改写扣了 2 积分，600 的视频放不下了：" + p);
+        assertEquals("waiting", p.path("status").asText());
+        assertTrue(p.path("failed").isEmpty(), "预算不足不是失败，提高预算后接着做");
+    }
+
+    @Test
+    void inAPipelineARefusedSubmissionIsRecordedAsFailedNotResent() throws Exception {
+        ObjectNode p = pipeline(10_000);
+        ObjectNode meta = dispatchRewriteIn(p);
+        when(imageRuns.generateVideoForDirector(anyString(), anyString(), anyString(), any()))
+                .thenThrow(new BusinessException(org.springframework.http.HttpStatus.CONFLICT, "IP_RUN_PRICE_CHANGED", "价格已变化，请重新确认"));
+        finishRewrite(meta);
+        assertTrue(p.path("failed").toString().contains("video:cl1"), "记成失败项，推进不会换请求号按新价格重发：" + p);
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("价格已变化"));
+    }
+
+    @Test
+    void aPausedPipelineDoesNotRetryTheRewrite() throws Exception {
+        ObjectNode p = pipeline(10_000);
+        ObjectNode meta = dispatchRewriteIn(p);
+        p.put("status", "paused");
+        failRewrite(meta, "IPR-rw");
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        assertTrue(p.path("failed").toString().contains("videoPrompt:cl1"), p.toString());
     }
 
     /** 改写任务没通过校验（这一次不扣费）：worker 判失败，回投时看到的就是这样一条任务。 */
@@ -209,9 +282,12 @@ class DirectorH3VideoFlowTest {
                 .kind("studio-director").status(IpRun.STATUS_FAILED).stage("failed").errorCode("AI_BAD_OUTPUT")
                 .errorMessage("视频提示词改写不合格（改写稿缺少第 2 镜），本次未扣积分，请重试").clientRequestId("u-r1-p")
                 .inputJson(om.writeValueAsString(input)).outputJson("{}").createdAt(Instant.now()).build();
-        when(runs.findByProjectIdOrderByCreatedAtDesc("DW-1")).thenReturn(List.of(run));
+        failed.add(0, run); // 任务列表按创建时间倒序，带上之前的任务（已回投过的会跳过）
+        when(runs.findByProjectIdOrderByCreatedAtDesc("DW-1")).thenReturn(List.copyOf(failed));
         service.reconcile(w, c);
     }
+
+    private final java.util.List<IpRun> failed = new java.util.ArrayList<>();
 
     @Test
     void aRewriteThatFailsValidationIsRetriedOnceQuietly() throws Exception {
@@ -223,11 +299,13 @@ class DirectorH3VideoFlowTest {
         assertEquals(2, retryMeta.getValue().path("attempt").asInt());
         assertEquals(600L, retryMeta.getValue().path("then").path("maxCost").asLong(), "重试后照样接着提交视频");
         assertTrue(clip().path("video").path("error").isNull() || clip().path("video").path("error").isMissingNode(), "第一次失败不打扰用户");
+        assertTrue(w.isActive(), "重试是回投时新发出的任务，作品要留在后台推进，关掉页面也能接着提交视频");
 
         failRewrite(retryMeta.getValue(), "IPR-rw2");
         verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
         assertTrue(clip().path("video").path("error").path("message").asText().contains("改写不合格"), "第二次还不过才报错");
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertFalse(w.isActive(), "两次都结束了，没有在跑的任务");
     }
 
     @Test

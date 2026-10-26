@@ -44,10 +44,10 @@ final class DirectorH3Rewrite {
     /** 交给模型的中文原文（台词已换成占位）与认出来的台词。 */
     record Source(String text, List<Line> lines) {}
 
-    /** 模板写法：「林小雅说：「…」」「旁白在画外说：「…」」。 */
-    private static final Pattern LINE = Pattern.compile("([^\\s，。：；！？、「」“”（）()]{1,24}?)(在画外)?说：「(.+?)」");
+    /** 模板写法：「林小雅说：「…」」「旁白在画外说：「…」」。只匹配到开引号，台词到配对的收引号为止（见 {@link #closing}）。 */
+    private static final Pattern LINE = Pattern.compile("([^\\s，。：；！？、「」“”（）()]{1,24}?)(在画外)?说：「");
     /** 2026-10-26 之前的模板（用户改写过、还留着旧格式的提示词）：「第2镜 · @林小雅 · “…”」。 */
-    private static final Pattern LEGACY_LINE = Pattern.compile("@([^\\s·]{1,24}) · “(.+?)”");
+    private static final Pattern LEGACY_LINE = Pattern.compile("@([^\\s·]{1,24}) · “");
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{(L\\d+)}}");
 
     private static final String CONTRACT = """
@@ -99,30 +99,50 @@ final class DirectorH3Rewrite {
         Map<String, String> sids = new LinkedHashMap<>();
         StringBuilder out = new StringBuilder();
         Matcher m = LINE.matcher(zh);
-        int last = 0;
-        while (m.find()) {
+        int last = 0, pos = 0;
+        while (pos < zh.length() && m.find(pos)) {
+            int open = m.end(), end = closing(zh, open, '「', '」');
+            pos = end < 0 ? open : end + 1;
+            if (end < 0) continue; // 引号没配上：不算台词，句数核对会拦下
             String speaker = known(m.group(1), names);
             String id = "L" + (lines.size() + 1);
             String sid = sids.computeIfAbsent(speaker, k -> "S" + (sids.size() + 1));
-            lines.add(new Line(id, speaker, sid, m.group(3), m.group(2) != null));
-            out.append(zh, last, m.start(3) - 1).append("{{").append(id).append("}}");
-            last = m.end();
+            lines.add(new Line(id, speaker, sid, zh.substring(open, end), m.group(2) != null));
+            out.append(zh, last, open - 1).append("{{").append(id).append("}}");
+            last = end + 1;
         }
         out.append(zh.substring(last));
         if (!lines.isEmpty()) return new Source(out.toString(), lines);
         // 旧格式：台词集中在【语音轨】里，按同样的规则换成占位。
-        out.setLength(0); last = 0;
+        out.setLength(0); last = 0; pos = 0;
         m = LEGACY_LINE.matcher(zh);
-        while (m.find()) {
+        while (pos < zh.length() && m.find(pos)) {
+            int open = m.end(), end = closing(zh, open, '“', '”');
+            pos = end < 0 ? open : end + 1;
+            if (end < 0) continue;
             String speaker = known(m.group(1), names);
             String id = "L" + (lines.size() + 1);
             String sid = sids.computeIfAbsent(speaker, k -> "S" + (sids.size() + 1));
-            lines.add(new Line(id, speaker, sid, m.group(2), "旁白".equals(speaker)));
-            out.append(zh, last, m.start(2) - 1).append("{{").append(id).append("}}");
-            last = m.end();
+            lines.add(new Line(id, speaker, sid, zh.substring(open, end), "旁白".equals(speaker)));
+            out.append(zh, last, open - 1).append("{{").append(id).append("}}");
+            last = end + 1;
         }
         out.append(zh.substring(last));
         return new Source(out.toString(), lines);
+    }
+
+    /**
+     * 开引号之后配对的收引号位置，台词里可以再套一层同样的引号（「他喊「别走」，然后离开。」）；配不上返回 -1。
+     * 2026-10-26 评审：原来用非贪婪的「(.+?)」」，这样的台词只认出「他喊「别走」，剩下半句进了交给模型的正文，句数核对拦不住。
+     */
+    static int closing(String s, int from, char open, char close) {
+        int depth = 1;
+        for (int i = from; i < s.length(); i++) {
+            char ch = s.charAt(i);
+            if (ch == open) depth++;
+            else if (ch == close && --depth == 0) return i;
+        }
+        return -1;
     }
 
     private static String known(String captured, List<String> namesLongestFirst) {
@@ -194,14 +214,21 @@ final class DirectorH3Rewrite {
         return "Chinese";
     }
 
-    /** 写进任务输入的核对信息：镜头数、每镜开始时间、参考图 / 音频数量、台词。 */
-    static ObjectNode meta(ObjectMapper om, int shots, List<Double> starts, int pictures, int audios, String language, List<Line> lines) {
+    /**
+     * 写进任务输入的核对信息：镜头数、每镜开始时间、参考图 / 音频数量、台词（带所在镜头，原文按「第N镜（」分段时才有）。
+     */
+    static ObjectNode meta(ObjectMapper om, int shots, List<Double> starts, int pictures, int audios, String language, List<Line> lines, String source) {
         ObjectNode meta = om.createObjectNode().put("task", "videoPrompt").put("shots", shots).put("pictures", pictures)
                 .put("audios", audios).put("language", languageTag(language));
         ArrayNode cuts = meta.putArray("starts");
         starts.forEach(cuts::add);
+        Map<String, Integer> shotOf = new HashMap<>();
+        linesByShot(source).forEach((shot, ids) -> ids.forEach(id -> shotOf.put(id.substring(2, id.length() - 2), shot)));
         ArrayNode ls = meta.putArray("lines");
-        for (Line l : lines) ls.addObject().put("id", l.id()).put("sid", l.sid()).put("text", l.text());
+        for (Line l : lines) {
+            ObjectNode x = ls.addObject().put("id", l.id()).put("sid", l.sid()).put("text", l.text());
+            if (shotOf.containsKey(l.id())) x.put("shot", shotOf.get(l.id()));
+        }
         return meta;
     }
 
@@ -234,7 +261,10 @@ final class DirectorH3Rewrite {
         defs = dropUnknownLabels(defs, pictures, audios); summary = dropUnknownLabels(summary, pictures, audios);
         retention = dropUnknownLabels(retention, pictures, audios); style = dropUnknownLabels(style, pictures, audios);
         sound = dropUnknownLabels(sound, pictures, audios); music = dropUnknownLabels(music, pictures, audios);
-        for (int i = 0; i < bodies.size(); i++) bodies.set(i, dropUnknownLabels(bodies.get(i), pictures, audios));
+        for (int i = 0; i < bodies.size(); i++) {
+            bodies.set(i, dropUnknownLabels(bodies.get(i), pictures, audios));
+            if (bodies.get(i).isEmpty()) throw bad("改写稿缺少第 " + (i + 1) + " 镜");
+        }
         if (defs.isEmpty() || summary.isEmpty() || retention.isEmpty()) throw bad("改写稿只剩不存在的参考素材");
         if (sound.isEmpty()) sound = DEFAULT_SOUNDSCAPE;
         if (music.isEmpty()) music = "N/A";
@@ -244,11 +274,15 @@ final class DirectorH3Rewrite {
         Map<String, JsonNode> lines = new LinkedHashMap<>();
         meta.path("lines").forEach(l -> lines.put(l.path("id").asText(), l));
         Map<String, Integer> seen = new HashMap<>();
-        for (String b : bodies) {
-            Matcher m = PLACEHOLDER.matcher(b);
+        for (int i = 0; i < bodies.size(); i++) {
+            Matcher m = PLACEHOLDER.matcher(bodies.get(i));
             while (m.find()) {
-                if (!lines.containsKey(m.group(1))) throw bad("改写稿引用了不存在的台词");
+                JsonNode line = lines.get(m.group(1));
+                if (line == null) throw bad("改写稿引用了不存在的台词");
                 seen.merge(m.group(1), 1, Integer::sum);
+                // 放错镜头 = 错的时间、错的人开口。原文没分镜头（旧格式）或台词在第 N 镜之后（超出镜头数）时不核对。
+                int shot = line.path("shot").asInt(0);
+                if (shot >= 1 && shot <= shots && shot != i + 1) throw bad("改写稿把第 " + shot + " 镜的台词放进了第 " + (i + 1) + " 镜");
             }
         }
         for (String id : lines.keySet()) if (seen.getOrDefault(id, 0) != 1) throw bad("改写稿漏了或重复了台词");

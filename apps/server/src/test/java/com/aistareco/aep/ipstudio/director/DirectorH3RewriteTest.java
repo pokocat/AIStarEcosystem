@@ -46,9 +46,21 @@ class DirectorH3RewriteTest {
         assertTrue(src.text().contains("@陈默 · {{L2}}"), src.text());
     }
 
+    @Test
+    void quotesInsideALineArePairedNotCutShort() {
+        // 2026-10-26 评审：非贪婪匹配只认出「他喊「别走」，后半句进了交给模型的正文
+        var src = DirectorH3Rewrite.source("第1镜（0–5 秒）：近景。陈默说：「他喊「别走」，然后离开。」画面里的人嘴闭着。", NAMES);
+        assertEquals(List.of("他喊「别走」，然后离开。"), src.lines().stream().map(DirectorH3Rewrite.Line::text).toList());
+        assertTrue(src.text().contains("陈默说：{{L1}}画面里的人嘴闭着"), src.text());
+        var legacy = DirectorH3Rewrite.source("【语音轨】\n第1镜 · @陈默 · “他说“别走”，然后离开。”\n", NAMES);
+        assertEquals(List.of("他说“别走”，然后离开。"), legacy.lines().stream().map(DirectorH3Rewrite.Line::text).toList());
+        // 引号没配上就不算台词，交给句数核对拦下，不截半句
+        assertTrue(DirectorH3Rewrite.source("第1镜（0–5 秒）：陈默说：「好啊", NAMES).lines().isEmpty());
+    }
+
     private static ObjectNode meta() {
         var src = DirectorH3Rewrite.source(ZH, NAMES);
-        return DirectorH3Rewrite.meta(OM, 3, List.of(0.0, 5.0, 9.0), 3, 0, "中文", src.lines());
+        return DirectorH3Rewrite.meta(OM, 3, List.of(0.0, 5.0, 9.0), 3, 0, "中文", src.lines(), src.text());
     }
 
     private static ObjectNode out() {
@@ -95,6 +107,11 @@ class DirectorH3RewriteTest {
         o = out();
         ((ArrayNode) o.path("shots")).set(2, OM.getNodeFactory().textNode("the camera cuts to her: {{L4}} {{L9}}"));
         rejected(o);
+        // 挪到别的镜头、总数不变：错的时间、错的人开口
+        o = out();
+        ((ArrayNode) o.path("shots")).set(1, OM.getNodeFactory().textNode("the camera cuts to Lao Zhao, who says: {{L1}} Chen Mo replies: {{L2}}"));
+        ((ArrayNode) o.path("shots")).set(2, OM.getNodeFactory().textNode("the camera cuts to Lao Zhao, who asks: {{L3}} The narrator says off screen: {{L4}}"));
+        assertTrue(rejected(o).contains("第 2 镜的台词放进了第 3 镜"));
     }
 
     @Test
@@ -142,6 +159,10 @@ class DirectorH3RewriteTest {
         ((ArrayNode) o.path("shots")).remove(2);
         rejected(o);
         rejected(out().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 4>."));
+        // 一镜只写了一句、引用的还是不存在的图：删掉之后这一镜是空的，按缺镜头拒收
+        ObjectNode empty = out();
+        ((ArrayNode) empty.path("shots")).set(0, OM.getNodeFactory().textNode("A wide shot using <Picture 99>."));
+        assertTrue(rejected(empty).contains("缺少第 1 镜"));
         // 编出来的参考素材：那句删掉（不含台词时）；含台词的句子删不得，拒收
         String t = DirectorH3Rewrite.validate(OM, meta(), out().put("summary", "[reference generation] A night scene. <Audio 1> provides the narrator's voice.")).path("template").asText();
         assertTrue(t.contains("summary:\n[reference generation] A night scene.\n"), t);

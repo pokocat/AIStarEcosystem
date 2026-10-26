@@ -907,7 +907,7 @@ public class DirectorService {
         if (h3(in.lim())) {
             Rewrite rw = rewrite(c, clip);
             sent = english(clip, rw);
-            if (sent == null) return rewriteFirst(userId, w, c, clip, rw, requestId, pipeline, billing, maxCost);
+            if (sent == null) return rewriteFirst(userId, w, c, clip, rw, in.fingerprint(), requestId, pipeline, billing, maxCost);
             if (sent.length() > DirectorH3Rewrite.MAX_PROMPT_CHARS)
                 throw invalid("台词加起来太长，发给视频模型的提示词超过 " + DirectorH3Rewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段");
         }
@@ -975,17 +975,21 @@ public class DirectorService {
         for (JsonNode a : speakers(c, clip)) if (a.path("voice").path("key").isTextual())
             refs.add("<Audio " + (++audios) + ">: voice sample of 「" + a.path("name").asText() + "」; use only its timbre and delivery.");
         DirectorH3Rewrite.Source src = DirectorH3Rewrite.source(clip.path("videoPrompt").asText(), known);
-        int planned = 0;
-        for (JsonNode s : clip.path("shots")) planned += s.path("dialogue").size();
+        List<String> planned = new ArrayList<>();
+        for (JsonNode s : clip.path("shots")) for (JsonNode l : s.path("dialogue")) planned.add(l.path("text").asText());
         // 台词由代码按原文填回去：认不全就宁可不改写，免得模型把漏认的台词翻成英文念出来。
-        if (src.lines().size() < planned) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_VIDEO_PROMPT_LINES",
-                "视频提示词里认不全台词（应有 " + planned + " 句）。请把台词写成「某某说：「台词」」，或恢复自动生成");
+        // 自动生成的提示词逐句核对原文（台词里的引号没配上会少认半句，句数还对得上）；用户改写过的只能核对句数。
+        boolean custom = clip.path("videoPromptCustom").asBoolean(false);
+        if (src.lines().size() < planned.size() || !custom && !src.lines().stream().map(DirectorH3Rewrite.Line::text).toList().equals(planned))
+            throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_VIDEO_PROMPT_LINES",
+                    "视频提示词里认不全台词（应有 " + planned.size() + " 句）。请把台词写成「某某说：「台词」」，台词里的引号要成对，或恢复自动生成");
         List<Double> starts = new ArrayList<>();
         double t = 0;
         for (int i = 0; i < shots; i++) { starts.add(t); t += clip.path("shots").get(i).path("durationSec").asDouble(); }
         String user = DirectorH3Rewrite.user((int) Math.round(clip.path("durationSec").asDouble()), shots, refs, src.text());
-        String h = hash(DirectorH3Rewrite.VERSION + "|" + user);
-        ObjectNode meta = DirectorH3Rewrite.meta(om, shots, starts, pictures, audios, c.path("settings").path("language").asText(null), src.lines())
+        // 镜头切换时间点拼在英文模板里（[Shot N] At MM:SS），不在用户消息里：要单独算进指纹，改了镜头时长就重新改写。
+        String h = hash(DirectorH3Rewrite.VERSION + "|" + starts + "|" + user);
+        ObjectNode meta = DirectorH3Rewrite.meta(om, shots, starts, pictures, audios, c.path("settings").path("language").asText(null), src.lines(), src.text())
                 .put("hash", h).put("targetId", clip.path("id").asText());
         return new Rewrite(DirectorH3Rewrite.system(), user, h, meta, src.lines(), meta.path("language").asText());
     }
@@ -1019,12 +1023,13 @@ public class DirectorService {
      * 还没有英文稿：先发改写任务，完成后由 {@link #chainVideo} 接着提交视频。
      * 用户确认的是视频价格（原样留给视频）；改写不报价，按文本模型自己的上限冻结、按实际用量结算，界面上提示会额外消耗少量积分。
      */
-    private String rewriteFirst(String userId, DirectorWork w, ObjectNode c, ObjectNode clip, Rewrite rw, String requestId,
+    private String rewriteFirst(String userId, DirectorWork w, ObjectNode c, ObjectNode clip, Rewrite rw, String fingerprint, String requestId,
                                 ObjectNode pipeline, BillingSelection billing, Long maxCost) {
         String clipId = clip.path("id").asText(), node = REWRITE_NODE + clipId;
         requireIdle(w, node);
         long price = rewritePrice(c);
-        ObjectNode then = rw.meta().putObject("then").put("requestId", requestId);
+        // fingerprint 是这次要付费提交的视频输入（中文提示词含台词、分镜图、参考图与声音的 key、时长、画幅、模型）：改写期间变了就不接着提交。
+        ObjectNode then = rw.meta().putObject("then").put("requestId", requestId).put("fingerprint", fingerprint);
         if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
         if (billing != null) then.set("billing", om.valueToTree(billing));
         if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
@@ -1054,7 +1059,11 @@ public class DirectorService {
         rw.meta().put("attempt", 2);
         ObjectNode pipeline = null;
         JsonNode p = c.path("pipeline");
-        if (then.hasNonNull("pipelineId") && p.isObject() && then.path("pipelineId").asText().equals(p.path("id").asText())) pipeline = (ObjectNode) p;
+        if (then.hasNonNull("pipelineId")) {
+            // 一键制作已暂停或停止：不再发新任务（重试也要冻结积分），按失败记下，恢复后可「重试失败项」。
+            if (!p.isObject() || !then.path("pipelineId").asText().equals(p.path("id").asText()) || !"running".equals(p.path("status").asText())) return false;
+            pipeline = (ObjectNode) p;
+        }
         BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
         String node = run.getNodeId(), requestId = then.path("requestId").asText(run.getClientRequestId()) + "-p2";
         try {
@@ -1077,25 +1086,39 @@ public class DirectorService {
      */
     private void chainVideo(DirectorWork w, ObjectNode c, ObjectNode clip, JsonNode then) {
         if (!then.isObject()) return;
-        String clipId = clip.path("id").asText();
+        String clipId = clip.path("id").asText(), node = "video:" + clipId;
         refresh(c);
-        Limits lim = limits(c);
-        try {
-            if (!h3(lim) || english(clip, rewrite(c, clip)) == null) {
-                setError(c, "video:" + clipId, "提示词在改写期间有改动，视频没有提交，请重新生成");
-                return;
-            }
-        } catch (BusinessException e) { setError(c, "video:" + clipId, e.getMessage()); return; }
         ObjectNode pipeline = null;
         if (then.hasNonNull("pipelineId")) {
             JsonNode p = c.path("pipeline");
             if (!p.isObject() || !then.path("pipelineId").asText().equals(p.path("id").asText()) || !"running".equals(p.path("status").asText())) return;
             pipeline = (ObjectNode) p;
         }
-        BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
         Long maxCost = then.hasNonNull("maxCost") ? then.path("maxCost").asLong() : null;
-        try { video(w.getOwnerUserId(), w, c, clip, then.path("requestId").asText(), pipeline, billing, maxCost); }
-        catch (BusinessException e) { setError(c, "video:" + clipId, e.getMessage()); }
+        String refused = null;
+        try {
+            VideoInput in = videoInput(c, clip);
+            if (!h3(in.lim()) || english(clip, rewrite(c, clip)) == null
+                    || then.hasNonNull("fingerprint") && !then.path("fingerprint").asText().equals(in.fingerprint()))
+                refused = "改写期间提示词、台词或参考素材有改动，视频没有提交，请重新生成";
+        } catch (BusinessException e) { refused = e.getMessage(); }
+        if (refused == null && pipeline != null) {
+            // 一键制作的总预算：改写按实际用量扣了之后，视频报价要还放得下；放不下就停在预算不足，提高预算后由推进重新报价提交。
+            long spent = pipelineSpent(pipeline), need = maxCost == null ? 0 : maxCost;
+            if (spent + need > pipeline.path("budget").asLong()) {
+                pipeline.put("status", "waiting").put("stage", "budget").put("message",
+                        "预算不足：已用 " + spent + " 积分，下一步约需 " + need + " 积分。提高预算后可继续");
+                return;
+            }
+        }
+        if (refused == null) {
+            BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
+            try { video(w.getOwnerUserId(), w, c, clip, then.path("requestId").asText(), pipeline, billing, maxCost); return; }
+            catch (BusinessException e) { refused = e.getMessage(); }
+        }
+        setError(c, node, refused);
+        // 记成失败项：否则同一轮推进会当它还没做，换个请求号重新报价提交（价格涨了就绕过了用户确认的价格）。
+        if (pipeline != null) pipeline.withArray("failed").add(node);
     }
 
     /** 查询在跑的片段视频任务，完成的放进候选（输入没变才自动填采用位），失败的写清原因。返回是否有变化。 */
@@ -1238,6 +1261,11 @@ public class DirectorService {
             ((ArrayNode) c.path("applied")).add(run.getId());
             changed = true;
         }
+        // 回投时接着发出的任务（改写重试、改写后的视频）不在上面读到的列表里：taskMeta 里有、列表里没有的就是刚发出的。
+        // 不算上它，作品会被标成不活跃，关掉页面后后台不再推进，改写完成也没人接着提交视频。
+        Set<String> listed = new HashSet<>();
+        mine.forEach(r -> listed.add(r.getId()));
+        for (Iterator<String> it = c.path("taskMeta").fieldNames(); it.hasNext(); ) if (!listed.contains(it.next())) running = true;
         boolean[] videoRunning = {false};
         if (pollVideos(w, c, videoRunning)) changed = true;
         running |= videoRunning[0];
@@ -1631,19 +1659,15 @@ public class DirectorService {
         if (!"running".equals(p.path("status").asText())) return;
         refresh(c);
         Set<String> failed = ids(p.path("failed"));
-        long spent = 0;
+        long spent = pipelineSpent(p);
         int inflight = 0;
         Set<String> busy = new HashSet<>();
         for (JsonNode r : p.path("runIds")) {
             IpRun run = runs.findById(r.asText()).orElse(null);
-            if (run == null) continue;
-            spent += run.getCost();
-            if (IpRun.STATUS_RUNNING.equals(run.getStatus())) {
-                inflight++; busy.add(run.getNodeId());
-                if (run.getNodeId().startsWith(REWRITE_NODE)) busy.add("video:" + run.getNodeId().substring(REWRITE_NODE.length()));
-            }
+            if (run == null || !IpRun.STATUS_RUNNING.equals(run.getStatus())) continue;
+            inflight++; busy.add(run.getNodeId());
+            if (run.getNodeId().startsWith(REWRITE_NODE)) busy.add("video:" + run.getNodeId().substring(REWRITE_NODE.length()));
         }
-        for (JsonNode vj : p.path("videoJobs")) spent += vj.path("estimate").asLong();
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
             for (JsonNode vj : p.path("videoJobs")) if (vj.path("jobId").asText().equals(pend.path("jobId").asText())) {
                 inflight++; busy.add("video:" + clip.path("id").asText());
@@ -1853,6 +1877,30 @@ public class DirectorService {
         }
     }
 
+    /**
+     * 一键制作已用的积分（含在途占用）：文字 / 出图任务的花费、在跑改写之后要提交的视频报价、已提交视频的报价。
+     * 改写的那份视频预算从发出改写起就算占用，免得改写期间又发出别的视频、合起来超预算。
+     */
+    private long pipelineSpent(JsonNode p) {
+        long spent = 0;
+        for (JsonNode r : p.path("runIds")) {
+            IpRun run = runs.findById(r.asText()).orElse(null);
+            if (run == null) continue;
+            spent += run.getCost();
+            if (IpRun.STATUS_RUNNING.equals(run.getStatus()) && run.getNodeId().startsWith(REWRITE_NODE))
+                spent += parse(run.getInputJson()).path("_director").path("then").path("maxCost").asLong(0);
+        }
+        for (JsonNode vj : p.path("videoJobs")) spent += vj.path("estimate").asLong();
+        return spent;
+    }
+
+    /** 片段视频提交前要先改写的，返回改写的冻结上限（一键制作按它预留预算）；不用改写返回 0。 */
+    private long rewriteReserve(ObjectNode c, JsonNode clip) {
+        if (clip == null || !h3(limits(c))) return 0;
+        try { return english(clip, rewrite(c, clip)) == null ? rewritePrice(c) : 0; }
+        catch (BusinessException e) { return 0; }
+    }
+
     /** 一次推进里的发任务助手：控制在途数量与预算。返回 false 表示这一轮不能再发了。 */
     private final class Step {
         final String userId; final DirectorWork w; final ObjectNode c, p; long committed; int inflight; final Set<String> busy;
@@ -1870,11 +1918,13 @@ public class DirectorService {
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
                     : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : directorTextPrice(c, type, prices[0]);
+            // H3 视频先改写提示词：改写不进视频报价，但要占一键制作的预算。
+            long reserve = "video".equals(type) ? rewriteReserve(c, findOrNull(c, "clips", target)) : 0;
             p.put("stage", stage).put("message", stage);
             if (inflight >= PIPELINE_INFLIGHT) return false;
-            if (committed + estimate > p.path("budget").asLong()) {
+            if (committed + estimate + reserve > p.path("budget").asLong()) {
                 p.put("status", "waiting").put("stage", "budget").put("message",
-                        "预算不足：已用 " + committed + " 积分，下一步约需 " + estimate + " 积分。提高预算后可继续");
+                        "预算不足：已用 " + committed + " 积分，下一步约需 " + (estimate + reserve) + " 积分。提高预算后可继续");
                 return false;
             }
             // 序号要数上已发出的所有任务：真实视频只记在 videoJobs、不进 runIds，漏数它会让重试沿用旧编号、被回放成上次失败的任务。
@@ -1882,7 +1932,7 @@ public class DirectorService {
             String requestId = p.path("id").asText() + "-" + node.replace(':', '-') + "-"
                     + (p.path("runIds").size() + p.path("videoJobs").size() + 1);
             dispatch(userId, w, c, type, target, requestId, om.createObjectNode(), p, billing, estimate);
-            committed += estimate; inflight++; busy.add(node);
+            committed += estimate + reserve; inflight++; busy.add(node);
             return inflight < PIPELINE_INFLIGHT;
         }
     }
