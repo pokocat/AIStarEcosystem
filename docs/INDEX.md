@@ -266,7 +266,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
 - [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
-- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，H3 继续默认（2026-10-26）。
+- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
 - [创作输入框修复](releases/studio-prompt-ime-release-20261017.md)：中文输入法组词时占位提示重叠；已发布 dd228379（2026-10-17）。
