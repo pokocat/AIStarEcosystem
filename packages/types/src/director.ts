@@ -211,11 +211,26 @@ export interface DirectorTask {
   createdAt: string | null;
 }
 
+/** 可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16 三种比例。 */
 export interface DirectorImageModel {
   id: string;
   name: string;
   isDefault: boolean;
   creditCost: number;
+}
+
+/** 作品实际会用的图片模型（设置里存的，没存就是默认）的状况。存着的旧选择可能不在可选列表里。 */
+export interface DirectorImageModelState {
+  /** 实际会用的接入点；跟默认走且默认不可用时为 null。 */
+  id: string | null;
+  name: string | null;
+  /** 作品设置里显式选过，不是跟默认走。 */
+  explicit: boolean;
+  /** false：停用了或不再开放，出图会报错，要换一个。 */
+  available: boolean;
+  creditCost: number | null;
+  /** 出图规格里缺的比例（"1:1" / "16:9" / "9:16"），对应的那类画面出不了。 */
+  missingRatios: string[];
 }
 
 export interface DirectorVideoModel {
@@ -310,6 +325,7 @@ export interface DirectorWork {
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
   imageModels?: DirectorImageModel[];
+  imageModelState?: DirectorImageModelState;
   videoModels: DirectorVideoModel[];
   videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number } | null;
 }

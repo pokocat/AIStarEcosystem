@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { Check, Loader2, Maximize2, Sparkles, X } from "lucide-react";
-import { createPortal } from "react-dom";
+import { Check, Loader2, Maximize2, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
+import { Image } from "antd";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError } from "../studio-errors";
@@ -158,26 +158,48 @@ export function dialogFocus(el: HTMLElement | null) {
   return () => { el.removeEventListener("keydown", onKey); if (previous && document.contains(previous)) previous.focus({ preventScroll: true }); };
 }
 
+/** 大图最多放大到「适应窗口」的 6 倍：参考图、分镜宫格约 2K，再大只是糊的像素。 */
+export const PREVIEW_MAX_SCALE = 6;
+
 /**
- * 点图放大：全屏查看原图，点任意处或按 Esc 关闭。Esc 在捕获阶段截下，只关大图，不连带关掉外面的抽屉或弹窗。
+ * 点图放大。大图用 antd 的图片预览（画布那边也是它）：滚轮、触控板、双指都能缩放，放大后拖动看各处，
+ * 松手时图会弹回窗口里，拖不丢；双击在放大和适应窗口之间切换，底部有缩小、放大和「适应窗口」，右上角关闭，点图外的暗处也关闭。
+ * - Esc 在捕获阶段截下，只关大图，不连带关掉外面的抽屉或弹窗（它们也在 window 上听 Esc）。
+ * - 触控板捏合是带 ctrlKey 的滚轮，React 的 onWheel 是被动监听拦不住，不在这里拦就会连整页一起缩放。
+ * - 打开时把地址记下：页面轮询会换签名地址，大图不该因此重新加载。每次打开都从适应窗口开始。
  */
 export function ZoomableImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
   const [open, setOpen] = useState(false);
+  const [shown, setShown] = useState(src);
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopImmediatePropagation(); e.preventDefault(); setOpen(false); } };
+    const onWheel = (e: WheelEvent) => { if (e.ctrlKey && e.target instanceof Element && e.target.closest(".director-image-preview")) e.preventDefault(); };
     window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
+    window.addEventListener("wheel", onWheel, { capture: true, passive: false });
+    return () => { window.removeEventListener("keydown", onKey, true); window.removeEventListener("wheel", onWheel, true); };
   }, [open]);
   return <>
-    <button type="button" className={`director-zoom-trigger ${className ?? ""}`} onClick={() => setOpen(true)} aria-label={`放大查看${alt}`} title="点击放大">
+    <button type="button" className={`director-zoom-trigger ${className ?? ""}`} onClick={() => { setShown(src); setOpen(true); }} aria-label={`放大查看${alt}`} title="点击放大">
       <img src={src} alt={alt}/><span className="director-zoom-hint" aria-hidden><Maximize2 size={14}/>放大</span>
     </button>
-    {open && createPortal(<div className="director-lightbox" role="dialog" aria-modal="true" aria-label={`${alt}大图`} onClick={() => setOpen(false)}>
-      <img src={src} alt={alt}/>
-      <button type="button" className="director-lightbox-close" aria-label="关闭大图" autoFocus onClick={() => setOpen(false)}><X size={20}/></button>
-    </div>, document.body)}
+    <Image.PreviewGroup items={[{ src: shown, alt }]} classNames={{ popup: { root: "director-image-preview" } }}
+      preview={{
+        open, onOpenChange: next => setOpen(next), zIndex: 1100, minScale: 1, maxScale: PREVIEW_MAX_SCALE,
+        closeIcon: <><X size={20} aria-hidden/><span className="director-visually-hidden">关闭大图</span></>,
+        actionsRender: (_, { transform, actions }) => <PreviewTools transform={transform} actions={actions}/>,
+      }}/>
   </>;
+}
+
+function PreviewTools({ transform, actions }: { transform: { scale: number; x: number; y: number }; actions: { onZoomIn: () => void; onZoomOut: () => void; onReset: () => void } }) {
+  const fitted = transform.scale === 1 && transform.x === 0 && transform.y === 0;
+  return <div className="director-preview-tools" role="toolbar" aria-label="缩放">
+    <button type="button" aria-label="缩小" title="缩小" disabled={transform.scale <= 1} onClick={actions.onZoomOut}><ZoomOut size={18}/></button>
+    <span className="director-preview-scale" aria-label="当前缩放">{Math.round(transform.scale * 100)}%</span>
+    <button type="button" aria-label="放大" title="放大" disabled={transform.scale >= PREVIEW_MAX_SCALE} onClick={actions.onZoomIn}><ZoomIn size={18}/></button>
+    <button type="button" className="is-text" title="回到整张图" disabled={fitted} onClick={actions.onReset}>适应窗口</button>
+  </div>;
 }
 
 /** 右侧抽屉：就地查看详情，不离开当前页；点遮罩或 Esc 关闭。 */
