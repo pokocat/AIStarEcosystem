@@ -8,5 +8,6 @@ packages:
   - "apps/web-star"
   - "apps/admin"
 patchedDependencies:
+  '@rc-component/image@1.10.0': patches/@rc-component__image@1.10.0.patch
   '@twick/media-utils@0.15.31': patches/@twick__media-utils@0.15.31.patch
   '@twick/timeline@0.15.31': patches/@twick__timeline@0.15.31.patch

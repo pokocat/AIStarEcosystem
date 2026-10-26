@@ -20,10 +20,46 @@ test('the chosen image model is saved and its own price is shown before saving',
   await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:'other'}}));
   expect(close).toHaveBeenCalledTimes(1);
 });
-test('an unavailable saved choice is visible and must be replaced explicitly', async () => {
+test('a retired saved choice stays visible, other settings still save, and the retired value is not resubmitted', async () => {
+  const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
+  const retired={...work,settings:{...work.settings,imageModel:'retired'},
+    imageModelState:{id:'retired',name:null,explicit:true,available:false,creditCost:null,missingRatios:[]}};
+  render(<SettingsPanel work={retired} apply={apply} onClose={close} setError={vi.fn()}/>);
+  expect(screen.getByText(/原图片模型已停用，资产参考图和分镜图暂时生成不了/)).toBeTruthy();
+  const save=screen.getByRole('button',{name:'保存'}) as HTMLButtonElement;
+  expect(save.disabled).toBe(false);
+  fireEvent.change(screen.getByDisplayValue('真人写实'),{target:{value:'国风水墨'}});
+  fireEvent.click(save);
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'国风水墨',aspectRatio:'9:16',videoModel:null}}));
+  expect(close).toHaveBeenCalledTimes(1);
+});
+test('replacing a retired saved choice sends the new model explicitly', async () => {
+  api.patchWork.mockResolvedValue(work);
   render(<SettingsPanel work={{...work,settings:{...work.settings,imageModel:'retired'}}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
-  expect(screen.getByText('原图片模型暂不可用，请选择其他模型后保存。')).toBeTruthy();
-  expect((screen.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(true);
   choose('');
-  expect((screen.getByRole('button',{name:'保存'}) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,imageModel:null}}));
+});
+test('a saved model that cannot make square images names the asset class it blocks and keeps its own price', async () => {
+  const apply=vi.fn(),close=vi.fn();api.patchWork.mockResolvedValue(work);
+  const limited={...work,settings:{...work.settings,imageModel:'gpt-4k'},pricing:{mock:false,image:55},
+    imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:true,available:true,creditCost:55,missingRatios:['1:1']}};
+  render(<SettingsPanel work={limited} apply={apply} onClose={close} setError={vi.fn()}/>);
+  expect(screen.getByRole('combobox',{name:'图片模型'}).textContent).toContain('GPT Image 2 4K（原选择）');
+  const note=screen.getByText(/原图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了；其他画面照常，约 55 积分\/张。/);
+  expect(note.textContent).not.toMatch(/画幅/);
+  fireEvent.click(screen.getByRole('button',{name:'1:1'}));
+  expect(screen.getByText(/道具、分镜的图生成不了/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'16:9'}));
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));
+});
+test('a default model that cannot make square images is explained instead of reporting no model at all', () => {
+  const limitedDefault={...work,imageModels:[{id:'other',name:'另一模型',isDefault:false,creditCost:37}],
+    imageModelState:{id:'gpt-4k',name:'GPT Image 2 4K',explicit:false,available:true,creditCost:55,missingRatios:['1:1']}};
+  render(<SettingsPanel work={limitedDefault} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText(/默认图片模型「GPT Image 2 4K」不能出方图，道具的图生成不了/)).toBeTruthy();
+  expect(screen.queryByText('暂无可用图片模型，请联系管理员开通。')).toBeNull();
+  choose('other');
+  expect(screen.getByText(/用于资产参考图和分镜图，约 37 积分\/张。/)).toBeTruthy();
 });

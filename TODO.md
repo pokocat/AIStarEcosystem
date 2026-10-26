@@ -9,6 +9,7 @@
 - [x] ~~全仓输入与选择控件重复聚焦框检查~~ **2026-10-17 已生产发布（81778bef）**：检查所有前端应用与共享表单；修复 AiAvatar 各外壳下的 Ant/Radix 内层轮廓、原生字段与画布组合字段焦点归属，74 项组件聚焦回归与真实页面验证见 `docs/form-control-focus-audit.md`。
 - [x] ~~项目、IP 与发行筛选的原生菜单风格割裂~~ **2026-10-17 已生产发布（81778bef）**：八处共用 `StudioSelect`，菜单在字段下方展开；21 项测试、类型检查及桌面/375px 手机浏览器验证见同一检查记录。
 - [ ] **后台模型审计页原生选择框回归**（2026-10-22 发现）：`apps/admin/src/app/ai/audit/page.tsx` 使用原生 `<select>`，使 `apps/web-aiavatar/src/ip/select-field-wiring.test.ts` 的全仓控件守门失败；未修改 main `57be2582` 已复现。需改用共享选择控件并验证后台筛选。本次图片受理未知修复不修改或部署 admin。
+- [ ] **web-aiavatar 两条前端测试在 main 上就红**（2026-10-26 发现，`651bf19f` 干净工作区复现，与导演台图片模型修复无关）：`src/ip/studio-template-source.test.tsx`「an uncertain submit retains its request id for a recovery click」找不到「网络暂不可用」；`src/ip/personal-asset-library.test.tsx`「successful list loading does not clear a folder failure or mislabel a known folder id」找不到 role=alert。本机 Node 25.9，加 `--no-experimental-webstorage` 或 `TZ=UTC` 仍红，不是 localStorage 空壳那一类；需对照 CI（Node 22）结果后改测试或改实现。
 
 - [x] ~~七项导航、独立项目、场景工坊、IP 并入资产与灵感整理~~ **2026-10-17 已生产发布（81778bef）**：原画布路径保留，剧情带货/爆款复刻引用普通模板，IP完整详情、旧入口参数兼容；验收见 `docs/releases/studio-workspace-refactor-validation.md`。
 - [x] ~~发行复用存量账号与发布记录~~ **2026-10-17 已生产发布（81778bef）**：`StudioDistribution` 读本人账号/批次/任务，接原扫码绑定、验证与解绑；仅精确共享账号域和发布 GET 路由，未进行真实平台扫码发布。
@@ -94,6 +95,13 @@
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
+- [x] **导演台图片模型出不了方图，道具整批失败**（2026-10-26 线上，本地修复未发布，分支 `codex/director-image-ratio-capability`）：作品存了只有 16:9 / 9:16 的 4K 接入点，三个道具在冻结前被拒，报错让用户改道具不读的作品画幅。现在只开放出图规格有 1:1、16:9、9:16 的接入点；存着的旧选择照存、照原价出能出的画面；报错按资产类型说该换模型还是画幅；设置页按 `imageModelState` 说明。测试：`DirectorImageModelTest`、`director-settings.test.tsx`、`director-assets-batch.test.tsx`。生产当时已按用户要求把该作品改回标准接入点，现无作品存 4K。
+- [ ] **导演台开放 4K（系列 + 清晰度）**（2026-10-26 评审定为下一阶段，未做）：作品存「系列 + 标准 / 4K」，按资产类型定比例、接入点与价格，价格按类型下发；自动档不升 4K。待用户决定：4K 作品里出不了 4K 的道具方图是拒绝还是明示改用标准档。竖屏 4K 尚无生产成功样本，4K 方图没有渠道规格。
+- [x] **导演台大图不能缩放和拖动**（2026-10-26 用户反馈，本地修复未发布，分支 `codex/director-image-ratio-capability`）：改用 antd 图片预览，与画布共用，并给 `@rc-component/image` 1.10.0 打了不弹回的补丁；无头 Chrome 桌面与触屏走查 27 项通过。测试：`director-zoomable-image.test.tsx`。
+- [ ] **iOS Safari / 安卓真机的手势未验**（2026-10-26）：双指缩放和单指拖动只用 CDP 合成的多点触摸验证过；上线前用真机各走一次「打开大图→双指放大→拖到边角→捏回→关闭」。
+- [ ] **大图点「缩小」后可能留空边**（2026-10-26，antd 行为）：缩小不做边界弹回，图仍在视野里，下次拖动就收回。如果用户在意，再补「缩小后弹回」。
+- [ ] **一键制作预算估算对缺比例的旧选择多估**（2026-10-26 发现）：`DirectorService.estimate` 按张数 × 单价，作品存着出不了方图的旧选择时，道具也算进去，实际提交会在冻结前被拒。只多估不少估，当前无存量作品受影响；开放 4K 时随按类型定价一起改。
+- [ ] **GPT Image 2 4K 两条受理未知**（2026-10-26 生产只读核对发现，与方图故障无关）：两条 `STUDIO_IMAGE_SUBMISSION_UNKNOWN`、cost=0，按现有规则保留待核对、不占执行名额、不自动重发；本轮未重试。需单独按原任务查供应商回执；来源是画布还是导演台未核实。
 
 ### 2026-10-22 · 分镜编辑改造（方案已整理，功能未实现）
 

@@ -218,8 +218,9 @@ public class DirectorService {
             }
             if (in.has("imageModel")) {
                 String model = in.path("imageModel").asText(null);
-                if (model != null && imageSelections().stream().noneMatch(v -> v.resolved().endpoint().getId().equals(model)))
-                    throw invalid("该图片模型暂不可用，请选择其他模型");
+                // 原值照存：旧客户端每次保存都会带上它，改别的设置不该因此失败。照存不等于重新授权，
+                // 生成时照常按 imageSelection 解析，停用了照样报错。
+                if (model != null && !model.equals(s.path("imageModel").asText(null))) requireSelectableImageModel(model);
                 if (model == null) s.putNull("imageModel"); else s.put("imageModel", model);
             }
             if (in.has("videoModel")) {
@@ -1780,22 +1781,99 @@ public class DirectorService {
         return null;
     }
 
-    private List<com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection> imageSelections() {
-        return scenePolicies.available("studio", "image", textRuns.directorPrices()[1]);
+    /**
+     * 导演台要出的画面比例：道具 1:1，角色、场景 16:9，分镜跟作品画幅走（9:16 / 16:9 / 1:1）。
+     * 一部作品只选一个图片模型，它得三种都能出，否则总有一类画面出不了（2026-10-26 线上：作品选了
+     * 只有横竖两种尺寸的 4K 接入点，三个道具全部失败）。
+     */
+    static final List<String> IMAGE_RATIOS = List.of("1:1", "16:9", "9:16");
+
+    /**
+     * 出图规格里缺的比例。没有出图规格的模型照旧用默认尺寸（{@link #sizeFor}），不按规格判断，返回空；
+     * 规格读不出来就当三种都缺，不开放新选择。
+     */
+    static List<String> missingRatios(com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        com.aistareco.aep.model.AiImageRequestSpec spec;
+        try { spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson()); }
+        catch (BusinessException e) { return IMAGE_RATIOS; }
+        if (spec == null) return List.of();
+        List<String> have = spec.ratios();
+        return IMAGE_RATIOS.stream().filter(r -> !have.contains(r)).toList();
     }
 
+    /** 新选择只能从这里选：场景开放、可用，出图规格覆盖三种比例。 */
+    private List<com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection> imageSelections() {
+        return scenePolicies.available("studio", "image", textRuns.directorPrices()[1]).stream()
+                .filter(s -> missingRatios(s.resolved().endpoint()).isEmpty()).toList();
+    }
+
+    private void requireSelectableImageModel(String id) {
+        var found = scenePolicies.available("studio", "image", textRuns.directorPrices()[1]).stream()
+                .filter(s -> s.resolved().endpoint().getId().equals(id)).findFirst()
+                .orElseThrow(() -> invalid("该图片模型暂不可用，请选择其他模型"));
+        List<String> missing = missingRatios(found.resolved().endpoint());
+        if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_IMAGE_MODEL_UNSUPPORTED",
+                "「" + found.resolved().endpoint().publicModelName() + "」不能出 " + ratioNames(missing)
+                        + "，导演台的道具、角色场景和分镜要用方图、横图和竖图。请选择其他图片模型",
+                Map.of("missingRatios", missing));
+    }
+
+    /**
+     * 作品实际会用的图片模型：设置里存着的（不在可选列表里也照用、照原价），没存就用默认。
+     * 停用了或不再开放就明确报错，不换成别的模型。
+     */
     com.aistareco.aep.service.AiAppSceneModelPolicyService.Selection imageSelection(ObjectNode c) {
-        return scenePolicies.resolve("studio", "image", c.path("settings").path("imageModel").asText(null), textRuns.directorPrices()[1]);
+        String chosen = c.path("settings").path("imageModel").asText(null);
+        try {
+            return scenePolicies.resolve("studio", "image", chosen, textRuns.directorPrices()[1]);
+        } catch (BusinessException e) {
+            if (!"ENDPOINT_NOT_ALLOWED".equals(e.getCode())) throw e;
+            throw new BusinessException(e.getStatus(), e.getCode(), chosen == null
+                    ? "默认图片模型暂不可用，请在作品设置里选择其他图片模型，或联系管理员"
+                    : "作品设置里选的图片模型已停用或不再开放，请在作品设置里换一个图片模型", e.getDetails(), e.getMessage());
+        }
     }
 
     long[] directorPrices(ObjectNode c) {
         long[] prices = textRuns.directorPrices().clone();
         if (!fixtures.enabled()) {
-            String chosen = c.path("settings").path("imageModel").asText(null);
-            imageSelections().stream().filter(s -> chosen == null ? s.resolved().isDefault() : chosen.equals(s.resolved().endpoint().getId()))
-                    .findFirst().ifPresent(s -> prices[1] = s.creditCost());
+            // 和真正提交用同一个解析：存着的旧选择不在可选列表里也照原价，提交时的 maxCost 才对得上。
+            // 停用了就留默认价，提交会明确报错，页面看 imageModelState。
+            try {
+                var selection = imageSelection(c);
+                if (selection != null) prices[1] = selection.creditCost();
+            } catch (BusinessException ignored) { }
         }
         return prices;
+    }
+
+    /**
+     * 作品实际会用的图片模型的状况，设置页据此说明：available=false 是停用了或不再开放，生成会报错；
+     * missingRatios 不为空是还能用，但对应的那几类画面出不了。
+     */
+    private ObjectNode imageModelState(ObjectNode c) {
+        String chosen = c.path("settings").path("imageModel").asText(null);
+        ObjectNode s = om.createObjectNode().put("id", chosen).put("explicit", chosen != null);
+        s.putNull("name").putNull("creditCost").put("available", true).putArray("missingRatios");
+        if (fixtures.enabled()) return s;
+        try {
+            var selection = imageSelection(c);
+            if (selection == null) return s;
+            var endpoint = selection.resolved().endpoint();
+            s.put("id", endpoint.getId()).put("name", endpoint.publicModelName()).put("creditCost", selection.creditCost());
+            s.set("missingRatios", om.valueToTree(missingRatios(endpoint)));
+        } catch (BusinessException e) {
+            s.put("available", false);
+        }
+        return s;
+    }
+
+    private static String ratioNames(List<String> ratios) {
+        return String.join("、", ratios.stream().map(DirectorService::ratioName).toList());
+    }
+
+    private static String ratioName(String ratio) {
+        return switch (ratio) { case "1:1" -> "1:1 方图"; case "16:9" -> "16:9 横图"; case "9:16" -> "9:16 竖图"; default -> ratio + " 画面"; };
     }
 
     private long directorTextPrice(String type, long fallback) {
@@ -1846,6 +1924,7 @@ public class DirectorService {
             imageModels.addObject().put("id", endpoint.getId()).put("name", endpoint.publicModelName())
                     .put("isDefault", selection.resolved().isDefault()).put("creditCost", selection.creditCost());
         }
+        v.set("imageModelState", imageModelState(c));
         ArrayNode models = v.putArray("videoModels");
         for (VideoChoice m : videoChoices())
             models.addObject().put("id", m.id()).put("name", m.name()).put("isDefault", m.isDefault()).put("minSec", m.min()).put("maxSec", m.max()).put("mode", m.mode());
@@ -2104,13 +2183,30 @@ public class DirectorService {
         var endpoint = imageSelection(c).resolved().endpoint();
         var spec = com.aistareco.aep.model.AiImageRequestSpec.read(endpoint.getImageRequestSpecJson());
         if (spec == null) return fallback;
-        // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊；按张计费，价格不变。
+        // 同一比例有几档时取最大的：设定集、宫格分镜图要放好几个分区，小图细节糊。只在这一个接入点的尺寸里挑，
+        // 按张计费，价格不变；不跨到同系列的别的接入点（4K 是另一个接入点、另一个价）。
         // 线上 GPT Image 2 的 1360x768 偶尔被厂商按 4:3 出图、被尺寸校验拦下，2048x1152 一周内没有出过错（2026-10-25 日志）。
         return spec.outputs().stream().filter(o -> ratio.equals(o.aspectRatio()))
                 .map(com.aistareco.aep.model.AiImageRequestSpec.Output::canvasSize)
                 .max(Comparator.comparingLong(DirectorService::pixels))
-                .orElseThrow(() -> new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED",
-                        "当前图片模型不支持 " + ratio + " 画幅，请在作品设置里换一个画幅，或联系管理员更换图片模型"));
+                .orElseThrow(() -> sizeUnsupported(c, kind, ratio, endpoint));
+    }
+
+    /**
+     * 当前图片模型出不了这一类画面。道具、角色、场景的比例是固定的，改作品画幅没用，只能换模型；
+     * 分镜跟作品画幅走，两样都能改。在建任务、冻结积分之前抛。
+     */
+    private static BusinessException sizeUnsupported(ObjectNode c, String kind, String ratio, com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        String model = (c.path("settings").hasNonNull("imageModel") ? "作品设置里选的图片模型「" : "默认图片模型「")
+                + endpoint.publicModelName() + "」不能出 " + ratioName(ratio) + "，";
+        String message = switch (kind) {
+            case "prop" -> model + "道具参考图要用方图。请在作品设置里换一个能出方图的图片模型";
+            case "character" -> model + "角色参考图要用横图。请在作品设置里换一个能出横图的图片模型";
+            case "scene" -> model + "场景参考图要用横图。请在作品设置里换一个能出横图的图片模型";
+            default -> model + "分镜图跟作品画幅走。请在作品设置里换一个画幅，或换一个图片模型";
+        };
+        return new BusinessException(HttpStatus.BAD_REQUEST, "STUDIO_IMAGE_SIZE_UNSUPPORTED", message,
+                Map.of("kind", kind, "aspectRatio", ratio, "missingRatios", missingRatios(endpoint)));
     }
 
     // ── 内容小工具 ───────────────────────────────────────────────────────────
