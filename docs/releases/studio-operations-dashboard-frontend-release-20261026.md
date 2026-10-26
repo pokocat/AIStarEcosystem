@@ -41,6 +41,7 @@
 - `aistareco-studio-admin`：active，`NRestarts=0`。
 - 后续发布完成后 `aistareco-server` PID `2956819`、`NRestarts=0`，线上 JAR SHA-256 `8c0e6198fd1ac096c42ee708d560df436be7a874ae25ccb2cd265214d81af3b4`。
 - 后续发布前后 Studio 主前端均为 PID `2936908`、启动时间 `2026-10-26 18:36:19 CST`、`NRestarts=0`。
+- Flyway 报告 schema 版本 69 且无迁移可执行。共享 server 的既有 `SellingChannelMigrationSeeder` 在每次启动时会重新执行幂等 `issuer_tenant_id NULL` DDL；本次日志无新建默认渠道或历史批次回填记录。
 - 公网 `/api/config` 为 200；匿名 `/api/admin/studio-operations` 与 `/credit-events` 均为 401。
 - 仓库标准 `infra/scripts/verify.sh` 验收 ALL GREEN，包括全部现有 systemd 单元、Nginx、MySQL、辅助服务及 Studio 公网入口。
 
