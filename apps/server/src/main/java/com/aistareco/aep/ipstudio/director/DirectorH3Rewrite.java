@@ -65,7 +65,8 @@ final class DirectorH3Rewrite {
             - Spoken lines appear in the request as {{L1}}, {{L2}}, ... Put each one exactly once, in the shot where it is spoken, right after the words that introduce the speaker and how they speak, for example: <Subject 2>, the older guard, says in a rough, low voice: {{L1}}
               For a line spoken off screen, write: says in an off-screen voiceover: {{L2}} while the on-screen character's lips remain closed.
               Do not write the words of a line, quotation marks around it, <d> tags, or speaker IDs such as (S1); the system inserts them.
-            - Write no Chinese characters anywhere. Write character names in pinyin. Visible on-screen text, if any, goes in English double quotation marks in its original language.
+            - Apart from visible on-screen text, write no Chinese characters: write character names in pinyin. Visible on-screen text (a sign, a screen, a document) is the only exception: it goes in English double quotation marks in its original language, exactly as the guide says.
+            - Output the JSON object directly. Do not write your reasoning, notes or any text before or after it.
             - non_diegetic_music: "N/A" unless the request asks for music.
             """;
 
@@ -134,14 +135,16 @@ final class DirectorH3Rewrite {
      * 骨架把 shot_1…shot_N 的键都列出来：2026-10-26 真模型试跑，让模型自己往数组里写镜头，3 段里 2 段只写了第 1 镜就收尾。
      */
     static String user(int seconds, int shots, List<String> references, String source) {
-        StringBuilder perShot = new StringBuilder(), skeleton = new StringBuilder("{\"subject_definitions\":\"\",\"summary\":\"\",\"retention_analysis\":\"\",\"style\":\"\"");
+        // 环境声、配乐排在镜头前：2026-10-26 线上 21 段评测，排在后面时 4 镜的片段 7/36 次写完 shot_4 就收尾、漏了这两项。
+        StringBuilder perShot = new StringBuilder(), skeleton = new StringBuilder("{\"subject_definitions\":\"\",\"summary\":\"\",\"retention_analysis\":\"\",\"style\":\"\","
+                + "\"overall_soundscape\":\"\",\"non_diegetic_music\":\"\"");
         Map<Integer, List<String>> byShot = linesByShot(source);
         for (int i = 1; i <= shots; i++) {
             List<String> ids = byShot.getOrDefault(i, List.of());
             perShot.append("Shot ").append(i).append(": ").append(ids.isEmpty() ? "no spoken lines" : String.join(", ", ids)).append('\n');
             skeleton.append(",\"shot_").append(i).append("\":\"\"");
         }
-        skeleton.append(",\"overall_soundscape\":\"\",\"non_diegetic_music\":\"\"}");
+        skeleton.append('}');
         return """
                 Rewrite the following request into the H3 full-reference (Ref2VA) format, following the guide and the output contract.
 
@@ -152,7 +155,7 @@ final class DirectorH3Rewrite {
 
                 The reference images are authoritative for appearance; use the written notes only where they agree with the images.
 
-                Request (Chinese, written by our storyboard step; 参考图N means <Picture N>, 音频N means <Audio N>):
+                Request (Chinese, written by our storyboard step; %s):
                 <<<
                 %s
                 >>>
@@ -161,7 +164,11 @@ final class DirectorH3Rewrite {
                 %s
                 Fill in this JSON skeleton and return it (all %d shot keys):
                 %s
-                """.formatted(seconds, shots, shots == 1 ? "" : "s", String.join("\n", references), source.strip(), perShot, shots, skeleton);
+                """.formatted(seconds, shots, shots == 1 ? "" : "s", String.join("\n", references),
+                // 没有音频参考就别提「音频N」：2026-10-26 线上评测里模型据此编出一个 <Audio 1> 给画外音用。
+                references.stream().anyMatch(r -> r.startsWith("<Audio ")) ? "参考图N means <Picture N>, 音频N means <Audio N>"
+                        : "参考图N means <Picture N>; no reference audio is attached, so use no <Audio N> label",
+                source.strip(), perShot, shots, skeleton);
     }
 
     /** 中文原文里每一镜（「第N镜（」开头的一段）有哪几个台词占位；不按这个格式写的原文返回空。 */
@@ -202,9 +209,13 @@ final class DirectorH3Rewrite {
 
     static JsonNode validate(ObjectMapper om, JsonNode meta, JsonNode out) {
         int shots = meta.path("shots").asInt();
-        String defs = withoutIds(required(out, "subject_definitions")), summary = withoutIds(required(out, "summary")),
-                retention = withoutIds(required(out, "retention_analysis")), sound = withoutIds(required(out, "overall_soundscape"));
-        String style = withoutIds(text(out, "style")), music = withoutIds(text(out, "non_diegetic_music"));
+        int[] strayHan = {0};
+        String defs = clean(required(out, "subject_definitions"), strayHan), summary = clean(required(out, "summary"), strayHan),
+                retention = clean(required(out, "retention_analysis"), strayHan);
+        String style = clean(text(out, "style"), strayHan), sound = clean(text(out, "overall_soundscape"), strayHan),
+                music = clean(text(out, "non_diegetic_music"), strayHan);
+        // 漏写环境声不算错：用中性的一句补上，不让它编声音；配乐漏写就是没有。
+        if (sound.isEmpty()) sound = DEFAULT_SOUNDSCAPE;
         if (music.isEmpty()) music = "N/A";
         // 镜头按骨架的 shot_1…shot_N 读；模型改回数组也认，但数量必须对。
         List<String> bodies = new ArrayList<>();
@@ -214,10 +225,19 @@ final class DirectorH3Rewrite {
             arr.forEach(x -> bodies.add(x.isTextual() ? x.asText() : ""));
         } else for (int i = 1; i <= shots; i++) bodies.add(text(out, "shot_" + i));
         for (int i = 0; i < bodies.size(); i++) {
-            String body = withoutIds(stripShotPrefix(bodies.get(i).strip()));
+            String body = clean(stripShotPrefix(bodies.get(i).strip()), strayHan);
             if (body.isEmpty()) throw bad("改写稿缺少第 " + (i + 1) + " 镜");
             bodies.set(i, body);
         }
+        // 引用了不存在的参考图 / 音频的句子（不含台词时）删掉：2026-10-26 线上评测，模型给画外音编了一个 <Audio 1>。
+        int pictures = meta.path("pictures").asInt(), audios = meta.path("audios").asInt();
+        defs = dropUnknownLabels(defs, pictures, audios); summary = dropUnknownLabels(summary, pictures, audios);
+        retention = dropUnknownLabels(retention, pictures, audios); style = dropUnknownLabels(style, pictures, audios);
+        sound = dropUnknownLabels(sound, pictures, audios); music = dropUnknownLabels(music, pictures, audios);
+        for (int i = 0; i < bodies.size(); i++) bodies.set(i, dropUnknownLabels(bodies.get(i), pictures, audios));
+        if (defs.isEmpty() || summary.isEmpty() || retention.isEmpty()) throw bad("改写稿只剩不存在的参考素材");
+        if (sound.isEmpty()) sound = DEFAULT_SOUNDSCAPE;
+        if (music.isEmpty()) music = "N/A";
         // 台词只能出现在镜头里，每句恰好一次；模型不能自己写台词或 <d> 标签（说话人编号已在上面去掉，由 fill 统一写）。
         for (String f : List.of(defs, summary, retention, style, sound, music))
             if (PLACEHOLDER.matcher(f).find()) throw bad("改写稿把台词放在了镜头之外");
@@ -234,10 +254,9 @@ final class DirectorH3Rewrite {
         for (String id : lines.keySet()) if (seen.getOrDefault(id, 0) != 1) throw bad("改写稿漏了或重复了台词");
         List<String> all = new ArrayList<>(List.of(defs, summary, retention, style, sound, music));
         all.addAll(bodies);
-        for (String f : all) {
-            if (f.contains("<d>") || f.contains("</d>")) throw bad("改写稿自己写了台词标记");
-            if (hasHan(withoutQuotedText(PLACEHOLDER.matcher(f).replaceAll("")))) throw bad("改写稿里有中文");
-        }
+        // 零星漏翻的中文词已在 clean 里删掉；漏翻太多说明这一稿没翻好，拒收。
+        if (strayHan[0] > MAX_STRAY_HAN) throw bad("改写稿里还有 " + strayHan[0] + " 个汉字没翻译");
+        for (String f : all) if (f.contains("<d>") || f.contains("</d>")) throw bad("改写稿自己写了台词标记");
         requireLabels(all, "Picture", meta.path("pictures").asInt());
         requireLabels(all, "Audio", meta.path("audios").asInt());
 
@@ -268,6 +287,29 @@ final class DirectorH3Rewrite {
         return out;
     }
 
+    /** 模型漏写环境声时补的一句：只说跟画面一致，不替它编具体声源。 */
+    static final String DEFAULT_SOUNDSCAPE = "Natural ambient sound of the location that matches the actions on screen.";
+    /** 零星漏翻的汉字由代码删掉；超过这个数说明这一稿没翻好。 */
+    static final int MAX_STRAY_HAN = 20;
+    private static final Pattern HAN_IN_PARENS = Pattern.compile("\\s*[(（][\\p{IsHan}\\u3000-\\u303F\\uFF00-\\uFFEF\\s]+[)）]");
+    private static final Pattern HAN_RUN = Pattern.compile("[\\p{IsHan}\\u3000-\\u303F\\uFF00-\\uFFEF]+");
+
+    /**
+     * 模型写的一段英文的清理：去掉它自己写的说话人编号；删掉零星漏翻的中文（{@code Steve Chou (史蒂芬周)}、{@code his狼狈 figure}，
+     * 2026-10-26 线上评测 3/36 次），计数给调用方判断是否漏翻太多。英文双引号里的画面文字和台词占位不动。
+     */
+    static String clean(String s, int[] strayHan) {
+        String[] parts = s.split("\"", -1);
+        for (int i = 0; i < parts.length; i += 2) { // 偶数段在引号外
+            String part = parts[i];
+            Matcher m = HAN_RUN.matcher(part);
+            while (m.find()) strayHan[0] += m.group().codePointCount(0, m.group().length());
+            part = HAN_RUN.matcher(HAN_IN_PARENS.matcher(part).replaceAll("")).replaceAll(" ");
+            parts[i] = part.replaceAll("[ \\t]{2,}", " ").replaceAll(" ([,.;:!?])", "$1");
+        }
+        return withoutIds(String.join("\"", parts)).strip();
+    }
+
     private static final Pattern SPEAKER_ID = Pattern.compile("\\s?\\(S\\d+(?:\\s*,\\s*S\\d+)*\\)");
 
     /**
@@ -294,6 +336,37 @@ final class DirectorH3Rewrite {
         return String.format("%02d:%02d.%03d", ms / 60_000, (ms / 1000) % 60, ms % 1000);
     }
 
+    private static final Pattern SENTENCE = Pattern.compile("[^.!?\\n]*(?:[.!?]+|$)\\s*");
+
+    /**
+     * 删掉引用了不存在的 {@code <Picture N>} / {@code <Audio N>} 的句子；含台词占位的句子不删（删了台词就丢了），留给后面的校验拒收。
+     * 按「. ! ? 换行」切句，retention_analysis 一行一条也就按行删。
+     */
+    static String dropUnknownLabels(String text, int pictures, int audios) {
+        if (!hasUnknownLabel(text, pictures, audios)) return text;
+        StringBuilder out = new StringBuilder();
+        for (String line : text.split("\n", -1)) {
+            StringBuilder kept = new StringBuilder();
+            Matcher m = SENTENCE.matcher(line);
+            while (m.find() && !m.group().isEmpty()) {
+                String sentence = m.group();
+                if (hasUnknownLabel(sentence, pictures, audios) && !PLACEHOLDER.matcher(sentence).find()) continue;
+                kept.append(sentence);
+            }
+            String k = kept.toString().strip();
+            if (!k.isEmpty()) out.append(out.length() > 0 ? "\n" : "").append(k);
+        }
+        return out.toString();
+    }
+
+    private static boolean hasUnknownLabel(String text, int pictures, int audios) {
+        for (var e : Map.of("Picture", pictures, "Audio", audios).entrySet()) {
+            Matcher m = Pattern.compile("<" + e.getKey() + " (\\d+)>").matcher(text);
+            while (m.find()) { int n = Integer.parseInt(m.group(1)); if (n < 1 || n > e.getValue()) return true; }
+        }
+        return false;
+    }
+
     private static void requireLabels(List<String> texts, String kind, int count) {
         Pattern p = Pattern.compile("<" + kind + " (\\d+)>");
         for (String t : texts) {
@@ -303,16 +376,6 @@ final class DirectorH3Rewrite {
                 if (n < 1 || n > count) throw bad("改写稿引用了不存在的" + ("Picture".equals(kind) ? "参考图" : "参考音频"));
             }
         }
-    }
-
-    /** 画面里真实出现的文字按官方写法放在英文双引号里，保留原文，不算「正文里有中文」。 */
-    private static String withoutQuotedText(String s) {
-        return s.replaceAll("\"[^\"]*\"", "");
-    }
-
-    private static boolean hasHan(String s) {
-        return s.codePoints().anyMatch(cp -> Character.UnicodeScript.of(cp) == Character.UnicodeScript.HAN
-                || (cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF00 && cp <= 0xFFEF));
     }
 
     private static String required(JsonNode out, String field) {

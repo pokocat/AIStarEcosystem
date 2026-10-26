@@ -112,10 +112,28 @@ class DirectorH3RewriteTest {
     }
 
     @Test
-    void rejectsChineseOutsideTheLinesButKeepsQuotedOnScreenText() {
-        rejected(out().put("style", "真人写实，冷色调。"));
-        String p = DirectorH3Rewrite.validate(OM, meta(), out().put("style", "A red neon sign reading \"营业中\" glows.")).path("template").asText();
-        assertTrue(p.contains("\"营业中\""), "画面里的文字按官方写法保留原文");
+    void strayChineseIsDroppedButLargeUntranslatedChunksAreRejected() {
+        // 2026-10-26 线上评测里真实出现过的三种零星漏翻
+        ObjectNode o = out().put("subject_definitions", "<Subject 1> is Steve Chou (史蒂芬周) in <Picture 2>, holding a bowl of 杂碎面.");
+        ((ArrayNode) o.path("shots")).set(0, OM.getNodeFactory().textNode("A wide shot. Firelight flickers across his狼狈 figure."));
+        String t = DirectorH3Rewrite.validate(OM, meta(), o).path("template").asText();
+        assertTrue(t.contains("<Subject 1> is Steve Chou in <Picture 2>, holding a bowl of."), t);
+        assertTrue(t.contains("[Shot 1] A wide shot. Firelight flickers across his figure."), t);
+        // 画面里的文字按官方写法放在英文双引号里，保留原文
+        t = DirectorH3Rewrite.validate(OM, meta(), out().put("style", "A red neon sign reading \"营业中\" glows.")).path("template").asText();
+        assertTrue(t.contains("\"营业中\""), t);
+        // 大段没翻：拒收
+        assertTrue(rejected(out().put("style", "真人写实风格，冷色调，光线昏暗，画面压抑，人物神情紧张。")).contains("没翻译"));
+    }
+
+    @Test
+    void missingSoundscapeGetsANeutralLineAndMissingMusicIsNone() {
+        ObjectNode o = out();
+        o.remove("overall_soundscape");
+        o.remove("non_diegetic_music");
+        String t = DirectorH3Rewrite.validate(OM, meta(), o).path("template").asText();
+        assertTrue(t.contains("overall_soundscape:\n" + DirectorH3Rewrite.DEFAULT_SOUNDSCAPE), t);
+        assertTrue(t.endsWith("non_diegetic_music:\nN/A"), t);
     }
 
     @Test
@@ -124,16 +142,24 @@ class DirectorH3RewriteTest {
         ((ArrayNode) o.path("shots")).remove(2);
         rejected(o);
         rejected(out().put("subject_definitions", "<Subject 1> is Chen Mo in <Picture 4>."));
-        rejected(out().put("summary", "Voice from <Audio 1>."));
+        // 编出来的参考素材：那句删掉（不含台词时）；含台词的句子删不得，拒收
+        String t = DirectorH3Rewrite.validate(OM, meta(), out().put("summary", "[reference generation] A night scene. <Audio 1> provides the narrator's voice.")).path("template").asText();
+        assertTrue(t.contains("summary:\n[reference generation] A night scene.\n"), t);
+        assertFalse(t.contains("<Audio 1>"), t);
+        ObjectNode withLine = out();
+        ((ArrayNode) withLine.path("shots")).set(2, OM.getNodeFactory().textNode("the camera cuts to Lin Xiaoya. Using <Audio 2>, the narrator says: {{L4}}"));
+        rejected(withLine);
         rejected(out().put("retention_analysis", "x".repeat(7_000)));
     }
 
     @Test
     void userMessageListsTheLinesPerShotAndEndsWithTheSkeletonToFill() {
         String user = DirectorH3Rewrite.user(15, 3, List.of("<Picture 1>: storyboard."), DirectorH3Rewrite.source(ZH, NAMES).text());
+        assertTrue(user.contains("no reference audio is attached, so use no <Audio N> label"), "没有音频就别诱导模型编一个");
         assertTrue(user.contains("Shot 1: no spoken lines\nShot 2: {{L1}}, {{L2}}, {{L3}}\nShot 3: {{L4}}"), user);
         assertTrue(user.strip().endsWith("{\"subject_definitions\":\"\",\"summary\":\"\",\"retention_analysis\":\"\",\"style\":\"\","
-                + "\"shot_1\":\"\",\"shot_2\":\"\",\"shot_3\":\"\",\"overall_soundscape\":\"\",\"non_diegetic_music\":\"\"}"), user);
+                + "\"overall_soundscape\":\"\",\"non_diegetic_music\":\"\",\"shot_1\":\"\",\"shot_2\":\"\",\"shot_3\":\"\"}"),
+                "环境声、配乐排在镜头前，免得写完最后一镜就收尾漏掉：" + user);
     }
 
     @Test

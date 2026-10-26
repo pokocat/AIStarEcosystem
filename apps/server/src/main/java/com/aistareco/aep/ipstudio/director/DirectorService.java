@@ -1037,6 +1037,41 @@ public class DirectorService {
     }
 
     /**
+     * 改写稿没通过校验（{@code AI_BAD_OUTPUT}，这一次不扣费）时用同样的输入自动再改写一次，用户看不到这次失败；
+     * 第二次还不过才报错。画面结构在这期间改了就不重试。2026-10-26 线上 21 段评测：单次通过率在放宽前约七成。
+     */
+    private boolean retryRewrite(DirectorWork w, ObjectNode c, IpRun run) {
+        if (!"AI_BAD_OUTPUT".equals(run.getErrorCode())) return false;
+        JsonNode in = parse(run.getInputJson()).path("_director");
+        if (in.path("attempt").asInt(1) >= 2) return false;
+        ObjectNode clip = (ObjectNode) findOrNull(c, "clips", in.path("targetId").asText());
+        if (clip == null) return false;
+        Rewrite rw;
+        try { rw = rewrite(c, clip); } catch (BusinessException e) { return false; }
+        if (!rw.hash().equals(in.path("hash").asText())) return false;
+        JsonNode then = in.path("then");
+        if (then.isObject()) rw.meta().set("then", then.deepCopy());
+        rw.meta().put("attempt", 2);
+        ObjectNode pipeline = null;
+        JsonNode p = c.path("pipeline");
+        if (then.hasNonNull("pipelineId") && p.isObject() && then.path("pipelineId").asText().equals(p.path("id").asText())) pipeline = (ObjectNode) p;
+        BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
+        String node = run.getNodeId(), requestId = then.path("requestId").asText(run.getClientRequestId()) + "-p2";
+        try {
+            long price = rewritePrice(c);
+            var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(),
+                    DirectorH3Rewrite.MAX_TOKENS, requestId, rw.meta(), textModel(c), billing, price));
+            track(c, pipeline, retry.id(), om.createObjectNode().put("node", node));
+            w.setActive(true);
+            log.info("[director] 提示词改写未通过校验，自动重试 work={} node={} failed={} retry={}", w.getId(), node, run.getId(), retry.id());
+            return true;
+        } catch (BusinessException e) {
+            log.warn("[director] 提示词改写重试提交失败 work={} node={} reason={}", w.getId(), node, e.getMessage());
+            return false;
+        }
+    }
+
+    /**
      * 改写完成后接着提交视频，用点「生成视频」时确认过的价格与付款方。改写期间提示词或参考素材改了就不提交，请用户重新生成；
      * 一键制作已暂停或停止也不提交（英文稿留着，恢复后直接用）。
      */
@@ -1219,6 +1254,7 @@ public class DirectorService {
         if (node.startsWith("video:") && "video.bound".equals(run.getStage())) return; // 真实视频由 pollVideos 跟踪原生任务
         if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
             if("studio-director".equals(run.getKind())&&"IP_RUN_CANCELLED".equals(run.getErrorCode())){notice(c,run.getErrorMessage());return;}
+            if (node.startsWith(REWRITE_NODE) && retryRewrite(w, c, run)) return;
             setError(c, node, run.getErrorMessage() == null ? "生成失败，请重试" : run.getErrorMessage());
             JsonNode p = c.path("pipeline");
             if (p.isObject() && contains(p.path("runIds"), run.getId())) ((ObjectNode) p).withArray("failed").add(node);

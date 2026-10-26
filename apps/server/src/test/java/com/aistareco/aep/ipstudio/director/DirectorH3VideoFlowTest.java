@@ -201,6 +201,35 @@ class DirectorH3VideoFlowTest {
         verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
     }
 
+    /** 改写任务没通过校验（这一次不扣费）：worker 判失败，回投时看到的就是这样一条任务。 */
+    private void failRewrite(JsonNode meta, String id) throws Exception {
+        ObjectNode input = om.createObjectNode();
+        input.set("_director", meta);
+        IpRun run = IpRun.builder().id(id).projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId("u1").nodeId("videoPrompt:cl1")
+                .kind("studio-director").status(IpRun.STATUS_FAILED).stage("failed").errorCode("AI_BAD_OUTPUT")
+                .errorMessage("视频提示词改写不合格（改写稿缺少第 2 镜），本次未扣积分，请重试").clientRequestId("u-r1-p")
+                .inputJson(om.writeValueAsString(input)).outputJson("{}").createdAt(Instant.now()).build();
+        when(runs.findByProjectIdOrderByCreatedAtDesc("DW-1")).thenReturn(List.of(run));
+        service.reconcile(w, c);
+    }
+
+    @Test
+    void aRewriteThatFailsValidationIsRetriedOnceQuietly() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        failRewrite(meta, "IPR-rw");
+        ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(), eq(DirectorH3Rewrite.MAX_TOKENS),
+                eq("u-r1-p2"), retryMeta.capture(), any(), any(), eq(5L));
+        assertEquals(2, retryMeta.getValue().path("attempt").asInt());
+        assertEquals(600L, retryMeta.getValue().path("then").path("maxCost").asLong(), "重试后照样接着提交视频");
+        assertTrue(clip().path("video").path("error").isNull() || clip().path("video").path("error").isMissingNode(), "第一次失败不打扰用户");
+
+        failRewrite(retryMeta.getValue(), "IPR-rw2");
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写不合格"), "第二次还不过才报错");
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+    }
+
     @Test
     void customPromptWhoseLinesCannotBeFoundIsRefused() {
         clip().put("videoPrompt", "两个人在通道里聊天，老赵问他昨晚听见什么。").put("videoPromptCustom", true);
