@@ -10917,6 +10917,37 @@ paths:
       summary: 对账重算（v2 §11，限 FINANCE_ADMIN / SUPER_ADMIN）—— 现金勾稽（排除影子）+ 积分负债单列 + drift 告警
       responses: { '200': { description: "ReconciliationReport（grossRecharge/netCashCredits/drift/balanced/creditLiability …）" } }
 
+  /admin/studio-operations:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsDashboard
+      summary: Studio 积分与生成运营看板一期聚合（只读；后台角色）
+      parameters:
+        - { in: query, name: days, schema: { type: integer, enum: [1, 7, 30], default: 7 } }
+      responses: { '200': { description: "健康、经营消耗、发出积分摘要、生成与供应商技术指标；未接入字段显式标记 unavailable" } }
+  /admin/studio-operations/reconciliation-details:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsReconciliationDetails
+      summary: A–I 非零对账项的脱敏分页明细（只读）
+      parameters:
+        - { in: query, name: check, required: true, schema: { type: string, enum: [A, B, C, D, E, F, G, H, I] } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses: { '200': { description: "脱敏后的异常账户 / 冻结 / 赠款 / 扣费定位字段" } }
+  /admin/studio-operations/credit-events:
+    get:
+      tags: [admin-finance]
+      operationId: adminStudioOperationsCreditEvents
+      summary: Studio 发出积分记录筛选与分页（只读，所有自由文本手机号打码）
+      parameters:
+        - { in: query, name: days, schema: { type: integer, enum: [1, 7, 30], default: 7 } }
+        - { in: query, name: type, schema: { type: string } }
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: page, schema: { type: integer, minimum: 0, default: 0 } }
+        - { in: query, name: size, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses: { '200': { description: "发放人、受益人、积分、折算、原因与时间的分页列表" } }
+
   # ── v2 §9 积分面 lane：调差 / 赠送（只发 giftBalance，不碰资金面）。CreditOpsService ──
   /admin/finance/adjustments/compensate:
     post:
