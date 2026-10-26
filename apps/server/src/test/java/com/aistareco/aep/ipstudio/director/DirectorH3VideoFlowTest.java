@@ -265,6 +265,26 @@ class DirectorH3VideoFlowTest {
     }
 
     @Test
+    void aRetryThatNoLongerFitsTheBudgetIsNotSent() throws Exception {
+        ObjectNode p = pipeline(605);
+        ObjectNode meta = dispatchRewriteIn(p);
+        // 改写期间换了文本模型，冻结上限变成 700：605 的预算放不下重试 + 600 的视频
+        when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(700L);
+        failRewrite(meta, "IPR-rw");
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        assertTrue(p.path("failed").toString().contains("videoPrompt:cl1"), p.toString());
+    }
+
+    @Test
+    void aCustomPromptWithAStrayClosingQuoteIsRefused() {
+        clip().put("videoPrompt", clip().path("videoPrompt").asText().replace("又熬通宵？", "又熬」通宵？")).put("videoPromptCustom", true);
+        service.refresh(c);
+        BusinessException e = assertThrows(BusinessException.class,
+                () -> service.dispatch("u1", w, c, "video", "cl1", "u-r5", om.createObjectNode(), null, null, 600L));
+        assertEquals("DIRECTOR_VIDEO_PROMPT_LINES", e.getCode());
+    }
+
+    @Test
     void aPausedPipelineDoesNotRetryTheRewrite() throws Exception {
         ObjectNode p = pipeline(10_000);
         ObjectNode meta = dispatchRewriteIn(p);

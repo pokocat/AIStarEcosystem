@@ -963,8 +963,9 @@ public class DirectorService {
         for (JsonNode s : clip.path("shots")) for (JsonNode l : s.path("dialogue")) planned.add(l.path("text").asText());
         // 台词由代码按原文填回去：认不全就宁可不改写，免得模型把漏认的台词翻成英文念出来。
         // 自动生成的提示词逐句核对原文（台词里的引号没配上会少认半句，句数还对得上）；用户改写过的只能核对句数。
-        boolean custom = clip.path("videoPromptCustom").asBoolean(false);
-        if (src.lines().size() < planned.size() || !custom && !src.lines().stream().map(DirectorH3Rewrite.Line::text).toList().equals(planned))
+        boolean custom = clip.path("videoPromptCustom").asBoolean(false), legacy = !src.text().contains("说：{{");
+        if (src.lines().size() < planned.size() || !custom && !src.lines().stream().map(DirectorH3Rewrite.Line::text).toList().equals(planned)
+                || custom && !src.lines().isEmpty() && !DirectorH3Rewrite.quotesBalanced(src.text(), legacy))
             throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_VIDEO_PROMPT_LINES",
                     "视频提示词里认不全台词（应有 " + planned.size() + " 句）。请把台词写成「某某说：「台词」」，台词里的引号要成对，或恢复自动生成");
         List<Double> starts = new ArrayList<>();
@@ -1052,6 +1053,11 @@ public class DirectorService {
         String node = run.getNodeId(), requestId = then.path("requestId").asText(run.getClientRequestId()) + "-p2";
         try {
             long price = rewritePrice(c);
+            // 一键制作的预算：这次重试的冻结加上之后要提交的视频报价都要放得下（文本模型可能在这期间换过、价格变了）。
+            if (pipeline != null && pipelineSpent(pipeline) + price + then.path("maxCost").asLong(0) > pipeline.path("budget").asLong()) {
+                log.info("[director] 提示词改写未通过校验，预算放不下重试 work={} node={}", w.getId(), node);
+                return false;
+            }
             var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(),
                     DirectorH3Rewrite.MAX_TOKENS, requestId, rw.meta(), textModel(c), billing, price));
             track(c, pipeline, retry.id(), om.createObjectNode().put("node", node));

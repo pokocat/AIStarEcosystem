@@ -56,6 +56,21 @@ class DirectorH3RewriteTest {
         assertEquals(List.of("他说“别走”，然后离开。"), legacy.lines().stream().map(DirectorH3Rewrite.Line::text).toList());
         // 引号没配上就不算台词，交给句数核对拦下，不截半句
         assertTrue(DirectorH3Rewrite.source("第1镜（0–5 秒）：陈默说：「好啊", NAMES).lines().isEmpty());
+        // 台词里落单的收引号：只认出「把」，句数对得上，剩下的正文引号不成对 —— 由调用方据此拒收
+        var stray = DirectorH3Rewrite.source("第1镜（0–5 秒）：陈默说：「把」这个符号念出来。」", NAMES);
+        assertEquals(List.of("把"), stray.lines().stream().map(DirectorH3Rewrite.Line::text).toList());
+        assertFalse(DirectorH3Rewrite.quotesBalanced(stray.text(), false));
+        assertTrue(DirectorH3Rewrite.quotesBalanced(DirectorH3Rewrite.source(ZH, NAMES).text(), false));
+    }
+
+    @Test
+    void legacyVoiceTrackLinesBelongToTheShotTheyAreLabelledWith() {
+        // 旧格式：画面段在前，台词集中在末尾的语音轨里，按「第N镜 · 」归到各自的镜头，而不是全算进最后一镜
+        String zh = "【画面】\n第1镜（0–5 秒）：全景。\n第2镜（5 秒切）：近景。\n【语音轨】\n第1镜 · @陈默 · “你来了。”\n第2镜 · @林小雅 · “嗯。”\n";
+        var src = DirectorH3Rewrite.source(zh, NAMES);
+        ObjectNode meta = DirectorH3Rewrite.meta(OM, 2, List.of(0.0, 5.0), 1, 0, "中文", src.lines(), src.text());
+        assertEquals(1, meta.path("lines").get(0).path("shot").asInt());
+        assertEquals(2, meta.path("lines").get(1).path("shot").asInt());
     }
 
     private static ObjectNode meta() {

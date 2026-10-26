@@ -135,6 +135,21 @@ final class DirectorH3Rewrite {
      * 开引号之后配对的收引号位置，台词里可以再套一层同样的引号（「他喊「别走」，然后离开。」）；配不上返回 -1。
      * 2026-10-26 评审：原来用非贪婪的「(.+?)」」，这样的台词只认出「他喊「别走」，剩下半句进了交给模型的正文，句数核对拦不住。
      */
+    /**
+     * 认完台词后剩下的正文里，台词引号是否都成对。用户改写过的提示词只能核对句数，「甲说：「把」这个符号念出来。」」
+     * 会只认出「把」、句数照样对得上，后半句留给模型（2026-10-26 Codex 复核）：引号不成对就不改写。
+     */
+    static boolean quotesBalanced(String text, boolean legacy) {
+        char open = legacy ? '“' : '「', close = legacy ? '”' : '」';
+        int depth = 0;
+        for (int i = 0; i < text.length(); i++) {
+            char ch = text.charAt(i);
+            if (ch == open) depth++;
+            else if (ch == close && --depth < 0) return false;
+        }
+        return depth == 0;
+    }
+
     static int closing(String s, int from, char open, char close) {
         int depth = 1;
         for (int i = from; i < s.length(); i++) {
@@ -191,10 +206,11 @@ final class DirectorH3Rewrite {
                 source.strip(), perShot, shots, skeleton);
     }
 
-    /** 中文原文里每一镜（「第N镜（」开头的一段）有哪几个台词占位；不按这个格式写的原文返回空。 */
+    /** 中文原文里每一镜（「第N镜（」或旧语音轨「第N镜 · 」开头的一段）有哪几个台词占位；不按这个格式写的原文返回空。 */
     static Map<Integer, List<String>> linesByShot(String source) {
         Map<Integer, List<String>> out = new LinkedHashMap<>();
-        Matcher shot = Pattern.compile("第(\\d+)镜（").matcher(source);
+        // 「第N镜（」是新格式的画面段；「第N镜 · 」是旧格式语音轨里每句台词的开头，台词集中在末尾时按它归到各自的镜头。
+        Matcher shot = Pattern.compile("第(\\d+)镜(?:（| · )").matcher(source);
         List<int[]> marks = new ArrayList<>();
         while (shot.find()) marks.add(new int[]{Integer.parseInt(shot.group(1)), shot.start()});
         for (int k = 0; k < marks.size(); k++) {
