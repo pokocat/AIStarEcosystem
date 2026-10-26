@@ -355,7 +355,7 @@ export type DirectorEditOp =
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
-  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.import";
+  | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link";
 
 export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";

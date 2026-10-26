@@ -336,7 +336,7 @@ public class DirectorService {
                 String name = limited(d.path("name").asText(), 40, "名称");
                 if (name.isEmpty()) throw invalid("请填写名称");
                 ObjectNode a = newAsset(c, kind, name, limited(d.path("description").asText(), 2000, "描述"));
-                if (d.hasNonNull("episodeId")) ((ArrayNode) a.path("episodeIds")).add(d.path("episodeId").asText());
+                if (d.has("episodeIds")) a.set("episodeIds", episodeIds(c, d.path("episodeIds")));
                 ((ArrayNode) c.path("assets")).add(a);
             }
             case "asset.update" -> {
@@ -345,6 +345,7 @@ public class DirectorService {
                 if (d.has("description")) a.put("description", limited(d.path("description").asText(), 2000, "描述"));
                 // 角色音色的文字描述：没有参考音频时视频按它配音，有参考音频时作补充。
                 if (d.has("voiceDesc")) a.put("voiceDesc", limited(d.path("voiceDesc").asText(), 200, "音色描述"));
+                if (d.has("episodeIds")) a.set("episodeIds", episodeIds(c, d.path("episodeIds")));
                 if (d.path("resetPrompt").asBoolean(false)) a.put("promptCustom", false);
                 else if (d.has("prompt")) a.put("prompt", limited(d.path("prompt").asText(), 4000, "提示词")).put("promptCustom", true);
                 bump(a);
@@ -356,37 +357,20 @@ public class DirectorService {
                 remove(c, "assets", req.targetId());
             }
             case "asset.adopt" -> {
-                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
-                String cid = d.path("candidateId").asText();
-                // 之前上传进角色图历史的照片不能再采用，只能当形象参考。
-                if ("character".equals(a.path("kind").asText()))
-                    for (JsonNode m : a.path("image").path("candidates"))
-                        if (cid.equals(m.path("id").asText()) && Set.of("upload", "library").contains(m.path("source").asText()))
-                            throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED",
-                                    "上传的照片不能直接作为角色图，请设为「形象参考」后生成设定图");
-                adopt(a, "image", cid);
+                adopt(find(c, "assets", req.targetId(), "这个资产"), "image", d.path("candidateId").asText());
             }
             case "asset.upload" -> {
+                // 角色、场景、道具都一样：上传的图直接作为参考图（2026-10-26 用户改判，此前角色只能生成设定图）。
                 ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
-                // 角色图必须是系统按设定集版式生成的多视角图，前后才对得上；上传的照片只能当生成时的形象参考。
-                if ("character".equals(a.path("kind").asText())) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CHARACTER_UPLOAD_NOT_ALLOWED",
-                        "角色图需要由系统生成设定图。上传的照片请设为「形象参考」，再生成设定图");
                 String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
                 if (key == null) throw invalid("请先上传图片");
                 ObjectNode m = addCandidate(c, (ObjectNode) a.path("image"), key, null, "upload");
                 adopt(a, "image", m.path("id").asText());
             }
-            case "asset.import" -> {
-                // 从个人资产库导入：只收资产库对象的 id 和版本，名字、描述、图都由服务端按本人资产库读出来。
-                // 带 targetId 是给已有资产换成资产库里的图（一次一项），否则按名字对上已有资产或新建。
-                JsonNode items = d.path("items");
-                if (items.size() == 0) throw invalid("请选择要导入的资产");
-                if (items.size() > 16) throw invalid("一次最多导入 16 项");
-                ObjectNode explicit = req.targetId() == null ? null : find(c, "assets", req.targetId(), "这个资产");
-                if (explicit != null && items.size() != 1) throw invalid("请只选择一项资产");
-                String episodeId = d.hasNonNull("episodeId") ? d.path("episodeId").asText() : null;
-                for (JsonNode item : items) importFromLibrary(userId, c, explicit, library.object(userId, item.path("objectId").asText()),
-                        item.path("versionId").asText(null), episodeId);
+            case "asset.link" -> {
+                // 关联已有资产：这项资产就是个人资产库里的那一项。只收对象 id 和版本，图和描述由服务端按本人资产库读出来。
+                ObjectNode target = find(c, "assets", req.targetId(), "这个资产");
+                linkLibrary(userId, c, target, library.object(userId, d.path("objectId").asText()), d.path("versionId").asText(null));
             }
             case "assets.confirm" -> {
                 Set<String> only = new HashSet<>();
@@ -2484,51 +2468,39 @@ public class DirectorService {
     }
 
     /**
-     * 资产库对象写进作品。场景、道具的图直接成为采用的参考图；角色的图（没有图时用资产库的形象参考）只当「形象参考」，
-     * 设定图仍由系统按设定集版式生成，与上传照片同一条规则。按导入（换图）时总是用新图；按名字对上已有资产时
-     * 不动它已采用的图和已有的形象参考，只补空着的。
+     * 把作品里的一项资产关联到个人资产库的一项：记下 libraryObjectId，所选版本的图（角色没有图时用资产库的形象参考）
+     * 直接作为采用的参考图（source=library，不会因设置改动过期），描述空着时补上。名字保留剧本里的叫法，提示词照它写。
      */
-    void importFromLibrary(String userId, ObjectNode c, ObjectNode explicit, IpLibraryDtos.LibraryObject o, String versionId, String episodeId) {
+    void linkLibrary(String userId, ObjectNode c, ObjectNode target, IpLibraryDtos.LibraryObject o, String versionId) {
+        String kind = target.path("kind").asText();
+        if (!kind.equals(o.kind()))
+            throw invalid("「" + o.name() + "」是" + KIND_NAMES.getOrDefault(o.kind(), "其他资产") + "，不能关联到" + KIND_NAMES.get(kind) + "「" + target.path("name").asText() + "」");
         IpLibraryDtos.LibraryVersion version = null;
         if (versionId != null && !versionId.isBlank()) {
             for (IpLibraryDtos.LibraryVersion v : o.versions()) if (versionId.equals(v.id())) version = v;
             if (version == null) throw BusinessException.notFound("DIRECTOR_LIBRARY_VERSION_NOT_FOUND", "「" + o.name() + "」的这一版图片已不存在，请刷新资产库后重选");
         } else for (IpLibraryDtos.LibraryVersion v : o.versions()) if (v.id().equals(o.mainVersionId())) version = v;
         String key = projects.requireOwnedAssetKey(userId, version == null ? null : version.storageKey());
-        if (explicit != null && key == null && !("character".equals(explicit.path("kind").asText()) && o.referenceKey() != null))
-            throw invalid("「" + o.name() + "」在资产库里还没有图片，请换一项");
-        ObjectNode target = explicit;
-        if (target == null) {
-            if (!Set.of("character", "scene", "prop").contains(o.kind())) throw invalid("「" + o.name() + "」不是角色、场景或道具");
-            String name = o.name() == null ? "" : o.name().trim();
-            if (name.isEmpty()) throw invalid("资产库里有一项没有名称，请先补上名称");
-            if (name.length() > 40) throw invalid("「" + name + "」的名称超过 40 字，请先在资产库里改短");
-            String description = o.description() == null ? "" : o.description().trim();
-            if (description.length() > 2000) throw invalid("「" + name + "」的描述超过 2000 字，请先在资产库里改短");
-            JsonNode hit = null;
-            for (JsonNode x : c.path("assets"))
-                if (hit == null && o.id().equals(x.path("libraryObjectId").asText()) && o.kind().equals(x.path("kind").asText())) hit = x;
-            if (hit == null) hit = matchAsset(c, null, o.kind(), name);
-            if (hit == null) {
-                target = newAsset(c, o.kind(), name, description);
-                ((ArrayNode) c.path("assets")).add(target);
-            } else {
-                target = (ObjectNode) hit;
-                if (target.path("description").asText().isBlank()) target.put("description", description);
-            }
-            if (episodeId != null && !ids(target.path("episodeIds")).contains(episodeId)) ((ArrayNode) target.path("episodeIds")).add(episodeId);
-            // 只记「这项资产就是资产库里的那一项」；给别的资产借图（explicit）不改它，免得之后正常导入时对错资产。
-            target.put("libraryObjectId", o.id());
-        }
-        if ("character".equals(target.path("kind").asText())) {
-            String ref = key != null ? key : projects.requireOwnedAssetKey(userId, o.referenceKey());
-            if (ref != null && (explicit != null || target.path("refImage").path("key").asText("").isEmpty())) target.putObject("refImage").put("key", ref);
-        } else if (key != null) {
-            ObjectNode slot = (ObjectNode) target.path("image");
-            ObjectNode m = addCandidate(c, slot, key, null, "library");
-            if (explicit != null || slot.path("adoptedId").isNull() || slot.path("adoptedId").isMissingNode()) adopt(target, "image", m.path("id").asText());
-        }
-        bump(target);
+        if (key == null && "character".equals(kind)) key = projects.requireOwnedAssetKey(userId, o.referenceKey());
+        if (key == null) throw invalid("「" + o.name() + "」在资产库里还没有图片，请换一项");
+        String description = o.description() == null ? "" : o.description().trim();
+        if (target.path("description").asText().isBlank() && !description.isEmpty()) target.put("description", limited(description, 2000, "描述"));
+        target.put("libraryObjectId", o.id());
+        ObjectNode m = addCandidate(c, (ObjectNode) target.path("image"), key, null, "library");
+        adopt(target, "image", m.path("id").asText());
+    }
+
+    private static final Map<String, String> KIND_NAMES = Map.of("character", "角色", "scene", "场景", "prop", "道具");
+
+    /** 资产出现在哪几集：只认作品里真有的集，按集的顺序存，去重；空数组表示不限定。 */
+    private ArrayNode episodeIds(ObjectNode c, JsonNode in) {
+        if (!in.isArray()) throw invalid("请选择出现的集");
+        Set<String> wanted = new HashSet<>();
+        for (JsonNode x : in) wanted.add(x.asText());
+        ArrayNode out = om.createArrayNode();
+        for (JsonNode ep : c.path("episodes")) if (wanted.remove(ep.path("id").asText())) out.add(ep.path("id").asText());
+        if (!wanted.isEmpty()) throw invalid("选择的集已不存在，请刷新后重选");
+        return out;
     }
 
     /** 只给提交后没改过正文的集打「已提取」：改过的集要按新正文再提取。返回正文改过的集。 */

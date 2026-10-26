@@ -41,7 +41,7 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
               <div>
                 <div className="director-extract-head">
                   <input aria-label="资产名称" value={pick.name} maxLength={40} disabled={!pick.include} onChange={e => set(i.itemId, { name: e.target.value })}/>
-                  <span className={i.matchId ? "is-match" : "is-new"} title={i.matchId ? `与资产库里的「${i.matchName}」是同一项，保存时合并` : "资产库里还没有，保存时新建"}>{i.matchId ? `已有：${i.matchName}` : "新"}</span>
+                  <span className={i.matchId ? "is-match" : "is-new"} title={i.matchId ? `与本作品已有的「${i.matchName}」是同一项，保存时合并` : "本作品里还没有，保存时新建"}>{i.matchId ? `已有：${i.matchName}` : "新"}</span>
                   {nos && <small>{nos}</small>}
                 </div>
                 <p title={i.description}>{i.description || "暂无描述"}</p>
