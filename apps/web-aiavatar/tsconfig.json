@@ -32,5 +32,5 @@
     ".next-director-ui/types/**/*.ts",
     ".next-director-ui/dev/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "**/*.test.ts", "**/*.test.tsx"]
+  "exclude": ["node_modules", "studio-admin", "**/*.test.ts", "**/*.test.tsx"]
 }

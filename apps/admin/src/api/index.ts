@@ -49,3 +49,4 @@ export * as ErrorLogApi from "./error-log";
 export * as SellingChannelsApi from "./selling-channels";
 export * as ClipVendorApi from "./clip-vendor";
 export * as IdentityClientsApi from "./identity-clients";
+export * as StudioOperationsApi from "./studio-operations";
