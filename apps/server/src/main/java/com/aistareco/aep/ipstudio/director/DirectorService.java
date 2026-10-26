@@ -2487,7 +2487,10 @@ public class DirectorService {
         if (target.path("description").asText().isBlank() && !description.isEmpty()) target.put("description", limited(description, 2000, "描述"));
         target.put("libraryObjectId", o.id());
         ObjectNode m = addCandidate(c, (ObjectNode) target.path("image"), key, null, "library");
+        // 同一张图以前作为生成图进过历史时 addCandidate 返回旧候选：用户点名它就是资产库那一项，按资产库图处理，不再按生成指纹判过期。
+        m.put("source", "library"); m.remove("stale"); m.remove("fingerprint");
         adopt(target, "image", m.path("id").asText());
+        bump(target); // 描述可能被补上；不递增的话，拿着旧 rev 的页面能把它悄悄清掉
     }
 
     private static final Map<String, String> KIND_NAMES = Map.of("character", "角色", "scene", "场景", "prop", "道具");

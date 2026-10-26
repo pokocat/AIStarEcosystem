@@ -62,3 +62,49 @@ test("editing an asset can change the episodes it appears in", async () => {
   fireEvent.click(screen.getByRole("button", { name: "保存" }));
   await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 3, expect.objectContaining({ episodeIds: ["ep1", "ep3"] })));
 });
+
+test("an old asset with no episodes saves a name change without being forced to pick episodes", async () => {
+  api.edit.mockResolvedValue(work);
+  const legacy = { ...work, assets: [{ ...work.assets[0], episodeIds: [] }] };
+  render(<DirectorAssets {...props} work={legacy}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  expect(screen.getByText("还没指定出现的集，不改也能保存")).toBeTruthy();
+  fireEvent.change(screen.getByDisplayValue("林晚"), { target: { value: "林晚晚" } });
+  const save = screen.getByRole("button", { name: "保存" }) as HTMLButtonElement;
+  expect(save.disabled).toBe(false);
+  fireEvent.click(save);
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 3, { name: "林晚晚", description: "主角" }));
+});
+
+// Codex 评审：编辑描述时重新提取把资产补成第 1、2 集，没动过集数的保存不能把它改回第 1 集。
+test("untouched episodes follow the server and are not sent back; edited episodes survive closing the sheet", async () => {
+  api.edit.mockResolvedValue(work);
+  const { rerender } = render(<DirectorAssets {...props}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByDisplayValue("主角"), { target: { value: "主角，常穿风衣" } });
+  const extracted = { ...work, assets: [{ ...work.assets[0], episodeIds: ["ep1", "ep2"], rev: 4 }] };
+  rerender(<DirectorAssets {...props} work={extracted}/>);
+  const group = screen.getByRole("group", { name: "出现在" });
+  expect(within(group).getByRole("button", { name: "第 2 集" }).getAttribute("aria-pressed")).toBe("true");
+  // 改一次集数，关掉详情再打开，选择还在。
+  fireEvent.click(within(group).getByRole("button", { name: "第 3 集" }));
+  fireEvent.keyDown(document, { key: "Escape" });
+  fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
+  expect(within(screen.getByRole("group", { name: "出现在" })).getByRole("button", { name: "第 3 集" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 4,
+    { name: "林晚", description: "主角，常穿风衣", episodeIds: ["ep1", "ep2", "ep3"] }));
+});
+
+test("a description-only save after re-extraction does not send episodes", async () => {
+  api.edit.mockResolvedValue(work);
+  const { rerender } = render(<DirectorAssets {...props}/>);
+  fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
+  fireEvent.click(screen.getByRole("button", { name: "编辑" }));
+  fireEvent.change(screen.getByDisplayValue("主角"), { target: { value: "主角2" } });
+  rerender(<DirectorAssets {...props} work={{ ...work, assets: [{ ...work.assets[0], episodeIds: ["ep1", "ep2"], rev: 4 }] }}/>);
+  fireEvent.click(screen.getByRole("button", { name: "保存" }));
+  await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.update", "c1", 4, { name: "林晚", description: "主角2" }));
+});

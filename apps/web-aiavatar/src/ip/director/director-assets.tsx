@@ -121,7 +121,7 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
   </article>;
 }
 
-/** 资产出现在哪几集：每集一个开关，至少选一集。 */
+/** 资产出现在哪几集：每集一个开关。外层用 div 不用 Field 的 label，否则点标题文字会误触第一个按钮。 */
 function EpisodePicker({ episodes, value, onChange }: { episodes: DirectorEpisode[]; value: string[]; onChange: (ids: string[]) => void }) {
   const toggle = (id: string) => onChange(value.includes(id) ? value.filter(x => x !== id) : episodes.map(e => e.id).filter(x => x === id || value.includes(x)));
   return <div className="director-chips" role="group" aria-label="出现在">
@@ -141,7 +141,7 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
     <div className="director-segmented" role="group" aria-label="类型">{KINDS.map(k => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{kindLabel[k]}</button>)}</div>
     <Field label="名称"><input value={name} maxLength={40} onChange={e => setName(e.target.value)}/></Field>
     <Field label="外观与设定"><textarea rows={3} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)}/></Field>
-    <Field label="出现在"><EpisodePicker episodes={work.episodes} value={episodeIds} onChange={setEpisodeIds}/></Field>
+    <div className="director-field"><span>出现在</span><EpisodePicker episodes={work.episodes} value={episodeIds} onChange={setEpisodeIds}/></div>
     <div className="director-actions"><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button>
       <button type="button" className="ip-brand-button" disabled={!!busy || !name.trim() || !episodeIds.length} onClick={save}>添加</button>
       {!episodeIds.length && <small className="director-muted">至少选一集</small>}</div>
@@ -156,7 +156,8 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
   const [name, setName] = useDraft(prefix + "name", asset.name);
   const [description, setDescription] = useDraft(prefix + "description", asset.description);
   const [prompt, setPrompt] = useDraft(prefix + "prompt", asset.prompt);
-  const [episodeIds, setEpisodeIds] = useState(asset.episodeIds);
+  // 没改过就跟着服务端走（重新提取会补集数），只有改过才随保存提交；切走再回来草稿还在。
+  const [episodeIds, setEpisodeIds, episodesEdited] = useDraft(prefix + "episodeIds", asset.episodeIds);
   const [showPrompt, setShowPrompt] = useState(false);
   const { busy, run } = useBusy();
   const file = useRef<HTMLInputElement>(null);
@@ -177,7 +178,7 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
   const save = () => void run("save", async () => {
     const data: Record<string, unknown> = { name, description };
     if (prompt !== asset.prompt) data.prompt = prompt;
-    if (episodeIds.join() !== asset.episodeIds.join()) data.episodeIds = episodeIds;
+    if (episodesEdited) data.episodeIds = episodeIds;
     const next = await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data);
     clearDrafts(prefix); apply(next);
     setEditing(false);
@@ -202,16 +203,17 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
           <small>{[appears, asset.libraryObjectId ? "已关联资产库" : "", asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
         </div>
         <div className="director-asset-head-actions">
-          <button type="button" className="ip-brand-text-button" onClick={() => { setEpisodeIds(asset.episodeIds); setEditing(true); }}>编辑</button>
+          <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
           <button type="button" className="ip-brand-text-button director-danger director-icon-button" aria-label={`删除${asset.name}`} title="删除" onClick={remove}><Trash2 size={14}/></button>
         </div>
       </header> : <>
         <Field label="名称"><input value={name} maxLength={40} onChange={e => setName(e.target.value)}/></Field>
         <Field label="外观与设定" hint="修改描述后，出图提示词同步更新（单独编辑过的除外）"><textarea rows={4} maxLength={2000} value={description} onChange={e => setDescription(e.target.value)}/></Field>
         <Field label="出图提示词"><textarea className="director-prompt" rows={6} maxLength={4000} value={prompt} onChange={e => setPrompt(e.target.value)}/></Field>
-        <Field label="出现在"><EpisodePicker episodes={work.episodes} value={episodeIds} onChange={setEpisodeIds}/></Field>
+        <div className="director-field"><span>出现在</span><EpisodePicker episodes={work.episodes} value={episodeIds} onChange={setEpisodeIds}/>
+          {!episodeIds.length && <small>{episodesEdited ? "至少选一集" : "还没指定出现的集，不改也能保存"}</small>}</div>
         <div className="director-card-actions">
-          <button type="button" className="ip-brand-button" disabled={!!busy || !episodeIds.length} onClick={save}>保存</button>
+          <button type="button" className="ip-brand-button" disabled={!!busy || (episodesEdited && !episodeIds.length)} onClick={save}>保存</button>
           <button type="button" className="ip-brand-secondary" onClick={() => { setEditing(false); clearDrafts(prefix); }}><X size={14}/>取消</button>
         </div>
       </>}

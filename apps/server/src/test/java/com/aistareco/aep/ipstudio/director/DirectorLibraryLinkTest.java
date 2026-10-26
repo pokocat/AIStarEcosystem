@@ -125,4 +125,25 @@ class DirectorLibraryLinkTest {
         assertEquals("DIRECTOR_INPUT_INVALID", e.getCode());
         assertTrue(a.path("libraryObjectId").isMissingNode());
     }
+
+    @Test
+    void linkingAnImageThatWasGeneratedBeforeTreatsItAsTheLibraryImage() {
+        ObjectNode a = asset("character", "林晚", "");
+        ((com.fasterxml.jackson.databind.node.ArrayNode) a.path("image").path("candidates")).addObject()
+                .put("id", "m1").put("key", "k/face.png").put("source", "generated").put("fingerprint", "old").put("stale", true);
+        service.linkLibrary("u1", c, a, object("o1", "character", "林晚", null, version("v1", "k/face.png")), null);
+        JsonNode m = a.path("image").path("candidates").get(0);
+        assertEquals(1, a.path("image").path("candidates").size());
+        assertEquals("library", m.path("source").asText());
+        assertTrue(m.path("stale").isMissingNode() && m.path("fingerprint").isMissingNode());
+        assertEquals("m1", a.path("image").path("adoptedId").asText());
+    }
+
+    @Test
+    void linkBumpsTheRevisionSoAnOlderEditCannotSilentlyClearTheFilledDescription() {
+        ObjectNode a = asset("scene", "老宅", "");
+        a.put("rev", 2);
+        service.linkLibrary("u1", c, a, object("o1", "scene", "老宅", null, version("v1", "k/x.png")), null);
+        assertEquals(3, a.path("rev").asLong());
+    }
 }
