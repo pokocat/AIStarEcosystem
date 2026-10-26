@@ -223,6 +223,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
 - [积分切换到 1 元 = 100 积分](releases/credit-ratio-switch-20261026.md)：有成本数据的售价按新比率上线（图片、视频、配音、口型、短剧分镜），停月赠送，服务端 `20261026-credit-ratio`；套餐与文本 Token 价待后台修改（last-reviewed 2026-10-26）。
 - [AI 导演台文字积分展示修复](releases/director-text-credit-display-release-20261026.md)：文字按钮不展示不确定积分数字，按任务输出上限冻结、按真实 Token 结算；图片和视频确定报价不变（last-reviewed 2026-10-26）。
+- [AI 导演台图片模型比例过滤与大图缩放](releases/director-image-viewer-production-release-20261026.md)：`20261026-director-image-viewer`（server / web-aiavatar，main `faee1ac3`），只开放三种比例都能出的图片模型、旧选择照存原价，大图可缩放拖动并给 `@rc-component/image` 打补丁；本地走查 27 项与线上只读验收（last-reviewed 2026-10-26）。
 - [Studio 图片分档配置](releases/studio-image-tiers-config-20261025.md)：GPT Image 2 / 2.5（flare）的 1K/2K/4K 端点、规格与分档售价已上生产配置，前台模型接口回读一致；未做付费出图实测，界面名待下次发版（last-reviewed 2026-10-25）。
 
 - [Studio 普通文字文档编辑发布](releases/studio-text-document-release-20261022.md)：画布／故事板展开使用统一富文本文档；main `bd3a9df2`、105 项回归及线上保存／刷新验收（2026-10-22，last-reviewed）。
