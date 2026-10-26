@@ -544,9 +544,9 @@ public class DirectorService {
 
     /**
      * 发一个任务。原生任务在独立事务里建好（失败不会把作品这一行的修改一起回滚），
-     * 作品里记下这次任务的提示词、引用和输入指纹（taskMeta），结果回来时由 {@link #reconcile} 对照回投。
+     * 作品里记下这次任务的提示词、引用和输入指纹（taskMeta），结果回来时由 {@link #reconcile} 对照回投。包内可见供测试。
      */
-    private String dispatch(String userId, DirectorWork w, ObjectNode c, String type, String targetId, String requestId,
+    String dispatch(String userId, DirectorWork w, ObjectNode c, String type, String targetId, String requestId,
                             JsonNode o, ObjectNode pipeline, BillingSelection billing, Long maxCost) {
         String nodeId;
         ObjectNode meta = om.createObjectNode().put("task", type == null ? "" : type);
@@ -686,13 +686,30 @@ public class DirectorService {
 
     /** 片段实际用到的参考图：角色 → 场景 → 道具，每个都要有已采用的图；缺了就报具体是哪个。 */
     /**
-     * 分镜节奏的程序检查（不靠模型自检）：镜头数、单镜时长、相邻景别、片段时长，规则同「写分镜脚本」提示词。
-     * 只是提示，不进 issues、不拦截出图，也不自动重写；只按首帧出片的模型一段一个镜头，不查。
+     * 分镜节奏的程序检查（不靠模型自检）：台词量、镜头数、单镜时长、相邻景别、片段时长，规则同「写分镜脚本」提示词。
+     * 只是提示，不进 issues、不拦截出图，也不自动重写；只按首帧出片的模型一段一个镜头，只查台词量。
      */
     private ArrayNode shotWarnings(JsonNode clip, Limits lim, double total, int lastOrderInEpisode) {
         ArrayNode out = om.createArrayNode();
         JsonNode shots = clip.path("shots");
-        if (lim == null || lim.frame() || shots.isEmpty()) return out;
+        if (lim == null || shots.isEmpty()) return out;
+        // 台词量：视频模型每秒约说 4 个字，太密会被吞掉（2026-10-26「通道对话」7 秒 69 字，整句没了）；两人同一镜说话也容易串。
+        List<String> dense = new ArrayList<>(), twoSpeakers = new ArrayList<>();
+        for (int i = 0; i < shots.size(); i++) {
+            JsonNode s = shots.get(i);
+            long chars = 0;
+            Set<String> speakers = new HashSet<>();
+            for (JsonNode l : s.path("dialogue")) {
+                chars += l.path("text").asText().codePoints().filter(Character::isLetterOrDigit).count();
+                speakers.add(l.path("speakerId").asText(""));
+            }
+            double d = s.path("durationSec").asDouble();
+            if (chars > 0 && d > 0 && chars > d * 4) dense.add("第 " + (i + 1) + " 镜 " + fmt(d) + " 秒 " + chars + " 字");
+            if (speakers.size() > 1) twoSpeakers.add("第 " + (i + 1) + " 镜");
+        }
+        if (!dense.isEmpty()) out.add(String.join("、", dense) + "：台词超过每秒 4 字容易说不完或被吞掉，挪一部分到下一镜或延长镜头");
+        if (!twoSpeakers.isEmpty()) out.add(String.join("、", twoSpeakers) + "有两个人说话：拆成说、答两个镜头更稳");
+        if (lim.frame()) return out;
         int lo = Math.min(3, lim.maxShots());
         if (shots.size() < lo) out.add("只有 " + shots.size() + " 个镜头，每段至少 " + lo + " 个：补一个反应镜头或细节特写");
         List<String> longShots = new ArrayList<>(), sameSize = new ArrayList<>();
@@ -801,6 +818,11 @@ public class DirectorService {
     /** 一次片段视频请求的全部输入：分镜板 + 资产参考图 + 说话角色的声音样本，都按已采用版本解析。 */
     private record VideoInput(String prompt, int durationSec, String aspect, Limits lim, List<VideoStudioReferenceInput> refs,
                               ArrayNode refsMeta, String fingerprint, String firstFrame) {
+        /** 交给模型的是改写后的英文稿；指纹、候选上记的提示词仍是用户看到的中文。 */
+        VideoInput withPrompt(String sent) {
+            return new VideoInput(sent, durationSec, aspect, lim, refs, refsMeta, fingerprint, firstFrame);
+        }
+
         IpRunService.IpVideoRequest request(String requestId, Long maxCost, BillingSelection billing) {
             // 首帧出片：走画布原有的单首帧路径（refKey → first_frame_key），只交这一张分镜画面。
             if (lim.frame()) return new IpRunService.IpVideoRequest(prompt, firstFrame, durationSec, aspect, lim.model(), maxCost, null, billing, requestId);
@@ -864,6 +886,7 @@ public class DirectorService {
         }
         VideoInput in = videoInput(c, clip);
         if (fixtures.enabled()) return 0;
+        // 报价只含视频：H3 提交前的提示词改写按实际用量另扣（文字模型，花费很少），界面上明说，不进报价（2026-10-26 用户定）。
         return videoModels.quote(userId, in.request(null, null, null));
     }
 
@@ -880,23 +903,164 @@ public class DirectorService {
         requireIdle(w, node);
         if (clip.path("video").path("pending").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该片段视频生成中，请稍候");
         VideoInput in = videoInput(c, clip);
+        String sent = null;
+        if (h3(in.lim())) {
+            Rewrite rw = rewrite(c, clip);
+            sent = english(clip, rw);
+            if (sent == null) return rewriteFirst(userId, w, c, clip, rw, requestId, pipeline, billing, maxCost);
+            if (sent.length() > DirectorH3Rewrite.MAX_PROMPT_CHARS)
+                throw invalid("台词加起来太长，发给视频模型的提示词超过 " + DirectorH3Rewrite.MAX_PROMPT_CHARS + " 字符。请缩短台词或拆分片段");
+        }
         ObjectNode m = om.createObjectNode().put("node", node).put("prompt", in.prompt()).put("fingerprint", in.fingerprint())
                 .put("promptFormat", DirectorPrompts.VIDEO_PROMPT_FORMAT);
+        if (sent != null) m.put("sentPrompt", sent);
         m.set("refs", in.refsMeta());
         clearError(c, node);
         w.setActive(true);
+        VideoInput submit = sent == null ? in : in.withPrompt(sent);
         if (fixtures.enabled()) {
-            String runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), node, requestId, "video", in.prompt()));
+            String runId = newTx.execute(tx -> fixtureMedia(userId, w.getId(), node, requestId, "video", submit.prompt()));
             track(c, pipeline, runId, m);
             return runId;
         }
-        JsonNode job = newTx.execute(tx -> imageRuns.generateVideoForDirector(userId, w.getId(), node, in.request(requestId, maxCost, billing)));
+        JsonNode job = newTx.execute(tx -> imageRuns.generateVideoForDirector(userId, w.getId(), node, submit.request(requestId, maxCost, billing)));
         String jobId = job.path("id").asText();
         ObjectNode entry = ((ObjectNode) clip.path("video")).withArray("pending").addObject().put("jobId", jobId).put("at", Instant.now().toString())
                 .put("stage", job.path("stage").asText("已入队")).put("pct", job.path("progress_pct").asInt(0));
         entry.set("meta", m);
         if (pipeline != null) pipeline.withArray("videoJobs").addObject().put("jobId", jobId).put("estimate", maxCost == null ? 0 : maxCost);
         return jobId;
+    }
+
+    // ── H3 视频提示词改写 ───────────────────────────────────────────────────
+    // 用户看到、能改的是中文视频提示词；提交 H3 前用作品的文本模型按官方 skill 改写成英文（DirectorH3Rewrite），
+    // 台词与说话人编号由代码填，校验不过不提交。依据：docs/audits/director-h3-video-prompt-ab-2026-10.md §6。
+
+    static final String REWRITE_NODE = "videoPrompt:";
+
+    /** 官方写法只用在 H3 上：目前只有聚算 H3 带「支持厂商提示词优化」；只按首帧出片的模型不改写。 */
+    private static boolean h3(Limits lim) {
+        return lim != null && !lim.frame() && lim.optimizable();
+    }
+
+    /**
+     * 一次改写的全部输入。{@code hash} 只管画面与结构（中文原文里台词已换成占位）：不变就复用已存的英文模板，
+     * 台词按当前文字现场填 —— 只改台词不用重新改写。
+     */
+    private record Rewrite(String system, String user, String hash, ObjectNode meta, List<DirectorH3Rewrite.Line> lines, String language) {}
+
+    private Rewrite rewrite(ObjectNode c, JsonNode clip) {
+        List<String> known = new ArrayList<>(List.of("旁白"));
+        for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) known.add(a.path("name").asText());
+        int shots = Math.min(clip.path("shots").size(), DirectorPrompts.MAX_SHOTS);
+        boolean grid = DirectorPrompts.boardLayout(clip.path("shots").size())[0] == 2;
+        // 参考素材清单与提交顺序一致（videoInput）：图1 分镜图，资产按角色 → 场景 → 道具，音频按说话人第一次开口的顺序。
+        List<String> refs = new ArrayList<>();
+        refs.add("<Picture 1>: " + (grid
+                ? "a 2x2 storyboard grid; top-left panel = Shot 1, top-right = Shot 2, bottom-left = Shot 3, bottom-right = Shot 4"
+                  + (shots < 4 ? " (panels without a shot are empty)" : "") + ". Use it only for viewpoint, subject placement and shot order."
+                : "the storyboard frame of this clip. Use it only for viewpoint, subject placement and composition."));
+        int pictures = 1;
+        for (JsonNode a : visualAssets(c, clip)) {
+            pictures++;
+            String name = a.path("name").asText(), notes = a.path("description").asText().strip();
+            String what = switch (a.path("kind").asText()) {
+                case "scene" -> "reference image of the location 「" + name + "」";
+                case "prop" -> "reference image of the prop 「" + name + "」";
+                default -> "character sheet of 「" + name + "」; every figure on the sheet is the same person";
+            };
+            refs.add("<Picture " + pictures + ">: " + what + "." + (notes.isEmpty() ? "" : " Written notes: " + notes));
+        }
+        int audios = 0;
+        for (JsonNode a : speakers(c, clip)) if (a.path("voice").path("key").isTextual())
+            refs.add("<Audio " + (++audios) + ">: voice sample of 「" + a.path("name").asText() + "」; use only its timbre and delivery.");
+        DirectorH3Rewrite.Source src = DirectorH3Rewrite.source(clip.path("videoPrompt").asText(), known);
+        int planned = 0;
+        for (JsonNode s : clip.path("shots")) planned += s.path("dialogue").size();
+        // 台词由代码按原文填回去：认不全就宁可不改写，免得模型把漏认的台词翻成英文念出来。
+        if (src.lines().size() < planned) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_VIDEO_PROMPT_LINES",
+                "视频提示词里认不全台词（应有 " + planned + " 句）。请把台词写成「某某说：「台词」」，或恢复自动生成");
+        List<Double> starts = new ArrayList<>();
+        double t = 0;
+        for (int i = 0; i < shots; i++) { starts.add(t); t += clip.path("shots").get(i).path("durationSec").asDouble(); }
+        String user = DirectorH3Rewrite.user((int) Math.round(clip.path("durationSec").asDouble()), shots, refs, src.text());
+        String h = hash(DirectorH3Rewrite.VERSION + "|" + user);
+        ObjectNode meta = DirectorH3Rewrite.meta(om, shots, starts, pictures, audios, c.path("settings").path("language").asText(null), src.lines())
+                .put("hash", h).put("targetId", clip.path("id").asText());
+        return new Rewrite(DirectorH3Rewrite.system(), user, h, meta, src.lines(), meta.path("language").asText());
+    }
+
+    /** 已存、并且和当前画面结构与参考素材对得上的英文稿，台词按当前文字填好；没有就 null。 */
+    private static String english(JsonNode clip, Rewrite rw) {
+        JsonNode en = clip.path("videoPromptEn");
+        if (!en.isObject() || !rw.hash().equals(en.path("hash").asText()) || !en.path("template").isTextual()) return null;
+        return DirectorH3Rewrite.fill(en.path("template").asText(), rw.lines(), rw.language());
+    }
+
+    private long rewritePrice(ObjectNode c) {
+        return fixtures.enabled() ? 0 : directorTextPrice(c, "videoPrompt", directorPrices(c)[0]);
+    }
+
+    /**
+     * 给界面：off = 不改写（非 H3）；needed = 提交时会先改写；ready = 英文稿已备好，直接提交。
+     * ready 时把填好当前台词的英文放进 {@code videoPromptEn.text}，界面展开看到的就是会发出去的那一份。
+     */
+    private String rewriteState(ObjectNode c, ObjectNode clip, Limits lim) {
+        if (!h3(lim)) return "off";
+        String sent;
+        try { sent = english(clip, rewrite(c, clip)); }
+        catch (BusinessException e) { sent = null; }
+        if (sent == null) { if (clip.path("videoPromptEn").isObject()) ((ObjectNode) clip.path("videoPromptEn")).remove("text"); return "needed"; }
+        ((ObjectNode) clip.path("videoPromptEn")).put("text", sent);
+        return "ready";
+    }
+
+    /**
+     * 还没有英文稿：先发改写任务，完成后由 {@link #chainVideo} 接着提交视频。
+     * 用户确认的是视频价格（原样留给视频）；改写不报价，按文本模型自己的上限冻结、按实际用量结算，界面上提示会额外消耗少量积分。
+     */
+    private String rewriteFirst(String userId, DirectorWork w, ObjectNode c, ObjectNode clip, Rewrite rw, String requestId,
+                                ObjectNode pipeline, BillingSelection billing, Long maxCost) {
+        String clipId = clip.path("id").asText(), node = REWRITE_NODE + clipId;
+        requireIdle(w, node);
+        long price = rewritePrice(c);
+        ObjectNode then = rw.meta().putObject("then").put("requestId", requestId);
+        if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
+        if (billing != null) then.set("billing", om.valueToTree(billing));
+        if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(), DirectorH3Rewrite.MAX_TOKENS,
+                requestId + "-p", rw.meta(), textModel(c), billing, price));
+        clearError(c, "video:" + clipId);
+        track(c, pipeline, run.id(), om.createObjectNode().put("node", node));
+        w.setActive(true);
+        return run.id();
+    }
+
+    /**
+     * 改写完成后接着提交视频，用点「生成视频」时确认过的价格与付款方。改写期间提示词或参考素材改了就不提交，请用户重新生成；
+     * 一键制作已暂停或停止也不提交（英文稿留着，恢复后直接用）。
+     */
+    private void chainVideo(DirectorWork w, ObjectNode c, ObjectNode clip, JsonNode then) {
+        if (!then.isObject()) return;
+        String clipId = clip.path("id").asText();
+        refresh(c);
+        Limits lim = limits(c);
+        try {
+            if (!h3(lim) || english(clip, rewrite(c, clip)) == null) {
+                setError(c, "video:" + clipId, "提示词在改写期间有改动，视频没有提交，请重新生成");
+                return;
+            }
+        } catch (BusinessException e) { setError(c, "video:" + clipId, e.getMessage()); return; }
+        ObjectNode pipeline = null;
+        if (then.hasNonNull("pipelineId")) {
+            JsonNode p = c.path("pipeline");
+            if (!p.isObject() || !then.path("pipelineId").asText().equals(p.path("id").asText()) || !"running".equals(p.path("status").asText())) return;
+            pipeline = (ObjectNode) p;
+        }
+        BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
+        Long maxCost = then.hasNonNull("maxCost") ? then.path("maxCost").asLong() : null;
+        try { video(w.getOwnerUserId(), w, c, clip, then.path("requestId").asText(), pipeline, billing, maxCost); }
+        catch (BusinessException e) { setError(c, "video:" + clipId, e.getMessage()); }
     }
 
     /** 查询在跑的片段视频任务，完成的放进候选（输入没变才自动填采用位），失败的写清原因。返回是否有变化。 */
@@ -949,6 +1113,7 @@ public class DirectorService {
         ObjectNode m = addCandidate(c, slot, key, runId, "generated");
         if (meta.hasNonNull("fingerprint")) m.put("fingerprint", meta.path("fingerprint").asText());
         if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
+        if (meta.has("sentPrompt")) m.put("sentPrompt", meta.path("sentPrompt").asText());
         if (meta.has("prompt")) m.put("prompt", meta.path("prompt").asText());
         if (meta.has("refs")) m.set("refs", meta.path("refs").deepCopy());
         if (mock) m.put("mock", true);
@@ -1093,6 +1258,13 @@ public class DirectorService {
         JsonNode d = output.path("director");
         JsonNode in = parse(run.getInputJson()).path("_director");
         switch (in.path("task").asText()) {
+            case "videoPrompt" -> {
+                ObjectNode clip = (ObjectNode) findOrNull(c, "clips", in.path("targetId").asText());
+                if (clip == null || !d.path("template").isTextual()) return;
+                clip.putObject("videoPromptEn").put("hash", in.path("hash").asText()).put("template", d.path("template").asText())
+                        .put("runId", run.getId()).put("at", Instant.now().toString());
+                chainVideo(w, c, clip, in.path("then"));
+            }
             case "script" -> {
                 if (in.path("regenerate").asBoolean(false)) {
                     // 重新生成：提交后剧本、分集、片段都没动过才替换；旧剧本进历史（最近 3 版），资产保留、解除与旧分集的关联。
@@ -1430,7 +1602,10 @@ public class DirectorService {
             IpRun run = runs.findById(r.asText()).orElse(null);
             if (run == null) continue;
             spent += run.getCost();
-            if (IpRun.STATUS_RUNNING.equals(run.getStatus())) { inflight++; busy.add(run.getNodeId()); }
+            if (IpRun.STATUS_RUNNING.equals(run.getStatus())) {
+                inflight++; busy.add(run.getNodeId());
+                if (run.getNodeId().startsWith(REWRITE_NODE)) busy.add("video:" + run.getNodeId().substring(REWRITE_NODE.length()));
+            }
         }
         for (JsonNode vj : p.path("videoJobs")) spent += vj.path("estimate").asLong();
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
@@ -1583,7 +1758,7 @@ public class DirectorService {
                 for (JsonNode clip : clipsOf(c, eps)) {
                     String cid = clip.path("id").asText();
                     if (clip.path("video").path("pending").size() > 0) { videoing = true; continue; }
-                    if (clip.path("video").path("candidates").size() > 0 || failed.contains("video:" + cid) || adoptedKey(clip.path("board")) == null) continue;
+                    if (clip.path("video").path("candidates").size() > 0 || failed.contains("video:" + cid) || failed.contains(REWRITE_NODE + cid) || adoptedKey(clip.path("board")) == null) continue;
                     videoing = true;
                     if (!step.send("video", cid, "片段视频生成中")) return;
                 }
@@ -1897,6 +2072,7 @@ public class DirectorService {
         int maxTokens = switch (type == null ? "" : type) {
             case "script" -> SCRIPT_MAX_TOKENS;
             case "extract", "plan" -> STRUCTURE_MAX_TOKENS;
+            case "videoPrompt" -> DirectorH3Rewrite.MAX_TOKENS;
             default -> TEXT_MAX_TOKENS;
         };
         long price;
@@ -2036,6 +2212,7 @@ public class DirectorService {
             }
             for (String sp : badSpeakers) issues.add("台词说话人「" + sp + "」不是角色，请重新选择说话人");
             clip.set("warnings", shotWarnings(clip, lim, total, lastOrder.getOrDefault(clip.path("episodeId").asText(), 0)));
+            clip.put("videoPromptRewrite", rewriteState(c, clip, lim));
             check((ObjectNode) clip.path("board"), boardCurrent(c, clip), null, false);
             String legacy = legacyVideoPrompt(c, clip, lim, parts, names);
             check((ObjectNode) clip.path("video"), videoCurrent(c, clip, lim), legacy == null ? null : videoCurrent(c, clip, lim, legacy), true);
@@ -2398,6 +2575,7 @@ public class DirectorService {
                 .put("title", title == null ? "" : title).put("summary", summary == null ? "" : summary).put("durationSec", 0);
         clip.putArray("assetIds"); clip.putArray("shots"); clip.putArray("issues");
         clip.put("boardPrompt", "").put("boardPromptCustom", false).put("videoPrompt", "").put("videoPromptCustom", false);
+        clip.remove("videoPromptEn");
         clip.set("board", emptySlot()); clip.set("video", emptySlot());
         clip.put("rev", 1);
         return clip;
@@ -2480,6 +2658,7 @@ public class DirectorService {
         if (node.startsWith("asset:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a.path("image")).set("error", err); }
         else if (node.startsWith("board:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("board")).set("error", err); }
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
+        else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
         else if (node.startsWith("plan:")) { JsonNode ep = findOrNull(c, "episodes", node.substring(5)); if (ep != null) ((ObjectNode) ep).set("planError", err); }
         else c.set("textError", err.put("task", node.contains(":") ? node.substring(0, node.indexOf(':')) : node));
     }
@@ -2488,6 +2667,7 @@ public class DirectorService {
         if (node.startsWith("asset:")) { JsonNode a = findOrNull(c, "assets", node.substring(6)); if (a != null) ((ObjectNode) a.path("image")).putNull("error"); }
         else if (node.startsWith("board:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("board")).putNull("error"); }
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
+        else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
         else if (node.startsWith("plan:")) { JsonNode ep = findOrNull(c, "episodes", node.substring(5)); if (ep != null) ((ObjectNode) ep).putNull("planError"); }
         else c.putNull("textError");
     }

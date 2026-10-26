@@ -9,6 +9,7 @@ import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
 import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
+import { formatDateTime } from "@/lib/datetime";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode } = props;
@@ -405,7 +406,19 @@ function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWo
       <span className="director-spacer"/>
       <small className="director-muted">{custom ? (which === "board" ? "已自定义，镜头修改不再同步" : "已自定义") : "随镜头自动生成"}</small>
     </div>
+    {which === "video" && <SentPrompt clip={clip}/>}
   </div>;
+}
+
+/** H3 实际收到的是按官方写法改写的英文稿：备好了就能展开看；还没有就说明生成时会先改写。 */
+function SentPrompt({ clip }: { clip: DirectorClip }) {
+  if (!clip.videoPromptRewrite || clip.videoPromptRewrite === "off") return null;
+  if (clip.videoPromptRewrite === "needed" || !clip.videoPromptEn?.text)
+    return <p className="director-sent-prompt-note">生成视频时，会先把这段提示词改写成 H3 官方要求的英文格式（台词保留中文原文），改写会额外消耗少量积分。</p>;
+  return <details className="director-sent-prompt">
+    <summary>发给模型的英文（{formatDateTime(clip.videoPromptEn.at)} 改写）</summary>
+    <pre>{clip.videoPromptEn.text}</pre>
+  </details>;
 }
 
 type ShotDraft = Omit<DirectorShot, "startSec" | "endSec"> & { durationText: string };

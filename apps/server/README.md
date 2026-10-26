@@ -1245,6 +1245,10 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **上下文窗口**：`DialogueContextWindow.trim`，最近 6 轮完整，更早的工具结果一行摘要、长参数换成合法占位 JSON（原生 tool_calls 与 tool 消息一一对应不变），估算超 80k 时降到 3 轮 / 1 轮；只影响发给模型的视图。
 - **其它**：`DialogueCanvasDigest.full` 写明全文字数与 `read_canvas` 分段参数，`read_canvas` 文字对象返回 `total`；`ChildRuns.follow` 最多等 10 分钟，拉片仍在进行时不再 `HANDED_OFF` 结束，交给模型告诉用户。提示词 `dap.ip_studio_skill_dialogue` 规则 14 + 分段读用法，`PromptTemplateSeeder.SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移、无新表。
 
+### 导演台 H3 视频提示词改写（2026-10-26，本地未发布）
+
+用户看、改中文视频提示词（`DirectorPrompts.videoPrompt`）；H3 片段提交前由 `DirectorH3Rewrite` 改写成 MiniMax 官方英文写法：系统提示词是 `resources/director/h3-skill` 下官方 skill 原文（提交 `b731d88`，适用 MiniMax H3 Community License）加本服务的 JSON 输出约定，用户消息给参考素材清单、带 `{{Ln}}` 占位的中文、每镜台词清单和 `shot_1…shot_N` 骨架。走现有导演台文字任务（`StudioWorkflowService.submitDirectorText`，节点 `videoPrompt:<clip>`，输出上限 4096 Token，按实际用量结算），worker 里 `DirectorPrompts.validate` → `DirectorH3Rewrite.validate` 校验并拼成带占位的模板；回投时存 `clip.videoPromptEn{hash, template, runId, at}`，`chainVideo` 用 `then` 里的请求号、视频价格上限与付款方接着提交。提交时 `DirectorH3Rewrite.fill` 按当前台词填成 `(Sx) <d>[语言] 原文</d>`。`refresh` 写 `clip.videoPromptRewrite`（off / needed / ready），ready 时把填好的英文放进 `videoPromptEn.text` 给界面；候选记 `sentPrompt`。报价（`videoQuote`）与连跑估算只含视频。无迁移、无接口变化。依据与真模型试跑见 `docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7。
+
 ### 导演台图片模型能力过滤（2026-10-26，已生产发布 `20261026-director-image-viewer`）
 
 `DirectorService.IMAGE_RATIOS` = 1:1 / 16:9 / 9:16（道具 / 角色场景 / 分镜三种画幅）。`imageSelections()` 只把出图规格三种都有的场景候选列为可新选，`missingRatios(endpoint)` 是唯一判断（按 `AiImageRequestSpec.ratios()`，不按型号名；无规格返回空，规格读不出来当作全缺）。`patch` 只校验改动后的 `imageModel`，原值照存；`imageSelection(c)` 解析实际会用的模型（存着的或默认，不过滤），`directorPrices`、`estimate`、一键连跑 `Step` 与 `image()` 都读它，停用时以导演台文案重抛 `ENDPOINT_NOT_ALLOWED`。`sizeFor` 只在这个接入点里取同比例最大一档，出不了按资产类型抛 `STUDIO_IMAGE_SIZE_UNSUPPORTED`（在建任务、冻结前）。`view` 新增 `imageModelState`。无迁移、无配置变更；规则见 `specs/BUSINESS_RULES.md` 与导演台方案「2026-10-26」。

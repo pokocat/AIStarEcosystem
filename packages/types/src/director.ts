@@ -51,6 +51,8 @@ export interface DirectorMedia {
   fingerprint?: string;
   /** 视频提示词格式版本；没有的是 2026-10-26 改版前的旧格式，服务端按旧模板核对，不因换模板标成已修改。 */
   promptFormat?: number;
+  /** 实际发给 H3 的英文提示词（按官方写法改写）；prompt 仍是用户看到的中文。 */
+  sentPrompt?: string;
   /** 生成期间改过设置，按旧设置生成；不会自动使用。 */
   stale?: boolean;
 }
@@ -178,6 +180,13 @@ export interface DirectorClip {
   voiced?: string[];
   /** 当前视频模型不支持声音参考时，用户明确选了「不带声音参考生成」。声音绑定本身不删。 */
   videoWithoutVoice?: boolean;
+  /**
+   * H3 提交前把中文视频提示词改写成官方英文写法：off = 不改写（非 H3）；needed = 生成时先改写（按实际用量另扣少量积分，不进报价）；
+   * ready = 英文稿已备好，与当前中文提示词和参考素材对得上。
+   */
+  videoPromptRewrite?: "off" | "needed" | "ready";
+  /** 最近一次改写出的英文稿；text 只在 ready 时有，是填好当前台词、会发给模型的那一份。 */
+  videoPromptEn?: { text?: string; at: string } | null;
   rev: number;
 }
 

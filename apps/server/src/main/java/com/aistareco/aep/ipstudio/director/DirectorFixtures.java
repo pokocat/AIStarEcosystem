@@ -82,6 +82,22 @@ public final class DirectorFixtures {
                     if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
                 }
             }
+            case "videoPrompt" -> {
+                // 视频提示词改写：每镜一句画面，台词按占位原样放回，由 DirectorH3Rewrite 组装成 H3 格式。
+                out.put("subject_definitions", "<Subject 1> is the character shown in <Picture 2>.")
+                        .put("summary", "[reference generation] A short test clip that follows the storyboard in <Picture 1>.")
+                        .put("retention_analysis", "<Subject 1> (appears in [Shot 1]): fully_preserved - appearance from <Picture 2>.")
+                        .put("style", "Live-action, test footage.")
+                        .put("overall_soundscape", "Quiet room tone.").put("non_diegetic_music", "N/A");
+                int n = Math.max(1, meta.path("shots").asInt(1));
+                List<String> lines = new ArrayList<>();
+                meta.path("lines").forEach(l -> lines.add(l.path("id").asText()));
+                for (int i = 0; i < n; i++) {
+                    StringBuilder b = new StringBuilder(i == 0 ? "A medium shot of <Subject 1>." : "the camera cuts to <Subject 1>.");
+                    for (int j = i; j < lines.size(); j += n) b.append(" <Subject 1> says: {{").append(lines.get(j)).append("}}");
+                    out.put("shot_" + (i + 1), b.toString());
+                }
+            }
             default -> { }
         }
         return out;
