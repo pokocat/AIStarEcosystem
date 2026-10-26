@@ -217,7 +217,7 @@ function EpisodeList(props: WorkbenchProps) {
       {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本和分集，当前版本保留在历史中。"/> : <>
       <StoryOutline work={work} defaultOpen={!work.assets.length}/>
       <ReferenceNotes work={work} apply={apply} setError={setError}/>
-      {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
+      {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存。"/> :
         <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
           desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成参考图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
             : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
