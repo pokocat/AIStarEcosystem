@@ -47,6 +47,8 @@
 
 ## Studio 当前待办
 
+- [x] ~~4K 同步图片响应与 JSON 字符串上限不一致~~ **2026-10-26 已修复，未发布**：`sync-base64` 响应按原端点 `maxOutputBytes` 换算解析上限，不修改共享 JSON 解析器，实际图片大小与尺寸校验保留；解析失败记录异常类型、响应字符数和位置，诊断在大图 / 截断 JSON 下仍省略 Base64。真实 3840×2160 PNG 的 Base64 超过 2000 万字符，本地 JSON 生成与 multipart 编辑路径均通过。线上 17:09 / 17:17 两笔失败各 55 积分已确认解冻；历史响应与底层解析异常未完整保留，因此不能认定已证明这两笔的具体触发原因，也未恢复或重提历史任务。
+
 - [ ] **Studio Turbopack 预览被 Twick 样式阻断**（2026-10-24 发现）：`apps/web-aiavatar/src/styles/twick-scoped.css:1739` 在普通规则后包含字体 `@import`，`next dev --turbopack` 报 `@import rules must precede all rules`，影响 `/create` 及引用成片编辑器的画布页面。本轮个人 IP 提示词修改未改该样式；需同步核对 `scripts/scope-twick-css.mjs` 的生成规则并独立验证。
 
 - [ ] **全模型错误原因展示发布前验收**（2026-10-25 本地扩大范围，未部署）：文字 / 视觉 / 图片 / 视频 / 配音 / 口型 / 音乐 / 数字人共用 `ProviderErrorMessage`；发布前后检查真实页面、供应商配额提示与追查号，不重复客户付费任务，见 [接入与验证](docs/audits/model-error-propagation-validation-20261025.md)。

@@ -7,6 +7,8 @@ import com.aistareco.aep.service.AiModelInvocationService;
 import com.aistareco.aep.service.ai.*;
 import com.aistareco.aep.service.storage.*;
 import com.aistareco.common.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.exc.StreamConstraintsException;
 import com.fasterxml.jackson.databind.*;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.http.HttpStatus;
@@ -147,7 +149,7 @@ public class JusuanImageClient {
             JsonNode accepted;
             try{accepted=multipart==null?json(endpoint,wire,submitPath,body.toString(),requestId,owner,"POST",true)
                     :checkedSubmit(upstream.sendJson(multipart,context(endpoint,requestId,owner,
-                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)));}
+                        body.deepCopy().put("transport","multipart").set("referenceKeys",mapper.valueToTree(keys.stream().map(JusuanImageClient::referenceLabel).toList())).toString(),true)),wire);}
             catch(ProviderRejected error){throw error;}
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             if(resultMode.startsWith("sync-")) {
@@ -397,12 +399,12 @@ public class JusuanImageClient {
             request.POST(body==null?HttpRequest.BodyPublishers.noBody():HttpRequest.BodyPublishers.ofString(body));
         }
         var response=upstream.sendJson(request.build(),context(endpoint,id,owner,body,submit));
-        return submit?checkedSubmit(response):checked(response);
+        return submit?checkedSubmit(response,wire):checked(response,wire);
     }
-    private JsonNode checkedSubmit(HttpResponse<String> response) {
+    private JsonNode checkedSubmit(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()>=400 && response.statusCode()<500)
             throw attach(rejected(response.body(),"图片请求被生成引擎拒绝（"+response.statusCode()+"）"),response);
-        return checked(response);
+        return checked(response,wire);
     }
 
     // AGENTS §8.0.1: keep actionable JSON rejection messages on the public path as well as in diagnostics.
@@ -473,12 +475,43 @@ public class JusuanImageClient {
                 .appCode(owner.appCode()).client(http).requestBodyJson(body).recordFailureUsage(submit).maxAttempts(1).build();
     }
     private JsonNode checked(HttpResponse<String> response) {
+        return checked(response,null);
+    }
+    private JsonNode checked(HttpResponse<String> response,AiImageRequestSpec.Wire wire) {
         if(response.statusCode()/100!=2) {
             var error=rejected(response.body(),"图片生成服务返回错误（"+response.statusCode()+"）");
             // Keep recoverable failures distinct from a definitive submission rejection.
             throw attach(new BusinessException(HttpStatus.BAD_GATEWAY,error.getCode(),error.getMessage(),error.getDetails()),response);
         }
-        try{return mapper.readTree(response.body());}catch(Exception e){throw attach(failure("聚算图片接口返回了无效结果"),response);}
+        try {
+            JsonNode result;
+            if(wire!=null && "sync-base64".equals(wire.resultMode())) {
+                // Jackson's default 20M-character string limit rejects valid 4K PNGs before
+                // resultBytes can apply the endpoint's byte limit. Only this response parser
+                // gets the matching Base64 allowance; never change the shared mapper/factory.
+                long encodedLimit=((long)setting(wire.maxOutputBytes(),64*1024*1024)+2)/3*4+128;
+                var factory=mapper.getFactory();
+                int stringLimit=(int)Math.min(Integer.MAX_VALUE,Math.max(
+                        factory.streamReadConstraints().getMaxStringLength(),encodedLimit));
+                var imageFactory=factory.rebuild().streamReadConstraints(factory.streamReadConstraints()
+                        .rebuild().maxStringLength(stringLimit).build()).build();
+                try(var parser=imageFactory.createParser(response.body())) {result=mapper.readTree(parser);}
+            } else result=mapper.readTree(response.body());
+            if(result==null || result.isMissingNode() || !result.isObject())
+                throw new IllegalStateException("Expected an image response object");
+            return result;
+        } catch(Exception e) {
+            var error=failure("图片生成接口返回的数据无法解析，请联系运营核查");
+            String detail="image-response parseError="+e.getClass().getSimpleName()
+                    +" responseCharacters="+(response.body()==null?0:response.body().length());
+            if(e instanceof JsonProcessingException json && json.getLocation()!=null)
+                detail+=" charOffset="+json.getLocation().getCharOffset();
+            if(e instanceof StreamConstraintsException constraint)detail+=" reason="+constraint.getOriginalMessage();
+            // Parser exceptions can quote the source or a media token; retain safe diagnostic
+            // facts in the exception chain without copying image bytes into task error logs.
+            error.addSuppressed(new IllegalStateException(detail));
+            throw attach(error,response);
+        }
     }
     static String assetId(JsonNode job) {
         for(String field:List.of("outputAssetId","output_asset_id","assetId"))if(job.hasNonNull(field))return job.path(field).asText();

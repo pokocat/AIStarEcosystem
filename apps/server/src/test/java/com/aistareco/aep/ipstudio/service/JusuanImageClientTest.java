@@ -280,6 +280,76 @@ class JusuanImageClientTest {
         verify(upstream).sendJson(any(),any());
         verifyNoInteractions(http,storage);
     }
+    private AiModelEndpoint largeImageEndpoint(int maxBytes) {
+        var ep=endpoint("gpt-image-2-4k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":1000,"minReferenceImages":0,"maxReferenceImages":1,"referenceField":"multiple",
+                 "outputs":[{"canvasSize":"3840x2160","aspectRatio":"16:9","providerFields":{}}],
+                 "wire":{"submitPath":"/images/generations","referenceSubmitPath":"/images/edits",
+                         "inputMode":"multipart","resultMode":"sync-base64","outputPointer":"/data/0/b64_json",
+                         "requireExactOutputSize":true,"maxOutputBytes":%d}}
+                """.formatted(maxBytes));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+        return ep;
+    }
+    @Test void real4kPngBeyondJacksonDefaultStringLimitWorksForGenerationAndEdits() throws Exception {
+        largeImageEndpoint(64*1024*1024);
+        var image=new java.awt.image.BufferedImage(3840,2160,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        int[] pixels=((java.awt.image.DataBufferInt)image.getRaster().getDataBuffer()).getData();
+        var random=new Random(42);
+        for(int i=0;i<pixels.length;i++)pixels[i]=random.nextInt();
+        var output=new java.io.ByteArrayOutputStream();
+        assertTrue(javax.imageio.ImageIO.write(image,"png",output));
+        byte[] bytes=output.toByteArray();
+        String encoded=Base64.getEncoder().encodeToString(bytes);
+        int sharedLimit=mapper.getFactory().streamReadConstraints().getMaxStringLength();
+        assertTrue(encoded.length()>sharedLimit,"fixture must reproduce the 4K Base64 parsing limit");
+        var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var checkpoints=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        assertArrayEquals(bytes,client.generate("ep","landscape","3840x2160",List.of(),"4k-json","owner",s->{},null,null,null,checkpoints::set));
+        Path reference=Files.createTempFile("4k-reference-",".png");
+        try {
+            Files.write(reference,Base64.getDecoder().decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII="));
+            when(storage.openForRead("reference")).thenReturn(reference);
+            assertArrayEquals(bytes,client.generate("ep","landscape","3840x2160",List.of("reference"),"4k-edit","owner",s->{},null,null,null,checkpoints::set));
+        } finally {Files.deleteIfExists(reference);}
+        assertEquals(sharedLimit,mapper.getFactory().streamReadConstraints().getMaxStringLength());
+        verify(upstream,times(2)).sendJson(any(),any());
+        verifyNoInteractions(http);
+    }
+    @Test void largerParserAllowanceStillRejectsOutputAboveEndpointByteLimit() {
+        largeImageEndpoint(32);
+        String encoded=Base64.getEncoder().encodeToString(Base64.getDecoder().decode(
+                "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII="));
+        var response=json("{\"data\":[{\"b64_json\":\""+encoded+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var error=assertThrows(BusinessException.class,()->client.generate("ep","x","3840x2160",List.of(),"limit","owner",s->{}));
+        assertTrue(error.getMessage().contains("超过端点配置的大小上限"));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void malformedImageResponseKeepsSafeParserDiagnosticsAndNeverResubmits() {
+        var ep=largeImageEndpoint(64*1024*1024);
+        when(models.storedEndpoint("ep")).thenReturn(Optional.of(ep));
+        String body="{\"data\":[{\"b64_json\":\"private-media\"}],\"bad\":}";
+        var response=json(body);
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of("x-request-id",List.of("image-parse-123")),(k,v)->true));
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        var checkpoints=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var pending=assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","x","3840x2160",List.of(),"bad-json","owner",s->{},null,null,null,checkpoints::set));
+        assertFalse(pending.getCause().getMessage().contains("聚算"));
+        String detail=pending.getCause().getSuppressed()[0].getMessage();
+        assertTrue(detail.contains("JsonParseException"));
+        assertTrue(detail.contains("responseCharacters="+body.length()));
+        assertTrue(detail.contains("charOffset="));
+        assertFalse(detail.contains("private-media"));
+        var evidence=(ProviderResponseDiagnostics)pending.getCause().getSuppressed()[1];
+        assertTrue(evidence.identifiers().contains("x-request-id=image-parse-123"));
+        assertFalse(evidence.responseBody().contains("private-media"));
+        assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","x","3840x2160",List.of(),"bad-json","owner",s->{},null,null,checkpoints.get(),checkpoints::set));
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
     @Test void nativeEditsSendOrderedSourceFilesAndExactSizeWhileTextGenerationRemainsJson() throws Exception {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""
