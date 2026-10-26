@@ -11,6 +11,10 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
   const [style, setStyle] = useState(work.settings.style);
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
   const [videoModel, setVideoModel] = useState(work.settings.videoModel ?? "");
+  const savedText = work.settings.textModel ?? "";
+  const [textModel, setTextModel] = useState(savedText);
+  const textModels = work.textModels ?? [];
+  const unavailableText = !!textModel && !textModels.some(m => m.endpointId === textModel);
   const savedImage = work.settings.imageModel ?? "";
   const [imageModel, setImageModel] = useState(savedImage);
   const imageModels = work.imageModels ?? [];
@@ -24,7 +28,8 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
   const save = () => void run("settings", async () => {
     // 图片模型没改就不带：原值不重新提交，另一个页面刚换过的模型也不会被这里改回去。
     const imageChange = imageModel === savedImage ? {} : { imageModel: imageModel || null };
-    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...imageChange } }));
+    const textChange = textModel === savedText ? {} : { textModel: textModel || null };
+    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...textChange, ...imageChange } }));
     onClose();
   }, setError);
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
@@ -32,6 +37,16 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     <label className="director-field"><span>画面风格</span><input value={style} maxLength={30} onChange={e => setStyle(e.target.value)}/></label>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
+    <label className="director-field"><span>文本模型</span>
+      <SelectField aria-label="文本模型" value={textModel} disabled={!!busy || work.textModelMode === "fixed" || !textModels.length} onChange={e => setTextModel(e.target.value)}>
+        <option value="">默认{textModels.find(m => m.isDefault) ? `（${textModels.find(m => m.isDefault)!.name}）` : ""}</option>
+        {unavailableText && <option value={textModel} disabled>原模型已不可用</option>}
+        {textModels.map(m => <option key={m.endpointId} value={m.endpointId} disabled={!work.pricing.mock && !m.tokenPricing}>{m.name}{!work.pricing.mock && !m.tokenPricing ? " · 暂不可用" : ""}</option>)}
+      </SelectField>
+      <small>{unavailableText ? "原文本模型不在可选范围内，换一个模型才能继续写剧本和分镜。其他设置可以照常保存。"
+        : !textModels.length ? "暂无可用文本模型，请联系管理员开通。"
+        : `用于剧本、拆分集、提取资产和分镜脚本，${work.pricing.mock ? "测试模式，免费。" : "按实际用量结算。"}`}</small>
+    </label>
     <label className="director-field"><span>图片模型</span>
       <SelectField aria-label="图片模型" value={imageModel} disabled={!!busy} onChange={e => setImageModel(e.target.value)}>
         <option value="">默认{imageModels.find(m => m.isDefault) ? `（${imageModels.find(m => m.isDefault)!.name}）` : ""}</option>

@@ -1,5 +1,6 @@
 // AI 导演台（docs/ai-director-plan.md v1.1）。作品内容由服务端拥有；这里是 wire 形状。
 // 媒体只在服务端存 key，出 wire 时附带短期签名的 url。
+import type { StudioCapabilities } from "./ip-studio-workflow";
 
 export type DirectorAssetKind = "character" | "scene" | "prop";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
@@ -13,6 +14,8 @@ export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
   language: string;
+  /** 所有文字任务用的模型；null 或缺省 = 后台默认。 */
+  textModel?: string | null;
   /** 片段视频用的模型；null = 后台默认。 */
   videoModel: string | null;
   /** 资产参考图和分镜图使用的模型；未设置或 null = 后台默认。 */
@@ -320,12 +323,14 @@ export interface DirectorWork {
   /** 提取出来、还没保存进资产库的清单；用户勾选、改名后保存（extract.save）或不保存（extract.discard）。 */
   pendingExtract?: DirectorPendingExtract | null;
   /** 重新生成剧本前的旧稿，新的在前，最多 3 版；只读留底。 */
-  scriptHistory?: { at: string; logline: string; draft: string }[];
+  scriptHistory?: { at: string; title?: string; logline: string; draft: string }[];
   textError: DirectorError | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
   imageModels?: DirectorImageModel[];
   imageModelState?: DirectorImageModelState;
+  textModels?: StudioCapabilities["textModels"];
+  textModelMode?: StudioCapabilities["textModelMode"];
   videoModels: DirectorVideoModel[];
   videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number } | null;
 }

@@ -63,3 +63,32 @@ test('a default model that cannot make square images is explained instead of rep
   choose('other');
   expect(screen.getByText(/用于资产参考图和分镜图，约 37 积分\/张。/)).toBeTruthy();
 });
+const textWork: any = { ...work, textModelMode: 'selectable', textModels: [
+  { endpointId:'ds', name:'DeepSeek', isDefault:true, tokenPricing:{ inputCreditsPerK:0.01, outputCreditsPerK:0.1, maxInputTokens:65536, maxOutputTokens:8192, maxCost:2 } },
+  { endpointId:'claude', name:'Claude', isDefault:false, tokenPricing:{ inputCreditsPerK:1, outputCreditsPerK:10, maxInputTokens:65536, maxOutputTokens:8192, maxCost:148 } }] };
+function chooseText(value: string) {
+  const control = screen.getByRole('combobox', { name:'文本模型' });
+  fireEvent.change(document.getElementById(control.getAttribute('data-select-native')!)!, { target:{value} });
+}
+test('the chosen text model is saved without showing any text credit number', async () => {
+  const close=vi.fn();api.patchWork.mockResolvedValue(textWork);
+  render(<SettingsPanel work={textWork} apply={vi.fn()} onClose={close} setError={vi.fn()}/>);
+  chooseText('claude');
+  expect(screen.getByText('用于剧本、拆分集、提取资产和分镜脚本，按实际用量结算。')).toBeTruthy();
+  expect(screen.getByRole('dialog').textContent).not.toMatch(/Token|148|冻结/);
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'9:16',videoModel:null,textModel:'claude'}}));
+  expect(close).toHaveBeenCalledTimes(1);
+});
+test('a retired saved text model is not resubmitted when other settings change', async () => {
+  api.patchWork.mockResolvedValue(textWork);
+  render(<SettingsPanel work={{...textWork,settings:{...textWork.settings,textModel:'retired'}}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByText(/原文本模型不在可选范围内/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button',{name:'16:9'}));
+  fireEvent.click(screen.getByRole('button',{name:'保存'}));
+  await waitFor(()=>expect(api.patchWork).toHaveBeenCalledWith('model-work',{settings:{style:'真人写实',aspectRatio:'16:9',videoModel:null}}));
+});
+test('fixed text model policy disables the selector', () => {
+  render(<SettingsPanel work={{...textWork,textModelMode:'fixed'}} apply={vi.fn()} onClose={vi.fn()} setError={vi.fn()}/>);
+  expect(screen.getByRole('combobox',{name:'文本模型'}).getAttribute('aria-disabled') ?? (document.getElementById(screen.getByRole('combobox',{name:'文本模型'}).getAttribute('data-select-native')!) as HTMLSelectElement).disabled.toString()).toMatch(/true/);
+});

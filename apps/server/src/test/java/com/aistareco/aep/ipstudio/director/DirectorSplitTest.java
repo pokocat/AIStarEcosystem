@@ -45,7 +45,8 @@ class DirectorSplitTest {
         works = mock(DirectorWorkRepository.class);
         runs = mock(IpRunRepository.class);
         textRuns = mock(StudioWorkflowService.class);
-        when(textRuns.directorPrices()).thenReturn(new long[]{21, 8});
+        when(textRuns.directorPrices(any())).thenReturn(new long[]{21, 8});
+        when(textRuns.capabilities()).thenReturn(new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Capabilities(false, List.of(), 8, 21, null, List.of(), "selectable", "selectable"));
         when(works.save(any())).thenAnswer(i -> { work = i.getArgument(0); return work; });
         when(works.lockById(any())).thenAnswer(i -> Optional.ofNullable(work));
         when(works.findById(any())).thenAnswer(i -> Optional.ofNullable(work));
@@ -78,13 +79,13 @@ class DirectorSplitTest {
     @Test
     void scriptGenerationUsesTheHundredThousandTokenBudget() throws Exception {
         service.create(USER, new DirectorService.CreateRequest("测试", "一个发生在深夜便利店的短剧", null));
-        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any()))
                 .thenReturn(new IpRunDto("IPR-script", null, "script", "studio-director", "running", "queued", 0, 0, null, null, null, null, null, null));
 
         service.task(USER, work.getId(), new DirectorService.TaskRequest("script", null, "script-1", om.createObjectNode(), null, 21L));
 
         verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), any(),
-                eq(DirectorService.SCRIPT_MAX_TOKENS), any(), argThat(meta -> "script".equals(meta.path("task").asText())), any(), any());
+                eq(DirectorService.SCRIPT_MAX_TOKENS), any(), argThat(meta -> "script".equals(meta.path("task").asText())), any(), any(), any());
     }
 
     @Test
@@ -92,7 +93,7 @@ class DirectorSplitTest {
         JsonNode v = create(headed(3));
         assertEquals(2, v.path("draftEpisodeHeadings").asInt());
         v = splitTask("{}");
-        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any());
+        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
         JsonNode pending = v.path("pendingSplit");
         assertEquals("headings", pending.path("source").asText());
         assertEquals(3, pending.path("preamble").path("paragraphs").asInt());
@@ -148,10 +149,10 @@ class DirectorSplitTest {
     @Test
     void aDifferentRequestedCountGoesToTheModel() throws Exception {
         create(headed(1));
-        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any()))
                 .thenReturn(new IpRunDto("IPR-1", null, "split", "studio-text", "running", "queued", 0, 0, null, null, null, null, null, null));
         JsonNode v = splitTask("{\"episodeCount\":3}");
-        verify(textRuns).submitDirectorText(any(), any(), eq("split"), any(), any(), anyInt(), any(), any(), any(), any());
+        verify(textRuns).submitDirectorText(any(), any(), eq("split"), any(), any(), anyInt(), any(), any(), any(), any(), any());
         assertTrue(v.path("pendingSplit").isNull());
     }
 
@@ -249,7 +250,7 @@ class DirectorSplitTest {
     @Test
     void autoPipelineContinuesAsOneEpisodeWhenTheSplitFails() {
         create("甲：开饭。\n乙：好。");
-        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any()))
                 .thenReturn(new IpRunDto("IPR-9", null, "split", "studio-text", "running", "queued", 0, 0, null, null, null, null, null, null));
         startPipeline(true);
         stored.add(IpRun.builder().id("IPR-9").projectId(work.getId()).hostType(IpRun.HOST_DIRECTOR).ownerUserId(USER).nodeId("split")

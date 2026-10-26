@@ -24,7 +24,7 @@ export type WorkbenchProps = {
   goTab: (tab: Tab) => void;
   /** 打开「确认资产」弹窗（有待保存的提取清单时）。 */
   reviewExtract: () => void;
-  /** 打开顶栏的作品设置（风格、画幅、视频模型）。 */
+  /** 打开顶栏的作品设置（风格、画幅、文本和视频模型）。 */
   openSettings: () => void;
   /** 切换当前集（分镜页左侧分集栏）。 */
   pickEpisode: (id: string) => void;

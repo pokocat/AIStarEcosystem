@@ -40,7 +40,7 @@ class StudioEnterpriseWorkflowTest {
         ReflectionTestUtils.setField(service,"tokenPricing",tokenPrices);
         TransactionSynchronizationManager.initSynchronization();
         try {
-            service.submitDirectorText("actor","work","extract","system","user",16384,"request",json.createObjectNode(),null,275L);
+            service.submitDirectorText("actor","work","extract","system","user",16384,"request",json.createObjectNode(),null,null,275L);
             assertEquals(78,saved.get().getCost());
             var input=json.readTree(saved.get().getInputJson());
             assertEquals(16384,input.path("_exec").path("maxTokens").asInt());

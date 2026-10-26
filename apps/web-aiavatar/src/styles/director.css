@@ -154,6 +154,7 @@ html[data-layout="desktop"] .director-two { grid-template-columns: repeat(2, min
 .director-shell .director-script-text { min-height: 120px; font-size: 14px; line-height: 1.85; field-sizing: content; max-height: 70vh; }
 /* 剧本：全部集一个列表，一集一行，点开原地编辑。 */
 .director-script-list { gap: 8px; padding: 12px 14px; }
+.director-script-content { display: flex; flex-direction: column; gap: inherit; min-width: 0; }
 .director-episode-list { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--ip-line); }
 .director-episode-item { border-bottom: 1px solid var(--ip-line); }
 .director-episode-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 6px; border: 0; background: transparent; text-align: left; font-size: 13px; color: var(--ip-ink); }

@@ -70,7 +70,8 @@ class DirectorImageModelTest {
     }
 
     @BeforeEach void setUp() {
-        when(text.directorPrices()).thenReturn(new long[]{21, 16});
+        when(text.directorPrices(any())).thenReturn(new long[]{21, 16});
+        when(text.capabilities()).thenReturn(new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Capabilities(false, List.of(), 16, 21, null, List.of(), "selectable", "selectable"));
         stubPolicy("default-image");
         when(works.save(any())).thenAnswer(i -> { work = i.getArgument(0); return work; });
         when(works.lockById(any())).thenAnswer(i -> Optional.ofNullable(work));

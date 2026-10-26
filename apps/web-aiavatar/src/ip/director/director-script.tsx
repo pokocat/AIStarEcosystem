@@ -164,24 +164,27 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "还没拆分集"}</p></div>
       <span className="director-spacer"/>
       {dirty && <span className="director-unsaved">未保存</span>}
-      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
+      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting || !!rewriting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
       {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
-    <StoryOutline work={work}/>
-    <ReferenceNotes work={work} apply={apply} setError={setError}/>
-    {rewriting && <AiWorking compact title="AI 正在重新写剧本" task={rewriting} detail="写好后替换下面的剧本，当前版本保留在历史中。"/>}
-    {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
-      work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
-      <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
-        desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
-          : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。"}
-        onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
-        <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
-        <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
-        <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
-        {byHeadings && <span className="director-cost">免费</span>}
-      </NextChoices>}
-    <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
+    <div className="director-script-content" aria-label="剧本内容" aria-busy={!!rewriting}>
+      {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本，当前版本保留在历史中。"/> : <>
+      <StoryOutline work={work}/>
+      <ReferenceNotes work={work} apply={apply} setError={setError}/>
+      {splitting ? <AiWorking compact title="AI 正在拆分集" task={runningTask(work, "split")} detail="只划定每集范围，正文保持不变。"/> :
+        work.pendingSplit ? <SplitPreview key={work.pendingSplit.id} work={work} apply={apply} setError={setError}/> :
+        <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
+          desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
+            : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。"}
+          onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
+          <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
+          <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
+          <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
+          {byHeadings && <span className="director-cost">免费</span>}
+        </NextChoices>}
+      <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
+      </>}
+    </div>
   </section>;
 }
 
@@ -193,6 +196,7 @@ function EpisodeList(props: WorkbenchProps) {
   const { busy, run } = useBusy();
   const extracting = work.tasks.find(t => t.status === "running" && t.target.startsWith("extract"));
   const extractError = work.textError?.task === "extract" ? work.textError.message : null;
+  const rewriting = runningTask(work, "script");
   const chars = work.episodes.reduce((n, e) => n + e.content.replace(/\s/g, "").length, 0);
   const allOpen = open.size === work.episodes.length;
   const toggle = (id: string) => setOpen(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
@@ -205,25 +209,28 @@ function EpisodeList(props: WorkbenchProps) {
     <div className="director-toolbar">
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline && !work.outline ? ` · ${work.logline}` : ""}</p></div>
       <span className="director-spacer"/>
-      <button type="button" className="ip-brand-text-button" onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
+      <button type="button" className="ip-brand-text-button" disabled={!!rewriting} onClick={() => setOpen(allOpen ? new Set() : new Set(work.episodes.map(e => e.id)))}>{allOpen ? "收起全部" : "展开全部"}</button>
       <UndoSplit work={work} apply={apply} setError={setError}/>
       {work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
-    <StoryOutline work={work} defaultOpen={!work.assets.length}/>
-    <ReferenceNotes work={work} apply={apply} setError={setError}/>
-    {runningTask(work, "script") && <AiWorking compact title="AI 正在重新写剧本" task={runningTask(work, "script")} detail="写好后替换当前剧本和分集，当前版本保留在历史中。"/>}
-    {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
-      <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
-        desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成参考图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
-          : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
-        onShortcut={startPipeline} shortcutDisabled={!!busy}>
-        <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
-          <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
-        {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
-      </NextChoices>}
-    <InlineError message={extractError}/>
-    <ol className="director-episode-list">{work.episodes.map(e =>
-      <EpisodeRow key={e.id + ":" + e.rev} {...props} ep={e} open={open.has(e.id)} onToggle={() => toggle(e.id)}/>)}</ol>
+    <div className="director-script-content" aria-label="剧本内容" aria-busy={!!rewriting}>
+      {rewriting ? <AiWorking title="AI 正在重新写剧本" task={rewriting} detail="完成后自动显示新剧本和分集，当前版本保留在历史中。"/> : <>
+      <StoryOutline work={work} defaultOpen={!work.assets.length}/>
+      <ReferenceNotes work={work} apply={apply} setError={setError}/>
+      {extracting ? <AiWorking compact title="AI 正在提取全剧资产" task={extracting} detail="识别角色、场景和道具，完成后先给你确认，再保存到资产库。"/> :
+        <NextChoices work={work} shortcutDesc="把后面的步骤连着自动做完，一直到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title={work.assets.length ? "下一步：生成参考图" : "下一步：提取全剧资产"}
+          desc={work.assets.length ? `已提取 ${work.assets.length} 项资产。到「资产」给角色、场景和道具生成参考图，分镜图和视频都照着它们画。改了正文可以重新提取，同一人物不会重复新建。`
+            : "AI 从全部集里识别角色、场景和道具，先给你确认清单再入库。之后生成参考图、写分镜脚本，每一步都能先看再改。"}
+          onShortcut={startPipeline} shortcutDisabled={!!busy}>
+          <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
+            <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
+          {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
+        </NextChoices>}
+      <InlineError message={extractError}/>
+      <ol className="director-episode-list">{work.episodes.map(e =>
+        <EpisodeRow key={e.id + ":" + e.rev} {...props} ep={e} open={open.has(e.id)} onToggle={() => toggle(e.id)}/>)}</ol>
+      </>}
+    </div>
   </section>;
 }
 
