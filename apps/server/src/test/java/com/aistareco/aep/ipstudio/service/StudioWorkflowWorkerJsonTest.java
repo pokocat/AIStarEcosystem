@@ -5,6 +5,7 @@ import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.model.AiModelEndpoint;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.service.*;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -43,7 +44,7 @@ class StudioWorkflowWorkerJsonTest {
                 .kind("studio-director").status("running").cost(21).inputJson(input.toString()).build();
         when(runs.findById("r")).thenReturn(Optional.of(run));
         when(runs.lockById("r")).thenReturn(Optional.of(run));
-        var endpoint = AiModelEndpoint.builder().id("qwen").enabled(true).build();
+        var endpoint = AiModelEndpoint.builder().id("qwen").providerType(AiModelProviderType.DEEPSEEK).enabled(true).build();
         when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, "qwen", "studio"))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
         when(models.invokeChatOnEndpoint(eq(endpoint), eq(AiModelPurpose.DAP_PERSONA), anyList(), anyMap()))
@@ -59,6 +60,14 @@ class StudioWorkflowWorkerJsonTest {
         h.worker().runBlocking("r");
         h.worker().runBlocking("r");
         verify(h.models(), times(1)).invokeChatOnEndpoint(any(), any(), anyList(), anyMap());
+    }
+
+    @Test void deepSeekDirectorScriptDisablesThinking() {
+        var h = harness("{\"title\":\"完整剧本\",\"content\":\"深夜便利店里，两个人终于把多年的误会说开，然后一起收拾散落满地的货物。\"}", "stop");
+        runOnce(h);
+        @SuppressWarnings("unchecked") var options = (java.util.Map<String,Object>) mockingDetails(h.models()).getInvocations().stream()
+                .filter(i -> i.getMethod().getName().equals("invokeChatOnEndpoint")).findFirst().orElseThrow().getArgument(3);
+        assertEquals("disabled", ((java.util.Map<?,?>) options.get("thinking")).get("type"));
     }
 
     @Test void repairedScriptUsesOriginalModelOutputAndSettlesItsUsageExactlyOnce() throws Exception {

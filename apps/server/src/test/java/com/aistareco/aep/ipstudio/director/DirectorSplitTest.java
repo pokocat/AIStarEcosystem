@@ -76,6 +76,18 @@ class DirectorSplitTest {
     }
 
     @Test
+    void scriptGenerationUsesTheHundredThousandTokenBudget() throws Exception {
+        service.create(USER, new DirectorService.CreateRequest("测试", "一个发生在深夜便利店的短剧", null));
+        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any()))
+                .thenReturn(new IpRunDto("IPR-script", null, "script", "studio-director", "running", "queued", 0, 0, null, null, null, null, null, null));
+
+        service.task(USER, work.getId(), new DirectorService.TaskRequest("script", null, "script-1", om.createObjectNode(), null, 21L));
+
+        verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), any(),
+                eq(DirectorService.SCRIPT_MAX_TOKENS), any(), argThat(meta -> "script".equals(meta.path("task").asText())), any(), any());
+    }
+
+    @Test
     void headingsSplitForFreeAndKeepTheNotesAsReference() throws Exception {
         JsonNode v = create(headed(3));
         assertEquals(2, v.path("draftEpisodeHeadings").asInt());

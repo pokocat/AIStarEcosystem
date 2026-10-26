@@ -220,6 +220,36 @@ class AiModelInvocationServiceTest {
         assertEquals(2, ((List<?>) sent.get("messages")).size());
     }
 
+    @Test
+    void deepSeekThinkingToggleReachesTheProvider() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("deepseek", server.baseUrl(),
+                AiModelProviderType.DEEPSEEK, "deepseek-flash", "sk-secret", true);
+
+        boundSvc(AiModelPurpose.DAP_PERSONA, ep).invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                List.of(Map.of("role", "user", "content", "写剧本")),
+                Map.of("max_tokens", 100_000, "thinking", Map.of("type", "disabled")));
+
+        Map<?, ?> sent = OM.readValue(server.requests.get(0).body(), Map.class);
+        assertEquals(100_000, ((Number) sent.get("max_tokens")).intValue());
+        assertEquals("disabled", ((Map<?, ?>) sent.get("thinking")).get("type"));
+    }
+
+    @Test
+    void thinkingToggleIsRejectedForOtherOpenAiCompatibleProviders() throws Exception {
+        StubServer server = stub(200, CHAT_OK);
+        AiModelEndpoint ep = endpoint("other", server.baseUrl(),
+                AiModelProviderType.OPENAI_COMPATIBLE, "other-model", "sk-secret", true);
+
+        BusinessException error = assertThrows(BusinessException.class, () -> boundSvc(AiModelPurpose.DAP_PERSONA, ep)
+                .invokeChatOnEndpoint(ep, AiModelPurpose.DAP_PERSONA,
+                        List.of(Map.of("role", "user", "content", "写剧本")),
+                        Map.of("thinking", Map.of("type", "disabled"))));
+
+        assertEquals("AI_THINKING_MODE_INVALID", error.getCode());
+        assertTrue(server.requests.isEmpty());
+    }
+
     @Test void contentPartsReachTheProviderButMediaPayloadsAreRedactedFromObservation() throws Exception {
         StubServer server=stub(200,CHAT_OK);var ep=endpoint("vision",server.baseUrl(),AiModelProviderType.OPENAI_COMPATIBLE,"vision","test-key",true);
         List<Map<String,Object>> parts=List.of(Map.of("type","text","text","read image"),Map.of("type","image_url","image_url",Map.of("url","data:image/png;base64,PRIVATE_BYTES")));

@@ -49,6 +49,7 @@ import java.util.*;
  */
 @Service
 public class DirectorService {
+    static final int SCRIPT_MAX_TOKENS = 100_000;
     private static final Logger log = LoggerFactory.getLogger(DirectorService.class);
 
     /** 一个连跑同时最多在途的子任务（§8.4 初始建议：同一端点 2 个）。 */
@@ -544,6 +545,7 @@ public class DirectorService {
         int maxTokens = 8192;
         switch (type == null ? "" : type) {
             case "script" -> {
+                maxTokens = SCRIPT_MAX_TOKENS;
                 boolean regenerate = o.path("regenerate").asBoolean(false);
                 boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
                 if (hasScript && !regenerate)

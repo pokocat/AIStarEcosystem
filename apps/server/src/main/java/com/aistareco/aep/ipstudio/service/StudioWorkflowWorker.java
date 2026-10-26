@@ -5,6 +5,7 @@ import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.dap.service.DapAssetService;
 import com.aistareco.aep.model.AiModelPurpose;
+import com.aistareco.aep.model.AiModelProviderType;
 import com.aistareco.aep.service.*;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.BusinessException;
@@ -155,8 +156,20 @@ public class StudioWorkflowWorker {
                         } else {
                         if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
                         markModelDispatched(id);
+                        var chatOptions=new LinkedHashMap<String,Object>();
+                        chatOptions.put("timeout_seconds",300);
+                        chatOptions.put("response_format",Map.of("type","json_object"));
+                        chatOptions.put("temperature",input.path("_exec").path("temperature").asDouble(0.7));
+                        chatOptions.put("max_tokens",finalTokens);
+                        // DeepSeek Flash defaults to high-effort thinking. For a complete director script that hidden
+                        // reasoning shares the same output budget with the JSON body, so it can consume the whole budget
+                        // before the actual script is written. Disable it only for this bounded structured-writing task;
+                        // Studio dialogue and the other director tasks keep their existing reasoning behavior.
+                        if("director".equals(operation)&&"script".equals(input.path("_director").path("task").asText())
+                                && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
+                            chatOptions.put("thinking",Map.of("type","disabled"));
                         reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
-                                Map.of("role","user","content",userContent)),Map.of("timeout_seconds",300,"response_format",Map.of("type","json_object"),"temperature",input.path("_exec").path("temperature").asDouble(0.7),"max_tokens",finalTokens));
+                                Map.of("role","user","content",userContent)),chatOptions);
                         }
                         lastReply=reply;
                         if("director".equals(operation)&&tokenRate!=null) {

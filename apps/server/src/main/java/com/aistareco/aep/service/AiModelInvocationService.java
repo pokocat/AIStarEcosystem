@@ -810,6 +810,14 @@ public class AiModelInvocationService {
             if (options.get("response_format") != null && supports(e.getChatSupportsResponseFormat())) {
                 body.put("response_format", options.get("response_format"));
             }
+            if (options.get("thinking") != null) {
+                if (e.getProviderType() != AiModelProviderType.DEEPSEEK
+                        || !(options.get("thinking") instanceof Map<?, ?> thinking)
+                        || !("enabled".equals(thinking.get("type")) || "disabled".equals(thinking.get("type")))) {
+                    throw BusinessException.badRequest("AI_THINKING_MODE_INVALID", "当前模型不支持这个思考模式参数");
+                }
+                body.put("thinking", Map.of("type", thinking.get("type")));
+            }
         }
         if (!body.containsKey("temperature") && e.getDefaultTemperature() != null
                 && supports(e.getChatSupportsTemperature())) {
