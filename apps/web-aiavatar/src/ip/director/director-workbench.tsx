@@ -151,7 +151,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
     {live ? <PipelineBar {...props}/> : <div className="director-status">
-      {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存到资产库</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
+      {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
         step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
       <PipelineBar {...props}/>
     </div>}

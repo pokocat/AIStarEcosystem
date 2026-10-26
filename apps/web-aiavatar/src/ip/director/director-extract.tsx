@@ -8,7 +8,7 @@ import { InlineError, kindLabel, useBusy, useEscape, dialogFocus } from "./direc
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
 
-/** 提取出来的资产先在这里过一遍：勾选要的、改名，再保存进资产库；不保存就丢掉这份清单。 */
+/** 提取出来的资产先在这里过一遍：勾选要的、改名，再保存进本作品；不保存就丢掉这份清单。 */
 export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; apply: (w: DirectorWork) => void; onClose: () => void }) {
   const pending = work.pendingExtract!;
   // 每份清单单独记勾选和改名（父组件按 runId 换 key）；取不到时按默认值，不沿用上一份。
@@ -55,7 +55,7 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
         <span className="director-spacer"/>
         <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>稍后再看</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || chosen.length === 0 || chosen.some(i => !picks[i.itemId].name.trim())} onClick={save}>
-          保存到资产库（{chosen.length} 项{fresh ? `，新增 ${fresh}` : ""}）</button>
+          保存资产（{chosen.length} 项{fresh ? `，新增 ${fresh}` : ""}）</button>
       </footer>
     </div>
   </div>;

@@ -480,7 +480,7 @@ public class DirectorService {
                     List<String> changed = markExtracted(c, pending.path("episodes"));
                     c.putNull("pendingExtract");
                     if (!changed.isEmpty()) notice(c, String.join("、", changed) + "在提取期间正文有修改，新增内容可能未提取，可重新提取");
-                    else notice(c, added > 0 ? "已保存到资产库，新增 " + added + " 项" : "已保存到资产库");
+                    else notice(c, added > 0 ? "资产已保存，新增 " + added + " 项" : "资产已保存");
                     if (waiting) { p.put("status", "running").put("stage", "assets").put("message", "资产已保存，继续制作"); w.setActive(true); }
                 } else {
                     c.putNull("pendingExtract");
@@ -1135,7 +1135,7 @@ public class DirectorService {
                 c.set("pendingSplit", pendingSplit(c, run.getId(), "model", ps, ranges, notes, warnings));
             }
             case "extract" -> {
-                // 提取结果先放进待确认清单：用户在弹窗里勾选、改名后才写进资产库，这里不改任何资产。
+                // 提取结果先放进待确认清单：用户在弹窗里勾选、改名后才写进作品的资产，这里不改任何资产。
                 ArrayNode items = om.createArrayNode();
                 for (JsonNode a : d.path("assets")) {
                     // 编号不能叫 key：出 wire 时名叫 key 的字段会被当成素材地址去签名。
@@ -1467,7 +1467,7 @@ public class DirectorService {
                     p.put("stage", "assets").put("message", "资产已自动保存（新增 " + added + " 项），继续制作");
                     return;
                 }
-                p.put("status", "waiting").put("stage", "confirm-extract").put("message", "资产已识别，请确认后保存到资产库");
+                p.put("status", "waiting").put("stage", "confirm-extract").put("message", "资产已识别，请确认后保存");
                 return;
             }
             if (!notExtracted.isEmpty()) {
@@ -2515,7 +2515,7 @@ public class DirectorService {
         return changed;
     }
 
-    /** 把用户在确认弹窗里勾选的项写进资产库：对上的合并别名和出现集，新的建资产。返回新建数。 */
+    /** 把用户在确认弹窗里勾选的项写进作品的资产：对上的合并别名和出现集，新的建资产。返回新建数。 */
     private int saveExtracted(ObjectNode c, JsonNode pending, JsonNode picks) {
         Map<String, JsonNode> chosen = new HashMap<>();
         for (JsonNode p : picks) if (p.path("include").asBoolean(true)) chosen.put(p.path("itemId").asText(), p);
