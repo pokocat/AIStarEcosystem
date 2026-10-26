@@ -335,7 +335,7 @@ public class StudioWorkflowService {
     /**
      * AI 导演台的文字任务（写剧本 / 拆集 / 提取资产 / 规划片段）。
      *
-     * <p>和画布文字创作是同一条链：默认文本模型、按量计价、先冻结最大额度、afterCommit 派发、
+     * <p>和画布文字创作是同一条链：作品选择的文本模型、按量计价、先冻结最大额度、afterCommit 派发、
      * worker 按实际 Token 结算、失败全退。宿主是导演作品（{@code hostId}），归属与加锁由调用方做。
      * 测试响应模式下 worker 走 {@code DirectorFixtures}，零成本并标 mock。
      *
@@ -343,10 +343,11 @@ public class StudioWorkflowService {
      */
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt,
-                                       int maxTokens, String clientRequestId, ObjectNode meta,
+                                       int maxTokens, String clientRequestId, ObjectNode meta, String model,
                                        com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
         requireText(clientRequestId, 64, "请求编号");
         ObjectNode canonical=mapper.createObjectNode().put("nodeId",nodeId).put("system",systemPrompt).put("user",userPrompt);
+        if(model!=null)canonical.put("model",model);
         String fingerprint=hash(write(canonical));
         IpRun prior=runs.findByProjectIdAndClientRequestId(hostId,clientRequestId).orElse(null);
         if(prior!=null) {
@@ -358,9 +359,9 @@ public class StudioWorkflowService {
         long cost=0;
         var chatRate=(com.aistareco.aep.service.AiChatTokenPricing.Rate)null;
         if(!fixtures.enabled()) {
-            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,null,"studio").orElseThrow(()->
+            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,model,"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系管理员配置"));
-            else textEndpoint=scenePolicies.resolve("studio","script",null,pricing.ipIdentity()).resolved();
+            else textEndpoint=scenePolicies.resolve("studio","script",model,pricing.ipIdentity()).resolved();
             chatRate=chatRate(textEndpoint.endpoint().getId());
             if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
             cost=chatRate.maxCost();
@@ -400,10 +401,14 @@ public class StudioWorkflowService {
         return projects.toRunDto(run);
     }
 
-    /** 导演台估价用：默认文本模型一次调用最多冻结多少、默认出图模型每张多少。 */
-    public long[] directorPrices() {
+    /** 导演台估价用：作品所选文本模型一次调用最多冻结多少、默认出图模型每张多少。 */
+    public long[] directorPrices(String model) {
         var caps=capabilities();
-        long text=caps.textModels().stream().filter(TextModel::isDefault).findFirst()
+        var selected=caps.textModels().stream().filter(m->model==null?m.isDefault():model.equals(m.endpointId())).findFirst();
+        if(model!=null&&selected.isEmpty())throw new BusinessException(HttpStatus.BAD_REQUEST,"ENDPOINT_NOT_ALLOWED","所选文本模型不可用，请在作品设置中重新选择");
+        if(model!=null&&"fixed".equals(caps.textModelMode())&&!selected.orElseThrow().isDefault())
+            throw new BusinessException(HttpStatus.BAD_REQUEST,"ENDPOINT_NOT_ALLOWED","此场景使用固定文本模型");
+        long text=selected
                 .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().maxCost()).orElse(caps.textCost());
         return new long[]{text,caps.imageCost()};
     }

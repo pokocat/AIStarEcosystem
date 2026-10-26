@@ -30,7 +30,7 @@ export async function getWork(id: string): Promise<DirectorWork> {
 }
 
 export async function patchWork(id: string, body: { title?: string; idea?: string; draft?: string; draftRev?: number;
-  settings?: Partial<{ style: string; aspectRatio: string; videoModel: string | null }> }): Promise<DirectorWork> {
+  settings?: Partial<{ style: string; aspectRatio: string; textModel: string | null; videoModel: string | null }> }): Promise<DirectorWork> {
   if (USE_MOCK) demoUnavailable();
   return apiFetch<DirectorWork>(`/v1/ip-studio/director/works/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(body) });
 }

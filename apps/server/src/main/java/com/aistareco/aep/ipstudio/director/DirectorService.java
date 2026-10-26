@@ -110,7 +110,7 @@ public class DirectorService {
         if (title.isEmpty()) title = idea.isEmpty() ? (script.isEmpty() ? "未命名作品" : firstLine(script)) : shortTitle(idea);
         ObjectNode c = om.createObjectNode();
         c.put("idea", idea).put("logline", "").put("draft", script).put("draftRev", 0).put("seq", 0);
-        c.putObject("settings").put("style", "真人写实").put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel");
+        c.putObject("settings").put("style", "真人写实").put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("textModel");
         c.putArray("episodes"); c.putArray("assets"); c.putArray("clips"); c.putArray("applied");
         c.putObject("taskMeta"); c.putNull("pipeline"); c.putNull("notice"); c.putNull("textError");
         DirectorWork w = new DirectorWork();
@@ -197,6 +197,11 @@ public class DirectorService {
                 String aspect = in.path("aspectRatio").asText();
                 if (!List.of("9:16", "16:9", "1:1").contains(aspect)) throw invalid("画幅仅支持 9:16、16:9、1:1");
                 s.put("aspectRatio", aspect);
+            }
+            if (in.has("textModel")) {
+                String model = in.path("textModel").asText(null);
+                textRuns.directorPrices(model); // 与展示、估价和提交使用相同的后台候选及售价。
+                if (model == null) s.putNull("textModel"); else s.put("textModel", model);
             }
             if (in.has("videoModel")) {
                 String model = in.path("videoModel").asText(null);
@@ -590,7 +595,7 @@ public class DirectorService {
         meta.put("targetId", targetId);
         final String fSystem = system, fUser = user, fNode = nodeId;
         final int fTokens = maxTokens;
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, fTokens, requestId, meta, billing, maxCost));
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, fTokens, requestId, meta, c.path("settings").path("textModel").asText(null), billing, maxCost));
         clearError(c, nodeId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", nodeId));
         w.setActive(true);
@@ -943,7 +948,7 @@ public class DirectorService {
         for (IpRun run : mine) {
             if (IpRun.STATUS_RUNNING.equals(run.getStatus())) { running = true; continue; }
             if (applied.contains(run.getId())) continue;
-            try { apply(c, run); }
+            try { apply(w, c, run); }
             catch (RuntimeException e) {
                 log.warn("[director] 回投失败 work={} run={} reason={}", w.getId(), run.getId(), e.toString());
                 setError(c, run.getNodeId(), "结果写入失败，请重新生成");
@@ -961,7 +966,7 @@ public class DirectorService {
         return changed;
     }
 
-    private void apply(ObjectNode c, IpRun run) {
+    private void apply(DirectorWork w, ObjectNode c, IpRun run) {
         String node = run.getNodeId();
         if (node.startsWith("export:")) { applyExport(c, run, parse(run.getOutputJson())); return; }
         if (node.startsWith("video:") && "video.bound".equals(run.getStage())) return; // 真实视频由 pollVideos 跟踪原生任务
@@ -1016,12 +1021,13 @@ public class DirectorService {
                     ArrayNode history = c.withArray("scriptHistory");
                     StringBuilder old = new StringBuilder(c.path("draft").asText());
                     for (JsonNode ep : c.path("episodes")) { if (old.length() > 0) old.append("\n\n"); old.append(ep.path("content").asText()); }
-                    history.insert(0, om.createObjectNode().put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString())
+                    history.insert(0, om.createObjectNode().put("title", w.getTitle()).put("at", Instant.now().toString()).put("logline", c.path("logline").asText()).put("draft", old.toString())
                             .set("outline", c.path("outline").isObject() ? c.path("outline") : om.nullNode()));
                     while (history.size() > 3) history.remove(history.size() - 1);
                     c.putArray("episodes"); c.putArray("clips"); c.putNull("pendingExtract");
                     for (JsonNode a : c.path("assets")) ((ObjectNode) a).putArray("episodeIds");
                     c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
+                    if (!d.path("title").asText().isBlank()) w.setTitle(limited(d.path("title").asText(), 60, "作品名"));
                     if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
                     if (d.path("outline").isObject()) c.set("outline", d.path("outline")); else c.putNull("outline");
                     notice(c, "剧本已重新生成，旧版本保留在历史中；资产保留，请重新拆分并提取资产");
@@ -1031,6 +1037,7 @@ public class DirectorService {
                     notice(c, "生成期间剧本已有内容，新生成的剧本未覆盖"); return;
                 }
                 c.put("draft", d.path("content").asText()).put("draftRev", c.path("draftRev").asLong() + 1);
+                if (!d.path("title").asText().isBlank()) w.setTitle(limited(d.path("title").asText(), 60, "作品名"));
                 if (!d.path("logline").asText().isBlank()) c.put("logline", d.path("logline").asText());
                 if (d.path("outline").isObject()) c.set("outline", d.path("outline"));
             }
@@ -1224,7 +1231,7 @@ public class DirectorService {
         refresh(c);
         String target = req.target() == null ? "film" : req.target();
         boolean work = "work".equals(req.scope());
-        long[] prices = textRuns.directorPrices();
+        long[] prices = textRuns.directorPrices(c.path("settings").path("textModel").asText(null));
         Limits lim = limits(c);
         List<JsonNode> eps = new ArrayList<>();
         for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
@@ -1336,7 +1343,7 @@ public class DirectorService {
             }
         p.put("spent", spent);
         BillingSelection billing = p.hasNonNull("billing") ? om.convertValue(p.path("billing"), BillingSelection.class) : null;
-        Step step = new Step(userId, w, c, p, spent, inflight, busy, textRuns.directorPrices(), billing);
+        Step step = new Step(userId, w, c, p, spent, inflight, busy, textRuns.directorPrices(c.path("settings").path("textModel").asText(null)), billing);
         try {
             // 1. 剧本与分集
             if (c.path("episodes").isEmpty()) {
@@ -1689,8 +1696,11 @@ public class DirectorService {
         for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
             tasks.insertObject(0).put("id", pend.path("jobId").asText()).put("target", "video:" + clip.path("id").asText()).put("status", "running")
                     .put("stage", pend.path("stage").asText()).put("cost", 0).putNull("errorMessage").put("createdAt", pend.path("at").asText());
-        long[] prices = textRuns.directorPrices();
+        long[] prices = textRuns.directorPrices(c.path("settings").path("textModel").asText(null));
         v.putObject("pricing").put("textMax", prices[0]).put("image", prices[1]).put("mock", fixtures.enabled());
+        var textCapabilities = textRuns.capabilities();
+        v.set("textModels", om.valueToTree(textCapabilities.textModels()));
+        v.put("textModelMode", textCapabilities.textModelMode());
         ArrayNode models = v.putArray("videoModels");
         for (VideoChoice m : videoChoices())
             models.addObject().put("id", m.id()).put("name", m.name()).put("isDefault", m.isDefault()).put("minSec", m.min()).put("maxSec", m.max()).put("mode", m.mode());

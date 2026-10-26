@@ -24,7 +24,7 @@ export type WorkbenchProps = {
   goTab: (tab: Tab) => void;
   /** 打开「确认资产」弹窗（有待保存的提取清单时）。 */
   reviewExtract: () => void;
-  /** 打开顶栏的作品设置（风格、画幅、视频模型）。 */
+  /** 打开顶栏的作品设置（风格、画幅、文本和视频模型）。 */
   openSettings: () => void;
   /** 切换当前集（分镜页左侧分集栏）。 */
   pickEpisode: (id: string) => void;
@@ -199,10 +199,15 @@ function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettings
 function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
   const [style, setStyle] = useState(work.settings.style);
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
+  const [textModel, setTextModel] = useState(work.settings.textModel ?? "");
   const [videoModel, setVideoModel] = useState(work.settings.videoModel ?? "");
+  const textModels = work.textModels ?? [];
+  const selectedText = textModels.find(m => textModel ? m.endpointId === textModel : m.isDefault);
+  const textPrice = selectedText?.tokenPricing;
+  const formatRate = (n: number) => n.toLocaleString("zh-CN", { maximumFractionDigits: 6 });
   const { busy, run } = useBusy();
   const save = () => void run("settings", async () => {
-    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null } }));
+    apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, textModel: textModel || null, videoModel: videoModel || null } }));
     onClose();
   }, setError);
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
@@ -210,6 +215,15 @@ function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork;
     <label className="director-field"><span>画面风格</span><input value={style} maxLength={30} onChange={e => setStyle(e.target.value)}/></label>
     <div className="director-field"><span>画幅</span><div className="director-segmented">{(["9:16", "16:9", "1:1"] as const).map(a =>
       <button key={a} type="button" aria-pressed={aspect === a} onClick={() => setAspect(a)}>{a}</button>)}</div></div>
+    <label className="director-field"><span>文本模型</span>
+      <SelectField value={textModel} disabled={work.textModelMode === "fixed" || !textModels.length} onChange={e => setTextModel(e.target.value)}>
+        <option value="">默认{textModels.find(m => m.isDefault) ? `（${textModels.find(m => m.isDefault)!.name}）` : ""}</option>
+        {textModels.map(m => <option key={m.endpointId} value={m.endpointId} disabled={!work.pricing.mock && !m.tokenPricing}>{m.name}{!work.pricing.mock && !m.tokenPricing ? " · 暂不可用" : ""}</option>)}
+      </SelectField>
+      <small>用于剧本、拆分集、提取资产和分镜脚本。{work.pricing.mock ? "测试模式，免费。" : textPrice
+        ? `每千 Token：输入 ${formatRate(textPrice.inputCreditsPerK)} 积分，输出 ${formatRate(textPrice.outputCreditsPerK)} 积分。每次最多冻结 ${textPrice.maxCost.toLocaleString("zh-CN")} 积分，按实际用量结算。`
+        : "暂无可用报价，请联系管理员配置文本模型及售价。"}</small>
+    </label>
     <label className="director-field"><span>视频模型</span>
       <SelectField value={videoModel} onChange={e => setVideoModel(e.target.value)}>
         <option value="">默认{work.videoModels.find(m => m.isDefault) ? `（${work.videoModels.find(m => m.isDefault)!.name}）` : ""}</option>

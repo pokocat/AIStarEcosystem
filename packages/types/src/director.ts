@@ -1,5 +1,6 @@
 // AI 导演台（docs/ai-director-plan.md v1.1）。作品内容由服务端拥有；这里是 wire 形状。
 // 媒体只在服务端存 key，出 wire 时附带短期签名的 url。
+import type { StudioCapabilities } from "./ip-studio-workflow";
 
 export type DirectorAssetKind = "character" | "scene" | "prop";
 export type DirectorAspectRatio = "9:16" | "16:9" | "1:1";
@@ -8,6 +9,8 @@ export interface DirectorSettings {
   style: string;
   aspectRatio: DirectorAspectRatio;
   language: string;
+  /** 所有文字任务用的模型；null 或缺省 = 后台默认。 */
+  textModel?: string | null;
   /** 片段视频用的模型；null = 后台默认。 */
   videoModel: string | null;
 }
@@ -264,6 +267,8 @@ export interface DirectorWork {
   textError: DirectorError | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
+  textModels?: StudioCapabilities["textModels"];
+  textModelMode?: StudioCapabilities["textModelMode"];
   videoModels: DirectorVideoModel[];
   videoLimits: { model: string | null; name: string; minSec: number; maxSec: number; mock: boolean; mode: "omni" | "frame"; maxShots: number } | null;
 }
