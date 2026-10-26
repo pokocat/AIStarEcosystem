@@ -1343,9 +1343,9 @@ scripts/check-api-contract.mjs ← CI 漂移校验（apiFetch URLs ↔ openapi.y
 
 2026-10-25 用户修正（导演台单次文字停止，优先于下文旧的“取消释放”）：未提交模型可取消并释放冻结；已提交的停止只终止后续创作，保留请求直到真实用量回执，按接受时费率结算实际消耗并释放未用余量。缺回执或进程中断不能推断零消费，标 `STUDIO_USAGE_PENDING`、保留冻结待运营核对，禁止按批准上限直接扣费或让 TTL 自动退款；不自动重提供应商请求。停止后的迟到内容不回投，真实用量只能结算一次。
 
-operation=text/script/storyboard/assistant/asset-extract 的新任务全部使用 `ai.chat-token-pricing` 按实际 Token 计费（本地 fixture 模式除外）。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝，不回退到按次价格。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算 Token 结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。既有无 tokenPricing 的已受理任务沿用原按次快照。
+operation=text/script/storyboard/assistant/asset-extract 的新任务全部使用 `ai.chat-token-pricing` 按实际 Token 计费（本地 fixture 模式除外）。新请求必须提供 capabilities 文本模型 tokenPricing.maxCost 作为批准上限；缺价或超过批准额在 hold 前拒绝，不回退到按次价格。导演台文字任务受理时再按该任务实际可请求的输出上限收窄费率快照与冻结额（拆集 8192、资产提取／分镜脚本 16384、长剧本 100000），不得拿模型的全局输出上限作为每个任务的冻结额。费率与预算随任务冻结，服务端按真实 prompt_tokens/completion_tokens 合计费用后向上取整。不得按估算 Token 结算；缺少/异常/超预算用量、无效内容、失败与取消释放冻结。成功时同事务 commit 实际额、release 余量、写 billing 和终态；重放原幂等键不再取价或扣费。既有无 tokenPricing 的已受理任务沿用原按次快照。
 
-文本用户界面只展示完成后的实际积分，不展示固定报价、费率或冻结值。实际提交模型工作的操作按钮带 AI 图标与费用提示；本地保存、上传、采纳和任务查询不标为付费模型调用。
+文本用户界面只展示完成后的实际积分，不展示固定报价、费率、模型全局上限或冻结值。导演台文字按钮与企业付款选择只说明按实际用量结算，不展示不确定的积分数字；图片、视频等确定报价继续展示。实际提交模型工作的操作按钮带 AI 图标；本地保存、上传、采纳和任务查询不标为付费模型调用。
 
 #### Studio 全能创作节点采用补充（2026-10-12）
 

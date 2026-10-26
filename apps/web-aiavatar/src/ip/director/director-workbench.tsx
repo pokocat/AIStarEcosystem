@@ -321,7 +321,7 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
         {estError && <InlineError message={estError}/>}
         {est && <>
           <ul>
-            <li><span>文字生成 {est.text.count} 次</span><em>{costText(est.text.credits, mock)}</em></li>
+            <li><span>文字生成 {est.text.count} 次</span><em>按实际用量结算</em></li>
             {target !== "plan" && <li><span>图片 {est.images.count} 张</span><em>{costText(est.images.credits, mock)}</em></li>}
             {est.videos.included && <li><span>片段视频 {est.videos.clips} 段，约 {est.videos.seconds} 秒</span><em>{est.videos.error ? "暂时无法估算" : costText(est.videos.credits, mock)}</em></li>}
           </ul>

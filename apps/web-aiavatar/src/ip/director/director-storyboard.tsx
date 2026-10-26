@@ -36,7 +36,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const plan = () => {
     const go = () => run("plan", async () => {
       const cost = work.pricing.textMax;
-      const billing = await chooseDirectorBilling("storyboard", cost);
+      const billing = await chooseDirectorBilling("storyboard");
       apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
     }, setError);
     if (clips.length) modal.confirm({ title: `重写第 ${ep.no} 集分镜脚本？`, content: "现有片段和镜头（含手动修改）会被新写的分镜脚本替换。", okText: "重写", cancelText: "取消", onOk: go });
@@ -56,7 +56,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
             {lim?.mode === "frame" && <span className="director-frame-note" title="仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"> · 仅分镜首帧</span>}</p></div>
         <span className="director-spacer"/>
         {planning ? <Spinner label="正在写分镜脚本"/> : <button type="button" className={clips.length ? "ip-brand-text-button" : "ip-brand-button"} disabled={!!busy || hasMedia || !lim}
-          title={hasMedia ? "请先删除已有分镜图的片段" : costText(work.pricing.textMax, work.pricing.mock)} onClick={plan}>
+          title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={plan}>
           <LayoutGrid size={15}/>{clips.length ? "重写分镜脚本" : "写分镜脚本"}</button>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>

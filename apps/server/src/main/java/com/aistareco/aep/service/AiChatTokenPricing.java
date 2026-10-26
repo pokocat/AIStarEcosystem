@@ -68,6 +68,11 @@ public class AiChatTokenPricing {
     private static BigDecimal decimal(JsonNode n,String key){var v=n.path(key);if(!v.isNumber()||v.decimalValue().signum()<0||v.decimalValue().compareTo(BigDecimal.valueOf(1000000))>0)throw new IllegalArgumentException();return v.decimalValue();}
     private static int positive(JsonNode n,String key){var v=n.path(key);if(!v.isIntegralNumber()||!v.canConvertToInt()||v.intValue()<1||v.intValue()>2000000)throw new IllegalArgumentException();return v.intValue();}
     public record Rate(BigDecimal inputCreditsPerK,BigDecimal outputCreditsPerK,int maxInputTokens,int maxOutputTokens) {
+        /** Keep the configured input allowance but never reserve for more output than this operation can request. */
+        public Rate limitOutputTokens(int limit) {
+            if (limit < 1) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "模型输出上限必须大于 0");
+            return new Rate(inputCreditsPerK, outputCreditsPerK, maxInputTokens, Math.min(maxOutputTokens, limit));
+        }
         /** A dialogue ceiling is a spending limit, not a requirement to authorize the server's larger default. */
         public Rate withinBudget(long ceiling) {
             if (ceiling < 0) throw BusinessException.badRequest("STUDIO_INPUT_INVALID", "费用上限不能为负数");

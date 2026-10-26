@@ -29,7 +29,7 @@ export function DirectorAssets(props: WorkbenchProps) {
   // 资产一次按全剧提取：同一人物、场景在各集是同一个，不会因为分集提取而前后不一致。
   const extract = () => void run("extract", async () => {
     const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("asset-extract", cost);
+    const billing = await chooseDirectorBilling("asset-extract");
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setError);
   // 一次给所有还没有参考图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
@@ -76,7 +76,6 @@ export function DirectorAssets(props: WorkbenchProps) {
       </div>
       <span className="director-spacer"/>
       {extracting ? <Spinner label="资产提取中"/> : <>
-        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
         <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract}><Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
       </>}
       <button type="button" className="ip-brand-secondary" onClick={() => setAdding(true)}><Plus size={15}/>添加资产</button>

@@ -8,7 +8,7 @@ import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { DirectorScriptFile } from "./director-script-file";
 import { ReferenceNotes, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
-import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
+import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
@@ -52,7 +52,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   const { busy, run } = useBusy();
   const write = () => void run("write", async () => {
     const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("script", cost);
+    const billing = await chooseDirectorBilling("script");
     const next = await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone }, billing, maxCost: cost });
     clearDrafts(`${work.id}:idea`); apply(next);
   }, setError);
@@ -82,7 +82,6 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
     </div>
     <div className="director-actions">
       <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={write}>{busy === "write" ? <><Loader2 size={15} className="ip-loading-icon"/>提交中</> : <><Sparkles size={15}/>生成剧本</>}</button>
-      <span className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</span>
       <span className="director-spacer"/>
       <button type="button" className="ip-brand-text-button" onClick={() => setMode("paste")}>已有剧本？粘贴或上传</button>
     </div>
@@ -155,7 +154,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
     // 剧本里标好了分集：服务端按标题分、不扣积分，不用选付款方。
     const free = splitsByHeadings(w, count);
     const cost = free ? 0 : work.pricing.textMax;
-    const billing = free ? undefined : await chooseDirectorBilling("script", cost);
+    const billing = free ? undefined : await chooseDirectorBilling("script");
     apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing, maxCost: cost }));
   }, setError);
   const byHeadings = splitsByHeadings(work, count);
@@ -180,7 +179,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
         <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
         <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
         <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
-        <span className="director-cost">{byHeadings ? "免费" : costText(work.pricing.textMax, work.pricing.mock)}</span>
+        {byHeadings && <span className="director-cost">免费</span>}
       </NextChoices>}
     <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
   </section>;
@@ -199,7 +198,7 @@ function EpisodeList(props: WorkbenchProps) {
   const toggle = (id: string) => setOpen(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   const extract = () => void run("extract", async () => {
     const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("asset-extract", cost);
+    const billing = await chooseDirectorBilling("asset-extract");
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setError);
   return <section className="director-panel director-script-list">
@@ -221,7 +220,6 @@ function EpisodeList(props: WorkbenchProps) {
         <button type="button" className={work.assets.length ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy} onClick={extract} title="对全部集一起提取角色、场景和道具，同一人物不会在各集重复出现">
           <Wand2 size={15}/>{work.assets.length ? "重新提取全剧资产" : "提取全剧资产"}</button>
         {work.assets.length > 0 && <button type="button" className="ip-brand-button" onClick={() => goTab("assets")}>前往资产</button>}
-        <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
       </NextChoices>}
     <InlineError message={extractError}/>
     <ol className="director-episode-list">{work.episodes.map(e =>
@@ -288,7 +286,7 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
   const hasEpisodes = work.episodes.length > 0;
   const go = () => void run("regen", async () => {
     const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("script", cost);
+    const billing = await chooseDirectorBilling("script");
     apply(await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone, regenerate: true }, billing, maxCost: cost }));
     onClose();
   }, e => { setLocalError(e); setError(""); });
@@ -307,7 +305,6 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
       </ul>
       <InlineError message={error}/>
       <footer>
-        <small className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</small>
         <span className="director-spacer"/>
         <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>
         <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={go}><Sparkles size={14}/>{busy ? "提交中" : "重新生成"}</button>

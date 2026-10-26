@@ -364,6 +364,9 @@ public class StudioWorkflowService {
             else textEndpoint=scenePolicies.resolve("studio","script",null,pricing.ipIdentity()).resolved();
             chatRate=chatRate(textEndpoint.endpoint().getId());
             if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
+            int outputBudget=Math.min(maxTokens,chatRate.maxOutputTokens());
+            if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)outputBudget=Math.min(outputBudget,textEndpoint.endpoint().getChatMaxOutputTokens());
+            chatRate=chatRate.limitOutputTokens(outputBudget);
             cost=chatRate.maxCost();
             if(maxCost==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
         }
@@ -381,7 +384,6 @@ public class StudioWorkflowService {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));
             execution.put("billingUnit","per_token");
             budget=Math.min(budget,chatRate.maxOutputTokens());
-            if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)budget=Math.min(budget,textEndpoint.endpoint().getChatMaxOutputTokens());
         }
         execution.put("maxTokens",budget);
         var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
@@ -409,6 +411,14 @@ public class StudioWorkflowService {
         long text=caps.textModels().stream().filter(TextModel::isDefault).findFirst()
                 .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().maxCost()).orElse(caps.textCost());
         return new long[]{text,caps.imageCost()};
+    }
+
+    /** A Director text step reserves only for the output tokens that step is allowed to request. */
+    public long directorTextPrice(int maxOutputTokens) {
+        var caps=capabilities();
+        return caps.textModels().stream().filter(TextModel::isDefault).findFirst()
+                .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().limitOutputTokens(maxOutputTokens).maxCost())
+                .orElse(caps.textCost());
     }
 
     private void validateCreativeRequest(RunRequest request) {

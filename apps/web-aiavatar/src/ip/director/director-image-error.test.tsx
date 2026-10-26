@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { DirectorAssets } from "./director-assets";
 
 vi.mock("../api", () => ({ DirectorApi: { runTask: vi.fn(), edit: vi.fn() }, IpStudioApi: {} }));
-vi.mock("../studio-errors", () => ({ useStudioApp: () => ({ modal: { confirm: vi.fn() } }) }));
+vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioApp: () => ({ modal: { confirm: vi.fn() } }) }));
 afterEach(cleanup);
 
 test("asset grid exposes the persisted provider reason without opening asset details", () => {
@@ -17,4 +17,11 @@ test("asset grid exposes the persisted provider reason without opening asset det
   expect(screen.getByRole("alert").textContent).toBe(reason);
   rerender(<DirectorAssets {...props} work={{ ...work, assets: [{ ...work.assets[0], image: { ...slot, error: null } }] }}/>);
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("asset extraction does not present the model-wide text ceiling as a quote", () => {
+  const work: any = { id: "pricing-test", episodes: [{ id: "ep1", no: 1 }], tasks: [], pricing: { image: 30, textMax: 275, mock: false }, assets: [] };
+  render(<DirectorAssets work={work} episodeId="ep1" apply={vi.fn()} setError={vi.fn()} {...({} as any)}/>);
+  expect(screen.getByRole("button", { name: "提取全剧资产" })).toBeTruthy();
+  expect(screen.queryByText(/275\s*积分/)).toBeNull();
 });

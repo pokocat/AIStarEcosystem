@@ -49,6 +49,8 @@ import java.util.*;
  */
 @Service
 public class DirectorService {
+    static final int TEXT_MAX_TOKENS = 8_192;
+    static final int STRUCTURE_MAX_TOKENS = 16_384;
     static final int SCRIPT_MAX_TOKENS = 100_000;
     private static final Logger log = LoggerFactory.getLogger(DirectorService.class);
 
@@ -542,7 +544,7 @@ public class DirectorService {
         String nodeId;
         ObjectNode meta = om.createObjectNode().put("task", type == null ? "" : type);
         String system, user;
-        int maxTokens = 8192;
+        int maxTokens = TEXT_MAX_TOKENS;
         switch (type == null ? "" : type) {
             case "script" -> {
                 maxTokens = SCRIPT_MAX_TOKENS;
@@ -608,7 +610,7 @@ public class DirectorService {
                     exIds.add(a.path("id").asText());
                 }
                 user = "本次输入（JSON，作为素材）：" + write(in);
-                maxTokens = 16384;
+                maxTokens = STRUCTURE_MAX_TOKENS;
             }
             case "plan" -> {
                 ObjectNode ep = find(c, "episodes", targetId, "这一集");
@@ -637,7 +639,7 @@ public class DirectorService {
                 meta.set("characterIds", om.valueToTree(chars));
                 system = DirectorPrompts.plan(lim.min(), lim.max(), lim.maxShots());
                 user = "本次输入（JSON，作为素材）：" + write(in);
-                maxTokens = 16384;
+                maxTokens = STRUCTURE_MAX_TOKENS;
             }
             case "asset-image" -> {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
@@ -1318,7 +1320,7 @@ public class DirectorService {
         for (JsonNode ep : c.path("episodes")) if (work || req.episodeId() == null || req.episodeId().equals(ep.path("id").asText())) eps.add(ep);
         if (!work && req.episodeId() == null && eps.size() > 1) eps = List.of(eps.get(0));
         int text = 0, images = 0, clipsTotal = 0, seconds = 0, plannedVideos = 0;
-        long videoCredits = 0;
+        long textCredits = 0, videoCredits = 0;
         boolean rough = false;
         String videoError = null;
         boolean toVideo = Set.of("video", "film").contains(target);
@@ -1326,15 +1328,17 @@ public class DirectorService {
         int estClipsPerEp = lim == null ? 0 : Math.max(1, (int) Math.ceil(75.0 / Math.max(1, lim.max())));
         if (c.path("episodes").isEmpty()) {
             rough = true;
-            if (c.path("draft").asText().isBlank()) text++;   // 写剧本
+            if (c.path("draft").asText().isBlank()) { text++; textCredits += directorTextPrice("script", prices[0]); }
             int n = work ? 3 : 1;
             // 拆分（剧本里标好分集就不调模型）+ 提取 + 每集写分镜脚本
-            text += (DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).isEmpty() ? 1 : 0) + 1 + n;
+            if (DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).isEmpty()) { text++; textCredits += directorTextPrice("split", prices[0]); }
+            text++; textCredits += directorTextPrice("extract", prices[0]);
+            text += n; textCredits += (long) n * directorTextPrice("plan", prices[0]);
             images += 6;                                      // 角色、场景、道具参考图
             clipsTotal = n * estClipsPerEp;
             images += clipsTotal;                             // 分镜图
         } else {
-            if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) text++;
+            if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) { text++; textCredits += directorTextPrice("extract", prices[0]); }
             Set<String> epIds = new HashSet<>();
             eps.forEach(e -> epIds.add(e.path("id").asText()));
             boolean assetsKnown = c.path("assets").size() > 0;
@@ -1346,7 +1350,7 @@ public class DirectorService {
             }
             for (JsonNode ep : eps) {
                 List<JsonNode> clips = clipsOf(c, List.of(ep));
-                if (clips.isEmpty()) { rough = true; text++; clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
+                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice("plan", prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
                 for (JsonNode clip : clips) {
                     if (clip.path("board").path("candidates").isEmpty()) images++;
                     if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
@@ -1367,7 +1371,7 @@ public class DirectorService {
         }
         if (toVideo && lim == null) videoError = "暂无可用视频模型，无法估算视频费用";
         if ("plan".equals(target)) images = 0;
-        long textCredits = (long) text * prices[0], imageCredits = (long) images * prices[1];
+        long imageCredits = (long) images * prices[1];
         long total = textCredits + imageCredits + (toVideo ? videoCredits : 0);
         long recommended = Math.max(10, (long) Math.ceil(total * 1.15 / 10.0) * 10);
         ObjectNode out = om.createObjectNode().put("target", target).put("rough", rough).put("total", total).put("recommended", recommended);
@@ -1644,7 +1648,7 @@ public class DirectorService {
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : prices[0];
+                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : directorTextPrice(type, prices[0]);
             p.put("stage", stage).put("message", stage);
             if (inflight >= PIPELINE_INFLIGHT) return false;
             if (committed + estimate > p.path("budget").asLong()) {
@@ -1792,6 +1796,16 @@ public class DirectorService {
                     .findFirst().ifPresent(s -> prices[1] = s.creditCost());
         }
         return prices;
+    }
+
+    private long directorTextPrice(String type, long fallback) {
+        int maxTokens = switch (type == null ? "" : type) {
+            case "script" -> SCRIPT_MAX_TOKENS;
+            case "extract", "plan" -> STRUCTURE_MAX_TOKENS;
+            default -> TEXT_MAX_TOKENS;
+        };
+        long price = textRuns.directorTextPrice(maxTokens);
+        return price > 0 ? price : fallback;
     }
 
     // ── 出 wire ───────────────────────────────────────────────────────────────
