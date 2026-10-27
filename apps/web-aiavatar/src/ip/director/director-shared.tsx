@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
+import type { ReactNode, TextareaHTMLAttributes } from "react";
 import { Check, Loader2, Maximize2, Sparkles, X, ZoomIn, ZoomOut } from "lucide-react";
 import { Image } from "antd";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
@@ -103,6 +103,21 @@ export function VersionStrip({ slot, onAdopt, disabled, label, video }: { slot: 
       {m.stale && <em>需更新</em>}
     </button>)}
   </div>;
+}
+
+/**
+ * 多行输入，随内容长高：浏览器支持 field-sizing 时交给 CSS，否则按 scrollHeight 算；超过 CSS 的上限出滚动条，右下角能拖高。
+ * 用在本集摘要这类可能很长、又要整段读完再改的字段（2026-10-27 用户反馈：单行输入框看不到后面的内容）。
+ */
+export function GrowTextarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || (typeof CSS !== "undefined" && CSS.supports?.("field-sizing", "content"))) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight + 2}px`;
+  }, [props.value]);
+  return <textarea ref={ref} {...props}/>;
 }
 
 export function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: ReactNode }) {

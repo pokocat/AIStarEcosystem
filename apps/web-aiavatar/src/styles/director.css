@@ -152,6 +152,8 @@ html[data-layout="desktop"] .director-nav button { flex-direction: column; gap: 
 .director-two { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 html[data-layout="desktop"] .director-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .director-shell .director-script-text { min-height: 120px; font-size: 14px; line-height: 1.85; field-sizing: content; max-height: 70vh; }
+/* 本集摘要：多行、随内容长高（最多 40vh，再长出滚动条，可拖高），不横向滚动 */
+.director-shell .director-summary-input { min-height: 72px; max-height: 40vh; field-sizing: content; overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
 /* 剧本：全部集一个列表，一集一行，点开原地编辑。 */
 .director-script-list { gap: 8px; padding: 12px 14px; }
 .director-script-content { display: flex; flex-direction: column; gap: inherit; min-width: 0; }
@@ -562,6 +564,10 @@ html:not([data-layout="desktop"]) .director-next-choices { grid-template-columns
 .director-start-dialog { width: min(560px, 100%); }
 .director-check { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--ip-line); border-radius: 10px; cursor: pointer; }
 .director-check input[type="checkbox"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 2px 0 0; padding: 0; }
+.director-check input[type="radio"] { flex: none; width: 16px; height: 16px; min-height: 0; margin: 2px 0 0; padding: 0; border: 0; background: transparent; accent-color: var(--ip-ink); }
+.director-check.is-disabled { cursor: not-allowed; opacity: .7; }
+.director-check b { font-weight: 600; }
+.director-regen-notes .is-warn { color: var(--ip-gold); }
 .director-check > span { display: flex; flex: 1; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; }
 .director-check small { color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .director-budget-card { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 12px; background: var(--ip-soft); }

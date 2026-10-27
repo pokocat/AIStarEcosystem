@@ -8,7 +8,7 @@ import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { DirectorScriptFile } from "./director-script-file";
 import { ReferenceNotes, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
-import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
+import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
@@ -259,7 +259,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
     {open && <div className="director-episode-body">
       <div className="director-two">
         <Field label="集名"><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}/></Field>
-        <Field label="本集摘要"><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
+        <Field label="本集摘要"><GrowTextarea className="director-summary-input" rows={2} value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
       </div>
       {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。可在「分镜」重写分镜脚本（已有分镜图的片段要先删掉）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
       <textarea className="director-script-text" aria-label={`第 ${ep.no} 集正文`} value={content} maxLength={60000} onChange={e => setContent(e.target.value)}/>

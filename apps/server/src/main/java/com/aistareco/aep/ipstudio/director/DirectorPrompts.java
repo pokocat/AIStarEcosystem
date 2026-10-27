@@ -237,13 +237,34 @@ public final class DirectorPrompts {
      * 各字段有字数上限：写实规则会让模型越写越长，2026-10-25 线上一集写了 5 分钟仍没写完，被请求时限截断（聚算 Qwen 约 19 字 / 秒，时限 300 秒）。
      */
     static String plan(int minSec, int maxSec, int maxShots) {
-        String output = """
+        return shotPrompt(minSec, maxSec, maxShots, false);
+    }
+
+    /**
+     * 重写指定片段的分镜脚本（2026-10-27，分镜页「重写分镜脚本」逐段重写与片段上的「重写」）：本集的片段划分不变，
+     * 只换这些片段的镜头，连同标题、摘要、关联资产。镜头写法、硬边界和台词量与 {@link #plan} 是同一套规则，
+     * 只是「拆分与引用规则」换成「重写范围」：不拆不并、剧情范围不变、台词不挪到别的片段；输出带上片段 id。
+     */
+    static String reshoot(int minSec, int maxSec, int maxShots) {
+        return shotPrompt(minSec, maxSec, maxShots, true);
+    }
+
+    private static final String PLAN_OUTPUT = """
 
             【输出结构】
             严格按以下 JSON 结构输出，不得增减字段：
             {"clips":[{"title":"片段短标题","summary":"本段剧情摘要","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
             """;
-        String realism = """
+
+    private static final String RESHOOT_OUTPUT = """
+
+            【输出结构】
+            严格按以下 JSON 结构输出，不得增减字段；clips 里只放 rewriteIds 中的片段，每个一项，id 原样照抄：
+            {"clips":[{"id":"片段 id","title":"片段短标题","summary":"本段剧情摘要","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
+            """;
+
+    /** 写镜头的规则（写实、画面写法、台词量、镜头内容），写分镜脚本和重写片段共用。 */
+    private static final String SHOT_REALISM = """
 
             【核心：去 AI 味镜头写实规则】
             1. 动作拒绝模板化
@@ -286,6 +307,9 @@ public final class DirectorPrompts {
               比如「话说到一半的侧脸」「手抬到半空的瞬间」「低头眨眼的间隙」
             - 字数：camera 不超过 25 字，action 不超过 80 字，still 不超过 40 字，summary 不超过 50 字。写实靠选对一两个细节，不靠堆形容词和长句。
 
+            """;
+
+    private static final String SPLIT_RULES = """
             【拆分与引用规则】
             1. 按剧情自然顺序拆分片段，完整保留所有重要对白、道具变化和关键动作，不得遗漏核心情节；
                单片段装不下的对白顺延至下一片段，不得删减台词、不得强行加速。
@@ -294,17 +318,27 @@ public final class DirectorPrompts {
                对白的 speakerId 仅可使用角色 id，旁白 / 画外音填 null。
             4. 仅输出分镜计划，不得宣称已生成图片或视频；不得新增正文与 brief 中均未提及的情节、对白。
             5. 若 brief 中明确规定了片段数、镜头数或时长，在 %d–%d 秒的边界内优先按 brief 执行。
-            """.formatted(minSec, maxSec);
-        if (maxShots == 1) return COMMON + """
+            """;
 
-            【任务定位】
-            你是写实向竖屏短剧分镜师，基于输入剧情拆分可直接生成视频的片段。所有拆分服务于叙事真实感，禁止摆拍式镜头、禁止 AI 通用套话。
+    private static final String RESHOOT_SCOPE = """
 
-            【硬边界约束】
-            1. 单片段时长 %d–%d 秒。
-            2. 当前视频模型只按首帧出片：每个片段只能有 1 个镜头，still 必须是镜头**开始时**的画面（视频从这张图开始动），
-               动作写从这个画面出发会发生什么。复杂动作拆成多个片段。
-            """.formatted(minSec, maxSec) + realism + """
+            【重写范围】
+            1. 输入的 clips 是本集已经切好的全部片段（按顺序），只重写 rewriteIds 里的片段（rewrite=true）；其他片段不输出，
+               它们的镜头只用来对齐前后衔接。不合并、不拆分、不新增、不遗漏片段。
+            2. 每个片段讲的剧情范围不变：以它的 summary 和 lines（这一段的台词，按顺序）为准，对应本集正文里的同一段剧情；
+               不提前写下一个片段的内容，不重复上一个片段已经拍过的内容；开头接上一个片段的结尾，结尾接下一个片段的开头。
+            3. 台词：lines 里的台词全部保留，原文照写，顺序和说话人不变，不加别的片段的台词。台词不能挪到别的片段
+               （【台词量】里「挪到下一段」在本任务不适用），放不下就加镜头或延长镜头。
+            4. 这是重写，要给出一版新的拍法：按本集正文重新设计这一段的镜头拆分、每镜时长、景别、机位与运镜、动作和静态帧，
+               同时遵守上面全部写实规则。片段的 title、summary、assetIds 可以按新拍法调整。
+            5. 同一片段尽量保持在同一场景内；镜头拆分必须保证动作连贯、时空逻辑统一：人物站位、道具位置、光线方向前后一致。镜头时长相加等于片段时长。
+            6. assetIds 仅可使用输入 assets 中提供的 id，列出本片段所有出镜 / 发声角色、对应场景、关键道具；
+               对白的 speakerId 仅可使用角色 id，旁白 / 画外音填 null。
+            7. 仅输出分镜脚本，不得宣称已生成图片或视频；不得新增正文与 brief 中均未提及的情节、对白。
+            8. 若 brief 中明确规定了镜头数或时长，在 %d–%d 秒的边界内优先按 brief 执行。
+            """;
+
+    private static final String FRAME_CHECKS = """
 
             【输出前强制校验】
             1. 写实校验：是否出现了模板化动作套话？小动作是否最多一个？机位是否有变化？
@@ -312,21 +346,9 @@ public final class DirectorPrompts {
             3. 台词量：台词是否不超过「镜头秒数 × 4」字？
             4. 叙事完整：核心对白、关键情节是否完整无遗漏？动作与空间逻辑是否前后连贯？
             5. 资产合规：所有 id 是否均来自输入提供的资产列表？
-            """ + output;
-        int lo = Math.max(minSec, maxSec - 3);
-        int shotsLo = Math.min(3, maxShots);
-        return COMMON + """
+            """;
 
-            【任务定位】
-            你是写实向竖屏短剧分镜师，基于输入剧情拆分可直接生成视频的片段与镜头方案。所有拆分服务于叙事真实感，禁止模板化切镜、禁止摆拍式镜头、禁止 AI 通用套话。
-
-            【硬边界约束（必须严格执行）】
-            1. 片段时长：单片段总时长控制在 %1$d–%2$d 秒，剧情容量允许时优先贴近 %2$d 秒上限，用满生成额度；
-               本集末尾剧情不足时可缩短，最短不得低于 %3$d 秒。不得为凑时长添加无意义空镜或注水内容。
-            2. 单片段镜头数：每段排布 %4$d–%5$d 个镜头（最多 %5$d 个，对应 2×2 分镜宫格）；禁止少于 %4$d 个镜头，绝对禁止单片段仅 1 个镜头。
-            3. 单镜头时长：标准镜头时长为 2–4 秒；单镜头时长 ≥5 秒必须有合理理由（如连续跟拍长动作、情绪留白、一句台词需要的时长），并把理由写进该镜头的 action；
-               无合理理由不得超过 4 秒。所有镜头时长不得低于 2 秒。
-            """.formatted(lo, maxSec, minSec, shotsLo, maxShots) + realism + """
+    private static final String CUT_LOGIC_AND_CHECKS = """
 
             【切镜执行逻辑】
             1. 对话场景正反打：双人对话采用「说话者镜头 + 听话者反应镜头」交替呈现，禁止单个长镜头覆盖整段对话。
@@ -344,7 +366,43 @@ public final class DirectorPrompts {
             5. 台词量：每镜台词是否不超过「镜头秒数 × 4」字？是否一镜只有一个人说话？
             6. 叙事完整：核心对白、关键情节是否完整无遗漏？动作与空间逻辑是否前后连贯？
             7. 资产合规：所有 id 是否均来自输入提供的资产列表？
-            """.formatted(shotsLo) + output;
+            """;
+
+    private static String shotPrompt(int minSec, int maxSec, int maxShots, boolean reshoot) {
+        String output = reshoot ? RESHOOT_OUTPUT : PLAN_OUTPUT;
+        String realism = SHOT_REALISM + (reshoot ? RESHOOT_SCOPE : SPLIT_RULES).formatted(minSec, maxSec);
+        String role = reshoot ? """
+
+            【任务定位】
+            你是写实向竖屏短剧分镜师。本集已经切好了片段，现在重写输入 rewriteIds 指定片段的镜头方案，其他片段保持不变。
+            所有镜头服务于叙事真实感，禁止模板化切镜、禁止摆拍式镜头、禁止 AI 通用套话。
+            """ : null;
+        if (maxShots == 1) return COMMON + (role != null ? role : """
+
+            【任务定位】
+            你是写实向竖屏短剧分镜师，基于输入剧情拆分可直接生成视频的片段。所有拆分服务于叙事真实感，禁止摆拍式镜头、禁止 AI 通用套话。
+            """) + """
+
+            【硬边界约束】
+            1. 单片段时长 %d–%d 秒。
+            2. 当前视频模型只按首帧出片：每个片段只能有 1 个镜头，still 必须是镜头**开始时**的画面（视频从这张图开始动），
+               动作写从这个画面出发会发生什么。%s
+            """.formatted(minSec, maxSec, reshoot ? "" : "复杂动作拆成多个片段。") + realism + FRAME_CHECKS + output;
+        int lo = Math.max(minSec, maxSec - 3);
+        int shotsLo = Math.min(3, maxShots);
+        return COMMON + (role != null ? role : """
+
+            【任务定位】
+            你是写实向竖屏短剧分镜师，基于输入剧情拆分可直接生成视频的片段与镜头方案。所有拆分服务于叙事真实感，禁止模板化切镜、禁止摆拍式镜头、禁止 AI 通用套话。
+            """) + """
+
+            【硬边界约束（必须严格执行）】
+            1. 片段时长：单片段总时长控制在 %1$d–%2$d 秒，剧情容量允许时优先贴近 %2$d 秒上限，用满生成额度；
+               本集末尾剧情不足时可缩短，最短不得低于 %3$d 秒。不得为凑时长添加无意义空镜或注水内容。
+            2. 单片段镜头数：每段排布 %4$d–%5$d 个镜头（最多 %5$d 个，对应 2×2 分镜宫格）；禁止少于 %4$d 个镜头，绝对禁止单片段仅 1 个镜头。
+            3. 单镜头时长：标准镜头时长为 2–4 秒；单镜头时长 ≥5 秒必须有合理理由（如连续跟拍长动作、情绪留白、一句台词需要的时长），并把理由写进该镜头的 action；
+               无合理理由不得超过 4 秒。所有镜头时长不得低于 2 秒。
+            """.formatted(lo, maxSec, minSec, shotsLo, maxShots) + realism + CUT_LOGIC_AND_CHECKS.formatted(shotsLo) + output;
     }
 
     // ── 输出校验（worker 内执行）─────────────────────────────────────────────
@@ -356,6 +414,7 @@ public final class DirectorPrompts {
             case "split" -> validateSplit(om, meta, out);
             case "extract" -> validateExtract(om, meta, out);
             case "plan" -> validatePlan(om, meta, out);
+            case "reshoot" -> validateReshoot(om, meta, out);
             case "videoPrompt" -> com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(om, meta, out);
             default -> throw bad("未知的导演台任务");
         };
@@ -517,35 +576,59 @@ public final class DirectorPrompts {
         JsonNode clips = out.path("clips");
         if (!clips.isArray() || clips.isEmpty()) throw bad("模型未返回片段");
         ArrayNode result = om.createArrayNode();
-        for (JsonNode c : clips) {
-            JsonNode shots = c.path("shots");
-            if (!shots.isArray() || shots.isEmpty()) throw bad("部分片段缺少镜头");
-            ObjectNode clip = result.addObject();
-            clip.put("title", clip(text(c, "title"), 40)).put("summary", clip(text(c, "summary"), 400));
-            ArrayNode ids = clip.putArray("assetIds");
-            Set<String> seen = new HashSet<>();
-            for (JsonNode id : c.path("assetIds")) if (!id.asText().isBlank() && seen.add(id.asText())) ids.add(clip(id.asText(), 40));
-            ArrayNode outShots = clip.putArray("shots");
-            for (JsonNode s : shots) {
-                double d = s.path("durationSec").asDouble(0);
-                if (!(d > 0)) throw bad("部分镜头缺少时长");
-                ObjectNode shot = outShots.addObject();
-                shot.put("durationSec", d).put("size", clip(text(s, "size"), 20)).put("camera", clip(text(s, "camera"), 200))
-                        .put("action", clip(text(s, "action"), 400)).put("still", clip(text(s, "still"), 300));
-                ArrayNode dialogue = shot.putArray("dialogue");
-                for (JsonNode line : s.path("dialogue")) {
-                    String t = text(line, "text");
-                    if (t.isEmpty()) continue;
-                    String speaker = text(line, "speakerId");
-                    ObjectNode l = dialogue.addObject();
-                    if (speaker.isEmpty()) l.putNull("speakerId"); else l.put("speakerId", clip(speaker, 40));
-                    l.put("text", t);
-                }
-            }
-        }
+        for (JsonNode c : clips) plannedClip(result.addObject(), c);
         ObjectNode r = om.createObjectNode();
         r.set("clips", result);
         return r;
+    }
+
+    /**
+     * 重写片段：rewriteIds 里的每个片段都要有且只有一项；不在范围内的片段忽略，不写进作品。
+     * 每段的结构校验与写分镜脚本相同（{@link #plannedClip}）。
+     */
+    private static JsonNode validateReshoot(ObjectMapper om, JsonNode meta, JsonNode out) {
+        JsonNode clips = out.path("clips");
+        if (!clips.isArray() || clips.isEmpty()) throw bad("模型未返回片段");
+        Set<String> wanted = new java.util.LinkedHashSet<>();
+        meta.path("rewriteIds").forEach(x -> wanted.add(x.asText()));
+        ArrayNode result = om.createArrayNode();
+        Set<String> seen = new HashSet<>();
+        for (JsonNode c : clips) {
+            String id = text(c, "id");
+            if (!wanted.contains(id)) continue;
+            if (!seen.add(id)) throw bad("模型把同一个片段写了两遍");
+            plannedClip(result.addObject().put("id", id), c);
+        }
+        if (seen.size() < wanted.size()) throw bad("模型漏写了要重写的片段");
+        ObjectNode r = om.createObjectNode();
+        r.set("clips", result);
+        return r;
+    }
+
+    private static void plannedClip(ObjectNode clip, JsonNode c) {
+        JsonNode shots = c.path("shots");
+        if (!shots.isArray() || shots.isEmpty()) throw bad("部分片段缺少镜头");
+        clip.put("title", clip(text(c, "title"), 40)).put("summary", clip(text(c, "summary"), 400));
+        ArrayNode ids = clip.putArray("assetIds");
+        Set<String> seen = new HashSet<>();
+        for (JsonNode id : c.path("assetIds")) if (!id.asText().isBlank() && seen.add(id.asText())) ids.add(clip(id.asText(), 40));
+        ArrayNode outShots = clip.putArray("shots");
+        for (JsonNode s : shots) {
+            double d = s.path("durationSec").asDouble(0);
+            if (!(d > 0)) throw bad("部分镜头缺少时长");
+            ObjectNode shot = outShots.addObject();
+            shot.put("durationSec", d).put("size", clip(text(s, "size"), 20)).put("camera", clip(text(s, "camera"), 200))
+                    .put("action", clip(text(s, "action"), 400)).put("still", clip(text(s, "still"), 300));
+            ArrayNode dialogue = shot.putArray("dialogue");
+            for (JsonNode line : s.path("dialogue")) {
+                String t = text(line, "text");
+                if (t.isEmpty()) continue;
+                String speaker = text(line, "speakerId");
+                ObjectNode l = dialogue.addObject();
+                if (speaker.isEmpty()) l.putNull("speakerId"); else l.put("speakerId", clip(speaker, 40));
+                l.put("text", t);
+            }
+        }
     }
 
     // ── 媒体提示词模板（按已采用内容编译，不调用模型）───────────────────────

@@ -3,12 +3,13 @@
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { useEffect, useState } from "react";
 import { AlertTriangle, Check, Lightbulb, Clapperboard, Film, ImageIcon, LayoutGrid, Loader2, Play, Plus, RefreshCw, Scissors, Trash2, Wand2, X } from "lucide-react";
-import type { DirectorClip, DirectorShot, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorClip, DirectorShot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
 import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
+import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } from "./director-rewrite";
 import { formatDateTime } from "@/lib/datetime";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
@@ -22,6 +23,8 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const [preview, setPreview] = useState<Preview | null>(null);
   const [boardFor, setBoardFor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rewriting, setRewriting] = useState(false);
+  const rewriteClip = useRewriteClip(work, apply, setError);
   useEffect(() => setSelected(new Set()), [episodeId]);
   useEffect(() => {
     if (!ready) { setQuotes({}); return; }
@@ -32,19 +35,19 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   }, [work.id, work.revision, ready]);
   if (!ep) return <div className="director-panel director-empty-panel"><p>请先在「剧本」完成剧本并拆分集。</p></div>;
   const clips = work.clips.filter(c => c.episodeId === ep.id).sort((a, b) => a.order - b.order);
-  const planning = runningTask(work, `plan:${ep.id}`);
-  const hasMedia = clips.some(c => c.board.candidates.length || c.video.candidates.length);
-  const plan = () => {
-    const go = () => run("plan", async () => {
-      const cost = work.pricing.textMax;
-      const billing = await chooseDirectorBilling("storyboard");
-      apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
-    }, setError);
-    if (clips.length) modal.confirm({ title: `重写第 ${ep.no} 集分镜脚本？`, content: "现有片段和镜头（含手动修改）会被新写的分镜脚本替换。", okText: "重写", cancelText: "取消", onOk: go });
-    else void go();
-  };
-  const pending = ep.pendingPlan;
+  const writing = shotWriting(work, ep);
   const lim = work.videoLimits;
+  const hasMedia = clips.some(c => c.board.candidates.length || c.video.candidates.length);
+  // 第一次写分镜脚本：本集还没有片段，直接写。已有片段时走「重写分镜脚本」弹窗，先说清会改什么。
+  const plan = () => void run("plan", async () => {
+    const cost = work.pricing.textMax;
+    const billing = await chooseDirectorBilling("storyboard");
+    apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
+  }, setError);
+  const rewriteBlock = !lim ? "暂无可用视频模型，无法确定片段时长" : writing.clips.length
+    ? `${clips.filter(c => runningTask(work, `reshoot:${c.id}`)).map(c => `片段 ${c.order}`).join("、")} 正在重写，完成后再重写整集` : "";
+  const openRewrite = () => rewriteBlock ? modal.info({ title: `现在不能重写第 ${ep.no} 集`, content: rewriteBlock, okText: "知道了" }) : setRewriting(true);
+  const pending = ep.pendingPlan;
   const previewClip = preview ? work.clips.find(c => c.id === preview.clipId) : undefined;
   const boardClip = boardFor ? work.clips.find(c => c.id === boardFor) : undefined;
   return <div className="director-board-layout">
@@ -56,29 +59,33 @@ export function DirectorStoryboard(props: WorkbenchProps) {
             {lim ? ` · 每段 ${secRange(lim.minSec, lim.maxSec)} · ${lim.name}` : " · 暂无可用视频模型，无法确定片段时长"}
             {lim?.mode === "frame" && <span className="director-frame-note" title="仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"> · 仅分镜首帧</span>}</p></div>
         <span className="director-spacer"/>
-        {planning ? <Spinner label="正在写分镜脚本"/> : <button type="button" className={clips.length ? "ip-brand-text-button" : "ip-brand-button"} disabled={!!busy || hasMedia || !lim}
-          title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={plan}>
-          <LayoutGrid size={15}/>{clips.length ? "重写分镜脚本" : "写分镜脚本"}</button>}
+        {writing.plan || writing.whole ? <Spinner label={writing.plan ? "正在写分镜脚本" : "正在重写分镜脚本"}/>
+          : clips.length ? <button type="button" className="ip-brand-secondary" disabled={!!busy} title="AI 重写本集的镜头，分镜图和视频提示词跟着更新；不出图、不生成视频" onClick={openRewrite}>
+            <RefreshCw size={14}/>重写分镜脚本</button>
+          : <button type="button" className="ip-brand-button" disabled={!!busy || !lim} onClick={plan}><LayoutGrid size={15}/>写分镜脚本</button>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
-      {planning && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={planning} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
+      {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
+      {writing.whole && <AiWorking compact title={`AI 正在重写第 ${ep.no} 集分镜脚本`} task={writing.whole} detail="片段划分不变，逐段换一套新镜头，分镜图提示词和视频提示词跟着更新。不会出图，也不会生成视频。"/>}
       {ep.planError && <InlineError message={ep.planError.message}/>}
       {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。</div>}
       {pending && <div className="director-warn"><span>写分镜脚本期间你改过片段，新写的版本（{pending.clips.length} 个片段）没有覆盖现有内容。要换成新版本吗？</span>
         <button type="button" disabled={!!busy || hasMedia} title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={() => void run("pending", async () => apply(await DirectorApi.edit(work.id, "episode.usePendingPlan", ep.id, null)), setError)}>换成新版本</button>
         <button type="button" disabled={!!busy} onClick={() => void run("discard", async () => apply(await DirectorApi.edit(work.id, "episode.discardPendingPlan", ep.id, null)), setError)}>保留现有</button></div>}
-      {clips.length === 0 && !planning && <div className="director-panel director-empty-panel">
+      {clips.length === 0 && !writing.plan && <div className="director-panel director-empty-panel">
         <Clapperboard size={26}/>
         <p>分镜脚本把本集切成几个片段，每段写好镜头、分镜图提示词和视频提示词，一段对应一条视频。写之前先在「资产」准备好角色、场景和道具。</p>
         {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
       </div>}
       {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
       {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)}
+        onRewrite={() => rewriteClip.open(c)} rewriteTask={runningTask(work, `reshoot:${c.id}`) ?? writing.whole}
         selected={selected.has(c.id)} onSelect={on => setSelected(prev => { const next = new Set(prev); if (on) next.add(c.id); else next.delete(c.id); return next; })}/>)}
     </div>
     {preview && previewClip && <ClipPreview work={work} clip={previewClip} preview={preview} apply={apply} setError={setError} goTab={goTab}
       onPick={candidateId => setPreview({ ...preview, candidateId })} onClose={() => setPreview(null)}/>}
     {boardClip && <BoardDialog work={work} clip={boardClip} apply={apply} setError={setError} onClose={() => setBoardFor(null)}/>}
+    {rewriting && <RewriteEpisodeDialog work={work} ep={ep} apply={apply} onClose={() => setRewriting(false)}/>}
   </div>;
 }
 
@@ -150,6 +157,7 @@ type PreviewKind = "assets" | "video";
 type Preview = { clipId: string; kind: PreviewKind; candidateId?: string };
 
 function clipStatus(work: DirectorWork, clip: DirectorClip) {
+  if (runningTask(work, `reshoot:${clip.id}`) || runningTask(work, `reshoot:${clip.episodeId}`)) return "分镜脚本重写中";
   if (runningTask(work, `board:${clip.id}`)) return "分镜图生成中";
   if (clip.video.pending?.length) return "视频生成中";
   if (clip.issues.length) return "需修改";
@@ -195,9 +203,12 @@ function tone(status: string) {
   return status === "已确认" ? "is-done" : status === "待确认" || status === "需更新" ? "is-warn" : "";
 }
 
-function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: (m: string) => void; onEdit: (() => void) | null; selected?: boolean; onSelect?: (on: boolean) => void }) {
+function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onRewrite, rewriteBlock, rewriting }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: (m: string) => void; onEdit: (() => void) | null; selected?: boolean; onSelect?: (on: boolean) => void;
+  onRewrite?: () => void; rewriteBlock?: string; rewriting?: boolean }) {
   const { modal } = useStudioApp();
   const { run } = useBusy();
+  // 不能重写时也能点：点了说原因，不做一个点了没反应的灰按钮。
+  const rewrite = () => rewriteBlock ? modal.info({ title: `现在不能重写片段 ${clip.order}`, content: rewriteBlock, okText: "知道了" }) : onRewrite?.();
   const remove = () => modal.confirm({ title: `删除片段 ${clip.order}？`, content: "片段内的镜头和分镜图将一并移除。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
     onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "clip.delete", clip.id, null)), setError) });
   return <header className="director-clip-head">
@@ -205,6 +216,7 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect }: {
     <span className="director-clip-no">{clip.order}</span>
     <div><h4 title={clip.title}>{clip.title || `片段 ${clip.order}`}</h4><p>{clip.durationSec} 秒 · {clip.shots.length} 镜 · {clipStatus(work, clip)}</p></div>
     <span className="director-spacer"/>
+    {rewriting ? <Spinner label="重写中"/> : onRewrite && <button type="button" className="ip-brand-text-button" title="AI 重写这一段的镜头和提示词，不出图、不生成视频" onClick={rewrite}><RefreshCw size={13}/>重写</button>}
     {onEdit && <button type="button" className="ip-brand-text-button" onClick={onEdit}>编辑镜头</button>}
     <button type="button" className="ip-brand-text-button director-danger" aria-label="删除片段" onClick={remove}><Trash2 size={14}/></button>
   </header>;
@@ -214,9 +226,12 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect }: {
  * 一个片段一张卡，主体是视频：分镜图是生成视频的参考（不是资产），单独一个入口、单独一个弹窗；
  * 视频提示词按分镜图第 1–N 格逐镜写，宫格保证前后镜头的人物、环境一致。
  */
-function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, selected, onSelect }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; selected: boolean; onSelect: (on: boolean) => void }) {
+function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, selected, onSelect, onRewrite, rewriteTask }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; selected: boolean; onSelect: (on: boolean) => void;
+  onRewrite: () => void; rewriteTask?: DirectorTask }) {
   // 没保存的镜头修改切走再回来还在，编辑区保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(`${work.id}:clip:${clip.id}:edit:`));
+  const { busy: pendingBusy, run: runPending } = useBusy();
+  const pendingShots = clip.pendingShots;
   const board = adopted(clip.board);
   const generating = runningTask(work, `board:${clip.id}`);
   const videoBusy = !!clip.video.pending?.length || !!runningTask(work, `video:${clip.id}`);
@@ -233,7 +248,12 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const videoTag = shownVideo ? (shownVideo.id === clip.video.adoptedId ? (clip.video.adoptedBy === "auto" ? "待确认" : clip.video.adoptedCheck === "outdated" ? "需更新" : "采用中") : "未采用")
     : videoBusy ? "视频生成中" : null;
   return <article className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
-    <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}/>
+    <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing || rewriteTask ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}
+      onRewrite={onRewrite} rewriteBlock={clipRewriteBlock(work, clip, editing)} rewriting={!!rewriteTask}/>
+    {rewriteTask && rewriteTask.target === `reshoot:${clip.id}` && <AiWorking compact title={`AI 正在重写片段 ${clip.order} 的分镜脚本`} task={rewriteTask} detail="写好后这一段的镜头、分镜图提示词和视频提示词自动更新。不会出图，也不会生成视频。"/>}
+    {pendingShots && <div className="director-warn"><span>重写期间你改过这一段，新写的版本（{pendingShots.shots.length} 个镜头）没有覆盖现有内容。要换成新版本吗？</span>
+      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("use", async () => apply(await DirectorApi.edit(work.id, "clip.usePendingShots", clip.id, null)), setError)}>换成新版本</button>
+      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("discard", async () => apply(await DirectorApi.edit(work.id, "clip.discardPendingShots", clip.id, null)), setError)}>保留现有</button></div>}
     {editing ? <>
       {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
       <ClipEditor work={work} clip={clip} apply={apply} setError={setError} onDone={() => setEditing(false)}/>

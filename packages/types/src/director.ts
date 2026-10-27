@@ -188,6 +188,8 @@ export interface DirectorClip {
   videoPromptRewrite?: "off" | "needed" | "ready" | "review" | "original";
   /** 最近一次改写出的英文稿；text 只在 ready / review 时有，是填好当前台词、会发给模型的那一份。warnings 是给用户的提示。 */
   videoPromptEn?: { text?: string; at: string; warnings?: string[]; notes?: string[]; usable?: boolean } | null;
+  /** 重写分镜脚本期间用户改过这个片段：新写的版本没有覆盖，等用户选换成新版本（clip.usePendingShots）还是保留现有（clip.discardPendingShots）。 */
+  pendingShots?: (DirectorPlannedClip & { runId: string; at: string }) | null;
   rev: number;
 }
 
@@ -217,7 +219,7 @@ export interface DirectorTask {
   id: string;
   /** Only synchronous text tasks; native media jobs retain their own submission and cancellation rules. */
   canStop?: boolean;
-  /** script / split / extract[:ep] / plan:ep / asset:id / board:clip / video:clip / export:ep */
+  /** script / split / extract[:ep] / plan:ep / reshoot:ep（整集重写）/ reshoot:clip（单个片段重写）/ asset:id / board:clip / video:clip / export:ep */
   target: string;
   status: "running" | "stopping" | "done" | "failed";
   stage: string | null;
@@ -365,11 +367,13 @@ export type DirectorEditOp =
   | "draft.asEpisode" | "episode.update" | "episode.usePendingPlan" | "episode.discardPendingPlan"
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
+  | "clip.usePendingShots" | "clip.discardPendingShots"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
   | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link";
 
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
+/** plan = 写分镜脚本（切片段，整集替换）；reshoot = 重写分镜脚本、保留片段划分（targetId = 集，options.clipIds 为空则整集）。 */
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "reshoot" | "asset-image" | "board" | "video" | "export";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";

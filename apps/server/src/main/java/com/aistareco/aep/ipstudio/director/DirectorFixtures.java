@@ -82,6 +82,29 @@ public final class DirectorFixtures {
                     if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
                 }
             }
+            case "reshoot" -> {
+                // 重写片段：每个要重写的片段各换一套三镜头方案，id 原样带回，和真模型同一个契约。
+                List<String> ids = new ArrayList<>();
+                meta.path("assetIds").forEach(x -> ids.add(x.asText()));
+                String speaker = meta.path("characterIds").path(0).asText(null);
+                ArrayNode clips = out.putArray("clips");
+                String[][] shots = {
+                        {"全景", "门口高处俯拍，固定机位", "林夏推门进来，停在门边", "林夏一只手还扶着门把手", ""},
+                        {"特写", "桌面平视，镜头缓慢推近", "桌上的红信封被灯光照亮", "红信封躺在灯下，封口朝上", ""},
+                        {"近景", "越过信封拍林夏，固定机位", "林夏拿起信封，低头看背面", "林夏低头看信封的侧脸", "这么晚了，怎么还有人留东西？"},
+                        {"中景", "西南侧，门在画面右侧，固定机位", "她停住，慢慢回头看门", "她回头看门，右手仍握着信封", "谁在外面？"}};
+                for (JsonNode id : meta.path("rewriteIds")) {
+                    ObjectNode clip = clips.addObject().put("id", id.asText()).put("title", "发现信封（重写）").put("summary", "林夏进门后发现桌上的红信封，拿起来时听到敲门声。");
+                    ArrayNode clipIds = clip.putArray("assetIds");
+                    ids.forEach(clipIds::add);
+                    ArrayNode list = clip.putArray("shots");
+                    for (String[] s : shots) {
+                        ObjectNode shot = list.addObject().put("durationSec", 3).put("size", s[0]).put("camera", s[1]).put("action", s[2]).put("still", s[3]);
+                        ArrayNode d = shot.putArray("dialogue");
+                        if (!s[4].isEmpty()) d.addObject().put("speakerId", speaker).put("text", s[4]);
+                    }
+                }
+            }
             case "videoPrompt" -> {
                 // 视频提示词改写：每镜一句画面，台词按占位原样放回，由 DirectorH3Rewrite 组装成 H3 格式。
                 out.put("subject_definitions", "<Subject 1> is the character shown in <Picture 2>.")

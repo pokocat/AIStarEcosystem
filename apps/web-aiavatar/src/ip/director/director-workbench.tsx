@@ -13,6 +13,7 @@ import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
 import { InlineError, chooseDirectorBilling, costText, errorText, hasDrafts, secRange, useBusy, useEscape, dialogFocus } from "./director-shared";
+import { normalizeStudioError } from "../studio-errors";
 
 export type Tab = "script" | "assets" | "storyboard";
 const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", storyboard: "前往分镜" };
@@ -41,6 +42,11 @@ function nextStep(work: DirectorWork, episodeId: string | null): { text: string;
   if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script" };
   const planning = running.find(t => t.startsWith("plan:"));
   if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard" }; }
+  const reshooting = running.find(t => t.startsWith("reshoot:"));
+  if (reshooting) {
+    const id = reshooting.slice(8), ep = work.episodes.find(e => e.id === id), clip = work.clips.find(c => c.id === id);
+    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard" };
+  }
   if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
   if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
@@ -156,7 +162,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       <PipelineBar {...props}/>
     </div>}
     {!live && <StopTextTasks {...props}/>}
-    {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
+    {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
     {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
     <InlineError message={error} onClose={() => setError("")}/>
     <div className="director-body">
@@ -180,7 +186,7 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const tasks=work.tasks.filter(task=>task.status==="running"&&task.canStop);
   const settling=work.tasks.some(task=>task.status==="stopping");
   if(!tasks.length&&!settling)return null;
-  const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":"本次创作";
+  const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
   return <div className="director-notice"><span>{settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。"}</span>
     {tasks.map(task=><button key={task.id} type="button" disabled={!!busy}
       onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),setError)}>
@@ -272,7 +278,7 @@ function BudgetRaise({ p, onResume, disabled }: { p: DirectorPipeline; onResume:
     <button type="button" className="ip-brand-button" disabled={disabled || !(n > p.budget)} onClick={() => onResume(n)}>提高预算并继续</button></span>;
 }
 
-function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: DirectorWork; episodeId: string | null; apply: (w: DirectorWork) => void; setError: (m: string) => void; onClose: () => void }) {
+export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose }: { work: DirectorWork; episodeId: string | null; apply: (w: DirectorWork) => void; setError: (m: string) => void; goTab: (tab: Tab) => void; onClose: () => void }) {
   const multi = work.episodes.length > 1;
   const [scope, setScope] = useState<"episode" | "work">("work");
   const [target, setTarget] = useState<DirectorPipelineTarget>("film");
@@ -281,6 +287,8 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
   const [estError, setEstError] = useState("");
   const [custom, setCustom] = useState<string | null>(null);
   const [error, setLocalError] = useState("");
+  // 服务端说「没有可做的」（如分镜脚本都写好了）：原话照显示，主按钮换成去处理的地方，不再假装开始。
+  const [nothing, setNothing] = useState("");
   const { busy, run } = useBusy();
   useEscape(() => { if (!busy) onClose(); });
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
@@ -288,18 +296,29 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
   // 推荐预算由服务端按真实单价算；换目标或范围就重新算。
   useEffect(() => {
     let live = true;
-    setEst(null); setEstError("");
+    setEst(null); setEstError(""); setNothing("");
     DirectorApi.estimatePipeline(work.id, { scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target })
       .then(r => { if (live) setEst(r); }).catch(e => { if (live) setEstError(errorText(e)); });
     return () => { live = false; };
   }, [work.id, effectiveScope, ep?.id, target]);
   const budget = custom !== null ? Number(custom) : est?.recommended ?? 0;
   const tooLow = !!est && custom !== null && budget < est.total;
+  // 只做到分镜脚本、范围里每集都写好了：估算里一次文字生成都没有，开始也什么都不会做。先说清楚，给出去哪重写。
+  const scriptsDone = target === "plan" && !!est && est.text.count === 0 && work.episodes.length > 0;
+  const scopeName = effectiveScope === "episode" ? `第 ${ep?.no} 集` : work.episodes.length > 1 ? `全部 ${work.episodes.length} 集` : "这一集";
+  const doneNote = nothing || (scriptsDone ? `${scopeName}的分镜脚本都已写好。一键制作只补还没做的步骤，不会重写已有的分镜脚本；要重写，请到「分镜」点「重写分镜脚本」（整集），或在片段上点「重写」（单段）。` : "");
   const start = () => void run("start", async () => {
     const billing = await chooseDirectorBilling("script", budget);
-    apply(await DirectorApi.pipeline(work.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto }));
+    try {
+      apply(await DirectorApi.pipeline(work.id, { action: "start", scope: effectiveScope, episodeId: effectiveScope === "episode" ? ep?.id ?? null : null, target, budget, billing, auto }));
+    } catch (e) {
+      const err = normalizeStudioError(e);
+      if (err.code === "DIRECTOR_PIPELINE_NOTHING_TO_DO") { setNothing(err.message); setLocalError(""); return; }
+      throw e;
+    }
     onClose();
   }, setLocalError);
+  const toStoryboard = () => { onClose(); goTab("storyboard"); };
   const note = TARGETS.find(t => t.key === target)!.note;
   const mock = work.pricing.mock;
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && onClose()}>
@@ -316,7 +335,7 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
         <input type="checkbox" checked={!auto} onChange={e => setAuto(!e.target.checked)}/>
         <span><b>关键步骤停下来让我确认</b><small>资产清单、参考图、分镜图{target === "film" ? "、片段视频" : ""}出来后先等你看过再继续。不勾就全自动，做完再看。</small></span>
       </label>}
-      <section className="director-budget-card" aria-label="预算">
+      {!doneNote && <section className="director-budget-card" aria-label="预算">
         <header><span>推荐预算</span>{est && <b>{mock ? "测试模式，免费" : `${est.recommended.toLocaleString("zh-CN")} 积分`}</b>}{!est && !estError && <Loader2 size={15} className="ip-loading-icon"/>}</header>
         {estError && <InlineError message={estError}/>}
         {est && <>
@@ -330,11 +349,13 @@ function StartPipeline({ work, episodeId, apply, setError, onClose }: { work: Di
             <label className="director-field"><span>预算上限（积分）</span><input inputMode="numeric" value={custom} autoFocus onChange={e => setCustom(e.target.value.replace(/\D/g, ""))}/>
               {tooLow && <small className="director-cost is-error">低于估算的 {est.total.toLocaleString("zh-CN")} 积分，做到一半会暂停。</small>}</label>}
         </>}
-      </section>
+      </section>}
+      {doneNote && <div className="director-warn" role="status"><span>{doneNote}</span></div>}
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button>
-        <button type="button" className="ip-brand-button" disabled={!!busy || !est || !(budget > 0)} onClick={start}>
-          {busy ? <><Loader2 size={15} className="ip-loading-icon"/>启动中</> : custom === null ? "按推荐预算开始" : "开始"}</button></footer>
+        {doneNote ? <button type="button" className="ip-brand-button" onClick={toStoryboard}>前往分镜</button>
+          : <button type="button" className="ip-brand-button" disabled={!!busy || !est || !(budget > 0)} onClick={start}>
+          {busy ? <><Loader2 size={15} className="ip-loading-icon"/>启动中</> : custom === null ? "按推荐预算开始" : "开始"}</button>}</footer>
     </div>
   </div>;
 }

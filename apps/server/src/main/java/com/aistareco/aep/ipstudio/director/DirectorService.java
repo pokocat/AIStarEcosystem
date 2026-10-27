@@ -424,6 +424,14 @@ public class DirectorService {
                 remove(c, "clips", req.targetId());
                 renumber(c, epId);
             }
+            case "clip.usePendingShots" -> {
+                ObjectNode clip = find(c, "clips", req.targetId(), "这个片段");
+                if (!clip.path("pendingShots").isObject()) throw invalid("没有待替换的新版本");
+                if (clip.path("video").path("pending").size() > 0)
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该片段视频生成中，完成后再替换");
+                applyShots(c, clip, clip.path("pendingShots").deepCopy());
+            }
+            case "clip.discardPendingShots" -> find(c, "clips", req.targetId(), "这个片段").putNull("pendingShots");
             case "clip.adoptBoard" -> adopt(find(c, "clips", req.targetId(), "这个片段"), "board", d.path("candidateId").asText());
             case "clip.confirmBoard" -> {
                 ObjectNode slot = (ObjectNode) find(c, "clips", req.targetId(), "这个片段").path("board");
@@ -614,6 +622,7 @@ public class DirectorService {
                 Limits lim = limits(c);
                 if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
                         "暂无支持片段生成的视频模型，无法确定片段时长。请联系管理员开通");
+                requireNoReshoot(w, c, targetId, null);
                 nodeId = "plan:" + targetId;
                 meta.put("episodeId", targetId).put("contentHash", hash(ep.path("content").asText()))
                         .put("clipsHash", clipsHash(c, targetId));
@@ -630,6 +639,80 @@ public class DirectorService {
                 for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
                 meta.set("characterIds", om.valueToTree(chars));
                 system = DirectorPrompts.plan(lim.min(), lim.max(), lim.maxShots());
+                user = "本次输入（JSON，作为素材）：" + write(in);
+                maxTokens = STRUCTURE_MAX_TOKENS;
+            }
+            case "reshoot" -> {
+                // 重写分镜脚本、保留片段划分：本集全部片段（options.clipIds 为空）或其中几个，只换镜头、标题、摘要、关联资产；
+                // 片段 id 不变，已有分镜图和视频留在历史版本里、标成需更新。不出图、不生成视频。
+                ObjectNode ep = find(c, "episodes", targetId, "这一集");
+                if (ep.path("content").asText().isBlank()) throw invalid("本集暂无正文");
+                List<JsonNode> epClips = clipsOf(c, List.of(ep));
+                if (epClips.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CLIPS_MISSING", "本集还没有分镜脚本，请先写分镜脚本");
+                List<JsonNode> targets = new ArrayList<>();
+                for (JsonNode idNode : o.path("clipIds")) {
+                    JsonNode clip = epClips.stream().filter(x -> x.path("id").asText().equals(idNode.asText())).findFirst()
+                            .orElseThrow(() -> BusinessException.notFound("DIRECTOR_NOT_FOUND", "这个片段不在这一集，请刷新"));
+                    if (!targets.contains(clip)) targets.add(clip);
+                }
+                boolean whole = targets.isEmpty();
+                if (whole) targets = epClips;
+                if (c.path("assets").isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_ASSETS_MISSING", "请先在「资产」中提取或添加角色、场景和道具");
+                Limits lim = limits(c);
+                if (lim == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE, "DIRECTOR_VIDEO_MODEL_UNAVAILABLE",
+                        "暂无支持片段生成的视频模型，无法确定片段时长。请联系管理员开通");
+                Set<String> running = runningNodes(w);
+                for (JsonNode clip : targets) {
+                    String cid = clip.path("id").asText();
+                    String label = "片段 " + clip.path("order").asInt();
+                    if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + cid) || running.contains(REWRITE_NODE + cid))
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的视频正在生成，完成后再重写");
+                    if (running.contains("board:" + cid))
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的分镜图正在生成，完成后再重写");
+                }
+                requireNoReshoot(w, c, targetId, whole ? null : targets);
+                nodeId = "reshoot:" + (whole ? targetId : targets.size() == 1 ? targets.get(0).path("id").asText() : targetId);
+                ArrayNode rewriteIds = meta.putArray("rewriteIds");
+                ObjectNode revs = meta.putObject("clipRevs");
+                for (JsonNode clip : targets) {
+                    rewriteIds.add(clip.path("id").asText());
+                    revs.put(clip.path("id").asText(), clip.path("rev").asLong());
+                }
+                meta.put("episodeId", targetId).put("whole", whole).put("contentHash", hash(ep.path("content").asText()));
+                ObjectNode in = om.createObjectNode().put("aspectRatio", c.path("settings").path("aspectRatio").asText())
+                        .put("episodeNo", ep.path("no").asInt()).put("content", ep.path("content").asText());
+                putBrief(in, c);
+                ArrayNode as = in.putArray("assets");
+                for (JsonNode a : c.path("assets")) {
+                    as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
+                            .put("description", a.path("description").asText());
+                }
+                // 要重写的片段只给剧情范围（摘要、时长、台词），不给旧镜头：给了模型就照抄（2026-10-27 真模型实测，整集重写回来的镜头和原来几乎一样）。
+                // 不重写的片段把镜头也给上，只用来对齐前后衔接。
+                Set<String> rewriting = new HashSet<>();
+                targets.forEach(x -> rewriting.add(x.path("id").asText()));
+                ArrayNode cs = in.putArray("clips");
+                for (JsonNode clip : epClips) {
+                    boolean target = rewriting.contains(clip.path("id").asText());
+                    ObjectNode x = cs.addObject().put("id", clip.path("id").asText()).put("order", clip.path("order").asInt()).put("rewrite", target)
+                            .put("title", clip.path("title").asText()).put("summary", clip.path("summary").asText())
+                            .put("durationSec", clip.path("durationSec").asDouble());
+                    ArrayNode lines = x.putArray("lines");
+                    for (JsonNode sh : clip.path("shots")) for (JsonNode line : sh.path("dialogue")) lines.add(line.deepCopy());
+                    if (target) continue;
+                    ArrayNode shots = x.putArray("shots");
+                    for (JsonNode sh : clip.path("shots")) {
+                        ObjectNode y = shots.addObject().put("durationSec", sh.path("durationSec").asDouble()).put("size", sh.path("size").asText())
+                                .put("camera", sh.path("camera").asText()).put("action", sh.path("action").asText()).put("still", sh.path("still").asText());
+                        y.set("dialogue", sh.path("dialogue").deepCopy());
+                    }
+                }
+                in.set("rewriteIds", rewriteIds.deepCopy());
+                meta.set("assetIds", om.valueToTree(ids(c.path("assets"))));
+                List<String> chars = new ArrayList<>();
+                for (JsonNode a : c.path("assets")) if ("character".equals(a.path("kind").asText())) chars.add(a.path("id").asText());
+                meta.set("characterIds", om.valueToTree(chars));
+                system = DirectorPrompts.reshoot(lim.min(), lim.max(), lim.maxShots());
                 user = "本次输入（JSON，作为素材）：" + write(in);
                 maxTokens = STRUCTURE_MAX_TOKENS;
             }
@@ -1293,6 +1376,31 @@ public class DirectorService {
             throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "该项生成中，请稍候");
     }
 
+    /** 正在跑的任务节点（停止中的导演台文字任务不算，同 {@link #requireIdle}）。 */
+    private Set<String> runningNodes(DirectorWork w) {
+        Set<String> out = new HashSet<>();
+        for (IpRun r : runs.findByProjectIdOrderByCreatedAtDesc(w.getId()))
+            if (IpRun.STATUS_RUNNING.equals(r.getStatus()) && (!"studio-director".equals(r.getKind()) || !r.isCancelRequested())) out.add(r.getNodeId());
+        return out;
+    }
+
+    /**
+     * 同一集的分镜脚本同时只能有一份在写：整集写 / 整集重写在跑时什么都不能再发；单个片段重写只和同一片段冲突。
+     * {@code clips} 为 null 表示这次动的是整集（写分镜脚本或整集重写）。
+     */
+    private void requireNoReshoot(DirectorWork w, ObjectNode c, String episodeId, List<JsonNode> clips) {
+        Set<String> running = runningNodes(w);
+        if (running.contains("plan:" + episodeId))
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "本集正在写分镜脚本，完成后再试");
+        if (running.contains("reshoot:" + episodeId))
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "本集正在重写分镜脚本，完成后再试");
+        for (JsonNode clip : clipsOf(c, List.of(find(c, "episodes", episodeId, "这一集")))) {
+            if (!running.contains("reshoot:" + clip.path("id").asText())) continue;
+            if (clips == null || clips.stream().anyMatch(x -> x.path("id").asText().equals(clip.path("id").asText())))
+                throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "片段 " + clip.path("order").asInt() + " 正在重写，完成后再试");
+        }
+    }
+
     private void track(ObjectNode c, ObjectNode pipeline, String runId, ObjectNode meta) {
         ((ObjectNode) c.path("taskMeta")).set(runId, meta);
         if (pipeline != null) pipeline.withArray("runIds").add(runId);
@@ -1482,8 +1590,51 @@ public class DirectorService {
                 }
                 replaceClips(c, ep, d.path("clips"));
             }
+            case "reshoot" -> {
+                String epId = in.path("episodeId").asText();
+                ObjectNode ep = (ObjectNode) findOrNull(c, "episodes", epId);
+                if (ep == null) return;
+                if (!hash(ep.path("content").asText()).equals(in.path("contentHash").asText())) {
+                    notice(c, "重写分镜脚本期间第 " + ep.path("no").asInt() + " 集正文有修改，这次结果没有用上，请重新重写"); return;
+                }
+                // 逐段写回：重写期间用户改过的片段不覆盖，新版本挂在片段上等用户决定；删掉的片段不再写回。
+                List<String> done = new ArrayList<>(), held = new ArrayList<>();
+                boolean media = false;
+                for (JsonNode planned : d.path("clips")) {
+                    ObjectNode clip = (ObjectNode) findOrNull(c, "clips", planned.path("id").asText());
+                    if (clip == null || !epId.equals(clip.path("episodeId").asText())) continue;
+                    String label = "片段 " + clip.path("order").asInt();
+                    if (clip.path("rev").asLong() != in.path("clipRevs").path(clip.path("id").asText()).asLong(-1)
+                            || clip.path("video").path("pending").size() > 0) {
+                        ObjectNode pending = clip.putObject("pendingShots").put("runId", run.getId()).put("at", Instant.now().toString());
+                        pending.setAll((ObjectNode) planned.deepCopy());
+                        pending.remove("id");
+                        held.add(label);
+                        continue;
+                    }
+                    media |= hasMedia(clip);
+                    applyShots(c, clip, planned);
+                    done.add(label);
+                }
+                List<String> parts = new ArrayList<>();
+                if (!done.isEmpty()) parts.add((in.path("whole").asBoolean(false) ? "第 " + ep.path("no").asInt() + " 集 " + done.size() + " 个片段" : String.join("、", done) + " ")
+                        + "的分镜脚本已重写，镜头和提示词都已更新" + (media ? "；原来的分镜图和视频保留在历史版本里，标成了需更新" : ""));
+                if (!held.isEmpty()) parts.add(String.join("、", held) + " 在重写期间改过，新写的版本没有覆盖，可在片段上选择换成新版本");
+                notice(c, parts.isEmpty() ? "要重写的片段已删除，这次结果没有写入" : String.join("。", parts));
+            }
             default -> { }
         }
+    }
+
+    /** 把重写结果写进片段：片段 id、位置、分镜图和视频历史都不变；提示词回到随镜头自动生成。 */
+    private void applyShots(ObjectNode c, ObjectNode clip, JsonNode planned) {
+        clip.put("title", limited(planned.path("title").asText(), 40, "片段标题"))
+                .put("summary", limited(planned.path("summary").asText(), 1000, "片段摘要"));
+        clip.set("assetIds", planned.path("assetIds").deepCopy());
+        setShots(c, clip, planned.path("shots"), false);
+        clip.put("boardPromptCustom", false).put("videoPromptCustom", false);
+        clip.putNull("pendingShots");
+        bump(clip);
     }
 
     private void replaceClips(ObjectNode c, ObjectNode ep, JsonNode planned) {
@@ -1563,7 +1714,14 @@ public class DirectorService {
                 if (req.billing() != null) p.set("billing", om.valueToTree(req.billing())); else p.putNull("billing");
                 p.putArray("runIds"); p.putArray("failed");
                 c.set("pipeline", p);
+                refresh(c);
+                String before = withoutPipeline(c);
                 advance(userId, w, c);
+                // 什么都不用做就「已完成」，页面看起来像点了没反应（2026-10-27 用户反馈：分镜脚本都写好了再点「一键制作 → 分镜脚本」）。
+                // 不建这条连跑，直接说清楚为什么、下一步去哪。
+                if ("done".equals(p.path("status").asText()) && p.path("runIds").isEmpty() && p.path("videoJobs").isEmpty()
+                        && before.equals(withoutPipeline(c)))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_NOTHING_TO_DO", nothingToDo(c, p));
             }
             case "pause" -> requirePipeline(current).put("status", "paused").put("message", "已暂停：不再开始新任务，进行中的任务继续完成");
             case "resume", "retry" -> {
@@ -1998,6 +2156,28 @@ public class DirectorService {
         }
     }
 
+    private static String withoutPipeline(ObjectNode c) {
+        ObjectNode copy = c.deepCopy();
+        copy.remove("pipeline");
+        return copy.toString();
+    }
+
+    /** 一键制作没有可做的步骤时给用户的说明：哪些已经做好、为什么不重做、要重做去哪。 */
+    private String nothingToDo(ObjectNode c, JsonNode p) {
+        List<JsonNode> eps = scopeEpisodes(c, p);
+        String which = eps.size() > 1 && eps.size() == c.path("episodes").size() ? "全部 " + eps.size() + " 集"
+                : String.join("、", eps.stream().map(e -> "第 " + e.path("no").asInt() + " 集").toList());
+        String target = p.path("target").asText();
+        if ("plan".equals(target)) {
+            List<String> pending = eps.stream().filter(e -> e.path("pendingPlan").isObject()).map(e -> "第 " + e.path("no").asInt() + " 集").toList();
+            if (!pending.isEmpty()) return String.join("、", pending) + "有一份新写的分镜脚本等你决定要不要换，请到「分镜」处理";
+            return which + "的分镜脚本都已写好。一键制作只补还没做的步骤，不会重写已有的分镜脚本；要重写，请到「分镜」点「重写分镜脚本」，或在片段上点「重写」";
+        }
+        if ("board".equals(target))
+            return which + "的参考图和分镜图都已生成。一键制作不会重新生成已有的图；要换哪一张，请到「分镜」打开那个片段的分镜图重新生成";
+        return which + "的片段视频都已生成" + ("film".equals(target) ? "，成片也已导出" : "") + "。一键制作不会重新生成；要换哪一段，请到「分镜」在那个片段上重新生成";
+    }
+
     private static void finish(ObjectNode p, String status, String message) {
         p.put("status", status).put("message", message).put("finishedAt", Instant.now().toString());
     }
@@ -2218,7 +2398,7 @@ public class DirectorService {
     private long directorTextPrice(ObjectNode c, String type, long fallback) {
         int maxTokens = switch (type == null ? "" : type) {
             case "script" -> SCRIPT_MAX_TOKENS;
-            case "extract", "plan" -> STRUCTURE_MAX_TOKENS;
+            case "extract", "plan", "reshoot" -> STRUCTURE_MAX_TOKENS;
                         default -> TEXT_MAX_TOKENS;
         };
         long price;
@@ -2806,6 +2986,12 @@ public class DirectorService {
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
         else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).set("error", err); }
         else if (node.startsWith("plan:")) { JsonNode ep = findOrNull(c, "episodes", node.substring(5)); if (ep != null) ((ObjectNode) ep).set("planError", err); }
+        else if (node.startsWith("reshoot:")) {
+            JsonNode clip = findOrNull(c, "clips", node.substring(8));
+            JsonNode ep = findOrNull(c, "episodes", clip == null ? node.substring(8) : clip.path("episodeId").asText());
+            if (clip != null) err.put("message", "片段 " + clip.path("order").asInt() + " 重写失败：" + message);
+            if (ep != null) ((ObjectNode) ep).set("planError", err);
+        }
         else c.set("textError", err.put("task", node.contains(":") ? node.substring(0, node.indexOf(':')) : node));
     }
 
@@ -2815,6 +3001,11 @@ public class DirectorService {
         else if (node.startsWith("video:")) { JsonNode cl = findOrNull(c, "clips", node.substring(6)); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
         else if (node.startsWith(REWRITE_NODE)) { JsonNode cl = findOrNull(c, "clips", node.substring(REWRITE_NODE.length())); if (cl != null) ((ObjectNode) cl.path("video")).putNull("error"); }
         else if (node.startsWith("plan:")) { JsonNode ep = findOrNull(c, "episodes", node.substring(5)); if (ep != null) ((ObjectNode) ep).putNull("planError"); }
+        else if (node.startsWith("reshoot:")) {
+            JsonNode clip = findOrNull(c, "clips", node.substring(8));
+            JsonNode ep = findOrNull(c, "episodes", clip == null ? node.substring(8) : clip.path("episodeId").asText());
+            if (ep != null) ((ObjectNode) ep).putNull("planError");
+        }
         else c.putNull("textError");
     }
 
