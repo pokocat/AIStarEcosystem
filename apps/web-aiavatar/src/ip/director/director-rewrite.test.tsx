@@ -45,6 +45,9 @@ test("the episode rewrite keeps the clips by default and cannot re-split clips t
   expect(resplit.disabled).toBe(true);
   expect(within(dialog).getByText(/片段 1 已有分镜图或视频，重新切分会丢掉它们/)).toBeTruthy();
   expect(within(dialog).getByText("片段 2 手改过的视频提示词会换成新写的")).toBeTruthy();
+  // 文字任务不展示不确定的积分数字，只说按实际用量结算。
+  expect(within(dialog).getByText(/^按实际用量结算/)).toBeTruthy();
+  expect(within(dialog).queryByText(/\d+ 积分/)).toBeNull();
   fireEvent.click(within(dialog).getByRole("button", { name: /开始重写/ }));
   await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "reshoot", targetId: "e1", maxCost: 21 });
@@ -68,6 +71,8 @@ test("a single clip is rewritten on its own after the impact is spelled out", as
   expect((await screen.findAllByText("重写片段 2 的分镜脚本？")).length).toBeGreaterThan(0);
   expect(screen.getByText(/只改这一段的文字，不会出图、不会生成视频，其他片段不变/)).toBeTruthy();
   expect(screen.getByText("片段 2 手改过的视频提示词会换成新写的")).toBeTruthy();
+  expect(screen.getByText("按实际用量结算")).toBeTruthy();
+  expect(screen.queryByText(/\d+ 积分/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /开始重写/ }));
   await vi.waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalled());
   expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "reshoot", targetId: "e1", options: { clipIds: ["c2"] } });

@@ -9,6 +9,7 @@ import { InlineError, chooseDirectorBilling, clearDrafts, costText, dialogFocus,
 
 // 分镜脚本 = 每个片段的镜头（还有标题、摘要、关联资产）；分镜图提示词和视频提示词由镜头自动编出来。
 // 所以「重新生成提示词」就是让 AI 重写分镜脚本：整集或单个片段。只改文字，不出图、不生成视频。
+// 文字任务只说「按实际用量结算」，不展示冻结上限之类不确定的积分数字（BUSINESS_RULES 文字计费一节）；maxCost 照常带给服务端核对。
 
 /** 这一集正在写 / 重写的分镜脚本任务：整集写（plan）、整集重写，或其中某个片段在重写。 */
 export function shotWriting(work: DirectorWork, ep: DirectorEpisode) {
@@ -61,11 +62,11 @@ export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => v
         <li>只改这一段的文字，不会出图、不会生成视频，其他片段不变。</li>
         {hasMedia(clip) && <li>已有的分镜图和视频留在历史版本里，会标成「需更新」，要不要重新生成由你决定。</li>}
         {lost.map(t => <li key={t} className="is-warn">{t}</li>)}
-        <li>{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按实际用量结算`}</li>
+        <li>{work.pricing.mock ? costText(0, true) : "按实际用量结算"}</li>
       </ul>,
       okText: "开始重写", cancelText: "取消",
       onOk: () => run(clip.id, async () => {
-        const billing = await chooseDirectorBilling("storyboard", work.pricing.textMax);
+        const billing = await chooseDirectorBilling("storyboard");
         const ep = clip.episodeId;
         const next = await DirectorApi.runTask(work.id, { type: "reshoot", targetId: ep, options: { clipIds: [clip.id] }, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
         clearDrafts(`${work.id}:clip:${clip.id}:`);
@@ -86,7 +87,7 @@ export function RewriteEpisodeDialog({ work, ep, apply, onClose }: { work: Direc
   useEscape(() => { if (!busy) onClose(); });
   const lost = replaced(work, clips);
   const go = () => void run("rewrite", async () => {
-    const billing = await chooseDirectorBilling("storyboard", work.pricing.textMax);
+    const billing = await chooseDirectorBilling("storyboard");
     const next = mode === "keep"
       ? await DirectorApi.runTask(work.id, { type: "reshoot", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax })
       : await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
@@ -115,7 +116,7 @@ export function RewriteEpisodeDialog({ work, ep, apply, onClose }: { work: Direc
       <ul className="director-regen-notes">
         <li>现有镜头会换成新写的，包括你在「编辑镜头」里改过的内容。</li>
         {lost.map(t => <li key={t} className="is-warn">{t}</li>)}
-        <li>{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按实际用量结算`}。写好后自动显示，关掉页面也不中断。</li>
+        <li>{work.pricing.mock ? costText(0, true) : "按实际用量结算"}。写好后自动显示，关掉页面也不中断。</li>
       </ul>
       <InlineError message={error}/>
       <footer>
