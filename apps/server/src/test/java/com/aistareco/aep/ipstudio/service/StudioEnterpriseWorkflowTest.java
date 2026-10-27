@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 
 /** All text entry semantics share the real admission path, including immutable payer retries. */
 class StudioEnterpriseWorkflowTest {
-    @Test void directorTextHoldUsesTheTaskOutputLimitInsteadOfTheModelGlobalLimit() throws Exception {
+    @Test void directorTextHoldFollowsConfiguredOutputBudget() throws Exception {
         var json=new ObjectMapper();var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
         var worker=mock(StudioWorkflowWorker.class);var prices=mock(DapPricingService.class);var models=mock(AiModelInvocationService.class);
         var credits=mock(CreditService.class);var prompts=mock(PromptService.class);var fixtures=mock(StudioFixtureProvider.class);
@@ -40,12 +40,12 @@ class StudioEnterpriseWorkflowTest {
         ReflectionTestUtils.setField(service,"tokenPricing",tokenPrices);
         TransactionSynchronizationManager.initSynchronization();
         try {
-            service.submitDirectorText("actor","work","extract","system","user",16384,"request",json.createObjectNode(),null,null,275L);
-            assertEquals(78,saved.get().getCost());
+            service.submitDirectorText("actor","work","extract","system","user","request",json.createObjectNode(),null,null,275L);
+            assertEquals(275,saved.get().getCost());
             var input=json.readTree(saved.get().getInputJson());
-            assertEquals(16384,input.path("_exec").path("maxTokens").asInt());
-            assertEquals(16384,input.path("_exec").path("tokenPricing").path("maxOutputTokens").asInt());
-            verify(credits).hold(eq("actor"),eq(78L),eq("ip-run"),anyString(),eq("AI 导演台"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+            assertEquals(100000,input.path("_exec").path("maxTokens").asInt());
+            assertEquals(100000,input.path("_exec").path("tokenPricing").path("maxOutputTokens").asInt());
+            verify(credits).hold(eq("actor"),eq(275L),eq("ip-run"),anyString(),eq("AI 导演台"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
 

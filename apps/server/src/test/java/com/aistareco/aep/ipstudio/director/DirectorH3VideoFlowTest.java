@@ -61,10 +61,10 @@ class DirectorH3VideoFlowTest {
                 mock(AiAppSceneModelPolicyService.class), null, null, null, om, mock(PlatformTransactionManager.class));
         h3(true);
         when(videoModels.quote(eq("u1"), any())).thenReturn(600L);
-        when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(5L);
+        when(textRuns.directorTextPrice(any())).thenReturn(5L);
         when(textRuns.videoRewriteHold()).thenReturn(5L);
         when(textRuns.directorPrices(any())).thenReturn(new long[]{3, 8});
-        when(textRuns.submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any()))
+        when(textRuns.submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any()))
                 .thenReturn(runDto("IPR-rw"), runDto("IPR-rw2"), runDto("IPR-rw3"));
         when(imageRuns.generateVideoForDirector(anyString(), anyString(), anyString(), any()))
                 .thenReturn(om.createObjectNode().put("id", "mvj_1").put("stage", "queued").put("progress_pct", 0));
@@ -140,7 +140,7 @@ class DirectorH3VideoFlowTest {
     private ObjectNode dispatchRewriteIn(ObjectNode p) {
         assertEquals("IPR-rw", service.dispatch("u1", w, c, "video", "cl1", "PL-1-video-cl1-1", om.createObjectNode(), p, null, 600L));
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), meta.capture(), any(), any(), any());
         assertEquals("PL-1", meta.getValue().path("then").path("pipelineId").asText());
         return meta.getValue();
     }
@@ -149,7 +149,7 @@ class DirectorH3VideoFlowTest {
         assertEquals("IPR-rw", service.dispatch("u1", w, c, "video", "cl1", "u-r1", om.createObjectNode(), null, null, 600L));
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), user.capture(), eq(H3PromptRewrite.MAX_TOKENS),
+        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), user.capture(),
                 eq("u-r1-p"), meta.capture(), isNull(), any(), eq(5L));
         assertTrue(user.getValue().contains("老赵说：{{L1}}陈默说：{{L2}}老赵说：{{L3}}"), user.getValue());
         assertFalse(user.getValue().contains("又熬通宵"), "台词原文不交给改写模型");
@@ -197,7 +197,7 @@ class DirectorH3VideoFlowTest {
         assertEquals("ready", clip().path("videoPromptRewrite").asText());
 
         service.dispatch("u1", w, c, "video", "cl1", "u-r2", om.createObjectNode(), null, null, 600L);
-        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertEquals(clip().path("videoPromptEn").path("text").asText(), req.getValue().prompt());
@@ -230,7 +230,7 @@ class DirectorH3VideoFlowTest {
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("(S1) <d>[Chinese] 昨晚你听见什么没有？</d>"), "台词按提交时的文字填：" + req.getValue().prompt());
         assertFalse(req.getValue().prompt().contains("那你昨晚听见啥动静没"));
-        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
     }
 
     @Test
@@ -275,7 +275,7 @@ class DirectorH3VideoFlowTest {
         // 改写期间优化绑定模型的售价调整，冻结上限变成 700：605 的预算放不下重试 + 600 的视频，就不再重试，按原文接着做（600 放得下）
         when(textRuns.videoRewriteHold()).thenReturn(700L);
         failRewrite(meta, "IPR-rw");
-        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("【画面】"), req.getValue().prompt());
@@ -289,7 +289,7 @@ class DirectorH3VideoFlowTest {
         service.dispatch("u1", w, c, "video", "cl1", "u-r5", om.createObjectNode(), null, null, 600L);
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
-        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), user.capture(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), user.capture(), anyString(), meta.capture(), any(), any(), any());
         assertFalse(meta.getValue().path("codeLines").asBoolean());
         assertTrue(user.getValue().contains("又熬」通宵？"), "台词原文交给模型照写：" + user.getValue());
     }
@@ -300,7 +300,7 @@ class DirectorH3VideoFlowTest {
         ObjectNode meta = dispatchRewriteIn(p);
         p.put("status", "paused");
         failRewrite(meta, "IPR-rw");
-        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         assertTrue(p.path("failed").toString().contains("videoPrompt:cl1"), p.toString());
     }
 
@@ -325,7 +325,7 @@ class DirectorH3VideoFlowTest {
         ObjectNode meta = dispatchRewrite();
         failRewrite(meta, "IPR-rw");
         ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(), eq(H3PromptRewrite.MAX_TOKENS),
+        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(),
                 eq("u-r1-p2"), retryMeta.capture(), isNull(), any(), eq(5L));
         assertEquals(2, retryMeta.getValue().path("attempt").asInt());
         assertEquals(600L, retryMeta.getValue().path("then").path("maxCost").asLong(), "重试后照样接着提交视频");
@@ -333,7 +333,7 @@ class DirectorH3VideoFlowTest {
         assertTrue(w.isActive(), "重试是回投时新发出的任务，作品要留在后台推进，关掉页面也能接着提交视频");
 
         failRewrite(retryMeta.getValue(), "IPR-rw2");
-        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         assertTrue(clip().path("video").path("error").path("message").asText().contains("改写不合格"), "第二次还不过才报错");
         verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
         assertFalse(w.isActive(), "两次都结束了，没有在跑的任务");
@@ -345,7 +345,7 @@ class DirectorH3VideoFlowTest {
         service.refresh(c);
         service.dispatch("u1", w, c, "video", "cl1", "u-r3", om.createObjectNode(), null, null, 600L);
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), meta.capture(), any(), any(), any());
         assertFalse(meta.getValue().path("codeLines").asBoolean(), "认不全台词就让模型照官方写法写");
     }
 
@@ -372,7 +372,7 @@ class DirectorH3VideoFlowTest {
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("The speaker says: (S1) <d>[Chinese] 难受？那你昨晚听见啥动静没？</d>"), req.getValue().prompt());
-        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         service.refresh(c);
         assertEquals("ready", clip().path("videoPromptRewrite").asText(), "选过了，同一版提示词不再停下来问");
     }
@@ -380,7 +380,7 @@ class DirectorH3VideoFlowTest {
     @Test
     void theUserCanAlwaysGenerateFromTheOriginalChinese() {
         service.dispatch("u1", w, c, "video", "cl1", "u-r4", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
-        verify(textRuns, never()).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, never()).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("【画面】"), "原文直接发：" + req.getValue().prompt());
@@ -406,7 +406,7 @@ class DirectorH3VideoFlowTest {
         ObjectNode meta = dispatchRewriteIn(p);
         failRewrite(meta, "IPR-rw");
         ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), retryMeta.capture(), any(), any(), any());
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), retryMeta.capture(), any(), any(), any());
         failRewrite(retryMeta.getValue(), "IPR-rw2");
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
@@ -423,7 +423,7 @@ class DirectorH3VideoFlowTest {
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
         verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
         assertTrue(req.getValue().prompt().contains("【画面】"));
-        verify(textRuns, never()).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        verify(textRuns, never()).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
     }
 
     @Test

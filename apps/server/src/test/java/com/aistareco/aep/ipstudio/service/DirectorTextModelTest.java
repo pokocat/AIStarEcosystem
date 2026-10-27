@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -44,10 +45,10 @@ class DirectorTextModelTest {
         assertEquals(qwen.maxCost(), service.directorPrices("qwen")[0]);
         assertEquals(claude.maxCost(), service.directorPrices("claude")[0]);
         assertEquals(16, service.directorPrices("ds")[1]);
-        // 每个任务只按自己的输出上限冻结，而且按作品选的模型算。
-        assertEquals(claude.limitOutputTokens(4096).maxCost(), service.directorTextPrice("claude", 4096));
-        assertEquals(ds.limitOutputTokens(4096).maxCost(), service.directorTextPrice(null, 4096));
-        assertThrows(BusinessException.class, () -> service.directorTextPrice("unknown", 4096));
+        // 每个任务按作品选择的端点预算冻结，不再按任务类型另设输出上限。
+        assertEquals(claude.maxCost(), service.directorTextPrice("claude"));
+        assertEquals(ds.maxCost(), service.directorTextPrice(null));
+        assertThrows(BusinessException.class, () -> service.directorTextPrice("unknown"));
         assertThrows(BusinessException.class, () -> service.directorPrices("unknown"));
         doReturn(new Capabilities(false, List.of(), 16, 2, null, choices, "fixed", "fixed")).when(service).capabilities();
         assertThrows(BusinessException.class, () -> service.directorPrices("claude"));
@@ -63,12 +64,12 @@ class DirectorTextModelTest {
                 .thenReturn(new AiAppSceneModelPolicyService.Selection(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true), 2, "per_call"));
         when(tokenPrices.find(model)).thenReturn(rate);
         var meta = om.createObjectNode().put("task", "script");
-        assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user", 8192,
+        assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user",
                 "request", meta, model, null, rate.maxCost() - 1));
         verifyNoInteractions(credits, worker);
         TransactionSynchronizationManager.initSynchronization();
         try {
-            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost());
+            service.submitDirectorText("u", "w", "script", "system", "user", "request", meta, model, null, rate.maxCost());
             var capture = ArgumentCaptor.forClass(IpRun.class); verify(runs).save(capture.capture());
             var run = capture.getValue(); var exec = om.readTree(run.getInputJson()).path("_exec");
             assertEquals(model, exec.path("endpointId").asText());
@@ -79,12 +80,42 @@ class DirectorTextModelTest {
             verify(credits).hold(eq("u"), eq(rate.maxCost()), eq(IpRunService.REF_TYPE), eq(run.getId()), anyString(), any());
             verifyNoInteractions(worker);
             when(runs.findByProjectIdAndClientRequestId("w", "request")).thenReturn(Optional.of(run));
-            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost());
-            assertEquals("STUDIO_REQUEST_CHANGED", assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user", 8192,
+            service.submitDirectorText("u", "w", "script", "system", "user", "request", meta, model, null, rate.maxCost());
+            assertEquals("STUDIO_REQUEST_CHANGED", assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user",
                     "request", meta, "other", null, rate.maxCost())).getCode());
             verify(credits, times(1)).hold(anyString(), anyLong(), anyString(), anyString(), anyString(), any());
             TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
             verify(worker).execute(run.getId());
         } finally { TransactionSynchronizationManager.clearSynchronization(); }
     }
+    @ParameterizedTest
+    @CsvSource({"100000,100000,100000", "64000,100000,64000", "100000,32000,32000", "0,32000,32000", "0,0,8192"})
+    void endpointSettingsDriveTheQuoteHoldAndAcceptedOutput(int requested,int cap,int expected) throws Exception {
+        var endpoint=AiModelEndpoint.builder().id("ds").model("deepseek-flash").enabled(true)
+                .defaultMaxTokens(requested==0?null:requested).chatMaxOutputTokens(cap==0?null:cap).build();
+        var policies=mock(AiAppSceneModelPolicyService.class);
+        ReflectionTestUtils.setField(service,"scenePolicies",policies);
+        var selection=new AiAppSceneModelPolicyService.Selection(new AiModelInvocationService.ResolvedEndpoint(endpoint,null,true),2,"per_call");
+        when(policies.resolve(eq("studio"),eq("script"),eq("ds"),anyLong())).thenReturn(selection);
+        when(policies.available(eq("studio"),eq("script"),anyLong())).thenReturn(List.of(selection));
+        when(tokenPrices.find("ds")).thenReturn(rate("0.59")); // 旧售价配置的输出预算仅 8192，端点可以显式扩展。
+        var accepted=new AiChatTokenPricing.Rate(rate("0.59").inputCreditsPerK(),rate("0.59").outputCreditsPerK(),65536,expected);
+        long quote=service.directorTextPrice("ds");
+        assertEquals(accepted.maxCost(),quote);
+        assertEquals(quote,service.directorPrices("ds")[0]);
+        var meta=om.createObjectNode().put("task","plan");
+        assertThrows(BusinessException.class,()->service.submitDirectorText("u","w","plan:e","system","user","request",meta,"ds",null,quote-1));
+        verifyNoInteractions(credits,worker);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submitDirectorText("u","w","plan:e","system","user","request",meta,"ds",null,quote);
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+            var run=capture.getValue();var exec=om.readTree(run.getInputJson()).path("_exec");
+            assertEquals(expected,exec.path("maxTokens").asInt());
+            assertEquals(expected,exec.path("tokenPricing").path("maxOutputTokens").asInt());
+            assertEquals(quote,run.getCost());
+            verify(credits).hold(eq("u"),eq(quote),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(),any());
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
+
 }

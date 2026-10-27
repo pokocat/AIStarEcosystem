@@ -1600,3 +1600,8 @@ capabilities 每个文本模型分别回 `tokenPricing` / `dialogueTokenPricing`
 ### Studio 与导演台模型入口（2026-10-25）
 
 Studio 对话模型只影响之后受理的对话，按现有 script 场景白名单和已发布 Token 费率受理；回复中禁用切换，不篡改已冻结任务的模型。选择按画布保存在浏览器，模型不在可用候选时按服务端默认显示。导演台作品 `settings.imageModel` 为接入点 ID 或 null（跟随默认）；新选择只允许当前 Studio image 场景候选里出图规格同时有 1:1、16:9、9:16 的接入点（没有出图规格的旧模型照旧可选），缺比例 400 `DIRECTOR_IMAGE_MODEL_UNSUPPORTED`。保存时原值照存、不重新校验，也不等于重新授权。返回 `imageModels[{id,name,isDefault,creditCost}]`（可新选的）与 `imageModelState`（实际会用的那个：是否显式、是否可用、缺哪些比例），估价、一键连跑、出图提交、尺寸与参考图限制均采用实际会用的模型及其场景价格。道具 1:1、角色场景 16:9、分镜跟作品画幅，只在该接入点规格里取同比例最大一档；出不了时在建任务、冻结前 400 `STUDIO_IMAGE_SIZE_UNSUPPORTED`（`details.kind/aspectRatio/missingRatios`），不换模型、不跨接入点；停用或不再开放的选择出图 503 `ENDPOINT_NOT_ALLOWED`，须明确更换。价格继续从场景配置读取，不因供应商替换上调用户价格。
+
+
+### 导演台与视频提示词优化输出预算
+
+导演台写剧本、拆集、提取资产、分镜脚本，以及画布 / 助手 / 导演台的视频提示词优化不再使用业务代码的 8192 / 16384 / 100000 / 4096 输出上限。新任务的输出预算读取后台端点 defaultMaxTokens，受 chatMaxOutputTokens 能力上限约束；仅默认值缺失时使用端点能力上限，两者均未配置时回落后台 Token 售价配置的 maxOutputTokens。Token 单价与输入预算仍读售价配置，输出预算随端点配置形成受理快照；报价、冻结和调用使用同一快照，不能超出调用方批准的 maxCost。已有任务不改预算、不自动重试。

@@ -66,8 +66,8 @@ class StudioVideoRewriteModelTest {
         var exec=om.readTree(run.getInputJson()).path("_exec");
         assertEquals(qwen.getId(),exec.path("endpointId").asText());
         assertEquals(H3PromptRewrite.PURPOSE.wire(),exec.path("purpose").asText());
-        assertEquals(H3PromptRewrite.MAX_TOKENS,exec.path("maxTokens").asInt());
-        assertEquals(rate.limitOutputTokens(H3PromptRewrite.MAX_TOKENS).maxCost(),run.getCost());
+        assertEquals(rate.maxOutputTokens(),exec.path("maxTokens").asInt());
+        assertEquals(rate.maxCost(),run.getCost());
         assertEquals(run.getCost(),exec.path("tokenPricing").path("maxCost").asLong());
         verify(credits).hold(eq("u"),eq(run.getCost()),eq(IpRunService.REF_TYPE),eq(run.getId()),anyString(),any());
         verifyNoInteractions(policies,worker);
@@ -89,7 +89,7 @@ class StudioVideoRewriteModelTest {
     @Test void directorRewriteIgnoresTheChosenTextModelAndUsesTheSameQuote() throws Exception {
         TransactionSynchronizationManager.initSynchronization();
         try {
-            service.submitDirectorText("u","w","videoPrompt:c","system","user",H3PromptRewrite.MAX_TOKENS,"r",
+            service.submitDirectorText("u","w","videoPrompt:c","system","user","r",
                     om.createObjectNode().put("task","videoPrompt"),"deepseek",null,service.videoRewriteHold());
             saved();
         } finally {TransactionSynchronizationManager.clearSynchronization();}
@@ -102,7 +102,7 @@ class StudioVideoRewriteModelTest {
         when(models.resolveEndpoint(H3PromptRewrite.PURPOSE,null,"studio"))
                 .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(other,null,true)));
         when(prices.find(other.getId())).thenReturn(otherRate);
-        assertEquals(otherRate.limitOutputTokens(H3PromptRewrite.MAX_TOKENS).maxCost(),service.videoRewriteHold());
+        assertEquals(otherRate.maxCost(),service.videoRewriteHold());
         TransactionSynchronizationManager.initSynchronization();
         try {
             service.submit("u","p",request("review"));
@@ -122,4 +122,22 @@ class StudioVideoRewriteModelTest {
         verifyNoInteractions(credits,worker,policies);
         verify(runs,never()).save(any());
     }
+    @ParameterizedTest @ValueSource(strings={"review","auto","director"})
+    void optimizationAlsoUsesTheBoundEndpointBudget(String entry) throws Exception {
+        qwen.setDefaultMaxTokens(24000);qwen.setChatMaxOutputTokens(32000);
+        long quote=new AiChatTokenPricing.Rate(rate.inputCreditsPerK(),rate.outputCreditsPerK(),rate.maxInputTokens(),24000).maxCost();
+        assertEquals(quote,service.videoRewriteHold());
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            if("director".equals(entry))service.submitDirectorText("u","w","videoPrompt:c","system","user","r",
+                    om.createObjectNode().put("task","videoPrompt"),"deepseek",null,quote);
+            else service.submit("u","p",request(entry));
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+            var exec=om.readTree(capture.getValue().getInputJson()).path("_exec");
+            assertEquals(24000,exec.path("maxTokens").asInt());
+            assertEquals(24000,exec.path("tokenPricing").path("maxOutputTokens").asInt());
+            assertEquals(quote,capture.getValue().getCost());
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
+
 }

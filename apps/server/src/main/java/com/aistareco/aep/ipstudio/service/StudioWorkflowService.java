@@ -92,14 +92,26 @@ public class StudioWorkflowService {
     }
     private List<TextModel> textModelOptions() {
         if(scenePolicies == null) return models.listCandidates(AiModelPurpose.DAP_PERSONA,"studio").stream()
-                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),chatRate(r.endpoint().getId()),
+                .filter(r->r.endpoint().isEnabled()&&r.candidate().isEnabled()).map(r->new TextModel(r.endpoint().getId(),r.endpoint().publicModelName(),r.isDefault(),StudioVisualContext.supportsVision(r.endpoint()),pricing.ipIdentity(),endpointChatRate(r.endpoint()),
                         Boolean.TRUE.equals(r.endpoint().getChatSupportsTools()),Boolean.TRUE.equals(r.endpoint().getChatSupportsStreaming()),dialogueRate(r.endpoint().getId()))).toList();
-        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().publicModelName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),chatRate(s.resolved().endpoint().getId()),
+        return scenePolicies.available("studio","script",pricing.ipIdentity()).stream().map(s->new TextModel(s.resolved().endpoint().getId(),s.resolved().endpoint().publicModelName(),s.resolved().isDefault(),StudioVisualContext.supportsVision(s.resolved().endpoint()),s.creditCost(),endpointChatRate(s.resolved().endpoint()),
                 Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsTools()),Boolean.TRUE.equals(s.resolved().endpoint().getChatSupportsStreaming()),dialogueRate(s.resolved().endpoint().getId()))).toList();
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate chatRate(String endpointId) {
         return fixtures.enabled()||tokenPricing==null?null:tokenPricing.find(endpointId);
+    }
+
+    /** 输出预算只读后台端点配置；Token 售价只提供单价和未配置端点时的预算回落。 */
+    private com.aistareco.aep.service.AiChatTokenPricing.Rate endpointChatRate(com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        var rate=chatRate(endpoint.getId());
+        if(rate==null)return null;
+        int budget=endpoint.getDefaultMaxTokens()!=null&&endpoint.getDefaultMaxTokens()>0
+                ?endpoint.getDefaultMaxTokens():endpoint.getChatMaxOutputTokens()!=null&&endpoint.getChatMaxOutputTokens()>0
+                ?endpoint.getChatMaxOutputTokens():rate.maxOutputTokens();
+        if(endpoint.getChatMaxOutputTokens()!=null&&endpoint.getChatMaxOutputTokens()>0)
+            budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
+        return new com.aistareco.aep.service.AiChatTokenPricing.Rate(rate.inputCreditsPerK(),rate.outputCreditsPerK(),rate.maxInputTokens(),budget);
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate dialogueRate(String endpointId) {
@@ -368,8 +380,7 @@ public class StudioWorkflowService {
         execution.put("systemPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.system(h3.mode(),h3.codeLines(),h3.shots()!=null));
         execution.put("userPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.user(h3));
         execution.put("purpose",H3PromptRewrite.PURPOSE.wire()).put("endpointId",endpoint.getId()).put("temperature",0.6);
-        int budget=Math.min(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS,rate.maxOutputTokens());
-        if(endpoint.getChatMaxOutputTokens()!=null)budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
+        int budget=rate.maxOutputTokens();
         execution.put("maxTokens",budget);
         execution.set("tokenPricing",mapper.valueToTree(rate));
         var modelCharge=StudioTokenBilling.plan(endpoint,rate);
@@ -399,12 +410,10 @@ public class StudioWorkflowService {
     }
 
     private com.aistareco.aep.service.AiChatTokenPricing.Rate videoRewriteRate(com.aistareco.aep.model.AiModelEndpoint endpoint) {
-        var rate=chatRate(endpoint.getId());
+        var rate=endpointChatRate(endpoint);
         if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED",
                 "提示词优化暂不可用（绑定模型未配置按量售价），可以关闭智能优化按原文生成");
-        int budget=Math.min(H3PromptRewrite.MAX_TOKENS,rate.maxOutputTokens());
-        if(endpoint.getChatMaxOutputTokens()!=null)budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
-        return rate.limitOutputTokens(budget);
+        return rate;
     }
 
     /** 三处改写共用独立绑定模型的冻结上限，估价、付款授权和提交用同一份模型及输出预算。 */
@@ -423,8 +432,7 @@ public class StudioWorkflowService {
      * @param meta 写进 inputs._director：任务名、目标、提交时的内容指纹，结果回投时据此判断是否还能用
      */
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
-    public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt,
-                                       int maxTokens, String clientRequestId, ObjectNode meta, String model,
+    public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt, String clientRequestId, ObjectNode meta, String model,
                                        com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
         requireText(clientRequestId, 64, "请求编号");
         boolean videoRewrite="videoPrompt".equals(meta.path("task").asText());
@@ -446,11 +454,8 @@ public class StudioWorkflowService {
             else if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,model,"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系管理员配置"));
             else textEndpoint=scenePolicies.resolve("studio","script",model,pricing.ipIdentity()).resolved();
-            chatRate=chatRate(textEndpoint.endpoint().getId());
+            chatRate=endpointChatRate(textEndpoint.endpoint());
             if(chatRate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","此模型尚未配置按量积分售价");
-            int outputBudget=Math.min(maxTokens,chatRate.maxOutputTokens());
-            if(textEndpoint.endpoint().getChatMaxOutputTokens()!=null)outputBudget=Math.min(outputBudget,textEndpoint.endpoint().getChatMaxOutputTokens());
-            chatRate=chatRate.limitOutputTokens(outputBudget);
             cost=chatRate.maxCost();
             if(maxCost==null)throw new BusinessException(HttpStatus.CONFLICT,"STUDIO_PRICE_CHANGED","模型计费配置已更新，请刷新后重试");
         }
@@ -464,11 +469,11 @@ public class StudioWorkflowService {
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
         if(videoRewrite)execution.put("purpose",H3PromptRewrite.PURPOSE.wire());
-        int budget=maxTokens;
+        int budget=0;
         if(chatRate!=null) {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));
             execution.put("billingUnit","per_token");
-            budget=Math.min(budget,chatRate.maxOutputTokens());
+            budget=chatRate.maxOutputTokens();
         }
         execution.put("maxTokens",budget);
         var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
@@ -498,11 +503,11 @@ public class StudioWorkflowService {
         return new long[]{text,caps.imageCost()};
     }
 
-    /** A Director text step reserves only for the output tokens that step is allowed to request, on the work's chosen model. */
-    public long directorTextPrice(String model, int maxOutputTokens) {
+    /** 导演台估价与受理共用所选端点的后台输出配置，不按任务类型截断预算。 */
+    public long directorTextPrice(String model) {
         var caps=capabilities();
         return directorTextModel(caps,model)
-                .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().limitOutputTokens(maxOutputTokens).maxCost())
+                .map(m->m.tokenPricing()==null?caps.textCost():m.tokenPricing().maxCost())
                 .orElse(caps.textCost());
     }
 

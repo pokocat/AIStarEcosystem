@@ -398,7 +398,7 @@ public class StudioWorkflowWorker {
             options.put("timeout_seconds",300);
             options.put("response_format",Map.of("type","json_object"));
             options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
-            options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS));
+            options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(rate.maxOutputTokens()));
             reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
                     Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
                     Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);

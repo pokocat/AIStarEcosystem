@@ -59,7 +59,7 @@ class DirectorReshootTest {
         when(videoModels.models()).thenReturn(List.of(new VideoStudioModel("ep-h3", "MiniMax H3", true, true, false, contract, null)));
         when(textRuns.directorPrices(any())).thenReturn(new long[]{21, 8});
         when(textRuns.capabilities()).thenReturn(new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.Capabilities(false, List.of(), 8, 21, null, List.of(), "selectable", "selectable"));
-        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any()))
+        when(textRuns.submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any()))
                 .thenAnswer(i -> new IpRunDto("IPR-" + (++runSeq), "DW-1", i.getArgument(2), "studio-director", "running", "queued", 0, 21, null, null, null, null, null, null, null));
         when(works.save(any())).thenAnswer(i -> { work = i.getArgument(0); return work; });
         when(works.lockById(any())).thenAnswer(i -> Optional.ofNullable(work));
@@ -119,7 +119,7 @@ class DirectorReshootTest {
 
     private ObjectNode lastMeta() {
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns, atLeastOnce()).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), meta.capture(), any(), any(), any());
+        verify(textRuns, atLeastOnce()).submitDirectorText(any(), any(), any(), any(), any(), any(), meta.capture(), any(), any(), any());
         return meta.getValue();
     }
 
@@ -171,7 +171,7 @@ class DirectorReshootTest {
         reshoot("ep1", "cl1");
         ObjectNode meta = lastMeta();
         ArgumentCaptor<String> node = ArgumentCaptor.forClass(String.class), system = ArgumentCaptor.forClass(String.class), user = ArgumentCaptor.forClass(String.class);
-        verify(textRuns).submitDirectorText(any(), any(), node.capture(), system.capture(), user.capture(), anyInt(), any(), any(), any(), any(), any());
+        verify(textRuns).submitDirectorText(any(), any(), node.capture(), system.capture(), user.capture(), any(), any(), any(), any(), any());
         assertEquals("reshoot:cl1", node.getValue());
         assertTrue(system.getValue().contains("【重写范围】") && !system.getValue().contains("单片段装不下的对白顺延至下一片段"));
         JsonNode in = om.readTree(user.getValue().substring(user.getValue().indexOf('{')));
@@ -203,7 +203,7 @@ class DirectorReshootTest {
         reshoot("ep1");
         ObjectNode meta = lastMeta();
         assertEquals(List.of("cl1", "cl2"), om.convertValue(meta.path("rewriteIds"), List.class));
-        verify(textRuns).submitDirectorText(any(), any(), eq("reshoot:ep1"), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verify(textRuns).submitDirectorText(any(), any(), eq("reshoot:ep1"), any(), any(), any(), any(), any(), any(), any());
 
         BusinessException missing = assertThrows(BusinessException.class, () -> DirectorPrompts.validate(om, meta, modelOutput(List.of("cl1"))));
         assertTrue(missing.getMessage().contains("漏写"));
@@ -289,7 +289,7 @@ class DirectorReshootTest {
         assertEquals("DIRECTOR_PIPELINE_NOTHING_TO_DO", e.getCode());
         assertTrue(e.getMessage().contains("全部 2 集的分镜脚本都已写好"));
         assertTrue(e.getMessage().contains("重写分镜脚本"));
-        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verify(textRuns, never()).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
 
         BusinessException one = assertThrows(BusinessException.class, () ->
                 service.pipeline(USER, "DW-1", new DirectorService.PipelineRequest("start", "episode", "ep2", "plan", 100L, null, true)));
@@ -301,7 +301,7 @@ class DirectorReshootTest {
         service.edit(USER, "DW-1", new DirectorService.EditRequest("clip.delete", "cl3", null, om.createObjectNode()));
         JsonNode v = service.pipeline(USER, "DW-1", new DirectorService.PipelineRequest("start", "work", null, "plan", 100L, null, true));
         assertEquals("running", v.path("pipeline").path("status").asText());
-        verify(textRuns).submitDirectorText(any(), any(), eq("plan:ep2"), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verify(textRuns).submitDirectorText(any(), any(), eq("plan:ep2"), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test

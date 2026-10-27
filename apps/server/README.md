@@ -1309,3 +1309,8 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 `ModelJson` 先严格读取单份 JSON，再组合恢复汉字前多余反斜杠、字符串内原始换行 / 制表符、完整值后的尾逗号与缺少的末尾括号；合法转义不变，不放宽共享 ObjectMapper。缺值、半截字符串、未知 ASCII / 残缺 Unicode 转义、重复字段和多份 JSON 拒绝，恢复后仍走业务结构校验。`finish_reason=length` 不靠补括号伪造成功。工作流不能恢复时返回 `AI_BAD_OUTPUT` 和明确的格式错误 / 本次未扣积分提示，原解析异常及上游诊断保留，继续走失败退款路径，不新增模型重试。
 
 用户要求不重启时可临时使用 `infra/hotfix/studio-json-sandbox/`：官方 JVM-Sandbox 1.4.0，模块从仓库解析器生成，只观察 `ModelJson.parse` 的 Jackson 异常。正常返回保持原样，因此临时模块不是正常发布后的全部严格规则；模块只在环回管理、默认冻结、验证后激活，卸载即撤销，不改 app.jar。2026-10-25 UTC 已在原生产进程启用，应用 JAR 未变；固定探针通过，44 次健康采样均 200，模块可卸载回退。发布证据见 [热修复记录](../../docs/releases/studio-json-jvm-sandbox-release-20261025.md)。构建、验证与回退见 [操作手册](../../docs/runbooks/studio-json-jvm-sandbox.md)。
+
+
+### 导演台与视频提示词优化输出预算（2026-10-27）
+
+导演台写剧本、拆集、提取资产、分镜脚本，以及画布 / 助手 / 导演台的视频提示词优化不再使用业务代码的 8192 / 16384 / 100000 / 4096 输出上限。新任务的输出预算读取后台端点 defaultMaxTokens，受 chatMaxOutputTokens 能力上限约束；仅默认值缺失时使用端点能力上限，两者均未配置时回落后台 Token 售价配置的 maxOutputTokens。Token 单价与输入预算仍读售价配置，输出预算随端点配置形成受理快照；报价、冻结和调用使用同一快照，不能超出调用方批准的 maxCost。已有任务不改预算、不自动重试。

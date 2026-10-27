@@ -48,7 +48,6 @@ public final class H3PromptRewrite {
     public static final int VERSION = 1;
     /** 三个入口共用后台独立用途绑定；端点、密钥、售价均由后台管理。 */
     public static final com.aistareco.aep.model.AiModelPurpose PURPOSE = com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT;
-    public static final int MAX_TOKENS = 4_096;
     public static final int MAX_PROMPT_CHARS = 7_000;
     /** 镜头由模型定时（画布上的提示词没分镜头）最多这么多镜。 */
     public static final int MAX_FREE_SHOTS = 8;
