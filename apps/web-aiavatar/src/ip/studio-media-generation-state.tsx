@@ -10,11 +10,13 @@ type Task = Parameters<typeof studioTaskQueued>[0];
 export function StudioMediaGenerationState({ task, confirmed, media }: { task?: Task; confirmed: boolean; media: 'image' | 'video' }) {
   const label = media === 'video' ? '视频' : '图片';
   const queued = studioTaskQueued(task);
+  // 先改写提示词再出片（智能优化）：这一段还没有视频，不写「正在生成视频」和百分比（2026-10-27 浏览器验收）。
+  const optimizing = task?.stage === 'prompt.optimizing';
   const review = studioTaskNeedsReview(task), recovering = studioTaskRecovering(task);
-  const progress = media !== 'image' && !review && !recovering && !queued && confirmed && Number.isFinite(task?.pct)
+  const progress = media !== 'image' && !review && !recovering && !queued && !optimizing && confirmed && Number.isFinite(task?.pct)
     ? Math.max(0, Math.min(100, Math.round(task!.pct!))) : undefined;
   const imageTitle = task?.stage?.startsWith('image.') || task?.stage === 'storage.persist' ? studioTaskLabel(task) : '正在生成图片';
-  const title = review ? '生成遇到问题' : recovering ? '模型端仍在处理' : queued ? `等待生成${label}` : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
+  const title = review ? '生成遇到问题' : recovering ? '模型端仍在处理' : queued ? `等待生成${label}` : optimizing ? '正在优化提示词' : confirmed ? media === 'image' ? imageTitle : `正在生成${label}` : '正在确认生成任务';
   const detail = queued ? studioTaskLabel(task, true) : !confirmed ? '请勿重复提交' : undefined;
 
   return <div className="studio-flow-media-generating nodrag nopan" role="status" aria-live="polite">

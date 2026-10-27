@@ -15,7 +15,8 @@ test("the composer, the run input view and the dialog are mounted", () => {
   // 智能优化 2026-10-27 从参数弹层挪到卡片上：H3 才显示，开关与「用优化稿 / 用原文」的选择都挂在工作台上
   expect(read("ip/studio-video-controls.tsx")).not.toContain("studio-video-prompt-mode");
   expect(workspace).toMatch(/nativeVideo\?\.supportsPromptOptimization&&<StudioPromptOptimizeToggle on=\{!videoDraft\.keepPrompt\}/);
-  expect(workspace).toMatch(/\{composerBlocker\}\{frameCropHint\}\{promptReviewPanel\}/);
+  expect(workspace).not.toMatch(/\{frameCropHint\}\{promptReviewPanel\}/);
+  expect(workspace).toMatch(/onChange=\{setPrompt\}\/><\/label>\}\s*\{\/\*[^*]*\*\/\}\s*\{promptReviewPanel\}/);
   expect(read("ip/studio-flow-canvas.tsx")).toContain("优化稿有需要留意的地方，选好再出片");
   expect(read("ip/studio-task-list.tsx")).not.toContain("studioRunRewrites(run)");
 });

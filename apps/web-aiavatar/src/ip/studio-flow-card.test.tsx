@@ -102,3 +102,11 @@ test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING'])('video %s
   if(errorCode==='VIDEO_SUBMISSION_UNKNOWN')expect(screen.getByRole('status').textContent).toContain('刷新');
   if(errorCode==='VIDEO_SUBMISSION_UNKNOWN')expect(view.container.querySelector('.studio-flow-generation-ring')).toBeNull();
 });
+
+test('optimizing the prompt before the video is not shown as video progress',()=>{
+  // 2026-10-27 浏览器验收：改写阶段 pct=20，节点却写「正在生成视频 · 20%」
+  render(<StudioMediaGenerationState media="video" confirmed task={{status:'running',stage:'prompt.optimizing',pct:20}}/>);
+  expect(screen.getByRole('status').textContent).toContain('正在优化提示词');
+  expect(screen.getByRole('status').textContent).not.toContain('%');
+  expect(screen.queryByRole('progressbar')).toBeNull();
+});
