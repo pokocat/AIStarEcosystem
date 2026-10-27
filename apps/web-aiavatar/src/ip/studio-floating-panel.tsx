@@ -24,6 +24,17 @@ export function floatingPosition(stage:Rect, anchor:Rect|undefined, panel:{width
   }
   return {left:clamp(left,leftBound,rightBound),top:clamp(top,topBound,bottomBound)};
 }
+/** The canvas keeps at least this much width beside a docked panel (left tools included). */
+const CANVAS_MIN=56+480;
+/** A docked panel never squeezes the canvas below CANVAS_MIN, however wide it was dragged on a bigger screen. */
+export function dockedPanelWidth(saved:number,stageWidth:number,minWidth=400,maxWidth=760) {
+  const cap=stageWidth>0?stageWidth-CANVAS_MIN:maxWidth;
+  return Math.round(Math.max(minWidth,Math.min(saved,maxWidth,cap)));
+}
+/** A floating panel fits the part of the stage a docked panel leaves free (72px tools on the left, 16px margin on the right). */
+export function floatingPanelWidth(width:number,freeWidth:number) {
+  return freeWidth>0?Math.round(Math.max(320,Math.min(width,freeWidth-72-16))):width;
+}
 type Props={open:boolean;title?:ReactNode;anchorId?:string;width?:number|'auto';children:ReactNode;footer?:ReactNode;
   onClose?:()=>void;closable?:boolean;utility?:boolean;dockable?:boolean;
   /** A node's action bar: no title, sized to its buttons, under the node. */
@@ -82,6 +93,10 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
   const toggleDocked=()=>setDocked(v=>{writeLayout(layoutKey,{docked:!v});return !v;});
   const resize=useRef<{x:number;width:number}|undefined>(undefined);
   const [manual,setManual]=useState<{left:number;top:number}>(),drag=useRef<{x:number;y:number;left:number;top:number}|undefined>(undefined);
+  // Stage width (whole stage for a docked panel, the free part for a floating one): caps both kinds of width.
+  const [stageWidth,setStageWidth]=useState(0);
+  const dockWidth=dockedPanelWidth(dockedWidth,stageWidth,minWidth,maxWidth);
+  const panelWidth=typeof width==='number'?floatingPanelWidth(width,stageWidth):width;
   useLayoutEffect(()=>{if(open&&!embedded)setRoot(container||document.querySelector<HTMLElement>('[data-studio-floating-root]')||document.querySelector<HTMLElement>('.ip-surface'));},[open,container,embedded]);
   useLayoutEffect(()=>{
     if(!open||embedded||!root||!ref.current)return;
@@ -90,6 +105,7 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       // Floating panels lay out inside the part of the stage a docked panel leaves free.
       const dock=docked?0:parseFloat(dockHost(root).style.getPropertyValue('--studio-docked-panel'))||0;
       const stage={left:rect.left,top:rect.top,width:rect.width-dock,height:rect.height};
+      setStageWidth(old=>Math.abs(old-stage.width)<1?old:stage.width);
       const anchor=anchorId?root.querySelector<HTMLElement>(`[data-id="${CSS.escape(anchorId)}"]`)?.getBoundingClientRect():undefined;
       const next=floatingPosition(stage,utility?undefined:anchor,panel,toolbar);
       if(!utility&&anchor&&!toolbar) {
@@ -105,7 +121,9 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
       setPosition(old=>old.left===next.left&&old.top===next.top?old:next);
     };
     place();const observer=new ResizeObserver(place);observer.observe(root);observer.observe(ref.current);
-    return()=>observer.disconnect();
+    // A docked panel dragged wider or narrower changes the free part of the stage without resizing the stage itself.
+    const dockChange=new MutationObserver(place);dockChange.observe(dockHost(root),{attributes:true,attributeFilter:['style','class']});
+    return()=>{observer.disconnect();dockChange.disconnect();};
   },[open,embedded,root,anchorId,revision,manual,docked,utility,toolbar]);
   useEffect(()=>{setManual(undefined);},[anchorId]);
   // A docked panel owns a strip of the stage: the stage learns its width so right-anchored toolbars and other
@@ -113,9 +131,9 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
   useLayoutEffect(()=>{
     if(!open||embedded||!root||!docked)return;
     const host=dockHost(root);
-    host.classList.add('has-docked-panel');host.style.setProperty('--studio-docked-panel',`${dockedWidth}px`);
+    host.classList.add('has-docked-panel');host.style.setProperty('--studio-docked-panel',`${dockWidth}px`);
     return()=>{host.classList.remove('has-docked-panel');host.style.removeProperty('--studio-docked-panel');};
-  },[open,embedded,root,docked,dockedWidth]);
+  },[open,embedded,root,docked,dockWidth]);
   useLayoutEffect(()=>{
     if(!open||embedded||!root||!title)return;
     const entry:FloatingEntry={id:identity.current,root,update:(z,active)=>setLayer({z,active})};
@@ -146,10 +164,10 @@ export function StudioFloatingPanel({open,title,anchorId,width=660,children,foot
   return createPortal(<section ref={ref} className={`studio-floating-panel nodrag nopan nowheel${utility?' is-utility':''}${docked?' is-docked':''}${toolbar?' is-context-toolbar':''} ${className}`}
     role={title?'dialog':undefined} aria-modal={title?false:undefined} aria-label={typeof title==='string'?title:undefined} data-anchor-id={anchorId} data-active={title?layer.active:undefined}
     onPointerDownCapture={()=>raiseFloating(identity.current)} onFocusCapture={()=>raiseFloating(identity.current)}
-    style={{width:docked?dockedWidth:width,left:docked?undefined:position.left,top:docked?undefined:position.top,zIndex:title?layer.z:undefined}}>
+    style={{width:docked?dockWidth:panelWidth,left:docked?undefined:position.left,top:docked?undefined:position.top,zIndex:title?layer.z:undefined}}>
     {docked&&resizable&&<div className="studio-floating-resize" role="separator" aria-orientation="vertical" aria-label="调整宽度" title="拖动调整宽度" onPointerDown={e=>{
-      resize.current={x:e.clientX,width:dockedWidth};e.currentTarget.setPointerCapture?.(e.pointerId);
-    }} onPointerMove={e=>{if(resize.current)setDockedWidth(Math.max(minWidth,Math.min(maxWidth,resize.current.width+resize.current.x-e.clientX)));}}
+      resize.current={x:e.clientX,width:dockWidth};e.currentTarget.setPointerCapture?.(e.pointerId);
+    }} onPointerMove={e=>{if(resize.current)setDockedWidth(dockedPanelWidth(resize.current.width+resize.current.x-e.clientX,stageWidth,minWidth,maxWidth));}}
     onPointerUp={()=>{if(resize.current)writeLayout(layoutKey,{width:dockedWidth});resize.current=undefined;}}
     onPointerCancel={()=>{resize.current=undefined;}}/>}
     {title&&<header className={`studio-floating-header${utility?' is-draggable':''}`} onPointerDown={e=>{

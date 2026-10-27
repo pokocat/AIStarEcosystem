@@ -516,6 +516,12 @@ public final class DirectorPrompts {
         return out.size() >= 2 ? out : List.of();
     }
 
+    /** 一行是不是分集标题（「第1集 夜班」「# 第二集」）：给作品起名时要跳过它，它是集名不是剧名。 */
+    public static boolean isEpisodeHeading(String line) {
+        String t = line == null ? "" : line.trim();
+        return !t.isEmpty() && t.length() <= HEADING_MAX_CHARS && EPISODE_HEADING.matcher(t).find();
+    }
+
     /** 标题里「第N集」后面的集名（「# 第1集：下山」→「下山」）；只有编号时返回空串，界面按「第 N 集」显示。 */
     public static String headingTitle(String paragraph) {
         Matcher m = EPISODE_HEADING.matcher(paragraph);

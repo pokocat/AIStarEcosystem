@@ -523,7 +523,8 @@ function FlowWorkspace({ projectId }: { projectId: string }) {
     </header>
     <div ref={stageRef} className={`studio-flow-stage${referencePick?' is-picking-reference':''}${drawingArea?' is-drawing-area':''}`} data-studio-floating-root
       onPointerDownCapture={areaPointerDown} onPointerMove={areaPointerMove} onPointerUp={areaPointerUp} onPointerCancel={e => { if (areaPointer.current?.id === e.pointerId) resetArea(); }}>
-      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false}
+      {/* The corner badge sat under the docked assistant and showed up whenever it closed; React Flow (MIT) is credited in src/canvas/README.md instead. */}
+      <ReactFlow<StudioFlowNode> nodes={graphNodes} edges={graphEdges} nodeTypes={nodeTypes} edgeTypes={edgeTypes} elevateNodesOnSelect={false} proOptions={{ hideAttribution: true }}
         onNodesChange={changeNodes} onEdgesChange={changeEdges}
         onNodeDragStart={(_, n) => { checkpoint(); if (n.data.document.type === 'group' && !selected.has(n.id)) { setSelected(new Set([n.id])); setSelectedEdges(new Set()); } }}
         // 拖着节点经过一块区域时，那块区域亮起来：松手就进去了；离开区域就从里面出来。

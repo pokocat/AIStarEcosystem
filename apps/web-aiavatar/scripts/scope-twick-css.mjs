@@ -4,6 +4,8 @@
 //   · 普通规则前加 `.twick-scope `；
 //   · `:root` / `html` / `body` 换成 `.twick-scope`（变量也同时给挂到 body 上的右键菜单）；
 //   · `twick-canvas-context-menu*` 是 Twick 用 createPortal 挂到 document.body 的菜单，保留原样。
+//   · 去掉引外站字体的 @import（fonts.googleapis.com、fonts.cdnfonts.com）：国内打不开时会拖住编辑器样式，而且这些花字不是我们的字体；
+//     用到它们的地方按各自 font-family 里后面的字体显示（2026-10-27 审计）。
 // 升级 Twick 后重新跑：node apps/web-aiavatar/scripts/scope-twick-css.mjs
 import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -28,6 +30,7 @@ const out = [];
 for (const source of sources) {
   const css = readFileSync(join(app, "node_modules", source), "utf8");
   const root = postcss.parse(css, { from: source });
+  root.walkAtRules("import", rule => { if (/^url\(\s*['"]?https?:/.test(rule.params)) rule.remove(); });
   root.walkRules(rule => {
     if (rule.parent?.type === "atrule" && /keyframes$/i.test(rule.parent.name)) return;
     rule.selectors = rule.selectors.map(scopeSelector);

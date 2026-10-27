@@ -9,7 +9,7 @@ import { PublishJobApi, SocialAccountApi } from '@ai-star-eco/api-client';
 import type { PublishBatchSummary, PublishJob, PublishJobStatus } from '@ai-star-eco/types/publish-job';
 import type { SocialAccount } from '@ai-star-eco/types/social-account';
 import { PlatformGateScreen, useRequireAuth } from '@/components/hub/auth';
-import { StudioPage, StudioPageSearch } from './studio-page';
+import { StudioComingSoon, StudioPage, StudioPageSearch } from './studio-page';
 import { StudioSelect } from './studio-select';
 import { GalleryState, useStudioList } from './studio-gallery';
 import { StudioErrorNotice, useStudioErrorState } from './studio-errors';
@@ -24,7 +24,7 @@ const accountLabels = {active:'可用',expired:'需重新授权',pending:'待完
 const platformName = (value: string) => socialPlatformLabels[value as keyof typeof socialPlatformLabels] || '其他平台';
 
 function Pending({ title, children }: {title:string; children:React.ReactNode}) {
-  return <div className="studio-pending-feature"><div><h3>{title}</h3><span>【待建设】</span></div><p>{children}</p></div>;
+  return <div className="studio-pending-feature"><div><h3>{title}</h3><StudioComingSoon/></div><p>{children}</p></div>;
 }
 
 export function StudioDistribution({ view = 'overview' }: { view?: View }) {
@@ -63,7 +63,7 @@ export function DistributionAccounts() {
     <div className="studio-page-result" aria-live="polite">{list.loading ? '正在读取账号…' : list.error ? '账号读取未完成' : `${shown.length} 个账号`}</div>
     {error && <div className="studio-gallery-action-error"><StudioErrorNotice error={error}/></div>}
     {list.loading ? <GalleryState loading/> : list.error ? <GalleryState error={list.error} retry={list.reload}/> : shown.length ? <div className="studio-account-list">{shown.map(a => <article key={a.id} className="studio-account-row"><div className="studio-account-identity"><div className="studio-account-avatar">{a.avatarUrl ? <img src={a.avatarUrl} alt="" referrerPolicy="no-referrer"/> : <Users size={22}/>}</div><div><strong title={a.displayName || a.accountName}>{a.displayName || a.accountName}</strong><span title={a.accountName}>{a.accountName}</span></div></div><span>{platformName(a.platform)}</span><span className={`studio-state is-${a.status}`}>{accountLabels[a.status]}</span><div className="studio-account-time"><small>最近验证</small><time>{a.lastVerifiedAt ? formatDateTime(a.lastVerifiedAt) : '尚未验证'}</time></div><div className="studio-inline-actions"><Button disabled={!!busy} loading={busy === a.id && !removing} onClick={() => void act(a)}>验证状态</Button><Button disabled={!!busy} onClick={() => setRemoving(a)}>解绑</Button></div></article>)}</div> : <GalleryState><Users size={30}/><h3>{query || platform !== 'all' || status !== 'all' ? '没有匹配的账号' : '还没有绑定发布账号'}</h3><p>绑定账号后，可在这里查看平台与授权状态。</p></GalleryState>}
-    <p className="studio-workspace-hint">账号由本人统一管理，与已有带货应用共用。画布成片投递【待建设】。</p>
+    <p className="studio-workspace-hint">账号由本人统一管理，与已有带货应用共用。画布成片投递<StudioComingSoon className="is-inline"/></p>
     {binding && <StudioSocialBind onClose={() => { setBinding(false); list.reload(); }} onBound={() => list.reload()}/>}
     <Modal open={!!removing} title="解绑发布账号" getContainer={studioOverlayContainer} confirmLoading={!!busy} closable={!busy} mask={{closable:!busy}} onCancel={() => !busy && setRemoving(undefined)} okText="确认解绑" onOk={() => removing && act(removing,true)}><p>解绑「{removing?.displayName || removing?.accountName}」后，将无法向此账号继续发布。已有发布记录会保留。</p>{error && <StudioErrorNotice error={error}/>}</Modal>
   </section>;
@@ -93,5 +93,5 @@ function DistributionBatch({batch,onClose}:{batch:PublishBatchSummary;onClose:()
 }
 function DistributionJob({job}:{job:PublishJob}) {
   const url = job.externalUrl && /^https?:\/\//i.test(job.externalUrl) ? job.externalUrl : undefined;
-  return <article className="studio-job-row"><div><strong>{job.platformName || platformName(job.platformId)}</strong><span className={`studio-state is-${job.status}`}>{publishStatusLabels[job.status]}</span><time>{formatDateTime(job.updatedAt)}</time></div><p>{job.title || '未命名作品'}</p>{job.errorMessage && <p className="studio-job-error">{job.errorMessage}</p>}{job.status === 'awaiting_user' && <p>平台验证处理【待建设】，请在原发布入口继续。</p>}{job.status === 'live' && url && <a href={url} target="_blank" rel="noopener noreferrer">查看平台作品<ExternalLink size={14}/></a>}</article>;
+  return <article className="studio-job-row"><div><strong>{job.platformName || platformName(job.platformId)}</strong><span className={`studio-state is-${job.status}`}>{publishStatusLabels[job.status]}</span><time>{formatDateTime(job.updatedAt)}</time></div><p>{job.title || '未命名作品'}</p>{job.errorMessage && <p className="studio-job-error">{job.errorMessage}</p>}{job.status === 'awaiting_user' && <p>请在原发布入口完成平台验证。这里直接处理<StudioComingSoon className="is-inline"/></p>}{job.status === 'live' && url && <a href={url} target="_blank" rel="noopener noreferrer">查看平台作品<ExternalLink size={14}/></a>}</article>;
 }

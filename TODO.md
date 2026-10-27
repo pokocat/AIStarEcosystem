@@ -1019,7 +1019,8 @@
 
 ### 2026-07-27 · AiAvatar 数字资产平台扩展（v0.104）新发现待办 / 本地开发环境（不是代码缺陷，但会让新同事误判）
 
-- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。
+- [ ] **全新 H2 库启动的 schema 初始化顺序**（2026-10-10 核实）：`db/migration/V48__endpoint_generation_queue.java` 在 Hibernate 首次建模前访问 `ai_model_providers`，全新库会因表不存在拒启；隔离身份链路验收用显式关闭 Flyway 的临时 H2/create-drop，已有产品库和生产本次不改变迁移。另有 `DramaCharacter.cast` 在 H2 建表时命中保留字。需独立补首次建库验收和兼容处理，不修改已经执行的迁移。**2026-10-10 测试补充**：test-only ContextCustomizer 已在 Flyway 前设置 H2 的 MySQL 模式并建立旧表骨架，真实迁移继续执行；不进入生产 JAR。正常 dev 首次启动及 `cast` 保留字兼容仍待处理。**2026-10-27 复核**：只给 V48 加「表不存在就跳过」不够，紧接着 V49 `ALTER TABLE ai_model_providers` 照样失败；V49–V69.1 之间还有二十个左右 Java 迁移默认表已存在。逐个打补丁不是办法，建议做法：空库时先让 Hibernate 建表，再把 Flyway baseline 到当前最新版本（只影响空库，已有库与生产不变）。本次未改 V48。
+- [x] ~~**旧的本地 H2 文件库启动在 V69.1 失败**~~ **2026-10-27 修复（本地，未发布）**：长期使用的 `./data/aistareco` 里 `ai_app_binding.purpose` 等列是当年 Hibernate 建的 ENUM，V69.1 只在 MySQL 上扩枚举，H2 上插 `DAP_VIDEO_PROMPT` 报 `Value not permitted`，服务起不来。V69.1 的 H2 分支先把这两列改成 VARCHAR(64) 再插（Java 迁移没有校验和，已执行过的库不受影响；生产 MySQL 路径不变）。回归：`VideoPromptBindingMigrationTest#widensAnOldH2EnumColumnBeforeInsertingTheNewPurpose`；10-15 的本地库副本实测启动通过。
 
 - [ ] **本机 `apps/server/.env` 里的 `AEP_CDN_DRIVER=oss` 会让 30 个 `@SpringBootTest` 上下文加载失败**
   （`java.lang.IllegalStateException: aep.cdn.driver=oss 但未配置 aep.cdn.oss.endpoint`）。

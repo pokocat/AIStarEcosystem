@@ -64,6 +64,8 @@ type Props = {
   capabilities?: StudioCapabilities; open: boolean; initialNodeId?: string; initialPrompt?: string;
   /** Kept for callers; the dialogue routes intent itself and has no modes. */
   initialMode?: StudioAssistantMode;
+  /** Open this fill-in card once when the canvas was started from it (the home page's 「数字人形象」). */
+  initialStarter?: StarterKey;
   /** The canvas lacks output of an execution (it finished while the canvas was closed): read the thread now, panel open or not. */
   restorePending?: boolean;
   onClose: () => void; selectedIds: string[]; onUseStep: (step: StudioPlan["steps"][number]) => string | void;
@@ -105,7 +107,7 @@ function budgetExceededError(error: unknown) {
   return Object.assign(new Error(text), { code: error.code, logId: error.logId });
 }
 
-export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, restorePending, onClose, selectedIds, onUseStep, autoSend = false, onAutoSent }: Props) {
+export function StudioAssistant({ projectId, conversations, setConversations, nodes, setNodes, setConnections, connections, docVersion, capabilities, open, initialNodeId, initialPrompt, initialStarter, restorePending, onClose, selectedIds, onUseStep, autoSend = false, onAutoSent }: Props) {
   const { message } = useStudioApp();
   const session = useStudioDialogueSession({ projectId, open, autoload: !!restorePending });
   const { store } = session;
@@ -474,6 +476,13 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     // A brief saved as a canvas node (older home page) is a visible, removable pin; one kept with the conversation is not on the canvas.
     if (entry && assistantContextNodes(live.current.nodes).some(n => n.id === entry.id)) setPinnedIds(ids => ids.includes(entry.id) ? ids : [...ids, entry.id].slice(0, MAX_REFERENCES));
   }, [open, session.status, projectId, initialNodeId, initialPrompt, talked, store.outbox.length]);
+  // Started from a fill-in card (the home page's 「数字人形象」 → 「制作个人 IP」): open it once, on an empty thread only.
+  const starterOpened = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!open || !initialStarter || session.status !== "ready" || starterOpened.current === projectId) return;
+    starterOpened.current = projectId;
+    if (!talked && !store.outbox.length) openStarter(initialStarter);
+  }, [open, initialStarter, session.status, projectId, talked, store.outbox.length]);
   // Dialogue-first start: the brief typed on the home page goes out by itself, exactly once, into an empty thread.
   useEffect(() => {
     if (!open || !autoSend || autoSent.current === projectId || session.status !== "ready" || sending) return;

@@ -6,7 +6,7 @@ import { Modal } from "antd";
 import { ArrowRight, ChevronLeft, ChevronRight, LayoutGrid, Layers, List, Loader2, MoreHorizontal, Plus, RefreshCw, Trash2, Image, GitBranch } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { IpStudioApi } from "./api";
+import { DirectorApi, IpStudioApi } from "./api";
 import { CanvasCoverEditor } from "./canvas-cover-editor";
 import { ProjectCardPreview } from "./project-card-preview";
 import { projectPreview } from "./project-preview";
@@ -24,6 +24,8 @@ export function StudioProjects() {
   const authState = useRequireAuth();
   const ready = authState === "ok";
   const projects = useStudioList(IpStudioApi.listProjects, ready);
+  // AI 导演台 works are made on their own page; the projects page points at the latest few so nothing seems missing.
+  const works = useStudioList(DirectorApi.listWorks, ready);
   // 「新建创作」 opens a new canvas directly (docs/ip-studio-new-canvas-and-threads.md §2.2), no stop at /create.
   const newCanvas = useStartNewCanvas();
   const [query, setQuery] = useState("");
@@ -92,7 +94,12 @@ export function StudioProjects() {
         {(totalPages > 1 || visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error)) && <footer className="studio-gallery-pagination"><span>{filtered.length ? `共 ${filtered.length} 张画布 · 第 ${currentPage} / ${totalPages} 页` : ""}</span><div>{visible.some(p => previews[`${p.id}:${p.updatedAt}`]?.error) && <button type="button" className="studio-preview-retry" onClick={refreshPreviews}>重试预览</button>}{totalPages > 1 && <><button type="button" aria-label="上一页画布" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={17} /></button><span className="studio-gallery-current-page" aria-current="page">{currentPage}</span><button type="button" aria-label="下一页画布" disabled={currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}><ChevronRight size={17} /></button></>}</div></footer>}
       </>}
     </section>
-
+    {works.data.length > 0 && <section className="studio-scene-recent studio-director-recent" aria-label="AI 导演台作品">
+      <div className="studio-gallery-panel-heading"><div><h2>AI 导演台作品</h2><p>短剧作品在 AI 导演台里编辑。</p></div><Link className="ip-brand-text-button" href="/director">全部作品<ArrowRight size={16}/></Link></div>
+      <div className="studio-recent-list">{[...works.data].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 4).map(w => <Link key={w.id} href={`/director/${encodeURIComponent(w.id)}`}>
+        <div><strong title={w.title}>{w.title}</strong><span>{w.episodeCount ? `${w.episodeCount} 集 · ${w.clipCount} 个片段` : w.hasScript ? "剧本未拆分" : "还没有剧本"} · <time dateTime={w.updatedAt}>{formatDateTime(w.updatedAt)}</time></span></div>
+        <span>打开<ArrowRight size={16}/></span></Link>)}</div>
+    </section>}
 
     {inspecting?.mode === "cover" && <CanvasCoverEditor target="project" id={inspecting.project.id} name={inspecting.project.name} doc={inspectDoc || undefined} container={() => surface.current || document.body} error={previews[`${inspecting.project.id}:${inspecting.project.updatedAt}`]?.error} onRetry={refreshPreviews} onClose={() => setInspecting(undefined)} onSaved={cover => {
       projects.setData(items => items.map(p => p.id === inspecting.project.id ? {...p, coverUrl: cover.coverUrl || undefined} : p));

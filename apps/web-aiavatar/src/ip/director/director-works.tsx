@@ -67,7 +67,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
     } catch (e) { setError(errorText(e)); setBusy(false); }
   };
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !locked && onClose()}>
-    <div className="director-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title" ref={dialogFocus} tabIndex={-1}>
+    <div className="director-dialog director-create-dialog" role="dialog" aria-modal="true" aria-labelledby="director-create-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-create-title">新建作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={locked}><X size={18}/></button></header>
       <div className="director-segmented" role="tablist" aria-label="创建方式">
         <button type="button" role="tab" aria-selected={mode === "idea"} disabled={locked} onClick={() => setMode("idea")}>从创意开始</button>
@@ -75,7 +75,7 @@ function CreateWork({ onClose }: { onClose: () => void }) {
       </div>
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
       {mode === "script" && <DirectorScriptFile hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
-      <label className="director-field"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
+      <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
         <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} disabled={busy} maxLength={mode === "idea" ? 2000 : 60000} onChange={e => setText(e.target.value)}
           placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
       </label>

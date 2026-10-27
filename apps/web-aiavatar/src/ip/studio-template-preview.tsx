@@ -27,7 +27,7 @@ function Preview({ doc }: { doc: IpProjectDoc }) {
   const edges = useMemo(() => flowEdges(doc.connections), [doc]);
   return <StudioFloatingContext.Provider value={viewport}>
     <div ref={setRoot} className="studio-flow-shell studio-template-preview-canvas" aria-label="只读模板画布">
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} nodesDraggable={false} nodesConnectable={false} elevateNodesOnSelect={false}
+      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} nodesDraggable={false} nodesConnectable={false} elevateNodesOnSelect={false} proOptions={{ hideAttribution: true }}
         edgesReconnectable={false} deleteKeyCode={null} selectionKeyCode={null} multiSelectionKeyCode={null}
         onNodeClick={(_, node) => setInspecting(node.data.document)} onNodeDoubleClick={(_, node) => setInspecting(node.data.document)}
         onPaneClick={() => setInspecting(undefined)} onPaneContextMenu={e => e.preventDefault()}

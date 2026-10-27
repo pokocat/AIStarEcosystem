@@ -64,13 +64,15 @@ export function DirectorStoryboard(props: WorkbenchProps) {
       <div className="director-toolbar">
         <div className="director-toolbar-copy"><h3 title={ep.title}>第 {ep.no} 集 · {ep.title}</h3>
           <p>{clips.length ? `${clips.length} 个片段，共 ${clips.reduce((s, c) => s + c.durationSec, 0)} 秒` : "暂无片段"}
-            {lim ? ` · 每段 ${secRange(lim.minSec, lim.maxSec)} · ${lim.name}` : " · 暂无可用视频模型，无法确定片段时长"}
+            {lim ? ` · 每段 ${secRange(lim.minSec, lim.maxSec)} · ${lim.name}` : <span id="director-plan-block"> · 暂无可用视频模型，无法确定片段时长</span>}
             {lim?.mode === "frame" && <span className="director-frame-note" title="仅使用分镜首帧，不支持额外图片或声音参考。多镜头片段请先拆分。"> · 仅分镜首帧</span>}</p></div>
         <span className="director-spacer"/>
         {writing.plan || writing.whole ? <Spinner label={writing.plan ? "正在写分镜脚本" : "正在重写分镜脚本"}/>
           : clips.length ? <button type="button" className="ip-brand-secondary" disabled={!!busy} title="AI 重写本集的镜头，分镜图和视频提示词跟着更新；不出图、不生成视频" onClick={openRewrite}>
             <RefreshCw size={14}/>重写分镜脚本</button>
-          : <button type="button" className="ip-brand-button" disabled={!!busy || !lim} onClick={plan}><LayoutGrid size={15}/>写分镜脚本</button>}
+          : <button type="button" className="ip-brand-button" disabled={!!busy} aria-describedby={lim ? undefined : "director-plan-block"}
+            onClick={() => lim ? plan() : modal.info({ title: `现在不能写第 ${ep.no} 集分镜脚本`, content: "片段时长要按视频模型来定，目前没有可用的视频模型。可以先去「资产」准备参考图，有可用模型后再写分镜脚本。", okText: "知道了" })}>
+            <LayoutGrid size={15}/>写分镜脚本</button>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
       {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}

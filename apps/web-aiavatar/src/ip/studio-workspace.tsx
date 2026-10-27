@@ -202,6 +202,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const openTemplates=async(scope:typeof templateScope="all")=>{try {await saveStudioDocument(projectId);setTemplateScope(scope);setTemplateLibraryOpen(true);onClosePanel();}catch(e){message.error(e);}};
   const [entryBrief,setEntryBrief]=useState(""),[entryAutoSend,setEntryAutoSend]=useState(false);
   const [entryAssistantMode,setEntryAssistantMode]=useState<"general"|"director">();
+  // 「制作个人 IP」 from the home page: the assistant opens on that fill-in card.
+  const [entryStarter,setEntryStarter]=useState<"ip">();
   const [lipSyncOpen,setLipSyncOpen]=useState(false);
   const [lipOriginId,setLipOriginId]=useState<string>();
   const openLipSync=(node?:CanvasNodeData)=>{setLipOriginId(node?.id);setDirector(false);setLipSyncOpen(true);onClosePanel();};
@@ -834,6 +836,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     startOpened.current=projectId;
     if(start==="image"||start==="video"||start==="script")openDirector(start,source);
     else if(start==="assistant"||start==="director"){setEntryAssistantMode(start==="director"?"director":"general");setEntryBrief(source?.metadata?.prompt||"");setEntryAutoSend(start==="assistant"&&new URLSearchParams(window.location.search).get("send")==="1"&&!!source?.metadata?.prompt);setAssistantNodeId(source?.id);setAssistantOpen(true);onClosePanel();}
+    else if(start==="ip"){setEntryAssistantMode("general");setEntryStarter("ip");setAssistantOpen(true);onClosePanel();}
     else if(start==="work"){setMode("work");onClosePanel();}
     else if(start==="commerce")openTemplates("commerce");
     else if(start==="speech")openSpeech(source);
@@ -1298,7 +1301,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
     {(()=>{const audio=nodes.find(n=>n.id===voiceAdoptId);return <StudioVoiceAdopt open={!!voiceAdoptId} projectId={projectId} runId={audio?.metadata?.studio?.runId} title={audio?.metadata?.studio?.voiceProfile?.name||audio?.title} initialAvatarId={audio?.metadata?.studio?.voiceProfile?.avatarId||audio?.metadata?.studio?.speechRequest?.avatarId} audioUrl={audio?.metadata?.content} audioKey={audio?.metadata?.storageKey} onClose={()=>setVoiceAdoptId(undefined)} onAdopt={async profile=>{
       if(!audio)return;const {demoUrl: _demoUrl,...snapshot}=profile;patch(audio.id,n=>({...n,metadata:{...n.metadata,studio:{...n.metadata!.studio!,voiceProfile:snapshot}}}));await saveStudioDocument(projectId);message.success(`已保存 ${profile.name} · v${profile.version}；未再次扣积分`);
     }}/>;})()}
-    <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} connections={connections} capabilities={capabilities} open={assistantOpen} restorePending={executionRestorePending} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} autoSend={entryAutoSend} onAutoSent={autoSentDone} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);setEntryAutoSend(false);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
+    <StudioAssistant projectId={projectId} conversations={conversations} setConversations={setConversations} nodes={nodes} setNodes={setNodes} setConnections={setConnections} connections={connections} capabilities={capabilities} open={assistantOpen} restorePending={executionRestorePending} initialNodeId={assistantNodeId} initialMode={entryAssistantMode} initialPrompt={[...nodes,...conversations].find(n=>n.id===assistantNodeId)?.metadata?.studioStart==='assistant'?entryBrief:undefined} autoSend={entryAutoSend} onAutoSent={autoSentDone} initialStarter={entryStarter} onClose={()=>{setAssistantOpen(false);setEntryAssistantMode(undefined);setEntryAutoSend(false);setEntryStarter(undefined);}} selectedIds={[...selectedNodeIds]} onUseStep={usePlanStep}/>
     <StudioBatchPanel projectId={projectId} nodes={nodes} shots={shots} setNodes={setNodes} setConnections={setConnections} models={models} capabilities={capabilities} open={batchOpen} initialNodeId={batchNodeId} onClose={()=>setBatchOpen(false)} ratio={ratio} episodeNo={episodeFilter==="all"?undefined:episodeFilter}/>
     <Modal title="比较并采用版本" open={!!takePicker} onCancel={()=>setTakePicker(undefined)} footer={null} width={720} getContainer={containers}>
       <div className="studio-take-grid">{(()=>{const node=nodes.find(n=>n.id===takePicker);const adopted=node?.type===CanvasNodeType.Image?node.metadata?.primaryImageId:node?.metadata?.primaryVideoId;return (node?.type===CanvasNodeType.Image?node.metadata?.images:node?.metadata?.videos)?.map((take,index)=><article className="studio-take" key={take.id}>

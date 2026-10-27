@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ArrowRight, FileImage, Film, FolderOpen, LoaderCircle, Sparkles, UserRound } from "lucide-react";
+import { ArrowRight, FolderOpen, LoaderCircle } from "lucide-react";
 import type { IpProjectSummary } from "@ai-star-eco/types";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "@/shell/desktop-top-bar";
@@ -15,16 +15,18 @@ import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { formatDateTime } from "@/lib/datetime";
 
-const features: { title: string; description: string; entry: StudioEntry; art: string; icon: typeof Sparkles }[] = [
-  { title: "数字人形象", description: "找到角色的样子，延展视角与表情", entry: "image", art: "ip-feature-character", icon: UserRound },
-  { title: "AI 图片创作", description: "角色写真、场景设计，让灵感成形", entry: "image", art: "ip-scene-architecture", icon: FileImage },
-  { title: "AI 视频生成", description: "让 IP 动起来，讲述新的故事", entry: "video", art: "ip-scene-meadow", icon: Film },
-  { title: "短剧创作", description: "从故事与剧本，走向分镜和成片", entry: "script", art: "ip-scene-film", icon: Sparkles },
+/** A start is a canvas entry, or a page of its own (短剧 is made in AI 导演台, not on a canvas). */
+type HomeStart = StudioEntry | { href: string };
+const features: { title: string; description: string; entry: HomeStart; art: string }[] = [
+  { title: "数字人形象", description: "找到角色的样子，延展视角与表情", entry: "ip", art: "ip-feature-character" },
+  { title: "AI 图片创作", description: "角色写真、场景设计，让灵感成形", entry: "image", art: "ip-scene-architecture" },
+  { title: "AI 视频生成", description: "让 IP 动起来，讲述新的故事", entry: "video", art: "ip-scene-meadow" },
+  { title: "短剧创作", description: "从故事与剧本，走向分镜和成片", entry: { href: "/director" }, art: "ip-scene-film" },
 ];
-const stories: { title: string; description: string; art: string; entry: StudioEntry }[] = [
+const stories: { title: string; description: string; art: string; entry: HomeStart }[] = [
   { title: "角色的日常", description: "让想象更温柔", art: "ip-story-character", entry: "image" },
   { title: "角色 × 世界观", description: "创造属于你的故事", art: "ip-scene-castle", entry: "script" },
-  { title: "从形象到短剧", description: "让角色真正活起来", art: "ip-scene-meadow", entry: "director" },
+  { title: "从形象到短剧", description: "让角色真正活起来", art: "ip-scene-meadow", entry: { href: "/director" } },
 ];
 
 /** Reference-led home. Public and signed-in desktop share one composition. */
@@ -72,8 +74,10 @@ export function IpHome({ header = true }: { header?: boolean }) {
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
     void newCanvas.start();
   };
-  const start = async (entry: StudioEntry) => {
+  const start = async (target: HomeStart) => {
     if (createLock.current || newCanvas.creating) return;
+    if (typeof target !== "string") { router.push(authed ? target.href : `/login?next=${encodeURIComponent(target.href)}`); return; }
+    const entry = target;
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
     createLock.current = true;
     setCreating(entry);
@@ -89,7 +93,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
           <h1>让灵感成形<br />让 IP 出圈</h1>
           <p>从一个灵感开始，创造数字人、图片、视频与故事。<br className="ip-home-desktop-break" />让你的 IP 拥有形象、声音与作品。</p>
           <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
-          <div className="ip-home-paths" aria-label="创作方向">{features.map(f => <button key={f.title} disabled={busy} onClick={() => void start(f.entry)}><f.icon size={18} aria-hidden="true" /><strong>{f.title.replace("AI ", "")}</strong><span>{f.entry === "image" ? "创造形象" : f.entry === "video" ? "让角色动起来" : "编写新故事"}</span></button>)}</div>
         </div>
         <span className="ip-home-hero-note">一个角色，无限可能</span>
       </section>

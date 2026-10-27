@@ -108,7 +108,7 @@ public class DirectorService {
         if (script.length() > 60000) throw invalid("剧本过长，请拆分为多部作品导入");
         String title = req == null || req.title() == null ? "" : req.title().trim();
         if (title.length() > 60) throw invalid("作品名不超过 60 字");
-        if (title.isEmpty()) title = idea.isEmpty() ? (script.isEmpty() ? "未命名作品" : firstLine(script)) : shortTitle(idea);
+        if (title.isEmpty()) title = idea.isEmpty() ? (script.isEmpty() ? "未命名作品" : defaultTitle(script)) : shortTitle(idea);
         ObjectNode c = om.createObjectNode();
         c.put("idea", idea).put("logline", "").put("draft", script).put("draftRev", 0).put("seq", 0);
         c.putObject("settings").put("style", "真人写实").put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("imageModel").putNull("textModel");
@@ -3299,10 +3299,18 @@ public class DirectorService {
         return t.length() <= 20 ? t : t.substring(0, 20);
     }
 
-    private static String firstLine(String s) {
-        for (String line : s.split("\\r?\\n")) {
+    /**
+     * 没填作品名时按剧本起名：跳过「第1集 夜班」这类分集标题（那是集名，导入的剧本几乎都以它开头），
+     * 取第一行正文的第一句，最多 20 字。只有分集标题、没有正文时才用「未命名作品」。
+     */
+    static String defaultTitle(String script) {
+        for (String line : script.split("\\r?\\n")) {
             String t = line.replaceAll("^#+\\s*", "").trim();
-            if (!t.isEmpty()) return t.length() <= 20 ? t : t.substring(0, 20);
+            if (t.isEmpty() || DirectorPrompts.isEpisodeHeading(t)) continue;
+            int end = t.length();
+            for (char stop : "。！？!?；;".toCharArray()) { int i = t.indexOf(stop); if (i > 0 && i < end) end = i; }
+            t = t.substring(0, end).trim();
+            return t.length() <= 20 ? t : t.substring(0, 20);
         }
         return "未命名作品";
     }

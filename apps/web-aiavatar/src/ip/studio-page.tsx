@@ -4,7 +4,7 @@ import type { ReactNode, Ref } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { studioNavigation, studioNavigationCurrent } from '@/shell/studio-navigation';
-import { Search, X } from 'lucide-react';
+import { Hourglass, Search, X } from 'lucide-react';
 import { HubTabBar } from '@/components/hub/ui';
 
 /** The four workspace routes share one paper surface, heading and mobile navigation. */
@@ -35,4 +35,9 @@ export function StudioPageSearch({ value, onChange, label, placeholder, inputRef
   inputRef?: Ref<HTMLInputElement>;
 }) {
   return <label className="studio-page-search"><Search size={16} aria-hidden="true"/><input ref={inputRef} type="search" aria-label={label} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}/>{value && <button type="button" aria-label={`清除${label}`} onClick={() => onChange('')}><X size={15}/></button>}</label>;
+}
+
+/** Features that are planned but not open yet: one wording and one mark everywhere (replaces the old 【待建设】). */
+export function StudioComingSoon({ children = '敬请期待', className = '' }: { children?: ReactNode; className?: string }) {
+  return <span className={`studio-coming-soon ${className}`}><Hourglass size={13} strokeWidth={2} aria-hidden="true"/>{children}</span>;
 }

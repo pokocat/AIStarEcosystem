@@ -75,7 +75,7 @@ export function DirectorAssets(props: WorkbenchProps) {
     {waiting.length > 0 && <div className="director-confirm-bar"><span>{waiting.length} 张参考图待确认。分镜图将以此为参考，请确认后再继续。</span>
       <button type="button" className="ip-brand-button" disabled={!!busy} onClick={confirmAll}><Check size={15}/>全部确认</button></div>}
     {adding && <AddAsset {...props} onClose={() => setAdding(false)}/>}
-    {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!work.assets.length ? "暂无资产。点击「提取」，从正文识别角色、场景和道具。" : scoped.length ? "这一类暂无资产。" : "暂无资产。"}</p></div> :
+    {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!work.assets.length ? "暂无资产。点「提取全剧资产」，从正文识别角色、场景和道具。" : scoped.length ? "这一类暂无资产。" : "暂无资产。"}</p></div> :
       <div className="director-asset-grid">{[...shown].sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind)).map(a => <AssetTile key={a.id} {...props} asset={a} onOpen={() => setOpenId(a.id)}/>)}</div>}
     {open && <DirectorSheet onClose={() => setOpenId(null)} label="资产详情"><AssetCard key={open.id} {...props} asset={open}/></DirectorSheet>}
   </div>;

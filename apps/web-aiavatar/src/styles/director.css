@@ -21,6 +21,10 @@
 .director-dialog { width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 12px; background: var(--ip-paper); box-shadow: 0 20px 60px rgba(25, 34, 41, .22); }
 .director-dialog header, .director-popover header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .director-dialog h2 { font-family: var(--ip-display); font-size: 20px; }
+/* Both creation modes share one height: switching 从创意开始 / 导入剧本 used to jump the dialog by ~180px. The text box takes up the difference. */
+.director-create-dialog { height: min(600px, calc(100dvh - 32px)); }
+.director-create-dialog .director-create-text { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.director-create-dialog .director-create-text textarea { flex: 1; min-height: 120px; resize: none; }
 .director-dialog header button, .director-popover header button { display: grid; place-items: center; width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-muted); }
 .director-dialog footer, .director-popover footer { display: flex; justify-content: flex-end; gap: 8px; }
 .director-dialog-note { color: var(--ip-muted); font-size: 12px; line-height: 1.8; }
@@ -71,7 +75,9 @@ pre.director-prompt { max-height: 220px; overflow: auto; }
 .director-script-file-preview textarea { width: 100%; max-height: 240px; resize: vertical; font-size: 13px; line-height: 1.8; }
 .director-script-file-preview > div:first-child > button { flex-shrink: 0; padding: 4px; border: 0; background: transparent; }
 .director-shell { min-height: 100dvh; padding: 10px 12px 32px; background: var(--ip-paper); }
-html[data-layout="desktop"] .director-shell { max-width: 1600px; margin: 0 auto; padding: 12px 20px 40px; min-height: calc(100dvh - var(--desktop-bar-h, 84px)); }
+/* Same paper-on-warm-gray frame as the other workspace pages (StudioPage). */
+html[data-layout="desktop"] body:has(.director-shell) { background: var(--ip-bg, #f0efec); overflow-y: scroll; scrollbar-gutter: stable; }
+html[data-layout="desktop"] .director-shell { width: calc(100% - 24px); max-width: none; margin: 0 auto 12px; padding: 16px 22px 32px; border-radius: 13px; min-height: calc(100dvh - var(--desktop-bar-h, 84px) - 12px); }
 .director-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 80px 16px; color: var(--ip-muted); }
 .director-header { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .director-back { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid var(--ip-line); border-radius: 8px; color: var(--ip-ink); }
@@ -89,7 +95,7 @@ html[data-layout="desktop"] .director-shell .director-title { flex: 0 1 360px; }
 .director-pipeline { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-bottom: 8px; padding: 6px 10px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-soft); }
 .director-pipeline.is-waiting { border-color: #e3cfa9; background: var(--ip-gold-soft); }
 .director-pipeline.is-failed { border-color: #efc9ce; background: var(--ip-error-soft); }
-.director-pipeline .director-oneclick { min-height: 34px; padding: 6px 14px; font-size: 13px; }
+.director-header .director-oneclick { flex-shrink: 0; min-height: 32px; padding: 5px 12px; font-size: 13px; }
 .director-pipeline-hint { min-width: 0; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .director-pipeline-summary { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 2px 10px; min-width: 0; font-size: 13px; }
 .director-pipeline-summary b { flex-shrink: 0; }
@@ -106,6 +112,13 @@ html[data-layout="desktop"] .director-shell .director-title { flex: 0 1 360px; }
 
 .director-notice, .director-warn, .director-confirm-bar, .director-next { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; padding: 6px 12px; border-radius: 8px; font-size: 13px; line-height: 1.6; }
 .director-notice { background: var(--ip-soft); }
+/* A result notice floats over the page instead of pushing the work down; confirmations fade, warnings stay until closed. */
+.director-notice-toast { position: fixed; right: 20px; bottom: 20px; z-index: 900; flex-wrap: nowrap; max-width: min(440px, calc(100vw - 40px)); margin: 0; padding: 10px 14px; border-radius: 10px; background: var(--ip-ink); color: var(--ip-paper); box-shadow: 0 10px 28px rgb(25 34 41 / 18%); animation: director-toast-in 220ms cubic-bezier(.16, 1, .3, 1); }
+.director-notice-toast span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.director-notice-toast button { flex-shrink: 0; color: inherit; }
+html:not([data-layout="desktop"]) .director-notice-toast { right: 12px; left: 12px; bottom: calc(var(--tabbar-h, 70px) + env(safe-area-inset-bottom, 0px) + 12px); max-width: none; }
+@keyframes director-toast-in { from { opacity: 0; transform: translateY(8px); } }
+@media (prefers-reduced-motion: reduce) { .director-notice-toast { animation: none; } }
 .director-notice button, .director-warn button { padding: 0; border: 0; background: transparent; font-size: 13px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
 .director-warn { background: var(--ip-gold-soft); color: var(--ip-gold); }
 .director-warn span { flex: 1; min-width: 200px; }

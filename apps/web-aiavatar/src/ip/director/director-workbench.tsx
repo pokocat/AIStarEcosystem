@@ -40,24 +40,25 @@ export type WorkbenchProps = {
 export type ClipFocus = { clipId: string; assetId?: string; open: "assets" | "editor"; at: number };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
-function nextStep(work: DirectorWork, episodeId: string | null): { text: string; tab: Tab } | null {
+type NextStep = { text: string; tab: Tab; running?: true; alsoOn?: Tab[] };
+function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null {
   // AI 正在做的文字任务优先说出来：不然生成中还写着「下一步：生成剧本」，像是没开始。
   const running = work.tasks.filter(t => t.status === "running").map(t => t.target);
-  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script" };
-  if (running.includes("split")) return { text: "AI 正在拆分集", tab: "script" };
-  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script" };
+  if (running.includes("script")) return { text: "AI 正在写剧本，完成后自动显示", tab: "script", running: true };
+  if (running.includes("split")) return { text: "AI 正在拆分集", tab: "script", running: true };
+  if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script", running: true };
   const planning = running.find(t => t.startsWith("plan:"));
-  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard" }; }
+  if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard", running: true }; }
   const reshooting = running.find(t => t.startsWith("reshoot:"));
   if (reshooting) {
     const id = reshooting.slice(8), ep = work.episodes.find(e => e.id === id), clip = work.clips.find(c => c.id === id);
-    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard" };
+    return { text: `AI 正在重写${ep ? `第 ${ep.no} 集` : clip ? `片段 ${clip.order} 的` : ""}分镜脚本`, tab: "storyboard", running: true };
   }
   if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
   if (work.pendingSplit) return { text: `分成 ${work.pendingSplit.episodes.length} 集，确认后生效`, tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
-  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script" };
+  if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script", alsoOn: ["assets"] };
   const clips = work.clips.filter(c => c.episodeId === ep.id);
   if (clips.length === 0) return { text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
@@ -85,6 +86,19 @@ function nextStep(work: DirectorWork, episodeId: string | null): { text: string;
   if (!(work.exports ?? []).some(e => e.episodeId === ep.id && e.status === "done")) return { text: `第 ${ep.no} 集视频已确认，可预览或导出`, tab: "storyboard" };
   return { text: `第 ${ep.no} 集已导出。更换片段视频后需重新导出`, tab: "storyboard" };
 }
+
+/**
+ * Whether the status line repeats what the open workspace already offers. The script page carries its own
+ * 「下一步」 cards and the assets page its own 提取 button, so the line only speaks when it adds something:
+ * an AI task in progress, or a step that lives in another workspace.
+ */
+export function nextStepShown(step: NextStep | null, tab: Tab) {
+  if (!step) return false;
+  if (step.running) return true;
+  return step.tab !== tab && !step.alsoOn?.includes(tab) && !(tab === "script" && step.tab === "script");
+}
+/** Plain confirmations fade on their own; warnings (a result not used, something to redo) stay until closed. */
+const PASSING_NOTICE = /^(已分成 \d+ 集|资产已保存(，新增 \d+ 项)?|设定资料已并入第 1 集开头)$/;
 
 export function DirectorWorkbench({ id }: { id: string }) {
   const auth = useRequireAuth();
@@ -173,17 +187,17 @@ export function DirectorWorkbench({ id }: { id: string }) {
   };
   const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
   return <main className="ip-brand-surface director-shell">
-    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}/>
+    <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen} oneClick={!live}/>
     {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
-    {live ? <PipelineBar {...props}/> : <div className="director-status">
+    {live ? <PipelineBar {...props}/> : (work.pendingExtract || nextStepShown(step, tab) || work.pipeline) && <div className="director-status">
       {work.pendingExtract ? <div className="director-next is-warn"><Sparkles size={14}/><span>识别到 {work.pendingExtract.items.length} 项资产，确认后保存</span><button type="button" onClick={() => setReviewing(true)}>查看清单</button></div> :
-        step && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
+        step && nextStepShown(step, tab) && <div className="director-next"><Sparkles size={14}/><span title={step.text}>{step.text}</span>{step.tab !== tab && <button type="button" onClick={() => switchTab(step.tab)}>{GO_LABEL[step.tab] ?? "前往"}</button>}</div>}
       <PipelineBar {...props}/>
     </div>}
     {!live && <StopTextTasks {...props}/>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
-    {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError({ action: "关闭这条提示", error: e }))}>关闭</button></div>}
+    {work.notice && <DirectorNoticeToast key={work.notice.message} work={work} apply={apply} setError={setError}/>}
     <div className="director-body">
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
         {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
@@ -213,7 +227,7 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   </div>;
 }
 
-function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
+function DirectorHeader({ work, apply, setError, startPipeline, oneClick, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { oneClick: boolean; settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
   const [title, setTitle] = useState(work.title);
   const { busy, run } = useBusy();
   useEffect(() => setTitle(work.title), [work.title]);
@@ -232,6 +246,7 @@ function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettings
     <button type="button" className="director-settings-chip" onClick={() => setOpen(o => !o)} aria-expanded={open}>
       <Settings2 size={15}/>{settings.style} · {settings.aspectRatio}
     </button>
+    {oneClick && <OneClickButton startPipeline={startPipeline}/>}
     {open && <SettingsPanel work={work} onClose={() => setOpen(false)} apply={apply} setError={setError}/>}
   </header>;
 }
@@ -249,18 +264,38 @@ const PIPELINE_ACTIONS: Record<string, string> = {
   "confirm-boards": "确认分镜图并继续", "confirm-videos": "确认片段视频并导出", stop: "停止一键制作", dismiss: "收起一键制作",
 };
 
-function PipelineBar({ work, apply, setError, goTab, reviewExtract, startPipeline }: WorkbenchProps) {
+/** 一键制作 is a shortcut, always in the header; the step-by-step route stays on the script page. */
+function OneClickButton({ startPipeline }: Pick<WorkbenchProps, "startPipeline">) {
+  return <button type="button" className="ip-brand-secondary director-oneclick" title="快捷方式：从剧本一路自动做到成片（也可以只做到分镜脚本或分镜图），后台执行，关掉页面不中断。想逐步检查每一步，就按剧本页的步骤来。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>;
+}
+
+function DirectorNoticeToast({ work, apply, setError }: Pick<WorkbenchProps, "work" | "apply" | "setError">) {
+  const message = work.notice?.message ?? "";
+  const dismiss = useCallback(() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError({ action: "关闭这条提示", error: e })), [work.id, apply, setError]);
+  const passing = PASSING_NOTICE.test(message);
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (!passing || held) return;
+    const timer = window.setTimeout(dismiss, 6000);
+    return () => window.clearTimeout(timer);
+  }, [passing, held, dismiss]);
+  return <div className={`director-notice director-notice-toast${passing ? "" : " is-sticky"}`} role="status"
+    onPointerEnter={() => setHeld(true)} onPointerLeave={() => setHeld(false)} onFocus={() => setHeld(true)} onBlur={() => setHeld(false)}>
+    <span>{message}</span><button type="button" onClick={dismiss}>关闭</button></div>;
+}
+
+function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchProps) {
   const p = work.pipeline;
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss", budget?: number) =>
     void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), failed(setError, PIPELINE_ACTIONS[action]));
   const live = p && ["running", "waiting", "paused"].includes(p.status);
+  if (!p) return null;
   return <>
-    <div className={`director-pipeline ${p ? `is-${p.status}` : ""}`}>
+    <div className={`director-pipeline is-${p.status}`}>
       {!live && <>
         {p && <span className="director-pipeline-hint"><PipelineSummary p={p}/></span>}
         {p && <button type="button" className="ip-brand-text-button" onClick={() => act("dismiss")}>收起</button>}
-        <button type="button" className="ip-brand-secondary director-oneclick" title="快捷方式：从剧本一路自动做到成片（也可以只做到分镜脚本或分镜图），后台执行，关掉页面不中断。想逐步检查每一步，就按剧本页的步骤来。" onClick={startPipeline}><Sparkles size={15}/>一键制作<em className="director-shortcut-tag">快捷</em></button>
       </>}
       {live && p && <>
         <PipelineSummary p={p}/>

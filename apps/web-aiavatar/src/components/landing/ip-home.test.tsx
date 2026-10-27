@@ -51,3 +51,20 @@ test('a signed-out visitor has no blank-canvas start; nothing is created', async
   expect(screen.queryByRole('button', { name: '创建空白画布' })).toBeNull();
   expect(api.newCanvas).not.toHaveBeenCalled();
 });
+
+// 2026-10-27 audit: each start goes somewhere different, and 短剧 is made in AI 导演台, not on a canvas.
+test('「数字人形象」 opens the 制作个人 IP start, 短剧 goes to AI 导演台, and each start is offered once', async () => {
+  api.authed = true;
+  api.create.mockResolvedValue({ id: 'p1' });
+  await act(async () => { render(<IpHome header={false}/>); });
+  expect(screen.getAllByRole('button', { name: /^数字人形象/ })).toHaveLength(1);
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^数字人形象/ })); });
+  expect(api.create).toHaveBeenCalledWith('ip');
+  cleanup(); vi.clearAllMocks();
+  await act(async () => { render(<IpHome header={false}/>); });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^短剧创作/ })); });
+  expect(api.push).toHaveBeenCalledWith('/director');
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: /^从形象到短剧/ })); });
+  expect(api.push).toHaveBeenLastCalledWith('/director');
+  expect(api.create).not.toHaveBeenCalled();
+});

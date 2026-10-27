@@ -17,6 +17,12 @@ public class V69_1__video_prompt_binding extends BaseJavaMigration {
         if(c.getMetaData().getDatabaseProductName().equalsIgnoreCase("MySQL")) {
             expandEnum(c,"ai_app_binding");
             expandEnum(c,"ai_app_endpoint_candidate");
+        } else {
+            // A long-lived local H2 file database keeps the ENUM column Hibernate created back then, without the new value;
+            // the INSERT below then failed and the server would not start (2026-10-27). Production (MySQL) is unchanged,
+            // and Java migrations carry no checksum, so databases that already ran 69.1 are unaffected.
+            widenH2Enum(c,"ai_app_binding");
+            widenH2Enum(c,"ai_app_endpoint_candidate");
         }
         String endpoint=null;
         try(var s=c.prepareStatement("SELECT endpoint_id FROM ai_app_binding WHERE purpose=?")) {
@@ -50,6 +56,16 @@ public class V69_1__video_prompt_binding extends BaseJavaMigration {
             while(r.next())if(table.equalsIgnoreCase(r.getString("TABLE_NAME")))return true;
         }
         return false;
+    }
+
+    private static void widenH2Enum(Connection c,String table)throws Exception {
+        String type=null;
+        try(var s=c.prepareStatement("SELECT DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS WHERE UPPER(TABLE_NAME)=UPPER(?) AND UPPER(COLUMN_NAME)='PURPOSE'")) {
+            s.setString(1,table);
+            try(var r=s.executeQuery()){if(r.next())type=r.getString(1);}
+        }
+        if(type==null||!type.equalsIgnoreCase("ENUM"))return;
+        try(var s=c.createStatement()){s.executeUpdate("ALTER TABLE "+table+" ALTER COLUMN purpose VARCHAR(64) NOT NULL");}
     }
 
     private static void expandEnum(Connection c,String table)throws Exception {

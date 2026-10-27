@@ -28,7 +28,7 @@ test('preview stays read-only; explicit start creates an ordinary copy through t
 test('missing or disabled templates never create an empty replacement canvas',async()=>{
   vi.mocked(IpStudioApi.listTemplates).mockResolvedValue([]);
   render(<StudioSceneWorkshop/>);
-  await waitFor(()=>expect(screen.getAllByRole('button',{name:'【待建设】'})).toHaveLength(4));
-  screen.getAllByRole('button',{name:'【待建设】'}).forEach(b=>expect((b as HTMLButtonElement).disabled).toBe(true));
+  await waitFor(()=>expect(screen.getAllByRole('button',{name:'敬请期待'})).toHaveLength(4));
+  screen.getAllByRole('button',{name:'敬请期待'}).forEach(b=>expect((b as HTMLButtonElement).disabled).toBe(true));
   expect(IpStudioApi.createProject).not.toHaveBeenCalled();
 });

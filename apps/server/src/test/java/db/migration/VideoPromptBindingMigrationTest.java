@@ -28,4 +28,24 @@ class VideoPromptBindingMigrationTest {
             }
         }
     }
+
+    // 2026-10-27: a long-lived local H2 file database keeps the ENUM purpose column Hibernate created back then;
+    // the INSERT used to fail and the server would not start.
+    @Test void widensAnOldH2EnumColumnBeforeInsertingTheNewPurpose() throws Exception {
+        try(var c=DriverManager.getConnection("jdbc:h2:mem:video-prompt-enum;MODE=MySQL;DB_CLOSE_DELAY=-1")) {
+            try(var s=c.createStatement()) {
+                s.execute("CREATE TABLE ai_model_providers(id VARCHAR PRIMARY KEY,enabled BOOLEAN)");
+                s.execute("CREATE TABLE ai_app_binding(purpose ENUM('DAP_IMAGE','DAP_VIDEO') NOT NULL PRIMARY KEY,endpoint_id VARCHAR,updated_at TIMESTAMP)");
+                s.execute("CREATE TABLE ai_app_endpoint_candidate(id VARCHAR PRIMARY KEY,purpose ENUM('DAP_IMAGE','DAP_VIDEO') NOT NULL,endpoint_id VARCHAR,sort_order INT,enabled BOOLEAN,created_at TIMESTAMP,updated_at TIMESTAMP)");
+                s.execute("INSERT INTO ai_model_providers VALUES('ai-studio-jusuan-qwen38',TRUE)");
+                s.execute("INSERT INTO ai_app_binding VALUES('DAP_IMAGE','old',CURRENT_TIMESTAMP)");
+            }
+            var context=mock(Context.class);when(context.getConnection()).thenReturn(c);
+            new V69_1__video_prompt_binding().migrate(context);
+            try(var s=c.createStatement();var r=s.executeQuery("SELECT purpose,endpoint_id FROM ai_app_binding ORDER BY purpose")) {
+                assertTrue(r.next());assertEquals("DAP_IMAGE",r.getString(1));assertEquals("old",r.getString(2));
+                assertTrue(r.next());assertEquals("DAP_VIDEO_PROMPT",r.getString(1));assertEquals("ai-studio-jusuan-qwen38",r.getString(2));
+            }
+        }
+    }
 }

@@ -776,7 +776,8 @@ html[data-layout="mobile"] .ip-surface .studio-assistant-panel .studio-floating-
 
 /* 画布页改版（2026-10-19）：第二排工具条取消后的三个悬浮件 */
 .studio-ai-orb { position:absolute; right:18px; top:72px; z-index:82; display:grid; place-items:center; width:44px; height:44px; border:0; border-radius:50%; background:var(--ai-gradient); color:#fff; box-shadow:0 8px 22px rgba(79, 91, 213, 0.35); cursor:pointer; pointer-events:auto; transition:transform 160ms ease-out, box-shadow 160ms ease-out; }
-.studio-ai-orb:hover { transform:translateY(-1px); box-shadow:0 12px 28px rgba(79, 91, 213, 0.42); background:var(--ai-gradient); }
+/* Beats the shell's generic `button:hover` (surface-2), which turned the orb white-on-white on hover. */
+.studio-ai-orb:hover, .studio-flow-shell .studio-ai-orb:hover:not(:disabled) { transform:translateY(-1px); box-shadow:0 12px 28px rgba(79, 91, 213, 0.42); background:var(--ai-gradient); }
 .studio-ai-orb:focus-visible { outline:2px solid var(--primary); outline-offset:3px; }
 .ip-surface .studio-tasks-launch { position:absolute; left:18px; bottom:20px; z-index:80; display:grid; place-items:center; width:50px; height:40px; padding:0; border:1px solid var(--line); border-radius:12px; background:var(--surface); color:var(--ink-2); cursor:pointer; pointer-events:auto; }
 .ip-surface .studio-tasks-launch:hover,.ip-surface .studio-tasks-launch[aria-pressed="true"] { background:var(--surface-2); color:var(--ink); }
