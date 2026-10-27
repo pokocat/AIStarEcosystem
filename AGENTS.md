@@ -1241,7 +1241,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`）。
 - 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。
 
-### H3 视频提示词优化 · 2026-10-27（本地，未发布；server + web-aiavatar）
+### H3 视频提示词优化 · 2026-10-27（已生产发布 `20261027-studio-h3-optimize`，main `384dfe31`；server + web-aiavatar）
 
 导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。
 - **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
