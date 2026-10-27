@@ -68,7 +68,8 @@ describe("加载", () => {
       await until(() => expect(view.result.current.state).toBe("error"));
       // 给空画布 = 用户以为项目丢了，还会顺手在上面改 —— 一改就真丢了
       expect(view.result.current.error).toBe("画布不存在");
-      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_NOT_FOUND", message: "画布不存在", logId: "ABCDEF234567" }));
+      // 打开画布时没有刚做的操作：右上角提示，不是错误弹窗
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_NOT_FOUND", message: "画布不存在", logId: "ABCDEF234567" }), expect.objectContaining({ kind: "background" }));
       expect(useCanvasStore.getState().projects).toHaveLength(0);
       expect(updateProjectMock).not.toHaveBeenCalled();
     } finally { view.unmount(); unsubscribe(); }
@@ -121,7 +122,8 @@ describe("自动保存", () => {
       expect(outcome).toBe("failed");
       expect(view.result.current.saveState).toBe("failed");
       expect(useCanvasStore.getState().projects[0]?.title).toBe("新标题");
-      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_SAVE_FAILED", message: "保存失败", logId: "ABCDEF234567" }));
+      // 自动保存失败是后台状态，不管刚才点了什么都不弹窗
+      expect(notify).toHaveBeenLastCalledWith(expect.objectContaining({ code: "IP_PROJECT_SAVE_FAILED", message: "保存失败", logId: "ABCDEF234567" }), expect.objectContaining({ kind: "background" }));
     } finally { view.unmount(); unsubscribe(); }
   });
   it("加载完成之前的任何改动都不回存", async () => {

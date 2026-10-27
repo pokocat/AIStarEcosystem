@@ -1,6 +1,8 @@
 import { Search } from "lucide-react";
 import { type UIEvent, useEffect, useState } from "react";
-import { App, Empty, Input, Modal, Spin, Tag } from "antd";
+// 本仓改动（2026-10-27）：错误不走 antd 顶部 message，统一到 Studio 错误出口（用户刚做的操作没做成就弹错误弹窗），成功提示照旧。
+import { Empty, Input, Modal, Spin, Tag } from "antd";
+import { useStudioApp } from "@/ip/studio-errors";
 import { useTranslation } from "react-i18next";
 
 import { ALL_PROMPTS_OPTION } from "@/canvas-bridge/prompts";
@@ -9,7 +11,7 @@ import { PromptCard } from "./prompt-card";
 import { usePromptList } from "./use-prompt-list";
 
 export function PromptSelectDialog({ open, onOpenChange, onSelect }: { open: boolean; onOpenChange: (open: boolean) => void; onSelect: (prompt: string) => void }) {
-    const { message } = App.useApp();
+    const { message } = useStudioApp();
     const { t } = useTranslation();
     const [keyword, setKeyword] = useState("");
     const [selectedTags, setSelectedTags] = useState<string[]>([]);

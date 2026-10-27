@@ -9,7 +9,8 @@ const api = vi.hoisted(() => ({ members: vi.fn(), invitations: vi.fn(), ownershi
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: vi.fn().mockResolvedValue({ image: [{ endpointId: "image-id", name: "人像图片" }], video: [] }) }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: vi.fn().mockResolvedValue({ textModels: [{ endpointId: "text-id", name: "创作文本" }] }), studioSpeechCatalog: vi.fn().mockResolvedValue({ models: [] }), studioLipSyncCatalog: vi.fn().mockResolvedValue({ models: [] }) }));
-vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ message: error.message || String(error) }) }));
+const reported = vi.hoisted(() => vi.fn());
+vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ message: error.message || String(error) }), reportStudioError: reported }));
 vi.mock("antd", () => ({
   Alert: ({ title, description, action }: any) => <div role="alert">{title}{description}{action}</div>,
   Button: ({ children, loading, type, danger, ...props }: any) => <button {...props} disabled={loading || props.disabled}>{children}</button>,

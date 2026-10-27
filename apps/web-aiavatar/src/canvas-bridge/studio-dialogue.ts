@@ -11,7 +11,7 @@ import type {
   StudioDialogueThreadSummary, StudioPostMessageRequest, StudioPostMessageResult,
 } from '@ai-star-eco/types/ip-studio-workflow';
 import type { EnterpriseBillingSelection } from '@ai-star-eco/types/enterprise';
-import { sanitizeModelErrorFields } from '@ai-star-eco/api-client';
+import { sanitizeModelErrorFields } from '@ai-star-eco/api-client/public-model-error';
 import { API_BASE_URL, USE_MOCK, apiFetch, getAuthToken } from '@/ip/api/_client';
 import { withStudioBilling } from './studio-billing';
 import {

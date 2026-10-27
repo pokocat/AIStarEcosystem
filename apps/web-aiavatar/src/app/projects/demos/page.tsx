@@ -24,6 +24,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { useIdentity, isSuperAdminRole, isOperatorRole } from "@/proto/api";
 import { IpStudioApi } from "@/ip/api";
 import { ToastProvider, useToast } from "@/ip/common/toast";
+import { reportStudioError } from "@/ip/studio-errors";
 import { formatDateTime } from "@/lib/datetime";
 
 function DemosPageInner() {
@@ -76,7 +77,8 @@ function DemosPageInner() {
       setRows((list) => list.map((r) => (r.id === row.id ? { ...r, enabled: !r.enabled } : r)));
       toast(row.enabled ? `「${row.name}」已下线，用户看不到了` : `「${row.name}」已重新上线`, "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "没成功，再试一次", "warn");
+      // 操作没做成弹错误弹窗（原因、下一步、错误详情），不只是底部一条提示
+      reportStudioError(e, { action: `${row.enabled ? "下线" : "上线"}「${row.name}」`, fallback: "没成功，再试一次" });
     } finally {
       setBusy(null);
     }
@@ -97,7 +99,7 @@ function DemosPageInner() {
       await load();   // 排序变了要重排，就地改字段不够
       toast("已保存", "ok");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "没存上，再试一次", "warn");
+      reportStudioError(e, { action: `保存「${editing.name}」的修改`, fallback: "没存上，再试一次" });
     } finally {
       setBusy(null);
     }
@@ -120,7 +122,7 @@ function DemosPageInner() {
       );
       setPendingDelete(null);
     } catch (e) {
-      toast(e instanceof Error ? e.message : "没删掉，再试一次", "warn");
+      reportStudioError(e, { action: `删除「${pendingDelete.name}」`, fallback: "没删掉，再试一次" });
     } finally {
       setBusy(null);
     }

@@ -7,7 +7,7 @@ import { Image } from "antd";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError, type StudioFailure } from "../studio-errors";
-import { publicModelErrorMessage } from "@ai-star-eco/api-client";
+import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-error";
 
 export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
 

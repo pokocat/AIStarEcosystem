@@ -18,6 +18,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { settled, studioHref, useHubData } from "@/components/hub/data";
 import { AssetPortrait, Badge, Card, EmptyState, HubScreen, ListRow, LoadingBlock, NavBar, SectionHeader } from "@/components/hub/ui";
 import { formatDateTime } from "@/lib/datetime";
+import { reportStudioError } from "@/ip/studio-errors";
 
 const APP_LABEL: Record<string, string> = { music: "音乐", drama: "短剧" };
 const VIDEO_RE = /\.(mp4|webm|mov|m4v)(\?|$)/i;
@@ -492,7 +493,8 @@ function MakeCardCard({ avatarId, cards }: { avatarId: string; cards: AsyncState
       const card = await CardApi.fromAvatar(avatarId);
       router.push(`/cards/${encodeURIComponent(card.id)}/edit`);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "建卡没成功，稍后再试");
+      // 同时交给统一错误出口：刚点的「建卡」没做成弹错误弹窗，按钮下这行照旧留着
+      setErr(reportStudioError(e, { fallback: "建卡没成功，稍后再试" }).message);
       setBusy(false);
     }
   };

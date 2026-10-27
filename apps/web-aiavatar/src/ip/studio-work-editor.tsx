@@ -154,7 +154,7 @@ export function StudioWorkEditor(p: Props) {
                 ...voices.map(n => { const s = secondsOf(n); return { value: n.metadata!.storageKey!, label: `${n.title}${s ? ` · ${formatStudioSeconds(s)}` : ""}` }; }),
                 ...(voiceMissing ? [{ value: draft.voiceoverStorageKey!, label: "已移出画布的配音" }] : [])]}/>
           </label> : <p className="studio-work-note">画布上还没有配音，成片会保留片段原声。<button type="button" className="studio-work-link" onClick={p.onMakeVoice}><Mic size={14}/>去做一条配音</button></p>}
-          {voiceMissing && <StudioErrorNotice error="选的配音已经不在画布上了，重新选一条或改回片段原声。"/>}
+          {voiceMissing && <StudioErrorNotice error="选的配音已经不在画布上了，重新选一条或改回片段原声。" background/>}
           {voice && <>
             <SignedAudio key={voice.id} src={voice.metadata?.content} storageKey={voice.metadata?.storageKey} controls onLoadedMetadata={e => record(voice.id, e.currentTarget)}/>
             {voiceGap !== undefined && (voiceTooLong

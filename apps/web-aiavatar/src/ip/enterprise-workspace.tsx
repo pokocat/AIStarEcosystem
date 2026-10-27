@@ -8,7 +8,7 @@ import type { EnterpriseContext, EnterpriseMemberBalance, EnterprisePointsPrevie
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { StudioPage, StudioPageFilters } from "./studio-page";
-import { normalizeStudioError } from "./studio-errors";
+import { normalizeStudioError, reportStudioError } from "./studio-errors";
 import { studioOverlayContainer } from "./studio-overlay";
 import { EnterpriseManagement } from "./enterprise-management";
 import { ScopedCreditsPanel } from "./scoped-credits-panel";
@@ -106,7 +106,8 @@ function EnterpriseWorkspaceEnabled() {
     if (mutationLock.current) return;
     mutationLock.current = true; setBusy(true); setActionError(""); setSuccess("");
     try { await action(); }
-    catch (caught) { setActionError(errorText(caught)); }
+    // 弹窗里的操作就地显示在弹窗里；页面上的操作（创建企业）没做成还要弹错误弹窗。
+    catch (caught) { setActionError(errorText(caught)); reportStudioError(caught); }
     finally { mutationLock.current = false; if (alive.current) setBusy(false); }
   };
   const openTransfer = (kind: Direction) => {

@@ -6,7 +6,7 @@ import type { EnterpriseCapabilities, EnterpriseContext, EnterpriseInvitation, E
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
 import { fetchModels } from "@/canvas-bridge/api";
 import { studioCapabilities, studioSpeechCatalog, studioLipSyncCatalog } from "@/canvas-bridge/studio-api";
-import { normalizeStudioError } from "./studio-errors";
+import { normalizeStudioError, reportStudioError } from "./studio-errors";
 import { studioOverlayContainer } from "./studio-overlay";
 import { enterpriseInvitationLink } from "./enterprise-invitation-link";
 
@@ -82,7 +82,8 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
   useEffect(() => { void load(); return () => { revision.current++; }; }, [load]);
   const mutate = async (operation: () => Promise<void>) => {
     if (mutation.current) return; mutation.current = true; setBusy(true); setError(""); setSuccess("");
-    try { await operation(); } catch (caught) { setError(errorText(caught)); }
+    // 弹窗里的操作就地显示在弹窗里；页面上的操作（保存设置、邀请、撤销、接受移交）没做成还要弹错误弹窗，不能只挂在区块顶上。
+    try { await operation(); } catch (caught) { setError(errorText(caught)); reportStudioError(caught); }
     finally { mutation.current = false; setBusy(false); }
   };
   const copyInvitation = async () => {

@@ -436,12 +436,12 @@ public class DirectorService {
                 ObjectNode a = find(c, "assets", assetId, "这个资产");
                 String label = "片段 " + clip.path("order").asInt();
                 if (!contains(clip.path("assetIds"), assetId))
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EDIT_CONFLICT", "「" + a.path("name").asText() + "」已经不在" + label + "的关联资产里了，页面已更新");
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EDIT_CONFLICT", "「" + a.path("name").asText() + "」已经不在" + label + " 的关联资产里了，页面已更新");
                 Set<String> running = runningNodes(w);
                 if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + clip.path("id").asText()) || running.contains(REWRITE_NODE + clip.path("id").asText()))
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的视频正在生成，完成后再解除关联");
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的视频正在生成，完成后再解除关联");
                 if (running.contains("board:" + clip.path("id").asText()))
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的分镜图正在生成，完成后再解除关联");
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的分镜图正在生成，完成后再解除关联");
                 List<String> keep = clipAssetIds(clip);
                 keep.remove(assetId);
                 ArrayNode ids = clip.putArray("assetIds"); // 其余资产顺序不变：图N 编号跟着顺序走
@@ -686,9 +686,9 @@ public class DirectorService {
                     String cid = clip.path("id").asText();
                     String label = "片段 " + clip.path("order").asInt();
                     if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + cid) || running.contains(REWRITE_NODE + cid))
-                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的视频正在生成，完成后再重写");
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的视频正在生成，完成后再重写");
                     if (running.contains("board:" + cid))
-                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的分镜图正在生成，完成后再重写");
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + " 的分镜图正在生成，完成后再重写");
                 }
                 requireNoReshoot(w, c, targetId, whole ? null : targets);
                 nodeId = "reshoot:" + (whole ? targetId : targets.size() == 1 ? targets.get(0).path("id").asText() : targetId);

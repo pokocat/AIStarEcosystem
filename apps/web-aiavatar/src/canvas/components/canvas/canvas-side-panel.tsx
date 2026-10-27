@@ -1,5 +1,7 @@
 import { memo, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
-import { App, Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
+// 本仓改动（2026-10-27）：错误不走 antd 顶部 message，统一到 Studio 错误出口（用户刚做的操作没做成就弹错误弹窗），成功提示照旧。
+import { Empty, Input, Popconfirm, Select, Spin, Tag } from "antd";
+import { useStudioApp } from "@/ip/studio-errors";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, Check, ChevronRight, Download, Eye, FileText, Image as ImageIcon, ListChecks, Music2, Plus, Search, Settings2, Square, Trash2, Type, Video } from "lucide-react";
 import { motion } from "motion/react";
@@ -141,7 +143,7 @@ function nodePreviewText(node: CanvasNodeData) {
 }
 
 function CanvasNodesTab({ nodes, selectedNodeIds, onFocusNode, onPreviewNode, theme }: { nodes: CanvasNodeData[]; selectedNodeIds: Set<string>; onFocusNode: (nodeId: string) => void; onPreviewNode: (nodeId: string) => void; theme: CanvasTheme }) {
-    const { message } = App.useApp();
+    const { message } = useStudioApp();
     const { t } = useTranslation();
     const [keyword, setKeyword] = useState("");
     const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -310,7 +312,7 @@ function buildInsertPayload(asset: Asset): InsertAssetPayload {
 }
 
 const CanvasAssetsTab = memo(function CanvasAssetsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
-    const { message } = App.useApp();
+    const { message } = useStudioApp();
     const { t } = useTranslation();
     const assets = useAssetStore((state) => state.assets);
     const loading = useAssetStore((state) => state.loading);
@@ -469,7 +471,7 @@ function AssetCover({ asset }: { asset: Asset }) {
 // ---------------------------------------------------------------------------
 
 const CanvasPromptsTab = memo(function CanvasPromptsTab({ onInsert, theme }: { onInsert: (payload: InsertAssetPayload) => void; theme: CanvasTheme }) {
-    const { message } = App.useApp();
+    const { message } = useStudioApp();
     const { t } = useTranslation();
     // 分组从「启用了哪几个远程源」改成「预设分类」——
     // 第三方源那套已在 v0.162 摘掉，内容来自 GET /v1/ip-studio/prompt-presets。

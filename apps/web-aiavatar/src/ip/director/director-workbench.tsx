@@ -118,8 +118,10 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const showFailure = useStudioFailure();
   const setError = useCallback<DirectorFail>(failure => {
     if (!failure) return;
-    const shown = showFailure(typeof failure === "string" ? { action: "这次操作", error: failure } : failure);
-    if (/_CONFLICT$|_STALE$|_EXPIRED$/.test(shown.code)) void load();
+    const value = typeof failure === "string" ? { action: "这次操作", error: failure } : failure;
+    const conflict = /_CONFLICT$|_STALE$|_EXPIRED$/.test(normalizeStudioError(value.error).code);
+    showFailure({ ...value, refreshed: conflict });
+    if (conflict) void load();
   }, [showFailure, load]);
 
   // 刷新、关页面时还有没保存的修改就提醒；站内切换工作区或集不会丢（见 useDraft）。

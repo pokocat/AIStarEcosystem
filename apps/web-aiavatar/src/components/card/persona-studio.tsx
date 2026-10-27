@@ -21,6 +21,7 @@
 import React from "react";
 import { Bot, Check, Loader2, RefreshCw, Sparkles, User, Wand2, X } from "lucide-react";
 import { CardApi, EMPTY_PERSONA, type CardPersona, type CardProfile } from "@/proto/card";
+import { reportStudioError } from "@/ip/studio-errors";
 
 type Msg = { role: "user" | "assistant"; content: string };
 type Draft = NonNullable<Awaited<ReturnType<typeof CardApi.personaChat>>["draft"]>;
@@ -83,7 +84,7 @@ export function PersonaStudio({
       if (turn.ready && turn.draft) setDraft(turn.draft);
     } catch (e) {
       // 如实说是哪一步不成 —— 未配置模型 / 调用失败，用户与运维要能据此行动
-      setErr(e instanceof Error ? e.message : "聊不通，稍后再试");
+      setErr(reportStudioError(e, { fallback: "聊不通，稍后再试" }).message);
     } finally {
       setBusy(false);
     }
@@ -124,7 +125,7 @@ export function PersonaStudio({
       });
       setRewrite(r);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "改写没成功，稍后再试");
+      setErr(reportStudioError(e, { fallback: "改写没成功，稍后再试" }).message);
     } finally {
       setBusy(false);
     }

@@ -42,7 +42,7 @@ export function useFlowLegacyTasks(projectId: string, setNodes: Dispatch<SetStat
           }
         } catch (error) {
           if (controller.signal.aborted) return;
-          const diagnostic = reportStudioError(error);
+          const diagnostic = reportStudioError(error, { background: true });
           // A network observation failure never discards the original task identity.
           setNodes(current => current.map(n => n.id === node.id ? { ...n, metadata: { ...n.metadata, status: 'error', errorDetails: diagnostic.message, errorCode: diagnostic.code, errorLogId: diagnostic.logId } } : n));
         }

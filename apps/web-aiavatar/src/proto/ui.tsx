@@ -2,6 +2,7 @@
 import React from "react";
 import { createPortal } from "react-dom";
 import { Icons } from "./icons";
+import { reportStudioError } from "@/ip/studio-errors";
 
 // ============================================================
 // V3 UI 基础组件
@@ -266,6 +267,8 @@ function ToastHost() {
   const [items, setItems] = useStateUI([]);
   useEffectUI(() => {
     window.toast = (msg, opts = {}) => {
+      // 2026-10-27：失败提示交给 Studio 统一错误出口 —— 刚点的操作没做成就弹错误弹窗，否则右上角提示；不再是底部一闪而过的黑条。
+      if (opts.tone === 'err') { reportStudioError(msg); return; }
       const id = Math.random().toString(36).slice(2);
       setItems(x => [...x, { id, msg, tone: opts.tone || 'default' }]);
       setTimeout(() => setItems(x => x.filter(i => i.id !== id)), opts.dur || 2600);

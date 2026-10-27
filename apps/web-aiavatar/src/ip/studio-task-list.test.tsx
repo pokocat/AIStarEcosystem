@@ -66,7 +66,7 @@ test.each(['VIDEO_SUBMISSION_UNKNOWN','VIDEO_RECONCILIATION_PENDING','UNEXPECTED
   render(<StudioTaskList {...props}/>);
   expect(screen.getByText(props.runs[0].errorMessage!)).toBeDefined();
   fireEvent.click(screen.getByRole('button',{name:'查看错误详情'}));
-  expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage);
+  expect(reportStudioError).toHaveBeenCalledWith(props.runs[0].errorMessage, { details: true });
   expect(screen.queryByRole('button',{name:'重新生成'})).toBeNull();
 });
 

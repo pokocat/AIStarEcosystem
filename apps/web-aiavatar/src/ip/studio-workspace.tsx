@@ -1206,8 +1206,8 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
         {/* 放在正文、提示词下面：放进底栏会和模型、参数、开关挤在一行把它们盖住（2026-10-27 浏览器验收） */}
         {promptReviewPanel}
       {imageRatioUnsupported&&<p className="studio-composer-validation" role="status">当前模型不支持 {ratio}，请打开创作参数选择可用比例。</p>}
-      {promptTooLong&&<StudioErrorNotice error={`提示词最多 ${promptMaxChars} 字，请缩短内容。`}/>}
-      {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。"/>}
+      {promptTooLong&&<StudioErrorNotice error={`提示词最多 ${promptMaxChars} 字，请缩短内容。`} background/>}
+      {removedVideoMention&&<StudioErrorNotice error="提示词中有已移除的参考，请删除该标记或重新引用素材。" background/>}
       <div className="studio-composer-inputs">
 
         {!nativeVideo&&<label>画布参考素材<Select mode="multiple" aria-label="参考素材" value={referenceIds} onChange={setReferenceIds} options={referenceOptions.map(n => ({value:n.id,label:n.title}))} placeholder="选择已在画布上的参考素材"/></label>}

@@ -717,6 +717,8 @@ html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(od
 .ip-surface .studio-composer-actions>.studio-node-editor-actions { flex-wrap:nowrap; margin:0; }
 /* 操作没做成的错误弹窗（studio-errors.tsx openStudioFailure）：原因、下一步、可展开的错误详情；长文字可滚动、可选中 */
 .studio-failure-dialog .ant-modal-confirm-paragraph { max-width: 100%; }
+/* 可关闭的确认框：标题给右上角的关闭按钮让出位置，窄屏长标题不压在 × 下面 */
+.studio-failure-dialog .ant-modal-confirm-title { padding-right: 28px; overflow-wrap: anywhere; }
 .studio-failure { display: flex; flex-direction: column; gap: 12px; max-height: min(60dvh, 520px); overflow-y: auto; color: #192229; user-select: text; -webkit-user-select: text; }
 .studio-failure h4 { margin: 0 0 4px; color: #65707e; font-size: 12px; font-weight: 600; }
 .studio-failure p, .studio-failure section > div { margin: 0; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
