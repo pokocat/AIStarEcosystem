@@ -5,7 +5,7 @@ import { RefreshCw, X } from "lucide-react";
 import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
-import { InlineError, chooseDirectorBilling, clearDrafts, costText, dialogFocus, hasDrafts, newRequestId, runningTask, useBusy, useEscape } from "./director-shared";
+import { InlineError, chooseDirectorBilling, clearDrafts, costText, dialogFocus, failed, hasDrafts, newRequestId, runningTask, useBusy, useEscape, type DirectorFail } from "./director-shared";
 
 // 分镜脚本 = 每个片段的镜头（还有标题、摘要、关联资产）；分镜图提示词和视频提示词由镜头自动编出来。
 // 所以「重新生成提示词」就是让 AI 重写分镜脚本：整集或单个片段。只改文字，不出图、不生成视频。
@@ -50,7 +50,7 @@ function replaced(work: DirectorWork, clips: DirectorClip[]) {
 }
 
 /** 单个片段：确认后只重写这一段。 */
-export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => void, setError: (m: string) => void) {
+export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => void, setError: DirectorFail) {
   const { modal } = useStudioApp();
   const { busy, run } = useBusy();
   const open = (clip: DirectorClip) => {
@@ -71,7 +71,7 @@ export function useRewriteClip(work: DirectorWork, apply: (w: DirectorWork) => v
         const next = await DirectorApi.runTask(work.id, { type: "reshoot", targetId: ep, options: { clipIds: [clip.id] }, clientRequestId: newRequestId(), billing, maxCost: work.pricing.textMax });
         clearDrafts(`${work.id}:clip:${clip.id}:`);
         apply(next);
-      }, setError),
+      }, failed(setError, `重写片段 ${clip.order} 的分镜脚本`)),
     });
   };
   return { open, busy };

@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowRight, BookOpen, Clapperboard, Film, ImagePlus, Layers, Loader2, Mic, Plus, ShoppingBag, UserRound, Video } from 'lucide-react';
@@ -11,6 +11,7 @@ import { StudioConversationStart } from '@/ip/studio-conversation-start';
 import { StudioTemplateUse } from '@/ip/studio-template-use';
 import { CanvasThumb } from '@/ip/canvas-thumb';
 import { useStartNewCanvas } from '@/ip/use-start-new-canvas';
+import { useStudioFailure } from '@/ip/studio-errors';
 import { formatDateTime } from '@/lib/datetime';
 import { useHubData } from './data';
 
@@ -23,7 +24,6 @@ const quickEntries = [
 export function StudioHome({ ready }: { ready: boolean }) {
   const router = useRouter();
   const [creating, setCreating] = useState<string>();
-  const [error, setError] = useState('');
   const [refresh, setRefresh] = useState(0);
   const [gallery, setGallery] = useState<'official' | 'personal' | 'examples'>('official');
   const [usingTemplate, setUsingTemplate] = useState<IpTemplate>();
@@ -34,29 +34,36 @@ export function StudioHome({ ready }: { ready: boolean }) {
   // 「新建空白画布」 and the 「空白画布」 tool are the shared 「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.1).
   const newCanvas = useStartNewCanvas();
   const busy = creating !== undefined || newCanvas.creating;
-  const startBlank = () => { if (inFlight.current) return; setError(''); void newCanvas.start(); };
+  // 新建画布没成功：弹错误弹窗说清楚（原来只在页面中部挂一行字，用户在页面上方点按钮时看不到）。
+  const showFailure = useStudioFailure();
+  useEffect(() => {
+    if (newCanvas.error === undefined) return;
+    showFailure({ action: '新建画布', error: newCanvas.error, next: '可以再点一次「新建」；反复失败的话展开「错误详情」复制后发给我们。' });
+    newCanvas.clearError();
+  }, [newCanvas.error]); // eslint-disable-line react-hooks/exhaustive-deps
+  const startBlank = () => { if (inFlight.current) return; void newCanvas.start(); };
 
   const start = async (entry: StudioEntry) => {
     if (inFlight.current || newCanvas.creating) return;
     inFlight.current = true;
-    setError(''); setCreating(entry);
+    setCreating(entry);
     try {
       const project = await createStudioEntry(entry);
       router.push(studioEntryHref(project.id, entry));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
+      showFailure({ action: '新建画布', error: e, next: '可以再点一次；反复失败的话展开「错误详情」复制后发给我们。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
   const startConversation = async (brief: string) => {
     if (inFlight.current || newCanvas.creating) return;
     inFlight.current = true;
-    setError(''); setCreating('assistant');
+    setCreating('assistant');
     try {
       const project = await createStudioEntry('assistant', brief);
       router.push(studioEntryHref(project.id, 'assistant', { send: !!brief.trim() && !studioBriefNeedsReference(brief) }));
     } catch (e) {
-      setError(e instanceof Error ? e.message : '画布没有创建成功，请稍后重试');
+      showFailure({ action: '用这句话新建画布', error: e, next: '输入的内容还在框里，可以再点一次「开始对话」。' });
       setCreating(undefined); inFlight.current = false;
     }
   };
@@ -76,7 +83,6 @@ export function StudioHome({ ready }: { ready: boolean }) {
 
     <StudioConversationStart compact heading="今天想做点什么？" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
     <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
-    {(error || newCanvas.errorMessage) && <div className="studio-home-error" role="alert"><p>{error || newCanvas.errorMessage}</p></div>}
 
     <nav className="studio-home-tools" aria-label="主要创作功能">{quickEntries.map(([entry, Icon]) => <button key={entry} type="button" disabled={busy} aria-busy={entry === 'blank' ? newCanvas.creating : creating === entry} onClick={() => entry === 'blank' ? startBlank() : void start(entry)}>
       <Icon size={22}/><span>{studioEntries[entry].title}</span><small>{studioEntries[entry].description}</small></button>)}</nav>

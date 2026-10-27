@@ -12,6 +12,7 @@ import { IpStudioApi } from "@/ip/api";
 import { createStudioEntry, studioEntryHref, type StudioEntry } from "@/ip/studio-entry";
 import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
+import { useStudioFailure } from "@/ip/studio-errors";
 import { formatDateTime } from "@/lib/datetime";
 
 const features: { title: string; description: string; entry: StudioEntry; art: string; icon: typeof Sparkles }[] = [
@@ -32,7 +33,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
   const [authed, setAuthed] = useState(false);
   const [creating, setCreating] = useState<StudioEntry>();
   const createLock = useRef(false);
-  const [error, setError] = useState("");
   const [projects, setProjects] = useState<IpProjectSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [projectError, setProjectError] = useState("");
@@ -40,6 +40,13 @@ export function IpHome({ header = true }: { header?: boolean }) {
   // 「创建空白画布」 is the shared 「新建」 (docs/ip-studio-new-canvas-and-threads.md §2.2).
   const newCanvas = useStartNewCanvas();
   const busy = !!creating || newCanvas.creating;
+  // 新建画布没成功：弹错误弹窗说清楚，不在页面中部挂一行字。
+  const showFailure = useStudioFailure();
+  useEffect(() => {
+    if (newCanvas.error === undefined) return;
+    showFailure({ action: "新建画布", error: newCanvas.error, next: "可以再点一次「创建空白画布」；反复失败的话展开「错误详情」复制后发给我们。" });
+    newCanvas.clearError();
+  }, [newCanvas.error]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { setAuthed(USE_MOCK || auth.isAuthed()); }, []);
   useEffect(() => {
     if (!authed) return;
@@ -56,22 +63,22 @@ export function IpHome({ header = true }: { header?: boolean }) {
     if (createLock.current || newCanvas.creating) return;
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
     createLock.current = true;
-    setCreating("assistant"); setError("");
+    setCreating("assistant");
     try { const project = await createStudioEntry("assistant", brief); router.push(studioEntryHref(project.id, "assistant", { send: !!brief.trim() })); }
-    catch (e) { setError(e instanceof Error ? e.message : "画布没有创建成功，请重试"); setCreating(undefined); createLock.current = false; }
+    catch (e) { showFailure({ action: "用这句话新建画布", error: e, next: "输入的内容还在框里，可以再点一次「开始对话」。" }); setCreating(undefined); createLock.current = false; }
   };
   const startBlank = () => {
     if (createLock.current) return;
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
-    setError(""); void newCanvas.start();
+    void newCanvas.start();
   };
   const start = async (entry: StudioEntry) => {
     if (createLock.current || newCanvas.creating) return;
     if (!authed) { router.push("/login?next=%2Fdashboard"); return; }
     createLock.current = true;
-    setCreating(entry); setError("");
+    setCreating(entry);
     try { const project = await createStudioEntry(entry); router.push(studioEntryHref(project.id, entry)); }
-    catch (e) { setError(e instanceof Error ? e.message : "画布没有创建成功，请重试"); setCreating(undefined); createLock.current = false; }
+    catch (e) { showFailure({ action: "新建画布", error: e, next: "可以再点一次；反复失败的话展开「错误详情」复制后发给我们。" }); setCreating(undefined); createLock.current = false; }
   };
   return <div className="ip-brand-surface ip-home">
     {header && <><DesktopTopBar publicMode /><header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
@@ -86,7 +93,6 @@ export function IpHome({ header = true }: { header?: boolean }) {
         </div>
         <span className="ip-home-hero-note">一个角色，无限可能</span>
       </section>
-      {(error || newCanvas.errorMessage) && <div className="ip-brand-error" role="alert">{error || newCanvas.errorMessage}<button onClick={() => { setError(""); newCanvas.clearError(); }}>关闭</button></div>}
       <div className="ip-home-content">
         <section className="ip-home-features" aria-label="开始创作">
           {features.map(f => <button key={f.title} className="ip-home-feature" disabled={busy} onClick={() => void start(f.entry)}>

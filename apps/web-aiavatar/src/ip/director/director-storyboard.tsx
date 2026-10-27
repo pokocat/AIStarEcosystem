@@ -7,13 +7,13 @@ import type { DirectorClip, DirectorShot, DirectorTask, DirectorWork } from "@ai
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import type { WorkbenchProps } from "./director-workbench";
-import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage } from "./director-shared";
+import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, secRange, useBusy, useDraft, useEscape, DirectorSheet, dialogFocus, ZoomableImage, type DirectorFail } from "./director-shared";
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } from "./director-rewrite";
 import { formatDateTime } from "@/lib/datetime";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
-  const { work, episodeId, apply, setError, goTab, pickEpisode } = props;
+  const { work, episodeId, apply, setError, goTab, pickEpisode, focus } = props;
   const { modal } = useStudioApp();
   const { busy, run } = useBusy();
   const ep = work.episodes.find(e => e.id === episodeId);
@@ -26,6 +26,14 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const [rewriting, setRewriting] = useState(false);
   const rewriteClip = useRewriteClip(work, apply, setError);
   useEffect(() => setSelected(new Set()), [episodeId]);
+  // 从资产页或错误弹窗「前往」某个片段：滚到它，打开它的关联资产（高亮那项）或镜头编辑。
+  useEffect(() => {
+    if (!focus) return;
+    const target = work.clips.find(c => c.id === focus.clipId);
+    if (!target || target.episodeId !== episodeId) return;
+    window.requestAnimationFrame(() => document.getElementById(`clip-${target.id}`)?.scrollIntoView?.({ block: "center", behavior: "smooth" }));
+    if (focus.open === "assets") setPreview({ clipId: target.id, kind: "assets", assetId: focus.assetId });
+  }, [focus?.at, episodeId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ready) { setQuotes({}); return; }
     let live = true;
@@ -43,7 +51,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("storyboard");
     apply(await DirectorApi.runTask(work.id, { type: "plan", targetId: ep.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, `写第 ${ep.no} 集分镜脚本`));
   const rewriteBlock = !lim ? "暂无可用视频模型，无法确定片段时长" : writing.clips.length
     ? `${clips.filter(c => runningTask(work, `reshoot:${c.id}`)).map(c => `片段 ${c.order}`).join("、")} 正在重写，完成后再重写整集` : "";
   const openRewrite = () => rewriteBlock ? modal.info({ title: `现在不能重写第 ${ep.no} 集`, content: rewriteBlock, okText: "知道了" }) : setRewriting(true);
@@ -70,15 +78,15 @@ export function DirectorStoryboard(props: WorkbenchProps) {
       {ep.planError && <InlineError message={ep.planError.message}/>}
       {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。</div>}
       {pending && <div className="director-warn"><span>写分镜脚本期间你改过片段，新写的版本（{pending.clips.length} 个片段）没有覆盖现有内容。要换成新版本吗？</span>
-        <button type="button" disabled={!!busy || hasMedia} title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={() => void run("pending", async () => apply(await DirectorApi.edit(work.id, "episode.usePendingPlan", ep.id, null)), setError)}>换成新版本</button>
-        <button type="button" disabled={!!busy} onClick={() => void run("discard", async () => apply(await DirectorApi.edit(work.id, "episode.discardPendingPlan", ep.id, null)), setError)}>保留现有</button></div>}
+        <button type="button" disabled={!!busy || hasMedia} title={hasMedia ? "请先删除已有分镜图的片段" : undefined} onClick={() => void run("pending", async () => apply(await DirectorApi.edit(work.id, "episode.usePendingPlan", ep.id, null)), failed(setError, "换成新写的分镜脚本"))}>换成新版本</button>
+        <button type="button" disabled={!!busy} onClick={() => void run("discard", async () => apply(await DirectorApi.edit(work.id, "episode.discardPendingPlan", ep.id, null)), failed(setError, "保留现有分镜脚本"))}>保留现有</button></div>}
       {clips.length === 0 && !writing.plan && <div className="director-panel director-empty-panel">
         <Clapperboard size={26}/>
         <p>分镜脚本把本集切成几个片段，每段写好镜头、分镜图提示词和视频提示词，一段对应一条视频。写之前先在「资产」准备好角色、场景和道具。</p>
         {work.assets.length === 0 && <button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>前往资产</button>}
       </div>}
       {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
-      {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)}
+      {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)} editorAt={focus?.open === "editor" && focus.clipId === c.id ? focus.at : undefined}
         onRewrite={() => rewriteClip.open(c)} rewriteTask={runningTask(work, `reshoot:${c.id}`) ?? writing.whole}
         selected={selected.has(c.id)} onSelect={on => setSelected(prev => { const next = new Set(prev); if (on) next.add(c.id); else next.delete(c.id); return next; })}/>)}
     </div>
@@ -90,7 +98,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
 }
 
 /** 多选片段后一键生成分镜图或视频：先列出哪些能做、哪些跳过及原因、一共多少积分，确认后依次提交，付款方只选一次。 */
-function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError }: { work: DirectorWork; clips: DirectorClip[]; quotes: Record<string, ClipQuote>; selected: Set<string>; setSelected: (s: Set<string>) => void; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
+function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError }: { work: DirectorWork; clips: DirectorClip[]; quotes: Record<string, ClipQuote>; selected: Set<string>; setSelected: (s: Set<string>) => void; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
   const { modal } = useStudioApp();
   const { busy, run } = useBusy();
   const chosen = clips.filter(c => selected.has(c.id));
@@ -117,14 +125,15 @@ function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError 
       okText: p.ok.length ? "开始生成" : "知道了", cancelText: "取消",
       onOk: () => { if (!p.ok.length) return; return run(kind, async () => {
         const billing = await chooseDirectorBilling(kind === "board" ? "image" : "video", p.total);
-        const failed: string[] = [];
+        const failures: string[] = [];
         for (const x of p.ok) {
           try { apply(await DirectorApi.runTask(work.id, { type: kind, targetId: x.clip.id, clientRequestId: newRequestId(), billing, maxCost: x.cost })); }
-          catch (e) { failed.push(`片段 ${x.clip.order}：${errorText(e)}`); }
+          catch (e) { failures.push(`片段 ${x.clip.order}：${errorText(e)}`); }
         }
-        if (failed.length) setError(`${failed.length} 个片段没有提交成功。${failed.join("；")}`);
+        if (failures.length) setError({ action: `批量生成${what}`, error: `${p.ok.length} 个片段里有 ${failures.length} 个没有提交成功：${failures.join("；")}`,
+          next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那个片段上单独生成。" });
         setSelected(new Set());
-      }, setError); },
+      }, failed(setError, `批量生成${what}`)); },
     });
   };
   return <div className="director-batch">
@@ -154,7 +163,7 @@ function EpisodeSidebar({ work, episodeId, onPick }: { work: DirectorWork; episo
 }
 
 type PreviewKind = "assets" | "video";
-type Preview = { clipId: string; kind: PreviewKind; candidateId?: string };
+type Preview = { clipId: string; kind: PreviewKind; candidateId?: string; /** 从资产页跳来时要处理的那项资产 */ assetId?: string };
 
 function clipStatus(work: DirectorWork, clip: DirectorClip) {
   if (runningTask(work, `reshoot:${clip.id}`) || runningTask(work, `reshoot:${clip.episodeId}`)) return "分镜脚本重写中";
@@ -203,14 +212,14 @@ function tone(status: string) {
   return status === "已确认" ? "is-done" : status === "待确认" || status === "需更新" ? "is-warn" : "";
 }
 
-function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onRewrite, rewriteBlock, rewriting }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: (m: string) => void; onEdit: (() => void) | null; selected?: boolean; onSelect?: (on: boolean) => void;
+function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onRewrite, rewriteBlock, rewriting }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: DirectorFail; onEdit: (() => void) | null; selected?: boolean; onSelect?: (on: boolean) => void;
   onRewrite?: () => void; rewriteBlock?: string; rewriting?: boolean }) {
   const { modal } = useStudioApp();
   const { run } = useBusy();
   // 不能重写时也能点：点了说原因，不做一个点了没反应的灰按钮。
   const rewrite = () => rewriteBlock ? modal.info({ title: `现在不能重写片段 ${clip.order}`, content: rewriteBlock, okText: "知道了" }) : onRewrite?.();
   const remove = () => modal.confirm({ title: `删除片段 ${clip.order}？`, content: "片段内的镜头和分镜图将一并移除。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
-    onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "clip.delete", clip.id, null)), setError) });
+    onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "clip.delete", clip.id, null)), failed(setError, `删除片段 ${clip.order}`)) });
   return <header className="director-clip-head">
     {onSelect && <input type="checkbox" className="director-clip-check" aria-label={`选择片段 ${clip.order}`} checked={!!selected} onChange={e => onSelect(e.target.checked)}/>}
     <span className="director-clip-no">{clip.order}</span>
@@ -226,10 +235,12 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onR
  * 一个片段一张卡，主体是视频：分镜图是生成视频的参考（不是资产），单独一个入口、单独一个弹窗；
  * 视频提示词按分镜图第 1–N 格逐镜写，宫格保证前后镜头的人物、环境一致。
  */
-function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, selected, onSelect, onRewrite, rewriteTask }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; selected: boolean; onSelect: (on: boolean) => void;
-  onRewrite: () => void; rewriteTask?: DirectorTask }) {
+function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, selected, onSelect, onRewrite, rewriteTask, editorAt }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; selected: boolean; onSelect: (on: boolean) => void;
+  onRewrite: () => void; rewriteTask?: DirectorTask; editorAt?: number }) {
   // 没保存的镜头修改切走再回来还在，编辑区保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(`${work.id}:clip:${clip.id}:edit:`));
+  // 从资产页「前往」来改台词说话人：直接打开镜头编辑。
+  useEffect(() => { if (editorAt && !rewriteTask) setEditing(true); }, [editorAt]); // eslint-disable-line react-hooks/exhaustive-deps
   const { busy: pendingBusy, run: runPending } = useBusy();
   const pendingShots = clip.pendingShots;
   const board = adopted(clip.board);
@@ -247,13 +258,13 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const shownVideo = adopted(clip.video) ?? clip.video.candidates[clip.video.candidates.length - 1];
   const videoTag = shownVideo ? (shownVideo.id === clip.video.adoptedId ? (clip.video.adoptedBy === "auto" ? "待确认" : clip.video.adoptedCheck === "outdated" ? "需更新" : "采用中") : "未采用")
     : videoBusy ? "视频生成中" : null;
-  return <article className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
+  return <article id={`clip-${clip.id}`} className={`director-clip-card ${clip.issues.length ? "has-issues" : ""}`}>
     <ClipHead work={work} clip={clip} apply={apply} setError={setError} onEdit={editing || rewriteTask ? null : () => setEditing(true)} selected={selected} onSelect={onSelect}
       onRewrite={onRewrite} rewriteBlock={clipRewriteBlock(work, clip, editing)} rewriting={!!rewriteTask}/>
     {rewriteTask && rewriteTask.target === `reshoot:${clip.id}` && <AiWorking compact title={`AI 正在重写片段 ${clip.order} 的分镜脚本`} task={rewriteTask} detail="写好后这一段的镜头、分镜图提示词和视频提示词自动更新。不会出图，也不会生成视频。"/>}
     {pendingShots && <div className="director-warn"><span>重写期间你改过这一段，新写的版本（{pendingShots.shots.length} 个镜头）没有覆盖现有内容。要换成新版本吗？</span>
-      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("use", async () => apply(await DirectorApi.edit(work.id, "clip.usePendingShots", clip.id, null)), setError)}>换成新版本</button>
-      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("discard", async () => apply(await DirectorApi.edit(work.id, "clip.discardPendingShots", clip.id, null)), setError)}>保留现有</button></div>}
+      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("use", async () => apply(await DirectorApi.edit(work.id, "clip.usePendingShots", clip.id, null)), failed(setError, `把片段 ${clip.order} 换成新写的版本`))}>换成新版本</button>
+      <button type="button" disabled={!!pendingBusy} onClick={() => void runPending("discard", async () => apply(await DirectorApi.edit(work.id, "clip.discardPendingShots", clip.id, null)), failed(setError, `保留片段 ${clip.order} 的现有版本`))}>保留现有</button></div>}
     {editing ? <>
       {clip.summary && <p className="director-clip-summary">{clip.summary}</p>}
       <ClipEditor work={work} clip={clip} apply={apply} setError={setError} onDone={() => setEditing(false)}/>
@@ -299,7 +310,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
 }
 
 /** 分镜图单独一个弹窗：大图、历史版本、分镜图提示词，确认或提交重新生成。 */
-function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: (m: string) => void; onClose: () => void }) {
+function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: DirectorFail; onClose: () => void }) {
   const [viewId, setViewId] = useState<string | null>(clip.board.adoptedId ?? clip.board.candidates[clip.board.candidates.length - 1]?.id ?? null);
   const prefix = `${work.id}:clip:${clip.id}:prompt:board`;
   const [text, setText, dirty] = useDraft(prefix, clip.boardPrompt);
@@ -363,8 +374,29 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
 }
 
 /** 右侧抽屉：关联资产（锁定长相和环境的标准照）或视频结果，就地查看，不离开分镜页。 */
-function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onClose }: { work: DirectorWork; clip: DirectorClip; preview: Preview; apply: (w: DirectorWork) => void; setError: (m: string) => void; goTab: WorkbenchProps["goTab"]; onPick: (candidateId: string) => void; onClose: () => void }) {
+function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onClose }: { work: DirectorWork; clip: DirectorClip; preview: Preview; apply: (w: DirectorWork) => void; setError: DirectorFail; goTab: WorkbenchProps["goTab"]; onPick: (candidateId: string) => void; onClose: () => void }) {
   const { busy, run } = useBusy();
+  const { modal } = useStudioApp();
+  // 解除关联：只从这个片段的关联资产里去掉这一项。先把真实影响说清楚（已有分镜图 / 视频、台词说话人、手改的提示词）。
+  const unlink = (a: DirectorWork["assets"][number]) => {
+    const lines = clip.shots.reduce((n, s) => n + s.dialogue.filter(l => l.speakerId === a.id).length, 0);
+    const made = [clip.board.candidates.length ? "分镜图" : "", clip.video.candidates.length ? "视频" : ""].filter(Boolean).join("和");
+    modal.confirm({
+      title: `从片段 ${clip.order} 解除「${a.name}」的关联？`,
+      content: <ul className="director-regen-notes">
+        <li>只把「{a.name}」从片段 {clip.order} 的关联资产里去掉：不删除片段，不删除资产，其他片段不受影响。</li>
+        <li>之后这一段出分镜图和视频不再参考「{a.name}」的参考图，提示词随之更新。</li>
+        {made && <li className="is-warn">这一段已有的{made}不会删除；和新的关联对不上的会标成「需更新」，要不要重新生成由你决定。</li>}
+        {lines > 0 && <li className="is-warn">「{a.name}」在这一段还有 {lines} 句台词，台词和说话人不变。要删除这个角色，还要在「编辑镜头」里把这些台词换成别的说话人。</li>}
+        {(clip.boardPromptCustom || clip.videoPromptCustom) && <li className="is-warn">这一段手改过的提示词不会自动更新，写到「{a.name}」的地方需要自己改。</li>}
+      </ul>,
+      okText: "解除关联", okButtonProps: { danger: true }, cancelText: "取消",
+      onOk: () => run(`unlink:${a.id}`, async () => apply(await DirectorApi.edit(work.id, "clip.unlinkAsset", clip.id, null, { assetId: a.id })),
+        failed(setError, `解除「${a.name}」与片段 ${clip.order} 的关联`)),
+    });
+  };
+  const target = preview.assetId ? work.assets.find(a => a.id === preview.assetId) : undefined;
+  const targetGone = !!target && !clip.assetIds.includes(target.id);
   const linked = clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"];
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const media = clip.video.candidates.find(m => m.id === preview.candidateId) ?? adopted(clip.video);
@@ -373,16 +405,21 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
       <header><span className="director-clip-no">{clip.order}</span><h3 title={clip.title}>{preview.kind === "assets" ? "关联资产" : "视频"} · {clip.title || `片段 ${clip.order}`}</h3></header>
       {preview.kind === "assets" ? <>
         <p className="director-dialog-note">角色、场景、道具的标准照，只用来锁定长相、服装和环境；镜头构图看分镜图。</p>
+        {targetGone && <div className="director-notice director-unlinked-note" role="status"><span>「{target!.name}」已不在这个片段的关联资产里。{
+          work.clips.some(c => c.assetIds.includes(target!.id)) ? "其他片段还在用它，回到资产页可以看是哪些。" : "没有片段在用它了，回到资产页就可以删除。"}</span>
+          <button type="button" onClick={() => { onClose(); goTab("assets"); }}>回到资产页</button></div>}
         {linked.length === 0 ? <p className="director-muted">这个片段还没有关联资产，可在卡片上点「编辑镜头」调整。</p> :
           <ul className="director-preview-assets">{linked.map(a => {
             const img = adopted(a.image);
             const audioOnly = a.description.includes("只出声音");
             const status = audioOnly ? "仅声音出场" : !a.image.adoptedId ? "缺少参考图" : a.image.adoptedBy === "auto" ? "待确认" : a.image.adoptedCheck === "outdated" ? "需更新" : "已确认";
-            return <li key={a.id}>
+            return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
               <span className="director-preview-asset-img">{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
                 <small className={status === "已确认" ? "is-done" : status === "缺少参考图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
-                <p title={a.description}>{a.description || "暂无描述"}</p></div>
+                <p title={a.description}>{a.description || "暂无描述"}</p>
+                <button type="button" className="ip-brand-text-button director-danger director-unlink" disabled={!!busy} onClick={() => unlink(a)}
+                  aria-label={`从片段 ${clip.order} 解除${a.name}的关联`}>{busy === `unlink:${a.id}` ? "正在解除…" : "解除关联"}</button></div>
             </li>;
           })}</ul>}
         <button type="button" className="ip-brand-secondary" onClick={() => { onClose(); goTab("assets"); }}>去资产页修改</button>
@@ -395,9 +432,9 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
           <button key={m.id} type="button" aria-pressed={m.id === media?.id} onClick={() => onPick(m.id)}>视频 {i + 1}{m.id === clip.video.adoptedId ? " · 采用中" : ""}</button>)}</div>}
         <div className="director-card-actions">
           {media && media.id !== clip.video.adoptedId && <button type="button" className="ip-brand-secondary" disabled={!!busy}
-            onClick={() => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptVideo", clip.id, null, { candidateId: media.id })), setError)}>采用这一版</button>}
+            onClick={() => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptVideo", clip.id, null, { candidateId: media.id })), failed(setError, `采用片段 ${clip.order} 的这版视频`))}>采用这一版</button>}
           {media && media.id === clip.video.adoptedId && clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy}
-            onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
+            onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), failed(setError, `确认片段 ${clip.order} 的视频`))}><Check size={14}/>确认使用</button>}
         </div>
         {media?.refs && media.refs.length > 0 && <p className="director-used-refs">参考：{media.refs.map(r => `${r.label} ${r.name}`).join("、")}</p>}
       </>}
@@ -406,7 +443,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
 }
 
 /** 一份提示词（视频或分镜图），保存、恢复自动生成各自独立。 */
-function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWork; clip: DirectorClip; which: "board" | "video"; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
+function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWork; clip: DirectorClip; which: "board" | "video"; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
   const prefix = `${work.id}:clip:${clip.id}:prompt:`;
   const server = which === "board" ? clip.boardPrompt : clip.videoPrompt;
   const custom = which === "board" ? clip.boardPromptCustom : clip.videoPromptCustom;
@@ -415,7 +452,7 @@ function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWo
   const save = (data: object) => void run("prompt", async () => {
     const next = await DirectorApi.edit(work.id, "clip.update", clip.id, clip.rev, data);
     clearDrafts(prefix + which); apply(next);
-  }, setError);
+  }, failed(setError, `保存片段 ${clip.order} 的${which === "board" ? "分镜图" : "视频"}提示词`, "改过的内容还在输入框里，按原因调整后再点「保存」。"));
   const frame = work.videoLimits?.mode === "frame";
   return <div className="director-prompts">
     <textarea className="director-prompt" rows={5} aria-label={which === "board" ? "分镜图提示词" : "视频提示词"} maxLength={7000} value={text} onChange={e => setText(e.target.value)}/>
@@ -445,7 +482,7 @@ function SentPrompt({ clip }: { clip: DirectorClip }) {
 
 type ShotDraft = Omit<DirectorShot, "startSec" | "endSec"> & { durationText: string };
 
-function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: (m: string) => void; onDone: () => void }) {
+function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWork; clip: DirectorClip; apply: (w: DirectorWork) => void; setError: DirectorFail; onDone: () => void }) {
   const prefix = `${work.id}:clip:${clip.id}:edit:`;
   const [title, setTitle] = useDraft(prefix + "title", clip.title);
   const [summary, setSummary] = useDraft(prefix + "summary", clip.summary);

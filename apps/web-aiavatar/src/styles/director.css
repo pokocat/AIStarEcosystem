@@ -368,6 +368,12 @@ html:not([data-layout="desktop"]) .director-episode-side ol { flex-direction: ro
 .director-preview-assets b { display: flex; align-items: baseline; gap: 6px; font-size: 14px; }
 .director-preview-assets b small { color: var(--ip-muted); font-size: 11px; font-weight: 500; }
 .director-preview-assets small { font-size: 12px; font-weight: 600; }
+/* 从资产页「前往」来的那一项：描边 + 浅底，一眼看到要处理哪个 */
+.director-preview-assets li.is-focused { border-color: var(--ip-ink); background: var(--ip-soft); box-shadow: 0 0 0 2px var(--ip-soft); }
+.director-preview-assets .director-unlink { justify-self: start; margin-top: 6px; padding: 3px 10px; border: 1px solid currentColor; color: var(--ip-error); border-radius: 7px; font-size: 12px; font-weight: 600; }
+.director-unlinked-note { margin: 0; }
+/* 资产详情里「用在哪些片段」 */
+.director-asset-refs h5 small { margin-left: 6px; color: var(--ip-muted); font-size: 12px; font-weight: 500; }
 .director-preview-assets small.is-done { color: var(--ip-green); }
 .director-preview-assets small.is-warn { color: var(--ip-gold); }
 .director-preview-assets small.is-error { color: var(--ip-error); }

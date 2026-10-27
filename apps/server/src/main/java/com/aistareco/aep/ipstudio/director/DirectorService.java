@@ -349,9 +349,17 @@ public class DirectorService {
                 bump(a);
             }
             case "asset.delete" -> {
-                find(c, "assets", req.targetId(), "这个资产");
-                for (JsonNode clip : c.path("clips")) if (contains(clip.path("assetIds"), req.targetId()))
-                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_ASSET_IN_USE", "该资产仍被片段使用，请先取消关联");
+                ObjectNode a = find(c, "assets", req.targetId(), "这个资产");
+                ArrayNode refs = assetRefs(c, req.targetId());
+                if (!refs.isEmpty()) {
+                    List<String> where = new ArrayList<>();
+                    for (JsonNode r : refs) where.add("第 " + r.path("episodeNo").asInt() + " 集片段 " + r.path("order").asInt());
+                    ObjectNode details = om.createObjectNode().put("assetId", req.targetId()).put("name", a.path("name").asText());
+                    details.set("clips", refs);
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_ASSET_IN_USE",
+                            "「" + a.path("name").asText() + "」还用在 " + refs.size() + " 个片段里（" + String.join("、", where.subList(0, Math.min(5, where.size())))
+                                    + (where.size() > 5 ? " 等" : "") + "），先在这些片段里解除关联再删除", details);
+                }
                 remove(c, "assets", req.targetId());
             }
             case "asset.adopt" -> {
@@ -420,6 +428,25 @@ public class DirectorService {
                 String epId = find(c, "clips", req.targetId(), "这个片段").path("episodeId").asText();
                 remove(c, "clips", req.targetId());
                 renumber(c, epId);
+            }
+            case "clip.unlinkAsset" -> {
+                // 只从这个片段的关联资产里去掉这一项：不删片段、不删资产、不动别的片段；台词说话人不改。
+                ObjectNode clip = find(c, "clips", req.targetId(), "这个片段");
+                String assetId = d.path("assetId").asText("");
+                ObjectNode a = find(c, "assets", assetId, "这个资产");
+                String label = "片段 " + clip.path("order").asInt();
+                if (!contains(clip.path("assetIds"), assetId))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EDIT_CONFLICT", "「" + a.path("name").asText() + "」已经不在" + label + "的关联资产里了，页面已更新");
+                Set<String> running = runningNodes(w);
+                if (clip.path("video").path("pending").size() > 0 || running.contains("video:" + clip.path("id").asText()) || running.contains(REWRITE_NODE + clip.path("id").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的视频正在生成，完成后再解除关联");
+                if (running.contains("board:" + clip.path("id").asText()))
+                    throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", label + "的分镜图正在生成，完成后再解除关联");
+                List<String> keep = clipAssetIds(clip);
+                keep.remove(assetId);
+                ArrayNode ids = clip.putArray("assetIds"); // 其余资产顺序不变：图N 编号跟着顺序走
+                keep.forEach(ids::add);
+                bump(clip);
             }
             case "clip.usePendingShots" -> {
                 ObjectNode clip = find(c, "clips", req.targetId(), "这个片段");
@@ -2996,6 +3023,31 @@ public class DirectorService {
 
     private void notice(ObjectNode c, String message) {
         c.putObject("notice").put("message", message).put("at", Instant.now().toString());
+    }
+
+    /**
+     * 资产被哪些片段用着：在关联资产里，或者是某句台词的说话人（删掉它这些台词就没有说话人了）。
+     * 删除被拒时作为 details 交给页面，页面据此列出片段、给出前往入口。
+     */
+    ArrayNode assetRefs(ObjectNode c, String assetId) {
+        ArrayNode out = om.createArrayNode();
+        for (JsonNode clip : c.path("clips")) {
+            boolean linked = contains(clip.path("assetIds"), assetId);
+            int lines = 0;
+            for (JsonNode s : clip.path("shots")) for (JsonNode l : s.path("dialogue")) if (assetId.equals(l.path("speakerId").asText(null))) lines++;
+            if (!linked && lines == 0) continue;
+            JsonNode ep = findOrNull(c, "episodes", clip.path("episodeId").asText());
+            out.addObject().put("clipId", clip.path("id").asText()).put("episodeId", clip.path("episodeId").asText())
+                    .put("episodeNo", ep == null ? 0 : ep.path("no").asInt()).put("order", clip.path("order").asInt())
+                    .put("title", clip.path("title").asText()).put("linked", linked).put("lines", lines);
+        }
+        return out;
+    }
+
+    private static List<String> clipAssetIds(JsonNode clip) {
+        List<String> out = new ArrayList<>();
+        clip.path("assetIds").forEach(x -> out.add(x.asText()));
+        return out;
     }
 
     private boolean hasClips(ObjectNode c, String episodeId) {

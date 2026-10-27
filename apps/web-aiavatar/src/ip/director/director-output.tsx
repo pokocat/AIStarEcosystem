@@ -6,13 +6,13 @@ import type { DirectorClip, DirectorEpisode, DirectorWork } from "@ai-star-eco/t
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
-import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, newRequestId, runningTask, useBusy, useEscape, dialogFocus } from "./director-shared";
+import { InlineError, OutdatedNote, Spinner, adopted, chooseDirectorBilling, costText, failed, newRequestId, runningTask, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 
 export type ClipQuote = { credits: number | null; error: string | null };
 
 /** 片段的视频操作：报价、生成、进度与确认。画面和历史版本在左侧画面区。 */
 /** 片段视频的操作区：提示（生成中、声音、旧版本）在上，最后一行是生成设置 + 按钮 + 价格。onBoard：分镜图还没好时给「去生成分镜图」。 */
-export function ClipVideo({ work, clip, quote, apply, setError, onBoard, settings }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: (m: string) => void;
+export function ClipVideo({ work, clip, quote, apply, setError, onBoard, settings }: { work: DirectorWork; clip: DirectorClip; quote?: ClipQuote; apply: (w: DirectorWork) => void; setError: DirectorFail;
   onBoard?: () => void; settings?: string }) {
   const { busy, run } = useBusy();
   const current = adopted(clip.video);
@@ -27,13 +27,13 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
     const billing = await chooseDirectorBilling("video", latest.credits);
     apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
       ...(promptChoice ? { options: { promptChoice } } : {}) }));
-  }, setError);
+  }, failed(setError, `生成片段 ${clip.order} 的视频`));
   const rewrite = clip.videoPromptRewrite;
   const review = rewrite === "review";
   const frame = work.videoLimits?.mode === "frame";
   const voiceBlocked = frame && (clip.voiced?.length ?? 0) > 0 && !clip.videoWithoutVoice;
   const reason = clip.issues.length ? "先处理上面标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
-  const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), setError);
+  const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), failed(setError, withoutVoice ? `设置片段 ${clip.order} 不带声音参考` : `恢复片段 ${clip.order} 的声音参考`));
   return <div className="director-video">
     {rewriting && !pending && <Spinner label="正在优化提示词，完成后自动开始生成视频"/>}
     {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。约需数分钟，关闭页面不中断` : "视频生成中"}/>}
@@ -57,7 +57,7 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
       {settings && <span className="director-video-settings" title={settings}>{settings}</span>}
       <span className="director-spacer"/>
       {onBoard && <button type="button" className="ip-brand-button" onClick={onBoard}>{!clip.board.adoptedId ? "去生成分镜图" : "确认分镜图"}</button>}
-      {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
+      {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), failed(setError, `确认片段 ${clip.order} 的视频`))}><Check size={14}/>确认使用</button>}
       {(rewrite === "needed" || rewrite === "ready") && <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
         title="不优化，直接把中文提示词发给视频模型" onClick={() => generate("original")}>按原文生成</button>}
       {rewrite === "original" && <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
@@ -70,7 +70,7 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
 }
 
 /** 本集成片：按片段顺序连播已采用的视频，缺的段明确标出；整集导出按当时采用的版本合成。 */
-export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWork; ep: DirectorEpisode; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
+export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWork; ep: DirectorEpisode; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
   const [playing, setPlaying] = useState(false);
   const { busy, run } = useBusy();
   const clips = work.clips.filter(c => c.episodeId === ep.id).sort((a, b) => a.order - b.order);
@@ -81,7 +81,7 @@ export function EpisodeOutput({ work, ep, apply, setError }: { work: DirectorWor
   const exports = (work.exports ?? []).filter(e => e.episodeId === ep.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const exporting = runningTask(work, `export:${ep.id}`);
   const exportReason = !clips.length ? "暂无片段" : missing.length ? `缺少视频：${missing.join("、")}` : unconfirmed.length ? `待确认视频：${unconfirmed.join("、")}` : "";
-  const exportNow = () => void run("export", async () => apply(await DirectorApi.runTask(work.id, { type: "export", targetId: ep.id, clientRequestId: newRequestId() })), setError);
+  const exportNow = () => void run("export", async () => apply(await DirectorApi.runTask(work.id, { type: "export", targetId: ep.id, clientRequestId: newRequestId() })), failed(setError, `导出第 ${ep.no} 集`));
   const [showExports, setShowExports] = useState(false);
   if (!clips.length) return null;
   const latest = exports[0];

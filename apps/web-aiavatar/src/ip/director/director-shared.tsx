@@ -6,7 +6,7 @@ import { Check, Loader2, Maximize2, Sparkles, X, ZoomIn, ZoomOut } from "lucide-
 import { Image } from "antd";
 import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
-import { normalizeStudioError } from "../studio-errors";
+import { normalizeStudioError, type StudioFailure } from "../studio-errors";
 import { publicModelErrorMessage } from "@ai-star-eco/api-client";
 
 export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
@@ -26,18 +26,43 @@ export async function chooseDirectorBilling(operation: string, expectedCost?: nu
   return chooseStudioBilling({ operation, expectedCost });
 }
 
-/** 一个按钮一个忙碌态：防连点，失败把服务端的原话交给调用方显示。 */
+/** 一个按钮一个忙碌态：防连点，失败把服务端的原话（和原始错误，带错误码、详情）交给调用方显示。 */
 export function useBusy() {
   const [busy, setBusy] = useState<string>();
   const lock = useRef(false);
-  const run = useCallback(async <T,>(key: string, fn: () => Promise<T>, onError: (message: string) => void): Promise<T | undefined> => {
+  const run = useCallback(async <T,>(key: string, fn: () => Promise<T>, onError: (message: string, raw?: unknown) => void): Promise<T | undefined> => {
     if (lock.current) return undefined;
     lock.current = true; setBusy(key);
     try { return await fn(); }
-    catch (e) { onError(errorText(e)); return undefined; }
+    catch (e) { onError(errorText(e), e); return undefined; }
     finally { lock.current = false; setBusy(undefined); }
   }, []);
   return { busy, run };
+}
+
+/** 工作台的错误出口：传字符串或 { action, error, next, extra }，统一弹错误弹窗（studio-errors 的 openStudioFailure）。 */
+export type DirectorFail = (failure: string | StudioFailure) => void;
+
+/**
+ * useBusy 的 onError：带上「哪个操作」交给工作台弹错误弹窗。
+ * 已经打开的操作弹窗、编辑区里的失败不用它，照旧在那个位置就地显示。
+ */
+export function failed(fail: DirectorFail, action: string, next?: StudioFailure["next"], extra?: StudioFailure["extra"]) {
+  return (message: string, raw?: unknown) => fail({ action, error: raw ?? message, next, extra });
+}
+
+/** 资产被哪些片段用着（关联资产，或台词说话人），和服务端 asset.delete 的判断一致。 */
+export type AssetRef = { clipId: string; episodeId: string; episodeNo: number; order: number; title: string; linked: boolean; lines: number };
+export function assetRefs(work: DirectorWork, assetId: string): AssetRef[] {
+  const out: AssetRef[] = [];
+  for (const clip of work.clips) {
+    const linked = clip.assetIds.includes(assetId);
+    const lines = clip.shots.reduce((n, s) => n + s.dialogue.filter(l => l.speakerId === assetId).length, 0);
+    if (!linked && !lines) continue;
+    const ep = work.episodes.find(e => e.id === clip.episodeId);
+    out.push({ clipId: clip.id, episodeId: clip.episodeId, episodeNo: ep?.no ?? 0, order: clip.order, title: clip.title, linked, lines });
+  }
+  return out.sort((a, b) => a.episodeNo - b.episodeNo || a.order - b.order);
 }
 
 export function adopted(slot: DirectorMediaSlot): DirectorMedia | undefined {

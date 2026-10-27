@@ -222,6 +222,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 - [Studio 图片系列与分辨率路由发布](releases/studio-image-resolution-release-20261025.md)：干净 main `feb6e4e0`，server / web-aiavatar 制品与线上指纹核对；当前仅 GPT Image 2 的 1K/2K 已配置，其他系列、4K 及真实出图待验（last-reviewed 2026-10-25）。
 - [积分切换到 1 元 = 100 积分](releases/credit-ratio-switch-20261026.md)：有成本数据的售价按新比率上线（图片、视频、配音、口型、短剧分镜），停月赠送，服务端 `20261026-credit-ratio`；套餐与文本 Token 价待后台修改（last-reviewed 2026-10-26）。
+- [AI 导演台操作失败弹窗与资产解除关联](releases/director-error-dialog-unlink-validation-20261027.md)：操作失败统一弹错误弹窗（操作、原因、下一步、错误详情），删除被引用资产列出片段并能前往，片段「关联资产」加「解除关联」，台词说话人算引用；本地闭环 18 步验收，未发布（last-reviewed 2026-10-27）。
 - [AI 导演台分镜页重写入口发布](releases/director-storyboard-rewrite-production-release-20261027.md)：`20261027-director-storyboard-rewrite`（server / web-aiavatar，main `e6e5a2ea`）+ `20261027-director-rewrite-credit-copy`（只发 web-aiavatar，`a0481b1c`，弹窗去掉文字任务积分上限）；线上只读验收，真的重写待用户首次使用（last-reviewed 2026-10-27）。
 - [AI 导演台分镜页重写入口与一键制作无反应](releases/director-storyboard-rewrite-validation-20261027.md)：分镜页整集「重写分镜脚本」（默认保留片段逐段重写）与片段「重写」，一键制作没有可做的步骤时说明原因，本集摘要改多行；测试模式真实页面 13 步、真模型重写与失败退款、摘要与窄屏验收，本地未发布（last-reviewed 2026-10-27）。
 - [AI 导演台文字积分展示修复](releases/director-text-credit-display-release-20261026.md)：文字按钮不展示不确定积分数字，按任务输出上限冻结、按真实 Token 结算；图片和视频确定报价不变（last-reviewed 2026-10-26）。

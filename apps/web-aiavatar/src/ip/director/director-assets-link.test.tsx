@@ -15,7 +15,7 @@ afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 const slot = { candidates: [], adoptedId: null, adoptedBy: null, error: null };
 const episodes = [{ id: "ep1", no: 1, title: "下山" }, { id: "ep2", no: 2, title: "进城" }, { id: "ep3", no: 3, title: "回乡" }];
-const work: any = { id: "w", episodes, tasks: [], pricing: { image: 16, textMax: 21, mock: false },
+const work: any = { id: "w", episodes, tasks: [], clips: [], pricing: { image: 16, textMax: 21, mock: false },
   assets: [{ id: "c1", kind: "character", name: "林晚", description: "主角", aliases: [], episodeIds: ["ep1"], image: slot, prompt: "", rev: 3 }] };
 const props = { work, episodeId: "ep2", apply: vi.fn(), setError: vi.fn() } as any;
 

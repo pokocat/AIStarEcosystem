@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { App, Button, ConfigProvider, notification } from 'antd';
+import type { ReactNode } from 'react';
+import { App, Button, ConfigProvider, Modal, notification } from 'antd';
 import { Copy, Check } from 'lucide-react';
 import copy from 'copy-to-clipboard';
 import type { CanvasNodeData } from '@/canvas/types/canvas';
@@ -113,6 +114,69 @@ function ErrorDetails({ error }: { error: StudioError }) {
     <Button icon={copied ? <Check size={15}/> : <Copy size={15}/>} onClick={() => void copyDetails()}>{copied ? '已复制' : '复制错误详情'}</Button>
     {copyFailed && <p role="status">复制未完成，请选中上方文字复制。</p>}
   </div>;
+}
+
+/**
+ * 用户点了某个操作、它没做成（被业务规则挡下、冲突、前置条件不够、请求失败）：用弹窗说清楚，不只在页面远处挂一条横幅。
+ * 2026-10-27 用户反馈「该资产仍被片段使用，请先取消关联 —— 只是页面上有个 banner，应该是个错误弹窗」；
+ * 手机上资产详情是全屏抽屉，横幅被整个挡住，点了删除什么都看不到。
+ * 已经打开的操作弹窗里的失败仍在弹窗里就地显示；后台任务的失败、页面上的持续状态照旧，不走这里。
+ */
+export type StudioFailure = {
+  /** 哪个操作没做成，如「删除「林夏」」，标题写成「删除「林夏」没有完成」。 */
+  action: string;
+  error: unknown;
+  /** 下一步怎么做；不给就按错误码给一句通用的。 */
+  next?: ReactNode;
+  /** 原因下面的补充内容（只放真实数据，如引用它的片段和前往入口）；拿到 close 可以先关弹窗再跳转。 */
+  extra?: ReactNode | ((close: () => void) => ReactNode);
+};
+
+/** 冲突类错误：调用方会把页面刷新到最新（导演台工作台这样做），这句总排在下一步的最前面。 */
+const isConflict = (code: string) => /_CONFLICT$|_STALE$|_EXPIRED$/.test(code);
+const CONFLICT_NEXT = '这项内容刚在别处改过，页面已经刷新到最新内容，不用再手动刷新。';
+
+/** 按错误码给的通用下一步。调用方知道得更具体时自己写 next。 */
+export function failureNext(code: string): string {
+  if (isConflict(code)) return `${CONFLICT_NEXT}看一下现在的内容，需要的话重新修改后再试。`;
+  if (code === 'STUDIO_PRICE_CHANGED') return '价格有变化，刷新页面后重新确认。';
+  if (/_RUNNING$/.test(code)) return '等正在进行的那一项完成后再试。';
+  if (code === 'NETWORK_ERROR') return '检查网络后刷新页面，看一下这次操作有没有生效，再决定要不要重试。';
+  if (/CREDIT|BALANCE|INSUFFICIENT/.test(code)) return '积分不够，充值后再试。';
+  return '可以稍后再试一次；反复出现的话，展开「错误详情」复制后发给我们。';
+}
+
+type ModalApi = Pick<typeof Modal, 'error'>;
+const openFailures = new Set<string>();
+
+/** 打开错误弹窗。同一个操作的同一个错误还开着时不再弹第二个（连点、轮询重复报错）。 */
+export function openStudioFailure(modal: ModalApi, failure: StudioFailure) {
+  const error = normalizeStudioError(failure.error);
+  if (error.code === 'IP_RUN_CANCELLED') return error;
+  const key = `${failure.action}|${error.code}|${error.message}`;
+  if (openFailures.has(key)) return error;
+  openFailures.add(key);
+  let instance: { destroy: () => void } | undefined;
+  const close = () => instance?.destroy();
+  const extra = typeof failure.extra === 'function' ? failure.extra(close) : failure.extra;
+  instance = modal.error({
+    title: `${failure.action}${/[0-9A-Za-z]$/.test(failure.action) ? ' ' : ''}没有完成`,
+    content: <div className="studio-failure">
+      <section><h4>原因</h4><p>{error.code === 'NETWORK_ERROR' ? '网络连接中断，没收到服务器的回应。' : error.message}</p></section>
+      {extra}
+      <section><h4>下一步</h4><div>{failure.next === undefined ? failureNext(error.code) : isConflict(error.code) ? <><p>{CONFLICT_NEXT}</p>{failure.next}</> : failure.next}</div></section>
+      <details className="studio-failure-details"><summary>错误详情</summary><ErrorDetails error={error}/></details>
+    </div>,
+    okText: '知道了', closable: true, mask: { closable: true }, width: 480, className: 'studio-failure-dialog',
+    afterClose: () => { openFailures.delete(key); },
+  });
+  return error;
+}
+
+/** 组件里用：在 antd <App> 里走它的 modal（跟随主题），外面没有 <App> 时用静态 Modal。 */
+export function useStudioFailure() {
+  const { modal } = App.useApp();
+  return useCallback((failure: StudioFailure) => openStudioFailure(typeof modal.error === 'function' ? modal : Modal, failure), [modal]);
 }
 
 /** One unscaled, global notification layer also serves errors outside an Ant Design App. */

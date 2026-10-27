@@ -5,10 +5,11 @@ import { X } from "lucide-react";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import type { DirectorImageModelState, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
-import { costText, secRange, useBusy, dialogFocus } from "./director-shared";
+import { InlineError, costText, secRange, useBusy, dialogFocus, type DirectorFail } from "./director-shared";
 
-export function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {
+export function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: DirectorFail }) {
   const [style, setStyle] = useState(work.settings.style);
+  const [localError, setLocalError] = useState("");
   const [aspect, setAspect] = useState(work.settings.aspectRatio);
   const [videoModel, setVideoModel] = useState(work.settings.videoModel ?? "");
   const savedText = work.settings.textModel ?? "";
@@ -31,7 +32,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
     const textChange = textModel === savedText ? {} : { textModel: textModel || null };
     apply(await DirectorApi.patchWork(work.id, { settings: { style: style.trim(), aspectRatio: aspect, videoModel: videoModel || null, ...textChange, ...imageChange } }));
     onClose();
-  }, setError);
+  }, message => setLocalError(`设置没有保存：${message}。改动还在，调整后再点「保存」。`));
   return <div className="director-popover" role="dialog" aria-label="作品设置" ref={dialogFocus} tabIndex={-1}>
     <header><h3>作品设置</h3><button type="button" aria-label="关闭" onClick={onClose}><X size={16}/></button></header>
     <label className="director-field"><span>画面风格</span><input value={style} maxLength={30} onChange={e => setStyle(e.target.value)}/></label>
@@ -68,6 +69,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
           : "同时参考分镜图、角色 / 场景 / 道具图和角色声音。片段时长按模型支持的范围来定。"}</small>
     </label>
     <p className="director-dialog-note">修改仅影响之后生成的内容，已生成的内容不变。</p>
+    <InlineError message={localError} onClose={() => setLocalError("")}/>
     <footer><button type="button" className="ip-brand-secondary" onClick={onClose}>取消</button><button type="button" className="ip-brand-button" disabled={busy === "settings"} onClick={save}>保存</button></footer>
   </div>;
 }

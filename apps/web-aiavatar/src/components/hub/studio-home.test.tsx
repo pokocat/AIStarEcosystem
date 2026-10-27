@@ -58,7 +58,9 @@ test('a failed 「新建空白画布」 says why and can be tried again',async()
   api.createProject.mockRejectedValueOnce(new Error('网络断开'));
   render(<StudioHome ready/>);
   fireEvent.click(await screen.findByRole('button',{name:'新建空白画布'}));
-  expect((await screen.findByRole('alert')).textContent).toContain('网络断开');
+  // 新建失败弹错误弹窗：哪个操作、原因（2026-10-27 起不再是页面中部的一行字）。
+  expect((await screen.findAllByText('新建画布没有完成')).length).toBeGreaterThan(0);
+  expect(screen.getAllByText('网络断开').length).toBeGreaterThan(0); // 原因一处，折叠的「错误详情」里一处
   fireEvent.click(screen.getByRole('button',{name:'新建空白画布'}));
   await waitFor(()=>expect(api.push).toHaveBeenCalledWith('/projects/p?start=assistant'));
 });

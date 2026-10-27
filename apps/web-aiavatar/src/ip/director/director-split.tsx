@@ -5,7 +5,7 @@ import { BookMarked, ChevronRight, Scissors, Undo2, X } from "lucide-react";
 import type { DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
-import { InlineError, clearDrafts, dialogFocus, useBusy, useDraft, useEscape } from "./director-shared";
+import { InlineError, clearDrafts, dialogFocus, failed, useBusy, useDraft, useEscape } from "./director-shared";
 
 /**
  * 分好、还没采用的分集：每集多长、从哪句开始到哪句结束，程序补过哪些段落、和要求哪里不一致。
@@ -15,8 +15,8 @@ export function SplitPreview({ work, apply, setError }: Pick<WorkbenchProps, "wo
   const pending = work.pendingSplit!;
   const [preamble, setPreamble] = useState<"reference" | "episode">("reference");
   const { busy, run } = useBusy();
-  const save = () => void run("save", async () => apply(await DirectorApi.edit(work.id, "split.save", pending.id, null, { preamble })), setError);
-  const discard = () => void run("discard", async () => apply(await DirectorApi.edit(work.id, "split.discard", pending.id, null)), setError);
+  const save = () => void run("save", async () => apply(await DirectorApi.edit(work.id, "split.save", pending.id, null, { preamble })), failed(setError, "采用这次分集"));
+  const discard = () => void run("discard", async () => apply(await DirectorApi.edit(work.id, "split.discard", pending.id, null)), failed(setError, "放弃这次分集"));
   const pre = pending.preamble;
   return <section className="director-split-preview" aria-label="确认分集">
     <header>
@@ -57,8 +57,8 @@ export function ReferenceNotes({ work, apply, setError }: Pick<WorkbenchProps, "
   const [open, setOpen] = useState(false);
   const { busy, run } = useBusy();
   if (!work.reference.trim() && !dirty) return null;
-  const save = () => void run("save", async () => { const next = await DirectorApi.edit(work.id, "reference.update", null, work.referenceRev, { text }); clearDrafts(key); apply(next); }, setError);
-  const merge = () => void run("merge", async () => { const next = await DirectorApi.edit(work.id, "reference.toEpisode", null, work.referenceRev); clearDrafts(key); apply(next); }, setError);
+  const save = () => void run("save", async () => { const next = await DirectorApi.edit(work.id, "reference.update", null, work.referenceRev, { text }); clearDrafts(key); apply(next); }, failed(setError, "保存设定资料", "改动还在编辑框里，按原因调整后再保存。"));
+  const merge = () => void run("merge", async () => { const next = await DirectorApi.edit(work.id, "reference.toEpisode", null, work.referenceRev); clearDrafts(key); apply(next); }, failed(setError, "把设定资料并入第 1 集"));
   const chars = work.reference.replace(/\s/g, "").length;
   return <section className={`director-outline director-reference ${open ? "is-open" : ""}`} aria-label="设定资料">
     <button type="button" className="director-outline-head" aria-expanded={open} onClick={() => setOpen(v => !v)}>

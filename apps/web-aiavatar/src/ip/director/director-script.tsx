@@ -8,7 +8,7 @@ import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { DirectorScriptFile } from "./director-script-file";
 import { ReferenceNotes, SplitPreview, UndoSplit, splitsByHeadings } from "./director-split";
-import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
+import { AiWorking, Field, GrowTextarea, InlineError, chooseDirectorBilling, clearDrafts, failed, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
@@ -55,8 +55,8 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
     const billing = await chooseDirectorBilling("script");
     const next = await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone }, billing, maxCost: cost });
     clearDrafts(`${work.id}:idea`); apply(next);
-  }, setError);
-  const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, setError);
+  }, failed(setError, "生成剧本", "创意还在输入框里，按原因调整后再点「生成剧本」。"));
+  const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, failed(setError, "保存剧本", "粘贴的剧本还在输入框里，按原因调整后再点保存。"));
   if (mode === "paste") return <section className="director-panel director-start">
     <h3><PenLine size={16}/>粘贴或上传剧本</h3>
     <DirectorScriptFile hasText={!!paste.trim()} disabled={!!busy} onImport={setPaste} onReadingChange={setReading}/>
@@ -142,12 +142,12 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   const [count, setCount] = useState("");
   const { busy, run } = useBusy();
   const persist = async () => { const w = await DirectorApi.patchWork(work.id, { draft: text, draftRev: work.draftRev }); clearDrafts(draftKey); return w; };
-  const save = () => run("save", async () => apply(await persist()), setError);
+  const save = () => run("save", async () => apply(await persist()), failed(setError, "保存剧本", "改动还在编辑框里，按原因调整后再保存。"));
   const asEpisode = () => void run("one", async () => {
     let w = work;
     if (dirty) w = await persist();
     apply(await DirectorApi.edit(w.id, "draft.asEpisode", null, null));
-  }, setError);
+  }, failed(setError, "把剧本作为一集"));
   const split = () => void run("split", async () => {
     let w = work;
     if (dirty) { w = await persist(); apply(w); }
@@ -156,7 +156,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
     const cost = free ? 0 : work.pricing.textMax;
     const billing = free ? undefined : await chooseDirectorBilling("script");
     apply(await DirectorApi.runTask(w.id, { type: "split", clientRequestId: newRequestId(), options: count ? { episodeCount: Number(count) } : {}, billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, "拆分集"));
   const byHeadings = splitsByHeadings(work, count);
   const rewriting = runningTask(work, "script");
   return <section className="director-panel director-script-list">
@@ -204,7 +204,7 @@ function EpisodeList(props: WorkbenchProps) {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, work.assets.length ? "重新提取全剧资产" : "提取全剧资产"));
   return <section className="director-panel director-script-list">
     <div className="director-toolbar">
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.episodes.length} 集 · 共 {chars.toLocaleString("zh-CN")} 字{work.logline && !work.outline ? ` · ${work.logline}` : ""}</p></div>
@@ -244,7 +244,7 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
   const save = () => void run("save", async () => {
     const next = await DirectorApi.edit(work.id, "episode.update", ep.id, ep.rev, { title, summary, content });
     clearDrafts(prefix); apply(next);
-  }, setError);
+  }, failed(setError, `保存第 ${ep.no} 集`, "改动还在编辑框里，按原因调整后再点「保存」。"));
   const clips = work.clips.filter(x => x.episodeId === ep.id);
   const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待写分镜";
   return <li className={`director-episode-item ${open ? "is-open" : ""}`}>

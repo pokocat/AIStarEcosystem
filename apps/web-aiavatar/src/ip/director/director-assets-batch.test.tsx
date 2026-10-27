@@ -33,8 +33,11 @@ test("generate-all submits every asset and reports the props the server refused 
   expect(api.runTask.mock.calls.map(c => c[1].targetId)).toEqual(["c1", "s1", "p1", "p2"]);
   for (const [, body] of api.runTask.mock.calls) expect(body).toMatchObject({ type: "asset-image", maxCost: 55 });
   expect(apply).toHaveBeenCalledTimes(2);
-  const message = setError.mock.calls.at(-1)![0] as string;
-  expect(message).toMatch(/^2 项没有提交成功。/);
+  // 部分没提交成功：弹错误弹窗说是哪个操作、哪几项、为什么（2026-10-27 起不再是页面横幅）。
+  const failure = setError.mock.calls.at(-1)![0] as { action: string; error: string };
+  expect(failure.action).toBe("生成全部参考图");
+  const message = failure.error;
+  expect(message).toMatch(/^4 项里有 2 项没有提交成功：/);
   expect(message).toContain(`修复编号工作本：${sizeError}`);
   expect(message).toContain("母亲旧毛衣：");
   expect(message).not.toMatch(/换一个画幅/);

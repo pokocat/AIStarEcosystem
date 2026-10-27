@@ -12,8 +12,8 @@ import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
-import { InlineError, chooseDirectorBilling, costText, errorText, hasDrafts, secRange, useBusy, useEscape, dialogFocus } from "./director-shared";
-import { normalizeStudioError } from "../studio-errors";
+import { InlineError, chooseDirectorBilling, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 
 export type Tab = "script" | "assets" | "storyboard";
 const GO_LABEL: Record<Tab, string> = { script: "前往剧本", assets: "前往资产", storyboard: "前往分镜" };
@@ -21,7 +21,8 @@ export type WorkbenchProps = {
   work: DirectorWork;
   episodeId: string | null;
   apply: (next: DirectorWork) => void;
-  setError: (message: string) => void;
+  /** 用户操作没做成：弹错误弹窗（哪个操作、原因、下一步），不是页面上的横幅。 */
+  setError: DirectorFail;
   goTab: (tab: Tab) => void;
   /** 打开「确认资产」弹窗（有待保存的提取清单时）。 */
   reviewExtract: () => void;
@@ -31,7 +32,12 @@ export type WorkbenchProps = {
   pickEpisode: (id: string) => void;
   /** 打开「一键制作」弹窗。剧本页把它和「AI 拆分」并列放，说明它是快捷方式。 */
   startPipeline: () => void;
+  /** 跳到某个片段：切到分镜页和它所在的集，滚过去，打开它的关联资产（可高亮某项）或镜头编辑。 */
+  focusClip: (target: Omit<ClipFocus, "at">) => void;
+  focus: ClipFocus | null;
 };
+
+export type ClipFocus = { clipId: string; assetId?: string; open: "assets" | "editor"; at: number };
 
 /** 下一步提示：按作品现状告诉用户该做什么，按钮直接带到对应位置。 */
 function nextStep(work: DirectorWork, episodeId: string | null): { text: string; tab: Tab } | null {
@@ -85,8 +91,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const [work, setWork] = useState<DirectorWork>();
   const [loadError, setLoadError] = useState("");
   const [notEnrolled, setNotEnrolled] = useState(false);
-  const [error, setError] = useState("");
   const [tab, setTab] = useState<Tab>("script");
+  const [focus, setFocus] = useState<ClipFocus | null>(null);
   const [episodeId, setEpisodeId] = useState<string | null>(null);
   const revision = useRef(0);
   const initialTab = useRef(false);
@@ -107,6 +113,14 @@ export function DirectorWorkbench({ id }: { id: string }) {
   }, [apply, id]);
 
   useEffect(() => { if (auth === "ok") void load(); }, [auth, load]);
+
+  // 用户操作没做成就弹错误弹窗；冲突类错误顺手把作品刷新到最新，弹窗里说「页面已经是最新的」才是真的。
+  const showFailure = useStudioFailure();
+  const setError = useCallback<DirectorFail>(failure => {
+    if (!failure) return;
+    const shown = showFailure(typeof failure === "string" ? { action: "这次操作", error: failure } : failure);
+    if (/_CONFLICT$|_STALE$|_EXPIRED$/.test(shown.code)) void load();
+  }, [showFailure, load]);
 
   // 刷新、关页面时还有没保存的修改就提醒；站内切换工作区或集不会丢（见 useDraft）。
   useEffect(() => {
@@ -142,9 +156,13 @@ export function DirectorWorkbench({ id }: { id: string }) {
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
-  // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
-  const switchTab = (next: Tab) => { setTab(next); setError(""); };
-  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
+  const switchTab = (next: Tab) => setTab(next);
+  const focusClip = (target: Omit<ClipFocus, "at">) => {
+    const clip = work.clips.find(c => c.id === target.clipId);
+    if (!clip) return;
+    setTab("storyboard"); setEpisodeId(clip.episodeId); setFocus({ ...target, at: Date.now() });
+  };
+  const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, focusClip, focus, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
     assets: work.assets.filter(a => a.image.adoptedBy === "auto" || !a.image.adoptedId).length,
@@ -163,8 +181,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     </div>}
     {!live && <StopTextTasks {...props}/>}
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} goTab={switchTab} onClose={() => setStarting(false)}/>}
-    {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
-    <InlineError message={error} onClose={() => setError("")}/>
+    {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError({ action: "关闭这条提示", error: e }))}>关闭</button></div>}
     <div className="director-body">
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
         {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
@@ -189,7 +206,7 @@ function StopTextTasks({work,apply,setError}:WorkbenchProps) {
   const label=(target:string)=>target==="script"?"写剧本":target==="split"?"拆分集":target.startsWith("extract")?"提取资产":target.startsWith("plan:")?"规划分镜":target.startsWith("reshoot:")?"重写分镜脚本":"本次创作";
   return <div className="director-notice"><span>{settling?"已停止后续处理，已提交模型的请求仍在等待用量结算。可另行确认生成，原请求按实际用量计费。":"停止后已有内容会保留；已提交模型的请求仍按实际用量计费。"}</span>
     {tasks.map(task=><button key={task.id} type="button" disabled={!!busy}
-      onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),setError)}>
+      onClick={()=>void run(task.id,async()=>apply(await DirectorApi.stopTask(work.id,task.id)),failed(setError,`停止${label(task.target)}`))}>
       {busy===task.id?"正在停止…":`停止${label(task.target)}`}</button>)}
   </div>;
 }
@@ -201,7 +218,7 @@ function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettings
   const saveTitle = () => {
     const t = title.trim();
     if (!t || t === work.title) { setTitle(work.title); return; }
-    void run("title", async () => apply(await DirectorApi.patchWork(work.id, { title: t })), setError);
+    void run("title", async () => apply(await DirectorApi.patchWork(work.id, { title: t })), (m, e) => { setTitle(work.title); setError({ action: "修改作品名", error: e ?? m, next: "名字已恢复成原来的，可以重新输入后再试。" }); });
   };
   const settings = work.settings;
   return <header className="director-header">
@@ -225,11 +242,16 @@ const TARGETS: Array<{ key: DirectorPipelineTarget; label: string; note: string 
   { key: "plan", label: "分镜脚本", note: "只做文字：拆分集、提取资产、写分镜脚本（每段的镜头、分镜图提示词和视频提示词），不出图。" },
 ];
 
+const PIPELINE_ACTIONS: Record<string, string> = {
+  pause: "暂停一键制作", resume: "继续一键制作", retry: "重试一键制作的失败项", "confirm-assets": "确认参考图并继续",
+  "confirm-boards": "确认分镜图并继续", "confirm-videos": "确认片段视频并导出", stop: "停止一键制作", dismiss: "收起一键制作",
+};
+
 function PipelineBar({ work, apply, setError, goTab, reviewExtract, startPipeline }: WorkbenchProps) {
   const p = work.pipeline;
   const { busy, run } = useBusy();
   const act = (action: "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss", budget?: number) =>
-    void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), setError);
+    void run(action, async () => apply(await DirectorApi.pipeline(work.id, { action, budget })), failed(setError, PIPELINE_ACTIONS[action]));
   const live = p && ["running", "waiting", "paused"].includes(p.status);
   return <>
     <div className={`director-pipeline ${p ? `is-${p.status}` : ""}`}>
@@ -278,7 +300,7 @@ function BudgetRaise({ p, onResume, disabled }: { p: DirectorPipeline; onResume:
     <button type="button" className="ip-brand-button" disabled={disabled || !(n > p.budget)} onClick={() => onResume(n)}>提高预算并继续</button></span>;
 }
 
-export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose }: { work: DirectorWork; episodeId: string | null; apply: (w: DirectorWork) => void; setError: (m: string) => void; goTab: (tab: Tab) => void; onClose: () => void }) {
+export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose }: { work: DirectorWork; episodeId: string | null; apply: (w: DirectorWork) => void; setError: DirectorFail; goTab: (tab: Tab) => void; onClose: () => void }) {
   const multi = work.episodes.length > 1;
   const [scope, setScope] = useState<"episode" | "work">("work");
   const [target, setTarget] = useState<DirectorPipelineTarget>("film");

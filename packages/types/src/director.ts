@@ -367,7 +367,7 @@ export type DirectorEditOp =
   | "draft.asEpisode" | "episode.update" | "episode.usePendingPlan" | "episode.discardPendingPlan"
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
-  | "clip.usePendingShots" | "clip.discardPendingShots"
+  | "clip.usePendingShots" | "clip.discardPendingShots" | "clip.unlinkAsset"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
   | "extract.save" | "extract.discard"
   | "split.save" | "split.discard" | "split.undo" | "reference.update" | "reference.toEpisode" | "asset.link";

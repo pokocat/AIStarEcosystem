@@ -7,7 +7,7 @@ import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import type { WorkbenchProps } from "./director-workbench";
-import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage } from "./director-shared";
+import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
@@ -30,7 +30,7 @@ export function DirectorAssets(props: WorkbenchProps) {
     const cost = work.pricing.textMax;
     const billing = await chooseDirectorBilling("asset-extract");
     apply(await DirectorApi.runTask(work.id, { type: "extract", targetId: null, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, work.assets.length ? "重新提取全剧资产" : "提取全剧资产"));
   // 一次给所有还没有参考图的资产各出一张：只出画面的（排除仅声音出场）、没在生成的。
   const { modal } = useStudioApp();
   const missing = work.assets.filter(a => !a.image.adoptedId && !a.description.includes("只出声音") && !runningTask(work, `asset:${a.id}`))
@@ -44,16 +44,17 @@ export function DirectorAssets(props: WorkbenchProps) {
       okText: "开始生成", cancelText: "取消",
       onOk: () => run("all", async () => {
         const billing = await chooseDirectorBilling("image", total);
-        const failed: string[] = [];
+        const failures: string[] = [];
         for (const a of missing) {
           try { apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.image })); }
-          catch (e) { failed.push(`${a.name}：${errorText(e)}`); }
+          catch (e) { failures.push(`${a.name}：${errorText(e)}`); }
         }
-        if (failed.length) setError(`${failed.length} 项没有提交成功。${failed.join("；")}`);
-      }, setError),
+        if (failures.length) setError({ action: "生成全部参考图", error: `${missing.length} 项里有 ${failures.length} 项没有提交成功：${failures.join("；")}`,
+          next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那项资产上单独点「生成」。" });
+      }, failed(setError, "生成全部参考图")),
     });
   };
-  const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), setError);
+  const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), failed(setError, "确认全部参考图"));
 
   if (work.episodes.length === 0) return <div className="director-panel director-empty-panel"><p>请先在「剧本」完成剧本并拆分集。</p></div>;
   return <div className="director-assets">
@@ -95,7 +96,7 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
     apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: asset.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, `生成「${asset.name}」的参考图`));
   return <article className={`director-asset-tile ${tone} kind-${asset.kind}`}>
     <button type="button" className="director-asset-tile-open" onClick={onOpen} aria-label={`查看${asset.name}`}>
       <span className="director-asset-tile-image">
@@ -113,12 +114,21 @@ function AssetTile({ work, asset, apply, setError, onOpen }: WorkbenchProps & { 
       <small className={`director-tile-status ${tone}`}>{status}</small>
       {asset.kind === "character" && <button type="button" className={`director-voice-chip ${asset.voice || asset.voiceDesc ? "is-set" : ""}`} onClick={() => setVoiceOpen(true)}
         aria-label={asset.voice || asset.voiceDesc ? `${asset.name}的音色已设置，点开修改` : `设置${asset.name}的音色`} title={asset.voice || asset.voiceDesc ? "音色已设置，点开修改" : "设置角色音色"}><Mic size={14}/></button>}
-      {asset.image.adoptedBy === "auto" && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={13}/>确认</button>}
+      {asset.image.adoptedBy === "auto" && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的参考图`))}><Check size={13}/>确认</button>}
       {!asset.image.adoptedId && !audioOnly && !generating && <button type="button" className="ip-brand-button" disabled={!!busy} title={costText(work.pricing.image, work.pricing.mock)} onClick={generate}><Wand2 size={13}/>生成</button>}
     </footer>
     {!generating && <InlineError message={asset.image.error?.message}/>}
     {voiceOpen && <VoiceDialog work={work} asset={asset} apply={apply} onClose={() => setVoiceOpen(false)}/>}
   </article>;
+}
+
+/** 资产被哪些片段用着：每个片段一行，「前往」跳到那个片段。错误弹窗和资产详情共用。 */
+export function AssetRefList({ refs, onGo }: { refs: AssetRef[]; onGo: (ref: AssetRef) => void }) {
+  return <ul className="studio-failure-refs">{refs.map(r => <li key={r.clipId}>
+    <span title={r.title}>第 {r.episodeNo} 集 · 片段 {r.order}{r.title ? `「${r.title}」` : ""}</span>
+    <small>{[r.linked ? "关联资产" : "", r.lines ? `${r.lines} 句台词` : ""].filter(Boolean).join(" · ")}</small>
+    <button type="button" onClick={() => onGo(r)}>前往</button>
+  </li>)}</ul>;
 }
 
 /** 资产出现在哪几集：每集一个开关。外层用 div 不用 Field 的 label，否则点标题文字会误触第一个按钮。 */
@@ -136,7 +146,7 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
   // 默认全剧：手动补的多半是提取漏掉的常驻角色或场景，只在个别集出现的取消勾选即可。
   const [episodeIds, setEpisodeIds] = useState(() => work.episodes.map(e => e.id));
   const { busy, run } = useBusy();
-  const save = () => void run("add", async () => { apply(await DirectorApi.edit(work.id, "asset.create", null, null, { kind, name, description, episodeIds })); onClose(); }, setError);
+  const save = () => void run("add", async () => { apply(await DirectorApi.edit(work.id, "asset.create", null, null, { kind, name, description, episodeIds })); onClose(); }, failed(setError, `添加${kindLabel[kind]}「${name.trim() || "未命名"}」`, "填好的内容还在，按原因修改后再点「添加」。"));
   return <section className="director-panel director-add">
     <div className="director-segmented" role="group" aria-label="类型">{KINDS.map(k => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)}>{kindLabel[k]}</button>)}</div>
     <Field label="名称"><input value={name} maxLength={40} onChange={e => setName(e.target.value)}/></Field>
@@ -148,7 +158,7 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
   </section>;
 }
 
-function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: DirectorAsset }) {
+function AssetCard({ work, asset, apply, setError, focusClip }: WorkbenchProps & { asset: DirectorAsset }) {
   const { modal } = useStudioApp();
   const prefix = `${work.id}:asset:${asset.id}:`;
   // 没保存的修改切走再回来还在，编辑框也保持打开。
@@ -169,11 +179,11 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
     const cost = work.pricing.image;
     const billing = await chooseDirectorBilling("image", cost);
     apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: asset.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
-  }, setError);
+  }, failed(setError, `生成「${asset.name}」的参考图`));
   const upload = (f: File) => void run("upload", async () => {
     const result = await IpStudioApi.uploadImage(f);
     apply(await DirectorApi.edit(work.id, "asset.upload", asset.id, null, { key: result.key }));
-  }, setError);
+  }, failed(setError, `上传「${asset.name}」的参考图`, "参考图没有变。换一张 PNG 或 JPG 图片再试。"));
   const [picking, setPicking] = useState(false);
   const save = () => void run("save", async () => {
     const data: Record<string, unknown> = { name, description };
@@ -182,10 +192,24 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
     const next = await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, data);
     clearDrafts(prefix); apply(next);
     setEditing(false);
-  }, setError);
-  const resetPrompt = () => void run("reset", async () => apply(await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, { resetPrompt: true })), setError);
-  const remove = () => modal.confirm({ title: `删除「${asset.name}」？`, content: "其参考图版本将一并移除。如有片段正在使用，请先取消关联。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
-    onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "asset.delete", asset.id, null)), setError) });
+  }, failed(setError, `保存「${asset.name}」的修改`, "改过的内容还在编辑框里，按原因调整后再点「保存」。"));
+  const resetPrompt = () => void run("reset", async () => apply(await DirectorApi.edit(work.id, "asset.update", asset.id, asset.rev, { resetPrompt: true })), failed(setError, `恢复「${asset.name}」的自动提示词`));
+  const refs = assetRefs(work, asset.id);
+  // 还被片段用着就不能删：先说清是哪些片段、怎么解除，不发删除请求；本地数据过时时服务端照样拒绝，弹同一个弹窗。
+  const blocked = (list: AssetRef[], error?: unknown) => setError({
+    action: `删除「${asset.name}」`,
+    error: error ?? { code: "DIRECTOR_ASSET_IN_USE", message: `「${asset.name}」还用在 ${list.length} 个片段里，资产没有删除。` },
+    extra: close => <AssetRefList refs={list} onGo={r => { close(); focusClip({ clipId: r.clipId, assetId: asset.id, open: r.linked ? "assets" : "editor" }); }}/>,
+    next: <>{list.some(r => r.linked) && <p>点片段旁的「前往」，在打开的「关联资产」里点「{asset.name}」后面的「解除关联」。</p>}
+      {list.some(r => !r.linked) && <p>只在台词里出现的，在打开的「编辑镜头」里把这些台词的说话人换掉并保存。</p>}
+      <p>都处理完后回到这里再删除。</p></>,
+  });
+  const remove = () => refs.length ? blocked(refs) : modal.confirm({ title: `删除「${asset.name}」？`, content: "它的参考图版本会一起删除，不能恢复。", okText: "删除", okButtonProps: { danger: true }, cancelText: "取消",
+    onOk: () => run("delete", async () => apply(await DirectorApi.edit(work.id, "asset.delete", asset.id, null)), (message, e) => {
+      const fromServer = (e as { code?: string; details?: { clips?: AssetRef[] } } | undefined);
+      if (fromServer?.code === "DIRECTOR_ASSET_IN_USE") blocked(fromServer.details?.clips?.length ? fromServer.details.clips : refs, e);
+      else setError({ action: `删除「${asset.name}」`, error: e ?? message });
+    }) });
   const nos = work.episodes.filter(e => asset.episodeIds.includes(e.id)).map(e => e.no);
   const appears = nos.length === 0 ? "" : nos.length === work.episodes.length && nos.length > 1 ? "全剧" : `第 ${nos.join("、")} 集`;
   return <article className={`director-asset-card ${asset.image.adoptedBy === "auto" ? "is-pending" : ""}`}>
@@ -218,14 +242,19 @@ function AssetCard({ work, asset, apply, setError }: WorkbenchProps & { asset: D
         </div>
       </>}
       {!editing && <p className="director-asset-desc">{asset.description || "暂无描述"}</p>}
+      {!editing && <section className="director-sheet-section director-asset-refs" aria-label="用在哪些片段">
+        <h5>用在哪些片段<small>{refs.length ? `${refs.length} 个` : "没有片段在用"}</small></h5>
+        {refs.length > 0 && <AssetRefList refs={refs} onGo={r => focusClip({ clipId: r.clipId, assetId: asset.id, open: r.linked ? "assets" : "editor" })}/>}
+        {refs.length > 0 && <small className="director-muted">要删除这项资产，先在这些片段里解除关联（「前往」后在「关联资产」里操作）。</small>}
+      </section>}
       {!editing && !audioOnly && <section className="director-sheet-section" aria-label="参考图">
         <h5>参考图</h5>
         <InlineError message={asset.image.error?.message}/>
         <OutdatedNote slot={asset.image} what="张参考图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>
-        <VersionStrip slot={asset.image} label={asset.name} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), setError)}/>
+        <VersionStrip slot={asset.image} label={asset.name} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), failed(setError, `换用「${asset.name}」的这版参考图`))}/>
         {asset.kind === "character" && <CharacterRef work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
         <div className="director-card-actions">
-          {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), setError)}><Check size={14}/>确认使用</button>}
+          {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的参考图`))}><Check size={14}/>确认使用</button>}
           <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate}>
             <Wand2 size={14}/>{generating ? "生成中" : asset.image.candidates.length ? "重新生成" : "生成参考图"}</button>
           <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => setPicking(true)} title="这项资产就是资产库里已有的那一项，直接用它的图"><Library size={14}/>关联已有资产</button>
@@ -256,8 +285,8 @@ function CharacterRef({ work, asset, apply, setError, disabled }: Pick<Workbench
   const upload = (f: File) => void run("ref", async () => {
     const result = await IpStudioApi.uploadImage(f);
     apply(await DirectorApi.edit(work.id, "asset.setRef", asset.id, null, { key: result.key }));
-  }, setError);
-  const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), setError);
+  }, failed(setError, `上传「${asset.name}」的形象参考`, "形象参考没有变。换一张 PNG 或 JPG 照片再试。"));
+  const clear = () => void run("ref", async () => apply(await DirectorApi.edit(work.id, "asset.clearRef", asset.id, null)), failed(setError, `移除「${asset.name}」的形象参考`));
   return <div className="director-ref">
     {ref?.url ? <img src={ref.url} alt={`${asset.name}的形象参考`}/> : <span className="director-ref-empty"><ImageIcon size={16}/></span>}
     <div className="director-ref-text">

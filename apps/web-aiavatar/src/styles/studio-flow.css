@@ -715,3 +715,15 @@ html[data-layout="mobile"] .studio-canvas-guide-entries>:last-child:nth-child(od
 .ip-surface .studio-composer-actions { display:flex; align-items:center; gap:6px; flex-wrap:nowrap; overflow-x:auto; min-width:0; margin-bottom:12px; }
 .ip-surface .studio-composer-actions>* { flex-shrink:0; white-space:nowrap; }
 .ip-surface .studio-composer-actions>.studio-node-editor-actions { flex-wrap:nowrap; margin:0; }
+/* 操作没做成的错误弹窗（studio-errors.tsx openStudioFailure）：原因、下一步、可展开的错误详情；长文字可滚动、可选中 */
+.studio-failure-dialog .ant-modal-confirm-paragraph { max-width: 100%; }
+.studio-failure { display: flex; flex-direction: column; gap: 12px; max-height: min(60dvh, 520px); overflow-y: auto; color: #192229; user-select: text; -webkit-user-select: text; }
+.studio-failure h4 { margin: 0 0 4px; color: #65707e; font-size: 12px; font-weight: 600; }
+.studio-failure p, .studio-failure section > div { margin: 0; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.studio-failure-details summary { color: #65707e; font-size: 12px; cursor: pointer; }
+.studio-failure-details .studio-error-details dl { margin: 8px 0 10px; font-size: 13px; }
+.studio-failure-refs { display: flex; flex-direction: column; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.studio-failure-refs li { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border: 1px solid #e3e6ea; border-radius: 8px; font-size: 13px; }
+.studio-failure-refs li > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.studio-failure-refs li > small { flex-shrink: 0; color: #65707e; }
+.studio-failure-refs li > button { flex-shrink: 0; padding: 3px 10px; border: 1px solid #192229; border-radius: 7px; background: transparent; color: #192229; font-size: 12px; font-weight: 600; cursor: pointer; }
