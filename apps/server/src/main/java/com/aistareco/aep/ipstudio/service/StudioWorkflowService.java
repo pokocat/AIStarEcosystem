@@ -179,9 +179,8 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "video".equals(request.operation())) {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
-            // 只用模型赠款（freeOnly）时不做提示词优化：改写走文本模型，没有它的赠款就得扣普通积分，用户没同意（Codex 评审 2026-10-27）。
-            boolean freeOnly=request.modelBilling()!=null&&request.modelBilling().freeOnly();
-            if(request.video()!=null && request.video().rewrite()!=null && !freeOnly) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
+            // 只用模型赠款（freeOnly）也照常优化：以出片效果为准，改写按文本模型自己的价格扣（界面写明另需少量积分），积分不够用户可以取消（2026-10-27 用户定）。
+            if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
             var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             ObjectNode exec=inputs.putObject("_exec");
@@ -195,7 +194,7 @@ public class StudioWorkflowService {
                     .enterpriseId(request.billing()!=null&&"enterprise".equals(request.billing().mode())?request.billing().enterpriseId():null)
                     .status(IpRun.STATUS_DONE).stage("video.bound").cost(0).clientRequestId(request.clientRequestId())
                     .inputFingerprint(fingerprint).inputJson(write(inputs))
-                    .outputJson(request.video()!=null&&request.video().rewrite()!=null?"{\"videoPromptNotes\":[\"只用模型赠款时不做提示词优化，已按原文生成\"]}":"{}")
+                    .outputJson("{}")
                     .createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
             runs.save(binding);
             return projects.toRunDto(binding);

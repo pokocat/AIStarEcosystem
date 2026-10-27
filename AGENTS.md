@@ -1246,7 +1246,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。
 - **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
   开着发 `video.rewrite="review"`，关着发 `optimizePrompt=false`（原文直发）。**厂商自己的改写不再用**。
-- **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价（制作计划按视频 + 改写上限合计），再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后 `handOver` 在同一个事务里先结算改写（企业在途上限）、再 `generateVideoBatch`，失败整体回滚、改写不扣费；只用模型赠款时不改写；
+- **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价（制作计划按视频 + 改写上限合计），再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后 `handOver` 在同一个事务里先结算改写（企业在途上限）、再 `generateVideoBatch`，失败整体回滚、改写不扣费；只用模型赠款也照常改写（用户定：以效果为准，积分不够就取消）；
   任务号写进 `_exec.nativeVideoJobIds`，之后按视频任务投影（`videoBindingDto` 加上改写花费并带 `output.videoPrompt`）。改写中 stage `prompt.optimizing`（「正在优化提示词」）。
 - **不拦人**：画布（review）有提示时不出片，节点上「优化稿有需要留意的地方，选好再出片」，卡片上 `StudioPromptReview` 给「用优化稿生成 / 用原文生成」（没改成给「重新优化 / 用原文生成」）；
   选择发一次普通视频请求（`optimizePrompt=false`，用优化稿时 prompt 是英文、节点上仍显示中文），记 `studio.promptChoice`，开关仍算开着。创作助手（auto）不停：能用就用，用不了按原文并写 `videoPromptNotes`。
