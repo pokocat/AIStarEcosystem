@@ -20,18 +20,22 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
   const fixtureRun = runningTask(work, `video:${clip.id}`);
   const rewriting = runningTask(work, `videoPrompt:${clip.id}`);
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
-  const generate = () => void run("video", async () => {
+  // promptChoice：优化稿有提示时用户的选择，或随时「按原文生成」（不拦人，2026-10-26 用户定）。
+  const generate = (promptChoice?: "optimized" | "original") => void run("video", async () => {
     const latest = (await DirectorApi.quote(work.id, [clip.id])).items[0];
     if (latest?.error || latest?.credits == null) throw new Error(latest?.error || "该片段暂不能生成视频");
     const billing = await chooseDirectorBilling("video", latest.credits);
-    apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits }));
+    apply(await DirectorApi.runTask(work.id, { type: "video", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: latest.credits,
+      ...(promptChoice ? { options: { promptChoice } } : {}) }));
   }, setError);
+  const rewrite = clip.videoPromptRewrite;
+  const review = rewrite === "review";
   const frame = work.videoLimits?.mode === "frame";
   const voiceBlocked = frame && (clip.voiced?.length ?? 0) > 0 && !clip.videoWithoutVoice;
   const reason = clip.issues.length ? "先处理上面标出的问题" : !clip.board.adoptedId ? "请先生成分镜图" : !boardReady ? "请先确认分镜图" : quote?.error ?? (voiceBlocked ? "请先选择不带声音参考" : "");
   const setVoiceMode = (withoutVoice: boolean) => void run("voice", async () => apply(await DirectorApi.edit(work.id, "clip.setVoiceMode", clip.id, null, { withoutVoice })), setError);
   return <div className="director-video">
-    {rewriting && !pending && <Spinner label="正在把提示词改写成英文，完成后自动开始生成视频"/>}
+    {rewriting && !pending && <Spinner label="正在优化提示词，完成后自动开始生成视频"/>}
     {(pending || fixtureRun) && <Spinner label={pending ? `视频生成中：${pending.stage}${pending.pct ? ` ${pending.pct}%` : ""}。约需数分钟，关闭页面不中断` : "视频生成中"}/>}
     {frame && (clip.voiced?.length ?? 0) > 0 && <div className="director-voice-warn">
       <AlertTriangle size={13}/>
@@ -40,15 +44,27 @@ export function ClipVideo({ work, clip, quote, apply, setError, onBoard, setting
     </div>}
     {!frame && (clip.unvoiced?.length ?? 0) > 0 && <p className="director-voice-warn"><AlertTriangle size={13}/>{clip.unvoiced.join("、")} 未绑定声音，各片段音色可能不一致。可在「资产」中绑定。</p>}
     <InlineError message={clip.video.error?.message}/>
-    <OutdatedNote slot={clip.video} what="条视频" onRegenerate={reason || pending || fixtureRun || rewriting ? undefined : generate} disabled={!!busy}/>
+    {review && !rewriting && !pending && <div className="director-prompt-review" role="group" aria-label="优化稿待确认">
+      <strong><AlertTriangle size={13}/>{clip.videoPromptEn?.usable === false ? "优化稿太长，视频模型收不下" : "优化稿有需要留意的地方"}</strong>
+      {!!clip.videoPromptEn?.warnings?.length && <ul>{clip.videoPromptEn.warnings.map(w => <li key={w}>{w}</li>)}</ul>}
+      <div className="director-card-actions">
+        {clip.videoPromptEn?.usable !== false && <button type="button" className="ip-brand-button" disabled={!!busy || !!reason} onClick={() => generate("optimized")}>用优化稿生成</button>}
+        <button type="button" className="ip-brand-secondary" disabled={!!busy || !!reason} onClick={() => generate("original")}>用原文生成</button>
+      </div>
+    </div>}
+    <OutdatedNote slot={clip.video} what="条视频" onRegenerate={reason || pending || fixtureRun || rewriting || review ? undefined : () => generate()} disabled={!!busy}/>
     <div className="director-card-actions director-video-actions">
       {settings && <span className="director-video-settings" title={settings}>{settings}</span>}
       <span className="director-spacer"/>
       {onBoard && <button type="button" className="ip-brand-button" onClick={onBoard}>{!clip.board.adoptedId ? "去生成分镜图" : "确认分镜图"}</button>}
       {clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
-      <button type="button" className={current || onBoard ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason} onClick={generate}>
+      {(rewrite === "needed" || rewrite === "ready") && <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
+        title="不优化，直接把中文提示词发给视频模型" onClick={() => generate("original")}>按原文生成</button>}
+      {rewrite === "original" && <button type="button" className="ip-brand-text-button" disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason}
+        title="先按 H3 官方写法优化提示词再生成，会额外消耗少量积分" onClick={() => generate("optimized")}>改回智能优化</button>}
+      <button type="button" className={current || onBoard ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!pending || !!fixtureRun || !!rewriting || !!reason || review} onClick={() => generate()}>
         <Wand2 size={14}/>{clip.video.candidates.length ? "重新生成视频" : "生成片段视频"}</button>
-      <span className="director-cost director-video-cost" title={reason || (current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined)}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}${clip.videoPromptRewrite === "needed" ? "，另需少量积分改写提示词" : ""}` : "报价中…")}</span>
+      <span className="director-cost director-video-cost" title={reason || (current?.refs?.length ? `参考：${current.refs.map(r => `${r.label} ${r.name}`).join("、")}` : undefined)}>{reason || (quote?.credits != null ? `${clip.durationSec} 秒，${costText(quote.credits, work.pricing.mock)}${rewrite === "needed" ? "，另需少量积分优化提示词" : rewrite === "original" ? "，按原文生成" : ""}` : "报价中…")}</span>
     </div>
   </div>;
 }

@@ -37,6 +37,8 @@ public class StudioWorkflowWorker {
     @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<com.aistareco.aep.ipstudio.dialogue.StudioDialogueEvents> dialogueEvents;
     private static final Logger log=LoggerFactory.getLogger(StudioWorkflowWorker.class);
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
+    // H3 提示词改写完在同一行上提交视频（StudioWorkflowService#submitVideoRewrite）。
+    @org.springframework.beans.factory.annotation.Autowired private org.springframework.beans.factory.ObjectProvider<IpRunService> videoRuns;
     private final IpRunRepository runs;
     private final StudioFixtureProvider fixtures;
     private final FileStorageService storage;
@@ -95,6 +97,7 @@ public class StudioWorkflowWorker {
             if("recreation".equals(operation)&&"segments".equals(input.path("mode").asText())) {
                 filmStudy(id,run,input,output);return;
             }
+            if("video".equals(operation)&&input.path("_exec").has("h3")) {rewriteVideo(id,input,output);return;}
             switch(operation) {
                 case "text","script","storyboard","assistant","asset-extract","recreation","check","director" -> {
                     JsonNode script;StudioRecreation.Study recreationStudy=null;ObjectNode recreationFallback=mapper.createObjectNode();
@@ -363,6 +366,99 @@ public class StudioWorkflowWorker {
         return new AiModelInvocationService.AiModelResponse(content,last[0].finishReason(),input+completion,
                 last[0].endpointUsed(),last[0].modelUsed(),input,completion);
     }
+    /**
+     * H3 出视频前的提示词改写：按官方写法改写、核对，然后在这一行上提交视频（之后这一行按视频任务投影）。
+     * review（画布）有提示或没改成时停下，等用户选用优化稿还是原文；auto（创作助手）不停：优化稿能用就用，用不了按原文，
+     * 原因写进 {@code videoPromptNotes}。改写按实际 Token 结算。
+     */
+    private void rewriteVideo(String id,JsonNode input,ObjectNode output) {
+        boolean review="review".equals(input.path("_exec").path("rewrite").asText());
+        JsonNode meta=input.path("_exec").path("h3");
+        ObjectNode result=null;Exception failure=null;
+        AiModelInvocationService.AiModelResponse reply=null;
+        try {
+            if(!progress(id,20,"prompt.optimizing"))return;
+            String endpointId=input.path("_exec").path("endpointId").asText(null);
+            var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(
+                    org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化用的文本模型已停用，可以关闭智能优化按原文生成"));
+            StudioTokenBilling.requireRoute(input,endpoint.endpoint());
+            var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
+            if(enterpriseBilling!=null)enterpriseBilling.requireDispatchAllowed(IpRunService.REF_TYPE,id,endpoint.endpoint().getId());
+            markModelDispatched(id);
+            var options=new LinkedHashMap<String,Object>();
+            options.put("timeout_seconds",300);
+            options.put("response_format",Map.of("type","json_object"));
+            options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
+            options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS));
+            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(
+                    Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
+                    Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
+            long[] used=consumeUsage(reply,new long[]{0,0},rate);
+            output.putObject("billing").put("inputTokens",used[0]).put("outputTokens",used[1]).put("credits",rate.settle(used[0],used[1]))
+                    .put("inputCreditsPerK",rate.inputCreditsPerK()).put("outputCreditsPerK",rate.outputCreditsPerK());
+            if("length".equals(reply.finishReason()))throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("输出被截断");
+            JsonNode script;
+            try {script=ModelJson.parse(mapper,reply.content());}
+            catch(com.fasterxml.jackson.core.JsonProcessingException malformed){throw com.aistareco.aep.ipstudio.h3.H3PromptRewrite.bad("没有返回 JSON");}
+            result=com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(mapper,meta,script);
+        } catch(Exception e) {
+            failure=e;
+            if(reply!=null)reply.attachDiagnostics(e);
+            log.warn("[studio] video prompt rewrite failed id={} reason={}",id,e.toString());
+        }
+        String language=meta.path("language").asText("Chinese");
+        boolean usable=result!=null&&result.path("usable").asBoolean(true);
+        if(result!=null) {
+            ObjectNode view=output.putObject("videoPrompt");
+            view.put("text",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.fill(result.path("template").asText(),
+                    com.aistareco.aep.ipstudio.h3.H3PromptRewrite.lines(meta),language)).put("usable",usable);
+            view.set("warnings",result.path("warnings").deepCopy());
+            view.set("notes",result.path("notes").deepCopy());
+        }
+        if(review&&(failure!=null||!usable||!result.path("warnings").isEmpty())) {
+            // 停下等用户选：没改成就按失败结束（不扣费），改成了有提示就按完成结束（改写按实际用量结算），都不出片。
+            if(failure==null)output.put("needsChoice",true);
+            finish(id,output,failure);
+            return;
+        }
+        String prompt=usable?output.path("videoPrompt").path("text").asText():input.path("prompt").asText("");
+        if(!usable) {
+            output.withArray("videoPromptNotes").add(failure!=null?"提示词优化没成功，已按原文生成":"优化稿超过 "
+                    +com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_PROMPT_CHARS+" 字符，已按原文生成");
+            // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
+            if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
+        }
+        try {submitVideo(id,input,prompt);}
+        catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
+        finish(id,output,null);
+    }
+
+    /** 在改写那一行上提交视频：视频任务号写进 {@code _exec.nativeVideoJobIds}，与提交同一个事务。 */
+    private void submitVideo(String id,JsonNode input,String prompt) {
+        transactions.executeWithoutResult(tx->{
+            IpRun run=billingLockedRun(id).orElseThrow();
+            if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())
+                throw new BusinessException(org.springframework.http.HttpStatus.CONFLICT,"IP_RUN_CANCELLED","已停止创作");
+            ObjectNode accepted=input.deepCopy();
+            accepted.remove(List.of("_exec","mock","appliedCharacterContext","appliedCanvasContext"));
+            com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest request;
+            try {request=mapper.treeToValue(accepted,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest.class);}
+            catch(Exception invalid){throw new IllegalStateException(invalid);}
+            var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),
+                    request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());
+            var batch=videoRuns.getObject().generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,request.count()==null?1:request.count());
+            ObjectNode inputs;
+            try {inputs=(ObjectNode)mapper.readTree(run.getInputJson());}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            ObjectNode exec=inputs.withObject("/_exec");
+            var ids=exec.putArray("nativeVideoJobIds");
+            batch.jobs().forEach(job->ids.add(job.path("id").asText()));
+            if(batch.frameAdjustments()!=null)exec.setAll(batch.frameAdjustments());
+            exec.put("sentPrompt",prompt);
+            try {run.setInputJson(mapper.writeValueAsString(inputs));}catch(Exception invalid){throw new IllegalStateException(invalid);}
+            run.setStage("video.bound");run.setHeartbeatAt(Instant.now());runs.save(run);
+        });
+    }
+
     private boolean checkpointSourceAudio(String id,ObjectNode audio) {
         return Boolean.TRUE.equals(transactions.execute(tx->{
             var run=billingLockedRun(id).orElse(null);if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus()))return false;

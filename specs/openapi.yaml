@@ -739,6 +739,11 @@ components:
           type: boolean
           nullable: true
           description: 'false =「按原文生成」，请厂商出片前不改写描述（聚算 H3 公开契约 optimizePrompt）；省略 = 模型默认。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED。不改变价格。'
+        rewrite:
+          type: string
+          nullable: true
+          enum: [auto, review]
+          description: '智能优化（2026-10-27）：提交前先用 Studio 默认文本模型按 MiniMax H3 官方写法把提示词改写成英文（台词保留原文），厂商自己的改写关掉。返回的这一行先是改写任务（stage prompt.optimizing，按实际 Token 结算），改写完在同一行上提交视频（之后按视频任务投影，output.videoPrompt 为发出的英文与提示）。auto = 改写完直接出片，没改成或太长按原文出片并写 output.videoPromptNotes；review = 没有提示才出片，有提示（output.needsChoice）或没改成（AI_BAD_OUTPUT，不扣费）都不出片，等用户另发一次（用优化稿：prompt 为英文、optimizePrompt=false；用原文：optimizePrompt=false）。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED；文本模型未配按量售价 503 AI_TOKEN_PRICE_NOT_CONFIGURED。视频价格（maxCost）不含改写。'
     StudioRunRequest:
       type: object
       required: [clientRequestId, nodeId, operation, prompt]
@@ -15163,13 +15168,15 @@ paths:
       description: >-
         发生成任务（type：script / split / extract / plan / asset-image / board / video / export）。video 走原生视频任务（全能参考：图1 采用的分镜图，之后是资产参考图与说话角色的声音样本），默认关闭可选的供应商提示词改写；export 按每个片段当前采用并确认的视频顺序合成整集，不扣积分。split 只让模型给每集起点和正文起点 bodyStart，区间由程序构造，结果存为 pendingSplit 等确认；剧本里已标好「第N集」且 options.episodeCount 未指定其他集数时直接按标题分，不建任务、不扣积分；已有待确认结果 409 DIRECTOR_SPLIT_PENDING。script 带 options.regenerate=true 时重写已有剧本：旧稿进 scriptHistory（最多 3 版），集与片段清空、资产保留；已有分镜图或视频候选时 409 DIRECTOR_CLIPS_HAVE_MEDIA。任务是原生 IpRun（host_type=director），
         计价、冻结、付款（billing）、结算、幂等（clientRequestId）都在原链路；maxCost 是界面报价，价格变了 409 STUDIO_PRICE_CHANGED。
+        H3 片段视频提交前先按官方写法改写提示词（不进报价，按实际用量另扣）；改写稿有提示时手动生成停在 videoPromptRewrite=review，
+        再发 video 须带 options.promptChoice=optimized（用优化稿）或 original（用原文，不改写），未选 409 DIRECTOR_PROMPT_REVIEW；original 随时可用。
         必要参考图缺失 400 DIRECTOR_REFERENCE_MISSING，未确认 400 DIRECTOR_REFERENCE_UNCONFIRMED，片段有待改问题 400 DIRECTOR_CLIP_NEEDS_FIX；
         没有可用的全能参考或单首帧视频模型时规划 503 DIRECTOR_VIDEO_MODEL_UNAVAILABLE。首帧模式一镜一段，仅传已确认的分镜首帧，不带额外资产图或声音；绑定声音时需显式确认本次不带声音参考。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [type, clientRequestId], properties: { type: { type: string }, targetId: { type: string, nullable: true }, clientRequestId: { type: string, maxLength: 48 }, options: { type: object }, billing: { type: object, nullable: true }, maxCost: { type: integer, nullable: true } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
-        '409': { description: DIRECTOR_TASK_RUNNING / STUDIO_PRICE_CHANGED / DIRECTOR_SCRIPT_EXISTS / DIRECTOR_EPISODES_EXIST / DIRECTOR_CLIPS_HAVE_MEDIA }
+        '409': { description: DIRECTOR_TASK_RUNNING / STUDIO_PRICE_CHANGED / DIRECTOR_SCRIPT_EXISTS / DIRECTOR_EPISODES_EXIST / DIRECTOR_CLIPS_HAVE_MEDIA / DIRECTOR_PROMPT_REVIEW }
   /v1/ip-studio/director/works/{id}/quote:
     post:
       tags: [ipstudio]

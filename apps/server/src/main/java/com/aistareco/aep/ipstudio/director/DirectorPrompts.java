@@ -356,7 +356,7 @@ public final class DirectorPrompts {
             case "split" -> validateSplit(om, meta, out);
             case "extract" -> validateExtract(om, meta, out);
             case "plan" -> validatePlan(om, meta, out);
-            case "videoPrompt" -> DirectorH3Rewrite.validate(om, meta, out);
+            case "videoPrompt" -> com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(om, meta, out);
             default -> throw bad("未知的导演台任务");
         };
     }

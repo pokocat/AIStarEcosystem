@@ -130,6 +130,12 @@ export interface IpRunOutput {
   promptEn?: string;              // identity：英文身份提示词
   videoCandidates?: IpVideoCandidate[];
   candidates?: IpCandidate[];     // generate：候选图（签名 URL，短期）
+  /** 智能优化（先按 H3 官方写法改写提示词再出片）：发给模型的英文与提示。 */
+  videoPrompt?: import('./ip-studio-workflow').StudioVideoPromptOptimization;
+  /** 智能优化没用上时（没优化成、优化稿超长）已按原文生成的说明。 */
+  videoPromptNotes?: string[];
+  /** 优化稿有提示，没有出片，等用户选用优化稿还是原文。 */
+  needsChoice?: boolean;
 }
 export interface IpRunInputs {
   /** Explicit Studio input wrapped by the native image pipeline. */

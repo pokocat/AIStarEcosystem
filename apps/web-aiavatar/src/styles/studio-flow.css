@@ -132,6 +132,9 @@ button.studio-flow-area-tone:focus-visible { outline:2px solid var(--primary); o
 .studio-flow-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding:4px 2px; border:0; border-radius:4px; background:transparent; text-align:left; cursor:text; }
 .studio-flow-title-input { width:100%; padding:3px 5px; border:1px solid var(--primary); border-radius:4px; background:var(--surface); outline:2px solid var(--primary-soft); }
 .studio-flow-queue { flex-shrink:0; margin:0; padding:10px 12px; font-size:12px; line-height:1.5; color:var(--ink-2); overflow-wrap:anywhere; }
+.studio-flow-prompt-review { flex-shrink:0; display:flex; align-items:center; gap:6px; min-width:0; margin:0; padding:8px 12px; font-size:12px; line-height:1.5; color:var(--ai-ink); background:var(--ai-soft); }
+.studio-flow-prompt-review span { min-width:0; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.studio-flow-prompt-review button { flex-shrink:0; border:0; background:none; padding:0; color:var(--ai); font:inherit; font-weight:600; cursor:pointer; }
 .studio-flow-media { position:relative; flex:1; min-height:0; overflow:hidden; border-radius:0 0 10px 10px; background:var(--surface-2); }
 .react-flow__node.draggable .studio-flow-media,.react-flow__node.draggable .studio-flow-placeholder { cursor:grab; }
 .react-flow__node.dragging .studio-flow-media { cursor:grabbing; }

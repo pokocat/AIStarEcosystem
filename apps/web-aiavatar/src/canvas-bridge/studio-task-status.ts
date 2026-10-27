@@ -12,7 +12,7 @@ export const studioRecoveryNotice = modelTaskException({status:'running',errorCo
 export const studioReviewNotice = modelTaskException({status:'running',errorCode:'VIDEO_SUBMISSION_UNKNOWN'})!.notice;
 /** Image stages are checkpoints, not provider percentages. */
 export function studioTaskHasProgress(task?: Task): boolean {
-  return task?.kind !== 'generate' && !studioTaskNeedsReview(task) && !studioTaskRecovering(task) && !task?.stage?.startsWith('image.') && task?.stage !== 'storage.persist';
+  return task?.kind !== 'generate' && !studioTaskNeedsReview(task) && !studioTaskRecovering(task) && !task?.stage?.startsWith('image.') && task?.stage !== 'storage.persist' && task?.stage !== 'prompt.optimizing';
 }
 export function studioTaskQueued(task?: Task): boolean {
   return task?.status === 'running' && (!!task.queue || task.stage === 'endpoint.queued' || task.stage === 'queued');
@@ -31,6 +31,7 @@ export function studioTaskLabel(task?: Task, compact = false): string {
   if(task?.stage?.startsWith('image.'))return '正在生成图片';
   if(task?.stage==='storage.persist')return '正在保存结果';
   if(task?.kind==='generate')return task.stage==='prompt.compile'?'正在准备图片':'正在生成图片';
+  if(task?.stage==='prompt.optimizing')return '正在优化提示词';
   if(task?.stage==='film.plan')return '正在整理视频分段';
   if(task?.stage==='film.cut')return '正在裁切视频片段';
   if(task?.stage==='film.analyze')return '正在逐段分析镜头';

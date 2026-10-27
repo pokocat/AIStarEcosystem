@@ -182,11 +182,12 @@ export interface DirectorClip {
   videoWithoutVoice?: boolean;
   /**
    * H3 提交前把中文视频提示词改写成官方英文写法：off = 不改写（非 H3）；needed = 生成时先改写（按实际用量另扣少量积分，不进报价）；
-   * ready = 英文稿已备好，与当前中文提示词和参考素材对得上。
+   * ready = 英文稿已备好，与当前中文提示词和参考素材对得上；review = 英文稿有需要留意的地方（或太长），等用户选用优化稿还是原文；
+   * original = 用户选了按原文生成。
    */
-  videoPromptRewrite?: "off" | "needed" | "ready";
-  /** 最近一次改写出的英文稿；text 只在 ready 时有，是填好当前台词、会发给模型的那一份。 */
-  videoPromptEn?: { text?: string; at: string } | null;
+  videoPromptRewrite?: "off" | "needed" | "ready" | "review" | "original";
+  /** 最近一次改写出的英文稿；text 只在 ready / review 时有，是填好当前台词、会发给模型的那一份。warnings 是给用户的提示。 */
+  videoPromptEn?: { text?: string; at: string; warnings?: string[]; notes?: string[]; usable?: boolean } | null;
   rev: number;
 }
 

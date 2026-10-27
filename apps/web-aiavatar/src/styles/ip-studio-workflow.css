@@ -410,8 +410,21 @@ html[data-layout="mobile"] .studio-library-use .ant-btn { grid-column:1; grid-ro
 .ip-surface .studio-video-reference-list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
 /* Model-side smart optimization controls and the result used for each video take. */
 /* The form's generic `label {flex-direction:column}` also hits antd's checkbox wrapper (it is a <label>). */
-.ip-surface .studio-video-prompt-mode .ant-checkbox-wrapper { flex-direction: row; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-1); }
-.ip-surface .studio-video-prompt-mode p { margin: 4px 0 0 24px; color: var(--ink-3); font-size: 12px; line-height: 1.5; }
+/* 卡片上的「智能优化」（2026-10-27 从参数弹层挪出来）：开着是 AI 的浅紫底，关着是普通描边 + 一行提示。 */
+.ip-surface .studio-prompt-optimize { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.ip-surface .studio-prompt-optimize-chip { display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--ink-2); font-size: 12px; font-weight: 500; white-space: nowrap; cursor: pointer; }
+.ip-surface .studio-prompt-optimize-chip.is-on { border-color: transparent; background: var(--ai-soft); color: var(--ai-ink); box-shadow: inset 0 0 0 1px var(--ai-ring); }
+.ip-surface .studio-prompt-optimize-chip:disabled { opacity: .5; cursor: not-allowed; }
+.ip-surface .studio-prompt-optimize-hint { min-width: 0; max-width: 168px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ink-3); }
+/* 优化稿有提示时的选择：用优化稿生成 / 用原文生成。 */
+.ip-surface .studio-prompt-review { margin: 8px 0 0; padding: 10px 12px; border-radius: 10px; background: var(--ai-soft); box-shadow: inset 0 0 0 1px var(--ai-ring); font-size: 12px; color: var(--ink-1); }
+.ip-surface .studio-prompt-review strong { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ai-ink); }
+.ip-surface .studio-prompt-review ul { margin: 6px 0 0; padding-left: 18px; color: var(--ink-2); line-height: 1.6; overflow-wrap: anywhere; }
+.ip-surface .studio-prompt-review p { margin: 6px 0 0; color: var(--ink-2); line-height: 1.5; overflow-wrap: anywhere; }
+.ip-surface .studio-prompt-review details { margin-top: 6px; }
+.ip-surface .studio-prompt-review summary { cursor: pointer; color: var(--ink-2); }
+.ip-surface .studio-prompt-review pre { max-height: 180px; overflow: auto; margin: 6px 0 0; padding: 8px; border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; line-height: 1.5; }
+.ip-surface .studio-prompt-review-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
 .ip-surface .studio-video-rewrite-detail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 .ip-surface .studio-video-rewrite-detail section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .ip-surface .studio-video-rewrite-detail pre { margin: 0; max-height: 32vh; overflow: auto; padding: 10px 12px; border-radius: 8px;

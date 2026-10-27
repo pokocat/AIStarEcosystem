@@ -31,6 +31,11 @@ public class StudioVideoService {
                         m.selectableById(),m.supportsPromptOptimization(),m.contract(),m.pricing(),m.batchCounts())).toList();
     }
     private String model(String requested) {return scenePolicies.resolveStudioVideo(requested).endpoint().getId();}
+    /** 所选模型出片前会不会改写描述（H3）：只有这种模型才走 H3 官方写法的提示词优化。 */
+    public boolean rewritable(String requested) {
+        String endpointId=model(requested);
+        return models().stream().anyMatch(m->endpointId.equals(m.endpointId())&&m.supportsPromptOptimization());
+    }
     /**
      * A prepared native submission plus what was done to its frames on the way ({@code firstFrameAdjusted} /
      * {@code lastFrameAdjusted}, empty when nothing): the caller records it in the run's {@code _exec}.

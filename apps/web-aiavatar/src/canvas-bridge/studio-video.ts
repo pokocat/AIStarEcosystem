@@ -38,7 +38,10 @@ export function studioVideoCanvasForConfig(model:VideoStudioModel,tier:string,si
   return canvas;
 }
 export type StudioVideoAsset = {mediaType:VideoStudioMediaType;storageKey?:string};
-/** keepPrompt：智能优化开关的反向存储值，true 表示不让厂商改写描述（只对 supportsPromptOptimization 的模型生效）。 */
+/**
+ * keepPrompt：智能优化开关的反向存储值，true = 关（原文直接发给视频模型）。只对 supportsPromptOptimization 的模型（H3）生效；
+ * 开着时提交前先按 H3 官方写法改写提示词（2026-10-27 起是我们自己的改写，不再交给厂商改写）。
+ */
 export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firstId?:string;lastId?:string;keepPrompt?:boolean};
 
 /**
@@ -46,7 +49,7 @@ export type StudioVideoDraft={mode:VideoStudioMode;tier:string;seed?:number;firs
  * retrying, generating again from the node) keeps it; a template preset never sets it.
  */
 export const studioVideoKeepPrompt = (node:CanvasNodeData|undefined):boolean =>
-  node?.type===CanvasNodeType.Video&&node.metadata?.studio?.request?.video?.optimizePrompt===false;
+  node?.type===CanvasNodeType.Video&&node.metadata?.studio?.request?.video?.optimizePrompt===false&&!node.metadata?.studio?.promptChoice;
 
 /** Current node controls and connected references own a reopened editor, including edits made after a run. */
 export function studioVideoNodeSelection(node:CanvasNodeData|undefined,nodes:CanvasNodeData[],referenceIds:string[]) {
@@ -118,12 +121,16 @@ export function studioVideoQuote(model:VideoStudioModel,video:StudioVideoSetting
 
 /**
  * The order is explicit: first/last in frame mode, numbered per media type in reference mode.
- * keepPrompt only applies to models that rewrite the description before encoding; others ignore the choice.
+ * prompt only applies to models that rewrite the description before encoding (H3): "rewrite" optimizes it first
+ * (stops for the user's choice when the optimized draft has notes), "original" sends it as written.
  */
-export function studioVideoSettings(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec,keepPrompt?:boolean):StudioVideoSettings {
+export function studioVideoSettings(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec,prompt?:"rewrite"|"original"):StudioVideoSettings {
   const settings=studioVideoInputs(mode,tier,assets,seed,spec);
-  return keepPrompt?{...settings,optimizePrompt:false}:settings;
+  return prompt==="rewrite"?{...settings,rewrite:"review"}:prompt==="original"?{...settings,optimizePrompt:false}:settings;
 }
+/** 智能优化开关 → 设置里的写法；不支持的模型（非 H3）不带。 */
+export const studioVideoPromptMode=(supports:boolean|undefined,keepPrompt:boolean|undefined):"rewrite"|"original"|undefined =>
+  supports?(keepPrompt?"original":"rewrite"):undefined;
 function studioVideoInputs(mode:VideoStudioMode,tier:string,assets:StudioVideoAsset[],seed?:number,spec?:VideoStudioModeSpec):StudioVideoSettings {
   if(assets.some(a=>!a.storageKey))throw new Error("有一份参考素材尚未上传完成，请重新选择");
   if(spec) {

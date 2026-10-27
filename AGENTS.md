@@ -1174,7 +1174,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 2026-10-24 改版（`20261024-ai-director`）：
 - **资产提取：** 结果先存为 `pendingExtract`。用户在「确认资产」弹窗里勾选、改名后，`extract.save` 才入库；改名时原名记成别名。`extract.discard` 丢弃清单，一键制作在 `confirm-extract` 停下等，丢弃时停止。注意：清单项编号叫 `itemId`，不能叫 `key`，出参时名叫 `key` 的字段会被当成素材地址签名。
-- **视频提示词：** 2026-10-26 起改成中文 H3 结构：【人物】【分镜参考】【画面】【声音】【配乐】无。每镜写画面里有谁，台词原文写进说话的那一句，说话人不在画面里写画外、听的人闭嘴；不写「禁止」清单和画幅时长。用户看、改的是这份中文；**提交 H3 前用作品的文本模型 + MiniMax 官方 skill（`resources/director/h3-skill`，原文未改）改写成英文**（`DirectorH3Rewrite`）：模型只写画面、按 JSON 骨架 `shot_1…shot_N` 逐镜填，台词位置留 `{{Ln}}`，六段标题、`[Shot N] At` 切镜时间和 `(Sx) <d>[Chinese] 原文</d>` 由代码拼；校验不过（占位缺失或重复、台词放错镜头、模型自己写 `<d>`、缺镜头、参考图编号越界、超 7000 字符、漏翻汉字超过 20 个）判失败全额退回，自动再改写一次，仍不过才报错、不提交视频；零星漏翻的中文由代码删掉，漏写环境声补中性默认句（线上 21 段评测：原规则 74% 通过，误杀全是这两类，放宽后 100%）。英文存成带占位的模板（`clip.videoPromptEn`，按画面结构的指纹复用），只改台词不重新改写，提交时按当前台词现场填。改写不报价、按实际用量另扣（界面写「另需少量积分改写提示词」），完成后用用户确认过的视频价格与付款方接着提交（`chainVideo`）；改写期间付费输入（视频指纹，含素材 key）变了就不提交，一键制作的预算从发改写起就占着视频报价，续提被拒记为失败项、不换请求号重发（2026-10-26 Codex 评审）。只对 H3（`supportsPromptOptimization`）生效，首帧出片模型照旧。依据：同一片段对比，台词多时中文正文吞整句、把提示词里的中文念出来，英文正文 + 中文 `<d>` 三句完整（`docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7）。厂商智能优化仍关着。旧模板留作 `legacyVideoPrompt`，只核对旧格式生成的视频；新候选记 `promptFormat` 与实际发出的 `sentPrompt`。
+- **视频提示词：** 2026-10-26 起改成中文 H3 结构：【人物】【分镜参考】【画面】【声音】【配乐】无。每镜写画面里有谁，台词原文写进说话的那一句，说话人不在画面里写画外、听的人闭嘴；不写「禁止」清单和画幅时长。用户看、改的是这份中文；**提交 H3 前用文本模型 + MiniMax 官方 skill（`resources/h3-skill`，原文未改）改写成英文**（`H3PromptRewrite`，2026-10-27 起 Studio 画布与创作助手共用，见下「H3 视频提示词优化」）：台词认得全时模型只写画面、台词位置留 `{{Ln}}`，六段标题、`[Shot N] At` 切镜时间和 `(Sx) <d>[Chinese] 原文</d>` 由代码拼；认不全就由模型照官方写法写台词、代码逐句核对。检查只给提示不拦人（漏了的台词补回、放错镜头提示、零星中文删掉等），只有输出拼不出提示词才判失败退回并自动重试一次。英文存成带占位的模板（`clip.videoPromptEn`，含 `warnings / usable`，按画面结构的指纹复用），只改台词不重新改写。手动生成：没有提示就接着提交；有提示停在 `videoPromptRewrite=review`，片段上选「用优化稿生成 / 用原文生成」（`options.promptChoice`），「按原文生成」随时可用；一键制作不停，太长或两次没改成按原文。改写不报价、按实际用量另扣，完成后用用户确认过的视频价格与付款方接着提交（`chainVideo`）；改写期间付费输入（视频指纹，含素材 key）变了就不提交，一键制作的预算从发改写起就占着视频报价，续提被拒记为失败项、不换请求号重发。只对 H3（`supportsPromptOptimization`）生效，首帧出片模型照旧。依据见 `docs/audits/director-h3-video-prompt-ab-2026-10.md` §6–7。厂商智能优化关着。旧模板留作 `legacyVideoPrompt`，只核对旧格式生成的视频；新候选记 `promptFormat` 与实际发出的 `sentPrompt`。
 - **角色音色：** `asset.voiceDesc` 文字描述写进视频提示词的【声音】段，参考音频可选。
 - **分镜脚本写法（2026-10-26）：** 每镜台词不超过「秒数 × 4」字、一镜一人说话；机位写一种运镜（类型 + 幅度 + 速度），不写二选一和拍摄目的；不写外貌和抽象情绪词；光源声源写具体；小动作最多一个。`shotWarnings` 对台词超每秒 4 字、同镜两人说话给提示（不拦截）。
 - **角色出图：** 改为横版 16:9 设定集，含全身三视图、头部正左右侧、喜怒哀乐四宫格、面部特征特写和半身展示。
@@ -1240,6 +1240,18 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **对话费用不计入制作预算**：`attributeTurn`、`dialogueReserve()`、执行器里的 `dialogueRuns` 统计和 `dialogueSpent / dialogueInFlight` 全部删除；确认卡上限 = 报价 + 重做额度。旧数据里这些字段读到不报错。绑定制作的线程，对话仍由制作的固定付款人付（D10）。
 - **单轮上下文裁剪**（`DialogueContextWindow`）、长文分段读（素材概要写全文字数与 `read_canvas` offset，返回 `total / nextOffset`）、子任务最多等 10 分钟（`ChildRuns.MAX_FOLLOW`）。
 - 提示词 `SEED_VERSION=v25-2026-10-23-dialogue-no-continue`。无迁移。**未用真模型验证**（§8.0.1 ⑦：上线前至少用线上同款聚算 Qwen 真调一次长任务）。
+
+### H3 视频提示词优化 · 2026-10-27（本地，未发布；server + web-aiavatar）
+
+导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。
+- **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
+  开着发 `video.rewrite="review"`，关着发 `optimizePrompt=false`（原文直发）。**厂商自己的改写不再用**。
+- **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价，再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后在同一行上 `generateVideoBatch`，
+  任务号写进 `_exec.nativeVideoJobIds`，之后按视频任务投影（`videoBindingDto` 加上改写花费并带 `output.videoPrompt`）。改写中 stage `prompt.optimizing`（「正在优化提示词」）。
+- **不拦人**：画布（review）有提示时不出片，节点上「优化稿有需要留意的地方，选好再出片」，卡片上 `StudioPromptReview` 给「用优化稿生成 / 用原文生成」（没改成给「重新优化 / 用原文生成」）；
+  选择发一次普通视频请求（`optimizePrompt=false`，用优化稿时 prompt 是英文、节点上仍显示中文），记 `studio.promptChoice`，开关仍算开着。创作助手（auto）不停：能用就用，用不了按原文并写 `videoPromptNotes`。
+- **创作助手**：出视频 / 原创 / 复刻技能要求按导演台格式写中文（「第N镜（起–止 秒）：」「名字说：「原文」」），这样镜头固定、台词由代码填；制作计划的视频步骤 `ModeSpec.rewrite`，报价加改写冻结上限（`videoRewriteHold`）。
+- 规则见 `specs/BUSINESS_RULES.md`「H3 视频提示词改写」；测试 `H3PromptRewriteTest`、`StudioVideoRewriteWorkerTest`、`DirectorH3VideoFlowTest`、`studio-video-prompt-notes.test.tsx`。
 
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 

@@ -611,7 +611,8 @@ public class IpProjectService {
         String type=switch(run.getKind()) {
             case "generate","identity","studio-image" -> com.aistareco.aep.service.AiGenerationQueueService.IMAGE;
             case "studio-audio","studio-lip-sync" -> com.aistareco.aep.service.AiGenerationQueueService.SPEECH;
-            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
+            // studio-video 走到这里只会是还在改写提示词的那一段（提交视频后按视频任务投影，不经过这里）。
+            case "studio-text","studio-script","studio-storyboard","studio-assistant","studio-recreation","studio-video" -> com.aistareco.aep.service.AiGenerationQueueService.WORKFLOW;
             default -> null;
         };
         return type==null?null:generationQueue.position(type,run.getId());
@@ -692,6 +693,10 @@ public class IpProjectService {
         if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
         var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
         if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
+        // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起，改写结果照常给界面。
+        cost+=r.getCost();
+        JsonNode own=parseOrEmptyObject(r.getOutputJson());
+        for(String field:List.of("videoPrompt","videoPromptNotes"))if(own.has(field))output.set(field,own.path(field).deepCopy());
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",
                 stage,pct/ids.size(),cost,pendingCode!=null?pendingCode:allFailed?(firstErrorCode==null?"STUDIO_VIDEO_FAILED":firstErrorCode):null,
                 pendingMessage!=null?pendingMessage:allFailed?firstError:null,inputs,output,

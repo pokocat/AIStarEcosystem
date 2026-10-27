@@ -44,7 +44,7 @@ vi.mock('./studio-lip-sync',()=>({StudioLipSync:({open,initialNodeId}:any)=>open
 vi.mock('./studio-assistant',()=>({StudioAssistant:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="AI 创作助手">{initialNodeId}</section>:null}));
 vi.mock('./studio-batch-panel',()=>({StudioBatchPanel:({open,initialNodeId}:any)=>open?<section role="dialog" aria-label="制作计划">{initialNodeId}</section>:null}));
 vi.mock('./studio-ip-library',()=>({StudioIpLibrary:()=>null}));
-vi.mock('./studio-video-controls',()=>({StudioVideoControls:()=>null,StudioVideoSeedControl:()=>null}));
+vi.mock('./studio-video-controls',async orig=>({...await orig<object>(),StudioVideoControls:()=>null,StudioVideoSeedControl:()=>null}));
 vi.mock('./studio-motion-prompt',()=>({StudioMotionPrompt:({value,onChange,references}:any)=><textarea data-references={JSON.stringify(references.map((r:any)=>[r.nodeId,r.label]))} aria-label="创作要求" value={value} onChange={e=>onChange(e.target.value)}/>}));
 vi.mock('@/canvas-bridge/signed-image',()=>({SignedImage:()=>null}));
 vi.mock('@/canvas-bridge/signed-video',()=>({SignedVideo:()=>null}));

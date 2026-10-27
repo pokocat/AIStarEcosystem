@@ -72,6 +72,15 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       study:{...study,segments:study.segments.map(({url,coverUrl,...segment})=>segment)}};
     metadata.content=run.output.text||'视频拉片';
   }
+  if(run.kind==="studio-video"&&run.status!=="running") {
+    // 智能优化（画布 review 模式）停在「用优化稿 / 用原文」上：优化稿有提示、太长，或没优化成（还没出片）。
+    const source=(run.inputs as {prompt?:string}).prompt;
+    const review=(run.inputs as {video?:{rewrite?:string}}).video?.rewrite==="review";
+    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,source,...run.output.videoPrompt};
+    else if(review&&run.status==="failed"&&!run.output.videoCandidates?.length&&run.errorCode!=="IP_RUN_CANCELLED")
+      metadata.studio.promptReview={runId:run.id,source,failed:true,message:run.errorMessage,...(run.output.videoPrompt||{})};
+    else if(metadata.studio.promptReview?.runId===run.id)delete metadata.studio.promptReview;
+  }
   if (run.status === "running") return { ...node, metadata: { ...metadata, status: "loading" } };
   if(run.kind==="studio-video")metadata.videoTaskId=undefined;
   metadata.status = run.status === "failed" ? "error" : "success";

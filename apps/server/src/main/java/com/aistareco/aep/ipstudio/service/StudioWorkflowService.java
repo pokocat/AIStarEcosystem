@@ -179,6 +179,7 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "video".equals(request.operation())) {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
+            if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
             var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             ObjectNode exec=inputs.putObject("_exec");
@@ -331,6 +332,67 @@ public class StudioWorkflowService {
             }
         });
         return projects.toRunDto(run);
+    }
+
+    /**
+     * H3 出视频前先把提示词改写成官方写法（{@code video.rewrite}，2026-10-27）：这一行先是一条文字任务（冻结改写的上限、按实际用量结算），
+     * worker 改写完在同一行上提交视频（写进 {@code _exec.nativeVideoJobIds}，之后按视频任务投影）。review 模式有提示时不出片，
+     * 停在「用优化稿 / 用原文」上。视频的价格、付款方照常在提交视频时核对；这里先按同样的规则预检一遍，免得改写完才发现出不了片。
+     */
+    private IpRunDto submitVideoRewrite(String userId,String projectId,com.aistareco.aep.ipstudio.model.IpProject project,RunRequest request,String fingerprint) {
+        var video=request.video();
+        if(!Set.of("auto","review").contains(video.rewrite()))throw bad("STUDIO_VIDEO_INPUT_INVALID","不支持的提示词优化方式");
+        if(studioVideo==null)throw bad("STUDIO_VIDEO_MODE_UNAVAILABLE","视频模型暂不可用");
+        int count=request.count()==null?1:request.count();
+        var check=videoRequest(request);
+        if(!studioVideo.rewritable(request.model()))throw bad("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持提示词优化");
+        long videoCost=Math.multiplyExact(studioVideo.quote(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
+        if(request.modelBilling()==null)IpRunService.requireApprovedCost(request.maxCost(),videoCost);
+        var selection=scenePolicies.resolve("studio","script",null,pricing.ipIdentity());
+        var endpoint=selection.resolved().endpoint();
+        var rate=chatRate(endpoint.getId());
+        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","提示词优化暂不可用（文本模型未配置按量售价），可以关闭智能优化按原文生成");
+        int seconds=request.durationSec()==null?5:request.durationSec();
+        var built=com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(request.prompt(),seconds,video,projects.readDoc(project));
+        var h3=built.request();
+        String id="IPR-"+UUID.randomUUID().toString().replace("-","").substring(0,20);
+        long cost=rate.maxCost();
+        ObjectNode inputs=mapper.valueToTree(request);
+        inputs.put("mock",false);
+        var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_token")
+                .put("rewrite",video.rewrite()).put("videoCost",videoCost);
+        execution.set("h3",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios()));
+        execution.put("systemPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.system(h3.mode(),h3.codeLines(),h3.shots()!=null));
+        execution.put("userPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.user(h3));
+        execution.put("endpointId",endpoint.getId()).put("temperature",0.6);
+        int budget=Math.min(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS,rate.maxOutputTokens());
+        if(endpoint.getChatMaxOutputTokens()!=null)budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
+        execution.put("maxTokens",budget);
+        execution.set("tokenPricing",mapper.valueToTree(rate));
+        var modelCharge=StudioTokenBilling.plan(endpoint,rate);
+        StudioTokenBilling.store(execution,modelCharge,endpoint);
+        var billing=enterpriseBilling==null?null:enterpriseBilling.reserve(userId,request.billing(),IpRunService.REF_TYPE,id,endpoint.getId(),cost,"Studio 视频提示词优化",modelCharge);
+        if(enterpriseBilling==null&&cost>0)credits.hold(userId,cost,IpRunService.REF_TYPE,id,"Studio 视频提示词优化",modelCharge);
+        IpRun run=IpRun.builder().id(id).projectId(projectId).ownerUserId(userId).nodeId(request.nodeId())
+                .kind("studio-video").status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
+                .enterpriseId(request.billing()!=null&&"enterprise".equals(request.billing().mode())?request.billing().enterpriseId():null)
+                .clientRequestId(request.clientRequestId()).inputFingerprint(fingerprint).inputJson(write(inputs))
+                .outputJson("{}").createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
+        StudioRunBilling.apply(run,billing);
+        runs.save(run);
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override public void afterCommit() {
+                try {worker.execute(id);} catch(RuntimeException e){worker.reject(id,e);}
+            }
+        });
+        return projects.toRunDto(run);
+    }
+
+    /** 改写的冻结上限（文本模型按量售价的上限），一键制作 / 制作计划按它预留预算；文本模型没配售价时为 0。 */
+    public long videoRewriteHold() {
+        if(fixtures.enabled()||scenePolicies==null)return 0;
+        var rate=chatRate(scenePolicies.resolve("studio","script",null,pricing.ipIdentity()).resolved().endpoint().getId());
+        return rate==null?0:rate.maxCost();
     }
 
     /**
@@ -770,8 +832,9 @@ public class StudioWorkflowService {
             }
             case "video" -> {
                 if(request.video()==null||studioVideo==null)throw bad("STUDIO_VIDEO_INPUT_INVALID","制作计划里的视频步骤需要明确视频模式");
-                long unit=studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video()));
-                yield Math.multiplyExact(unit,(long)(request.count()==null?1:request.count()));
+                long unit=studioVideo.quote(userId,new IpRunService.IpVideoRequest(request.prompt(),null,request.durationSec(),request.aspectRatio(),request.model(),null,request.video().submitted()));
+                // 先改写提示词的步骤把改写的冻结上限也算进去：制作计划的预算按它核对。
+                yield Math.addExact(Math.multiplyExact(unit,(long)(request.count()==null?1:request.count())),request.video().rewrite()==null?0:videoRewriteHold());
             }
             default -> {
                 AiModelInvocationService.ResolvedEndpoint endpoint=scenePolicies!=null?scenePolicies.resolve("studio","script",request.model(),pricing.ipIdentity()).resolved()

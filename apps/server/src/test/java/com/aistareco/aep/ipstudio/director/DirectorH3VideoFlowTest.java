@@ -1,6 +1,7 @@
 package com.aistareco.aep.ipstudio.director;
 
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
+import com.aistareco.aep.ipstudio.h3.H3PromptRewrite;
 import com.aistareco.aep.ipstudio.model.IpRun;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.ipstudio.service.IpRunService;
@@ -113,11 +114,13 @@ class DirectorH3VideoFlowTest {
     /** 让改写任务「完成」：worker 里校验组装后的输出，原样交给 reconcile 回投。 */
     private void finishRewrite(JsonNode meta) throws Exception { finishRewrite(meta, 0); }
 
-    private void finishRewrite(JsonNode meta, long cost) throws Exception {
+    private void finishRewrite(JsonNode meta, long cost) throws Exception { finishRewrite(meta, cost, modelOutput()); }
+
+    private void finishRewrite(JsonNode meta, long cost, ObjectNode modelOutput) throws Exception {
         ObjectNode input = om.createObjectNode();
         input.set("_director", meta);
         ObjectNode output = om.createObjectNode();
-        output.set("director", DirectorPrompts.validate(om, meta, modelOutput()));
+        output.set("director", DirectorPrompts.validate(om, meta, modelOutput));
         IpRun run = IpRun.builder().id("IPR-rw").projectId("DW-1").hostType(IpRun.HOST_DIRECTOR).ownerUserId("u1").nodeId("videoPrompt:cl1")
                 .kind("studio-director").status(IpRun.STATUS_DONE).stage("done").cost(cost).inputJson(om.writeValueAsString(input))
                 .outputJson(om.writeValueAsString(output)).createdAt(Instant.now()).build();
@@ -145,7 +148,7 @@ class DirectorH3VideoFlowTest {
         assertEquals("IPR-rw", service.dispatch("u1", w, c, "video", "cl1", "u-r1", om.createObjectNode(), null, null, 600L));
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), user.capture(), eq(DirectorH3Rewrite.MAX_TOKENS),
+        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), user.capture(), eq(H3PromptRewrite.MAX_TOKENS),
                 eq("u-r1-p"), meta.capture(), any(), any(), eq(5L));
         assertTrue(user.getValue().contains("老赵说：{{L1}}陈默说：{{L2}}老赵说：{{L3}}"), user.getValue());
         assertFalse(user.getValue().contains("又熬通宵"), "台词原文不交给改写模型");
@@ -265,23 +268,29 @@ class DirectorH3VideoFlowTest {
     }
 
     @Test
-    void aRetryThatNoLongerFitsTheBudgetIsNotSent() throws Exception {
+    void aRetryThatNoLongerFitsTheBudgetFallsBackToTheOriginal() throws Exception {
         ObjectNode p = pipeline(605);
         ObjectNode meta = dispatchRewriteIn(p);
-        // 改写期间换了文本模型，冻结上限变成 700：605 的预算放不下重试 + 600 的视频
+        // 改写期间换了文本模型，冻结上限变成 700：605 的预算放不下重试 + 600 的视频，就不再重试，按原文接着做（600 放得下）
         when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(700L);
         failRewrite(meta, "IPR-rw");
         verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
-        assertTrue(p.path("failed").toString().contains("videoPrompt:cl1"), p.toString());
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().contains("【画面】"), req.getValue().prompt());
     }
 
     @Test
-    void aCustomPromptWithAStrayClosingQuoteIsRefused() {
+    void aCustomPromptWithAStrayClosingQuoteLetsTheModelWriteTheLines() {
+        // 引号不成对，代码认台词会截半句：不再拒绝，改由模型照官方写法写台词、逐句核对（2026-10-26 用户定：不拦人）
         clip().put("videoPrompt", clip().path("videoPrompt").asText().replace("又熬通宵？", "又熬」通宵？")).put("videoPromptCustom", true);
         service.refresh(c);
-        BusinessException e = assertThrows(BusinessException.class,
-                () -> service.dispatch("u1", w, c, "video", "cl1", "u-r5", om.createObjectNode(), null, null, 600L));
-        assertEquals("DIRECTOR_VIDEO_PROMPT_LINES", e.getCode());
+        service.dispatch("u1", w, c, "video", "cl1", "u-r5", om.createObjectNode(), null, null, 600L);
+        ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
+        ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), user.capture(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        assertFalse(meta.getValue().path("codeLines").asBoolean());
+        assertTrue(user.getValue().contains("又熬」通宵？"), "台词原文交给模型照写：" + user.getValue());
     }
 
     @Test
@@ -314,7 +323,7 @@ class DirectorH3VideoFlowTest {
         ObjectNode meta = dispatchRewrite();
         failRewrite(meta, "IPR-rw");
         ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
-        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(), eq(DirectorH3Rewrite.MAX_TOKENS),
+        verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(), eq(H3PromptRewrite.MAX_TOKENS),
                 eq("u-r1-p2"), retryMeta.capture(), any(), any(), eq(5L));
         assertEquals(2, retryMeta.getValue().path("attempt").asInt());
         assertEquals(600L, retryMeta.getValue().path("then").path("maxCost").asLong(), "重试后照样接着提交视频");
@@ -329,13 +338,78 @@ class DirectorH3VideoFlowTest {
     }
 
     @Test
-    void customPromptWhoseLinesCannotBeFoundIsRefused() {
+    void customPromptWithoutRecognisableLinesIsStillOptimised() {
         clip().put("videoPrompt", "两个人在通道里聊天，老赵问他昨晚听见什么。").put("videoPromptCustom", true);
         service.refresh(c);
-        BusinessException e = assertThrows(BusinessException.class,
-                () -> service.dispatch("u1", w, c, "video", "cl1", "u-r3", om.createObjectNode(), null, null, 600L));
-        assertEquals("DIRECTOR_VIDEO_PROMPT_LINES", e.getCode());
+        service.dispatch("u1", w, c, "video", "cl1", "u-r3", om.createObjectNode(), null, null, 600L);
+        ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), meta.capture(), any(), any(), any());
+        assertFalse(meta.getValue().path("codeLines").asBoolean(), "认不全台词就让模型照官方写法写");
+    }
+
+    /** 模型漏了第 3 句台词：代码补回、给提示。 */
+    private ObjectNode outputMissingALine() {
+        ObjectNode o = modelOutput();
+        ((ArrayNode) o.path("shots")).set(1, om.getNodeFactory().textNode("the camera cuts to <Subject 2>, who says: {{L1}} <Subject 1> replies: {{L2}}"));
+        return o;
+    }
+
+    @Test
+    void aDraftWithNotesWaitsForTheUsersChoiceBeforeSpendingOnVideo() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        finishRewrite(meta, 3, outputMissingALine());
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertEquals("review", clip().path("videoPromptRewrite").asText());
+        assertTrue(clip().path("videoPromptEn").path("warnings").toString().contains("模型漏了"), clip().toString());
+        assertTrue(c.path("notice").path("message").asText(c.path("notice").asText()).contains("优化稿有需要留意的地方"), c.path("notice").toString());
+        // 没选就点生成：明确告诉用户先选
+        assertEquals("DIRECTOR_PROMPT_REVIEW", assertThrows(BusinessException.class,
+                () -> service.dispatch("u1", w, c, "video", "cl1", "u-r2", om.createObjectNode(), null, null, 600L)).getCode());
+        // 选用优化稿：漏的那句补在第 2 镜末尾，照样发出去，不再改写
+        service.dispatch("u1", w, c, "video", "cl1", "u-r3", om.createObjectNode().put("promptChoice", "optimized"), null, null, 600L);
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().contains("The speaker says: (S1) <d>[Chinese] 难受？那你昨晚听见啥动静没？</d>"), req.getValue().prompt());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        service.refresh(c);
+        assertEquals("ready", clip().path("videoPromptRewrite").asText(), "选过了，同一版提示词不再停下来问");
+    }
+
+    @Test
+    void theUserCanAlwaysGenerateFromTheOriginalChinese() {
+        service.dispatch("u1", w, c, "video", "cl1", "u-r4", om.createObjectNode().put("promptChoice", "original"), null, null, 600L);
         verify(textRuns, never()).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().contains("【画面】"), "原文直接发：" + req.getValue().prompt());
+        assertEquals(Boolean.FALSE, req.getValue().video().optimizePrompt(), "厂商自己的改写也关着");
+        assertEquals("original", clip().path("video").path("pending").get(0).path("meta").path("promptChoice").asText());
+        service.refresh(c);
+        assertEquals("original", clip().path("videoPromptRewrite").asText());
+    }
+
+    @Test
+    void inAPipelineNotesDoNotStopTheVideo() throws Exception {
+        ObjectNode p = pipeline(10_000);
+        ObjectNode meta = dispatchRewriteIn(p);
+        finishRewrite(meta, 3, outputMissingALine());
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().startsWith("subject_definitions:"), "一键制作按优化稿继续，提示留在片段上");
+    }
+
+    @Test
+    void inAPipelineASecondFailedRewriteFallsBackToTheOriginal() throws Exception {
+        ObjectNode p = pipeline(10_000);
+        ObjectNode meta = dispatchRewriteIn(p);
+        failRewrite(meta, "IPR-rw");
+        ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), retryMeta.capture(), any(), any(), any());
+        failRewrite(retryMeta.getValue(), "IPR-rw2");
+        ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), req.capture());
+        assertTrue(req.getValue().prompt().contains("【画面】"), "两次都没优化成，按原文接着做：" + req.getValue().prompt());
+        assertFalse(p.path("failed").toString().contains("videoPrompt:cl1"), p.toString());
     }
 
     @Test

@@ -248,6 +248,10 @@ html:not([data-layout="desktop"]) .director-episode-body { padding-left: 6px; }
 .director-issues ul { margin: 0; padding-left: 16px; }
 .director-prompts { display: flex; flex-direction: column; gap: 6px; }
 .director-sent-prompt-note { margin: 0; font-size: 12px; color: var(--ip-muted); }
+/* 优化稿有提示时：用优化稿生成 / 用原文生成（2026-10-27）。 */
+.director-prompt-review { display: grid; gap: 6px; padding: 10px 12px; border-radius: 10px; background: var(--ip-gold-soft); color: var(--ink-1, #1d2233); font-size: 12px; }
+.director-prompt-review strong { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ip-gold); }
+.director-prompt-review ul { margin: 0; padding-left: 18px; line-height: 1.6; overflow-wrap: anywhere; color: var(--ip-muted); }
 .director-sent-prompt { font-size: 12px; color: var(--ip-muted); }
 .director-sent-prompt summary { cursor: pointer; }
 .director-sent-prompt pre { margin: 6px 0 0; padding: 10px 12px; max-height: 220px; overflow: auto; border-radius: 8px; background: var(--ip-soft);

@@ -10,7 +10,14 @@ export interface StudioVideoSettings {
   references?: VideoStudioReferenceInput[];
   /** false =「按原文生成」：请厂商出片前不改写描述；不填 = 模型默认（H3 默认会改写）。只对 supportsPromptOptimization 的模型开放。 */
   optimizePrompt?: boolean;
+  /**
+   * 智能优化（2026-10-27）：提交前先按 H3 官方写法把提示词改写成英文（台词保留原文）。auto = 改写完直接出片（创作助手）；
+   * review = 没有提示就直接出片，有提示停下来让用户选用优化稿还是原文（画布）。带它时服务端关掉厂商自己的改写。
+   */
+  rewrite?: "auto" | "review";
 }
+/** 智能优化的结果：发给模型的英文（台词已填好）、要用户判断的提示、已经自动处理好的小事、能不能直接用（超长不能用）。 */
+export interface StudioVideoPromptOptimization { text: string; warnings: string[]; notes?: string[]; usable: boolean }
 export type StudioOperation = "text" | "script" | "storyboard" | "image" | "video" | "assemble" | "assistant" | "recreation" | "check";
 export interface StudioScriptSettings { genre?: string; fusionGenres?: string[]; characterBrief?: string; structure?: string; audience?: string; era?: string; core?: string; style?: string; episodeCount?: number; episodeDurationSec?: number }
 export type StudioAssistantMode = "general" | "original" | "adapt" | "director";
@@ -271,6 +278,10 @@ export interface StudioNodeMetadata {
   voiceProfile?: StudioVoiceProfile;
   lipSyncRequest?: StudioLipSyncRequest;
   lipSyncNormalized?: boolean;
+  /** 智能优化的结果有提示（或没优化成），等用户选用优化稿还是原文生成；再次生成后清掉。 */
+  promptReview?: { runId: string; failed?: boolean; message?: string; /** 当时提交的原文，卡片上的提示词改过就不再显示这次的选择 */ source?: string } & Partial<StudioVideoPromptOptimization>;
+  /** 上次是在「用优化稿 / 用原文」里选的（请求里没有 rewrite）：智能优化开关仍算开着。 */
+  promptChoice?: "optimized" | "original";
   settings?: StudioScriptSettings;
   scriptMode?: "original" | "adapt";
   scriptSourceNodeId?: string;

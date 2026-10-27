@@ -413,6 +413,8 @@ function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWo
 /** H3 实际收到的是按官方写法改写的英文稿：备好了就能展开看；还没有就说明生成时会先改写。 */
 function SentPrompt({ clip }: { clip: DirectorClip }) {
   if (!clip.videoPromptRewrite || clip.videoPromptRewrite === "off") return null;
+  if (clip.videoPromptRewrite === "original")
+    return <p className="director-sent-prompt-note">这一段选了按原文生成，中文提示词直接发给视频模型。</p>;
   if (clip.videoPromptRewrite === "needed" || !clip.videoPromptEn?.text)
     return <p className="director-sent-prompt-note">生成视频时，会先把这段提示词改写成 H3 官方要求的英文格式（台词保留中文原文），改写会额外消耗少量积分。</p>;
   return <details className="director-sent-prompt">

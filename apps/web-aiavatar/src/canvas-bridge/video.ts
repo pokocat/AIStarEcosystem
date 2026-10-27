@@ -10,7 +10,7 @@
 
 import { currentProjectId, generateVideo, readVideoJob } from "./api";
 import { endpointIdFor, videoDurationBoundsFor, nativeVideoModelFor, legacyVideoQuoteFor } from "./models";
-import { studioVideoSettings, studioVideoError, studioVideoQuote, studioVideoModeForAssets, studioVideoTierForConfig, studioVideoCanvasForConfig } from "./studio-video";
+import { studioVideoSettings, studioVideoError, studioVideoQuote, studioVideoModeForAssets, studioVideoTierForConfig, studioVideoCanvasForConfig, studioVideoPromptMode } from "./studio-video";
 import { studioFrameIntent, type StudioFrameIntent } from "./studio-video-prompt";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { inferVideoRatio } from "@/canvas/lib/media-size";
@@ -145,7 +145,7 @@ export async function createVideoGenerationTask(
     const mode=studioVideoModeForAssets(nativeModel,config?.videoMode,assets);
     const tier=studioVideoTierForConfig(nativeModel,config?.vquality);
     params.aspectRatio=studioVideoCanvasForConfig(nativeModel,tier,options?.aspectRatio||config?.size).aspectRatio;
-    video=studioVideoSettings(mode.mode,tier,assets,config?.videoSeed,mode,!!options?.keepPrompt&&nativeModel.supportsPromptOptimization);
+    video=studioVideoSettings(mode.mode,tier,assets,config?.videoSeed,mode,studioVideoPromptMode(nativeModel.supportsPromptOptimization,options?.keepPrompt));
     const error=studioVideoError(nativeModel,video,prompt,params.aspectRatio||"",params.durationSec);
     if(error)throw new Error(error);
     // Same question as the Studio panel, before anything is saved or charged.

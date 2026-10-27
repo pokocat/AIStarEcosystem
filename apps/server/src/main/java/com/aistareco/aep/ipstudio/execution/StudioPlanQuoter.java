@@ -40,7 +40,7 @@ public class StudioPlanQuoter {
             var models=service.models();
             var chosen=models.stream().filter(m->m.isDefault()).findFirst().orElse(models.isEmpty()?null:models.get(0));
             if(chosen!=null&&chosen.contract()!=null)for(var mode:chosen.contract().modes())
-                specs.put(mode.mode(),new StudioPlanSteps.ModeSpec(mode.needsFirstFrame(),mode.needsLastFrame(),mode.references()!=null));
+                specs.put(mode.mode(),new StudioPlanSteps.ModeSpec(mode.needsFirstFrame(),mode.needsLastFrame(),mode.references()!=null,chosen.supportsPromptOptimization()));
         }
         return specs::get;
     }
