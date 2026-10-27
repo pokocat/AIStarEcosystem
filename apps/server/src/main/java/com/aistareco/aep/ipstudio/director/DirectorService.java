@@ -50,9 +50,6 @@ import java.util.*;
  */
 @Service
 public class DirectorService {
-    static final int TEXT_MAX_TOKENS = 8_192;
-    static final int STRUCTURE_MAX_TOKENS = 16_384;
-    static final int SCRIPT_MAX_TOKENS = 100_000;
     private static final Logger log = LoggerFactory.getLogger(DirectorService.class);
 
     /** 一个连跑同时最多在途的子任务（§8.4 初始建议：同一端点 2 个）。 */
@@ -536,10 +533,8 @@ public class DirectorService {
         String nodeId;
         ObjectNode meta = om.createObjectNode().put("task", type == null ? "" : type);
         String system, user;
-        int maxTokens = TEXT_MAX_TOKENS;
         switch (type == null ? "" : type) {
             case "script" -> {
-                maxTokens = SCRIPT_MAX_TOKENS;
                 boolean regenerate = o.path("regenerate").asBoolean(false);
                 boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
                 if (hasScript && !regenerate)
@@ -602,7 +597,6 @@ public class DirectorService {
                     exIds.add(a.path("id").asText());
                 }
                 user = "本次输入（JSON，作为素材）：" + write(in);
-                maxTokens = STRUCTURE_MAX_TOKENS;
             }
             case "plan" -> {
                 ObjectNode ep = find(c, "episodes", targetId, "这一集");
@@ -631,7 +625,6 @@ public class DirectorService {
                 meta.set("characterIds", om.valueToTree(chars));
                 system = DirectorPrompts.plan(lim.min(), lim.max(), lim.maxShots());
                 user = "本次输入（JSON，作为素材）：" + write(in);
-                maxTokens = STRUCTURE_MAX_TOKENS;
             }
             case "asset-image" -> {
                 ObjectNode a = find(c, "assets", targetId, "这个资产");
@@ -659,8 +652,7 @@ public class DirectorService {
         requireIdle(w, nodeId);
         meta.put("targetId", targetId);
         final String fSystem = system, fUser = user, fNode = nodeId;
-        final int fTokens = maxTokens;
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, fTokens, requestId, meta, textModel(c), billing, maxCost));
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), fNode, fSystem, fUser, requestId, meta, textModel(c), billing, maxCost));
         clearError(c, nodeId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", nodeId));
         w.setActive(true);
@@ -1059,7 +1051,7 @@ public class DirectorService {
         if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
         if (billing != null) then.set("billing", om.valueToTree(billing));
         if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
-        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(), H3PromptRewrite.MAX_TOKENS,
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(),
                 requestId + "-p", rw.meta(), null, billing, price));
         clearError(c, "video:" + clipId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", node));
@@ -1099,8 +1091,7 @@ public class DirectorService {
                 log.info("[director] 提示词改写未通过校验，预算放不下重试 work={} node={}", w.getId(), node);
                 return false;
             }
-            var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(),
-                    H3PromptRewrite.MAX_TOKENS, requestId, rw.meta(), null, billing, price));
+            var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(), requestId, rw.meta(), null, billing, price));
             track(c, pipeline, retry.id(), om.createObjectNode().put("node", node));
             w.setActive(true);
             log.info("[director] 提示词改写未通过校验，自动重试 work={} node={} failed={} retry={}", w.getId(), node, run.getId(), retry.id());
@@ -1633,17 +1624,17 @@ public class DirectorService {
         int estClipsPerEp = lim == null ? 0 : Math.max(1, (int) Math.ceil(75.0 / Math.max(1, lim.max())));
         if (c.path("episodes").isEmpty()) {
             rough = true;
-            if (c.path("draft").asText().isBlank()) { text++; textCredits += directorTextPrice(c, "script", prices[0]); }
+            if (c.path("draft").asText().isBlank()) { text++; textCredits += directorTextPrice(c, prices[0]); }
             int n = work ? 3 : 1;
             // 拆分（剧本里标好分集就不调模型）+ 提取 + 每集写分镜脚本
-            if (DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).isEmpty()) { text++; textCredits += directorTextPrice(c, "split", prices[0]); }
-            text++; textCredits += directorTextPrice(c, "extract", prices[0]);
-            text += n; textCredits += (long) n * directorTextPrice(c, "plan", prices[0]);
+            if (DirectorPrompts.headingStarts(paragraphs(c.path("draft").asText())).isEmpty()) { text++; textCredits += directorTextPrice(c, prices[0]); }
+            text++; textCredits += directorTextPrice(c, prices[0]);
+            text += n; textCredits += (long) n * directorTextPrice(c, prices[0]);
             images += 6;                                      // 角色、场景、道具参考图
             clipsTotal = n * estClipsPerEp;
             images += clipsTotal;                             // 分镜图
         } else {
-            if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) { text++; textCredits += directorTextPrice(c, "extract", prices[0]); }
+            if (eps.stream().anyMatch(e -> !e.path("extracted").asBoolean(false))) { text++; textCredits += directorTextPrice(c, prices[0]); }
             Set<String> epIds = new HashSet<>();
             eps.forEach(e -> epIds.add(e.path("id").asText()));
             boolean assetsKnown = c.path("assets").size() > 0;
@@ -1655,7 +1646,7 @@ public class DirectorService {
             }
             for (JsonNode ep : eps) {
                 List<JsonNode> clips = clipsOf(c, List.of(ep));
-                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, "plan", prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
+                if (clips.isEmpty()) { rough = true; text++; textCredits += directorTextPrice(c, prices[0]); clipsTotal += estClipsPerEp; images += estClipsPerEp; continue; }
                 for (JsonNode clip : clips) {
                     if (clip.path("board").path("candidates").isEmpty()) images++;
                     if (!toVideo || clip.path("video").path("candidates").size() > 0) continue;
@@ -1978,7 +1969,7 @@ public class DirectorService {
             };
             if (busy.contains(node)) { p.put("stage", stage).put("message", stage); return true; }
             long estimate = "video".equals(type) ? videoQuote(userId, c, findOrNull(c, "clips", target))
-                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : directorTextPrice(c, type, prices[0]);
+                    : "export".equals(type) ? 0 : Set.of("asset-image", "board").contains(type) ? prices[1] : directorTextPrice(c, prices[0]);
             // H3 视频先改写提示词：改写不进视频报价，但要占一键制作的预算。
             long reserve = "video".equals(type) ? rewriteReserve(c, findOrNull(c, "clips", target)) : 0;
             p.put("stage", stage).put("message", stage);
@@ -2215,14 +2206,9 @@ public class DirectorService {
         return c.path("settings").path("textModel").asText(null);
     }
 
-    private long directorTextPrice(ObjectNode c, String type, long fallback) {
-        int maxTokens = switch (type == null ? "" : type) {
-            case "script" -> SCRIPT_MAX_TOKENS;
-            case "extract", "plan" -> STRUCTURE_MAX_TOKENS;
-                        default -> TEXT_MAX_TOKENS;
-        };
+    private long directorTextPrice(ObjectNode c, long fallback) {
         long price;
-        try { price = textRuns.directorTextPrice(textModel(c), maxTokens); }
+        try { price = textRuns.directorTextPrice(textModel(c)); }
         catch (BusinessException e) { return fallback; }
         return price > 0 ? price : fallback;
     }
