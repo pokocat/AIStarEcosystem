@@ -48,7 +48,7 @@ class StudioVideoRewriteWorkerTest {
         ObjectNode input = json.createObjectNode().put("clientRequestId", "c1").put("nodeId", "n1").put("operation", "video").put("prompt", prompt)
                 .put("model", "ep-h3").put("durationSec", 6).put("aspectRatio", "9:16").put("count", 1).put("maxCost", 480).put("mock", false);
         input.set("video", json.valueToTree(settings));
-        ObjectNode exec = input.putObject("_exec").put("rewrite", rewrite).put("endpointId", "qwen").put("maxTokens", 4096).put("temperature", 0.6).put("planBudget", planBudget)
+        ObjectNode exec = input.putObject("_exec").put("rewrite", rewrite).put("purpose", H3PromptRewrite.PURPOSE.wire()).put("endpointId", "qwen").put("maxTokens", 4096).put("temperature", 0.6).put("planBudget", planBudget)
                 .put("systemPrompt", H3PromptRewrite.system(built.request().mode(), built.request().codeLines(), built.request().shots() != null))
                 .put("userPrompt", H3PromptRewrite.user(built.request()));
         exec.set("h3", H3PromptRewrite.meta(json, built.request(), built.pictures(), built.videos(), built.audios()));
@@ -62,8 +62,8 @@ class StudioVideoRewriteWorkerTest {
         when(runs.findById("r")).thenReturn(Optional.of(run));
         when(runs.lockById("r")).thenReturn(Optional.of(run));
         var endpoint = AiModelEndpoint.builder().id("qwen").enabled(true).model("m").build();
-        when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA, "qwen", "studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
-        when(models.invokeChatOnEndpoint(eq(endpoint), eq(AiModelPurpose.DAP_PERSONA), anyList(), anyMap()))
+        when(models.resolveAcceptedEndpoint(AiModelPurpose.DAP_VIDEO_PROMPT, "qwen", "studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(endpoint, null, true)));
+        when(models.invokeChatOnEndpoint(eq(endpoint), eq(AiModelPurpose.DAP_VIDEO_PROMPT), anyList(), anyMap()))
                 .thenReturn(new AiModelInvocationService.AiModelResponse(reply, "stop", 2000L, "m", "m", 1000L, 1000L));
         var worker = new StudioWorkflowWorker(runs, mock(StudioFixtureProvider.class), mock(FileStorageService.class), models, mock(DramaAssembleService.class), credits, json, tx, mock(DapAssetService.class));
         var videos = mock(IpRunService.class);

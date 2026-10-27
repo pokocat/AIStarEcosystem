@@ -743,7 +743,7 @@ components:
           type: string
           nullable: true
           enum: [auto, review]
-          description: '智能优化（2026-10-27）：提交前先用 Studio 默认文本模型按 MiniMax H3 官方写法把提示词改写成英文（台词保留原文），厂商自己的改写关掉。返回的这一行先是改写任务（stage prompt.optimizing，按实际 Token 结算），改写完在同一行上提交视频（之后按视频任务投影，output.videoPrompt 为发出的英文与提示）。auto = 改写完直接出片，没改成或太长按原文出片并写 output.videoPromptNotes；review = 没有提示才出片，有提示（output.needsChoice）或没改成（AI_BAD_OUTPUT，不扣费）都不出片，等用户另发一次（用优化稿：prompt 为英文、optimizePrompt=false；用原文：optimizePrompt=false）。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED；文本模型未配按量售价 503 AI_TOKEN_PRICE_NOT_CONFIGURED。视频价格（maxCost）不含改写。'
+          description: '智能优化（2026-10-27）：提交前先用后台「视频提示词优化」（DAP_VIDEO_PROMPT）绑定的模型按 MiniMax H3 官方写法把提示词改写成英文（台词保留原文），厂商自己的改写关掉。返回的这一行先是改写任务（stage prompt.optimizing，按实际 Token 结算），改写完在同一行上提交视频（之后按视频任务投影，output.videoPrompt 为发出的英文与提示）。auto = 改写完直接出片，没改成或太长按原文出片并写 output.videoPromptNotes；review = 没有提示才出片，有提示（output.needsChoice）或没改成（AI_BAD_OUTPUT，不扣费）都不出片，等用户另发一次（用优化稿：prompt 为英文、optimizePrompt=false；用原文：optimizePrompt=false）。只有 supportsPromptOptimization 的模型可带，否则 400 STUDIO_VIDEO_OPTION_UNSUPPORTED；优化绑定模型未配按量售价 503 AI_TOKEN_PRICE_NOT_CONFIGURED。视频价格（maxCost）不含改写。'
     StudioRunRequest:
       type: object
       required: [clientRequestId, nodeId, operation, prompt]

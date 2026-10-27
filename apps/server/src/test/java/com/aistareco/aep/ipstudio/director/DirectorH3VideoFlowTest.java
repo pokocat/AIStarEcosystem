@@ -62,6 +62,7 @@ class DirectorH3VideoFlowTest {
         h3(true);
         when(videoModels.quote(eq("u1"), any())).thenReturn(600L);
         when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(5L);
+        when(textRuns.videoRewriteHold()).thenReturn(5L);
         when(textRuns.directorPrices(any())).thenReturn(new long[]{3, 8});
         when(textRuns.submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any()))
                 .thenReturn(runDto("IPR-rw"), runDto("IPR-rw2"), runDto("IPR-rw3"));
@@ -149,7 +150,7 @@ class DirectorH3VideoFlowTest {
         ArgumentCaptor<String> user = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<ObjectNode> meta = ArgumentCaptor.forClass(ObjectNode.class);
         verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), user.capture(), eq(H3PromptRewrite.MAX_TOKENS),
-                eq("u-r1-p"), meta.capture(), any(), any(), eq(5L));
+                eq("u-r1-p"), meta.capture(), isNull(), any(), eq(5L));
         assertTrue(user.getValue().contains("老赵说：{{L1}}陈默说：{{L2}}老赵说：{{L3}}"), user.getValue());
         assertFalse(user.getValue().contains("又熬通宵"), "台词原文不交给改写模型");
         return meta.getValue();
@@ -271,8 +272,8 @@ class DirectorH3VideoFlowTest {
     void aRetryThatNoLongerFitsTheBudgetFallsBackToTheOriginal() throws Exception {
         ObjectNode p = pipeline(605);
         ObjectNode meta = dispatchRewriteIn(p);
-        // 改写期间换了文本模型，冻结上限变成 700：605 的预算放不下重试 + 600 的视频，就不再重试，按原文接着做（600 放得下）
-        when(textRuns.directorTextPrice(any(), anyInt())).thenReturn(700L);
+        // 改写期间优化绑定模型的售价调整，冻结上限变成 700：605 的预算放不下重试 + 600 的视频，就不再重试，按原文接着做（600 放得下）
+        when(textRuns.videoRewriteHold()).thenReturn(700L);
         failRewrite(meta, "IPR-rw");
         verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyInt(), anyString(), any(), any(), any(), any());
         ArgumentCaptor<IpRunService.IpVideoRequest> req = ArgumentCaptor.forClass(IpRunService.IpVideoRequest.class);
@@ -320,11 +321,12 @@ class DirectorH3VideoFlowTest {
 
     @Test
     void aRewriteThatFailsValidationIsRetriedOnceQuietly() throws Exception {
+        ((ObjectNode)c.path("settings")).put("textModel", "deepseek");
         ObjectNode meta = dispatchRewrite();
         failRewrite(meta, "IPR-rw");
         ArgumentCaptor<ObjectNode> retryMeta = ArgumentCaptor.forClass(ObjectNode.class);
         verify(textRuns).submitDirectorText(eq("u1"), eq("DW-1"), eq("videoPrompt:cl1"), anyString(), anyString(), eq(H3PromptRewrite.MAX_TOKENS),
-                eq("u-r1-p2"), retryMeta.capture(), any(), any(), eq(5L));
+                eq("u-r1-p2"), retryMeta.capture(), isNull(), any(), eq(5L));
         assertEquals(2, retryMeta.getValue().path("attempt").asInt());
         assertEquals(600L, retryMeta.getValue().path("then").path("maxCost").asLong(), "重试后照样接着提交视频");
         assertTrue(clip().path("video").path("error").isNull() || clip().path("video").path("error").isMissingNode(), "第一次失败不打扰用户");

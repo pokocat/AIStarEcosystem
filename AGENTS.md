@@ -1243,7 +1243,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 
 ### H3 视频提示词优化 · 2026-10-27（已生产发布 `20261027-studio-h3-optimize`，main `384dfe31`；server + web-aiavatar）
 
-导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。
+导演台的 H3 改写抽成全站共用的 `ipstudio/h3/H3PromptRewrite`（官方 skill 资源移到 `resources/h3-skill`），Studio 画布与创作助手出 H3 视频也先优化。**2026-10-27 修正：三处优化统一用后台独立用途 `DAP_VIDEO_PROMPT` 的绑定端点（初始绑定聚算 Qwen），不跟随用户文字模型或剧本默认模型；不可用时报错，不回落其它模型。估价、冻结、结算均按同一绑定端点与输出预算。**
 - **画布卡片上的「智能优化」**（`StudioPromptOptimizeToggle`，从参数弹层挪出来）：只对 H3 显示，默认开，开着是 AI 浅紫，关着旁边写「H3 建议开启，台词更完整」；价格后面写「优化另需少量积分」。
   开着发 `video.rewrite="review"`，关着发 `optimizePrompt=false`（原文直发）。**厂商自己的改写不再用**。
 - **一行任务两段**：`StudioWorkflowService.submitVideoRewrite` 先预检视频并核对视频报价（制作计划按视频 + 改写上限合计），再冻结改写上限、建 `studio-video` 行；`StudioWorkflowWorker.rewriteVideo` 改写后 `handOver` 在同一个事务里先结算改写（企业在途上限）、再 `generateVideoBatch`，失败整体回滚、改写不扣费；只用模型赠款也照常改写（用户定：以效果为准，积分不够就取消）；

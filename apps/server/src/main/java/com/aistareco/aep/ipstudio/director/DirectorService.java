@@ -936,7 +936,7 @@ public class DirectorService {
     }
 
     // ── H3 视频提示词改写 ───────────────────────────────────────────────────
-    // 用户看到、能改的是中文视频提示词；提交 H3 前用作品的文本模型按官方 skill 改写成英文（H3PromptRewrite，与 Studio 画布共用），
+    // 用户看到、能改的是中文视频提示词；提交 H3 前统一用后台视频提示词优化绑定模型 按官方 skill 改写成英文（与 Studio 画布、助手共用），
     // 台词与说话人编号由代码填。检查只给提示、不拦人：有提示时手动生成先请用户选用优化稿还是原文，一键制作照常继续。
     // 依据：docs/audits/director-h3-video-prompt-ab-2026-10.md §6。
 
@@ -1022,8 +1022,8 @@ public class DirectorService {
         clip.putObject("videoPromptChoice").put("hash", rw.hash()).put("value", value).put("at", Instant.now().toString());
     }
 
-    private long rewritePrice(ObjectNode c) {
-        return fixtures.enabled() ? 0 : directorTextPrice(c, "videoPrompt", directorPrices(c)[0]);
+    private long rewritePrice() {
+        return fixtures.enabled() ? 0 : textRuns.videoRewriteHold();
     }
 
     /**
@@ -1053,14 +1053,14 @@ public class DirectorService {
                                 ObjectNode pipeline, BillingSelection billing, Long maxCost) {
         String clipId = clip.path("id").asText(), node = REWRITE_NODE + clipId;
         requireIdle(w, node);
-        long price = rewritePrice(c);
+        long price = rewritePrice();
         // fingerprint 是这次要付费提交的视频输入（中文提示词含台词、分镜图、参考图与声音的 key、时长、画幅、模型）：改写期间变了就不接着提交。
         ObjectNode then = rw.meta().putObject("then").put("requestId", requestId).put("fingerprint", fingerprint);
         if (maxCost != null) then.put("maxCost", maxCost); else then.putNull("maxCost");
         if (billing != null) then.set("billing", om.valueToTree(billing));
         if (pipeline != null) then.put("pipelineId", pipeline.path("id").asText());
         var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), node, rw.system(), rw.user(), H3PromptRewrite.MAX_TOKENS,
-                requestId + "-p", rw.meta(), textModel(c), billing, price));
+                requestId + "-p", rw.meta(), null, billing, price));
         clearError(c, "video:" + clipId);
         track(c, pipeline, run.id(), om.createObjectNode().put("node", node));
         w.setActive(true);
@@ -1093,14 +1093,14 @@ public class DirectorService {
         BillingSelection billing = then.hasNonNull("billing") ? om.convertValue(then.path("billing"), BillingSelection.class) : null;
         String node = run.getNodeId(), requestId = then.path("requestId").asText(run.getClientRequestId()) + "-p2";
         try {
-            long price = rewritePrice(c);
+            long price = rewritePrice();
             // 一键制作的预算：这次重试的冻结加上之后要提交的视频报价都要放得下（文本模型可能在这期间换过、价格变了）。
             if (pipeline != null && pipelineSpent(pipeline) + price + then.path("maxCost").asLong(0) > pipeline.path("budget").asLong()) {
                 log.info("[director] 提示词改写未通过校验，预算放不下重试 work={} node={}", w.getId(), node);
                 return false;
             }
             var retry = newTx.execute(tx -> textRuns.submitDirectorText(run.getOwnerUserId(), w.getId(), node, rw.system(), rw.user(),
-                    H3PromptRewrite.MAX_TOKENS, requestId, rw.meta(), textModel(c), billing, price));
+                    H3PromptRewrite.MAX_TOKENS, requestId, rw.meta(), null, billing, price));
             track(c, pipeline, retry.id(), om.createObjectNode().put("node", node));
             w.setActive(true);
             log.info("[director] 提示词改写未通过校验，自动重试 work={} node={} failed={} retry={}", w.getId(), node, run.getId(), retry.id());
@@ -1958,7 +1958,7 @@ public class DirectorService {
         if (clip == null || !h3(limits(c))) return 0;
         try {
             Rewrite rw = rewrite(c, clip);
-            return optimized(clip, rw) == null && !"original".equals(choice(clip, rw)) ? rewritePrice(c) : 0;
+            return optimized(clip, rw) == null && !"original".equals(choice(clip, rw)) ? rewritePrice() : 0;
         } catch (BusinessException e) { return 0; }
     }
 
@@ -2210,7 +2210,7 @@ public class DirectorService {
         return switch (ratio) { case "1:1" -> "1:1 方图"; case "16:9" -> "16:9 横图"; case "9:16" -> "9:16 竖图"; default -> ratio + " 画面"; };
     }
 
-    /** 作品选的文本模型；null = 后台默认。所有文字任务的估价与提交都读这一处。 */
+    /** 作品选的文本模型；null = 后台默认。普通文字任务的估价与提交读这一处；H3 优化用独立用途绑定。 */
     private static String textModel(ObjectNode c) {
         return c.path("settings").path("textModel").asText(null);
     }
@@ -2219,8 +2219,7 @@ public class DirectorService {
         int maxTokens = switch (type == null ? "" : type) {
             case "script" -> SCRIPT_MAX_TOKENS;
             case "extract", "plan" -> STRUCTURE_MAX_TOKENS;
-            case "videoPrompt" -> H3PromptRewrite.MAX_TOKENS;
-            default -> TEXT_MAX_TOKENS;
+                        default -> TEXT_MAX_TOKENS;
         };
         long price;
         try { price = textRuns.directorTextPrice(textModel(c), maxTokens); }

@@ -107,7 +107,8 @@ public class StudioWorkflowWorker {
                         String system=input.path("_exec").path("systemPrompt").asText(),user=input.path("_exec").path("userPrompt").asText();
                         if(system.isBlank() || user.isBlank()) throw new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"PROMPT_NOT_CONFIGURED","剧本提示词未配置");
                         String endpointId=input.path("_exec").path("endpointId").asText(null);
-                        var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
+                        var purpose=textPurpose(input);
+                        var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","创作模型已停用或不再是默认模型，请联系管理员"));
                         StudioTokenBilling.requireRoute(input,endpoint.endpoint());
                         JsonNode visual=input.path("_exec").path("visualContext");
                         Object userContent=user;
@@ -171,7 +172,7 @@ public class StudioWorkflowWorker {
                         if("director".equals(operation)&&"script".equals(input.path("_director").path("task").asText())
                                 && endpoint.endpoint().getProviderType()==AiModelProviderType.DEEPSEEK)
                             chatOptions.put("thinking",Map.of("type","disabled"));
-                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(Map.of("role","system","content",system),
+                        reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(Map.of("role","system","content",system),
                                 Map.of("role","user","content",userContent)),chatOptions);
                         }
                         lastReply=reply;
@@ -366,6 +367,13 @@ public class StudioWorkflowWorker {
         return new AiModelInvocationService.AiModelResponse(content,last[0].finishReason(),input+completion,
                 last[0].endpointUsed(),last[0].modelUsed(),input,completion);
     }
+    /** 旧任务继续用受理时的原用途；新优化任务保存独立用途和端点快照。 */
+    private static AiModelPurpose textPurpose(JsonNode input) {
+        return AiModelPurpose.DAP_VIDEO_PROMPT.wire().equals(input.path("_exec").path("purpose").asText())
+                ? AiModelPurpose.DAP_VIDEO_PROMPT : AiModelPurpose.DAP_PERSONA;
+    }
+
+
     /**
      * H3 出视频前的提示词改写：按官方写法改写、核对，然后在这一行上提交视频（之后这一行按视频任务投影）。
      * review（画布）有提示或没改成时停下，等用户选用优化稿还是原文；auto（创作助手）不停：优化稿能用就用，用不了按原文，
@@ -379,7 +387,8 @@ public class StudioWorkflowWorker {
         try {
             if(!progress(id,20,"prompt.optimizing"))return;
             String endpointId=input.path("_exec").path("endpointId").asText(null);
-            var endpoint=models.resolveAcceptedEndpoint(AiModelPurpose.DAP_PERSONA,endpointId,"studio").orElseThrow(()->new BusinessException(
+            var purpose=textPurpose(input);
+            var endpoint=models.resolveAcceptedEndpoint(purpose,endpointId,"studio").orElseThrow(()->new BusinessException(
                     org.springframework.http.HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","提示词优化用的文本模型已停用，可以关闭智能优化按原文生成"));
             StudioTokenBilling.requireRoute(input,endpoint.endpoint());
             var rate=mapper.treeToValue(input.path("_exec").path("tokenPricing"),AiChatTokenPricing.Rate.class);
@@ -390,7 +399,7 @@ public class StudioWorkflowWorker {
             options.put("response_format",Map.of("type","json_object"));
             options.put("temperature",input.path("_exec").path("temperature").asDouble(0.6));
             options.put("max_tokens",input.path("_exec").path("maxTokens").asInt(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS));
-            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),AiModelPurpose.DAP_PERSONA,List.of(
+            reply=models.invokeChatOnEndpoint(endpoint.endpoint(),purpose,List.of(
                     Map.of("role","system","content",input.path("_exec").path("systemPrompt").asText()),
                     Map.of("role","user","content",input.path("_exec").path("userPrompt").asText())),options);
             long[] used=consumeUsage(reply,new long[]{0,0},rate);

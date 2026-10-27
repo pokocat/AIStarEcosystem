@@ -242,8 +242,9 @@ const BINDING_GROUPS: Array<{
     description:
       "数字人人设解析、图片生成与视频生成的多模态调用。**AI IP 工作台的画布出图走的就是这里的「数字人 / IP 画布 出图」（DAP_IMAGE）** —— "
       + "画布上那个模型下拉列的是它的候选端点，在「AI 短剧 → 图像生成」下加模型不会出现在画布里（那是另一个用途）。"
+      + "「视频提示词优化」由画布、创作助手和导演台共用，使用这里绑定的端点，不跟随用户选择的文字模型。"
       + "「真人素材与授权」为七牛 modelink 素材合规接入（刷脸认证 + 素材送审）。",
-    purposes: ["DAP_PERSONA", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_REAL_AVATAR"],
+    purposes: ["DAP_PERSONA", "DAP_VIDEO_PROMPT", "DAP_IMAGE", "DAP_VIDEO", "DAP_AUDIO", "DAP_LIP_SYNC", "DAP_REAL_AVATAR"],
   },
   {
     key: "creator",

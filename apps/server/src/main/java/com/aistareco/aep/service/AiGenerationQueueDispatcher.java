@@ -90,6 +90,8 @@ public class AiGenerationQueueDispatcher {
                 default -> {continue;}
             }
             var exec=mapper.readTree(run.getInputJson()).path("_exec");
+            if(com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT.wire().equals(exec.path("purpose").asText()))
+                purpose=com.aistareco.aep.model.AiModelPurpose.DAP_VIDEO_PROMPT;
             boolean executing=run.getStartedAt()!=null&&!"endpoint.queued".equals(run.getStage());
             // Older speech runs don't have startedAt, but an accepted/uncertain submission still consumes capacity.
             if(AiGenerationQueueService.SPEECH.equals(type))

@@ -1247,6 +1247,8 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 
 ### H3 视频提示词改写（2026-10-26 导演台首发 `20261027-director-h3-prompt`；2026-10-27 起 Studio 共用，本地未发布）
 
+2026-10-27 修正：画布、创作助手、导演台的 H3 提示词优化统一使用后台「视频提示词优化」用途 `DAP_VIDEO_PROMPT` 的绑定端点（初始绑定聚算 Qwen），不跟随用户的文字模型或 Studio 剧本默认模型。端点授权、密钥、Token 售价仍由后台管理；不可用时明确报错，不回落其他模型。报价、冻结与实际结算均按绑定模型，输出预算一致。普通文字任务仍保留用户模型选择。
+
 核心在 `ipstudio/h3/H3PromptRewrite`：系统提示词是 `resources/h3-skill` 下官方 skill 原文（提交 `b731d88`，适用 MiniMax H3 Community License；全能参考带 base + ref 两份规范，其余模式只带 base）加本服务的 JSON 输出约定（导演台那一种组合的约定原文不动）。
 `source` 认「某某说：「…」」/ 旧语音轨的台词（引号配对），认得全就换成 `{{Ln}}` 由代码填（`fill`），认不全由模型写 `<d>`、`meta.spoken` 记原文台词供核对（`spokenLines`，与前端 `studioPromptLines` 同一套认法）。
 `shotStarts` 读「第N镜（起–止 秒）」定固定镜头，否则 `shots` 由模型定（`{start,text}`，最多 8 镜，时间不像样按平均分）。`validate` 返回 `{template, warnings, usable}`：能修的就地修好并写进提示，超 7000 字符 `usable=false`，只有拼不出提示词才 `AI_BAD_OUTPUT`。

@@ -6,6 +6,7 @@ import com.aistareco.aep.dap.service.*;
 import com.aistareco.aep.ipstudio.dto.IpStudioDtos.IpRunDto;
 import com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.*;
 import com.aistareco.aep.ipstudio.model.IpRun;
+import com.aistareco.aep.ipstudio.h3.H3PromptRewrite;
 import com.aistareco.aep.ipstudio.repository.IpRunRepository;
 import com.aistareco.aep.model.AiModelPurpose;
 import com.aistareco.aep.service.AiModelInvocationService;
@@ -349,10 +350,8 @@ public class StudioWorkflowService {
         var check=videoRequest(request);
         if(!studioVideo.rewritable(request.model()))throw bad("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持提示词优化");
         long videoCost=Math.multiplyExact(studioVideo.quote(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
-        var selection=scenePolicies.resolve("studio","script",null,pricing.ipIdentity());
-        var endpoint=selection.resolved().endpoint();
-        var rate=chatRate(endpoint.getId());
-        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","提示词优化暂不可用（文本模型未配置按量售价），可以关闭智能优化按原文生成");
+        var endpoint=videoRewriteEndpoint().endpoint();
+        var rate=videoRewriteRate(endpoint);
         // 画布：用户确认的是视频价格，改写另扣少量（界面写明）。制作计划：批准的上限按「视频 + 改写上限」报的，合计不能超（交接时视频只能用剩下的）。
         boolean planBudget=request.executionId()!=null;
         if(request.modelBilling()==null)IpRunService.requireApprovedCost(request.maxCost(),planBudget?Math.addExact(videoCost,rate.maxCost()):videoCost);
@@ -368,7 +367,7 @@ public class StudioWorkflowService {
         execution.set("h3",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios()));
         execution.put("systemPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.system(h3.mode(),h3.codeLines(),h3.shots()!=null));
         execution.put("userPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.user(h3));
-        execution.put("endpointId",endpoint.getId()).put("temperature",0.6);
+        execution.put("purpose",H3PromptRewrite.PURPOSE.wire()).put("endpointId",endpoint.getId()).put("temperature",0.6);
         int budget=Math.min(com.aistareco.aep.ipstudio.h3.H3PromptRewrite.MAX_TOKENS,rate.maxOutputTokens());
         if(endpoint.getChatMaxOutputTokens()!=null)budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
         execution.put("maxTokens",budget);
@@ -392,11 +391,26 @@ public class StudioWorkflowService {
         return projects.toRunDto(run);
     }
 
-    /** 改写的冻结上限（文本模型按量售价的上限），一键制作 / 制作计划按它预留预算；文本模型没配售价时为 0。 */
+    private AiModelInvocationService.ResolvedEndpoint videoRewriteEndpoint() {
+        // 优化是独立能力，不受 script 场景的默认值、固定模式或用户选择影响；仍检查 Studio 端点授权。
+        return models.resolveEndpoint(H3PromptRewrite.PURPOSE,null,"studio")
+                .orElseThrow(()->new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED",
+                        "提示词优化未绑定可用模型，可以关闭智能优化按原文生成"));
+    }
+
+    private com.aistareco.aep.service.AiChatTokenPricing.Rate videoRewriteRate(com.aistareco.aep.model.AiModelEndpoint endpoint) {
+        var rate=chatRate(endpoint.getId());
+        if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED",
+                "提示词优化暂不可用（绑定模型未配置按量售价），可以关闭智能优化按原文生成");
+        int budget=Math.min(H3PromptRewrite.MAX_TOKENS,rate.maxOutputTokens());
+        if(endpoint.getChatMaxOutputTokens()!=null)budget=Math.min(budget,endpoint.getChatMaxOutputTokens());
+        return rate.limitOutputTokens(budget);
+    }
+
+    /** 三处改写共用独立绑定模型的冻结上限，估价、付款授权和提交用同一份模型及输出预算。 */
     public long videoRewriteHold() {
-        if(fixtures.enabled()||scenePolicies==null)return 0;
-        var rate=chatRate(scenePolicies.resolve("studio","script",null,pricing.ipIdentity()).resolved().endpoint().getId());
-        return rate==null?0:rate.maxCost();
+        if(fixtures.enabled())return 0;
+        return videoRewriteRate(videoRewriteEndpoint().endpoint()).maxCost();
     }
 
     /**
@@ -413,6 +427,8 @@ public class StudioWorkflowService {
                                        int maxTokens, String clientRequestId, ObjectNode meta, String model,
                                        com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
         requireText(clientRequestId, 64, "请求编号");
+        boolean videoRewrite="videoPrompt".equals(meta.path("task").asText());
+        if(videoRewrite)model=null; // 优化只读独立用途绑定，忽略作品的文字模型选择。
         ObjectNode canonical=mapper.createObjectNode().put("nodeId",nodeId).put("system",systemPrompt).put("user",userPrompt);
         if(model!=null)canonical.put("model",model);
         String fingerprint=hash(write(canonical));
@@ -426,7 +442,8 @@ public class StudioWorkflowService {
         long cost=0;
         var chatRate=(com.aistareco.aep.service.AiChatTokenPricing.Rate)null;
         if(!fixtures.enabled()) {
-            if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,model,"studio").orElseThrow(()->
+            if(videoRewrite) textEndpoint=videoRewriteEndpoint();
+            else if(scenePolicies == null) textEndpoint=models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,model,"studio").orElseThrow(()->
                     new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"ENDPOINT_NOT_ALLOWED","文本模型不可用，请联系管理员配置"));
             else textEndpoint=scenePolicies.resolve("studio","script",model,pricing.ipIdentity()).resolved();
             chatRate=chatRate(textEndpoint.endpoint().getId());
@@ -446,6 +463,7 @@ public class StudioWorkflowService {
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
+        if(videoRewrite)execution.put("purpose",H3PromptRewrite.PURPOSE.wire());
         int budget=maxTokens;
         if(chatRate!=null) {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));
