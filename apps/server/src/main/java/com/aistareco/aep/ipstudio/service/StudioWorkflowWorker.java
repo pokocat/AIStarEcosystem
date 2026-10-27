@@ -449,7 +449,8 @@ public class StudioWorkflowWorker {
             com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest request;
             try {request=mapper.treeToValue(accepted,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest.class);}
             catch(Exception invalid){throw new IllegalStateException(invalid);}
-            terminal(run,output,null);
+            // 传副本：terminal 会把 billing.credits 改成明细的显示金额；这里回滚后 finish 还要按原始用量结算（Codex 复核 2026-10-27）。
+            terminal(run,output.deepCopy(),null);
             Long ceiling=request.maxCost()==null?null:input.path("_exec").path("planBudget").asBoolean(false)?request.maxCost()-run.getCost():request.maxCost();
             var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),ceiling,
                     request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());

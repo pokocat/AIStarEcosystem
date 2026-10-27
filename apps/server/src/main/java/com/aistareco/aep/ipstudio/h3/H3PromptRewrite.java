@@ -614,26 +614,40 @@ public final class H3PromptRewrite {
             wanted.add(squash(line.path("text").asText()));
         }
         if (String.join("", said).equals(String.join("", wanted))) return; // 一字不差（拆句、合句都算）
-        for (int i = 0; i < wanted.size(); i++) if (!said.contains(wanted.get(i)) && !joinedRun(said, wanted.get(i)))
-            warnings.add("原文台词「" + excerpt(wantedRaw.get(i)) + "」在优化稿里没有原样出现，可能被改了或漏了");
+        // 按顺序配对：每句原文台词在后面的 <d> 里找连着的一句或几句正好拼成它，配上的就用掉；
+        // 配不上的原文台词、没被用掉的 <d> 都提示。不能逐句做子串放行：原文「不同意」，优化稿先说「不同意」再加一句「同意」也得报出来。
+        boolean[] used = new boolean[said.size()];
+        List<String> unmatched = new ArrayList<>();
+        int from = 0;
+        for (int i = 0; i < wanted.size(); i++) {
+            int[] hit = consecutive(said, from, wanted.get(i));
+            if (hit == null) {
+                unmatched.add(wanted.get(i));
+                warnings.add("原文台词「" + excerpt(wantedRaw.get(i)) + "」在优化稿里没有原样出现，可能被改了或漏了");
+                continue;
+            }
+            for (int k = hit[0]; k <= hit[1]; k++) used[k] = true;
+            from = hit[1] + 1;
+        }
         if (wanted.isEmpty()) return;
+        // 剩下的 <d> 是某句没配上的原文台词的一截（说了半句），上面已经报过；其余算多出来的。
         for (int i = 0; i < said.size(); i++) {
             String one = said.get(i);
-            if (wanted.contains(one) || wanted.stream().anyMatch(w -> w.contains(one))) continue;
+            if (used[i] || unmatched.stream().anyMatch(w -> w.contains(one))) continue;
             warnings.add("优化稿多了一句原文没有的台词「" + excerpt(saidRaw.get(i)) + "」");
         }
     }
 
-    /** 连着的几句 {@code <d>} 拼起来正好是这句台词（模型把一句拆开说了）。 */
-    private static boolean joinedRun(List<String> said, String line) {
-        for (int i = 0; i < said.size(); i++) {
+    /** 从 {@code from} 往后，连着的一句或几句 {@code <d>} 正好拼成这句台词：返回首尾下标，找不到返回 null。 */
+    private static int[] consecutive(List<String> said, int from, String line) {
+        for (int start = from; start < said.size(); start++) {
             StringBuilder run = new StringBuilder();
-            for (int j = i; j < said.size() && run.length() < line.length(); j++) {
-                run.append(said.get(j));
-                if (run.toString().equals(line)) return true;
+            for (int k = start; k < said.size() && run.length() < line.length(); k++) {
+                run.append(said.get(k));
+                if (run.toString().equals(line)) return new int[]{start, k};
             }
         }
-        return false;
+        return null;
     }
 
     // ── 原文里的台词（模型写台词时核对用）：与前端 studio-video-prompt.ts 的 studioPromptLines 同一套认法 ──────────

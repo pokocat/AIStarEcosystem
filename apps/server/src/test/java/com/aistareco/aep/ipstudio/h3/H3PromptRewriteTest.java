@@ -317,6 +317,10 @@ class H3PromptRewriteTest {
         List<String> w = warnings(H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, zh, 5), o));
         assertTrue(w.contains("原文台词「同意。」在优化稿里没有原样出现，可能被改了或漏了"), w.toString());
         assertTrue(w.contains("优化稿多了一句原文没有的台词「不同意。」"), w.toString());
+        // 原句在，后面又加了一句意思相反的：也要报出来
+        ObjectNode added = o.deepCopy();
+        ((ObjectNode) added.path("shots").get(0)).put("text", "The manager (S1) says: <d>[Chinese] 同意。</d> Then he adds: <d>[Chinese] 不同意。</d>");
+        assertEquals(List.of("优化稿多了一句原文没有的台词「不同意。」"), warnings(H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, zh, 5), added)));
         // 一句拆成两句说：照样算原样
         String two = "门口，女孩：“你来了。我等你很久了。”";
         ObjectNode split = o.deepCopy();
