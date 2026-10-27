@@ -428,13 +428,18 @@ public class StudioWorkflowWorker {
             // 没改成不收这一步的费用；模型确实回了内容但不能用的，按实际用量结算（视频照常出）。
             if(!output.has("billing"))output.putObject("billing").put("inputTokens",0).put("outputTokens",0).put("credits",0);
         }
-        try {submitVideo(id,input,prompt);}
+        try {handOver(id,input,prompt,output);}
         catch(Exception e) {log.warn("[studio] video submit after prompt rewrite failed id={}",id,e);finish(id,output,e);return;}
-        finish(id,output,null);
+        afterTerminal(id);
     }
 
-    /** 在改写那一行上提交视频：视频任务号写进 {@code _exec.nativeVideoJobIds}，与提交同一个事务。 */
-    private void submitVideo(String id,JsonNode input,String prompt) {
+    /**
+     * 交接：同一个事务里先结算改写（提交实际用量、结束改写的企业授权）、再提交视频、把任务号写进这一行。
+     * 先结算是因为企业的在途上限把改写也算一项，不结束它视频就提交不上（Codex 评审 2026-10-27）；放在同一个事务里，
+     * 中途崩溃或视频提交失败就整体回滚，再按失败结束（改写不扣费），不会出现「视频提交了、改写没结算」的一行。
+     * 制作计划里的步骤，批准的上限包含改写：视频只能用剩下的部分。
+     */
+    private void handOver(String id,JsonNode input,String prompt,ObjectNode output) {
         transactions.executeWithoutResult(tx->{
             IpRun run=billingLockedRun(id).orElseThrow();
             if(!IpRun.STATUS_RUNNING.equals(run.getStatus())||run.isCancelRequested())
@@ -444,7 +449,9 @@ public class StudioWorkflowWorker {
             com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest request;
             try {request=mapper.treeToValue(accepted,com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.RunRequest.class);}
             catch(Exception invalid){throw new IllegalStateException(invalid);}
-            var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),
+            terminal(run,output,null);
+            Long ceiling=request.maxCost()==null?null:input.path("_exec").path("planBudget").asBoolean(false)?request.maxCost()-run.getCost():request.maxCost();
+            var video=new IpRunService.IpVideoRequest(prompt,null,request.durationSec(),request.aspectRatio(),request.model(),ceiling,
                     request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());
             var batch=videoRuns.getObject().generateVideoBatch(run.getOwnerUserId(),run.getProjectId(),video,request.count()==null?1:request.count());
             ObjectNode inputs;
@@ -455,7 +462,7 @@ public class StudioWorkflowWorker {
             if(batch.frameAdjustments()!=null)exec.setAll(batch.frameAdjustments());
             exec.put("sentPrompt",prompt);
             try {run.setInputJson(mapper.writeValueAsString(inputs));}catch(Exception invalid){throw new IllegalStateException(invalid);}
-            run.setStage("video.bound");run.setHeartbeatAt(Instant.now());runs.save(run);
+            run.setStage("video.bound");runs.save(run);
         });
     }
 

@@ -693,8 +693,12 @@ public class IpProjectService {
         if(pendingCode!=null)stage="VIDEO_SUBMISSION_UNKNOWN".equals(pendingCode)?"video.submission_unknown":"video.recovering";
         var billing=modelCharges==null?null:modelCharges.breakdown(MaterialVideoJobService.CREDIT_REF_TYPE,ids);
         if(billing!=null){output.set("billingBreakdown",om.valueToTree(billing));cost=billing.displayedCost();}
-        // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起，改写结果照常给界面。
-        cost+=r.getCost();
+        // 先改写提示词再出片的那一行（StudioWorkflowService#submitVideoRewrite）：改写按实际用量的花费算在一起（有模型明细时用明细的显示金额），
+        // 改写结果照常给界面。
+        if(r.getCost()>0) {
+            var rewrite=modelCharges==null?null:modelCharges.breakdown("ip-run",billingReferences(r));
+            cost+=rewrite==null?r.getCost():rewrite.displayedCost();
+        }
         JsonNode own=parseOrEmptyObject(r.getOutputJson());
         for(String field:List.of("videoPrompt","videoPromptNotes"))if(own.has(field))output.set(field,own.path(field).deepCopy());
         return new IpRunDto(r.getId(),r.getProjectId(),r.getNodeId(),r.getKind(),active?"running":allFailed?"failed":"done",

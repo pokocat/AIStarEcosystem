@@ -592,24 +592,48 @@ public final class H3PromptRewrite {
         }
     }
 
-    /** 模型写台词时：原文里看着像台词的句子，在优化稿的 {@code <d>} 里逐句找；没找全的提示用户。 */
+    /**
+     * 模型写台词时，按整句核对：原文里看着像台词的句子，要在优化稿的某一句 {@code <d>} 里原样出现（拆成几句连着说也算）；
+     * 优化稿里多出来的台词也提示。不能把所有台词拼在一起找子串 ——「同意」会在「不同意」里找到（Codex 评审 2026-10-27）。
+     * 原文一句都没认出来时不查多出来的台词：用户可能用叙述写了对白，模型照着补出 {@code <d>} 是对的。
+     */
     private static void checkSpoken(JsonNode meta, List<String> bodies, Set<String> warnings) {
-        StringBuilder spoken = new StringBuilder();
+        List<String> said = new ArrayList<>(), saidRaw = new ArrayList<>();
         for (String b : bodies) {
             Matcher m = SPOKEN.matcher(b);
-            while (m.find()) spoken.append(m.group().substring(3, m.group().length() - 4).replaceFirst("^\\s*\\[[^\\]]*]", "")).append(' ');
-        }
-        String haystack = squash(spoken.toString());
-        for (JsonNode line : meta.path("spoken")) {
-            String text = line.path("text").asText();
-            int clauses = 0, missing = 0;
-            for (String clause : text.split("[，,。.！!？?；;、…—~～\\s]+")) {
-                if (squash(clause).isEmpty()) continue;
-                clauses++;
-                if (!haystack.contains(squash(clause))) missing++;
+            while (m.find()) {
+                String raw = m.group().substring(3, m.group().length() - 4).replaceFirst("^\\s*\\[[^\\]]*]", "").strip();
+                if (squash(raw).isEmpty()) continue;
+                saidRaw.add(raw);
+                said.add(squash(raw));
             }
-            if (missing > 0) warnings.add("原文台词「" + excerpt(text) + "」在优化稿里" + (missing == clauses ? "没找到" : "不完整") + "，可能不会被说出来");
         }
+        List<String> wanted = new ArrayList<>(), wantedRaw = new ArrayList<>();
+        for (JsonNode line : meta.path("spoken")) if (!squash(line.path("text").asText()).isEmpty()) {
+            wantedRaw.add(line.path("text").asText());
+            wanted.add(squash(line.path("text").asText()));
+        }
+        if (String.join("", said).equals(String.join("", wanted))) return; // 一字不差（拆句、合句都算）
+        for (int i = 0; i < wanted.size(); i++) if (!said.contains(wanted.get(i)) && !joinedRun(said, wanted.get(i)))
+            warnings.add("原文台词「" + excerpt(wantedRaw.get(i)) + "」在优化稿里没有原样出现，可能被改了或漏了");
+        if (wanted.isEmpty()) return;
+        for (int i = 0; i < said.size(); i++) {
+            String one = said.get(i);
+            if (wanted.contains(one) || wanted.stream().anyMatch(w -> w.contains(one))) continue;
+            warnings.add("优化稿多了一句原文没有的台词「" + excerpt(saidRaw.get(i)) + "」");
+        }
+    }
+
+    /** 连着的几句 {@code <d>} 拼起来正好是这句台词（模型把一句拆开说了）。 */
+    private static boolean joinedRun(List<String> said, String line) {
+        for (int i = 0; i < said.size(); i++) {
+            StringBuilder run = new StringBuilder();
+            for (int j = i; j < said.size() && run.length() < line.length(); j++) {
+                run.append(said.get(j));
+                if (run.toString().equals(line)) return true;
+            }
+        }
+        return false;
     }
 
     // ── 原文里的台词（模型写台词时核对用）：与前端 studio-video-prompt.ts 的 studioPromptLines 同一套认法 ──────────

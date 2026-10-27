@@ -279,7 +279,7 @@ export interface StudioNodeMetadata {
   lipSyncRequest?: StudioLipSyncRequest;
   lipSyncNormalized?: boolean;
   /** 智能优化的结果有提示（或没优化成），等用户选用优化稿还是原文生成；再次生成后清掉。 */
-  promptReview?: { runId: string; failed?: boolean; message?: string; /** 当时提交的原文，卡片上的提示词改过就不再显示这次的选择 */ source?: string } & Partial<StudioVideoPromptOptimization>;
+  promptReview?: { runId: string; failed?: boolean; message?: string; /** 当时的生成输入（studioVideoInputKey）：卡片上的文字、素材、时长、画幅、模型变了就不再显示这次的选择 */ inputKey?: string } & Partial<StudioVideoPromptOptimization>;
   /** 上次是在「用优化稿 / 用原文」里选的（请求里没有 rewrite）：智能优化开关仍算开着。 */
   promptChoice?: "optimized" | "original";
   settings?: StudioScriptSettings;

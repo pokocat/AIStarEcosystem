@@ -39,14 +39,16 @@ class StudioVideoRewriteWorkerTest {
 
     record Harness(StudioWorkflowWorker worker, IpRun run, CreditService credits, IpRunService videos) {}
 
-    Harness harness(String prompt, String mode, String rewrite, String reply) {
+    Harness harness(String prompt, String mode, String rewrite, String reply) { return harness(prompt, mode, rewrite, reply, false); }
+
+    Harness harness(String prompt, String mode, String rewrite, String reply, boolean planBudget) {
         var settings = new VideoSettings(mode, "768p", null, null, null,
                 "universal_reference_video".equals(mode) ? List.of(new VideoStudioReferenceInput("image", "u/ref.png")) : null, null, rewrite);
         var built = H3StudioPrompt.build(prompt, 6, settings, json.createObjectNode());
         ObjectNode input = json.createObjectNode().put("clientRequestId", "c1").put("nodeId", "n1").put("operation", "video").put("prompt", prompt)
                 .put("model", "ep-h3").put("durationSec", 6).put("aspectRatio", "9:16").put("count", 1).put("maxCost", 480).put("mock", false);
         input.set("video", json.valueToTree(settings));
-        ObjectNode exec = input.putObject("_exec").put("rewrite", rewrite).put("endpointId", "qwen").put("maxTokens", 4096).put("temperature", 0.6)
+        ObjectNode exec = input.putObject("_exec").put("rewrite", rewrite).put("endpointId", "qwen").put("maxTokens", 4096).put("temperature", 0.6).put("planBudget", planBudget)
                 .put("systemPrompt", H3PromptRewrite.system(built.request().mode(), built.request().codeLines(), built.request().shots() != null))
                 .put("userPrompt", H3PromptRewrite.user(built.request()));
         exec.set("h3", H3PromptRewrite.meta(json, built.request(), built.pictures(), built.videos(), built.audios()));
@@ -101,7 +103,18 @@ class StudioVideoRewriteWorkerTest {
         JsonNode inputs = json.readTree(h.run().getInputJson());
         assertEquals("mvj_1", inputs.path("_exec").path("nativeVideoJobIds").get(0).asText(), "之后按视频任务投影");
         assertEquals(req.prompt(), json.readTree(h.run().getOutputJson()).path("videoPrompt").path("text").asText());
-        verify(h.credits()).commitHold(anyString(), eq("r"), anyLong(), anyString(), any());
+        // 改写先结算（结束改写的企业授权），再提交视频：企业在途上限是 1 时视频才提交得上
+        var order = inOrder(h.credits(), h.videos());
+        order.verify(h.credits()).commitHold(anyString(), eq("r"), anyLong(), anyString(), any());
+        order.verify(h.videos()).generateVideoBatch(anyString(), anyString(), any(), anyInt());
+    }
+
+    @Test
+    void inAPlanTheVideoOnlyGetsWhatIsLeftOfTheApprovedCeiling() {
+        var h = harness(DIRECTOR_STYLE, "universal_reference_video", "auto", clean(), true);
+        h.worker().runBlocking("r");
+        assertEquals(480L - h.run().getCost(), submitted(h).maxCost(), "批准的上限包含改写：视频用剩下的");
+        assertTrue(h.run().getCost() > 0);
     }
 
     @Test

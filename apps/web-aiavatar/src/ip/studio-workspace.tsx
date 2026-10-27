@@ -29,7 +29,7 @@ import { readRun, cancelRun, fetchModels, fetchStudioVideoModels, type IpModels 
 import { studioQueueNotice, studioTaskLabel, studioTaskQueued } from '@/canvas-bridge/studio-task-status';
 import { executionOutputMissing, readProjectedNodes } from '@/canvas-bridge/studio-plan-execution';
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
-import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection,studioVideoPromptMode } from "@/canvas-bridge/studio-video";
+import { studioVideoSettings,studioVideoError,studioVideoQuote,studioVideoReferenceIds,studioVideoDraftFromReferences,changeStudioVideoDraft,studioVideoNodeSelection,studioVideoPromptMode,studioVideoInputKey } from "@/canvas-bridge/studio-video";
 import { StudioVideoControls,StudioVideoSeedControl,StudioPromptOptimizeToggle,StudioPromptReview,type StudioVideoDraft } from "./studio-video-controls";
 import { StudioChoiceGroup, StudioModelPicker, StudioSettingsPopover, studioImageResolution, studioImageSizeLabel } from "./studio-generation-controls";
 import { adaptStudioVideoReferences, studioVideoAcceptsReferences, studioVideoSelectionIds } from "@/canvas-bridge/studio-video-selection";
@@ -1164,7 +1164,7 @@ export function StudioWorkspace({ projectId, nodes, connections, selectedNodeIds
   const cropRatios=nativeVideo?nativeVideo.contract.tiers.find(t=>t.tier===videoDraft.tier)?.canvases.map(c=>c.aspectRatio)||[]:['9:16','16:9','1:1'];
   // 智能优化停在「用优化稿 / 用原文」上（卡片上的提示词没改过才显示，改过就照常重新优化）。
   const promptReview=operation==="video"&&!directorPending?nodes.find(n=>n.id===originId)?.metadata?.studio?.promptReview:undefined;
-  const promptReviewPanel=promptReview&&(!promptReview.source||promptReview.source===prompt.trim())?<StudioPromptReview review={promptReview} busy={busy}
+  const promptReviewPanel=promptReview&&promptReview.inputKey===studioVideoInputKey({prompt,video:videoSettings,durationSec:duration,aspectRatio:ratio,model:chosenModel?.endpointId})?<StudioPromptReview review={promptReview} busy={busy}
     onOptimized={()=>{if(promptReview.text)void submit({kind:"optimized",text:promptReview.text});}} onOriginal={()=>void submit({kind:"original"})} onRetry={()=>void submit()}/>:null;
   const frameCropHint=cropFrame?<StudioFrameCropHint frame={cropFrame} ratio={ratio} ratios={cropRatios} onFix={changeComposerRatio}/>:null;
   const composerParameterSummary=operation==="image"?[ratio,studioImageSizeLabel(selectedImageSize),`${imageCount} 张`].filter(Boolean).join(' · '):operation==="video"?[ratio,nativeVideo?videoDraft.tier:undefined,`${duration}秒`,`${videoCount}条`].filter(Boolean).join(' · '):[settings.genre||'创作设定',`${settings.episodeCount||1} 集`,`${settings.episodeDurationSec||30} 秒`].join(' · ');

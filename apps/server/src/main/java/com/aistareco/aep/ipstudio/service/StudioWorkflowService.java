@@ -179,7 +179,9 @@ public class StudioWorkflowService {
         if(!fixtures.enabled() && "video".equals(request.operation())) {
             if(request.video()==null && references.size()>1) throw bad("STUDIO_VIDEO_FIRST_FRAME_ONLY","这个视频模型只支持一张首帧参考图，请选择支持首尾帧或全能参考的模型");
             if(request.video()!=null && !references.isEmpty()) throw bad("STUDIO_VIDEO_INPUT_INVALID","请在视频模式中明确选择首帧、尾帧或参考素材");
-            if(request.video()!=null && request.video().rewrite()!=null) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
+            // 只用模型赠款（freeOnly）时不做提示词优化：改写走文本模型，没有它的赠款就得扣普通积分，用户没同意（Codex 评审 2026-10-27）。
+            boolean freeOnly=request.modelBilling()!=null&&request.modelBilling().freeOnly();
+            if(request.video()!=null && request.video().rewrite()!=null && !freeOnly) return submitVideoRewrite(userId,projectId,project,request,fingerprint);
             var batch=imageRuns.generateVideoBatch(userId,projectId,videoRequest(request),request.count()==null?1:request.count());
             ObjectNode inputs=mapper.valueToTree(request);
             ObjectNode exec=inputs.putObject("_exec");
@@ -192,7 +194,8 @@ public class StudioWorkflowService {
                     .projectId(projectId).ownerUserId(userId).nodeId(request.nodeId()).kind("studio-video")
                     .enterpriseId(request.billing()!=null&&"enterprise".equals(request.billing().mode())?request.billing().enterpriseId():null)
                     .status(IpRun.STATUS_DONE).stage("video.bound").cost(0).clientRequestId(request.clientRequestId())
-                    .inputFingerprint(fingerprint).inputJson(write(inputs)).outputJson("{}")
+                    .inputFingerprint(fingerprint).inputJson(write(inputs))
+                    .outputJson(request.video()!=null&&request.video().rewrite()!=null?"{\"videoPromptNotes\":[\"只用模型赠款时不做提示词优化，已按原文生成\"]}":"{}")
                     .createdAt(Instant.now()).heartbeatAt(Instant.now()).build();
             runs.save(binding);
             return projects.toRunDto(binding);
@@ -347,11 +350,13 @@ public class StudioWorkflowService {
         var check=videoRequest(request);
         if(!studioVideo.rewritable(request.model()))throw bad("STUDIO_VIDEO_OPTION_UNSUPPORTED","所选视频模型不支持提示词优化");
         long videoCost=Math.multiplyExact(studioVideo.quote(userId,new IpRunService.IpVideoRequest(check.prompt(),null,check.durationSec(),check.aspectRatio(),check.model(),null,video.submitted())),(long)count);
-        if(request.modelBilling()==null)IpRunService.requireApprovedCost(request.maxCost(),videoCost);
         var selection=scenePolicies.resolve("studio","script",null,pricing.ipIdentity());
         var endpoint=selection.resolved().endpoint();
         var rate=chatRate(endpoint.getId());
         if(rate==null)throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"AI_TOKEN_PRICE_NOT_CONFIGURED","提示词优化暂不可用（文本模型未配置按量售价），可以关闭智能优化按原文生成");
+        // 画布：用户确认的是视频价格，改写另扣少量（界面写明）。制作计划：批准的上限按「视频 + 改写上限」报的，合计不能超（交接时视频只能用剩下的）。
+        boolean planBudget=request.executionId()!=null;
+        if(request.modelBilling()==null)IpRunService.requireApprovedCost(request.maxCost(),planBudget?Math.addExact(videoCost,rate.maxCost()):videoCost);
         int seconds=request.durationSec()==null?5:request.durationSec();
         var built=com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(request.prompt(),seconds,video,projects.readDoc(project));
         var h3=built.request();
@@ -360,7 +365,7 @@ public class StudioWorkflowService {
         ObjectNode inputs=mapper.valueToTree(request);
         inputs.put("mock",false);
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_token")
-                .put("rewrite",video.rewrite()).put("videoCost",videoCost);
+                .put("rewrite",video.rewrite()).put("videoCost",videoCost).put("planBudget",planBudget);
         execution.set("h3",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.meta(mapper,h3,built.pictures(),built.videos(),built.audios()));
         execution.put("systemPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.system(h3.mode(),h3.codeLines(),h3.shots()!=null));
         execution.put("userPrompt",com.aistareco.aep.ipstudio.h3.H3PromptRewrite.user(h3));
@@ -848,7 +853,7 @@ public class StudioWorkflowService {
 
     private IpRunService.IpVideoRequest videoRequest(RunRequest request) {
         return new IpRunService.IpVideoRequest(request.prompt(),request.references()==null||request.references().isEmpty()?null:request.references().get(0).storageKey(),
-                request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video(),request.billing(),request.clientRequestId(),request.modelBilling());
+                request.durationSec(),request.aspectRatio(),request.model(),request.maxCost(),request.video()==null?null:request.video().submitted(),request.billing(),request.clientRequestId(),request.modelBilling());
     }
     @org.springframework.transaction.annotation.Transactional(readOnly=true)
     public com.aistareco.aep.billing.service.ModelChargeService.Quote quoteVideo(String user,String projectId,RunRequest request,boolean freeOnly) {

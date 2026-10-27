@@ -3,7 +3,8 @@ import { materializeRecreationAudio } from './studio-recreation-audio';
 import { materializeRecreation } from './studio-recreation-document';
 import { nanoid } from "nanoid";
 import type { IpRun } from "@ai-star-eco/types";
-import type { StudioNodeMetadata, StudioOperation, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioNodeMetadata, StudioOperation, StudioRunRequest, StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
+import { studioVideoInputKey } from "./studio-video";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData, type CanvasNodeVideoTake } from "@/canvas/types/canvas";
 import { markStudioDescendants, mergeStudioRewrite, studioNodeEpisode } from "./studio-script";
 import { markStudioMediaFit, runAspectRatio } from "./studio-media-fit";
@@ -72,13 +73,15 @@ export function applyStudioRun(node: CanvasNodeData, run: IpRun): CanvasNodeData
       study:{...study,segments:study.segments.map(({url,coverUrl,...segment})=>segment)}};
     metadata.content=run.output.text||'视频拉片';
   }
-  if(run.kind==="studio-video"&&run.status!=="running") {
+  if(run.kind==="studio-video") {
     // 智能优化（画布 review 模式）停在「用优化稿 / 用原文」上：优化稿有提示、太长，或没优化成（还没出片）。
-    const source=(run.inputs as {prompt?:string}).prompt;
-    const review=(run.inputs as {video?:{rewrite?:string}}).video?.rewrite==="review";
-    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,source,...run.output.videoPrompt};
-    else if(review&&run.status==="failed"&&!run.output.videoCandidates?.length&&run.errorCode!=="IP_RUN_CANCELLED")
-      metadata.studio.promptReview={runId:run.id,source,failed:true,message:run.errorMessage,...(run.output.videoPrompt||{})};
+    // 这个节点有了更新的出视频任务，旧的选择就作废（不管新任务从哪个入口发的）。
+    if(metadata.studio.promptReview&&metadata.studio.promptReview.runId!==run.id)delete metadata.studio.promptReview;
+    const inputs=run.inputs as {prompt?:string;video?:StudioVideoSettings;durationSec?:number;aspectRatio?:string;model?:string};
+    const inputKey=studioVideoInputKey(inputs);
+    if(run.status==="done"&&run.output.needsChoice&&run.output.videoPrompt)metadata.studio.promptReview={runId:run.id,inputKey,...run.output.videoPrompt};
+    else if(inputs.video?.rewrite==="review"&&run.status==="failed"&&!run.output.videoCandidates?.length&&run.errorCode!=="IP_RUN_CANCELLED")
+      metadata.studio.promptReview={runId:run.id,inputKey,failed:true,message:run.errorMessage,...(run.output.videoPrompt||{})};
     else if(metadata.studio.promptReview?.runId===run.id)delete metadata.studio.promptReview;
   }
   if (run.status === "running") return { ...node, metadata: { ...metadata, status: "loading" } };

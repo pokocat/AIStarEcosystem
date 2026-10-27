@@ -75,4 +75,24 @@ class StudioVideoBatchBindingTest {
         assertThrows(BusinessException.class,()->service.submit("owner","p",new RunRequest("request","n","video","动作",List.of(),"ep",null,8,"9:16",2)));
         verify(nativeRuns,times(1)).generateVideoBatch(eq("owner"),eq("p"),any(),eq(4));verify(runs,times(1)).save(any());
     }
+    /** 只用模型赠款时不做提示词优化（改写走文本模型，没有它的赠款就要扣普通积分）：直接出片、关掉厂商改写，说明写在这一行上。 */
+    @Test void freeOnlyGrantsSkipThePromptRewrite() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);
+        var nativeRuns=mock(IpRunService.class);var fixtures=mock(StudioFixtureProvider.class);
+        var mapper=new com.fasterxml.jackson.databind.ObjectMapper();
+        when(projects.requiredForUpdate("owner","p")).thenReturn(IpProject.builder().id("p").build());
+        when(runs.findByProjectIdAndClientRequestId("p","free")).thenReturn(Optional.empty());
+        when(nativeRuns.generateVideoBatch(eq("owner"),eq("p"),any(),eq(1))).thenReturn(new IpRunService.VideoBatch(List.of(mapper.createObjectNode().put("id","job")),mapper.createObjectNode()));
+        IpRun[] saved={null};when(runs.save(any())).thenAnswer(call->{saved[0]=call.getArgument(0);return saved[0];});
+        when(projects.toRunDto(any())).thenAnswer(call->{IpRun r=call.getArgument(0);return new IpRunDto(r.getId(),"p","n","studio-video","running","video",0,0,null,null,
+                mapper.readTree(r.getInputJson()),mapper.createObjectNode(),null,null);});
+        var service=new StudioWorkflowService(projects,runs,fixtures,null,null,null,nativeRuns,null,null,null,null,null,mapper,null,null);
+        var settings=new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v","768p",null,null,null,List.of(),null,"review");
+        var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","video","ep","h3","t2v/768p/9:16","second");
+        var grant=new com.aistareco.aep.billing.service.ModelBillingApproval("w",target,new com.aistareco.aep.billing.service.ModelBillingMath.Usage(java.math.BigDecimal.ONE,null),"v1",true,0);
+        var request=new RunRequest("free","n","video","她转身",List.of(),"ep",null,5,"9:16",1,null,null,null,null,null,null,null,settings,null,null,null,null,null,null,null,null,null,null,null,null,grant);
+        service.submit("owner","p",request);
+        verify(nativeRuns).generateVideoBatch(eq("owner"),eq("p"),argThat(input->Boolean.FALSE.equals(input.video().optimizePrompt())&&input.video().rewrite()==null),eq(1));
+        assertTrue(saved[0].getOutputJson().contains("只用模型赠款时不做提示词优化"),saved[0].getOutputJson());
+    }
 }

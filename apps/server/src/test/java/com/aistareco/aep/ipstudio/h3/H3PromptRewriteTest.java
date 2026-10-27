@@ -305,7 +305,27 @@ class H3PromptRewriteTest {
         JsonNode r = H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, zh, 5), o);
         String t = r.path("template").asText();
         assertTrue(t.contains("(S1) says: <d>[Chinese] 一杯热美式，谢谢。</d>"), "模型写的台词和编号原样保留：" + t);
-        assertEquals(List.of("原文台词「好的，马上就来。」在优化稿里不完整，可能不会被说出来"), warnings(r));
+        assertEquals(List.of("原文台词「好的，马上就来。」在优化稿里没有原样出现，可能被改了或漏了"), warnings(r));
+    }
+
+    @Test
+    void spokenLinesAreMatchedWholeNotAsSubstrings() {
+        // Codex 评审 2026-10-27：「同意」能在「不同意」里找到，拼在一起找子串会放过意思相反的改动
+        String zh = "会议室里，经理：“同意。”";
+        ObjectNode o = OM.createObjectNode().put("style", "Live-action.").put("overall_soundscape", "Office hum.").put("non_diegetic_music", "N/A");
+        o.putArray("shots").add(OM.createObjectNode().put("start", 0).put("text", "The manager (S1) says: <d>[Chinese] 不同意。</d>"));
+        List<String> w = warnings(H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, zh, 5), o));
+        assertTrue(w.contains("原文台词「同意。」在优化稿里没有原样出现，可能被改了或漏了"), w.toString());
+        assertTrue(w.contains("优化稿多了一句原文没有的台词「不同意。」"), w.toString());
+        // 一句拆成两句说：照样算原样
+        String two = "门口，女孩：“你来了。我等你很久了。”";
+        ObjectNode split = o.deepCopy();
+        ((ObjectNode) split.path("shots").get(0)).put("text", "The girl (S1) says: <d>[Chinese] 你来了。</d> She pauses, then says: <d>[Chinese] 我等你很久了。</d>");
+        assertTrue(warnings(H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, two, 5), split)).isEmpty());
+        // 原文没写成「名字：“…”」时，模型从叙述里补出的台词不算多出来的
+        ObjectNode narrated = o.deepCopy();
+        ((ObjectNode) narrated.path("shots").get(0)).put("text", "The girl (S1) whispers: <d>[Chinese] 谢谢。</d>");
+        assertTrue(warnings(H3PromptRewrite.validate(OM, freeMeta(H3PromptRewrite.Mode.T2V, "女孩轻声道了谢。", 5), narrated)).isEmpty());
     }
 
     @Test

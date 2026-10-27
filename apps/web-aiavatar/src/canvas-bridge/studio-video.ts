@@ -128,6 +128,15 @@ export function studioVideoSettings(mode:VideoStudioMode,tier:string,assets:Stud
   const settings=studioVideoInputs(mode,tier,assets,seed,spec);
   return prompt==="rewrite"?{...settings,rewrite:"review"}:prompt==="original"?{...settings,optimizePrompt:false}:settings;
 }
+/**
+ * 一次出视频的输入（不含智能优化开关本身）：优化稿只对生成它的那一份输入有效 —— 文字没改、换了参考图或时长，
+ * 旧的英文稿就不能再拿来发（Codex 评审 2026-10-27）。服务端会把空字段写成 null，这里统一成同一个形状再比。
+ */
+export function studioVideoInputKey(input:{prompt?:string|null;video?:StudioVideoSettings|null;durationSec?:number|null;aspectRatio?:string|null;model?:string|null}):string {
+  const v=input.video;
+  return JSON.stringify([(input.prompt||"").trim(),v?[v.mode,v.resolutionTier,v.seed??null,v.firstFrameKey??null,v.lastFrameKey??null,(v.references||[]).map(r=>[r.mediaType,r.key])]:null,
+    input.durationSec??null,input.aspectRatio??null,input.model??null]);
+}
 /** 智能优化开关 → 设置里的写法；不支持的模型（非 H3）不带。 */
 export const studioVideoPromptMode=(supports:boolean|undefined,keepPrompt:boolean|undefined):"rewrite"|"original"|undefined =>
   supports?(keepPrompt?"original":"rewrite"):undefined;
