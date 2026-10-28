@@ -57,7 +57,7 @@ class DirectorH3VideoFlowTest {
         videoModels = mock(StudioVideoService.class);
         StudioFixtureProvider fixtures = mock(StudioFixtureProvider.class);
         MaterialVideoJobService videoJobs = mock(MaterialVideoJobService.class);
-        service = new DirectorService(null, runs, null, imageRuns, textRuns, null, videoModels, fixtures, null, videoJobs, null,
+        service = new DirectorService(null, runs, null, imageRuns, textRuns, null, videoModels, fixtures, null, videoJobs, null, null,
                 mock(AiAppSceneModelPolicyService.class), null, null, null, om, mock(PlatformTransactionManager.class));
         h3(true);
         when(videoModels.quote(eq("u1"), any())).thenReturn(600L);

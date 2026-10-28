@@ -31,7 +31,7 @@ class DirectorVideoPromptFormatTest {
     void setUp() throws Exception {
         StudioFixtureProvider fixtures = mock(StudioFixtureProvider.class);
         when(fixtures.enabled()).thenReturn(true); // 没有可用视频模型时按测试响应的合同（全能参考、4–15 秒）
-        service = new DirectorService(null, null, null, null, null, null, mock(StudioVideoService.class), fixtures, null, null, null,
+        service = new DirectorService(null, null, null, null, null, null, mock(StudioVideoService.class), fixtures, null, null, null, null,
                 mock(AiAppSceneModelPolicyService.class), null, null, null, om, mock(PlatformTransactionManager.class));
         c = (ObjectNode) om.readTree("""
                 {"settings":{"style":"真人写实","aspectRatio":"9:16"},

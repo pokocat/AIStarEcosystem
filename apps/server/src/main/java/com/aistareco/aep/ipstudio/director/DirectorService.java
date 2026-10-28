@@ -69,6 +69,7 @@ public class DirectorService {
     private final StudioFixtureProvider fixtures;
     private final StudioMediaImportService mediaImport;
     private final MaterialVideoJobService videoJobs;
+    private final com.aistareco.aep.repository.MaterialVideoJobRepository videoJobRepo;
     private final com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoClient;
     private final com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies;
     private final com.aistareco.aep.service.storage.FileStorageService storage;
@@ -80,6 +81,7 @@ public class DirectorService {
     public DirectorService(DirectorWorkRepository works, IpRunRepository runs, IpProjectService projects, IpRunService imageRuns,
                            StudioWorkflowService textRuns, StudioWorkflowWorker workflowWorker, StudioVideoService videoModels,
                            StudioFixtureProvider fixtures, StudioMediaImportService mediaImport, MaterialVideoJobService videoJobs,
+                           com.aistareco.aep.repository.MaterialVideoJobRepository videoJobRepo,
                            com.aistareco.aep.service.materialvideo.MaterialVideoModelClient videoClient,
                            com.aistareco.aep.service.AiAppSceneModelPolicyService scenePolicies,
                            com.aistareco.aep.service.storage.FileStorageService storage,
@@ -88,7 +90,7 @@ public class DirectorService {
                            ObjectMapper om, PlatformTransactionManager txManager) {
         this.works = works; this.runs = runs; this.projects = projects; this.imageRuns = imageRuns; this.textRuns = textRuns;
         this.workflowWorker = workflowWorker; this.videoModels = videoModels; this.fixtures = fixtures;
-        this.mediaImport = mediaImport; this.videoJobs = videoJobs; this.videoClient = videoClient; this.scenePolicies = scenePolicies;
+        this.mediaImport = mediaImport; this.videoJobs = videoJobs; this.videoJobRepo = videoJobRepo; this.videoClient = videoClient; this.scenePolicies = scenePolicies;
         this.storage = storage; this.studioProps = studioProps; this.library = library; this.om = om;
         this.newTx = new TransactionTemplate(txManager);
         this.newTx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -239,11 +241,85 @@ public class DirectorService {
         return view(userId, w, c);
     }
 
-    @Transactional
+    /**
+     * 软删除。和提交任务、后台推进抢同一把作品行锁，拿到锁时之前派发的任务都已提交，查得到；
+     * 删除提交后它们再拿锁都会看到 deletedAt，不再派发。
+     * <p>在途检查和删除在同一个事务、同一条连接里做：持着作品行锁再去开 REQUIRES_NEW 要第二条连接，
+     * 并发删除时每个请求都占着一条连接等另一条，连接池会被耗尽（2026-10-28 独立复核复现）。
+     * 读已提交保证拿到锁之后的每条查询都看到最新提交的任务（MySQL 默认可重复读的快照可能更早，§8.0.1 ⑯）；
+     * 已经在别的事务里调用时沿用外层事务（Spring 不改参与中事务的隔离级别），控制器直接调用时才生效。
+     * <ul>
+     *   <li>一键制作在跑：409，先停止；暂停 / 等待确认且没有在途任务：同一事务里标为停止再删除；</li>
+     *   <li>有在途任务（以 ip_run 和原生视频任务为准，不信作品 JSON 和 active）：409，等任务结束；</li>
+     *   <li>本人已删除：直接成功（超时重试）；不存在或不是本人的：404，不泄漏归属。</li>
+     * </ul>
+     * 作品 JSON、任务记录、资产库和账本都不动，不退款、不重提。
+     */
+    @Transactional(isolation = org.springframework.transaction.annotation.Isolation.READ_COMMITTED)
     public void delete(String userId, String id) {
-        DirectorWork w = locked(userId, id);
+        DirectorWork w = works.lockById(id).orElse(null);
+        if (w == null || !w.getOwnerUserId().equals(userId)) throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
+        if (w.getDeletedAt() != null) return;
+        ObjectNode c = read(w);
+        JsonNode p = c.path("pipeline");
+        String status = p.path("status").asText("");
+        if (p.isObject() && "running".equals(status))
+            throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_WORK_BUSY", "一键制作正在进行，请先停止制作，等进行中的任务结束后再删除");
+        String busy = inFlight(w, c);
+        if (busy != null) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_WORK_BUSY", busy);
+        if (p.isObject() && Set.of("waiting", "paused").contains(status)) finish((ObjectNode) p, "stopped", "作品已删除，制作已停止");
         w.setDeletedAt(Instant.now()); w.setActive(false);
-        works.save(w);
+        save(w, c);
+    }
+
+    private static final Set<String> VIDEO_JOB_TERMINAL = Set.of("succeeded", "failed");
+
+    /**
+     * 作品还有没结束的任务就返回给用户看的原因，否则 null。在调用方的事务里查，只取标量列：
+     * 不经过持久化上下文里的实体缓存，读到的就是这条语句执行时数据库里已提交的状态。
+     * 真实视频的 ip_run 是 done / video.bound 的绑定记录，真正的状态在它指向的原生视频任务上。
+     * 原生任务以 succeeded / failed 结案就算结束 —— 包括按全局规则以 failed 结案的 VIDEO_SUBMISSION_UNKNOWN
+     * （冻结已释放，见 BUSINESS_RULES「模型任务异常状态与并发」）；还没结案的（排队、提交中、生成中、受理待核对、
+     * 正在重新查询原任务）、查不到或不属本人的，都算没结束。
+     */
+    private String inFlight(DirectorWork w, ObjectNode c) {
+        Set<String> jobIds = new LinkedHashSet<>();
+        for (JsonNode clip : c.path("clips")) for (JsonNode pend : clip.path("video").path("pending"))
+            if (pend.hasNonNull("jobId")) jobIds.add(pend.path("jobId").asText());
+        for (Object[] r : runs.taskStates(w.getId())) {
+            String status = (String) r[0], stage = (String) r[1], node = (String) r[2], input = (String) r[3];
+            if (!IpRun.STATUS_DONE.equals(status) && !IpRun.STATUS_FAILED.equals(status))
+                return taskLabel(node) + "正在进行，任务结束后再删除";
+            if ("video.bound".equals(stage)) jobIds.addAll(IpProjectService.nativeVideoJobIds(parse(input)));
+        }
+        if (jobIds.isEmpty()) return null;
+        Map<String, Object[]> jobs = new HashMap<>();
+        for (Object[] j : videoJobRepo.states(jobIds)) jobs.put((String) j[0], j);
+        for (String jobId : jobIds) {
+            Object[] job = jobs.get(jobId);
+            if (job == null || !w.getOwnerUserId().equals(job[3])) {
+                log.warn("[director] 删除前核对视频任务失败 work={} job={}", w.getId(), jobId);
+                return "片段视频的任务状态暂时无法确认，请稍后再试";
+            }
+            if (VIDEO_JOB_TERMINAL.contains((String) job[1])) continue;
+            if ("VIDEO_SUBMISSION_UNKNOWN".equals(job[2]) || "VIDEO_RECONCILIATION_PENDING".equals(job[2]))
+                return "片段视频的受理结果还在核对，核对完成后再删除";
+            return "片段视频正在生成，任务结束后再删除";
+        }
+        return null;
+    }
+
+    private static String taskLabel(String node) {
+        if (node == null) return "生成任务";
+        if (node.equals("script")) return "剧本生成";
+        if (node.equals("split")) return "拆分集";
+        if (node.startsWith("extract")) return "资产提取";
+        if (node.startsWith("plan:")) return "分镜脚本生成";
+        if (node.startsWith("asset:")) return "资产参考图生成";
+        if (node.startsWith("board:")) return "分镜图生成";
+        if (node.startsWith("video:")) return "片段视频生成";
+        if (node.startsWith("export:")) return "整集导出";
+        return "生成任务";
     }
 
     // ── 编辑（用户的修改，带对象修订号）──────────────────────────────────────

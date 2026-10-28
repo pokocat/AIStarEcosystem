@@ -82,7 +82,7 @@ class DirectorImageModelTest {
                     null, null, om.createObjectNode(), om.createObjectNode(), null, null, null);
         });
         service = new DirectorService(works, runs, mock(IpProjectService.class), images, text, mock(StudioWorkflowWorker.class), mock(StudioVideoService.class),
-                mock(StudioFixtureProvider.class), mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), mock(MaterialVideoModelClient.class),
+                mock(StudioFixtureProvider.class), mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), null, mock(MaterialVideoModelClient.class),
                 policy, mock(FileStorageService.class), new IpStudioProperties(), mock(IpLibraryService.class), om, mock(PlatformTransactionManager.class));
         service.create("u1", new DirectorService.CreateRequest("模型选择验收", "", null));
     }

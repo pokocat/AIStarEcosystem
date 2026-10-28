@@ -617,7 +617,7 @@ public class IpProjectService {
         };
         return type==null?null:generationQueue.position(type,run.getId());
     }
-    static List<String> nativeVideoJobIds(JsonNode inputs) {
+    public static List<String> nativeVideoJobIds(JsonNode inputs) {
         JsonNode exec=inputs.path("_exec");
         List<String> ids=new ArrayList<>();
         if(exec.path("nativeVideoJobIds").isArray()) exec.path("nativeVideoJobIds").forEach(id->ids.add(id.asText()));

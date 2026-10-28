@@ -8,6 +8,8 @@ import type { DirectorAsset, DirectorMedia, DirectorMediaSlot, DirectorTask, Dir
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError, type StudioFailure } from "../studio-errors";
 import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-error";
+import { ApiError } from "@ai-star-eco/api-client";
+import { goneWorkId } from "../api/director";
 
 export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
 
@@ -15,7 +17,26 @@ export function newRequestId() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID().replace(/-/g, "").slice(0, 32) : `${Date.now()}${Math.random().toString(16).slice(2, 10)}`;
 }
 
+/** 作品已删除（或本来就不存在）：服务端对本人已删除、他人和不存在的作品一律 404 DIRECTOR_WORK_NOT_FOUND。 */
+export function isWorkGone(e: unknown) {
+  return e instanceof ApiError && e.code === "DIRECTOR_WORK_NOT_FOUND";
+}
+
+const goneListeners = new Set<(workId: string) => void>();
+
+/**
+ * 工作台订阅「某部作品已删除」。通知带作品 id（由 API 层按请求的作品打标，见 scopeToWork），
+ * 订阅方只认自己的 id；卸载时退订，所以已离开的作品迟到的 404 不会落到当前作品上。
+ */
+export function onWorkGone(listener: (workId: string) => void) {
+  goneListeners.add(listener);
+  return () => { goneListeners.delete(listener); };
+}
+
+/** 导演台所有失败都经过这里拿文案，所以「作品已删除」也在这里通知。归属不明的 404 不通知，只显示文案。 */
 export function errorText(e: unknown) {
+  const workId = isWorkGone(e) ? goneWorkId(e) : null;
+  if (workId) goneListeners.forEach(l => l(workId));
   return normalizeStudioError(e).message;
 }
 

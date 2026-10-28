@@ -33,7 +33,7 @@ class DirectorImagePromptFormatTest {
     void setUp() throws Exception {
         StudioFixtureProvider fixtures = mock(StudioFixtureProvider.class);
         when(fixtures.enabled()).thenReturn(true);
-        service = new DirectorService(null, null, null, null, null, null, mock(StudioVideoService.class), fixtures, null, null, null,
+        service = new DirectorService(null, null, null, null, null, null, mock(StudioVideoService.class), fixtures, null, null, null, null,
                 mock(AiAppSceneModelPolicyService.class), null, null, null, om, mock(PlatformTransactionManager.class));
         c = (ObjectNode) om.readTree("""
                 {"seq":10,"settings":{"style":"真人写实","aspectRatio":"9:16"},"taskMeta":{},

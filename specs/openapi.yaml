@@ -15131,9 +15131,17 @@ paths:
     delete:
       tags: [ipstudio]
       operationId: directorDeleteWork
+      description: >-
+        软删除作品（deletedAt + active=false），作品 JSON、任务记录、个人资产库、账本都不动，不退款、不重提。
+        与提交任务、后台推进抢同一把作品行锁；在途以 ip_run 和原生视频任务为准（ip_run 是 done/video.bound 时查它指向的
+        material_video_job：以 succeeded/failed 结案即结束，含按全局规则 failed 结案的 VIDEO_SUBMISSION_UNKNOWN；
+        未结案的（排队、提交中、生成中、受理待核对、重新查询中）和查不到的算在途）。在途检查与删除同一事务、读已提交。一键制作 running → 409（先停止）；
+        paused / waiting 且无在途任务 → 同一事务标为 stopped 后删除。本人重复删除返回成功；他人或不存在 → 404。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       responses:
-        '200': { description: ok }
+        '200': { description: ok（含本人重复删除）, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { type: object, properties: { deleted: { type: boolean } } } } } } } }
+        '404': { description: DIRECTOR_WORK_NOT_FOUND（不存在或不是本人的） }
+        '409': { description: DIRECTOR_WORK_BUSY（一键制作正在进行，或还有在途的生成 / 导出任务；message 写明原因） }
   /v1/ip-studio/director/works/{id}/edits:
     post:
       tags: [ipstudio]

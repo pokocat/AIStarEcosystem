@@ -759,6 +759,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 外层事务在第一次普通查询时就定下了快照。页面因此以为没在生成，也不轮询；用户再点一次，新请求查到了任务，报「该项生成中」。本地 H2 读得到，所以本机验不出来。
 - 做法：独立事务里刚写的东西，要在外层返回前读出来，就也在新事务里读（`newTx.execute(tx -> repo.find...)`），或者直接用写入时拿到的对象。
 - 判据：本地正常、线上「第一次点没反应，第二次报已在进行」→ 先怀疑事务快照，不是前端状态。
+- 反过来的坑（2026-10-28 导演台删除，独立复核复现）：**持着行锁时不要再开 `REQUIRES_NEW` 去读**。外层连接和锁都不放，内层再要一条连接；并发 N 个请求就占 N 条等 N 条，连接池 3 条时全部 `CannotCreateTransactionException`（active=3 / idle=0），池子 20 只是阈值更高。要在锁内读到最新提交，就在同一事务里用读已提交（`@Transactional(isolation = READ_COMMITTED)`，Spring 对已参与的外层事务不改隔离级别）并只查标量列；回归 `DirectorDeletePoolTest`（小连接池 + 占满后并发）。
 - 同一类（2026-10-25）：`@Transactional(readOnly = true)` 里调 `SELECT … FOR UPDATE`（导演台 `locked()`），MySQL 直接报 `Cannot execute statement in a READ ONLY transaction`，H2 照常执行。只读接口用不加锁的读（`DirectorService.owned()`）。导演台的视频报价、推荐预算、上传声音样本都因此在线上 500。
 
 ### 跨 app 约定
@@ -1192,6 +1193,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **分集（2026-10-25，本地未发布）：** 模型只给每集起点和正文起点 `bodyStart`，区间由程序构造，不会漏段或重叠（线上《食神》漏最后一段、《谁让这个睁眼瞎修仙的》前 252 段是设定资料，都曾被判 `AI_BAD_OUTPUT`）。剧本里标好「第N集」时程序直接按标题分、不扣积分（`DirectorPrompts.headingStarts`，服务端唯一一处）。结果先存 `pendingSplit` 预览确认；开头资料默认存为设定资料 `reference`，可改、可并入第 1 集，作为创作材料交给提取和规划，不进输入指纹。全自动一键制作按默认直接采用并在 notice 里说明，拆分失败作为一集继续；不全自动停在 `confirm-split`。`split.undo` 在出图 / 视频前可撤销拆分。原则是先让用户跑完流程：原文不丢、做了什么说清楚、能一键改回。
 - **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处（以及分集）停下等确认。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
 - **出 wire 的任务列表在新事务里读**（`view()`）：任务在独立事务里建，MySQL 可重复读下外层事务看不到它，页面以为没在生成、不轮询（2026-10-24 线上「点生成剧本没反应、再点报该项生成中」）。本地 H2 复现不了。
+- **作品删除（2026-10-28，本地未发布）：** 软删除，复用 `DELETE /works/{id}`；在作品行锁内判在途，在途以 `ip_run` 和原生视频任务为准（`done / video.bound` 的绑定记录要查它指向的 `material_video_job`，未结案的受理待核对 / 重新查询中、查不到都算没结束；已按全局规则 failed 结案的 `VIDEO_SUBMISSION_UNKNOWN` 算结束），不信作品 JSON 的 `running`。在途检查与删除同一事务、同一条连接（入口读已提交），持行锁时不许再开 `REQUIRES_NEW`，否则并发删除耗尽连接池（`DirectorDeletePoolTest`）。前端「已删除」通知带作品 id，只作用于当前打开的那部作品。一键制作 running → 409 `DIRECTOR_WORK_BUSY` 先停止；paused / waiting 同事务标 stopped。本人重复删除成功，他人 404。规则见 `specs/BUSINESS_RULES.md`「AI 导演台作品删除」。
 - **页面外壳：** 导演台页面必须包 antd `App`（`director-antd.tsx`）。弹窗和抽屉的根元素挂 `dialogFocus`（`director-shared.tsx`）：打开时焦点移进去，Tab 在里面循环，关闭后还给触发按钮。
 - **图片模型要出得了三种比例（2026-10-26，已生产发布 `20261026-director-image-viewer`）：** 一部作品只用一个接入点出图（道具 1:1、角色场景 16:9、分镜跟作品画幅），所以新选择只开放出图规格同时有这三种的接入点（`DirectorService.missingRatios`，按规格不按型号名）。作品里存着的旧选择原值照存、照原价出能出的画面，出不了的那类在冻结前报 `STUDIO_IMAGE_SIZE_UNSUPPORTED`，文案按资产类型说换模型还是换画幅。尺寸只在一个接入点里挑，**不要跨到同系列的 4K 接入点取「最大像素」**：4K 是另一个接入点、另一个价，那等于悄悄涨价。设置页读 `imageModelState`。
 - **大图查看（2026-10-26，已生产发布 `20261026-director-image-viewer`）：** 导演台的大图用 antd 图片预览（`ZoomableImage`），与画布共用，不要再写一套查看器。`@rc-component/image` 有补丁（`patches/@rc-component__image@1.10.0.patch`，修复只沿一个方向拖或一帧内松手时不弹回、图被拖出屏幕的问题）。升级 antd 时先确认上游是否已修复，再决定删除还是重做补丁。预览层上下留白要相等，否则弹回会偏。

@@ -7,12 +7,13 @@ import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { DirectorApi } from "../api";
+import { goneWorkId } from "../api/director";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
-import { InlineError, chooseDirectorBilling, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { InlineError, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 
 export type Tab = "script" | "assets" | "storyboard";
@@ -121,22 +122,39 @@ export function DirectorWorkbench({ id }: { id: string }) {
     setWork(next);
   }, []);
 
+  // 作品在别的页面被删了：停止轮询，丢掉没保存的修改（关页面时不再提醒），整页只留返回入口。
+  // 只认本作品的通知；页面卸载后退订，也不再处理已离开作品的迟到响应。
+  const [gone, setGone] = useState(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const markGone = useCallback(() => {
+    if (!mounted.current) return;
+    clearDrafts(`${id}:`); setGone(true);
+  }, [id]);
+  useEffect(() => onWorkGone(workId => { if (workId === id) markGone(); }), [id, markGone]);
+
   const load = useCallback(async () => {
-    try { apply(await DirectorApi.getWork(id)); setLoadError(""); }
-    catch (e) { if (isProductNotEnrolledError(e)) setNotEnrolled(true); else setLoadError(errorText(e)); }
-  }, [apply, id]);
+    try { const next = await DirectorApi.getWork(id); if (mounted.current) { apply(next); setLoadError(""); } }
+    catch (e) {
+      if (!mounted.current) return;
+      if (isWorkGone(e)) markGone(); // getWork 只会是本作品的 404
+      else if (isProductNotEnrolledError(e)) setNotEnrolled(true);
+      else setLoadError(errorText(e));
+    }
+  }, [apply, id, markGone]);
 
   useEffect(() => { if (auth === "ok") void load(); }, [auth, load]);
 
   // 用户操作没做成就弹错误弹窗；冲突类错误顺手把作品刷新到最新，弹窗里说「页面已经是最新的」才是真的。
   const showFailure = useStudioFailure();
   const setError = useCallback<DirectorFail>(failure => {
-    if (!failure) return;
+    if (!failure || !mounted.current) return;
     const value = typeof failure === "string" ? { action: "这次操作", error: failure } : failure;
+    if (isWorkGone(value.error) && goneWorkId(value.error) === id) { markGone(); return; }
     const conflict = /_CONFLICT$|_STALE$|_EXPIRED$/.test(normalizeStudioError(value.error).code);
     showFailure({ ...value, refreshed: conflict });
     if (conflict) void load();
-  }, [showFailure, load]);
+  }, [showFailure, load, id, markGone]);
 
   // 刷新、关页面时还有没保存的修改就提醒；站内切换工作区或集不会丢（见 useDraft）。
   useEffect(() => {
@@ -146,7 +164,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
   }, [id]);
 
   // 有任务在跑或一键制作在进行时轮询；页面隐藏时不轮询，回来立刻刷新一次。
-  const active = !!work && (work.tasks.some(t => t.status === "running"||t.status==="stopping") || work.pipeline?.status === "running");
+  const active = !gone && !!work && (work.tasks.some(t => t.status === "running"||t.status==="stopping") || work.pipeline?.status === "running");
   useEffect(() => {
     if (!active) return;
     const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(); }, 2500);
@@ -170,6 +188,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
   }, [pendingRun]);
 
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
+  if (gone) return <main className="ip-brand-surface director-shell"><div className="director-loading director-gone" role="alert">
+    <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。</p><Link href="/director" className="ip-brand-button">返回作品列表</Link></div></main>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
   const switchTab = (next: Tab) => setTab(next);

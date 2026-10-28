@@ -17,6 +17,10 @@ public interface MaterialVideoJobRepository extends JpaRepository<MaterialVideoJ
     @Query("select j from MaterialVideoJob j where j.id=:id")
     java.util.Optional<MaterialVideoJob> lockById(@Param("id") String id);
 
+    /** 导演台删除前核对在途：id / status / errorCode / ownerUserId 四列，不进持久化上下文。 */
+    @Query("select j.id, j.status, j.errorCode, j.ownerUserId from MaterialVideoJob j where j.id in :ids")
+    List<Object[]> states(@Param("ids") java.util.Collection<String> ids);
+
     /**
      * 行的子产品分区表达式：app 列为真值；老数据（回填前 app 为 null）按 kind 前缀推断
      * （drama-shot / drama-episode → drama，其余 → celebrity）。与

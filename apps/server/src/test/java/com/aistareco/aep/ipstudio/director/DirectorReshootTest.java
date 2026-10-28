@@ -69,7 +69,7 @@ class DirectorReshootTest {
                 .filter(r -> r.getNodeId().equals(i.getArgument(1)) && r.getStatus().equals(i.getArgument(2))).toList());
         service = new DirectorService(works, runs, mock(IpProjectService.class), mock(IpRunService.class), textRuns,
                 mock(StudioWorkflowWorker.class), videoModels, mock(StudioFixtureProvider.class),
-                mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), mock(MaterialVideoModelClient.class),
+                mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), null, mock(MaterialVideoModelClient.class),
                 mock(AiAppSceneModelPolicyService.class), mock(FileStorageService.class), new IpStudioProperties(), mock(IpLibraryService.class), om,
                 mock(PlatformTransactionManager.class));
 

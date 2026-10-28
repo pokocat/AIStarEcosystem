@@ -53,7 +53,7 @@ class DirectorAssetEditTest {
         when(runs.findByProjectIdOrderByCreatedAtDesc(any())).thenAnswer(i -> new ArrayList<>(stored));
         service = new DirectorService(works, runs, projects, mock(IpRunService.class), textRuns,
                 mock(StudioWorkflowWorker.class), mock(StudioVideoService.class), mock(StudioFixtureProvider.class),
-                mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), mock(MaterialVideoModelClient.class),
+                mock(StudioMediaImportService.class), mock(MaterialVideoJobService.class), null, mock(MaterialVideoModelClient.class),
                 mock(AiAppSceneModelPolicyService.class), mock(FileStorageService.class), new IpStudioProperties(), mock(IpLibraryService.class), om,
                 mock(PlatformTransactionManager.class));
     }
