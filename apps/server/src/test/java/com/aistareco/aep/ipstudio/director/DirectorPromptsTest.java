@@ -205,6 +205,26 @@ class DirectorPromptsTest {
         for (String p : List.of(plan, reshoot)) assertTrue(p.contains("不删台词、不改台词、不压语速"), "两种任务都不删词");
     }
 
+    /**
+     * 重写不能删改、不能挪出本片段，15 秒片段有 80 字台词就排不进「秒数 × 4」= 60 字（2026-10-28 第二轮 review）。
+     * 上限、处理办法和输出前自检都要写同一个例外，否则模型在「全部保留」和「不达标请调整后再输出」之间二选一。
+     * 逐行查：重写提示词里每一处提到「秒数 × 4」上限的地方，同一行都交代了保留原文；写分镜脚本可以顺延，上限没有例外。
+     */
+    @Test
+    void reshootKeepsOverlongLinesEverywhereTheFourCharacterCapIsMentioned() {
+        for (int maxShots : List.of(4, 1)) {
+            String reshoot = DirectorPrompts.reshoot(12, 15, maxShots), plan = DirectorPrompts.plan(12, 15, maxShots);
+            List<String> caps = reshoot.lines().filter(l -> l.contains("× 4")).toList();
+            assertEquals(2, caps.size(), "上限一处、自检一处：" + caps);
+            for (String l : caps) assertTrue(l.contains("原文"), "提到上限的这一行没交代超出时保留原文：" + l);
+            assertTrue(reshoot.contains("重写时这条上限让位于保留原文") && reshoot.contains("只有这种超出不用再调整")
+                    && reshoot.contains("都用满仍然超出每秒 4 字，也照原文全部保留"), reshoot);
+            assertTrue(plan.lines().filter(l -> l.contains("× 4")).noneMatch(l -> l.contains("原文")), "写分镜脚本的上限没有例外");
+            assertFalse(plan.contains("让位于保留原文") || plan.contains("只有这种超出"));
+            for (String p : List.of(plan, reshoot)) assertFalse(p.contains("%s") || p.contains("%1$") || p.contains("%2$"), "格式占位没有漏填");
+        }
+    }
+
     @Test
     void emotionAndToneFollowTheGenreInsteadOfOneRestraintForAll() {
         String hype = DirectorPrompts.TONES.get("爽感打脸"), warm = DirectorPrompts.TONES.get("治愈温情");

@@ -93,10 +93,10 @@ class DirectorImagePromptFormatTest {
         String sheet = asset("as1").path("prompt").asText();
         assertTrue(sheet.contains("白平衡中性") && sheet.contains("柔和补光") && sheet.contains("不磨皮、不刻意美白"), sheet);
         String scene = asset("as2").path("prompt").asText();
-        assertTrue(scene.contains("暖光只落在光源照到的地方") && scene.contains("夜景保留夜色"), scene);
+        assertTrue(scene.contains("主光源方向明确") && scene.contains("没写的不把整个画面染成一层黄"), scene);
         assertFalse(scene.contains("光线统一"), "旧的笼统写法已换掉");
         String board = clip().path("boardPrompt").asText();
-        assertTrue(board.contains("给演员打光") && board.contains("肤色按角色参考图自然还原") && board.contains("不把人物的脸压黑或染黄"), board);
+        assertTrue(board.contains("默认按影视人像布光") && board.contains("让肤色自然、有气色"), board);
         assertTrue(board.contains("人物的肤色和整体色调保持一致"), "宫格之间人物的肤色和色调要一致");
         assertTrue(board.contains("图2 提供场景「旧书店」的空间布局与光源方向"), "场景图交代空间和光源方向，不交代它自己的曝光和偏色");
         assertTrue(board.contains("参考图本身偏暗或偏色的地方不照搬"), board);
@@ -108,7 +108,7 @@ class DirectorImagePromptFormatTest {
         service.refresh(c);
         String sheet = asset("as1").path("prompt").asText(), board = clip().path("boardPrompt").asText();
         assertTrue(sheet.contains("面部受光充分") && board.contains("人物面部受光清楚"), board);
-        assertFalse(sheet.contains("皮肤纹理") || board.contains("皮肤质感") || board.contains("给演员打光"), "动画风格不写真人皮肤规则");
+        assertFalse(sheet.contains("皮肤纹理") || board.contains("皮肤质感") || board.contains("影视人像布光"), "动画风格不写真人皮肤规则");
     }
 
     @Test
@@ -141,7 +141,7 @@ class DirectorImagePromptFormatTest {
         adoptAsset("as2", legacyAssetPrompt("as2"), null);
         adoptBoard(legacyBoardPrompt(), null);
         service.refresh(c);
-        assertTrue(clip().path("boardPrompt").asText().contains("给演员打光"), "提示词已经换成新模板");
+        assertTrue(clip().path("boardPrompt").asText().contains("默认按影视人像布光"), "提示词已经换成新模板");
         assertEquals("current", asset("as1").path("image").path("adoptedCheck").asText(), asset("as1").toString());
         assertEquals("current", asset("as2").path("image").path("adoptedCheck").asText());
         assertEquals("current", clip().path("board").path("adoptedCheck").asText(), clip().path("board").toString());
@@ -196,5 +196,62 @@ class DirectorImagePromptFormatTest {
         assertEquals(slot.path("candidates").get(0).path("id").asText(), slot.path("adoptedId").asText(), "没有因为换模板只进历史");
         service.refresh(c);
         assertEquals("current", asset("as1").path("image").path("adoptedCheck").asText(), "也没有被标成需更新");
+    }
+
+    // ── 第 2 版（2026-10-28 随 20261028-director-delete 上线）→ 第 3 版：线上已有第 2 版出的图 ─────────────
+
+    private String v2Board() {
+        return DirectorPrompts.boardPromptV2(c.path("settings"), clip(),
+                List.of(new DirectorPrompts.Ref("图1", "character", "陈默"), new DirectorPrompts.Ref("图2", "scene", "旧书店")),
+                Map.of("as1", "陈默", "as2", "旧书店"));
+    }
+
+    @Test
+    void imagesMadeWithTheReleasedSecondVersionStayCurrent() {
+        // 用户选了「自然色调」：第 2 版把它当成特殊布光、关掉了补光，第 3 版照默认。两版提示词确实不同，但换模板不算用户改了东西。
+        c.with("settings").put("style", "真人写实，自然色调");
+        String v2Sheet = DirectorPrompts.assetPromptV2(c.path("settings"), asset("as1")), v2Scene = DirectorPrompts.assetPromptV2(c.path("settings"), asset("as2"));
+        adoptAsset("as1", v2Sheet, 2);
+        adoptAsset("as2", v2Scene, 2);
+        adoptBoard(v2Board(), 2);
+        service.refresh(c);
+        assertNotEquals(v2Sheet, asset("as1").path("prompt").asText());
+        assertNotEquals(v2Scene, asset("as2").path("prompt").asText());
+        assertNotEquals(v2Board(), clip().path("boardPrompt").asText());
+        assertEquals("current", asset("as1").path("image").path("adoptedCheck").asText(), asset("as1").toString());
+        assertEquals("current", asset("as2").path("image").path("adoptedCheck").asText());
+        assertEquals("current", clip().path("board").path("adoptedCheck").asText(), clip().path("board").toString());
+    }
+
+    @Test
+    void aSecondVersionBoardIsStillFlaggedWhenTheShotReallyChanged() {
+        adoptAsset("as1", DirectorPrompts.assetPromptV2(c.path("settings"), asset("as1")), 2);
+        adoptAsset("as2", DirectorPrompts.assetPromptV2(c.path("settings"), asset("as2")), 2);
+        adoptBoard(v2Board(), 2);
+        ((ObjectNode) clip().path("shots").get(1)).put("still", "陈默把信塞进口袋");
+        service.refresh(c);
+        assertEquals("outdated", clip().path("board").path("adoptedCheck").asText());
+        assertEquals("镜头、台词或提示词已修改", clip().path("board").path("staleReasons").get(0).asText());
+    }
+
+    @Test
+    void aSecondVersionBoardTaskFinishingAfterTheChangeIsStillAdopted() throws Exception {
+        adoptAsset("as1", DirectorPrompts.assetPromptV2(c.path("settings"), asset("as1")), 2);
+        adoptAsset("as2", DirectorPrompts.assetPromptV2(c.path("settings"), asset("as2")), 2);
+        c.with("taskMeta").putObject("IPR-v2").put("node", "board:cl1").put("prompt", v2Board()).put("promptFormat", 2)
+                .put("fingerprint", DirectorService.hash(v2Board() + "|k/as1.png|k/as2.png"));
+        IpRun run = new IpRun();
+        run.setId("IPR-v2");
+        run.setNodeId("board:cl1");
+        run.setStatus("done");
+        run.setOutputJson("{\"candidates\":[{\"key\":\"k/board-v2.png\"}]}");
+        Method apply = DirectorService.class.getDeclaredMethod("apply", DirectorWork.class, ObjectNode.class, IpRun.class);
+        apply.setAccessible(true);
+        apply.invoke(service, new DirectorWork(), c, run);
+        JsonNode slot = clip().path("board");
+        assertFalse(slot.path("candidates").get(0).path("stale").asBoolean(false), slot.toString());
+        assertEquals(2, slot.path("candidates").get(0).path("promptFormat").asInt());
+        service.refresh(c);
+        assertNotEquals("outdated", clip().path("board").path("adoptedCheck").asText(), clip().path("board").toString());
     }
 }

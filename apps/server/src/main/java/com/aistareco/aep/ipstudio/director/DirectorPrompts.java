@@ -310,9 +310,9 @@ public final class DirectorPrompts {
             4. 光源和声源写具体：写「烟头的火光一明一灭」，不写「火光一明一灭」；写「头顶吊扇吱呀转动」，不写「有异响」。
 
             【台词量】（视频模型每秒约说 4 个字，超过每秒约 9 字会直接吞掉多出来的话、不报错）
-            1. 每镜台词总字数不超过「镜头秒数 × 4」：3 秒最多 12 字，4 秒最多 16 字。
+            1. 每镜台词总字数不超过「镜头秒数 × 4」：3 秒最多 12 字，4 秒最多 16 字。%1$s
             2. 一个镜头只放一个人说话：对话拆成说 → 答 → 听，每句话放在说话人自己的镜头里。
-            3. 放不下时%s；任何情况都不删台词、不改台词、不压语速。一句台词太长时在句号处拆成两镜。
+            3. 放不下时%2$s；任何情况都不删台词、不改台词、不压语速。一句台词太长时在句号处拆成两镜。
 
             【镜头内容规范】
             每个镜头必须包含完整信息：
@@ -345,7 +345,8 @@ public final class DirectorPrompts {
             2. 每个片段讲的剧情范围不变：以它的 summary 和 lines（这一段的台词，按顺序）为准，对应本集正文里的同一段剧情；
                不提前写下一个片段的内容，不重复上一个片段已经拍过的内容；开头接上一个片段的结尾，结尾接下一个片段的开头。
             3. 台词：lines 里的台词全部保留，原文照写，顺序和说话人不变，不加别的片段的台词，也不挪到别的片段。
-               放不下就加镜头、延长镜头（片段不超过时长上限）；仍然超出每秒 4 字也照原文全部保留，片段上会提示台词偏多，由用户决定怎么拆。
+               放不下就加镜头、延长镜头（不超过时长上限和镜头数上限）；都用满仍然超出每秒 4 字，也照原文全部保留，
+               不为凑字数删改台词，片段上会提示台词偏多，由用户决定怎么拆。
             4. 这是重写，要给出一版新的拍法：按本集正文重新设计这一段的镜头拆分、每镜时长、景别、机位与运镜、动作和静态帧，
                同时遵守上面全部写实规则。片段的 title、summary、assetIds 可以按新拍法调整。
             5. 同一片段尽量保持在同一场景内；镜头拆分必须保证动作连贯、时空逻辑统一：人物站位、道具位置、光线方向前后一致。镜头时长相加等于片段时长。
@@ -360,7 +361,7 @@ public final class DirectorPrompts {
             【输出前强制校验】
             1. 写实校验：是否出现了模板化动作套话？小动作是否最多一个？机位是否有变化？
             2. 写法校验：机位是否写了运镜、没有二选一和拍摄目的？是否写了外貌或抽象情绪词？光源声源是否具体？
-            3. 台词量：台词是否不超过「镜头秒数 × 4」字？
+            3. 台词量：%s
             4. 叙事完整：核心对白、关键情节是否完整无遗漏？动作与空间逻辑是否前后连贯？
             5. 资产合规：所有 id 是否均来自输入提供的资产列表？
             """;
@@ -380,16 +381,23 @@ public final class DirectorPrompts {
             2. 时长合规：常规镜头时长是否 ≤4 秒？≥5 秒的镜头是否在 action 里写了理由？所有镜头是否 ≥2 秒？
             3. 写实校验：是否出现了模板化动作套话？小动作是否最多一个？机位是否有变化？
             4. 写法校验：机位是否写了运镜、没有二选一和拍摄目的？是否写了外貌或抽象情绪词？光源声源是否具体？
-            5. 台词量：每镜台词是否不超过「镜头秒数 × 4」字？是否一镜只有一个人说话？
+            5. 台词量：%2$s是否一镜只有一个人说话？
             6. 叙事完整：核心对白、关键情节是否完整无遗漏？动作与空间逻辑是否前后连贯？
             7. 资产合规：所有 id 是否均来自输入提供的资产列表？
             """;
 
     private static String shotPrompt(int minSec, int maxSec, int maxShots, boolean reshoot) {
         String output = reshoot ? RESHOOT_OUTPUT : PLAN_OUTPUT;
-        // 台词放不下怎么办只在本任务自己的规则里写一次：写分镜脚本可以顺延到下一片段，重写不能挪出本片段。
-        String realism = SHOT_REALISM.formatted(reshoot ? "按下面【重写范围】第 3 条处理" : "按下面【拆分与引用规则】第 1 条处理")
+        // 台词放不下怎么办按任务写：写分镜脚本可以顺延到下一片段，上限没有例外；重写不能删改、不能挪出本片段，
+        // 时长和镜头数用满仍超出时只能保留原文（15 秒的片段有 80 字就排不进 60 字），上限、处理办法和输出前自检三处都写这同一个例外，
+        // 否则模型会在「全部保留」和「不达标请调整后再输出」之间二选一（2026-10-28 review）。
+        String realism = SHOT_REALISM.formatted(
+                        reshoot ? "重写时这条上限让位于保留原文：时长上限和镜头数都用满仍超出的，按下面【重写范围】第 3 条照原文全部保留。" : "",
+                        reshoot ? "按下面【重写范围】第 3 条处理" : "按下面【拆分与引用规则】第 1 条处理")
                 + (reshoot ? RESHOOT_SCOPE : SPLIT_RULES).formatted(minSec, maxSec);
+        String dialogueCheck = reshoot
+                ? "每镜台词是否不超过「镜头秒数 × 4」字？超出的，是否已经用满时长上限和镜头数、原文一字不少地保留了？只有这种超出不用再调整。"
+                : "每镜台词是否不超过「镜头秒数 × 4」字？";
         String role = reshoot ? """
 
             【任务定位】
@@ -406,7 +414,7 @@ public final class DirectorPrompts {
             1. 单片段时长 %d–%d 秒。
             2. 当前视频模型只按首帧出片：每个片段只能有 1 个镜头，still 必须是镜头**开始时**的画面（视频从这张图开始动），
                动作写从这个画面出发会发生什么。%s
-            """.formatted(minSec, maxSec, reshoot ? "" : "复杂动作拆成多个片段。") + realism + FRAME_CHECKS + output;
+            """.formatted(minSec, maxSec, reshoot ? "" : "复杂动作拆成多个片段。") + realism + FRAME_CHECKS.formatted(dialogueCheck) + output;
         int lo = Math.max(minSec, maxSec - 3);
         int shotsLo = Math.min(3, maxShots);
         return COMMON + (role != null ? role : """
@@ -421,7 +429,7 @@ public final class DirectorPrompts {
             2. 单片段镜头数：每段排布 %4$d–%5$d 个镜头（最多 %5$d 个，对应 2×2 分镜宫格）；禁止少于 %4$d 个镜头，绝对禁止单片段仅 1 个镜头。
             3. 单镜头时长：标准镜头时长为 2–4 秒；单镜头时长 ≥5 秒必须有合理理由（如连续跟拍长动作、情绪留白、一句台词需要的时长），并把理由写进该镜头的 action；
                无合理理由不得超过 4 秒。所有镜头时长不得低于 2 秒。
-            """.formatted(lo, maxSec, minSec, shotsLo, maxShots) + realism + CUT_LOGIC_AND_CHECKS.formatted(shotsLo) + output;
+            """.formatted(lo, maxSec, minSec, shotsLo, maxShots) + realism + CUT_LOGIC_AND_CHECKS.formatted(shotsLo, dialogueCheck) + output;
     }
 
     // ── 输出校验（worker 内执行）─────────────────────────────────────────────
@@ -665,8 +673,10 @@ public final class DirectorPrompts {
      * 按 {@link #legacyAssetPrompt} / {@link #legacyBoardPrompt} 核对，换模板本身不算「提示词已修改」（同 {@link #VIDEO_PROMPT_FORMAT}）。
      * 2：2026-10-28 加入演员布光、中性白平衡与肤色还原。用户反馈 H3 成片人物普遍脸黑、发黄；视频照着分镜图和参考图生成，
      * 判断偏色主要从这几张图带进去，所以从源头改起；视频再照已确认分镜图的受光和色调（{@link #VIDEO_PROMPT_FORMAT} 3）。这是按反馈定的方向，没有拿样片核对过根因，效果也还没有用真实出图对比过。
+     * 3：同日第二轮 review 后改成一段默认布光指导（{@link #boardLighting}），不再按关键词推断特殊布光、追加「不补光」；
+     *    宫格一致性改成「明暗和光色只随画面描述变化」。第 2 版已上线出过图，按 {@link #assetPromptV2} / {@link #boardPromptV2} 核对。
      */
-    public static final int IMAGE_PROMPT_FORMAT = 2;
+    public static final int IMAGE_PROMPT_FORMAT = 3;
 
     /** 真人实拍类风格才写皮肤质感、气色这些真人规则；动画、水墨等风格只要求受光清楚、配色干净。风格是用户随手填的字，按关键词判断。 */
     static boolean liveAction(String style) {
@@ -675,46 +685,15 @@ public final class DirectorPrompts {
     }
 
     /**
-     * 镜头或风格里写明的特殊布光：逆光、剪影、人在阴影里、低调或高反差、有色的光照在人身上、黑白或特别的调色。
-     * 写了就按它来，默认的补光、提亮和中性色让位：2026-10-28 review 发现「逆光剪影、脸隐入阴影」的镜头同时被要求补光把脸照清楚。
-     * 只认这几类明确的说法；「昏暗」「夜里」这类环境描述不算，按默认做法保留氛围、同时把人物交代清楚，否则夜戏又会回到脸黑。
+     * 分镜图的布光与调色：一段默认指导，各格原样保留镜头描述，由出图模型结合上下文理解哪里要剪影、暗面或特殊光色。
+     * 不从描述里按关键词推断再追加「这一格不补光」之类的强指令：2026-10-28 第二轮 review 证明那样会把「自然色调」「不要逆光剪影」
+     * 「低调地放下」都读反（用户随后定下这个做法）。默认方向是用户定的：像影视拍摄一样给演员适当打光，自然有气色，同时尊重剧情需要。
      */
-    private static final Pattern LIGHTING_INTENT = Pattern.compile(
-            "逆光|剪影|背光|轮廓光|只见轮廓|看不清(脸|面|五官)|(脸|面部|五官|人)[^，。；]{0,4}(阴影|暗处|暗影)|(隐入|藏在|站在|坐在|躲在)?阴影(里|中)"
-            + "|低调|高反差|明暗对比|[烛火月冷暖红蓝绿紫]光(照|映|打|洒|落)|(霓虹|台灯|手电|屏幕|车灯)[^，。；]{0,3}(照|映|打)|映(红|黄|蓝|绿|紫)"
-            + "|黑白|单色|胶片|色调|调色");
-
-    /** 场景设定里写明的明暗和色调（昏暗、霓虹、烛光、冷色调…）：场景参考图按它来，默认的「曝光正常、暗部看得清」让位。 */
-    private static final Pattern SCENE_MOOD = Pattern.compile("昏暗|阴暗|昏黄|漆黑|黑暗|幽暗|霓虹|烛光|火光|月光|逆光|暗调|低调|冷色|暖色|色调|调色|黑白");
-
-    static boolean lightingIntent(String text) {
-        return text != null && LIGHTING_INTENT.matcher(text).find();
-    }
-
-    /** 默认的人物布光（真人风格）：用户的审美方向（2026-10-28）是像真实拍摄一样给演员合理布光、适度修饰调色，自然有气色，保留生活感和辨识度，不是变白、过曝或磨皮。 */
-    private static final String LIVE_LIGHTING = "顺着场景的光源方向布光，人物按影视拍摄给演员打光，主光塑造五官，柔和补光让眼睛和暗侧脸颊看得清；"
-            + "肤色按角色参考图自然还原、有气色，保留皮肤质感；场景的暖光和暗调主要落在环境上，不把人物的脸压黑或染黄。"
-            + "夜景和暗调的戏保留氛围，用画面里的光源和轮廓光把人物交代清楚。";
-    private static final String PLAIN_LIGHTING = "顺着场景的光源方向打光，人物面部受光清楚、五官可辨，配色干净，不发灰发脏；夜景和暗调的戏保留氛围。";
-
-    /**
-     * 分镜图的布光与调色。默认按 {@link #LIVE_LIGHTING} / {@link #PLAIN_LIGHTING}；风格里写了特殊布光就整板按风格来，
-     * 某一格的画面描述写了就那一格按描述来、其余格照默认，不在同一格里同时写两种相反的要求。
-     */
-    private static String boardLighting(String style, JsonNode shots, boolean grid) {
-        if (lightingIntent(style))
-            return "布光与调色：按画面风格「" + style + "」的布光和调色来，人物的脸怎么处理也照这个风格，不另外补光提亮"
-                    + (grid ? "；各格保持同一调色。\n" : "。\n");
-        String body = liveAction(style) ? LIVE_LIGHTING : PLAIN_LIGHTING;
-        int n = Math.min(shots.size(), MAX_SHOTS);
-        List<String> special = new ArrayList<>();
-        for (int i = 0; i < n; i++) {
-            JsonNode s = shots.get(i);
-            if (lightingIntent(s.path("still").asText() + "；" + s.path("camera").asText())) special.add(grid ? CELL_NAMES[i] + "格" : "这个画面");
-        }
-        if (special.isEmpty()) return "布光与调色：" + body + "\n";
-        String keep = String.join("、", special) + "按画面描述里写的布光来，不为它补光提亮";
-        return special.size() == n ? "布光与调色：" + keep + "。\n" : "布光与调色：" + keep + "；其余各格" + body + "\n";
+    private static String boardLighting(String style) {
+        return "布光与调色：" + (liveAction(style)
+                ? "默认按影视人像布光，主光塑造五官，适度补光，让肤色自然、有气色，保留皮肤质感和场景氛围。"
+                : "默认让人物面部受光清楚、五官可辨，配色干净，保留场景氛围。")
+                + "画面风格写明的布光和调色照风格来；画面描述里明确写的剪影、暗面或特殊光色优先，只作用于写到的人物或区域，其他部分沿用默认布光。\n";
     }
 
     static String kindLabel(String kind) {
@@ -734,10 +713,8 @@ public final class DirectorPrompts {
         return switch (asset.path("kind").asText()) {
             case "scene" -> style + "风格的「" + name + "」空间参考图。" + desc
                     + "\n用平视广角清楚展示空间的固定布局：入口、窗、主要家具及它们的相对位置，自然透视。"
-                    + (SCENE_MOOD.matcher(desc).find() || lightingIntent(style)
-                        ? "\n光线按场景设定和画面风格来，保留写明的明暗和色调，主要光源的位置和空间布局要看得清。"
-                        : "\n光线按场景设定的时段和光源来：主光源方向明确，整体曝光正常，暗部和墙角的细节看得清；"
-                          + "暖光只落在光源照到的地方，不把整个画面染成一层黄、绿或褐色，夜景保留夜色、靠画面里的光源照明。")
+                    + "\n光线按场景设定的时段和光源来：主光源方向明确，暗部和墙角的细节看得清；"
+                    + "设定或画面风格写明的昏暗、夜色、有色灯光和调色照写，没写的不把整个画面染成一层黄、绿或褐色。"
                     + "\n画面里不出现人物和临时剧情道具，不添加多余的门窗或第二套家具，不出现文字。";
             case "prop" -> style + "风格的道具「" + name + "」单件参考图。" + desc
                     + "\n用能看清关键特征的角度和景别，光照均匀、白平衡中性，颜色和材质准确，背景简洁。"
@@ -749,13 +726,10 @@ public final class DirectorPrompts {
                     + "3. 中间中部：表情四宫格，同一角度的胸像，依次为喜、怒、哀、乐。\n"
                     + "4. 右侧一列：面部特征特写 2–3 张，按设定挑最能辨认的部位（眼睛、鼻子、嘴唇，或痣、疤痕、随身配饰等身体特征）。\n"
                     + "5. 中间下部：正面半身展示图，自然姿态，看清上身服装与气质。\n"
-                    + (lightingIntent(style)
-                        ? "布光与色彩：主光加柔和补光让五官看得清，色彩和调色按画面风格来"
-                          + (liveAction(style) ? "；肤色按角色设定还原，保留真实的皮肤纹理，不磨皮、不刻意美白。\n" : "。\n")
-                        : liveAction(style)
-                        ? "布光与色彩：主光从斜前方照亮面部，柔和补光让眼睛和眼窝、鼻翼两侧的暗部看得清；白平衡中性，浅灰背景和白色衣物不偏黄、绿或橙褐。"
-                          + "肤色按角色设定还原，气色自然健康，保留真实的皮肤纹理，不磨皮、不刻意美白。\n"
-                        : "布光与色彩：面部受光充分、五官清楚，白平衡中性，配色按设定准确还原，不发灰发脏。\n")
+                    + (liveAction(style)
+                        ? "布光与色彩：主光从斜前方照亮面部，柔和补光让眼睛和眼窝、鼻翼两侧的暗部看得清；白平衡中性，浅灰背景和白色衣物不偏黄、绿或橙褐，"
+                          + "画面风格写明了调色的按风格来。肤色按角色设定还原，气色自然健康，保留真实的皮肤纹理，不磨皮、不刻意美白。\n"
+                        : "布光与色彩：面部受光充分、五官清楚，配色按设定准确还原，不发灰发脏，画面风格写明了调色的按风格来。\n")
                     + "角色设定：" + desc + "\n"
                     + "所有分区都是同一个人：脸型、五官、发型、肤色、体型、服装和配饰完全一致；画面里不出现其他人物、剧情场景或未设定的道具。\n"
                     + "图中不写任何文字、标注、编号、色板或水印。";
@@ -787,8 +761,8 @@ public final class DirectorPrompts {
                     .append(s.path("camera").asText()).append("。").append(s.path("still").asText()).append("\n");
         }
         if (layout[0] == 2 && shots.size() < 4) b.append("没有用到的格子保持纯灰色留白。\n");
-        b.append(boardLighting(style, shots, layout[0] == 2));
-        b.append(layout[0] == 1 ? "只描绘这一个静态时刻，" : "各格沿用同一身份、造型、空间和光源，人物的肤色和整体色调保持一致，明暗只随画面描述的布光变化；机位变化可以让人物在画面左右位置合理变化。每格只画一个静态时刻，")
+        b.append(boardLighting(style));
+        b.append(layout[0] == 1 ? "只描绘这一个静态时刻，" : "各格沿用同一身份、造型、空间和光源，人物的肤色和整体色调保持一致，明暗和光色只随画面描述的布光变化；机位变化可以让人物在画面左右位置合理变化。每格只画一个静态时刻，")
                 .append("不画动作残影。图内不画文字、字幕、镜号或水印。");
         return b.toString();
     }
@@ -1089,8 +1063,112 @@ public final class DirectorPrompts {
         }
     }
 
+    // ── 旧版出图模板（IMAGE_PROMPT_FORMAT 2，2026-10-28 发布的那一版）────────────────────────────
+    // 已随 20261028-director-delete 上线并出过图，只用来核对那一版生成的参考图 / 分镜图，不要拿它出新图。
+    // 它按关键词推断特殊布光、命中就关补光，「自然色调」「胶片质感」「不要逆光剪影」都会读反；第 3 版改成一段默认指导（见 {@link #boardLighting}）。
+
+    private static final Pattern LIGHTING_INTENT_V2 = Pattern.compile(
+            "逆光|剪影|背光|轮廓光|只见轮廓|看不清(脸|面|五官)|(脸|面部|五官|人)[^，。；]{0,4}(阴影|暗处|暗影)|(隐入|藏在|站在|坐在|躲在)?阴影(里|中)"
+            + "|低调|高反差|明暗对比|[烛火月冷暖红蓝绿紫]光(照|映|打|洒|落)|(霓虹|台灯|手电|屏幕|车灯)[^，。；]{0,3}(照|映|打)|映(红|黄|蓝|绿|紫)"
+            + "|黑白|单色|胶片|色调|调色");
+
+    private static final Pattern SCENE_MOOD_V2 = Pattern.compile("昏暗|阴暗|昏黄|漆黑|黑暗|幽暗|霓虹|烛光|火光|月光|逆光|暗调|低调|冷色|暖色|色调|调色|黑白");
+
+    private static boolean lightingIntentV2(String text) {
+        return text != null && LIGHTING_INTENT_V2.matcher(text).find();
+    }
+
+    private static final String LIVE_LIGHTING_V2 = "顺着场景的光源方向布光，人物按影视拍摄给演员打光，主光塑造五官，柔和补光让眼睛和暗侧脸颊看得清；"
+            + "肤色按角色参考图自然还原、有气色，保留皮肤质感；场景的暖光和暗调主要落在环境上，不把人物的脸压黑或染黄。"
+            + "夜景和暗调的戏保留氛围，用画面里的光源和轮廓光把人物交代清楚。";
+    private static final String PLAIN_LIGHTING_V2 = "顺着场景的光源方向打光，人物面部受光清楚、五官可辨，配色干净，不发灰发脏；夜景和暗调的戏保留氛围。";
+
+    private static String boardLightingV2(String style, JsonNode shots, boolean grid) {
+        if (lightingIntentV2(style))
+            return "布光与调色：按画面风格「" + style + "」的布光和调色来，人物的脸怎么处理也照这个风格，不另外补光提亮"
+                    + (grid ? "；各格保持同一调色。\n" : "。\n");
+        String body = liveAction(style) ? LIVE_LIGHTING_V2 : PLAIN_LIGHTING_V2;
+        int n = Math.min(shots.size(), MAX_SHOTS);
+        List<String> special = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            JsonNode s = shots.get(i);
+            if (lightingIntentV2(s.path("still").asText() + "；" + s.path("camera").asText())) special.add(grid ? CELL_NAMES[i] + "格" : "这个画面");
+        }
+        if (special.isEmpty()) return "布光与调色：" + body + "\n";
+        String keep = String.join("、", special) + "按画面描述里写的布光来，不为它补光提亮";
+        return special.size() == n ? "布光与调色：" + keep + "。\n" : "布光与调色：" + keep + "；其余各格" + body + "\n";
+    }
+
+    static String assetPromptV2(JsonNode settings, JsonNode asset) {
+        String style = settings.path("style").asText("真人写实");
+        String name = asset.path("name").asText();
+        String desc = asset.path("description").asText();
+        return switch (asset.path("kind").asText()) {
+            case "scene" -> style + "风格的「" + name + "」空间参考图。" + desc
+                    + "\n用平视广角清楚展示空间的固定布局：入口、窗、主要家具及它们的相对位置，自然透视。"
+                    + (SCENE_MOOD_V2.matcher(desc).find() || lightingIntentV2(style)
+                        ? "\n光线按场景设定和画面风格来，保留写明的明暗和色调，主要光源的位置和空间布局要看得清。"
+                        : "\n光线按场景设定的时段和光源来：主光源方向明确，整体曝光正常，暗部和墙角的细节看得清；"
+                          + "暖光只落在光源照到的地方，不把整个画面染成一层黄、绿或褐色，夜景保留夜色、靠画面里的光源照明。")
+                    + "\n画面里不出现人物和临时剧情道具，不添加多余的门窗或第二套家具，不出现文字。";
+            case "prop" -> style + "风格的道具「" + name + "」单件参考图。" + desc
+                    + "\n用能看清关键特征的角度和景别，光照均匀、白平衡中性，颜色和材质准确，背景简洁。"
+                    + "\n不出现人物或手，不表现使用动作，不生成重复物件、文字或商标。";
+            default -> style + "风格的角色设定集「" + name + "」，一张横版 16:9 设定板，浅灰纯色背景，统一柔和的棚拍光，各分区之间用细白边分隔，按以下排版：\n"
+                    + "1. 左侧约三分之一：全身三视图，从左到右依次为正面、正侧面、背面，同一自然站姿，双臂下垂，从头顶到鞋完整入画。\n"
+                    + "2. 中间上部：颈部以上的头部细节，正面、左侧面、右侧面各一张。\n"
+                    + "3. 中间中部：表情四宫格，同一角度的胸像，依次为喜、怒、哀、乐。\n"
+                    + "4. 右侧一列：面部特征特写 2–3 张，按设定挑最能辨认的部位（眼睛、鼻子、嘴唇，或痣、疤痕、随身配饰等身体特征）。\n"
+                    + "5. 中间下部：正面半身展示图，自然姿态，看清上身服装与气质。\n"
+                    + (lightingIntentV2(style)
+                        ? "布光与色彩：主光加柔和补光让五官看得清，色彩和调色按画面风格来"
+                          + (liveAction(style) ? "；肤色按角色设定还原，保留真实的皮肤纹理，不磨皮、不刻意美白。\n" : "。\n")
+                        : liveAction(style)
+                        ? "布光与色彩：主光从斜前方照亮面部，柔和补光让眼睛和眼窝、鼻翼两侧的暗部看得清；白平衡中性，浅灰背景和白色衣物不偏黄、绿或橙褐。"
+                          + "肤色按角色设定还原，气色自然健康，保留真实的皮肤纹理，不磨皮、不刻意美白。\n"
+                        : "布光与色彩：面部受光充分、五官清楚，白平衡中性，配色按设定准确还原，不发灰发脏。\n")
+                    + "角色设定：" + desc + "\n"
+                    + "所有分区都是同一个人：脸型、五官、发型、肤色、体型、服装和配饰完全一致；画面里不出现其他人物、剧情场景或未设定的道具。\n"
+                    + "图中不写任何文字、标注、编号、色板或水印。";
+        };
+    }
+
+    static String boardPromptV2(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames) {
+        String style = settings.path("style").asText("真人写实");
+        String aspect = settings.path("aspectRatio").asText("9:16");
+        JsonNode shots = clip.path("shots");
+        int[] layout = boardLayout(shots.size());
+        StringBuilder b = new StringBuilder();
+        if (layout[0] == 1) b.append(style).append("风格的剧情分镜画面，画幅 ").append(aspect).append("。\n");
+        else b.append(style).append("风格，生成 2×2 分镜板：四个等大无间隙的格子，整板 ").append(aspect)
+                .append("，每格 ").append(aspect).append("，按左上、右上、左下、右下的顺序阅读。\n");
+        appendRefs(b, refs);
+        if (!refs.isEmpty()) b.append("参考图里的多视角或资料排版代表同一个资产，不要复制资料排版、背景，也不要把同一个角色画成多个人。")
+                .append("参考图只确定人物身份、造型、道具外观和空间，画面里按镜头重新给人物布光，参考图本身偏暗或偏色的地方不照搬。\n");
+        for (int i = 0; i < shots.size() && i < MAX_SHOTS; i++) {
+            JsonNode s = shots.get(i);
+            b.append(layout[0] == 1 ? "画面：" : CELL_NAMES[i] + "格：").append(s.path("size").asText()).append("，")
+                    .append(s.path("camera").asText()).append("。").append(s.path("still").asText()).append("\n");
+        }
+        if (layout[0] == 2 && shots.size() < 4) b.append("没有用到的格子保持纯灰色留白。\n");
+        b.append(boardLightingV2(style, shots, layout[0] == 2));
+        b.append(layout[0] == 1 ? "只描绘这一个静态时刻，" : "各格沿用同一身份、造型、空间和光源，人物的肤色和整体色调保持一致，明暗只随画面描述的布光变化；机位变化可以让人物在画面左右位置合理变化。每格只画一个静态时刻，")
+                .append("不画动作残影。图内不画文字、字幕、镜号或水印。");
+        return b.toString();
+    }
+
     // ── 旧版出图模板（IMAGE_PROMPT_FORMAT 1，2026-10-28 之前）────────────────────────────
     // 只用来核对之前生成的参考图 / 分镜图是不是当前这一版：换了模板不该把它们都标成「提示词已修改」。不要拿它们出新图。
+
+    /** 按 format 那一版编的资产出图提示词；format 就是当前版本时返回 null。没记版本的候选按第 1 版。 */
+    static String legacyAssetPrompt(JsonNode settings, JsonNode asset, int format) {
+        return format >= IMAGE_PROMPT_FORMAT ? null : format == 2 ? assetPromptV2(settings, asset) : legacyAssetPrompt(settings, asset);
+    }
+
+    static String legacyBoardPrompt(JsonNode settings, JsonNode clip, List<Ref> refs, java.util.Map<String, String> speakerNames, int format) {
+        return format >= IMAGE_PROMPT_FORMAT ? null : format == 2 ? boardPromptV2(settings, clip, refs, speakerNames)
+                : legacyBoardPrompt(settings, clip, refs, speakerNames);
+    }
 
     static String legacyAssetPrompt(JsonNode settings, JsonNode asset) {
         String style = settings.path("style").asText("真人写实");
