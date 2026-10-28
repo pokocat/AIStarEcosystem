@@ -13,7 +13,7 @@ import type { DirectorBrief, DirectorBriefMessage, DirectorTaskType, DirectorWor
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { ApiError } from "@ai-star-eco/api-client";
 import { DirectorApi } from "../api";
-import { chooseDirectorBilling, costText, errorText, newRequestId, runningTask, useDraft, clearDrafts } from "./director-shared";
+import { chooseDirectorBilling, costText, errorText, newRequestId, runningTask, useDraft, clearDrafts, peekDraft } from "./director-shared";
 import { clearPending, deliver, readPending, UncertainError, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
 import { GenreTone } from "./director-script";
@@ -104,7 +104,11 @@ export function BriefChat({ work, apply, setError, openSettings, onPaste }: { wo
     // 有没确认送达的请求：同一句话按原请求恢复；不同的话先处理掉那一条，不另起新请求。
     const p = readPending<Body>(key);
     if (p && !(p.body.type === "brief" && p.body.options.message === message)) { setLocalError(blocked); return; }
-    void run(p ? p.body : null, () => newBody("brief", { message })).then(ok => { if (ok) { clearDrafts(`${work.id}:brief:draft`); setText(""); } });
+    const typed = text.trim();
+    void run(p ? p.body : null, () => newBody("brief", { message })).then(ok => {
+      // 只在输入框还是刚发出去的内容时清空；发送期间又写的留着。
+      if (ok && (peekDraft<string>(`${work.id}:brief:draft`) ?? "").trim() === typed) setText("");
+    });
   };
   const generate = (skip: boolean) => {
     const p = readPending<Body>(key);

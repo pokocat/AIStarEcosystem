@@ -10,7 +10,7 @@ import { BriefChat } from "./director-brief";
 import { clearPending, readPending } from "./director-pending";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
-import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
+import { AiWorking, Field, InlineError, chooseDirectorBilling, costText, hasDrafts, newRequestId, runningTask, saveDrafts, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
@@ -60,7 +60,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
   const [paste, setPaste] = useDraft(`${work.id}:paste`, "");
   const [mode, setMode] = useState<"idea" | "paste">(() => work.idea.trim() || !paste ? "idea" : "paste");
   const { busy, run } = useBusy();
-  const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, setError);
+  const save = () => void run("paste", async () => { apply(await saveDrafts({ [`${work.id}:paste`]: paste }, () => DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }))); }, setError);
   if (mode === "paste") return <section className="director-panel director-start">
     <h3><PenLine size={16}/>粘贴剧本</h3>
     <Field label="剧本正文" hint="免费。保存后可直接作为一集，或由 AI 拆分为多集。">
@@ -128,7 +128,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
   const [text, setText, dirty] = useDraft(draftKey, work.draft);
   const [count, setCount] = useState("");
   const { busy, run } = useBusy();
-  const persist = async () => { const w = await DirectorApi.patchWork(work.id, { draft: text, draftRev: work.draftRev }); clearDrafts(draftKey); return w; };
+  const persist = () => saveDrafts({ [draftKey]: text }, () => DirectorApi.patchWork(work.id, { draft: text, draftRev: work.draftRev }));
   const save = () => run("save", async () => apply(await persist()), setError);
   const asEpisode = () => void run("one", async () => {
     let w = work;
@@ -228,8 +228,8 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
   const { busy, run } = useBusy();
   const dirty = t || s || c;
   const save = () => void run("save", async () => {
-    const next = await DirectorApi.edit(work.id, "episode.update", ep.id, ep.rev, { title, summary, content });
-    clearDrafts(prefix); apply(next);
+    apply(await saveDrafts({ [prefix + "title"]: title, [prefix + "summary"]: summary, [prefix + "content"]: content },
+      () => DirectorApi.edit(work.id, "episode.update", ep.id, ep.rev, { title, summary, content })));
   }, setError);
   const clips = work.clips.filter(x => x.episodeId === ep.id);
   const progress = clips.length ? `分镜图 ${clips.filter(x => x.board.adoptedId).length}/${clips.length} · 视频 ${clips.filter(x => x.video.adoptedId).length}/${clips.length}` : "待写分镜";

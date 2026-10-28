@@ -132,32 +132,73 @@ export function paragraphsWithOffsets(content: string): Array<{ text: string; st
   return out;
 }
 
-/**
- * 按锚点找回「那一处」，与服务端 DirectorAssistant.findAnchor 同一规则：先找「前文 + 文字 + 后文」整体（多处取离原位置最近的），
- * 整体找不到时只认文字唯一出现、或上下文还能对上一边的那一处；对不上返回 null，宁可不改也不改到别处。
- */
+/** 没有回复时正文快照的旧建议：只认「前文 + 文字 + 后文」整体还在的那一处，与服务端 DirectorAssistant.findAnchor 一致。 */
 export function findAnchor(content: string, text: string, before: string, after: string, hint: number): [number, number] | null {
   const full = before + text + after;
+  if (!full) return null;
   let best = -1;
-  if (full) for (let at = content.indexOf(full); at >= 0; at = content.indexOf(full, at + 1))
+  for (let at = content.indexOf(full); at >= 0; at = content.indexOf(full, at + 1))
     if (best < 0 || Math.abs(at + before.length - hint) < Math.abs(best + before.length - hint)) best = at;
-  if (best >= 0) return [best + before.length, best + before.length + text.length];
-  if (!text) return null;
-  const hits: Array<[number, number]> = [];
-  for (let at = content.indexOf(text); at >= 0; at = content.indexOf(text, at + 1)) hits.push([at, at + text.length]);
-  if (hits.length === 1) return hits[0];
-  let top = 0;
-  let winners: Array<[number, number]> = [];
-  for (const h of hits) {
-    const score = (before && content.slice(0, h[0]).endsWith(before) ? 1 : 0) + (after && content.slice(h[1]).startsWith(after) ? 1 : 0);
-    if (score > top) { top = score; winners = []; }
-    if (score === top && score > 0) winners.push(h);
+  return best < 0 ? null : [best + before.length, best + before.length + text.length];
+}
+
+/**
+ * 把快照 base 里的 [start, end) 映射到用户改过之后的 current 里，与服务端 DirectorAssistant.mapRange 同一规则：
+ * 这段所在的行原样还在才映射；这几行改过、删掉，或是几行一模一样的文字而数目变了，返回 null。
+ */
+export function mapRange(base: string, current: string, start: number, end: number): [number, number] | null {
+  if (start < 0 || end < start || end > base.length) return null;
+  if (base === current) return [start, end];
+  const a = base.split("\n"), b = current.split("\n");
+  const as = lineStarts(a), bs = lineStarts(b);
+  const ls = lineOf(as, start), le = end > start ? lineOf(as, end - 1) : ls;
+  const match = matchLines(a, b);
+  for (let i = ls; i <= le; i++) {
+    if (match[i] < 0 || (i > ls && match[i] !== match[i - 1] + 1)) return null;
+    const ca = a.filter(x => x === a[i]).length, cb = b.filter(x => x === a[i]).length;
+    if (ca > 1 && ca !== cb) return null;
   }
-  return winners.length === 1 ? winners[0] : null;
+  const ns = bs[match[ls]] + (start - as[ls]), ne = bs[match[le]] + (end - as[le]);
+  if (ne < ns || ne > current.length || current.slice(ns, ne) !== base.slice(start, end)) return null;
+  return [ns, ne];
+}
+
+function lineStarts(lines: string[]) {
+  const out = [0];
+  for (let i = 1; i < lines.length; i++) out.push(out[i - 1] + lines[i - 1].length + 1);
+  return out;
+}
+
+function lineOf(starts: number[], offset: number) {
+  let i = 0;
+  while (i + 1 < starts.length && starts[i + 1] <= offset) i++;
+  return i;
+}
+
+function matchLines(a: string[], b: string[]): number[] {
+  const n = a.length, m = b.length;
+  const match = new Array<number>(n).fill(-1);
+  if (n * m > 4_000_000) {
+    let p = 0;
+    while (p < n && p < m && a[p] === b[p]) { match[p] = p; p++; }
+    for (let s = 1; s <= Math.min(n, m) - p && a[n - s] === b[m - s]; s++) match[n - s] = m - s;
+    return match;
+  }
+  const dp: Int32Array[] = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--)
+    dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j] && dp[i][j] === dp[i + 1][j + 1] + 1) match[i++] = j++;
+    else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+    else j++;
+  }
+  return match;
 }
 
 /** 剧本建议在正文里的位置：有锚点按锚点；没有锚点的旧建议要求原文唯一出现。 */
-export function proposalRange(content: string, p: { original?: string; anchor?: { start: number; text: string; before: string; after: string } | null }): [number, number] | null {
+export function proposalRange(content: string, p: { original?: string; base?: string | null; anchor?: { start: number; end: number; text: string; before: string; after: string } | null }): [number, number] | null {
+  if (p.anchor && p.base != null) return mapRange(p.base, content, p.anchor.start, p.anchor.end);
   if (p.anchor) return findAnchor(content, p.anchor.text, p.anchor.before, p.anchor.after, p.anchor.start);
   const first = locate(content, p.original ?? "");
   if (!first) return null;

@@ -216,8 +216,10 @@ public final class DirectorAssistant {
     static boolean saysGo(String message) {
         String t = message == null ? "" : message.replaceAll("[\\s，。！!,.~～、…]+", "").replaceAll("[吧呀啊哈呢了吗]+$", "");
         if (t.isEmpty()) return false;
-        if (t.matches("^(直接|马上|现在|那就|就)?(开始)?(写|生成|出)(剧本|吧|一版)?.*") && t.length() <= 12) return true;
-        return t.matches("^(你(来)?(决定|定|看着办|看着写)|(都)?交给你|不用(再)?问|别(再)?问|就这样|都行|随便|可以开始|开始|行开始)$");
+        // 整句只是「你决定 / 开始写」这类话；或者明确以「直接 / 马上 / 开始 + 写 / 生成」开头（后面可以带要求，如「直接写三集」）。
+        // 「写三集」「写实一点」「写成悲剧」是回答，不算（2026-10-28 review）。
+        if (t.matches("^(你(来)?(决定|定|看着办|看着写)|(都)?交给你|不用(再)?问|别(再)?问|就这样|都行|随便|可以开始|开始|行开始|可以写|写|写剧本|生成|生成剧本|出剧本)$")) return true;
+        return t.matches("^(那就|就|现在)?(直接|马上|立刻|立即|开始)(写|生成|出)(剧本)?.*");
     }
 
     static final String BRIEF_SYSTEM = DirectorPrompts.COMMON + """
@@ -328,27 +330,75 @@ public final class DirectorAssistant {
     }
 
     /**
-     * 按锚点找回那一处：先找「前文 + 文字 + 后文」整体（多处取离原位置最近的）；整体找不到（周围被改过）时，
-     * 只认文字本身唯一出现、或上下文还能对上一边的那一处；对不上就返回 null —— 宁可不改，也不改到别处。
-     * 文字为空（删除之后的撤销）时只按前后文找。
+     * 没有回复时正文快照的旧建议：只认「前文 + 文字 + 后文」整体还在的那一处（多处取离原位置最近的），不做任何宽松匹配。
+     * 新建议走 {@link #mapRange}。
      */
     static int[] findAnchor(String content, String text, String before, String after, int hint) {
         String full = before + text + after;
+        if (full.isEmpty()) return null;
         int best = -1;
-        if (!full.isEmpty()) for (int at = content.indexOf(full); at >= 0; at = content.indexOf(full, at + 1))
+        for (int at = content.indexOf(full); at >= 0; at = content.indexOf(full, at + 1))
             if (best < 0 || Math.abs(at + before.length() - hint) < Math.abs(best + before.length() - hint)) best = at;
-        if (best >= 0) return new int[]{best + before.length(), best + before.length() + text.length()};
-        if (text.isEmpty()) return null;
-        java.util.List<int[]> hits = new java.util.ArrayList<>();
-        for (int at = content.indexOf(text); at >= 0; at = content.indexOf(text, at + 1)) hits.add(new int[]{at, at + text.length()});
-        if (hits.size() == 1) return hits.get(0);
-        int top = 0; java.util.List<int[]> winners = new java.util.ArrayList<>();
-        for (int[] h : hits) {
-            int score = (!before.isEmpty() && content.substring(0, h[0]).endsWith(before) ? 1 : 0) + (!after.isEmpty() && content.substring(h[1]).startsWith(after) ? 1 : 0);
-            if (score > top) { top = score; winners.clear(); }
-            if (score == top && score > 0) winners.add(h);
+        return best < 0 ? null : new int[]{best + before.length(), best + before.length() + text.length()};
+    }
+
+    /**
+     * 把快照 base 里的 [start, end) 映射到用户改过之后的 current 里（按行比对）。
+     * 只有这段所在的行原样还在（行内一个字没动、前后顺序连着）才映射过去；这几行被改过、删掉，
+     * 或者是好几行一模一样的文字而数目变了（认不准用户改的是哪一行），一律返回 null —— 宁可不改，也不改到别处。
+     * 用文字去找「那一处」做不到这点：同一人物两场说同一句话，第二场被用户改掉后，剩下的第一场在文字上和目标一模一样
+     * （2026-10-28 两轮 review）。
+     */
+    public static int[] mapRange(String base, String current, int start, int end) {
+        if (base == null || current == null || start < 0 || end < start || end > base.length()) return null;
+        if (base.equals(current)) return new int[]{start, end};
+        String[] a = base.split("\n", -1), b = current.split("\n", -1);
+        int[] as = lineStarts(a), bs = lineStarts(b);
+        int ls = lineOf(as, start), le = end > start ? lineOf(as, end - 1) : ls;
+        int[] match = matchLines(a, b);
+        for (int i = ls; i <= le; i++) {
+            if (match[i] < 0 || (i > ls && match[i] != match[i - 1] + 1)) return null;
+            long ca = java.util.Arrays.stream(a).filter(a[i]::equals).count(), cb = java.util.Arrays.stream(b).filter(a[i]::equals).count();
+            if (ca > 1 && ca != cb) return null;
         }
-        return winners.size() == 1 ? winners.get(0) : null;
+        int ns = bs[match[ls]] + (start - as[ls]), ne = bs[match[le]] + (end - as[le]);
+        if (ne < ns || ne > current.length() || !current.substring(ns, ne).equals(base.substring(start, end))) return null;
+        return new int[]{ns, ne};
+    }
+
+    private static int[] lineStarts(String[] lines) {
+        int[] out = new int[lines.length];
+        for (int i = 1; i < lines.length; i++) out[i] = out[i - 1] + lines[i - 1].length() + 1;
+        return out;
+    }
+
+    private static int lineOf(int[] starts, int offset) {
+        int i = 0;
+        while (i + 1 < starts.length && starts[i + 1] <= offset) i++;
+        return i;
+    }
+
+    /** 行级最长公共子序列：match[i] = 旧第 i 行在新正文里的行号，没对上为 -1。太大时只认首尾原样相同的行。 */
+    static int[] matchLines(String[] a, String[] b) {
+        int n = a.length, m = b.length;
+        int[] match = new int[n];
+        java.util.Arrays.fill(match, -1);
+        if ((long) n * m > 4_000_000L) {
+            int p = 0;
+            while (p < n && p < m && a[p].equals(b[p])) { match[p] = p; p++; }
+            for (int s = 1; s <= Math.min(n, m) - p && a[n - s].equals(b[m - s]); s++) match[n - s] = m - s;
+            return match;
+        }
+        int[][] dp = new int[n + 1][m + 1];
+        for (int i = n - 1; i >= 0; i--) for (int j = m - 1; j >= 0; j--)
+            dp[i][j] = a[i].equals(b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+        int i = 0, j = 0;
+        while (i < n && j < m) {
+            if (a[i].equals(b[j]) && dp[i][j] == dp[i + 1][j + 1] + 1) { match[i++] = j++; }
+            else if (dp[i + 1][j] >= dp[i][j + 1]) i++;
+            else j++;
+        }
+        return match;
     }
 
     /** 把 [start, end) 换成 replacement。 */

@@ -371,6 +371,9 @@ export interface DirectorProposal {
   replacement?: string;
   /** script.replace 钉在正文的哪一处（回复时算好）：采用按位置和前后文找回这一处，找不到就不改。 */
   anchor?: { start: number; end: number; text: string; before: string; after: string } | null;
+  /** 还没处理的剧本建议：回复时那一集（或整份剧本）的正文快照。采用和预览都把锚点从这份按行映射到现在的正文，
+   *  那几行被改过就不改，不按文字去找另一处同样的话。 */
+  base?: string | null;
   /** script.append / idea.update 的新文字。 */
   text?: string;
   /** script.draft */

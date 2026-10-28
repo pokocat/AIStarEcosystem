@@ -17,7 +17,7 @@ import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
-import { chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, useDraft } from "./director-shared";
+import { chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
 import { diffText, locateAll, shotChanges } from "./director-text";
 import { clearPending, deliver, readPending, UncertainError, uncertain, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
@@ -122,16 +122,15 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       if (p.target === "draft") {
         const key = `${w.id}:draft`;
         const text = peekDraft<string>(key);
-        if (text !== undefined) { apply(await DirectorApi.patchWork(w.id, { draft: text, draftRev: w.draftRev })); clearDrafts(key); }
+        if (text !== undefined) apply(await saveDrafts({ [key]: text }, () => DirectorApi.patchWork(w.id, { draft: text, draftRev: w.draftRev })));
         return;
       }
       const ep = w.episodes.find(e => e.id === p.target);
       const prefix = `${w.id}:ep:${p.target}:`;
       if (ep && hasDrafts(prefix)) {
-        const next = await DirectorApi.edit(w.id, "episode.update", ep.id, ep.rev, {
-          title: peekDraft<string>(prefix + "title") ?? ep.title, summary: peekDraft<string>(prefix + "summary") ?? ep.summary, content: peekDraft<string>(prefix + "content") ?? ep.content,
-        });
-        clearDrafts(prefix); apply(next);
+        const saved = { [prefix + "title"]: peekDraft<string>(prefix + "title") ?? ep.title, [prefix + "summary"]: peekDraft<string>(prefix + "summary") ?? ep.summary,
+          [prefix + "content"]: peekDraft<string>(prefix + "content") ?? ep.content };
+        apply(await saveDrafts(saved, () => DirectorApi.edit(w.id, "episode.update", ep.id, ep.rev, { title: saved[prefix + "title"], summary: saved[prefix + "summary"], content: saved[prefix + "content"] })));
       }
       return;
     }
@@ -146,14 +145,14 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       if (!target) return;
       if (target === "draft") {
         const k = `${w.id}:draft`, text = peekDraft<string>(k);
-        if (text !== undefined) { await save(DirectorApi.patchWork(w.id, { draft: text, draftRev: w.draftRev })); clearDrafts(k); }
+        if (text !== undefined) await save(saveDrafts({ [k]: text }, () => DirectorApi.patchWork(w.id, { draft: text, draftRev: w.draftRev })));
         return;
       }
       const ep = w.episodes.find(e => e.id === target), prefix = `${w.id}:ep:${target}:`;
       if (ep && hasDrafts(prefix)) {
-        await save(DirectorApi.edit(w.id, "episode.update", ep.id, ep.rev, { title: peekDraft<string>(prefix + "title") ?? ep.title,
-          summary: peekDraft<string>(prefix + "summary") ?? ep.summary, content: peekDraft<string>(prefix + "content") ?? ep.content }));
-        clearDrafts(prefix);
+        const saved = { [prefix + "title"]: peekDraft<string>(prefix + "title") ?? ep.title, [prefix + "summary"]: peekDraft<string>(prefix + "summary") ?? ep.summary,
+          [prefix + "content"]: peekDraft<string>(prefix + "content") ?? ep.content };
+        await save(saveDrafts(saved, () => DirectorApi.edit(w.id, "episode.update", ep.id, ep.rev, { title: saved[prefix + "title"], summary: saved[prefix + "summary"], content: saved[prefix + "content"] })));
       }
     };
     const saveClip = async (clipId: string) => {
@@ -162,6 +161,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       const pre = `${w.id}:clip:${clipId}:`;
       if (!hasDrafts(pre)) return;
       const data: Record<string, unknown> = {};
+      const took: Record<string, unknown> = {};
+      for (const k of ["prompt:board", "prompt:video", "edit:title", "edit:summary", "edit:assets", "edit:shots"]) { const v = peekDraft(pre + k); if (v !== undefined) took[pre + k] = v; }
       const board = peekDraft<string>(pre + "prompt:board"), video = peekDraft<string>(pre + "prompt:video");
       if (board !== undefined) data.boardPrompt = board;
       if (video !== undefined) data.videoPrompt = video;
@@ -173,8 +174,7 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
         if (shots.some(x => !(Number(x.durationText) > 0))) throw new Error(`片段 ${clip.order} 有镜头时长没填好，改好或撤销后再发送`);
         data.shots = shots.map(({ durationText, ...x }) => ({ ...x, durationSec: Number(durationText) }));
       }
-      await save(DirectorApi.edit(w.id, "clip.update", clip.id, clip.rev, data));
-      clearDrafts(pre);
+      await save(saveDrafts(took, () => DirectorApi.edit(w.id, "clip.update", clip.id, clip.rev, data)));
     };
     const saveAsset = async (assetId: string) => {
       const a = w.assets.find(x => x.id === assetId), pre = `${w.id}:asset:${assetId}:`;
@@ -182,8 +182,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       const data: Record<string, unknown> = { name: peekDraft<string>(pre + "name") ?? a.name, description: peekDraft<string>(pre + "description") ?? a.description };
       const prompt = peekDraft<string>(pre + "prompt");
       if (prompt !== undefined && prompt !== a.prompt) data.prompt = prompt;
-      await save(DirectorApi.edit(w.id, "asset.update", a.id, a.rev, data));
-      clearDrafts(pre);
+      await save(saveDrafts({ [pre + "name"]: data.name, [pre + "description"]: data.description, ...(prompt !== undefined ? { [pre + "prompt"]: prompt } : {}) },
+        () => DirectorApi.edit(w.id, "asset.update", a.id, a.rev, data)));
     };
     switch (scope.kind) {
       case "script": case "selection": await saveEpisode(scope.episodeId); break;
@@ -606,6 +606,11 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
   const scope = ctl.scope;
   const options = scopeOptions(work, tab, episodeId, scope);
   const busy = sending || replying;
+  // 发出去之后清输入框：只在框里还是发出去的那句时清；等回复期间用户又写了下一句，留着。
+  const clearSent = (message: string) => {
+    const cur = peekDraft<string>(key);
+    if (cur === undefined || cur.trim() === message) setText("");
+  };
   const received = (id: string) => async () => {
     const w = await DirectorApi.getWork(work.id);
     return w.assistant?.threads.some(t => t.messages.some(m => m.clientId === id)) ? w : null;
@@ -616,13 +621,13 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     if (!p) return;
     setPending(p);
     if (!text.trim()) setText(p.body.options.message);
-    void received(p.id)().then(w => { if (w) { clearPending(pkey); setPending(null); apply(w); clearDrafts(key); setText(""); } }).catch(() => {});
+    void received(p.id)().then(w => { if (w) { clearPending(pkey); setPending(null); apply(w); clearSent(p.body.options.message); } }).catch(() => {});
   }, [work.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const deliverIt = async (p: PendingRequest<Body>) => {
     setSending(true); setError("");
     try {
       apply(await deliver(pkey, p, b => DirectorApi.runTask(work.id, b), received(p.id)));
-      setPending(null); clearDrafts(key); setText("");
+      setPending(null); clearSent(p.body.options.message);
     } catch (e) {
       if (!(e instanceof UncertainError)) setPending(null);
       setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));

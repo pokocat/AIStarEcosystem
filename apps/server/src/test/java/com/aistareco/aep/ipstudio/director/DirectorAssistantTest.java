@@ -235,8 +235,9 @@ class DirectorAssistantTest {
 
     @Test
     void goPhrasesEndTheConversationButOrdinaryAnswersDoNot() {
-        for (String go : List.of("你决定", "直接写吧", "开始生成", "都行。", "不用问了", "交给你")) assertTrue(DirectorAssistant.saysGo(go), go);
-        for (String no : List.of("都行，但结局要反转", "主角是快递员，你决定结局怎么样？其他按我说的", "悬疑")) assertFalse(DirectorAssistant.saysGo(no), no);
+        for (String go : List.of("你决定", "直接写吧", "开始生成", "都行。", "不用问了", "交给你", "直接写三集", "开始写吧，结局要悲一点", "写吧")) assertTrue(DirectorAssistant.saysGo(go), go);
+        // review 2026-10-28：这些是回答，不是「开始写」
+        for (String no : List.of("都行，但结局要反转", "主角是快递员，你决定结局怎么样？其他按我说的", "悬疑", "写三集", "写实一点", "写成悲剧", "生成一个反派")) assertFalse(DirectorAssistant.saysGo(no), no);
     }
 
     @Test
@@ -297,5 +298,75 @@ class DirectorAssistantTest {
     void repliesAreShownAsPlainText() {
         assertEquals("开头最大的问题是慢。\n1. 悬念铺垫太长\n· 方向一", DirectorAssistant.plain("开头最大的问题是**慢**。\n1. **悬念铺垫太长**\n*   方向一"));
         assertEquals("我可以给一条修改建议，把下装补进外观设定，再同步出图提示词", DirectorAssistant.plain("我可以给一条 asset.update，把下装补进 description，再同步 prompt"));
+    }
+
+    // review 2026-10-28（两轮）：同一人物两场说同一句话；建议针对第二场，用户先把第二场改了，采用必须失败，第一场不能被改。
+    @Test
+    void suggestionForAPlaceTheUserAlreadyRewroteIsRefusedEvenWhenTheSameLineAppearsElsewhere() {
+        String line = "老贺盯着门口，压低声音说：别碰。";
+        String content = "## 第1场 花木市场\n" + line + "\n陈德茂没抬头。\n## 第2场 花木市场\n" + line + "\n陈德茂没抬头。";
+        int second = content.lastIndexOf("别碰。");
+        DirectorWork w = new DirectorWork(); w.setId("w"); w.setTitle("t");
+        ObjectNode c = work();
+        ((ObjectNode) c.path("episodes").get(0)).put("content", content);
+        ObjectNode scope = (ObjectNode) c.path("assistant").path("threads").get(0).path("messages").get(0).path("scope");
+        scope.put("episodeId", "ep1").put("text", "别碰。").put("start", second).put("end", second + 3);
+        ObjectNode p = om.createObjectNode().put("type", "script.replace").put("target", "ep1").put("original", "别碰。").put("replacement", "慢着。");
+        when(runs.findByProjectIdOrderByCreatedAtDesc("w")).thenReturn(List.of(reply(p)));
+        service.reconcile(w, c);
+        ObjectNode data = om.createObjectNode().put("messageId", "m2").put("proposalId", "p1");
+        String edited = content.substring(0, second) + "别动。" + content.substring(second + 3);
+        ((ObjectNode) c.path("episodes").get(0)).put("content", edited);
+        assertEquals("DIRECTOR_PROPOSAL_STALE", assertThrows(BusinessException.class,
+                () -> ReflectionTestUtils.invokeMethod(service, "proposalOp", "u", w, c, "assistant.apply", data)).getCode());
+        assertEquals(edited, c.path("episodes").get(0).path("content").asText());
+
+        // 别处改了（第一场加一句、改标题）不影响：照样改第二场那一处；撤销前别处再改，撤销仍只恢复那一处。
+        String far = content.replace("## 第1场 花木市场\n", "## 第1场 花木市场 · 上午\n摊位上堆着空花盆。\n");
+        ((ObjectNode) c.path("episodes").get(0)).put("content", far);
+        ReflectionTestUtils.invokeMethod(service, "proposalOp", "u", w, c, "assistant.apply", data);
+        String applied = c.path("episodes").get(0).path("content").asText();
+        assertEquals(far.substring(0, far.lastIndexOf("别碰。")) + "慢着。" + far.substring(far.lastIndexOf("别碰。") + 3), applied);
+        String moreEdits = applied.replace("摊位上堆着空花盆。", "摊位上堆着空花盆，地上全是土。");
+        ((ObjectNode) c.path("episodes").get(0)).put("content", moreEdits);
+        ReflectionTestUtils.invokeMethod(service, "proposalOp", "u", w, c, "assistant.undo", data);
+        assertEquals(far.replace("摊位上堆着空花盆。", "摊位上堆着空花盆，地上全是土。"), c.path("episodes").get(0).path("content").asText());
+        // 撤销后回到「未采用」，还能再采用同一处
+        ReflectionTestUtils.invokeMethod(service, "proposalOp", "u", w, c, "assistant.apply", data);
+        assertTrue(c.path("episodes").get(0).path("content").asText().endsWith("压低声音说：慢着。\n陈德茂没抬头。"));
+        assertEquals(1, c.path("episodes").get(0).path("content").asText().split("慢着", -1).length - 1);
+    }
+
+    @Test
+    void mapRangeOnlyFollowsUntouchedLines() {
+        String base = "甲：别碰。\n乙：别碰。";
+        int at = base.lastIndexOf("别碰。");
+        assertNull(DirectorAssistant.mapRange(base, "甲：别碰。\n乙：别动。", at, at + 3));
+        // 一模一样的行少了一行：认不准用户删的是哪一行，不映射
+        assertNull(DirectorAssistant.mapRange("别碰。\n别碰。", "别碰。", 4, 7));
+        String shifted = "开场白。\n甲：别碰。\n乙：别碰。";
+        assertArrayEquals(new int[]{shifted.lastIndexOf("别碰。"), shifted.lastIndexOf("别碰。") + 3}, DirectorAssistant.mapRange(base, shifted, at, at + 3));
+        // 删除后的撤销：空范围也能按行映射
+        assertArrayEquals(new int[]{8, 8}, DirectorAssistant.mapRange("开场。\n\n结尾。", "多一行。\n开场。\n\n结尾。", 3, 3));
+    }
+
+    // review 2026-10-28：「直接写三集」里的要求要进剧本提示词（先记下这句话再组装）。
+    @Test
+    void goMessageWithRequirementsIsPartOfTheScriptPrompt() {
+        var textRuns = mock(com.aistareco.aep.ipstudio.service.StudioWorkflowService.class);
+        var svc = new DirectorService(null, runs, null, null, textRuns, null, mock(StudioVideoService.class),
+                mock(StudioFixtureProvider.class), null, null, null, null, mock(AiAppSceneModelPolicyService.class), null, null, null,
+                om, mock(PlatformTransactionManager.class));
+        doThrow(new IllegalStateException("captured")).when(textRuns).submitDirectorText(any(), any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any(), any());
+        DirectorWork w = new DirectorWork(); w.setId("w"); w.setTitle("t");
+        ObjectNode c = work();
+        c.putArray("episodes"); c.put("draft", "").put("idea", "快递站夜班收到寄给十年后自己的包裹");
+        ObjectNode b = c.putObject("brief").put("status", "asking").put("rounds", 1).put("maxRounds", 3).put("summary", "").put("genre", "").put("tone", "").put("title", "");
+        b.putArray("messages");
+        var req = new DirectorService.TaskRequest("brief", null, "c1", om.createObjectNode().put("message", "直接写三集"), null, 21L);
+        assertThrows(IllegalStateException.class, () -> ReflectionTestUtils.invokeMethod(svc, "askBrief", "u", w, c, req, req.options()));
+        var user = org.mockito.ArgumentCaptor.forClass(String.class);
+        verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), user.capture(), anyInt(), any(), any(), any(), any(), any(), any());
+        assertTrue(user.getValue().contains("直接写三集"), user.getValue());
     }
 }

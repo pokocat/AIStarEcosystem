@@ -110,3 +110,40 @@ test("sending saves the unsaved text on screen first, so the assistant reads wha
   expect(vi.mocked(DirectorApi.edit).mock.calls[0]).toEqual(["w", "episode.update", "ep1", 3, { title: ep.title, summary: "", content: "这是刚写的新场景。" }]);
   expect(vi.mocked(DirectorApi.edit).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(DirectorApi.runTask).mock.invocationCallOrder[0]);
 });
+
+// review 2026-10-28：发送时自动保存正文，保存期间用户又补了一句；保存回来后新补的那句不能被清掉。
+test("text typed while the send-time auto-save is in flight survives", async () => {
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
+  let release!: (w: DirectorWork) => void;
+  vi.mocked(DirectorApi.edit).mockImplementationOnce(() => new Promise<DirectorWork>(r => { release = r; }));
+  vi.mocked(DirectorApi.runTask).mockImplementation(async (_id, body) => work(replied(body.clientRequestId), { episodes: [{ ...ep, content: "第一版正文。", rev: 4 }] }));
+  render(<DirectorWorkbench id="w"/>);
+  const body = await screen.findByRole("textbox", { name: "第 1 集正文" });
+  fireEvent.change(body, { target: { value: "第一版正文。" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "和助手说" }), { target: { value: "评价这一段" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledOnce());
+  fireEvent.change(body, { target: { value: "第一版正文。\n老贺：我又补了一句。" } });
+  release(work([], { episodes: [{ ...ep, content: "第一版正文。", rev: 4 }] }));
+  await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe("第一版正文。\n老贺：我又补了一句。"));
+});
+
+// review 2026-10-28（第二轮）：正文 A 改成 B，发送触发自动保存；保存期间又改回 A，保存回来后必须还是 A（仍算未保存）。
+test("reverting to the old text while the send-time auto-save is in flight is kept", async () => {
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
+  let release!: (w: DirectorWork) => void;
+  vi.mocked(DirectorApi.edit).mockImplementationOnce(() => new Promise<DirectorWork>(r => { release = r; }));
+  vi.mocked(DirectorApi.runTask).mockImplementation(async (_id, body) => work(replied(body.clientRequestId), { episodes: [{ ...ep, content: "B 版正文。", rev: 4 }] }));
+  render(<DirectorWorkbench id="w"/>);
+  const body = await screen.findByRole("textbox", { name: "第 1 集正文" });
+  fireEvent.change(body, { target: { value: "B 版正文。" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "和助手说" }), { target: { value: "评价这一段" } });
+  fireEvent.click(screen.getByRole("button", { name: "发送" }));
+  await waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledOnce());
+  fireEvent.change(body, { target: { value: ep.content } });
+  release(work([], { episodes: [{ ...ep, content: "B 版正文。", rev: 4 }] }));
+  await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe(ep.content));
+  expect(screen.getAllByText("未保存").length).toBeGreaterThan(0);
+});

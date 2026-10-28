@@ -1273,10 +1273,11 @@ public class DirectorService {
         requireIdle(w, "brief");
         String now = Instant.now().toString();
         // 用户说「你决定 / 直接写」：不再问，直接按已有信息写剧本（同一个请求编号，重发不会写两份）。
+        // 先记下这句话再组装剧本请求：「直接写三集」里的「三集」要进提示词（2026-10-28 review）。提交失败时整个请求回滚，这条记录也不会留下。
         if (!opening && DirectorAssistant.saysGo(text)) {
-            dispatch(userId, w, c, "script", null, "u-" + clientId, om.createObjectNode().put("skip", true), null, req.billing(), req.maxCost());
             msgs.addObject().put("id", "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
                     .put("role", "user").put("text", text).put("at", now).put("status", "done");
+            dispatch(userId, w, c, "script", null, "u-" + clientId, om.createObjectNode().put("skip", true), null, req.billing(), req.maxCost());
             return;
         }
         int rounds = b.path("rounds").asInt();
@@ -1700,6 +1701,8 @@ public class DirectorService {
                     ObjectNode anchor = replyAnchor(c, msg.path("scope"), r.path("target").asText(), r.path("original").asText());
                     if (anchor == null) { msg.put("dropped", msg.path("dropped").asInt() + 1); continue; }
                     r.set("anchor", anchor);
+                    // 回复时的正文快照：采用时把锚点从这份映射到用户改过之后的正文（DirectorAssistant.mapRange）。不出 wire 的存储。
+                    c.with("assistantBase").put(msg.path("id").asText() + ":" + r.path("id").asText(), scriptContent(c, r.path("target").asText()));
                 }
                 case "script.append" -> r.put("targetLabel", scriptLabel(c, r.path("target").asText()));
                 case "script.draft", "idea.update" -> r.put("targetLabel", "script.draft".equals(r.path("type").asText()) ? "剧本" : "创意");
@@ -1782,16 +1785,18 @@ public class DirectorService {
             case "assistant.dismiss" -> {
                 if (!"open".equals(status)) throw stale("这条建议已经处理过了");
                 p.put("status", "dismissed");
+                c.with("assistantBase").remove(undoKey);
             }
             case "assistant.apply" -> {
                 if (!"open".equals(status)) throw stale("这条建议已经处理过了");
-                undoStore.set(undoKey, applyProposal(w, c, p));
+                undoStore.set(undoKey, applyProposal(w, c, p, undoKey));
                 p.put("status", "applied").put("appliedAt", Instant.now().toString());
+                c.with("assistantBase").remove(undoKey);
             }
             case "assistant.undo" -> {
                 JsonNode undo = undoStore.path(undoKey);
                 if (!"applied".equals(status) || !undo.isObject()) throw stale("这条建议不能撤销");
-                undoProposal(w, c, p, undo);
+                undoProposal(w, c, p, undo, undoKey);
                 undoStore.remove(undoKey);
                 p.put("status", "open").putNull("appliedAt");
             }
@@ -1800,22 +1805,22 @@ public class DirectorService {
     }
 
     /** 写入一条建议，返回撤销所需的数据。写入前核对：助手看到的内容之后被改过，就不覆盖。 */
-    private ObjectNode applyProposal(DirectorWork w, ObjectNode c, ObjectNode p) {
+    private ObjectNode applyProposal(DirectorWork w, ObjectNode c, ObjectNode p, String key) {
         ObjectNode undo = om.createObjectNode();
         switch (p.path("type").asText()) {
             case "script.replace" -> {
                 String target = p.path("target").asText();
                 String content = scriptContent(c, target);
                 JsonNode a = p.path("anchor");
-                int[] r = a.isObject() ? DirectorAssistant.findAnchor(content, a.path("text").asText(), a.path("before").asText(), a.path("after").asText(), a.path("start").asInt())
+                String base = c.path("assistantBase").path(key).asText(null);
+                int[] r = a.isObject() && base != null ? DirectorAssistant.mapRange(base, content, a.path("start").asInt(), a.path("end").asInt())
+                        : a.isObject() ? DirectorAssistant.findAnchor(content, a.path("text").asText(), a.path("before").asText(), a.path("after").asText(), a.path("start").asInt())
                         : uniqueOrNull(content, p.path("original").asText());
                 if (r == null) throw stale("原文已经改动，找不到这条建议要替换的那一处。可以让助手按现在的正文重新给建议");
                 String replacement = p.path("replacement").asText();
                 String after = DirectorAssistant.splice(content, r, replacement);
-                // 撤销按「这一处」找回：记下替换后的位置和前后文，删除（替换为空）也能撤销。
-                undo.put("original", content.substring(r[0], r[1])).put("replacement", replacement).put("at", r[0])
-                        .put("before", content.substring(Math.max(0, r[0] - DirectorAssistant.CONTEXT), r[0]))
-                        .put("after", content.substring(r[1], Math.min(content.length(), r[1] + DirectorAssistant.CONTEXT)));
+                // 撤销同样按位置映射：记下采用后的正文和替换后的那一段位置，删除（替换为空）也能撤销。
+                undo.put("original", content.substring(r[0], r[1])).put("replacement", replacement).put("at", r[0]).put("contentAfter", after);
                 writeScript(c, target, after);
             }
             case "script.append" -> {
@@ -1880,15 +1885,21 @@ public class DirectorService {
         return undo;
     }
 
-    private void undoProposal(DirectorWork w, ObjectNode c, ObjectNode p, JsonNode u) {
+    private void undoProposal(DirectorWork w, ObjectNode c, ObjectNode p, JsonNode u, String key) {
         String cannot = "采用之后又改过，不能自动撤销。请直接修改";
         switch (p.path("type").asText()) {
             case "script.replace" -> {
                 String target = p.path("target").asText();
                 String content = scriptContent(c, target);
-                int[] r = DirectorAssistant.findAnchor(content, u.path("replacement").asText(), u.path("before").asText(), u.path("after").asText(), u.path("at").asInt());
+                int at = u.path("at").asInt(), len = u.path("replacement").asText().length();
+                int[] r = u.hasNonNull("contentAfter") ? DirectorAssistant.mapRange(u.path("contentAfter").asText(), content, at, at + len)
+                        : DirectorAssistant.findAnchor(content, u.path("replacement").asText(), u.path("before").asText(""), u.path("after").asText(""), at);
                 if (r == null) throw stale(cannot);
-                writeScript(c, target, DirectorAssistant.splice(content, r, u.path("original").asText()));
+                String original = u.path("original").asText(), restored = DirectorAssistant.splice(content, r, original);
+                writeScript(c, target, restored);
+                // 回到「未采用」：按撤销后的正文重新记快照和锚点，之后还能再采用这一处。
+                p.set("anchor", DirectorAssistant.anchorAt(om, restored, r[0], r[0] + original.length()));
+                c.with("assistantBase").put(key, restored);
             }
             case "script.append" -> {
                 String target = p.path("target").asText();
@@ -1958,7 +1969,13 @@ public class DirectorService {
         JsonNode undo = c.path("assistantUndo");
         for (JsonNode t : v.path("assistant").path("threads"))
             for (JsonNode m : t.path("messages")) for (JsonNode p : m.path("proposals"))
-                ((ObjectNode) p).put("undoable", "applied".equals(p.path("status").asText()) && undo.path(m.path("id").asText() + ":" + p.path("id").asText()).isObject());
+            {
+                String key = m.path("id").asText() + ":" + p.path("id").asText();
+                ((ObjectNode) p).put("undoable", "applied".equals(p.path("status").asText()) && undo.path(key).isObject());
+                // 还没处理的剧本建议带上回复时的正文快照，前端预览用同一套映射找位置，和采用时一致。
+                if ("open".equals(p.path("status").asText()) && c.path("assistantBase").path(key).isTextual())
+                    ((ObjectNode) p).put("base", c.path("assistantBase").path(key).asText());
+            }
     }
 
     // ── 报价与上传 ───────────────────────────────────────────────────────────
@@ -2527,7 +2544,7 @@ public class DirectorService {
 
     private JsonNode view(String userId, DirectorWork w, ObjectNode c) {
         ObjectNode v = c.deepCopy();
-        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("assistantUndo");
+        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("assistantUndo"); v.remove("assistantBase");
         markUndoable(c, v);
         v.put("id", w.getId()).put("title", w.getTitle()).put("revision", w.getRevision())
                 .put("createdAt", w.getCreatedAt().toString()).put("updatedAt", w.getUpdatedAt().toString());
