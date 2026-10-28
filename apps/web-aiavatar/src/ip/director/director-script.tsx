@@ -104,7 +104,7 @@ function StoryOutline({ work, defaultOpen = true }: { work: DirectorWork; defaul
         <article key={c.name}>
           <h4>{c.name}{(c.age || c.identity) && <small>{[c.age && (/\d$/.test(c.age) ? `${c.age} 岁` : c.age), c.identity].filter(Boolean).join(" · ")}</small>}</h4>
           {c.secret && c.secret !== "无" && <p><em>秘密</em>{c.secret}</p>}
-          {c.flaw && <p><em>毛病</em>{c.flaw}</p>}
+          {c.flaw && <p><em>软肋</em>{c.flaw}</p>}
           {c.arc && <p><em>变化</em>{c.arc}</p>}
         </article>)}</div>}
       <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>

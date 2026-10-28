@@ -191,4 +191,41 @@ class DirectorPromptsTest {
         assertEquals(2, DirectorPrompts.number("两"));
         assertEquals(12, DirectorPrompts.number("１２"));
     }
+
+    // ── 2026-10-28：规则服从题材和任务，不先允许再反驳 ─────────────────────────────
+
+    @Test
+    void splitAndReshootEachSayOnceWhatHappensToLinesThatDoNotFit() {
+        String plan = DirectorPrompts.plan(12, 15, 4), reshoot = DirectorPrompts.reshoot(12, 15, 4);
+        assertTrue(plan.contains("还放不下就把后面的台词顺延到下一片段"), "写分镜脚本：放不下顺延到下一片段");
+        assertFalse(plan.contains("也不挪到别的片段"));
+        assertTrue(reshoot.contains("也不挪到别的片段") && reshoot.contains("照原文全部保留"), "重写：不挪、不删，照原文保留并提示");
+        assertFalse(reshoot.contains("顺延") || reshoot.contains("挪到下一段") || reshoot.contains("不适用"),
+                "重写的提示词里不再出现先允许、后面再用括号否掉的写法");
+        for (String p : List.of(plan, reshoot)) assertTrue(p.contains("不删台词、不改台词、不压语速"), "两种任务都不删词");
+    }
+
+    @Test
+    void emotionAndToneFollowTheGenreInsteadOfOneRestraintForAll() {
+        String hype = DirectorPrompts.TONES.get("爽感打脸"), warm = DirectorPrompts.TONES.get("治愈温情");
+        assertFalse(hype.contains("闷声做") || hype.contains("不嚣张"), "爽剧不再规定只能闷声反击");
+        assertTrue(hype.contains("当面揭穿") && hype.contains("看得痛快"), hype);
+        assertFalse(warm.contains("没有告白、拥抱、接吻") || warm.contains("情绪克制"), "治愈不再一律禁止亲密时刻");
+        assertTrue(warm.contains("要有前面的铺垫"), warm);
+        String shots = DirectorPrompts.plan(12, 15, 4);
+        assertTrue(shots.contains("情绪的幅度跟着剧情和题材走") && shots.contains("爆发、大哭大笑"), "分镜的情绪幅度也跟题材");
+    }
+
+    @Test
+    void theScriptRulesAreGuidanceNotNewDogma() {
+        String p = DirectorPrompts.SCRIPT;
+        assertFalse(p.contains("主角必须有生活化缺点") || p.contains("嘴笨、路痴、爱攒塑料袋"), "不再要求硬加装饰性小毛病");
+        assertTrue(p.contains("会影响他在关键处的选择"), "人物的顾虑和局限要服务主线");
+        assertFalse(p.contains("允许停顿、打断、口误"), "不为口语化硬塞口误");
+        assertTrue(p.contains("饭热了两回了"), "对白给一个简短的正例");
+        assertFalse(p.contains("第 15 秒内出钩子") || p.contains("结尾 3 秒必留"), "开场和结尾的建议不机械卡秒");
+        assertTrue(p.contains("【开场】") && p.contains("不为制造钩子硬加冲突"), p);
+        assertTrue(p.contains("【制作可行性】") && p.contains("不为省事换掉创意"), "控制复杂度，但不为省制作改掉核心创意");
+        assertTrue(p.contains("\"flaw\":\"…\""), "输出结构不变，flaw 仍在，只是含义放宽");
+    }
 }

@@ -25,7 +25,7 @@ public final class DirectorFixtures {
                         .put("reversals", "第 2 集：敲门的人不在门外；伏笔是第 1 集桌上那盏一直亮着的灯。")
                         .put("theme", "没说出口的道歉，晚一点说也算数。");
                 o.putArray("characters").addObject().put("name", "林夏").put("age", "28").put("identity", "书店夜班店员")
-                        .put("secret", "三年前没能参加父亲的葬礼").put("flaw", "嘴笨，一紧张就抠手指").put("arc", "从逃避到主动回信");
+                        .put("secret", "三年前没能参加父亲的葬礼").put("flaw", "怕别人提起那场葬礼，遇事先躲").put("arc", "从逃避到主动回信");
                 out.put("content", """
                             ## 第1场 旧书店 · 夜
                             林夏推开旧书店的木门走进来，店里只亮着桌上一盏灯。中央木桌上放着一个暗红色信封。
