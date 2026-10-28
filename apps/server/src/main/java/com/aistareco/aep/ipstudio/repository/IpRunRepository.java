@@ -26,6 +26,10 @@ public interface IpRunRepository extends JpaRepository<IpRun, String> {
 
     List<IpRun> findByProjectIdAndNodeIdOrderByCreatedAtDesc(String projectId, String nodeId);
 
+    /** 导演台删除前核对在途：只取 status / stage / nodeId / inputJson 四列，不进持久化上下文，读到的是数据库当前已提交值。 */
+    @org.springframework.data.jpa.repository.Query("select r.status, r.stage, r.nodeId, r.inputJson from IpRun r where r.projectId = :projectId")
+    List<Object[]> taskStates(@org.springframework.data.repository.query.Param("projectId") String projectId);
+
     Optional<IpRun> findByIdAndOwnerUserId(String id, String ownerUserId);
 
     List<IpRun> findByStatusAndHeartbeatAtBefore(String status, Instant before);

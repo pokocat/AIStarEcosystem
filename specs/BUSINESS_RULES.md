@@ -1548,3 +1548,12 @@ capabilities 每个文本模型分别回 `tokenPricing` / `dialogueTokenPricing`
 ### Studio 动作格式恢复（2026-10-23）
 
 回退动作 JSON 只允许删除字符串外一个冗余 `}`，所有有效删除结果必须为同一棵 JSON 树；超过 256000 字符或 256 个闭括号不尝试。缺失内容、多个冗余括号、不同有效解释、重复 JSON 键或多余正文仍整批拒绝。args 旁的参数合入原参数，冲突拒绝；动作仍通过原工具校验、归属、技能与付款授权。无法修复时说明模型执行格式有误及内容已保留，不要求用户重说原任务。发布与真实回放见 `docs/releases/studio-dialogue-recovery-release-20261023.md`。
+
+### AI 导演台作品删除（2026-10-28，本地未发布）
+
+`DELETE /api/v1/ip-studio/director/works/{id}` 软删除：设 `deletedAt`、`active=false`，作品 JSON（剧本 / 分集 / 分镜 / 候选 / 导出记录）与 `ip_run`、原生视频任务原样保留；不删个人资产库对象和存储文件，不退款、不重提、不重复结算。首版无恢复入口。
+
+1. **串行**：在作品行锁（`lockById`）内完成归属校验、在途检查、停止流程和软删除；提交任务、一键制作操作、后台推进都先拿同一把锁，删除提交后它们看到 `deletedAt` 一律 404 / 跳过。在途查询与删除**同一事务、同一条连接**：删除入口以读已提交（`READ_COMMITTED`）开事务，拿到行锁后的每条查询都看到最新已提交的任务（MySQL 默认可重复读的快照可能更早，§8.0.1 ⑯）；只取标量列，不受持久化上下文里旧实体影响。**禁止**在持作品行锁时另开 `REQUIRES_NEW` 查询：每个删除都占一条连接再等第二条，并发时连接池会被耗尽（2026-10-28 独立复核以 3 条连接复现，回归 `DirectorDeletePoolTest`）。
+2. **在途判定以真实任务为准**，不信作品 JSON 的 `running` / `active`：`ip_run` 非 done / failed（含图片受理待核对的 running）即在途；`done / video.bound` 的绑定记录要查 `_exec.nativeVideoJobIds` 指向的 `material_video_job`，以及作品 JSON 里 `clip.video.pending` 的 jobId。原生任务以 `succeeded` / `failed` 结案即算结束 —— 包括按「模型任务异常状态与并发」以 `failed` 结案的 `VIDEO_SUBMISSION_UNKNOWN`（冻结与授权已释放，不会再有结果，允许删除，否则会永远删不掉）。**尚未结案**的都算在途：排队、提交中、生成中，`errorCode` 为 `VIDEO_SUBMISSION_UNKNOWN`（受理待核对）或 `VIDEO_RECONCILIATION_PENDING`（已有供应商任务、正在重新查询原任务）；原生任务查不到或不属本人，也按无法确认处理、不允许删除。
+3. **一键制作**：`running` → 409 `DIRECTOR_WORK_BUSY`「请先停止制作」；`paused` / `waiting` 且无在途任务 → 同一事务标 `stopped`（message「作品已删除，制作已停止」）再删除；有在途任务时不改流程状态。
+4. **错误码**：在途 → 409 `DIRECTOR_WORK_BUSY`，message 写明是哪类任务（剧本生成、分镜图生成、片段视频生成、整集导出…）或「受理结果还在核对」；本人重复删除 → 200；他人或不存在 → 404 `DIRECTOR_WORK_NOT_FOUND`（幂等不泄漏归属）。删除后所有作品接口（读、改、编辑、任务、一键制作、报价、估价、上传）→ 404。

@@ -30,7 +30,7 @@ class DirectorLibraryImportTest {
     void setUp() {
         projects = mock(IpProjectService.class);
         when(projects.requireOwnedAssetKey(eq("u1"), any())).thenAnswer(inv -> inv.getArgument(1));
-        service = new DirectorService(null, null, projects, null, null, null, null, null, null, null, null, null, null, null, null,
+        service = new DirectorService(null, null, projects, null, null, null, null, null, null, null, null, null, null, null, null, null,
                 om, mock(PlatformTransactionManager.class));
         c = om.createObjectNode();
         c.putArray("assets");

@@ -758,6 +758,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
 外层事务在第一次普通查询时就定下了快照。页面因此以为没在生成，也不轮询；用户再点一次，新请求查到了任务，报「该项生成中」。本地 H2 读得到，所以本机验不出来。
 - 做法：独立事务里刚写的东西，要在外层返回前读出来，就也在新事务里读（`newTx.execute(tx -> repo.find...)`），或者直接用写入时拿到的对象。
 - 判据：本地正常、线上「第一次点没反应，第二次报已在进行」→ 先怀疑事务快照，不是前端状态。
+- 反过来的坑（2026-10-28 导演台删除，独立复核复现）：**持着行锁时不要再开 `REQUIRES_NEW` 去读**。外层连接和锁都不放，内层再要一条连接；并发 N 个请求就占 N 条等 N 条，连接池 3 条时全部 `CannotCreateTransactionException`（active=3 / idle=0），池子 20 只是阈值更高。要在锁内读到最新提交，就在同一事务里用读已提交（`@Transactional(isolation = READ_COMMITTED)`，Spring 对已参与的外层事务不改隔离级别）并只查标量列；回归 `DirectorDeletePoolTest`（小连接池 + 占满后并发）。
 - 同一类（2026-10-25）：`@Transactional(readOnly = true)` 里调 `SELECT … FOR UPDATE`（导演台 `locked()`），MySQL 直接报 `Cannot execute statement in a READ ONLY transaction`，H2 照常执行。只读接口用不加锁的读（`DirectorService.owned()`）。导演台的视频报价、推荐预算、上传声音样本都因此在线上 500。
 
 ### 跨 app 约定
@@ -1188,6 +1189,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 - **资产页：** 工具栏有「生成全部参考图」（缺参考图、不是仅声音出场、没在生成的资产，确认后逐个提交，与分镜批量出分镜图同一套）；资产卡底部一行固定高度（状态 + 音色图标 + 主按钮，不换行）；详情抽屉分「头部（编辑 / 删除）→ 描述 → 参考图（形象参考、生成与费用、出图提示词）→ 角色音色」。切换工作区会清掉上一处的报错。
 - **一键制作默认做到成片**（`target=film`，2026-10-25 起；另有 `board` / `plan`，`video` 只供旧调用）：写剧本 → 拆分 → 提取资产 → 写分镜脚本 → 参考图 → 分镜图 → 片段视频 → 每集导出。`auto=true`（默认）全自动：资产清单原样入库，参考图 / 分镜图 / 片段视频自动确认；不勾全自动就在这四处停下等 `confirm-*`。整部作品也能做到视频。预算由 `POST pipeline/estimate` 推荐（与真提交同一套单价，视频在没分镜图时按模型价表和时长估，`StudioVideoService.estimate`），用户确认或调整。片段卡片只显示视频提示词，分镜图提示词在分镜图弹窗里。导演台出图尺寸按当前图片模型规格里该比例的尺寸选（同比例有几档取最大的），不写死。
 - **出 wire 的任务列表在新事务里读**（`view()`）：任务在独立事务里建，MySQL 可重复读下外层事务看不到它，页面以为没在生成、不轮询（2026-10-24 线上「点生成剧本没反应、再点报该项生成中」）。本地 H2 复现不了。
+- **作品删除（2026-10-28，本地未发布）：** 软删除，复用 `DELETE /works/{id}`；在作品行锁内判在途，在途以 `ip_run` 和原生视频任务为准（`done / video.bound` 的绑定记录要查它指向的 `material_video_job`，未结案的受理待核对 / 重新查询中、查不到都算没结束；已按全局规则 failed 结案的 `VIDEO_SUBMISSION_UNKNOWN` 算结束），不信作品 JSON 的 `running`。在途检查与删除同一事务、同一条连接（入口读已提交），持行锁时不许再开 `REQUIRES_NEW`，否则并发删除耗尽连接池（`DirectorDeletePoolTest`）。前端「已删除」通知带作品 id，只作用于当前打开的那部作品。一键制作 running → 409 `DIRECTOR_WORK_BUSY` 先停止；paused / waiting 同事务标 stopped。本人重复删除成功，他人 404。规则见 `specs/BUSINESS_RULES.md`「AI 导演台作品删除」。
 - **页面外壳：** 导演台页面必须包 antd `App`（`director-antd.tsx`）。弹窗和抽屉的根元素挂 `dialogFocus`（`director-shared.tsx`）：打开时焦点移进去，Tab 在里面循环，关闭后还给触发按钮。
 ### Studio 对话独立额度（2026-10-23 已生产发布）
 

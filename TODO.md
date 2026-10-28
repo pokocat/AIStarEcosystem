@@ -45,6 +45,8 @@
 - [x] ~~**导演台文本模型选择与剧名同步**~~ **2026-10-26 本地完成，未发布**：设置展示各模型 Token 售价，报价/冻结/全部文字任务和一键制作使用同一模型；新剧本采用后更新作品名，失败或冲突保留原名。
 - [ ] **真实视频与整集导出验收**：Agnes 多次明确队列满拒绝，无真实视频产物；用户已要求停止重试，自动跟进已删除。测试响应模式下已走通播放、采用和导出，不代表真实出片通过。
 - [ ] **视觉与声音连续性效果验收**：全能参考的宫格、关键动作及跨片段声音仍待实测；首帧路径不支持声音参考。自动视觉验收、有限自动修复和长剧本分块后续处理。
+- [x] ~~**导演台作品删除**~~ **2026-10-28 本地完成，未发布**：作品卡「更多 → 删除作品」+ 确认弹窗；`DirectorService.delete` 行锁内软删除，在途以 `ip_run` 与原生视频任务为准（409 `DIRECTOR_WORK_BUSY`），暂停 / 等待确认的一键制作同事务停止，本人重复删除成功、他人 404；其他已打开页面识别 404 后整页换成已删除状态。测试 `DirectorDeleteTest`、`DirectorDeletePoolTest` 与 `director-works.test.tsx`、`director-settings.test.tsx`。2026-10-28 独立复核两项 P2 已修：持行锁时 REQUIRES_NEW 查询耗尽连接池（改同事务读已提交）；删除通知未按作品 id 隔离（改按 id 通知、路由按 id 重建）。
+- [ ] **导演台删除未在预发 / 线上同配置 MySQL 上验证**：2026-10-28 已在本机一次性 MySQL 8.0.46（Homebrew，独立数据目录，默认可重复读）上跑通 `DirectorDelete*Test` 11 条，通用查询日志确认同一连接 `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED` → `… FOR UPDATE` → 标量查 `ip_run` → 更新 → 恢复可重复读。预发库的连接池规模、代理层（如有）和真实并发未测；上线前在预发验一次「提交任务的同时删除」。运行方式见 `DirectorDeleteTest` 类注释（`DIRECTOR_DELETE_TEST_DB_URL`，只能指向一次性库）。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
 
 ### 2026-10-22 · 分镜编辑改造（方案已整理，功能未实现）

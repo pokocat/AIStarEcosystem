@@ -6,8 +6,20 @@
 .director-page .director-empty p { max-width: 46ch; font-size: 13px; line-height: 1.8; }
 .director-list-toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; color: var(--ip-muted); font-size: 12px; }
 .director-work-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 18px; }
-.director-work-card { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line); border-radius: 10px; overflow: hidden; background: var(--ip-paper); transition: border-color 160ms var(--ip-ease); }
-.director-work-card:hover { border-color: var(--ip-ink); }
+.director-work-card { position: relative; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); transition: border-color 160ms var(--ip-ease); }
+.director-work-card:hover, .director-work-card:focus-within { border-color: var(--ip-ink); }
+.director-work-open { display: flex; flex-direction: column; min-width: 0; border-radius: inherit; overflow: hidden; color: inherit; text-decoration: none; }
+.director-work-menu { position: absolute; top: 8px; right: 8px; z-index: 2; }
+.director-work-menu summary { list-style: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--ip-paper); border: 1px solid var(--ip-line); color: var(--ip-ink); cursor: pointer; }
+.director-work-menu summary::-webkit-details-marker { display: none; }
+.director-work-menu summary:hover, .director-work-menu[open] summary { background: var(--ip-soft); }
+.director-work-menu > div { position: absolute; right: 0; top: 38px; min-width: 132px; padding: 5px; background: var(--ip-paper); border: 1px solid var(--ip-line); border-radius: 8px; box-shadow: 0 6px 18px #19222914; }
+.director-work-menu > div button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: transparent; border: 0; border-radius: 5px; text-align: left; font-size: 13px; white-space: nowrap; }
+.director-work-menu > div button:hover, .director-work-menu > div button:focus-visible { background: var(--ip-soft); }
+.director-delete-copy { display: flex; flex-direction: column; gap: 8px; color: var(--ip-ink); font-size: 14px; line-height: 1.8; }
+.director-delete-copy p { min-width: 0; overflow-wrap: anywhere; }
+.director-delete-copy ul { margin: 0; padding-left: 18px; color: var(--ip-muted); font-size: 13px; }
+.director-dialog .director-danger-button { background: var(--ip-error); border-color: var(--ip-error); }
 .director-work-cover { position: relative; display: grid; place-items: center; aspect-ratio: 4 / 3; background: var(--ip-soft); color: var(--ip-muted); }
 .director-work-cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .director-work-badge { position: absolute; top: 10px; left: 10px; display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 6px; background: var(--ip-ink); color: var(--ip-paper); font-size: 11px; }
@@ -64,6 +76,8 @@ pre.director-prompt { max-height: 220px; overflow: auto; }
 .director-shell { min-height: 100dvh; padding: 10px 12px 32px; background: var(--ip-paper); }
 html[data-layout="desktop"] .director-shell { max-width: 1600px; margin: 0 auto; padding: 12px 20px 40px; min-height: calc(100dvh - var(--desktop-bar-h, 84px)); }
 .director-loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 80px 16px; color: var(--ip-muted); }
+.director-gone h2 { font-family: var(--ip-display); font-size: 20px; color: var(--ip-ink); }
+.director-gone p { font-size: 13px; }
 .director-header { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 8px; }
 .director-back { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border: 1px solid var(--ip-line); border-radius: 8px; color: var(--ip-ink); }
 .director-shell .director-title { flex: 1 1 200px; min-width: 0; padding: 3px 8px; border-color: transparent; font-family: var(--ip-display); font-size: 17px; font-weight: 700; background: transparent; overflow: hidden; text-overflow: ellipsis; }

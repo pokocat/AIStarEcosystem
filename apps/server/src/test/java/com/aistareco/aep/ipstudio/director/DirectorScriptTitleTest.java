@@ -18,7 +18,7 @@ class DirectorScriptTitleTest {
     final ObjectMapper om = new ObjectMapper();
     final IpRunRepository runs = mock(IpRunRepository.class);
     final DirectorService service = new DirectorService(null, runs, null, null, null, null, mock(StudioVideoService.class),
-            mock(StudioFixtureProvider.class), null, null, null, mock(AiAppSceneModelPolicyService.class), null, null, null,
+            mock(StudioFixtureProvider.class), null, null, null, null, mock(AiAppSceneModelPolicyService.class), null, null, null,
             om, mock(PlatformTransactionManager.class));
 
     @ParameterizedTest @ValueSource(booleans = {false, true})
