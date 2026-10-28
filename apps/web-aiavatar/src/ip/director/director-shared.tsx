@@ -116,7 +116,7 @@ export function VersionStrip({ slot, onAdopt, disabled, label, video }: { slot: 
   if (slot.candidates.length < 2 && !slot.candidates.some(m => m.stale)) return null;
   return <div className="director-versions" role="group" aria-label={`${label}的历史版本`}>
     {slot.candidates.map((m, i) => <button key={m.id} type="button" disabled={disabled} aria-pressed={m.id === slot.adoptedId}
-      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : m.source === "library" ? "资产库" : `第 ${i + 1} 版`}
+      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : m.source === "library" ? "资产库" : m.baseOn ? `第 ${i + 1} 版 · 以第 ${slot.candidates.findIndex(x => x.id === m.baseOn) + 1} 版为参考修改` : `第 ${i + 1} 版`}
       onClick={() => m.id !== slot.adoptedId && onAdopt(m.id)}>
       {m.url && !video ? <img src={m.url} alt=""/> : <span>{i + 1}</span>}
       {m.id === slot.adoptedId && <i><Check size={11}/></i>}
@@ -143,6 +143,11 @@ export function useDraft<T>(key: string, server: T): [T, (value: T) => void, boo
   const value = has ? drafts.get(key) as T : server;
   const set = (next: T) => { if (same(next, server)) drafts.delete(key); else drafts.set(key, next); rerender(); };
   return [value, set, has];
+}
+
+/** 读一个没保存的值（没有返回 undefined）：助手采用建议前先把这处没保存的修改存上，不丢、不被覆盖。 */
+export function peekDraft<T>(key: string): T | undefined {
+  return drafts.has(key) ? drafts.get(key) as T : undefined;
 }
 
 export function hasDrafts(prefix: string) {

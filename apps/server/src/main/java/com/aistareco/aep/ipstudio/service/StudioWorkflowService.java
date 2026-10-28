@@ -344,7 +344,8 @@ public class StudioWorkflowService {
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt,
                                        int maxTokens, String clientRequestId, ObjectNode meta, String model,
-                                       com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
+                                       com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost,
+                                       com.fasterxml.jackson.databind.node.ArrayNode visual) {
         requireText(clientRequestId, 64, "请求编号");
         ObjectNode canonical=mapper.createObjectNode().put("nodeId",nodeId).put("system",systemPrompt).put("user",userPrompt);
         if(model!=null)canonical.put("model",model);
@@ -376,6 +377,12 @@ public class StudioWorkflowService {
         var execution=inputs.putObject("_exec").put("holdTotal",cost).put("unitCost",cost).put("billingUnit","per_call");
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
+        // 导演台助手围绕一张图讨论时把这张图交给模型；只有后台声明能看图的模型才会走到这里（DirectorService.visionModel）。
+        if(visual!=null&&!visual.isEmpty()) {
+            if(textEndpoint!=null&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
+                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","当前文本模型不能读取图片");
+            execution.set("visualContext",visual);
+        }
         int budget=maxTokens;
         if(chatRate!=null) {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));

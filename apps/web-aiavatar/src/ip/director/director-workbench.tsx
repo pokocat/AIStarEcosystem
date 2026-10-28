@@ -12,6 +12,7 @@ import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
+import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 import { InlineError, chooseDirectorBilling, clearDrafts, costText, errorText, hasDrafts, isWorkGone, onWorkGone, secRange, useBusy, useEscape, dialogFocus } from "./director-shared";
 
 export type Tab = "script" | "assets" | "storyboard";
@@ -41,7 +42,9 @@ function nextStep(work: DirectorWork, episodeId: string | null): { text: string;
   if (running.some(t => t.startsWith("extract"))) return { text: "AI 正在提取全剧资产", tab: "script" };
   const planning = running.find(t => t.startsWith("plan:"));
   if (planning) { const ep = work.episodes.find(e => `plan:${e.id}` === planning); return { text: `AI 正在写${ep ? `第 ${ep.no} 集` : ""}分镜脚本`, tab: "storyboard" }; }
-  if (!work.draft.trim() && work.episodes.length === 0) return { text: work.idea.trim() ? "下一步：确认创意，生成剧本" : "第一步：生成或粘贴剧本", tab: "script" };
+  if (running.includes("brief")) return { text: "AI 正在看你的想法", tab: "script" };
+  if (!work.draft.trim() && work.episodes.length === 0) return { text: !work.idea.trim() ? "第一步：说说你的想法，或粘贴剧本"
+    : work.brief?.status === "ready" ? "下一步：信息够了，生成剧本" : "下一步：回答 AI 的一两个问题，或直接生成剧本", tab: "script" };
   if (work.episodes.length === 0) return { text: "下一步：拆分集，或直接作为一集", tab: "script" };
   const ep = work.episodes.find(e => e.id === episodeId) ?? work.episodes[0];
   if (!ep.extracted && !work.assets.some(a => a.episodeIds.includes(ep.id))) return { text: "下一步：提取全剧资产", tab: "script" };
@@ -87,6 +90,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [starting, setStarting] = useState(false);
   const reviewedRun = useRef<string | null>(null);
+  // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
+  const switchTab = useCallback((next: Tab) => { setTab(next); setError(""); }, []);
+  const assistant = useAssistantController({ work, apply: next => apply(next), tab, episodeId, goTab: switchTab, pickEpisode: setEpisodeId });
 
   const apply = useCallback((next: DirectorWork) => {
     if (next.revision < revision.current) return;
@@ -153,8 +159,6 @@ export function DirectorWorkbench({ id }: { id: string }) {
     <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。</p><Link href="/director" className="ip-brand-button">返回作品列表</Link></div></main>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
-  // 换工作区时清掉上一处的报错：它说的是别处的事，留着会误导（2026-10-24 资产已入库，顶部还挂着「请先提取资产」）。
-  const switchTab = (next: Tab) => { setTab(next); setError(""); };
   const props: WorkbenchProps = { work, episodeId, apply, setError, goTab: switchTab, reviewExtract: () => setReviewing(true), openSettings: () => { window.scrollTo({ top: 0, behavior: "smooth" }); setSettingsOpen(true); }, pickEpisode: setEpisodeId, startPipeline: () => setStarting(true) };
   const step = nextStep(work, episodeId);
   const counts = {
@@ -163,7 +167,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
       || c.board.adoptedCheck === "outdated" || c.video.adoptedCheck === "outdated")).length,
   };
   const live = !!work.pipeline && ["running", "waiting", "paused"].includes(work.pipeline.status);
-  return <main className="ip-brand-surface director-shell">
+  return <AssistantProvider value={assistant}><main className={`ip-brand-surface director-shell ${assistant.open ? "has-assistant" : ""}`}>
     <DirectorHeader {...props} settingsOpen={settingsOpen} setSettingsOpen={setSettingsOpen}/>
     {/* 一条状态线：一键制作进行中就说它在做什么，否则说下一步该做什么。 */}
     {reviewing && work.pendingExtract && <ExtractReview key={work.pendingExtract.runId} work={work} apply={apply} onClose={() => setReviewing(false)}/>}
@@ -175,7 +179,7 @@ export function DirectorWorkbench({ id }: { id: string }) {
     {starting && <StartPipeline work={work} episodeId={episodeId} apply={apply} setError={setError} onClose={() => setStarting(false)}/>}
     {work.notice && <div className="director-notice" role="status"><span>{work.notice.message}</span><button type="button" onClick={() => void DirectorApi.edit(work.id, "notice.dismiss", null, null).then(apply).catch(e => setError(errorText(e)))}>关闭</button></div>}
     <InlineError message={error} onClose={() => setError("")}/>
-    <div className="director-body">
+    <div className={`director-body ${assistant.open ? "has-assistant" : ""}`}>
       <nav className="director-nav" role="tablist" aria-label="工作区" aria-orientation="vertical">
         {([["script", "剧本", FileText], ["assets", "资产", Shapes], ["storyboard", "分镜", Clapperboard]] as const).map(([key, label, Icon]) =>
           <button key={key} type="button" role="tab" aria-selected={tab === key} onClick={() => switchTab(key)}>
@@ -187,8 +191,9 @@ export function DirectorWorkbench({ id }: { id: string }) {
         {tab === "assets" && <DirectorAssets {...props}/>}
         {tab === "storyboard" && <DirectorStoryboard {...props}/>}
       </section>
+      {assistant.open && <DirectorAssistantPanel work={work} apply={apply} tab={tab} episodeId={episodeId}/>}
     </div>
-  </main>;
+  </main></AssistantProvider>;
 }
 
 function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettingsOpen: setOpen }: WorkbenchProps & { settingsOpen: boolean; setSettingsOpen: (v: boolean | ((o: boolean) => boolean)) => void }) {
@@ -211,7 +216,17 @@ function DirectorHeader({ work, apply, setError, settingsOpen: open, setSettings
       <Settings2 size={15}/>{settings.style} · {settings.aspectRatio}
     </button>
     {open && <SettingsPanel work={work} onClose={() => setOpen(false)} apply={apply} setError={setError}/>}
+    <AssistantToggle work={work}/>
   </header>;
+}
+
+/** 顶栏的助手开关：收起后从这里再打开；有回复正在进行时带个小圆点。 */
+function AssistantToggle({ work }: { work: DirectorWork }) {
+  const ctl = useAssistant();
+  if (!ctl) return null;
+  const replying = work.tasks.some(t => t.target === "assistant" && t.status === "running");
+  return <button type="button" className={`director-assistant-toggle ${ctl.open ? "is-open" : ""}`} aria-pressed={ctl.open} onClick={() => ctl.setOpen(!ctl.open)}
+    title={ctl.open ? "收起创作助手" : "打开创作助手"}><Sparkles size={15}/>创作助手{replying && <i aria-label="正在回复"/>}</button>;
 }
 
 function SettingsPanel({ work, onClose, apply, setError }: { work: DirectorWork; onClose: () => void; apply: (w: DirectorWork) => void; setError: (m: string) => void }) {

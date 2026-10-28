@@ -1,21 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { BookOpen, ChevronRight, Loader2, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
-import type { DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
+import { BookOpen, ChevronRight, Loader2, MessageSquare, PenLine, RefreshCw, Scissors, Sparkles, Wand2, X } from "lucide-react";
+import type { DirectorAssistantScope, DirectorEpisode, DirectorProposal, DirectorWork } from "@ai-star-eco/types";
+import { AskAI, proposalImpacts, useAssistant } from "./director-assistant";
+import { proposalRange } from "./director-text";
+import { BriefChat } from "./director-brief";
+import { clearPending, readPending } from "./director-pending";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { AiWorking, Field, InlineError, chooseDirectorBilling, clearDrafts, costText, hasDrafts, newRequestId, runningTask, useBusy, useDraft, useEscape, dialogFocus } from "./director-shared";
 
 export function DirectorScript(props: WorkbenchProps) {
   const { work, episodeId } = props;
+  // 创意对话 / 跳过生成的请求记录：作品显示服务端已经收到，就清掉（创意对话界面这时可能没挂载）。
+  useEffect(() => {
+    const key = `director-brief:pending:${work.id}`;
+    const p = readPending<{ type: string; clientRequestId: string }>(key);
+    if (!p) return;
+    const got = p.body.type === "brief" ? !!work.brief?.messages.some(m => m.clientId === p.body.clientRequestId)
+      : work.brief?.status === "writing" || work.brief?.status === "done" || !!work.draft.trim() || work.episodes.length > 0;
+    if (got) clearPending(key);
+  }, [work]);
   const writing = runningTask(work, "script");
   const splitting = runningTask(work, "split");
   const textError = work.textError && ["script", "split"].includes(work.textError.task ?? "") ? work.textError.message : null;
   if (work.episodes.length > 0) return <EpisodeList {...props}/>;
   if (writing && !work.draft.trim() && work.episodes.length === 0) return <AiWorking title="AI 正在写剧本" task={writing}
-    detail={`按创意设计人物、伏笔和反转，再分场写成剧本${styleText(work) ? `（${styleText(work)}）` : ""}。创意：${work.idea}`}/>;
+    detail={`${work.brief?.messages.some(m => m.role === "user") ? "按你们聊定的要求" : "按创意"}设计人物、伏笔和反转，再分场写成剧本${styleText(work) ? `（${styleText(work)}）` : ""}。创意：${work.idea}`}/>;
   if (!work.draft.trim()) return <><InlineError message={textError}/><StartScript {...props}/></>;
   return <><InlineError message={textError}/><DraftEditor key={work.draftRev} {...props} splitting={!!splitting}/></>;
 }
@@ -35,24 +48,18 @@ function Chips({ label, options, value, onChange }: { label: string; options: re
   </div></div>;
 }
 
-function GenreTone({ genre, tone, setGenre, setTone }: { genre: string; tone: string; setGenre: (v: string) => void; setTone: (v: string) => void }) {
+export function GenreTone({ genre, tone, setGenre, setTone }: { genre: string; tone: string; setGenre: (v: string) => void; setTone: (v: string) => void }) {
   return <><Chips label="题材" options={GENRES} value={genre} onChange={setGenre}/><Chips label="调性" options={TONES} value={tone} onChange={setTone}/></>;
 }
 
-/** 还没有剧本：新建时给了创意，这里就接着确认创意、生成剧本；没给创意（或用户改主意）才是粘贴剧本。 */
+/**
+ * 还没有剧本：默认是写剧本前的创意对话（AI 问几轮把故事定下来，随时可以跳过直接写）；
+ * 已有剧本的可以改为粘贴。
+ */
 function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & { openSettings?: () => void }) {
-  const [idea, setIdea] = useDraft(`${work.id}:idea`, work.idea);
   const [paste, setPaste] = useDraft(`${work.id}:paste`, "");
   const [mode, setMode] = useState<"idea" | "paste">(() => work.idea.trim() || !paste ? "idea" : "paste");
-  const [genre, setGenre] = useState(work.genre ?? "");
-  const [tone, setTone] = useState(work.tone ?? "");
   const { busy, run } = useBusy();
-  const write = () => void run("write", async () => {
-    const cost = work.pricing.textMax;
-    const billing = await chooseDirectorBilling("script", cost);
-    const next = await DirectorApi.runTask(work.id, { type: "script", clientRequestId: newRequestId(), options: { idea: idea.trim(), genre, tone }, billing, maxCost: cost });
-    clearDrafts(`${work.id}:idea`); apply(next);
-  }, setError);
   const save = () => void run("paste", async () => { const next = await DirectorApi.patchWork(work.id, { draft: paste, draftRev: work.draftRev }); clearDrafts(`${work.id}:paste`); apply(next); }, setError);
   if (mode === "paste") return <section className="director-panel director-start">
     <h3><PenLine size={16}/>粘贴剧本</h3>
@@ -65,24 +72,7 @@ function StartScript({ work, apply, setError, openSettings }: WorkbenchProps & {
       <button type="button" className="ip-brand-text-button" onClick={() => setMode("idea")}>返回，用创意生成</button>
     </div>
   </section>;
-  return <section className="director-panel director-start">
-    <h3><Sparkles size={16}/>确认创意，生成剧本</h3>
-    <Field label="创意" hint="AI 按这段创意写分场剧本。写明时长、集数、人物或「不要对白」等要求，会照做；没写的按 3 集、每集 60–90 秒。">
-      <textarea rows={5} maxLength={2000} value={idea} onChange={e => setIdea(e.target.value)} placeholder="例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。"/>
-    </Field>
-    <GenreTone genre={genre} tone={tone} setGenre={setGenre} setTone={setTone}/>
-    <div className="director-start-settings">
-      <span><small>画面风格</small>{work.settings.style}</span>
-      <span><small>画幅</small>{work.settings.aspectRatio}</span>
-      {openSettings && <button type="button" className="ip-brand-text-button" onClick={openSettings}>修改</button>}
-    </div>
-    <div className="director-actions">
-      <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={write}>{busy === "write" ? <><Loader2 size={15} className="ip-loading-icon"/>提交中</> : <><Sparkles size={15}/>生成剧本</>}</button>
-      <span className="director-cost">{work.pricing.mock ? costText(0, true) : `最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分，按用量结算`}</span>
-      <span className="director-spacer"/>
-      <button type="button" className="ip-brand-text-button" onClick={() => setMode("paste")}>已有剧本？改为粘贴</button>
-    </div>
-  </section>;
+  return <BriefChat work={work} apply={apply} setError={setError} openSettings={openSettings} onPaste={() => setMode("paste")}/>;
 }
 
 /** 整体故事大纲：先知道全剧在讲什么，再看分集正文。剧本生成时一起写，导入的剧本没有。 */
@@ -159,6 +149,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       <span className="director-spacer"/>
       {dirty && <span className="director-unsaved">未保存</span>}
       <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting || !!rewriting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
+      <AskAI scope={{ kind: "script", episodeId: "draft" }} label="和助手讨论" title="评价、续写、润色：助手会结合创意、大纲和正文"/>
       {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
     <div className="director-script-content" aria-label="剧本内容" aria-busy={!!rewriting}>
@@ -172,7 +163,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
           <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
           <span className="director-cost">{costText(work.pricing.textMax, work.pricing.mock)}</span>
         </NextChoices>}
-      <textarea className="director-script-text" aria-label="剧本正文" value={text} onChange={e => setText(e.target.value)} disabled={splitting} maxLength={60000}/>
+      <ScriptText work={work} target="draft" label="剧本正文" value={text} onChange={setText} disabled={splitting}/>
       </>}
     </div>
   </section>;
@@ -184,6 +175,12 @@ function EpisodeList(props: WorkbenchProps) {
   // 默认展开当前集（还没选过就第一集），以及有没保存修改的集。
   const [open, setOpen] = useState<Set<string>>(() => new Set(work.episodes.filter(e => e.id === (episodeId ?? work.episodes[0]?.id) || hasDrafts(`${work.id}:ep:${e.id}:`)).map(e => e.id)));
   const { busy, run } = useBusy();
+  // 助手的「预览修改」：展开那一集，让对比直接出现在正文处。
+  const ctl = useAssistant();
+  const previewTarget = ctl?.preview ? ctl.findProposal(ctl.preview.messageId, ctl.preview.proposalId)?.target : undefined;
+  useEffect(() => {
+    if (previewTarget && previewTarget !== "draft") setOpen(prev => prev.has(previewTarget) ? prev : new Set(prev).add(previewTarget));
+  }, [previewTarget]);
   const extracting = work.tasks.find(t => t.status === "running" && t.target.startsWith("extract"));
   const extractError = work.textError?.task === "extract" ? work.textError.message : null;
   const rewriting = runningTask(work, "script");
@@ -251,10 +248,12 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
         <Field label="本集摘要"><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
       </div>
       {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。可在「分镜」重写分镜脚本（已有分镜图的片段要先删掉）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
-      <textarea className="director-script-text" aria-label={`第 ${ep.no} 集正文`} value={content} maxLength={60000} onChange={e => setContent(e.target.value)}/>
+      <ScriptText work={work} target={ep.id} label={`第 ${ep.no} 集正文`} value={content} onChange={setContent}/>
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
         {dirty && <button type="button" className="ip-brand-text-button" onClick={() => { setTitle(ep.title); setSummary(ep.summary); setContent(ep.content); }}>撤销</button>}
+        <span className="director-spacer"/>
+        <AskAI scope={{ kind: "script", episodeId: ep.id }} label="和助手讨论这一集" title="评价、续写、润色这一集；要改某一段，先在正文里选中它"/>
       </div>
     </div>}
   </li>;
@@ -307,5 +306,77 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
         <button type="button" className="ip-brand-button" disabled={!!busy || !idea.trim()} onClick={go}><Sparkles size={14}/>{busy ? "提交中" : "重新生成"}</button>
       </footer>
     </div>
+  </div>;
+}
+
+// ── 正文编辑区：选中文字后可以问助手；助手的剧本建议在这里预览对比 ─────────────────
+
+/** 剧本正文。选中一段后顶部出现「问 AI / 润色 / 扩写」；有正在预览的助手建议时，换成原文与建议的对比。 */
+function ScriptText({ work, target, label, value, onChange, disabled }: { work: DirectorWork; target: string; label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
+  const ctl = useAssistant();
+  const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
+  const area = useRef<HTMLTextAreaElement>(null);
+  const preview = ctl?.preview ? ctl.findProposal(ctl.preview.messageId, ctl.preview.proposalId) : undefined;
+  if (ctl?.preview && preview && preview.type === "script.replace" && preview.target === target && preview.status === "open")
+    return <ScriptReview work={work} messageId={ctl.preview.messageId} p={preview} value={value} label={label}/>;
+  const track = () => {
+    const el = area.current;
+    if (!el) return;
+    setSel(el.selectionEnd - el.selectionStart >= 2 ? { start: el.selectionStart, end: el.selectionEnd } : null);
+  };
+  const selected = sel ? value.slice(sel.start, sel.end) : "";
+  const askWith = (draft: string) => {
+    if (!ctl || !selected.trim()) return;
+    // 带上选区的具体位置：同样的话出现两处时，改的是选中的这一处。
+    if (!sel || sel.end - sel.start > 6000) return;
+    const scope: DirectorAssistantScope = { kind: "selection", episodeId: target, text: selected, start: sel.start, end: sel.end };
+    ctl.ask(scope, draft);
+  };
+  return <div className="director-script-area">
+    {ctl && sel && selected.trim() && <div className="director-selection-bar" role="toolbar" aria-label="对选中的正文">
+      <small>已选 {selected.replace(/\s/g, "").length} 字</small>
+      {/* 按下不抢焦点，选区保持 */}
+      <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("")}><Sparkles size={13}/>问 AI</button>
+      <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("润色这段，保留原意和人物口吻，其他别动")}><PenLine size={13}/>润色</button>
+      <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("扩写这段，补上动作和细节，不改剧情走向")}><MessageSquare size={13}/>扩写</button>
+    </div>}
+    <textarea ref={area} className="director-script-text" aria-label={label} value={value} maxLength={60000} disabled={disabled}
+      onChange={e => { onChange(e.target.value); track(); }} onSelect={track} onKeyUp={track} onMouseUp={track} onBlur={() => setSel(null)}/>
+  </div>;
+}
+
+/** 正文处的对比：原文标红、建议标绿，采用只替换这一段，其余正文（包括你后来改的）不动。 */
+function ScriptReview({ work, messageId, p, value, label }: { work: DirectorWork; messageId: string; p: DirectorProposal; value: string; label: string }) {
+  const ctl = useAssistant()!;
+  const [busy, setBusy] = useState<string>();
+  const [error, setError] = useState("");
+  const mark = useRef<HTMLDivElement>(null);
+  const range = proposalRange(value, p);
+  useEffect(() => { mark.current?.scrollIntoView?.({ block: "center", behavior: "smooth" }); }, [range?.[0]]);
+  const run = async (key: string, fn: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(key); setError("");
+    try { await fn(); } catch (e) { setError(e instanceof Error ? e.message : String(e)); }
+    finally { setBusy(undefined); }
+  };
+  const impacts = proposalImpacts(work, p);
+  return <div className="director-script-review" aria-label={`${label}：预览修改`}>
+    <header><b>预览修改</b><span>{p.targetLabel} · 只替换这一段</span><span className="director-spacer"/>
+      <button type="button" className="ip-brand-text-button" onClick={() => ctl.setPreview(null)}>返回编辑</button></header>
+    {!range ? <div className="director-warn">原文已经改动，找不到这条建议要替换的段落。可以让助手按现在的正文重新给建议。</div> :
+      <div className="director-script-review-body">
+        <span className="director-script-plain">{value.slice(0, range[0])}</span>
+        <div ref={mark} className="director-script-change is-del"><em>原文</em><p>{value.slice(range[0], range[1])}</p></div>
+        <div className="director-script-change is-add"><em>建议修改</em><p>{p.replacement || "（删掉这段）"}</p></div>
+        <span className="director-script-plain">{value.slice(range[1])}</span>
+      </div>}
+    {impacts.map(t => <p key={t} className="director-script-review-impact">{t}</p>)}
+    {error && <p className="director-proposal-error" role="alert">{error}</p>}
+    <footer>
+      <small>只替换这一段，其余正文保留。采用后可以撤销。</small>
+      <span className="director-spacer"/>
+      <button type="button" className="ip-brand-button" disabled={!range || !!busy} onClick={() => void run("apply", () => ctl.act(messageId, p, "apply"))}>{busy === "apply" ? "采用中" : "采用这处修改"}</button>
+      <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => void run("keep", () => ctl.act(messageId, p, "dismiss"))}>保留原文</button>
+    </footer>
   </div>;
 }

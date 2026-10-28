@@ -49,6 +49,15 @@
 - [ ] **导演台删除未在预发 / 线上同配置 MySQL 上验证**：2026-10-28 已在本机一次性 MySQL 8.0.46（Homebrew，独立数据目录，默认可重复读）上跑通 `DirectorDelete*Test` 11 条，通用查询日志确认同一连接 `SET SESSION TRANSACTION ISOLATION LEVEL READ COMMITTED` → `… FOR UPDATE` → 标量查 `ip_run` → 更新 → 恢复可重复读。预发库的连接池规模、代理层（如有）和真实并发未测；上线前在预发验一次「提交任务的同时删除」。运行方式见 `DirectorDeleteTest` 类注释（`DIRECTOR_DELETE_TEST_DB_URL`，只能指向一次性库）。
 - [ ] **导演台选择控件统一**：`director-workbench.tsx`、`director-storyboard.tsx` 的原生选择框仍待与 Studio 控件统一，不影响本次功能归档提交。
 
+### 2026-10-28 · AI 导演台全能创作助手（本地实现，未发布；真源 `docs/ai-director-assistant.md`）
+
+- [x] ~~**真实模型验证**~~ **2026-10-28 本地完成**（聚算 qwen38-27b）：讨论无建议卡、选区建议锚点正确、镜头保留原 id、提示词编号保留、创意对话提前收敛 / 「你决定」直写；实测问题已修，记录见 `docs/ai-director-assistant.md` §6。
+- [ ] 真实模型偶尔把历史里「还没采用」的建议说成「已经改了」（历史状态已改成中文说明，仍出现过一次）。
+- [ ] 现有「提取资产」任务：qwen38-27b 有一次返回缺 `{` 的 JSON（`ModelJson.parse` 报 was expecting comma），整单失败退回，重试成功。可考虑在 `ModelJson` 容忍这一类缺对象开头的情况，或失败后自动重试一次。
+- [ ] **看图路径实测**：后台声明 `supportsVision` 的文字模型下，「围绕这张图修改」确实把图交给模型（`visualContext`）；目前只验了不能看图时的提示。
+- [ ] 写分镜脚本的新字段 `sourceQuote` 依赖模型逐字摘抄起始句；真实模型下命中率未知，命中不了时剧本预览按台词匹配或显示全文。
+- [ ] 连带影响只列出、不自动连带改：改镜头后已自定义的视频提示词不会同步，需要用户让助手再改一次。后续可考虑一条回复里成组的「一起采用」。
+
 ### 2026-10-22 · 分镜编辑改造（方案已整理，功能未实现）
 
 完整设计与阶段门槛见 [分镜编辑改造方案](docs/ip-studio-storyboard-editing-plan.md)，代码核对基线 `7caf56a4`；本轮只写计划，不代表以下能力已实现。

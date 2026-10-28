@@ -44,6 +44,8 @@ export interface DirectorMedia {
   fingerprint?: string;
   /** 生成期间改过设置，按旧设置生成；不会自动使用。 */
   stale?: boolean;
+  /** 以哪个版本为参考改出来的（「围绕当前图修改」生成的新版本）。 */
+  baseOn?: string | null;
 }
 
 export interface DirectorMediaSlot {
@@ -169,6 +171,8 @@ export interface DirectorClip {
   voiced?: string[];
   /** 当前视频模型不支持声音参考时，用户明确选了「不带声音参考生成」。声音绑定本身不删。 */
   videoWithoutVoice?: boolean;
+  /** 写分镜脚本时记下的、本片段在本集正文开头的一句原文；旧片段和拆出来的片段没有。用来在剧本预览里定位。 */
+  sourceQuote?: string | null;
   rev: number;
 }
 
@@ -265,6 +269,10 @@ export interface DirectorWork {
   /** 重新生成剧本前的旧稿，新的在前，最多 3 版；只读留底。 */
   scriptHistory?: { at: string; logline: string; draft: string }[];
   textError: DirectorError | null;
+  /** 写剧本前的创意对话（有限澄清）；导入剧本的作品没有。 */
+  brief?: DirectorBrief | null;
+  /** 全能创作助手的对话：整部作品一份，按对话分段；每条消息绑定发送时的对象。 */
+  assistant?: DirectorAssistant | null;
   tasks: DirectorTask[];
   pricing: { textMax: number; image: number; mock: boolean };
   textModels?: StudioCapabilities["textModels"];
@@ -292,9 +300,10 @@ export type DirectorEditOp =
   | "asset.create" | "asset.update" | "asset.delete" | "asset.adopt" | "asset.upload" | "assets.confirm"
   | "clip.update" | "clip.split" | "clip.delete" | "clip.adoptBoard" | "clip.confirmBoard" | "notice.dismiss"
   | "asset.setVoice" | "asset.clearVoice" | "asset.setRef" | "asset.clearRef" | "clip.adoptVideo" | "clip.confirmVideo" | "clips.confirmBoards" | "clip.setVoiceMode"
-  | "extract.save" | "extract.discard" | "asset.import";
+  | "extract.save" | "extract.discard" | "asset.import"
+  | "assistant.apply" | "assistant.dismiss" | "assistant.undo" | "assistant.newThread" | "assistant.openThread";
 
-export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export";
+export type DirectorTaskType = "script" | "split" | "extract" | "plan" | "asset-image" | "board" | "video" | "export" | "assistant" | "brief";
 export type DirectorPipelineAction = "start" | "pause" | "resume" | "retry" | "confirm-assets" | "confirm-boards" | "confirm-videos" | "stop" | "dismiss";
 
 export type DirectorPipelineTarget = "plan" | "board" | "video" | "film";
@@ -319,4 +328,130 @@ export interface DirectorAudioUpload {
   url: string | null;
   fileName: string;
   durationSec: number | null;
+}
+
+// ── 全能创作助手 ──────────────────────────────────────────────────────────────
+
+/**
+ * 助手这一轮针对什么。work = 整部作品（只讨论）；script = 某一集或拆集前的整份剧本（没有剧本时是创意）；
+ * selection = 选中的一段正文；storyboard = 一集的全部片段；clip = 一个片段的镜头；prompt = 片段的分镜图 / 视频提示词；
+ * asset = 资产的外观设定与出图提示词；image = 围绕一张已有的参考图或分镜图修改。
+ */
+export type DirectorAssistantScopeKind = "work" | "script" | "selection" | "storyboard" | "clip" | "prompt" | "asset" | "image";
+
+export interface DirectorAssistantScope {
+  kind: DirectorAssistantScopeKind;
+  /** 集 id；拆集前的整份剧本用 "draft"。 */
+  episodeId?: string | null;
+  clipId?: string | null;
+  assetId?: string | null;
+  /** prompt：board / video；image：board = 分镜图，不填 = 资产参考图。 */
+  which?: "board" | "video" | null;
+  /** selection：选中的原文，以及它在（发送前已保存的）正文里的位置。同样的话出现两处时按位置改用户选中的那一处。 */
+  text?: string | null;
+  start?: number | null;
+  end?: number | null;
+  /** 服务端按对象算出的说明，如「第 1 集 · 已选正文」「片段 3 · 视频提示词」。 */
+  label?: string;
+}
+
+export type DirectorProposalType = "script.replace" | "script.append" | "script.draft" | "idea.update" | "clip.shots" | "clip.prompt" | "asset.update";
+
+export interface DirectorProposal {
+  id: string;
+  type: DirectorProposalType;
+  status: "open" | "applied" | "dismissed";
+  /** 一句话说明改了什么。 */
+  note: string;
+  /** 「第 1 集」「片段 3」「陈德茂」：改的是哪个对象。 */
+  targetLabel: string;
+  /** script.*：集 id 或 "draft"。 */
+  target?: string | null;
+  original?: string;
+  replacement?: string;
+  /** script.replace 钉在正文的哪一处（回复时算好）：采用按位置和前后文找回这一处，找不到就不改。 */
+  anchor?: { start: number; end: number; text: string; before: string; after: string } | null;
+  /** script.append / idea.update 的新文字。 */
+  text?: string;
+  /** script.draft */
+  content?: string;
+  title?: string;
+  logline?: string;
+  clipId?: string | null;
+  which?: "board" | "video" | null;
+  /** clip.shots：新镜头整组；before 是助手看到时的镜头，用来对比和判断之后有没有被改过。 */
+  shots?: Array<Omit<DirectorShot, "startSec" | "endSec" | "id"> & { id?: string | null }>;
+  beforeShots?: DirectorShot[];
+  /** clip.prompt / asset.update：助手看到时的旧值。 */
+  before?: { text?: string; custom?: boolean; description?: string; prompt?: string; voiceDesc?: string; promptCustom?: boolean };
+  assetId?: string | null;
+  description?: string | null;
+  prompt?: string | null;
+  voiceDesc?: string | null;
+  /** 图片类建议：采用文字后可以选择按新提示词、以当前图为参考生成一个新版本（另外计费）。 */
+  regenerate?: boolean;
+  appliedAt?: string | null;
+  /** 采用后能不能撤销：之后对象又被改过就不能。 */
+  undoable?: boolean;
+}
+
+export interface DirectorAssistantMessage {
+  id: string;
+  /** 客户端生成的发送编号；同一编号重发不会再建任务。 */
+  clientId?: string | null;
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+  scope: DirectorAssistantScope;
+  status: "done" | "pending" | "failed";
+  /** 助手回复对应的任务。 */
+  runId?: string | null;
+  error?: string | null;
+  proposals?: DirectorProposal[];
+  /** 图片类对话：seen = 模型实际看了这张图；prompt-only = 模型不能看图，只读了提示词。 */
+  visual?: "seen" | "prompt-only" | null;
+  /** 回复里有建议因为对不上原文或超出范围被丢掉的数量。 */
+  dropped?: number;
+}
+
+export interface DirectorAssistantThread {
+  id: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: DirectorAssistantMessage[];
+}
+
+export interface DirectorAssistant {
+  current: string | null;
+  threads: DirectorAssistantThread[];
+}
+
+// ── 写剧本前的创意对话 ────────────────────────────────────────────────────────
+
+export interface DirectorBriefMessage {
+  id: string;
+  clientId?: string | null;
+  role: "user" | "assistant";
+  text: string;
+  at: string;
+  status: "done" | "pending" | "failed";
+  runId?: string | null;
+  error?: string | null;
+  /** AI 这一轮的问题（最多两个），每个带几个可点的选项。 */
+  questions?: Array<{ q: string; options: string[] }>;
+}
+
+export interface DirectorBrief {
+  /** asking = 还在问；ready = 信息够了，等用户点生成；writing = 剧本在写；done = 已写好。 */
+  status: "asking" | "ready" | "writing" | "done";
+  /** 已经问过几轮；maxRounds 是上限，到了就收敛，不再追问。 */
+  rounds: number;
+  maxRounds: number;
+  messages: DirectorBriefMessage[];
+  /** AI 整理的创作要求（用户说的原样保留，补的默认标「（默认）」）。 */
+  summary: string;
+  genre: string;
+  tone: string;
+  title: string;
 }

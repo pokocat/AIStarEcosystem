@@ -102,6 +102,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/ip-studio-assistant-context.md`](ip-studio-assistant-context.md) | **Studio 助手与画布引用** | @ / 感知画布、文档正文/本地媒体多选导入、同源素材库、图片/短视频四帧读取、对话恢复及文字快照分享/复制继续；v0.217 本地，未发布，音轨及完整视频未接 |
 | [`docs/ip-studio-unified-canvas-plan.md`](ip-studio-unified-canvas-plan.md) | **AI IP Studio 统一画布产品与实施方案** | M0–M4 真实 Agnes 本地验收、M6 双集与连续制作；M5 商品/配音/同音频口型短样片通过，人物固定声音版本绑定已接，专属声音未接，M7 有限图片模板、版本/采用/归档/部分资产包本地通过；逐项验收、权限计费、兼容和 Sol 指令，未发布（last-reviewed 2026-10-09） |
 | [AI 导演台完整方案](ai-director-plan.md) ★ | **v1.1 定稿；独立功能分支首版、未发布。测试响应全流程跑通；Agnes 真实出图已验，视频受厂商队列阻塞** | 三工作区、独立服务端导演作品、既有资产／声音复用、精确引用、后台连跑、分级检查、企业付款与并发边界、整集导出；§14 实现状态（last-reviewed 2026-10-22） |
+| [AI 导演台全能创作助手](ai-director-assistant.md) ★ | **本地实现，未发布；测试响应全流程跑通，本地接 qwen38-27b 实测通过（写分镜起始句与看图未实测）** | 写剧本前的有限创意对话（最多 3 轮、可跳过）；剧本 / 分镜 / 提示词 / 资产图的伴随式修改：对象绑定、按位置的局部建议、预览对比、采用前核对、撤销、分镜页剧本预览、围绕当前图生成新版本（last-reviewed 2026-10-28） |
 | [AI 导演台 Claude 联合评审记录](audits/ai-director-claude-review-2026-10.md) | **方案评审记录** | Claude App 首轮意见、Codex 反驳与修正、第二轮共识、最终复核及效果验证边界（last-reviewed 2026-10-22） |
 | [AI 导演台工作流详细稿](ai-director-workflow-plan.md) | **v0.2 详细附件；首版按总方案实现** | 配套总方案：后台连跑、分步写作、资产基准派生、真正首帧与宫格代表图区分、候选预算和局部恢复（last-reviewed 2026-10-22） |
 | [AI 导演台 Agent 提示词](prompts/ai-director-agents-v1.md) | **提示词 v0.2；A1–A4 已改写进代码，Agnes 小样已验** | 八类职责的完整正文、输入输出；吸收 AID／ViMax 的分步创作、参考筛选和首尾帧方法（last-reviewed 2026-10-22） |

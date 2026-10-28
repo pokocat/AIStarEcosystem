@@ -60,11 +60,11 @@ class DirectorTextModelTest {
         when(tokenPrices.find(model)).thenReturn(rate);
         var meta = om.createObjectNode().put("task", "script");
         assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user", 8192,
-                "request", meta, model, null, rate.maxCost() - 1));
+                "request", meta, model, null, rate.maxCost() - 1, null));
         verifyNoInteractions(credits, worker);
         TransactionSynchronizationManager.initSynchronization();
         try {
-            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost());
+            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost(), null);
             var capture = ArgumentCaptor.forClass(IpRun.class); verify(runs).save(capture.capture());
             var run = capture.getValue(); var exec = om.readTree(run.getInputJson()).path("_exec");
             assertEquals(model, exec.path("endpointId").asText());
@@ -75,9 +75,9 @@ class DirectorTextModelTest {
             verify(credits).hold(eq("u"), eq(rate.maxCost()), eq(IpRunService.REF_TYPE), eq(run.getId()), anyString());
             verifyNoInteractions(worker);
             when(runs.findByProjectIdAndClientRequestId("w", "request")).thenReturn(Optional.of(run));
-            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost());
+            service.submitDirectorText("u", "w", "script", "system", "user", 8192, "request", meta, model, null, rate.maxCost(), null);
             assertEquals("STUDIO_REQUEST_CHANGED", assertThrows(BusinessException.class, () -> service.submitDirectorText("u", "w", "script", "system", "user", 8192,
-                    "request", meta, "other", null, rate.maxCost())).getCode());
+                    "request", meta, "other", null, rate.maxCost(), null)).getCode());
             verify(credits, times(1)).hold(anyString(), anyLong(), anyString(), anyString(), anyString());
             TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
             verify(worker).execute(run.getId());
