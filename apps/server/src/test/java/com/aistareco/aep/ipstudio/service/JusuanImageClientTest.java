@@ -350,6 +350,54 @@ class JusuanImageClientTest {
         assertThrows(JusuanImageClient.Pending.class,()->client.generate("ep","x","3840x2160",List.of(),"bad-json","owner",s->{},null,null,checkpoints.get(),checkpoints::set));
         verify(upstream,times(1)).sendJson(any(),any());
     }
+    private static final String PNG_1X1="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS9sAAAAASUVORK5CYII=";
+    private void base64Endpoint(String outputHosts) {
+        var ep=endpoint("gpt-image-2-1k-pic");
+        ep.setImageRequestSpecJson("""
+                {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"1x1","aspectRatio":"1:1","providerFields":{"size":"1x1","response_format":"b64_json"}}],
+                 "wire":{"submitPath":"/images/generations","resultMode":"sync-base64","outputPointer":"/data/0/b64_json",
+                         "requireExactOutputSize":true%s}}
+                """.formatted(outputHosts==null?"":",\"outputHosts\":"+outputHosts));
+        when(models.resolveEndpoint(AiModelPurpose.DAP_IMAGE,"ep","studio"))
+                .thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(ep,null,true)));
+    }
+    /** 2026-10-28 production: /images/edits answered data[0].url (presigned S3) to a b64_json request. */
+    @Test void base64EndpointDownloadsTheUrlTheSupplierReturnedInstead() throws Exception {
+        base64Endpoint(null);
+        byte[] bytes=Base64.getDecoder().decode(PNG_1X1);
+        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result?X-Amz-Signature=abc\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var downloaded=mock(HttpResponse.class);
+        when(downloaded.statusCode()).thenReturn(200);when(downloaded.body()).thenReturn(new ByteArrayInputStream(bytes));
+        when(http.send(any(),any())).thenReturn(downloaded);
+        assertArrayEquals(bytes,client.generate("ep","x","1x1",List.of(),"url-instead","owner",s->{},null,null,null,state->{}));
+        var request=org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+        verify(http).send(request.capture(),any());
+        assertEquals("8.8.4.4",request.getValue().uri().getHost());
+        assertTrue(request.getValue().headers().firstValue("Authorization").isEmpty());
+        verify(upstream,times(1)).sendJson(any(),any());
+    }
+    @Test void configuredOutputHostsStillBindTheFallbackUrl() {
+        base64Endpoint("[\"cdn.supplier.example\"]");
+        var reply=json("{\"data\":[{\"url\":\"https://8.8.4.4/images/result\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
+                ()->client.generate("ep","x","1x1",List.of(),"host-gate","owner",s->{},null,null,null,state->{}));
+        assertTrue(error.getMessage().contains("域名"));
+        verifyNoInteractions(http);
+    }
+    @Test void finishedReplyWithoutAnyImageIsAKnownFailureNotAnUnknownSubmission() {
+        base64Endpoint(null);
+        var reply=json("{\"data\":[{\"revised_prompt\":\"x\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(reply);
+        var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
+        var error=assertThrows(JusuanImageClient.ProviderRejected.class,
+                ()->client.generate("ep","x","1x1",List.of(),"no-image","owner",s->{},null,null,null,state::set));
+        assertEquals("STUDIO_IMAGE_PROVIDER_FAILED",error.getCode());
+        assertTrue(state.get().path("submitAttempted").asBoolean());
+        verify(upstream,times(1)).sendJson(any(),any());verifyNoInteractions(http);
+    }
     @Test void nativeEditsSendOrderedSourceFilesAndExactSizeWhileTextGenerationRemainsJson() throws Exception {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""

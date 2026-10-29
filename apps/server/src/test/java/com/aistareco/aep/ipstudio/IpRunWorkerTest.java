@@ -638,6 +638,37 @@ class IpRunWorkerTest {
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
         org.mockito.Mockito.verifyNoInteractions(multimodal);
     }
+    /** The cause handed to the error log is what the Feishu alert prints; it must match the settled task. */
+    private void mockErrorLog() {
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"errorLog",mock(com.aistareco.aep.ipstudio.service.StudioRunErrorLog.class));
+    }
+    private Throwable capturedAlertCause() {
+        var errorLog=(com.aistareco.aep.ipstudio.service.StudioRunErrorLog)org.springframework.test.util.ReflectionTestUtils.getField(worker,"errorLog");
+        var cause=org.mockito.ArgumentCaptor.forClass(Throwable.class);
+        verify(errorLog).attach(any(),cause.capture());return cause.getValue();
+    }
+    @Test void orphanAlertStatesTheRefundInsteadOfPrintingNull() throws Exception {
+        mockErrorLog();orphanedImage(7200,0);worker.failUnconfirmedSubmission(RID);
+        String reason=capturedAlertCause().getMessage();
+        assertTrue(reason.contains("已按失败处理并退回"),reason);
+        assertFalse(reason.contains("null"),reason);assertFalse(reason.contains("请勿重新生成"),reason);
+    }
+    @Test void failedUnknownSubmissionAlertDropsInFlightDoNotRetryWording() throws Exception {
+        mockErrorLog();
+        var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,8L,8L,"source");ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        when(nativeImages.supportsEndpoint("native")).thenReturn(true);
+        when(nativeImages.generate(anyString(),anyString(),anyString(),anyList(),anyString(),anyString(),any(),any(),any(),any(),any())).thenAnswer(inv->{
+            java.util.function.Consumer<ObjectNode> callback=inv.getArgument(10);callback.accept(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original-body"));
+            throw new com.aistareco.aep.ipstudio.service.JusuanImageClient.Pending(false,new IllegalStateException("reply lost"));
+        });
+        worker.runBlocking(RID);assertEquals("failed",reload().getStatus());
+        var cause=capturedAlertCause();
+        assertFalse(cause.getMessage().contains("请勿重新生成"),cause.getMessage());
+        assertTrue(cause.getMessage().contains("已按失败处理并退回"),cause.getMessage());
+        assertEquals("reply lost",cause.getCause().getMessage());
+    }
     @Test void expiredShortLeaseDoesNotEndARequestWithinItsSavedTenMinuteTimeout() throws Exception {
         orphanedImage(300,0);worker.failUnconfirmedSubmission(RID);
         assertEquals("running",reload().getStatus());verifyNoCharges();

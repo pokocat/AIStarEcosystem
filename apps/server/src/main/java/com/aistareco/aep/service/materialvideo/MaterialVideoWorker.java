@@ -135,7 +135,7 @@ public class MaterialVideoWorker {
                     || !"VIDEO_SUBMISSION_UNKNOWN".equals(job.getErrorCode())) return;
             markFailed(jobId, "VIDEO_SUBMISSION_UNKNOWN",
                     com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
-                    new IllegalStateException("Historical unknown submission: " + job.getErrorMessage()));
+                    com.aistareco.aep.service.GenerationSubmissionFailure.settled("视频请求没有拿到受理结果", job.getErrorMessage(), null));
         }));
     }
 

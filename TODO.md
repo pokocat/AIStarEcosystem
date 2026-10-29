@@ -43,6 +43,7 @@
 - [ ] **MySQL 上 V67 把 `aep_ledger_entries.entry_type` 改成 VARCHAR**：整表重写，锁表时间随账本行数增长，发布前查线上行数估窗口。
 - [x] ~~零价接入点怎么处理~~ **2026-10-25 用户拍板**：零价接入点一律报 503 `MODEL_PRICE_NOT_CONFIGURED`，想免费送用户体验只能发模型赠款。出图每张至少按 1 积分冻结、由计费层拒绝零价；视频在规划时就拒绝。企业零价用例改为断言「报错、不建授权、不冻结、不调供应商、不占在途名额」（`EnterpriseStudioBillingIntegrationTest.zeroPriceIsRejectedBeforeAuthorizationHoldOrSupplierCall`、`EnterpriseVideoBillingIntegrationTest.zeroCostVideoIsRejected*`），删掉已不存在的「零价任务受理不明后核对」用例。上线前要确认线上没有零价接入点，有的话先配售价，否则这些模型会直接报错。
 - [ ] **main 上 10 项旧测试红着**（判定：与本分支无关，2026-10-25）：`EnterpriseStudioBillingIntegrationTest` 3 项、`EnterpriseVideoBillingIntegrationTest` 7 项仍断言「受理结果不明时保留冻结」，而 `GenerationSubmissionFailure` 已改为「没有有效受理回执即判失败并退款」。在本分支基线 `7b012061` 上同样失败，应在 main 上按现行政策改测试。
+- [ ] **main 上另有 4 项视频测试红着**（2026-10-29 修图片结果字段时对照 main `e4f886ec` 发现，与该修复无关）：`MaterialVideoModelClientTest.extractFailReason_picks_common_vendor_fields` 等 2 项、`MaterialVideoModelClientWireTest.configuredResponsePathsReadNestedTaskStatusAndOutput` 断言厂商原话（如 `quota exceeded`），实际已换成「生成服务暂时不可用…」通用文案；`VideoStudioMigrationTest.v37TablesWork` 报 H2 语法错误。需按现行错误文案规则和迁移现状核对后改测试或改代码。
 - [ ] **小清理**：折扣 `allowGrants` 服务端恒为 true（字段可删）；`ModelBillingConfigService` 注入了没用到的 `MaterialVideoModelClient`。
 - [ ] **celebrity 不处理**（判定：用户 2026-10-25 明确「celebrity 子应用不用管，主要用 Studio」）：素材运营视频弹窗仍按普通余额拦截（`apps/web-celebrity/src/components/material-ops/VideoGenDialog.tsx` `insufficient`），celebrity 看不到赠款余额、流水仍叫「专享额度」。
 

@@ -154,10 +154,17 @@ public class JusuanImageClient {
             catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             if(resultMode.startsWith("sync-")) {
                 try {
-                    byte[] bytes=resultBytes(endpoint,wire,pointerText(accepted,wire.outputPointer()),resultMode);
+                    byte[] bytes=syncResult(endpoint,wire,accepted,resultMode,requestId);
                     requireOutputSize(spec,size,bytes);
                     recordSuccess(endpoint,owner,requestId,null,body);return bytes;
                 } catch(ProviderRejected error){throw error;}
+                catch(BusinessException error) {
+                    // The supplier already answered with its final result and a sync call has no job to resume:
+                    // an unusable result is a known failure, not an unknown submission.
+                    var rejected=new ProviderRejected(error.getMessage());
+                    for(Throwable evidence:error.getSuppressed())rejected.addSuppressed(evidence);
+                    throw rejected;
+                }
                 catch(RuntimeException error){if(durable)throw new Pending(false,error);throw error;}
             }
             id=wire!=null && wire.submitIdPointer()!=null?pointerText(accepted,wire.submitIdPointer()):accepted.path("id").asText(accepted.path("jobId").asText());
@@ -328,8 +335,27 @@ public class JusuanImageClient {
         return source.startsWith("data:")?"[inline image]":source.startsWith("http")?"[external image]":source;
     }
 
+    /**
+     * OpenAI-style endpoints may ignore response_format: on 2026-10-28 /images/edits answered data[0].url
+     * (a presigned S3 address) to a b64_json request. Read the sibling field rather than failing a finished image.
+     */
+    private byte[] syncResult(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,JsonNode accepted,String mode,String requestId) {
+        String pointer=wire.outputPointer(),value=pointerText(accepted,pointer);
+        if((value==null || value.isBlank()) && pointer!=null) {
+            String sibling=pointer.endsWith("/b64_json")?pointer.substring(0,pointer.length()-"b64_json".length())+"url"
+                    :pointer.endsWith("/url")?pointer.substring(0,pointer.length()-"url".length())+"b64_json":null;
+            String alternate=sibling==null?null:pointerText(accepted,sibling);
+            if(alternate!=null && !alternate.isBlank()) {
+                org.slf4j.LoggerFactory.getLogger(getClass()).info("[studio-jusuan-image] result field fallback request={} endpoint={} configured={} used={}",
+                        requestId,endpoint.getId(),pointer,sibling);
+                return sibling.endsWith("/url")?downloadUrl(endpoint,wire,alternate,true):resultBytes(endpoint,wire,alternate,"sync-base64");
+            }
+        }
+        return resultBytes(endpoint,wire,value,mode);
+    }
+
     private byte[] resultBytes(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,String mode) {
-        if(value==null || value.isBlank())throw failure("图片结果缺少端点配置的输出字段");
+        if(value==null || value.isBlank())throw failure("图片引擎返回成功，但结果里没有图片，请重试；多次出现请联系运营核对模型配置");
         if("sync-base64".equals(mode)) {
             String encoded=value;
             if(encoded.startsWith("data:image/")) {
@@ -342,7 +368,7 @@ public class JusuanImageClient {
             try{return checkedImage(Base64.getDecoder().decode(encoded),maxBytes);}
             catch(IllegalArgumentException e){throw failure("图片结果编码无效");}
         }
-        return downloadUrl(endpoint,wire,value);
+        return downloadUrl(endpoint,wire,value,false);
     }
 
     /** A completed but wrong-size image is a known bad result, never an unknown submission to replay. */
@@ -354,13 +380,15 @@ public class JusuanImageClient {
         if(!received.equals(size))throw new ProviderRejected("图片引擎返回 "+received+"，与所选 "+size+" 不符，请联系运营核对模型规格");
     }
 
-    private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value) {
+    /** A fallback URL is not configured, so without an explicit outputHosts list any public HTTPS host is accepted. */
+    private byte[] downloadUrl(AiModelEndpoint endpoint,AiImageRequestSpec.Wire wire,String value,boolean fallback) {
         try {
             URI uri=URI.create(value);
             String host=uri.getHost();
             if(!"https".equalsIgnoreCase(uri.getScheme()) || host==null || uri.getUserInfo()!=null
                     || uri.getFragment()!=null || !(host.equalsIgnoreCase(URI.create(endpoint.getBaseUrl()).getHost())
-                    || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase))
+                    || wire.outputHosts()!=null && wire.outputHosts().stream().anyMatch(host::equalsIgnoreCase)
+                    || fallback && wire.outputHosts()==null)
                     || !com.aistareco.aep.service.ai.PublicMediaUris.publicHost(host))throw failure("图片结果地址不在端点允许的 HTTPS 域名内");
             var response=http.send(HttpRequest.newBuilder(uri)
                     .timeout(Duration.ofMillis(setting(wire.requestTimeoutMillis(),90000))).GET().build(),

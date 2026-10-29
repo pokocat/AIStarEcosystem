@@ -420,7 +420,9 @@ public class IpRunWorker {
             }
             run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
             failAtomically(run,"STUDIO_IMAGE_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
-                    new IllegalStateException("Historical unknown submission: "+run.getErrorMessage()));
+                    com.aistareco.aep.service.GenerationSubmissionFailure.settled(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())
+                            ?"图片请求已发出，但等结果的过程被中断（通常是服务重启），没有拿到图片或任务号"
+                            :"图片请求没有拿到受理结果",run.getErrorMessage(),null));
         });
     }
     private void pending(IpRun run,JusuanImageClient.Pending pending) {
@@ -428,7 +430,9 @@ public class IpRunWorker {
             var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
             int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
             run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
-            fail(run,pending.code(),com.aistareco.aep.service.GenerationSubmissionFailure.message(pending.getCause()),pending);
+            // The alert describes this failed-and-refunded task, not the in-flight Pending wording.
+            fail(run,pending.code(),com.aistareco.aep.service.GenerationSubmissionFailure.message(pending.getCause()),
+                    com.aistareco.aep.service.GenerationSubmissionFailure.settled("图片请求没有拿到受理结果",null,pending.getCause()));
             return;
         }
         atomic(()->{
