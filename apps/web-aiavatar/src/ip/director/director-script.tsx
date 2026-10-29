@@ -129,6 +129,7 @@ function NextChoices({ work, title, desc, children, onShortcut, shortcutDesc, sh
 }
 
 function DraftEditor({ work, apply, setError, splitting, startPipeline }: WorkbenchProps & { splitting: boolean }) {
+  const locked = useAssistant()?.scriptLocked("draft") ?? false;
   const draftKey = `${work.id}:draft`;
   const [text, setText, dirty] = useDraft(draftKey, work.draft);
   const [count, setCount] = useState("");
@@ -156,7 +157,7 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
       <div className="director-toolbar-copy"><h3>剧本</h3><p>{work.logline && !work.outline ? work.logline : "还没拆分集"}</p></div>
       <span className="director-spacer"/>
       {dirty && <span className="director-unsaved">未保存</span>}
-      <button type="button" className="ip-brand-secondary" disabled={!dirty || !!busy || splitting || !!rewriting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
+      <button type="button" className="ip-brand-secondary" disabled={locked || !dirty || !!busy || splitting || !!rewriting} onClick={() => void save()}>{dirty ? "保存" : "已保存"}</button>
       <AskAI scope={{ kind: "script", episodeId: "draft" }} label="和助手讨论" title="评价、续写、润色：助手会结合创意、大纲和正文"/>
       {!splitting && work.idea.trim() && <RegenerateScript work={work} apply={apply} setError={setError}/>}
     </div>
@@ -169,10 +170,10 @@ function DraftEditor({ work, apply, setError, splitting, startPipeline }: Workbe
         <NextChoices work={work} shortcutDesc="从拆分集一路自动做到成片，也可以只做到分镜脚本或分镜图。系统先算好推荐预算，你确认后开始。" title="下一步：拆分集"
           desc={byHeadings ? `剧本里已经标好了 ${work.draftEpisodeHeadings} 集，按标题直接分，不花积分。开头不属于任何一集的内容会单独放进设定资料，确认后生效。`
             : "AI 按剧情把剧本拆成分集，只划定每集范围、不改正文。剧本开头的设定资料会单独保留。分好后先给你看，确认后生效。"}
-          onShortcut={startPipeline} shortcutDisabled={!!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
+          onShortcut={startPipeline} shortcutDisabled={locked || !!busy || !text.trim() || dirty} shortcutNote={dirty ? "先保存剧本" : undefined}>
           <label className="director-inline-field">分为<input inputMode="numeric" value={count} placeholder="自动" onChange={e => setCount(e.target.value.replace(/\D/g, "").slice(0, 2))}/>集</label>
-          <button type="button" className="ip-brand-button" disabled={!!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
-          <button type="button" className="ip-brand-secondary" disabled={!!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
+          <button type="button" className="ip-brand-button" disabled={locked || !!busy || !text.trim()} onClick={split}><Scissors size={15}/>{byHeadings ? "按标题分集" : "AI 拆分"}</button>
+          <button type="button" className="ip-brand-secondary" disabled={locked || !!busy || !text.trim()} onClick={asEpisode}>作为一集</button>
           {byHeadings && <span className="director-cost">免费</span>}
         </NextChoices>}
       <ScriptText work={work} target="draft" label="剧本正文" value={text} onChange={setText} disabled={splitting}/>
@@ -234,6 +235,7 @@ function EpisodeList(props: WorkbenchProps) {
 }
 
 function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: WorkbenchProps & { ep: DirectorEpisode; open: boolean; onToggle: () => void }) {
+  const locked = useAssistant()?.scriptLocked(ep.id) ?? false;
   const prefix = `${work.id}:ep:${ep.id}:`;
   const [title, setTitle, t] = useDraft(prefix + "title", ep.title);
   const [summary, setSummary, s] = useDraft(prefix + "summary", ep.summary);
@@ -257,14 +259,14 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
     </button>
     {open && <div className="director-episode-body">
       <div className="director-two">
-        <Field label="集名"><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)}/></Field>
-        <Field label="本集摘要"><GrowTextarea className="director-summary-input" rows={2} value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></Field>
+        <Field label="集名"><input value={title} readOnly={locked} maxLength={60} onChange={e => { if (!locked) setTitle(e.target.value); }}/></Field>
+        <Field label="本集摘要"><GrowTextarea className="director-summary-input" rows={2} value={summary} readOnly={locked} maxLength={1000} onChange={e => { if (!locked) setSummary(e.target.value); }}/></Field>
       </div>
       {ep.planStale && <div className="director-warn">分镜脚本写好后正文又改过，片段可能和正文对不上。可在「分镜」重写分镜脚本（已有分镜图的片段要先删掉）。<button type="button" onClick={() => goTab("storyboard")}>前往分镜</button></div>}
       <ScriptText work={work} target={ep.id} label={`第 ${ep.no} 集正文`} value={content} onChange={setContent}/>
       <div className="director-actions">
-        <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
-        {dirty && <button type="button" className="ip-brand-text-button" onClick={() => { setTitle(ep.title); setSummary(ep.summary); setContent(ep.content); }}>撤销</button>}
+        <button type="button" className="ip-brand-button" disabled={locked || !dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
+        {dirty && <button type="button" disabled={locked} className="ip-brand-text-button" onClick={() => { setTitle(ep.title); setSummary(ep.summary); setContent(ep.content); }}>撤销</button>}
         <span className="director-spacer"/>
         <AskAI scope={{ kind: "script", episodeId: ep.id }} label="和助手讨论这一集" title="评价、续写、润色这一集；要改某一段，先在正文里选中它"/>
       </div>
@@ -274,12 +276,14 @@ function EpisodeRow({ work, ep, apply, setError, goTab, open, onToggle }: Workbe
 
 /** 重新生成剧本：可改创意；会替换剧本和分集，资产保留；已有分镜图或视频的片段时不能用。 */
 export function RegenerateScript({ work, apply, setError }: Pick<WorkbenchProps, "work" | "apply" | "setError">) {
+  const ctl = useAssistant();
   const [open, setOpen] = useState(false);
-  const blocked = work.clips.some(c => c.board.candidates.length || c.video.candidates.length);
+  const scriptBusy = !!ctl && ["draft", ...work.episodes.map(e => e.id)].some(ctl.scriptLocked);
+  const blocked = work.clips.some(c => c.board.candidates.length || c.video.candidates.length) || scriptBusy;
   const writing = runningTask(work, "script");
   if (writing) return null;
   return <>
-    <button type="button" className="ip-brand-secondary" disabled={blocked} title={blocked ? "已有分镜图或视频的片段，先删除这些片段才能重新生成剧本" : "按创意让 AI 重新写一版剧本"} onClick={() => setOpen(true)}><RefreshCw size={14}/>重新生成剧本</button>
+    <button type="button" className="ip-brand-secondary" disabled={blocked} title={scriptBusy ? "请等助手回复完成后再重新生成" : blocked ? "已有分镜图或视频的片段，先删除这些片段才能重新生成剧本" : "按创意让 AI 重新写一版剧本"} onClick={() => setOpen(true)}><RefreshCw size={14}/>重新生成剧本</button>
     {open && <RegenerateDialog work={work} apply={apply} setError={setError} onClose={() => setOpen(false)}/>}
   </>;
 }
@@ -326,6 +330,7 @@ function RegenerateDialog({ work, apply, setError, onClose }: Pick<WorkbenchProp
 /** 剧本正文。选中一段后顶部出现「问 AI / 润色 / 扩写」；有正在预览的助手建议时，换成原文与建议的对比。 */
 function ScriptText({ work, target, label, value, onChange, disabled }: { work: DirectorWork; target: string; label: string; value: string; onChange: (v: string) => void; disabled?: boolean }) {
   const ctl = useAssistant();
+  const locked = ctl?.scriptLocked(target) ?? false;
   const [sel, setSel] = useState<{ start: number; end: number } | null>(null);
   const area = useRef<HTMLTextAreaElement>(null);
   const preview = ctl?.preview ? ctl.findProposal(ctl.preview.messageId, ctl.preview.proposalId) : undefined;
@@ -345,6 +350,7 @@ function ScriptText({ work, target, label, value, onChange, disabled }: { work: 
     ctl.ask(scope, draft);
   };
   return <div className="director-script-area">
+    {locked && <p className="director-muted" role="status">AI 正在处理这份正文，暂时不能编辑。回复完成或失败后即可继续修改。</p>}
     {ctl && sel && selected.trim() && <div className="director-selection-bar" role="toolbar" aria-label="对选中的正文">
       <small>已选 {selected.replace(/\s/g, "").length} 字</small>
       {/* 按下不抢焦点，选区保持 */}
@@ -352,8 +358,8 @@ function ScriptText({ work, target, label, value, onChange, disabled }: { work: 
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("润色这段，保留原意和人物口吻，其他别动")}><PenLine size={13}/>润色</button>
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("扩写这段，补上动作和细节，不改剧情走向")}><MessageSquare size={13}/>扩写</button>
     </div>}
-    <textarea ref={area} className="director-script-text" aria-label={label} value={value} maxLength={60000} disabled={disabled}
-      onChange={e => { onChange(e.target.value); track(); }} onSelect={track} onKeyUp={track} onMouseUp={track} onBlur={() => setSel(null)}/>
+    <textarea ref={area} className="director-script-text" aria-label={label} value={value} maxLength={60000} disabled={disabled} readOnly={locked}
+      onChange={e => { if (!locked) onChange(e.target.value); track(); }} onSelect={track} onKeyUp={track} onMouseUp={track} onBlur={() => setSel(null)}/>
   </div>;
 }
 

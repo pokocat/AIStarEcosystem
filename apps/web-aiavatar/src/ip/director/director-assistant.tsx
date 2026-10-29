@@ -18,7 +18,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
-import { diffText, locateAll, shotChanges } from "./director-text";
+import { diffText, shotChanges } from "./director-text";
 import { clearPending, deliver, readPending, UncertainError, uncertain, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
 import type { DiffPart } from "./director-text";
@@ -28,6 +28,8 @@ export type AssistantTab = "script" | "assets" | "storyboard";
 type Reveal = { type: "asset" | "board"; id: string; nonce: number };
 
 export interface AssistantApi {
+  scriptLocked: (target: string) => boolean;
+  setSubmittingScope: (scope: DirectorAssistantScope | null) => void;
   open: boolean;
   setOpen: (open: boolean) => void;
   /** 下一条消息针对的对象：入口点过来的，或者当前工作区的默认对象。 */
@@ -101,6 +103,14 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
   const work = maybeWork ?? EMPTY_WORK;
   const workRef = useRef(work);
   workRef.current = work;
+  const [submittingScope, setSubmittingScope] = useState<DirectorAssistantScope | null>(null);
+  const scriptLocked = useCallback((target: string) => {
+    const matches = (s: DirectorAssistantScope | undefined | null) => !!s && (s.kind === "script" || s.kind === "selection") && s.episodeId === target;
+    if (matches(submittingScope)) return true;
+    const pending = readPending<{ options: { scope: DirectorAssistantScope } }>(`director-assistant:pending:${work.id}`);
+    if (matches(pending?.body.options.scope)) return true;
+    return work.assistant?.threads.some(t => t.messages.some(m => m.status === "pending" && matches(m.scope))) ?? false;
+  }, [work, submittingScope]);
 
   const ask = useCallback((scope: DirectorAssistantScope, draft?: string) => {
     setExplicit(scope);
@@ -202,22 +212,19 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
       default: break;
     }
     if (scope.kind !== "selection" || !scope.text) return scope;
-    // 选区：按保存后的正文核对位置；正文在选中后又改过，就跟着那段文字走（唯一时），否则请用户重选。
+    // 选区必须仍在原位置；改过就重选，不按同名文字重新定位。
     const content = scope.episodeId === "draft" ? w.draft : w.episodes.find(e => e.id === scope.episodeId)?.content ?? "";
     const start = scope.start ?? -1, end = scope.end ?? -1;
     if (start >= 0 && content.slice(start, end) === scope.text) return scope;
-    const hits = locateAll(content, scope.text).filter(([a, b]) => content.slice(a, b) === scope.text);
-    if (hits.length !== 1) throw new Error("选中的段落改过了，请在正文里重新选择要修改的地方");
-    const moved = { ...scope, start: hits[0][0], end: hits[0][1] };
-    setExplicit(moved);
-    return moved;
+    throw new Error("选中的段落改过了，请在正文里重新选择要修改的地方");
   }, [apply]);
 
   const act = useCallback(async (messageId: string, p: DirectorProposal, op: "apply" | "dismiss" | "undo") => {
+    if (op !== "dismiss" && p.type.startsWith("script.") && p.target && scriptLocked(p.target)) throw new Error("AI 正在处理这份正文，请等回复完成后再修改");
     if (op === "apply") await saveLocalEdits(p);
     apply(await DirectorApi.edit(workRef.current.id, `assistant.${op}`, null, null, { messageId, proposalId: p.id }));
     if (op !== "undo") setPreview(cur => cur?.messageId === messageId && cur.proposalId === p.id ? null : cur);
-  }, [apply, saveLocalEdits]);
+  }, [apply, saveLocalEdits, scriptLocked]);
 
   const regenerate = useCallback((messageId: string, p: DirectorProposal) => new Promise<void>((resolve, reject) => {
     const w = workRef.current;
@@ -275,8 +282,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
 
   const scope = explicitScope ?? defaultScope(work, tab, episodeId);
   return useMemo(() => ({
-    open, setOpen, scope, explicit: !!explicitScope, ask, setScope: setExplicit, preview, setPreview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope,
-  }), [open, setOpen, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope]);
+    open, setOpen, scope, explicit: !!explicitScope, ask, setScope: setExplicit, preview, setPreview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, setSubmittingScope,
+  }), [open, setOpen, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked]);
 }
 
 // ── 对象说明 ────────────────────────────────────────────────────────────────
@@ -624,6 +631,7 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     void received(p.id)().then(w => { if (w) { clearPending(pkey); setPending(null); apply(w); clearSent(p.body.options.message); } }).catch(() => {});
   }, [work.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const deliverIt = async (p: PendingRequest<Body>) => {
+    ctl.setSubmittingScope(p.body.options.scope);
     setSending(true); setError("");
     try {
       apply(await deliver(pkey, p, b => DirectorApi.runTask(work.id, b), received(p.id)));
@@ -631,7 +639,7 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     } catch (e) {
       if (!(e instanceof UncertainError)) setPending(null);
       setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));
-    } finally { setSending(false); }
+    } finally { setSending(false); ctl.setSubmittingScope(null); }
   };
   const send = async () => {
     const message = text.trim();
@@ -640,8 +648,9 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     if (prior) {
       // 同一句话：按原请求（原编号、原范围）恢复；改了内容就先处理掉那一条。
       if (prior.body.options.message === message) return void deliverIt(prior);
-      setError("上一条消息还没确认是否送达。请先「按原请求重新发送」，或点「不发了」再发新的。"); return;
+      setError("上一条消息还没确认是否送达，请先按原请求核对送达状态，再发新的消息。"); return;
     }
+    ctl.setSubmittingScope(scope);
     setSending(true); setError("");
     let p: PendingRequest<Body>;
     try {
@@ -652,6 +661,7 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
       writePending(pkey, p);
       setPending(p);
     } catch (e) {
+      ctl.setSubmittingScope(null);
       setSending(false);
       setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));
       return;
@@ -678,7 +688,7 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     {pending && !sending && error && <div className="director-assistant-pending" role="group" aria-label="没确认送达的消息">
       <small title={pending.body.options.message}>「{pending.body.options.message.slice(0, 30)}{pending.body.options.message.length > 30 ? "…" : ""}」· {scopeLabel(work, pending.body.options.scope)}</small>
       <button type="button" className="ip-brand-secondary" onClick={() => void deliverIt(pending)}>按原请求重新发送</button>
-      <button type="button" className="ip-brand-text-button" onClick={() => { clearPending(pkey); setPending(null); setError(""); }}>不发了</button>
+      {!["script", "selection"].includes(pending.body.options.scope.kind) && <button type="button" className="ip-brand-text-button" onClick={() => { clearPending(pkey); ctl.setSubmittingScope(null); setPending(null); setError(""); }}>不发了</button>}
     </div>}
     <footer>
       <small>{work.pricing.mock ? "测试模式，免费" : `按实际用量结算，每轮最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分`}</small>

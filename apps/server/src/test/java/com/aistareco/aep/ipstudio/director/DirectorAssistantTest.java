@@ -360,7 +360,7 @@ class DirectorAssistantTest {
         doThrow(new IllegalStateException("captured")).when(textRuns).submitDirectorText(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
         DirectorWork w = new DirectorWork(); w.setId("w"); w.setTitle("t");
         ObjectNode c = work();
-        c.putArray("episodes"); c.put("draft", "").put("idea", "快递站夜班收到寄给十年后自己的包裹");
+        c.putArray("episodes"); c.remove("assistant"); c.put("draft", "").put("idea", "快递站夜班收到寄给十年后自己的包裹");
         ObjectNode b = c.putObject("brief").put("status", "asking").put("rounds", 1).put("maxRounds", 3).put("summary", "").put("genre", "").put("tone", "").put("title", "");
         b.putArray("messages");
         var req = new DirectorService.TaskRequest("brief", null, "c1", om.createObjectNode().put("message", "直接写三集"), null, 21L);
@@ -369,4 +369,44 @@ class DirectorAssistantTest {
         verify(textRuns).submitDirectorText(any(), any(), eq("script"), any(), user.capture(), any(), any(), any(), any(), any());
         assertTrue(user.getValue().contains("直接写三集"), user.getValue());
     }
+
+    @Test
+    void pendingAssistantFreezesTheTargetScriptAcrossApiWritesAndUnlocksAtTerminalStatus() {
+        ObjectNode c = work();
+        ObjectNode msg = (ObjectNode) c.path("assistant").path("threads").get(0).path("messages").get(0);
+        ((ObjectNode) msg.path("scope")).put("episodeId", "ep1");
+        var works = mock(DirectorWorkRepository.class);
+        ReflectionTestUtils.setField(service, "works", works);
+        DirectorWork w = new DirectorWork(); w.setId("w"); w.setOwnerUserId("u"); w.setTitle("t"); w.setContentJson(c.toString());
+        when(works.lockById("w")).thenReturn(java.util.Optional.of(w));
+        when(runs.findByProjectIdOrderByCreatedAtDesc("w")).thenReturn(List.of());
+        var req = new DirectorService.EditRequest("episode.update", "ep1", 1L, om.createObjectNode().put("content", "跨页面修改"));
+        assertEquals("DIRECTOR_SCRIPT_LOCKED", assertThrows(BusinessException.class, () -> service.edit("u", "w", req)).getCode());
+        assertThrows(BusinessException.class, () -> ReflectionTestUtils.invokeMethod(service, "requireScriptEditable", c, (String) null));
+        assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "requireScriptEditable", c, "ep2"));
+        ((ObjectNode) msg.path("scope")).put("episodeId", "draft");
+        w.setContentJson(c.toString());
+        assertEquals("DIRECTOR_SCRIPT_LOCKED", assertThrows(BusinessException.class,
+                () -> service.patch("u", "w", new DirectorService.PatchRequest(null, null, "跨页面修改", 3L, null))).getCode());
+        for (String terminal : List.of("done", "failed")) {
+            msg.put("status", terminal);
+            assertDoesNotThrow(() -> ReflectionTestUtils.invokeMethod(service, "requireScriptEditable", c, "draft"));
+        }
+    }
+
+    @Test
+    void aChangedSelectionBeforeTheReplyIsDroppedInsteadOfSearchingForAnotherCopy() {
+        DirectorWork w = new DirectorWork(); w.setId("w"); w.setTitle("t");
+        ObjectNode c = work();
+        ObjectNode msg = (ObjectNode) c.path("assistant").path("threads").get(0).path("messages").get(0);
+        ((ObjectNode) msg.path("scope")).put("episodeId", "ep1").put("text", "别碰。").put("start", 8).put("end", 11);
+        ((ObjectNode) c.path("episodes").get(0)).put("content", "甲：别碰。\n乙：别动。");
+        ObjectNode p = om.createObjectNode().put("type", "script.replace").put("target", "ep1").put("original", "别碰。").put("replacement", "慢着。");
+        when(runs.findByProjectIdOrderByCreatedAtDesc("w")).thenReturn(List.of(reply(p)));
+        service.reconcile(w, c);
+        assertEquals("done", msg.path("status").asText());
+        assertEquals(0, msg.path("proposals").size());
+        assertEquals("甲：别碰。\n乙：别动。", c.path("episodes").get(0).path("content").asText());
+    }
+
 }

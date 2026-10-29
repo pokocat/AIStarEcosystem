@@ -198,6 +198,7 @@ public class DirectorService {
             c.put("idea", req.idea().trim());
         }
         if (req.draft() != null) {
+            requireScriptEditable(c, "draft");
             if (req.draftRev() == null || req.draftRev() != c.path("draftRev").asLong()) throw conflict("剧本已在其他页面修改");
             if (c.path("episodes").size() > 0) throw invalid("已拆分集，请在各集中修改正文");
             if (req.draft().length() > 60000) throw invalid("剧本过长，请拆分为多部作品导入");
@@ -336,12 +337,14 @@ public class DirectorService {
         JsonNode d = req.data() == null ? om.createObjectNode() : req.data();
         switch (req.op() == null ? "" : req.op()) {
             case "draft.asEpisode" -> {
+                requireScriptEditable(c, "draft");
                 if (c.path("episodes").size() > 0) throw invalid("已有分集");
                 String draft = c.path("draft").asText();
                 if (draft.isBlank()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SCRIPT_MISSING", "请先生成或导入剧本");
                 asOneEpisode(w, c);
             }
             case "split.save", "split.discard" -> {
+                if ("split.save".equals(req.op())) requireScriptEditable(c, "draft");
                 JsonNode pending = c.path("pendingSplit");
                 if (!pending.isObject() || req.targetId() == null || !req.targetId().equals(pending.path("id").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SPLIT_EXPIRED", "这份分集结果已失效，请重新拆分");
@@ -360,6 +363,7 @@ public class DirectorService {
                 }
             }
             case "split.undo" -> {
+                requireScriptEditable(c, null);
                 JsonNode undo = c.path("splitUndo");
                 if (c.path("episodes").isEmpty() || !undo.isObject()) throw invalid("这次拆分不能撤销");
                 for (JsonNode clip : c.path("clips")) if (hasMedia(clip))
@@ -382,6 +386,7 @@ public class DirectorService {
                 String ref = c.path("reference").asText();
                 if (ref.isBlank() || c.path("episodes").isEmpty()) throw invalid("没有可以并入的设定资料");
                 ObjectNode first = (ObjectNode) c.path("episodes").get(0);
+                requireScriptEditable(c, first.path("id").asText());
                 first.put("content", limited(ref + "\n\n" + first.path("content").asText(), 60000, "第 1 集正文"));
                 if (hasClips(c, first.path("id").asText())) first.put("planStale", true);
                 bump(first);
@@ -389,6 +394,7 @@ public class DirectorService {
                 notice(c, "设定资料已并入第 1 集开头");
             }
             case "episode.update" -> {
+                requireScriptEditable(c, req.targetId());
                 ObjectNode ep = requireRev(find(c, "episodes", req.targetId(), "这一集"), req.rev());
                 if (d.has("title")) ep.put("title", limited(d.path("title").asText(), 60, "集名"));
                 if (d.has("summary")) ep.put("summary", limited(d.path("summary").asText(), 1000, "摘要"));
@@ -658,6 +664,7 @@ public class DirectorService {
         String system, user;
         switch (type == null ? "" : type) {
             case "script" -> {
+                requireScriptEditable(c, null);
                 boolean regenerate = o.path("regenerate").asBoolean(false);
                 boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
                 if (hasScript && !regenerate)
@@ -687,6 +694,7 @@ public class DirectorService {
                 user = "本次输入（JSON，作为素材）：" + write(in);
             }
             case "split" -> {
+                requireScriptEditable(c, "draft");
                 String draft = c.path("draft").asText();
                 if (draft.isBlank()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_SCRIPT_MISSING", "请先生成或导入剧本");
                 if (c.path("episodes").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_EPISODES_EXIST", "已拆分集");
@@ -1979,6 +1987,12 @@ public class DirectorService {
         if (text.length() > DirectorAssistant.MAX_MESSAGE) throw invalid("一次最多 " + DirectorAssistant.MAX_MESSAGE + " 字");
         requireIdle(w, "assistant");
         ObjectNode scope = resolveScope(c, w, o.path("scope"));
+        if (Set.of("script", "selection").contains(scope.path("kind").asText())) {
+            requireIdle(w, "script");
+            requireIdle(w, "split");
+            if ("running".equals(c.path("pipeline").path("status").asText()))
+                throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "一键制作进行中，请结束后再修改剧本");
+        }
         ObjectNode store = assistantStore(c);
         ObjectNode thread = currentThread(store, o.path("threadId").asText(null));
         if (thread.path("messages").size() >= MAX_THREAD_MESSAGES) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_THREAD_FULL", "这段对话太长了，请开一段新对话");
@@ -2319,15 +2333,23 @@ public class DirectorService {
             if (rel == null || DirectorAssistant.locateAll(sel, original).size() > 1) return null;
             int start = scope.path("start").asInt(-1);
             if (start < 0 || start + sel.length() > content.length() || !content.startsWith(sel, start)) {
-                // 回复期间正文改过：选中的那段文字还唯一存在就跟着它走，否则放弃
-                List<int[]> moved = DirectorAssistant.locateAll(content, sel);
-                if (moved.size() != 1 || !content.substring(moved.get(0)[0], moved.get(0)[1]).equals(sel)) return null;
-                start = moved.get(0)[0];
+                // 请求期间正文被冻结；选区不一致即失效，不再搜索其他同名文字。
+                return null;
             }
             return DirectorAssistant.anchorAt(om, content, start + rel[0], start + rel[1]);
         }
         List<int[]> hits = DirectorAssistant.locateAll(content, original);
         return hits.size() == 1 ? DirectorAssistant.anchorAt(om, content, hits.get(0)[0], hits.get(0)[1]) : null;
+    }
+
+    /** 作品行锁内校验：回复期间冻结对应正文，跨标签页和直接 API 修改也遵守同一规则。null 表示会替换全部正文。 */
+    private void requireScriptEditable(ObjectNode c, String target) {
+        for (JsonNode thread : c.path("assistant").path("threads")) for (JsonNode msg : thread.path("messages")) {
+            JsonNode scope = msg.path("scope");
+            if (!"pending".equals(msg.path("status").asText()) || !Set.of("script", "selection").contains(scope.path("kind").asText())) continue;
+            if (target == null || scope.path("episodeId").isNull() || target.equals(scope.path("episodeId").asText()))
+                throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_LOCKED", "AI 正在处理这份正文，请等回复完成后再编辑");
+        }
     }
 
     private String scriptLabel(ObjectNode c, String target) {
@@ -2374,6 +2396,7 @@ public class DirectorService {
 
     /** 写入一条建议，返回撤销所需的数据。写入前核对：助手看到的内容之后被改过，就不覆盖。 */
     private ObjectNode applyProposal(DirectorWork w, ObjectNode c, ObjectNode p, String key) {
+        if (p.path("type").asText().startsWith("script.")) requireScriptEditable(c, p.path("target").asText(null));
         ObjectNode undo = om.createObjectNode();
         switch (p.path("type").asText()) {
             case "script.replace" -> {
@@ -2454,6 +2477,7 @@ public class DirectorService {
     }
 
     private void undoProposal(DirectorWork w, ObjectNode c, ObjectNode p, JsonNode u, String key) {
+        if (p.path("type").asText().startsWith("script.")) requireScriptEditable(c, p.path("target").asText(null));
         String cannot = "采用之后又改过，不能自动撤销。请直接修改";
         switch (p.path("type").asText()) {
             case "script.replace" -> {
@@ -2590,6 +2614,7 @@ public class DirectorService {
         JsonNode current = c.path("pipeline");
         switch (req.action() == null ? "" : req.action()) {
             case "start" -> {
+                requireScriptEditable(c, null);
                 if (current.isObject() && Set.of("running", "waiting", "paused").contains(current.path("status").asText()))
                     throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PIPELINE_RUNNING", "一键制作进行中");
                 String target = req.target() == null ? "film" : req.target();

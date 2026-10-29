@@ -87,6 +87,7 @@ test("an unknown send keeps its request id after closing and reopening the assis
   fireEvent.change(area, { target: { value: "保留结局，只改对白" } });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await screen.findByText(/发送状态还不确定/, {}, { timeout: 5000 });
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
   const original = vi.mocked(DirectorApi.runTask).mock.calls[0][1];
   fireEvent.click(screen.getByRole("button", { name: "收起助手" }));
   fireEvent.click(screen.getByRole("button", { name: "创作助手" }));
@@ -112,8 +113,8 @@ test("sending saves the unsaved text on screen first, so the assistant reads wha
   expect(vi.mocked(DirectorApi.edit).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(DirectorApi.runTask).mock.invocationCallOrder[0]);
 });
 
-// review 2026-10-28：发送时自动保存正文，保存期间用户又补了一句；保存回来后新补的那句不能被清掉。
-test("text typed while the send-time auto-save is in flight survives", async () => {
+// 发送起冻结正文，保存期间也不能改；请求完成后解除只读。
+test("script is read-only from send-time auto-save until the reply finishes", async () => {
   vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
   let release!: (w: DirectorWork) => void;
   vi.mocked(DirectorApi.edit).mockImplementationOnce(() => new Promise<DirectorWork>(r => { release = r; }));
@@ -124,14 +125,16 @@ test("text typed while the send-time auto-save is in flight survives", async () 
   fireEvent.change(screen.getByRole("textbox", { name: "和助手说" }), { target: { value: "评价这一段" } });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledOnce());
-  fireEvent.change(body, { target: { value: "第一版正文。\n老贺：我又补了一句。" } });
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
+  fireEvent.change(screen.getByRole("textbox", { name: "第 1 集正文" }), { target: { value: "第一版正文。\n老贺：我又补了一句。" } });
   release(work([], { episodes: [{ ...ep, content: "第一版正文。", rev: 4 }] }));
   await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
-  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe("第一版正文。\n老贺：我又补了一句。"));
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe("第一版正文。"));
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(false);
 });
 
-// review 2026-10-28（第二轮）：正文 A 改成 B，发送触发自动保存；保存期间又改回 A，保存回来后必须还是 A（仍算未保存）。
-test("reverting to the old text while the send-time auto-save is in flight is kept", async () => {
+// 请求期间不能撤回正文，避免把 AI 的输入和用户眼前内容分成两版。
+test("the frozen script cannot be reverted while an assistant request is being sent", async () => {
   vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
   let release!: (w: DirectorWork) => void;
   vi.mocked(DirectorApi.edit).mockImplementationOnce(() => new Promise<DirectorWork>(r => { release = r; }));
@@ -142,9 +145,24 @@ test("reverting to the old text while the send-time auto-save is in flight is ke
   fireEvent.change(screen.getByRole("textbox", { name: "和助手说" }), { target: { value: "评价这一段" } });
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await waitFor(() => expect(DirectorApi.edit).toHaveBeenCalledOnce());
-  fireEvent.change(body, { target: { value: ep.content } });
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
+  fireEvent.change(screen.getByRole("textbox", { name: "第 1 集正文" }), { target: { value: ep.content } });
   release(work([], { episodes: [{ ...ep, content: "B 版正文。", rev: 4 }] }));
   await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
-  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe(ep.content));
-  expect(screen.getAllByText("未保存").length).toBeGreaterThan(0);
+  await waitFor(() => expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).value).toBe("B 版正文。"));
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(false);
+});
+
+
+test("a pending reply stays read-only after reopening; failed replies unlock the script", async () => {
+  const pending: DirectorAssistantMessage[] = [{ id: "m2", role: "assistant", text: "", at: "2026-10-26T00:00:00Z", status: "pending", scope: { kind: "selection", episodeId: "ep1", text: "别碰。" } }];
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work(pending));
+  const view = render(<DirectorWorkbench id="w"/>);
+  expect((await screen.findByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "收起助手" }));
+  expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
+  view.unmount();
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work([{ ...pending[0], status: "failed", error: "failed" }]));
+  render(<DirectorWorkbench id="w"/>);
+  expect((await screen.findByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(false);
 });
