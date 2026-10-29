@@ -395,16 +395,29 @@ public class IpRunWorker {
             run.setInputJson(fresh.getInputJson());
         });
     }
-    /** Close legacy unknown receipts only after their worker lease expires. Retain already delivered images. */
+    /** Close missing receipts, including a crash before pending() could persist its error code. */
     public void failUnconfirmedSubmission(String runId) {
         atomic(() -> {
             if(enterpriseBilling!=null)enterpriseBilling.lockForSettlement(IpRunService.REF_TYPE,runId);
             var run=runRepo.lockById(runId).orElse(null);
-            if(run==null || !IpRun.STATUS_RUNNING.equals(run.getStatus()) || !"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()))return;
+            if(run==null || !IpRun.KIND_GENERATE.equals(run.getKind()) || !IpRun.STATUS_RUNNING.equals(run.getStatus()))return;
             var exec=projects.parseOrEmptyObject(run.getInputJson()).path("_exec");
             int completed=projects.parseOrEmptyObject(run.getOutputJson()).path("candidates").size();
             var item=exec.path("imageJobs").path(completed);
             if(exec.path("nativeLeaseUntil").asLong()>System.currentTimeMillis() || !item.path("jobId").asText().isBlank() || !item.path("storageKey").asText().isBlank())return;
+            if(!"STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
+                if(!item.path("submitAttempted").asBoolean())return;
+                // The old checkpoint lease is only 3 minutes; synchronous images can wait much longer.
+                // A missing error code does not prove the original HTTP worker has stopped. Respect its
+                // saved request timeout plus a minute for response processing before closing an orphan.
+                long timeoutMillis;
+                try {
+                    var spec=om.readTree(item.path("imageRequestSpec").asText("{}"));
+                    timeoutMillis=spec.path("wire").path("requestTimeoutMillis").asLong(900_000L);
+                } catch(Exception invalidSnapshot) {return;}
+                var lastProgress=run.getHeartbeatAt()!=null?run.getHeartbeatAt():run.getStartedAt()!=null?run.getStartedAt():run.getCreatedAt();
+                if(lastProgress==null || !lastProgress.plusMillis(Math.max(180_000L,timeoutMillis+60_000L)).isBefore(Instant.now()))return;
+            }
             run.setCost(unitCostOf(exec,pricing.ipImage())*completed);
             failAtomically(run,"STUDIO_IMAGE_SUBMISSION_UNKNOWN",com.aistareco.aep.service.GenerationSubmissionFailure.MESSAGE,
                     new IllegalStateException("Historical unknown submission: "+run.getErrorMessage()));

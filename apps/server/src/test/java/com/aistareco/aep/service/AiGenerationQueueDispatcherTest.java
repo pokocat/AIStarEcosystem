@@ -66,6 +66,24 @@ class AiGenerationQueueDispatcherTest {
         verify(images).execute("later");verify(images).failUnconfirmedSubmission("unknown");verify(images,never()).execute("unknown");
         verify(images,never()).recoverNative("unknown");verify(queue,never()).finish(AiGenerationQueueService.IMAGE,"unknown");
     }
+    @Test void imageInterruptedBeforeErrorCodeWasSavedStillReachesMissingReceiptCleanup() {
+        var entry=ticket(AiGenerationQueueService.IMAGE,"crashed","running");
+        var run=IpRun.builder().id("crashed").kind("generate").status("running").stage("image.generate.1")
+                .inputJson("{\"_exec\":{\"imageJobs\":[{\"submitAttempted\":true}]}}").build();
+        when(queue.openEntries()).thenReturn(List.of(entry));when(runs.findById("crashed")).thenReturn(Optional.of(run));
+        dispatcher.dispatch();
+        verify(images).failUnconfirmedSubmission("crashed");verify(images,never()).execute(anyString());
+        verify(images,never()).recoverNative(anyString());verify(queue,never()).claimDispatch(any(),anyBoolean());
+    }
+    @Test void imageWithOriginalReceiptContinuesRecoveryWithoutMissingReceiptCleanup() {
+        var entry=ticket(AiGenerationQueueService.IMAGE,"accepted","running");
+        var run=IpRun.builder().id("accepted").kind("generate").status("running")
+                .inputJson("{\"_exec\":{\"imageJobs\":[{\"submitAttempted\":true,\"jobId\":\"original\"}]}}").build();
+        when(queue.openEntries()).thenReturn(List.of(entry));when(runs.findById("accepted")).thenReturn(Optional.of(run));
+        when(images.canResumeNative(run)).thenReturn(true);when(queue.claimDispatch(entry,true)).thenReturn(true);
+        dispatcher.dispatch();
+        verify(images).recoverNative("accepted");verify(images,never()).failUnconfirmedSubmission(anyString());verify(images,never()).execute(anyString());
+    }
     @Test void acceptedVideoRecoveryOnlyQueriesOriginalTask() {
         var ticket=ticket(AiGenerationQueueService.VIDEO,"video","running");
         when(queue.openEntries()).thenReturn(List.of(ticket));
