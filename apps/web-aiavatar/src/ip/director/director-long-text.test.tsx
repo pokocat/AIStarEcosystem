@@ -36,7 +36,7 @@ function work(over: Partial<DirectorWork> = {}): DirectorWork {
   } as DirectorWork;
 }
 
-beforeEach(() => { vi.resetAllMocks(); document.documentElement.dataset.layout = "desktop"; window.localStorage.setItem("director-assistant:open", "0"); clearDrafts("w:"); });
+beforeEach(() => { vi.resetAllMocks(); document.documentElement.dataset.layout = "desktop"; window.localStorage.setItem("director-assistant:open", "0"); clearDrafts("w:"); vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); window.localStorage.clear(); delete document.documentElement.dataset.layout; });
 
 test("normal pastes go in; an oversized paste is stopped before it reaches the box and the text stays as it was", async () => {
@@ -84,11 +84,11 @@ test("a long episode (from a file) is edited section by section; saving keeps ev
   fireEvent.change(box, { target: { value: "【第三段开头补一句】" + box.value } });
   box.setSelectionRange(3, 3);
   fireEvent.click(screen.getByRole("button", { name: "和助手讨论第 1 集正文" }));
-  const panel = screen.getByRole("complementary", { name: "全能创作助手" });
+  const panel = await screen.findByRole("dialog", { name: /AI 对话/ });
   const edited = long.slice(0, start) + "【第三段开头补一句】" + long.slice(start);
   vi.mocked(DirectorApi.edit).mockResolvedValue(work({ episodes: [{ ...ep, content: edited, rev: 4 }] }));
   vi.mocked(DirectorApi.runTask).mockResolvedValue(work({ episodes: [{ ...ep, content: edited, rev: 4 }] }));
-  fireEvent.change(within(panel).getByRole("textbox", { name: "和助手说" }), { target: { value: "评价这一段" } });
+  fireEvent.change(within(panel).getByRole("textbox", { name: "和 AI 说" }), { target: { value: "评价这一段" } });
   fireEvent.click(within(panel).getByRole("button", { name: "发送" }));
   await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
   expect(vi.mocked(DirectorApi.edit).mock.calls[0][4]).toMatchObject({ content: edited });

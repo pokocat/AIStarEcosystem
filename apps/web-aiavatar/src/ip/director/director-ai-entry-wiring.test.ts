@@ -27,3 +27,14 @@ test("prompt, script and asset fields carry the corner entry", () => {
   expect(read("director-workbench.tsx")).toContain("一键制作");
   expect(read("director-workbench.tsx")).not.toMatch(/director-oneclick[^"]*director-ask-ai/);
 });
+
+// 2026-10-29 追加：内容旁的入口点了弹出只针对这段内容的浮层对话，不展开侧边栏、不带之前的对话；
+// 选中正文后的「问 AI」也在正文右下角那个入口上弹出浮层。
+test("content entries open the floating chat, not the sidebar", () => {
+  const src = read("director-assistant.tsx");
+  const askAI = src.slice(src.indexOf("export function AskAI("), src.indexOf("export function AiField("));
+  expect(askAI).toContain("ctl.openInline(key");
+  expect(askAI).not.toContain("ctl.ask(");
+  expect(read("director-script.tsx")).toContain("ctl.openInline(`script:${target}`, scope, { draft })");
+  expect(read("director-script.tsx")).toContain("inlineKey={`script:${target}`}");
+});

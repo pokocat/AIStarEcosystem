@@ -7,10 +7,11 @@
 // 采用文字永远不触发收费的出图；「生成新版本」是单独的按钮，先说清范围和费用。
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
-import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Undo2, X } from "lucide-react";
+import { createContext, useCallback, useContext, useEffect, useId, useMemo, useRef, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
+import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Move, PanelRightOpen, Undo2, X } from "lucide-react";
 import { Tooltip } from "antd";
+import { createPortal } from "react-dom";
 import type { DirectorAssistantMessage, DirectorAssistantScope, DirectorAssistantThread, DirectorProposal, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { ApiError } from "@ai-star-eco/api-client";
@@ -19,7 +20,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
 import { AiMark } from "../studio-ai-icon";
 import { useStudioApp } from "../studio-errors";
-import { chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
+import { adopted, chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
 import { diffText, shotChanges } from "./director-text";
 import { clearPending, deliver, readPending, UncertainError, uncertain, writePending } from "./director-pending";
 import type { PendingRequest } from "./director-pending";
@@ -58,7 +59,21 @@ export interface AssistantApi {
   prepareScope: (scope: DirectorAssistantScope) => Promise<DirectorAssistantScope>;
   regenerate: (messageId: string, p: DirectorProposal) => Promise<void>;
   findProposal: (messageId: string, proposalId: string) => DirectorProposal | undefined;
+  /** 内容旁入口的浮层对话：同一时间只有一个，挂在点开它的那个入口上（key）。 */
+  inline: InlineAsk | null;
+  openInline: (key: string, scope: DirectorAssistantScope, opts?: { draft?: string; hint?: string }) => void;
+  closeInline: () => void;
+  /** 浮层里发出的消息编号：浮层只显示这几条和它们的回复，不显示之前的对话。 */
+  noteSent: (clientId: string) => void;
+  work: DirectorWork;
+  apply: (w: DirectorWork) => void;
 }
+
+/**
+ * 浮层对话（2026-10-29 用户：点内容旁的入口不要展开成侧边栏，也不要带着之前的对话记录）。
+ * 消息照样进这部作品的连续对话（侧边栏历史里也看得到），浮层只显示这次打开以后发的那几条。
+ */
+export type InlineAsk = { key: string; scope: DirectorAssistantScope; draft?: string; hint?: string; sent: string[]; nonce: number };
 
 const Ctx = createContext<AssistantApi | null>(null);
 export const AssistantProvider = ({ value, children }: { value: AssistantApi; children: ReactNode }) => <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -96,8 +111,15 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
     try { window.localStorage.setItem(OPEN_KEY, v ? "1" : "0"); } catch { /* 忽略 */ }
   }, []);
   const [explicitScope, setExplicit] = useState<DirectorAssistantScope | null>(null);
-  // 换工作区就回到那个工作区的默认对象；对话本身不断。
-  useEffect(() => { setExplicit(null); }, [tab]);
+  const [inline, setInline] = useState<InlineAsk | null>(null);
+  // 换工作区就回到那个工作区的默认对象，浮层也关掉；对话本身不断。
+  useEffect(() => { setExplicit(null); setInline(null); }, [tab]);
+  const openInline = useCallback((key: string, scope: DirectorAssistantScope, opts?: { draft?: string; hint?: string }) => {
+    setInline(cur => cur?.key === key && opts?.draft === undefined ? { ...cur, scope, nonce: Date.now() }
+      : { key, scope, draft: opts?.draft, hint: opts?.hint, sent: [], nonce: Date.now() });
+  }, []);
+  const closeInline = useCallback(() => setInline(null), []);
+  const noteSent = useCallback((id: string) => setInline(cur => cur && !cur.sent.includes(id) ? { ...cur, sent: [...cur.sent, id] } : cur), []);
   const [preview, setPreview] = useState<{ messageId: string; proposalId: string } | null>(null);
   const [reveal, setReveal] = useState<Reveal | null>(null);
   const [focusToken, setFocusToken] = useState(0);
@@ -242,6 +264,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
         <p>{costText(cost, w.pricing.mock)}</p>
       </div>,
       okText: "生成新版本", cancelText: "取消",
+      // 可能是从分镜图弹窗里的浮层对话点的，要盖住浮层（1010）。
+      zIndex: 1100,
       onCancel: () => resolve(),
       onOk: async () => {
         try {
@@ -286,7 +310,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
   const scope = explicitScope ?? defaultScope(work, tab, episodeId);
   return useMemo(() => ({
     open, setOpen, scope, explicit: !!explicitScope, ask, setScope: setExplicit, preview, setPreview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, setSubmittingScope,
-  }), [open, setOpen, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked]);
+    inline, openInline, closeInline, noteSent, work, apply,
+  }), [open, setOpen, scope, explicitScope, ask, preview, startPreview, reveal, show, focusToken, draftPrefill, act, regenerate, findProposal, prepareScope, scriptLocked, inline, openInline, closeInline, noteSent, work, apply]);
 }
 
 // ── 对象说明 ────────────────────────────────────────────────────────────────
@@ -426,8 +451,12 @@ function AssistantWelcome({ work, tab }: { work: DirectorWork; tab: AssistantTab
   </div>;
 }
 
+/** 「重新发送」「继续调整」去哪儿：侧边栏里是助手输入框，浮层里是浮层自己的输入框。 */
+const FollowUp = createContext<((scope: DirectorAssistantScope, draft: string) => void) | null>(null);
+
 function Message({ work, msg }: { work: DirectorWork; msg: DirectorAssistantMessage }) {
   const ctl = useAssistant()!;
+  const followUp = useContext(FollowUp) ?? ctl.ask;
   const label = msg.scope.label || scopeLabel(work, msg.scope);
   if (msg.role === "user") return <div className="director-msg is-user">
     <p>{msg.text}</p>
@@ -443,7 +472,7 @@ function Message({ work, msg }: { work: DirectorWork; msg: DirectorAssistantMess
       const thread = work.assistant?.threads.find(t => t.messages.some(m => m.id === msg.id));
       const i = thread?.messages.findIndex(m => m.id === msg.id) ?? -1;
       const prior = i > 0 ? thread!.messages[i - 1] : undefined;
-      ctl.ask(msg.scope, prior?.role === "user" ? prior.text : "");
+      followUp(msg.scope, prior?.role === "user" ? prior.text : "");
     }}>重新发送</button>
   </div>;
   return <div className="director-msg is-ai">
@@ -510,6 +539,7 @@ export function proposalImpacts(work: DirectorWork, p: DirectorProposal): string
 
 function ProposalCard({ work, msg, p }: { work: DirectorWork; msg: DirectorAssistantMessage; p: DirectorProposal }) {
   const ctl = useAssistant()!;
+  const followUp = useContext(FollowUp) ?? ctl.ask;
   const [busy, setBusy] = useState<string>();
   const [error, setLocalError] = useState("");
   const [showOriginal, setShowOriginal] = useState(false);
@@ -560,7 +590,7 @@ function ProposalCard({ work, msg, p }: { work: DirectorWork; msg: DirectorAssis
         {script && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => void run("apply", () => ctl.act(msg.id, p, "apply"))}>直接采用</button>}
         {p.regenerate && <button type="button" className="ip-brand-secondary" disabled={!!busy || !!generating} onClick={() => void run("gen", () => ctl.regenerate(msg.id, p))}
           title="采用文字后，以当前这张为参考生成一张新图（另外计费）">采用并生成新版本</button>}
-        <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => ctl.ask(msg.scope, "")}>继续调整</button>
+        <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => followUp(msg.scope, "")}>继续调整</button>
         <span className="director-spacer"/>
         <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("dismiss", () => ctl.act(msg.id, p, "dismiss"))}>不用了</button>
       </>}
@@ -600,17 +630,119 @@ function ShotDiff({ work, p }: { work: DirectorWork; p: DirectorProposal }) {
 
 // ── 输入框 ──────────────────────────────────────────────────────────────────
 
+/**
+ * 输入框旁的模型选择：侧边栏和浮层同一个。改的是这部作品的文本模型（和「作品设置」里的是同一项），
+ * 写剧本、拆分集、写分镜也会跟着用它；可选范围、不可用的标法和作品设置一致。回复期间不能换。
+ */
+function AssistantModelPicker({ work, apply, disabled }: { work: DirectorWork; apply: (w: DirectorWork) => void; disabled?: boolean }) {
+  const models = work.textModels ?? [];
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (!models.length) return null;
+  const value = work.settings.textModel ?? "";
+  const fallback = models.find(m => m.isDefault);
+  const current = models.find(m => value ? m.endpointId === value : m.isDefault);
+  const tip = "这部作品的文本模型，和「作品设置」里的是同一项：写剧本、拆分集、写分镜也用它。";
+  // 后台固定了模型：只显示是哪个，不给选。
+  if (work.textModelMode === "fixed") return <span className="director-model-picker is-fixed" title={tip}>{current?.name ?? "默认模型"}</span>;
+  const unavailable = !!value && !models.some(m => m.endpointId === value);
+  return <span className="director-model-picker" title={error || tip}>
+    <SelectField aria-label="对话模型" value={value} disabled={disabled || busy} className={error ? "is-error" : undefined}
+      onChange={async e => {
+        const next = e.target.value;
+        setBusy(true); setError("");
+        try { apply(await DirectorApi.patchWork(work.id, { settings: { textModel: next || null } })); }
+        catch (err) { setError(`模型没有换成：${errorText(err)}`); }
+        finally { setBusy(false); }
+      }}>
+      <option value="">默认{fallback ? `（${fallback.name}）` : ""}</option>
+      {unavailable && <option value={value} disabled>原模型已不可用</option>}
+      {models.map(m => <option key={m.endpointId} value={m.endpointId} disabled={!work.pricing.mock && !m.tokenPricing}>{m.name}{!work.pricing.mock && !m.tokenPricing ? " · 暂不可用" : ""}</option>)}
+    </SelectField>
+    {busy && <Loader2 size={12} className="ip-loading-icon" aria-label="正在切换模型"/>}
+    {error && <small className="director-model-picker-error" role="alert">{error}</small>}
+  </span>;
+}
+
+type SendBody = { type: "assistant"; clientRequestId: string; options: { message: string; scope: DirectorAssistantScope; threadId: string | null }; billing?: EnterpriseBillingSelection; maxCost: number };
+
+/**
+ * 发一条消息：侧边栏和浮层共用。一次发送（编号 + 完整正文，含发送时的范围和付款方）记在本浏览器：
+ * 收起助手、关掉浮层、刷新、切换范围后都按原请求恢复，服务端认出是同一条，不重复建任务、不重复扣费。明确被拒才作废。
+ */
+function useAssistantSender(work: DirectorWork, apply: (w: DirectorWork) => void) {
+  const ctl = useAssistant()!;
+  const pkey = `director-assistant:pending:${work.id}`;
+  const [pending, setPending] = useState<PendingRequest<SendBody> | null>(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const received = (id: string) => async () => {
+    const w = await DirectorApi.getWork(work.id);
+    return w.assistant?.threads.some(t => t.messages.some(m => m.clientId === id)) ? w : null;
+  };
+  const show = (e: unknown) => setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));
+  const deliverIt = async (p: PendingRequest<SendBody>, done?: (message: string) => void) => {
+    ctl.setSubmittingScope(p.body.options.scope);
+    setSending(true); setError("");
+    try {
+      apply(await deliver(pkey, p, b => DirectorApi.runTask(work.id, b), received(p.id)));
+      setPending(null); done?.(p.body.options.message);
+    } catch (e) {
+      if (!(e instanceof UncertainError)) setPending(null);
+      show(e);
+    } finally { setSending(false); ctl.setSubmittingScope(null); }
+  };
+  /** created：请求编号定下来时（还没送达）；done：送达以后。 */
+  const send = async (message: string, scope: DirectorAssistantScope, threadId: string | null, hooks: { created?: (id: string) => void; done?: (message: string) => void } = {}) => {
+    const prior = readPending<SendBody>(pkey);
+    if (prior) {
+      // 同一句话：按原请求（原编号、原范围）恢复；改了内容就先处理掉那一条。
+      if (prior.body.options.message === message) { setPending(prior); hooks.created?.(prior.id); return void deliverIt(prior, hooks.done); }
+      setPending(prior);
+      setError("上一条消息还没确认是否送达，请先按原请求核对送达状态，再发新的消息。"); return;
+    }
+    ctl.setSubmittingScope(scope);
+    setSending(true); setError("");
+    let p: PendingRequest<SendBody>;
+    try {
+      const ready = await ctl.prepareScope(scope);
+      const billing = await chooseDirectorBilling("script", work.pricing.textMax);
+      const id = newRequestId();
+      p = { id, at: new Date().toISOString(), body: { type: "assistant", clientRequestId: id, options: { message, scope: ready, threadId }, billing, maxCost: work.pricing.textMax } };
+      writePending(pkey, p);
+      setPending(p);
+      hooks.created?.(id);
+    } catch (e) {
+      ctl.setSubmittingScope(null);
+      setSending(false);
+      show(e);
+      return;
+    }
+    setSending(false);
+    await deliverIt(p, hooks.done);
+  };
+  const discard = () => { clearPending(pkey); ctl.setSubmittingScope(null); setPending(null); setError(""); };
+  return { pkey, pending, setPending, sending, error, setError, received, deliverIt, send, discard };
+}
+
+/** 没确认送达的那一条：按原请求重发，或者（不冻结正文的范围）放弃。 */
+function PendingRetry({ work, sender, done }: { work: DirectorWork; sender: ReturnType<typeof useAssistantSender>; done?: (message: string) => void }) {
+  const { pending } = sender;
+  if (!pending || sender.sending || !sender.error) return null;
+  const msg = pending.body.options.message;
+  return <div className="director-assistant-pending" role="group" aria-label="没确认送达的消息">
+    <small title={msg}>「{msg.slice(0, 30)}{msg.length > 30 ? "…" : ""}」· {scopeLabel(work, pending.body.options.scope)}</small>
+    <button type="button" className="ip-brand-secondary" onClick={() => void sender.deliverIt(pending, done)}>按原请求重新发送</button>
+    {!["script", "selection"].includes(pending.body.options.scope.kind) && <button type="button" className="ip-brand-text-button" onClick={sender.discard}>不发了</button>}
+  </div>;
+}
+
 function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: DirectorWork; apply: (w: DirectorWork) => void; tab: AssistantTab; episodeId: string | null; threadId: string | null; replying: boolean }) {
   const ctl = useAssistant()!;
   const key = `${work.id}:assistant:draft`;
   const [text, setText] = useDraft(key, "");
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  // 一次发送（编号 + 完整正文，含发送时的范围和付款方）记在本浏览器：收起助手、刷新、切换范围后都按原请求恢复，
-  // 服务端认出是同一条，不重复建任务、不重复扣费。明确被拒才作废。
-  const pkey = `director-assistant:pending:${work.id}`;
-  type Body = { type: "assistant"; clientRequestId: string; options: { message: string; scope: DirectorAssistantScope; threadId: string | null }; billing?: EnterpriseBillingSelection; maxCost: number };
-  const [pending, setPending] = useState<PendingRequest<Body> | null>(null);
+  const sender = useAssistantSender(work, apply);
+  const { sending, error } = sender;
   const input = useRef<HTMLTextAreaElement>(null);
   useEffect(() => { if (ctl.focusToken) input.current?.focus(); }, [ctl.focusToken]);
   useEffect(() => { if (ctl.draftPrefill) { setText(ctl.draftPrefill.text); input.current?.focus(); } }, [ctl.draftPrefill]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -622,56 +754,18 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     const cur = peekDraft<string>(key);
     if (cur === undefined || cur.trim() === message) setText("");
   };
-  const received = (id: string) => async () => {
-    const w = await DirectorApi.getWork(work.id);
-    return w.assistant?.threads.some(t => t.messages.some(m => m.clientId === id)) ? w : null;
-  };
   // 打开面板 / 刷新后：上次有没确认送达的消息，先问服务端收到没有。
   useEffect(() => {
-    const p = readPending<Body>(pkey);
+    const p = readPending<SendBody>(sender.pkey);
     if (!p) return;
-    setPending(p);
+    sender.setPending(p);
     if (!text.trim()) setText(p.body.options.message);
-    void received(p.id)().then(w => { if (w) { clearPending(pkey); setPending(null); apply(w); clearSent(p.body.options.message); } }).catch(() => {});
+    void sender.received(p.id)().then(w => { if (w) { clearPending(sender.pkey); sender.setPending(null); apply(w); clearSent(p.body.options.message); } }).catch(() => {});
   }, [work.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const deliverIt = async (p: PendingRequest<Body>) => {
-    ctl.setSubmittingScope(p.body.options.scope);
-    setSending(true); setError("");
-    try {
-      apply(await deliver(pkey, p, b => DirectorApi.runTask(work.id, b), received(p.id)));
-      setPending(null); clearSent(p.body.options.message);
-    } catch (e) {
-      if (!(e instanceof UncertainError)) setPending(null);
-      setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));
-    } finally { setSending(false); ctl.setSubmittingScope(null); }
-  };
-  const send = async () => {
+  const send = () => {
     const message = text.trim();
     if (!message || busy) return;
-    const prior = readPending<Body>(pkey);
-    if (prior) {
-      // 同一句话：按原请求（原编号、原范围）恢复；改了内容就先处理掉那一条。
-      if (prior.body.options.message === message) return void deliverIt(prior);
-      setError("上一条消息还没确认是否送达，请先按原请求核对送达状态，再发新的消息。"); return;
-    }
-    ctl.setSubmittingScope(scope);
-    setSending(true); setError("");
-    let p: PendingRequest<Body>;
-    try {
-      const ready = await ctl.prepareScope(scope);
-      const billing = await chooseDirectorBilling("script", work.pricing.textMax);
-      const id = newRequestId();
-      p = { id, at: new Date().toISOString(), body: { type: "assistant", clientRequestId: id, options: { message, scope: ready, threadId }, billing, maxCost: work.pricing.textMax } };
-      writePending(pkey, p);
-      setPending(p);
-    } catch (e) {
-      ctl.setSubmittingScope(null);
-      setSending(false);
-      setError(e instanceof ApiError ? errorText(e) : e instanceof Error ? e.message : String(e));
-      return;
-    }
-    setSending(false);
-    await deliverIt(p);
+    void sender.send(message, scope, threadId, { done: clearSent });
   };
   const label = scopeLabel(work, scope);
   return <div className="director-assistant-composer">
@@ -687,17 +781,14 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
     </div>
     <textarea ref={input} rows={3} maxLength={2000} aria-label="和助手说" placeholder={replying ? "助手正在回复，你可以继续改内容，回复完成后再发送" : "说说你的想法，或者要怎么改。Enter 发送，Shift+Enter 换行"}
       value={text} onChange={e => setText(e.target.value)}
-      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
+      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
     {error && <p className="director-assistant-send-error" role="alert">{error}</p>}
-    {pending && !sending && error && <div className="director-assistant-pending" role="group" aria-label="没确认送达的消息">
-      <small title={pending.body.options.message}>「{pending.body.options.message.slice(0, 30)}{pending.body.options.message.length > 30 ? "…" : ""}」· {scopeLabel(work, pending.body.options.scope)}</small>
-      <button type="button" className="ip-brand-secondary" onClick={() => void deliverIt(pending)}>按原请求重新发送</button>
-      {!["script", "selection"].includes(pending.body.options.scope.kind) && <button type="button" className="ip-brand-text-button" onClick={() => { clearPending(pkey); ctl.setSubmittingScope(null); setPending(null); setError(""); }}>不发了</button>}
-    </div>}
+    <PendingRetry work={work} sender={sender} done={clearSent}/>
     <footer>
+      <AssistantModelPicker work={work} apply={apply} disabled={busy}/>
       <small>{work.pricing.mock ? "测试模式，免费" : `按实际用量结算，每轮最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分`}</small>
       <span className="director-spacer"/>
-      <button type="button" className="director-assistant-send" aria-label="发送" disabled={busy || !text.trim()} onClick={() => void send()}
+      <button type="button" className="director-assistant-send" aria-label="发送" disabled={busy || !text.trim()} onClick={send}
         title={replying ? "等这条回复完成" : "发送（Enter）"}>{sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
     </footer>
   </div>;
@@ -708,29 +799,318 @@ type AskAIProps = {
   scope: DirectorAssistantScope | (() => DirectorAssistantScope);
   /** 讨论的是哪段内容，拼进悬停提示和读屏名称：「和助手讨论{what}」。 */
   what: string;
-  /** 能帮着做什么，悬停时显示在第二行。 */
+  /** 能帮着做什么，悬停时显示在第二行，浮层里没说话时也显示。 */
   hint?: string;
   draft?: string;
   className?: string;
-  /** 打开助手之后（比如关掉盖在助手上面的抽屉、弹窗）。 */
+  /** 浮层的编号。不给就按这个入口自动生成；别处（比如选中正文后的「问 AI」）要在同一个入口上打开浮层时显式给。 */
+  inlineKey?: string;
+  /** 转到侧边栏助手之后（比如关掉盖在助手上面的抽屉、弹窗）。浮层本身就在抽屉里打开，不用关。 */
   onAsked?: () => void;
 };
 
+/** 浮层里没说话时给的几句开头：点了填进输入框，不直接发（发送要扣积分）。 */
+function quickAsks(s: DirectorAssistantScope): string[] {
+  switch (s.kind) {
+    case "selection": return ["润色这段，保留原意和人物口吻", "扩写这段，补上动作和细节", "这段更紧凑一些"];
+    case "script": return ["这一集哪里不够吸引人？", "续写下一场", "对白更口语一些"];
+    case "storyboard": return ["这一集的节奏怎么样？", "哪些镜头可以合并？"];
+    case "clip": return ["节奏更紧凑一些", "加一个反应特写"];
+    case "prompt": return ["动作和表情写得更具体", "精简一些，突出重点"];
+    case "asset": return ["外观写得更具体，方便出图", "补全音色描述"];
+    case "image": return s.which === "board" ? ["这张分镜图哪里和剧本对不上？", "提示词怎么改更好？"] : ["这张图哪里和设定不符？", "提示词怎么改更好？"];
+    case "work": return ["整体节奏怎么样？"];
+  }
+}
+
+/** 浮层里这次发出的一条：用户的话和紧跟着的助手回复（在哪段对话里都找）。 */
+function exchangeOf(work: DirectorWork, clientId: string): { user: DirectorAssistantMessage; reply?: DirectorAssistantMessage } | null {
+  for (const t of work.assistant?.threads ?? []) {
+    const i = t.messages.findIndex(m => m.clientId === clientId);
+    if (i >= 0) { const next = t.messages[i + 1]; return { user: t.messages[i], reply: next?.role === "assistant" ? next : undefined }; }
+  }
+  return null;
+}
+
 /**
- * 内容旁的 AI 入口：紫色小圆钮，只有图标，点了带上这个对象打开同一个创作助手。
- * 没有常驻文字，所以悬停提示和读屏名称都要说清讨论的是哪段内容。只管「打开助手」：
+ * 浮层顶部「正在看」：这一轮讨论的内容本身（用户眼前的版本，含没保存的修改），图片类直接放缩略图。
+ * 只是给人看的预览，发送时服务端照常按范围读素材。
+ */
+function scopePreview(work: DirectorWork, s: DirectorAssistantScope): { label: string; text: string; image?: string | null } | null {
+  const draft = (key: string, saved: string) => peekDraft<string>(`${work.id}:${key}`) ?? saved;
+  const clip = s.clipId ? work.clips.find(c => c.id === s.clipId) : undefined;
+  const asset = s.assetId ? work.assets.find(a => a.id === s.assetId) : undefined;
+  const episodeText = (id: string | null | undefined) => id === "draft" ? draft("draft", work.draft)
+    : (() => { const ep = work.episodes.find(e => e.id === id); return ep ? draft(`ep:${ep.id}:content`, ep.content) : ""; })();
+  switch (s.kind) {
+    case "selection": return s.text ? { label: "选中的正文", text: s.text } : null;
+    case "script": {
+      const text = episodeText(s.episodeId);
+      if (!text.trim()) return work.idea ? { label: "创意", text: work.idea } : null;
+      // 光标附近一段（长正文时助手也是读这附近）。
+      const at = Math.min(Math.max(0, s.focusAt ?? 0), text.length);
+      const from = Math.max(0, at - 120);
+      return { label: s.focusAt ? "正文 · 光标附近" : "正文", text: (from > 0 ? "…" : "") + text.slice(from, from + 400) };
+    }
+    case "storyboard": {
+      const clips = work.clips.filter(c => c.episodeId === s.episodeId).sort((a, b) => a.order - b.order);
+      return clips.length ? { label: `本集 ${clips.length} 个片段`, text: clips.map(c => `片段 ${c.order}「${c.title}」${c.shots.length} 镜`).join("\n") } : null;
+    }
+    case "clip": return clip ? { label: `片段 ${clip.order} 的镜头`, text: clip.shots.map((x, i) => `${i + 1}. ${x.size} · ${x.durationSec} 秒 · ${x.still}`).join("\n") } : null;
+    case "prompt": {
+      if (!clip) return null;
+      const board = s.which === "board";
+      return { label: board ? "分镜图提示词" : "视频提示词", text: draft(`clip:${clip.id}:prompt:${board ? "board" : "video"}`, board ? clip.boardPrompt : clip.videoPrompt) };
+    }
+    case "asset": return asset ? { label: "外观设定", text: draft(`asset:${asset.id}:description`, asset.description), image: adopted(asset.image)?.url } : null;
+    case "image":
+      if (s.which === "board") return clip ? { label: "分镜图", text: clip.boardPrompt, image: adopted(clip.board)?.url } : null;
+      return asset ? { label: "资产图", text: asset.description, image: adopted(asset.image)?.url } : null;
+    case "work": return { label: "作品", text: work.logline || work.idea };
+  }
+}
+
+function ScopePreview({ preview }: { preview: NonNullable<ReturnType<typeof scopePreview>> }) {
+  const [open, setOpen] = useState(false);
+  const long = preview.text.length > 160 || preview.text.split("\n").length > 3;
+  return <section className={`director-inline-ask-context ${open ? "is-open" : ""}`} aria-label="正在看的内容">
+    {preview.image && <img src={preview.image} alt=""/>}
+    <div>
+      <span>{preview.label}</span>
+      {preview.text.trim() ? <p>{preview.text}</p> : <p className="is-empty">（还是空的）</p>}
+      {long && <button type="button" onClick={() => setOpen(v => !v)}>{open ? "收起" : "展开全部"}</button>}
+    </div>
+  </section>;
+}
+
+/** 点在这些地方不算「点到浮层外面」：浮层本身、它的入口，以及从浮层里弹出来的确认框、下拉、提示。 */
+const INLINE_KEEP = ".director-inline-ask-pop, .director-ask-ai, .aep-select-menu, .ant-modal-root, .ant-modal-wrap, .ant-select-dropdown, .ant-dropdown, .ant-tooltip, .ant-message, .ant-notification";
+
+/**
+ * 内容旁入口的浮层对话：只针对这一处内容，只显示这次打开以后说的话和回复，不带之前的对话记录。
+ * 建议卡片和侧边栏一样（先看、可对比、采用才写入、能撤销）。点浮层外面、按 Esc 或右上角关闭；
+ * 想接着长聊点「在助手里继续」，转到侧边栏。
+ */
+function InlineAssistant({ inline, anchor, onAsked, onDrag, tip }: { inline: InlineAsk; anchor: RefObject<HTMLButtonElement | null>; onAsked?: () => void; onDrag?: (e: ReactPointerEvent) => void; tip?: ReactNode }) {
+  const ctl = useAssistant()!;
+  const { work, apply } = ctl;
+  const sender = useAssistantSender(work, apply);
+  const [text, setText] = useState(inline.draft ?? "");
+  const [local, setLocal] = useState<Record<string, string>>({});
+  const input = useRef<HTMLTextAreaElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  const replying = !!runningTask(work, "assistant");
+  const busy = sender.sending || replying;
+  useEffect(() => {
+    if (inline.draft !== undefined) setText(inline.draft);
+    const raf = window.requestAnimationFrame(() => input.current?.focus());
+    return () => window.cancelAnimationFrame(raf);
+  }, [inline.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
+  const close = useCallback(() => { ctl.closeInline(); anchor.current?.focus(); }, [ctl, anchor]);
+  useEffect(() => {
+    const down = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      // 点到别的 AI 入口时由那个入口接手（换成它自己的浮层），这里不抢先关。
+      if (!t?.closest || t.closest(INLINE_KEEP)) return;
+      ctl.closeInline();
+    };
+    const key = (e: KeyboardEvent) => {
+      // 弹窗或下拉菜单（模型选择）开着时，Esc 先关它们。
+      if (e.key !== "Escape" || document.querySelector(".ant-modal-wrap, .aep-select-menu")) return;
+      e.stopPropagation(); close();
+    };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("keydown", key, true);
+    return () => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("keydown", key, true); };
+  }, [ctl, close, anchor]);
+  const items = inline.sent.map(id => ({ id, ex: exchangeOf(work, id) }));
+  const last = items[items.length - 1]?.ex;
+  useEffect(() => {
+    const el = list.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [items.length, last?.reply?.status, last?.reply?.id]);
+  const send = () => {
+    const message = text.trim();
+    if (!message || busy) return;
+    void sender.send(message, inline.scope, work.assistant?.current ?? null, {
+      created: id => { setLocal(m => ({ ...m, [id]: message })); ctl.noteSent(id); },
+      done: m => setText(cur => cur.trim() === m ? "" : cur),
+    });
+  };
+  const toSidebar = () => {
+    ctl.ask(inline.scope, text.trim() ? text : undefined);
+    ctl.closeInline();
+    onAsked?.();
+  };
+  const label = scopeLabel(work, inline.scope);
+  const preview = scopePreview(work, inline.scope);
+  const quick = quickAsks(inline.scope);
+  const linked = linkedText(work, inline.scope, canSeeImages(work));
+  return <div className="director-inline-ask" role="dialog" aria-label={`AI 对话：${label}`}>
+    <header onPointerDown={onDrag} title="按住标题栏可以拖动">
+      <span className="director-inline-ask-handle" aria-hidden/>
+      <span className="director-inline-ask-mark" aria-hidden><AiMark size={16}/></span>
+      <div className="director-inline-ask-title"><b title={label}>{label}</b><small title={linked}>会参考：{linked}</small></div>
+      <button type="button" className="director-inline-ask-more" aria-label="在助手里继续" onClick={toSidebar} title="转到侧边栏的创作助手，可以看历史对话"><PanelRightOpen size={14}/><span>在助手里继续</span></button>
+      <button type="button" className="director-inline-ask-close" aria-label="关闭" onClick={close}><X size={16}/></button>
+    </header>
+    {tip}
+    <FollowUp.Provider value={(_scope, draft) => { setText(draft); input.current?.focus(); }}>
+      <div className="director-inline-ask-list" ref={list} aria-live="polite">
+        {preview && <ScopePreview preview={preview}/>}
+        {!items.length ? <div className="director-inline-ask-empty">
+          <p>{inline.hint || "说说你想怎么改，我先给建议，你看过对比再决定用不用。"}</p>
+          <div className="director-inline-ask-quick">{quick.map(q => <button key={q} type="button" onClick={() => { setText(q); input.current?.focus(); }}>
+            <AiMark size={11}/><span>{q}</span></button>)}</div>
+        </div> : items.map(({ id, ex }) => <div key={id} className="director-inline-ask-turn">
+          <div className="director-msg is-user"><p>{ex?.user.text ?? local[id]}</p></div>
+          {ex?.reply ? <Message work={work} msg={ex.reply}/>
+            : sender.pending?.id === id && sender.sending ? <div className="director-msg is-ai is-pending" role="status"><Loader2 size={14} className="ip-loading-icon"/><span>正在发送</span></div> : null}
+        </div>)}
+      </div>
+    </FollowUp.Provider>
+    {sender.error && <p className="director-assistant-send-error" role="alert">{sender.error}</p>}
+    <PendingRetry work={work} sender={sender} done={m => setText(cur => cur.trim() === m ? "" : cur)}/>
+    <div className="director-inline-ask-compose">
+      <textarea ref={input} rows={3} maxLength={2000} aria-label="和 AI 说" value={text} onChange={e => setText(e.target.value)}
+        placeholder={replying ? "AI 正在回复，回复完成后再发送" : `想怎么改？比如「${quick[0]}」`}
+        onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); send(); } }}/>
+      <footer>
+        <AssistantModelPicker work={work} apply={apply} disabled={busy}/>
+        <small>{work.pricing.mock ? "测试模式，免费" : `按实际用量结算，每轮最多 ${work.pricing.textMax.toLocaleString("zh-CN")} 积分`} · Enter 发送，Shift+Enter 换行</small>
+        <button type="button" className="director-assistant-send" aria-label="发送" disabled={busy || !text.trim()} onClick={send}
+          title={replying ? "等这条回复完成" : "发送（Enter）"}>{sender.sending ? <Loader2 size={16} className="ip-loading-icon"/> : <ArrowUp size={16}/>}</button>
+      </footer>
+    </div>
+  </div>;
+}
+
+/**
+ * 内容旁的 AI 入口：紫色小圆钮，只有图标，点了在旁边弹出只针对这段内容的浮层对话（不展开侧边栏、不带之前的对话）。
+ * 没有常驻文字，所以悬停提示和读屏名称都要说清讨论的是哪段内容。只管「问 AI」：
  * 生成、重写、一键制作这些实际操作用各自的按钮。没在工作台里时不显示。
  */
-export function AskAI({ scope, what, hint, draft, className, onAsked }: AskAIProps) {
+export function AskAI({ scope, what, hint, draft, className, inlineKey, onAsked }: AskAIProps) {
   const ctl = useAssistant();
+  const auto = useId();
+  const anchor = useRef<HTMLButtonElement>(null);
+  // 层级：盖住侧边栏（880）和资产抽屉（900），但在弹窗（1000，确认框、付款确认）下面；
+  // 入口本身在导演台弹窗里（分镜图弹窗）时要盖住那个弹窗，才看得见。
+  const [z, setZ] = useState(990);
+  const [box, setBox] = useState<WindowBox | null>(null);
+  const key = inlineKey ?? auto;
+  const open = ctl?.inline?.key === key;
+  // 打开时（点这个入口，或选中正文后的「问 AI」在这个入口上打开）贴着入口定位；关掉就忘掉位置。
+  useEffect(() => {
+    if (!open) { setBox(null); return; }
+    const a = anchor.current;
+    if (!a) return;
+    setZ(a.closest(".director-dialog-backdrop") ? 1010 : 990);
+    setBox(b => b ?? initialBox(a.getBoundingClientRect()));
+  }, [open]);
   if (!ctl) return null;
   const name = `和助手讨论${what}`;
   const resolve = () => typeof scope === "function" ? scope() : scope;
-  const current = ctl.open && sameScope(ctl.scope, resolve());
-  return <Tooltip title={<span className="director-ask-ai-tip"><b>{name}</b>{hint && <span>{hint}</span>}</span>} placement="topRight" mouseEnterDelay={0.2}>
-    <button type="button" className={`director-ask-ai ${current ? "is-current" : ""} ${className ?? ""}`} aria-label={name}
-      onClick={() => { ctl.ask(resolve(), draft); onAsked?.(); }}><AiMark size={14}/></button>
-  </Tooltip>;
+  return <>
+    <Tooltip title={<span className="director-ask-ai-tip"><b>{name}</b>{hint && <span>{hint}</span>}</span>} placement="topRight" mouseEnterDelay={0.2} open={open ? false : undefined}>
+      <button ref={anchor} type="button" className={`director-ask-ai ${open ? "is-current" : ""} ${className ?? ""}`} aria-label={name} aria-expanded={open} aria-haspopup="dialog"
+        onClick={() => {
+          if (open) return ctl.closeInline();
+          ctl.openInline(key, resolve(), { draft, hint });
+        }}><AiMark size={14}/></button>
+    </Tooltip>
+    {open && ctl.inline && box && typeof document !== "undefined" && createPortal(
+      <InlineWindow box={box} setBox={setBox} z={z}>
+        {(drag, tip) => <InlineAssistant inline={ctl.inline!} anchor={anchor} onAsked={onAsked} onDrag={drag} tip={tip}/>}
+      </InlineWindow>, document.body)}
+  </>;
+}
+
+/** 浮层窗口的位置和大小。打开时贴着入口（上方或下方用 bottom / top 定），拖过、缩放过以后一律用 top。 */
+type WindowBox = { left: number; top?: number; bottom?: number; width: number; height?: number };
+type Edge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+const SIZE_KEY = "director-inline-ask:size";
+/** 拖动、缩放的引导只出现到用户第一次真的拖过 / 缩过，或点了「知道了」（本浏览器记住，只是个人习惯）。 */
+const TIP_KEY = "director-inline-ask:tip-seen";
+const MIN_W = 400, MIN_H = 320, GAP = 8;
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
+
+/**
+ * 打开时的位置：默认右边对齐入口往左展开，入口靠左（左栏里）放不下就左边对齐往右展开；
+ * 入口上下哪边空间大放哪边。宽高沿用这个浏览器上次拖出来的大小（只是个人习惯，存不了也照常用默认）。
+ */
+function initialBox(r: DOMRect): WindowBox {
+  const vw = window.innerWidth, vh = window.innerHeight;
+  let saved: { width?: number; height?: number } = {};
+  try { saved = JSON.parse(window.localStorage.getItem(SIZE_KEY) ?? "{}") ?? {}; } catch { /* 没有就用默认 */ }
+  const width = clamp(saved.width ?? 580, MIN_W, vw - 32);
+  const left = clamp(r.right - width >= 16 ? r.right - width : r.left, 16, vw - width - 16);
+  const above = r.top - GAP - 16, below = vh - r.bottom - GAP - 16;
+  const room = Math.max(above, below);
+  const height = saved.height ? clamp(saved.height, MIN_H, room) : undefined;
+  return above >= below ? { left, bottom: vh - r.top + GAP, width, height } : { left, top: r.bottom + GAP, width, height };
+}
+
+/**
+ * 浮层的窗口：桌面上按住标题栏拖动，拖四边和四角改大小（不超出屏幕，最小 400×320），松手记住大小；
+ * 手机上是贴底的大面板（样式覆盖定位），不拖不缩。
+ */
+function InlineWindow({ box, setBox, z, children }: { box: WindowBox; setBox: (b: WindowBox) => void; z: number; children: (drag: (e: ReactPointerEvent) => void, tip: ReactNode) => ReactNode }) {
+  const el = useRef<HTMLDivElement>(null);
+  const [tip, setTip] = useState(() => {
+    if (typeof document === "undefined" || document.documentElement.dataset.layout !== "desktop") return false;
+    try { return window.localStorage.getItem(TIP_KEY) !== "1"; } catch { return true; }
+  });
+  const tipDone = () => { setTip(false); try { window.localStorage.setItem(TIP_KEY, "1"); } catch { /* 存不了下次再提示 */ } };
+  const start = (e: ReactPointerEvent, edge: Edge | "move") => {
+    if (document.documentElement.dataset.layout !== "desktop" || e.button !== 0 || !el.current) return;
+    if (edge === "move" && (e.target as Element).closest("button, a, input, textarea, select")) return;
+    e.preventDefault();
+    const r = el.current.getBoundingClientRect(), sx = e.clientX, sy = e.clientY;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const sized = edge !== "move" || box.height !== undefined;
+    let last: WindowBox = { left: r.left, top: r.top, width: r.width, height: sized ? r.height : undefined };
+    document.body.classList.add(edge === "move" ? "is-dragging-inline-ask" : "is-resizing-inline-ask");
+    const move = (ev: PointerEvent) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy;
+      let { left, top, width, height } = { left: r.left, top: r.top, width: r.width, height: r.height };
+      if (edge === "move") {
+        // 标题栏始终留在屏幕里，拿得回来。
+        left = clamp(r.left + dx, 120 - r.width, vw - 120);
+        top = clamp(r.top + dy, GAP, vh - 64);
+      } else {
+        if (edge.includes("e")) width = clamp(r.width + dx, MIN_W, vw - r.left - GAP);
+        if (edge.includes("w")) { width = clamp(r.width - dx, MIN_W, r.right - GAP); left = r.right - width; }
+        if (edge.includes("s")) height = clamp(r.height + dy, MIN_H, vh - r.top - GAP);
+        if (edge.includes("n")) { height = clamp(r.height - dy, MIN_H, r.bottom - GAP); top = r.bottom - height; }
+      }
+      last = { left, top, width, height: sized ? height : undefined };
+      setBox(last);
+    };
+    const up = (ev: PointerEvent) => {
+      // 真的拖动过（不只是点了一下标题栏）就算学会了，引导不再出现。
+      if (Math.abs(ev.clientX - sx) + Math.abs(ev.clientY - sy) > 4) tipDone();
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      document.body.classList.remove("is-dragging-inline-ask", "is-resizing-inline-ask");
+      if (edge !== "move") try { window.localStorage.setItem(SIZE_KEY, JSON.stringify({ width: Math.round(last.width), height: Math.round(last.height ?? 0) || undefined })); } catch { /* 存不了就算了 */ }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const vh = typeof window === "undefined" ? 900 : window.innerHeight;
+  // 没手动定高时按内容长，最高到屏幕边（贴入口时是入口那一侧的剩余空间）。
+  const maxHeight = box.height !== undefined ? undefined
+    : box.top !== undefined ? vh - box.top - GAP : vh - (box.bottom ?? 0) - GAP;
+  const style: CSSProperties = { zIndex: z, left: box.left, width: box.width, top: box.top, bottom: box.top === undefined ? box.bottom : undefined,
+    height: box.height, maxHeight: maxHeight !== undefined ? Math.min(720, maxHeight) : undefined };
+  return <div ref={el} className={`ip-brand-surface director-inline-ask-pop ${box.height !== undefined ? "is-sized" : ""}`} style={style}>
+    {children(e => start(e, "move"), tip ? <div className="director-inline-ask-tip" role="note">
+      <Move size={14} aria-hidden/><span>按住标题栏可以拖到别处，拖四边或右下角可以调整大小</span>
+      <button type="button" onClick={tipDone}>知道了</button>
+    </div> : null)}
+    {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as Edge[]).map(edge => <span key={edge} className={`director-inline-ask-grip is-${edge}`} aria-hidden onPointerDown={e => start(e, edge)}/>)}
+  </div>;
 }
 
 /**
@@ -741,4 +1121,3 @@ export function AiField({ children, className, ...ask }: AskAIProps & { children
   const ctl = useAssistant();
   return <div className={`director-ai-field ${ctl ? "has-ai" : ""} ${className ?? ""}`}>{children}<AskAI {...ask} className="is-corner"/></div>;
 }
-

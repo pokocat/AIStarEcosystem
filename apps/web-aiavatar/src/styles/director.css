@@ -762,7 +762,14 @@ html[data-layout="desktop"] .director-assistant { position: sticky; inset: auto;
 .director-assistant .director-assistant-composer textarea { resize: none; min-height: 64px; max-height: 180px; }
 .director-assistant-send-error { margin: 0; color: var(--ip-error); font-size: 12px; line-height: 1.6; }
 .director-assistant-composer footer { display: flex; align-items: center; gap: 8px; }
-.director-assistant-composer footer small { color: var(--ip-muted); font-size: 11px; }
+.director-assistant-composer footer small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ip-muted); font-size: 11px; }
+/* 输入框旁的模型选择：浅紫小胶囊，侧边栏和浮层同一个 */
+.director-model-picker { position: relative; display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; min-width: 0; max-width: 200px; }
+.director-model-picker .aep-select-field { max-width: 200px; min-height: 28px; height: 28px; gap: 4px; padding: 2px 8px 2px 10px; border: 1px solid #dcd6fb; border-radius: 999px; background-color: #f4f1ff; color: var(--ai-ink); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-model-picker .aep-select-field.is-error { border-color: var(--ip-error); }
+.director-model-picker .aep-select-field:hover:not(:disabled) { border-color: var(--ai-ring); }
+.director-model-picker.is-fixed { padding: 4px 10px; border-radius: 999px; background: #f4f1ff; color: var(--ai-ink); font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-model-picker-error { position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 3; width: max-content; max-width: 280px; padding: 6px 10px; border-radius: 8px; background: var(--ip-error-soft); color: var(--ip-error); font-size: 12px; line-height: 1.5; white-space: normal; box-shadow: 0 6px 18px rgba(25, 34, 41, .12); }
 .director-assistant-send { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 9px; background: var(--ai-gradient); color: #fff; }
 .director-assistant-send:disabled { opacity: .35; cursor: not-allowed; }
 
@@ -839,7 +846,7 @@ html[data-layout="desktop"] .director-board-side .director-episode-side { positi
    全站统一的 AI 群青紫，值与 ip-desktop.css 的 .ip-surface 令牌相同。导演台挂在 .ip-brand-surface 下，
    拿不到那组令牌，所以在这里按同样的值补上，不另造颜色。只给「打开助手」用：
    顶栏的「创作助手」开关，以及内容右下角的紫色小圆钮。生成、重写、一键制作用各自的按钮。 */
-.director-page, .director-shell, .director-dialog-backdrop {
+.director-page, .director-shell, .director-dialog-backdrop, .director-inline-ask-pop {
   --ai: #4f5bd5; --ai-2: #8b6cf0; --ai-gradient: linear-gradient(135deg, var(--ai), var(--ai-2));
   --ai-soft: #ebe7fb; --ai-ink: #4a4fb8; --ai-ring: rgba(139, 108, 240, .65); --ai-glow: rgba(139, 108, 240, .22);
 }
@@ -882,7 +889,94 @@ html:not([data-layout="desktop"]) .director-ai-field > .director-ai-field-body +
 /* 选中正文后的「问 AI」也用 AI 紫。 */
 .director-selection-bar button.is-ai, .ip-brand-surface .director-selection-bar button.is-ai { color: var(--ai-ink); }
 .director-selection-bar button.is-ai:hover, .director-selection-bar button.is-ai:focus-visible { background: var(--ai-soft); color: var(--ai-ink); }
-@media (prefers-reduced-motion: reduce) { .director-ask-ai, .director-assistant-toggle { transition: none; } .director-ask-ai:hover { transform: none; } }
+/* 内容旁入口的浮层对话（2026-10-29）：只针对这一处内容，只显示这次说的话，不带之前的对话。
+   挂在 body 上（antd Popover），所以根节点自己带 .ip-brand-surface 和 AI 令牌。 */
+.director-inline-ask-pop { position: fixed; display: flex; flex-direction: column; padding: 1.5px; border-radius: 20px; background: var(--ai-gradient); box-shadow: 0 28px 72px rgba(52, 46, 140, .26), 0 8px 24px rgba(25, 34, 41, .12), 0 0 0 8px rgba(139, 108, 240, .07); animation: director-inline-in 160ms cubic-bezier(.16, 1, .3, 1); }
+@keyframes director-inline-in { from { opacity: 0; transform: translateY(6px) scale(.985); } }
+html[data-layout="desktop"] .director-inline-ask > header { cursor: grab; user-select: none; }
+body.is-dragging-inline-ask, body.is-dragging-inline-ask * { cursor: grabbing !important; user-select: none !important; }
+body.is-resizing-inline-ask { user-select: none; }
+.director-inline-ask-grip { position: absolute; z-index: 2; touch-action: none; }
+.director-inline-ask-grip.is-n, .director-inline-ask-grip.is-s { left: 18px; right: 18px; height: 10px; cursor: ns-resize; }
+.director-inline-ask-grip.is-n { top: -5px; }
+.director-inline-ask-grip.is-s { bottom: -5px; }
+.director-inline-ask-grip.is-e, .director-inline-ask-grip.is-w { top: 18px; bottom: 18px; width: 10px; cursor: ew-resize; }
+.director-inline-ask-grip.is-e { right: -5px; }
+.director-inline-ask-grip.is-w { left: -5px; }
+.director-inline-ask-grip:is(.is-ne, .is-nw, .is-se, .is-sw) { width: 18px; height: 18px; }
+.director-inline-ask-grip.is-ne { top: -5px; right: -5px; cursor: nesw-resize; }
+.director-inline-ask-grip.is-sw { bottom: -5px; left: -5px; cursor: nesw-resize; }
+.director-inline-ask-grip.is-nw { top: -5px; left: -5px; cursor: nwse-resize; }
+.director-inline-ask-grip.is-se { bottom: -5px; right: -5px; cursor: nwse-resize; }
+/* 常驻的提示：标题栏正中一条拖动条；指到边上亮一条紫线；右下角三道斜纹表示能拖着改大小。 */
+.director-inline-ask-handle { display: none; }
+html[data-layout="desktop"] .director-inline-ask-handle { position: absolute; top: 6px; left: 50%; display: block; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgba(110, 92, 230, .22); transition: background 140ms ease-out, width 140ms ease-out, margin 140ms ease-out; }
+html[data-layout="desktop"] .director-inline-ask > header { position: relative; }
+html[data-layout="desktop"] .director-inline-ask > header:hover .director-inline-ask-handle { width: 48px; margin-left: -24px; background: rgba(110, 92, 230, .5); }
+.director-inline-ask-grip:is(.is-n, .is-s, .is-e, .is-w)::after { content: ""; position: absolute; border-radius: 2px; background: transparent; transition: background 120ms ease-out; }
+.director-inline-ask-grip:is(.is-n, .is-s)::after { left: 0; right: 0; top: 4px; height: 2px; }
+.director-inline-ask-grip:is(.is-e, .is-w)::after { top: 0; bottom: 0; left: 4px; width: 2px; }
+.director-inline-ask-grip:is(.is-n, .is-s, .is-e, .is-w):hover::after, body.is-resizing-inline-ask .director-inline-ask-grip:active::after { background: rgba(139, 108, 240, .75); }
+.director-inline-ask-grip.is-se::after { content: ""; position: absolute; right: 8px; bottom: 8px; width: 12px; height: 12px; background: linear-gradient(135deg, transparent 0 46%, rgba(110, 92, 230, .5) 46% 54%, transparent 54% 64%, rgba(110, 92, 230, .5) 64% 72%, transparent 72% 82%, rgba(110, 92, 230, .5) 82% 90%, transparent 90%); opacity: .8; transition: opacity 120ms ease-out; }
+.director-inline-ask-grip.is-se:hover::after { opacity: 1; }
+/* 第一次打开时的引导条：标题栏下面一行，拖过、缩过或点「知道了」就不再出现。 */
+.director-inline-ask-tip { display: flex; align-items: center; gap: 8px; padding: 8px 14px 8px 18px; border-bottom: 1px solid #ece9fb; background: #f6f3ff; color: var(--ai-ink); font-size: 12px; line-height: 1.5; animation: director-inline-tip 2.4s ease-in-out 2; }
+.director-inline-ask-tip svg { flex-shrink: 0; }
+.director-inline-ask-tip span { flex: 1; min-width: 0; }
+.director-inline-ask-tip button { flex-shrink: 0; padding: 3px 10px; border: 1px solid #dcd6fb; border-radius: 999px; background: #fff; color: var(--ai-ink); font-size: 12px; font-weight: 600; }
+.director-inline-ask-tip button:hover { border-color: var(--ai-ring); }
+@keyframes director-inline-tip { 0%, 100% { background: #f6f3ff; } 50% { background: #ece6ff; } }
+html:not([data-layout="desktop"]) .director-inline-ask-tip { display: none; }
+.director-inline-ask { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; border-radius: 18.5px; overflow: hidden; background: var(--ip-paper); }
+.director-inline-ask > header { display: flex; align-items: center; gap: 12px; padding: 16px 14px 14px 18px; background: radial-gradient(120% 140% at 0% 0%, #ebe6ff 0%, #f6f4ff 38%, var(--ip-paper) 72%); border-bottom: 1px solid #ece9fb; }
+.director-inline-ask-mark { display: grid; place-items: center; flex-shrink: 0; width: 36px; height: 36px; border-radius: 11px; background: var(--ai-gradient); color: #fff; box-shadow: 0 6px 16px rgba(110, 92, 230, .35); }
+.director-inline-ask-title { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; line-height: 1.4; }
+.director-inline-ask-title b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 16px; font-weight: 700; color: var(--ip-ink); }
+.director-inline-ask-title small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--ip-muted); }
+.director-inline-ask-more { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; min-height: 32px; padding: 4px 11px; border: 1px solid #dcd6fb; border-radius: 999px; background: rgba(255, 255, 255, .8); color: var(--ai-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.director-inline-ask-more:hover { background: #fff; border-color: var(--ai-ring); }
+.director-inline-ask-close { display: grid; place-items: center; flex-shrink: 0; width: 32px; height: 32px; border: 0; border-radius: 10px; background: transparent; color: var(--ip-muted); }
+.director-inline-ask-close:hover { background: rgba(25, 34, 41, .06); color: var(--ip-ink); }
+.director-inline-ask-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px; }
+.director-inline-ask-context { display: flex; gap: 12px; padding: 12px 14px; border: 1px solid var(--ip-line); border-left: 3px solid var(--ai-2); border-radius: 12px; background: var(--ip-soft); }
+.director-inline-ask-context img { flex-shrink: 0; width: 88px; height: 88px; border-radius: 9px; object-fit: cover; background: var(--ip-line); }
+.director-inline-ask-context > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
+.director-inline-ask-context span { font-size: 11px; font-weight: 700; letter-spacing: .04em; color: var(--ai-ink); }
+.director-inline-ask-context p { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; margin: 0; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ip-ink); font-size: 13px; line-height: 1.75; }
+.director-inline-ask-context.is-open p { display: block; max-height: 260px; overflow: auto; }
+.director-inline-ask-context p.is-empty { color: var(--ip-muted); }
+.director-inline-ask-context button { align-self: flex-start; padding: 0; border: 0; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; }
+.director-inline-ask-turn { display: flex; flex-direction: column; gap: 12px; }
+.director-inline-ask-empty { display: flex; flex-direction: column; gap: 12px; }
+.director-inline-ask-empty p { margin: 0; color: var(--ip-muted); font-size: 13px; line-height: 1.75; }
+.director-inline-ask-quick { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.director-inline-ask-quick button { display: flex; align-items: flex-start; gap: 8px; min-width: 0; padding: 11px 13px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); color: var(--ip-ink); font-size: 13px; line-height: 1.55; text-align: left; transition: border-color 140ms ease-out, background 140ms ease-out, transform 140ms ease-out; }
+.director-inline-ask-quick button svg { flex-shrink: 0; margin-top: 4px; color: var(--ai-2); }
+.director-inline-ask-quick button span { min-width: 0; overflow-wrap: anywhere; }
+.director-inline-ask-quick button:hover { border-color: var(--ai-ring); background: #f6f3ff; transform: translateY(-1px); }
+.director-inline-ask > .director-assistant-send-error, .director-inline-ask > .director-assistant-pending { margin: 0 18px 10px; }
+.director-inline-ask-compose { display: flex; flex-direction: column; gap: 8px; margin: 0 14px 14px; padding: 12px 12px 10px 14px; border: 1.5px solid var(--ip-line); border-radius: 16px; background: var(--ip-paper); box-shadow: 0 2px 10px rgba(25, 34, 41, .05); transition: border-color 140ms ease-out, box-shadow 140ms ease-out; }
+.director-inline-ask-compose:focus-within { border-color: var(--ai-ring); box-shadow: 0 0 0 4px rgba(139, 108, 240, .12); }
+.director-inline-ask-compose textarea { width: 100%; min-height: 72px; max-height: 200px; padding: 0; border: 0; background: transparent; font-size: 14px; line-height: 1.7; resize: none; field-sizing: content; }
+.director-inline-ask-compose textarea:focus, .director-inline-ask-compose textarea:focus-visible { outline: none; }
+.director-inline-ask-compose footer { display: flex; align-items: center; gap: 10px; }
+.director-inline-ask-compose footer small { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ip-muted); font-size: 11px; }
+.director-inline-ask .director-assistant-send { width: 38px; height: 38px; flex-shrink: 0; border-radius: 12px; box-shadow: 0 6px 14px rgba(110, 92, 230, .3); }
+.director-inline-ask .director-assistant-send:disabled { box-shadow: none; }
+.director-inline-ask .director-proposal footer { flex-wrap: wrap; }
+.ip-brand-surface .director-inline-ask .director-assistant-send { color: #fff; }
+/* 手机上入口常在屏幕下方或折叠线以下，跟着入口定位会跑出屏幕：改成贴底的大面板（覆盖 antd 写在行内的定位）。 */
+html:not([data-layout="desktop"]) .director-inline-ask-pop { inset: auto 0 0 0 !important; width: auto !important; height: auto !important; max-height: 86dvh !important; padding: 1.5px 0 0; border-radius: 22px 22px 0 0; box-shadow: 0 -16px 48px rgba(52, 46, 140, .22); }
+html:not([data-layout="desktop"]) .director-inline-ask { border-radius: 21px 21px 0 0; }
+html:not([data-layout="desktop"]) .director-inline-ask-grip { display: none; }
+html:not([data-layout="desktop"]) .director-inline-ask > header { position: relative; padding-top: 22px; }
+html:not([data-layout="desktop"]) .director-inline-ask > header::before { content: ""; position: absolute; top: 8px; left: 50%; width: 40px; height: 4px; margin-left: -20px; border-radius: 2px; background: rgba(25, 34, 41, .16); }
+html:not([data-layout="desktop"]) .director-inline-ask-more span { display: none; }
+html:not([data-layout="desktop"]) .director-inline-ask-more { width: 32px; padding: 0; justify-content: center; }
+html:not([data-layout="desktop"]) .director-inline-ask-quick { grid-template-columns: 1fr; }
+html:not([data-layout="desktop"]) .director-inline-ask-compose { margin-bottom: max(14px, env(safe-area-inset-bottom)); }
+
+@media (prefers-reduced-motion: reduce) { .director-inline-ask-pop, .director-inline-ask-tip { animation: none; } .director-inline-ask-handle { transition: none; } .director-ask-ai, .director-assistant-toggle, .director-inline-ask-quick button { transition: none; } .director-ask-ai:hover, .director-inline-ask-quick button:hover { transform: none; } }
 
 /* 资产的两种自有图（2026-10-28）：参考图（生成时参照）与资产图（直接使用）分区显示，说法一致。 */
 .director-sheet-section .director-ref img, .director-sheet-section .director-ref .director-ref-empty { width: 56px; height: 56px; }
