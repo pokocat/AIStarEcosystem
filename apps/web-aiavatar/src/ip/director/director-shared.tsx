@@ -179,7 +179,8 @@ export function Field({ label, children, hint }: { label: string; children: Reac
 // 刷新或关页面时由工作台提示「有未保存的修改」。
 
 const drafts = new Map<string, unknown>();
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+// 字符串直接比：正文可能上百万字，每敲一个字都整段 JSON 序列化两遍会卡（2026-10-29 取消字数上限）。
+const same = (a: unknown, b: unknown) => typeof a === "string" || typeof b === "string" ? a === b : JSON.stringify(a) === JSON.stringify(b);
 
 /** 像 useState，但没保存的值不随组件卸载丢失；没改过时跟随服务端的值。返回 [值, 设值, 是否有未保存修改]。 */
 export function useDraft<T>(key: string, server: T): [T, (value: T) => void, boolean] {
@@ -249,7 +250,7 @@ export function dialogFocus(el: HTMLElement | null) {
   return () => { el.removeEventListener("keydown", onKey); if (previous && document.contains(previous)) previous.focus({ preventScroll: true }); };
 }
 
-/** 大图最多放大到「适应窗口」的 6 倍：参考图、分镜宫格约 2K，再大只是糊的像素。 */
+/** 大图最多放大到「适应窗口」的 6 倍：资产图、分镜宫格约 2K，再大只是糊的像素。 */
 export const PREVIEW_MAX_SCALE = 6;
 
 /**

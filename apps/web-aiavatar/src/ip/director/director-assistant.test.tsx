@@ -88,6 +88,8 @@ test("an unknown send keeps its request id after closing and reopening the assis
   fireEvent.click(screen.getByRole("button", { name: "发送" }));
   await screen.findByText(/发送状态还不确定/, {}, { timeout: 5000 });
   expect((screen.getByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(true);
+  // 正文冻结时右下角的入口照样能用：只是打开助手，不改正文。
+  expect((screen.getByRole("button", { name: "和助手讨论第 1 集正文" }) as HTMLButtonElement).disabled).toBe(false);
   const original = vi.mocked(DirectorApi.runTask).mock.calls[0][1];
   fireEvent.click(screen.getByRole("button", { name: "收起助手" }));
   fireEvent.click(screen.getByRole("button", { name: "创作助手" }));
@@ -165,4 +167,25 @@ test("a pending reply stays read-only after reopening; failed replies unlock the
   vi.mocked(DirectorApi.getWork).mockResolvedValue(work([{ ...pending[0], status: "failed", error: "failed" }]));
   render(<DirectorWorkbench id="w"/>);
   expect((await screen.findByRole("textbox", { name: "第 1 集正文" }) as HTMLTextAreaElement).readOnly).toBe(false);
+});
+
+// 2026-10-29 用户反馈：内容区的 AI 入口统一为输入框右下角的紫色小圆钮，没有常驻文字；
+// 悬停和读屏名称说清讨论的是哪段内容，点了带上这段内容打开同一个助手。
+test("the corner AI button on the episode text is icon-only, named after its content, and opens the assistant on it", async () => {
+  window.localStorage.setItem("director-assistant:open", "0");
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work());
+  render(<DirectorWorkbench id="w"/>);
+  const text = await screen.findByRole("textbox", { name: "第 1 集正文" });
+  const toggle = screen.getByRole("button", { name: "创作助手" });
+  expect(toggle.getAttribute("aria-pressed")).toBe("false");
+  expect(screen.queryByRole("button", { name: /和助手讨论这一集/ })).toBeNull();
+  const ask = screen.getByRole("button", { name: "和助手讨论第 1 集正文" });
+  // 和输入框在同一个容器里（右下角），没有可见文字。
+  expect(ask.closest(".director-ai-field")?.contains(text)).toBe(true);
+  expect(ask.textContent).toBe("");
+  fireEvent.click(ask);
+  const panel = screen.getByRole("complementary", { name: "全能创作助手" });
+  expect(within(panel).getByText("正在讨论：第 1 集 · 叶上的耳朵")).toBeTruthy();
+  expect(toggle.getAttribute("aria-pressed")).toBe("true");
+  expect(ask.className).toContain("is-current");
 });

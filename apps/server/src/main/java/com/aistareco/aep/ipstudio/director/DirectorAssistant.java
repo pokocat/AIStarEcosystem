@@ -143,7 +143,7 @@ public final class DirectorAssistant {
             }
             case "script.draft" -> {
                 String content = DirectorPrompts.text(p, "content");
-                if (content.length() < 20 || content.length() > 60000) return null;
+                if (content.length() < 20) return null; // 剧本不限长度（2026-10-29），只挡明显不是剧本的短内容
                 r.put("content", content).put("title", DirectorPrompts.clip(DirectorPrompts.text(p, "title"), 60))
                         .put("logline", DirectorPrompts.clip(DirectorPrompts.text(p, "logline"), 200));
             }

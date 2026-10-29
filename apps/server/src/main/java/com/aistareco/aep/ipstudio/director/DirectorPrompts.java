@@ -709,6 +709,21 @@ public final class DirectorPrompts {
         return label + " 是这张图现在的版本：在它的基础上按上面的描述修改；描述里没有要求改变的人物长相、服装、场景、构图和排布尽量保持一致。";
     }
 
+    /** 资产带用户参考图时追加在出图提示词后：角色只取长相；场景、道具参照外观，版式仍按上面的要求重画。 */
+    public static String refNote(String kind) {
+        return switch (kind) {
+            case "scene" -> SCENE_REF_NOTE;
+            case "prop" -> PROP_REF_NOTE;
+            default -> CHARACTER_REF_NOTE;
+        };
+    }
+
+    public static final String SCENE_REF_NOTE = "图1 是用户提供的场景参考图：空间布局、建筑与陈设、材质和主色调照着它画。"
+            + "不要照搬它的画质、水印、文字或里面的人物；按上面的描述和画面风格重新绘制这个场景。";
+
+    public static final String PROP_REF_NOTE = "图1 是用户提供的道具参考图：外形、比例、材质、颜色和标志性细节照着它画。"
+            + "不要照搬它的背景、光线、画质、水印或文字；按上面的描述和画面风格重新绘制这件道具。";
+
     public static final String CHARACTER_REF_NOTE = "图1 是用户提供的形象参考照片，只用来确定这个人的长相：脸型、五官、发型、肤色和体型照着它画。"
             + "肤色指这个人在中性白光下本来的肤色，照片拍摄时的偏黄、偏暗和脸上的阴影不算。"
             + "不要照搬它的构图、角度、背景、光线或画质；服装和配饰以上面的角色设定为准，设定没写的才参考照片。"

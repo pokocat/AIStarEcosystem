@@ -276,7 +276,11 @@ export interface DirectorPendingExtractItem {
   matchName?: string;
 }
 
-export interface DirectorPendingExtract { runId: string; at: string; items: DirectorPendingExtractItem[] }
+export interface DirectorPendingExtract {
+  runId: string; at: string; items: DirectorPendingExtractItem[];
+  /** 全剧一次读不完时分批提取：这次读的是第 fromNo–toNo 集（count 集，共 total 集），剩下的再提取一次。 */
+  batch?: { fromNo: number; toNo: number; count: number; total: number } | null;
+}
 
 /** 待确认分集里的一段范围：篇幅和开头、结尾各一句，正文确认时才从剧本里取。 */
 export interface DirectorSplitRangeView { paragraphs: number; chars: number; head: string; tail: string }
@@ -348,7 +352,8 @@ export interface DirectorWork {
   /** 全能创作助手的对话：整部作品一份，按对话分段；每条消息绑定发送时的对象。 */
   assistant?: DirectorAssistant | null;
   tasks: DirectorTask[];
-  pricing: { textMax: number; image: number; mock: boolean };
+  /** textChars：所选文本模型一次调用最多读多少字正文（正文本身不限长；超过的任务分批、按范围读或说明怎么拆）。 */
+  pricing: { textMax: number; image: number; mock: boolean; textChars?: number };
   imageModels?: DirectorImageModel[];
   imageModelState?: DirectorImageModelState;
   textModels?: StudioCapabilities["textModels"];
@@ -431,6 +436,10 @@ export interface DirectorAssistantScope {
   text?: string | null;
   start?: number | null;
   end?: number | null;
+  /** script：光标位置。正文很长时助手读光标附近那一段。 */
+  focusAt?: number | null;
+  /** 正文太长、只给模型看了 [from, to) 一段时由服务端写上；回复里的修改只在这一段里找位置。 */
+  window?: { from: number; to: number; total: number } | null;
   /** 服务端按对象算出的说明，如「第 1 集 · 已选正文」「片段 3 · 视频提示词」。 */
   label?: string;
 }
@@ -493,6 +502,8 @@ export interface DirectorAssistantMessage {
   proposals?: DirectorProposal[];
   /** 图片类对话：seen = 模型实际看了这张图；prompt-only = 模型不能看图，只读了提示词。 */
   visual?: "seen" | "prompt-only" | null;
+  /** 正文太长、这次只读了一段时的说明，如「正文很长，这次只读了第 1–24,000 字（全文 120,000 字）」。 */
+  range?: string | null;
   /** 回复里有建议因为对不上原文或超出范围被丢掉的数量。 */
   dropped?: number;
 }

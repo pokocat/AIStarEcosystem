@@ -676,8 +676,8 @@ components:
       type: object
       required: [text, format]
       properties:
-        text: { type: string, maxLength: 60000, description: 已提取的可编辑正文，不静默截断 }
-        format: { type: string, enum: [pdf, doc, docx, ppt, pptx, rtf, txt, md, markdown, csv, tsv, json, xml, yaml, yml, log, srt, vtt] }
+        text: { type: string, description: 已提取的可编辑正文，不限字数（2026-10-29 取消 6 万字），不静默截断 }
+        format: { type: string, enum: [pdf, doc, docx, ppt, pptx, rtf, html, htm, txt, md, markdown, csv, tsv, json, xml, yaml, yml, log, srt, vtt] }
     DirectorWorkSummary:
       type: object
       description: '见 packages/types/src/director.ts DirectorWorkSummary。'
@@ -15076,9 +15076,11 @@ paths:
       operationId: directorImportScript
       summary: 从剧本文件提取文字
       description: >
-        已登录且开通 aiavatar 的用户上传不超过 8 MiB 的文本、Word、PPT、PDF 或 RTF 文件。
-        PDF/PPT 最多 100 页；提取正文不超过 60000 字，超限直接拒绝而非截断。
+        已登录且开通 aiavatar 的用户上传不超过 50 MiB 的文本、Word、PPT、PDF、RTF 或 HTML（.html/.htm）文件（2026-10-28 由 8 MiB 放宽）。
+        PDF/PPT 最多 100 页；Word/PPT 解包后最多 256 MiB；提取正文不限字数（2026-10-29 取消 6 万字），整份返回、不截断。
         纯文本支持 UTF-8、带 BOM 的 UTF-16/32、GB18030；不执行宏或外部内容。
+        HTML 只取可读正文：标题、段落、列表项、表格行各占一行，pre 保留换行；script/style/noscript/template/iframe/嵌入对象/表单控件、
+        hidden 与 display:none 元素、注释和标签本身都不进正文；按 BOM / meta charset 解码，未声明且非 UTF-8 时按 GB18030；不运行脚本、不加载外部资源。
         只返回提取文字，不存储原文件、不创建作品、不调用模型、不扣积分。
         前端先预览，用户确认后填入正文，再经创建或带修订号的 PATCH 保存。
         扫描 PDF、受密码保护或禁止复制的 PDF、空文件、损坏文件均明确报错。
@@ -15107,7 +15109,7 @@ paths:
       tags: [ipstudio]
       operationId: directorCreateWork
       description: '新建作品：一句创意（idea）或已有剧本（script）。不调用模型、不扣积分。'
-      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, maxLength: 60000 } } } } } }
+      requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, description: 剧本正文不限字数（2026-10-29）；一次模型调用读多少见 BUSINESS_RULES「导演台长正文」 } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
   /v1/ip-studio/director/works/{id}:
@@ -15149,7 +15151,7 @@ paths:
       description: >-
         用户修改（op 白名单：draft.asEpisode / episode.update / episode.usePendingPlan / episode.discardPendingPlan /
         asset.create / asset.update / asset.delete / asset.adopt / asset.upload / assets.confirm /
-        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / clip.usePendingShots / clip.discardPendingShots / clip.unlinkAsset / extract.save / extract.discard / split.save / split.discard / split.undo / reference.update / reference.toEpisode / asset.link / notice.dismiss / assistant.apply / assistant.dismiss / assistant.undo / assistant.newThread / assistant.openThread）。助手建议：assistant.apply|dismiss|undo 带 data={messageId,proposalId}；采用前核对原文 / 镜头签名 / 用户改过的字段，对不上 409 DIRECTOR_PROPOSAL_STALE，不覆盖；采用后可撤销，之后对象又改过不能撤销（同码）。assistant.openThread 带 data.threadId（docs/ai-director-assistant.md）。拆分结果先存为 pendingSplit，split.save（data.preamble=reference|episode）采用，split.discard 放弃；两者都必须带 targetId=pendingSplit.id，缺失或不匹配、剧本改过均 409 DIRECTOR_SPLIT_EXPIRED；split.undo 恢复拆分前原稿（已有分镜图 / 视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reference.update / reference.toEpisode 带 rev=referenceRev。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。asset.upload 对角色、场景、道具一样，上传的图直接作为采用的参考图；asset.setRef 设的形象参考只在生成设定图时作为图1。asset.create / asset.update 可带 episodeIds（只认作品里存在的集，否则 400）。关联已有资产用 asset.link（targetId 必填，data={objectId,versionId?}）：图和描述由服务端按本人资产库读出，类型必须与该资产一致、资产库那项要有图（否则 400 DIRECTOR_INPUT_INVALID），版本不存在 → 404 DIRECTOR_LIBRARY_VERSION_NOT_FOUND；记下 libraryObjectId，所选版本的图（source=library）直接采用，描述空着才补，名字不变。asset.delete 时资产还被片段用着（在关联资产里或是某句台词的说话人）409 DIRECTOR_ASSET_IN_USE，error.details={assetId,name,clips:[{clipId,episodeId,episodeNo,order,title,linked,lines}]}，资产不删。clip.unlinkAsset（targetId=片段，data={assetId}）只把这一项从该片段的关联资产里去掉，其余资产顺序不变，不删片段、资产和分镜图 / 视频（按指纹标需更新），台词说话人不改；不在关联里 409 DIRECTOR_EDIT_CONFLICT，片段在出分镜图或视频 409 DIRECTOR_TASK_RUNNING。重写分镜脚本期间改过的片段，新版本挂在 clip.pendingShots，clip.usePendingShots 换成新版本（视频生成中 409 DIRECTOR_TASK_RUNNING）、clip.discardPendingShots 保留现有。
+        asset.setVoice / asset.clearVoice / asset.setRef / asset.clearRef / clip.update / clip.split / clip.delete / clip.adoptBoard / clip.confirmBoard / clip.adoptVideo / clip.confirmVideo / clip.setVoiceMode / clip.usePendingShots / clip.discardPendingShots / clip.unlinkAsset / extract.save / extract.discard / split.save / split.discard / split.undo / reference.update / reference.toEpisode / asset.link / notice.dismiss / assistant.apply / assistant.dismiss / assistant.undo / assistant.newThread / assistant.openThread）。助手建议：assistant.apply|dismiss|undo 带 data={messageId,proposalId}；采用前核对原文 / 镜头签名 / 用户改过的字段，对不上 409 DIRECTOR_PROPOSAL_STALE，不覆盖；采用后可撤销，之后对象又改过不能撤销（同码）。assistant.openThread 带 data.threadId（docs/ai-director-assistant.md）。拆分结果先存为 pendingSplit，split.save（data.preamble=reference|episode）采用，split.discard 放弃；两者都必须带 targetId=pendingSplit.id，缺失或不匹配、剧本改过均 409 DIRECTOR_SPLIT_EXPIRED；split.undo 恢复拆分前原稿（已有分镜图 / 视频 409 DIRECTOR_CLIPS_HAVE_MEDIA）；reference.update / reference.toEpisode 带 rev=referenceRev。提取资产的结果先存为 pendingExtract，用户确认（extract.save，targetId=清单 runId，data.items=[{itemId,include,name}]）后才写进资产库。asset.upload 对角色、场景、道具一样，上传的图直接作为采用的资产图（adoptedBy=user，不生成、不扣积分，原采用版本留在候选历史）；asset.setRef 设的参考图（角色、场景、道具都可以，2026-10-28 起）只在生成资产图时作为图1，不改采用的资产图、不发起生成。asset.create 可带 data.image={key,use}：use=asset 直接作为采用的资产图，use=ref 只设参考图；key 须是本人上传的，use 取值之外或缺 key 一律 400 DIRECTOR_INPUT_INVALID 且不建资产。asset.create / asset.update 可带 episodeIds（只认作品里存在的集，否则 400）。关联已有资产用 asset.link（targetId 必填，data={objectId,versionId?}）：图和描述由服务端按本人资产库读出，类型必须与该资产一致、资产库那项要有图（否则 400 DIRECTOR_INPUT_INVALID），版本不存在 → 404 DIRECTOR_LIBRARY_VERSION_NOT_FOUND；记下 libraryObjectId，所选版本的图（source=library）直接采用，描述空着才补，名字不变。asset.delete 时资产还被片段用着（在关联资产里或是某句台词的说话人）409 DIRECTOR_ASSET_IN_USE，error.details={assetId,name,clips:[{clipId,episodeId,episodeNo,order,title,linked,lines}]}，资产不删。clip.unlinkAsset（targetId=片段，data={assetId}）只把这一项从该片段的关联资产里去掉，其余资产顺序不变，不删片段、资产和分镜图 / 视频（按指纹标需更新），台词说话人不改；不在关联里 409 DIRECTOR_EDIT_CONFLICT，片段在出分镜图或视频 409 DIRECTOR_TASK_RUNNING。剧本正文（draft、各集 content、设定资料）不限字数，episode.update / reference.update / 助手写回都不截断（2026-10-29）；一次模型调用读不下时：AI 拆分、写分镜脚本、重写分镜 400 DIRECTOR_TEXT_TOO_LONG_FOR_MODEL（error.details={chars,budget}，不提交、不扣费），全剧提取资产分批（pendingExtract.batch={fromNo,toNo,count,total}），助手只读光标 / 选区附近一段（scope.window、消息 range 说明），作品 pricing.textChars 给出一次能读的字数。重写分镜脚本期间改过的片段，新版本挂在 clip.pendingShots，clip.usePendingShots 换成新版本（视频生成中 409 DIRECTOR_TASK_RUNNING）、clip.discardPendingShots 保留现有。
         改内容带对象 rev，对不上 409 DIRECTOR_EDIT_CONFLICT；超长直接 400，不截断。
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [op], properties: { op: { type: string }, targetId: { type: string, nullable: true }, rev: { type: integer, nullable: true }, data: { type: object } } } } } }

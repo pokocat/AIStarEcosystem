@@ -525,6 +525,12 @@ public class StudioWorkflowService {
                 .orElse(caps.textCost());
     }
 
+    /** 导演台所选文本模型一次调用最多读多少输入 Token（后台按量计价里配的上限）；没配按量价（测试响应）返回 0，由调用方用默认值。 */
+    public int directorMaxInputTokens(String model) {
+        var caps=capabilities();
+        return directorTextModel(caps,model).map(m->m.tokenPricing()==null?0:m.tokenPricing().maxInputTokens()).orElse(0);
+    }
+
     /** 导演台文本模型的唯一解析：null = 默认；点名了却不在候选里、或固定模式下点名非默认，一律拒绝。 */
     private Optional<TextModel> directorTextModel(Capabilities caps, String model) {
         var selected=caps.textModels().stream().filter(m->model==null?m.isDefault():model.equals(m.endpointId())).findFirst();
