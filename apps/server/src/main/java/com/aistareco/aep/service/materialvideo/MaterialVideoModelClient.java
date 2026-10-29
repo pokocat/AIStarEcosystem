@@ -77,6 +77,8 @@ public class MaterialVideoModelClient {
     private final UpstreamModelHttp upstreamHttp;
     private final com.aistareco.aep.service.storage.FileStorageService storage;
     private final HttpClient http;
+    @org.springframework.beans.factory.annotation.Autowired
+    private MaterialVideoInputAssets inputAssets;
 
     public MaterialVideoModelClient(AiModelInvocationService invocation,
                                     MaterialVideoProperties props,
@@ -1841,15 +1843,34 @@ public class MaterialVideoModelClient {
     /** 判格式只需要文件头这么多字节；大文件不整个读进内存。 */
     private static final int SNIFF_HEAD_BYTES = 4096;
 
+    /** Director binds an owned sample before any paid generation. The worker uses this same receipt lookup. */
+    public void prepareAudioReference(String endpointId, String key, String appCode) {
+        AiModelEndpoint endpoint = requireEndpoint(endpointId, appCode);
+        if (!isJusuanMedia(endpoint)) return; // Other models keep the sample; their generation path owns transport.
+        String model = modelOf(endpoint);
+        var configured = AiVideoRequestSpec.read(endpoint.getVideoRequestSpecJson());
+        uploadInputAsset(endpoint, requireKey(endpoint), model, key, "audio",
+                materialMaxBytes(configured, JusuanH3Contract.MODE_UNIVERSAL_REFERENCE, "audio", false),
+                materialFormats(configured, JusuanH3Contract.MODE_UNIVERSAL_REFERENCE, "audio", false), "角色声音");
+    }
+
     /**
-     * 把一个素材传给聚算，返回 assetId。传不上去就**抛**，不静默退回文生视频 ——
-     * 用户接了参考素材却出一条跟素材无关的片，比直接报错难排查得多（§8.0）。
-     *
-     * @param mediaType image / video / audio，同时就是 multipart 的字段名
-     * @param maxBytes  这个位置的厂商上限（帧图 16 MiB、参考图 30、视频 50、音频 15，见 {@link JusuanH3Contract}）
-     * @param label     报错里怎么称呼它（首帧图 / 尾帧图 / 图2 / 音频1 …），和任务卡上的编号一致
+     * 上传换取 assetId；声音按厂商有效期复用，传不上去就抛，不静默丢弃参考。
+     * @param mediaType image / video / audio，同时就是 multipart 字段名
+     * @param maxBytes 当前用途的文件大小上限，见 {@link JusuanH3Contract}
+     * @param label 与任务卡一致的素材编号或名称
      */
     private String uploadInputAsset(AiModelEndpoint p, String apiKey, String model, String key,
+                                    String mediaType, long maxBytes, List<String> allowedFormats, String label) {
+        java.util.function.Supplier<MaterialVideoInputAssets.Receipt> upload =
+                () -> uploadInputAssetReceipt(p, apiKey, model, key, mediaType, maxBytes, allowedFormats, label);
+        // Directly constructed protocol unit tests have no persistence service. Production always injects it.
+        return ("audio".equals(mediaType) && inputAssets != null
+                ? inputAssets.resolve(p.getId(), p.getBaseUrl(), model, apiKey, key, upload)
+                : upload.get()).assetId();
+    }
+
+    private MaterialVideoInputAssets.Receipt uploadInputAssetReceipt(AiModelEndpoint p, String apiKey, String model, String key,
                                     String mediaType, long maxBytes, List<String> allowedFormats, String label) {
         Path local;
         long size;
@@ -1900,16 +1921,32 @@ public class MaterialVideoModelClient {
                         uploadFailureMessage(label, resp.statusCode(), resp.body()),
                         "status=" + resp.statusCode() + " url=" + uri + " body=" + snippet(resp.body()));
             }
-            String assetId = OM.readTree(resp.body()).path("asset").path("assetId").asText(null);
+            JsonNode asset = OM.readTree(resp.body()).path("asset");
+            String assetId = asset.path("assetId").asText(null);
             if (assetId == null || assetId.isBlank()) {
                 log.warn("[material-video] 素材上传返回里没有 assetId endpoint={} field={} status={} body={}",
                         p.getName(), mediaType, resp.statusCode(), snippet(resp.body()));
                 throw BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "VIDEO_REF_UPLOAD_FAILED",
                         label + "上传失败，请稍后重试", "响应里没有 asset.assetId: " + snippet(resp.body()));
             }
+            String status = asset.path("status").asText("");
+            if (!status.isEmpty() && !"available".equals(status)) {
+                log.warn("[material-video] 素材尚不可用 endpoint={} field={} status={} body={}",
+                        p.getName(), mediaType, status, snippet(resp.body()));
+                throw BusinessException.badRequest("VIDEO_REF_UPLOAD_FAILED", label + "尚未处理完成，请重新保存音色");
+            }
+            Instant expiresAt = null;
+            if (asset.hasNonNull("expiresAt")) {
+                try { expiresAt = Instant.parse(asset.path("expiresAt").asText()); }
+                catch (java.time.format.DateTimeParseException invalid) {
+                    log.warn("[material-video] 素材有效期无法读取 endpoint={} assetId={}", p.getId(), assetId);
+                }
+                if (expiresAt != null && !expiresAt.isAfter(Instant.now().plusSeconds(60)))
+                    throw BusinessException.badRequest("VIDEO_REF_UPLOAD_FAILED", label + "的有效期不足，请重新保存音色");
+            }
             log.info("[material-video] 素材已上传 endpoint={} model={} field={} bytes={} contentType={} assetId={}",
                     p.getName(), model, mediaType, size, fmt.mime(), assetId);
-            return assetId;
+            return new MaterialVideoInputAssets.Receipt(assetId, expiresAt);
         } catch (BusinessException e) {
             throw e;
         } catch (InterruptedException e) {

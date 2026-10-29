@@ -620,9 +620,16 @@ public class DirectorService {
                 if (!"character".equals(a.path("kind").asText())) throw invalid("只有角色可以绑定声音");
                 String key = projects.requireOwnedAssetKey(userId, d.path("key").asText(null));
                 if (key == null) throw invalid("请上传声音或从声音库选择");
+                double duration = mediaImport.validateReferenceAudio(key);
+                // Persist the supplier receipt before binding. No generation, credit hold or voice-training call.
+                // Keep the owned source key as the character's identity: receipts expire or change with model/Key.
+                if (!fixtures.enabled()) {
+                    Limits lim = limits(c);
+                    if (lim != null && !lim.frame() && !lim.mock()) videoClient.prepareAudioReference(lim.model(), key, "studio");
+                }
                 ObjectNode v = a.putObject("voice").put("key", key).put("name", limited(d.path("name").asText("声音样本"), 60, "声音名称"))
                         .put("source", "library".equals(d.path("source").asText()) ? "library" : "upload").put("at", Instant.now().toString());
-                if (d.path("durationSec").isNumber()) v.put("durationSec", d.path("durationSec").asDouble()); else v.putNull("durationSec");
+                v.put("durationSec", duration);
                 if (d.hasNonNull("voiceId")) v.put("voiceId", d.path("voiceId").asText()); else v.putNull("voiceId");
                 bump(a);
             }
@@ -2843,11 +2850,11 @@ public class DirectorService {
         return out;
     }
 
-    /** 角色声音样本上传：沿用 Studio 媒体导入的格式与时长校验（字节嗅探、ffprobe）。 */
-    @Transactional(readOnly = true)
+    /** 上传会写存储额度及个人素材库（含用户行锁），必须是可写事务。MySQL 只读事务曾在这里返回 500。 */
+    @Transactional
     public StudioMediaImportService.MediaImportResult uploadAudio(String userId, String id, org.springframework.web.multipart.MultipartFile file) {
         owned(userId, id);
-        return mediaImport.upload(userId, file, "audio");
+        return mediaImport.uploadReferenceAudio(userId, file);
     }
 
     // ── 一键连跑 ─────────────────────────────────────────────────────────────

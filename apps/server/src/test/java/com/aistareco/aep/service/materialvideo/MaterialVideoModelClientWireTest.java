@@ -73,6 +73,7 @@ class MaterialVideoModelClientWireTest {
     private volatile String createBody = "{\"jobId\":\"job_1\",\"jobUrl\":\"https://example/jobs/job_1\"}";
     private volatile int uploadStatus = 201;
     private volatile String uploadErrorBody = "";
+    private String uploadExpiresAt;
 
     private AiModelInvocationService invocation;
     private FileStorageService storage;
@@ -96,7 +97,8 @@ class MaterialVideoModelClientWireTest {
             if (r.path().endsWith("/assets/input")) {
                 status = uploadStatus;
                 resp = status < 300
-                        ? "{\"asset\":{\"assetId\":\"asset_" + assetSeq.incrementAndGet() + "\",\"status\":\"available\"}}"
+                        ? "{\"asset\":{\"assetId\":\"asset_" + assetSeq.incrementAndGet() + "\",\"status\":\"available\""
+                            + (uploadExpiresAt == null ? "" : ",\"expiresAt\":\"" + uploadExpiresAt + "\"") + "}}"
                         : uploadErrorBody;
             } else {
                 status = createStatus;
@@ -140,6 +142,28 @@ class MaterialVideoModelClientWireTest {
 
     private void useJusuan() {
         useEndpoint("MiniMax H3", base("/jusuanhub/v1"), "minimax-h3");
+    }
+
+    @Test
+    void preuploadedCharacterVoiceIsReusedBySeparateVideoTasks() throws Exception {
+        useJusuan();
+        uploadExpiresAt = java.time.Instant.now().plusSeconds(3600).toString();
+        var repo = mock(MaterialVideoInputAssetRepository.class);
+        var rows = new java.util.HashMap<String, Object[]>();
+        when(repo.receipt(any())).thenAnswer(i -> rows.containsKey(i.getArgument(0)) ? java.util.Collections.singletonList(rows.get(i.getArgument(0))) : List.of());
+        org.mockito.Mockito.doAnswer(i -> { rows.put(i.getArgument(0), new Object[]{ i.getArgument(2), i.getArgument(3) }); return null; })
+                .when(repo).remember(any(), any(), any(), any());
+        org.springframework.test.util.ReflectionTestUtils.setField(client, "inputAssets", new MaterialVideoInputAssets(repo));
+        stored("owner/voice.mp3", mp3()); stored("owner/photo.png", png());
+        client.prepareAudioReference(null, "owner/voice.mp3", "ipstudio");
+        var spec = new VideoGenSpec("universal_reference_video", "768p", null, null, null,
+                List.of(new VideoGenSpec.Reference("image", "owner/photo.png"), new VideoGenSpec.Reference("audio", "owner/voice.mp3")));
+        client.submit("人物说第一句", 5, "9:16", null, "ipstudio", null, spec);
+        client.submit("人物说第二句", 5, "9:16", null, "ipstudio", null, spec);
+        assertEquals(1, uploads().stream().filter(r -> r.text().contains("name=\"audio\"")).count());
+        for (var request : requests) if (request.path().endsWith("/media/generations"))
+            assertEquals("asset_1", om.readTree(request.text()).path("referenceInputs").get(1).path("assetId").asText());
+        assertEquals(2, requests.stream().filter(r -> r.path().endsWith("/media/generations")).count());
     }
 
     @Test
@@ -542,7 +566,7 @@ class MaterialVideoModelClientWireTest {
         createBody = "{\"payload\":{\"state\":\"rejected\",\"error\":{\"message\":\"quota used\"}}}";
         var failed = client.poll(accepted);
         assertEquals("failed", failed.status());
-        assertEquals("quota used", failed.failReason());
+        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。", failed.failReason());
     }
 
     @Test

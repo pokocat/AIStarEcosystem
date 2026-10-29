@@ -62,10 +62,10 @@ class MaterialVideoModelClientTest {
 
     @Test
     void extractFailReason_picks_common_vendor_fields() {
-        // 上游 fail 时把原因放在各种字段，统一抽出来给用户/运营看，不再只剩「status=failed」
+        // 不同字段保留可行动的失败原因；供应商账号配额遵循主线的公开错误策略。
         assertEquals("敏感内容拦截",
                 MaterialVideoModelClient.extractFailReason(json("{\"task_status\":\"failed\",\"fail_reason\":\"敏感内容拦截\"}")));
-        assertEquals("quota exceeded",
+        assertEquals("生成服务暂时不可用，请稍后再试或联系平台处理。",
                 MaterialVideoModelClient.extractFailReason(json("{\"status\":\"error\",\"message\":\"quota exceeded\"}")));
         assertEquals("bad prompt",
                 MaterialVideoModelClient.extractFailReason(json("{\"data\":{\"error\":\"bad prompt\"}}")));
@@ -539,13 +539,13 @@ class MaterialVideoModelClientTest {
     @DisplayName("参考图被上游拒收：4xx 直出厂商原话，5xx 也展示原因，非 JSON 不外泄")
     void surfacesUploadRejectionReason() {
         // 4xx 说的是「我们请求哪儿不对」—— 抹掉它用户就只剩一句「请稍后重试」，而重试永远不会好
-        assertEquals("参考图上传失败（上游 400）；上游原因：model does not accept input assets",
+        assertEquals("参考图上传失败（上游 400）；model does not accept input assets",
                 MaterialVideoModelClient.uploadFailureMessage(
                         "参考图", 400, "{\"error\":{\"message\":\"model does not accept input assets\"}}"));
-        assertEquals("参考图上传失败（上游 415）；上游原因：unsupported image format",
+        assertEquals("参考图上传失败（上游 415）；unsupported image format",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 415, "{\"message\":\"unsupported image format\"}"));
         // 5xx 是厂商自己的问题，用户做不了什么，细节留日志
-        assertEquals("参考图上传失败（上游 502）；上游原因：bad gateway",
+        assertEquals("参考图上传失败（上游 502）；bad gateway",
                 MaterialVideoModelClient.uploadFailureMessage("参考图", 502, "{\"message\":\"bad gateway\"}"));
         // 网关的 HTML 错误页不要糊到界面上
         assertEquals("参考图上传失败（上游 404）",

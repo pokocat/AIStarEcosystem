@@ -1,7 +1,7 @@
 # 文档索引 · INDEX
 
 > 单页地图。任何 agent / 新人进仓库先开本文，按「想做什么」找到对应真源。
-> last-reviewed：**2026-10-18**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
+> last-reviewed：**2026-10-29**（文档整理：`docs/` 分出 `runbooks/` / `audits/` / `archive/` 三个子目录，去掉 `[Fabel5]` 前缀，
 > 根目录 `DEPLOYED.md` 并入 clip 方案；上一次内容性更新是 2026-10-07 / v0.201）。
 > 同日合入 Studio 统一画布主线（`codex/unified-ip-studio`，v0.202–v0.231），新增 `docs/releases/` 放发布与验收记录；Studio 设计真源见 [§1.4](#14-studio-统一画布2026-10-主线)，记录见 [§7](#7-发布与验收记录docsreleases)。
 
@@ -202,6 +202,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 结论一句话 |
 |---|---|
+| [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，未发布（last-reviewed 2026-10-29） |
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
 | [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |

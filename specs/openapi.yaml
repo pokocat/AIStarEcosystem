@@ -15227,7 +15227,7 @@ paths:
     post:
       tags: [ipstudio]
       operationId: directorUploadAudio
-      description: '角色声音样本上传（mp3 / wav / m4a），沿用 Studio 媒体导入的字节嗅探与 ffprobe 校验；返回 key 与实测时长，再用 asset.setVoice 绑定。'
+      description: '角色声音样本上传（mp3 / wav / m4a，2–15 秒、最多 15 MiB），字节嗅探与 ffprobe 校验后写入本人素材库和存储额度；使用可写事务，返回 key 与实测时长。再用 asset.setVoice 绑定：服务端重验归属和真实音频，当前为聚算全能参考模型时先上传取得 assetId，成功后才替换角色声音；不信客户端时长或厂商 assetId。不调用生成、不扣积分。'
       parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
       requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
       responses:

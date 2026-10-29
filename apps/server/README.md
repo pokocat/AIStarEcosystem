@@ -427,6 +427,8 @@ src/main/java/com/aistareco/aep/
 
 ## 数据模型
 
+- **`material_video_input_asset`（V71，2026-10-29）**：角色声音的聚算输入回执；按端点、地址、模型、凭据及来源 key 散列隔离，保存 `source_key` / `asset_id` / `expires_at`，不保存密钥和签名 URL。人物长期绑定仍存我方 key；保存音色和生成 worker 共用上传路径，仅在厂商有效期前复用，过期从原样本重新上传。上传使用可写事务，避免个人素材库持用户行锁时触发 MySQL 只读事务 500。
+
 - **`director_work`（V65，AI 导演台）**：作品一行，`content_json` 存剧本 / 分集 / 资产使用 / 片段与镜头 / 采用指针（只存存储 key），`revision` 作品级修订、`active` 供后台调度扫描。生成任务复用 `ip_run`，新增 `host_type`（NULL = 画布，`director` = 导演作品，`project_id` 存作品 id）。接口 `/api/v1/ip-studio/director/**`。
   - 2026-10-26（`20261026-director-text-model`）：`content_json.settings.textModel` 可选 Studio script 场景端点，空值默认；`textModels`/`textModelMode` 回传候选（界面不展示文字价格）。所有文字任务、估价（按各任务输出上限）及连跑使用所选模型；原选择停用时设置照存、估价按默认价、提交明确报错，`_exec` 固化端点、Token 费率与冻结额；幂等指纹包含显式模型。剧本成功采用时同步非空剧名到 `director_work.title`，重写历史保留旧标题；失败/内容冲突不改标题。无需迁移。
 
