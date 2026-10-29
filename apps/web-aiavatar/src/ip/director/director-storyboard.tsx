@@ -16,6 +16,7 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode } = props;
   const { modal } = useStudioApp();
   const { busy, run } = useBusy();
+  const switching = useBusy();
   const ep = work.episodes.find(e => e.id === episodeId);
   // 视频报价：只给分镜图已确认、没在生成的片段报价；作品内容变了就重新报。
   const ready = work.clips.filter(c => c.episodeId === episodeId && c.board.adoptedBy === "user" && !c.video.pending?.length).map(c => c.id).join(",");
@@ -55,6 +56,14 @@ export function DirectorStoryboard(props: WorkbenchProps) {
   const pending = ep.pendingPlan;
   const lim = work.videoLimits;
   const previewClip = preview ? work.clips.find(c => c.id === preview.clipId) : undefined;
+  // 切到哪一版视频就用哪一版：没采用的直接采用（服务端记为已确认），不用再点「采用这一版」。
+  // 换版请求在途时不接新的点击，免得画面停在一版、采用的是另一版。
+  const pickVideo = (clip: DirectorClip, candidateId: string) => {
+    if (switching.busy) return;
+    setPreview({ clipId: clip.id, kind: "video", candidateId });
+    if (candidateId !== clip.video.adoptedId)
+      void switching.run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptVideo", clip.id, null, { candidateId })), setError);
+  };
   const boardClip = boardFor ? work.clips.find(c => c.id === boardFor) : undefined;
   return <div className="director-board-layout">
     <StoryboardSide work={work} ep={ep} focusClipId={focusClipId} sheetOpen={scriptSheet} setSheetOpen={setScriptSheet}
@@ -85,11 +94,12 @@ export function DirectorStoryboard(props: WorkbenchProps) {
       </div>}
       {clips.length > 0 && <BatchBar work={work} clips={clips} quotes={quotes} selected={selected} setSelected={setSelected} apply={apply} setError={setError}/>}
       {clips.map(c => <ClipCard key={c.id} {...props} clip={c} quote={quotes[c.id]} onPreview={(kind, candidateId) => setPreview({ clipId: c.id, kind, candidateId })} onBoard={() => setBoardFor(c.id)}
+        onPickVideo={id => pickVideo(c, id)} switching={!!switching.busy}
         focused={focusClipId === c.id} onFocusScript={() => { setFocusClipId(c.id); setScriptSheet(true); }}
         selected={selected.has(c.id)} onSelect={on => setSelected(prev => { const next = new Set(prev); if (on) next.add(c.id); else next.delete(c.id); return next; })}/>)}
     </div>
     {preview && previewClip && <ClipPreview work={work} clip={previewClip} preview={preview} apply={apply} setError={setError} goTab={goTab}
-      onPick={candidateId => setPreview({ ...preview, candidateId })} onClose={() => setPreview(null)}/>}
+      onPickVideo={id => pickVideo(previewClip, id)} switching={!!switching.busy} onClose={() => setPreview(null)}/>}
     {boardClip && <BoardDialog work={work} clip={boardClip} apply={apply} setError={setError} onClose={() => setBoardFor(null)}/>}
   </div>;
 }
@@ -228,7 +238,7 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onF
  * 一个片段一张卡，主体是视频：分镜图是生成视频的参考（不是资产），单独一个入口、单独一个弹窗；
  * 视频提示词按分镜图第 1–N 格逐镜写，宫格保证前后镜头的人物、环境一致。
  */
-function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, selected, onSelect, focused, onFocusScript }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; selected: boolean; onSelect: (on: boolean) => void; focused: boolean; onFocusScript: () => void }) {
+function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, onPickVideo, switching, selected, onSelect, focused, onFocusScript }: WorkbenchProps & { clip: DirectorClip; quote?: ClipQuote; onPreview: (kind: PreviewKind, candidateId?: string) => void; onBoard: () => void; onPickVideo: (candidateId: string) => void; switching: boolean; selected: boolean; onSelect: (on: boolean) => void; focused: boolean; onFocusScript: () => void }) {
   // 没保存的镜头修改切走再回来还在，编辑区保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(`${work.id}:clip:${clip.id}:edit:`));
   const board = adopted(clip.board);
@@ -262,8 +272,8 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
           <span className={`director-clip-stage-tag ${videoTag === "待确认" || videoTag === "需更新" ? "is-warn" : ""}`}>{videoTag ?? (board ? "分镜图 · 还没有视频" : "未生成")}</span>
         </button>
         {clip.video.candidates.length > 1 && <div className="director-clip-versions" role="group" aria-label="视频版本">
-          {clip.video.candidates.map((m, i) => <button key={m.id} type="button" aria-pressed={m.id === clip.video.adoptedId} onClick={() => onPreview("video", m.id)}
-            title={m.stale ? "生成期间设置有变动，此版本需更新" : m.id === clip.video.adoptedId ? "采用中" : `第 ${i + 1} 版`}>{i + 1}{m.stale ? "·旧" : ""}</button>)}
+          {clip.video.candidates.map((m, i) => <button key={m.id} type="button" aria-pressed={m.id === clip.video.adoptedId} aria-disabled={switching || undefined} onClick={() => onPickVideo(m.id)}
+            title={m.id === clip.video.adoptedId ? "采用中" : `${m.stale ? "生成期间设置有变动，此版本需更新。" : ""}点一下换成第 ${i + 1} 版`}>{i + 1}{m.stale ? "·旧" : ""}</button>)}
         </div>}
         <div className="director-clip-links" role="group" aria-label="生成视频用到的参考">
           <button type="button" onClick={() => onPreview("assets")} className={missing.length ? "is-error" : unconfirmed.length ? "is-warn" : ""} title="角色、场景、道具的标准照，用来锁定长相和环境">
@@ -315,7 +325,13 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
     const billing = await chooseDirectorBilling("image", cost);
     apply(await DirectorApi.runTask(work.id, { type: "board", targetId: clip.id, clientRequestId: newRequestId(), billing, maxCost: cost }));
   }, setLocalError);
-  const adopt = (id: string) => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptBoard", clip.id, null, { candidateId: id })), setLocalError);
+  // 点哪一张就用哪一张：没采用的直接采用（服务端记为已确认），不用再点「采用这一版」。请求在途时不接新的点击。
+  const pick = (id: string) => {
+    if (busy) return;
+    setViewId(id);
+    if (id !== clip.board.adoptedId)
+      void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptBoard", clip.id, null, { candidateId: id })), setLocalError);
+  };
   const confirm = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmBoard", clip.id, null)), setLocalError);
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-board-dialog" role="dialog" aria-modal="true" aria-labelledby="director-board-title" ref={dialogFocus} tabIndex={-1}>
@@ -331,12 +347,12 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
           <h3>历史版本<small>{clip.board.candidates.length}</small></h3>
           {clip.board.candidates.length === 0 ? <p className="director-muted">生成后出现在这里。</p> :
             <ul>{[...clip.board.candidates].reverse().map((m, i, arr) => <li key={m.id}>
-              <button type="button" aria-pressed={m.id === shown?.id} className={ratio} onClick={() => setViewId(m.id)} title={m.stale ? "生成期间设置有变动，此版本需更新" : undefined}>
+              <button type="button" aria-pressed={m.id === shown?.id} aria-disabled={!!busy || undefined} className={ratio} onClick={() => pick(m.id)} title={m.stale ? "生成期间设置有变动，此版本需更新" : undefined}>
                 {m.url ? <img src={m.url} alt=""/> : null}
                 <small>第 {arr.length - i} 版{m.id === clip.board.adoptedId ? " · 采用中" : ""}{m.stale ? " · 需更新" : ""}</small>
               </button>
             </li>)}</ul>}
-          {shown && shown.id !== clip.board.adoptedId && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => adopt(shown.id)}>采用这一版</button>}
+          {clip.board.candidates.length > 0 && <p className="director-preview-hint" aria-live="polite">{busy === "adopt" ? "正在换成这一张…" : "点哪一张，这个片段就用哪一张。"}</p>}
           {assistant && clip.board.adoptedId && <button type="button" className="director-ask-ai" onClick={() => askAbout({ kind: "image", clipId: clip.id, which: "board" })}
             title="说说这张哪里要改（如「第三格改近景，其他保持一致」），助手改提示词；生成新版本另外确认费用"><Wand2 size={13}/>围绕这张图修改</button>}
         </aside>
@@ -363,11 +379,13 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
 }
 
 /** 右侧抽屉：关联资产（锁定长相和环境的标准照）或视频结果，就地查看，不离开分镜页。 */
-function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onClose }: { work: DirectorWork; clip: DirectorClip; preview: Preview; apply: (w: DirectorWork) => void; setError: (m: string) => void; goTab: WorkbenchProps["goTab"]; onPick: (candidateId: string) => void; onClose: () => void }) {
+function ClipPreview({ work, clip, preview, apply, setError, goTab, onPickVideo, switching, onClose }: { work: DirectorWork; clip: DirectorClip; preview: Preview; apply: (w: DirectorWork) => void; setError: (m: string) => void; goTab: WorkbenchProps["goTab"]; onPickVideo: (candidateId: string) => void; switching: boolean; onClose: () => void }) {
   const { busy, run } = useBusy();
   const linked = clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"];
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const media = clip.video.candidates.find(m => m.id === preview.candidateId) ?? adopted(clip.video);
+  // 只有一条但还没采用（比如生成期间设置变了）也要能选上它，所以这时版本条照样显示。
+  const switchable = clip.video.candidates.length > 1 || (!!media && media.id !== clip.video.adoptedId);
   return <DirectorSheet onClose={onClose} label={preview.kind === "assets" ? "关联资产" : "视频"}>
     <div className="director-preview">
       <header><span className="director-clip-no">{clip.order}</span><h3 title={clip.title}>{preview.kind === "assets" ? "关联资产" : "视频"} · {clip.title || `片段 ${clip.order}`}</h3></header>
@@ -391,14 +409,16 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
           {media?.url ? <video key={media.id} src={media.url} controls autoPlay preload="metadata" playsInline/> : <span>还没有视频</span>}
           {media && media.id === clip.video.adoptedId && <span className={`director-tag-inline ${clip.video.adoptedBy === "auto" ? "is-warn" : ""}`}>{clip.video.adoptedBy === "auto" ? "采用中 · 待确认" : "采用中"}</span>}
         </div>
-        {clip.video.candidates.length > 1 && <div className="director-preview-versions">{clip.video.candidates.map((m, i) =>
-          <button key={m.id} type="button" aria-pressed={m.id === media?.id} onClick={() => onPick(m.id)}>视频 {i + 1}{m.id === clip.video.adoptedId ? " · 采用中" : ""}</button>)}</div>}
-        <div className="director-card-actions">
-          {media && media.id !== clip.video.adoptedId && <button type="button" className="ip-brand-secondary" disabled={!!busy}
-            onClick={() => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "clip.adoptVideo", clip.id, null, { candidateId: media.id })), setError)}>采用这一版</button>}
-          {media && media.id === clip.video.adoptedId && clip.video.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy}
-            onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>}
-        </div>
+        {switchable && <div className="director-preview-switch">
+          <div className="director-preview-versions" role="group" aria-label="视频版本">{clip.video.candidates.map((m, i) =>
+            <button key={m.id} type="button" aria-pressed={m.id === media?.id} aria-disabled={switching || undefined} onClick={() => onPickVideo(m.id)}
+              title={m.stale ? "生成期间设置有变动，此版本需更新" : undefined}>视频 {i + 1}{m.id === clip.video.adoptedId ? " · 采用中" : m.stale ? " · 需更新" : ""}</button>)}</div>
+          <p className="director-preview-hint" aria-live="polite">{switching ? "正在换成这一版…" : "点哪一版，这个片段就用哪一版。"}</p>
+        </div>}
+        {media && media.id === clip.video.adoptedId && clip.video.adoptedBy === "auto" && <div className="director-card-actions">
+          <button type="button" className="ip-brand-button" disabled={!!busy}
+            onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "clip.confirmVideo", clip.id, null)), setError)}><Check size={14}/>确认使用</button>
+        </div>}
         {media?.refs && media.refs.length > 0 && <p className="director-used-refs">参考：{media.refs.map(r => `${r.label} ${r.name}`).join("、")}</p>}
       </>}
     </div>
