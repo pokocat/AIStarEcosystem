@@ -13,6 +13,7 @@ import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } f
 import { formatDateTime } from "@/lib/datetime";
 import { AskAI, useAssistant } from "./director-assistant";
 import { StoryboardSide } from "./director-script-reference";
+import { confirmDirectorAction } from "./director-antd";
 
 export function DirectorStoryboard(props: WorkbenchProps) {
   const { work, episodeId, apply, setError, goTab, pickEpisode, focus } = props;
@@ -131,25 +132,26 @@ function BatchBar({ work, clips, quotes, selected, setSelected, apply, setError 
   const start = (kind: "board" | "video") => {
     const p = plan(kind);
     const what = kind === "board" ? "分镜图" : "视频";
-    (p.ok.length ? modal.confirm : modal.info)({
+    const options = {
       title: p.ok.length ? `为 ${p.ok.length} 个片段生成${what}？` : `选中的片段都不能生成${what}`,
       content: <div className="director-batch-confirm">
         {p.ok.length > 0 && <p>{p.ok.map(x => `片段 ${x.clip.order}`).join("、")} · {costText(p.total, work.pricing.mock)}{kind === "board" && p.ok.some(x => x.clip.board.candidates.length) ? "。已有分镜图的会生成新版本，原版本保留。" : ""}</p>}
         {p.skipped.length > 0 && <><p className="director-muted">跳过 {p.skipped.length} 个（不扣积分）：</p><ul>{p.skipped.map(t => <li key={t}>{t}</li>)}</ul></>}
       </div>,
       okText: p.ok.length ? "开始生成" : "知道了", cancelText: "取消",
-      onOk: () => { if (!p.ok.length) return; return run(kind, async () => {
-        const billing = await chooseDirectorBilling(kind === "board" ? "image" : "video", p.total);
-        const failures: string[] = [];
-        for (const x of p.ok) {
-          try { apply(await DirectorApi.runTask(work.id, { type: kind, targetId: x.clip.id, clientRequestId: newRequestId(), billing, maxCost: x.cost })); }
-          catch (e) { failures.push(`片段 ${x.clip.order}：${errorText(e)}`); }
-        }
-        if (failures.length) setError({ action: `批量生成${what}`, error: `${p.ok.length} 个片段里有 ${failures.length} 个没有提交成功：${failures.join("；")}`,
-          next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那个片段上单独生成。" });
-        setSelected(new Set());
-      }, failed(setError, `批量生成${what}`)); },
-    });
+    };
+    if (!p.ok.length) { modal.info(options); return; }
+    confirmDirectorAction(modal, options, () => void run(kind, async () => {
+      const billing = await chooseDirectorBilling(kind === "board" ? "image" : "video", p.total);
+      const failures: string[] = [];
+      for (const x of p.ok) {
+        try { apply(await DirectorApi.runTask(work.id, { type: kind, targetId: x.clip.id, clientRequestId: newRequestId(), billing, maxCost: x.cost })); }
+        catch (e) { failures.push(`片段 ${x.clip.order}：${errorText(e)}`); }
+      }
+      if (failures.length) setError({ action: `批量生成${what}`, error: `${p.ok.length} 个片段里有 ${failures.length} 个没有提交成功：${failures.join("；")}`,
+        next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那个片段上单独生成。" });
+      setSelected(new Set());
+    }, failed(setError, `批量生成${what}`)));
   };
   return <div className="director-batch">
     <label className="director-batch-all"><input type="checkbox" checked={all} ref={el => { if (el) el.indeterminate = chosen.length > 0 && !all; }}

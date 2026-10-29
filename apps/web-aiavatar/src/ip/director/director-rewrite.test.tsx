@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { App } from "antd";
+import { App, ConfigProvider } from "antd";
 import type { DirectorClip, DirectorTask, DirectorWork } from "@ai-star-eco/types";
 import { DirectorStoryboard } from "./director-storyboard";
 import { DirectorScript } from "./director-script";
@@ -29,7 +29,7 @@ function work(over: Partial<DirectorWork> = {}): DirectorWork {
 }
 const noop = () => {};
 const props = { episodeId: "e1", apply: vi.fn(), setError: vi.fn(), goTab: noop, reviewExtract: noop, openSettings: noop, pickEpisode: noop, startPipeline: noop };
-const show = (w: DirectorWork) => render(<App><DirectorStoryboard {...props} work={w}/></App>);
+const show = (w: DirectorWork) => render(<ConfigProvider theme={{ token: { motion: false } }}><App><DirectorStoryboard {...props} work={w}/></App></ConfigProvider>);
 const task = (target: string): DirectorTask => ({ id: "IPR-1", target, status: "running", stage: null, cost: 0, errorMessage: null, createdAt: "2026-10-27T00:00:00Z" });
 
 beforeEach(() => { vi.mocked(DirectorApi.runTask).mockReset().mockResolvedValue(work() as never); });
