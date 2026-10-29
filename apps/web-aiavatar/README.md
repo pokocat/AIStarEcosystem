@@ -172,6 +172,10 @@ src/
 
 ## 版本日志
 
+### 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
+
+参考茂隆掌柜 AI 的布局：登录后桌面改为左侧导航栏；首页加常用工具、「你想做什么？」目标卡，灵感（模板与案例）搬到首页；新增 `/image`（17 个场景一步出图，草稿即画布）与 `/video`（21 个场景填业务信息交给创作助手）；`/scenes` 转 `/video`。代码在 `src/ip/scenes/`，样式 `studio-scenes.css` / `studio-home-scenes.css`，封面 `public/studio/scene-covers/`。真源 `docs/studio-scene-creation.md`。仅前端。
+
 ### 桌面页面布局与交互审计修复（2026-10-27，已生产发布 `20261027-studio-layout-audit`，main `7feed0ab`）
 
 - **画布**：创作浮层按停靠助手让出来的宽度收窄（最窄 320），不再压住助手；助手拉宽也给画布留至少 480（`dockedPanelWidth` / `floatingPanelWidth`）。助手关闭后的 AI 圆钮悬停不再变成浅灰（被通用 `button:hover` 覆盖）。React Flow 角标关闭，致谢见 `src/canvas/README.md`。

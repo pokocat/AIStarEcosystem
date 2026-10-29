@@ -1,0 +1,63 @@
+/* 登录后的首页：一句话开始、常用工具、按目标选场景、继续创作、灵感。真源 docs/studio-scene-creation.md §3。 */
+.studio-scene-home>main { background: var(--ip-paper); border-radius: 14px; overflow: hidden; padding-bottom: 48px; }
+
+.home-hero { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 64px 24px 6px;
+  background: radial-gradient(ellipse 70% 120% at 50% -30%, #f2e4cb 0%, rgba(242,228,203,0) 62%), linear-gradient(180deg, #fbf8f2 0%, #fff 78%); }
+.home-hero h1 { font-family: var(--ip-display); font-size: clamp(28px, 2.9vw, 42px); font-weight: 700; line-height: 1.35; letter-spacing: -.01em; text-wrap: balance; }
+.home-hero h1 span { color: var(--ip-gold); }
+.home-hero>p { margin-top: 10px !important; color: var(--ip-muted); font-size: 15px; }
+.home-hero .studio-conversation-start { max-width: 1000px; margin-top: 30px; text-align: left; }
+.home-hero .studio-conversation-start-box { padding: 18px 18px 14px; border-radius: 20px; box-shadow: 0 24px 60px rgba(25,34,41,.08); }
+.home-hero .studio-conversation-start textarea { min-height: 86px; font-size: 16px; }
+.home-hero .studio-conversation-start-send { border-radius: 999px; background: var(--ip-ink); color: #fff; }
+.home-hero .studio-conversation-start-send:not(:disabled):hover { background: #323e45; }
+
+.home-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px 34px; max-width: 1100px; margin: 0 auto; padding: 34px 24px 4px; }
+.home-tools button { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 86px; padding: 0; border: 0; background: transparent; font-size: 14px; color: var(--ip-ink); }
+.home-tools button>span { display: grid; place-items: center; width: 62px; height: 62px; border-radius: 18px; background: var(--ip-paper); border: 1px solid var(--ip-line); box-shadow: 0 6px 18px rgba(25,34,41,.06); transition: transform 160ms var(--ip-ease), border-color 160ms var(--ip-ease); }
+.home-tools button:not(:disabled):hover>span { transform: translateY(-2px); border-color: #c4cacf; }
+
+.home-section-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 16px; }
+.home-section-heading h2 { font-size: 22px; font-weight: 700; }
+.home-section-heading p { color: var(--ip-muted); font-size: 13.5px; }
+.home-section-heading>a { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 13.5px; font-weight: 600; }
+.home-section-heading>a:hover { text-decoration: underline; text-underline-offset: 4px; }
+.home-goals, .home-recent, .home-feed { max-width: 1520px; margin: 0 auto; padding: 40px 40px 0; }
+
+.home-goals-arrows { display: inline-flex; gap: 6px; margin-left: auto; }
+.home-goals-arrows button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--ip-line); border-radius: 50%; background: var(--ip-paper); }
+.home-goals-arrows button:hover { background: var(--ip-soft); }
+.home-goal-track { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(280px, calc((100% - 3 * 18px) / 4)); gap: 18px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding: 2px 2px 8px; }
+.home-goal-track::-webkit-scrollbar { display: none; }
+.home-goal { scroll-snap-align: start; display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--ip-line, #e8eaec); border-radius: 14px; overflow: hidden; background: var(--ip-paper, #fff); color: inherit; text-decoration: none; transition: box-shadow 160ms var(--ip-ease), transform 160ms var(--ip-ease); }
+.home-goal:hover { box-shadow: 0 14px 30px rgba(25,34,41,.1); transform: translateY(-2px); }
+.home-goal-art { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; height: 196px; background: var(--ip-soft, #f6f6f5); }
+.home-goal-art .scene-thumb { width: 100% !important; height: 100% !important; border-radius: 0; }
+.home-goal-copy { display: flex; align-items: center; gap: 8px; padding: 14px 16px; min-width: 0; }
+.home-goal-copy svg { flex-shrink: 0; color: var(--ip-muted); }
+.home-goal-copy strong { font-size: 17px; white-space: nowrap; }
+.home-goal-copy small { min-width: 0; color: var(--ip-muted, #65707e); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.home-recent-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; }
+.home-recent-card { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 0 0 10px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); overflow: hidden; text-align: left; }
+.home-recent-card:hover { border-color: #c4cacf; }
+.home-recent-card>span { display: grid; place-items: center; aspect-ratio: 16 / 10; margin-bottom: 6px; background: var(--ip-soft); color: var(--ip-muted); overflow: hidden; }
+.home-recent-card>span img { width: 100%; height: 100%; object-fit: cover; }
+.home-recent-card strong, .home-recent-card small { padding: 0 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-recent-card strong { font-size: 14px; }
+.home-recent-card small { color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+button.home-recent-card { font: inherit; color: inherit; border-style: dashed; }
+
+.home-feed-tabs { display: flex; gap: 6px; margin-bottom: 18px; }
+.home-feed-tabs button { padding: 6px 16px; border: 0; border-radius: 999px; background: transparent; color: var(--ip-muted); font-size: 15px; font-weight: 600; }
+.home-feed-tabs button:hover { color: var(--ip-ink); }
+.home-feed-tabs button[aria-pressed="true"] { background: var(--ip-selected); color: var(--ip-ink); }
+.home-feed-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 18px; }
+
+html:not([data-layout="desktop"]) .home-hero { padding: 36px 16px 6px; }
+html:not([data-layout="desktop"]) .home-goals, html:not([data-layout="desktop"]) .home-recent, html:not([data-layout="desktop"]) .home-feed { padding: 28px 16px 0; }
+html:not([data-layout="desktop"]) .home-goal-track { grid-auto-columns: 78%; }
+html:not([data-layout="desktop"]) .home-tools { gap: 18px; }
+.studio-home-goals .home-goal-art { height: 128px; }
+.studio-home-goals .home-goal-copy { flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; }
+.studio-home-goals .home-goal-copy strong { font-size: 15px; }

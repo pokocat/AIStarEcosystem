@@ -4,6 +4,16 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
+### Studio 场景化首页与 AI 图片 / AI 视频 · 2026-10-29 · 本地，未发布（仅 web-aiavatar）
+
+背景：原 Studio 是一排工具，传统老板看不懂。参考茂隆掌柜 AI 的布局与产品逻辑重做入口：
+- 登录后桌面导航从顶栏改为左侧一列图标 + 文字（`DesktopTopBar` 非公开分支 `desktop-rail`）；`body.has-desktop-bar` 改为左侧让位，`--desktop-bar-h` 在 body 上改为 12px，吸顶页面不用改。
+- 首页（`IpHome`）：一句话开始 + 常用工具 + 「你想做什么？」+ 继续创作 + 灵感（模板与精选案例，按视频 / 图片 / 画布分类）；「灵感」不再是一级导航。
+- `/image`：场景目录 `scene-catalog.ts`，草稿即画布（`scene-drafts.ts` 复用 `makeStudioNode` / `applyStudioRunToDocument`），先保存带请求的节点再提交 `studio-runs`，之后只读运行记录。
+- `/video`：业务信息表单 + 素材 → `composeVideoBrief` 拼话存成助手第一句，`?start=assistant&send=1` 自动发出；拼话固定禁止编价格优惠；只有爆款复刻命中「等参考视频」规则（测试守着）。
+- `/scenes` 转 `/video`。无接口、无迁移。场景封面 37 张为 AI 生成示意图。
+- 未做：场景默认描述的真模型逐个验收；手机底部 tab 未加两页入口。真源 `docs/studio-scene-creation.md`。
+
 ### Studio 新建画布、多段对话与卡片精简 · 2026-10-20 · 2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`（server + web-aiavatar）
 
 背景：用户反馈三件事加一轮文案意见。「新建」各处不一样（项目页「新建创作」先跳 `/create`，那页还要在全能创作 / 图片 / 视频 / 剧本里选一个再填想法）；助手默认打开后旧空态被藏起来，空白画布没有任何提示；助手没有「新对话」和「历史对话」；卡片废话多，把判断过程和计费逻辑都摆给用户看。设计真源 [`docs/ip-studio-new-canvas-and-threads.md`](ip-studio-new-canvas-and-threads.md)，取代 `ip-studio-conversational-video-recreation-plan.md` §对话形态里「每张画布一段对话、没有新对话和历史」那一句。

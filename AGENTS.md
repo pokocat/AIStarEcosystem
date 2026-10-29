@@ -509,11 +509,11 @@ pnpm check:api-contract
 
 | 版本 | 日期 | 一句话 |
 |---|---|---|
+| **场景化首页与 AI 图片 / AI 视频** | 2026-10-29，本地未发布 | 参考茂隆掌柜 AI：登录后桌面改左侧导航栏；首页一句话开始 + 常用工具 + 「你想做什么？」+ 灵感搬到首页；`/image` 按场景一步出图（草稿即画布），`/video` 填业务信息交给创作助手；仅前端，见 `docs/studio-scene-creation.md` |
 | **新建画布与多段对话** | 2026-10-20，2026-10-21 已生产发布 `20261021-studio-new-canvas-threads` | 新建统一走 `startNewCanvas()` 直进画布、空画布中间给五个入口；助手加「新对话 / 历史对话」（三个接口，无迁移）；方案与确认卡合成一张、只说做什么花多少，完成总结一句话；见 `docs/ip-studio-new-canvas-and-threads.md` |
 | **对话意图直达** | 2026-10-20（已生产发布 `20261020-studio-dialogue-intents`） | Studio 助手按意图落到出图 / 写剧本与文案 / 出视频 / 复刻四个技能，直达技能一轮一张确认卡、平手不再 400、按任务换技能，见 `docs/ip-studio-dialogue-intents.md` |
 | **v0.207** | ✅ 本地，未发布 | Studio创作首页：主要功能直达、近期画布/模板、想法保存与原项目恢复；品牌保留，见 `docs/ip-studio-home.md` |
 | **v0.206** | 2026-10-08 | Studio 界面区域分离、响应式工具/生成面板；人物库/添加/引用/商品/模板选择统一，精确版本回填与取消恢复；本地未发布，见 docs/audits/ip-studio-ui-audit-2026-10.md |
-| **v0.205** | 2026-10-08 | Studio IP 人物库按人物汇总，素材详情/筛选/默认声音与精确版本引用；V45 素材分类与免费整理，浏览器恢复/账本验收通过。设定图系统提示词冲突已修，两次实图均未通过质量，未发布 |
 
 
 > **这张表刻意只留 5 行。** 它曾经堆到 110 行、占掉 AGENTS.md 的 **64%** —— 而本文件每个
@@ -1074,6 +1074,10 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 `aep/enterprise` 为独立企业关系/RBAC，复用 OIDC 与现有 aiavatar 开通，不复用旧 Tenant/Studio、不新增企业席位。V56 建立企业/成员/当前归属/邀请/策略/移交/审计/划拨结构；current 的 userId 唯一，owner 由 Enterprise 单字段决定。钱包 accountKey 区分 personal/enterprise/enterprise_member，企业账户 userId 为空，成员用户另存 memberUserId；历史个人余额与账本不动。CreditService 按钱包 ID 共用核心，终态按 hold.walletId，企业资金锁 enterprise→按ID排序的全部企业wallet→hold→任务（个人仍wallet→hold）；划拨枚举为积分面且不计作发行/收入。`AEP_ENTERPRISE_ENABLED` 默认 false，控制新企业关系/积分操作；已有订单的平台财务处理不随开关关闭。E05 为预览指纹+正文幂等的原子划拨，E06 为固定企业根钱包的人工充值/退款；V57 保留原充值来源（移动/冻结/FIFO消费/释放），不得用后续充值顶替原单退款。退款待原单冻结结清后一次处理，记录人民币与凭据，不自动打款。Studio `/enterprise` 需构建期 `NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，后台沿用充值订单页；E07/E08 用 V58 持久化每个收费引用的付款授权和生命周期操作回执。全部 Studio 生成入口显式接受 billing，旧请求默认个人；授权固定 actor/enterprise/membership/wallet/endpoint/价格，不混扣。排队、受理未知均计入在途（零价模型接入点自模型赠款起一律报错，见文末「模型接入点赠款与折扣」）。停用/退出撤销原授权并取消未派发任务，已受理继续原任务结算；晚释放按原桶和充值来源回原企业，恢复/重入不改变原退款。关闭须无在途、冻结、余额或待核准充值。前台完整管理/消费流水与后台企业对账沿用原组件。图片/视频受理必须预先保存原路由和请求、随后保存供应商ID；轮询故障保留冻结并查原任务。无ID由SUPER_ADMIN/OPERATOR保存证据补原ID再查询；供应商明确证明未受理时，才允许显式确认释放原剩余冻结，FINANCE_ADMIN不能操作任务恢复。严禁重新生成或单凭查询故障退款。2026-10-15 已生产发布 `f068b51d`，前后端开关已开启、V56–V58成功，实际服务与资金基线见 `docs/releases/ip-studio-enterprise-production-release.md`。实施/验收见 `docs/archive/ip-studio-enterprise-development-tasks.md`、`docs/releases/ip-studio-enterprise-complete-validation.md`（早期批次记录另保留）；前端规划见 `docs/ip-studio-enterprise-ui-plan.md`。
 
+
+### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
+
+本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在 `src/ip/scenes/scene-catalog.ts` 一处（首页卡片共用），图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；视频场景拼成一段话交给画布里的创作助手（`?start=assistant&send=1`），拼话固定禁止编价格 / 优惠，除「爆款复刻」外不得命中 `studioBriefNeedsReference`（`scene-catalog.test.ts` 守着）。真源 `docs/studio-scene-creation.md`。
 
 ### Studio 七项导航与存量发行界面（2026-10-17，已生产发布）
 
