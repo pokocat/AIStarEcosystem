@@ -61,3 +61,12 @@ html:not([data-layout="desktop"]) .home-tools { gap: 18px; }
 .studio-home-goals .home-goal-art { height: 128px; }
 .studio-home-goals .home-goal-copy { flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; }
 .studio-home-goals .home-goal-copy strong { font-size: 15px; }
+
+/* 灵感墙：瀑布流，图铺满卡片，底部渐变压标题 */
+.home-feed-wall { columns: 5 220px; column-gap: 14px; }
+.home-feed-card { position: relative; display: block; width: 100%; margin: 0 0 14px; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: var(--ip-soft); break-inside: avoid; cursor: pointer; }
+.home-feed-media { position: absolute; inset: 0; display: grid; place-items: center; }
+.home-feed-media .project-content-cover img { object-fit: cover; }
+.home-feed-card:hover .home-feed-caption { padding-bottom: 14px; }
+.home-feed-caption { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 6px; padding: 28px 12px 10px; color: #fff; font-size: 13px; text-align: left; background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.55) 100%); transition: padding 160ms var(--ip-ease); }
+.home-feed-caption strong { min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

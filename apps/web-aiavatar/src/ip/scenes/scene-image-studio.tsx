@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { Download, ExternalLink, FolderOpen, ImagePlus, Loader2, Plus, RotateCcw, Square, Undo2, X } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, FolderOpen, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
 import type { IpImageAsset, IpProject, IpRun } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -19,9 +19,9 @@ import { useStudioList } from "../studio-gallery";
 import { studioImageResolution, studioImageSizeLabel } from "../studio-generation-controls";
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
-import { IMAGE_DRAFT_SUFFIX, freeImageScene, imageScene, imageSceneGroups, imageScenes, sceneFromDraftName, type ImageScene } from "./scene-catalog";
+import { IMAGE_DRAFT_SUFFIX, freeImageScene, imagePrompt, imageScene, imageSceneGroups, imageScenes, sceneFromDraftName, type ImageScene } from "./scene-catalog";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneList, SceneNoModel, SceneRecent, SceneThumb } from "./scene-layout";
+import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb } from "./scene-layout";
 
 const loadDrafts = () => listSceneDrafts(IMAGE_DRAFT_SUFFIX);
 const ALL_SCENES = [freeImageScene, ...imageScenes];
@@ -45,7 +45,11 @@ export function SceneImageStudio() {
   const showFailure = useStudioFailure();
   const [scene, setScene] = useState<ImageScene>(freeImageScene);
   const [slots, setSlots] = useState<(SceneUpload | undefined)[]>([]);
-  const [prompt, setPrompt] = useState(freeImageScene.prompt);
+  // 用户写的只是补充要求；场景描述藏在场景标签后面，想改的人点「改完整描述」。
+  const [supplement, setSupplement] = useState("");
+  const [custom, setCustom] = useState<string>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [tab, setTab] = useState<"results" | "example">("example");
   const [uploading, setUploading] = useState<number>();
   const [picking, setPicking] = useState<number>();
   const [models, setModels] = useState<IpModelOption[]>();
@@ -71,7 +75,7 @@ export function SceneImageStudio() {
     setRatio(next.ratio);
     setHint("");
     if (!keepInputs) {
-      setPrompt(next.prompt);
+      setSupplement(""); setCustom(undefined);
       // 同一位置的参考图跟着走（换个人物场景时照片不用重放），多出来的位丢掉。
       setSlots(old => next.refs.map((_, i) => old[i]));
     }
@@ -90,7 +94,7 @@ export function SceneImageStudio() {
       const fromName = sceneFromDraftName(project.name, IMAGE_DRAFT_SUFFIX, ALL_SCENES);
       const latest = imageRows(project.doc)[0];
       if (fromName) { setScene(fromName); setRatio(latest?.metadata?.studio?.request?.aspectRatio || fromName.ratio); setSlots(fromName.refs.map(() => undefined)); }
-      setPrompt(latest?.metadata?.studio?.request?.prompt ?? fromName?.prompt ?? "");
+      setSupplement(""); setCustom(undefined); setTab(latest ? "results" : "example");
       writeQuery((fromName || scene).id, project.id);
     } catch (e) { showFailure({ action: "打开草稿", error: e }); }
     finally { setOpening(undefined); }
@@ -167,9 +171,10 @@ export function SceneImageStudio() {
   const unit = chosen?.imageResolutionCosts?.[studioImageResolution(usedSize) || ""] ?? chosen?.creditCost ?? caps?.imageCost ?? 0;
   const quote = caps?.mock ? 0 : unit * usedCount;
   const maxChars = chosen?.capability?.imagePromptMaxChars || 2000;
+  const prompt = imagePrompt(scene, { supplement, custom });
   const missing = scene.refs.findIndex((r, i) => r.required && !slots[i]);
   const blocker = !models ? "正在读取模型…" : !caps?.mock && !chosen ? "还没有可用的图片模型"
-    : missing >= 0 ? `先放「${scene.refs[missing].label}」` : !prompt.trim() ? "写一句想要的画面" : prompt.length > maxChars ? `描述最多 ${maxChars} 字` : "";
+    : missing >= 0 ? `先放${scene.refs[missing].label}` : !prompt.trim() ? "写一句想要的画面" : prompt.length > maxChars ? `描述最多 ${maxChars} 字` : "";
 
   const upload = async (index: number, file: File) => {
     setUploading(index); setHint("");
@@ -195,12 +200,12 @@ export function SceneImageStudio() {
       const refs = scene.refs.flatMap((r, i) => slots[i] ? [{ upload: slots[i]!, label: r.label }] : []);
       let request: Parameters<typeof submitStudioRun>[1] | undefined;
       await persist(doc => {
-        const row = addImageRow(doc, { title: scene.title, prompt: prompt.trim(), refs, ratio: usedRatio, count: usedCount, size: usedSize,
+        const row = addImageRow(doc, { title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize,
           model: caps?.mock ? undefined : chosen?.endpointId, maxCost: quote });
         request = row.request; nodeId = row.nodeId;
         return row.doc;
       });
-      posted = true;
+      posted = true; setTab("results");
       const run = await submitStudioRun(project.id, request!);
       await persist(doc => applyRun(doc, nodeId!, run));
     } catch (e) {
@@ -227,7 +232,8 @@ export function SceneImageStudio() {
   const reuse = (row: CanvasNodeData) => {
     const request = row.metadata?.studio?.request;
     if (!request) return;
-    setPrompt(request.prompt);
+    // 原样再做一次：把那次真正发出去的整段描述放进「完整描述」，补充要求清空。
+    if (scene.id === freeImageScene.id) setSupplement(request.prompt); else { setCustom(request.prompt); setSupplement(""); }
     if (request.aspectRatio) setRatio(request.aspectRatio);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -247,61 +253,75 @@ export function SceneImageStudio() {
       </header>
 
       <div className="scene-composer-body">
+        <div className="scene-ref-count">{slots.filter(Boolean).length} / {scene.refs.length}</div>
         <div className="scene-ref-row" role="group" aria-label="参考图">
           {scene.refs.map((ref, i) => {
             const slot = slots[i];
+            const Icon = refIcon(ref.label);
             return <div key={`${scene.id}-${i}`} className={`scene-ref${slot ? " is-filled" : ""}`}>
               {slot ? <>
                 <img src={slot.url} alt={ref.label}/><span className="scene-ref-index">图{i + 1}</span>
                 <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={13}/></button>
-              </> : <button type="button" className="scene-ref-add" disabled={uploading !== undefined} aria-label={`上传${ref.label}`}
+              </> : <button type="button" className="scene-ref-add" disabled={uploading !== undefined} aria-label={`上传${ref.label}`} title={ref.hint}
                 onClick={() => { uploadTarget.current = i; fileInput.current?.click(); }}
                 onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) void upload(i, file); }}>
-                {uploading === i ? <Loader2 size={20} className="studio-gallery-spinner"/> : <ImagePlus size={20}/>}
+                {uploading === i ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><Icon size={30} strokeWidth={1.2}/><span className="scene-ref-upload"><Upload size={11}/></span></>}
               </button>}
-              <span className="scene-ref-label" title={ref.hint}>{ref.label}{!ref.required && <small>（可选）</small>}</span>
+              <span className="scene-ref-label" title={ref.hint}>{slot ? ref.label : `添加${ref.label}`}{!ref.required && <small>（可选）</small>}</span>
               {!slot && <button type="button" className="scene-ref-library" onClick={() => setPicking(i)}>从资产库选</button>}
             </div>;
           })}
           <input ref={fileInput} type="file" accept=".jpg,.jpeg,.png" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(uploadTarget.current, file); }}/>
         </div>
 
-        <label className="scene-prompt">
-          <span className="scene-field-label">想要的画面{prompt !== scene.prompt && scene.prompt && <button type="button" onClick={() => setPrompt(scene.prompt)}><Undo2 size={13}/>恢复默认描述</button>}</span>
-          <textarea value={prompt} maxLength={maxChars + 200} onChange={e => setPrompt(e.target.value)}
-            placeholder={scene.refs.length ? "描述想要的画面，参考图按「图1、图2」称呼" : "描述想要的画面"}/>
-          <small className={prompt.length > maxChars ? "is-over" : undefined}>{prompt.length} / {maxChars}</small>
-        </label>
-        {scene.prompt.includes("【") && <p className="scene-tip">方括号【…】里的内容换成你自己的，效果更好。</p>}
+        <div className="scene-ask">
+          {scene.id !== freeImageScene.id && custom === undefined && <span className="scene-skill-chip" title={scene.prompt}><Sparkles size={14}/>{scene.title}</span>}
+          {custom !== undefined
+            ? <textarea aria-label="完整描述" value={custom} onChange={e => setCustom(e.target.value)} className="is-full"/>
+            : <textarea aria-label={scene.id === freeImageScene.id ? "想要的画面" : "补充要求"} value={supplement} placeholder={scene.hint} onChange={e => setSupplement(e.target.value)}/>}
+          {custom !== undefined && <textarea aria-label="补充要求" className="is-extra" value={supplement} placeholder="还有要补充的，写在这里" onChange={e => setSupplement(e.target.value)}/>}
+          <footer>
+            {scene.id !== freeImageScene.id && (custom === undefined
+              ? <button type="button" onClick={() => setCustom(scene.prompt)}><PencilLine size={13}/>改完整描述</button>
+              : <button type="button" onClick={() => setCustom(undefined)}><Undo2 size={13}/>用回场景描述</button>)}
+            <small className={prompt.length > maxChars ? "is-over" : undefined}>{prompt.length} / {maxChars}</small>
+          </footer>
+        </div>
       </div>
 
       <div className="scene-settings">
         {caps?.imageModelMode !== "fixed" && candidates.length > 1 && <label className="scene-setting"><span>模型</span>
           <StudioSelect label="图片模型" compact value={chosen?.endpointId || ""} onChange={setModelId} options={candidates.map(m => ({ value: m.endpointId, label: m.name }))}/></label>}
-        <label className="scene-setting"><span>比例</span>
-          <StudioSelect label="画面比例" compact value={usedRatio} onChange={setRatio} options={ratios.map(r => ({ value: r, label: r }))}/></label>
-        {sizes.length > 1 && <label className="scene-setting"><span>清晰度</span>
-          <StudioSelect label="清晰度" compact value={usedSize || ""} onChange={setSize} options={sizes.map(s => ({ value: s.size, label: studioImageSizeLabel(s.size) || s.size }))}/></label>}
-        <label className="scene-setting"><span>张数</span>
-          <StudioSelect label="生成张数" compact value={String(usedCount)} onChange={v => setCount(Number(v))} options={counts.map(c => ({ value: String(c), label: `${c} 张` }))}/></label>
+        <div className="scene-setting scene-setting-panel-host">
+          <button type="button" className="scene-setting-toggle" aria-expanded={settingsOpen} aria-controls="scene-image-settings" onClick={() => setSettingsOpen(v => !v)}>
+            <span>图片设置</span><strong><SlidersHorizontal size={13}/>{[usedRatio, studioImageSizeLabel(usedSize), `${usedCount} 张`].filter(Boolean).join(" · ")}</strong><ChevronDown size={14}/>
+          </button>
+          {settingsOpen && <ImageSettingsPanel ratios={ratios} ratio={usedRatio} onRatio={setRatio} sizes={sizes} size={usedSize} onSize={setSize}
+            counts={counts} count={usedCount} onCount={setCount} onClose={() => setSettingsOpen(false)}/>}
+        </div>
       </div>
       {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
       {hint && <p className="scene-hint" role="status">{hint}</p>}
-      <button type="button" className="scene-go" aria-label="立即生成图片" title={caps?.mock ? "测试响应，不扣积分" : chosen ? `预计 ${quote} 积分` : undefined} disabled={busy || (!!models && !caps?.mock && !chosen)} onClick={() => void generate()}>
+      {/* 不能生成时按钮就地写原因（先放什么、先写什么），不让人对着一个灰按钮猜。 */}
+      <button type="button" className="scene-go" aria-label="立即生成图片" title={blocker || (caps?.mock ? "测试响应，不扣积分" : `预计 ${quote} 积分`)} disabled={busy || !!blocker} onClick={() => void generate()}>
         {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成图片</span>
-        <small>{caps?.mock ? "测试响应 · 免费" : chosen ? `预计 ${quote} 积分` : ""}</small>
+        <small>{blocker || (caps?.mock ? "测试响应 · 免费" : `预计 ${quote} 积分`)}</small>
       </button>
     </section>
 
     <section className="scene-results" aria-label="生成结果">
-      <header><h2>{draft ? draft.name.replace(IMAGE_DRAFT_SUFFIX, "") : "生成结果"}</h2>
+      <header><div className="scene-tabs" role="tablist" aria-label="结果与示例">
+          <button type="button" role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}>生成结果{rows.length ? <small>{rows.length}</small> : null}</button>
+          <button type="button" role="tab" aria-selected={tab === "example"} onClick={() => setTab("example")}>参考示例</button></div>
         {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
-      {opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
+      {tab === "example" ? (scene.id === freeImageScene.id
+          ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={[imageScenes[3], imageScenes[0], imageScenes[9]]}/>
+          : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description}/>)
+        : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy}
           onView={setViewing} onReuse={() => reuse(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
-        : <SceneEmpty title="图片创作" note={<>选一个场景，放好参考图，描述已经帮你写好了。<br/>点「立即生成图片」，结果会出现在这里。</>}
-          covers={[imageScenes[3], imageScenes[0], imageScenes[9]]}/>}
+        : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
     </section>
 
     <SceneRecent drafts={drafts.data} loading={drafts.loading} current={draft?.id} onOpen={id => void openDraft(id)}/>
@@ -349,4 +369,37 @@ function ImageRow({ row, run, busy, onView, onReuse, onConfirm, onStop }: {
       {request && <button type="button" onClick={onReuse}><ExternalLink size={13}/>用这段描述再做</button>}
     </div>
   </li>;
+}
+
+/** 参考图位的占位图标：看名字是人、商品、衣服还是场景。 */
+function refIcon(label: string) {
+  if (/脸|人物|面孔|模特|人/.test(label)) return UserRound;
+  if (/商品/.test(label)) return Package;
+  if (/服装|面料|印花/.test(label)) return Shirt;
+  if (/场景/.test(label)) return Mountain;
+  return ImagePlus;
+}
+
+const ratioLabel = (r: string) => r === "1:1" ? "方图" : r;
+/** 图片设置：比例画成小方块，清晰度和张数是几个按钮，就地展开在设置栏上方。 */
+function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, counts, count, onCount, onClose }: {
+  ratios: string[]; ratio: string; onRatio: (r: string) => void; sizes: { size: string; aspectRatio: string }[]; size?: string; onSize: (s: string) => void;
+  counts: number[]; count: number; onCount: (n: number) => void; onClose: () => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => { if (e.target instanceof Node && !panel.current?.parentElement?.contains(e.target)) onClose(); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
+    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
+  }, [onClose]);
+  return <div ref={panel} id="scene-image-settings" className="scene-settings-panel" role="group" aria-label="图片设置">
+    <h3>图片比例</h3>
+    <div className="scene-ratio-grid">{ratios.map(r => { const [w, h] = r.split(":").map(Number), k = 26 / Math.max(w, h);
+      return <button key={r} type="button" aria-pressed={r === ratio} onClick={() => onRatio(r)}><i style={{ width: Math.round(w * k), height: Math.round(h * k) }}/>{ratioLabel(r)}</button>; })}</div>
+    {sizes.length > 1 && <><h3>清晰度</h3><div className="scene-choice-row">{sizes.map(s => <button key={s.size} type="button" aria-pressed={s.size === size} onClick={() => onSize(s.size)} title={s.size.replace("x", " × ")}>{studioImageSizeLabel(s.size)}</button>)}</div></>}
+    <h3>生成张数</h3>
+    <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div>
+  </div>;
 }

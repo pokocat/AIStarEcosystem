@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, FolderOpen, Image as ImageIcon, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
+import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, FolderOpen, Image as ImageIcon, LayoutTemplate, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
 import type { IpProjectSummary, IpTemplate } from "@ai-star-eco/types";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "@/shell/desktop-top-bar";
@@ -13,7 +13,7 @@ import { StudioConversationStart } from "@/ip/studio-conversation-start";
 import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
-import { TemplateCard } from "@/ip/studio-gallery";
+import { ProjectCardPreview } from "@/ip/project-card-preview";
 import { homeGoals } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
 import { formatDateTime } from "@/lib/datetime";
@@ -164,10 +164,21 @@ export function IpHome({ header = true }: { header?: boolean }) {
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在读取灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感暂时没读出来，稍后刷新再看。</div>
-          : feed.length ? <div className="home-feed-grid">{feed.slice(0, 12).map(t => <TemplateCard key={t.id} template={t} previewMode="content" onOpen={setUsing}/>)}</div>
+          : feed.length ? <div className="home-feed-wall">{feed.slice(0, 15).map((t, i) => <FeedCard key={t.id} template={t} shape={i} onOpen={setUsing}/>)}</div>
           : <div className="ip-brand-state">这一类还没有内容，先看看别的分类。</div>}
       </section>}
     </main>
     <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>让灵感成形，让 IP 出圈。</p><Link href="/assets?tab=ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
   </div>;
+}
+
+/** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是只读预览，存为副本再改。 */
+const FEED_SHAPES = ["3 / 4", "4 / 5", "1 / 1", "9 / 13"];
+function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
+  const kind = templateKind(template);
+  const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;
+  return <button type="button" className="home-feed-card" style={{ aspectRatio: FEED_SHAPES[shape % FEED_SHAPES.length] }} aria-label={`预览模板 ${template.name}`} title={template.summary || template.name} onClick={() => onOpen(template)}>
+    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl}/></span>
+    <span className="home-feed-caption"><Icon size={15} aria-hidden="true"/><strong>{template.name}</strong></span>
+  </button>;
 }

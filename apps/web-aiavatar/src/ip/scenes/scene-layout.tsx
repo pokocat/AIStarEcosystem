@@ -70,6 +70,16 @@ export function SceneEmpty({ title, note, covers }: { title: string; note: React
   </div>;
 }
 
+/** 选了场景时结果区先给看「这个场景做出来大概什么样」。图是示意，不是用户的作品。 */
+export function SceneExample({ id, title, note, children }: { id: string; title: string; note: ReactNode; children?: ReactNode }) {
+  return <div className="scene-empty scene-example">
+    <h2>{title}</h2><p>{note}</p>
+    <span className="scene-example-image"><SceneThumb id={id} title={title} size={320}/></span>
+    <small>示意图</small>
+    {children}
+  </div>;
+}
+
 export function SceneNoModel({ kind }: { kind: "图片" | "视频" }) {
   return <p className="scene-note" role="status"><FileImage size={15} aria-hidden="true"/>后台还没有配置可用的{kind}模型，暂时不能生成。请联系管理员在「AI 模型」里开通。</p>;
 }

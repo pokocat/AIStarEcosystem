@@ -6,11 +6,11 @@
 
 ### Studio 场景化首页与 AI 图片 / AI 视频 · 2026-10-29 · 本地，未发布（仅 web-aiavatar）
 
-背景：原 Studio 是一排工具，传统老板看不懂。参考茂隆掌柜 AI 的布局与产品逻辑重做入口：
+背景：原 Studio 是一排工具，传统老板看不懂。参考茂隆掌柜 AI（对照登录后的页面）的布局与产品逻辑重做入口：
 - 登录后桌面导航从顶栏改为左侧一列图标 + 文字（`DesktopTopBar` 非公开分支 `desktop-rail`）；`body.has-desktop-bar` 改为左侧让位，`--desktop-bar-h` 在 body 上改为 12px，吸顶页面不用改。
 - 首页（`IpHome`）：一句话开始 + 常用工具 + 「你想做什么？」+ 继续创作 + 灵感（模板与精选案例，按视频 / 图片 / 画布分类）；「灵感」不再是一级导航。
-- `/image`：场景目录 `scene-catalog.ts`，草稿即画布（`scene-drafts.ts` 复用 `makeStudioNode` / `applyStudioRunToDocument`），先保存带请求的节点再提交 `studio-runs`，之后只读运行记录。
-- `/video`：业务信息表单 + 素材 → `composeVideoBrief` 拼话存成助手第一句，`?start=assistant&send=1` 自动发出；拼话固定禁止编价格优惠；只有爆款复刻命中「等参考视频」规则（测试守着）。
+- `/image`：场景目录 `scene-catalog.ts`；场景描述不摆给用户，只显示场景标签 + 补充要求（`imagePrompt` 拼接，描述里不留【…】）；草稿即画布（`scene-drafts.ts` 复用 `makeStudioNode` / `applyStudioRunToDocument`），先保存带请求的节点再提交 `studio-runs`，之后只读运行记录。
+- `/video`：素材 + 一句话（商品 / 门店类可不写）→ `composeVideoBrief` 拼话存成助手第一句，`?start=assistant&send=1` 自动发出；拼话固定禁止编价格优惠；只有爆款复刻命中「等参考视频」规则（测试守着）。
 - `/scenes` 转 `/video`。无接口、无迁移。场景封面 37 张为 AI 生成示意图。
 - 未做：场景默认描述的真模型逐个验收；手机底部 tab 未加两页入口。真源 `docs/studio-scene-creation.md`。
 
