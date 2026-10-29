@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -181,7 +182,7 @@ export default function StudioScenesPage() {
               <Field label="名称"><Input aria-label="名称" value={active.title} maxLength={20} onChange={e => patch({ title: e.target.value })}/></Field>
               <Field label="编号" hint="小写字母、数字和横线；用户的草稿按它记场景，保存后不能再改。">
                 <Input aria-label="编号" value={active.id} maxLength={48} disabled={savedIds.has(active.id)} onChange={e => { const id = e.target.value; patch({ id }); setActiveId(id); }}/></Field>
-              <Field label="分组"><NativeSelect label="分组" value={active.group} options={groups.map(g => [g.id, g.title])} onChange={v => patch({ group: v })}/></Field>
+              <Field label="分组"><ChoiceSelect label="分组" value={active.group} options={groups.map(g => [g.id, g.title])} onChange={v => patch({ group: v })}/></Field>
               <Field label="一句说明"><Input aria-label="一句说明" value={active.description} maxLength={40} onChange={e => patch({ description: e.target.value })}/></Field>
             </div>
 
@@ -201,9 +202,12 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   return <div className="space-y-1.5"><div className="text-sm font-medium">{label}</div>{children}{hint && <p className="text-xs text-muted-foreground">{hint}</p>}</div>;
 }
 
-function NativeSelect({ label, value, options, onChange }: { label: string; value: string; options: string[][]; onChange: (v: string) => void }) {
-  return <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}
-    className="h-9 w-full rounded-md border border-input bg-background px-2 text-sm">{options.map(([v, text]) => <option key={v} value={v}>{text}</option>)}</select>;
+/** 共用的下拉（不用浏览器原生 select，select-field-wiring 测试守着）。 */
+function ChoiceSelect({ label, value, options, onChange }: { label: string; value: string; options: string[][]; onChange: (v: string) => void }) {
+  return <Select value={value} onValueChange={onChange}>
+    <SelectTrigger aria-label={label}><SelectValue/></SelectTrigger>
+    <SelectContent>{options.map(([v, text]) => <SelectItem key={v} value={v}>{text}</SelectItem>)}</SelectContent>
+  </Select>;
 }
 
 function MediaEditor({ scene, mediaOf, onUpload, onClearCover, onRemoveExample }: {
@@ -255,7 +259,7 @@ function ImageFields({ scene, patch }: { scene: StudioImageScene; patch: (p: Par
       <Textarea aria-label="出图描述" rows={6} value={scene.prompt} onChange={e => patch({ prompt: e.target.value })}/></Field>
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="补充要求输入框的提示"><Input aria-label="补充要求提示" value={scene.hint} onChange={e => patch({ hint: e.target.value })}/></Field>
-      <Field label="默认比例"><NativeSelect label="默认比例" value={scene.ratio} options={IMAGE_RATIOS.map(r => [r, r])} onChange={v => patch({ ratio: v })}/></Field>
+      <Field label="默认比例"><ChoiceSelect label="默认比例" value={scene.ratio} options={IMAGE_RATIOS.map(r => [r, r])} onChange={v => patch({ ratio: v })}/></Field>
     </div>
   </>;
 }
@@ -283,10 +287,10 @@ function VideoFields({ scene, patch, skills }: { scene: StudioVideoScene; patch:
     <Field label="常用开头" hint="一行一个，最多 8 个；用户点一下就填进输入框。">
       <Textarea aria-label="常用开头" rows={4} value={scene.ideas.join("\n")} onChange={e => patch({ ideas: e.target.value.split("\n").map(s => s.trim()).filter(Boolean).slice(0, 8) })}/></Field>
     <div className="grid gap-4 md:grid-cols-3">
-      <Field label="默认画面"><NativeSelect label="默认画面" value={scene.ratio} options={[["9:16", "竖屏 9:16"], ["16:9", "横屏 16:9"]]} onChange={v => patch({ ratio: v as StudioVideoScene["ratio"] })}/></Field>
+      <Field label="默认画面"><ChoiceSelect label="默认画面" value={scene.ratio} options={[["9:16", "竖屏 9:16"], ["16:9", "横屏 16:9"]]} onChange={v => patch({ ratio: v as StudioVideoScene["ratio"] })}/></Field>
       <Field label="默认时长" hint="超过所选视频模型上限时，按模型最长时长出。">
-        <NativeSelect label="默认时长" value={String(scene.duration)} options={scene.durations.map(d => [String(d), `${d} 秒`])} onChange={v => patch({ duration: Number(v) })}/></Field>
-      <Field label="做法"><NativeSelect label="做法" value={scene.skill} options={skills.map(k => [k, SKILL_LABEL[k] ?? k])} onChange={v => patch({ skill: v })}/></Field>
+        <ChoiceSelect label="默认时长" value={String(scene.duration)} options={scene.durations.map(d => [String(d), `${d} 秒`])} onChange={v => patch({ duration: Number(v) })}/></Field>
+      <Field label="做法"><ChoiceSelect label="做法" value={scene.skill} options={skills.map(k => [k, SKILL_LABEL[k] ?? k])} onChange={v => patch({ skill: v })}/></Field>
     </div>
     <Field label="交给创作助手时可选的时长" hint="长片和复刻交给画布里的创作助手分段做时，给用户选的时长。">
       <div className="flex flex-wrap gap-2" role="group" aria-label="可选时长">{DURATION_CHOICES.map(d => <Button key={d} size="sm" variant={scene.durations.includes(d) ? "default" : "outline"}
