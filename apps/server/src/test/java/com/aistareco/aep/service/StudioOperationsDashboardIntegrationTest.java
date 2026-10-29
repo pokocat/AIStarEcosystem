@@ -59,7 +59,7 @@ class StudioOperationsDashboardIntegrationTest {
     }
 
     @Test
-    void groupsTechnologyByObservedSupplierAndReturnsBoundedHourlyOutcomes() {
+    void groupsTechnologyByObservedSupplierAndReturnsBoundedHalfHourOutcomes() {
         Instant now = Instant.now();
         jdbc.update("insert into material_video_job (id,owner_user_id,status,progress,credits_held,provider_used,model_used,error_code,error_message,created_at,updated_at,completed_at) values (?,?,?,?,?,?,?,?,?,?,?,?)",
                 "video-hourly-a", "user-a", "failed", 100, 0, "supplier-a", "model-a",
@@ -70,9 +70,42 @@ class StudioOperationsDashboardIntegrationTest {
         assertThat(dashboard.technology().models()).hasSize(1);
         var model = dashboard.technology().models().get(0);
         assertThat(model.supplier()).isEqualTo("supplier-a");
-        assertThat(model.hourlyOutcomes()).hasSize(24);
-        assertThat(model.hourlyOutcomes()).anyMatch(bucket -> bucket.status().equals("issue") && bucket.failed() == 1);
-        assertThat(model.hourlyOutcomes()).anyMatch(bucket -> bucket.status().equals("no_calls"));
+        assertThat(model.outcomeBuckets()).hasSize(48);
+        assertThat(model.outcomeBuckets()).allMatch(bucket -> bucket.minutes() == 30);
+        assertThat(model.outcomeBuckets()).anyMatch(bucket -> bucket.status().equals("issue") && bucket.failed() == 1);
+        assertThat(model.outcomeBuckets()).anyMatch(bucket -> bucket.status().equals("no_calls"));
+        assertThat(model.successWindows()).extracting("label").containsExactly("24 小时", "7 天", "30 天");
+        assertThat(model.successWindows().get(0).samples()).isEqualTo(1);
+        assertThat(dashboard.technology().outputs().submittedTasks()).isEqualTo(1);
+        assertThat(dashboard.technology().outputs().videoAssets()).isZero();
+    }
+
+    @Test
+    void directorFunnelOnlyAdvancesAlongEpisodesOwnedByTheSameProject() {
+        Instant now = Instant.now();
+        String content = """
+                {"episodes":[{"id":"episode-a"}],"clips":[
+                  {"episodeId":"episode-a","shots":[{"no":1}],
+                   "board":{"adoptedId":"board-a","candidates":[{"id":"board-a","key":"boards/a.jpg"}]},
+                   "video":{"adoptedId":"video-a","candidates":[{"id":"video-a","key":"videos/a.mp4"}]}},
+                  {"episodeId":"episode-missing","shots":[{"no":2}],
+                   "board":{"adoptedId":"board-b","candidates":[{"id":"board-b","key":"boards/b.jpg"}]},
+                   "video":{"adoptedId":"video-b","candidates":[{"id":"video-b","key":"videos/b.mp4"}]}}
+                ]}
+                """;
+        jdbc.update("insert into director_work (id,owner_user_id,title,revision,content_json,active,created_at,updated_at) values (?,?,?,?,?,?,?,?)",
+                "director-work-a", "user-a", "口径验收", 1, content, false,
+                Timestamp.from(now), Timestamp.from(now));
+
+        var funnel = new StudioOperationsDashboardService(jdbc, new ObjectMapper()).dashboard(7).business().directorFunnel();
+        assertThat(funnel.projects()).isEqualTo(1);
+        assertThat(funnel.projectsWithEpisodes()).isEqualTo(1);
+        assertThat(funnel.projectsWithStoryboards()).isEqualTo(1);
+        assertThat(funnel.projectsWithVideos()).isEqualTo(1);
+        assertThat(funnel.clips()).isEqualTo(2);
+        assertThat(funnel.storyboards()).isEqualTo(1);
+        assertThat(funnel.videos()).isEqualTo(1);
+        assertThat(funnel.note()).contains("关联项目内有效剧集");
     }
 
     private void insertLedger(String id, String type, long amount, Instant createdAt) {

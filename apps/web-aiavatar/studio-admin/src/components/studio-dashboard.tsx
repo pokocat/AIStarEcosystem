@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
   AlertCircle,
@@ -15,7 +15,6 @@ import {
   Coins,
   DatabaseZap,
   ExternalLink,
-  Gauge,
   Gift,
   ImageIcon,
   Info,
@@ -58,7 +57,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@ai-star-eco/ui/ui/sheet";
 import { Skeleton } from "@ai-star-eco/ui/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@ai-star-eco/ui/ui/table";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@ai-star-eco/ui/ui/tabs";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@ai-star-eco/ui/ui/tooltip";
 import { ApiError, StudioOperationsApi } from "@/lib/api";
 
@@ -67,6 +65,7 @@ type Days = 1 | 7 | 30;
 
 const int = (value: number) => value.toLocaleString("zh-CN");
 const yuan = (value: number) => `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const cents = (value: number) => yuan(value / 100);
 const rate = (value: number | null) => value == null ? "样本不足" : `${(value * 100).toFixed(1)}%`;
 const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai",
@@ -76,14 +75,15 @@ const dateTime = (value?: string | null) => value ? new Intl.DateTimeFormat("zh-
   minute: "2-digit",
 }).format(new Date(value)) : "未接入";
 
-function demoHourly(statuses: Array<"ok" | "issue" | "active" | "no_calls">) {
+function demoOutcomes(statuses: Array<"ok" | "issue" | "active" | "no_calls">) {
   const end = new Date();
-  end.setMinutes(0, 0, 0);
-  return Array.from({ length: 24 }, (_, index) => {
+  end.setMinutes(end.getMinutes() < 30 ? 0 : 30, 0, 0);
+  return Array.from({ length: 48 }, (_, index) => {
     const status = statuses[index % statuses.length];
-    const hour = new Date(end.getTime() - (23 - index) * 60 * 60_000).toISOString();
+    const startedAt = new Date(end.getTime() - (47 - index) * 30 * 60_000).toISOString();
     return {
-      hour,
+      startedAt,
+      minutes: 30,
       succeeded: status === "ok" ? 2 + (index % 4) : 0,
       failed: status === "issue" ? 1 : 0,
       inFlight: status === "active" ? 1 : 0,
@@ -92,17 +92,23 @@ function demoHourly(statuses: Array<"ok" | "issue" | "active" | "no_calls">) {
   });
 }
 
-/** Development-only visual fixture. It is never compiled into a production data path. */
+/** Development-only visual fixture. The production branch can never select it. */
 function withDemoTechnology(data: DashboardData): DashboardData {
   return {
     ...data,
     generatedAt: new Date().toISOString(),
+    business: {
+      ...data.business,
+      consumerActivity: { activeConsumers: 128, firstTimeConsumers: 31, returningConsumers: 97, rechargeConsumerStatus: "unavailable", note: "演示：消费用户按已结算且实际扣费任务去重。" },
+      cashFlow: { paidUsers: 42, paidOrders: 57, paidAmountCents: 268900, refundedUsers: 3, refundedOrders: 3, refundedAmountCents: 18900, note: "演示：真实到账与退款，不等同于收入。" },
+      directorFunnel: { status: "available", projects: 96, projectsWithEpisodes: 81, projectsWithStoryboards: 63, projectsWithVideos: 41, episodes: 184, clips: 628, storyboards: 402, videos: 219, note: "演示：当前快照；推进率始终按同一批项目去重计算。" },
+    },
     technology: {
       ...data.technology,
       models: [
-        { key: "gpt-image-2", supplier: "CATech", mediaType: "图片", jobs: 116, succeeded: 110, failed: 4, inFlight: 2, successRate: 110 / 114, ownership: "混合", hourlyOutcomes: demoHourly(["ok", "ok", "ok", "no_calls", "ok", "issue"]) },
-        { key: "minimax-h3", supplier: "聚算视频", mediaType: "视频", jobs: 74, succeeded: 69, failed: 3, inFlight: 2, successRate: 69 / 72, ownership: "混合", hourlyOutcomes: demoHourly(["ok", "ok", "no_calls", "ok", "active", "ok"]) },
-        { key: "seedance-1.0-pro", supplier: "方舟视频", mediaType: "视频", jobs: 42, succeeded: 40, failed: 1, inFlight: 1, successRate: 40 / 41, ownership: "混合", hourlyOutcomes: demoHourly(["no_calls", "ok", "ok", "ok", "ok", "active"]) },
+        { key: "gpt-image-2", supplier: "CATech", mediaType: "图片", jobs: 116, succeeded: 110, failed: 4, inFlight: 2, successRate: 110 / 114, ownership: "混合", successWindows: [{ label: "24 小时", samples: 114, successRate: 110 / 114 }, { label: "7 天", samples: 624, successRate: .971 }, { label: "30 天", samples: 2418, successRate: .966 }], outcomeBuckets: demoOutcomes(["ok", "ok", "ok", "no_calls", "ok", "issue"]) },
+        { key: "minimax-h3", supplier: "聚算视频", mediaType: "视频", jobs: 74, succeeded: 69, failed: 3, inFlight: 2, successRate: 69 / 72, ownership: "混合", successWindows: [{ label: "24 小时", samples: 72, successRate: 69 / 72 }, { label: "7 天", samples: 338, successRate: .944 }, { label: "30 天", samples: 1352, successRate: .938 }], outcomeBuckets: demoOutcomes(["ok", "ok", "no_calls", "ok", "active", "ok"]) },
+        { key: "seedance-1.0-pro", supplier: "方舟视频", mediaType: "视频", jobs: 42, succeeded: 40, failed: 1, inFlight: 1, successRate: 40 / 41, ownership: "混合", successWindows: [{ label: "24 小时", samples: 41, successRate: 40 / 41 }, { label: "7 天", samples: 207, successRate: .952 }, { label: "30 天", samples: 824, successRate: .948 }], outcomeBuckets: demoOutcomes(["no_calls", "ok", "ok", "ok", "ok", "active"]) },
       ],
       failureReasons: [
         { category: "timeout", label: "超时", count: 3, ownership: "供应商" },
@@ -113,18 +119,40 @@ function withDemoTechnology(data: DashboardData): DashboardData {
       imageLatency: { mediaType: "图片", p50Seconds: 42, p95Seconds: 96, samples: 110, note: "演示样本：完成时间减开始时间，展示 P50 / P95。" },
       videoLatency: { mediaType: "视频", p50Seconds: 188, p95Seconds: 412, samples: 109, note: "演示样本：完成时间减开始时间，图片与视频分开统计。" },
       queue: { ...data.technology.queue, queued: 5, averageWaitSeconds: 18, pendingReconciliation: 2 },
-      supplier: { ...data.technology.supplier, platformRequestErrors: 1, supplierErrors: 5, unknownErrors: 2 },
+      supplier: { ...data.technology.supplier, platformRequestErrors: 1, supplierErrors: 5, unknownErrors: 2, dailyUsage: 232, quotaStatus: "linked", alerts: [{ severity: "warning", type: "error-rate", providerId: "jusuan", providerName: "聚算视频", title: "近 24 小时失败率升高", message: "失败 3 / 72 个终态样本", metricValue: 3, threshold: 2, href: "/platform/ai-models?tab=usage&providerId=jusuan" }], usageRanking: [{ providerId: "catech", providerName: "CATech", calls: 116, estimatedCostMicros: 0 }, { providerId: "jusuan", providerName: "聚算视频", calls: 74, estimatedCostMicros: 0 }, { providerId: "ark", providerName: "方舟视频", calls: 42, estimatedCostMicros: 0 }] },
+      outputs: { submittedTasks: 232, terminalSuccesses: 219, terminalFailures: 8, imageAssets: 142, videoAssets: 77, note: "演示：任务提交与实际持久化产物分开统计。" },
     },
   };
 }
 
+function demoDashboard(): DashboardData {
+  const now = new Date();
+  const dailySpend = Array.from({ length: 7 }, (_, index) => {
+    const day = new Date(now.getTime() - (6 - index) * 86_400_000);
+    return { date: new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai" }).format(day), walletCredits: 6400 + index * 830, grantCredits: 1500 + (index % 3) * 470 };
+  });
+  return withDemoTechnology({
+    generatedAt: now.toISOString(), timezone: "Asia/Shanghai",
+    window: { days: 7, startInclusive: new Date(now.getTime() - 7 * 86_400_000).toISOString(), endExclusive: now.toISOString(), label: "近 7 天" },
+    health: { status: "partial", checks: "ABCDEFGHI".split("").map((id) => ({ id, label: `对账项 ${id}`, count: 0, status: "ok", detailAvailable: false })), stuckHoldsOverSixHours: 0, abnormalModels: 0, reconciliationAgent: { status: "unavailable", observedAt: null, conclusion: null, note: "演示模式不读取对账 agent", href: null } },
+    business: {
+      totals: { walletCredits: 62110, grantCredits: 13820, totalCredits: 75930, yuanEquivalent: 759.3 }, dailySpend,
+      models: [{ endpointId: "gpt-image-2", name: "GPT Image 2", jobs: 116, succeeded: 110, refunded: 4, inFlight: 2, credits: 34800, walletCredits: 28600, grantCredits: 6200 }, { endpointId: "minimax-h3", name: "MiniMax H3", jobs: 74, succeeded: 69, refunded: 3, inFlight: 2, credits: 28700, walletCredits: 23100, grantCredits: 5600 }],
+      features: [{ feature: "出图", jobs: 116, succeeded: 110, refunded: 4, inFlight: 2, credits: 34800 }, { feature: "视频", jobs: 116, succeeded: 109, refunded: 4, inFlight: 3, credits: 28700 }, { feature: "对话", jobs: 46, succeeded: 45, refunded: 1, inFlight: 0, credits: 5310 }, { feature: "导演台", jobs: 28, succeeded: 27, refunded: 1, inFlight: 0, credits: 4720 }, { feature: "短剧", jobs: 13, succeeded: 12, refunded: 0, inFlight: 1, credits: 2400 }, { feature: "其他", jobs: 0, succeeded: 0, refunded: 0, inFlight: 0, credits: 0 }],
+      issuance: { issuedCredits: 98600, yuanEquivalent: 986, walletBalance: 1248000, grantAvailable: 318400, usageAttributionStatus: "unavailable", note: "演示：普通赠送进入混合余额，不能逐笔归因实际使用。" },
+      consumerActivity: { activeConsumers: 0, firstTimeConsumers: 0, returningConsumers: 0, rechargeConsumerStatus: "unavailable", note: "演示覆盖" }, cashFlow: { paidUsers: 0, paidOrders: 0, paidAmountCents: 0, refundedUsers: 0, refundedOrders: 0, refundedAmountCents: 0, note: "演示覆盖" }, directorFunnel: { status: "unavailable", projects: null, projectsWithEpisodes: null, projectsWithStoryboards: null, projectsWithVideos: null, episodes: null, clips: null, storyboards: null, videos: null, note: "演示覆盖" },
+    },
+    technology: { models: [], failureReasons: [], imageLatency: { mediaType: "图片", p50Seconds: null, p95Seconds: null, samples: 0, note: "演示覆盖" }, videoLatency: { mediaType: "视频", p50Seconds: null, p95Seconds: null, samples: 0, note: "演示覆盖" }, queue: { queued: 0, averageWaitSeconds: null, concurrencyRemaining: null, concurrencyStatus: "unavailable", pendingReconciliation: 0, note: "演示覆盖" }, supplier: { platformRequestErrors: 0, supplierErrors: 0, unknownErrors: 0, rateLimited: null, dailyUsage: null, quotaRemaining: null, quotaStatus: "unavailable", alerts: [], usageRanking: [] }, outputs: { submittedTasks: 0, terminalSuccesses: 0, terminalFailures: 0, imageAssets: 0, videoAssets: 0, note: "演示覆盖" } },
+    integrations: { release: { status: "unavailable", observedAt: null, conclusion: null, note: "演示模式不读取发布清单", href: null }, feishuAlerts: { status: "unavailable", observedAt: null, conclusion: null, note: "演示模式不发送告警", href: null }, requestLogs: { status: "linked", observedAt: null, conclusion: "使用现有页面", note: "不重复建设", href: "/platform/error-logs" } },
+  });
+}
+
 export function StudioDashboard() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const demoMode = process.env.NODE_ENV !== "production" && searchParams.get("demo") === "1";
-  const initialView: View = searchParams.get("view") === "technology" ? "technology" : "business";
-  const initialDays: Days = searchParams.get("days") === "1" ? 1 : searchParams.get("days") === "30" ? 30 : 7;
-  const [view, setView] = React.useState<View>(initialView);
-  const [days, setDays] = React.useState<Days>(initialDays);
+  const view: View = searchParams.get("view") === "technology" ? "technology" : "business";
+  const days: Days = searchParams.get("days") === "1" ? 1 : searchParams.get("days") === "30" ? 30 : 7;
   const [data, setData] = React.useState<DashboardData>();
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
@@ -132,12 +160,12 @@ export function StudioDashboard() {
   const [healthCheck, setHealthCheck] = React.useState<string>();
   const [eventsOpen, setEventsOpen] = React.useState(false);
 
-  const syncUrl = React.useCallback((nextView: View, nextDays: Days) => {
-    const params = new URLSearchParams(window.location.search);
-    params.set("view", nextView);
+  const syncWindow = React.useCallback((nextDays: Days) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", view);
     params.set("days", String(nextDays));
-    window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
-  }, []);
+    router.replace(`/?${params.toString()}${window.location.hash}`, { scroll: false });
+  }, [router, searchParams, view]);
 
   const load = React.useCallback(async () => {
     setLoading(true);
@@ -147,6 +175,10 @@ export function StudioDashboard() {
       const next = await StudioOperationsApi.dashboard(days);
       setData(demoMode ? withDemoTechnology(next) : next);
     } catch (cause) {
+      if (demoMode) {
+        setData(demoDashboard());
+        return;
+      }
       setForbidden(cause instanceof ApiError && cause.status === 403);
       setError(cause instanceof Error ? cause.message : "无法加载 Studio 运营数据");
     } finally {
@@ -157,27 +189,16 @@ export function StudioDashboard() {
   React.useEffect(() => { void load(); }, [load]);
   const stale = data ? Date.now() - new Date(data.generatedAt).getTime() > 10 * 60_000 : false;
 
-  const setCurrentView = (next: string) => {
-    const value = next as View;
-    setView(value);
-    syncUrl(value, days);
-  };
   const setWindowDays = (next: string) => {
     const value = Number(next) as Days;
-    setDays(value);
-    syncUrl(view, value);
+    syncWindow(value);
   };
 
   return (
     <div className="mx-auto max-w-[1760px] space-y-4 px-3 py-4 sm:px-5 md:space-y-5 md:px-7 md:py-6 xl:px-8">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <Tabs value={view} onValueChange={setCurrentView}>
-            <TabsList aria-label="看板页面" className="grid w-full grid-cols-2 sm:w-[260px]">
-              <TabsTrigger value="business"><BarIcon />经营总览</TabsTrigger>
-              <TabsTrigger value="technology"><Activity className="size-4" />技术监控</TabsTrigger>
-            </TabsList>
-          </Tabs>
+        <div className="flex min-h-9 items-center gap-2">
+          <span className="text-xs text-slate-500">统计窗口按北京时间计算</span>
           {demoMode && <Badge variant="outline" className="border-[#d9d1de] bg-[#f1edf3] text-[#74667f]">本地演示数据</Badge>}
         </div>
         <div className="flex items-center gap-2">
@@ -195,9 +216,9 @@ export function StudioDashboard() {
       {error && !data && <LoadError message={error} forbidden={forbidden} retry={() => void load()} />}
       {data && (
         <>
+          <HealthOverview data={data} stale={stale} onDetail={setHealthCheck} />
           <OverviewHero data={data} view={view} stale={stale} />
           <KpiGrid data={data} view={view} />
-          <HealthOverview data={data} stale={stale} onDetail={setHealthCheck} />
           {view === "business"
             ? <BusinessView data={data} onEvents={() => setEventsOpen(true)} />
             : <TechnologyView data={data} />}
@@ -209,8 +230,6 @@ export function StudioDashboard() {
     </div>
   );
 }
-
-function BarIcon() { return <Gauge className="size-4" />; }
 
 function DashboardSkeleton() {
   return (
@@ -323,7 +342,7 @@ function HealthOverview({ data, stale, onDetail }: { data: DashboardData; stale:
   const issues = data.health.checks.filter((item) => item.count > 0).length;
   const partial = data.health.reconciliationAgent.status !== "linked" || stale;
   return (
-    <Card id="health" className="studio-panel scroll-mt-20 gap-0 overflow-hidden border-slate-200">
+    <Card id="health" className="studio-panel scroll-mt-36 gap-0 overflow-hidden border-slate-200 sm:scroll-mt-24">
       <CardHeader className="flex-row items-start justify-between gap-4 border-b bg-white px-5 py-4">
         <div><CardTitle className="flex items-center gap-2 text-sm font-semibold"><span className={`size-2 rounded-full ${issues ? "bg-red-500" : partial ? "bg-amber-500" : "bg-emerald-500"}`} />共用健康状态</CardTitle><CardDescription className="mt-1 text-xs">A–I 即时只读重算；加载失败、陈旧和未接入不会显示健康绿色。</CardDescription></div>
         <Badge variant="outline" className={issues ? "border-red-200 bg-red-50 text-red-700" : partial ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>
@@ -352,7 +371,7 @@ function HealthFact({ label, value }: { label: string; value: number }) {
 
 function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () => void }) {
   return (
-    <div className="space-y-5">
+    <div id="spend" className="scroll-mt-36 space-y-5 sm:scroll-mt-24">
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.7fr)_minmax(340px,.8fr)]">
         <Card className="studio-panel gap-0 border-slate-200">
           <CardHeader className="border-b px-5 py-4">
@@ -366,6 +385,11 @@ function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () =>
         <FeatureOverview data={data} />
       </div>
 
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,.9fr)_minmax(0,1.35fr)]">
+        <ConsumersAndCashPanel data={data} />
+        <DirectorFunnelPanel data={data} />
+      </div>
+
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.45fr)_minmax(360px,.85fr)]">
         <Card className="studio-panel gap-0 overflow-hidden border-slate-200">
           <CardHeader className="border-b px-5 py-4">
@@ -377,7 +401,7 @@ function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () =>
           </CardContent>
         </Card>
 
-        <Card id="issuance" className="studio-panel scroll-mt-20 gap-0 border-slate-200">
+        <Card id="issuance" className="studio-panel scroll-mt-36 gap-0 border-slate-200 sm:scroll-mt-24">
           <CardHeader className="border-b px-5 py-4">
             <CardTitle className="flex items-center gap-2 text-sm font-semibold"><CircleDollarSign className="size-4 text-[#4f6692]" />发出积分核对</CardTitle>
             <CardDescription className="text-xs">普通余额与模型赠款是两套分桶，不合并冒充总收入。</CardDescription>
@@ -398,6 +422,63 @@ function BusinessView({ data, onEvents }: { data: DashboardData; onEvents: () =>
       </div>
       <PhaseTwoNote />
     </div>
+  );
+}
+
+function ConsumersAndCashPanel({ data }: { data: DashboardData }) {
+  const { consumerActivity, cashFlow } = data.business;
+  return (
+    <Card className="studio-panel gap-0 border-slate-200">
+      <CardHeader className="border-b px-5 py-4">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-[#5f7d84]" />消费用户与真实到账</CardTitle>
+        <CardDescription className="text-xs">消费和现金流各用自己的口径，不互相代替。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4 p-5">
+        <div className="grid grid-cols-2 gap-3">
+          <MiniMetric label="窗口消费用户" value={int(consumerActivity.activeConsumers)} />
+          <MiniMetric label="首次 / 回访消费" value={`${int(consumerActivity.firstTimeConsumers)} / ${int(consumerActivity.returningConsumers)}`} />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-xl border border-[#dce7df] bg-[#f2f6f3] p-3"><p className="text-[11px] text-slate-500">真实到账</p><p className="mt-1 font-semibold tabular-nums">{cents(cashFlow.paidAmountCents)}</p><p className="mt-1 text-[10px] text-slate-500">{int(cashFlow.paidUsers)} 人 · {int(cashFlow.paidOrders)} 单 · 非收入</p></div>
+          <div className="rounded-xl border border-[#eadfda] bg-[#f8f3f1] p-3"><p className="text-[11px] text-slate-500">现金退款</p><p className="mt-1 font-semibold tabular-nums">{cents(cashFlow.refundedAmountCents)}</p><p className="mt-1 text-[10px] text-slate-500">{int(cashFlow.refundedUsers)} 人 · {int(cashFlow.refundedOrders)} 单</p></div>
+        </div>
+        <p className="text-[11px] leading-5 text-slate-500">{consumerActivity.note} {cashFlow.note}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function DirectorFunnelPanel({ data }: { data: DashboardData }) {
+  const funnel = data.business.directorFunnel;
+  const projects = funnel.projects ?? 0;
+  const steps = [
+    { label: "项目", projects: funnel.projects, volume: funnel.projects },
+    { label: "已建剧集", projects: funnel.projectsWithEpisodes, volume: funnel.episodes },
+    { label: "有效分镜", projects: funnel.projectsWithStoryboards, volume: funnel.storyboards },
+    { label: "可用视频", projects: funnel.projectsWithVideos, volume: funnel.videos },
+  ];
+  return (
+    <Card className="studio-panel gap-0 border-slate-200">
+      <CardHeader className="border-b px-5 py-4">
+        <CardTitle className="flex items-center gap-2 text-sm font-semibold"><Layers3 className="size-4 text-[#796c84]" />导演台创作推进</CardTitle>
+        <CardDescription className="text-xs">当前快照；推进率按同一批项目去重，实体数量只作为创作规模展示。</CardDescription>
+      </CardHeader>
+      <CardContent className="p-5">
+        {funnel.status !== "available" ? <EmptyState icon={Layers3} title="导演台聚合源暂不可用" /> : <>
+          <div className="grid gap-2 sm:grid-cols-4">
+            {steps.map((step, index) => {
+              const percent = index === 0 ? 100 : projects ? Math.round(((step.projects ?? 0) / projects) * 100) : 0;
+              return <div key={step.label} className="relative overflow-hidden rounded-xl border bg-slate-50 p-3">
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-slate-100"><span className="block h-full bg-[#7086a8]" style={{ width: `${percent}%` }} /></div>
+                <p className="text-[11px] text-slate-500">{index + 1}. {step.label}</p><p className="mt-1 text-lg font-semibold tabular-nums">{int(step.projects ?? 0)} <span className="text-xs font-normal text-slate-400">项目</span></p><p className="text-[10px] text-slate-500">推进率 {percent}% · 规模 {int(step.volume ?? 0)}</p>
+              </div>;
+            })}
+          </div>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-500"><span>剧集 {int(funnel.episodes ?? 0)}</span><span>片段 {int(funnel.clips ?? 0)}</span><span>有效分镜 {int(funnel.storyboards ?? 0)}</span><span>可用视频 {int(funnel.videos ?? 0)}</span></div>
+          <p className="mt-3 text-[11px] leading-5 text-slate-500">{funnel.note}</p>
+        </>}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -470,14 +551,16 @@ function TechnologyView({ data }: { data: DashboardData }) {
   return (
     <div className="space-y-5">
       <ModelMonitor data={data} />
-      <div className="grid gap-5 xl:grid-cols-2">
-        <LatencyPanel latency={data.technology.imageLatency} />
-        <LatencyPanel latency={data.technology.videoLatency} />
-      </div>
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <FailurePanel data={data} />
-        <SupplierPanel data={data} />
-      </div>
+      <section id="failure-analysis" aria-label="失败与耗时" className="scroll-mt-36 space-y-5 sm:scroll-mt-24">
+        <div className="grid gap-5 xl:grid-cols-2">
+          <LatencyPanel latency={data.technology.imageLatency} />
+          <LatencyPanel latency={data.technology.videoLatency} />
+        </div>
+        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <FailurePanel data={data} />
+          <SupplierPanel data={data} />
+        </div>
+      </section>
       <IntegrationsPanel integrations={data.integrations} />
       <PhaseTwoNote technical />
     </div>
@@ -497,7 +580,7 @@ function ModelMonitor({ data }: { data: DashboardData }) {
   const active = visible.reduce((sum, item) => sum + item.inFlight, 0);
 
   return (
-    <Card id="models" className="studio-panel scroll-mt-20 gap-0 overflow-hidden border-slate-200">
+    <Card id="models" className="studio-panel scroll-mt-36 gap-0 overflow-hidden border-slate-200 sm:scroll-mt-24">
       <CardHeader className="border-b px-5 py-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div><CardTitle className="flex items-center gap-2 text-sm font-semibold"><Activity className="size-4 text-[#4f6692]" />供应商与模型运行情况</CardTitle><CardDescription className="mt-1 text-xs">成功率只含终态；近 24 小时色块表示任务结果，不表示服务在线率。</CardDescription></div>
@@ -523,6 +606,13 @@ function ModelMonitor({ data }: { data: DashboardData }) {
             <span className="flex items-center gap-2 font-semibold"><Activity className="size-4" />任务队列</span>
             <span>排队 {int(data.technology.queue.queued)} · 平均等待 {data.technology.queue.averageWaitSeconds == null ? "样本不足" : `${int(data.technology.queue.averageWaitSeconds)} 秒`} · 并发余量 {data.technology.queue.concurrencyRemaining == null ? "未接入" : int(data.technology.queue.concurrencyRemaining)}</span>
           </div>
+          <div className="grid gap-2 rounded-xl border bg-slate-50 p-3 text-xs sm:grid-cols-5">
+            <RuntimeMetric label="提交任务" value={int(data.technology.outputs.submittedTasks)} />
+            <RuntimeMetric label="终态成功" value={int(data.technology.outputs.terminalSuccesses)} />
+            <RuntimeMetric label="终态失败" value={int(data.technology.outputs.terminalFailures)} tone={data.technology.outputs.terminalFailures ? "bad" : "normal"} />
+            <RuntimeMetric label="实际图片产物" value={int(data.technology.outputs.imageAssets)} />
+            <RuntimeMetric label="实际视频产物" value={int(data.technology.outputs.videoAssets)} />
+          </div>
           {visible.length ? visible.map((model) => <ModelRuntimeCard key={`${model.supplier}:${model.mediaType}:${model.key}`} model={model} />) : <EmptyState icon={Search} title="没有符合筛选条件的模型" />}
         </div>
       </CardContent>
@@ -540,14 +630,12 @@ function ModelRuntimeCard({ model }: { model: DashboardData["technology"]["model
           <p className="mt-1 truncate pl-4 text-[11px] text-slate-400">{model.supplier} · {model.ownership}</p>
         </div>
         <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-5">
-          <RuntimeMetric label="窗口成功率" value={rate(model.successRate)} tone={model.successRate != null && model.successRate < .5 && model.jobs >= 5 ? "bad" : "normal"} />
-          <RuntimeMetric label="成功 / 失败" value={`${int(model.succeeded)} / ${int(model.failed)}`} tone={model.failed ? "bad" : "normal"} />
-          <RuntimeMetric label="进行中" value={int(model.inFlight)} />
-          <RuntimeMetric label="窗口任务" value={int(model.jobs)} />
-          <RuntimeMetric label="并发余量" value="未接入" />
+          {model.successWindows.map((window) => <RuntimeMetric key={window.label} label={`${window.label}成功率`} value={`${rate(window.successRate)} · ${int(window.samples)}样本`} tone={window.samples >= 5 && window.successRate != null && window.successRate < .5 ? "bad" : "normal"} />)}
+          <RuntimeMetric label="成功 / 失败 / 进行中" value={`${int(model.succeeded)} / ${int(model.failed)} / ${int(model.inFlight)}`} tone={model.failed ? "bad" : "normal"} />
+          <RuntimeMetric label="并发余量" value="未知" />
         </div>
       </div>
-      <HourlyTimeline outcomes={model.hourlyOutcomes} />
+      <OutcomeTimeline outcomes={model.outcomeBuckets} />
     </div>
   );
 }
@@ -556,7 +644,7 @@ function RuntimeMetric({ label, value, tone = "normal" }: { label: string; value
   return <div className="rounded-lg bg-slate-50 px-3 py-2"><p className="text-[10px] text-slate-400">{label}</p><p className={`mt-0.5 text-xs font-semibold tabular-nums ${tone === "bad" ? "text-red-600" : "text-slate-800"}`}>{value}</p></div>;
 }
 
-function HourlyTimeline({ outcomes }: { outcomes: DashboardData["technology"]["models"][number]["hourlyOutcomes"] }) {
+function OutcomeTimeline({ outcomes }: { outcomes: DashboardData["technology"]["models"][number]["outcomeBuckets"] }) {
   const colors: Record<string, string> = {
     ok: "bg-emerald-200",
     issue: "bg-rose-200",
@@ -568,12 +656,12 @@ function HourlyTimeline({ outcomes }: { outcomes: DashboardData["technology"]["m
   return (
     <TooltipProvider delayDuration={100}>
       <div className="mt-3 flex items-center gap-3">
-        <span className="shrink-0 text-[10px] text-slate-400">近24小时任务</span>
+        <span className="shrink-0 text-[10px] text-slate-400">24h · 每格30分钟</span>
         <div className="flex min-w-0 flex-1 gap-1 overflow-hidden">
           {outcomes.map((item) => (
-            <Tooltip key={item.hour}>
+            <Tooltip key={item.startedAt}>
               <TooltipTrigger asChild><span tabIndex={0} className={`timeline-cell flex-1 outline-none ring-blue-500 focus-visible:ring-2 ${colors[item.status]}`} /></TooltipTrigger>
-              <TooltipContent><div className="text-xs"><b>{dateTime(item.hour)}</b><br />{labels[item.status]} · 成功 {item.succeeded} / 失败 {item.failed} / 进行中 {item.inFlight}</div></TooltipContent>
+              <TooltipContent><div className="text-xs"><b>{dateTime(item.startedAt)}</b><br />{labels[item.status]} · 成功 {item.succeeded} / 失败 {item.failed} / 进行中 {item.inFlight}</div></TooltipContent>
             </Tooltip>
           ))}
         </div>
@@ -639,6 +727,7 @@ function FailurePanel({ data }: { data: DashboardData }) {
 
 function SupplierPanel({ data }: { data: DashboardData }) {
   const supplier = data.technology.supplier;
+  const adminUrl = process.env.NEXT_PUBLIC_ADMIN_APP_URL?.replace(/\/$/, "");
   return (
     <Card className="studio-panel gap-0 border-slate-200">
       <CardHeader className="border-b px-5 py-4">
@@ -651,9 +740,16 @@ function SupplierPanel({ data }: { data: DashboardData }) {
           <MiniMetric label="供应商" value={int(supplier.supplierErrors)} />
           <MiniMetric label="未知" value={int(supplier.unknownErrors)} />
         </div>
+        {supplier.alerts.length > 0 && <div className="space-y-2"><p className="text-[11px] font-medium text-slate-500">供应商异常</p>{supplier.alerts.map((alert) => {
+          const href = adminUrl ? `${adminUrl}/admin${alert.href}` : null;
+          const body = <><div><p className="font-medium text-slate-800">{alert.providerName} · {alert.title}</p><p className="mt-0.5 text-[11px] text-slate-500">{alert.message}</p></div>{href && <ExternalLink className="size-4 shrink-0 text-slate-400" />}</>;
+          return href ? <Link key={`${alert.providerId}:${alert.type}`} href={href} target="_blank" className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs hover:border-amber-300">{body}</Link>
+            : <div key={`${alert.providerId}:${alert.type}`} className="flex items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs">{body}</div>;
+        })}</div>}
+        {supplier.usageRanking.length > 0 && <div><p className="mb-2 text-[11px] font-medium text-slate-500">供应商调用排行</p><div className="space-y-2">{supplier.usageRanking.map((item, index) => <div key={item.providerId} className="flex items-center gap-3 text-xs"><span className="w-4 text-slate-400">{index + 1}</span><span className="min-w-0 flex-1 truncate">{item.providerName}</span><strong className="tabular-nums">{int(item.calls)} 次</strong></div>)}</div><p className="mt-2 text-[10px] text-slate-400">未展示估算成本：缺少完整定价覆盖率时不计算毛利。</p></div>}
         <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-5 text-slate-600">
-          <div className="mb-1 flex items-center gap-2 font-semibold text-slate-800"><Info className="size-4" />配额采集未接入</div>
-          限流次数、每日用量与配额余量尚无统一数据源，因此不显示为 0。
+          <div className="mb-1 flex items-center gap-2 font-semibold text-slate-800"><Info className="size-4" />并发与配额</div>
+          {supplier.quotaStatus === "linked" && supplier.dailyUsage != null ? `已接入调用量：${int(supplier.dailyUsage)}；限流次数和配额余量仍无可靠来源。` : "限流次数、每日用量与配额余量尚无统一数据源，因此不显示为 0。"}
         </div>
       </CardContent>
     </Card>
@@ -662,7 +758,7 @@ function SupplierPanel({ data }: { data: DashboardData }) {
 
 function IntegrationsPanel({ integrations }: { integrations: DashboardData["integrations"] }) {
   return (
-    <Card className="studio-panel gap-0 border-slate-200">
+    <Card id="release-alerts" className="studio-panel scroll-mt-36 gap-0 border-slate-200 sm:scroll-mt-24">
       <CardHeader className="border-b px-5 py-4">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold"><ServerCog className="size-4 text-[#4f6692]" />发版与告警</CardTitle>
         <CardDescription className="text-xs">发布清单与飞书记录需要安全只读适配器；不会由浏览器执行 SSH 或读取服务器环境变量。</CardDescription>
