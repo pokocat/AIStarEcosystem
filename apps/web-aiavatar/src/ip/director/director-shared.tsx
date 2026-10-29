@@ -142,7 +142,7 @@ export function VersionStrip({ slot, onAdopt, disabled, label, video }: { slot: 
   if (slot.candidates.length < 2 && !slot.candidates.some(m => m.stale)) return null;
   return <div className="director-versions" role="group" aria-label={`${label}的历史版本`}>
     {slot.candidates.map((m, i) => <button key={m.id} type="button" disabled={disabled} aria-pressed={m.id === slot.adoptedId}
-      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : m.source === "library" ? "资产库" : `第 ${i + 1} 版`}
+      title={m.stale ? "生成期间设置有变动，此版本需更新" : m.source === "upload" ? "上传" : m.source === "library" ? "资产库" : m.baseOn ? `第 ${i + 1} 版 · 以第 ${slot.candidates.findIndex(x => x.id === m.baseOn) + 1} 版为参考修改` : `第 ${i + 1} 版`}
       onClick={() => m.id !== slot.adoptedId && onAdopt(m.id)}>
       {m.url && !video ? <img src={m.url} alt=""/> : <span>{i + 1}</span>}
       {m.id === slot.adoptedId && <i><Check size={11}/></i>}
@@ -182,13 +182,39 @@ export function useDraft<T>(key: string, server: T): [T, (value: T) => void, boo
   const [, rerender] = useReducer((n: number) => n + 1, 0);
   const has = drafts.has(key);
   const value = has ? drafts.get(key) as T : server;
-  const set = (next: T) => { if (same(next, server)) drafts.delete(key); else drafts.set(key, next); rerender(); };
+  // 这一项正在保存时，用户的每次修改都留作草稿，哪怕改回了旧的已存内容（撤回）：
+  // 保存回来后服务端会变成刚存进去的那份，只有草稿还等于那份才算「没再改」（见 saveDrafts）。
+  const set = (next: T) => { if (same(next, server) && !saving.has(key)) drafts.delete(key); else drafts.set(key, next); rerender(); };
   return [value, set, has];
+}
+
+/** 读一个没保存的值（没有返回 undefined）：助手采用建议前先把这处没保存的修改存上，不丢、不被覆盖。 */
+export function peekDraft<T>(key: string): T | undefined {
+  return drafts.has(key) ? drafts.get(key) as T : undefined;
 }
 
 export function hasDrafts(prefix: string) {
   for (const k of drafts.keys()) if (k.startsWith(prefix)) return true;
   return false;
+}
+
+const saving = new Map<string, number>();
+
+/**
+ * 保存这些草稿：saved 是这次存进去的值（键 → 值）。保存期间用户的修改（补写、撤回成旧内容）都留作草稿；
+ * 成功后只清掉值还等于刚存进去那份的草稿，其余仍算没保存。失败时草稿原样保留。
+ * 2026-10-28 两轮 review：先是保存回来把补写的台词清掉，后是保存期间撤回成旧正文、回来又变成新正文。
+ */
+export async function saveDrafts<T>(saved: Record<string, unknown>, fn: () => Promise<T>): Promise<T> {
+  const keys = Object.keys(saved);
+  keys.forEach(k => saving.set(k, (saving.get(k) ?? 0) + 1));
+  try {
+    const result = await fn();
+    for (const k of keys) if (drafts.has(k) && same(drafts.get(k), saved[k])) drafts.delete(k);
+    return result;
+  } finally {
+    keys.forEach(k => { const n = (saving.get(k) ?? 1) - 1; if (n > 0) saving.set(k, n); else saving.delete(k); });
+  }
 }
 
 export function clearDrafts(prefix: string) {
