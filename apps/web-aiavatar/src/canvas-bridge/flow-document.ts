@@ -90,7 +90,7 @@ export function copyFlowSelection(nodes: CanvasNodeData[], connections: CanvasCo
           delete clone.metadata.studio.scriptEditor.proposal;
           delete clone.metadata.studio.scriptEditor.error;
         }
-        delete clone.metadata.studio.batch; delete clone.metadata.studioStart;
+        delete clone.metadata.studio.batch; delete clone.metadata.studioStart; delete clone.metadata.studioSkill;
         delete clone.metadata.studio.templateAccepted;
         clone.metadata.studio.parentNodeId = idMap.get(clone.metadata.studio.parentNodeId || '');
       }

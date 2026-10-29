@@ -39,6 +39,8 @@ test("the brief carries the user's line and materials, and forbids inventing pri
   expect(brief).toContain("我的要求：保湿精华，不黏腻");
   expect(brief).toContain("「商品图 1」");
   expect(brief).toMatch(/没写的信息.*不要自己编/);
+  // 要的是成片：只说「先给分镜方案」时真模型只排了写脚本一步。
+  expect(brief).toMatch(/要的是做好的视频.*每段视频一起排进方案/);
   const silent = composeVideoBrief(scene, { text: " ", duration: 25, ratio: "9:16", imageTitles: ["商品图 1"] });
   expect(silent).not.toContain("我的要求");
   expect(silent).toContain("先看素材");

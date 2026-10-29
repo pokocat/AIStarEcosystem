@@ -267,7 +267,8 @@ export function composeVideoBrief(scene: VideoScene, input: {
   lines.push(`拍法：${scene.structure}`);
   // 老板没给的价格、优惠、地址，模型最容易顺手编一个，写进成片就是虚假宣传。
   lines.push("上面没写的信息（价格、优惠、地址、功效数据）不要自己编。");
-  lines.push("先给我分镜方案和要花的积分，我确认后再开始生成。");
+  // 只说「先给我分镜方案」时，真模型（2026-10-29 本地聚算 Qwen）只排了一步写脚本，做完也不提出视频。要的是视频，就直说。
+  lines.push("要的是做好的视频，不只是脚本：把文案、分镜和每段视频一起排进方案，报总共要花的积分，我确认后一次生成。");
   return lines.join("\n");
 }
 

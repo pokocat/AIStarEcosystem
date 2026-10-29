@@ -83,6 +83,7 @@ test("视频：放上商品图就能发（一句话可以不写）；素材进�
   expect(saved.nodes.map((n: any) => n.title)).toEqual(["商品图 1"]);
   const brief = saved.assistantConversations[0];
   expect(brief.metadata.studioStart).toBe("assistant");
+  expect(brief.metadata.studioSkill).toBe("video-generation");
   expect(brief.metadata.prompt).toContain("我的要求：保湿精华，不黏腻");
   expect(api.push).toHaveBeenCalledWith("/projects/IPP-1?start=assistant&send=1");
   expect(api.submit).not.toHaveBeenCalled();

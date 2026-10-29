@@ -20,7 +20,7 @@ import { studioImageResolution, studioImageSizeLabel } from "../studio-generatio
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { IMAGE_DRAFT_SUFFIX, freeImageScene, imagePrompt, imageScene, imageSceneGroups, imageScenes, sceneFromDraftName, type ImageScene } from "./scene-catalog";
-import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
+import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitImageRow, rowUploads, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb } from "./scene-layout";
 
 const loadDrafts = () => listSceneDrafts(IMAGE_DRAFT_SUFFIX);
@@ -60,6 +60,8 @@ export function SceneImageStudio() {
   const [count, setCount] = useState(1);
   const [hint, setHint] = useState("");
   const [busy, setBusy] = useState(false);
+  // 正在提交（含等用户确认费用）的那一行：这时候还谈不上「结果没确认」。
+  const [submitting, setSubmitting] = useState<string>();
   const [draft, setDraft] = useState<IpProject>();
   const [opening, setOpening] = useState<string>();
   const [live, setLive] = useState<Record<string, IpRun>>({});
@@ -93,7 +95,10 @@ export function SceneImageStudio() {
       showDraft(project);
       const fromName = sceneFromDraftName(project.name, IMAGE_DRAFT_SUFFIX, ALL_SCENES);
       const latest = imageRows(project.doc)[0];
-      if (fromName) { setScene(fromName); setRatio(latest?.metadata?.studio?.request?.aspectRatio || fromName.ratio); setSlots(fromName.refs.map(() => undefined)); }
+      // 接着上次做：场景、比例和那次用的参考图都放回来，再生成一次就是一下的事。
+      if (fromName) { setScene(fromName); setRatio(latest?.metadata?.studio?.request?.aspectRatio || fromName.ratio);
+        const used = latest ? rowUploads(project.doc, latest) : [];
+        setSlots(fromName.refs.map((_, i) => used[i])); }
       setSupplement(""); setCustom(undefined); setTab(latest ? "results" : "example");
       writeQuery((fromName || scene).id, project.id);
     } catch (e) { showFailure({ action: "打开草稿", error: e }); }
@@ -185,9 +190,16 @@ export function SceneImageStudio() {
     finally { setUploading(undefined); }
   };
 
-  const generate = async () => {
-    if (busy) return;
+  type RowInput = Parameters<typeof addImageRow>[1];
+  const generate = () => {
     if (blocker) { setHint(blocker); return; }
+    const refs = scene.refs.flatMap((r, i) => slots[i] ? [{ upload: slots[i]!, label: r.label }] : []);
+    void submitRow({ title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize, model: caps?.mock ? undefined : chosen?.endpointId, maxCost: quote });
+  };
+  /** 失败了（没扣积分）就在原来那一行按原样再来一次：同样的图、描述和设置，新的请求编号。 */
+  const retry = (row: CanvasNodeData) => { if (row.metadata?.studio?.request) void submitRow(row.id); };
+  const submitRow = async (input: RowInput | string) => {
+    if (busy) return;
     setBusy(true); setHint("");
     let nodeId: string | undefined; let posted = false;
     try {
@@ -197,14 +209,19 @@ export function SceneImageStudio() {
         drafts.reload();
       }
       const project = draftRef.current!;
-      const refs = scene.refs.flatMap((r, i) => slots[i] ? [{ upload: slots[i]!, label: r.label }] : []);
       let request: Parameters<typeof submitStudioRun>[1] | undefined;
       await persist(doc => {
-        const row = addImageRow(doc, { title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize,
-          model: caps?.mock ? undefined : chosen?.endpointId, maxCost: quote });
+        if (typeof input === "string") {
+          const again = resubmitImageRow(doc, input);
+          if (!again) throw new Error("这一行已经不在了，请重新生成");
+          request = again.request; nodeId = input;
+          return again.doc;
+        }
+        const row = addImageRow(doc, input);
         request = row.request; nodeId = row.nodeId;
         return row.doc;
       });
+      setSubmitting(nodeId);
       posted = true; setTab("results");
       const run = await submitStudioRun(project.id, request!);
       await persist(doc => applyRun(doc, nodeId!, run));
@@ -214,7 +231,7 @@ export function SceneImageStudio() {
       if (nodeId) await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
         status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } }))).catch(() => undefined);
       showFailure({ action: "生成图片", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次提交可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
-    } finally { setBusy(false); }
+    } finally { setBusy(false); setSubmitting(undefined); }
   };
 
   /** 同一个请求编号再交一次：服务端认得它，已受理就返回原任务，不会再扣一次。 */
@@ -232,6 +249,7 @@ export function SceneImageStudio() {
   const reuse = (row: CanvasNodeData) => {
     const request = row.metadata?.studio?.request;
     if (!request) return;
+    if (draftRef.current) { const used = rowUploads(draftRef.current.doc, row); setSlots(scene.refs.map((_, i) => used[i])); }
     // 原样再做一次：把那次真正发出去的整段描述放进「完整描述」，补充要求清空。
     if (scene.id === freeImageScene.id) setSupplement(request.prompt); else { setCustom(request.prompt); setSupplement(""); }
     if (request.aspectRatio) setRatio(request.aspectRatio);
@@ -303,7 +321,7 @@ export function SceneImageStudio() {
       {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
       {hint && <p className="scene-hint" role="status">{hint}</p>}
       {/* 不能生成时按钮就地写原因（先放什么、先写什么），不让人对着一个灰按钮猜。 */}
-      <button type="button" className="scene-go" aria-label="立即生成图片" title={blocker || (caps?.mock ? "测试响应，不扣积分" : `预计 ${quote} 积分`)} disabled={busy || !!blocker} onClick={() => void generate()}>
+      <button type="button" className="scene-go" aria-label="立即生成图片" title={blocker || (caps?.mock ? "测试响应，不扣积分" : `预计 ${quote} 积分`)} disabled={busy || !!blocker} onClick={generate}>
         {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成图片</span>
         <small>{blocker || (caps?.mock ? "测试响应 · 免费" : `预计 ${quote} 积分`)}</small>
       </button>
@@ -318,8 +336,8 @@ export function SceneImageStudio() {
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={[imageScenes[3], imageScenes[0], imageScenes[9]]}/>
           : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description}/>)
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
-        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy}
-          onView={setViewing} onReuse={() => reuse(row)} onConfirm={() => void confirmOriginal(row)}
+        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
+          onView={setViewing} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
     </section>
@@ -341,9 +359,9 @@ export function SceneImageStudio() {
   </main>;
 }
 
-function ImageRow({ row, run, busy, onView, onReuse, onConfirm, onStop }: {
-  row: CanvasNodeData; run?: IpRun; busy: boolean; onView: (image: { url: string; key?: string; name: string }) => void;
-  onReuse: () => void; onConfirm: () => void; onStop: () => void;
+function ImageRow({ row, run, busy, submitting, onView, onReuse, onRetry, onConfirm, onStop }: {
+  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onView: (image: { url: string; key?: string; name: string }) => void;
+  onReuse: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
 }) {
   const meta = row.metadata;
   const request = meta?.studio?.request;
@@ -351,11 +369,13 @@ function ImageRow({ row, run, busy, onView, onReuse, onConfirm, onStop }: {
   const loading = meta?.status === "loading";
   const accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
-  const state = loading ? (!accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : run?.pct ? `正在生成 ${run.pct}%` : "正在生成")
-    : meta?.status === "error" ? (meta.errorDetails || "生成失败") : `${images.length} 张`;
+  // 图片阶段不显示百分比（不是真进度），只说在排队还是在生成。
+  const failure = meta?.status === "error" ? sceneFailureText(meta.errorCode, meta.errorDetails) : undefined;
+  const state = loading ? (submitting && !accepted ? "正在提交" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : "正在生成")
+    : failure ? failure : `${images.length} 张`;
   return <li className={`scene-row is-${meta?.status || "idle"}`}>
     <div className="scene-row-meta"><strong>{row.title}</strong><span>{[request?.aspectRatio, request?.count ? `${request.count} 张` : undefined].filter(Boolean).join(" · ")}</span>
-      <span className="scene-row-state" role={loading ? "status" : undefined}>{loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
+      <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
     {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
     <div className="scene-row-images">
       {images.map((image, i) => <button type="button" key={image.id} onClick={() => onView({ url: image.content!, key: image.storageKey, name: `${row.title}-${i + 1}` })} aria-label={`查看第 ${i + 1} 张`}>
@@ -364,7 +384,8 @@ function ImageRow({ row, run, busy, onView, onReuse, onConfirm, onStop }: {
     </div>
     <div className="scene-row-actions">
       {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
-      {loading && !accepted && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
+      {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
+      {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
       {images[0] && <button type="button" onClick={() => void downloadMedia(images[0].content!, row.title, undefined, images[0].storageKey)}><Download size={13}/>下载</button>}
       {request && <button type="button" onClick={onReuse}><ExternalLink size={13}/>用这段描述再做</button>}
     </div>
@@ -402,4 +423,10 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
     <h3>生成张数</h3>
     <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div>
   </div>;
+}
+
+/** 失败原因说人话：模型那边限流时，厂商原话（「实名认证以获取更高 rpm」之类）对老板没有意义，原话留在悬停提示里。 */
+export function sceneFailureText(code?: string, details?: string): string {
+  if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return "模型那边请求太多，稍等一分钟再点「重新生成」；没出来的图不扣积分";
+  return details || "生成失败，没出来的图不扣积分";
 }

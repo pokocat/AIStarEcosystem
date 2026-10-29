@@ -114,7 +114,7 @@ export function SceneVideoStudio() {
         .filter((m): m is readonly [Media, "image" | "video" | "audio"] => !!m).forEach(([m, kind], i) => place(m, kind, i));
       // 和首页「说一句话开始」同一种起点：这段话存成助手的第一句，画布打开后自动发出。
       const start = { id: `${project.id}-brief`, type: CanvasNodeType.Text, title: "创作想法", position: { x: 100, y: 120 }, width: 480, height: 260,
-        metadata: { content: brief, prompt: brief, studioStart: "assistant" as const, studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
+        metadata: { content: brief, prompt: brief, studioStart: "assistant" as const, studioSkill: scene.video ? "reference-video-recreation" : "video-generation", studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
       const conversations = [...(project.doc.assistantConversations || []).filter(n => n.id !== start.id), start];
       draft.current = await saveDraftDoc(project, { ...project.doc, nodes, assistantConversations: conversations });
       router.push(studioEntryHref(project.id, "assistant", { send: true }));

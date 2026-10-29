@@ -1137,6 +1137,18 @@ test('the homepage brief still goes out when it reaches a panel that was already
   expect(onAutoSent).toHaveBeenCalled();
 });
 
+// docs/studio-scene-creation.md §4.2: a scene page knows its method. With nothing to steer it, a real model read the
+// copywriting skill for a 口播带货 video (local real run 2026-10-29); the start node's skill now goes out with the brief.
+test('a scene page start sends its brief with the method the scene named', async () => {
+  const brief = { id: 'p-brief', type: 'text', title: '创作想法', position: { x: 0, y: 0 }, width: 480, height: 260,
+    metadata: { content: '帮我做一条口播带货视频', prompt: '帮我做一条口播带货视频', studioStart: 'assistant', studioSkill: 'video-generation',
+      studio: { kind: 'assistant', conversation: { mode: 'general', turns: [] } } } } as CanvasNodeData;
+  const view = await ready(<Host initial={[character]} conversations={[brief]}/>);
+  view.rerender(<Host initial={[character]} conversations={[brief]} initialNodeId="p-brief" initialPrompt="帮我做一条口播带货视频" autoSend/>);
+  await waitFor(() => expect(api.post).toHaveBeenCalledTimes(1));
+  expect(api.post.mock.calls[0][2]).toMatchObject({ text: '帮我做一条口播带货视频', skillKey: 'video-generation' });
+});
+
 // Codex real-environment retest 2026-10-19: the server had imported the brief record as an old-conversation message, the
 // thread did not look empty, and the brief was neither filled in nor sent.
 test('history imported from the old assistant does not stop the homepage brief from going out', async () => {

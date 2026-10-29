@@ -82,3 +82,24 @@ export function submissionRejected(error: unknown, posted: boolean): boolean {
   return typeof e?.status === "number" && e.status >= 400 && e.status < 500 && e.status !== 408
     || ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "ENDPOINT_NOT_ALLOWED"].includes(String(e?.code));
 }
+
+/** 那一次用的参考图（按请求里的顺序），从草稿里的参考图节点找回地址；找不到的位置留空。 */
+export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload | undefined)[] {
+  const nodes = doc.nodes as CanvasNodeData[];
+  return (row.metadata?.studio?.request?.references ?? []).map(ref => {
+    const node = nodes.find(n => n.metadata?.storageKey === ref.storageKey && n.id !== row.id);
+    const url = node?.metadata?.content;
+    return url ? { key: ref.storageKey, url, name: node!.title || "参考图" } : undefined;
+  });
+}
+
+/** 失败的那一行原地再来：同样的输入，新的请求编号；行还在原位置，失败记录不堆成一串。 */
+export function resubmitImageRow(doc: IpProjectDoc, nodeId: string): { doc: IpProjectDoc; request: StudioRunRequest } | undefined {
+  const node = (doc.nodes as CanvasNodeData[]).find(n => n.id === nodeId);
+  const old = node?.metadata?.studio?.request;
+  if (!node || !old) return undefined;
+  const request: StudioRunRequest = { ...old, clientRequestId: nanoid() };
+  const next = patchNode(doc, nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined, errorCode: undefined, errorLogId: undefined,
+    studio: { ...n.metadata!.studio!, request, runId: undefined, task: undefined } } }));
+  return { doc: next, request };
+}

@@ -1,7 +1,7 @@
 import { expect, test, vi } from "vitest";
 vi.mock("../api", () => ({ IpStudioApi: {} }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { addImageRow, imageRows, patchNode, submissionRejected } from "./scene-drafts";
+import { addImageRow, imageRows, patchNode, resubmitImageRow, rowUploads, submissionRejected } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -42,4 +42,25 @@ test("only a request the server never accepted counts as rejected; anything else
   expect(submissionRejected({ status: 408 }, true)).toBe(false);
   expect(submissionRejected({ status: 502 }, true)).toBe(false);
   expect(submissionRejected(new TypeError("Failed to fetch"), true)).toBe(false);
+});
+
+test("reopening a row gives back the photos it used, in the same order", () => {
+  const scene2 = { key: "ipstudio/source/u1/b.jpg", url: "https://cdn/b.jpg", name: "b.jpg" };
+  const row = addImageRow(empty, { title: "换脸", prompt: "p", refs: [{ upload: photo, label: "模特图" }, { upload: scene2, label: "新面孔" }], ratio: "3:4", count: 1 });
+  const node = row.doc.nodes.find(n => n.id === row.nodeId)!;
+  expect(rowUploads(row.doc, node)).toEqual([{ key: photo.key, url: photo.url, name: "模特图" }, { key: scene2.key, url: scene2.url, name: "新面孔" }]);
+});
+
+test("retrying a failed row reuses the same row with the same inputs and a new request id", () => {
+  const row = addImageRow(empty, { title: "A", prompt: "p", refs: [{ upload: photo, label: "人物照片" }], ratio: "1:1", count: 1, model: "ep" });
+  const failed = patchNode(row.doc, row.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "限流",
+    studio: { ...n.metadata!.studio!, runId: "IPR-1" } } }));
+  const again = resubmitImageRow(failed, row.nodeId)!;
+  const node = again.doc.nodes.find(n => n.id === row.nodeId)!;
+  expect(again.doc.nodes).toHaveLength(row.doc.nodes.length);
+  expect(again.request).toEqual({ ...row.request, clientRequestId: again.request.clientRequestId });
+  expect(again.request.clientRequestId).not.toBe(row.request.clientRequestId);
+  expect(node.metadata).toMatchObject({ status: "loading", errorDetails: undefined });
+  expect(node.metadata?.studio?.runId).toBeUndefined();
+  expect(node.metadata?.studio?.request).toEqual(again.request);
 });
