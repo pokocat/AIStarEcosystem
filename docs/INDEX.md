@@ -355,6 +355,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Studio 方案素材范围跨轮发布记录](releases/studio-plan-material-scope-release-20261024.md)（last-reviewed: 2026-10-24）
 - [AI 导演台首发发布记录](releases/ai-director-release-20261024.md)（last-reviewed: 2026-10-24）
 - [模型告警北京时间与服务方响应发布](releases/model-alert-bjt-response-release-20261024.md) — 仅 server；按用户要求跳过部署后验证（last-reviewed: 2026-10-24）。
+- [Studio 同步出图读 URL 结果与告警措辞修复](releases/studio-image-url-result-alerts-20261029.md) — 仅 server；4 条飞书告警根因、改读 `data[0].url`、告警写最终结果；真实出图路径待下一次生成核对（last-reviewed: 2026-10-29）。
 
 - [Studio 聚算资源配额拒绝与结算核对](audits/studio-upstream-quota-2026-10.md)（last-reviewed: 2026-10-23）
 
