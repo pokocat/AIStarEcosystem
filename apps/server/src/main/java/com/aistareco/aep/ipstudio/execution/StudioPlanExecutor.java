@@ -46,7 +46,7 @@ public class StudioPlanExecutor {
     static final Duration WINDOW=Duration.ofMinutes(90);
     static final Duration CHILD_GRACE=Duration.ofMinutes(15);
     private static final int MAX_ROUNDS=40;
-    private static final List<String> TRACKED=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER,IpPlanExecution.PARTIAL,IpPlanExecution.CANCELED);
+    static final List<String> TRACKED=List.of(IpPlanExecution.RUNNING,IpPlanExecution.PAUSED,IpPlanExecution.NEEDS_USER,IpPlanExecution.PARTIAL,IpPlanExecution.CANCELED);
 
     private final IpPlanExecutionRepository executions;
     private final IpRunRepository runRepository;

@@ -159,6 +159,8 @@ export type IpProjectStatus = "draft" | "published";
 export interface IpProjectSummary {
   id: string; name: string; templateId?: string; status: IpProjectStatus;
   coverUrl?: string; publishedAvatarId?: string; createdAt: string; updatedAt: string;
+  /** 从哪个场景页建的草稿（AI 图片 / AI 视频的场景编号）；普通画布没有。 */
+  sceneId?: string | null;
 }
 export interface IpProject extends IpProjectSummary {
   /** Immutable recipe selected at creation, independent of catalogue updates. */
@@ -207,7 +209,7 @@ export interface IpPricing { identityCredits: number; imageCredits: number }  //
 
 // ── 请求体 ───────────────────────────────────────────────────────────────────
 
-export interface IpCreateProjectRequest { name?: string; templateId?: string }
+export interface IpCreateProjectRequest { name?: string; templateId?: string; sceneId?: string }
 export interface IpUpdateProjectRequest {
   /** Fixed cover from an image in this canvas. Empty string restores automatic selection. */
   coverStorageKey?: string;

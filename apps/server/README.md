@@ -508,7 +508,7 @@ src/main/java/com/aistareco/aep/
 
 | 表 | 说明 |
 |---|---|
-| `ip_project` | 画布项目（IPP- + 8 hex）。`doc_json` = `IpProjectDoc`（nodes/edges/viewport）**整存整取**：客户端拥有、服务端逐字保存、绝不改写 —— 运行与发布结果一律另存，否则前端 1.2s 防抖 PUT 与异步 worker 互相覆盖（v0.101 同一条教训）。`cover_key` 是主形象选中图的 storage key（§4.7.4，coverUrl 出 wire 派生）；`published_avatar_id` 指向发布产出的 `dap_avatar`；软删 `deleted_at` |
+| `ip_project` | 画布项目（IPP- + 8 hex）。`doc_json` = `IpProjectDoc`（nodes/edges/viewport）**整存整取**：客户端拥有、服务端逐字保存、绝不改写 —— 运行与发布结果一律另存，否则前端 1.2s 防抖 PUT 与异步 worker 互相覆盖（v0.101 同一条教训）。`cover_key` 是主形象选中图的 storage key（§4.7.4，coverUrl 出 wire 派生）；`published_avatar_id` 指向发布产出的 `dap_avatar`；`scene_id`（V72）记场景页（AI 图片 / AI 视频）草稿来自哪个场景，「最近」按它列；软删 `deleted_at` |
 | `ip_run` | 一次节点运行（IPR- + 8 hex，`kind=identity\|generate\|studio-*`，wire 三态 `running\|done\|failed`）。`input_json` 是本次实际提示词 + 参考图生效回报（`_exec` 段是含 storage key 的服务端执行参数，出 wire 时剥掉）；`output_json` 的 `candidates[{key}]` **只存 key 不存签名 URL**（签名有 TTL，落库就是埋雷）。hold `referenceType=ip-run` / `referenceId=runId`，`cost` 恒为真实账本值。同节点重跑新开一行、旧行保留（用户可能仍在用旧运行里选中的候选图）；`cancel_requested` 由用户置、终态由 worker 落；`heartbeat_at` 供 `IpRunReaper` 扫僵死 |
 | `ip_skill` | Studio 技能（S3，V63；主键列 `skill_key`，避开 MySQL 保留字 KEY）。只存技能级状态：`status`（active \| draft \| withdrawn，运行时真值，覆盖版本 YAML 头里的 status）、`current_version`（生效版本）、`name / summary`（当前版本的冗余展示）、`updated_by`（`seed` = 只被仓库种子写过，才允许文件变更时重新种子）、`seed_file` |
 | `ip_skill_version` | 技能的不可变版本（S3，V63，`UNIQUE(skill_key, version)`）。`frontmatter_json`（YAML 头的 JSON）+ `body_md` 写入后不再修改；`content_digest` 为快照摘要（种子 = 文件摘要，与 S1/S2 的快照一致）；`source` seed \| admin \| rollback \| distilled；`status` published \| draft（只有草稿的 status 会在发布时变）；草稿另带 `base_version / source_project_id / source_execution_id / source_run_id` |
@@ -1318,3 +1318,11 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 导演台写剧本、拆集、提取资产、分镜脚本，以及画布 / 助手 / 导演台的视频提示词优化不再使用业务代码的 8192 / 16384 / 100000 / 4096 输出上限。新任务的输出预算读取后台端点 defaultMaxTokens，受 chatMaxOutputTokens 能力上限约束；仅默认值缺失时使用端点能力上限，两者均未配置时回落后台 Token 售价配置的 maxOutputTokens。Token 单价与输入预算仍读售价配置，输出预算随端点配置形成受理快照；报价、冻结和调用使用同一快照，不能超出调用方批准的 maxCost。已有任务不改预算、不自动重试。
 
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
+
+
+## Studio 场景页（2026-10-29，本地实现，未发布）
+
+- **场景目录唯一真源**：`src/main/resources/ipstudio/scenes.json`，由 `ipstudio/scene/StudioSceneCatalog` 加载并在启动时校验（编号重复、描述点了不存在的「图N」、留【…】空位、视频场景没写方法 → 启动失败）。改场景只改这一份。
+- `GET /api/v1/ip-studio/scenes`：目录。`POST /api/v1/ip-studio/scenes/compose`：出图描述（场景描述 + 补充要求）或交给助手的话 + `skillKey`，纯计算不扣费，缺必填素材 400 `STUDIO_SCENE_INPUT_INVALID`。
+- 建草稿：`POST /api/v1/ip-studio/projects` 可带 `sceneId`（必须在目录里），落 `ip_project.scene_id`（V72；V70 被未合并分支占用）。
+- 生成仍走 `studio-runs` / 画布助手原链路；Studio 分区视频任务到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的制作计划，不再等 60 秒巡检。

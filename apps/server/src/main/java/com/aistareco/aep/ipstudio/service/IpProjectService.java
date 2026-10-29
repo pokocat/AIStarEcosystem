@@ -72,6 +72,10 @@ public class IpProjectService {
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.billing.service.ModelChargeService modelCharges;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService generationQueue;
 
+    /** 场景页建草稿时核对场景编号；单测里构造的服务没有它，照常建画布。 */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.aistareco.aep.ipstudio.scene.StudioSceneCatalog scenes;
+
     public IpProjectService(IpProjectRepository projectRepo,
                            IpRunRepository runRepo,
                            IpCatalogService catalog,
@@ -136,6 +140,9 @@ public class IpProjectService {
                 : templates.resolve(templateId, userId).orElseThrow(() ->
                         BusinessException.badRequest("IP_TEMPLATE_NOT_FOUND", "工作流不存在或已下线：" + templateId));
 
+        String sceneId = req == null ? null : trimToNull(req.sceneId());
+        if (sceneId != null && scenes != null && scenes.image(sceneId).isEmpty() && scenes.video(sceneId).isEmpty())
+            throw BusinessException.badRequest("STUDIO_SCENE_INPUT_INVALID", "这个场景不存在，请刷新后重选");
         String name = req == null ? null : trimToNull(req.name());
         if (name == null) name = tpl != null ? tpl.name() : "未命名画布";
         if (name.length() > 128) name = name.substring(0, 128);
@@ -149,6 +156,7 @@ public class IpProjectService {
                 .ownerUserId(userId)
                 .name(name)
                 .templateId(tpl != null ? tpl.id() : null)
+                .sceneId(sceneId)
                 .status(IpProject.STATUS_DRAFT)
                 .docJson(writeDoc(doc))
                 .createdAt(Instant.now())
@@ -528,7 +536,7 @@ public class IpProjectService {
     IpProjectSummaryDto toSummary(IpProject p) {
         return new IpProjectSummaryDto(p.getId(), p.getName(), p.getTemplateId(), p.getStatus(),
                 coverUrl(p),
-                p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()));
+                p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()), p.getSceneId());
     }
 
     IpProjectDto toDetail(IpProject p) {
@@ -538,7 +546,7 @@ public class IpProjectService {
                 coverUrl(p),
                 p.getPublishedAvatarId(), iso(p.getCreatedAt()), iso(p.getUpdatedAt()),
                 docVersion(p.getDocJson()),
-                doc, runs.runs(), runs.runsById(), p.getTemplateVersionId());
+                doc, runs.runs(), runs.runsById(), p.getTemplateVersionId(), p.getSceneId());
     }
 
     /** runs 投影结果：{@code runs} 按 nodeId、{@code runsById} 按 runId。 */

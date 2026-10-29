@@ -1,7 +1,8 @@
 import { expect, test, vi } from "vitest";
-vi.mock("../api", () => ({ IpStudioApi: {} }));
+const api = vi.hoisted(() => ({ listProjects: vi.fn() }));
+vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { addImageRow, imageRows, patchNode, resubmitImageRow, rowUploads, submissionRejected } from "./scene-drafts";
+import { addImageRow, imageRows, listSceneDrafts, patchNode, resubmitImageRow, rowUploads, submissionRejected } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -63,4 +64,13 @@ test("retrying a failed row reuses the same row with the same inputs and a new r
   expect(node.metadata).toMatchObject({ status: "loading", errorDetails: undefined });
   expect(node.metadata?.studio?.runId).toBeUndefined();
   expect(node.metadata?.studio?.request).toEqual(again.request);
+});
+
+test("drafts are recognised by the scene recorded on the project, so renaming a canvas keeps it in 最近", async () => {
+  api.listProjects.mockResolvedValue([
+    { id: "a", name: "随便改的名字", status: "draft", createdAt: "", updatedAt: "2026-10-29T02:00:00Z", sceneId: "face-turnaround" },
+    { id: "b", name: "脸部三视图 · AI 图片", status: "draft", createdAt: "", updatedAt: "2026-10-29T03:00:00Z" },
+    { id: "c", name: "口播带货", status: "draft", createdAt: "", updatedAt: "2026-10-29T04:00:00Z", sceneId: "ecom-talking" },
+  ]);
+  expect((await listSceneDrafts(new Set(["face-turnaround", "free"]))).map(p => p.id)).toEqual(["a"]);
 });

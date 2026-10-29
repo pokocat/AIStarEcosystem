@@ -10,7 +10,7 @@ import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuot
 import type {
   IpCreateProjectRequest, IpDemoAdmin, IpPricing, IpProject, IpProjectDoc, IpProjectSummary,
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
-  IpUploadResult, IpPromptGroup,
+  IpUploadResult, IpPromptGroup, StudioSceneCatalog, StudioSceneComposeRequest, StudioSceneComposed,
 } from "@ai-star-eco/types";
 import { API_BASE_URL, getAuthToken, apiFetchPaginated } from "@ai-star-eco/api-client";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -82,6 +82,7 @@ export async function createProject(payload: IpCreateProjectRequest): Promise<Ip
       id: mockNextId("IPP"),
       name: payload.name?.trim() || template?.name || "未命名画布",
       ...(payload.templateId ? { templateId: payload.templateId } : {}),
+      ...(payload.sceneId ? { sceneId: payload.sceneId } : {}),
       status: "draft",
       createdAt: nowIso(),
       updatedAt: nowIso(),
@@ -310,4 +311,18 @@ export async function listProjectHistory(id: string): Promise<import("@ai-star-e
 }
 export async function getProjectRevision(id: string, revisionId: string): Promise<import("@ai-star-eco/types").IpRevisionDetail> {
   return apiFetch(`/v1/ip-studio/projects/${id}/history/${revisionId}`);
+}
+
+// ── 场景（AI 图片 / AI 视频）：目录和拼话都在服务端，前端不再自己写一份 ────────────────
+
+/** 场景目录（真源是服务端 ipstudio/scenes.json）。 */
+export async function listScenes(): Promise<StudioSceneCatalog> {
+  if (USE_MOCK) return mockDelay((await import("@/ip/mocks/scenes")).MOCK_SCENES);
+  return apiFetch<StudioSceneCatalog>("/v1/ip-studio/scenes");
+}
+
+/** 出图描述 / 交给助手的话。缺必填素材时服务端 400，message 可直接给用户看。 */
+export async function composeScene(request: StudioSceneComposeRequest): Promise<StudioSceneComposed> {
+  if (USE_MOCK) return mockDelay((await import("@/ip/mocks/scenes")).mockCompose(request));
+  return apiFetch<StudioSceneComposed>("/v1/ip-studio/scenes/compose", { method: "POST", body: request });
 }

@@ -12,14 +12,14 @@ import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
 import { useStudioFailure } from "../studio-errors";
 import { useStudioList } from "../studio-gallery";
 import { studioEntryHref } from "../studio-entry";
-import { VIDEO_DRAFT_SUFFIX, composeVideoBrief, videoScene, videoSceneGroups, videoScenes, type VideoScene } from "./scene-catalog";
+import { IpStudioApi } from "../api";
+import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
 import { createSceneDraft, listSceneDrafts, saveDraftDoc } from "./scene-drafts";
-import { SceneExample, SceneList, SceneRecent, SceneThumb } from "./scene-layout";
+import { SceneExample, SceneList, SceneRecent, SceneThumb, sceneHintText } from "./scene-layout";
 
-const loadDrafts = () => listSceneDrafts(VIDEO_DRAFT_SUFFIX);
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
-const DEFAULT_SCENE = videoScenes[0];
+const DEFAULT_SCENE = "ecom-talking";
 
 function writeQuery(scene: string) { window.history.replaceState(window.history.state, "", `/video?scene=${encodeURIComponent(scene)}`); }
 
@@ -32,17 +32,23 @@ export function SceneVideoStudio() {
   const auth = useRequireAuth();
   const ready = auth === "ok";
   const showFailure = useStudioFailure();
-  const drafts = useStudioList(loadDrafts, ready);
-  const [scene, setScene] = useState<VideoScene>(DEFAULT_SCENE);
+  // 场景目录在服务端（ipstudio/scenes.json），交给助手的话也由服务端拼，这一页不再自己写一份。
+  const { catalog, error: catalogError, retry: retryCatalog } = useSceneCatalog(ready);
+  const videoIds = useMemo(() => new Set(catalog?.video.map(s => s.id) ?? []), [catalog]);
+  const loadDrafts = useCallback(() => listSceneDrafts(videoIds), [videoIds]);
+  const drafts = useStudioList(loadDrafts, ready && !!catalog);
+  const [sceneId, setSceneId] = useState(DEFAULT_SCENE);
+  const scene = findVideoScene(catalog, sceneId) ?? catalog?.video[0];
   const [text, setText] = useState("");
-  const [duration, setDuration] = useState(DEFAULT_SCENE.duration);
-  const [ratio, setRatio] = useState<string>(DEFAULT_SCENE.ratio);
+  const [duration, setDuration] = useState(25);
+  const [ratio, setRatio] = useState<string>("9:16");
   const [images, setImages] = useState<Media[]>([]);
   const [character, setCharacter] = useState<Media>();
   const [voice, setVoice] = useState<Media>();
   const [video, setVideo] = useState<Media>();
   const [uploading, setUploading] = useState<Slot>();
   const [showBrief, setShowBrief] = useState(false);
+  const [preview, setPreview] = useState<{ text?: string; error?: string }>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const draft = useRef<IpProject>(undefined);
@@ -50,21 +56,24 @@ export function SceneVideoStudio() {
   const target = useRef<Slot>("image");
 
   const pickScene = useCallback((next: VideoScene) => {
-    setScene(next); setDuration(next.duration); setRatio(next.ratio);
+    setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio);
     setImages(old => old.slice(0, next.images.max));
     if (!next.video) setVideo(undefined);
     writeQuery(next.id);
   }, []);
 
   useEffect(() => {
+    if (!catalog) return;
     const id = new URLSearchParams(window.location.search).get("scene");
-    pickScene(videoScene(id) || DEFAULT_SCENE);
-  }, [pickScene]);
+    const start = findVideoScene(catalog, id) ?? findVideoScene(catalog, DEFAULT_SCENE) ?? catalog.video[0];
+    if (start) pickScene(start);
+  }, [catalog, pickScene]);
 
   const ensureDraft = async () => {
+    if (!scene) throw new Error("场景还没读出来，请稍等");
     if (!draft.current) {
       const subject = text.trim().split(/[，。,.\n]/)[0].slice(0, 14);
-      draft.current = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, VIDEO_DRAFT_SUFFIX);
+      draft.current = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id);
     }
     return draft.current;
   };
@@ -79,7 +88,7 @@ export function SceneVideoStudio() {
     try {
       const project = await ensureDraft();
       const result = await importStudioMedia(project.id, file, type);
-      if (kind === "image") setImages(old => [...old, { ...result, title: `${scene.images.label} ${old.length + 1}` }].slice(0, scene.images.max));
+      if (kind === "image") setImages(old => [...old, { ...result, title: `${scene!.images.label} ${old.length + 1}` }].slice(0, scene!.images.max ?? 6));
       if (kind === "character") setCharacter({ ...result, title: "出镜人物" });
       if (kind === "voice") setVoice({ ...result, title: "声音样本" });
       if (kind === "video") setVideo({ ...result, title: "参考视频" });
@@ -87,19 +96,30 @@ export function SceneVideoStudio() {
     finally { setUploading(undefined); }
   };
 
-  const brief = useMemo(() => composeVideoBrief(scene, { text, duration, ratio,
+  // 交给助手的话由服务端按场景拼（同一份目录、同一套校验）。
+  const composeRequest = useMemo(() => scene && ({ kind: "video" as const, sceneId: scene.id, text, duration, ratio,
     imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title }),
   [scene, text, duration, ratio, images, character, voice, video]);
+  useEffect(() => {
+    if (!showBrief || !composeRequest) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      IpStudioApi.composeScene(composeRequest).then(r => { if (active) setPreview({ text: r.text }); })
+        .catch(e => { if (active) setPreview({ error: sceneHintText(e, "这段话还拼不出来") }); });
+    }, 300);
+    return () => { active = false; clearTimeout(timer); };
+  }, [showBrief, composeRequest]);
 
-  // 不能发的原因就写在发送键旁边。
-  const blocker = scene.video?.required && !video ? `先放${scene.video.label}`
+  // 不能发的原因就写在发送键旁边（界面提示；服务端拼话时还会再核一遍）。
+  const blocker = !scene ? "正在读取场景…" : scene.video?.required && !video ? `先放${scene.video.label}`
     : scene.images.required && !images.length ? `先放${scene.images.label}`
     : scene.textRequired && !text.trim() ? "先写一句要求" : "";
 
   const send = async () => {
-    if (sending || blocker || uploading) return;
+    if (sending || blocker || uploading || !composeRequest) return;
     setSending(true);
     try {
+      const composed = await IpStudioApi.composeScene(composeRequest);
       const project = await ensureDraft();
       let nodes = project.doc.nodes as CanvasNodeData[];
       const place = (media: Media, kind: "image" | "video" | "audio", index: number) => {
@@ -114,7 +134,7 @@ export function SceneVideoStudio() {
         .filter((m): m is readonly [Media, "image" | "video" | "audio"] => !!m).forEach(([m, kind], i) => place(m, kind, i));
       // 和首页「说一句话开始」同一种起点：这段话存成助手的第一句，画布打开后自动发出。
       const start = { id: `${project.id}-brief`, type: CanvasNodeType.Text, title: "创作想法", position: { x: 100, y: 120 }, width: 480, height: 260,
-        metadata: { content: brief, prompt: brief, studioStart: "assistant" as const, studioSkill: scene.video ? "reference-video-recreation" : "video-generation", studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
+        metadata: { content: composed.text, prompt: composed.text, studioStart: "assistant" as const, ...(composed.skillKey ? { studioSkill: composed.skillKey } : {}), studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
       const conversations = [...(project.doc.assistantConversations || []).filter(n => n.id !== start.id), start];
       draft.current = await saveDraftDoc(project, { ...project.doc, nodes, assistantConversations: conversations });
       router.push(studioEntryHref(project.id, "assistant", { send: true }));
@@ -130,10 +150,12 @@ export function SceneVideoStudio() {
     fileInput.current.accept = kind === "voice" ? ".mp3,.wav,.m4a" : kind === "video" ? ".mp4" : ".jpg,.jpeg,.png";
     fileInput.current.click();
   };
-  const reset = () => { draft.current = undefined; setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined); setShowBrief(false); };
+  const reset = () => { draft.current = undefined; setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined); setShowBrief(false); setPreview(undefined); };
 
   if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
-  const groups = videoSceneGroups.map(g => ({ id: g.id, title: g.title, items: videoScenes.filter(s => s.group === g.id) }));
+  if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading">场景目录没读出来<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
+  if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
+  const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
       <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
@@ -145,7 +167,7 @@ export function SceneVideoStudio() {
     </div>;
 
   return <main className="ip-brand-surface scene-studio scene-video-studio" data-studio-overlay-root>
-    <SceneList heading="AI 视频" current={scene.id} onPick={id => pickScene(videoScene(id) || DEFAULT_SCENE)} groups={groups}/>
+    <SceneList heading="AI 视频" current={scene.id} onPick={id => { const next = findVideoScene(catalog, id); if (next) pickScene(next); }} groups={groups}/>
 
     <section className="scene-composer scene-video-composer" aria-label="视频设置">
       <header className="scene-composer-head">
@@ -160,7 +182,7 @@ export function SceneVideoStudio() {
         <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea} title={idea}
           onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
         <button type="button" className="scene-brief-toggle" aria-expanded={showBrief} onClick={() => setShowBrief(v => !v)}>看看会发给助手的话<ChevronDown size={14}/></button>
-        {showBrief && <pre className="scene-brief">{brief}</pre>}
+        {showBrief && <pre className="scene-brief">{preview?.text ?? preview?.error ?? "正在整理…"}</pre>}
       </div>
 
       <div className="scene-video-input">
@@ -168,7 +190,7 @@ export function SceneVideoStudio() {
           {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => setVideo(undefined))}
           {images.map((m, i) => <div key={m.key} className="scene-media is-filled"><span className="scene-media-preview"><img src={m.url} alt={m.title}/></span><span>{m.title}</span>
             <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => setImages(old => old.filter((_, j) => j !== i))}><X size={13}/></button></div>)}
-          {images.length < scene.images.max && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
+          {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
             {uploading === "image" ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><ImagePlus size={26} strokeWidth={1.3}/><span className="scene-ref-upload"><Upload size={11}/></span></>}</button>
             <span>添加{scene.images.label}{!scene.images.required && <small>（可选）</small>}</span></div>}
           {scene.character && <i className="scene-media-divider" aria-hidden="true"/>}

@@ -83,3 +83,8 @@ export function SceneExample({ id, title, note, children }: { id: string; title:
 export function SceneNoModel({ kind }: { kind: "图片" | "视频" }) {
   return <p className="scene-note" role="status"><FileImage size={15} aria-hidden="true"/>后台还没有配置可用的{kind}模型，暂时不能生成。请联系管理员在「AI 模型」里开通。</p>;
 }
+
+/** 拼话被拒（缺图、缺那句话）是给用户的提示，不是故障：去掉追查号再就地显示，追查号留给悬停提示。 */
+export function sceneHintText(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message.replace(/ · 追查号 \S+$/, "") : fallback;
+}

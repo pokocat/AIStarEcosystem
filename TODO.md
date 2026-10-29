@@ -8,7 +8,9 @@
 - [ ] 场景默认描述在线上默认图片模型上各真跑一个：本地只真跑成了「脸部三视图」，其余被 Agnes 限流挡住；线上模型不同，描述是否要按模型调还没看（§8.0.1 ⑦）。
 - [ ] 本地 Agnes 账号每分钟约一次调用（429「请登录platform进行实名认证以获取更高rpm」），免费视频队列常满（503 `video_queue_full`）：本地验收要给账号做实名认证，或改用聚算端点。
 - [ ] 创作助手回复漏内部说法：真跑中出现「keyframe-first」「临时 key」「真实 id」「本阶段只允许 text 和 image 操作」，写出的脚本里带了节点编号 `[xeFx-…]`。在 `dap.ip_studio_skill_dialogue` / 规划提示词里补「不出现节点编号和英文模式名」并加解析侧过滤。
-- [ ] 视频子任务被厂商拒绝后，助手进度约 90 秒才从「生成中」变成失败（`StudioPlanExecutionService` 只在下一次推进时读子任务状态），用户会以为卡住。
+- [x] ~~视频子任务被厂商拒绝后，助手进度约 90 秒才从「生成中」变成失败~~ **2026-10-29 已修（本地未发布）**：`MaterialVideoWorker` 到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的计划（`StudioVideoJobWakeTest`）。
+- [x] ~~场景数据和拼话写在前端、草稿靠名字后缀认~~ **2026-10-29 已统一（本地未发布）**：目录 `ipstudio/scenes.json` + `GET /scenes`、`POST /scenes/compose`、`ip_project.scene_id`（V72），见 `docs/studio-scene-creation.md` §7。
+- [ ] 合入前核对迁移编号：V70 被未合并的 `reel`（爆款复刻 reel 域）和用户在线分支占用，本分支用 V72；谁先合谁定号，后合的要改号。`reel` 分支也在做「爆款复刻」场景，和本分支的视频场景「爆款复刻」要合并成一个入口。
 - [ ] 手机底部 tab 没有「AI 视频 / AI 图片」：现在只能从手机首页的「你想做什么？」进入；要不要换掉某个 tab 待定。
 - [ ] 场景封面（`public/studio/scene-covers/*.webp`）是 AI 生成的示意图，运营有真实作品后按同名文件替换。
 

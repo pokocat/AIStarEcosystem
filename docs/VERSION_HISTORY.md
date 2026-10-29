@@ -13,6 +13,7 @@
 - `/video`：素材 + 一句话（商品 / 门店类可不写）→ `composeVideoBrief` 拼话存成助手第一句，`?start=assistant&send=1` 自动发出；拼话固定禁止编价格优惠；只有爆款复刻命中「等参考视频」规则（测试守着）。
 - `/scenes` 转 `/video`。无接口、无迁移。场景封面 37 张为 AI 生成示意图。
 - 未做：场景默认描述的真模型逐个验收；手机底部 tab 未加两页入口。真源 `docs/studio-scene-creation.md`。
+- 同日追加（统一端点）：场景目录搬到服务端 `ipstudio/scenes.json`（`GET /api/v1/ip-studio/scenes`），出图描述 / 交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼并给出方法；草稿用 `ip_project.scene_id`（V72）认；Studio 视频任务到终态即时推进制作计划（`MaterialVideoJobEnded`）。前端不再有场景数据。
 
 ### Studio 新建画布、多段对话与卡片精简 · 2026-10-20 · 2026-10-21 已生产发布 `20261021-studio-new-canvas-threads`（server + web-aiavatar）
 

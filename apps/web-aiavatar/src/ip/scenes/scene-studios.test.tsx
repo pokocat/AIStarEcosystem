@@ -1,18 +1,23 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { IpProject } from "@ai-star-eco/types";
+// 用服务端那份真目录（ipstudio/scenes.json），不另写样本。
+const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
   push: vi.fn(), failure: vi.fn(),
-  uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(),
+  uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }) }));
 vi.mock("next/link", () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => null }));
 vi.mock("@/components/hub/ui", () => ({ HubTabBar: () => null }));
-vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProjects: api.listProjects, createProject: api.createProject, updateProject: api.updateProject, getProject: api.getProject } }));
+vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProjects: api.listProjects, createProject: api.createProject, updateProject: api.updateProject, getProject: api.getProject,
+  listScenes: api.listScenes, composeScene: api.composeScene } }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
@@ -27,8 +32,9 @@ const doc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const project = (patch: Partial<IpProject> = {}): IpProject => ({ id: "IPP-1", name: "x", status: "draft", createdAt: "", updatedAt: "", doc, runs: {}, runsById: {}, docVersion: "v1", ...patch });
 
 beforeEach(() => {
+  api.listScenes.mockResolvedValue(SCENES);
   api.listProjects.mockResolvedValue([]);
-  api.createProject.mockImplementation(async ({ name }: { name: string }) => project({ name }));
+  api.createProject.mockImplementation(async ({ name, sceneId }: { name: string; sceneId?: string }) => project({ name, sceneId }));
   api.updateProject.mockImplementation(async (_id: string, { doc: next }: { doc: IpProject["doc"] }) => project({ doc: next, docVersion: "v2" }));
   api.uploadImage.mockResolvedValue({ key: "ipstudio/source/u/p.jpg", url: "blob:p", fileName: "p.jpg" });
   api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call", capability: null }], video: [] });
@@ -49,15 +55,18 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   // 一大段场景描述不摆出来：只有场景标签和补充要求输入框。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "45 度角" } });
+  api.composeScene.mockResolvedValue({ text: "服务端拼好的白底图描述\n补充要求：45 度角" });
 
   await act(async () => { upload(document.querySelector('.scene-ref-row input[type="file"]')!); });
   await waitFor(() => expect(go().textContent).toContain("预计 8 积分"));
   await act(async () => { fireEvent.click(go()); });
-  expect(api.createProject).toHaveBeenCalledWith({ name: "商品白底图 · AI 图片" });
+  // 描述由服务端按场景拼：只交场景编号、补充要求和放了图的位置。
+  expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", filled: [0] });
+  expect(api.createProject).toHaveBeenCalledWith({ name: "商品白底图", sceneId: "white-background" });
   const request = api.submit.mock.calls[0][1];
   expect(request).toMatchObject({ operation: "image", aspectRatio: "1:1", count: 1, model: "ep-img", maxCost: 8,
     references: [{ storageKey: "ipstudio/source/u/p.jpg", role: "character" }] });
-  expect(request.prompt).toMatch(/^把图1中的商品单独放到纯白背景正中[\s\S]*\n补充要求：45 度角$/);
+  expect(request.prompt).toBe("服务端拼好的白底图描述\n补充要求：45 度角");
   // 提交之前那次保存里已经有这条请求：网断了也能按原请求确认，不会换个编号重复扣费。
   const saved = api.updateProject.mock.calls[0][1].doc;
   expect(saved.nodes.find((n: any) => n.id === request.nodeId)?.metadata?.studio?.request).toEqual(request);
@@ -68,6 +77,7 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
 
 test("视频：放上商品图就能发（一句话可以不写）；素材进画布、拼好的话存成助手的第一句，打开画布自动发出", async () => {
   window.history.replaceState(null, "", "/video?scene=ecom-talking");
+  api.composeScene.mockResolvedValue({ text: "服务端拼好的话：我的要求：保湿精华，不黏腻", skillKey: "video-generation" });
   api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/p.jpg", url: "blob:p", mediaType: "image", mimeType: "image/jpeg", bytes: 1, fileName: "p.jpg", width: 800, height: 800 });
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
@@ -76,15 +86,17 @@ test("视频：放上商品图就能发（一句话可以不写）；素材进�
   fireEvent.click(screen.getByRole("button", { name: "开头用一个反常识的说法抓人" }));
   fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华，不黏腻" } });
   await act(async () => { upload(document.querySelector('.scene-media-row input[type="file"]')!); });
-  expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华 · AI 视频" });
+  expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华", sceneId: "ecom-talking" });
   expect(send().disabled).toBe(false);
   await act(async () => { fireEvent.click(send()); });
   const saved = api.updateProject.mock.calls[0][1].doc;
   expect(saved.nodes.map((n: any) => n.title)).toEqual(["商品图 1"]);
   const brief = saved.assistantConversations[0];
   expect(brief.metadata.studioStart).toBe("assistant");
+  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", sceneId: "ecom-talking", text: "保湿精华，不黏腻", imageTitles: ["商品图 1"], duration: 25, ratio: "9:16" }));
+  // 方法和话都以服务端返回的为准。
   expect(brief.metadata.studioSkill).toBe("video-generation");
-  expect(brief.metadata.prompt).toContain("我的要求：保湿精华，不黏腻");
+  expect(brief.metadata.prompt).toBe("服务端拼好的话：我的要求：保湿精华，不黏腻");
   expect(api.push).toHaveBeenCalledWith("/projects/IPP-1?start=assistant&send=1");
   expect(api.submit).not.toHaveBeenCalled();
 });
@@ -94,7 +106,7 @@ test("图片：从「最近」或地址栏带草稿号进来，打开那张草�
   const row = { id: "n1", type: "image", title: "脸部三视图", position: { x: 0, y: 0 }, width: 10, height: 10,
     metadata: { status: "success", images: [{ id: "IPR-9", status: "success", storageKey: "k", content: "https://cdn/r.jpg" }],
       studio: { kind: "shot", request: { clientRequestId: "c", nodeId: "n1", operation: "image", prompt: "以图1为准", aspectRatio: "16:9", count: 1 } } } };
-  api.getProject.mockResolvedValue(project({ id: "IPP-9", name: "脸部三视图 · AI 图片", doc: { ...doc, nodes: [row] } as IpProject["doc"] }));
+  api.getProject.mockResolvedValue(project({ id: "IPP-9", name: "随便改的名字", sceneId: "face-turnaround", doc: { ...doc, nodes: [row] } as IpProject["doc"] }));
   await act(async () => { render(<SceneImageStudio/>); });
   await waitFor(() => expect(api.getProject).toHaveBeenCalledWith("IPP-9"));
   expect(await screen.findByRole("img", { name: /脸部三视图第 1 张/ })).toBeTruthy();

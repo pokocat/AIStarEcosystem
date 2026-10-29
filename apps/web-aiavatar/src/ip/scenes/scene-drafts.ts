@@ -12,13 +12,14 @@ import { IpStudioApi } from "../api";
 
 export type SceneUpload = { key: string; url: string; name: string };
 
-export async function listSceneDrafts(suffix: string): Promise<IpProjectSummary[]> {
+/** 这一页（图片 / 视频）建过的草稿：按项目上记的场景编号认，改了名字也还在「最近」里。 */
+export async function listSceneDrafts(sceneIds: ReadonlySet<string>): Promise<IpProjectSummary[]> {
   return (await IpStudioApi.listProjects())
-    .filter(p => p.name.endsWith(suffix))
+    .filter(p => !!p.sceneId && sceneIds.has(p.sceneId))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export const createSceneDraft = (title: string, suffix: string) => IpStudioApi.createProject({ name: `${title}${suffix}` });
+export const createSceneDraft = (name: string, sceneId: string) => IpStudioApi.createProject({ name, sceneId });
 
 /** 整存整取：带上读到的版本，别处改过就让服务端拒绝，不覆盖。 */
 export const saveDraftDoc = (project: IpProject, doc: IpProjectDoc) =>

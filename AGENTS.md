@@ -1077,7 +1077,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 ### Studio 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
 
-本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在 `src/ip/scenes/scene-catalog.ts` 一处（首页卡片共用），图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；视频场景拼成一段话交给画布里的创作助手（`?start=assistant&send=1`），拼话固定禁止编价格 / 优惠，除「爆款复刻」外不得命中 `studioBriefNeedsReference`（`scene-catalog.test.ts` 守着）。真源 `docs/studio-scene-creation.md`。
+本节替代下面「七项导航」里的导航顺序：登录后桌面导航改为左侧一列「首页 / AI 视频 / AI 图片 / 画布 / 导演台 / 项目 / 资产 / 发行」（`DesktopTopBar` 非公开分支，`--desktop-bar-h` 在 body 上是 12px、左侧让出 `--desktop-rail-w`），公开落地页仍是顶栏；「灵感」搬到首页，`/templates` 归「首页」高亮；`/scenes` 转 `/video`。场景目录只在服务端 `apps/server/src/main/resources/ipstudio/scenes.json` 一处（`GET /api/v1/ip-studio/scenes`），出图描述和交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼（含每个视频场景的方法 `skillKey`），**前端不得另写场景数据或拼话**；草稿用 `ip_project.scene_id`（V72）认。图片场景的草稿就是一张画布，**先保存带 `clientRequestId` 的请求节点再提交 `studio-runs`**，之后只读运行记录，不确定时「确认原任务」用原请求编号重交；视频场景拼成一段话交给画布里的创作助手（`?start=assistant&send=1`，开始节点带 `studioSkill`），拼话固定禁止编价格 / 优惠、要成片不只要脚本，除「爆款复刻」外不得出现复刻类字眼（`StudioSceneCatalogTest` 守着）。Studio 视频任务到终态发 `MaterialVideoJobEnded`，即时推进制作计划。真源 `docs/studio-scene-creation.md`。
 
 ### Studio 七项导航与存量发行界面（2026-10-17，已生产发布）
 
