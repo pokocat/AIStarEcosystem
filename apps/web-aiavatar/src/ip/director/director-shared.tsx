@@ -55,7 +55,11 @@ export function useBusy() {
     if (lock.current) return undefined;
     lock.current = true; setBusy(key);
     try { return await fn(); }
-    catch (e) { onError(errorText(e), e); return undefined; }
+    catch (e) {
+      // 用户取消付款没有提交任务，正常回到页面，不显示「操作失败」。
+      if (!(e instanceof ApiError && e.code === "STUDIO_BILLING_CANCELLED")) onError(errorText(e), e);
+      return undefined;
+    }
     finally { lock.current = false; setBusy(undefined); }
   }, []);
   return { busy, run };

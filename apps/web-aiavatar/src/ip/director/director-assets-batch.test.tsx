@@ -26,8 +26,10 @@ test("generate-all submits every asset and reports the props the server refused 
   const apply = vi.fn(), setError = vi.fn();
   render(<DirectorAssets work={work} episodeId="ep1" apply={apply} setError={setError} {...({} as any)}/>);
   fireEvent.click(screen.getByRole("button", { name: /生成全部参考图/ }));
-  const { onOk } = confirm.mock.calls[0][0];
-  await act(async () => { await onOk(); });
+  const { onOk, afterClose } = confirm.mock.calls[0][0];
+  await act(async () => { onOk(); });
+  expect(api.runTask).not.toHaveBeenCalled();
+  await act(async () => { afterClose(); });
 
   await waitFor(() => expect(api.runTask).toHaveBeenCalledTimes(4));
   expect(api.runTask.mock.calls.map(c => c[1].targetId)).toEqual(["c1", "s1", "p1", "p2"]);

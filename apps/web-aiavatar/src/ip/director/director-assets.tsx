@@ -10,6 +10,7 @@ import type { WorkbenchProps } from "./director-workbench";
 import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
 import { useAssistant } from "./director-assistant";
+import { confirmDirectorAction } from "./director-antd";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
 
@@ -41,22 +42,21 @@ export function DirectorAssets(props: WorkbenchProps) {
     .sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind));
   const generateAll = () => {
     const total = missing.length * work.pricing.image;
-    modal.confirm({
+    confirmDirectorAction(modal, {
       title: `为 ${missing.length} 项资产生成参考图？`,
       content: <div className="director-batch-confirm"><p>{missing.map(a => a.name).join("、")}</p>
         <p className="director-muted">每项一张，{costText(total, work.pricing.mock)}。生成后逐张确认，分镜图会照着确认过的参考图画。</p></div>,
       okText: "开始生成", cancelText: "取消",
-      onOk: () => run("all", async () => {
-        const billing = await chooseDirectorBilling("image", total);
-        const failures: string[] = [];
-        for (const a of missing) {
-          try { apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.image })); }
-          catch (e) { failures.push(`${a.name}：${errorText(e)}`); }
-        }
-        if (failures.length) setError({ action: "生成全部参考图", error: `${missing.length} 项里有 ${failures.length} 项没有提交成功：${failures.join("；")}`,
-          next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那项资产上单独点「生成」。" });
-      }, failed(setError, "生成全部参考图")),
-    });
+    }, () => void run("all", async () => {
+      const billing = await chooseDirectorBilling("image", total);
+      const failures: string[] = [];
+      for (const a of missing) {
+        try { apply(await DirectorApi.runTask(work.id, { type: "asset-image", targetId: a.id, clientRequestId: newRequestId(), billing, maxCost: work.pricing.image })); }
+        catch (e) { failures.push(`${a.name}：${errorText(e)}`); }
+      }
+      if (failures.length) setError({ action: "生成全部参考图", error: `${missing.length} 项里有 ${failures.length} 项没有提交成功：${failures.join("；")}`,
+        next: "其余的已经开始生成。没提交成功的，按上面的原因处理后在那项资产上单独点「生成」。" });
+    }, failed(setError, "生成全部参考图")));
   };
   const confirmAll = () => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: waiting.map(a => a.id) })), failed(setError, "确认全部参考图"));
 
