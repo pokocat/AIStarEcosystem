@@ -42,6 +42,7 @@ function EnterpriseWorkspaceEnabled() {
   const [page, setPage] = useState(0), [orderPage, setOrderPage] = useState(0);
   const [total, setTotal] = useState(0), [orderTotal, setOrderTotal] = useState(0);
   const [tab, setTab] = useState("members");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [selected, setSelected] = useState<string[]>([]);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [actionError, setActionError] = useState("");
@@ -74,9 +75,7 @@ function EnterpriseWorkspaceEnabled() {
       const current = mine[0];
       const personal = await WalletApi.balance();
       if (!alive.current || version !== loadVersion.current) return;
-      setPersonalBalance(personal.totalBalance);
-      setContext(current);
-      if (!current) { setWallet(undefined); setOwnBalance(undefined); setMembers([]); setOrders([]); return; }
+      if (!current) { setContext(undefined); setPersonalBalance(personal.totalBalance); setWallet(undefined); setOwnBalance(undefined); setMembers([]); setOrders([]); setSelected([]); return; }
       const id = current.enterprise.id;
       const [summary, balances, recharges, own] = await Promise.all([
         current.permissions.some(permission => permission === "points.manage" || permission === "billing.read") ? EnterpriseApi.wallet(id) : undefined,
@@ -85,13 +84,15 @@ function EnterpriseWorkspaceEnabled() {
         EnterpriseApi.myBalance(id),
       ]);
       if (!alive.current || version !== loadVersion.current) return;
+      // Publish one complete snapshot so a failed refresh cannot mix two enterprises' balances.
+      setContext(current); setPersonalBalance(personal.totalBalance);
       setWallet(summary); setOwnBalance(own); setMembers(balances.data); setTotal(balances.pagination.total);
+      setSelected(previous => previous.filter(key => balances.data.some(member => member.memberId === key)));
       setOrders(recharges?.data || []); setOrderTotal(recharges?.pagination.total || 0);
     } catch (caught) {
       if (alive.current && version === loadVersion.current) {
         const normalized = normalizeStudioError(caught);
         setError(normalized.code === "NOT_FOUND" || /404/.test(normalized.message) ? "企业管理尚未开放。请联系平台确认开通安排。" : normalized.message);
-        setWallet(undefined); setMembers([]); setOrders([]);
       }
     } finally { if (alive.current && version === loadVersion.current) setLoading(false); }
   }, [page, orderPage]);
@@ -150,10 +151,11 @@ function EnterpriseWorkspaceEnabled() {
   const closeTransfer = () => { if (!busy) { setDirection(undefined); setDraft(undefined); setActionError(""); } };
 
   if (authState === "no-platform") return <PlatformGateScreen />;
-  return <ConfigProvider theme={{ token: { colorPrimary: "#192229", borderRadius: 8, fontFamily: "var(--ip-ui, sans-serif)" }, components: { Table: { rowSelectedBg: "#eeefef", rowSelectedHoverBg: "#e5e7e8" } } }}>
-    <StudioPage title="企业管理" description={context ? `${context.enterprise.name} · ${roleName[context.member.role]}` : "管理企业积分、成员分配与充值记录。"} className="enterprise-workspace" actions={<><Link className="ip-brand-secondary" href="/me">我的账号</Link><Button icon={<RefreshCw size={15}/>} aria-label="刷新企业数据" loading={loading} disabled={busy || authState !== "ok"} onClick={() => void load()}>刷新</Button></>}>
+  return <ConfigProvider theme={{ token: { colorPrimary: "#192229", borderRadius: 8, controlHeight: 40, controlHeightSM: 32, fontFamily: "var(--ip-ui, sans-serif)" }, components: { Table: { rowSelectedBg: "#eeefef", rowSelectedHoverBg: "#e5e7e8" } } }}>
+    <StudioPage title="企业管理" description={context ? `${context.enterprise.name} · ${roleName[context.member.role]}` : "管理企业积分、成员分配与充值记录。"} className="enterprise-workspace" actions={<><Link className="ip-brand-secondary" href="/me">我的账号</Link><button type="button" className="ip-brand-secondary enterprise-refresh" aria-label="刷新企业数据" aria-busy={loading} disabled={loading || busy || authState !== "ok"} onClick={() => { void load(); setRefreshKey(value => value + 1); }}><RefreshCw size={15} aria-hidden="true"/>{loading ? "刷新中…" : "刷新"}</button></>}>
+      {error && context && <Alert type="error" showIcon title="数据刷新失败，当前显示上次读取的内容" description={error}/>}
       {success && <Alert type="success" showIcon title={success} closable onClose={() => setSuccess("")} />}
-      {error ? <Alert type="error" showIcon title="暂时无法读取企业数据" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : loading || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
+      {error && !context ? <Alert type="error" showIcon title="暂时无法读取企业数据" description={error} action={<Button size="small" onClick={() => void load()}>重试</Button>} /> : (loading && !context) || authState !== "ok" ? <Skeleton active paragraph={{ rows: 8 }} /> : !context ? <section className="enterprise-empty">
         <Empty description="你还没有加入企业" />
         <p>创建企业后，平台财务可向企业充值，再由主账号分配给成员。每个人仍需按现有规则开通数字资产产品。</p>
         <div className="enterprise-onboarding"><div><h2>创建企业</h2><label htmlFor="enterprise-name">企业名称</label><Input id="enterprise-name" value={name} maxLength={100} onChange={e => { setName(e.target.value); createKey.current = undefined; }} placeholder="输入企业名称" disabled={busy} /><Button type="primary" loading={busy} disabled={!name.trim()} onClick={() => void mutate(async () => { createKey.current ||= requestId(); await EnterpriseApi.create({ name: name.trim(), clientRequestId: createKey.current }); createKey.current = undefined; await load(); })}>创建企业</Button></div><div><h2>通过邀请加入企业</h2><p>打开管理员分享的企业邀请链接，验证手机号或确认当前账号后加入。一个账号同时只能属于一家企业。</p></div></div>
@@ -167,7 +169,7 @@ function EnterpriseWorkspaceEnabled() {
         ].map(([label, value, help]) => <div key={label}><span>{label}</span><strong>{number(value as number)}</strong><small>{help}</small></div>)}</section>}
         {!wallet && myBalance && <section className="enterprise-balances" aria-label="我的企业积分"><div><span>我的可用企业积分</span><strong>{number(myBalance.totalBalance)}</strong><small>企业分配，可由企业回收</small></div><div><span>我的冻结积分</span><strong>{number(myBalance.pendingBalance)}</strong><small>在途任务占用，不可回收</small></div></section>}
         <StudioPageFilters label="企业管理分类" value={tab} onChange={setTab} items={tabs} />
-        {["team", "policy", "lifecycle"].includes(tab) ? <EnterpriseManagement context={context} section={tab as "team" | "policy" | "lifecycle"} onChanged={load} /> : ["transfers", "usage", "audit"].includes(tab) ? <EnterpriseReports context={context} kind={tab as "transfers" | "usage" | "audit"} /> : tab === "members" ? <section aria-label="成员企业积分">
+        {["team", "policy", "lifecycle"].includes(tab) ? <EnterpriseManagement context={context} section={tab as "team" | "policy" | "lifecycle"} onChanged={load} refreshKey={refreshKey} /> : ["transfers", "usage", "audit"].includes(tab) ? <EnterpriseReports context={context} kind={tab as "transfers" | "usage" | "audit"} refreshKey={refreshKey} /> : tab === "members" ? <section aria-label="成员企业积分">
           <div className="enterprise-section-heading"><div><h2>{canManage ? "积分分配与回收" : canReadTeam ? "成员企业积分" : "企业积分"}</h2><p>企业积分与个人积分独立。回收仅处理可用余额，冻结积分保留原任务结算。</p></div>{canRequest && <Button onClick={() => { setRechargeOpen(true); setActionError(""); }}>申请充值</Button>}</div>
           {canManage && <div className="enterprise-batch-bar"><span aria-live="polite">{selected.length ? `已选择 ${selected.length} 人` : "勾选成员，可单人或批量操作"}</span><div><Button type="primary" icon={<ArrowUpRight size={15}/>} disabled={!selected.length || busy || selectedMembers.some(member => member.status !== "active")} onClick={() => openTransfer("allocate")}>分配积分</Button><Button icon={<ArrowDownLeft size={15}/>} disabled={!selected.length || busy} onClick={() => openTransfer("reclaim")}>回收积分</Button>{selected.length > 0 && <Button type="text" disabled={busy} onClick={() => setSelected([])}>清除选择</Button>}</div></div>}
           {canManage && selectedMembers.some(member => member.status !== "active") && <p className="enterprise-selection-hint">所选成员包含已停用成员，可回收积分；恢复后才能继续分配。</p>}

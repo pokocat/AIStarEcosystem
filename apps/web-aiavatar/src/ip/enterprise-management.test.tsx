@@ -5,7 +5,7 @@ import { webcrypto } from "node:crypto";
 import { EnterpriseManagement } from "./enterprise-management";
 import type { EnterpriseContext } from "@ai-star-eco/types/enterprise";
 const clipboard = vi.hoisted(() => ({ command: vi.fn(), clearData: vi.fn(), setData: vi.fn() }));
-const api = vi.hoisted(() => ({ members: vi.fn(), invitations: vi.fn(), ownershipTransfers: vi.fn(), invite: vi.fn(), revoke: vi.fn(), updateMember: vi.fn(), requestOwnership: vi.fn(), acceptOwnership: vi.fn(), policy: vi.fn(), updatePolicy: vi.fn(), previewLifecycle: vi.fn(), lifecycle: vi.fn() }));
+const api = vi.hoisted(() => ({ addMembers: vi.fn(), addMember: vi.fn(), members: vi.fn(), invitations: vi.fn(), ownershipTransfers: vi.fn(), invite: vi.fn(), revoke: vi.fn(), updateMember: vi.fn(), requestOwnership: vi.fn(), acceptOwnership: vi.fn(), policy: vi.fn(), updatePolicy: vi.fn(), previewLifecycle: vi.fn(), lifecycle: vi.fn() }));
 vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: vi.fn().mockResolvedValue({ image: [{ endpointId: "image-id", name: "人像图片" }], video: [] }) }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: vi.fn().mockResolvedValue({ textModels: [{ endpointId: "text-id", name: "创作文本" }] }), studioSpeechCatalog: vi.fn().mockResolvedValue({ models: [] }), studioLipSyncCatalog: vi.fn().mockResolvedValue({ models: [] }) }));
@@ -13,10 +13,10 @@ const reported = vi.hoisted(() => vi.fn());
 vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ message: error.message || String(error) }), reportStudioError: reported }));
 vi.mock("antd", () => ({
   Alert: ({ title, description, action }: any) => <div role="alert">{title}{description}{action}</div>,
-  Button: ({ children, loading, type, danger, ...props }: any) => <button {...props} disabled={loading || props.disabled}>{children}</button>,
+  Button: ({ children, loading, type, danger, htmlType, ...props }: any) => <button {...props} type={htmlType || "button"} disabled={loading || props.disabled}>{children}</button>,
   Checkbox: ({ children, ...props }: any) => <label><input {...props} type="checkbox"/>{children}</label>,
   Empty: ({ description }: any) => <p>{description}</p>,
-  Input: { TextArea: ({ autoSize, ...props }: any) => <textarea {...props}/> },
+  Input: Object.assign((props: any) => <input {...props}/>, { TextArea: ({ autoSize, ...props }: any) => <textarea {...props}/> }),
   InputNumber: ({ onChange, precision, ...props }: any) => <input {...props} type="number" value={props.value ?? ""} onChange={event => onChange(Number(event.target.value))}/>,
   Select: ({ options, onChange, value, mode, optionFilterProp, ...props }: any) => <select {...props} value={value} multiple={mode === "multiple"} onChange={event => onChange(mode === "multiple" ? [...event.target.selectedOptions].map(option => option.value) : event.target.value)}>{options.map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
   Modal: ({ open, title, children, footer, onOk, onCancel, okText, okButtonProps, confirmLoading }: any) => open ? <section role="dialog" aria-label={title}><h2>{title}</h2>{children}{footer || <><button onClick={onCancel}>取消</button><button disabled={confirmLoading || okButtonProps?.disabled} onClick={onOk}>{okText}</button></>}</section> : null,
@@ -139,4 +139,65 @@ test("a copy command that reports success without writing a copy event is never 
   const dialog=await invitationDialog();clipboard.command.mockReturnValueOnce(true);
   fireEvent.click(within(dialog).getByRole("button",{name:"复制邀请链接"}));await within(dialog).findByRole("alert");
   expect(within(dialog).queryByRole("status")).toBeNull();
+});
+
+
+test("phone addition validates input, preserves errors and refreshes real members after success", async () => {
+  const changed = vi.fn().mockResolvedValue(undefined);
+  api.addMember.mockRejectedValueOnce(new Error("该账号已加入其他企业")).mockResolvedValueOnce(member);
+  render(<EnterpriseManagement context={owner} section="team" onChanged={changed}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "添加成员" }));
+  const input = screen.getByLabelText("手机号");
+  const submit = screen.getByRole("button", { name: "确认添加" });
+  fireEvent.change(input, { target: { value: "123" } });
+  expect(submit.hasAttribute("disabled")).toBe(true);
+  fireEvent.change(input, { target: { value: "+86 138 0013 8000" } });
+  fireEvent.click(submit);
+  await screen.findByText("该账号已加入其他企业");
+  expect((input as HTMLInputElement).value).toBe("+86 138 0013 8000");
+  fireEvent.click(submit);
+  await screen.findByText("「张三」已在企业成员中，可为其分配企业积分。");
+  expect(api.addMember).toHaveBeenLastCalledWith("team", { phone: "13800138000" });
+  expect(changed).toHaveBeenCalledOnce();
+  expect(screen.queryByLabelText("手机号")).toBeNull();
+});
+
+test("ordinary members have no phone addition entry", async () => {
+  render(<EnterpriseManagement context={{ ...owner, member: { ...owner.member, role: "member" }, permissions: ["enterprise.read"] }} section="team" onChanged={async () => {}}/>);
+  await screen.findByText("成员只能查看本人企业积分");
+  expect(screen.queryByRole("button", { name: "添加成员" })).toBeNull();
+});
+
+
+test("batch mode deduplicates pasted phones and keeps only failed entries for retry", async () => {
+  api.addMembers.mockResolvedValueOnce({ successCount: 1, failureCount: 1, results: [
+    { phone: "13800138000", status: "success", member },
+    { phone: "13900139000", status: "failed", errorCode: "ENTERPRISE_ALREADY_JOINED", message: "该账号已加入其他企业" },
+  ] }).mockResolvedValueOnce({ successCount: 1, failureCount: 0, results: [{ phone: "13900139000", status: "success", member }] });
+  const changed = vi.fn().mockResolvedValue(undefined);
+  render(<EnterpriseManagement context={owner} section="team" onChanged={changed}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "添加成员" }));
+  fireEvent.click(screen.getByRole("button", { name: "批量添加" }));
+  fireEvent.change(screen.getByLabelText("手机号列表"), { target: { value: "13800138000，13900139000\n+86 13800138000" } });
+  fireEvent.click(screen.getByRole("button", { name: "确认添加 2 人" }));
+  await screen.findByText("处理结果：成功 1 人，失败 1 人");
+  expect(api.addMembers).toHaveBeenCalledWith("team", { phones: ["13800138000", "13900139000"] });
+  expect((screen.getByLabelText("手机号列表") as HTMLTextAreaElement).value).toBe("13900139000");
+  expect(screen.getByText("该账号已加入其他企业")).toBeDefined();
+  fireEvent.click(screen.getByRole("button", { name: "确认添加 1 人" }));
+  await screen.findByText("处理结果：成功 1 人，失败 0 人");
+  expect(api.addMembers).toHaveBeenLastCalledWith("team", { phones: ["13900139000"] });
+  expect(changed).toHaveBeenCalledTimes(2);
+});
+
+test("batch mode caps each request at 100 phones and preserves drafts across mode switches", async () => {
+  render(<EnterpriseManagement context={owner} section="team" onChanged={async () => {}}/>);
+  fireEvent.click(await screen.findByRole("button", { name: "添加成员" }));
+  fireEvent.change(screen.getByLabelText("手机号"), { target: { value: "13800138000" } });
+  fireEvent.click(screen.getByRole("button", { name: "批量添加" }));
+  fireEvent.change(screen.getByLabelText("手机号列表"), { target: { value: Array.from({ length: 101 }, (_, i) => String(13900000000 + i)).join("\n") } });
+  expect(screen.getByRole("button", { name: "确认添加 101 人" }).hasAttribute("disabled")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "单个添加" }));
+  expect((screen.getByLabelText("手机号") as HTMLInputElement).value).toBe("13800138000");
+  expect(api.addMembers).not.toHaveBeenCalled();
 });

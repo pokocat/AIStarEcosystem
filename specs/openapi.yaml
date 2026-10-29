@@ -5850,6 +5850,38 @@ components:
       required: [token]
       properties:
         token: {type: string, minLength: 1, maxLength: 256}
+    EnterpriseMemberAddRequest:
+      type: object
+      required: [phone]
+      properties:
+        phone: {type: string, maxLength: 32, description: 已验证的中国大陆手机号，可带 +86 和空格}
+    EnterpriseMemberBatchAddRequest:
+      type: object
+      required: [phones]
+      properties:
+        phones:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: {type: string, maxLength: 32}
+    EnterpriseMemberAddResult:
+      type: object
+      required: [phone, status]
+      properties:
+        phone: {type: string}
+        status: {type: string, enum: [success, failed]}
+        member: {$ref: '#/components/schemas/EnterpriseMember'}
+        errorCode: {type: string, nullable: true}
+        message: {type: string, nullable: true}
+    EnterpriseMemberBatchAddResult:
+      type: object
+      required: [results, successCount, failureCount]
+      properties:
+        results:
+          type: array
+          items: {$ref: '#/components/schemas/EnterpriseMemberAddResult'}
+        successCount: {type: integer, minimum: 0}
+        failureCount: {type: integer, minimum: 0}
     EnterpriseMemberUpdateRequest:
       type: object
       required: [role, capabilities, version]
@@ -15744,6 +15776,37 @@ paths:
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
   /v1/ip-studio/enterprises/{id}/members:
+    post:
+      tags: [Enterprise]
+      summary: 按手机号直接添加企业普通成员
+      x-implementation-status: implemented
+      description: member.invite 权限。目标须为已验证手机号的有效产品账号，且已开通 aiavatar。同企业有效成员重复添加返回原成员；其他企业和停用成员拒绝。只创建零余额企业成员钱包，不创建身份或开通，不改个人权益。手机号只在正文传输，不写审计。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseMemberAddRequest'}
+      responses:
+        '200':
+          description: 已加入或已是当前企业有效成员
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseMember'}
+        '400': {description: 手机号格式无效}
+        '401': {description: 未登录}
+        '403': {description: 无邀请权限、账号不可用或未开通产品}
+        '404': {description: 手机号没有本产品档案或功能未开放}
+        '409': {description: 手机号未验证或变更、已在其他企业、成员已停用}
     get:
       tags: [Enterprise]
       summary: 企业成员分页
@@ -15779,6 +15842,37 @@ paths:
         '403': {description: 无产品开通/手机号未绑定/无企业权限}
         '404': {description: 资源不在当前企业或功能未开放}
         '409': {description: 已加入其他企业、幂等正文冲突、版本或邀请/移交状态冲突}
+  /v1/ip-studio/enterprises/{id}/members/batch:
+    post:
+      tags: [Enterprise]
+      summary: 按手机号批量添加企业普通成员
+      x-implementation-status: implemented
+      description: member.invite 权限。每批 1 至 100 个输入，去除空格和 +86 后按号码去重，逐项独立事务执行单人添加规则。返回每项成功或失败及原因，失败不回滚其他成功项。重试已有有效成员幂等。不注册身份、开通或发放积分。
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema: {type: string, minLength: 1, maxLength: 64}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/EnterpriseMemberBatchAddRequest'}
+      responses:
+        '200':
+          description: 批次已处理，每项结果在 results 中
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [success, data]
+                properties:
+                  success: {type: boolean}
+                  data: {$ref: '#/components/schemas/EnterpriseMemberBatchAddResult'}
+        '400': {description: 列表为空、超过 100 个或单项输入过长}
+        '401': {description: 未登录}
+        '403': {description: 无邀请权限或当前账号不可用}
+        '404': {description: 功能未开放}
   /v1/ip-studio/enterprises/{id}/members/{memberId}:
     patch:
       tags: [Enterprise]

@@ -1557,3 +1557,7 @@
 - [x] ~~有活跃制作时方法被锁死，「把第一段做成视频」得到「第 1 步的操作不在当前阶段允许的范围内」~~ **2026-10-23 本地完成**：`switchMethod` 一处切换（同方法不动 / 没在生成就停止收尾 / 在生成就暂停解绑不取消），四处锁删除，`propose_plan` 先换到能覆盖操作的方法，内部原因不进用户界面。测试：`StudioDialogueRoutingTest`（线上原形、同方法、显式切换、复刻分析中直接出视频）、`ProposePlanToolTest`（执行中换方法、按操作换方法、无方法可用时的用户文案）、`StudioOriginalCreationDialogueTest.readSkillSwitchesTheMethodAlsoDuringAProduction`、`StudioPlanExecutionServiceTest.aMethodSwitchEndsAnIdleExecutionAndDetachesOneThatStillGenerates`、`StudioPlanExecutorTest.aDetachedExecutionFinishesWhatGeneratesOnTheCanvasAndEndsQuietly`、前端 `studio-dialogue-message.test.tsx` 与 mock 路由测试。
 - [ ] **真模型验收**：线上同款模型下复测「出图制作等确认时说把第一段做成视频」，确认模型会 read_skill / propose_plan 到出视频、旧卡作废、不再出现内部原因。本轮只有单元测试。
 - [ ] **线上原话路径未用生产日志核对**：本地能到达用户的路径都已改；当时具体是哪一条（多半是 `propose_plan` 失败的工作记录，或模型转述了模型侧结果里的原文）没有用线上数据确认。
+
+### 2026-10-29 · 企业管理手机号加人
+
+- [x] ~~企业管理按钮与手机号直接加人~~ **2026-10-29 本地完成，未发布**：品牌刷新按钮与保留表单的刷新；成员页单个/批量手机号添加（每批最多 100 人、逐项反馈及失败重试），后端权限、实名手机号/开通、单企业归属、零余额和不提权校验。回归结果见 [本地验收](docs/releases/enterprise-member-add-validation-20261029.md)。

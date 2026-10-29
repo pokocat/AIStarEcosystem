@@ -82,6 +82,30 @@ public class EnterpriseService {
         return rows.map(m->dto(e,m,names.get(m.getUserId())));
     }
     @Transactional
+    public EnterpriseDtos.Member addMember(String actor,String enterpriseId,EnterpriseDtos.MemberAddRequest request) {
+        // Check permission before looking up a phone; ordinary members cannot probe accounts.
+        access.require(actor,enterpriseId,"member.invite");
+        String phone=text(request==null?null:request.phone(),32).replaceAll("\\s+","").replaceFirst("^\\+86","");
+        if(!phone.matches("1[3-9]\\d{9}"))throw bad("请输入正确的 11 位手机号");
+        var snapshot=users.findByPhone(phone).orElseThrow(()->BusinessException.notFound("ENTERPRISE_ACCOUNT_NOT_FOUND","未找到该手机号的产品账号，请让对方先登录并开通数字资产平台，或使用企业邀请链接"));
+        // Match create/accept lock ordering. The user lock serializes additions to different enterprises.
+        var user=users.findByIdForUpdate(snapshot.getId()).orElseThrow();
+        entityManager.refresh(user,jakarta.persistence.LockModeType.PESSIMISTIC_WRITE);
+        if(!phone.equals(user.getPhone()) || !user.isPhoneVerified())throw conflict("ENTERPRISE_PHONE_UNVERIFIED","该账号手机号尚未验证或已变更，请让对方登录更新后再添加");
+        access.requireUser(user.getId());
+        var e=lock(enterpriseId);access.require(actor,enterpriseId,"member.invite");
+        var relation=current.findCurrentForUpdate(user.getId());
+        if(relation.isPresent()) {
+            if(!enterpriseId.equals(relation.get().getEnterpriseId()))throw conflict("ENTERPRISE_ALREADY_JOINED","该账号已加入其他企业，请先退出原企业后再添加");
+            var member=members.findById(relation.get().getMemberId()).orElseThrow();
+            if(!"active".equals(member.getStatus()))throw conflict("ENTERPRISE_MEMBER_INACTIVE","该成员已停用，请在成员列表中恢复");
+            return dto(e,member,user);
+        }
+        var member=join(e,user.getId());
+        audit(actor,enterpriseId,"member.add",member.getId(),"通过手机号添加成员");
+        return dto(e,member,user);
+    }
+    @Transactional
     public EnterpriseDtos.InvitationCreated invite(String actor,String enterpriseId,EnterpriseDtos.InvitationRequest request) {
         var e=lock(enterpriseId);access.require(actor,enterpriseId,"member.invite");
         String key=text(request==null?null:request.clientRequestId(),64);

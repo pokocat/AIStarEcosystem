@@ -38,6 +38,7 @@ class EnterpriseFoundationTest {
         registry.add("spring.datasource.password",()->"");
     }
     @Autowired EnterpriseService service;
+    @Autowired EnterpriseMemberBatchService batchService;
     @Autowired EnterpriseAccessService access;
     @Autowired AepUserRepository users;
     @Autowired EnrollmentService enrollment;
@@ -62,6 +63,78 @@ class EnterpriseFoundationTest {
     private Context join(String owner,Context e,String person) {
         var invitation=service.invite(owner,e.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
         return service.accept(person,new AcceptRequest(invitation.token()));
+    }
+    private static final java.util.concurrent.atomic.AtomicLong phoneSequence=new java.util.concurrent.atomic.AtomicLong(10000000);
+    private String phoneFor(String id) {
+        var user=users.findById(id).orElseThrow();String phone="139"+phoneSequence.incrementAndGet();
+        user.setPhone(phone);users.saveAndFlush(user);return phone;
+    }
+    @Test void phoneAdditionIsIdempotentLeastPrivilegeAndPreservesPersonalFunds() throws Exception {
+        String owner=person(true),target=person(true);var e=company(owner);String phone=phoneFor(target);
+        credits.creditAccount(target,777,LedgerEntry.LedgerEntryType.GIFT,"test",target,"个人余额");
+        var added=service.addMember(owner,e.enterprise().id(),new MemberAddRequest("+86 "+phone));
+        assertEquals(target,added.userId());assertEquals("member",added.role());
+        assertEquals(new Capabilities(false,false,false),added.capabilities());
+        assertEquals(added.id(),service.addMember(owner,e.enterprise().id(),new MemberAddRequest(phone)).id());
+        assertEquals(2,service.members(owner,e.enterprise().id(),0,20).getTotalElements());
+        assertEquals(0,wallets.findByAccountKey("enterprise_member:"+e.enterprise().id()+":"+target).orElseThrow().getTotalBalance());
+        assertEquals(777,wallets.findByUserId(target).orElseThrow().getTotalBalance());
+        mvc.perform(post("/api/v1/ip-studio/enterprises/"+e.enterprise().id()+"/members").with(user(owner).roles("PERSONAL"))
+                .contentType("application/json").content("{\"phone\":\""+phone+"\"}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.id").value(added.id()))
+                .andExpect(jsonPath("$.data.phone").doesNotExist());
+        var audit=service.auditPage(owner,e.enterprise().id(),0,20);
+        assertEquals(1,audit.stream().filter(a->"member.add".equals(a.action())).count());
+        assertFalse(audit.stream().anyMatch(a->a.summary().contains(phone)));
+    }
+    @Test void phoneAdditionChecksPermissionValidationPhoneAndEnrollment() throws Exception {
+        String owner=person(true),member=person(true),target=person(false);var e=company(owner);join(owner,e,member);
+        String phone=phoneFor(target),id=e.enterprise().id();
+        assertEquals("ENTERPRISE_PERMISSION_DENIED",assertThrows(BusinessException.class,()->service.addMember(member,id,new MemberAddRequest(phone))).getCode());
+        assertEquals("ENTERPRISE_INPUT_INVALID",assertThrows(BusinessException.class,()->service.addMember(owner,id,new MemberAddRequest("123"))).getCode());
+        assertEquals("ENTERPRISE_ACCOUNT_NOT_FOUND",assertThrows(BusinessException.class,()->service.addMember(owner,id,new MemberAddRequest("13800009999"))).getCode());
+        assertEquals("PRODUCT_NOT_ENROLLED",assertThrows(BusinessException.class,()->service.addMember(owner,id,new MemberAddRequest(phone))).getCode());
+        assertFalse(current.existsById(target));assertFalse(enrollment.isActive(target,"aiavatar"));
+        var user=users.findById(target).orElseThrow();user.setPhoneVerified(false);users.saveAndFlush(user);
+        assertEquals("ENTERPRISE_PHONE_UNVERIFIED",assertThrows(BusinessException.class,()->service.addMember(owner,id,new MemberAddRequest(phone))).getCode());
+        mvc.perform(post("/api/v1/ip-studio/enterprises/"+id+"/members").contentType("application/json").content("{\"phone\":\""+phone+"\"}")).andExpect(status().isUnauthorized());
+    }
+    @Test void phoneAdditionAllowsManagersButDoesNotRestoreSuspendedMembers() {
+        String owner=person(true),manager=person(true),target=person(true);var e=company(owner);var m=join(owner,e,manager);
+        service.updateMember(owner,e.enterprise().id(),m.member().id(),new MemberUpdate("manager",new Capabilities(false,false,false),m.member().version()));
+        String phone=phoneFor(target);var added=service.addMember(manager,e.enterprise().id(),new MemberAddRequest(phone));
+        var row=members.findById(added.id()).orElseThrow();row.setStatus("suspended");members.saveAndFlush(row);
+        assertEquals("ENTERPRISE_MEMBER_INACTIVE",assertThrows(BusinessException.class,()->service.addMember(owner,e.enterprise().id(),new MemberAddRequest(phone))).getCode());
+        assertEquals("suspended",members.findById(added.id()).orElseThrow().getStatus());
+    }
+    @Test void concurrentPhoneAdditionAndInvitationCannotJoinTwoCompanies() throws Exception {
+        String a=person(true),b=person(true),target=person(true);var ea=company(a);var eb=company(b);String phone=phoneFor(target);
+        var invite=service.invite(b,eb.enterprise().id(),new InvitationRequest(UUID.randomUUID().toString()));
+        assertEquals(1,race(()->{service.addMember(a,ea.enterprise().id(),new MemberAddRequest(phone));return true;},()->{service.accept(target,new AcceptRequest(invite.token()));return true;}).stream().filter(Boolean::booleanValue).count());
+        String joined=current.findById(target).orElseThrow().getEnterpriseId();
+        String other=joined.equals(ea.enterprise().id())?eb.enterprise().id():ea.enterprise().id();
+        String otherOwner=joined.equals(ea.enterprise().id())?b:a;
+        assertEquals("ENTERPRISE_ALREADY_JOINED",assertThrows(BusinessException.class,()->service.addMember(otherOwner,other,new MemberAddRequest(phone))).getCode());
+    }
+    @Test void batchAdditionCommitsEachPhoneIndependentlyAndDeduplicates() throws Exception {
+        String owner=person(true),a=person(true),b=person(false);var e=company(owner);
+        String pa=phoneFor(a),pb=phoneFor(b);long before=members.count();
+        var result=batchService.addMembers(owner,e.enterprise().id(),new MemberBatchAddRequest(List.of(pa,pb,"invalid","+86 "+pa)));
+        assertEquals(1,result.successCount());assertEquals(2,result.failureCount());assertEquals(3,result.results().size());
+        assertTrue(current.existsById(a));assertFalse(current.existsById(b));assertEquals(before+1,members.count());
+        assertEquals("PRODUCT_NOT_ENROLLED",result.results().get(1).errorCode());
+        assertEquals("ENTERPRISE_INPUT_INVALID",result.results().get(2).errorCode());
+        var replay=batchService.addMembers(owner,e.enterprise().id(),new MemberBatchAddRequest(List.of(pa)));
+        assertEquals(1,replay.successCount());assertEquals(before+1,members.count());
+        mvc.perform(post("/api/v1/ip-studio/enterprises/"+e.enterprise().id()+"/members/batch").with(user(owner).roles("PERSONAL"))
+                .contentType("application/json").content("{\"phones\":[\""+pa+"\"]}"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.data.successCount").value(1));
+    }
+    @Test void batchAdditionRequiresInvitePermissionAndBoundsTheRequest() {
+        String owner=person(true),member=person(true);var e=company(owner);join(owner,e,member);
+        assertEquals("ENTERPRISE_PERMISSION_DENIED",assertThrows(BusinessException.class,()->batchService.addMembers(member,e.enterprise().id(),new MemberBatchAddRequest(List.of("13800138000")))).getCode());
+        assertThrows(BusinessException.class,()->batchService.addMembers(owner,e.enterprise().id(),new MemberBatchAddRequest(List.of())));
+        assertThrows(BusinessException.class,()->batchService.addMembers(owner,e.enterprise().id(),new MemberBatchAddRequest(Collections.nCopies(101,"13800138000"))));
     }
     @Test void creationIsIdempotentAndDoesNotChangePersonalFundsOrEnrollment() {
         String owner=person(true);credits.creditAccount(owner,777,LedgerEntry.LedgerEntryType.GIFT,"test",owner,"旧个人余额");
