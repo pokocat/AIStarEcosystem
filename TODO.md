@@ -345,6 +345,7 @@
 
 ## 已定位问题与后续限制
 
+- [ ] **视频规格的模型目录路径与提交路径口径不一致**（2026-10-29 配火山方舟 Seedance 时发现）：`AiModelInvocationService.modelCatalogUri` 用 `URI.resolve`，`/models` 会丢掉基础地址里的 `/api/v3`，后台连接检测报 404；而 `MaterialVideoModelClient.joinUrl` 把提交、查询路径接在基础地址后面。现在方舟两条端点把目录路径写成 `/api/v3/models` 绕过。只影响连接检测与拉取模型目录，不影响出片。改成同一种拼接前要核对已存端点（OneToken 的目录路径是 `/v1/models?include_video=true`，基础地址不带路径）。
 - [ ] **存量 clip DTO/TS 镜像漂移**（2026-10-15 附加检查发现）：`ClipDtos.java` 的 TemplateDto.sourceProjectId/createdBy、JobDto.segments、AvatarDto.demoVideoUrl/demoAudioUrl、VoiceDto.demoAudioUrl 未在 `packages/types/src/clip.ts` 对应接口声明，导致全局 `pnpm check:wire-mirror` 报4组字段不一致。此项与企业开发分开处理；新增 enterprise 的15组镜像检查已通过。
 - [ ] **存量 OpenAPI 重复键**（2026-10-15 严格语法检查发现）：`AsyncJobStarted` schema 与 `/me/wallet/withdraw` path 在原 HEAD 中均重复声明；普通解析和现有API检查通过，但重复键检查失败。与本批企业实现分开整理，新增企业契约无重复键。
 - [ ] **素材视频客户端不带应用码的重载默认按 `celebrity` 解析端点**（2026-10-18 修 PR #131 的 CI 时发现）：`MaterialVideoModelClient` 的 `effectiveDurationBounds` / `resolveCreditCostOverride` / `validateRequest` / `firstFrameNeedsStorageKey` / `resumeExistingTask` / `pickEndpoint` / `requireEndpoint` 少传 appCode 时一律按 `celebrity` 的开放范围找端点。短剧出片（`DramaRenderService` 时长校验与模型下拉）、短剧画布（`DramaCanvasRunService` 片段时长上限）、Studio 模型下拉（`IpStudioController.capabilityWithDuration`）已改为显式传应用码；`MaterialVideoWorker:192` 结算时的 `resolveCreditCostOverride(endpointId, durationSec)` 仍按 `celebrity`，只对 Studio / 短剧开放的端点取不到候选价，会退回按冻结价结算。建议删掉不带 appCode 的重载（AGENTS.md §8.0.1 ④），让编译器把剩余调用方都找出来。
