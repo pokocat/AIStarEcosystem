@@ -29,7 +29,7 @@ V64 新增 `model_alert_delivery`，仅记录通知投递：同任务+错误码�
 
 ## 验证与维护
 
-2026-10-28 线上配置验收：仅将 `/etc/aistareco/server.env` 的 `AEP_FEISHU_ALERT_URGENT` 从 true 改为 false，重启现有 server 制品，核对进程环境为 false，`/api/config` 返回 200、服务 active、NRestarts=0。普通验证消息走现有持久化投递链，`task_id=alert-normal-20261028`、state=sent、attempts=1、message_id=`om_x100b611699131ca4df20761cc3e267d`，未调用加急。历史通知未重投；本地默认值、env 示例和回归测试已同步，14 项通知相关测试通过，源码变更尚未发布。
+2026-10-28 线上配置验收：仅将 `/etc/aistareco/server.env` 的 `AEP_FEISHU_ALERT_URGENT` 从 true 改为 false，重启现有 server 制品，核对进程环境为 false，`/api/config` 返回 200、服务 active、NRestarts=0。普通验证消息走现有持久化投递链，`task_id=alert-normal-20261028`、state=sent、attempts=1、message_id=`om_x100b611699131ca4df20761cc3e267d`，未调用加急。历史通知未重投；本地默认值、env 示例和回归测试已同步，14 项通知相关测试通过，默认值源码变更随后随同日长任务恢复修复发布（main `fda4e433`）。
 
 先发送明确标注的普通测试消息，核对服务进程中的 `AEP_FEISHU_ALERT_URGENT=false`；不发送测试加急。线上验收检查 delivery.state=sent、message_id 非空。显式启用加急时，群发送成功不等同加急成功。权限问题使用原 message_id 重试，不重复发群消息。已超过5次失败的通知由运维在排除配置问题后人工恢复该通知为 pending、attempts=0；保留 message_id，禁止清空它重发。
 
