@@ -355,7 +355,8 @@ function ScriptText({ work, target, label, what, value, onChange, disabled }: { 
     // 带上选区的具体位置：同样的话出现两处时，改的是选中的这一处。
     if (!sel || sel.end - sel.start > 6000) return;
     const scope: DirectorAssistantScope = { kind: "selection", episodeId: target, text: selected, start: sel.start, end: sel.end };
-    ctl.ask(scope, draft);
+    // 在正文右下角那个入口上打开浮层对话，只针对选中的这段。
+    ctl.openInline(`script:${target}`, scope, { draft });
   };
   return <div className="director-script-area">
     {locked && <p className="director-muted" role="status">AI 正在处理这份正文，暂时不能编辑。回复完成或失败后即可继续修改。</p>}
@@ -367,7 +368,7 @@ function ScriptText({ work, target, label, what, value, onChange, disabled }: { 
       <button type="button" onMouseDown={e => e.preventDefault()} onClick={() => askWith("扩写这段，补上动作和细节，不改剧情走向")}><MessageSquare size={13}/>扩写</button>
     </div>}
     {/* 点下去时带上光标位置：正文很长时助手读光标附近那一段。 */}
-    <AiField scope={() => ({ kind: "script", episodeId: target, focusAt: offset.current + (area.current?.selectionStart ?? 0) })} what={what}
+    <AiField scope={() => ({ kind: "script", episodeId: target, focusAt: offset.current + (area.current?.selectionStart ?? 0) })} what={what} inlineKey={`script:${target}`}
       hint={long ? `评价、续写、润色。正文很长，助手读光标附近约 ${budget.toLocaleString("zh-CN")} 字；只改某一段：先选中它，再点上方的「问 AI」` : "评价、续写、润色。只改某一段：先选中它，再点上方的「问 AI」"}>
       {sectioned ? <SectionedScript value={value} onChange={v => { if (!locked) onChange(v); }} label={label} readOnly={locked} disabled={disabled}
         area={area} onOffset={s => { offset.current = s; setSel(null); }} onPaste={paste.onPaste} onTrack={track}/>

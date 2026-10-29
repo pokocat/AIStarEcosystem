@@ -227,7 +227,7 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
 
 function AssetCard({ work, asset, apply, setError, focusClip, onLeave }: WorkbenchProps & { asset: DirectorAsset; onLeave: () => void }) {
   const { modal } = useStudioApp();
-  // 问助手要关掉详情抽屉（它盖在助手上面，见下面 AiField 的 onAsked）；讨论和建议都在助手里，建议卡片能直接看对比。
+  // AI 入口在抽屉里弹出浮层对话，抽屉不用关；只有转到侧边栏助手时才关掉抽屉（它盖在助手上面，见下面 AiField 的 onAsked）。
   const prefix = `${work.id}:asset:${asset.id}:`;
   // 没保存的修改切走再回来还在，编辑框也保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(prefix));
