@@ -55,7 +55,7 @@ export function SettingsPanel({ work, onClose, apply, setError }: { work: Direct
         {imageModels.map(m => <option key={m.id} value={m.id}>{m.name} · {costText(m.creditCost, work.pricing.mock)}/张</option>)}
       </SelectField>
       <small>{stateNote ?? (unavailableImage ? "原图片模型不在可选范围内，换一个模型才能继续出图。其他设置可以照常保存。" : chosenImage
-        ? `用于资产参考图和分镜图，${costText(chosenImage.creditCost, work.pricing.mock)}/张。`
+        ? `用于资产图和分镜图，${costText(chosenImage.creditCost, work.pricing.mock)}/张。`
         : "暂无可用图片模型，请联系管理员开通。")}</small>
     </label>
     <label className="director-field"><span>视频模型</span>
@@ -83,7 +83,7 @@ const RATIO_NAMES: Record<string, string> = { "1:1": "方图", "16:9": "横图",
 function imageStateNote(state: DirectorImageModelState, aspect: string, mock: boolean): string | null {
   const who = state.explicit ? "原图片模型" : "默认图片模型";
   if (!state.available) return state.explicit
-    ? "原图片模型已停用，资产参考图和分镜图暂时生成不了，换一个模型才能继续出图。其他设置可以照常保存。"
+    ? "原图片模型已停用，资产图和分镜图暂时生成不了，换一个模型才能继续出图。其他设置可以照常保存。"
     : "默认图片模型暂不可用，请选择一个图片模型，或联系管理员。";
   if (!state.missingRatios.length) return null;
   const affected: string[] = [];

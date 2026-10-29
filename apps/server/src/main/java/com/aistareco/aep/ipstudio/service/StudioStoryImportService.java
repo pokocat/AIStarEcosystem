@@ -10,6 +10,13 @@ import org.apache.poi.sl.extractor.SlideShowExtractor;
 import org.apache.poi.sl.usermodel.SlideShowFactory;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.jsoup.nodes.Node;
+import org.jsoup.nodes.TextNode;
+import org.jsoup.select.NodeTraversor;
+import org.jsoup.select.NodeVisitor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,32 +37,46 @@ import java.util.zip.ZipInputStream;
 @Service
 public class StudioStoryImportService {
     public static final int MAX_BYTES = 8 * 1024 * 1024;
+    /** 导演台剧本文件（含 HTML 导出的整页、带图的 Word）按 50 MB 收；画布故事导入仍是 8 MB。 */
+    public static final int MAX_SCRIPT_BYTES = 50 * 1024 * 1024;
     public static final int MAX_TEXT = 24000;
-    public static final int MAX_SCRIPT_TEXT = 60000;
+    /** 导演台剧本不限正文长度（2026-10-29 取消 6 万字）：只受 50 MB 文件上限约束，提取多少交回多少，不截断。 */
+    public static final int UNLIMITED = 0;
     private static final Set<String> PLAIN_TEXT = Set.of("txt", "md", "markdown", "csv", "tsv", "json", "xml", "yaml", "yml", "log", "srt", "vtt");
-    private static final Set<String> SCRIPT_DOCUMENTS = Set.of("pdf", "doc", "docx", "ppt", "pptx", "rtf");
+    private static final Set<String> SCRIPT_DOCUMENTS = Set.of("pdf", "doc", "docx", "ppt", "pptx", "rtf", "html", "htm");
+    /** 这些元素里的内容不是给人读的正文：脚本、样式、嵌入对象、表单控件和模板。 */
+    private static final String HTML_NOT_TEXT = "script, style, noscript, template, iframe, frame, frameset, object, embed, applet, "
+            + "svg, math, canvas, video, audio, picture, img, map, button, select, input, textarea, datalist, dialog, head";
+    private static final Set<String> HTML_HEADINGS = Set.of("h1", "h2", "h3", "h4", "h5", "h6");
+    private static final Set<String> HTML_BLOCKS = Set.of("p", "div", "section", "article", "main", "header", "footer", "aside", "nav",
+            "blockquote", "pre", "ul", "ol", "li", "dl", "dt", "dd", "table", "thead", "tbody", "tfoot", "tr", "caption",
+            "figure", "figcaption", "address", "hr", "center", "details", "summary", "body", "html");
     public record StoryImportResult(String text, String format) {}
 
     public StoryImportResult extract(MultipartFile file) {
         return extract(file, MAX_TEXT, false);
     }
 
-    /** Director import has its own 60k limit; the canvas story endpoint keeps its existing contract. */
+    /** Director import has no text limit (only the 50 MB file cap); the canvas story endpoint keeps its 24k contract. */
     public StoryImportResult extractScript(MultipartFile file) {
-        return extract(file, MAX_SCRIPT_TEXT, true);
+        return extract(file, UNLIMITED, true);
     }
 
     private StoryImportResult extract(MultipartFile file, int maxText, boolean script) {
         String name = file.getOriginalFilename() == null ? "" : file.getOriginalFilename();
         String format = name.substring(name.lastIndexOf('.') + 1).toLowerCase(Locale.ROOT);
         if (!(script ? SCRIPT_DOCUMENTS.contains(format) || PLAIN_TEXT.contains(format) : Set.of("pdf", "doc", "docx").contains(format)))
-            throw invalid(script ? "请选择 TXT、Markdown、Word、PPT、PDF、RTF 或常见文本文件" : "请选择 PDF 或 Word（DOC / DOCX）故事文件");
+            throw invalid(script ? "请选择 TXT、Markdown、Word、PPT、PDF、RTF、HTML 或常见文本文件" : "请选择 PDF 或 Word（DOC / DOCX）故事文件");
         if (file.isEmpty()) throw invalid("文件没有可用的文字内容");
-        if (file.getSize() > MAX_BYTES) throw invalid("文件最多 8 MB，请按章节拆分");
+        int maxBytes = script ? MAX_SCRIPT_BYTES : MAX_BYTES;
+        String sizeError = "文件最多 " + (maxBytes / 1024 / 1024) + " MB，请按章节拆分";
+        if (file.getSize() > maxBytes) throw invalid(sizeError);
         try {
             byte[] data;
-            try (var input = file.getInputStream()) { data = input.readNBytes(MAX_BYTES + 1); }
-            if (data.length > MAX_BYTES) throw invalid("文件最多 8 MB，请按章节拆分");
+            try (var input = file.getInputStream()) { data = input.readNBytes(maxBytes + 1); }
+            if (data.length > maxBytes) throw invalid(sizeError);
+            // 带图的 Word / PPT 解包后会比文件本身大；剧本文件放宽到 256 MB，仍挡住压缩炸弹。
+            long expandedMax = script ? 256L * 1024 * 1024 : 32L * 1024 * 1024;
             String text;
             if (format.equals("pdf")) {
                 try (var document = Loader.loadPDF(data)) {
@@ -65,7 +86,7 @@ public class StudioStoryImportService {
                         throw invalid("单份 PDF 最多 100 页，请按章节拆分");
                     var writer = new StringWriter() {
                         @Override public void write(String value) {
-                            if (getBuffer().length() + value.length() > maxText + 1024) throw tooLong(maxText);
+                            if (maxText != UNLIMITED && getBuffer().length() + value.length() > maxText + 1024) throw tooLong(maxText);
                             super.write(value);
                         }
                     };
@@ -74,20 +95,22 @@ public class StudioStoryImportService {
                 }
             } else if (format.equals("docx")) {
                 // Bound the expanded package before constructing the Word document.
-                checkOfficePackage(data);
+                checkOfficePackage(data, expandedMax);
                 try (var document = new XWPFDocument(new ByteArrayInputStream(data));
                      var extractor = new XWPFWordExtractor(document)) { text = extractor.getText(); }
             } else if (format.equals("doc")) {
                 try (var extractor = new WordExtractor(new ByteArrayInputStream(data))) { text = extractor.getText(); }
             } else if (format.equals("ppt") || format.equals("pptx")) {
                 // Inspect the package even if an OOXML presentation was named .ppt.
-                checkOfficePackage(data);
+                checkOfficePackage(data, expandedMax);
                 try (var slideshow = SlideShowFactory.create(new ByteArrayInputStream(data));
                      var extractor = new SlideShowExtractor<>(slideshow)) {
                     if (slideshow.getSlides().size() > 100) throw invalid("单份 PPT 最多 100 页，请按章节拆分");
                     extractor.setNotesByDefault(true);
                     text = extractor.getText();
                 }
+            } else if (format.equals("html") || format.equals("htm")) {
+                text = htmlText(data, maxText);
             } else if (format.equals("rtf")) {
                 if (!new String(data, 0, Math.min(data.length, 5), StandardCharsets.US_ASCII).equals("{\\rtf"))
                     throw invalid("无法读取这个 RTF，请检查文件格式");
@@ -103,7 +126,7 @@ public class StudioStoryImportService {
             if (text.isEmpty()) throw invalid(format.equals("pdf")
                     ? "这个 PDF 没有可读取的文字，扫描件请先识别文字，或粘贴故事正文"
                     : "文件没有可用的文字内容，请检查正文或粘贴故事内容");
-            if (text.length() > maxText) throw tooLong(maxText);
+            if (maxText != UNLIMITED && text.length() > maxText) throw tooLong(maxText);
             return new StoryImportResult(text, format);
         } catch (BusinessException e) { throw e;
         } catch (InvalidPasswordException | EncryptedDocumentException e) {
@@ -113,7 +136,74 @@ public class StudioStoryImportService {
         }
     }
 
-    private void checkOfficePackage(byte[] data) throws IOException {
+    /**
+     * HTML 只取给人读的正文：脚本、样式、隐藏元素和标签本身都不进正文，也不执行任何东西（jsoup 只解析）。
+     * 标题、段落、列表项、表格行各占一行，标题前后空一行；{@code <pre>} 保留原有换行。有字数上限（画布故事）时超过立刻报错，不截断。
+     */
+    static String htmlText(byte[] data, int maxText) throws IOException {
+        Document doc = Jsoup.parse(new ByteArrayInputStream(data), null, "");
+        // 没有 BOM、没写 charset 且不是合法 UTF-8 的，多半是 GBK 存的网页：按 GB18030 重读，不出乱码。
+        if (!declaresCharset(doc, data) && !validUtf8(data))
+            doc = Jsoup.parse(new String(data, Charset.forName("GB18030")));
+        String title = doc.title().strip();
+        doc.select(HTML_NOT_TEXT).remove();
+        doc.select("[hidden], [aria-hidden=true]").remove();
+        doc.select("[style~=(?i)(display\\s*:\\s*none|visibility\\s*:\\s*hidden)]").remove();
+        var out = new StringBuilder();
+        long limit = maxText == UNLIMITED ? Long.MAX_VALUE : maxText + 1024L;
+        NodeTraversor.traverse(new NodeVisitor() {
+            int preDepth;
+            @Override public void head(Node node, int depth) {
+                if (node instanceof TextNode t) {
+                    boolean pre = preDepth > 0;
+                    String value = pre ? t.getWholeText() : t.getWholeText().replaceAll("[\\s\\u00a0]+", " ");
+                    if (!pre && (out.isEmpty() || out.charAt(out.length() - 1) == '\n')) value = value.stripLeading();
+                    out.append(value);
+                } else if (node instanceof Element e) {
+                    String tag = e.normalName();
+                    if (tag.equals("pre")) preDepth++;
+                    if (tag.equals("br")) out.append('\n');
+                    else if (HTML_HEADINGS.contains(tag)) blankLine(out);
+                    else if (HTML_BLOCKS.contains(tag)) newLine(out);
+                    else if ((tag.equals("td") || tag.equals("th")) && e.elementSiblingIndex() > 0) out.append('\t');
+                }
+                if (out.length() > limit) throw tooLong(maxText);
+            }
+            @Override public void tail(Node node, int depth) {
+                if (node instanceof Element e) {
+                    if (e.normalName().equals("pre")) preDepth--;
+                    if (HTML_HEADINGS.contains(e.normalName())) blankLine(out);
+                    else if (HTML_BLOCKS.contains(e.normalName())) newLine(out);
+                }
+            }
+        }, doc);
+        String body = out.toString().lines().map(l -> l.replaceAll("[ \\t]+$", "")).collect(java.util.stream.Collectors.joining("\n"))
+                .replaceAll("\n{3,}", "\n\n").strip();
+        // <title> 往往就是剧名；正文开头没有它才补在最前面，避免重复。
+        if (!title.isEmpty() && !body.substring(0, Math.min(body.length(), 200)).contains(title)) body = body.isEmpty() ? title : title + "\n\n" + body;
+        return body;
+    }
+
+    private static void newLine(StringBuilder out) {
+        if (!out.isEmpty() && out.charAt(out.length() - 1) != '\n') out.append('\n');
+    }
+
+    private static void blankLine(StringBuilder out) {
+        newLine(out);
+        if (out.length() >= 2 && out.charAt(out.length() - 2) != '\n') out.append('\n');
+    }
+
+    private static boolean declaresCharset(Document doc, byte[] data) {
+        if (data.length >= 2 && ((data[0] == (byte) 0xff && data[1] == (byte) 0xfe) || (data[0] == (byte) 0xfe && data[1] == (byte) 0xff))) return true;
+        if (data.length >= 3 && data[0] == (byte) 0xef && data[1] == (byte) 0xbb && data[2] == (byte) 0xbf) return true;
+        return !doc.select("meta[charset], meta[http-equiv~=(?i)content-type][content~=(?i)charset]").isEmpty();
+    }
+
+    private static boolean validUtf8(byte[] data) {
+        try { decode(data, 0, StandardCharsets.UTF_8); return true; } catch (CharacterCodingException e) { return false; }
+    }
+
+    private void checkOfficePackage(byte[] data, long expandedMax) throws IOException {
         long expanded = 0;
         int entries = 0;
         byte[] buffer = new byte[8192];
@@ -123,13 +213,13 @@ public class StudioStoryImportService {
                 int read;
                 while ((read = zip.read(buffer)) != -1) {
                     expanded += read;
-                    if (expanded > 32L * 1024 * 1024) throw invalid("这个文档内容过多，请按章节拆分");
+                    if (expanded > expandedMax) throw invalid("这个文档内容过多，请按章节拆分");
                 }
             }
         }
     }
     private static BusinessException tooLong(int maxText) {
-        return invalid("单份" + (maxText == MAX_TEXT ? "故事" : "剧本") + "最多 " + maxText + " 字，请按章节拆分；未截断正文");
+        return invalid("单份故事最多 " + maxText + " 字，请按章节拆分；未截断正文");
     }
 
     private static String decodeText(byte[] data) throws CharacterCodingException {

@@ -9,13 +9,15 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Sparkles, Undo2, X } from "lucide-react";
+import { ArrowUp, Check, ChevronRight, History, Loader2, MessageSquarePlus, Undo2, X } from "lucide-react";
+import { Tooltip } from "antd";
 import type { DirectorAssistantMessage, DirectorAssistantScope, DirectorAssistantThread, DirectorProposal, DirectorWork } from "@ai-star-eco/types";
 import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { ApiError } from "@ai-star-eco/api-client";
 import { SelectField } from "@ai-star-eco/ui/ui/select-field";
 import { formatDateTime } from "@/lib/datetime";
 import { DirectorApi } from "../api";
+import { AiMark } from "../studio-ai-icon";
 import { useStudioApp } from "../studio-errors";
 import { chooseDirectorBilling, costText, errorText, hasDrafts, newRequestId, peekDraft, runningTask, saveDrafts, useDraft } from "./director-shared";
 import { diffText, shotChanges } from "./director-text";
@@ -205,7 +207,8 @@ export function useAssistantController({ work: maybeWork, apply, tab, episodeId,
         if (scope.clipId) { const ep = w.clips.find(c => c.id === scope.clipId)?.episodeId; await saveEpisode(ep); await saveClip(scope.clipId); }
         break;
       case "image":
-        if (scope.which === "board" && scope.clipId) await saveClip(scope.clipId);
+        // 分镜图也带本集剧本（服务端照着剧本改提示词），所以先存本集正文没保存的修改，和改提示词的入口一样（2026-10-29 review P2）。
+        if (scope.which === "board" && scope.clipId) { const ep = w.clips.find(c => c.id === scope.clipId)?.episodeId; await saveEpisode(ep); await saveClip(scope.clipId); }
         else if (scope.assetId) await saveAsset(scope.assetId);
         break;
       case "asset": if (scope.assetId) await saveAsset(scope.assetId); break;
@@ -303,7 +306,7 @@ export function scopeLabel(work: DirectorWork, s: DirectorAssistantScope): strin
     case "clip": return `${clipBase} · 镜头`;
     case "prompt": return `${clipBase} · ${s.which === "board" ? "分镜图提示词" : "视频提示词"}`;
     case "asset": return asset ? `${kind} · ${asset.name}` : "资产";
-    case "image": return s.which === "board" ? `${clipBase} · 分镜图` : asset ? `${asset.name} · 参考图` : "参考图";
+    case "image": return s.which === "board" ? `${clipBase} · 分镜图` : asset ? `${asset.name} · 资产图` : "资产图";
   }
 }
 
@@ -376,7 +379,7 @@ export function DirectorAssistantPanel({ work, apply, tab, episodeId }: { work: 
   const canSee = canSeeImages(work);
   return <aside className="director-assistant" aria-label="全能创作助手">
     <header className="director-assistant-head">
-      <Sparkles size={18} className="director-assistant-mark" aria-hidden/>
+      <span className="director-assistant-mark" aria-hidden><AiMark size={14}/></span>
       <h3>全能创作助手</h3>
       <span className="director-spacer"/>
       <button type="button" className="director-assistant-tool" disabled={!!replying || !thread?.messages.length} onClick={() => void threadOp("assistant.newThread")}
@@ -446,6 +449,7 @@ function Message({ work, msg }: { work: DirectorWork; msg: DirectorAssistantMess
   return <div className="director-msg is-ai">
     <p>{msg.text}</p>
     {msg.visual === "prompt-only" && <small className="director-msg-note">当前文字模型不能看图，以上意见只根据这张图的提示词。</small>}
+    {msg.range && <small className="director-msg-note">{msg.range}。</small>}
     {(msg.proposals ?? []).map(p => <ProposalCard key={p.id} work={work} msg={msg} p={p}/>)}
     {(msg.dropped ?? 0) > 0 && <small className="director-msg-note">另有 {msg.dropped} 条建议对不上原文或超出这次的修改范围，已略过。</small>}
   </div>;
@@ -499,7 +503,7 @@ export function proposalImpacts(work: DirectorWork, p: DirectorProposal): string
   const asset = p.assetId ? work.assets.find(a => a.id === p.assetId) : undefined;
   if (p.type === "asset.update" && asset) {
     if (p.description && !p.prompt && !asset.promptCustom) out.push("出图提示词会按新设定自动更新。");
-    if ((p.description && !asset.promptCustom) || p.prompt) { if (asset.image.adoptedId) out.push("已有的参考图会标为「需更新」；要新图请点「生成新版本」。"); }
+    if ((p.description && !asset.promptCustom) || p.prompt) { if (asset.image.adoptedId) out.push("已有的资产图会标为「需更新」；要新图请点「生成新版本」。"); }
   }
   return out;
 }
@@ -699,10 +703,42 @@ function Composer({ work, apply, tab, episodeId, threadId, replying }: { work: D
   </div>;
 }
 
-/** 内容旁的入口：小按钮，点了带上对象打开助手。没在工作台里时不显示。 */
-export function AskAI({ scope, label = "AI 修改", draft, className, title }: { scope: DirectorAssistantScope; label?: string; draft?: string; className?: string; title?: string }) {
+type AskAIProps = {
+  /** 可以是函数：点下去那一刻才取（如正文的光标位置），不用每次移动光标都重画按钮。 */
+  scope: DirectorAssistantScope | (() => DirectorAssistantScope);
+  /** 讨论的是哪段内容，拼进悬停提示和读屏名称：「和助手讨论{what}」。 */
+  what: string;
+  /** 能帮着做什么，悬停时显示在第二行。 */
+  hint?: string;
+  draft?: string;
+  className?: string;
+  /** 打开助手之后（比如关掉盖在助手上面的抽屉、弹窗）。 */
+  onAsked?: () => void;
+};
+
+/**
+ * 内容旁的 AI 入口：紫色小圆钮，只有图标，点了带上这个对象打开同一个创作助手。
+ * 没有常驻文字，所以悬停提示和读屏名称都要说清讨论的是哪段内容。只管「打开助手」：
+ * 生成、重写、一键制作这些实际操作用各自的按钮。没在工作台里时不显示。
+ */
+export function AskAI({ scope, what, hint, draft, className, onAsked }: AskAIProps) {
   const ctl = useAssistant();
   if (!ctl) return null;
-  return <button type="button" className={`director-ask-ai ${className ?? ""}`} title={title ?? "带上这个对象和助手讨论"} onClick={() => ctl.ask(scope, draft)}><Sparkles size={13}/>{label}</button>;
+  const name = `和助手讨论${what}`;
+  const resolve = () => typeof scope === "function" ? scope() : scope;
+  const current = ctl.open && sameScope(ctl.scope, resolve());
+  return <Tooltip title={<span className="director-ask-ai-tip"><b>{name}</b>{hint && <span>{hint}</span>}</span>} placement="topRight" mouseEnterDelay={0.2}>
+    <button type="button" className={`director-ask-ai ${current ? "is-current" : ""} ${className ?? ""}`} aria-label={name}
+      onClick={() => { ctl.ask(resolve(), draft); onAsked?.(); }}><AiMark size={14}/></button>
+  </Tooltip>;
+}
+
+/**
+ * 在输入框（或一段只读内容）右下角挂一个 AI 入口。内容右侧留出按钮的宽度，
+ * 所以文字（包括滚到中间、最后一行）、滚动条和拖拽缩放手柄都不会被盖住。
+ */
+export function AiField({ children, className, ...ask }: AskAIProps & { children: ReactNode }) {
+  const ctl = useAssistant();
+  return <div className={`director-ai-field ${ctl ? "has-ai" : ""} ${className ?? ""}`}>{children}<AskAI {...ask} className="is-corner"/></div>;
 }
 

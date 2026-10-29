@@ -36,18 +36,16 @@ test("previews safely and only replaces existing editable text after explicit ac
   expect(api.importScript).toHaveBeenCalledTimes(2);
 });
 
-test("unsupported, empty and oversized files never upload; parsing errors and excess text remain explicit", async () => {
+test("unsupported, empty and oversized files never upload; parsing errors remain explicit", async () => {
   const imported = vi.fn();
   render(<DirectorScriptFile hasText={false} onImport={imported} onReadingChange={() => {}}/>);
   upload("binary.exe"); expect(screen.getByRole("alert").textContent).toContain("请选择");
   upload("empty.txt", ""); expect(screen.getByRole("alert").textContent).toContain("文件为空");
-  const huge = new File(["text"], "huge.txt"); Object.defineProperty(huge, "size", { value: 8 * 1024 * 1024 + 1 });
+  const huge = new File(["text"], "huge.html"); Object.defineProperty(huge, "size", { value: 50 * 1024 * 1024 + 1 });
   fireEvent.change(screen.getByLabelText("上传剧本文件"), { target: { files: [huge] } });
-  expect(screen.getByRole("alert").textContent).toContain("8 MB"); expect(api.importScript).not.toHaveBeenCalled();
+  expect(screen.getByRole("alert").textContent).toContain("超过 50 MB"); expect(api.importScript).not.toHaveBeenCalled();
   api.importScript.mockRejectedValueOnce(new Error("扫描件请先识别文字")); upload("扫描.pdf");
   await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("扫描件"));
-  api.importScript.mockResolvedValueOnce({ text: "字".repeat(60001), format: "txt" }); upload("长篇.txt");
-  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("未截断"));
   expect(imported).not.toHaveBeenCalled();
 });
 
@@ -91,4 +89,29 @@ test("workbench paste entry imports and saves through the existing revision guar
   fireEvent.click(screen.getByRole("button", { name: "保存剧本" }));
   await waitFor(() => expect(api.patchWork).toHaveBeenCalledWith(work.id, { draft: "第一场：夜市\n小鹿：回家吧。", draftRev: 7 }));
   expect(apply).toHaveBeenCalledTimes(1);
+});
+
+test("HTML scripts up to exactly 50 MB are sent for extraction, with a visible upload and extraction status", async () => {
+  let resolve!: (v: any) => void;
+  api.importScript.mockReturnValueOnce(new Promise(r => { resolve = r; }));
+  render(<DirectorScriptFile hasText={false} onImport={() => {}} onReadingChange={() => {}}/>);
+  expect((screen.getByLabelText("上传剧本文件") as HTMLInputElement).accept).toContain(".html");
+  expect((screen.getByLabelText("上传剧本文件") as HTMLInputElement).accept).toContain(".htm");
+  const page = new File(["<p>第一场</p>"], "整页剧本.HTM"); Object.defineProperty(page, "size", { value: 50 * 1024 * 1024 });
+  fireEvent.change(screen.getByLabelText("上传剧本文件"), { target: { files: [page] } });
+  expect(api.importScript).toHaveBeenCalledWith(page, expect.anything());
+  expect(screen.getByRole("status").textContent).toContain("正在上传并提取「整页剧本.HTM」（50.0 MB）");
+  expect((screen.getByRole("button", { name: /正在读取文件/ }) as HTMLButtonElement).disabled).toBe(true);
+  resolve({ text: "第一场：夜市\n小鹿：回家吧。", format: "htm" });
+  expect(((await screen.findByLabelText("文件文字预览")) as HTMLTextAreaElement).value).toBe("第一场：夜市\n小鹿：回家吧。");
+  expect(screen.queryByRole("status")).toBeNull();
+});
+
+test("an HTML page with no readable text is an explicit failure, never an empty import", async () => {
+  const imported = vi.fn();
+  api.importScript.mockRejectedValueOnce(new Error("文件没有可用的文字内容，请检查正文或粘贴故事内容"));
+  render(<DirectorScriptFile hasText={false} onImport={imported} onReadingChange={() => {}}/>);
+  upload("空页面.html", "<script>x</script>");
+  await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("没有可用的文字"));
+  expect(screen.queryByLabelText("文件文字预览")).toBeNull(); expect(imported).not.toHaveBeenCalled();
 });

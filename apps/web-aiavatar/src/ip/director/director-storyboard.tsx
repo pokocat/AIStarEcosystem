@@ -11,7 +11,7 @@ import { AiWorking, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, c
 import { ClipVideo, EpisodeOutput, type ClipQuote } from "./director-output";
 import { RewriteEpisodeDialog, clipRewriteBlock, shotWriting, useRewriteClip } from "./director-rewrite";
 import { formatDateTime } from "@/lib/datetime";
-import { AskAI, useAssistant } from "./director-assistant";
+import { AiField, AskAI, useAssistant } from "./director-assistant";
 import { StoryboardSide } from "./director-script-reference";
 import { confirmDirectorAction } from "./director-antd";
 
@@ -83,9 +83,9 @@ export function DirectorStoryboard(props: WorkbenchProps) {
           : clips.length ? <button type="button" className="ip-brand-secondary" disabled={!!busy} title="AI 重写本集的镜头，分镜图和视频提示词跟着更新；不出图、不生成视频" onClick={openRewrite}>
             <RefreshCw size={14}/>重写分镜脚本</button>
           : <button type="button" className="ip-brand-button" disabled={!!busy} aria-describedby={lim ? undefined : "director-plan-block"}
-            onClick={() => lim ? plan() : modal.info({ title: `现在不能写第 ${ep.no} 集分镜脚本`, content: "片段时长要按视频模型来定，目前没有可用的视频模型。可以先去「资产」准备参考图，有可用模型后再写分镜脚本。", okText: "知道了" })}>
+            onClick={() => lim ? plan() : modal.info({ title: `现在不能写第 ${ep.no} 集分镜脚本`, content: "片段时长要按视频模型来定，目前没有可用的视频模型。可以先去「资产」准备资产图，有可用模型后再写分镜脚本。", okText: "知道了" })}>
             <LayoutGrid size={15}/>写分镜脚本</button>}
-        {clips.length > 0 && <AskAI scope={{ kind: "storyboard", episodeId: ep.id }} label="和助手讨论本集分镜" title="结合本集剧本和全部片段讨论；助手只会改你指定的片段和镜头"/>}
+        {clips.length > 0 && <AskAI scope={{ kind: "storyboard", episodeId: ep.id }} what={`第 ${ep.no} 集的分镜`} hint="结合本集剧本看全部片段，只改你指定的片段和镜头"/>}
         <EpisodeOutput work={work} ep={ep} apply={apply} setError={setError}/>
       </div>
       {writing.plan && <AiWorking compact title={`AI 正在写第 ${ep.no} 集分镜脚本`} task={writing.plan} detail="把本集正文切成视频片段，写好每个镜头，以及每段的分镜图提示词和视频提示词。"/>}
@@ -196,14 +196,14 @@ function clipStatus(work: DirectorWork, clip: DirectorClip) {
   return "视频已确认";
 }
 
-/** 这个片段现在能不能生成分镜图：有问题、缺参考图、参考图没确认都不能。卡片、弹窗、批量共用这一条。 */
+/** 这个片段现在能不能生成分镜图：有问题、缺资产图、资产图没确认都不能。卡片、弹窗、批量共用这一条。 */
 function boardBlockReason(work: DirectorWork, clip: DirectorClip) {
   const visual = (clip.assetIds.map(id => work.assets.find(a => a.id === id)).filter(Boolean) as DirectorWork["assets"]).filter(a => !a.description.includes("只出声音"));
   const missing = visual.filter(a => !a.image.adoptedId);
   const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
   if (clip.issues.length) return "片段有待处理的问题";
-  if (missing.length) return `缺少参考图：${missing.map(a => a.name).join("、")}`;
-  if (unconfirmed.length) return `参考图待确认：${unconfirmed.map(a => a.name).join("、")}`;
+  if (missing.length) return `缺少资产图：${missing.map(a => a.name).join("、")}`;
+  if (unconfirmed.length) return `资产图待确认：${unconfirmed.map(a => a.name).join("、")}`;
   return "";
 }
 
@@ -243,7 +243,7 @@ function ClipHead({ work, clip, apply, setError, onEdit, selected, onSelect, onR
     <div><h4 title={clip.title}>{clip.title || `片段 ${clip.order}`}</h4><p>{clip.durationSec} 秒 · {clip.shots.length} 镜 · {clipStatus(work, clip)}</p></div>
     <span className="director-spacer"/>
     {onFocusScript && <button type="button" className="ip-brand-text-button" aria-pressed={focused} onClick={onFocusScript} title="在剧本预览里标出这个片段对应的正文"><FileText size={13}/>对照剧本</button>}
-    <AskAI scope={{ kind: "clip", clipId: clip.id }} label="AI 改镜头" title="结合本集剧本讨论或调整这个片段的镜头：景别、机位、动作、台词、时长"/>
+    <AskAI scope={{ kind: "clip", clipId: clip.id }} what={`片段 ${clip.order} 的镜头`} hint="结合本集剧本调整景别、机位、动作、台词和时长"/>
     {rewriting ? <Spinner label="重写中"/> : onRewrite && <button type="button" className="ip-brand-text-button" title="AI 重写这一段的镜头和提示词，不出图、不生成视频" onClick={rewrite}><RefreshCw size={13}/>重写</button>}
     {onEdit && <button type="button" className="ip-brand-text-button" onClick={onEdit}>编辑镜头</button>}
     <button type="button" className="ip-brand-text-button director-danger" aria-label="删除片段" onClick={remove}><Trash2 size={14}/></button>
@@ -270,7 +270,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
   const missing = visual.filter(a => !a.image.adoptedId);
   const unconfirmed = visual.filter(a => a.image.adoptedBy === "auto");
   const boardStatus = slotStatus(clip.board, !!generating);
-  const assetIssue = missing.length ? `缺 ${missing.length} 张参考图` : unconfirmed.length ? `${unconfirmed.length} 张待确认` : "";
+  const assetIssue = missing.length ? `缺 ${missing.length} 张资产图` : unconfirmed.length ? `${unconfirmed.length} 张待确认` : "";
   const grid = clip.shots.length > 1;
   const boardReady = !!clip.board.adoptedId && clip.board.adoptedBy === "user";
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
@@ -319,7 +319,7 @@ function ClipCard({ work, clip, quote, apply, setError, onPreview, onBoard, sele
             <small>不影响生成。要调整就点「编辑镜头」，或重写本集分镜脚本。</small></div></div>}
         <section className="director-video-section" aria-label="视频">
           <header><b>视频提示词</b><span>{grid ? `按分镜图第 1–${Math.min(clip.shots.length, 4)} 格逐镜生成` : "以分镜画面为构图参考"}{work.videoLimits?.mode === "frame" ? "，只用分镜首帧" : "，图1 是分镜图，图2 起是关联资产"}</span>
-            <AskAI scope={{ kind: "prompt", clipId: clip.id, which: "video" }} label="和助手讨论" title="结合剧本、镜头和实际参考素材改写视频提示词；只改提示词，不改剧情"/></header>
+</header>
           <PromptEditor work={work} clip={clip} which="video" apply={apply} setError={setError}/>
         </section>
         <ClipVideo work={work} clip={clip} quote={quote} apply={apply} setError={setError} onBoard={boardReady || videoBusy ? undefined : onBoard}
@@ -342,8 +342,6 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
   const blockReason = boardBlockReason(work, clip);
   const ratio = `ratio-${work.settings.aspectRatio.replace(":", "x")}`;
   const cells = Math.min(clip.shots.length, 4);
-  const assistant = useAssistant();
-  const askAbout = (scope: Parameters<NonNullable<typeof assistant>["ask"]>[0]) => { assistant?.ask(scope); onClose(); };
   const regenerate = () => void run("board", async () => {
     let w = work;
     if (dirty) { w = await DirectorApi.edit(work.id, "clip.update", clip.id, clip.rev, { boardPrompt: text }); clearDrafts(prefix); apply(w); }
@@ -373,14 +371,16 @@ function BoardDialog({ work, clip, apply, setError, onClose }: { work: DirectorW
               </button>
             </li>)}</ul>}
           {shown && shown.id !== clip.board.adoptedId && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => adopt(shown.id)}>采用这一版</button>}
-          {assistant && clip.board.adoptedId && <button type="button" className="director-ask-ai" onClick={() => askAbout({ kind: "image", clipId: clip.id, which: "board" })}
-            title="说说这张哪里要改（如「第三格改近景，其他保持一致」），助手改提示词；生成新版本另外确认费用"><Wand2 size={13}/>围绕这张图修改</button>}
         </aside>
       </div>
       <OutdatedNote slot={clip.board} what="张分镜图"/>
-      {assistant && <button type="button" className="director-ask-ai director-self-start" onClick={() => askAbout({ kind: "prompt", clipId: clip.id, which: "board" })}><Wand2 size={13}/>让 AI 改分镜图提示词</button>}
-      <label className="director-field"><span>分镜图提示词 <em>不要改宫格数量、景别和镜头顺序；要改镜头请关掉后点「编辑镜头」</em></span>
-        <textarea className="director-prompt" rows={6} maxLength={7000} value={text} onChange={e => setText(e.target.value)}/></label>
+      <div className="director-field"><span>分镜图提示词 <em>不要改宫格数量、景别和镜头顺序；要改镜头请关掉后点「编辑镜头」</em></span>
+        {/* 有采用的图就带上图讨论（能改提示词，也能按这张图出新版本）；还没有图只改提示词。 */}
+        <AiField scope={clip.board.adoptedId ? { kind: "image", clipId: clip.id, which: "board" } : { kind: "prompt", clipId: clip.id, which: "board" }}
+          what={`片段 ${clip.order} 的分镜图`} onAsked={onClose}
+          hint={clip.board.adoptedId ? "说说哪里要改，比如「第三格改近景」，助手改提示词；生成新版本另外确认费用" : "改写分镜图提示词"}>
+          <textarea className="director-prompt" rows={6} maxLength={7000} aria-label="分镜图提示词" value={text} onChange={e => setText(e.target.value)}/>
+        </AiField></div>
       <div className="director-actions">
         {dirty && <><span className="director-unsaved">未保存</span><button type="button" className="ip-brand-text-button" onClick={() => setText(clip.boardPrompt)}>撤销修改</button></>}
         {clip.boardPromptCustom && !dirty && <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => void run("reset", async () => apply(await DirectorApi.edit(work.id, "clip.update", clip.id, clip.rev, { resetBoardPrompt: true })), setLocalError)}><RefreshCw size={13}/>恢复自动生成</button>}
@@ -410,7 +410,7 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
       title: `从片段 ${clip.order} 解除「${a.name}」的关联？`,
       content: <ul className="director-regen-notes">
         <li>只把「{a.name}」从片段 {clip.order} 的关联资产里去掉：不删除片段，不删除资产，其他片段不受影响。</li>
-        <li>之后这一段出分镜图和视频不再参考「{a.name}」的参考图，提示词随之更新。</li>
+        <li>之后这一段出分镜图和视频不再参考「{a.name}」的资产图，提示词随之更新。</li>
         {made && <li className="is-warn">这一段已有的{made}不会删除；和新的关联对不上的会标成「需更新」，要不要重新生成由你决定。</li>}
         {lines > 0 && <li className="is-warn">「{a.name}」在这一段还有 {lines} 句台词，台词和说话人不变。要删除这个角色，还要在「编辑镜头」里把这些台词换成别的说话人。</li>}
         {(clip.boardPromptCustom || clip.videoPromptCustom) && <li className="is-warn">这一段手改过的提示词不会自动更新，写到「{a.name}」的地方需要自己改。</li>}
@@ -437,11 +437,11 @@ function ClipPreview({ work, clip, preview, apply, setError, goTab, onPick, onCl
           <ul className="director-preview-assets">{linked.map(a => {
             const img = adopted(a.image);
             const audioOnly = a.description.includes("只出声音");
-            const status = audioOnly ? "仅声音出场" : !a.image.adoptedId ? "缺少参考图" : a.image.adoptedBy === "auto" ? "待确认" : a.image.adoptedCheck === "outdated" ? "需更新" : "已确认";
+            const status = audioOnly ? "仅声音出场" : !a.image.adoptedId ? "缺少资产图" : a.image.adoptedBy === "auto" ? "待确认" : a.image.adoptedCheck === "outdated" ? "需更新" : "已确认";
             return <li key={a.id} className={a.id === preview.assetId ? "is-focused" : undefined}>
               <span className="director-preview-asset-img">{img?.url ? <img src={img.url} alt={a.name}/> : <ImageIcon size={18}/>}</span>
               <div><b>{a.name}<small>{kindLabel[a.kind]}</small></b>
-                <small className={status === "已确认" ? "is-done" : status === "缺少参考图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
+                <small className={status === "已确认" ? "is-done" : status === "缺少资产图" ? "is-error" : "is-warn"}>{status}{a.voice ? " · 已绑定声音" : ""}</small>
                 <p title={a.description}>{a.description || "暂无描述"}</p>
                 <button type="button" className="ip-brand-text-button director-danger director-unlink" disabled={!!busy} onClick={() => unlink(a)}
                   aria-label={`从片段 ${clip.order} 解除${a.name}的关联`}>{busy === `unlink:${a.id}` ? "正在解除…" : "解除关联"}</button></div>
@@ -480,7 +480,10 @@ function PromptEditor({ work, clip, which, apply, setError }: { work: DirectorWo
   }, failed(setError, `保存片段 ${clip.order} 的${which === "board" ? "分镜图" : "视频"}提示词`, "改过的内容还在输入框里，按原因调整后再点「保存」。"));
   const frame = work.videoLimits?.mode === "frame";
   return <div className="director-prompts">
-    <textarea className="director-prompt" rows={5} aria-label={which === "board" ? "分镜图提示词" : "视频提示词"} maxLength={7000} value={text} onChange={e => setText(e.target.value)}/>
+    <AiField scope={{ kind: "prompt", clipId: clip.id, which }} what={`片段 ${clip.order} 的${which === "board" ? "分镜图" : "视频"}提示词`}
+      hint="结合剧本、镜头和参考素材改写提示词，不改剧情">
+      <textarea className="director-prompt" rows={5} aria-label={which === "board" ? "分镜图提示词" : "视频提示词"} maxLength={7000} value={text} onChange={e => setText(e.target.value)}/>
+    </AiField>
     <div className="director-actions">
       <button type="button" className="ip-brand-secondary" disabled={!!busy || !dirty} onClick={() => save(which === "board" ? { boardPrompt: text } : { videoPrompt: text })}>保存</button>
       {dirty && <span className="director-unsaved">未保存</span>}
@@ -538,7 +541,7 @@ function ClipEditor({ work, clip, apply, setError, onDone }: { work: DirectorWor
       <label className="director-field"><span>片段标题</span><input value={title} maxLength={40} onChange={e => setTitle(e.target.value)}/></label>
       <label className="director-field"><span>剧情摘要</span><input value={summary} maxLength={1000} onChange={e => setSummary(e.target.value)}/></label>
     </div>
-    <div className="director-field"><span>关联资产（生成分镜图时使用其已采用的参考图）</span>
+    <div className="director-field"><span>关联资产（生成分镜图时使用其已采用的资产图）</span>
       <div className="director-asset-picks">{work.assets.map(a => <label key={a.id}><input type="checkbox" checked={assetIds.includes(a.id)}
         onChange={e => setAssetIds(e.target.checked ? [...assetIds, a.id] : assetIds.filter(x => x !== a.id))}/>{kindLabel[a.kind]} · {a.name}</label>)}
         {unknownIds.map(id => <label key={id} className="is-missing"><input type="checkbox" checked onChange={() => setAssetIds(assetIds.filter(x => x !== id))}/>资产「{id}」不存在（取消勾选以移除）</label>)}

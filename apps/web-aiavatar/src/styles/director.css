@@ -684,18 +684,13 @@ html:not([data-layout="desktop"]) .director-clip-stage { width: 120px; }
 .director-split-range { grid-column: 1 / -1; min-width: 0; overflow: hidden; color: var(--ip-muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .director-reference .director-outline-head em { flex-shrink: 0; }
 /* ── 全能创作助手（director-assistant.tsx）：桌面停靠右侧一列，手机全屏打开 ───────────── */
-.director-assistant-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 32px; padding: 4px 12px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-ink); font-size: 13px; font-weight: 600; }
-.director-assistant-toggle.is-open { border-color: var(--ip-green); background: var(--ip-green-soft); color: var(--ip-green); }
-.director-assistant-toggle i { position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: 50%; background: var(--ip-green); }
-.director-ask-ai { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; min-height: 28px; padding: 3px 10px; border: 1px solid #cfe3d6; border-radius: 999px; background: var(--ip-green-soft); color: var(--ip-green); font-size: 12px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-.director-ask-ai:hover, .director-ask-ai:focus-visible { border-color: var(--ip-green); }
 
 .director-assistant { position: fixed; inset: 0; z-index: 880; display: flex; flex-direction: column; min-width: 0; background: var(--ip-paper); }
 html[data-layout="desktop"] .director-body.has-assistant { grid-template-columns: 56px minmax(0, 1fr) clamp(340px, 26vw, 420px); }
 html[data-layout="desktop"] .director-assistant { position: sticky; inset: auto; top: calc(var(--desktop-bar-h, 84px) + 12px); z-index: 5; height: calc(100dvh - var(--desktop-bar-h, 84px) - 24px); border: 1px solid var(--ip-line); border-radius: 12px; overflow: hidden; }
 .director-assistant-head { position: relative; display: flex; align-items: center; gap: 6px; padding: 12px 12px 10px 16px; border-bottom: 1px solid var(--ip-line); }
 .director-assistant-head h3 { font-family: var(--ip-display); font-size: 16px; font-weight: 700; white-space: nowrap; }
-.director-assistant-mark { color: var(--ip-green); flex-shrink: 0; }
+.director-assistant-mark { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--ai-gradient); color: #fff; flex-shrink: 0; }
 .director-assistant-tool { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 3px 9px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-ink); font-size: 12px; font-weight: 600; white-space: nowrap; }
 .director-assistant-tool.is-icon { width: 30px; padding: 0; justify-content: center; }
 .director-assistant-tool:disabled { opacity: .45; cursor: not-allowed; }
@@ -768,7 +763,7 @@ html[data-layout="desktop"] .director-assistant { position: sticky; inset: auto;
 .director-assistant-send-error { margin: 0; color: var(--ip-error); font-size: 12px; line-height: 1.6; }
 .director-assistant-composer footer { display: flex; align-items: center; gap: 8px; }
 .director-assistant-composer footer small { color: var(--ip-muted); font-size: 11px; }
-.director-assistant-send { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 9px; background: var(--ip-ink); color: var(--ip-paper); }
+.director-assistant-send { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 9px; background: var(--ai-gradient); color: #fff; }
 .director-assistant-send:disabled { opacity: .35; cursor: not-allowed; }
 
 /* 剧本正文：选中后的小工具条，与助手建议的对比预览 */
@@ -839,3 +834,91 @@ html[data-layout="desktop"] .director-board-side .director-episode-side { positi
 .director-assistant-pending { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 8px; border-radius: 8px; background: var(--ip-gold-soft); }
 .director-assistant-pending small { flex-basis: 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ip-gold); font-size: 11px; }
 .director-assistant-pending .ip-brand-secondary { min-height: 28px; padding: 3px 10px; font-size: 12px; }
+
+/* ── AI 入口（2026-10-29）────────────────────────────────────────────────────
+   全站统一的 AI 群青紫，值与 ip-desktop.css 的 .ip-surface 令牌相同。导演台挂在 .ip-brand-surface 下，
+   拿不到那组令牌，所以在这里按同样的值补上，不另造颜色。只给「打开助手」用：
+   顶栏的「创作助手」开关，以及内容右下角的紫色小圆钮。生成、重写、一键制作用各自的按钮。 */
+.director-page, .director-shell, .director-dialog-backdrop {
+  --ai: #4f5bd5; --ai-2: #8b6cf0; --ai-gradient: linear-gradient(135deg, var(--ai), var(--ai-2));
+  --ai-soft: #ebe7fb; --ai-ink: #4a4fb8; --ai-ring: rgba(139, 108, 240, .65); --ai-glow: rgba(139, 108, 240, .22);
+}
+.director-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* 顶栏开关：收起时实心紫色，打开时浅紫按下状态，回复中图标转圈。 */
+.director-assistant-toggle { position: relative; display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; min-height: 32px; padding: 4px 13px; border: 1px solid transparent; border-radius: 8px; background: var(--ai-gradient); color: #fff; font-size: 13px; font-weight: 600; white-space: nowrap; box-shadow: 0 4px 12px var(--ai-glow); cursor: pointer; transition: box-shadow 160ms ease-out, filter 160ms ease-out; }
+.director-assistant-toggle:hover { filter: brightness(1.06); box-shadow: 0 6px 16px rgba(79, 91, 213, .32); }
+.director-assistant-toggle.is-open { border-color: var(--ai-ring); background: var(--ai-soft); color: var(--ai-ink); box-shadow: inset 0 1px 2px rgba(74, 79, 184, .14); filter: none; }
+.director-assistant-toggle.is-open:hover { background: #e2dcfa; }
+.director-assistant-toggle:focus-visible { outline: 2px solid var(--ai-ring); outline-offset: 2px; }
+
+/* 内容旁的入口：只有图标的紫色小圆钮，名称和用途在悬停提示与读屏名称里。 */
+.director-ask-ai { position: relative; display: inline-grid; place-items: center; flex-shrink: 0; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 50%; background: var(--ai-gradient); color: #fff; box-shadow: 0 2px 8px var(--ai-glow); cursor: pointer; transition: transform 140ms ease-out, box-shadow 140ms ease-out; }
+.director-ask-ai::after { content: ""; position: absolute; inset: -6px; border-radius: 50%; }
+.director-ask-ai:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(79, 91, 213, .38); }
+.director-ask-ai:focus-visible { outline: 2px solid var(--ai-ring); outline-offset: 2px; }
+.director-ask-ai.is-current { box-shadow: 0 0 0 3px var(--ai-soft), 0 0 0 4px var(--ai-ring); }
+.director-ask-ai-tip { display: grid; gap: 2px; max-width: 260px; font-size: 12px; line-height: 1.6; }
+.director-ask-ai-tip b { font-weight: 600; }
+.director-ask-ai-tip span { opacity: .82; }
+
+/* 右下角：内容右侧留出按钮那一列，文字（滚到哪都一样）、滚动条和拖拽手柄都不被盖住。
+   按钮离右边 20px，让开最宽 17px 的滚动条和右下角的缩放手柄（窄窗口的电脑也走手机版式，手机上同样让开）。 */
+.director-ai-field { position: relative; min-width: 0; }
+.director-ai-field > textarea { display: block; }
+.director-ai-field.has-ai > textarea { padding-right: 54px; }
+.director-ai-field.has-ai > .director-ai-field-body { min-height: 30px; padding-right: 40px; }
+.director-ask-ai.is-corner { position: absolute; right: 20px; bottom: 10px; z-index: 1; }
+.director-ai-field > .director-ai-field-body + .director-ask-ai.is-corner { right: 0; bottom: 0; }
+html:not([data-layout="desktop"]) .director-ask-ai { width: 32px; height: 32px; }
+html:not([data-layout="desktop"]) .director-ai-field.has-ai > textarea { padding-right: 58px; }
+html:not([data-layout="desktop"]) .director-ask-ai.is-corner { bottom: 8px; }
+html:not([data-layout="desktop"]) .director-ai-field > .director-ai-field-body + .director-ask-ai.is-corner { right: 0; bottom: 0; }
+
+/* .ip-brand-surface 给所有按钮写了 color: inherit（优先级 0,1,1），紫底上的白字和图标要在同一作用域下再说一次。 */
+.ip-brand-surface :is(.director-assistant-toggle, .director-ask-ai, .director-assistant-send) { color: #fff; }
+.ip-brand-surface .director-assistant-toggle.is-open { color: var(--ai-ink); }
+
+/* 选中正文后的「问 AI」也用 AI 紫。 */
+.director-selection-bar button.is-ai, .ip-brand-surface .director-selection-bar button.is-ai { color: var(--ai-ink); }
+.director-selection-bar button.is-ai:hover, .director-selection-bar button.is-ai:focus-visible { background: var(--ai-soft); color: var(--ai-ink); }
+@media (prefers-reduced-motion: reduce) { .director-ask-ai, .director-assistant-toggle { transition: none; } .director-ask-ai:hover { transform: none; } }
+
+/* 资产的两种自有图（2026-10-28）：参考图（生成时参照）与资产图（直接使用）分区显示，说法一致。 */
+.director-sheet-section .director-ref img, .director-sheet-section .director-ref .director-ref-empty { width: 56px; height: 56px; }
+.director-own-image { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px dashed var(--ip-line); border-radius: 8px; background: var(--ip-soft); }
+.director-own-image img, .director-own-image .director-ref-empty { width: 56px; height: 56px; flex: none; border-radius: 6px; object-fit: cover; }
+.director-own-image-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.director-own-image-text strong { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.director-own-image-text small { font-size: 12px; color: var(--ip-muted); }
+.director-image-use { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-top: 8px; }
+.director-image-use .director-check { background: var(--ip-paper); }
+.director-image-use .director-check.is-on { border-color: var(--ip-ink); box-shadow: inset 0 0 0 1px var(--ip-ink); }
+.director-tag.is-source { background: var(--ip-paper); color: var(--ip-ink); }
+html:not([data-layout="desktop"]) .director-image-use { grid-template-columns: minmax(0, 1fr); }
+html:not([data-layout="desktop"]) .director-ref, html:not([data-layout="desktop"]) .director-own-image { flex-wrap: wrap; }
+html:not([data-layout="desktop"]) .director-ref .director-ref-text, html:not([data-layout="desktop"]) .director-own-image-text { flex-basis: calc(100% - 70px); }
+html:not([data-layout="desktop"]) .director-ref .director-ref-actions, html:not([data-layout="desktop"]) .director-own-image .director-ref-actions { width: 100%; }
+
+/* 正文比 AI 一次能读的长时的说明（2026-10-29 取消字数上限）。 */
+.director-long-note { margin: 6px 0 0; padding: 8px 10px; border-radius: 8px; background: var(--ip-soft); color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+
+/* 超量粘贴被拦下的提示、长正文按段编辑、新建时的长正文摘要（2026-10-29）。 */
+.director-paste-blocked { display: grid; gap: 8px; margin-top: 8px; padding: 10px 12px; border: 1px solid var(--ip-gold); border-radius: 10px; background: var(--ip-gold-soft); }
+.director-paste-blocked p { margin: 0; font-size: 13px; line-height: 1.6; }
+.director-paste-blocked-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.director-sections { display: grid; gap: 6px; }
+.director-sections-head { margin: 0; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.director-section-row { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 8px 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: inherit; text-align: left; cursor: pointer; }
+.director-section-row b { flex: none; font-size: 13px; font-weight: 600; }
+.director-section-row small { flex: none; color: var(--ip-muted); font-size: 12px; }
+.director-section-row span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ip-muted); font-size: 12px; }
+.director-section.is-active { display: grid; gap: 6px; }
+.director-section.is-active .director-section-row { border-color: var(--ip-ink); }
+.director-section.is-active .director-section-row span { flex: none; margin-left: auto; color: var(--ip-ink); }
+.director-long-card { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-soft); }
+.director-long-card > div { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: baseline; }
+.director-long-card small { color: var(--ip-muted); font-size: 12px; }
+.director-long-card pre { margin: 0; max-height: 180px; overflow: auto; white-space: pre-wrap; font: inherit; font-size: 13px; line-height: 1.7; color: var(--ip-muted); }
+html:not([data-layout="desktop"]) .director-section-row { flex-wrap: wrap; }
+html:not([data-layout="desktop"]) .director-section-row span { flex-basis: 100%; }

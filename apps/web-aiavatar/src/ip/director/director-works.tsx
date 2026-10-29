@@ -11,7 +11,8 @@ import { DirectorApi } from "../api";
 import { StudioPage } from "../studio-page";
 import { GalleryState, useStudioList } from "../studio-gallery";
 import { InlineError, errorText, useEscape, dialogFocus } from "./director-shared";
-import { DirectorScriptFile } from "./director-script-file";
+import { DirectorScriptFile, LargePasteNotice, usePasteGuard, type ScriptFileHandle } from "./director-script-file";
+import { EDIT_MAX, LongTextCard } from "./director-long-editor";
 
 function progressText(w: DirectorWorkSummary) {
   if (!w.hasScript) return "待写剧本";
@@ -116,6 +117,8 @@ function CreateWork({ onClose }: { onClose: () => void }) {
   const [reading, setReading] = useState(false);
   const [error, setError] = useState("");
   const locked = busy || reading;
+  const file = useRef<ScriptFileHandle>(null);
+  const guard = usePasteGuard();
   useEscape(() => { if (!locked) onClose(); });
   const submit = async () => {
     if (locked || !text.trim()) return;
@@ -133,11 +136,14 @@ function CreateWork({ onClose }: { onClose: () => void }) {
         <button type="button" role="tab" aria-selected={mode === "script"} disabled={locked} onClick={() => setMode("script")}>导入剧本</button>
       </div>
       <label className="director-field"><span>作品名（选填）</span><input value={title} maxLength={60} onChange={e => setTitle(e.target.value)} placeholder="留空将根据内容命名"/></label>
-      {mode === "script" && <DirectorScriptFile hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
-      <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
-        <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} disabled={busy} maxLength={mode === "idea" ? 2000 : 60000} onChange={e => setText(e.target.value)}
+      {mode === "script" && <DirectorScriptFile ref={file} hasText={!!text.trim()} disabled={busy} onImport={setScript} onReadingChange={setReading}/>}
+      {mode === "script" && script.length > EDIT_MAX ? <LongTextCard text={script} onClear={() => setScript("")}/>
+        : <label className="director-field director-create-text"><span>{mode === "idea" ? "创意" : "剧本正文"}</span>
+        <textarea autoFocus rows={mode === "idea" ? 5 : 12} value={text} disabled={busy} maxLength={mode === "idea" ? 2000 : undefined} onChange={e => setText(e.target.value)}
+          onPaste={mode === "script" ? guard.onPaste : undefined}
           placeholder={mode === "idea" ? "例如：凌晨的快递分拣站，夜班分拣员周小满发现一个寄给十年后自己的包裹。" : "支持场次、动作与对白，导入后可拆分为多集"}/>
-      </label>
+      </label>}
+      {mode === "script" && guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear} onUpload={() => { guard.clear(); file.current?.open(); }}/>}
       <p className="director-dialog-note">{mode === "idea" ? "下一步：AI 先问一两个关键问题把故事定下来，再写剧本；也可以跳过，直接生成。" : "下一步：选择作为一集，或由 AI 拆分为多集。"}</p>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={locked}>取消</button>

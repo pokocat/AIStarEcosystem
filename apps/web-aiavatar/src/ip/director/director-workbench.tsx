@@ -15,6 +15,7 @@ import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
 import { InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
+import { AiMark } from "../studio-ai-icon";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
 export type Tab = "script" | "assets" | "storyboard";
@@ -67,15 +68,15 @@ function nextStep(work: DirectorWork, episodeId: string | null): NextStep | null
   if (clips.length === 0) return { text: `下一步：写第 ${ep.no} 集分镜脚本`, tab: "storyboard" };
   const used = new Set(clips.flatMap(c => c.assetIds));
   const needImage = work.assets.filter(a => used.has(a.id) && !a.image.adoptedId);
-  if (needImage.length) return { text: `缺少 ${needImage.length} 张参考图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
+  if (needImage.length) return { text: `缺少 ${needImage.length} 张资产图：${needImage.slice(0, 3).map(a => a.name).join("、")}`, tab: "assets" };
   const unconfirmed = work.assets.filter(a => used.has(a.id) && a.image.adoptedBy === "auto");
-  if (unconfirmed.length) return { text: `${unconfirmed.length} 张参考图待确认`, tab: "assets" };
+  if (unconfirmed.length) return { text: `${unconfirmed.length} 张资产图待确认`, tab: "assets" };
   const fix = clips.filter(c => c.issues.length);
   if (fix.length) return { text: `${fix.length} 个片段需修改后才能生成分镜图`, tab: "storyboard" };
   const noBoard = clips.filter(c => !c.board.adoptedId);
   if (noBoard.length) return { text: `下一步：生成 ${noBoard.length} 张分镜图`, tab: "storyboard" };
   const oldRefs = work.assets.filter(a => used.has(a.id) && a.image.adoptedCheck === "outdated");
-  if (oldRefs.length) return { text: `${oldRefs.map(a => a.name).join("、")} 的参考图需更新`, tab: "assets" };
+  if (oldRefs.length) return { text: `${oldRefs.map(a => a.name).join("、")} 的资产图需更新`, tab: "assets" };
   const oldBoards = clips.filter(c => c.board.adoptedCheck === "outdated");
   if (oldBoards.length) return { text: `${oldBoards.map(c => `片段 ${c.order}`).join("、")} 的分镜图需更新`, tab: "storyboard" };
   const autoBoard = clips.filter(c => c.board.adoptedBy === "auto");
@@ -303,25 +304,29 @@ function DirectorHeader({ work, apply, setError, startPipeline, oneClick, settin
   </header>;
 }
 
-/** 顶栏的助手开关：收起后从这里再打开；有回复正在进行时带个小圆点。 */
+/**
+ * 顶栏的助手开关，用 AI 紫色：收起时是实心紫色，打开时是浅紫色的按下状态；
+ * 有回复正在进行时图标换成转圈，收起的时候也看得到。
+ */
 function AssistantToggle({ work }: { work: DirectorWork }) {
   const ctl = useAssistant();
   if (!ctl) return null;
   const replying = work.tasks.some(t => t.target === "assistant" && t.status === "running");
-  return <button type="button" className={`director-assistant-toggle ${ctl.open ? "is-open" : ""}`} aria-pressed={ctl.open} onClick={() => ctl.setOpen(!ctl.open)}
-    title={ctl.open ? "收起创作助手" : "打开创作助手"}><Sparkles size={15}/>创作助手{replying && <i aria-label="正在回复"/>}</button>;
+  const tip = `${ctl.open ? "收起创作助手" : "打开创作助手"}${replying ? "（正在回复）" : ""}`;
+  return <button type="button" className={`director-assistant-toggle ${ctl.open ? "is-open" : ""} ${replying ? "is-replying" : ""}`} aria-pressed={ctl.open} onClick={() => ctl.setOpen(!ctl.open)}
+    title={tip}>{replying ? <Loader2 size={15} className="ip-loading-icon" aria-hidden/> : <AiMark size={14}/>}创作助手{replying && <span className="director-sr-only">，正在回复</span>}</button>;
 }
 
 // ── 一键制作 ────────────────────────────────────────────────────────────────
 
 const TARGETS: Array<{ key: DirectorPipelineTarget; label: string; note: string }> = [
-  { key: "film", label: "成片", note: "从剧本一路做到每集的成片：拆分集、提取资产、写分镜脚本、出参考图和分镜图、生成片段视频，最后导出整集。" },
-  { key: "board", label: "分镜图", note: "做到参考图和分镜图为止，不生成视频。" },
+  { key: "film", label: "成片", note: "从剧本一路做到每集的成片：拆分集、提取资产、写分镜脚本、出资产图和分镜图、生成片段视频，最后导出整集。" },
+  { key: "board", label: "分镜图", note: "做到资产图和分镜图为止，不生成视频。" },
   { key: "plan", label: "分镜脚本", note: "只做文字：拆分集、提取资产、写分镜脚本（每段的镜头、分镜图提示词和视频提示词），不出图。" },
 ];
 
 const PIPELINE_ACTIONS: Record<string, string> = {
-  pause: "暂停一键制作", resume: "继续一键制作", retry: "重试一键制作的失败项", "confirm-assets": "确认参考图并继续",
+  pause: "暂停一键制作", resume: "继续一键制作", retry: "重试一键制作的失败项", "confirm-assets": "确认资产图并继续",
   "confirm-boards": "确认分镜图并继续", "confirm-videos": "确认片段视频并导出", stop: "停止一键制作", dismiss: "收起一键制作",
 };
 
@@ -363,7 +368,7 @@ function PipelineBar({ work, apply, setError, goTab, reviewExtract }: WorkbenchP
         <div className="director-pipeline-actions">
           {p.stage === "confirm-split" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={() => goTab("script")}>查看分集</button>}
           {p.stage === "confirm-extract" && p.status === "waiting" && <button type="button" className="ip-brand-button" onClick={reviewExtract}>查看清单</button>}
-          {p.stage === "confirm-assets" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>查看参考图</button>
+          {p.stage === "confirm-assets" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("assets")}>查看资产图</button>
             <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-assets")}>全部确认并继续</button></>}
           {p.stage === "confirm-boards" && p.status === "waiting" && <><button type="button" className="ip-brand-secondary" onClick={() => goTab("storyboard")}>查看分镜图</button>
             <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => act("confirm-boards")}>全部确认并继续</button></>}
@@ -453,7 +458,7 @@ export function StartPipeline({ work, episodeId, apply, setError, goTab, onClose
         <button type="button" aria-pressed={scope === "episode"} onClick={() => { setScope("episode"); setCustom(null); }}>只做第 {ep?.no} 集</button></div></div>}
       {target !== "plan" && <label className="director-check">
         <input type="checkbox" checked={!auto} onChange={e => setAuto(!e.target.checked)}/>
-        <span><b>关键步骤停下来让我确认</b><small>资产清单、参考图、分镜图{target === "film" ? "、片段视频" : ""}出来后先等你看过再继续。不勾就全自动，做完再看。</small></span>
+        <span><b>关键步骤停下来让我确认</b><small>资产清单、资产图、分镜图{target === "film" ? "、片段视频" : ""}出来后先等你看过再继续。不勾就全自动，做完再看。</small></span>
       </label>}
       {!doneNote && <section className="director-budget-card" aria-label="预算">
         <header><span>推荐预算</span>{est && <b>{mock ? "测试模式，免费" : `${est.recommended.toLocaleString("zh-CN")} 积分`}</b>}{!est && !estError && <Loader2 size={15} className="ip-loading-icon"/>}</header>

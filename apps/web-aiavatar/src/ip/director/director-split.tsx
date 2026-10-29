@@ -6,6 +6,11 @@ import type { DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi } from "../api";
 import type { WorkbenchProps } from "./director-workbench";
 import { InlineError, clearDrafts, dialogFocus, failed, useBusy, useDraft, useEscape } from "./director-shared";
+import { LargePasteNotice, usePasteGuard } from "./director-script-file";
+import { EDIT_MAX, SectionedScript } from "./director-long-editor";
+
+/** 和服务端 DirectorService.REFERENCE_PROMPT_MAX 一致：设定资料交给模型时只取前这么多字（后面写明省略）。 */
+const REFERENCE_PROMPT_MAX = 12000;
 
 /**
  * 分好、还没采用的分集：每集多长、从哪句开始到哪句结束，程序补过哪些段落、和要求哪里不一致。
@@ -56,6 +61,7 @@ export function ReferenceNotes({ work, apply, setError }: Pick<WorkbenchProps, "
   const [text, setText, dirty] = useDraft(key, work.reference);
   const [open, setOpen] = useState(false);
   const { busy, run } = useBusy();
+  const guard = usePasteGuard();
   if (!work.reference.trim() && !dirty) return null;
   const save = () => void run("save", async () => { const next = await DirectorApi.edit(work.id, "reference.update", null, work.referenceRev, { text }); clearDrafts(key); apply(next); }, failed(setError, "保存设定资料", "改动还在编辑框里，按原因调整后再保存。"));
   const merge = () => void run("merge", async () => { const next = await DirectorApi.edit(work.id, "reference.toEpisode", null, work.referenceRev); clearDrafts(key); apply(next); }, failed(setError, "把设定资料并入第 1 集"));
@@ -67,7 +73,11 @@ export function ReferenceNotes({ work, apply, setError }: Pick<WorkbenchProps, "
       <ChevronRight size={16} className="director-outline-chevron"/>
     </button>
     {open && <div className="director-outline-body">
-      <textarea className="director-script-text" aria-label="设定资料" value={text} maxLength={60000} onChange={e => setText(e.target.value)}/>
+      {text.length > EDIT_MAX ? <SectionedScript value={text} onChange={setText} label="设定资料" onPaste={guard.onPaste}/>
+        : <textarea className="director-script-text" aria-label="设定资料" value={text} onChange={e => setText(e.target.value)} onPaste={guard.onPaste}/>}
+      {guard.blocked && <LargePasteNotice chars={guard.blocked.chars} onClose={guard.clear}
+        onInsert={t => { const b = guard.blocked!; setText(text.slice(0, b.start) + t + text.slice(b.end)); }}/>}
+      {text.length > REFERENCE_PROMPT_MAX && <p className="director-long-note" role="note">设定资料 {text.length.toLocaleString("zh-CN")} 字，照常保存；提取资产和写分镜脚本时 AI 只参考前 {REFERENCE_PROMPT_MAX.toLocaleString("zh-CN")} 字，要紧的设定请放在前面。</p>}
       <div className="director-actions">
         <button type="button" className="ip-brand-button" disabled={!dirty || !!busy} onClick={save}>{dirty ? "保存" : "已保存"}</button>
         {work.episodes.length > 0 && <button type="button" className="ip-brand-secondary" disabled={dirty || !!busy} title={dirty ? "先保存修改" : "这部分其实是正片：整段放到第 1 集最前面"} onClick={merge}>并入第 1 集</button>}

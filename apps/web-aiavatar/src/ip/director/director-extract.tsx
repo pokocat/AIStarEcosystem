@@ -28,7 +28,8 @@ export function ExtractReview({ work, apply, onClose }: { work: DirectorWork; ap
   return <div className="director-dialog-backdrop" role="presentation" onMouseDown={e => e.target === e.currentTarget && !busy && onClose()}>
     <div className="director-dialog director-extract" role="dialog" aria-modal="true" aria-labelledby="director-extract-title" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-extract-title">确认资产</h2><button type="button" aria-label="稍后再看" onClick={onClose} disabled={!!busy}><X size={18}/></button></header>
-      <p className="director-dialog-note">从全剧识别到 {pending.items.length} 项。勾选要保存的，名字可以直接改；已有的同一项会合并，不重复新建。</p>
+      <p className="director-dialog-note">{pending.batch ? `正文太长，AI 一次读不完全剧，这次读了第 ${pending.batch.fromNo}–${pending.batch.toNo} 集（共 ${pending.batch.total} 集），识别到 ${pending.items.length} 项。保存后在「资产」里点「继续提取」读剩下的集。`
+        : `从全剧识别到 ${pending.items.length} 项。`}勾选要保存的，名字可以直接改；已有的同一项会合并，不重复新建。</p>
       <div className="director-extract-list">{KINDS.map(kind => {
         const list = pending.items.filter(i => i.kind === kind);
         if (!list.length) return null;

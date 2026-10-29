@@ -47,7 +47,8 @@ test("a character can be linked to an existing library asset or get an uploaded 
   api.edit.mockResolvedValue(work);
   render(<DirectorAssets {...props}/>);
   fireEvent.click(screen.getByRole("button", { name: "查看林晚" }));
-  expect(screen.getByRole("button", { name: /上传图片/ })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "直接上传作为资产图" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "上传作为参考图" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /关联已有资产/ }));
   fireEvent.click(screen.getByRole("button", { name: "「林晚」关联已有资产·选好了" }));
   await waitFor(() => expect(api.edit).toHaveBeenCalledWith("w", "asset.link", "c1", null, { objectId: "lib-1", versionId: "v2" }));
