@@ -1250,3 +1250,5 @@ capabilities 的文本模型新增 `dialogueTokenPricing`，普通文本仍用 `
 - **`ProposePlanTool`**：`planningSkill` 不再看执行锁；校验前若方案操作不全在当前方法起始阶段 → `coveringSkill`（路由结果优先，其次目录顺序第一个能覆盖的）→ `bindSkill` 切换后再校验；失败的工作记录码 `STUDIO_PLAN_NOT_READY`、文案「这份方案还没准备好，我会按你要做的内容重新整理。」，原因只进日志与模型侧结果。
 - **用户可见文案**：`StudioDialogueTurnWorker.toolFailure`（`STUDIO_SKILL_OPERATION_NOT_ALLOWED / STUDIO_SKILL_LOCKED / STUDIO_PLAN_STALE`）、`StudioPlanExecutionService` 计划校验、`StudioPlanExecutionBridge.authorizeChild`、`StudioPlanSteps`、`StudioWorkflowWorker.skillPlan` 均改为人话 + `internalDetail`；前端 `userFacingError`（`studio-errors.tsx`）兜底旧记录。
 
+
+批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Button, Checkbox, Empty, Input, InputNumber, Modal, Pagination, Select, Skeleton, Table, Tag } from "antd";
-import type { EnterpriseCapabilities, EnterpriseContext, EnterpriseInvitation, EnterpriseMember, EnterpriseOwnershipTransfer, EnterprisePolicy, EnterpriseLifecyclePreview, EnterpriseLifecycleAction } from "@ai-star-eco/types/enterprise";
+import type { EnterpriseCapabilities, EnterpriseContext, EnterpriseInvitation, EnterpriseMember, EnterpriseOwnershipTransfer, EnterprisePolicy, EnterpriseLifecyclePreview, EnterpriseLifecycleAction, EnterpriseMemberBatchAddResult } from "@ai-star-eco/types/enterprise";
 import { EnterpriseApi } from "@/canvas-bridge/enterprise-api";
 import { fetchModels } from "@/canvas-bridge/api";
 import { studioCapabilities, studioSpeechCatalog, studioLipSyncCatalog } from "@/canvas-bridge/studio-api";
@@ -17,12 +17,13 @@ const actionNames = { suspend: "停用成员", resume: "恢复成员", remove: "
 const n = (value: number) => value.toLocaleString("zh-CN");
 const time = (value: string) => new Date(value).toLocaleString("zh-CN");
 const errorText = (error: unknown) => normalizeStudioError(error).message;
+const validSinglePhone = (phone: string) => /^(?:\+86)?1[3-9]\d{9}$/.test(phone.replace(/\s/g, ""));
 const emptyCapabilities: EnterpriseCapabilities = { pointsManage: false, billingRead: false, rechargeRequest: false };
 
-type Props = { context: EnterpriseContext; section: "team" | "policy" | "lifecycle"; onChanged: () => Promise<void> };
+type Props = { context: EnterpriseContext; section: "team" | "policy" | "lifecycle"; onChanged: () => Promise<void>; refreshKey?: number };
 
 /** Management uses current server permissions and versioned edits; member assets never enter this view. */
-export function EnterpriseManagement({ context, section, onChanged }: Props) {
+export function EnterpriseManagement({ context, section, onChanged, refreshKey = 0 }: Props) {
   const id = context.enterprise.id;
   const owner = context.member.role === "owner";
   const canInvite = context.permissions.includes("member.invite");
@@ -39,11 +40,21 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [success, setSuccess] = useState("");
   const [token, setToken] = useState("");
+  const [inviting, setInviting] = useState(false);
   const [inviteDays, setInviteDays] = useState<90 | 365>(90);
   const [inviteExpires, setInviteExpires] = useState("");
   const invitationForm = useRef<HTMLDivElement>(null);
   const [inviteCopyStatus, setInviteCopyStatus] = useState<"idle" | "copying" | "copied" | "manual">("idle");
   const [edit, setEdit] = useState<EnterpriseMember>();
+  const [adding, setAdding] = useState(false), [phone, setPhone] = useState("");
+  const [addError, setAddError] = useState("");
+  const [addMode, setAddMode] = useState<"single" | "batch">("single");
+  const [batchText, setBatchText] = useState("");
+  const [batchResult, setBatchResult] = useState<EnterpriseMemberBatchAddResult>();
+  const batchPhones = [...new Set(batchText.split(/[\n,，;；]+/).map(value => value.replace(/\s/g, "").replace(/^\+86/, "")).filter(Boolean))];
+  const canAdd = addMode === "single" ? validSinglePhone(phone) : batchPhones.length > 0 && batchPhones.length <= 100;
+  const closeAdding = () => { setAdding(false); setPhone(""); setBatchText(""); setBatchResult(undefined); setAddError(""); };
+
   const [role, setRole] = useState<"manager" | "member">("member");
   const [capabilities, setCapabilities] = useState<EnterpriseCapabilities>(emptyCapabilities);
   const [ownershipTarget, setOwnershipTarget] = useState<EnterpriseMember>();
@@ -79,7 +90,7 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
     } catch (caught) { if (current === revision.current) setError(errorText(caught)); }
     finally { if (current === revision.current) setLoading(false); }
   }, [id, section, page, invitationPage, canManage, canInvite, owner]);
-  useEffect(() => { void load(); return () => { revision.current++; }; }, [load]);
+  useEffect(() => { void load(); return () => { revision.current++; }; }, [load, refreshKey]);
   const mutate = async (operation: () => Promise<void>) => {
     if (mutation.current) return; mutation.current = true; setBusy(true); setError(""); setSuccess("");
     try { await operation(); } catch (caught) { setError(errorText(caught)); }
@@ -124,6 +135,23 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
   });
   const canEdit = (member: EnterpriseMember) => member.status !== "removed" && member.role !== "owner" && member.id !== context.member.id && (owner || member.role === "member");
   const refresh = async (message: string) => { setSuccess(message); await load(); await onChanged(); };
+  const addMember = () => void mutate(async () => {
+    if (!canAdd) return;
+    setAddError("");
+    try {
+      if (addMode === "batch") {
+        const result = await EnterpriseApi.addMembers(id, { phones: batchPhones });
+        setBatchResult(result);
+        setBatchText(result.results.filter(row => row.status === "failed").map(row => row.phone).join("\n"));
+        if (result.failureCount === 0) await refresh(`批量处理完成：成功 ${result.successCount} 人。`);
+        else { await load(); await onChanged(); }
+      } else {
+        const member = await EnterpriseApi.addMember(id, { phone: phone.replace(/\s/g, "").replace(/^\+86/, "") });
+        closeAdding();
+        await refresh(`「${member.displayName}」已在企业成员中，可为其分配企业积分。`);
+      }
+    } catch (caught) { setAddError(errorText(caught)); }
+  });
   const incomingTransfers = transfers.filter(transfer => transfer.status === "pending" && transfer.toUserId === context.member.userId && new Date(transfer.expiresAt).getTime() > Date.now());
 
   return <section className="enterprise-management" aria-label={section === "policy" ? "企业生成设置" : section === "lifecycle" ? "企业关系管理" : "成员与邀请"}>
@@ -144,7 +172,20 @@ export function EnterpriseManagement({ context, section, onChanged }: Props) {
       {owner ? <><p>主账号须先将管理责任移交给另一位正常成员，才能退出。关闭企业前需要处理完在途任务、充值申请与剩余积分。</p><Button danger disabled={busy} onClick={() => openLifecycle("close")}>核对关闭企业条件</Button></> : <Button danger disabled={busy} onClick={() => openLifecycle("leave")}>核对并退出企业</Button>}
       {transfers.length > 0 && <><h3>主账号移交记录</h3><Table rowKey="id" pagination={false} dataSource={transfers} scroll={{ x: 520 }} columns={[{ title: "接收人", key: "recipient", render: (_, transfer) => members.find(member => member.userId === transfer.toUserId)?.displayName || (transfer.toUserId === context.member.userId ? "我" : "企业成员") }, { title: "状态", key: "state", render: (_, transfer) => <Tag>{transfer.status === "accepted" ? "已接受" : new Date(transfer.expiresAt).getTime() <= Date.now() ? "已过期" : "待接受"}</Tag> }, { title: "有效期", dataIndex: "expiresAt", render: time }]} /></>}
     </div> : <>
-      <div className="enterprise-section-heading"><div><h2>成员与权限</h2><p>管理员只管理普通成员。积分授权不会开放成员的个人钱包、素材或画布。</p></div>{canInvite && <div className="enterprise-invite-actions"><Select aria-label="邀请链接有效期" value={inviteDays} disabled={busy} onChange={value => { setInviteDays(value); invitationKey.current = undefined; }} options={[{ value: 90, label: "90 天有效" }, { value: 365, label: "1 年有效" }]}/><Button type="primary" loading={busy} onClick={() => void mutate(async () => { invitationKey.current ||= crypto.randomUUID(); const result = await EnterpriseApi.invite(id, { clientRequestId: invitationKey.current, validDays: inviteDays }); invitationKey.current = undefined; if (result.token) { setToken(result.token); setInviteExpires(result.invitation.expiresAt); setInviteCopyStatus("idle"); } setSuccess(result.token ? "分享链接已创建，有效期内可供多人加入。" : "邀请已创建；链接仅首次返回，如未保存可重新创建。"); await load(); })}>创建分享链接</Button></div>}</div>
+      <div className="enterprise-section-heading"><div><h2>成员与权限</h2><p>管理员只管理普通成员。积分授权不会开放成员的个人钱包、素材或画布。</p></div>{canInvite && <div className="enterprise-invite-actions"><Button type="primary" disabled={busy} aria-expanded={adding} aria-controls="enterprise-add-member" onClick={() => { setAdding(true); setAddError(""); }}>添加成员</Button><Select aria-label="邀请链接有效期" value={inviteDays} disabled={busy} onChange={value => { setInviteDays(value); invitationKey.current = undefined; }} options={[{ value: 90, label: "90 天有效" }, { value: 365, label: "1 年有效" }]}/><Button loading={inviting} disabled={busy} onClick={() => void mutate(async () => { setInviting(true); try { invitationKey.current ||= crypto.randomUUID(); const result = await EnterpriseApi.invite(id, { clientRequestId: invitationKey.current, validDays: inviteDays }); invitationKey.current = undefined; if (result.token) { setToken(result.token); setInviteExpires(result.invitation.expiresAt); setInviteCopyStatus("idle"); } setSuccess(result.token ? "分享链接已创建，有效期内可供多人加入。" : "邀请已创建；链接仅首次返回，如未保存可重新创建。"); await load(); } finally { setInviting(false); } })}>创建分享链接</Button></div>}</div>
+      {canInvite && adding && <form id="enterprise-add-member" className="enterprise-add-member" onSubmit={event => { event.preventDefault(); if (canAdd && !busy) addMember(); }}>
+        <div><h3>通过手机号添加成员</h3><p id="enterprise-add-member-help">输入对方已验证的手机号，直接加入「{context.enterprise.name}」。对方需已登录并开通数字资产平台；未注册的同事可通过分享链接加入。</p></div>
+        <div className="enterprise-add-mode" role="group" aria-label="添加成员方式">{([{ value: "single", label: "单个添加" }, { value: "batch", label: "批量添加" }] as const).map(mode => <button key={mode.value} type="button" aria-pressed={addMode === mode.value} disabled={busy} onClick={() => { setAddMode(mode.value); setAddError(""); }}>{mode.label}</button>)}</div>
+        <label htmlFor={addMode === "single" ? "enterprise-member-phone" : "enterprise-member-phones"}>{addMode === "single" ? "手机号" : "手机号列表"}</label>
+        <div className="enterprise-add-member-fields">
+          {addMode === "single" ? <Input id="enterprise-member-phone" type="tel" inputMode="tel" autoComplete="off" autoFocus maxLength={24} value={phone} disabled={busy} aria-invalid={!!addError} aria-describedby={addError ? "enterprise-add-member-error enterprise-add-member-help" : "enterprise-add-member-help"} onChange={event => { setPhone(event.target.value); setAddError(""); }} placeholder="输入 11 位手机号"/> : <Input.TextArea id="enterprise-member-phones" value={batchText} disabled={busy} maxLength={3300} autoSize={{ minRows: 5, maxRows: 10 }} aria-invalid={!!addError || batchPhones.length > 100} aria-describedby={addError ? "enterprise-add-member-error enterprise-batch-help" : "enterprise-batch-help"} onChange={event => { setBatchText(event.target.value); setAddError(""); }} placeholder={"每行一个手机号，也可用逗号或分号分隔\n例如：13800138000\n13900139000"}/>}
+          <Button type="primary" htmlType="submit" loading={busy} disabled={!canAdd}>{addMode === "single" ? "确认添加" : `确认添加 ${batchPhones.length} 人`}</Button><Button disabled={busy} onClick={closeAdding}>取消</Button>
+        </div>
+        {addMode === "batch" && <p id="enterprise-batch-help" role="status">已识别 {batchPhones.length} 个手机号，重复号码已合并。每次最多 100 人；失败项会保留，可修改后重试。</p>}
+        <p>添加后为普通成员，不自动分配积分。一个账号同时只能加入一家企业。</p>
+        {addError && <div id="enterprise-add-member-error"><Alert type="error" showIcon title={addError}/></div>}
+        {addMode === "batch" && batchResult && <section aria-label="批量添加结果"><h3>处理结果：成功 {batchResult.successCount} 人，失败 {batchResult.failureCount} 人</h3><ul className="enterprise-add-results">{batchResult.results.map(row => <li key={row.phone}><div><strong>{row.phone}</strong><span>{row.status === "success" ? "已在企业中" : "添加失败"}</span></div><p>{row.status === "success" ? row.member?.displayName : row.message}</p></li>)}</ul></section>}
+      </form>}
       {canManage || owner ? <><Table rowKey="id" dataSource={members} pagination={false} scroll={{ x: 860 }} locale={{ emptyText: "暂无成员" }} columns={[
         { title: "成员", dataIndex: "displayName" }, { title: "角色", dataIndex: "role", render: (value: EnterpriseMember["role"]) => roleNames[value] }, { title: "状态", dataIndex: "status", render: (value: EnterpriseMember["status"]) => <Tag>{stateNames[value]}</Tag> },
         { title: "附加授权", key: "grants", render: (_, member) => [member.capabilities.pointsManage && "积分管理", member.capabilities.billingRead && "企业账单", member.capabilities.rechargeRequest && "申请充值"].filter(Boolean).join("、") || "无" },

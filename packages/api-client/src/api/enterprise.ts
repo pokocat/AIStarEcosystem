@@ -1,5 +1,5 @@
 import { apiFetch, apiFetchPaginated, ApiError, API_BASE_URL } from "../_client";
-import type { EnterpriseInvitationPreview } from "@ai-star-eco/types/enterprise";
+import type { EnterpriseInvitationPreview, EnterpriseMemberAddRequest, EnterpriseMemberBatchAddRequest, EnterpriseMemberBatchAddResult } from "@ai-star-eco/types/enterprise";
 import type { EnterpriseContext, EnterpriseCreateRequest, EnterpriseInvitationCreated, EnterpriseInvitationRequest, EnterpriseInvitationAcceptRequest, EnterpriseMember, EnterpriseMemberUpdateRequest, EnterprisePolicy, EnterprisePolicyUpdateRequest, EnterpriseOwnershipRequest, EnterpriseOwnershipTransfer, EnterpriseAudit, EnterpriseInvitation } from "@ai-star-eco/types/enterprise";
 import type { PaginatedResponse } from "@ai-star-eco/types/_shared";
 import type { EnterpriseWalletSummary, EnterpriseMemberBalance, EnterprisePointsDirection, EnterprisePointsPreviewRequest, EnterprisePointsRequest, EnterprisePointsPreview, EnterprisePointsBatch, EnterprisePointsTransfer, EnterpriseRechargeOrder, EnterpriseRechargeRequest } from "@ai-star-eco/types/enterprise";
@@ -8,6 +8,8 @@ const BASE = "/v1/ip-studio/enterprises";
 export function mine(): Promise<EnterpriseContext[]> { return apiFetch(`${BASE}`); }
 export function create(body: EnterpriseCreateRequest): Promise<EnterpriseContext> { return apiFetch(`${BASE}`, { method: "POST", body }); }
 export function context(id: string): Promise<EnterpriseContext> { return apiFetch(`${BASE}/${encodeURIComponent(id)}`); }
+export function addMember(id: string, body: EnterpriseMemberAddRequest): Promise<EnterpriseMember> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/members`, { method: "POST", body }); }
+export function addMembers(id: string, body: EnterpriseMemberBatchAddRequest): Promise<EnterpriseMemberBatchAddResult> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/members/batch`, { method: "POST", body }); }
 export function invite(id: string, body: EnterpriseInvitationRequest): Promise<EnterpriseInvitationCreated> { return apiFetch(`${BASE}/${encodeURIComponent(id)}/invitations`, { method: "POST", body }); }
 export function accept(body: EnterpriseInvitationAcceptRequest): Promise<EnterpriseContext> { return apiFetch("/v1/ip-studio/enterprise-invitations/accept", { method: "POST", body }); }
 /** Anonymous and read-only: do not refresh/login or forward a stored token to preview an invitation. */

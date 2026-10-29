@@ -9,7 +9,7 @@ vi.mock("@/canvas-bridge/enterprise-api", () => ({ EnterpriseApi: api }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <div>需要开通</div> }));
 vi.mock("@/proto/api", () => ({ WalletApi: { balance: vi.fn().mockResolvedValue({ totalBalance: 200 }) } }));
 vi.mock("next/link", () => ({ default: (props: any) => <a {...props}/> }));
-vi.mock("./studio-page", () => ({ StudioPage: ({ title, actions, children }: any) => <main><h1>{title}</h1>{actions}{children}</main>, StudioPageFilters: ({ items, onChange }: any) => <nav>{items.map((item: any) => <button key={item.value} onClick={() => onChange(item.value)}>{item.label}</button>)}</nav> }));
+vi.mock("./studio-page", () => ({ StudioPage: ({ title, description, actions, children }: any) => <main><h1>{title}</h1><p>{description}</p>{actions}{children}</main>, StudioPageFilters: ({ items, onChange }: any) => <nav>{items.map((item: any) => <button key={item.value} onClick={() => onChange(item.value)}>{item.label}</button>)}</nav> }));
 vi.mock("./studio-errors", () => ({ normalizeStudioError: (error: any) => ({ code: error.code || "ERROR", message: error.message || String(error) }) }));
 vi.mock("antd", () => ({
   ConfigProvider: ({ children }: any) => children,
@@ -136,4 +136,17 @@ test("disabled feature exposes no controls and does not request enterprise APIs"
   render(<EnterpriseWorkspace/>);
   expect(screen.getByText(/企业管理尚未开放/)).toBeDefined();
   expect(api.mine).not.toHaveBeenCalled();
+});
+
+
+test("refresh preserves the complete old snapshot on failure and never mixes enterprises", async () => {
+  render(<EnterpriseWorkspace/>);
+  await screen.findByText("创作企业 · 主账号");
+  api.mine.mockResolvedValue([{ ...ownerContext, enterprise: { id: "new-team", name: "另一家企业" } }]);
+  api.wallet.mockRejectedValueOnce(new Error("余额刷新失败"));
+  fireEvent.click(screen.getByRole("button", { name: "刷新企业数据" }));
+  await screen.findByText(/数据刷新失败，当前显示上次读取的内容/);
+  expect(screen.getByText("创作企业 · 主账号")).toBeDefined();
+  expect(screen.queryByText("另一家企业 · 主账号")).toBeNull();
+  expect(screen.getByText("张三")).toBeDefined();
 });

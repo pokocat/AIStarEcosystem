@@ -15,6 +15,11 @@ export interface EnterpriseMember {
 }
 export interface EnterpriseContext { enterprise: Enterprise; member: EnterpriseMember; permissions: EnterprisePermission[]; }
 export interface EnterpriseCreateRequest { name: string; clientRequestId: string; }
+/** Adds an existing, phone-verified product account as an ordinary member. */
+export interface EnterpriseMemberAddRequest { phone: string; }
+export interface EnterpriseMemberBatchAddRequest { phones: string[]; }
+export interface EnterpriseMemberAddResult { phone: string; status: "success" | "failed"; member?: EnterpriseMember | null; errorCode?: string | null; message?: string | null; }
+export interface EnterpriseMemberBatchAddResult { results: EnterpriseMemberAddResult[]; successCount: number; failureCount: number; }
 export interface EnterpriseInvitationRequest { clientRequestId: string; validDays?: 90 | 365; }
 export interface EnterpriseInvitation { id: string; enterpriseId: string; status: "pending" | "revoked" | "expired"; expiresAt: string; }
 /** Token appears only on initial creation. Never persist it in localStorage or logs. */

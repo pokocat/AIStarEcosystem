@@ -11,6 +11,10 @@ public final class EnterpriseDtos {
     public record Member(String id,String enterpriseId,String userId,String displayName,String role,String status,Capabilities capabilities,long version,Instant joinedAt) {}
     public record Context(Enterprise enterprise,Member member,List<String> permissions) {}
     public record CreateRequest(String name,String clientRequestId) {}
+    public record MemberAddRequest(String phone) {}
+    public record MemberBatchAddRequest(List<String> phones) {}
+    public record MemberAddResult(String phone,String status,Member member,String errorCode,String message) {}
+    public record MemberBatchAddResult(List<MemberAddResult> results,int successCount,int failureCount) {}
     public record InvitationRequest(String clientRequestId,Integer validDays) {
         public InvitationRequest(String clientRequestId) { this(clientRequestId,null); }
     }

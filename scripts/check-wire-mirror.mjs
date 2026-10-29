@@ -70,6 +70,8 @@ const MIRRORS = [
     pairs: {
       Capabilities: "EnterpriseCapabilities", Enterprise: "Enterprise", Member: "EnterpriseMember",
       Context: "EnterpriseContext", CreateRequest: "EnterpriseCreateRequest",
+      MemberAddRequest: "EnterpriseMemberAddRequest", MemberBatchAddRequest: "EnterpriseMemberBatchAddRequest",
+      MemberAddResult: "EnterpriseMemberAddResult", MemberBatchAddResult: "EnterpriseMemberBatchAddResult",
       InvitationRequest: "EnterpriseInvitationRequest", Invitation: "EnterpriseInvitation",
       InvitationCreated: "EnterpriseInvitationCreated", AcceptRequest: "EnterpriseInvitationAcceptRequest",
       InvitationPreview: "EnterpriseInvitationPreview",
