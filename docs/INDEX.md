@@ -219,6 +219,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [导演台正文冻结生产发布与验收](releases/director-script-freeze-production-release-20261029.md)：main `d67841214`，server + Studio；正文冻结、跨页保存拒绝、真实修改建议采用/撤销，13 积分无重复结算，发布窗口短暂 502 已恢复（last-reviewed 2026-10-29）。
 - [导演台作品删除生产发布](releases/director-delete-production-release-20261028.md)：main `cb9190489`，server + web-aiavatar；146 条后端、65 条前端及一次性 MySQL 删除并发 11 条通过，线上确认/取消与不存在状态验收，未删除生产作品（last-reviewed 2026-10-28）。
 
 - [Studio JSON 的 JVM-Sandbox 无重启热修复](releases/studio-json-jvm-sandbox-release-20261025.md) — 干净 main 制品、Java 17 / Dragonwell 隔离验证、原生产 PID 内激活、44 次健康采样与卸载回退；last-reviewed: 2026-10-25。
