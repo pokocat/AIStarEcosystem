@@ -263,6 +263,11 @@ export interface StudioNodeMetadata {
     scriptMode?: "original" | "adapt"; scriptSourceNodeId?: string;
     video: { mode: VideoStudioMode; tier: string; seed?: number; firstId?: string; lastId?: string } };
   sourceRange?: {startSec:number;endSec:number;storageKey:string};
+  /**
+   * AI 视频页「编导」的一轮（docs/studio-scene-creation.md §8）：用户这句话（没写就是空串）、是不是在改上一版，
+   * 以及写这版脚本时的时长 / 画面 / 语言。脚本正文就是节点 content，任务和计费是这个节点上普通的文字任务。
+   */
+  sceneDirector?: { ask: string; revision: boolean; duration: number; ratio: string; language: string; at: string };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
   /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */

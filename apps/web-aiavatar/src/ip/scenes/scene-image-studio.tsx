@@ -20,8 +20,8 @@ import { studioImageResolution, studioImageSizeLabel } from "../studio-generatio
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
-import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitImageRow, rowUploads, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb, sceneHintText } from "./scene-layout";
+import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
+import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb, sceneFailureText, sceneHintText } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const POLL_MS = 1500;
@@ -229,7 +229,7 @@ export function SceneImageStudio() {
       let request: Parameters<typeof submitStudioRun>[1] | undefined;
       await persist(doc => {
         if (typeof input === "string") {
-          const again = resubmitImageRow(doc, input);
+          const again = resubmitRow(doc, input);
           if (!again) throw new Error("这一行已经不在了，请重新生成");
           request = again.request; nodeId = input;
           return again.doc;
@@ -287,7 +287,7 @@ export function SceneImageStudio() {
 
     <section className="scene-composer" aria-label="图片设置">
       <header className="scene-composer-head">
-        <SceneThumb id={scene.id} title={scene.title} size={52}/>
+        <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={52}/>
         <div><strong>{scene.title}</strong><small>{scene.description}</small></div>
         <button type="button" className="scene-new" onClick={() => { showDraft(undefined); pickScene(scene); writeQuery(scene.id); }}><Plus size={16}/>新建</button>
       </header>
@@ -356,7 +356,7 @@ export function SceneImageStudio() {
         {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
       {tab === "example" ? (isFree
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
-          : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description}/>)
+          : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description} cover={scene.coverUrl} examples={scene.examples}/>)
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
@@ -445,10 +445,4 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
     <h3>生成张数</h3>
     <div className="scene-choice-row">{counts.map(c => <button key={c} type="button" aria-pressed={c === count} onClick={() => onCount(c)}>{c} 张</button>)}</div>
   </div>;
-}
-
-/** 失败原因说人话：模型那边限流时，厂商原话（「实名认证以获取更高 rpm」之类）对老板没有意义，原话留在悬停提示里。 */
-export function sceneFailureText(code?: string, details?: string): string {
-  if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return "模型那边请求太多，稍等一分钟再点「重新生成」；没出来的图不扣积分";
-  return details || "生成失败，没出来的图不扣积分";
 }

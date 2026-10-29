@@ -10,7 +10,7 @@ const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/m
 const api = vi.hoisted(() => ({
   push: vi.fn(), failure: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
-  fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(),
+  fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }) }));
 vi.mock("next/link", () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
@@ -18,7 +18,7 @@ vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGa
 vi.mock("@/components/hub/ui", () => ({ HubTabBar: () => null }));
 vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProjects: api.listProjects, createProject: api.createProject, updateProject: api.updateProject, getProject: api.getProject,
   listScenes: api.listScenes, composeScene: api.composeScene } }));
-vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun }));
+vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
@@ -75,28 +75,80 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   expect(api.submit).toHaveBeenCalledTimes(1);
 });
 
-test("视频：放上商品图就能发（一句话可以不写）；素材进画布、拼好的话存成助手的第一句，打开画布自动发出", async () => {
+// 照线上 H3 的形状：5–15 秒、全能参考（图 ≤9、声音 ≤3）、出片前会改写描述。
+const limit = (mediaType: string, maxCount: number) => ({ mediaType, maxCount, maxBytes: 1e8, formats: [], minDurationSec: null, maxDurationSec: null });
+const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: true, supportsPromptOptimization: true, batchCounts: [1],
+  contract: { minSeconds: 5, maxSeconds: 15, promptMaxChars: 7000, seedMax: 100,
+    tiers: [{ tier: "768p", canvases: [{ aspectRatio: "9:16", width: 432, height: 768, outputSizeCode: null }, { aspectRatio: "16:9", width: 768, height: 432, outputSizeCode: null }] }],
+    modes: [{ mode: "t2v", needsFirstFrame: false, needsLastFrame: false, frameImage: null, references: null },
+      { mode: "universal_reference_video", needsFirstFrame: false, needsLastFrame: false, frameImage: null,
+        references: { image: limit("image", 9), video: limit("video", 1), audio: limit("audio", 3), maxImagesWithVideo: 4, maxTotal: 12, minVisual: 1, maxAudioTotalSec: 30 } }] },
+  pricing: { perSecond: { t2v: { "768p": 40 }, universal_reference_video: { "768p": 40 } }, freeRefImages: 9, extraRefImagePerSecond: 0, promptOptimizationPerCall: 0 } };
+
+test("视频：编导看商品图写脚本（请求先存进画布、带图）；用这个脚本生成时按模型时长报价，图按顺序交给全能参考", async () => {
   window.history.replaceState(null, "", "/video?scene=ecom-talking");
-  api.composeScene.mockResolvedValue({ text: "服务端拼好的话：我的要求：保湿精华，不黏腻", skillKey: "video-generation" });
+  api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null,
+    textModels: [{ endpointId: "ep-qwen", name: "Qwen", isDefault: true, supportsVision: true, tokenPricing: { inputCreditsPerK: 1, outputCreditsPerK: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCost: 21 } }] });
+  api.videoModels.mockResolvedValue([H3]);
+  api.composeScene.mockResolvedValue({ text: "服务端拼好的写脚本要求" });
   api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/p.jpg", url: "blob:p", mediaType: "image", mimeType: "image/jpeg", bytes: 1, fileName: "p.jpg", width: 800, height: 800 });
+  const script = "镜头1（0–3秒）：图1 的精华放在洗手台上；台词：干皮看过来";
+  api.submit.mockImplementation(async (_p: string, r: any) => ({ id: r.operation === "text" ? "IPR-s" : "IPR-v", status: "running", output: {} }));
+  api.readRun.mockImplementation(async (id: string) => id === "IPR-s"
+    ? { id, status: "done", kind: "studio-text", inputs: api.submit.mock.calls[0][1], output: { textRevision: { summary: "先讲干皮的烦恼", content: script } } }
+    : { id, status: "running", output: {} });
   await act(async () => { render(<SceneVideoStudio/>); });
-  const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
+  const send = () => screen.getByRole("button", { name: "让编导写脚本" }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
   expect(send().disabled).toBe(true);
-  expect(screen.getByText("先放商品图")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "开头用一个反常识的说法抓人" }));
   fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华，不黏腻" } });
   await act(async () => { upload(document.querySelector('.scene-media-row input[type="file"]')!); });
   expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华", sceneId: "ecom-talking" });
-  expect(send().disabled).toBe(false);
+  // 默认 25 秒超过模型上限：一次出片按模型最长 15 秒写，更长的交给助手分段做。
+  expect(screen.getByText(/当前模型一条最长 15 秒/)).toBeTruthy();
+  await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });
+
+  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script", sceneId: "ecom-talking", text: "保湿精华，不黏腻",
+    imageTitles: ["商品图 1"], duration: 15, ratio: "9:16", language: "中文" }));
+  const textRequest = api.submit.mock.calls[0][1];
+  expect(textRequest).toMatchObject({ operation: "text", prompt: "服务端拼好的写脚本要求", textEdit: { content: "" }, readVisuals: true, model: "ep-qwen", maxCost: 21 });
   const saved = api.updateProject.mock.calls[0][1].doc;
-  expect(saved.nodes.map((n: any) => n.title)).toEqual(["商品图 1"]);
-  const brief = saved.assistantConversations[0];
-  expect(brief.metadata.studioStart).toBe("assistant");
-  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", sceneId: "ecom-talking", text: "保湿精华，不黏腻", imageTitles: ["商品图 1"], duration: 25, ratio: "9:16" }));
-  // 方法和话都以服务端返回的为准。
-  expect(brief.metadata.studioSkill).toBe("video-generation");
-  expect(brief.metadata.prompt).toBe("服务端拼好的话：我的要求：保湿精华，不黏腻");
+  const image = saved.nodes.find((n: any) => n.title === "商品图 1");
+  expect(textRequest.contextNodeIds).toEqual([image.id]);
+  expect(saved.nodes.find((n: any) => n.id === textRequest.nodeId)?.metadata?.studio?.request).toEqual(textRequest);
+  expect(api.updateProject.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);
+
+  const use = await screen.findByRole("button", { name: "用这个脚本生成" }, { timeout: 4000 });
+  expect(screen.getByText(/干皮看过来/)).toBeTruthy();
+  await act(async () => { fireEvent.click(use); });
+  expect((screen.getByRole("textbox", { name: "视频脚本" }) as HTMLTextAreaElement).value).toBe(script);
+  fireEvent.click(screen.getByRole("button", { name: "10 秒" }));
+  const go = screen.getByRole("button", { name: "立即生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(go.textContent).toContain("预计 400 积分"));
+  await act(async () => { fireEvent.click(go); });
+  const videoRequest = api.submit.mock.calls[1][1];
+  expect(videoRequest).toMatchObject({ operation: "video", prompt: script, durationSec: 10, aspectRatio: "9:16", count: 1, model: "ep-h3", maxCost: 400,
+    video: { mode: "universal_reference_video", resolutionTier: "768p", rewrite: "auto", references: [{ mediaType: "image", key: "ipstudio/media/u/p.jpg" }] } });
+  expect(await screen.findByText(/正在生成，一般要几分钟/)).toBeTruthy();
+});
+
+test("视频：爆款复刻要先拉片，仍交给画布里的创作助手（带场景的方法、自动发出）", async () => {
+  window.history.replaceState(null, "", "/video?scene=recreation");
+  api.videoModels.mockResolvedValue([H3]);
+  api.composeScene.mockResolvedValue({ text: "服务端拼好的话", skillKey: "reference-video-recreation" });
+  api.importMedia.mockResolvedValue({ key: "ipstudio/media/u/v.mp4", url: "blob:v", mediaType: "video", mimeType: "video/mp4", bytes: 1, fileName: "v.mp4" });
+  await act(async () => { render(<SceneVideoStudio/>); });
+  const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: "添加参考视频" }));
+  await act(async () => { fireEvent.change(document.querySelector('.scene-media-row input[type="file"]')!, { target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] } }); });
+  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "换成我的面霜" } });
+  await waitFor(() => expect(send().disabled).toBe(false));
+  await act(async () => { fireEvent.click(send()); });
+  expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video", sceneId: "recreation", text: "换成我的面霜", videoTitle: "参考视频" }));
+  const saved = api.updateProject.mock.calls.at(-1)![1].doc;
+  expect(saved.assistantConversations[0].metadata).toMatchObject({ studioStart: "assistant", studioSkill: "reference-video-recreation", prompt: "服务端拼好的话" });
   expect(api.push).toHaveBeenCalledWith("/projects/IPP-1?start=assistant&send=1");
   expect(api.submit).not.toHaveBeenCalled();
 });

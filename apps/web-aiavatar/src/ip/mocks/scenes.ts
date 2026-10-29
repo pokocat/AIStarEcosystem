@@ -29,5 +29,6 @@ export function mockCompose(r: StudioSceneComposeRequest): StudioSceneComposed {
     return { text: (r.custom?.trim() || scene?.prompt || "") + (extra ? `\n补充要求：${extra}` : "") };
   }
   const scene = MOCK_SCENES.video.find(s => s.id === r.sceneId);
+  if (r.kind === "video-script") return { text: `（演示）写一条 ${r.duration ?? scene?.duration} 秒的「${scene?.title}」短视频脚本。${r.revision ? `\n修改意见：${r.revision}` : ""}${r.text ? `\n我的要求：${r.text}` : ""}` };
   return { text: `（演示）帮我做一条 ${r.duration ?? scene?.duration} 秒的短视频，类型是「${scene?.title}」。${r.text ? `\n我的要求：${r.text}` : ""}`, skillKey: scene?.skill };
 }

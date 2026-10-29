@@ -12,6 +12,8 @@
 - `/image`：场景目录 `scene-catalog.ts`；场景描述不摆给用户，只显示场景标签 + 补充要求（`imagePrompt` 拼接，描述里不留【…】）；草稿即画布（`scene-drafts.ts` 复用 `makeStudioNode` / `applyStudioRunToDocument`），先保存带请求的节点再提交 `studio-runs`，之后只读运行记录。
 - `/video`：素材 + 一句话（商品 / 门店类可不写）→ `composeVideoBrief` 拼话存成助手第一句，`?start=assistant&send=1` 自动发出；拼话固定禁止编价格优惠；只有爆款复刻命中「等参考视频」规则（测试守着）。
 - `/scenes` 转 `/video`。无接口、无迁移。场景封面 37 张为 AI 生成示意图。
+- AI 视频改成参考站「超级编导」的出片方式：本页编导看素材写分镜脚本（普通文字任务带读图）、可改稿，「用这个脚本生成」后选模型 / 清晰度 / 时长 / 画面、确认价格出片；复刻和长片交给创作助手。
+- 两页场景后台可配置：平台配置 `studio.scene-catalog` + 后台「Studio 场景模板」（`/api/admin/studio/scenes`，增删改、分组、排序、上下架、封面与示例），整份保存带版本号、与随包目录同一套校验。
 - 未做：场景默认描述的真模型逐个验收；手机底部 tab 未加两页入口。真源 `docs/studio-scene-creation.md`。
 - 同日追加（统一端点）：场景目录搬到服务端 `ipstudio/scenes.json`（`GET /api/v1/ip-studio/scenes`），出图描述 / 交给助手的话由 `POST /api/v1/ip-studio/scenes/compose` 拼并给出方法；草稿用 `ip_project.scene_id`（V72）认；Studio 视频任务到终态即时推进制作计划（`MaterialVideoJobEnded`）。前端不再有场景数据。
 

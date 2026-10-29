@@ -5168,10 +5168,19 @@ components:
       type: object
       required: [label, required]
       properties: { label: { type: string }, required: { type: boolean }, max: { type: integer, nullable: true } }
+    StudioSceneMedia:
+      type: object
+      required: [url, mediaType]
+      properties: { url: { type: string, description: '由 key 签出的短期地址' }, mediaType: { type: string, enum: [image, video] } }
     StudioImageScene:
       type: object
       required: [id, group, title, description, refs, prompt, hint, ratio]
       properties:
+        enabled: { type: boolean, nullable: true, description: '后台：false = 下架（用户端不下发）' }
+        coverKey: { type: string, nullable: true, description: '后台：封面存储 key（ipstudio_scene/catalog/ 下）；用户端不下发' }
+        exampleKeys: { type: array, nullable: true, items: { type: string }, description: '后台：参考示例 key，最多 6 个；用户端不下发' }
+        coverUrl: { type: string, nullable: true, description: '封面签名地址；为空时前端用随包封面（按编号）' }
+        examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
         id: { type: string, example: face-turnaround }
         group: { type: string }
         title: { type: string }
@@ -5184,6 +5193,11 @@ components:
       type: object
       required: [id, group, title, description, images, character, voice, placeholder, textRequired, durations, duration, ratio, structure, ideas, skill]
       properties:
+        enabled: { type: boolean, nullable: true, description: '后台：false = 下架（用户端不下发）' }
+        coverKey: { type: string, nullable: true }
+        exampleKeys: { type: array, nullable: true, items: { type: string } }
+        coverUrl: { type: string, nullable: true }
+        examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
         id: { type: string, example: ecom-talking }
         group: { type: string }
         title: { type: string }
@@ -5194,12 +5208,12 @@ components:
         voice: { type: boolean }
         placeholder: { type: string }
         textRequired: { type: boolean }
-        durations: { type: array, items: { type: integer } }
+        durations: { type: array, items: { type: integer }, description: '交给创作助手分段做时的可选时长；编导一次出片的时长由所选视频模型决定' }
         duration: { type: integer }
         ratio: { type: string, enum: ['9:16', '16:9'] }
-        structure: { type: string }
+        structure: { type: string, description: '拍法：编导写脚本和助手出方案都按它' }
         ideas: { type: array, items: { type: string } }
-        skill: { type: string, example: video-generation }
+        skill: { type: string, enum: [video-generation, reference-video-recreation], description: 'reference-video-recreation（爆款复刻）要先拉片，只走创作助手' }
     StudioSceneCatalog:
       type: object
       required: [version, imageGroups, videoGroups, image, video]
@@ -5213,22 +5227,24 @@ components:
       type: object
       required: [kind, sceneId]
       properties:
-        kind: { type: string, enum: [image, video] }
+        kind: { type: string, enum: [image, video, video-script], description: 'image 出图描述；video 交给创作助手的话；video-script 交给编导写脚本的要求（AI 视频页）' }
         sceneId: { type: string }
-        text: { type: string, description: 'image：补充要求；video：用户写的那句' }
+        text: { type: string, description: 'image：补充要求；video / video-script：用户写的那句' }
         custom: { type: string, description: 'image：用户改过的完整描述' }
         filled: { type: array, items: { type: integer }, description: 'image：放了图的参考图位（从 0 起）' }
         imageTitles: { type: array, items: { type: string } }
         characterTitle: { type: string }
         voiceTitle: { type: string }
         videoTitle: { type: string }
-        duration: { type: integer }
+        duration: { type: integer, description: 'video：须在场景 durations 内；video-script：1–120，前端按所选视频模型给' }
         ratio: { type: string }
+        language: { type: string, description: 'video-script：台词语言，默认中文' }
+        revision: { type: string, description: 'video-script：对上一版脚本的修改意见；有它时剧情类场景可以不写 text' }
     StudioSceneComposed:
       type: object
       required: [text]
       properties:
-        text: { type: string, description: 'image：出图描述；video：交给助手的话' }
+        text: { type: string, description: 'image：出图描述；video：交给助手的话；video-script：写脚本的要求（作为 operation=text 任务的 prompt）' }
         skillKey: { type: string, nullable: true, description: 'video：该场景的方法，第一句带上它发出' }
     IpTemplate:
       type: object
@@ -11581,6 +11597,34 @@ paths:
         '409': { description: PROMPT_VERSION_CONFLICT }
 
   # ── Studio 技能库（S3；ip_skill / ip_skill_version，不可变版本；SUPER_ADMIN / OPERATOR，FINANCE_ADMIN 403） ──────────
+  /admin/studio/scenes:
+    get:
+      tags: [admin]
+      operationId: adminStudioScenes
+      description: 'Studio 场景模板（SUPER_ADMIN / OPERATOR）：当前生效的整份目录（含下架的），封面 / 示例带签名地址预览。source=default 表示还在用随包的那份（version=0）；skills 是视频场景可选的方法。'
+      responses: { '200': { description: 'ApiResponse<{catalog: StudioSceneCatalog, source: default|custom, version: integer, skills: string[]}>' } }
+    put:
+      tags: [admin]
+      operationId: adminSaveStudioScenes
+      description: '整份保存到平台配置 studio.scene-catalog，带上读到的版本号；保存前与随包目录同一套校验（编号格式与唯一、分组存在、描述不留【…】、图N 不越界、图1 必填、视频方法只能是 video-generation / reference-video-recreation、封面与示例只能是 ipstudio_scene/catalog/ 下的 key）。签名地址不入库。'
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [catalog], properties: { catalog: { $ref: '#/components/schemas/StudioSceneCatalog' }, baseVersion: { type: integer, description: '读到的版本号；还没存过是 0' } } } } } }
+      responses:
+        '200': { description: 'ApiResponse<同 GET>' }
+        '400': { description: 'STUDIO_SCENE_CATALOG_INVALID —— message 是具体哪一条不对' }
+        '409': { description: 'STUDIO_SCENE_CATALOG_STALE —— 别人先存过，刷新后再改' }
+    delete:
+      tags: [admin]
+      operationId: adminResetStudioScenes
+      description: '恢复随包的默认目录（删除平台配置）。已上传的文件不删。'
+      parameters: [{ in: query, name: baseVersion, schema: { type: integer } }]
+      responses: { '200': { description: 'ApiResponse<同 GET>' }, '409': { description: STUDIO_SCENE_CATALOG_STALE } }
+  /admin/studio/scenes/media:
+    post:
+      tags: [admin]
+      operationId: adminUploadStudioSceneMedia
+      description: '上传封面或参考示例：JPG / PNG / WEBP 图片（≤10MB）或 MP4 视频（≤50MB），按字节判类型。返回 key（写进目录）和预览地址。'
+      requestBody: { required: true, content: { multipart/form-data: { schema: { type: object, required: [file], properties: { file: { type: string, format: binary } } } } } }
+      responses: { '200': { description: 'ApiResponse<{key, url, mediaType: image|video}>' }, '400': { description: STUDIO_SCENE_MEDIA_INVALID } }
   /admin/studio/skills:
     get:
       tags: [admin-studio-skills]
@@ -14258,7 +14302,7 @@ paths:
     get:
       tags: [ipstudio]
       operationId: studioSceneCatalog
-      description: '场景目录唯一真源（resources/ipstudio/scenes.json，随代码发布）：AI 图片的场景描述与参考图位、AI 视频的拍法与方法（skill）。前端只读它，不另写一份。不扣积分。'
+      description: '场景目录唯一真源：运营在后台「Studio 场景模板」改过就用平台配置 studio.scene-catalog，否则用随包的 resources/ipstudio/scenes.json。只下发上架的场景；封面与示例是签名地址，key 与上下架标记不下发。前端只读它，不另写一份。不扣积分。'
       responses:
         '200': { description: 'ApiResponse<StudioSceneCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneCatalog' } } } }
   /v1/ip-studio/scenes/compose:
@@ -14267,7 +14311,8 @@ paths:
       operationId: studioSceneCompose
       description: >-
         按场景拼话，纯计算、不扣积分、不建任务。image：场景描述（或用户改过的完整描述）+「补充要求：…」，自由出图只用用户那句；
-        video：交给创作助手的第一句（时长、横竖屏、用户那句、素材按画布标题点名、拍法、不许编价格优惠、要成片不只要脚本）并返回该场景的方法 skillKey。
+        video：交给创作助手的第一句（时长、横竖屏、用户那句、素材按画布标题点名、拍法、不许编价格优惠、要成片不只要脚本）并返回该场景的方法 skillKey；
+        video-script：交给编导写脚本的要求（图按交给视频模型的顺序编号图1、图2…，分镜头写画面和台词，总时长等于所选时长，不许编优惠），有 revision 时先写修改意见。
         缺必填参考图 / 素材 / 那句话时 400，message 可直接给用户看。
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneComposeRequest' } } } }
       responses:

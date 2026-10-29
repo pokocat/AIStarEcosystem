@@ -551,7 +551,8 @@ public class StudioWorkflowService {
         // A skill planning text run carries a brief, not a node body to revise.
         if(!("text".equals(request.operation())&&request.skillKey()!=null))StudioTextRevision.validateInput(request);
         if(request.maxCost()!=null && request.maxCost()<0) throw bad("STUDIO_INPUT_INVALID","费用上限不能为负");
-        if(Boolean.TRUE.equals(request.readVisuals())&&!"assistant".equals(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手");
+        // 看引用的图写字：创作助手，以及普通文字创作（如 AI 视频页的编导看商品图写脚本）。模型能不能看图在下面按端点能力判。
+        if(Boolean.TRUE.equals(request.readVisuals())&&!Set.of("assistant","text").contains(request.operation()))throw bad("STUDIO_INPUT_INVALID","读取画面只能用于创作助手和文字创作");
         if(request.episodeNo()!=null && (request.episodeNo()<1 || request.episodeNo()>50)) throw bad("STUDIO_EPISODE_INVALID","请选择有效分集");
         if(request.mode()!=null && !Set.of("general","original","adapt","director","segments").contains(request.mode())) throw bad("STUDIO_MODE_INVALID","请选择创作模式");
         if(request.contextNodeIds()!=null && (request.contextNodeIds().size()>16 || request.contextNodeIds().stream().anyMatch(Objects::isNull))) throw bad("STUDIO_CONTEXT_LIMIT","最多引用 16 个画布对象");

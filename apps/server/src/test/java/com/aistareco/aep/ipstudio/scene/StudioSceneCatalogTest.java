@@ -80,6 +80,54 @@ class StudioSceneCatalogTest {
         }
     }
 
+    private static StudioSceneCatalog.ComposeRequest script(String id, String text, List<String> images, Integer duration, String revision) {
+        return new StudioSceneCatalog.ComposeRequest("video-script", id, text, null, null, images, "出镜人物", null, null, duration, "9:16", null, revision);
+    }
+
+    @Test
+    void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
+        String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "镜头N", "正好 10 秒", "先看图")
+                .containsPattern("没写的信息.*不要自己编");
+        // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
+        assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
+        assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
+        assertThat(catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 10, "口语一点")).text())
+                .startsWith("按这条修改意见改当前脚本，没提到的地方保持不变：口语一点").contains("原来的要求");
+        // 剧情类必须写一句，但改稿时有修改意见就够了。
+        assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
+        assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
+    }
+
+    @Test
+    void scenesTheOperatorsTookDownDisappearFromThePagesButOldDraftsStillResolve() {
+        var c = catalog.catalog();
+        var off = c.video().get(0);
+        var edited = new StudioSceneCatalog.Catalog(c.version(), c.imageGroups(), c.videoGroups(), c.image(),
+                c.video().stream().map(s -> s.id().equals(off.id()) ? new StudioSceneCatalog.VideoScene(s.id(), s.group(), s.title(), s.description(), s.images(), s.video(),
+                        s.character(), s.voice(), s.placeholder(), s.textRequired(), s.durations(), s.duration(), s.ratio(), s.structure(), s.ideas(), s.skill(),
+                        false, StudioSceneCatalog.MEDIA_PREFIX + "a.webp", List.of(StudioSceneCatalog.MEDIA_PREFIX + "b.mp4"), null, null) : s).toList());
+        var custom = new StudioSceneCatalog(edited);
+        var published = custom.published(k -> "signed:" + k);
+        assertThat(published.video()).noneMatch(s -> s.id().equals(off.id())).allMatch(s -> s.coverKey() == null && s.enabled() == null);
+        assertThat(custom.video(off.id())).isPresent();
+        var withMedia = StudioSceneCatalog.withMedia(edited, k -> "signed:" + k).video().get(0);
+        assertThat(withMedia.coverUrl()).isEqualTo("signed:" + StudioSceneCatalog.MEDIA_PREFIX + "a.webp");
+        assertThat(withMedia.examples()).singleElement().satisfies(m -> assertThat(m.mediaType()).isEqualTo("video"));
+    }
+
+    @Test
+    void aCatalogMayOnlyPointAtFilesUploadedForScenes() {
+        var c = catalog.catalog();
+        var s = c.image().get(1);
+        var foreign = new StudioSceneCatalog.ImageScene(s.id(), s.group(), s.title(), s.description(), s.refs(), s.prompt(), s.hint(), s.ratio(),
+                true, "ipstudio_source/someone/photo.png", null, null, null);
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(new StudioSceneCatalog.Catalog(1, c.imageGroups(), c.videoGroups(), List.of(foreign), List.of())))
+                .hasMessageContaining("后台上传");
+        assertThatThrownBy(() -> StudioSceneCatalog.validateJson(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("version", 1)))
+                .isInstanceOf(BusinessException.class);
+    }
+
     @Test
     void aCatalogThatLeavesBlanksOrPointsAtMissingPhotosDoesNotStart() {
         var c = catalog.catalog();

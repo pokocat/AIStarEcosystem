@@ -1,6 +1,7 @@
 package com.aistareco.aep.ipstudio.controller;
 
 import com.aistareco.aep.ipstudio.scene.StudioSceneCatalog;
+import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.common.ApiResponse;
 import org.springframework.web.bind.annotation.*;
 
@@ -8,12 +9,14 @@ import org.springframework.web.bind.annotation.*;
 @RestController @RequestMapping("/api/v1/ip-studio/scenes")
 public class StudioSceneController {
     private final StudioSceneCatalog scenes;
-    public StudioSceneController(StudioSceneCatalog scenes) { this.scenes = scenes; }
+    private final FileStorageService storage;
+    public StudioSceneController(StudioSceneCatalog scenes, FileStorageService storage) { this.scenes = scenes; this.storage = storage; }
 
+    /** 上架的场景；封面和参考示例是签过名的地址。运营在后台改过就是改过的那份。 */
     @GetMapping
-    public ApiResponse<StudioSceneCatalog.Catalog> catalog() { return ApiResponse.of(scenes.catalog()); }
+    public ApiResponse<StudioSceneCatalog.Catalog> catalog() { return ApiResponse.of(scenes.published(storage::signedUrl)); }
 
-    /** 出图描述（场景描述 + 补充要求）或交给创作助手的话（带该场景的方法）；缺必填素材时 400，原因可直接给用户看。 */
+    /** 出图描述、编导写脚本的要求或交给创作助手的话（带该场景的方法）；缺必填素材时 400，原因可直接给用户看。 */
     @PostMapping("/compose")
     public ApiResponse<StudioSceneCatalog.Composed> compose(@RequestBody StudioSceneCatalog.ComposeRequest request) {
         return ApiResponse.of(scenes.compose(request));

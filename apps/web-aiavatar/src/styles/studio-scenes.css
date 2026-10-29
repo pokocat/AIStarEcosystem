@@ -276,3 +276,63 @@ html:not([data-layout="desktop"]) .scene-video-stage { padding: 16px; }
 html:not([data-layout="desktop"]) .scene-idea-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .scene-row-actions button.is-primary { border-color: var(--ip-ink); background: var(--ip-ink); color: #fff; }
 .scene-row-actions button.is-primary:hover { background: #323e45; }
+
+/* ── AI 视频：编导对话（照参考站「超级编导」）。你说的话靠右，编导的脚本是一张卡；点「用这个脚本生成」切到生成模式 ── */
+.scene-director-thread { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 16px 14px; }
+.scene-director-thread>.scene-video-stage { flex: 1; }
+.scene-director-intro { max-width: 380px; color: var(--ip-muted); font-size: 13px; line-height: 1.7; }
+.scene-director-turn { display: flex; flex-direction: column; gap: 8px; }
+.scene-director-ask { align-self: flex-end; max-width: 86%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--ip-soft); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.scene-director-ask.is-empty { color: var(--ip-muted); }
+.scene-script-card { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border: 1px solid var(--ip-line); border-radius: 14px; background: var(--ip-paper); }
+.scene-script-card.is-error { border-color: #ecd0d4; }
+.scene-script-card>header { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.scene-script-card>header svg { color: var(--ip-gold); }
+.scene-script-card>header span { margin-left: auto; color: var(--ip-muted); font-size: 12px; }
+.scene-script-state { display: flex; align-items: center; gap: 6px; color: var(--ip-muted); font-size: 13px; }
+.scene-script-state.is-failed { color: var(--ip-error); overflow-wrap: anywhere; }
+.scene-script-summary { color: var(--ip-muted); font-size: 12.5px; line-height: 1.6; }
+.scene-script-text { margin: 0; max-height: 320px; overflow-y: auto; font: inherit; font-size: 13.5px; line-height: 1.75; white-space: pre-wrap; overflow-wrap: anywhere; }
+.scene-script-card>footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.scene-script-card>footer button { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); font-size: 12.5px; }
+.scene-script-card>footer button:hover { background: var(--ip-soft); }
+.scene-script-card>footer button.is-primary { border-color: var(--ip-ink); background: var(--ip-ink); color: #fff; }
+.scene-script-card>footer button.is-primary:hover { background: #323e45; }
+.scene-script-card>footer small { margin-left: auto; color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.scene-director-long { margin: -2px 2px 0; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
+.scene-director-long button { padding: 0; border: 0; background: transparent; color: var(--ip-ink); font-size: 12px; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }
+
+.scene-generate { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; overflow-y: auto; margin: 12px 14px 14px; padding: 12px; border: 1px solid var(--ip-line); border-radius: 16px; background: var(--ip-paper); box-shadow: 0 10px 30px rgba(25,34,41,.06); }
+.scene-generate>header { display: flex; align-items: center; gap: 10px; }
+.scene-generate>header strong { font-size: 14px; }
+.scene-generate-back { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border: 1px solid var(--ip-line); border-radius: 999px; background: var(--ip-soft); font-size: 12.5px; }
+.scene-generate>textarea { flex: 1 1 200px; width: 100%; min-height: 160px; padding: 10px; border: 1px solid var(--ip-line); border-radius: 10px; background: var(--ip-paper); font-size: 13.5px; line-height: 1.7; resize: vertical; outline: none; }
+.scene-generate>textarea:focus { border-color: #9aa3ab; }
+.scene-generate-meta { display: flex; align-items: center; gap: 8px; color: var(--ip-muted); font-size: 12px; }
+.scene-generate-meta small { margin-left: auto; font-variant-numeric: tabular-nums; }
+.scene-generate-meta small.is-over { color: var(--ip-error); }
+.scene-generate-refs { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.scene-generate-refs i { max-width: 160px; padding: 2px 8px; border-radius: 999px; background: var(--ip-soft); color: var(--ip-ink); font-style: normal; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-generate-settings { display: flex; flex-direction: column; gap: 8px; }
+.scene-gen-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.scene-gen-row>span { flex: 0 0 44px; color: var(--ip-muted); font-size: 12.5px; }
+.scene-gen-row>.scene-choice-row { flex: 1; flex-wrap: wrap; }
+.scene-gen-row .scene-choice-row button { flex: 0 1 auto; min-width: 64px; min-height: 32px; padding: 0 10px; }
+.scene-gen-row .studio-select-trigger { min-height: 32px; }
+.scene-generate .scene-go { margin: 2px 0 0 !important; }
+.scene-generate .scene-note { margin: 0; }
+
+.scene-video-row .scene-video-player { display: block; width: 100%; max-height: 520px; margin-top: 12px; border-radius: 10px; background: #0f1418; }
+.scene-video-placeholder { display: block; margin-top: 12px; border-radius: 10px; background: linear-gradient(110deg, var(--ip-soft) 30%, #fbfbfa 50%, var(--ip-soft) 70%); background-size: 220% 100%; animation: scene-shimmer 1.6s linear infinite; }
+.scene-video-placeholder.is-tall { width: min(100%, 240px); aspect-ratio: 9 / 16; }
+.scene-video-placeholder.is-wide { width: 100%; aspect-ratio: 16 / 9; }
+@media (prefers-reduced-motion: reduce) { .scene-video-placeholder { animation: none; } }
+
+.scene-example-media { margin-top: 18px; border-radius: 16px; overflow: hidden; box-shadow: 0 18px 40px rgba(25,34,41,.12); background: var(--ip-soft); }
+.scene-example-media img, .scene-example-media video { display: block; max-width: min(100%, 420px); max-height: 460px; object-fit: contain; }
+.scene-example-dots { display: flex; gap: 6px; }
+.scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: #ccd1d5; transition: width 160ms var(--ip-ease); }
+.scene-example-dots button[aria-current="true"] { width: 20px; background: var(--ip-ink); }
+.scene-generate-note { margin: 0; color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
+.scene-director-thread[hidden] { display: none; }
+.scene-studio .scene-go>span { white-space: nowrap; }

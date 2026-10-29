@@ -3,22 +3,25 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil } from "lucide-react";
-import type { IpProjectSummary } from "@ai-star-eco/types";
+import type { IpProjectSummary, StudioSceneMedia } from "@ai-star-eco/types";
 import { formatDateTime } from "@/lib/datetime";
 import { sceneCover } from "./scene-catalog";
 
-/** 场景封面；图没到（或加载失败）时退回一块带首字的色块，不出现裂图。 */
-export function SceneThumb({ id, title, size = 44 }: { id: string; title: string; size?: number }) {
+/**
+ * 场景封面：运营在后台传了就用传的，没传用随包的封面图（按编号），都没有时退回一块带首字的色块，不出现裂图。
+ */
+export function SceneThumb({ id, title, cover, size = 44 }: { id: string; title: string; cover?: string | null; size?: number }) {
   // 记的是「哪一张」失败了：同一个位置换场景时，新场景的图照样去加载。
-  // 「自由出图」没有固定画面，直接用色块，不去请求一张不存在的图。
-  const [failedId, setFailedId] = useState<string>();
-  const failed = id === "free" || failedId === id;
+  // 「自由出图」没有固定画面（运营没传封面时），直接用色块，不去请求一张不存在的图。
+  const src = cover || sceneCover(id);
+  const [failed, setFailed] = useState<string>();
+  const empty = (!cover && id === "free") || failed === src;
   return <span className="scene-thumb" style={{ width: size, height: size }} aria-hidden="true">
-    {failed ? <b>{title.slice(0, 1)}</b> : <img key={id} src={sceneCover(id)} alt="" loading="lazy" onError={() => setFailedId(id)}/>}
+    {empty ? <b>{title.slice(0, 1)}</b> : <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed(src)}/>}
   </span>;
 }
 
-export type SceneListItem = { id: string; title: string; description: string };
+export type SceneListItem = { id: string; title: string; description: string; coverUrl?: string | null };
 
 /** 左栏：按分组列出场景，点一下换场景。 */
 export function SceneList({ heading, groups, current, onPick, top }: {
@@ -36,7 +39,7 @@ export function SceneList({ heading, groups, current, onPick, top }: {
     if (at.left < box.left || at.right > box.right) list.scrollLeft += at.left - box.left - 24;
   }, [current, collapsed]);
   const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} onClick={() => onPick(s.id)} aria-label={s.title} title={s.description}>
-    <SceneThumb id={s.id} title={s.title}/><span><strong>{s.title}</strong><small>{s.description}</small></span>
+    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl}/><span><strong>{s.title}</strong><small>{s.description}</small></span>
   </button></li>;
   return <aside className={`scene-list${collapsed ? " is-collapsed" : ""}`} aria-label={`${heading}场景`}>
     <header><h1>{heading}</h1><button type="button" className="scene-icon-button" aria-label={collapsed ? "展开场景列表" : "收起场景列表"} onClick={() => setCollapsed(v => !v)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></header>
@@ -63,19 +66,32 @@ export function SceneRecent({ drafts, loading, current, onOpen, allHref = "/proj
 }
 
 /** 结果区空着的时候：讲清这一页能做什么，配几张场景图。 */
-export function SceneEmpty({ title, note, covers }: { title: string; note: ReactNode; covers: { id: string; title: string }[] }) {
+export function SceneEmpty({ title, note, covers }: { title: string; note: ReactNode; covers: { id: string; title: string; coverUrl?: string | null }[] }) {
   return <div className="scene-empty">
     <h2>{title}</h2><p>{note}</p>
-    <div className="scene-empty-collage" aria-hidden="true">{covers.slice(0, 3).map((c, i) => <span key={c.id} className={`is-${i}`}><SceneThumb id={c.id} title={c.title} size={i === 1 ? 220 : 168}/></span>)}</div>
+    <div className="scene-empty-collage" aria-hidden="true">{covers.slice(0, 3).map((c, i) => <span key={c.id} className={`is-${i}`}><SceneThumb id={c.id} title={c.title} cover={c.coverUrl} size={i === 1 ? 220 : 168}/></span>)}</div>
   </div>;
 }
 
-/** 选了场景时结果区先给看「这个场景做出来大概什么样」。图是示意，不是用户的作品。 */
-export function SceneExample({ id, title, note, children }: { id: string; title: string; note: ReactNode; children?: ReactNode }) {
+/**
+ * 选了场景时结果区先给看「这个场景做出来大概什么样」：运营传了参考示例就轮播示例（图或视频），没传就放封面。
+ * 都是示意，不是用户的作品。
+ */
+export function SceneExample({ id, title, note, cover, examples, children }: {
+  id: string; title: string; note: ReactNode; cover?: string | null; examples?: StudioSceneMedia[] | null; children?: ReactNode;
+}) {
+  const list = examples ?? [];
+  const [index, setIndex] = useState(0);
+  const shown = list[Math.min(index, list.length - 1)];
   return <div className="scene-empty scene-example">
     <h2>{title}</h2><p>{note}</p>
-    <span className="scene-example-image"><SceneThumb id={id} title={title} size={320}/></span>
-    <small>示意图</small>
+    {shown ? <span className="scene-example-media">{shown.mediaType === "video"
+        ? <video key={shown.url} src={shown.url} muted loop autoPlay playsInline controls aria-label={`${title}示例`}/>
+        : <img key={shown.url} src={shown.url} alt={`${title}示例`}/>}</span>
+      : <span className="scene-example-image"><SceneThumb id={id} title={title} cover={cover} size={320}/></span>}
+    {list.length > 1 && <div className="scene-example-dots" role="group" aria-label="切换示例">{list.map((m, i) =>
+      <button key={m.url} type="button" aria-label={`查看示例 ${i + 1}`} aria-current={i === index ? "true" : undefined} onClick={() => setIndex(i)}/>)}</div>}
+    <small>示意，不是你的作品</small>
     {children}
   </div>;
 }
@@ -87,4 +103,14 @@ export function SceneNoModel({ kind }: { kind: "图片" | "视频" }) {
 /** 拼话被拒（缺图、缺那句话）是给用户的提示，不是故障：去掉追查号再就地显示，追查号留给悬停提示。 */
 export function sceneHintText(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message.replace(/ · 追查号 \S+$/, "") : fallback;
+}
+
+/**
+ * 失败原因说人话：模型那边限流、排满时，厂商原话（「实名认证以获取更高 rpm」「video queue is full」之类）对老板没有意义，
+ * 原话和追查号留在悬停提示里；其余原因去掉追查号再显示。
+ */
+export function sceneFailureText(code?: string, details?: string, thing = "图"): string {
+  if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return `模型那边请求太多，稍等一分钟再点「重新生成」；没出来的${thing}不扣积分`;
+  if (code && /QUEUE_FULL/.test(code)) return `模型那边正在排满，过几分钟再点「重新生成」；没出来的${thing}不扣积分`;
+  return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，没出来的${thing}不扣积分`;
 }

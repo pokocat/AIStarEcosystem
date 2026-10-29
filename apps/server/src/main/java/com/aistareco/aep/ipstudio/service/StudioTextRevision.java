@@ -16,13 +16,16 @@ public final class StudioTextRevision {
         若只讨论而未要求修改，content 返回原文。不要声称已经保存或生成媒体。
         """;
 
+    /**
+     * 可以带 readVisuals（看引用的图片写字，如 AI 视频页的编导看商品图写脚本）；模型能不能看图由提交处按端点能力判。
+     */
     public static void validateInput(RunRequest request) {
         if (!"text".equals(request.operation())) {
             if (request.textEdit()!=null) throw BusinessException.badRequest("STUDIO_INPUT_INVALID","文本改稿参数只能用于文本创作");
             return;
         }
         if (request.textEdit()==null || request.textEdit().content()==null || request.textEdit().content().length()>48000
-                || request.scriptEdit()!=null || request.settings()!=null || request.episodeNo()!=null || Boolean.TRUE.equals(request.readVisuals()))
+                || request.scriptEdit()!=null || request.settings()!=null || request.episodeNo()!=null)
             throw BusinessException.badRequest("STUDIO_INPUT_INVALID","文本创作需要当前正文，最多 48000 字");
     }
 

@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun } from "@ai-star-eco/types";
-import type { StudioReference, StudioRunRequest } from "@ai-star-eco/types/ip-studio-workflow";
+import type { StudioReference, StudioRunRequest, StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRunToDocument, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { IpStudioApi } from "../api";
@@ -94,11 +94,70 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
   });
 }
 
-/** 失败的那一行原地再来：同样的输入，新的请求编号；行还在原位置，失败记录不堆成一串。 */
-export function resubmitImageRow(doc: IpProjectDoc, nodeId: string): { doc: IpProjectDoc; request: StudioRunRequest } | undefined {
+/**
+ * 编导写一版脚本（AI 视频页）：画布上一个普通文字节点，任务是普通的文字任务（textEdit 是上一版脚本，第一次为空）。
+ * 素材连进来、上一版连到下一版，「在画布中继续」看得到每一版看了哪些图；请求先写进节点再提交，和出图同一套恢复规则。
+ */
+export function addScriptNode(doc: IpProjectDoc, input: {
+  ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];
+  duration: number; ratio: string; language: string; model?: string; maxCost?: number;
+}): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const previous = scriptNodes(doc).at(-1);
+  const content = previous?.metadata?.content || "";
+  const target = makeStudioNode("text");
+  const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation: "text", prompt: input.prompt, textEdit: { content },
+    contextNodeIds: input.imageIds, ...(input.imageIds.length ? { readVisuals: true } : {}),
+    ...(input.model ? { model: input.model } : {}), ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}) };
+  const at = previous ? { x: previous.position.x, y: previous.position.y + previous.height + 80 } : { x: 520, y: 120 };
+  const node: CanvasNodeData = { ...target, title: previous ? "视频脚本 · 修改" : "视频脚本", position: at, width: 480, height: 360,
+    metadata: { ...target.metadata, content, status: "loading", studio: { ...target.metadata!.studio!, request,
+      sceneDirector: { ask: input.ask, revision: input.revision, duration: input.duration, ratio: input.ratio, language: input.language, at: new Date().toISOString() } } } };
+  const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
+    ...(previous ? [previous.id] : input.materialIds).map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
+  return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
+}
+
+/** 编导写过的每一版，按先后。 */
+export function scriptNodes(doc: IpProjectDoc): CanvasNodeData[] {
+  return (doc.nodes as CanvasNodeData[]).filter(n => n.type === CanvasNodeType.Text && n.metadata?.studio?.sceneDirector)
+    .sort((a, b) => a.metadata!.studio!.sceneDirector!.at.localeCompare(b.metadata!.studio!.sceneDirector!.at));
+}
+
+/** 按脚本出一条视频：视频节点挂在脚本右边，参考素材连进来；结果、恢复和确认原任务都是画布那一套。 */
+export function addVideoRow(doc: IpProjectDoc, input: {
+  title: string; prompt: string; scriptId?: string; refIds: string[]; video: StudioVideoSettings;
+  durationSec: number; aspectRatio: string; model?: string; maxCost?: number;
+}): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const script = nodes.find(n => n.id === input.scriptId);
+  const target = makeStudioNode("video");
+  const request: StudioRunRequest = { clientRequestId: nanoid(), nodeId: target.id, operation: "video", prompt: input.prompt, references: [], video: input.video,
+    aspectRatio: input.aspectRatio, durationSec: input.durationSec, count: 1, ...(input.model ? { model: input.model } : {}),
+    ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}) };
+  const rows = videoRows(doc);
+  const x = script ? script.position.x + script.width + 90 : 1100;
+  const y = rows.length ? Math.max(...rows.map(r => r.position.y + r.height)) + 60 : script?.position.y ?? 120;
+  const node: CanvasNodeData = { ...target, title: input.title, position: { x, y },
+    metadata: { ...target.metadata, prompt: input.prompt, status: "loading", studio: { ...target.metadata!.studio!, request } } };
+  const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
+    ...[...(script ? [script.id] : []), ...input.refIds].map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
+  return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
+}
+
+/** 这张草稿里按脚本出的视频，新的在前。 */
+export function videoRows(doc: IpProjectDoc): CanvasNodeData[] {
+  return (doc.nodes as CanvasNodeData[])
+    .filter(n => n.type === CanvasNodeType.Video && n.metadata?.studio?.request?.operation === "video")
+    .sort((a, b) => b.position.y - a.position.y);
+}
+
+/** 失败的那一行（出图、脚本、视频都一样）原地再来：同样的输入，新的请求编号；行还在原位置，失败记录不堆成一串。 */
+export function resubmitRow(doc: IpProjectDoc, nodeId: string): { doc: IpProjectDoc; request: StudioRunRequest } | undefined {
   const node = (doc.nodes as CanvasNodeData[]).find(n => n.id === nodeId);
   const old = node?.metadata?.studio?.request;
   if (!node || !old) return undefined;
+  // 文字任务按节点当前正文改：失败时正文没动，原来的 textEdit 仍然对得上。
   const request: StudioRunRequest = { ...old, clientRequestId: nanoid() };
   const next = patchNode(doc, nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined, errorCode: undefined, errorLogId: undefined,
     studio: { ...n.metadata!.studio!, request, runId: undefined, task: undefined } } }));

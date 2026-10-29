@@ -1322,7 +1322,9 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 
 ## Studio 场景页（2026-10-29，本地实现，未发布）
 
-- **场景目录唯一真源**：`src/main/resources/ipstudio/scenes.json`，由 `ipstudio/scene/StudioSceneCatalog` 加载并在启动时校验（编号重复、描述点了不存在的「图N」、留【…】空位、视频场景没写方法 → 启动失败）。改场景只改这一份。
-- `GET /api/v1/ip-studio/scenes`：目录。`POST /api/v1/ip-studio/scenes/compose`：出图描述（场景描述 + 补充要求）或交给助手的话 + `skillKey`，纯计算不扣费，缺必填素材 400 `STUDIO_SCENE_INPUT_INVALID`。
+- **场景目录唯一真源**：`ipstudio/scene/StudioSceneCatalog`。运营在后台改过就读平台配置 `studio.scene-catalog`（按配置版本缓存；读不出来用随包那份并打 ERROR），否则用随包的 `src/main/resources/ipstudio/scenes.json`（启动时校验，写错不启动）。
+- 后台 `AdminStudioSceneController`（`/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR）：GET 整份（含下架、带签名预览）；PUT 整份保存带 `baseVersion`（别人先存过 409 `STUDIO_SCENE_CATALOG_STALE`，不合格 400 `STUDIO_SCENE_CATALOG_INVALID`，与随包同一套 `validate`；签名地址不入库）；DELETE 恢复随包；`POST /media` 传封面 / 示例（按字节判 JPG / PNG / WEBP ≤10MB 或 MP4 ≤50MB，存到 `ipstudio/scene` 分类，目录只认这个前缀下的 key）。`PlatformConfigService.upsert` 改这个 key 也过同一道校验。
+- `GET /api/v1/ip-studio/scenes`：只下发上架的场景，封面 / 示例签名，key 与上下架标记不下发。`POST /api/v1/ip-studio/scenes/compose`：出图描述（场景描述 + 补充要求）、交给助手的话 + `skillKey`，或 `video-script`（AI 视频页编导写脚本的要求，图按交给模型的顺序编号，可带 `revision` 改稿），纯计算不扣费，缺必填素材 400 `STUDIO_SCENE_INPUT_INVALID`。
+- 文字任务（`operation=text`）现在可以带 `readVisuals` 读引用的图（编导看商品图写脚本）；模型没声明看图能力 400 `STUDIO_VISION_UNAVAILABLE`。
 - 建草稿：`POST /api/v1/ip-studio/projects` 可带 `sceneId`（必须在目录里），落 `ip_project.scene_id`（V72；V70 被未合并分支占用）。
 - 生成仍走 `studio-runs` / 画布助手原链路；Studio 分区视频任务到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的制作计划，不再等 60 秒巡检。
