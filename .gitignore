@@ -58,3 +58,4 @@ apps/web-drama/public/recipes/home/
 
 # Nested local checkout; managed independently as a Git worktree
 /AIStarEcosystem-homefix/
+.flova-cookie

@@ -200,8 +200,11 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 6. 审计 / 调研（带日期的一次性报告，写完不再改）
 
+- [Studio 修复独立补验收](audits/studio-independent-acceptance-20261027.md)：真实页面补验出图中解除关联、企业冲突恢复、长摘要及一键制作反馈；明确本地供应商与既有验收边界（2026-10-27）。
+
 | 文档 | 结论一句话 |
 |---|---|
+| [CATech 图片并发实测](audits/image-concurrency-probe-20261025.md) | HTTP/1.1 与 HTTP/2 的实际成功数、耗时及逐笔计费证据；只证明至少 5 个同时完成，未测出上限（last-reviewed: 2026-10-29） |
 | [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，已随 `9ad3603b0` 发布，真实声音及成片效果未验（last-reviewed 2026-10-29） |
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
 | [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
@@ -284,6 +287,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
 - [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
 - [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）。
+- [导演台上架 Seedance 2.0 / 2.5](releases/seedance-director-reference-production-config-20261029.md)：两条端点规格补「全能参考」模式（图片 + 音频参考，不开放参考视频），导演台可选，94 / 146 积分/秒；仅改生产配置，未付费实测（last-reviewed: 2026-10-29）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。
 - [创作输入框修复](releases/studio-prompt-ime-release-20261017.md)：中文输入法组词时占位提示重叠；已发布 dd228379（2026-10-17）。
