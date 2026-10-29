@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { Mic, Trash2, Upload, X } from "lucide-react";
-import type { DirectorAsset, DirectorWork } from "@ai-star-eco/types";
+import type { DirectorAsset, DirectorWork, DirectorAudioUpload } from "@ai-star-eco/types";
 import type { StudioVoiceProfile } from "@ai-star-eco/types/ip-studio-workflow";
 import { studioVoiceProfiles } from "@/canvas-bridge/studio-api";
 import { DirectorApi } from "../api";
@@ -22,14 +22,13 @@ export function VoicePanel({ work, asset, apply }: { work: DirectorWork; asset: 
   </section>;
 }
 
-type Pending = { kind: "file"; file: File } | { kind: "library"; profile: StudioVoiceProfile } | { kind: "remove" } | null;
+type Pending = { kind: "file"; file: File; uploaded?: DirectorAudioUpload } | { kind: "library"; profile: StudioVoiceProfile } | { kind: "remove" } | null;
 
 /** 角色音色单独配置：用文字描述，或上传 / 从声音库选一段参考音频；两者可以都有。保存时一起生效。 */
 export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWork; asset: DirectorAsset; apply: (w: DirectorWork) => void; onClose: () => void }) {
   const [desc, setDesc] = useState(asset.voiceDesc ?? "");
   // 打开弹窗时的版本号：描述按它提交，别处改过就照常 409，不悄悄覆盖。
-  const [openedRev] = useState(asset.rev);
-  const [openedDesc] = useState(asset.voiceDesc ?? "");
+  const savedDescription = useRef({ rev: asset.rev, text: asset.voiceDesc?.trim() ?? "" });
   const [pending, setPending] = useState<Pending>(null);
   const [picking, setPicking] = useState(false);
   const [error, setError] = useState("");
@@ -37,14 +36,19 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
   const file = useRef<HTMLInputElement>(null);
   useEscape(() => { if (!busy && !picking) onClose(); });
   const current = pending?.kind === "remove" ? null : asset.voice;
-  const descChanged = desc.trim() !== openedDesc.trim();
+  const descChanged = desc.trim() !== savedDescription.current.text;
   const dirty = descChanged || !!pending;
   const save = () => void run("save", async () => {
     let w = work;
     // 先存描述（带打开时的版本号），再换音频：音频绑定会把版本号往前推，顺序反过来就检测不到冲突。
-    if (descChanged) w = await DirectorApi.edit(work.id, "asset.update", asset.id, openedRev, { voiceDesc: desc.trim() });
+    if (descChanged) {
+      w = await DirectorApi.edit(work.id, "asset.update", asset.id, savedDescription.current.rev, { voiceDesc: desc.trim() });
+      savedDescription.current = { text: desc.trim(), rev: w.assets.find(a => a.id === asset.id)?.rev ?? savedDescription.current.rev };
+      apply(w); // Keep a successful description save if the following upload/binding fails.
+    }
     if (pending?.kind === "file") {
-      const result = await DirectorApi.uploadAudio(work.id, pending.file);
+      const result = pending.uploaded ?? await DirectorApi.uploadAudio(work.id, pending.file);
+      setPending({ ...pending, uploaded: result }); // A supplier failure retries binding with the same owned sample.
       w = await DirectorApi.edit(work.id, "asset.setVoice", asset.id, null, { key: result.key, name: pending.file.name.replace(/\.[^.]+$/, "") || "声音样本", source: "upload", durationSec: result.durationSec });
     } else if (pending?.kind === "library") {
       w = await DirectorApi.edit(work.id, "asset.setVoice", asset.id, null, { key: pending.profile.demoStorageKey, name: `${pending.profile.name} v${pending.profile.version}`, source: "library", voiceId: pending.profile.voiceId });
@@ -69,13 +73,14 @@ export function VoiceDialog({ work, asset, apply, onClose }: { work: DirectorWor
             {current.url && <audio controls preload="none" src={current.url} aria-label={`${asset.name}的声音样本`}/>}
             <button type="button" className="ip-brand-text-button director-danger" onClick={() => setPending({ kind: "remove" })}><Trash2 size={13}/>移除</button></div>
           : <button type="button" className="director-voice-drop" onClick={() => file.current?.click()}>
-            <Upload size={18}/><b>上传音频</b><span>MP3、WAV 或 M4A，建议 3–10 秒单人说话、没有背景音乐</span></button>}
+            <Upload size={18}/><b>上传音频</b><span>MP3、WAV 或 M4A，2–15 秒、最多 15 MB；建议单人说话、没有背景音乐</span></button>}
         {pending?.kind === "remove" && <small className="director-danger">保存后移除参考音频。<button type="button" className="ip-brand-text-button" onClick={() => setPending(null)}>撤销</button></small>}
         <div className="director-card-actions">
           {(current || pending) && pending?.kind !== "remove" && <button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={() => file.current?.click()}><Upload size={14}/>换一段</button>}
           <button type="button" className="ip-brand-text-button" disabled={!!busy} onClick={() => setPicking(true)}>从声音库选择</button>
         </div>
-        <input ref={file} type="file" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setPending({ kind: "file", file: f }); }}/>
+        <small>保存后，支持声音参考的视频模型会自动引用该角色的声音样本。</small>
+        <input ref={file} type="file" disabled={!!busy} accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,.mp3,.wav,.m4a" hidden onChange={e => { const f = e.target.files?.[0]; e.target.value = ""; if (f) setPending({ kind: "file", file: f }); }}/>
       </div>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" disabled={!!busy} onClick={onClose}>取消</button>

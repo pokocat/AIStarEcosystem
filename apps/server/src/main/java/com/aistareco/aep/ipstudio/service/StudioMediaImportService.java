@@ -31,8 +31,16 @@ public class StudioMediaImportService {
         this.storage = storage; this.quota = quota; this.ffmpeg = ffmpeg;
     }
     public MediaImportResult upload(String user, MultipartFile file, String type) {
+        return upload(user, file, type, false);
+    }
+    /** A character sample is a short H3 reference, not a ten-minute canvas attachment. */
+    public MediaImportResult uploadReferenceAudio(String user, MultipartFile file) {
+        return upload(user, file, "audio", true);
+    }
+    private MediaImportResult upload(String user, MultipartFile file, String type, boolean voiceReference) {
         if (!Set.of("image", "video", "audio").contains(type == null ? "" : type)) throw invalid("请选择图片、视频或音频");
         long max = ("image".equals(type) ? 8 : "video".equals(type) ? 128 : 25) * MIB;
+        if (voiceReference) max = com.aistareco.aep.service.materialvideo.JusuanH3Contract.REFERENCE_AUDIO_MAX_BYTES;
         if (file == null || file.isEmpty()) throw invalid("文件是空的，请重新选择");
         if (file.getSize() > max) throw invalid("文件超过 " + max / MIB + " MB，请压缩后重试");
         byte[] bytes;
@@ -96,6 +104,7 @@ public class StudioMediaImportService {
                     }
                 }
                 duration = probe.durationSec();
+                if (voiceReference) requireReferenceDuration(duration);
             } catch (BusinessException e) { throw e; } catch (Exception e) { throw invalid("音视频无法读取，请重新选择"); }
             finally {
                 if (tmp != null) try { Files.deleteIfExists(tmp); } catch (Exception ignored) {}
@@ -112,6 +121,30 @@ public class StudioMediaImportService {
         name = name.substring(0, name.offsetByCodePoints(0, Math.min(100, name.codePointCount(0, name.length()))));
         if(savedAssets!=null){var asset=mapper.createObjectNode().put("kind",type).put("title",name).put("source","用户上传");asset.putObject("data").put("storageKey",stored.key()).put("mimeType",format.mime()).put("bytes",stored.bytes());savedAssets.saveAutomatic(user,asset);}
         return new MediaImportResult(stored.key(), storage.signedUrl(stored.key()), type, format.mime(), stored.bytes(), name, width, height, duration);
+    }
+    /** Recheck saved/library samples on binding; never trust a client-supplied duration or a file extension. */
+    public double validateReferenceAudio(String key) {
+        try {
+            var path = storage.openForRead(key);
+            long bytes = Files.size(path);
+            if (bytes <= 0 || bytes > com.aistareco.aep.service.materialvideo.JusuanH3Contract.REFERENCE_AUDIO_MAX_BYTES)
+                throw invalid("角色声音不能超过 15 MB，请剪短后重新上传");
+            byte[] head;
+            try (var in = Files.newInputStream(path)) { head = in.readNBytes(4096); }
+            if (!MediaBytes.allowed(MediaBytes.sniffConfigured("audio", head),
+                    com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_FORMATS))
+                throw invalid("请选择可读取的音频文件作为角色声音");
+            var probe = ffmpeg.probeMedia(path.toFile());
+            if (!probe.readable() || !probe.hasAudio()) throw invalid("声音样本无法读取，请重新上传");
+            requireReferenceDuration(probe.durationSec());
+            return probe.durationSec();
+        } catch (BusinessException e) { throw e; }
+        catch (Exception e) { throw invalid("声音样本无法读取，请重新上传"); }
+    }
+    private void requireReferenceDuration(double seconds) {
+        if (!Double.isFinite(seconds) || seconds < com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_MIN_SECONDS
+                || seconds > com.aistareco.aep.service.materialvideo.JusuanH3Contract.AUDIO_MAX_SECONDS)
+            throw invalid("角色声音需要 2–15 秒，请剪短或换一段音频");
     }
     private BusinessException invalid(String message) { return BusinessException.badRequest("STUDIO_MEDIA_INVALID", message); }
 }

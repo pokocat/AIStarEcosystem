@@ -1243,3 +1243,7 @@ Esc 规则（`studio-floating-panel.tsx`）：输入框里有字时 Esc 只离�
 ### Studio 对话不锁方法（2026-10-23，本地未发布）
 
 真源 `docs/ip-studio-dialogue-intents.md`「2026-10-23：不锁方法」。每条用户消息、每次 `read_skill` / `propose_plan` 都按意图选方法，有活跃制作时也一样（`requireSkillSwitchAllowed`、`ReadSkillTool` 的拒绝、`planningSkill` 的执行锁、受理处「有活跃执行时方法不变 / 显式换技能 400」全部删除）。切换只走 `StudioDialogueService.switchMethod`：同方法不动；换方法时作废待确认卡，旧制作没有在生成的就按停止收尾，有在生成的就暂停并解绑（不取消，完成的结果仍发到原线程的画布，不发消息，不占画布，生成完自行结束）。方案里有当前方法不允许的操作时先换到能覆盖的方法再校验。`STUDIO_SKILL_OPERATION_NOT_ALLOWED`、「第 N 步…不在当前阶段允许的范围内」这类内部原因不进用户界面，统一说「这份方案还没准备好，我会按你要做的内容重新整理。」（`STUDIO_PLAN_NOT_READY`）。提示词 `SEED_VERSION=v26-2026-10-23-dialogue-unlocked-methods`。未用真模型验证。
+
+### 导演台角色声音参考（2026-10-29，本地实现，未发布）
+
+角色音频上传必须使用可写事务，自动入本人素材库会持用户行锁；只把作品查询换成无锁读仍不能修复 MySQL 只读事务 500。样本按真实字节及 ffprobe 校验（MP3 / WAV / M4A，2–15 秒、最多 15 MiB）。`asset.setVoice` 绑定前重验本人 key 与实测时长，当前为聚算全能参考模型时先上传取得回执，失败不替换原声音。人物保存我方 key，V71 `material_video_input_asset` 按端点、地址、模型、凭据及来源 key 隔离 assetId；保存音色与 worker 共用同一路径，距厂商有效期不足 60 秒或没有有效期就重新上传。浏览器绑定失败保留已上传样本重试，不重复上传或误用旧描述版本。不调用声音训练，不表示音色效果已验收。见 `docs/audits/director-voice-reference-validation-20261029.md`。
