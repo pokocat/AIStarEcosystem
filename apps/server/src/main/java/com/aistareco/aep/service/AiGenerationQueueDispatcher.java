@@ -55,7 +55,8 @@ public class AiGenerationQueueDispatcher {
                 if(run==null||!IpRun.STATUS_RUNNING.equals(run.getStatus())) {queue.finish(type,id);continue;}
                 // Waiting is not execution time. Reaper and hold sweeper recognize the durable ticket.
                 if(!waiting) {
-                    if(AiGenerationQueueService.IMAGE.equals(type) && "STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode())) {
+                    if(AiGenerationQueueService.IMAGE.equals(type) && ("STUDIO_IMAGE_SUBMISSION_UNKNOWN".equals(run.getErrorCode()) ||
+                            IpRunWorker.hasNativeSubmission(run) && !images.getObject().canResumeNative(run))) {
                         images.getObject().failUnconfirmedSubmission(id);continue;
                     }
                     if(AiGenerationQueueService.IMAGE.equals(type) && images.getObject().canResumeNative(run) && queue.claimDispatch(entry,true))

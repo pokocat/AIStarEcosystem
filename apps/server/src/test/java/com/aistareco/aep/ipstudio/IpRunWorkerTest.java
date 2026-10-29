@@ -620,6 +620,52 @@ class IpRunWorkerTest {
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(), org.mockito.ArgumentMatchers.any());
     }
+    private IpRun orphanedImage(long ageSeconds,long leaseUntil) throws Exception {
+        var run=seedGenerateRun(1,16L,16L,"source");
+        ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("nativeLeaseUntil",leaseUntil).withArray("imageJobs")
+                .add(OM.createObjectNode().put("submitAttempted",true).put("requestBody","original")
+                        .put("imageRequestSpec","{\"wire\":{\"requestTimeoutMillis\":600000}}"));
+        run.setInputJson(input.toString());run.setStage("image.generate.1");
+        run.setHeartbeatAt(Instant.now().minusSeconds(ageSeconds));runs.repo.save(run);return run;
+    }
+    @Test void crashBeforeErrorWasPersistedClosesOriginalRunOnlyOnceWithoutResubmitting() throws Exception {
+        orphanedImage(7200,0);
+        worker.failUnconfirmedSubmission(RID);worker.failUnconfirmedSubmission(RID);worker.recoverNative(RID);
+        assertEquals("failed",reload().getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",reload().getErrorCode());
+        assertEquals(0,reload().getCost());assertNotNull(reload().getFinishedAt());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
+        org.mockito.Mockito.verifyNoInteractions(multimodal);
+    }
+    @Test void expiredShortLeaseDoesNotEndARequestWithinItsSavedTenMinuteTimeout() throws Exception {
+        orphanedImage(300,0);worker.failUnconfirmedSubmission(RID);
+        assertEquals("running",reload().getStatus());verifyNoCharges();
+    }
+    @Test void liveLeaseProtectsAnOldMissingReceipt() throws Exception {
+        orphanedImage(7200,System.currentTimeMillis()+60_000);worker.failUnconfirmedSubmission(RID);
+        assertEquals("running",reload().getStatus());verifyNoCharges();
+    }
+    @Test void staleKnownTaskOrMirroredImageIsKeptForRecovery() throws Exception {
+        for(String field:List.of("jobId","storageKey")) {
+            var run=orphanedImage(7200,0);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+            ((ObjectNode)input.path("_exec").path("imageJobs").path(0)).put(field,"original");run.setInputJson(input.toString());runs.repo.save(run);
+            worker.failUnconfirmedSubmission(RID);
+            assertEquals("running",reload().getStatus());assertTrue(worker.canResumeNative(reload()));
+        }
+        verifyNoCharges();
+    }
+    @Test void crashAfterFirstImagePreservesItsCandidateAndCharge() throws Exception {
+        var run=orphanedImage(7200,0);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        input.put("count",2);((ObjectNode)input.path("_exec")).put("holdTotal",32).withArray("imageJobs")
+                .insertObject(0).put("submitAttempted",true).put("storageKey","first.png");
+        run.setInputJson(input.toString());run.setOutputJson("{\"candidates\":[{\"key\":\"first.png\"}]}");runs.repo.save(run);
+        worker.failUnconfirmedSubmission(RID);worker.failUnconfirmedSubmission(RID);
+        assertEquals("failed",reload().getStatus());assertEquals(16,reload().getCost());
+        assertEquals("first.png",OM.readTree(reload().getOutputJson()).path("candidates").path(0).path("key").asText());
+        verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
+        verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),any());
+    }
     @Test void acceptedImageCheckpointWriteFailureCannotFallThroughToRefund() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
