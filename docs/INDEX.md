@@ -202,7 +202,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 结论一句话 |
 |---|---|
-| [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，未发布（last-reviewed 2026-10-29） |
+| [导演台角色声音参考验证](audits/director-voice-reference-validation-20261029.md) | 上传只读事务 500、角色照片/声音绑定、聚算回执及过期复用；真实 MySQL 与定向回归通过，已随 `9ad3603b0` 发布，真实声音及成片效果未验（last-reviewed 2026-10-29） |
 | [`docs/audits/drama-audit-2026-07.md`](audits/drama-audit-2026-07.md) | web-drama 产品 × 架构审计：一致性引擎五层架构 + C 序列路线图；后续全部由 [`drama-consistency-engine-design.md`](drama-consistency-engine-design.md) 落地 |
 | [导演台剧本文件导入验收](audits/director-script-file-import-validation-20261025.md) | Word/PPT/PDF/文本提取、两个入口、预览确认、保存刷新与扫描件失败；本地未发布（2026-10-25） |
 | [`docs/audits/payment-billing-audit-2026-07.md`](audits/payment-billing-audit-2026-07.md) | 支付 / 计费 / 积分账本全栈审计：33 项 Findings、决策台账 D1–D8、T1–T17 任务卡 |
@@ -220,6 +220,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [导演台 AI 入口、长文与上传资产生产发布](releases/director-ai-entries-production-release-20261029.md)：main `9ad3603b0`，server + Studio；104,029 字 HTML、超量粘贴、自有资产图及参考图线上验证，含回收站与 V71 声音回执迁移（last-reviewed 2026-10-29）。
 - [导演台正文冻结生产发布与验收](releases/director-script-freeze-production-release-20261029.md)：main `d67841214`，server + Studio；正文冻结、跨页保存拒绝、真实修改建议采用/撤销，13 积分无重复结算，发布窗口短暂 502 已恢复（last-reviewed 2026-10-29）。
 - [导演台作品删除生产发布](releases/director-delete-production-release-20261028.md)：main `cb9190489`，server + web-aiavatar；146 条后端、65 条前端及一次性 MySQL 删除并发 11 条通过，线上确认/取消与不存在状态验收，未删除生产作品（last-reviewed 2026-10-28）。
 
@@ -363,7 +364,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 - [Studio 读取、进度、保存恢复与 Agent 运行时评估](audits/studio-agent-runtime-assessment-2026-10.md) — 本地修复，未发布；AgentScope Java / LangGraph 替换边界与验收标准（last-reviewed: 2026-10-23）。
 
-- [导演台回收站独立审查](audits/director-trash-independent-review-20261029.md) — 原项目恢复、删除／恢复并发、恢复后不付费续跑及迟到 404 草稿保护，本地完成未发布；last-reviewed: 2026-10-29。
+- [导演台回收站独立审查](audits/director-trash-independent-review-20261029.md) — 原项目恢复、删除／恢复并发、恢复后不付费续跑及迟到 404 草稿保护，本地审查通过，已随 `9ad3603b0` 发布；last-reviewed: 2026-10-29。
 - [AI 导演台本地验收记录](audits/ai-director-local-acceptance-20261022.md) — 独立 UI 实测真值：测试响应全流程、Agnes 真实剧本／分集／资产／分镜首帧、局部重试修复；真实视频受厂商队列阻塞；实现状态见[总方案 §14](ai-director-plan.md)；last-reviewed: 2026-10-23。
 - [导演台视频提示词对比实测（H3）](audits/director-h3-video-prompt-ab-2026-10.md) — 《敦煌飞仙》两段共 9 条对比：旧写法穿模 / 宫格上屏；台词多时中文正文吞台词、念出提示词，官方 skill 英文版完整；据此提交前按官方 skill 改写，真模型试跑 7/7 合格；2026-10-27 推到 Studio 画布与创作助手、检查改为只提示不拦人（§8）；last-reviewed: 2026-10-27。
 

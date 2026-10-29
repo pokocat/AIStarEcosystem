@@ -1,5 +1,7 @@
 # 导演台回收站与恢复：独立审查
 
+> 发布补记：2026-10-29 已随 main `9ad3603b0` 发布 server + Studio，线上范围和实际验收见 [发布记录](../releases/director-ai-entries-production-release-20261029.md)。下文保留各开发与审查阶段的历史事实；本次未验证真实供应商声音效果或视频出片。
+
 日期：2026-10-29。开发由 Claude app 的「AI导演台项目删除功能」会话完成，Opus 5.5 / High；本记录由 Codex 独立核对代码、运行探针及复跑测试后整理。
 
 工作区：`codex/director-trash`，基于 `70d41dec0`。本轮未提交、推送、合并或发布。

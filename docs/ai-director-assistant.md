@@ -1,6 +1,6 @@
 # AI 导演台 · 全能创作助手
 
-> 2026-10-28 · 已生产发布（2026-10-29，构建 `d67841214`，验收见 [发布记录](releases/director-script-freeze-production-release-20261029.md)）。现行设计真源。含写剧本前的创意对话（§7）与同日 review 修正（选区位置、撤销那一处、请求恢复、读未保存内容）。上层方案见 [ai-director-plan.md](ai-director-plan.md)。
+> 2026-10-29 · 已生产发布（最新构建 `9ad3603b0`，AI 入口与长文见 [本次发布记录](releases/director-ai-entries-production-release-20261029.md)；正文冻结原始验收见 [前次记录](releases/director-script-freeze-production-release-20261029.md)）。现行设计真源。含写剧本前的创意对话（§7）与同日 review 修正（选区位置、撤销那一处、请求恢复、读未保存内容）。上层方案见 [ai-director-plan.md](ai-director-plan.md)。
 
 ## 1. 解决什么问题
 
