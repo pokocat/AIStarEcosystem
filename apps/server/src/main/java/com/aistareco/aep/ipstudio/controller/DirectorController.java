@@ -26,6 +26,19 @@ public class DirectorController {
         return ApiResponse.of(director.list(uid(principal)));
     }
 
+    /** 回收站：本人已删除的作品（只读，不回投结果、不改内容）。 */
+    @GetMapping("/works/trash")
+    public ApiResponse<List<JsonNode>> trash(Principal principal) {
+        return ApiResponse.of(director.trash(uid(principal)));
+    }
+
+    /** 从回收站恢复原作品（原 ID、原内容），恢复后保持停止；作品没被删除时直接成功。 */
+    @PostMapping("/works/{id}/restore")
+    public ApiResponse<Map<String, Object>> restore(Principal principal, @PathVariable String id) {
+        director.restore(uid(principal), id);
+        return ApiResponse.of(Map.of("id", id, "restored", true));
+    }
+
     @PostMapping("/works")
     public ApiResponse<JsonNode> create(Principal principal, @RequestBody(required = false) DirectorService.CreateRequest req) {
         return ApiResponse.of(director.create(uid(principal), req));

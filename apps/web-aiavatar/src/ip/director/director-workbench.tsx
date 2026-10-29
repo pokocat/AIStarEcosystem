@@ -7,13 +7,13 @@ import type { DirectorPipeline, DirectorPipelineEstimate, DirectorPipelineTarget
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { isProductNotEnrolledError } from "@ai-star-eco/api-client";
 import { DirectorApi } from "../api";
-import { goneWorkId } from "../api/director";
+import { goneWorkId, isStaleGone } from "../api/director";
 import { DirectorScript } from "./director-script";
 import { DirectorAssets } from "./director-assets";
 import { DirectorStoryboard } from "./director-storyboard";
 import { ExtractReview } from "./director-extract";
 import { SettingsPanel } from "./director-settings";
-import { InlineError, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
+import { InlineError, STALE_GONE_MESSAGE, chooseDirectorBilling, clearDrafts, isWorkGone, onWorkGone, costText, errorText, failed, hasDrafts, secRange, useBusy, useEscape, dialogFocus, type DirectorFail } from "./director-shared";
 import { normalizeStudioError, useStudioFailure } from "../studio-errors";
 import { AssistantProvider, DirectorAssistantPanel, useAssistant, useAssistantController } from "./director-assistant";
 
@@ -138,15 +138,35 @@ export function DirectorWorkbench({ id }: { id: string }) {
   }, [id]);
   useEffect(() => onWorkGone(workId => { if (workId === id) markGone(); }), [id, markGone]);
 
-  const load = useCallback(async () => {
-    try { const next = await DirectorApi.getWork(id); if (mounted.current) { apply(next); setLoadError(""); } }
-    catch (e) {
-      if (!mounted.current) return;
-      if (isWorkGone(e)) markGone(); // getWork 只会是本作品的 404
-      else if (isProductNotEnrolledError(e)) setNotEnrolled(true);
-      else setLoadError(errorText(e));
+  // 只认最新一次读取的结果：作品在回收站恢复后，新的读取先成功、更早发出的那次 404 后到，不能再把页面打回「已删除」、清掉草稿。
+  // 读成功就不再是「已删除」：在回收站恢复后，这一页点「重新加载」就回来了。
+  const loadSeq = useRef(0);
+  const load = useCallback(async (): Promise<"ok" | "gone" | "error" | "stale"> => {
+    const seq = ++loadSeq.current;
+    try {
+      const next = await DirectorApi.getWork(id);
+      if (!mounted.current || seq !== loadSeq.current) return "stale";
+      apply(next); setLoadError(""); setGone(false);
+      return "ok";
+    } catch (e) {
+      if (!mounted.current || seq !== loadSeq.current) return "stale";
+      if (isWorkGone(e) && !isStaleGone(e)) { markGone(); return "gone"; } // getWork 只会是本作品的 404；恢复前发出的不算
+      if (isProductNotEnrolledError(e)) { setNotEnrolled(true); return "error"; }
+      setLoadError(errorText(e));
+      return "error";
     }
   }, [apply, id, markGone]);
+
+  // 「已删除」页上的「重新加载」：防连点；还是找不到、或网络失败，都在这一页上说出来。
+  const [reloading, setReloading] = useState(false);
+  const reloadGone = async () => {
+    if (reloading) return;
+    setReloading(true); setLoadError("");
+    const outcome = await load();
+    if (!mounted.current) return;
+    setReloading(false);
+    if (outcome === "gone") setLoadError("还是找不到这部作品。请先在回收站恢复，再重新加载。");
+  };
 
   useEffect(() => { if (auth === "ok") void load(); }, [auth, load]);
 
@@ -156,6 +176,8 @@ export function DirectorWorkbench({ id }: { id: string }) {
     if (!failure || !mounted.current) return;
     const value = typeof failure === "string" ? { action: "这次操作", error: failure } : failure;
     if (isWorkGone(value.error) && goneWorkId(value.error) === id) { markGone(); return; }
+    // 删除期间发出、恢复后才回来的 404：不打回已删除、不清草稿，只告诉用户这次操作没有生效。
+    if (isStaleGone(value.error)) { showFailure({ ...value, error: STALE_GONE_MESSAGE }); return; }
     const conflict = /_CONFLICT$|_STALE$|_EXPIRED$/.test(normalizeStudioError(value.error).code);
     showFailure({ ...value, refreshed: conflict });
     if (conflict) void load();
@@ -194,7 +216,10 @@ export function DirectorWorkbench({ id }: { id: string }) {
 
   if (auth === "no-platform" || notEnrolled) return <PlatformGateScreen/>;
   if (gone) return <main className="ip-brand-surface director-shell"><div className="director-loading director-gone" role="alert">
-    <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。</p><Link href="/director" className="ip-brand-button">返回作品列表</Link></div></main>;
+    <h2>作品已删除或不存在</h2><p>可能已在其他页面删除。删除的作品在回收站里，恢复后点「重新加载」。</p>
+    <div className="director-gone-actions"><Link href="/director" className="ip-brand-button">返回作品列表</Link><Link href="/director/trash" className="ip-brand-secondary">打开回收站</Link>
+      <button type="button" className="ip-brand-secondary" disabled={reloading} onClick={() => void reloadGone()}>{reloading ? <><Loader2 size={15} className="ip-loading-icon"/>重新加载中</> : "重新加载"}</button></div>
+    <InlineError message={loadError}/></div></main>;
   if (!work) return <main className="ip-brand-surface director-shell"><div className="director-loading">{loadError ? <><InlineError message={loadError}/><button className="ip-brand-secondary" onClick={() => void load()}>重新加载</button><Link href="/director">返回作品列表</Link></> : <><Loader2 size={22} className="ip-loading-icon"/>加载中…</>}</div></main>;
 
   const switchTab = (next: Tab) => setTab(next);

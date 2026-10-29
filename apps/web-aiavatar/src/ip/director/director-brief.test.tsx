@@ -46,6 +46,20 @@ test("a new idea opens the creative chat once (fixed request id), never on refre
   expect(DirectorApi.runTask).toHaveBeenCalledOnce();
 });
 
+/** 删除前还没开始的创意对话：从回收站恢复后打开，不自动发付费开场；用户点「开始聊」才发，发出后照常聊。 */
+test("a work restored from the trash waits for the user to start the creative chat", async () => {
+  vi.mocked(DirectorApi.getWork).mockResolvedValue(work({ ...asked, rounds: 0, messages: [] }, { restoredAt: "2026-10-29T03:00:00Z" }));
+  vi.mocked(DirectorApi.runTask).mockResolvedValue(work(asked, { restoredAt: "2026-10-29T03:00:00Z" }));
+  render(<DirectorWorkbench id="w"/>);
+  const start = await screen.findByRole("button", { name: "开始聊" });
+  await new Promise(r => setTimeout(r, 50));
+  expect(DirectorApi.runTask).not.toHaveBeenCalled();
+  fireEvent.click(start);
+  await waitFor(() => expect(DirectorApi.runTask).toHaveBeenCalledOnce());
+  expect(vi.mocked(DirectorApi.runTask).mock.calls[0][1]).toMatchObject({ type: "brief", clientRequestId: "open-w", options: { message: "" } });
+  expect(await screen.findByText("想让观众看完是什么感觉？")).toBeTruthy();
+});
+
 test("answers are sent with the picked options; skipping mid-way generates with skip and keeps the request across a refresh", async () => {
   vi.mocked(DirectorApi.getWork).mockResolvedValue(work(asked));
   vi.mocked(DirectorApi.runTask).mockResolvedValueOnce(work({ ...asked, messages: [...asked.messages, { id: "u1", clientId: "x", role: "user", text: "想让观众看完是什么感觉？ 细思极恐", at: "2026-10-28T00:00:01Z", status: "done" }] }));

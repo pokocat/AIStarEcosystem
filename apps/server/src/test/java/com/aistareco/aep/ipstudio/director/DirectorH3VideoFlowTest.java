@@ -294,6 +294,49 @@ class DirectorH3VideoFlowTest {
         assertTrue(user.getValue().contains("又熬」通宵？"), "台词原文交给模型照写：" + user.getValue());
     }
 
+    // ── 从回收站恢复后第一次读取（2026-10-29 独立复核）：删除前已结束、还没回投的手动改写 ──────────────
+    // 恢复会写 restoredAt；在它之前提交的任务只回投结果，不接着付费派发。这里把 restoredAt 放在任务之后 / 之前，走真实的 reconcile。
+
+    @Test
+    void aRewriteFinishedBeforeTheWorkWasRestoredKeepsTheDraftButDoesNotSubmitTheVideo() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        c.put("restoredAt", Instant.now().plusSeconds(60).toString()); // 任务是恢复之前提交的
+        finishRewrite(meta);
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertTrue(clip().path("videoPromptEn").path("template").isTextual(), "改写结果照样保存");
+        assertTrue(c.path("applied").toString().contains("IPR-rw"), "正常回投，不是预先标记");
+        assertEquals(0, clip().path("video").path("pending").size());
+        assertTrue(c.path("notice").path("message").asText().contains("视频没有自动提交"), c.path("notice").toString());
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
+    }
+
+    @Test
+    void aRewriteThatFailedBeforeTheWorkWasRestoredIsNotRetried() throws Exception {
+        ObjectNode meta = dispatchRewrite();
+        c.put("restoredAt", Instant.now().plusSeconds(60).toString());
+        failRewrite(meta, "IPR-rw");
+        verify(textRuns, times(1)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
+        verify(imageRuns, never()).generateVideoForDirector(any(), any(), any(), any());
+        assertTrue(clip().path("video").path("error").path("message").asText().contains("改写不合格")
+                || c.path("errors").toString().contains("改写不合格") || c.toString().contains("改写不合格"), "失败原因照样写进作品");
+        assertTrue(c.path("applied").toString().contains("IPR-rw"));
+        assertFalse(w.isActive(), "没有新发出的任务");
+    }
+
+    @Test
+    void aRewriteSubmittedAfterTheRestoreStillSubmitsTheVideo() throws Exception {
+        c.put("restoredAt", Instant.now().minusSeconds(60).toString()); // 恢复之后用户自己点的「生成视频」
+        finishRewrite(dispatchRewrite());
+        verify(imageRuns).generateVideoForDirector(eq("u1"), eq("DW-1"), eq("video:cl1"), any());
+    }
+
+    @Test
+    void aRewriteSubmittedAfterTheRestoreIsStillRetriedOnce() throws Exception {
+        c.put("restoredAt", Instant.now().minusSeconds(60).toString());
+        failRewrite(dispatchRewrite(), "IPR-rw");
+        verify(textRuns, times(2)).submitDirectorText(anyString(), anyString(), anyString(), anyString(), anyString(), anyString(), any(), any(), any(), any());
+    }
+
     @Test
     void aPausedPipelineDoesNotRetryTheRewrite() throws Exception {
         ObjectNode p = pipeline(10_000);

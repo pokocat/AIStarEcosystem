@@ -39,10 +39,11 @@ test("cancel closes without calling the server; the dialog names the work and sa
   vi.mocked(DirectorApi.listWorks).mockResolvedValue([summary("a", "夜班分拣员")]);
   render(<DirectorWorks/>);
   const dialog = await openDelete("夜班分拣员");
-  expect(dialog.textContent).toContain("确认删除「夜班分拣员」？");
+  expect(dialog.textContent).toContain("把「夜班分拣员」移入回收站？");
+  expect(dialog.textContent).toContain("可以在回收站恢复");
   expect(dialog.textContent).toContain("已存入个人资产库的素材会保留");
   expect(dialog.textContent).toContain("已消耗的积分不退回");
-  expect(dialog.textContent).not.toContain("回收站");
+  expect(dialog.textContent).not.toMatch(/永久|无法恢复|30 天/);
   expect(dialog.contains(document.activeElement)).toBe(true);
   fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
   expect(screen.queryByRole("alertdialog")).toBeNull();
@@ -54,11 +55,11 @@ test("success removes the card and updates the count; deleting the last one show
   vi.mocked(DirectorApi.listWorks).mockResolvedValue([summary("a", "第一部"), summary("b", "第二部")]);
   vi.mocked(DirectorApi.deleteWork).mockResolvedValue();
   render(<DirectorWorks/>);
-  fireEvent.click(within(await openDelete("第一部")).getByRole("button", { name: "删除作品" }));
+  fireEvent.click(within(await openDelete("第一部")).getByRole("button", { name: "移入回收站" }));
   await waitFor(() => expect(screen.queryByText("第一部")).toBeNull());
   expect(DirectorApi.deleteWork).toHaveBeenCalledWith("a");
   expect(screen.getByText("1 部作品")).toBeTruthy();
-  fireEvent.click(within(await openDelete("第二部")).getByRole("button", { name: "删除作品" }));
+  fireEvent.click(within(await openDelete("第二部")).getByRole("button", { name: "移入回收站" }));
   expect(await screen.findByText("还没有作品")).toBeTruthy();
 });
 
@@ -68,16 +69,16 @@ test("while deleting the button says so and repeated clicks send one request; a 
   vi.mocked(DirectorApi.deleteWork).mockImplementationOnce(() => new Promise((_, r) => { reject = r; })).mockResolvedValueOnce();
   render(<DirectorWorks/>);
   const dialog = await openDelete("夜班分拣员");
-  const confirm = within(dialog).getByRole("button", { name: "删除作品" });
+  const confirm = within(dialog).getByRole("button", { name: "移入回收站" });
   fireEvent.click(confirm); fireEvent.click(confirm); fireEvent.click(confirm);
   expect(DirectorApi.deleteWork).toHaveBeenCalledTimes(1);
-  expect(within(dialog).getByRole("button", { name: "删除中" })).toHaveProperty("disabled", true);
+  expect(within(dialog).getByRole("button", { name: "移入中" })).toHaveProperty("disabled", true);
   fireEvent.keyDown(window, { key: "Escape" });
   expect(screen.getByRole("alertdialog")).toBeTruthy(); // 提交中不能关
   await act(async () => reject(new ApiError({ code: "DIRECTOR_WORK_BUSY", message: "片段视频正在生成，任务结束后再删除" }, 409)));
   expect((await within(dialog).findByRole("alert")).textContent).toContain("片段视频正在生成");
   expect(screen.getByRole("heading", { name: "夜班分拣员" })).toBeTruthy();
-  fireEvent.click(within(dialog).getByRole("button", { name: "删除作品" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "移入回收站" }));
   await waitFor(() => expect(screen.queryByRole("heading", { name: "夜班分拣员" })).toBeNull());
   expect(DirectorApi.deleteWork).toHaveBeenCalledTimes(2);
 });
@@ -102,4 +103,11 @@ test("keyboard: Escape closes the menu and returns focus to its button, then Esc
   expect(screen.queryByRole("alertdialog")).toBeNull();
   expect(document.activeElement).toBe(summaryButton); // 关掉弹窗焦点回到「更多」，不掉到页面开头
   expect(DirectorApi.deleteWork).not.toHaveBeenCalled();
+});
+
+test("the list links to the trash, also when it is empty", async () => {
+  vi.mocked(DirectorApi.listWorks).mockResolvedValue([]);
+  render(<DirectorWorks/>);
+  expect(await screen.findByText("还没有作品")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "回收站" }).getAttribute("href")).toBe("/director/trash");
 });

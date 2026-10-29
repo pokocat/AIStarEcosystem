@@ -58,11 +58,72 @@ test("when any request finds this work deleted, the page stops showing editable 
   expect(hasDrafts("w:")).toBe(false); // 作品没了，关页面不再提示未保存
 });
 
-test("opening a deleted work shows the deleted state without a reload button", async () => {
+test("opening a deleted work shows the deleted state with the way back, the trash and a reload", async () => {
   vi.mocked(DirectorApi.getWork).mockRejectedValue(await gone("w"));
   render(<DirectorWorkbench id="w"/>);
   expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
-  expect(screen.queryByRole("button", { name: "重新加载" })).toBeNull();
+  expect(screen.getByRole("link", { name: "返回作品列表" }).getAttribute("href")).toBe("/director");
+  expect(screen.getByRole("link", { name: "打开回收站" }).getAttribute("href")).toBe("/director/trash");
+  expect(screen.getByRole("button", { name: "重新加载" })).toBeTruthy();
+  expect(screen.queryByRole("textbox", { name: "作品名" })).toBeNull();
+});
+
+// ── 回收站恢复之后（2026-10-29）──────────────────────────────────────────────
+
+test("after the work is restored elsewhere, reload brings the page back", async () => {
+  vi.mocked(DirectorApi.getWork).mockRejectedValueOnce(await gone("w")).mockResolvedValue(work());
+  render(<DirectorWorkbench id="w"/>);
+  fireEvent.click(await screen.findByRole("button", { name: "重新加载" }));
+  expect(await screen.findByRole("textbox", { name: "作品名" })).toBeTruthy();
+  expect(screen.queryByText("作品已删除或不存在")).toBeNull();
+});
+
+test("reload is not sent twice while it is in flight, and a network failure is shown on the page", async () => {
+  const { ApiError } = await import("@ai-star-eco/api-client");
+  let reject!: (e: unknown) => void;
+  vi.mocked(DirectorApi.getWork).mockRejectedValueOnce(await gone("w"))
+    .mockImplementationOnce(() => new Promise((_resolve, r) => { reject = r; }));
+  render(<DirectorWorkbench id="w"/>);
+  const reload = await screen.findByRole("button", { name: "重新加载" });
+  fireEvent.click(reload); fireEvent.click(reload); fireEvent.click(reload);
+  expect(DirectorApi.getWork).toHaveBeenCalledTimes(2);
+  const busy = screen.getByRole("button", { name: "重新加载中" });
+  expect(busy).toHaveProperty("disabled", true);
+  await act(async () => { reject(new ApiError({ code: "HTTP_ERROR", message: "网络连接失败，请稍后重试" }, 0)); });
+  expect(await screen.findByText(/网络连接失败/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "重新加载" })).toHaveProperty("disabled", false);
+  expect(screen.getByText("作品已删除或不存在")).toBeTruthy();
+});
+
+test("reloading a work that is still in the trash says so", async () => {
+  vi.mocked(DirectorApi.getWork).mockRejectedValue(await gone("w"));
+  render(<DirectorWorkbench id="w"/>);
+  fireEvent.click(await screen.findByRole("button", { name: "重新加载" }));
+  expect(await screen.findByText(/还是找不到这部作品/)).toBeTruthy();
+});
+
+/** 同一部作品：新的读取先成功，更早发出的那次 404 后到 —— 不能把页面打回「已删除」，也不能清掉草稿。 */
+test("an older read that 404s after a newer read succeeded does not mark the same work deleted", async () => {
+  const { useDraft, hasDrafts, clearDrafts } = await import("./director-shared");
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+  const running = { ...work(), tasks: [{ id: "r", target: "script", status: "running" as const, stage: null, cost: 0, errorMessage: null, createdAt: "2026-10-26T00:00:00Z" }] };
+  let rejectOld!: (e: unknown) => void;
+  vi.mocked(DirectorApi.getWork)
+    .mockResolvedValueOnce(running)                                                         // 打开
+    .mockImplementationOnce(() => new Promise((_resolve, r) => { rejectOld = r; }))         // 较早的一次读取，迟迟不回
+    .mockResolvedValueOnce({ ...running, revision: 2 });                                    // 较新的一次，先回来
+  function DraftProbe() { const [value, setValue] = useDraft("w:content", ""); return <input aria-label="草稿" value={value} onChange={e => setValue(e.target.value)}/>; }
+  render(<><DirectorWorkbench id="w"/><DraftProbe/></>);
+  await screen.findByRole("textbox", { name: "作品名" });
+  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "没保存的正文" } });
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+  await waitFor(() => expect(DirectorApi.getWork).toHaveBeenCalledTimes(3));
+  await act(async () => { rejectOld(await gone("w")); });
+  expect(screen.queryByText("作品已删除或不存在")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "作品名" })).toBeTruthy();
+  expect(hasDrafts("w:")).toBe(true);
+  clearDrafts("w:");
 });
 
 /** 2026-10-28 独立复核：作品 A 的保存还没回来就切到作品 B，A 迟到的 404 不能把 B 标成已删除、清掉 B 的草稿。 */
@@ -118,4 +179,61 @@ test("polling stops once the current work turns out deleted", async () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
     expect(vi.mocked(DirectorApi.getWork).mock.calls.length).toBe(calls);
   } finally { vi.useRealTimers(); }
+});
+
+// ── 删除期间发出、恢复之后才回来的请求（2026-10-29 独立复核）────────────────────────
+// 请求经真实的 scopeToWork 打代次标记；恢复由后一次读取带回的新 restoredAt 体现（作品在别的页面被恢复）。
+
+async function restoredScenario(id: string) {
+  const { scopeToWork } = await import("../api/director");
+  const { ApiError } = await import("@ai-star-eco/api-client");
+  const { useDraft } = await import("./director-shared");
+  Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+  const running = { ...work(), id, tasks: [{ id: "r", target: "script", status: "running" as const, stage: null, cost: 0, errorMessage: null, createdAt: "2026-10-26T00:00:00Z" }] };
+  vi.mocked(DirectorApi.getWork)
+    .mockImplementationOnce(() => scopeToWork(id, Promise.resolve({ ...running, restoredAt: null })))
+    .mockImplementation(() => scopeToWork(id, Promise.resolve({ ...running, revision: 3, restoredAt: "2026-10-29T04:00:00Z" })));
+  const pending: Array<(e: unknown) => void> = [];
+  vi.mocked(DirectorApi.patchWork).mockImplementation(() => scopeToWork(id, new Promise<DirectorWork>((_r, reject) => { pending.push(reject); })));
+  function DraftProbe() { const [value, setValue] = useDraft(`${id}:content`, ""); return <input aria-label="草稿" value={value} onChange={e => setValue(e.target.value)}/>; }
+  render(<><DirectorWorkbench id={id}/><DraftProbe/></>);
+  const rename = async (to: string) => {
+    const title = await screen.findByRole("textbox", { name: "作品名" });
+    fireEvent.change(title, { target: { value: to } });
+    fireEvent.blur(title);
+    await waitFor(() => expect(pending.length).toBeGreaterThan(0));
+  };
+  const restoreElsewhere = async () => {
+    await screen.findByRole("textbox", { name: "作品名" }); // 作品读到、轮询挂上之后
+    await act(async () => { document.dispatchEvent(new Event("visibilitychange")); });
+    await waitFor(() => expect(DirectorApi.getWork).toHaveBeenCalledTimes(2));
+  };
+  const notFound = () => new ApiError({ code: "DIRECTOR_WORK_NOT_FOUND", message: "作品不存在" }, 404);
+  return { rename, restoreElsewhere, notFound, pending };
+}
+
+test("a save sent while the work was deleted and answered with 404 after the restore keeps the restored work and its new draft", async () => {
+  const { hasDrafts, clearDrafts, STALE_GONE_MESSAGE } = await import("./director-shared");
+  const s = await restoredScenario("stale-w");
+  await s.rename("删除期间改的名字");          // 删除期间发出的保存，迟迟不回
+  await s.restoreElsewhere();                  // 恢复后最新的读取先成功，带回新的 restoredAt
+  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "恢复后写的正文" } });
+  expect(hasDrafts("stale-w:")).toBe(true);
+  await act(async () => { s.pending[0](s.notFound()); });
+  expect(screen.queryByText("作品已删除或不存在")).toBeNull();
+  expect(screen.getByRole("textbox", { name: "作品名" })).toBeTruthy();
+  expect(hasDrafts("stale-w:")).toBe(true);
+  await waitFor(() => expect(failure.show).toHaveBeenCalledWith(expect.objectContaining({ error: STALE_GONE_MESSAGE })));
+  clearDrafts("stale-w:");
+});
+
+test("after the restore, a new request that really gets 404 still marks the work deleted", async () => {
+  const { hasDrafts } = await import("./director-shared");
+  const s = await restoredScenario("fresh-w");
+  await s.restoreElsewhere();
+  fireEvent.change(screen.getByRole("textbox", { name: "草稿" }), { target: { value: "恢复后写的正文" } });
+  await s.rename("恢复后改的名字");            // 恢复之后发出的保存
+  await act(async () => { s.pending[0](s.notFound()); }); // 作品又被删了
+  expect(await screen.findByText("作品已删除或不存在")).toBeTruthy();
+  expect(hasDrafts("fresh-w:")).toBe(false);
 });

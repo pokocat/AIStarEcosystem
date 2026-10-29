@@ -28,6 +28,21 @@
 .director-work-copy p { color: var(--ip-ink); font-size: 13px; }
 .director-work-copy small { color: var(--ip-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
 
+/* ── 回收站（2026-10-29）── */
+.director-page .studio-page-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.director-trash-link, .director-trash-back { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.director-trash-card .director-work-cover { aspect-ratio: 16 / 9; }
+.director-trash-card .director-work-cover img { filter: grayscale(.35); opacity: .9; }
+.director-trash-actions { display: flex; justify-content: flex-end; padding: 0 15px 14px; }
+.director-trash-actions button { display: inline-flex; align-items: center; gap: 6px; min-height: 34px; padding: 6px 14px; font-size: 13px; }
+.director-trash-restored { margin-bottom: 14px; }
+.director-trash-restored span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.director-trash-restored a { font-weight: 600; text-decoration: underline; text-underline-offset: 3px; color: inherit; }
+.director-gone p { max-width: 46ch; text-align: center; line-height: 1.8; }
+.director-gone-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+html:not([data-layout="desktop"]) .director-page .studio-page-actions { justify-content: flex-start; }
+html:not([data-layout="desktop"]) .director-trash-actions button, html:not([data-layout="desktop"]) .director-gone-actions > * { min-height: 40px; }
+
 /* ── 弹窗 ── */
 .director-dialog-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: 16px; background: rgba(25, 34, 41, .32); }
 .director-dialog { width: min(560px, 100%); max-height: calc(100dvh - 32px); overflow: auto; display: flex; flex-direction: column; gap: 14px; padding: 20px; border-radius: 12px; background: var(--ip-paper); box-shadow: 0 20px 60px rgba(25, 34, 41, .22); }

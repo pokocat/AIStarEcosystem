@@ -345,6 +345,8 @@ export interface DirectorWork {
   textError: DirectorError | null;
   /** 写剧本前的创意对话（有限澄清）；导入剧本的作品没有。 */
   brief?: DirectorBrief | null;
+  /** 最近一次从回收站恢复的时间（ISO），没恢复过为 null。有值时打开作品不自动发起付费任务，由用户自己点开始。 */
+  restoredAt?: string | null;
   /** 全能创作助手的对话：整部作品一份，按对话分段；每条消息绑定发送时的对象。 */
   assistant?: DirectorAssistant | null;
   tasks: DirectorTask[];
@@ -369,6 +371,17 @@ export interface DirectorWorkSummary {
   running: boolean;
   updatedAt: string;
   coverUrl: string | null;
+}
+
+/** 回收站里的一项：作品摘要 + 删除时间（ISO）。`running` 恒为 false。 */
+export interface DirectorTrashedWork extends DirectorWorkSummary {
+  deletedAt: string;
+}
+
+/** 从回收站恢复：原 ID 回到作品列表；作品没被删除时也回 restored=true（幂等）。 */
+export interface DirectorRestoreResult {
+  id: string;
+  restored: boolean;
 }
 
 export type DirectorEditOp =
