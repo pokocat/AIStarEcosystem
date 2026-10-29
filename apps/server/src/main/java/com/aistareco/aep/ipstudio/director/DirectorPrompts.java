@@ -266,7 +266,7 @@ public final class DirectorPrompts {
 
             【输出结构】
             严格按以下 JSON 结构输出，不得增减字段：
-            {"clips":[{"title":"片段短标题","summary":"本段剧情摘要","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
+            {"clips":[{"title":"片段短标题","summary":"本段剧情摘要","sourceQuote":"本片段对应正文的第一句原文，从正文逐字摘抄，不超过 30 字","assetIds":["资产 id"],"shots":[{"durationSec":3,"size":"景别","camera":"机位与构图","action":"动作过程：开始→过程→结束","still":"分镜静态帧描述","dialogue":[{"speakerId":"角色 id","text":"台词内容"}]}]}]}
             """;
 
     private static final String RESHOOT_OUTPUT = """
@@ -443,6 +443,8 @@ public final class DirectorPrompts {
             case "plan" -> validatePlan(om, meta, out);
             case "reshoot" -> validateReshoot(om, meta, out);
             case "videoPrompt" -> com.aistareco.aep.ipstudio.h3.H3PromptRewrite.validate(om, meta, out);
+            case "assistant" -> DirectorAssistant.validate(om, meta, out);
+            case "brief" -> DirectorAssistant.validateBrief(om, meta, out);
             default -> throw bad("未知的导演台任务");
         };
     }
@@ -641,7 +643,8 @@ public final class DirectorPrompts {
     private static void plannedClip(ObjectNode clip, JsonNode c) {
         JsonNode shots = c.path("shots");
         if (!shots.isArray() || shots.isEmpty()) throw bad("部分片段缺少镜头");
-        clip.put("title", clip(text(c, "title"), 40)).put("summary", clip(text(c, "summary"), 400));
+        clip.put("title", clip(text(c, "title"), 40)).put("summary", clip(text(c, "summary"), 400))
+                .put("sourceQuote", clip(text(c, "sourceQuote"), 60));
         ArrayNode ids = clip.putArray("assetIds");
         Set<String> seen = new HashSet<>();
         for (JsonNode id : c.path("assetIds")) if (!id.asText().isBlank() && seen.add(id.asText())) ids.add(clip(id.asText(), 40));
@@ -701,6 +704,11 @@ public final class DirectorPrompts {
     }
 
     /** 角色带形象参考照片时追加在出图提示词后：只取长相，版式、服装和背景仍按设定集来。 */
+    /** 「围绕当前图修改」时追加在出图提示词末尾：当前版本作为最后一张参考图，只是参考，不承诺局部精确编辑。 */
+    public static String baseOnNote(String label) {
+        return label + " 是这张图现在的版本：在它的基础上按上面的描述修改；描述里没有要求改变的人物长相、服装、场景、构图和排布尽量保持一致。";
+    }
+
     public static final String CHARACTER_REF_NOTE = "图1 是用户提供的形象参考照片，只用来确定这个人的长相：脸型、五官、发型、肤色和体型照着它画。"
             + "肤色指这个人在中性白光下本来的肤色，照片拍摄时的偏黄、偏暗和脸上的阴影不算。"
             + "不要照搬它的构图、角度、背景、光线或画质；服装和配饰以上面的角色设定为准，设定没写的才参考照片。"

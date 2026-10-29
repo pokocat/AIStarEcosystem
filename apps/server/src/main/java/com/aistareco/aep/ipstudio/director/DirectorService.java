@@ -116,6 +116,7 @@ public class DirectorService {
         c.putObject("settings").put("style", "真人写实").put("aspectRatio", "9:16").put("language", "中文").putNull("videoModel").putNull("imageModel").putNull("textModel");
         c.putArray("episodes"); c.putArray("assets"); c.putArray("clips"); c.putArray("applied");
         c.putObject("taskMeta"); c.putNull("pipeline"); c.putNull("notice"); c.putNull("textError");
+        if (!idea.isEmpty() && script.isEmpty()) briefStore(c);
         DirectorWork w = new DirectorWork();
         w.setId("DW-" + UUID.randomUUID().toString().replace("-", "").substring(0, 20));
         w.setOwnerUserId(userId); w.setTitle(title); w.setRevision(1);
@@ -319,6 +320,7 @@ public class DirectorService {
         if (node.startsWith("board:")) return "分镜图生成";
         if (node.startsWith("video:")) return "片段视频生成";
         if (node.startsWith("export:")) return "整集导出";
+        if (node.equals("assistant")) return "创作助手回复";
         return "生成任务";
     }
 
@@ -597,6 +599,14 @@ public class DirectorService {
                 }
             }
             case "notice.dismiss" -> c.putNull("notice");
+            case "assistant.apply", "assistant.dismiss", "assistant.undo" -> proposalOp(userId, w, c, req.op(), d);
+            case "assistant.newThread" -> newThread(assistantStore(c));
+            case "assistant.openThread" -> {
+                ObjectNode store = assistantStore(c);
+                String tid = d.path("threadId").asText();
+                if (findOrNull(store, "threads", tid) == null) throw BusinessException.notFound("DIRECTOR_THREAD_NOT_FOUND", "这段对话不存在，请刷新");
+                store.put("current", tid);
+            }
             default -> throw invalid("不支持的修改");
         }
         refresh(c);
@@ -630,7 +640,9 @@ public class DirectorService {
             if (v.isEmpty()) c.putNull(f.getKey()); else c.put(f.getKey(), v);
         }
         refresh(c);
-        dispatch(userId, w, c, req.type(), req.targetId(), "u-" + req.clientRequestId(), o, null, req.billing(), req.maxCost());
+        if ("assistant".equals(req.type())) askAssistant(userId, w, c, req, o);
+        else if ("brief".equals(req.type())) askBrief(userId, w, c, req, o);
+        else dispatch(userId, w, c, req.type(), req.targetId(), "u-" + req.clientRequestId(), o, null, req.billing(), req.maxCost());
         save(w, c);
         return view(userId, w, c);
     }
@@ -658,9 +670,19 @@ public class DirectorService {
                 nodeId = "script";
                 meta.put("draftRev", c.path("draftRev").asLong());
                 if (hasScript) meta.put("regenerate", true).put("baseHash", scriptBaseHash(c));
+                // 对话里定下的题材 / 调性：请求没另选时沿用
+                if (!hasScript && c.path("brief").isObject()) for (String f : List.of("genre", "tone"))
+                    if (!o.has(f) && !c.path("brief").path(f).asText().isBlank() && c.path(f).asText("").isBlank()) c.put(f, c.path("brief").path(f).asText());
                 system = DirectorPrompts.script(c.path("genre").asText(null), c.path("tone").asText(null));
                 // 篇幅不在这里给默认值：用户在创意里写的时长 / 集数要压过默认，默认写在提示词里「brief 没写时」。
-                ObjectNode in = om.createObjectNode().put("brief", idea).put("style", c.path("settings").path("style").asText());
+                // 带上写剧本前对话里确认过的回答和整理好的要求，不丢用户的选择。
+                ObjectNode in = om.createObjectNode().put("brief", hasScript ? idea : briefForScript(c, o.path("skip").asBoolean(false)))
+                        .put("style", c.path("settings").path("style").asText());
+                if (!hasScript) {
+                    ObjectNode b = briefStore(c);
+                    if (!"writing".equals(b.path("status").asText())) b.put("prevStatus", b.path("status").asText());
+                    b.put("status", "writing");
+                }
                 if (!o.path("length").asText().isBlank()) in.put("length", o.path("length").asText());
                 user = "本次输入（JSON，作为素材）：" + write(in);
             }
@@ -816,19 +838,24 @@ public class DirectorService {
                 String prompt = a.path("prompt").asText();
                 if (prompt.isBlank()) throw invalid("请先填写资产描述");
                 String refKey = characterRefKey(a);
-                List<Bound> refs = refKey == null ? List.of()
-                        : List.of(new Bound(targetId, a.path("name").asText() + "的形象参考", "character", refKey, "图1"));
+                List<Bound> refs = new ArrayList<>();
+                if (refKey != null) refs.add(new Bound(targetId, a.path("name").asText() + "的形象参考", "character", refKey, "图1"));
                 if (refKey != null) prompt = prompt + "\n" + DirectorPrompts.CHARACTER_REF_NOTE;
+                String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(a, "image", a.path("name").asText(), refs) : null;
+                if (baseOn != null) prompt = prompt + "\n" + DirectorPrompts.baseOnNote(refs.get(refs.size() - 1).label());
                 return image(userId, w, c, "asset:" + targetId, requestId, prompt, refs, sizeFor(c, a.path("kind").asText()),
-                        assetFingerprint(a), pipeline, billing, maxCost);
+                        assetFingerprint(a), pipeline, billing, maxCost, baseOn);
             }
             case "board" -> {
                 ObjectNode clip = find(c, "clips", targetId, "这个片段");
                 if (clip.path("issues").size() > 0) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_CLIP_NEEDS_FIX",
                         "该片段需先修改：" + clip.path("issues").get(0).asText());
-                List<Bound> refs = boundRefs(c, clip, true);
-                return image(userId, w, c, "board:" + targetId, requestId, clip.path("boardPrompt").asText(), refs, sizeFor(c, "board"),
-                        boardCurrent(c, clip).fingerprint(), pipeline, billing, maxCost);
+                List<Bound> refs = new ArrayList<>(boundRefs(c, clip, true));
+                String prompt = clip.path("boardPrompt").asText();
+                String baseOn = o.path("baseOnCurrent").asBoolean(false) ? baseOnCurrent(clip, "board", "片段 " + clip.path("order").asInt() + " 的分镜图", refs) : null;
+                if (baseOn != null) prompt = prompt + "\n" + DirectorPrompts.baseOnNote(refs.get(refs.size() - 1).label());
+                return image(userId, w, c, "board:" + targetId, requestId, prompt, refs, sizeFor(c, "board"),
+                        boardCurrent(c, clip).fingerprint(), pipeline, billing, maxCost, baseOn);
             }
             case "video" -> { return video(userId, w, c, find(c, "clips", targetId, "这个片段"), requestId, pipeline, billing, maxCost, o.path("promptChoice").asText(null)); }
             case "export" -> { return export(userId, w, c, targetId, requestId); }
@@ -922,8 +949,17 @@ public class DirectorService {
         return out;
     }
 
+    /** 「围绕当前图修改」：把当前采用的那张追加为最后一张参考图，返回它的版本 id。 */
+    private String baseOnCurrent(JsonNode target, String slotName, String name, List<Bound> refs) {
+        JsonNode slot = target.path(slotName);
+        String key = adoptedKey(slot);
+        if (key == null) throw invalid("还没有采用的图，不能围绕当前图修改");
+        refs.add(new Bound(target.path("id").asText(), name + "（当前版本）", "board".equals(slotName) ? "board" : target.path("kind").asText(), key, "图" + (refs.size() + 1)));
+        return slot.path("adoptedId").asText();
+    }
+
     private String image(String userId, DirectorWork w, ObjectNode c, String nodeId, String requestId, String prompt,
-                         List<Bound> refs, String size, String fingerprint, ObjectNode pipeline, BillingSelection billing, Long maxCost) {
+                         List<Bound> refs, String size, String fingerprint, ObjectNode pipeline, BillingSelection billing, Long maxCost, String baseOn) {
         requireIdle(w, nodeId);
         requireRefCapacity(c, refs.size());
         List<String> keys = new ArrayList<>();
@@ -934,6 +970,7 @@ public class DirectorService {
                 new IpRunService.IpGenerateRequest(nodeId, prompt, keys, 1, size, imageSelection(c).resolved().endpoint().getId(), maxCost, billing, requestId)).id());
         ObjectNode m = om.createObjectNode().put("node", nodeId).put("prompt", prompt).put("fingerprint", fingerprint)
                 .put("promptFormat", DirectorPrompts.IMAGE_PROMPT_FORMAT);
+        if (baseOn != null) m.put("baseOn", baseOn);
         ArrayNode rs = m.putArray("refs");
         refs.forEach(r -> rs.addObject().put("assetId", r.assetId()).put("name", r.name()).put("label", r.label()).put("key", r.key()));
         clearError(c, nodeId);
@@ -1543,6 +1580,13 @@ public class DirectorService {
 
     private void apply(DirectorWork w, ObjectNode c, IpRun run) {
         String node = run.getNodeId();
+        if ("assistant".equals(node)) { applyAssistantReply(c, run); return; }
+        if ("brief".equals(node)) { applyBriefReply(c, run); return; }
+        if ("script".equals(node) && c.path("brief").isObject()) {
+            ObjectNode b = (ObjectNode) c.path("brief");
+            if ("writing".equals(b.path("status").asText()))
+                b.put("status", IpRun.STATUS_FAILED.equals(run.getStatus()) ? b.path("prevStatus").asText("ready") : "done");
+        }
         if (node.startsWith("export:")) { applyExport(c, run, parse(run.getOutputJson())); return; }
         if (node.startsWith("video:") && "video.bound".equals(run.getStage())) return; // 真实视频由 pollVideos 跟踪原生任务
         if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
@@ -1582,6 +1626,7 @@ public class DirectorService {
                 if (meta.has("promptFormat")) m.put("promptFormat", meta.path("promptFormat").asInt());
                 if (meta.has("prompt")) m.put("prompt", meta.path("prompt").asText());
                 if (meta.has("refs")) m.set("refs", meta.path("refs").deepCopy());
+                if (meta.hasNonNull("baseOn")) m.put("baseOn", meta.path("baseOn").asText());
                 if (output.path("mock").asBoolean(false)) m.put("mock", true);
                 if (stale) m.put("stale", true);
                 else if (adoptedKey(slot) == null) slot.put("adoptedId", m.path("id").asText()).put("adoptedBy", "auto");
@@ -1751,12 +1796,754 @@ public class DirectorService {
         for (JsonNode p : planned) {
             ObjectNode clip = newClip(c, epId, p.path("title").asText(), p.path("summary").asText());
             clip.set("assetIds", p.path("assetIds").deepCopy());
+            // 片段在正文里从哪句开始：剧本预览据此定位；找不到就不记，不伪造位置。
+            String quote = p.path("sourceQuote").asText("");
+            if (!quote.isBlank() && DirectorAssistant.locate(ep.path("content").asText(), quote) != null) clip.put("sourceQuote", quote);
             setShots(c, clip, p.path("shots"), false);
             clips.add(clip);
         }
         renumber(c, epId);
         ep.put("planStale", false);
         ep.putNull("pendingPlan");
+    }
+
+    // ── 写剧本前的创意对话（docs/ai-director-assistant.md §7）────────────────
+    //
+    // 有剧本之前，剧本页默认是一段有限的澄清对话：AI 最多问 MAX_BRIEF_ROUNDS 轮，每轮最多两个问题；
+    // 信息够了或到上限就整理成创作要求，用户确认后写剧本。任何时候都能跳过，直接用已有信息生成。
+    // 一轮是一次导演台文字任务（节点 brief），计费、幂等、测试响应同 submitDirectorText。
+
+    private ObjectNode briefStore(ObjectNode c) {
+        if (!c.path("brief").isObject()) {
+            ObjectNode b = c.putObject("brief").put("status", "asking").put("rounds", 0).put("maxRounds", DirectorAssistant.MAX_BRIEF_ROUNDS)
+                    .put("summary", "").put("genre", "").put("tone", "").put("title", "");
+            b.putArray("messages");
+        }
+        return (ObjectNode) c.path("brief");
+    }
+
+    private boolean hasScript(ObjectNode c) {
+        return !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
+    }
+
+    private void askBrief(String userId, DirectorWork w, ObjectNode c, TaskRequest req, JsonNode o) {
+        if (hasScript(c)) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SCRIPT_EXISTS", "已有剧本，可以在助手里继续讨论和修改");
+        ObjectNode b = briefStore(c);
+        String clientId = req.clientRequestId();
+        for (JsonNode m : b.path("messages")) if (clientId.equals(m.path("clientId").asText(null))) return; // 同一编号重发：已受理
+        if ("writing".equals(b.path("status").asText())) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "剧本正在写，请稍候");
+        if (c.path("idea").asText().isBlank()) throw invalid("请先写下你的想法");
+        String text = o.path("message").asText("").trim();
+        if (text.length() > DirectorAssistant.MAX_MESSAGE) throw invalid("一次最多 " + DirectorAssistant.MAX_MESSAGE + " 字");
+        ArrayNode msgs = (ArrayNode) b.path("messages");
+        boolean opening = text.isEmpty();
+        if (opening && msgs.size() > 0) throw invalid("请输入回答");
+        requireIdle(w, "brief");
+        String now = Instant.now().toString();
+        // 用户说「你决定 / 直接写」：不再问，直接按已有信息写剧本（同一个请求编号，重发不会写两份）。
+        // 先记下这句话再组装剧本请求：「直接写三集」里的「三集」要进提示词（2026-10-28 review）。提交失败时整个请求回滚，这条记录也不会留下。
+        if (!opening && DirectorAssistant.saysGo(text)) {
+            msgs.addObject().put("id", "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
+                    .put("role", "user").put("text", text).put("at", now).put("status", "done");
+            dispatch(userId, w, c, "script", null, "u-" + clientId, om.createObjectNode().put("skip", true), null, req.billing(), req.maxCost());
+            return;
+        }
+        int rounds = b.path("rounds").asInt();
+        boolean mustConclude = rounds >= DirectorAssistant.MAX_BRIEF_ROUNDS;
+        ObjectNode material = om.createObjectNode().put("idea", c.path("idea").asText()).put("roundsUsed", rounds)
+                .put("roundsLeft", Math.max(0, DirectorAssistant.MAX_BRIEF_ROUNDS - rounds - 1)).put("mustConclude", mustConclude);
+        material.set("genres", om.valueToTree(DirectorPrompts.GENRES.keySet()));
+        material.set("tones", om.valueToTree(DirectorPrompts.TONES.keySet()));
+        material.set("conversation", briefTranscript(b));
+        ObjectNode meta = om.createObjectNode().put("task", "brief").put("mustConclude", mustConclude);
+        String messageId = "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        meta.put("messageId", messageId).put("round", rounds + 1).put("message", DirectorPrompts.clip(text, 400));
+        String user = "本次输入（JSON，作为素材）：" + write(material) + (opening ? "\n\n这是第一轮：请看用户的想法，判断要不要问、问什么。" : "\n\n用户这次说（这是用户的回答）：" + text);
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "brief", DirectorAssistant.BRIEF_SYSTEM, user, "u-" + clientId, meta,
+                textModel(c), req.billing(), req.maxCost()));
+        track(c, null, run.id(), om.createObjectNode().put("node", "brief"));
+        if (!opening) msgs.addObject().put("id", "b" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
+                .put("role", "user").put("text", text).put("at", now).put("status", "done");
+        else meta.put("clientId", clientId);
+        ObjectNode am = msgs.addObject().put("id", messageId).put("role", "assistant").put("text", "").put("at", now).put("status", "pending").put("runId", run.id());
+        if (opening) am.put("clientId", clientId);
+        am.putArray("questions");
+        b.put("status", "asking");
+        w.setActive(true);
+    }
+
+    /** 对话记录（给模型和写剧本用）：问题、选项、用户的回答，按顺序。 */
+    private ArrayNode briefTranscript(JsonNode b) {
+        ArrayNode out = om.createArrayNode();
+        for (JsonNode m : b.path("messages")) {
+            if (!"done".equals(m.path("status").asText())) continue;
+            if ("user".equals(m.path("role").asText())) { out.addObject().put("user", m.path("text").asText()); continue; }
+            ObjectNode a = out.addObject().put("ai", m.path("text").asText());
+            ArrayNode qs = a.putArray("asked");
+            for (JsonNode q : m.path("questions")) qs.add(q.path("q").asText());
+        }
+        return out;
+    }
+
+    private void applyBriefReply(ObjectNode c, IpRun run) {
+        ObjectNode b = briefStore(c);
+        JsonNode meta = parse(run.getInputJson()).path("_director");
+        ObjectNode msg = null;
+        for (JsonNode m : b.path("messages")) if (m.path("id").asText().equals(meta.path("messageId").asText())) msg = (ObjectNode) m;
+        if (msg == null) return;
+        if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
+            msg.put("status", "failed").put("error", run.getErrorMessage() == null ? "这一轮没有回复成功，请重新发送，或直接生成剧本" : run.getErrorMessage());
+            return;
+        }
+        JsonNode d = parse(run.getOutputJson()).path("director");
+        msg.put("status", "done").put("text", d.path("reply").asText());
+        msg.set("questions", d.path("questions").deepCopy());
+        if (d.path("questions").size() > 0) b.put("rounds", b.path("rounds").asInt() + 1);
+        for (String f : List.of("summary", "genre", "tone", "title")) if (!d.path(f).asText().isBlank()) b.put(f, d.path(f).asText());
+        // 回复晚到时剧本可能已经在写或写完了（用户中途跳过），这时只记下对话，不改状态。
+        if (d.path("ready").asBoolean(false) && "asking".equals(b.path("status").asText())) b.put("status", "ready");
+    }
+
+    /** 写剧本用的完整要求：原始想法 + 对话里确认过的回答 + 整理好的要求；跳过时说明其余由 AI 补齐。 */
+    private String briefForScript(ObjectNode c, boolean skip) {
+        StringBuilder s = new StringBuilder(c.path("idea").asText());
+        JsonNode b = c.path("brief");
+        ArrayNode qa = b.isObject() ? briefTranscript(b) : om.createArrayNode();
+        boolean answered = false;
+        for (JsonNode x : qa) if (x.has("user")) answered = true;
+        if (answered) {
+            s.append("\n\n【写剧本前和用户确认过的内容（用户的回答必须照做）】");
+            for (JsonNode x : qa) {
+                if (x.has("ai") && x.path("asked").size() > 0) s.append("\n问：").append(String.join(" / ", DirectorPrompts.strings(x.path("asked"))));
+                if (x.has("user")) s.append("\n答：").append(x.path("user").asText());
+            }
+        }
+        if (b.isObject() && !b.path("summary").asText().isBlank()) s.append("\n\n【整理后的创作要求】\n").append(b.path("summary").asText());
+        if (skip) s.append("\n\n用户选择不再回答问题：上面没说清的，由你按最适合这个故事的方式补齐，直接写。");
+        return s.toString();
+    }
+
+    // ── 全能创作助手（docs/ai-director-assistant.md）────────────────────────
+    //
+    // 一部作品一份对话（可分段），每条消息绑定发送时的对象（scope）。助手回复是一次普通的导演台文字任务（节点 assistant，
+    // 同一部作品同时只有一条在回复），计费、幂等、测试响应都走 submitDirectorText。回复里的建议只是建议：
+    // 用户点「采用」才写入，写入前按原文 / 修订号核对，之后改过的内容不会被覆盖；采用后能撤销。
+
+    static final int MAX_THREADS = 12;
+    static final int MAX_THREAD_MESSAGES = 200;
+
+    private ObjectNode assistantStore(ObjectNode c) {
+        if (!c.path("assistant").isObject()) {
+            ObjectNode a = c.putObject("assistant");
+            a.putNull("current"); a.putArray("threads");
+        }
+        return (ObjectNode) c.path("assistant");
+    }
+
+    private ObjectNode newThread(ObjectNode store) {
+        ObjectNode cur = (ObjectNode) findOrNull(store, "threads", store.path("current").asText(null));
+        if (cur != null && cur.path("messages").isEmpty()) return cur; // 当前这段还是空的就直接用
+        String now = Instant.now().toString();
+        ObjectNode t = om.createObjectNode().put("id", "th" + UUID.randomUUID().toString().replace("-", "").substring(0, 10))
+                .put("title", "").put("createdAt", now).put("updatedAt", now);
+        t.putArray("messages");
+        ArrayNode threads = (ArrayNode) store.path("threads");
+        threads.insert(0, t);
+        while (threads.size() > MAX_THREADS) threads.remove(threads.size() - 1);
+        store.put("current", t.path("id").asText());
+        return t;
+    }
+
+    private ObjectNode currentThread(ObjectNode store, String threadId) {
+        String id = threadId != null && !threadId.isBlank() ? threadId : store.path("current").asText(null);
+        ObjectNode t = (ObjectNode) findOrNull(store, "threads", id);
+        if (t == null) t = newThread(store);
+        store.put("current", t.path("id").asText());
+        return t;
+    }
+
+    /** 按 id 或客户端编号找消息（跨全部对话段）。返回 [thread, message]。 */
+    private ObjectNode[] findMessage(ObjectNode c, String field, String value) {
+        if (value == null || value.isBlank()) return null;
+        for (JsonNode t : c.path("assistant").path("threads"))
+            for (JsonNode m : t.path("messages")) if (value.equals(m.path(field).asText(null))) return new ObjectNode[]{(ObjectNode) t, (ObjectNode) m};
+        return null;
+    }
+
+    private void askAssistant(String userId, DirectorWork w, ObjectNode c, TaskRequest req, JsonNode o) {
+        String clientId = req.clientRequestId();
+        // 同一发送编号重发（上次超时、回包丢了）：消息已经在了就直接返回，不再建任务、不重复扣费。
+        if (findMessage(c, "clientId", clientId) != null) return;
+        String text = o.path("message").asText("").trim();
+        if (text.isEmpty()) throw invalid("请输入想和助手说的话");
+        if (text.length() > DirectorAssistant.MAX_MESSAGE) throw invalid("一次最多 " + DirectorAssistant.MAX_MESSAGE + " 字");
+        requireIdle(w, "assistant");
+        ObjectNode scope = resolveScope(c, w, o.path("scope"));
+        ObjectNode store = assistantStore(c);
+        ObjectNode thread = currentThread(store, o.path("threadId").asText(null));
+        if (thread.path("messages").size() >= MAX_THREAD_MESSAGES) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_THREAD_FULL", "这段对话太长了，请开一段新对话");
+
+        String kind = scope.path("kind").asText();
+        boolean hasScript = !c.path("draft").asText().isBlank() || c.path("episodes").size() > 0;
+        List<String> allowed = DirectorAssistant.allowed(kind, hasScript, c.path("episodes").size() > 0);
+        ObjectNode meta = om.createObjectNode().put("task", "assistant").put("threadId", thread.path("id").asText());
+        meta.set("allowed", om.valueToTree(allowed));
+        ArrayNode targets = meta.putArray("scriptTargets"), clipIds = meta.putArray("clipIds"), assetIds = meta.putArray("assetIds"), which = meta.putArray("which");
+        ObjectNode before = meta.putObject("before");
+        ObjectNode material = om.createObjectNode();
+        ObjectNode workInfo = material.putObject("work").put("title", w.getTitle()).put("idea", c.path("idea").asText())
+                .put("genre", c.path("genre").asText("")).put("tone", c.path("tone").asText("")).put("logline", c.path("logline").asText())
+                .put("style", c.path("settings").path("style").asText()).put("aspectRatio", c.path("settings").path("aspectRatio").asText());
+        if (c.path("outline").isObject()) workInfo.set("outline", c.path("outline"));
+        ArrayNode eps = material.putArray("episodes");
+        for (JsonNode ep : c.path("episodes")) eps.addObject().put("id", ep.path("id").asText()).put("no", ep.path("no").asInt())
+                .put("title", ep.path("title").asText()).put("summary", ep.path("summary").asText());
+        ArrayNode as = material.putArray("assets");
+        for (JsonNode a : c.path("assets")) if (as.size() < 60) as.addObject().put("id", a.path("id").asText()).put("kind", a.path("kind").asText())
+                .put("name", a.path("name").asText()).put("description", DirectorPrompts.clip(a.path("description").asText(), 300));
+
+        ObjectNode focus = material.putObject("focus").put("kind", kind).put("label", scope.path("label").asText());
+        String epId = scope.path("episodeId").asText(null);
+        JsonNode ep = epId == null || "draft".equals(epId) ? null : findOrNull(c, "episodes", epId);
+        ArrayNode visual = null;
+        boolean imageAttached = false;
+        switch (kind) {
+            case "script", "selection" -> {
+                if (!hasScript) focus.put("stage", "idea").put("idea", c.path("idea").asText());
+                else if ("draft".equals(epId)) { focus.put("target", "draft").put("content", c.path("draft").asText()); targets.add("draft"); }
+                else { focus.put("target", epId).put("episodeNo", ep.path("no").asInt()).put("title", ep.path("title").asText()).put("content", ep.path("content").asText()); targets.add(epId); }
+                if ("selection".equals(kind)) { focus.put("selected", scope.path("text").asText()); meta.put("selection", scope.path("text").asText()); }
+            }
+            case "storyboard" -> {
+                focus.put("episodeNo", ep.path("no").asInt()).put("episodeContent", ep.path("content").asText());
+                ArrayNode list = focus.putArray("clips");
+                for (JsonNode clip : c.path("clips")) if (epId.equals(clip.path("episodeId").asText())) {
+                    list.add(clipMaterial(c, clip)); clipIds.add(clip.path("id").asText()); before.with("clips").set(clip.path("id").asText(), clipBefore(clip));
+                }
+            }
+            case "clip", "prompt" -> {
+                JsonNode clip = find(c, "clips", scope.path("clipId").asText(), "这个片段");
+                JsonNode clipEp = findOrNull(c, "episodes", clip.path("episodeId").asText());
+                if (clipEp != null) focus.put("episodeNo", clipEp.path("no").asInt()).put("episodeContent", clipEp.path("content").asText());
+                focus.set("clip", clipMaterial(c, clip));
+                ArrayNode linked = focus.putArray("linkedAssets");
+                for (JsonNode a : visualAssets(c, clip)) linked.addObject().put("id", a.path("id").asText()).put("name", a.path("name").asText()).put("description", a.path("description").asText());
+                clipIds.add(clip.path("id").asText());
+                before.with("clips").set(clip.path("id").asText(), clipBefore(clip));
+                if ("prompt".equals(kind)) { focus.put("which", scope.path("which").asText()); which.add(scope.path("which").asText()); }
+            }
+            case "asset" -> {
+                JsonNode a = find(c, "assets", scope.path("assetId").asText(), "这个资产");
+                focus.set("asset", assetMaterial(c, a));
+                assetIds.add(a.path("id").asText());
+                before.with("assets").set(a.path("id").asText(), assetBefore(a));
+            }
+            case "image" -> {
+                boolean board = "board".equals(scope.path("which").asText(null));
+                JsonNode target = board ? find(c, "clips", scope.path("clipId").asText(), "这个片段") : find(c, "assets", scope.path("assetId").asText(), "这个资产");
+                JsonNode slot = target.path(board ? "board" : "image");
+                String imageKey = adoptedKey(slot);
+                if (board) {
+                    focus.put("target", "board").set("clip", clipMaterial(c, target));
+                    clipIds.add(target.path("id").asText()); which.add("board");
+                    before.with("clips").set(target.path("id").asText(), clipBefore(target));
+                } else {
+                    focus.put("target", "asset").set("asset", assetMaterial(c, target));
+                    assetIds.add(target.path("id").asText());
+                    before.with("assets").set(target.path("id").asText(), assetBefore(target));
+                }
+                // 当前采用那张是用什么提示词生成的（之后提示词可能又改过）。
+                for (JsonNode m : slot.path("candidates")) if (m.path("id").asText().equals(slot.path("adoptedId").asText()))
+                    focus.put("imagePrompt", m.path("prompt").asText(""));
+                if (imageKey != null && !fixtures.enabled() && visionModel(c)) {
+                    visual = om.createArrayNode();
+                    visual.addObject().put("nodeId", target.path("id").asText()).put("title", scope.path("label").asText()).put("type", "image").put("storageKey", imageKey);
+                    imageAttached = true;
+                }
+            }
+            default -> { }
+        }
+        if (Set.of("storyboard", "clip", "prompt", "image").contains(kind)) {
+            Limits lim = limits(c);
+            if (lim != null) material.putObject("videoLimits").put("minSec", lim.min()).put("maxSec", lim.max()).put("maxShots", lim.maxShots())
+                    .put("mode", lim.mode());
+        }
+        material.put("imageAttached", imageAttached);
+        material.set("allowedProposals", om.valueToTree(allowed));
+        ArrayNode history = material.putArray("history");
+        ArrayNode msgs = (ArrayNode) thread.path("messages");
+        for (int i = Math.max(0, msgs.size() - DirectorAssistant.HISTORY); i < msgs.size(); i++) {
+            JsonNode m = msgs.get(i);
+            if (!"done".equals(m.path("status").asText())) continue;
+            ObjectNode h = history.addObject().put("role", m.path("role").asText()).put("about", m.path("scope").path("label").asText())
+                    .put("text", DirectorPrompts.clip(m.path("text").asText(), 1500));
+            ArrayNode ps = h.putArray("proposals");
+            // status 写成中文：真实模型会把「open」的建议当成已经改过（2026-10-28 实测）。
+            for (JsonNode p : m.path("proposals")) ps.addObject().put("type", p.path("type").asText()).put("note", p.path("note").asText())
+                    .put("status", switch (p.path("status").asText()) { case "applied" -> "用户已采用"; case "dismissed" -> "用户没采用"; default -> "还没采用，内容没有改" ; })
+                    .put("text", DirectorPrompts.clip(firstNonBlank(p, "replacement", "text", "prompt", "description"), 600));
+        }
+        String messageId = "m" + UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+        meta.put("message", DirectorPrompts.clip(text, 400)).put("scopeKind", kind);
+        // 测试响应用：一段确实在正文里的原文，固定回复的「局部修改」才能被真正采用。
+        if (fixtures.enabled() && targets.size() > 0)
+            meta.put("fixtureSample", "selection".equals(kind) ? scope.path("text").asText() : sampleLine(scriptContent(c, targets.get(0).asText())));
+        meta.put("messageId", messageId).put("visual", "image".equals(kind) ? (imageAttached ? "seen" : "prompt-only") : "");
+        String user = "本次输入（JSON，作为素材）：" + write(material) + "\n\n用户这次说（这是用户的要求）：" + text;
+        final ArrayNode fVisual = visual;
+        var run = newTx.execute(tx -> textRuns.submitDirectorText(userId, w.getId(), "assistant", DirectorAssistant.SYSTEM, user, "u-" + clientId, meta,
+                textModel(c), req.billing(), req.maxCost(), fVisual));
+        track(c, null, run.id(), om.createObjectNode().put("node", "assistant"));
+        // 用户消息和一条「正在回复」的助手消息，回复回来后由 applyAssistantReply 填上。
+        String now = Instant.now().toString();
+        ObjectNode um = msgs.addObject().put("id", "m" + UUID.randomUUID().toString().replace("-", "").substring(0, 12)).put("clientId", clientId)
+                .put("role", "user").put("text", text).put("at", now).put("status", "done");
+        um.set("scope", scope);
+        ObjectNode am = msgs.addObject().put("id", messageId).putNull("clientId").put("role", "assistant").put("text", "").put("at", now)
+                .put("status", "pending").put("runId", run.id());
+        am.set("scope", scope.deepCopy());
+        am.putArray("proposals");
+        if (thread.path("title").asText().isBlank()) thread.put("title", DirectorPrompts.clip(text.replaceAll("\\s+", " "), 24));
+        thread.put("updatedAt", now);
+        w.setActive(true);
+    }
+
+    private static String firstNonBlank(JsonNode n, String... fields) {
+        for (String f : fields) if (!n.path(f).asText("").isBlank()) return n.path(f).asText();
+        return "";
+    }
+
+    /** 作品当前的文字模型能不能看图：只认后台声明的能力（StudioVisualContext.supportsVision）。 */
+    private boolean visionModel(ObjectNode c) {
+        String model = c.path("settings").path("textModel").asText(null);
+        return textRuns.capabilities().textModels().stream()
+                .filter(m -> model == null ? m.isDefault() : model.equals(m.endpointId()))
+                .findFirst().map(m -> m.supportsVision()).orElse(false);
+    }
+
+    /** 校验客户端给的范围，并由服务端写对象说明（不信客户端的 label）。 */
+    private ObjectNode resolveScope(ObjectNode c, DirectorWork w, JsonNode in) {
+        String kind = in.path("kind").asText("work");
+        if (!DirectorAssistant.SCOPES.contains(kind)) throw invalid("不支持的讨论范围");
+        ObjectNode s = om.createObjectNode().put("kind", kind);
+        boolean hasEpisodes = c.path("episodes").size() > 0;
+        switch (kind) {
+            case "work" -> s.put("label", "整部作品");
+            case "script", "selection" -> {
+                String epId = in.path("episodeId").asText(null);
+                if (hasEpisodes) {
+                    JsonNode ep = find(c, "episodes", epId, "这一集");
+                    s.put("episodeId", epId).put("label", "第 " + ep.path("no").asInt() + " 集 · " + ep.path("title").asText());
+                } else if (!c.path("draft").asText().isBlank()) s.put("episodeId", "draft").put("label", "剧本（未拆集）");
+                else if ("selection".equals(kind)) throw invalid("还没有剧本正文");
+                else s.putNull("episodeId").put("label", "创意与剧本");
+                if ("selection".equals(kind)) {
+                    String text = in.path("text").asText("");
+                    if (text.isBlank()) throw invalid("请先选中一段正文");
+                    if (text.length() > DirectorAssistant.MAX_SELECTION) throw invalid("选中的正文太长，请少选一些（最多 " + DirectorAssistant.MAX_SELECTION + " 字）");
+                    // 选区是具体位置，不只是文字：同样的话出现两处时，改的必须是用户选中的那一处。
+                    // 前端发送前先保存正文，这里按保存后的正文核对位置。
+                    String content = scriptContent(c, s.path("episodeId").asText());
+                    int start = in.path("start").asInt(-1), end = in.path("end").asInt(-1);
+                    if (start < 0 || end <= start || end > content.length() || !content.substring(start, end).equals(text))
+                        throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_SELECTION_CHANGED", "选中的正文和当前正文对不上，请重新选择要修改的段落");
+                    s.put("text", text).put("start", start).put("end", end).put("label", s.path("label").asText() + " · 已选正文");
+                }
+            }
+            case "storyboard" -> {
+                JsonNode ep = find(c, "episodes", in.path("episodeId").asText(null), "这一集");
+                s.put("episodeId", ep.path("id").asText()).put("label", "第 " + ep.path("no").asInt() + " 集 · 全部片段");
+            }
+            case "clip", "prompt" -> {
+                JsonNode clip = find(c, "clips", in.path("clipId").asText(null), "这个片段");
+                s.put("clipId", clip.path("id").asText()).put("episodeId", clip.path("episodeId").asText());
+                String base = clipLabel(c, clip);
+                if ("prompt".equals(kind)) {
+                    String which = in.path("which").asText("");
+                    if (!Set.of("board", "video").contains(which)) throw invalid("请选择分镜图提示词或视频提示词");
+                    s.put("which", which).put("label", base + " · " + ("board".equals(which) ? "分镜图提示词" : "视频提示词"));
+                } else s.put("label", base + " · 镜头");
+            }
+            case "asset" -> {
+                JsonNode a = find(c, "assets", in.path("assetId").asText(null), "这个资产");
+                s.put("assetId", a.path("id").asText()).put("label", DirectorPrompts.kindLabel(a.path("kind").asText()) + " · " + a.path("name").asText());
+            }
+            case "image" -> {
+                if ("board".equals(in.path("which").asText(null))) {
+                    JsonNode clip = find(c, "clips", in.path("clipId").asText(null), "这个片段");
+                    if (adoptedKey(clip.path("board")) == null) throw invalid("这个片段还没有采用的分镜图");
+                    s.put("clipId", clip.path("id").asText()).put("episodeId", clip.path("episodeId").asText()).put("which", "board")
+                            .put("label", clipLabel(c, clip) + " · 分镜图");
+                } else {
+                    JsonNode a = find(c, "assets", in.path("assetId").asText(null), "这个资产");
+                    if (adoptedKey(a.path("image")) == null) throw invalid("这个资产还没有采用的参考图");
+                    s.put("assetId", a.path("id").asText()).put("label", a.path("name").asText() + " · 参考图");
+                }
+            }
+            default -> { }
+        }
+        return s;
+    }
+
+    private String clipLabel(ObjectNode c, JsonNode clip) {
+        JsonNode ep = findOrNull(c, "episodes", clip.path("episodeId").asText());
+        return (ep == null ? "" : "第 " + ep.path("no").asInt() + " 集 · ") + "片段 " + clip.path("order").asInt();
+    }
+
+    private ObjectNode clipMaterial(ObjectNode c, JsonNode clip) {
+        ObjectNode m = om.createObjectNode().put("id", clip.path("id").asText()).put("order", clip.path("order").asInt())
+                .put("title", clip.path("title").asText()).put("summary", clip.path("summary").asText()).put("durationSec", clip.path("durationSec").asDouble());
+        m.set("assetIds", clip.path("assetIds"));
+        ArrayNode shots = m.putArray("shots");
+        for (JsonNode s : clip.path("shots")) {
+            ObjectNode shot = shots.addObject().put("id", s.path("id").asText()).put("durationSec", s.path("durationSec").asDouble())
+                    .put("size", s.path("size").asText()).put("camera", s.path("camera").asText()).put("action", s.path("action").asText()).put("still", s.path("still").asText());
+            ArrayNode d = shot.putArray("dialogue");
+            for (JsonNode l : s.path("dialogue")) {
+                JsonNode sp = findOrNull(c, "assets", l.path("speakerId").asText(null));
+                ObjectNode line = d.addObject();
+                if (l.path("speakerId").isTextual()) line.put("speakerId", l.path("speakerId").asText()); else line.putNull("speakerId");
+                line.put("speaker", sp == null ? "旁白" : sp.path("name").asText()).put("text", l.path("text").asText());
+            }
+        }
+        m.put("boardPrompt", clip.path("boardPrompt").asText()).put("videoPrompt", clip.path("videoPrompt").asText());
+        return m;
+    }
+
+    private ObjectNode clipBefore(JsonNode clip) {
+        ObjectNode b = om.createObjectNode().put("shotsSig", shotsSig(clip.path("shots")))
+                .put("board", clip.path("boardPrompt").asText()).put("boardCustom", clip.path("boardPromptCustom").asBoolean(false))
+                .put("video", clip.path("videoPrompt").asText()).put("videoCustom", clip.path("videoPromptCustom").asBoolean(false));
+        b.set("shots", clip.path("shots").deepCopy());
+        return b;
+    }
+
+    private ObjectNode assetMaterial(ObjectNode c, JsonNode a) {
+        ObjectNode m = om.createObjectNode().put("id", a.path("id").asText()).put("kind", a.path("kind").asText()).put("name", a.path("name").asText())
+                .put("description", a.path("description").asText()).put("prompt", a.path("prompt").asText()).put("voiceDesc", a.path("voiceDesc").asText(""));
+        m.set("aliases", a.path("aliases"));
+        ArrayNode nos = m.putArray("episodeNos");
+        for (JsonNode ep : c.path("episodes")) if (contains(a.path("episodeIds"), ep.path("id").asText())) nos.add(ep.path("no").asInt());
+        return m;
+    }
+
+    private ObjectNode assetBefore(JsonNode a) {
+        return om.createObjectNode().put("description", a.path("description").asText()).put("prompt", a.path("prompt").asText())
+                .put("promptCustom", a.path("promptCustom").asBoolean(false)).put("voiceDesc", a.path("voiceDesc").asText(""));
+    }
+
+    /** 镜头内容的签名（不含起止秒）：判断片段在助手回复之后有没有被改过。 */
+    private String shotsSig(JsonNode shots) {
+        ArrayNode out = om.createArrayNode();
+        for (JsonNode s : shots) {
+            ObjectNode x = out.addObject().put("d", s.path("durationSec").asDouble()).put("z", s.path("size").asText()).put("c", s.path("camera").asText())
+                    .put("a", s.path("action").asText()).put("s", s.path("still").asText());
+            ArrayNode d = x.putArray("l");
+            for (JsonNode l : s.path("dialogue")) d.add(l.path("speakerId").asText("") + ":" + l.path("text").asText());
+        }
+        return hash(write(out));
+    }
+
+    /** 回复回来：填进那条「正在回复」的消息。建议的旧值来自发送时的快照（助手看到的是什么）。 */
+    private void applyAssistantReply(ObjectNode c, IpRun run) {
+        JsonNode meta = parse(run.getInputJson()).path("_director");
+        ObjectNode[] found = findMessage(c, "id", meta.path("messageId").asText(null));
+        if (found == null) return;
+        ObjectNode thread = found[0], msg = found[1];
+        thread.put("updatedAt", Instant.now().toString());
+        if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
+            msg.put("status", "failed").put("error", run.getErrorMessage() == null ? "助手没有回复成功，请重新发送" : run.getErrorMessage());
+            return;
+        }
+        JsonNode d = parse(run.getOutputJson()).path("director");
+        msg.put("status", "done").put("text", d.path("reply").asText()).put("dropped", d.path("dropped").asInt(0));
+        if (!meta.path("visual").asText().isBlank()) msg.put("visual", meta.path("visual").asText());
+        ArrayNode proposals = msg.putArray("proposals");
+        int n = 0;
+        for (JsonNode p : d.path("proposals")) {
+            ObjectNode r = ((ObjectNode) p.deepCopy()).put("id", "p" + (++n)).put("status", "open");
+            r.putNull("appliedAt");
+            switch (r.path("type").asText()) {
+                case "script.replace" -> {
+                    r.put("targetLabel", scriptLabel(c, r.path("target").asText()));
+                    ObjectNode anchor = replyAnchor(c, msg.path("scope"), r.path("target").asText(), r.path("original").asText());
+                    if (anchor == null) { msg.put("dropped", msg.path("dropped").asInt() + 1); continue; }
+                    r.set("anchor", anchor);
+                    // 回复时的正文快照：采用时把锚点从这份映射到用户改过之后的正文（DirectorAssistant.mapRange）。不出 wire 的存储。
+                    c.with("assistantBase").put(msg.path("id").asText() + ":" + r.path("id").asText(), scriptContent(c, r.path("target").asText()));
+                }
+                case "script.append" -> r.put("targetLabel", scriptLabel(c, r.path("target").asText()));
+                case "script.draft", "idea.update" -> r.put("targetLabel", "script.draft".equals(r.path("type").asText()) ? "剧本" : "创意");
+                case "clip.shots", "clip.prompt" -> {
+                    JsonNode clip = findOrNull(c, "clips", r.path("clipId").asText());
+                    if (clip == null) continue;
+                    r.put("targetLabel", clipLabel(c, clip));
+                    JsonNode b = meta.path("before").path("clips").path(r.path("clipId").asText());
+                    if ("clip.shots".equals(r.path("type").asText())) {
+                        r.set("beforeShots", b.path("shots").deepCopy());
+                        r.put("beforeSig", b.path("shotsSig").asText());
+                        // 原镜头 id 只认这个片段自己的，其它当新镜头。
+                        Set<String> own = DirectorAssistant.ids(b.path("shots"), "id");
+                        for (JsonNode s : r.path("shots")) if (s.hasNonNull("id") && !own.contains(s.path("id").asText())) ((ObjectNode) s).putNull("id");
+                    } else {
+                        String w = r.path("which").asText();
+                        r.putObject("before").put("text", b.path(w).asText()).put("custom", b.path(w + "Custom").asBoolean(false));
+                    }
+                }
+                case "asset.update" -> {
+                    JsonNode a = findOrNull(c, "assets", r.path("assetId").asText());
+                    if (a == null) continue;
+                    r.put("targetLabel", DirectorPrompts.kindLabel(a.path("kind").asText()) + " · " + a.path("name").asText());
+                    r.set("before", meta.path("before").path("assets").path(r.path("assetId").asText()).deepCopy());
+                    // 同时改了外观设定、出图提示词又是自动生成的：提示词会按新设定重编，不再带模型抄改的那份，
+                    // 免得采用后提示词被固定成「已自定义」、之后再改设定不跟着变（真实模型常两个都填）。
+                    if (r.hasNonNull("description") && r.hasNonNull("prompt") && !r.path("regenerate").asBoolean(false)
+                            && !r.path("before").path("promptCustom").asBoolean(false)) r.remove("prompt");
+                }
+                default -> { continue; }
+            }
+            proposals.add(r);
+        }
+    }
+
+    /**
+     * 回复回来时把剧本建议钉到正文的具体一处：选中了段落就只在选区里找；没选就要求原文在这一集里只出现一处，
+     * 出现多处、找不到都丢掉（计入「已略过」），不让「多处取第一处」改错地方。
+     */
+    private ObjectNode replyAnchor(ObjectNode c, JsonNode scope, String target, String original) {
+        String content;
+        try { content = scriptContent(c, target); } catch (BusinessException e) { return null; }
+        if ("selection".equals(scope.path("kind").asText()) && target.equals(scope.path("episodeId").asText())) {
+            String sel = scope.path("text").asText();
+            int[] rel = DirectorAssistant.locate(sel, original);
+            if (rel == null || DirectorAssistant.locateAll(sel, original).size() > 1) return null;
+            int start = scope.path("start").asInt(-1);
+            if (start < 0 || start + sel.length() > content.length() || !content.startsWith(sel, start)) {
+                // 回复期间正文改过：选中的那段文字还唯一存在就跟着它走，否则放弃
+                List<int[]> moved = DirectorAssistant.locateAll(content, sel);
+                if (moved.size() != 1 || !content.substring(moved.get(0)[0], moved.get(0)[1]).equals(sel)) return null;
+                start = moved.get(0)[0];
+            }
+            return DirectorAssistant.anchorAt(om, content, start + rel[0], start + rel[1]);
+        }
+        List<int[]> hits = DirectorAssistant.locateAll(content, original);
+        return hits.size() == 1 ? DirectorAssistant.anchorAt(om, content, hits.get(0)[0], hits.get(0)[1]) : null;
+    }
+
+    private String scriptLabel(ObjectNode c, String target) {
+        if ("draft".equals(target)) return "剧本（未拆集）";
+        JsonNode ep = findOrNull(c, "episodes", target);
+        return ep == null ? "已删除的一集" : "第 " + ep.path("no").asInt() + " 集";
+    }
+
+    private static BusinessException stale(String message) {
+        return new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_PROPOSAL_STALE", message);
+    }
+
+    /** 采用 / 放弃 / 撤销一条建议。 */
+    private void proposalOp(String userId, DirectorWork w, ObjectNode c, String op, JsonNode d) {
+        ObjectNode[] found = findMessage(c, "id", d.path("messageId").asText(null));
+        ObjectNode p = null;
+        if (found != null) for (JsonNode x : found[1].path("proposals")) if (x.path("id").asText().equals(d.path("proposalId").asText())) p = (ObjectNode) x;
+        if (p == null) throw BusinessException.notFound("DIRECTOR_PROPOSAL_NOT_FOUND", "这条建议不存在，请刷新");
+        String undoKey = found[1].path("id").asText() + ":" + p.path("id").asText();
+        ObjectNode undoStore = c.with("assistantUndo");
+        String status = p.path("status").asText();
+        switch (op) {
+            case "assistant.dismiss" -> {
+                if (!"open".equals(status)) throw stale("这条建议已经处理过了");
+                p.put("status", "dismissed");
+                c.with("assistantBase").remove(undoKey);
+            }
+            case "assistant.apply" -> {
+                if (!"open".equals(status)) throw stale("这条建议已经处理过了");
+                undoStore.set(undoKey, applyProposal(w, c, p, undoKey));
+                p.put("status", "applied").put("appliedAt", Instant.now().toString());
+                c.with("assistantBase").remove(undoKey);
+            }
+            case "assistant.undo" -> {
+                JsonNode undo = undoStore.path(undoKey);
+                if (!"applied".equals(status) || !undo.isObject()) throw stale("这条建议不能撤销");
+                undoProposal(w, c, p, undo, undoKey);
+                undoStore.remove(undoKey);
+                p.put("status", "open").putNull("appliedAt");
+            }
+            default -> throw invalid("不支持的修改");
+        }
+    }
+
+    /** 写入一条建议，返回撤销所需的数据。写入前核对：助手看到的内容之后被改过，就不覆盖。 */
+    private ObjectNode applyProposal(DirectorWork w, ObjectNode c, ObjectNode p, String key) {
+        ObjectNode undo = om.createObjectNode();
+        switch (p.path("type").asText()) {
+            case "script.replace" -> {
+                String target = p.path("target").asText();
+                String content = scriptContent(c, target);
+                JsonNode a = p.path("anchor");
+                String base = c.path("assistantBase").path(key).asText(null);
+                int[] r = a.isObject() && base != null ? DirectorAssistant.mapRange(base, content, a.path("start").asInt(), a.path("end").asInt())
+                        : a.isObject() ? DirectorAssistant.findAnchor(content, a.path("text").asText(), a.path("before").asText(), a.path("after").asText(), a.path("start").asInt())
+                        : uniqueOrNull(content, p.path("original").asText());
+                if (r == null) throw stale("原文已经改动，找不到这条建议要替换的那一处。可以让助手按现在的正文重新给建议");
+                String replacement = p.path("replacement").asText();
+                String after = DirectorAssistant.splice(content, r, replacement);
+                // 撤销同样按位置映射：记下采用后的正文和替换后的那一段位置，删除（替换为空）也能撤销。
+                undo.put("original", content.substring(r[0], r[1])).put("replacement", replacement).put("at", r[0]).put("contentAfter", after);
+                writeScript(c, target, after);
+            }
+            case "script.append" -> {
+                String target = p.path("target").asText();
+                String content = scriptContent(c, target);
+                String added = (content.isBlank() || content.endsWith("\n\n") ? "" : content.endsWith("\n") ? "\n" : "\n\n") + p.path("text").asText();
+                undo.put("added", added);
+                writeScript(c, target, content + added);
+            }
+            case "script.draft" -> {
+                if (!c.path("draft").asText().isBlank() || c.path("episodes").size() > 0) throw stale("已经有剧本了，这份草稿不能直接采用。可以让助手在现有剧本上修改");
+                undo.put("title", w.getTitle()).put("logline", c.path("logline").asText());
+                c.put("draft", limited(p.path("content").asText(), 60000, "剧本")).put("draftRev", c.path("draftRev").asLong() + 1);
+                if (!p.path("title").asText().isBlank()) w.setTitle(limited(p.path("title").asText(), 60, "作品名"));
+                if (!p.path("logline").asText().isBlank()) c.put("logline", p.path("logline").asText());
+                undo.put("draftRev", c.path("draftRev").asLong());
+            }
+            case "idea.update" -> {
+                undo.put("idea", c.path("idea").asText()).put("applied", p.path("text").asText());
+                c.put("idea", limited(p.path("text").asText(), 2000, "创意"));
+            }
+            case "clip.shots" -> {
+                ObjectNode clip = find(c, "clips", p.path("clipId").asText(), "这个片段");
+                if (!shotsSig(clip.path("shots")).equals(p.path("beforeSig").asText()))
+                    throw stale("这个片段的镜头在助手回复后又改过，这条建议没有写入。可以让助手按现在的镜头重新给建议");
+                if (clip.path("video").path("pending").size() > 0) throw new BusinessException(HttpStatus.CONFLICT, "DIRECTOR_TASK_RUNNING", "这个片段的视频正在生成，完成后再改镜头");
+                undo.set("shots", clip.path("shots").deepCopy());
+                setShots(c, clip, p.path("shots"), true);
+                bump(clip);
+                undo.put("rev", clip.path("rev").asLong());
+            }
+            case "clip.prompt" -> {
+                ObjectNode clip = find(c, "clips", p.path("clipId").asText(), "这个片段");
+                String which = p.path("which").asText(), field = which + "Prompt";
+                boolean custom = clip.path(field + "Custom").asBoolean(false);
+                // 自动生成的提示词会随镜头变，不算用户改过；用户自己改过、又和助手看到的不一样，才不覆盖。
+                if (custom && !clip.path(field).asText().equals(p.path("before").path("text").asText()))
+                    throw stale(("board".equals(which) ? "分镜图" : "视频") + "提示词在助手回复后又改过，这条建议没有写入");
+                undo.put("text", clip.path(field).asText()).put("custom", custom).put("applied", p.path("text").asText());
+                clip.put(field, limited(p.path("text").asText(), 7000, "提示词")).put(field + "Custom", true);
+                bump(clip);
+            }
+            case "asset.update" -> {
+                ObjectNode a = find(c, "assets", p.path("assetId").asText(), "这个资产");
+                JsonNode b = p.path("before");
+                if (p.hasNonNull("description") && !a.path("description").asText().equals(b.path("description").asText()))
+                    throw stale("「" + a.path("name").asText() + "」的外观设定在助手回复后又改过，这条建议没有写入");
+                if (p.hasNonNull("prompt") && a.path("promptCustom").asBoolean(false) && !a.path("prompt").asText().equals(b.path("prompt").asText()))
+                    throw stale("「" + a.path("name").asText() + "」的出图提示词在助手回复后又改过，这条建议没有写入");
+                if (p.hasNonNull("voiceDesc") && !a.path("voiceDesc").asText("").equals(b.path("voiceDesc").asText("")))
+                    throw stale("「" + a.path("name").asText() + "」的音色描述在助手回复后又改过，这条建议没有写入");
+                undo.put("description", a.path("description").asText()).put("prompt", a.path("prompt").asText())
+                        .put("promptCustom", a.path("promptCustom").asBoolean(false)).put("voiceDesc", a.path("voiceDesc").asText(""));
+                if (p.hasNonNull("description")) a.put("description", limited(p.path("description").asText(), 2000, "描述"));
+                if (p.hasNonNull("voiceDesc")) a.put("voiceDesc", limited(p.path("voiceDesc").asText(), 200, "音色描述"));
+                if (p.hasNonNull("prompt")) a.put("prompt", limited(p.path("prompt").asText(), 4000, "提示词")).put("promptCustom", true);
+                bump(a);
+                undo.put("rev", a.path("rev").asLong());
+            }
+            default -> throw invalid("不支持的建议");
+        }
+        return undo;
+    }
+
+    private void undoProposal(DirectorWork w, ObjectNode c, ObjectNode p, JsonNode u, String key) {
+        String cannot = "采用之后又改过，不能自动撤销。请直接修改";
+        switch (p.path("type").asText()) {
+            case "script.replace" -> {
+                String target = p.path("target").asText();
+                String content = scriptContent(c, target);
+                int at = u.path("at").asInt(), len = u.path("replacement").asText().length();
+                int[] r = u.hasNonNull("contentAfter") ? DirectorAssistant.mapRange(u.path("contentAfter").asText(), content, at, at + len)
+                        : DirectorAssistant.findAnchor(content, u.path("replacement").asText(), u.path("before").asText(""), u.path("after").asText(""), at);
+                if (r == null) throw stale(cannot);
+                String original = u.path("original").asText(), restored = DirectorAssistant.splice(content, r, original);
+                writeScript(c, target, restored);
+                // 回到「未采用」：按撤销后的正文重新记快照和锚点，之后还能再采用这一处。
+                p.set("anchor", DirectorAssistant.anchorAt(om, restored, r[0], r[0] + original.length()));
+                c.with("assistantBase").put(key, restored);
+            }
+            case "script.append" -> {
+                String target = p.path("target").asText();
+                String content = scriptContent(c, target), added = u.path("added").asText();
+                if (!content.endsWith(added)) throw stale(cannot);
+                writeScript(c, target, content.substring(0, content.length() - added.length()));
+            }
+            case "script.draft" -> {
+                if (c.path("episodes").size() > 0 || c.path("draftRev").asLong() != u.path("draftRev").asLong()) throw stale(cannot);
+                c.put("draft", "").put("draftRev", c.path("draftRev").asLong() + 1).put("logline", u.path("logline").asText());
+                w.setTitle(u.path("title").asText(w.getTitle()));
+            }
+            case "idea.update" -> {
+                if (!c.path("idea").asText().equals(u.path("applied").asText())) throw stale(cannot);
+                c.put("idea", u.path("idea").asText());
+            }
+            case "clip.shots" -> {
+                ObjectNode clip = find(c, "clips", p.path("clipId").asText(), "这个片段");
+                if (clip.path("rev").asLong() != u.path("rev").asLong()) throw stale(cannot);
+                setShots(c, clip, u.path("shots"), true);
+                bump(clip);
+            }
+            case "clip.prompt" -> {
+                ObjectNode clip = find(c, "clips", p.path("clipId").asText(), "这个片段");
+                String field = p.path("which").asText() + "Prompt";
+                if (!clip.path(field).asText().equals(u.path("applied").asText())) throw stale(cannot);
+                clip.put(field, u.path("text").asText()).put(field + "Custom", u.path("custom").asBoolean(false));
+                bump(clip);
+            }
+            case "asset.update" -> {
+                ObjectNode a = find(c, "assets", p.path("assetId").asText(), "这个资产");
+                if (a.path("rev").asLong() != u.path("rev").asLong()) throw stale(cannot);
+                a.put("description", u.path("description").asText()).put("prompt", u.path("prompt").asText())
+                        .put("promptCustom", u.path("promptCustom").asBoolean(false)).put("voiceDesc", u.path("voiceDesc").asText(""));
+                bump(a);
+            }
+            default -> throw invalid("不支持的建议");
+        }
+    }
+
+    /** 没有锚点的旧建议：原文唯一出现才改。 */
+    private static int[] uniqueOrNull(String content, String original) {
+        List<int[]> hits = DirectorAssistant.locateAll(content, original);
+        return hits.size() == 1 ? hits.get(0) : null;
+    }
+
+    private String scriptContent(ObjectNode c, String target) {
+        if ("draft".equals(target)) {
+            if (c.path("episodes").size() > 0) throw stale("剧本已经拆分成集，这条建议对应的是拆集前的整份剧本");
+            return c.path("draft").asText();
+        }
+        return find(c, "episodes", target, "这一集").path("content").asText();
+    }
+
+    /** 和用户自己改正文同一套效果：集修订号 +1，已有片段的集标「正文改过」，不自动重写分镜。 */
+    private void writeScript(ObjectNode c, String target, String content) {
+        String text = limited(content, 60000, "正文");
+        if ("draft".equals(target)) { c.put("draft", text).put("draftRev", c.path("draftRev").asLong() + 1); return; }
+        ObjectNode ep = find(c, "episodes", target, "这一集");
+        ep.put("content", text);
+        if (hasClips(c, target)) ep.put("planStale", true);
+        bump(ep);
+    }
+
+    /** 出 wire 时标出哪些已采用的建议还能撤销（撤销数据本身不出 wire）。 */
+    private void markUndoable(ObjectNode c, ObjectNode v) {
+        JsonNode undo = c.path("assistantUndo");
+        for (JsonNode t : v.path("assistant").path("threads"))
+            for (JsonNode m : t.path("messages")) for (JsonNode p : m.path("proposals"))
+            {
+                String key = m.path("id").asText() + ":" + p.path("id").asText();
+                ((ObjectNode) p).put("undoable", "applied".equals(p.path("status").asText()) && undo.path(key).isObject());
+                // 还没处理的剧本建议带上回复时的正文快照，前端预览用同一套映射找位置，和采用时一致。
+                if ("open".equals(p.path("status").asText()) && c.path("assistantBase").path(key).isTextual())
+                    ((ObjectNode) p).put("base", c.path("assistantBase").path(key).asText());
+            }
     }
 
     // ── 报价与上传 ───────────────────────────────────────────────────────────
@@ -2511,7 +3298,8 @@ public class DirectorService {
 
     private JsonNode view(String userId, DirectorWork w, ObjectNode c) {
         ObjectNode v = c.deepCopy();
-        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("splitUndo");
+        v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("splitUndo"); v.remove("assistantUndo"); v.remove("assistantBase");
+        markUndoable(c, v);
         if (!v.path("reference").isTextual()) v.put("reference", "");
         if (!v.has("referenceRev")) v.put("referenceRev", 0);
         if (!v.has("pendingSplit")) v.putNull("pendingSplit");
@@ -3443,6 +4231,15 @@ public class DirectorService {
     private static String shortTitle(String idea) {
         String t = idea.replaceAll("\\s+", " ").trim();
         return t.length() <= 20 ? t : t.substring(0, 20);
+    }
+
+    /** 正文里第一行不是场次标题的原文（测试响应用）。 */
+    private static String sampleLine(String s) {
+        for (String line : s.split("\\r?\\n")) {
+            String t = line.trim();
+            if (!t.isEmpty() && !t.startsWith("#")) return t.length() <= 80 ? t : t.substring(0, 80);
+        }
+        return "";
     }
 
     /**

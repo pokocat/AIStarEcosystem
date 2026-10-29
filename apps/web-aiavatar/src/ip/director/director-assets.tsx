@@ -1,14 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Check, ChevronRight, ImageIcon, Library, Mic, Plus, RefreshCw, Trash2, Upload, Wand2, X } from "lucide-react";
-import type { DirectorAsset, DirectorAssetKind, DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
+import { useEffect, useRef, useState } from "react";
+import { Check, ChevronRight, ImageIcon, Library, Mic, Plus, RefreshCw, Sparkles, Trash2, Upload, Wand2, X } from "lucide-react";
+import type { DirectorAsset, DirectorAssetKind, DirectorAssistantScope, DirectorEpisode, DirectorWork } from "@ai-star-eco/types";
 import { DirectorApi, IpStudioApi } from "../api";
 import { useStudioApp } from "../studio-errors";
 import { LibraryReferencePicker } from "../library-reference-picker";
 import type { WorkbenchProps } from "./director-workbench";
 import { Field, InlineError, OutdatedNote, Spinner, VersionStrip, adopted, assetRefs, chooseDirectorBilling, clearDrafts, costText, errorText, failed, hasDrafts, kindLabel, newRequestId, runningTask, useBusy, useDraft, DirectorSheet, ZoomableImage, type AssetRef } from "./director-shared";
 import { VoiceDialog, VoicePanel } from "./director-voice";
+import { useAssistant } from "./director-assistant";
 
 const KINDS: DirectorAssetKind[] = ["character", "scene", "prop"];
 
@@ -24,6 +25,9 @@ export function DirectorAssets(props: WorkbenchProps) {
   const scoped = work.assets;
   const shown = scoped.filter(a => kind === "all" || a.kind === kind);
   const open = work.assets.find(a => a.id === openId);
+  // 助手卡片上的「查看版本」：打开那项资产的详情，比较新生成的参考图。
+  const reveal = useAssistant()?.reveal;
+  useEffect(() => { if (reveal?.type === "asset" && work.assets.some(a => a.id === reveal.id)) setOpenId(reveal.id); }, [reveal]); // eslint-disable-line react-hooks/exhaustive-deps
   const waiting = work.assets.filter(a => a.image.adoptedBy === "auto");
   // 资产一次按全剧提取：同一人物、场景在各集是同一个，不会因为分集提取而前后不一致。
   const extract = () => void run("extract", async () => {
@@ -77,7 +81,7 @@ export function DirectorAssets(props: WorkbenchProps) {
     {adding && <AddAsset {...props} onClose={() => setAdding(false)}/>}
     {shown.length === 0 ? <div className="director-panel director-empty-panel"><p>{!work.assets.length ? "暂无资产。点「提取全剧资产」，从正文识别角色、场景和道具。" : scoped.length ? "这一类暂无资产。" : "暂无资产。"}</p></div> :
       <div className="director-asset-grid">{[...shown].sort((a, b) => KINDS.indexOf(a.kind) - KINDS.indexOf(b.kind)).map(a => <AssetTile key={a.id} {...props} asset={a} onOpen={() => setOpenId(a.id)}/>)}</div>}
-    {open && <DirectorSheet onClose={() => setOpenId(null)} label="资产详情"><AssetCard key={open.id} {...props} asset={open}/></DirectorSheet>}
+    {open && <DirectorSheet onClose={() => setOpenId(null)} label="资产详情"><AssetCard key={open.id} {...props} asset={open} onLeave={() => setOpenId(null)}/></DirectorSheet>}
   </div>;
 }
 
@@ -158,8 +162,11 @@ function AddAsset({ work, apply, setError, onClose }: WorkbenchProps & { onClose
   </section>;
 }
 
-function AssetCard({ work, asset, apply, setError, focusClip }: WorkbenchProps & { asset: DirectorAsset }) {
+function AssetCard({ work, asset, apply, setError, focusClip, onLeave }: WorkbenchProps & { asset: DirectorAsset; onLeave: () => void }) {
   const { modal } = useStudioApp();
+  const assistant = useAssistant();
+  // 问助手要关掉详情抽屉（它盖在助手上面）；讨论和建议都在助手里，建议卡片能直接看对比。
+  const ask = (scope: DirectorAssistantScope) => { assistant?.ask(scope); onLeave(); };
   const prefix = `${work.id}:asset:${asset.id}:`;
   // 没保存的修改切走再回来还在，编辑框也保持打开。
   const [editing, setEditing] = useState(() => hasDrafts(prefix));
@@ -227,6 +234,8 @@ function AssetCard({ work, asset, apply, setError, focusClip }: WorkbenchProps &
           <small>{[appears, asset.libraryObjectId ? "已关联资产库" : "", asset.aliases.length ? `别名：${asset.aliases.join("、")}` : ""].filter(Boolean).join(" · ")}</small>
         </div>
         <div className="director-asset-head-actions">
+          {assistant && <button type="button" className="director-ask-ai" onClick={() => ask({ kind: "asset", assetId: asset.id })}
+            title="完善外观设定、出图提示词或音色，比如「更疲惫但别显老」「保留长相，只换服装」"><Sparkles size={13}/>AI 完善</button>}
           <button type="button" className="ip-brand-text-button" onClick={() => setEditing(true)}>编辑</button>
           <button type="button" className="ip-brand-text-button director-danger director-icon-button" aria-label={`删除${asset.name}`} title="删除" onClick={remove}><Trash2 size={14}/></button>
         </div>
@@ -253,6 +262,8 @@ function AssetCard({ work, asset, apply, setError, focusClip }: WorkbenchProps &
         <OutdatedNote slot={asset.image} what="张参考图" onRegenerate={generating ? undefined : generate} disabled={!!busy}/>
         <VersionStrip slot={asset.image} label={asset.name} disabled={!!busy} onAdopt={id => void run("adopt", async () => apply(await DirectorApi.edit(work.id, "asset.adopt", asset.id, null, { candidateId: id })), failed(setError, `换用「${asset.name}」的这版参考图`))}/>
         {asset.kind === "character" && <CharacterRef work={work} asset={asset} apply={apply} setError={setError} disabled={!!busy || !!generating}/>}
+        {assistant && current && <button type="button" className="director-ask-ai director-self-start" onClick={() => ask({ kind: "image", assetId: asset.id })}
+          title="说说这张哪里要改，助手改出图提示词；生成新版本前会说清费用，原图保留"><Wand2 size={13}/>围绕这张图修改</button>}
         <div className="director-card-actions">
           {asset.image.adoptedBy === "auto" && <button type="button" className="ip-brand-button" disabled={!!busy} onClick={() => void run("confirm", async () => apply(await DirectorApi.edit(work.id, "assets.confirm", null, null, { assetIds: [asset.id] })), failed(setError, `确认「${asset.name}」的参考图`))}><Check size={14}/>确认使用</button>}
           <button type="button" className={asset.image.adoptedId ? "ip-brand-secondary" : "ip-brand-button"} disabled={!!busy || !!generating} onClick={generate}>

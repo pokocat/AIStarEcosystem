@@ -434,6 +434,14 @@ public class StudioWorkflowService {
     @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
     public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt, String clientRequestId, ObjectNode meta, String model,
                                        com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost) {
+        return submitDirectorText(userId,hostId,nodeId,systemPrompt,userPrompt,clientRequestId,meta,model,billingSelection,maxCost,null);
+    }
+
+    /** 同上，另带要交给模型看的图（导演台助手「围绕这张图修改」）；只有后台声明能看图的模型才接受。 */
+    @Transactional(propagation=org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public IpRunDto submitDirectorText(String userId, String hostId, String nodeId, String systemPrompt, String userPrompt, String clientRequestId, ObjectNode meta, String model,
+                                       com.aistareco.aep.enterprise.dto.EnterpriseBillingDtos.BillingSelection billingSelection, Long maxCost,
+                                       com.fasterxml.jackson.databind.node.ArrayNode visual) {
         requireText(clientRequestId, 64, "请求编号");
         boolean videoRewrite="videoPrompt".equals(meta.path("task").asText());
         if(videoRewrite)model=null; // 优化只读独立用途绑定，忽略作品的文字模型选择。
@@ -469,6 +477,12 @@ public class StudioWorkflowService {
         execution.put("systemPrompt",systemPrompt).put("userPrompt",userPrompt).put("temperature",0.6);
         if(textEndpoint!=null)execution.put("endpointId",textEndpoint.endpoint().getId());
         if(videoRewrite)execution.put("purpose",H3PromptRewrite.PURPOSE.wire());
+        // 导演台助手围绕一张图讨论时把这张图交给模型；只有后台声明能看图的模型才会走到这里（DirectorService.visionModel）。
+        if(visual!=null&&!visual.isEmpty()) {
+            if(textEndpoint!=null&&!StudioVisualContext.supportsVision(textEndpoint.endpoint()))
+                throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,"STUDIO_VISION_UNAVAILABLE","当前文本模型不能读取图片");
+            execution.set("visualContext",visual);
+        }
         int budget=0;
         if(chatRate!=null) {
             execution.set("tokenPricing",mapper.valueToTree(chatRate));
