@@ -128,7 +128,23 @@ public class DirectorService {
 
     @Transactional(readOnly = true)
     public List<JsonNode> list(String userId) {
-        List<DirectorWork> mine = works.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId);
+        return summaries(userId, works.findByOwnerUserIdAndDeletedAtIsNullOrderByUpdatedAtDesc(userId));
+    }
+
+    /**
+     * 回收站：本人已删除的作品（含功能上线前就软删的历史作品）。只读投影：不回投任务结果、不推进、不改内容。
+     * 每项在作品摘要上加 {@code deletedAt}，{@code running} 恒为 false（删除的作品不在制作）。
+     */
+    @Transactional(readOnly = true)
+    public List<JsonNode> trash(String userId) {
+        List<DirectorWork> mine = works.findByOwnerUserIdAndDeletedAtIsNotNullOrderByDeletedAtDesc(userId);
+        List<JsonNode> out = summaries(userId, mine);
+        for (int i = 0; i < out.size(); i++)
+            ((ObjectNode) out.get(i)).put("running", false).put("deletedAt", mine.get(i).getDeletedAt().toString());
+        return out;
+    }
+
+    private List<JsonNode> summaries(String userId, List<DirectorWork> mine) {
         List<JsonNode> out = new ArrayList<>();
         Map<String, String> coverKeys = new LinkedHashMap<>();
         for (DirectorWork w : mine) {
@@ -272,6 +288,49 @@ public class DirectorService {
         if (p.isObject() && Set.of("waiting", "paused").contains(status)) finish((ObjectNode) p, "stopped", "作品已删除，制作已停止");
         w.setDeletedAt(Instant.now()); w.setActive(false);
         save(w, c);
+    }
+
+    /**
+     * 从回收站恢复：原记录、原 ID 放回作品列表，剧本 / 分集 / 资产 / 分镜 / 生成结果 / 助手历史 / 任务记录原样保留，
+     * 不复制、不重提任务、不扣费、不退款。和删除、编辑、生成、后台推进抢同一把作品行锁。
+     * <ul>
+     *   <li>恢复后保持停止：{@code active=false}，后台调度不扫它；删除时已停止的一键制作不自动继续。
+     *       功能上线前删除的历史作品，JSON 里可能还留着 running / paused / waiting（当时删除不停流程），
+     *       这里改成 stopped —— 否则下一次读作品就会把它标为在跑、后台接着派发；</li>
+     *   <li>记下 {@code restoredAt}：删除前已结束、还没回投的任务（如手动「生成视频」先发的提示词改写）在恢复后第一次读取时回投，
+     *       结果照样写进作品，但不再由它接着付费派发（改写完提交视频、改写不合格自动重试），见 {@link #beforeRestore}。
+     *       不把旧结果丢掉，也不预先标成已回投。除这两项外内容一字不动；</li>
+     *   <li>作品没被删除（重复恢复、超时重试）：直接成功、什么都不写，不打断正在跑的任务；</li>
+     *   <li>不存在或不是本人的：404，不泄漏归属。</li>
+     *   <li>恢复不占新建额度：{@code MAX_WORKS} 只拦新建（{@link #create} 原样保留）。恢复的是用户自己原有的作品；
+     *       要让上限在并发下严格成立，新建和恢复得先锁同一用户行，而 create 持锁时还会经 view 另开连接，
+     *       正是 2026-10-28 复核的连接池饥饿形态，所以不在恢复上放一个并发可绕过的数量闸。</li>
+     * </ul>
+     * 只在本事务、本连接里读写，不调 {@link #view}（它会另开事务读任务列表）。
+     */
+    @Transactional
+    public void restore(String userId, String id) {
+        DirectorWork w = works.lockById(id).orElse(null);
+        if (w == null || !w.getOwnerUserId().equals(userId)) throw BusinessException.notFound("DIRECTOR_WORK_NOT_FOUND", "作品不存在");
+        if (w.getDeletedAt() == null) return;
+        ObjectNode c = read(w);
+        JsonNode p = c.path("pipeline");
+        boolean stopPipeline = p.isObject() && Set.of("running", "waiting", "paused").contains(p.path("status").asText(""));
+        if (stopPipeline) finish((ObjectNode) p, "stopped", "作品已从回收站恢复，一键制作已停止，需要时重新开始");
+        c.put("restoredAt", Instant.now().toString());
+        w.setDeletedAt(null); w.setActive(false);
+        save(w, c);
+    }
+
+    /**
+     * 这条任务是作品最近一次从回收站恢复之前提交的。回投时只写结果、不接着派发付费的后续：
+     * 用户删除作品时已经放弃了它，恢复和打开作品都不能替用户花钱（2026-10-29 独立复核：
+     * 手动视频的提示词改写已结束、未回投 → 删除 → 恢复 → 第一次读取就会提交视频）。恢复之后用户自己发的任务照常。
+     */
+    private static boolean beforeRestore(ObjectNode c, IpRun run) {
+        String at = c.path("restoredAt").asText("");
+        if (at.isEmpty()) return false;
+        return run.getCreatedAt() == null || !run.getCreatedAt().isAfter(Instant.parse(at));
     }
 
     private static final Set<String> VIDEO_JOB_TERMINAL = Set.of("succeeded", "failed");
@@ -1599,7 +1658,7 @@ public class DirectorService {
         if (node.startsWith("video:") && "video.bound".equals(run.getStage())) return; // 真实视频由 pollVideos 跟踪原生任务
         if (IpRun.STATUS_FAILED.equals(run.getStatus())) {
             if("studio-director".equals(run.getKind())&&"IP_RUN_CANCELLED".equals(run.getErrorCode())){notice(c,run.getErrorMessage());return;}
-            if (node.startsWith(REWRITE_NODE) && (retryRewrite(w, c, run) || originalInPipeline(w, c, run))) return;
+            if (node.startsWith(REWRITE_NODE) && !beforeRestore(c, run) && (retryRewrite(w, c, run) || originalInPipeline(w, c, run))) return;
             setError(c, node, run.getErrorMessage() == null ? "生成失败，请重试" : run.getErrorMessage());
             JsonNode p = c.path("pipeline");
             if (p.isObject() && contains(p.path("runIds"), run.getId())) ((ObjectNode) p).withArray("failed").add(node);
@@ -1652,7 +1711,9 @@ public class DirectorService {
                         .put("usable", d.path("usable").asBoolean(true)).put("runId", run.getId()).put("at", Instant.now().toString());
                 en.set("warnings", d.path("warnings").isArray() ? d.path("warnings").deepCopy() : om.createArrayNode());
                 en.set("notes", d.path("notes").isArray() ? d.path("notes").deepCopy() : om.createArrayNode());
-                chainVideo(w, c, clip, in.path("then"));
+                if (beforeRestore(c, run) && in.path("then").isObject())
+                    notice(c, "「" + clip.path("title").asText() + "」删除前的提示词优化已保存，视频没有自动提交，需要时在分镜里生成");
+                else chainVideo(w, c, clip, in.path("then"));
             }
             case "script" -> {
                 if (in.path("regenerate").asBoolean(false)) {
@@ -3324,6 +3385,8 @@ public class DirectorService {
     private JsonNode view(String userId, DirectorWork w, ObjectNode c) {
         ObjectNode v = c.deepCopy();
         v.remove("applied"); v.remove("taskMeta"); v.remove("seq"); v.remove("splitUndo"); v.remove("assistantUndo"); v.remove("assistantBase");
+        // 最近一次从回收站恢复的时间（没恢复过为 null）。前端据此决定打开作品时不自动发起付费任务（如创意对话的开场）。
+        if (!v.path("restoredAt").isTextual()) v.putNull("restoredAt");
         markUndoable(c, v);
         if (!v.path("reference").isTextual()) v.put("reference", "");
         if (!v.has("referenceRev")) v.put("referenceRev", 0);

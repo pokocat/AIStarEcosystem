@@ -27,7 +27,10 @@ export function DirectorWorks() {
   const [deleting, setDeleting] = useState<DirectorWorkSummary>();
   if (auth === "no-platform" || works.notEnrolled) return <PlatformGateScreen/>;
   return <StudioPage title="AI 导演台" description="从创意到成片" className="director-page"
-    actions={<button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>}>
+    actions={<>
+      <Link href="/director/trash" className="ip-brand-secondary director-trash-link"><Trash2 size={16}/>回收站</Link>
+      <button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>
+    </>}>
     {creating && <CreateWork onClose={() => setCreating(false)}/>}
     {deleting && <DeleteWork work={deleting} onClose={() => setDeleting(undefined)}
       onDeleted={() => { works.setData(list => list.filter(x => x.id !== deleting.id)); setDeleting(undefined); }}/>}
@@ -71,7 +74,7 @@ function WorkMenu({ title, onDelete }: { title: string; onDelete: () => void }) 
   </details>;
 }
 
-/** 删除确认：说清删了之后会怎样；提交中不能关、不能重复点，失败留在弹窗里可重试。 */
+/** 删除确认：作品移入回收站、可以恢复；提交中不能关、不能重复点，失败留在弹窗里可重试。 */
 function DeleteWork({ work, onClose, onDeleted }: { work: DirectorWorkSummary; onClose: () => void; onDeleted: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -87,16 +90,16 @@ function DeleteWork({ work, onClose, onDeleted }: { work: DirectorWorkSummary; o
     <div className="director-dialog director-delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="director-delete-title" aria-describedby="director-delete-desc" ref={dialogFocus} tabIndex={-1}>
       <header><h2 id="director-delete-title">删除作品</h2><button type="button" aria-label="关闭" onClick={onClose} disabled={busy}><X size={18}/></button></header>
       <div id="director-delete-desc" className="director-delete-copy">
-        <p>确认删除「<b title={work.title}>{work.title}</b>」？</p>
+        <p>把「<b title={work.title}>{work.title}</b>」移入回收站？</p>
         <ul>
-          <li>删除后无法再打开和编辑这部作品。</li>
+          <li>移入后不在作品列表里显示，可以在回收站恢复。</li>
           <li>已存入个人资产库的素材会保留。</li>
           <li>已消耗的积分不退回。</li>
         </ul>
       </div>
       <InlineError message={error}/>
       <footer><button type="button" className="ip-brand-secondary" onClick={onClose} disabled={busy}>取消</button>
-        <button type="button" className="ip-brand-button director-danger-button" disabled={busy} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>删除中</> : "删除作品"}</button></footer>
+        <button type="button" className="ip-brand-button director-danger-button" disabled={busy} onClick={() => void submit()}>{busy ? <><Loader2 size={15} className="ip-loading-icon"/>移入中</> : "移入回收站"}</button></footer>
     </div>
   </div>;
 }

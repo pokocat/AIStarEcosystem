@@ -87,11 +87,13 @@ export function BriefChat({ work, apply, setError, openSettings, onPaste }: { wo
     ({ type, clientRequestId: id, options, billing: await chooseDirectorBilling("script", cost), maxCost: cost });
 
   // 进来就开始：AI 先看想法、决定问什么。编号按作品固定，刷新不会再开一轮；企业付款要先选付款方，就等用户点。
+  // 从回收站恢复过的作品也等用户点：删除前没开始的对话，恢复后打开不替用户花钱（restoredAt 由服务端给出）。
   const autoStarted = useRef(false);
   const enterprise = process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1";
+  const manualStart = enterprise || !!work.restoredAt;
   const canOpen = !!work.idea.trim() && brief.status === "asking" && !brief.messages.some(m => m.status !== "failed") && !asking && !writing;
   useEffect(() => {
-    if (!canOpen || autoStarted.current || enterprise || readPending(key)) return;
+    if (!canOpen || autoStarted.current || manualStart || readPending(key)) return;
     autoStarted.current = true;
     void run(null, () => newBody("brief", { message: "" }, `open-${work.id}`.slice(0, 48)));
   }, [canOpen]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -131,8 +133,8 @@ export function BriefChat({ work, apply, setError, openSettings, onPaste }: { wo
       <div className="director-msg is-user"><p>{work.idea}</p><span className="director-msg-scope">你的想法</span></div>
       {brief.messages.map(m => <BriefMessage key={m.id} work={work} m={m} picks={m.id === lastAi?.id && openQuestions.length ? picks : undefined}
         onPick={(i, v) => setPicks(prev => ({ ...prev, [i]: prev[i] === v ? "" : v }))}/>)}
-      {brief.messages.length === 0 && !sending && !pending && <div className="director-msg is-ai"><p>{enterprise ? "点「开始聊」，我先看看你的想法，问一两个关键问题。" : "正在准备…"}</p>
-        {enterprise && <button type="button" className="ip-brand-button director-self-start" onClick={() => void run(null, () => newBody("brief", { message: "" }, `open-${work.id}`.slice(0, 48)))}>开始聊</button>}</div>}
+      {brief.messages.length === 0 && !sending && !pending && <div className="director-msg is-ai"><p>{manualStart ? "点「开始聊」，我先看看你的想法，问一两个关键问题。" : "正在准备…"}</p>
+        {manualStart && <button type="button" className="ip-brand-button director-self-start" onClick={() => void run(null, () => newBody("brief", { message: "" }, `open-${work.id}`.slice(0, 48)))}>开始聊</button>}</div>}
     </div>
     {ready && <div className="director-brief-ready" role="status">
       <h4><Check size={15}/>可以开始写剧本了</h4>

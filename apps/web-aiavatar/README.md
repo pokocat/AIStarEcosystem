@@ -1119,6 +1119,7 @@ Next媒体代理同步设置130MB请求体、180秒等待，覆盖128MiB视频�
 - **分镜：** 左侧分集栏，片段卡以视频为主。分镜图单独弹窗，有历史版本、提示词和重新生成；关联资产和视频结果在抽屉里看；多选片段可批量生成分镜图或视频。
 - **antd 外壳：** 页面外面包了一层 antd `App`（`director-antd.tsx`），否则 `modal.confirm` 不存在。弹窗统一挂 `dialogFocus`，负责焦点进出和 Tab 循环。
 - **作品删除（2026-10-28，已生产发布 `20261028-director-delete`）：** `director-works.tsx` 的卡片是 `<article>`，链接和「更多」菜单（`details/summary`，Esc 收起、焦点回到按钮）是兄弟节点；确认弹窗提交中不能关、不能重复提交，失败留在弹窗里重试。作品已删除（404 `DIRECTOR_WORK_NOT_FOUND`）：`api/director.ts` 的 `scopeToWork` 给作品级请求的 404 打上作品 id，`director-shared.tsx` 的 `errorText` 带 id 通知（`onWorkGone`），工作台只认自己的 id，卸载即退订、不处理已离开作品的迟到响应；路由 `key={id}` 换作品整棵重建。命中后停止轮询、清掉本作品未保存草稿、整页换成「作品已删除或不存在」。归属不明的 404 只显示文案（2026-10-28 独立复核：上一部作品迟到的 404 曾把当前作品标成已删除并清掉草稿）。
+- **回收站（2026-10-29，本地未发布）：** `/director/trash` → `director-trash.tsx`（`DirectorApi.listTrash / restoreWork`）。恢复中所有恢复按钮禁用，失败走 `useStudioFailure`，404 时刷新回收站；成功移出列表并给「打开作品」。作品级 404 按「恢复代次」归属（`scopeToWork` 记发出时的代次，`goneWorkId` 只认当前代次，`isStaleGone` 认出删除期间发出、恢复后才回来的旧请求，提示没有生效、不标已删除、不清草稿）；代次在 `restoreWork` 成功或响应带回新的 `restoredAt` 时前进。工作台 `load` 只认最新一次读取（`loadSeq`）：作品恢复后新读取先成功、旧读取的 404 后到不会再标已删除、清草稿；已删除页的「重新加载」防连点，网络失败或仍找不到都写在页上。`director-brief.tsx` 在作品有 `restoredAt` 时不自动发创意对话开场（和企业付款一样等用户点「开始聊」）。
 
 ### 视频智能优化界面精简（2026-10-23，本地，未发布）
 

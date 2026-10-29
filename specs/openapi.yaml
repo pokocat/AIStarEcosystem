@@ -682,10 +682,15 @@ components:
       type: object
       description: '见 packages/types/src/director.ts DirectorWorkSummary。'
       properties: { id: { type: string }, title: { type: string }, episodeCount: { type: integer }, assetCount: { type: integer }, clipCount: { type: integer }, boardCount: { type: integer }, videoCount: { type: integer }, hasScript: { type: boolean }, running: { type: boolean }, updatedAt: { type: string, format: date-time }, coverUrl: { type: string, nullable: true } }
+    DirectorTrashedWork:
+      type: object
+      description: '回收站里的一项：DirectorWorkSummary 加删除时间；running 恒为 false。见 packages/types/src/director.ts DirectorTrashedWork。'
+      allOf: [{ $ref: '#/components/schemas/DirectorWorkSummary' }]
+      properties: { deletedAt: { type: string, format: date-time } }
     DirectorWork:
       type: object
       description: '服务端拥有的导演作品（docs/ai-director-plan.md §10.3）；完整形状见 packages/types/src/director.ts DirectorWork。媒体只存 key，url 为出 wire 时的短期签名。'
-      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, imageModels: { type: array, description: '可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16', items: { type: object, properties: { id: { type: string }, name: { type: string }, isDefault: { type: boolean }, creditCost: { type: integer } } } }, imageModelState: { type: object, description: '作品实际会用的图片模型（存着的或默认的）：available=false 为停用或不再开放；missingRatios 为出图规格缺的比例，对应画面出不了', properties: { id: { type: string, nullable: true }, name: { type: string, nullable: true }, explicit: { type: boolean }, available: { type: boolean }, creditCost: { type: integer, nullable: true }, missingRatios: { type: array, items: { type: string } } } }, textModels: { type: array, items: { type: object }, description: Studio 文本候选（不含展示用价格；文字按实际用量结算） }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
+      properties: { id: { type: string }, title: { type: string }, revision: { type: integer }, draft: { type: string }, draftRev: { type: integer }, settings: { type: object }, episodes: { type: array, items: { type: object } }, assets: { type: array, items: { type: object } }, clips: { type: array, items: { type: object } }, pipeline: { type: object, nullable: true }, tasks: { type: array, items: { type: object } }, pricing: { type: object }, imageModels: { type: array, description: '可以新选的图片模型：出图规格覆盖 1:1、16:9、9:16', items: { type: object, properties: { id: { type: string }, name: { type: string }, isDefault: { type: boolean }, creditCost: { type: integer } } } }, imageModelState: { type: object, description: '作品实际会用的图片模型（存着的或默认的）：available=false 为停用或不再开放；missingRatios 为出图规格缺的比例，对应画面出不了', properties: { id: { type: string, nullable: true }, name: { type: string, nullable: true }, explicit: { type: boolean }, available: { type: boolean }, creditCost: { type: integer, nullable: true }, missingRatios: { type: array, items: { type: string } } } }, textModels: { type: array, items: { type: object }, description: Studio 文本候选（不含展示用价格；文字按实际用量结算） }, textModelMode: { type: string, enum: [fixed, selectable] }, videoModels: { type: array, items: { type: object } }, videoLimits: { type: object, nullable: true }, reference: { type: string, description: '设定资料：拆分时从剧本开头分出来的内容，不拍成画面，提取资产和写分镜脚本时作为参考' }, referenceRev: { type: integer }, pendingSplit: { type: object, nullable: true, description: '待确认的分集（id、source=headings|model、preamble、episodes[{title,summary,startParagraph,endParagraph,paragraphs,chars,head,tail}]、notes、warnings）' }, canUndoSplit: { type: boolean }, restoredAt: { type: string, format: date-time, nullable: true, description: '最近一次从回收站恢复的时间，没恢复过为 null；有值时前端打开作品不自动发起付费任务（如创意对话开场）' }, draftEpisodeHeadings: { type: integer, description: '拆分前剧本里标好的「第N集」标题数，≥2 时按标题分集不扣积分' } }
 
     StudioVideoEffect:
       type: object
@@ -15110,6 +15115,27 @@ paths:
       requestBody: { required: false, content: { application/json: { schema: { type: object, properties: { title: { type: string, maxLength: 60 }, idea: { type: string, maxLength: 2000 }, script: { type: string, maxLength: 60000 } } } } } }
       responses:
         '200': { description: ok, content: { application/json: { schema: { $ref: '#/components/schemas/DirectorWork' } } } }
+  /v1/ip-studio/director/works/trash:
+    get:
+      tags: [ipstudio]
+      operationId: directorListTrash
+      description: '回收站：本人已删除的作品（含功能上线前软删的历史作品），最近删除的在前。只读投影：不回投任务结果、不推进、不改内容。'
+      responses:
+        '200': { description: ok, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/DirectorTrashedWork' } } } } }
+  /v1/ip-studio/director/works/{id}/restore:
+    post:
+      tags: [ipstudio]
+      operationId: directorRestoreWork
+      description: >-
+        从回收站恢复原作品（原 ID、原内容、原任务记录），不复制、不重提任务、不扣费、不退款。与删除、编辑、生成、后台推进抢同一把作品行锁，
+        只在本事务、本连接里读写。恢复后保持停止：active=false，JSON 里遗留的 running / paused / waiting 一键制作改为 stopped；
+        记 restoredAt，恢复前提交、恢复后才回投的任务只写结果，不接着付费派发（改写完提交视频、改写不合格自动重试）。
+        作品没被删除（重复恢复、超时重试）→ 200，什么都不写、不打断在跑的任务。不存在或不是本人的 → 404。
+        恢复不占新建额度：作品数上限只拦新建（POST /works 的 DIRECTOR_WORK_LIMIT 不变）。
+      parameters: [{ in: path, name: id, required: true, schema: { type: string } }]
+      responses:
+        '200': { description: ok（含作品本来就没被删除）, content: { application/json: { schema: { type: object, properties: { success: { type: boolean }, data: { type: object, properties: { id: { type: string }, restored: { type: boolean } } } } } } } }
+        '404': { description: DIRECTOR_WORK_NOT_FOUND（不存在或不是本人的） }
   /v1/ip-studio/director/works/{id}:
     get:
       tags: [ipstudio]

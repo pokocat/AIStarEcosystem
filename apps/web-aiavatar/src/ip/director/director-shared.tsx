@@ -9,7 +9,7 @@ import type { EnterpriseBillingSelection } from "@ai-star-eco/types/enterprise";
 import { normalizeStudioError, type StudioFailure } from "../studio-errors";
 import { publicModelErrorMessage } from "@ai-star-eco/api-client/public-model-error";
 import { ApiError } from "@ai-star-eco/api-client";
-import { goneWorkId } from "../api/director";
+import { goneWorkId, isStaleGone } from "../api/director";
 
 export const kindLabel: Record<DirectorAsset["kind"], string> = { character: "角色", scene: "场景", prop: "道具" };
 
@@ -33,8 +33,12 @@ export function onWorkGone(listener: (workId: string) => void) {
   return () => { goneListeners.delete(listener); };
 }
 
+/** 作品删除期间发出、恢复之后才回来的请求：没有生效，但作品在。 */
+export const STALE_GONE_MESSAGE = "这次操作是在作品删除期间发出的，没有生效。作品现在已恢复，请重新操作。";
+
 /** 导演台所有失败都经过这里拿文案，所以「作品已删除」也在这里通知。归属不明的 404 不通知，只显示文案。 */
 export function errorText(e: unknown) {
+  if (isStaleGone(e)) return STALE_GONE_MESSAGE;
   const workId = isWorkGone(e) ? goneWorkId(e) : null;
   if (workId) goneListeners.forEach(l => l(workId));
   return normalizeStudioError(e).message;

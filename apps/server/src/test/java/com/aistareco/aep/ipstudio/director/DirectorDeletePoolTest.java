@@ -71,6 +71,37 @@ class DirectorDeletePoolTest {
         } finally { go.countDown(); pool.shutdownNow(); }
     }
 
+    /** 恢复同理：池子被占满、各自持着作品行锁时恢复，不需要第二条连接。 */
+    @Test void restoresInsideHeldConnectionsDoNotNeedASecondOne() throws Exception {
+        String u = "pool-" + UUID.randomUUID().toString().substring(0, 8);
+        List<String> ids = List.of(work(u), work(u), work(u));
+        for (String id : ids) director.delete(u, id);
+        CountDownLatch held = new CountDownLatch(ids.size());
+        CountDownLatch go = new CountDownLatch(1);
+        ExecutorService pool = Executors.newFixedThreadPool(ids.size());
+        try {
+            List<Future<Throwable>> futures = new ArrayList<>();
+            for (String id : ids) futures.add(pool.submit(() -> {
+                try {
+                    new TransactionTemplate(tx).executeWithoutResult(s -> {
+                        works.lockById(id).orElseThrow();
+                        held.countDown();
+                        try { if (!go.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("barrier"); }
+                        catch (InterruptedException e) { throw new RuntimeException(e); }
+                        director.restore(u, id);
+                    });
+                    return null;
+                } catch (Throwable t) { return t; }
+            }));
+            assertTrue(held.await(10, TimeUnit.SECONDS), "三条连接都应被占住");
+            go.countDown();
+            List<Throwable> errors = new ArrayList<>();
+            for (Future<Throwable> f : futures) { Throwable t = f.get(20, TimeUnit.SECONDS); if (t != null) errors.add(t); }
+            assertTrue(errors.isEmpty(), "并发恢复失败：" + errors);
+            for (String id : ids) assertNull(works.findById(id).orElseThrow().getDeletedAt());
+        } finally { go.countDown(); pool.shutdownNow(); }
+    }
+
     /** 控制器的真实调用形态：多于池容量的并发删除各自起事务，排队拿连接，全部完成。 */
     @Test void moreConcurrentDeletesThanConnectionsAllComplete() throws Exception {
         String u = "pool-" + UUID.randomUUID().toString().substring(0, 8);
