@@ -226,6 +226,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 ## 7. 发布与验收记录（`docs/releases/`）
 
+- [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
 - [导演台 AI 入口、长文与上传资产生产发布](releases/director-ai-entries-production-release-20261029.md)：main `9ad3603b0`，server + Studio；104,029 字 HTML、超量粘贴、自有资产图及参考图线上验证，含回收站与 V71 声音回执迁移（last-reviewed 2026-10-29）。
 - [导演台正文冻结生产发布与验收](releases/director-script-freeze-production-release-20261029.md)：main `d67841214`，server + Studio；正文冻结、跨页保存拒绝、真实修改建议采用/撤销，13 积分无重复结算，发布窗口短暂 502 已恢复（last-reviewed 2026-10-29）。
 - [导演台作品删除生产发布](releases/director-delete-production-release-20261028.md)：main `cb9190489`，server + web-aiavatar；146 条后端、65 条前端及一次性 MySQL 删除并发 11 条通过，线上确认/取消与不存在状态验收，未删除生产作品（last-reviewed 2026-10-28）。
@@ -289,7 +290,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [统一画布封面生产发布](releases/studio-shared-covers-production-20261017.md)：a4092626 两服务上线、真实封面验收与回退；已发布（last-reviewed: 2026-10-17）。
 - [画布分组说明与复刻模板精简](releases/studio-group-description-validation-20261017.md)：Group 说明的编辑/预览/只读查看、模板与副本保留说明、官方复刻模板 v3；已发布 ccbff781（last-reviewed: 2026-10-17）。
 - [视觉显存错误受控降级验收](releases/studio-vision-memory-fallback-validation-20261017.md)：只在聚算 Qwen 返回 400 `unsupported_geometry`（HBM 预算）时，原尺寸两帧一批读取并完成原任务；2026-10-19 合入 main，排在线上缩图降档之后，未发布（last-reviewed: 2026-10-19）。
-- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）。
+- [Seedance 2.0 接入与生产发布](releases/studio-seedance-2026-10-14-release.md)：初次端点视频协议、仅对 studio 开放、H3 仍为默认（2026-10-14）；旧供应商模型下架后的 [OneToken Seedance 2.0 / 2.5 生产配置](releases/onetoken-seedance-models-production-config-20261026.md) 已恢复两条可选模型，并按采购成本加价 60% 把 720p 售价设为 94 / 146 积分/秒，H3 继续默认（2026-10-26）；直连火山方舟的 [Seedance 2.0 Fast / Mini 生产配置](releases/ark-seedance-models-production-config-20261029.md) 新增两条只对 studio 开放的模型，画布与导演台可选，按成本加价 60% 定为 130 / 81 积分/秒（2026-10-29）。
 - [导演台上架 Seedance 2.0 / 2.5](releases/seedance-director-reference-production-config-20261029.md)：两条端点规格补「全能参考」模式（图片 + 音频参考，不开放参考视频），导演台可选，94 / 146 积分/秒；仅改生产配置，未付费实测（last-reviewed: 2026-10-29）。
 - [视频模型按开放范围生效](releases/studio-model-scope-2026-10-14-release.md)：录入模型并配置开放范围即可在 Studio 选择，取消二次候选（2026-10-14）。
 - [图片上传与模型 404 修复](releases/studio-upload-chat-repair-20261016.md)：相机原图自动压缩、模型 404 修复；已发布（2026-10-16）。

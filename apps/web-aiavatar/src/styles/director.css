@@ -451,11 +451,13 @@ html[data-layout="desktop"] .director-board-dialog-body { grid-template-columns:
 .director-board-history li button[aria-pressed="true"] { border-color: var(--ip-ink); }
 .director-board-history img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .director-board-history small { position: absolute; left: 0; right: 0; bottom: 0; padding: 2px 4px; background: rgba(255, 255, 255, .9); color: var(--ip-ink); font-size: 10px; font-weight: 600; text-align: center; }
-.director-board-history > .ip-brand-secondary { align-self: flex-start; min-height: 32px; padding: 5px 12px; font-size: 13px; }
 .director-board-dialog footer { align-items: center; flex-wrap: wrap; }
 .director-preview-versions { display: flex; flex-wrap: wrap; gap: 6px; }
 .director-preview-versions button { padding: 4px 10px; border: 1px solid var(--ip-line); border-radius: 7px; background: var(--ip-paper); font-size: 12px; }
 .director-preview-versions button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-soft); font-weight: 600; }
+.director-preview-versions button[aria-disabled="true"], .director-clip-versions button[aria-disabled="true"], .director-board-history li button[aria-disabled="true"] { cursor: progress; }
+.director-preview-switch { display: grid; gap: 6px; }
+.director-preview-hint { color: var(--ip-muted); font-size: 12px; }
 html:not([data-layout="desktop"]) .director-board-history ul { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); max-height: none; }
 html:not([data-layout="desktop"]) .director-board-big { max-height: 46dvh; }
 /* 多选片段 + 批量生成 */
