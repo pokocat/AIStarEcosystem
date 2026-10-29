@@ -96,15 +96,16 @@ export function SceneImageStudio() {
     finally { setOpening(undefined); }
   }, [scene, showDraft, showFailure]);
 
-  // 地址栏里的场景 / 草稿：首页卡片和「最近」都靠它直达。
+  // 地址栏里的场景 / 草稿：首页卡片和「最近」都靠它直达。进页面时读一次存下来 ——
+  // 登录状态晚一拍才就绪，先同步场景会把地址里的草稿号写掉，之后就再也读不到了。
+  const entry = useRef(readQuery());
+  useEffect(() => { pickScene(imageScene(entry.current.scene) || freeImageScene); }, [pickScene]);
   useEffect(() => {
-    const q = readQuery();
-    const start = imageScene(q.scene) || freeImageScene;
-    pickScene(start);
-    if (q.draft && ready) void openDraft(q.draft);
-    // 只在进页面时读一次地址栏
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready]);
+    const id = entry.current.draft;
+    if (!ready || !id) return;
+    entry.current = { ...entry.current, draft: undefined };
+    void openDraft(id);
+  }, [ready, openDraft]);
 
   useEffect(() => {
     if (!ready) return;

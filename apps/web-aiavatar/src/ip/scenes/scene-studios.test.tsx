@@ -81,3 +81,15 @@ test("视频：填好信息、放上商品图，素材进画布、这段话存�
   expect(api.push).toHaveBeenCalledWith("/projects/IPP-1?start=assistant&send=1");
   expect(api.submit).not.toHaveBeenCalled();
 });
+
+test("图片：从「最近」或地址栏带草稿号进来，打开那张草稿并接着看它的结果", async () => {
+  window.history.replaceState(null, "", "/image?scene=face-turnaround&draft=IPP-9");
+  const row = { id: "n1", type: "image", title: "脸部三视图", position: { x: 0, y: 0 }, width: 10, height: 10,
+    metadata: { status: "success", images: [{ id: "IPR-9", status: "success", storageKey: "k", content: "https://cdn/r.jpg" }],
+      studio: { kind: "shot", request: { clientRequestId: "c", nodeId: "n1", operation: "image", prompt: "以图1为准", aspectRatio: "16:9", count: 1 } } } };
+  api.getProject.mockResolvedValue(project({ id: "IPP-9", name: "脸部三视图 · AI 图片", doc: { ...doc, nodes: [row] } as IpProject["doc"] }));
+  await act(async () => { render(<SceneImageStudio/>); });
+  await waitFor(() => expect(api.getProject).toHaveBeenCalledWith("IPP-9"));
+  expect(await screen.findByRole("img", { name: /脸部三视图第 1 张/ })).toBeTruthy();
+  expect(window.location.search).toContain("draft=IPP-9");
+});
