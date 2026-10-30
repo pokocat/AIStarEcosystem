@@ -174,7 +174,7 @@ src/
 
 ### 场景页结果接着用（2026-10-31）
 
-出的图可以「当参考图」「做成视频」（视频页读地址里的 `ref`，`scene-query.ts`）；结果、参考图、素材和成片换成 `SignedImage` / `SignedVideo`，过期自动换签。见 `docs/studio-scene-creation.md` §18。
+交给创作助手的草稿在结果区显示制作进度（读 `getStudioPlanExecution`）。出的图可以「当参考图」「做成视频」（视频页读地址里的 `ref`，`scene-query.ts`）；结果、参考图、素材和成片换成 `SignedImage` / `SignedVideo`，过期自动换签。见 `docs/studio-scene-creation.md` §18。
 
 ### 场景页编导与场景要求（2026-10-31）
 
