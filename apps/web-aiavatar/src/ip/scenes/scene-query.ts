@@ -10,7 +10,8 @@ import { useSearchParams } from "next/navigation";
  */
 export function useSceneQuery() {
   const params = useSearchParams();
-  return { scene: params.get("scene") || undefined, draft: params.get("draft") || undefined };
+  // ref：从 AI 图片「做成视频」带过来的那张图（文件 key），视频页放进素材后就从地址里去掉。
+  return { scene: params.get("scene") || undefined, draft: params.get("draft") || undefined, ref: params.get("ref") || undefined };
 }
 
 /** 页面里换场景 / 换草稿时改地址（不新增历史记录）；带上 history.state，Next 的路由状态不丢，useSearchParams 也会跟上。 */
