@@ -82,7 +82,7 @@
 **处理**：从 main `0cf885c55` 构建并发布 studio-admin `20261030-studio-admin-scenes`（`build-studio-admin-release.sh` 含类型检查与 12 条测试，`deploy-studio-admin-release.sh`），10:46:45 重启，NRestarts=0，无报错；只重启 `aistareco-studio-admin`，没动 server、Studio 前端与 nginx。这一版同时带上看板改版（`b985992d7`）和「运营配置 · 场景模板」页面。
 
 - 线上：`/admin`、`/admin/login`、`/admin/scenes` 200；未登录访问 `/api/admin/studio/scenes`、`/api/admin/studio-operations` 401。
-- 没有用线上管理员账号登录核对看板和场景模板页（不使用线上凭据），需要运营登录看一眼。
+- 登录后核对（在用户已登录的 Chrome 里只读查看，没有输入凭据、没有保存任何改动）：经营看板正常；技术看板正常出数（近 7 天生成任务 1,103，无前端报错）；场景模板页显示「内置场景」，AI 视频 21 / AI 图片 17 / 首页卡片 7，编辑区与选项组正常。
 - 发布脚本成功后不保留旧目录；回到 10-26 版要从 `92d74f05d` 重新构建，且那一版和现在的后端对不上，不建议回退。
 
 ## 没有做的
