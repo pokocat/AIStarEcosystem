@@ -1,4 +1,6 @@
-import { publicModelErrorMessage } from './public-model-error';
+// 走包自己的导出而不是 './public-model-error'：web-celebrity 用 node --test 直接加载本文件，原生 ESM 不补扩展名，
+// 不带扩展名的相对导入会 ERR_MODULE_NOT_FOUND（CI frontend-tests 2026-10-29）。
+import { publicModelErrorMessage } from '@ai-star-eco/api-client/public-model-error';
 
 /** Shared presentation for durable provider exceptions; polling failures never imply safe regeneration. */
 export function modelTaskException(task?: { status?: string; errorCode?: string | null; error_code?: string | null; errorMessage?: string | null; error_message?: string | null }) {

@@ -41,4 +41,13 @@ describe("StudioShell navigation", () => {
     expect(screen.getByRole("link", { name: /发布与告警/ })).toBeTruthy();
     expect(screen.queryByRole("link", { name: /积分发放/ })).toBeNull();
   });
+
+  it("puts the editable scene templates under 运营配置 and shows the read-only badge only on dashboards", async () => {
+    render(<StudioShell page="scenes"><div>场景</div></StudioShell>);
+    expect(screen.getByRole("link", { name: /场景模板/ }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("heading", { name: "场景模板" })).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "经营" })).toBeNull();
+    expect(screen.queryByText("只读查询")).toBeNull();
+    expect(screen.getByRole("link", { name: /经营看板/ })).toBeTruthy();
+  });
 });

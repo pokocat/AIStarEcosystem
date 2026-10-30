@@ -2,6 +2,7 @@
 
 ## 入口与边界
 
+- **运营配置 · 场景模板**（2026-10-29，本地未发布）：同一个应用的 `/scenes`，左侧「运营配置」分组。编辑 AI 图片 / AI 视频两页的场景、选项组和首页「你想做什么？」卡片，整份保存带版本号；这是本应用里唯一可写的页面（接口 `/api/admin/studio/scenes`，超管与平台运营），看板仍只读，「只读」标记只在看板页显示。真源 `docs/studio-scene-creation.md` §9。
 - **新版独立入口**：`apps/web-aiavatar/studio-admin`，本地 `http://localhost:3004/`，生产挂载在 `https://aistar.aibuzz.cn/admin`；它归属 Studio 域但仍是独立 pnpm/Next 子工程。根路由默认经营首页，`/?view=technology&days=7` 为技术监控。该应用有独立构建、登录、侧栏与响应式外壳，不依赖 `apps/admin` 或 Studio 创作端的页面运行时。
 - 旧实验路由：`/admin/studio/operations`（`apps/admin`）暂时保留用于回归，不再作为新版入口，也不删除已完成的只读能力。
 - 服务端入口：`GET /api/admin/studio-operations`、`GET /api/admin/studio-operations/reconciliation-details`、`GET /api/admin/studio-operations/credit-events`。

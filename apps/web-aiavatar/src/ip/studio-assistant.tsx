@@ -489,7 +489,9 @@ export function StudioAssistant({ projectId, conversations, setConversations, no
     if (talked || store.outbox.length || !text.trim()) { if (talked) onAutoSent?.(); return; }
     autoSent.current = projectId;
     onAutoSent?.();
-    void send();
+    // A scene page names its method on the start node; the first message goes out with it instead of keyword routing.
+    const entry = [...live.current.nodes, ...live.current.conversations].find(n => n.id === initialNodeId);
+    void send(undefined, entry?.metadata?.studioSkill);
   }, [open, autoSend, session.status, text, talked, store.outbox.length, sending]);
 
   // ── Work an execution finished while this canvas was closed ─────────────

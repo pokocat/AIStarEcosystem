@@ -48,6 +48,36 @@ class StudioTextWorkflowTest {
             TransactionSynchronizationManager.getSynchronizations().forEach(s->s.afterCommit());verify(worker).execute(run.getId());
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
+    /** AI 视频页的编导看商品图写脚本：普通文字任务也能带 readVisuals；模型看不了图就按能力拒绝，不按操作类型拒绝。 */
+    @Test void aTextRunMayReadTheReferencedPicturesWhenTheModelCanSee() throws Exception {
+        var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);
+        var credits=mock(CreditService.class);var pricing=mock(DapPricingService.class);var prompts=mock(PromptService.class);var worker=mock(StudioWorkflowWorker.class);
+        var project=IpProject.builder().id("p").build();when(projects.requiredForUpdate("u","p")).thenReturn(project);
+        when(projects.readDoc(project)).thenReturn(json.readTree("{\"nodes\":[{\"id\":\"text\",\"type\":\"text\",\"metadata\":{\"content\":\"\"}},"
+                +"{\"id\":\"img\",\"type\":\"image\",\"title\":\"商品图 1\",\"metadata\":{\"storageKey\":\"ipstudio_media/u/p.png\"}}]}"));
+        when(runs.findByProjectIdAndClientRequestId(anyString(),anyString())).thenReturn(Optional.empty());when(pricing.ipIdentity()).thenReturn(2L);
+        var blind=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).build();
+        var seeing=AiModelEndpoint.builder().id("agnes-text").model("text-v1").enabled(true).modelsJson("[{\"id\":\"text-v1\",\"supportsVision\":true}]").build();
+        when(prompts.resolve(anyString())).thenReturn(new PromptService.ResolvedPrompt("assistant","{{input}}",new PromptParamsDto(null,null,null),"resource"));
+        var service=new StudioWorkflowService(projects,runs,mock(StudioFixtureProvider.class),worker,pricing,models,null,credits,null,null,null,null,json,null,prompts);
+        var prices=mock(AiChatTokenPricing.class);
+        when(prices.find("agnes-text")).thenReturn(new AiChatTokenPricing.Rate(new java.math.BigDecimal("0.18"),new java.math.BigDecimal("1.08"),65536,8192));
+        org.springframework.test.util.ReflectionTestUtils.setField(service,"tokenPricing",prices);
+        var request=json.readValue("{\"clientRequestId\":\"key\",\"nodeId\":\"text\",\"operation\":\"text\",\"prompt\":\"写脚本\",\"model\":\"agnes-text\",\"maxCost\":21,"
+                +"\"textEdit\":{\"content\":\"\"},\"contextNodeIds\":[\"img\"],\"readVisuals\":true}",RunRequest.class);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(blind,null,true)));
+        assertEquals("STUDIO_VISION_UNAVAILABLE",assertThrows(com.aistareco.common.BusinessException.class,()->service.submit("u","p",request)).getCode());
+        verifyNoInteractions(credits);
+        when(models.resolveEndpoint(AiModelPurpose.DAP_PERSONA,"agnes-text","studio")).thenReturn(Optional.of(new AiModelInvocationService.ResolvedEndpoint(seeing,null,true)));
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.submit("u","p",request);
+            var capture=ArgumentCaptor.forClass(IpRun.class);verify(runs).save(capture.capture());
+            var exec=json.readTree(capture.getValue().getInputJson()).path("_exec");
+            assertEquals("ipstudio_media/u/p.png",exec.path("visualContext").get(0).path("storageKey").asText());
+            verify(projects).requireOwnedAssetKey("u","ipstudio_media/u/p.png");
+        } finally {TransactionSynchronizationManager.clearSynchronization();}
+    }
     @ParameterizedTest @ValueSource(strings={"text","script","storyboard","assistant","asset-extract"})
     void everyTextOperationFreezesTokenRateAndRejectsUnpricedOrOutdatedRequests(String operation) throws Exception {
         var projects=mock(IpProjectService.class);var runs=mock(IpRunRepository.class);var models=mock(AiModelInvocationService.class);

@@ -10,6 +10,7 @@ import {
   ChevronRight,
   CircleDollarSign,
   ClipboardCheck,
+  LayoutTemplate,
   LogOut,
   Radar,
   ShieldCheck,
@@ -39,18 +40,22 @@ import { AuthApi, type AdminIdentity } from "@/lib/api";
 import { studioAdminPath } from "@/lib/app-path";
 
 type View = "business" | "technology";
+/** dashboard = 经营 / 技术两个只读看板；scenes = 运营配置里的「场景模板」（可编辑）。 */
+export type StudioPage = "dashboard" | "scenes";
 
 function dashboardHref(view: View, days: 1 | 7 | 30, hash = "") {
   return `/?view=${view}&days=${days}${hash}`;
 }
 
 function StudioNavigation({
+  page,
   view,
   days,
   hash,
   identity,
   logout,
 }: {
+  page: StudioPage;
   view: View;
   days: 1 | 7 | 30;
   hash: string;
@@ -58,7 +63,12 @@ function StudioNavigation({
   logout: () => void;
 }) {
   const { setOpenMobile } = useSidebar();
-  const items = view === "business"
+  const items = page === "scenes"
+    ? [
+        { href: dashboardHref("business", days), label: "经营看板", icon: BarChart3, hash: "never" },
+        { href: dashboardHref("technology", days), label: "技术看板", icon: Radar, hash: "never" },
+      ]
+    : view === "business"
     ? [
         { href: dashboardHref(view, days), label: "经营概览", icon: BarChart3, hash: "" },
         { href: dashboardHref(view, days, "#health"), label: "健康状态", icon: ClipboardCheck, hash: "#health" },
@@ -85,20 +95,20 @@ function StudioNavigation({
             <span className="block text-xs text-slate-500">积分与生成运营台</span>
           </span>
         </Link>
-        <Badge variant="outline" className="w-full justify-center border-slate-200 bg-slate-50 py-1 text-slate-600">
-          <ShieldCheck className="size-3.5" /> 只读模式
-        </Badge>
+        {page === "dashboard" && <Badge variant="outline" className="w-full justify-center border-slate-200 bg-slate-50 py-1 text-slate-600">
+          <ShieldCheck className="size-3.5" /> 看板只读
+        </Badge>}
       </SidebarHeader>
       <SidebarSeparator />
       <SidebarContent className="px-2 py-3">
         <SidebarGroup>
           <SidebarGroupLabel className="px-2 text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400">
-            本页导航
+            {page === "scenes" ? "看板" : "本页导航"}
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => {
-                const active = item.hash ? hash === item.hash : !hash;
+                const active = page === "dashboard" && (item.hash ? hash === item.hash : !hash);
                 return (
                   <SidebarMenuItem key={item.label}>
                     <SidebarMenuButton asChild isActive={active} tooltip={item.label} className="h-10 rounded-lg px-3 data-[active=true]:font-semibold">
@@ -111,6 +121,24 @@ function StudioNavigation({
                   </SidebarMenuItem>
                 );
               })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+        <SidebarGroup>
+          <SidebarGroupLabel className="px-2 text-[11px] font-semibold uppercase tracking-[.12em] text-slate-400">
+            运营配置
+          </SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild isActive={page === "scenes"} tooltip="场景模板" className="h-10 rounded-lg px-3 data-[active=true]:font-semibold">
+                  <Link href="/scenes" onClick={() => setOpenMobile(false)} aria-current={page === "scenes" ? "page" : undefined}>
+                    <LayoutTemplate />
+                    <span>场景模板</span>
+                    <ChevronRight className="ml-auto size-3.5 opacity-35" />
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -136,7 +164,7 @@ function StudioNavigation({
   );
 }
 
-export function StudioShell({ children }: { children: React.ReactNode }) {
+export function StudioShell({ children, page = "dashboard" }: { children: React.ReactNode; page?: StudioPage }) {
   const search = useSearchParams();
   const view: View = search.get("view") === "technology" ? "technology" : "business";
   const days = search.get("days") === "1" ? 1 : search.get("days") === "30" ? 30 : 7;
@@ -174,15 +202,15 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider defaultOpen>
-      <StudioNavigation view={view} days={days} hash={hash} identity={identity} logout={logout} />
+      <StudioNavigation page={page} view={view} days={days} hash={hash} identity={identity} logout={logout} />
       <SidebarInset className="min-w-0 bg-[#f4f6fb]">
         <header className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center gap-x-4 gap-y-2 border-b bg-white/95 px-4 py-2 backdrop-blur md:px-6">
           <SidebarTrigger className="size-9 md:hidden" />
           <div className="min-w-0 flex-1">
-            <p className="truncate text-[11px] text-slate-400">Studio Ops / 积分与生成看板</p>
-            <h1 className="truncate text-sm font-semibold text-slate-900">{view === "technology" ? "技术看板" : "经营看板"}</h1>
+            <p className="truncate text-[11px] text-slate-400">{page === "scenes" ? "Studio Ops / 运营配置" : "Studio Ops / 积分与生成看板"}</p>
+            <h1 className="truncate text-sm font-semibold text-slate-900">{page === "scenes" ? "场景模板" : view === "technology" ? "技术看板" : "经营看板"}</h1>
           </div>
-          <nav role="tablist" aria-label="看板页签" className="order-3 grid h-9 w-full grid-cols-2 rounded-xl bg-slate-100 p-[3px] text-sm sm:order-none sm:w-[220px]">
+          {page === "dashboard" && <><nav role="tablist" aria-label="看板页签" className="order-3 grid h-9 w-full grid-cols-2 rounded-xl bg-slate-100 p-[3px] text-sm sm:order-none sm:w-[220px]">
             <Link role="tab" aria-selected={view === "business"} aria-current={view === "business" ? "page" : undefined} href={viewHref("business")} onClick={() => setHash("")}
               className="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 font-medium text-slate-600 outline-none transition hover:text-slate-900 focus-visible:ring-2 focus-visible:ring-ring aria-selected:bg-white aria-selected:text-slate-950 aria-selected:shadow-sm">
               <BarChart3 className="size-4" />经营
@@ -194,7 +222,7 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
           </nav>
           <Badge variant="outline" className="hidden border-slate-200 bg-slate-50 text-slate-600 sm:flex">
             <ShieldCheck className="size-3.5" /> 只读查询
-          </Badge>
+          </Badge></>}
         </header>
         <main id="studio-main" className="min-w-0 flex-1 overflow-x-hidden">
           {children}

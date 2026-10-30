@@ -1,0 +1,672 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, ArrowUp, Check, ChevronDown, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Languages, Loader2, Mic, PencilLine, Plus,
+  RotateCcw, Sparkles, Square, Upload, UserRound, Video, Wand2, X } from "lucide-react";
+import type { IpProject, IpRun, StudioMediaImportResult } from "@ai-star-eco/types";
+import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
+import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
+import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
+import { HubTabBar } from "@/components/hub/ui";
+import { cancelRun, fetchStudioVideoModels, readRun } from "@/canvas-bridge/api";
+import { importStudioMedia, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
+import { attachmentNode } from "@/canvas-bridge/studio-attachments";
+import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
+import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
+import { studioVideoError, studioVideoQuote } from "@/canvas-bridge/studio-video";
+import { downloadMedia } from "@/canvas-bridge/download-media";
+import { CanvasNodeType, type CanvasNodeData } from "@/canvas/types/canvas";
+import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
+import { useStudioList } from "../studio-gallery";
+import { studioEntryHref } from "../studio-entry";
+import { StudioSelect } from "../studio-select";
+import { IpStudioApi } from "../api";
+import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, listSceneDrafts, patchNode, resubmitRow, saveDraftDoc, scriptNodes, submissionRejected, videoRows } from "./scene-drafts";
+import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
+import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
+
+type Media = StudioMediaImportResult & { title: string };
+type Slot = "image" | "character" | "voice" | "video";
+const DEFAULT_SCENE = "ecom-talking";
+const POLL_MS = 1500;
+const LANGUAGES = ["中文", "英文"];
+const RECREATION = "reference-video-recreation";
+const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+
+function readQuery() {
+  if (typeof window === "undefined") return { scene: undefined, draft: undefined };
+  const q = new URLSearchParams(window.location.search);
+  return { scene: q.get("scene") || undefined, draft: q.get("draft") || undefined };
+}
+function writeQuery(scene: string, draft?: string) {
+  const q = new URLSearchParams({ scene, ...(draft ? { draft } : {}) });
+  window.history.replaceState(window.history.state, "", `/video?${q}`);
+}
+
+/**
+ * 「AI 视频」（照参考站「超级编导」的出片方式，docs/studio-scene-creation.md §8）：
+ * 放素材、说一句（可以不说）→ 编导看图写一版分镜脚本，接着说哪里要改 →「用这个脚本生成」→ 选模型和时长、确认积分 → 出片。
+ * 一切都写在一张普通草稿画布里，随时可以「在画布中继续」。爆款复刻要先拉片、超过模型时长的长片要分段，这两种交给画布里的创作助手。
+ */
+export function SceneVideoStudio() {
+  const router = useRouter();
+  const auth = useRequireAuth();
+  const ready = auth === "ok";
+  const showFailure = useStudioFailure();
+  const { catalog, error: catalogError, retry: retryCatalog } = useSceneCatalog(ready);
+  const catalogRef = useRef(catalog); catalogRef.current = catalog;
+  const videoIds = useMemo(() => new Set(catalog?.video.map(s => s.id) ?? []), [catalog]);
+  const loadDrafts = useCallback(() => listSceneDrafts(videoIds), [videoIds]);
+  const drafts = useStudioList(loadDrafts, ready && !!catalog);
+  const [sceneId, setSceneId] = useState(DEFAULT_SCENE);
+  const scene = findVideoScene(catalog, sceneId) ?? catalog?.video[0];
+  const [text, setText] = useState("");
+  const [language, setLanguage] = useState(LANGUAGES[0]);
+  const [picked, setPicked] = useState<Record<string, string>>({});
+  const [duration, setDuration] = useState(15);
+  const [ratio, setRatio] = useState<string>("9:16");
+  const [images, setImages] = useState<Media[]>([]);
+  const [character, setCharacter] = useState<Media>();
+  const [voice, setVoice] = useState<Media>();
+  const [video, setVideo] = useState<Media>();
+  const [uploading, setUploading] = useState<Slot>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [submitting, setSubmitting] = useState<string>();
+  const [tab, setTab] = useState<"example" | "results">("example");
+  const [mode, setMode] = useState<"talk" | "generate">("talk");
+  const [scriptId, setScriptId] = useState<string>();
+  const [prompt, setPrompt] = useState("");
+  const [caps, setCaps] = useState<StudioCapabilities>();
+  const [videoModels, setVideoModels] = useState<VideoStudioModel[]>();
+  const [modelId, setModelId] = useState<string>();
+  const [tier, setTier] = useState<string>();
+  const [hint, setHint] = useState("");
+  const [draft, setDraft] = useState<IpProject>();
+  const [live, setLive] = useState<Record<string, IpRun>>({});
+  const [copied, setCopied] = useState<string>();
+  const draftRef = useRef<IpProject>(undefined);
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  const fileInput = useRef<HTMLInputElement>(null);
+  const target = useRef<Slot>("image");
+  const input = useRef<HTMLTextAreaElement>(null);
+  const thread = useRef<HTMLDivElement>(null);
+
+  // ── 模型 ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!ready) return;
+    let active = true;
+    void Promise.all([studioCapabilities(), fetchStudioVideoModels()]).then(([c, v]) => { if (active) { setCaps(c); setVideoModels(v); } })
+      .catch(e => { if (active) { setVideoModels([]); showFailure({ action: "读取视频模型", error: e }); } });
+    return () => { active = false; };
+  }, [ready, showFailure]);
+  const textModel = studioChosenTextModel(caps, undefined);
+  const scriptCost = caps?.mock ? 0 : textModel?.tokenPricing ? Math.ceil(textModel.tokenPricing.maxCost) : undefined;
+  const chosenVideo = (videoModels ?? []).find(m => m.endpointId === modelId) ?? videoModels?.find(m => m.isDefault) ?? videoModels?.[0];
+  const contract = chosenVideo?.contract;
+  const durations = contract ? sceneVideoDurations(contract) : [duration];
+  const usedDuration = contract ? clampSceneDuration(duration, contract) : duration;
+  const tiers = contract?.tiers.filter(t => t.canvases.some(c => c.aspectRatio === ratio)) ?? [];
+  const usedTier = tiers.find(t => t.tier === tier)?.tier ?? tiers[0]?.tier;
+
+  // ── 场景与草稿 ────────────────────────────────────────────────────────
+  const pickScene = useCallback((next: VideoScene) => {
+    setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
+    setImages(old => old.slice(0, next.images.max ?? 6));
+    if (!next.video) setVideo(undefined);
+    writeQuery(next.id, draftRef.current?.id);
+  }, []);
+
+  const showDraft = useCallback((project: IpProject | undefined) => {
+    draftRef.current = project; setDraft(project); setLive({});
+  }, []);
+
+  const reset = (next = scene) => {
+    showDraft(undefined); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
+    setMode("talk"); setScriptId(undefined); setPrompt(""); setHint(""); setTab("example");
+    if (next) writeQuery(next.id);
+  };
+
+  /** 打开一份草稿：场景、素材、最新脚本都放回来，接着聊或接着出片。 */
+  const openDraft = useCallback(async (id: string) => {
+    try {
+      const project = await IpStudioApi.getProject(id);
+      showDraft(project);
+      const from = findVideoScene(catalogRef.current, project.sceneId);
+      if (from) { setSceneId(from.id); setRatio(from.ratio); }
+      const nodes = project.doc.nodes as CanvasNodeData[];
+      const scripts = scriptNodes(project.doc), latest = scripts.at(-1);
+      const media = (n: CanvasNodeData | undefined): Media | undefined => n?.metadata?.storageKey && n.metadata.content
+        ? { key: n.metadata.storageKey, url: n.metadata.content, title: n.title || "素材", fileName: n.title || "", bytes: 0, mimeType: n.metadata.mimeType || "",
+          mediaType: n.type === CanvasNodeType.Audio ? "audio" : n.type === CanvasNodeType.Video ? "video" : "image" } : undefined;
+      // 写过脚本就按最新一版看过的图放回；还没写过就按草稿里上传过的图（上传时就写进了草稿）。
+      const used = latest ? (latest.metadata?.studio?.request?.contextNodeIds ?? []).map(nid => nodes.find(n => n.id === nid))
+        : nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.origin === "upload").sort((a, b) => a.position.y - b.position.y);
+      setImages(used.filter(n => n && n.title !== "出镜人物").flatMap(n => media(n) ?? []));
+      setCharacter(media(used.find(n => n?.title === "出镜人物")));
+      setVoice(media(nodes.find(n => n.type === CanvasNodeType.Audio && n.title === "声音样本")));
+      setVideo(media(nodes.find(n => n.type === CanvasNodeType.Video && n.title === "参考视频")));
+      if (latest?.metadata?.studio?.sceneDirector) { setDuration(latest.metadata.studio.sceneDirector.duration); setRatio(latest.metadata.studio.sceneDirector.ratio); }
+      setMode("talk"); setScriptId(undefined); setText(""); setTab(videoRows(project.doc).length ? "results" : "example");
+      writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
+    } catch (e) { showFailure({ action: "打开草稿", error: e }); }
+  }, [showDraft, showFailure]);
+
+  // 地址栏里的场景 / 草稿：首页卡片和「最近」都靠它直达。进页面时读一次存下来（登录晚一拍就绪时不会被覆盖）。
+  const entry = useRef(readQuery());
+  useEffect(() => {
+    if (!catalog) return;
+    const start = findVideoScene(catalog, entry.current.scene) ?? findVideoScene(catalog, DEFAULT_SCENE) ?? catalog.video[0];
+    if (start) pickScene(start);
+  }, [catalog, pickScene]);
+  useEffect(() => {
+    const id = entry.current.draft;
+    if (!ready || !catalog || !id) return;
+    entry.current = { ...entry.current, draft: undefined };
+    void openDraft(id);
+  }, [ready, catalog, openDraft]);
+
+  /** 文档一次只存一份：后一次保存基于前一次的结果，不会拿旧版本去覆盖。 */
+  const persist = useCallback((mutate: (doc: IpProject["doc"]) => IpProject["doc"]) => {
+    const job = queue.current.then(async () => {
+      const current = draftRef.current;
+      if (!current) throw new Error("草稿还没准备好");
+      const saved = await saveDraftDoc(current, mutate(current.doc));
+      draftRef.current = saved; setDraft(saved);
+      return saved;
+    });
+    queue.current = job.catch(() => undefined);
+    return job;
+  }, []);
+
+  const ensureDraft = async () => {
+    if (!scene) throw new Error("场景还没读出来，请稍等");
+    if (!draftRef.current) {
+      const subject = text.trim().split(/[，。,.\n]/)[0].slice(0, 14);
+      showDraft(await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id));
+      writeQuery(scene.id, draftRef.current!.id);
+      drafts.reload();
+    }
+    return draftRef.current!;
+  };
+
+  // 接着看已经受理的任务（脚本和视频）：只读运行记录，绝不重新提交。
+  const draftId = draft?.id;
+  useEffect(() => {
+    if (!draftId) return;
+    let alive = true, ticking = false;
+    const tick = async () => {
+      if (ticking) return; ticking = true;
+      try {
+        const doc = draftRef.current?.doc ?? EMPTY_DOC;
+        const pending = [...scriptNodes(doc), ...videoRows(doc)].filter(n => n.metadata?.status === "loading" && n.metadata.studio?.runId);
+        for (const row of pending) {
+          const run = await readRun(row.metadata!.studio!.runId!);
+          if (!alive) return;
+          if (run.status === "running") { setLive(l => ({ ...l, [row.id]: run })); continue; }
+          await persist(d => patchNode(applyRun(d, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata,
+            status: run.status === "done" ? "success" : "error", ...(run.status === "failed" ? { errorDetails: run.errorMessage || "生成失败", errorCode: run.errorCode, errorLogId: run.logId } : { errorDetails: undefined }) } })));
+          setLive(l => { const next = { ...l }; delete next[row.id]; return next; });
+          if (run.status === "done") drafts.reload();
+        }
+      } catch { /* 网络抖一下下次再读；任务本身不受影响 */ }
+      finally { ticking = false; }
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), POLL_MS);
+    return () => { alive = false; clearInterval(timer); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftId, persist]);
+
+  const doc = draft?.doc ?? EMPTY_DOC;
+  const scripts = scriptNodes(doc);
+  const rows = videoRows(doc);
+  const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
+  const writing = scripts.some(s => s.metadata?.status === "loading");
+  // 新的一轮出来时滚到底（只滚对话区自己）。
+  useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [scripts.length, writing]);
+
+  // ── 素材 ──────────────────────────────────────────────────────────────
+  const upload = async (kind: Slot, file: File) => {
+    const type = kind === "voice" ? "audio" : kind === "video" ? "video" : "image";
+    const wrong = type === "image" && !/\.(jpe?g|png)$/i.test(file.name) ? "请选择 JPG 或 PNG 图片"
+      : type === "video" && !/\.mp4$/i.test(file.name) ? "参考视频请用 MP4 格式"
+      : type === "audio" && !/\.(mp3|wav|m4a)$/i.test(file.name) ? "声音请用 MP3、WAV 或 M4A" : "";
+    if (wrong) { showFailure({ action: "上传素材", error: new Error(wrong) }); return; }
+    setUploading(kind);
+    try {
+      const project = await ensureDraft();
+      const result = await importStudioMedia(project.id, file, type);
+      const title = kind === "image" ? `${scene!.images.label} ${images.length + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? "声音样本" : "参考视频";
+      const media: Media = { ...result, title };
+      if (kind === "image") setImages(old => [...old, media].slice(0, scene!.images.max ?? 6));
+      if (kind === "character") setCharacter(media);
+      if (kind === "voice") setVoice(media);
+      if (kind === "video") setVideo(media);
+      // 上传完就写进草稿画布：刷新或从「最近」再打开时素材还在（参考站的草稿也记着输入）。
+      await persist(doc => {
+        const nodes = doc.nodes as CanvasNodeData[];
+        const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
+        return nodes.some(n => n.id === made.id) ? doc : { ...doc, nodes: [...nodes, made] };
+      }).catch(() => undefined);
+    } catch (e) { showFailure({ action: "上传素材", error: e, next: "检查一下文件格式和大小，再试一次。" }); }
+    finally { setUploading(undefined); }
+  };
+  const choose = (kind: Slot) => {
+    target.current = kind;
+    if (!fileInput.current) return;
+    fileInput.current.accept = kind === "voice" ? ".mp3,.wav,.m4a" : kind === "video" ? ".mp4" : ".jpg,.jpeg,.png";
+    fileInput.current.click();
+  };
+
+  /**
+   * 素材放进草稿画布（同一个文件只放一次），返回每份素材对应的节点，顺序就是编导写的图1、图2…。
+   * 必须在保存队列里基于当前文档调用：拿建草稿那一刻的旧节点会把轮询刚写进去的结果盖掉。
+   */
+  const placeMaterials = (base: CanvasNodeData[]) => {
+    let nodes = base;
+    const placed: { media: Media; node: CanvasNodeData }[] = [];
+    const place = (media: Media, kind: "image" | "video" | "audio") => {
+      const node = placeMedia(nodes, media, kind, placed.length);
+      if (!nodes.some(n => n.id === node.id)) nodes = [...nodes, node];
+      placed.push({ media, node });
+    };
+    if (video) place(video, "video");
+    images.forEach(m => place(m, "image"));
+    if (character) place(character, "image");
+    if (voice) place(voice, "audio");
+    return { nodes, placed };
+  };
+
+  // ── 编导写脚本 ────────────────────────────────────────────────────────
+  const revising = !!latestScript;
+  const recreation = scene?.skill === RECREATION;
+  const blocker = !scene ? "正在读取场景…" : recreation && scene.video?.required && !video ? `先放${scene.video.label}`
+    : scene.images.required && !images.length ? `先放${scene.images.label}`
+    : recreation && scene.textRequired && !text.trim() ? "先写一句要求"
+    : !recreation && !revising && scene.textRequired && !text.trim() ? "先写一句要求"
+    : !recreation && revising && !text.trim() ? "说说想改哪里"
+    : !recreation && !caps ? "正在读取模型…"
+    : !recreation && !caps?.mock && !textModel?.tokenPricing ? "编导暂时不可用（文字模型没配置价格）" : "";
+
+  const send = async () => {
+    if (busy || uploading || writing) return;
+    if (blocker) { setHint(blocker); return; }
+    if (recreation) { await handoff(); return; }
+    setBusy(true); setHint("");
+    let nodeId: string | undefined, posted = false;
+    try {
+      const ask = text.trim();
+      const first = scripts[0]?.metadata?.studio?.sceneDirector;
+      const composed = await IpStudioApi.composeScene({ kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
+        ...(revising ? { revision: ask } : {}), imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title,
+        duration: usedDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) });
+      const project = await ensureDraft();
+      const vision = caps?.mock || textModel?.supportsVision;
+      let request: Parameters<typeof submitStudioRun>[1] | undefined;
+      await persist(doc => {
+        const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
+        const imageIds = placed.filter(p => p.media.mediaType === "image").map(p => p.node.id);
+        const made = addScriptNode({ ...doc, nodes }, {
+          ask, revision: revising, prompt: composed.text, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
+          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost });
+        request = made.request; nodeId = made.nodeId;
+        return made.doc;
+      });
+      setText(""); setSubmitting(nodeId); posted = true;
+      const run = await submitStudioRun(project.id, request!);
+      await persist(doc => applyRun(doc, nodeId!, run));
+    } catch (e) {
+      if (!nodeId) { setHint(sceneHintText(e, "这一版没发出去，请再点一次")); return; }
+      const rejected = submissionRejected(e, posted);
+      await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
+        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } }))).catch(() => undefined);
+      showFailure({ action: "让编导写脚本", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重写。" });
+    } finally { setBusy(false); setSubmitting(undefined); }
+  };
+
+  /** 失败了（没扣积分）原地按原样再来一次：同样的要求、新的请求编号。 */
+  const retry = async (row: CanvasNodeData) => {
+    const project = draftRef.current;
+    if (busy || !project || !row.metadata?.studio?.request) return;
+    setBusy(true);
+    let request: Parameters<typeof submitStudioRun>[1] | undefined;
+    try {
+      await persist(doc => { const again = resubmitRow(doc, row.id); if (!again) throw new Error("这一条已经不在了"); request = again.request; return again.doc; });
+      setSubmitting(row.id);
+      const run = await submitStudioRun(project.id, request!);
+      await persist(doc => applyRun(doc, row.id, run));
+    } catch (e) {
+      if (isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, row.id, n => ({ ...n, metadata: { ...n.metadata, status: "error", errorDetails: "已取消" } }))).catch(() => undefined); return; }
+      const rejected = submissionRejected(e, true);
+      await persist(doc => patchNode(doc, row.id, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e), status: rejected ? "error" : "loading" } }))).catch(() => undefined);
+      showFailure({ action: "重新生成", error: e });
+    } finally { setBusy(false); setSubmitting(undefined); }
+  };
+
+  /** 同一个请求编号再交一次：服务端认得它，已受理就返回原任务，不会再扣一次。 */
+  const confirmOriginal = async (row: CanvasNodeData) => {
+    const request = row.metadata?.studio?.request, project = draftRef.current;
+    if (!request || !project || busy) return;
+    setBusy(true);
+    try {
+      const run = await submitStudioRun(project.id, request);
+      await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })));
+    } catch (e) { showFailure({ action: "确认原任务", error: e }); }
+    finally { setBusy(false); }
+  };
+
+  // ── 交给创作助手（爆款复刻、比模型更长的片子）─────────────────────────
+  const handoff = async () => {
+    if (!scene) return;
+    setBusy(true);
+    try {
+      const longest = scene.durations.includes(duration) ? duration : scene.duration;
+      const composed = await IpStudioApi.composeScene({ kind: "video", sceneId: scene.id, text: text.trim() || scripts[0]?.metadata?.studio?.sceneDirector?.ask || "", duration: longest, ratio,
+        imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title,
+        ...(sceneOptionValues(scene.options, picked) ? { options: sceneOptionValues(scene.options, picked) } : {}) });
+      const project = await ensureDraft();
+      // 和首页「说一句话开始」同一种起点：这段话存成助手的第一句，画布打开后带着场景的方法自动发出。
+      const start = { id: `${project.id}-brief`, type: CanvasNodeType.Text, title: "创作想法", position: { x: 100, y: 120 }, width: 480, height: 260,
+        metadata: { content: composed.text, prompt: composed.text, studioStart: "assistant" as const, ...(composed.skillKey ? { studioSkill: composed.skillKey } : {}), studio: { kind: "assistant" as const, conversation: { mode: "general" as const, turns: [] } } } };
+      await persist(doc => ({ ...doc, nodes: placeMaterials(doc.nodes as CanvasNodeData[]).nodes,
+        assistantConversations: [...(doc.assistantConversations || []).filter(n => n.id !== start.id), start] }));
+      router.push(studioEntryHref(project.id, "assistant", { send: true }));
+    } catch (e) {
+      setHint(sceneHintText(e, "没交出去，请再点一次"));
+      setBusy(false);
+    }
+  };
+
+  // ── 按脚本出片 ────────────────────────────────────────────────────────
+  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(row.metadata?.content || ""); setMode("generate"); setHint(""); };
+  const materials: SceneVideoMaterial[] = useMemo(() => {
+    const nodes = doc.nodes as CanvasNodeData[];
+    const nodeOf = (key: string) => nodes.find(n => n.metadata?.storageKey === key)?.id ?? "";
+    return [...images.map(m => ({ key: m.key, mediaType: "image" as const, title: m.title, nodeId: nodeOf(m.key) })),
+      ...(character ? [{ key: character.key, mediaType: "image" as const, title: character.title, nodeId: nodeOf(character.key) }] : []),
+      ...(voice ? [{ key: voice.key, mediaType: "audio" as const, title: voice.title, nodeId: nodeOf(voice.key) }] : [])];
+  }, [doc.nodes, images, character, voice]);
+  const plan = chosenVideo ? sceneVideoInputs(chosenVideo, materials) : undefined;
+  let settings: ReturnType<typeof sceneVideoSettings> | undefined, planError = "";
+  try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan) : undefined; }
+  catch (e) { planError = e instanceof Error ? e.message : "素材和模型对不上"; }
+  const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
+  const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
+    || (settings ? studioVideoError(chosenVideo, settings, prompt, ratio, usedDuration) : "请重新选择清晰度") || "";
+
+  const generate = async () => {
+    if (busy || !scene || !chosenVideo || !settings) return;
+    if (videoBlocker) { setHint(videoBlocker); return; }
+    setBusy(true); setHint("");
+    let nodeId: string | undefined, posted = false;
+    try {
+      const project = await ensureDraft();
+      let request: Parameters<typeof submitStudioRun>[1] | undefined;
+      await persist(doc => {
+        const { nodes, placed } = placeMaterials(doc.nodes as CanvasNodeData[]);
+        const refIds = plan!.used.map(m => placed.find(p => p.media.key === m.key)?.node.id).filter((id): id is string => !!id);
+        const made = addVideoRow({ ...doc, nodes }, {
+          title: `${scene.title} · ${usedDuration} 秒`, prompt: prompt.trim(), scriptId, refIds, video: settings!, durationSec: usedDuration, aspectRatio: ratio,
+          model: chosenVideo.selectableById && !caps?.mock ? chosenVideo.endpointId : undefined, maxCost: videoQuote ?? undefined });
+        request = made.request; nodeId = made.nodeId;
+        return made.doc;
+      });
+      setSubmitting(nodeId); setTab("results"); posted = true;
+      const run = await submitStudioRun(project.id, request!);
+      await persist(doc => applyRun(doc, nodeId!, run));
+    } catch (e) {
+      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined)).catch(() => undefined); return; }
+      if (!nodeId) { showFailure({ action: "生成视频", error: e }); return; }
+      const rejected = submissionRejected(e, posted);
+      await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
+        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } }))).catch(() => undefined);
+      showFailure({ action: "生成视频", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
+    } finally { setBusy(false); setSubmitting(undefined); }
+  };
+
+  const copy = async (row: CanvasNodeData) => {
+    try { await navigator.clipboard.writeText(row.metadata?.content || ""); setCopied(row.id); setTimeout(() => setCopied(c => c === row.id ? undefined : c), 1500); }
+    catch { showFailure({ action: "复制脚本", error: new Error("浏览器不让复制，请手动选中文字复制") }); }
+  };
+
+  if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
+  if (catalogError && !catalog) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading">场景目录没读出来<button type="button" className="ip-brand-secondary" onClick={retryCatalog}>重新加载</button></div></main>;
+  if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
+  const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
+  const tooLong = !!contract && scene.duration > contract.maxSeconds;
+  const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
+    <div className={`scene-media${media ? " is-filled" : ""}`}>
+      <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
+        {uploading === kind ? <Loader2 size={20} className="studio-gallery-spinner"/> : media && kind === "character" ? <img src={media.url} alt=""/>
+          : <><Icon size={26} strokeWidth={1.3}/>{!media && <span className="scene-ref-upload"><Upload size={11}/></span>}</>}
+      </button>
+      <span>{media ? label : `添加${label}`}{!media && optional && <small>（可选）</small>}</span>
+      {media && <button type="button" className="scene-ref-remove" aria-label={`移除${label}`} onClick={clear}><X size={13}/></button>}
+    </div>;
+
+  return <main className="ip-brand-surface scene-studio scene-video-studio" data-studio-overlay-root>
+    <SceneList heading="AI 视频" current={scene.id} onPick={id => { const next = findVideoScene(catalog, id); if (next) { if (draftRef.current) reset(next); pickScene(next); } }} groups={groups}/>
+
+    <section className="scene-composer scene-video-composer" aria-label="编导">
+      <header className="scene-composer-head">
+        <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={52}/>
+        <div><strong>{scene.title}</strong><small>{scene.description}</small></div>
+        <button type="button" className="scene-new" onClick={() => reset()}><Plus size={16}/>新建</button>
+      </header>
+
+      {/* 生成模式（照参考站「应用脚本」之后）整列换成编辑器，脚本就在编辑框里；回到编导再看对话。 */}
+      <div className="scene-director-thread" ref={thread} aria-live="polite" hidden={mode === "generate"}>
+        {!scripts.length ? <div className="scene-video-stage">
+            <span className="scene-video-mark" aria-hidden="true"><Clapperboard size={30} strokeWidth={1.4}/></span>
+            <h2>你想做一条什么视频？</h2>
+            <p className="scene-director-intro">{recreation ? "放上要复刻的视频，说说换成什么；会交给画布里的创作助手先拉片再做。" : "放素材、说一句，编导先写一版分镜脚本给你看，满意了再出片。"}</p>
+            <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea} title={idea}
+              onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
+          </div>
+          : scripts.map(row => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+              copied={copied === row.id} onUse={() => useScript(row)} onRevise={() => { setMode("talk"); input.current?.focus(); }} onCopy={() => void copy(row)}
+              onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
+              onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
+      </div>
+
+      {mode === "talk" ? <div className="scene-video-input">
+        <div className="scene-media-row" role="group" aria-label="素材">
+          {scene.video && tile("video", video, scene.video.label, Video, !scene.video.required, () => setVideo(undefined))}
+          {images.map((m, i) => <div key={m.key} className="scene-media is-filled"><span className="scene-media-preview"><img src={m.url} alt={m.title}/></span><span>图{i + 1} {m.title}</span>
+            <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` })))}><X size={13}/></button></div>)}
+          {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
+            {uploading === "image" ? <Loader2 size={20} className="studio-gallery-spinner"/> : <><ImagePlus size={26} strokeWidth={1.3}/><span className="scene-ref-upload"><Upload size={11}/></span></>}</button>
+            <span>添加{scene.images.label}{!scene.images.required && <small>（可选）</small>}</span></div>}
+          {scene.character && <i className="scene-media-divider" aria-hidden="true"/>}
+          {scene.character && tile("character", character, "角色", UserRound, true, () => setCharacter(undefined))}
+          {scene.voice && <i className="scene-media-divider" aria-hidden="true"/>}
+          {scene.voice && tile("voice", voice, "声音", Mic, true, () => setVoice(undefined))}
+          <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
+        </div>
+        <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
+        <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
+          placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
+        <footer>
+          <div className="scene-setting-panel-host">
+            <button type="button" className="scene-video-settings" aria-expanded={settingsOpen} onClick={() => setSettingsOpen(v => !v)}>
+              <Languages size={14}/>{language} · {recreation ? (scene.durations.includes(duration) ? duration : scene.duration) : usedDuration} 秒 · {ratio === "16:9" ? "横屏" : "竖屏"}<ChevronDown size={13}/></button>
+            {settingsOpen && <VideoSettingsPanel durations={recreation ? scene.durations : durations} duration={recreation ? (scene.durations.includes(duration) ? duration : scene.duration) : usedDuration}
+              onDuration={setDuration} ratio={ratio} onRatio={setRatio} language={language} onLanguage={setLanguage} onClose={() => setSettingsOpen(false)}/>}
+          </div>
+          <small className={hint || blocker ? "is-blocked" : undefined}>{hint || blocker || (recreation ? "交给创作助手：先出方案和报价，确认后才扣积分"
+            : caps?.mock ? "测试响应 · 免费" : scriptCost !== undefined ? `写一版脚本最多 ${scriptCost} 积分，按实际用量扣` : "")}</small>
+          <button type="button" className="scene-send" aria-label={recreation ? "交给创作助手" : revising ? "让编导改" : "让编导写脚本"} title={blocker || "发送（Enter）"}
+            disabled={busy || !!blocker || uploading !== undefined || writing} onClick={() => void send()}>
+            {busy || writing ? <Loader2 size={18} className="studio-gallery-spinner"/> : <ArrowUp size={19}/>}</button>
+        </footer>
+        {!recreation && tooLong && <p className="scene-director-long">当前模型一条最长 {contract!.maxSeconds} 秒。想做 {scene.duration} 秒这样更长的片子？
+          <button type="button" disabled={busy} onClick={() => void handoff()}>交给创作助手分段做</button></p>}
+      </div>
+      : <GenerateEditor prompt={prompt} onPrompt={p => { setPrompt(p); setHint(""); }} onBack={() => setMode("talk")}
+          models={videoModels ?? []} model={chosenVideo} onModel={setModelId} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
+          durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
+          used={plan?.used ?? []} note={plan?.note} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
+          maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
+      {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
+    </section>
+
+    <section className="scene-results" aria-label="生成结果">
+      <header><div className="scene-tabs" role="tablist" aria-label="结果与示例">
+          <button type="button" role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}>生成结果{rows.length ? <small>{rows.length}</small> : null}</button>
+          <button type="button" role="tab" aria-selected={tab === "example"} onClick={() => setTab("example")}>参考示例</button></div>
+        {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
+      {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
+          <ol className="scene-steps">
+            <li><b>1</b><div><strong>放素材、说一句</strong><p>商品图、门店照片或故事，用平时说话的方式写，不写也行。</p></div></li>
+            <li><b>2</b><div><strong>编导写脚本</strong><p>{recreation ? "画布里的创作助手先拉片，再按原片结构出方案。" : "看完素材写一版分镜和台词，哪里不满意直接说。"}</p></div></li>
+            <li><b>3</b><div><strong>确认后出片</strong><p>选好模型和时长，看清要花多少积分再生成。</p></div></li>
+          </ol>
+        </SceneExample>
+        : rows.length ? <ol className="scene-row-list">{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
+            onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
+            onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
+        : <div className="scene-empty"><h2>还没有生成</h2><p>编导写好脚本后，点「用这个脚本生成」，视频会出现在这里。</p></div>}
+    </section>
+
+    <SceneRecent drafts={drafts.data} loading={drafts.loading} current={draft?.id} onOpen={id => void openDraft(id)}/>
+    <HubTabBar/>
+  </main>;
+}
+
+/** 一份素材在草稿画布上的节点：同一个文件已经在画布上就用原来那个，新放的排在左边一列。 */
+function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "video" | "audio", index: number): CanvasNodeData {
+  const made = attachmentNode(kind === "image" ? { kind, dataUrl: media.url, storageKey: media.key, title: media.title }
+    : { kind, url: media.url, storageKey: media.key, title: media.title, width: media.width, height: media.height, mimeType: media.mimeType }, nodes);
+  return nodes.some(n => n.id === made.id) ? made : { ...made, position: { x: 100, y: 120 + index * 300 },
+    metadata: { ...made.metadata, origin: "upload", mimeType: media.mimeType, bytes: media.bytes, naturalWidth: media.width, naturalHeight: media.height,
+      durationMs: media.durationSec ? Math.round(media.durationSec * 1000) : undefined } };
+}
+
+/** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
+function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop }: {
+  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
+  onUse: () => void; onRevise: () => void; onCopy: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+}) {
+  const meta = row.metadata, turn = meta?.studio?.sceneDirector;
+  const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
+  const position = run?.queue?.position;
+  const spent = meta?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
+  const summary = meta?.studio?.textEditor?.turns?.at(-1)?.content;
+  const failed = meta?.status === "error";
+  return <article className="scene-director-turn">
+    <p className={`scene-director-ask${turn?.ask ? "" : " is-empty"}`}>{turn?.ask || (turn?.revision ? "再改一版" : "看素材写一版脚本")}</p>
+    <div className={`scene-script-card is-${meta?.status || "idle"}`}>
+      <header><Sparkles size={14} aria-hidden="true"/><strong>编导</strong>
+        <span>{turn ? `${turn.duration} 秒 · ${turn.ratio === "16:9" ? "横屏" : "竖屏"} · ${turn.language}` : ""}</span></header>
+      {loading ? <p className="scene-script-state" role="status"><Loader2 size={14} className="studio-gallery-spinner"/>
+          {submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</p>
+        : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
+        : <>{summary && <p className="scene-script-summary">{summary}</p>}<pre className="scene-script-text">{meta?.content}</pre></>}
+      <footer>
+        {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
+        {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
+        {failed && meta?.studio?.request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新写</button>}
+        {meta?.status === "success" && meta.content && <>
+          <button type="button" className="is-primary" onClick={onUse}><Wand2 size={13}/>用这个脚本生成</button>
+          {latest && <button type="button" onClick={onRevise}><PencilLine size={13}/>改一改</button>}
+          <button type="button" onClick={onCopy}>{copied ? <Check size={13}/> : <Copy size={13}/>}{copied ? "已复制" : "复制"}</button>
+        </>}
+        {spent !== undefined && <small>花了 {spent} 积分</small>}
+      </footer>
+    </div>
+  </article>;
+}
+
+/** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
+function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
+  used, note, quote, mock, blocker, busy, maxChars, onGenerate }: {
+  prompt: string; onPrompt: (v: string) => void; onBack: () => void;
+  models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
+  tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
+  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; note?: string; quote: number | null; mock: boolean;
+  blocker: string; busy: boolean; maxChars?: number; onGenerate: () => void;
+}) {
+  const ratios = model?.contract.tiers.find(t => t.tier === tier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
+  let image = 0;
+  return <div className="scene-generate">
+    <header><button type="button" className="scene-generate-back" onClick={onBack}><ArrowLeft size={15}/>回到编导</button><strong>生成视频</strong></header>
+    <textarea aria-label="视频脚本" value={prompt} onChange={e => onPrompt(e.target.value)} rows={8}/>
+    <div className="scene-generate-meta">
+      {used.length ? <span className="scene-generate-refs">{used.map(m => <i key={m.key}>{m.mediaType === "image" ? `图${++image}` : "声音"} {m.title}</i>)}</span> : <span>只按脚本生成</span>}
+      {maxChars ? <small className={Array.from(prompt).length > maxChars ? "is-over" : undefined}>{Array.from(prompt).length} / {maxChars}</small> : null}
+    </div>
+    {note && <p className="scene-generate-note" role="status">{note}</p>}
+    <div className="scene-generate-settings">
+      {models.length > 1 && <div className="scene-gen-row"><span>模型</span>
+        <StudioSelect label="视频模型" compact value={model?.endpointId || ""} onChange={onModel} options={models.map(m => ({ value: m.endpointId, label: m.name }))}/></div>}
+      {tiers.length > 1 && <ChoiceRow label="清晰度" options={tiers.map(t => [t, t.toUpperCase()])} value={tier} onChange={onTier}/>}
+      <ChoiceRow label="时长" options={durations.map(d => [String(d), `${d} 秒`])} value={String(duration)} onChange={v => onDuration(Number(v))}/>
+      <ChoiceRow label="画面" options={ratios.map(r => [r, r === "16:9" ? "横屏" : "竖屏"])} value={ratio} onChange={onRatio}/>
+    </div>
+    <button type="button" className="scene-go" aria-label="立即生成视频" title={blocker || undefined} disabled={busy || !!blocker} onClick={onGenerate}>
+      {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成视频</span>
+      <small>{blocker || (mock ? "测试响应 · 免费" : quote != null ? `预计 ${quote} 积分${model?.supportsPromptOptimization ? "，出片前优化描述另需少量积分" : ""}` : "")}</small>
+    </button>
+  </div>;
+}
+
+function ChoiceRow({ label, options, value, onChange }: { label: string; options: string[][]; value?: string; onChange: (v: string) => void }) {
+  return <div className="scene-gen-row"><span>{label}</span>
+    <div className="scene-choice-row" role="group" aria-label={label}>{options.map(([v, text]) => <button key={v} type="button" aria-pressed={v === value} onClick={() => onChange(v)}>{text}</button>)}</div>
+  </div>;
+}
+
+/** 一条视频：排队 / 生成中 / 失败（说人话）/ 播放器 + 下载。不显示假的百分比。 */
+function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onStop }: {
+  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+}) {
+  const meta = row.metadata, request = meta?.studio?.request;
+  const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
+  const position = run?.queue?.position;
+  const failure = meta?.status === "error" ? sceneFailureText(meta.errorCode, meta.errorDetails, "视频") : undefined;
+  const state = loading ? (submitting && !accepted ? "正在提交" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : "正在生成，一般要几分钟")
+    : failure ?? "已完成";
+  const url = meta?.status === "success" ? meta.content : undefined;
+  return <li className={`scene-row scene-video-row is-${meta?.status || "idle"}`}>
+    <div className="scene-row-meta"><strong>{row.title}</strong><span>{[request?.aspectRatio === "16:9" ? "横屏" : "竖屏", request?.video?.resolutionTier?.toUpperCase()].filter(Boolean).join(" · ")}</span>
+      <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>
+        {loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
+    {url ? <video className="scene-video-player" src={url} controls playsInline preload="metadata" aria-label={row.title}/>
+      : loading ? <span className={`scene-video-placeholder is-${request?.aspectRatio === "16:9" ? "wide" : "tall"}`}/> : null}
+    {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
+    <div className="scene-row-actions">
+      {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
+      {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
+      {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
+      {url && <button type="button" onClick={() => void downloadMedia(url, row.title, undefined, meta?.storageKey)}><Download size={13}/>下载</button>}
+    </div>
+  </li>;
+}
+
+/** 时长、横竖屏和台词语言：就地展开在输入框上方。 */
+function VideoSettingsPanel({ durations, duration, onDuration, ratio, onRatio, language, onLanguage, onClose }: {
+  durations: number[]; duration: number; onDuration: (n: number) => void; ratio: string; onRatio: (r: string) => void;
+  language: string; onLanguage: (l: string) => void; onClose: () => void;
+}) {
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const away = (e: PointerEvent) => { if (e.target instanceof Node && !panel.current?.parentElement?.contains(e.target)) onClose(); };
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
+    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
+  }, [onClose]);
+  return <div ref={panel} className="scene-settings-panel is-left" role="group" aria-label="视频设置">
+    <h3>时长</h3>
+    <div className="scene-choice-row">{durations.map(d => <button key={d} type="button" aria-pressed={d === duration} onClick={() => onDuration(d)}>{d} 秒</button>)}</div>
+    <h3>画面</h3>
+    <div className="scene-choice-row">{[["9:16", "竖屏 9:16"], ["16:9", "横屏 16:9"]].map(([value, label]) => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}>{label}</button>)}</div>
+    <h3>台词语言</h3>
+    <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div>
+  </div>;
+}

@@ -42,6 +42,8 @@ public class MaterialVideoWorker {
 
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.AiGenerationQueueService queue;
     @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.enterprise.service.EnterpriseBillingService enterpriseBilling;
+    /** 终态通知（{@link MaterialVideoJobEnded}）；单测里构造的 worker 没有它，照常结算。 */
+    @org.springframework.beans.factory.annotation.Autowired(required=false) private org.springframework.context.ApplicationEventPublisher endedEvents;
     @jakarta.persistence.PersistenceContext private jakarta.persistence.EntityManager entityManager;
     private org.springframework.transaction.support.TransactionTemplate transactions;
     @org.springframework.beans.factory.annotation.Autowired
@@ -637,6 +639,11 @@ public class MaterialVideoWorker {
         j.setCompletedAt(OffsetDateTime.now());
         j.setUpdatedAt(OffsetDateTime.now());
         jobRepo.save(j);
+        announceEnded(j);
+    }
+
+    private void announceEnded(MaterialVideoJob j) {
+        if(endedEvents!=null)endedEvents.publishEvent(new MaterialVideoJobEnded(j.getId(),j.getOwnerUserId(),j.getApp(),j.getStatus()));
     }
 
     private void markFailed(String jobId, String message) {
@@ -662,6 +669,7 @@ public class MaterialVideoWorker {
             j.setCompletedAt(OffsetDateTime.now());
             j.setUpdatedAt(OffsetDateTime.now());
             jobRepo.save(j);
+            announceEnded(j);
         }));
     }
 

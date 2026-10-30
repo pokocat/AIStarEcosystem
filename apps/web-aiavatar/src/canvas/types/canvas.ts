@@ -79,6 +79,8 @@ export type CanvasNodeText = {
 export type CanvasNodeMetadata = {
     // 本仓：homepage brief is a saved text node; the bridge opens its creation panel.
     studioStart?: import("@/ip/studio-entry").StudioEntry;
+    // 本仓：场景页指定的方法（技能 key）。第一句自动发出时带上它，不靠关键词路由猜（视频场景曾被猜成写文案）。
+    studioSkill?: string;
     // Studio business metadata is owned by the bridge, not the vendored engine.
     studio?: import("@ai-star-eco/types/ip-studio-workflow").StudioNodeMetadata;
     // 本仓：where the media came from when no AI run made it — the user's own file, or cut from another node (crop / split).

@@ -9,7 +9,9 @@ public final class IpStudioRequests {
 
     private IpStudioRequests() {}
 
-    public record IpCreateProjectRequest(String name, String templateId) {}
+    public record IpCreateProjectRequest(String name, String templateId, String sceneId) {
+        public IpCreateProjectRequest(String name, String templateId) { this(name, templateId, null); }
+    }
 
     /**
      * @param baseDocVersion 客户端加载这份文档时的指纹（IpProjectDto.docVersion）。

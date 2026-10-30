@@ -2,7 +2,7 @@
   "name": "@ai-star-eco/studio-admin",
   "version": "0.1.0",
   "private": true,
-  "description": "Studio 积分与生成运营后台（独立只读应用）",
+  "description": "Studio 运营后台：积分与生成只读看板 + 场景模板配置（独立应用）",
   "scripts": {
     "dev": "next dev -p 3004",
     "build": "next build",

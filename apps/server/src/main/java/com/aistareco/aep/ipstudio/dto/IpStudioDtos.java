@@ -27,7 +27,11 @@ public final class IpStudioDtos {
     /** 项目卡（列表用）。 */
     public record IpProjectSummaryDto(String id, String name, String templateId, String status,
                                       String coverUrl, String publishedAvatarId,
-                                      String createdAt, String updatedAt) {}
+                                      String createdAt, String updatedAt, String sceneId) {
+        public IpProjectSummaryDto(String id, String name, String templateId, String status, String coverUrl, String publishedAvatarId, String createdAt, String updatedAt) {
+            this(id, name, templateId, status, coverUrl, publishedAvatarId, createdAt, updatedAt, null);
+        }
+    }
 
     /**
      * 项目详情。
@@ -42,9 +46,12 @@ public final class IpStudioDtos {
                                /** 文档指纹：客户端保存时回传，服务端据此判断「我读到的那版还在不在」。 */
                                String docVersion,
                                JsonNode doc, Map<String, IpRunDto> runs,
-                               Map<String, IpRunDto> runsById, String templateVersionId) {
+                               Map<String, IpRunDto> runsById, String templateVersionId, String sceneId) {
         public IpProjectDto(String id,String name,String templateId,String status,String coverUrl,String publishedAvatarId,String createdAt,String updatedAt,String docVersion,JsonNode doc,Map<String,IpRunDto> runs,Map<String,IpRunDto> runsById) {
-            this(id,name,templateId,status,coverUrl,publishedAvatarId,createdAt,updatedAt,docVersion,doc,runs,runsById,null);
+            this(id,name,templateId,status,coverUrl,publishedAvatarId,createdAt,updatedAt,docVersion,doc,runs,runsById,null,null);
+        }
+        public IpProjectDto(String id,String name,String templateId,String status,String coverUrl,String publishedAvatarId,String createdAt,String updatedAt,String docVersion,JsonNode doc,Map<String,IpRunDto> runs,Map<String,IpRunDto> runsById,String templateVersionId) {
+            this(id,name,templateId,status,coverUrl,publishedAvatarId,createdAt,updatedAt,docVersion,doc,runs,runsById,templateVersionId,null);
         }
     }
 

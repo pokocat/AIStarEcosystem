@@ -54,6 +54,10 @@ public class IpProject {
     @Column(length = 64)
     private String templateId;
 
+    /** 从哪个场景页建的（AI 图片 / AI 视频的场景编号，见 ipstudio/scenes.json）；普通画布为空。 */
+    @Column(name = "scene_id", length = 64)
+    private String sceneId;
+
     @Column(name = "template_version_id", length = 32)
     private String templateVersionId;
 

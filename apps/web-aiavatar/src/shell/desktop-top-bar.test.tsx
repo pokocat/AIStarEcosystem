@@ -51,16 +51,19 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   expect(menu.open).toBe(false);
 });
 
-test("Projects follows Home and owns its active navigation state", () => {
+test("the rail leads with the scene pages; 灵感 lives on Home and Projects owns its own state", () => {
   state.pathname = "/projects";
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));
   const links = nav.getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href")).slice(0,4)).toEqual(["/dashboard","/projects","/create","/director"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/dashboard","/video","/image","/create","/director","/projects","/assets","/distribution"]);
   expect(nav.getByRole("link", {name:"项目",exact:true}).getAttribute("aria-current")).toBe("page");
-  expect(nav.getByRole("link", {name:"画布·自由创作"}).hasAttribute("aria-current")).toBe(false);
+  expect(nav.getByRole("link", {name:"画布"}).hasAttribute("aria-current")).toBe(false);
   state.pathname = "/projects/demos";
   view.rerender(<DesktopTopBar/>);
-  expect(nav.getByRole("link", {name:"灵感"}).getAttribute("aria-current")).toBe("page");
+  expect(nav.getByRole("link", {name:"首页"}).getAttribute("aria-current")).toBe("page");
   expect(nav.getByRole("link", {name:"项目",exact:true}).hasAttribute("aria-current")).toBe(false);
+  state.pathname = "/image";
+  view.rerender(<DesktopTopBar/>);
+  expect(nav.getByRole("link", {name:"AI 图片"}).getAttribute("aria-current")).toBe("page");
 });

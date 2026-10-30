@@ -3,9 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { studioNavigation, studioNavigationCurrent } from "./studio-navigation";
-import { Clapperboard, FolderOpen, LayoutTemplate, Settings2, SquarePen, Shapes, Send, Home } from "lucide-react";
+import { Settings2 } from "lucide-react";
+import { studioNavigationIcon } from "./studio-navigation-icons";
 
-export const ipNavigation = studioNavigation.map(n => ({...n, icon: n.href === '/scenes' ? Shapes : n.href === '/director' ? Clapperboard : n.href === '/distribution' ? Send : n.href === '/create' ? SquarePen : n.href === '/templates' ? LayoutTemplate : n.href === '/assets' || n.href === '/projects' ? FolderOpen : Home}));
+export const ipNavigation = studioNavigation.map(n => ({...n, icon: studioNavigationIcon(n.href)}));
 
 export function IpNavigation() {
   const pathname = usePathname();
