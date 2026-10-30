@@ -105,17 +105,43 @@ test("image: what is on the page is kept in the draft; reopening it brings back 
   expect(screen.getByRole("img", { name: "商品图" })).toBeTruthy();
 });
 
-test("image: 「用这次的设置再做」 puts back that time's conditions, and the description is assembled once, not with the options twice", async () => {
+test("image: 「重新编辑」 puts back that time's conditions, and the description is assembled once, not with the options twice", async () => {
   await generateWhiteBackground();
   fireEvent.click(within(screen.getByRole("group", { name: "拍摄角度" })).getByRole("button", { name: "正面" }));
   fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "换个说法" } });
-  fireEvent.click(await screen.findByRole("button", { name: "用这次的设置再做" }));
+  fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(text("补充要求")).toBe("平放");
   expect(pressed("拍摄角度", "俯拍")).toBe("true");
   // 以前把拼好的整段话塞进「完整描述」，再生成时选项和补充要求又拼一遍。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
   expect(api.composeScene).toHaveBeenLastCalledWith({ kind: "image", sceneId: "white-background", text: "平放", filled: [0], options: { angle: "top" } });
+});
+
+test("image: 「重新编辑」 says what it put back, moves the cursor to the input, and 撤销 brings back what was being edited", async () => {
+  await generateWhiteBackground();
+  fireEvent.click(within(screen.getByRole("group", { name: "拍摄角度" })).getByRole("button", { name: "正面" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "换个说法" } });
+  fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
+  expect(screen.getByText(/这次的设置放回来了，改好再生成/)).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "补充要求" })));
+  fireEvent.click(screen.getByRole("button", { name: "撤销" }));
+  expect(text("补充要求")).toBe("换个说法");
+  expect(pressed("拍摄角度", "正面")).toBe("true");
+  expect(screen.queryByText(/放回来了/)).toBeNull();
+});
+
+test("image: switching scenes from the list leaves the open draft, and coming back reopens it", async () => {
+  await generateWhiteBackground();
+  await waitFor(() => expect(continueLink()).toBe("/projects/IPP-A"));
+  fireEvent.click(screen.getByRole("button", { name: "商品使用" }));
+  await waitFor(() => expect(heading()).toBe("商品使用"));
+  // 草稿属于白底图：离开它，新场景的条件不会写进它。商品图同名，跟着走。
+  expect(continueLink()).toBeUndefined();
+  expect(screen.getByRole("img", { name: "商品图" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "商品白底图" }));
+  await waitFor(() => expect(continueLink()).toBe("/projects/IPP-A"));
+  expect(store.get("IPP-A")!.doc.sceneImageState?.sceneId).toBe("white-background");
 });
 
 test("image: switching scenes carries a photo only into a slot with the same name, never into a slot for something else", async () => {
@@ -162,7 +188,7 @@ test("image: when the model cannot make the scene's ratio the page says what it 
   api.fetchModels.mockResolvedValue({ image: [{ endpointId: "ep-img", name: "图片模型", isDefault: true, creditCost: 8, billingUnit: "per_call",
     capability: { imageRatios: ["1:1"], imageSizes: [], imageBatchCounts: [1] } }], video: [] });
   await open(SceneImageStudio, "/image?scene=face-turnaround");
-  expect(await screen.findByText("这个模型不出 16:9，这次按 方图 出")).toBeTruthy();
+  expect(await screen.findByText("这个模型出不了 16:9，会按 1:1 出")).toBeTruthy();
 });
 
 // ── AI 视频 ───────────────────────────────────────────────────────────────
@@ -224,7 +250,10 @@ test("video: leaving a draft for another scene and coming back reopens that draf
   fireEvent.click(screen.getByRole("button", { name: "门店发现" }));
   await waitFor(() => expect(heading()).toBe("门店发现"));
   expect(screen.queryByRole("button", { name: "移除商品图 1" })).toBeNull();
-  expect(screen.getByText("「门店发现」用不上之前放的商品图，没有带过来")).toBeTruthy();
+  expect(screen.getByText("商品图在「门店发现」用不上，先收起来了，回「促销转化」还在")).toBeTruthy();
+  // 说明是灰字单独一行，不占卡点那行：卡点照样说缺什么。
+  expect(document.querySelector(".scene-video-hint.is-note")?.textContent).toContain("先收起来了");
+  expect(document.querySelector(".scene-video-hint:not(.is-note)")?.textContent).toBe("先放门店照片");
   // 回到促销转化：刚才没发的素材还在。
   fireEvent.click(screen.getByRole("button", { name: "促销转化" }));
   await waitFor(() => expect(heading()).toBe("促销转化"));
@@ -243,7 +272,7 @@ test("video: a finished video can be made again from its own script and settings
   const doc = patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content: "https://cdn/v.mp4" } }));
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  fireEvent.click(await screen.findByRole("button", { name: "按这条再做一版" }));
+  fireEvent.click(await screen.findByRole("button", { name: "重新编辑" }));
   expect(text("视频脚本")).toBe("出片前改过的脚本");
   expect(pressed("时长", "10 秒")).toBe("true");
 
@@ -262,5 +291,5 @@ test("video: a duration this model cannot make is named, not quietly changed", a
     sceneVideoState: { text: "", options: {}, duration: 15, ratio: "9:16" } } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.change(await screen.findByRole("combobox", { name: "视频模型" }), { target: { value: "ep-short" } });
-  expect(await screen.findByText("这个模型只能出 5–10 秒，这次按 10 秒")).toBeTruthy();
+  expect(await screen.findByText("这个模型只能做 5–10 秒，会按 10 秒出")).toBeTruthy();
 });

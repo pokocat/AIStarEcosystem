@@ -174,7 +174,7 @@ src/
 
 ### 场景页创作条件存进草稿（2026-10-31）
 
-AI 图片 / AI 视频的当前条件存进草稿（`doc.sceneImageState` / `doc.sceneVideoState`，`useSceneStateSave`），打开草稿原样放回；每次出图记条件快照（`metadata.studio.sceneImage`），「用这次的设置再做」按快照放回；编导每版记选项；成功视频「按这条再做一版」；换场景只带同名素材位；模型不支持的比例 / 张数 / 时长写明按什么出。见 `docs/studio-scene-creation.md` §15。
+AI 图片 / AI 视频的当前条件存进草稿（`doc.sceneImageState` / `doc.sceneVideoState`，`useSceneStateSave`），打开草稿原样放回；每次出图记条件快照（`metadata.studio.sceneImage`），「重新编辑」按快照放回（两页同名、可撤销、滚到输入区）；编导每版记选项；成功视频也能重新编辑；换场景离开草稿、只带同名素材位；模型不支持的比例 / 张数 / 时长写明按什么出。见 `docs/studio-scene-creation.md` §15。
 
 ### 场景页界面复测修复（2026-10-30）
 

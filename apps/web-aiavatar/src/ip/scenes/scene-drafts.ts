@@ -59,7 +59,7 @@ function referenceNode(nodes: CanvasNodeData[], upload: SceneUpload, title: stri
 export function addImageRow(doc: IpProjectDoc, input: {
   title: string; prompt: string; refs: { upload: SceneUpload; label: string }[];
   ratio: string; count: number; size?: string; model?: string; maxCost?: number;
-  /** 这一次的创作条件（不是拼好的话）：「用这次的设置再做」按它放回。 */
+  /** 这一次的创作条件（不是拼好的话）：「重新编辑」按它放回。 */
   scene?: SceneImageSnapshot;
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
