@@ -42,7 +42,6 @@ export * as ReconciliationApi from "./reconciliation";
 export * as TemplateScriptsApi from "./template-scripts";
 export * as AiModelsApi from "./ai-models";
 export * as PromptsApi from "./prompts";
-export * as StudioScenesApi from "./studio-scenes";
 export * as StudioSkillsApi from "./studio-skills";
 export * as AgentBotsApi from "./agent-bots";
 export * as MixcutOfficialClipsApi from "./mixcut-official-clips";

@@ -3,6 +3,7 @@ import type {
   StudioOperationsDashboard,
   StudioReconciliationDetailPage,
 } from "@ai-star-eco/types/studio-operations";
+import type { StudioSceneAdminView, StudioSceneCatalog, StudioSceneUploaded } from "@ai-star-eco/types/ip-studio-scenes";
 import { studioAdminPath } from "@/lib/app-path";
 
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || "/api").replace(/\/+$/, "");
@@ -31,21 +32,23 @@ export function setAuthToken(token: string | null) {
 
 async function request<T>(
   path: string,
-  options: { method?: "GET" | "POST"; body?: unknown; query?: Record<string, string | number | undefined> } = {},
+  options: { method?: "GET" | "POST" | "PUT" | "DELETE"; body?: unknown; query?: Record<string, string | number | undefined> } = {},
 ): Promise<T> {
   const params = new URLSearchParams();
   Object.entries(options.query || {}).forEach(([key, value]) => {
     if (value !== undefined) params.set(key, String(value));
   });
   const token = authToken();
+  // 上传文件时让浏览器自己写 multipart 边界，不能手设 Content-Type。
+  const form = typeof FormData !== "undefined" && options.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}${params.size ? `?${params}` : ""}`, {
     method: options.method || "GET",
     headers: {
-      "Content-Type": "application/json",
+      ...(form ? {} : { "Content-Type": "application/json" }),
       "X-App-Code": "admin",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body: options.body === undefined ? undefined : form ? options.body as FormData : JSON.stringify(options.body),
     credentials: "include",
   });
   const payload = await response.json().catch(() => undefined) as
@@ -99,4 +102,19 @@ export const StudioOperationsApi = {
     request<StudioCreditEventPage>("/admin/studio-operations/credit-events", {
       query: { days, page, size: 20, type, query },
     }),
+};
+
+/**
+ * 场景模板（AI 图片 / AI 视频两页左侧的场景）：/admin/studio/scenes，超管和平台运营可用。
+ * 整份目录一次保存，带上读到的版本号；别人先存过返回 409 STUDIO_SCENE_CATALOG_STALE。
+ */
+export const StudioScenesApi = {
+  get: () => request<StudioSceneAdminView>("/admin/studio/scenes"),
+  save: (catalog: StudioSceneCatalog, baseVersion: number) =>
+    request<StudioSceneAdminView>("/admin/studio/scenes", { method: "PUT", body: { catalog, baseVersion } }),
+  reset: (baseVersion: number) => request<StudioSceneAdminView>("/admin/studio/scenes", { method: "DELETE", query: { baseVersion } }),
+  upload: (file: File) => {
+    const body = new FormData(); body.append("file", file);
+    return request<StudioSceneUploaded>("/admin/studio/scenes/media", { method: "POST", body });
+  },
 };

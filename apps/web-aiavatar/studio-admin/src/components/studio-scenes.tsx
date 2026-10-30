@@ -1,24 +1,25 @@
 "use client";
 
-// Studio 场景模板 —— AI 图片、AI 视频两页左侧的场景（docs/studio-scene-creation.md §9）。
-// 对应 server 后台场景接口（/api/admin/studio/scenes）。整份目录一次保存，带上读到的版本号；别人先存过就拒绝，不覆盖。
-// 改完对新打开的页面生效；已经提交的生成不受影响。下架的场景用户端看不到，旧草稿照常打开。
+// 场景模板 —— AI 图片、AI 视频两页左侧的场景（docs/studio-scene-creation.md §9）。
+// 对应 server 后台场景接口（/api/admin/studio/scenes，超管和平台运营）。整份目录一次保存，带上读到的版本号；
+// 别人先存过就拒绝，不覆盖。改完对新打开的页面生效；已经提交的生成不受影响。下架的场景用户端看不到，旧草稿照常打开。
 
 import * as React from "react";
 import { ArrowDown, ArrowUp, ImagePlus, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
-import { PageHeader } from "@/components/PageHeader";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useConfirm, useToast } from "@/components/feedback";
-import { ApiError, StudioScenesApi } from "@/api";
-import { cn } from "@/lib/utils";
-import type { StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneMedia, StudioVideoScene } from "@/types/studio-scenes";
+import { Badge } from "@ai-star-eco/ui/ui/badge";
+import { Button } from "@ai-star-eco/ui/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@ai-star-eco/ui/ui/card";
+import { Input } from "@ai-star-eco/ui/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@ai-star-eco/ui/ui/select";
+import { Switch } from "@ai-star-eco/ui/ui/switch";
+import { Textarea } from "@ai-star-eco/ui/ui/textarea";
+import { Tabs, TabsList, TabsTrigger } from "@ai-star-eco/ui/ui/tabs";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@ai-star-eco/ui/ui/alert-dialog";
+import { cn } from "@ai-star-eco/ui/ui/utils";
+import type { StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneMedia, StudioVideoScene } from "@ai-star-eco/types/ip-studio-scenes";
+import { ApiError, StudioScenesApi } from "@/lib/api";
 
 type Kind = "image" | "video";
 const IMAGE_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -34,9 +35,24 @@ function blankScene(kind: Kind, group: string, id: string): StudioImageScene | S
       placeholder: "说说想拍什么", textRequired: false, durations: [15, 25, 30], duration: 25, ratio: "9:16", structure: "开头……中间……结尾……", ideas: [], skill: "video-generation", enabled: false };
 }
 
-export default function StudioScenesPage() {
-  const toast = useToast();
-  const confirm = useConfirm();
+/** 不用浏览器原生 confirm：一个 AlertDialog，返回用户点没点确定。 */
+type ConfirmRequest = { title: string; description: string; confirmLabel: string; resolve: (ok: boolean) => void };
+function useConfirmDialog() {
+  const [request, setRequest] = React.useState<ConfirmRequest | null>(null);
+  const confirm = (title: string, description: string, confirmLabel: string) => new Promise<boolean>(resolve => setRequest({ title, description, confirmLabel, resolve }));
+  const close = (ok: boolean) => { request?.resolve(ok); setRequest(null); };
+  const dialog = <AlertDialog open={!!request} onOpenChange={open => { if (!open) close(false); }}>
+    <AlertDialogContent>
+      <AlertDialogHeader><AlertDialogTitle>{request?.title}</AlertDialogTitle><AlertDialogDescription>{request?.description}</AlertDialogDescription></AlertDialogHeader>
+      <AlertDialogFooter><AlertDialogCancel onClick={() => close(false)}>取消</AlertDialogCancel><AlertDialogAction onClick={() => close(true)}>{request?.confirmLabel}</AlertDialogAction></AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>;
+  return { confirm, dialog };
+}
+
+export function StudioScenes() {
+  const { confirm, dialog } = useConfirmDialog();
+  const [notice, setNotice] = React.useState("");
   const [view, setView] = React.useState<StudioSceneAdminView | null>(null);
   const [catalog, setCatalog] = React.useState<StudioSceneCatalog | null>(null);
   const [kind, setKind] = React.useState<Kind>("video");
@@ -49,11 +65,11 @@ export default function StudioScenesPage() {
 
   const load = React.useCallback(async () => {
     try {
-      const next = await StudioScenesApi.getStudioScenes();
+      const next = await StudioScenesApi.get();
       setView(next); setCatalog(next.catalog); setError(""); setStale(false);
       setActiveId(prev => [...next.catalog.image, ...next.catalog.video].some(s => s.id === prev) ? prev : next.catalog.video[0]?.id ?? null);
-    } catch (e) { toast.danger({ title: "场景目录没有加载出来", description: errorText(e) }); }
-  }, [toast]);
+    } catch (e) { setError(`场景目录没有加载出来：${errorText(e)}`); }
+  }, []);
   React.useEffect(() => { void load(); }, [load]);
 
   const dirty = !!view && !!catalog && JSON.stringify(view.catalog) !== JSON.stringify(catalog);
@@ -83,18 +99,17 @@ export default function StudioScenesPage() {
   };
   const remove = async () => {
     if (!active) return;
-    const r = await confirm({ title: `删除「${active.title}」？`, description: "保存后这个场景从页面上消失。用户已经建的草稿还在，只是不再出现在这个场景下。只想暂时不给用户看，可以改成下架。", confirmLabel: "删除", tone: "danger" });
-    if (!r.ok) return;
+    if (!await confirm(`删除「${active.title}」？`, "保存后这个场景从页面上消失。用户已经建的草稿还在，只是不再出现在这个场景下。只想暂时不给用户看，可以改成下架。", "删除")) return;
     setScenes(list => list.filter(s => s.id !== active.id)); setActiveId(scenes.find(s => s.id !== active.id)?.id ?? null);
   };
 
   const save = async () => {
     if (!view || !catalog || saving) return;
-    setSaving(true); setError(""); setStale(false);
+    setSaving(true); setError(""); setStale(false); setNotice("");
     try {
-      const next = await StudioScenesApi.saveStudioScenes(catalog, view.version);
+      const next = await StudioScenesApi.save(catalog, view.version);
       setView(next); setCatalog(next.catalog); setPreviews({});
-      toast.success({ title: "已保存", description: "新打开的 AI 图片、AI 视频页会用这份场景" });
+      setNotice("已保存。新打开的 AI 图片、AI 视频页会用这份场景。");
     } catch (e) {
       if (e instanceof ApiError && e.code === "STUDIO_SCENE_CATALOG_STALE") setStale(true);
       setError(errorText(e));
@@ -102,20 +117,19 @@ export default function StudioScenesPage() {
   };
   const reset = async () => {
     if (!view) return;
-    const r = await confirm({ title: "恢复内置的场景？", description: "运营改过的场景、封面和示例都会回到随版本发布的那一份。已经上传的文件不会删。", confirmLabel: "恢复默认", tone: "warning" });
-    if (!r.ok) return;
-    try { const next = await StudioScenesApi.resetStudioScenes(view.version); setView(next); setCatalog(next.catalog); setError(""); toast.success({ title: "已恢复内置场景" }); }
+    if (!await confirm("恢复内置的场景？", "运营改过的场景、封面和示例都会回到随版本发布的那一份。已经上传的文件不会删。", "恢复内置")) return;
+    try { const next = await StudioScenesApi.reset(view.version); setView(next); setCatalog(next.catalog); setError(""); setNotice("已恢复内置场景。"); }
     catch (e) { if (e instanceof ApiError && e.code === "STUDIO_SCENE_CATALOG_STALE") setStale(true); setError(errorText(e)); }
   };
 
   const upload = async (file: File, target: "cover" | "example") => {
     if (!active) return;
     try {
-      const uploaded = await StudioScenesApi.uploadStudioSceneMedia(file);
+      const uploaded = await StudioScenesApi.upload(file);
       setPreviews(p => ({ ...p, [uploaded.key]: { url: uploaded.url, mediaType: uploaded.mediaType } }));
       if (target === "cover") patch({ coverKey: uploaded.key });
       else patch({ exampleKeys: [...(active.exampleKeys ?? []), uploaded.key].slice(0, 6) });
-    } catch (e) { toast.danger({ title: "文件没传上去", description: errorText(e) }); }
+    } catch (e) { setError(`文件没传上去：${errorText(e)}`); }
   };
   /** 看得到的地址：刚传的用本地预览，存过的用服务端签出来的。 */
   const mediaOf = (key: string | null | undefined, scene: StudioImageScene | StudioVideoScene): StudioSceneMedia | undefined => {
@@ -126,25 +140,33 @@ export default function StudioScenesPage() {
     return i >= 0 ? scene.examples?.[i] ?? undefined : undefined;
   };
 
-  return <div>
-    <PageHeader title="Studio 场景模板" description="AI 图片、AI 视频两页左侧的场景：名称、要用户放什么素材、写好的描述和拍法、封面和参考示例。保存后新打开的页面生效，已经提交的生成不受影响。"
-      meta={view ? <Badge tone={view.source === "default" ? "neutral" : "info"}>{view.source === "default" ? "正在用内置场景" : `运营改过 · 第 ${view.version} 版`}</Badge> : null}
-      actions={<>
+  return <div className="mx-auto max-w-[1440px] space-y-4 p-4 md:p-6">
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-lg font-semibold text-slate-950">场景模板</h2>
+          {view && <Badge variant="outline">{view.source === "default" ? "正在用内置场景" : `运营改过 · 第 ${view.version} 版`}</Badge>}
+        </div>
+        <p className="mt-1 max-w-3xl text-sm text-slate-500">AI 图片、AI 视频两页左侧的场景：名称、要用户放什么素材、写好的描述和拍法、封面和参考示例。保存后新打开的页面生效，已经提交的生成不受影响。</p>
+      </div>
+      <div className="flex gap-2">
         <Button variant="outline" onClick={() => void reset()} disabled={!view || view.source === "default"}><RotateCcw className="mr-1.5 h-4 w-4"/>恢复内置</Button>
         <Button onClick={() => void save()} disabled={!dirty || saving}><Save className="mr-1.5 h-4 w-4"/>{saving ? "正在保存" : dirty ? "保存" : "没有改动"}</Button>
-      </>}/>
+      </div>
+    </div>
 
+    {notice && <p role="status" className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{notice}</p>}
     {error && <div role="alert" className="mb-4 flex flex-wrap items-center gap-3 rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
       <span className="min-w-0 flex-1 break-words">{error}</span>
       {stale && <Button size="sm" variant="outline" onClick={() => void load()}>刷新（丢掉这次的修改）</Button>}
     </div>}
 
-    {!catalog ? <p className="text-sm text-muted-foreground">正在加载</p> : <>
+    {!catalog ? (!error && <p className="text-sm text-muted-foreground">正在加载</p>) : <>
       <Tabs value={kind} onValueChange={v => { setKind(v as Kind); setActiveId((v === "image" ? catalog.image : catalog.video)[0]?.id ?? null); }}>
         <TabsList><TabsTrigger value="video">AI 视频（{catalog.video.length}）</TabsTrigger><TabsTrigger value="image">AI 图片（{catalog.image.length}）</TabsTrigger></TabsList>
       </Tabs>
 
-      <div className="mt-4 grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
             <CardTitle className="text-base">场景</CardTitle>
@@ -158,7 +180,7 @@ export default function StudioScenesPage() {
                   <button type="button" onClick={() => setActiveId(s.id)} aria-current={s.id === activeId ? "true" : undefined}
                     className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted", s.id === activeId && "bg-muted font-medium")}>
                     <span className="min-w-0 flex-1 truncate">{s.title}</span>
-                    {s.enabled === false && <Badge tone="warning" className="shrink-0">下架</Badge>}
+                    {s.enabled === false && <Badge variant="secondary" className="shrink-0">下架</Badge>}
                   </button>
                   <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`上移「${s.title}」`} onClick={() => move(s.id, -1)}><ArrowUp className="h-3.5 w-3.5"/></Button>
                   <Button size="icon" variant="ghost" className="h-7 w-7" aria-label={`下移「${s.title}」`} onClick={() => move(s.id, 1)}><ArrowDown className="h-3.5 w-3.5"/></Button>
@@ -195,6 +217,7 @@ export default function StudioScenesPage() {
         </Card> : <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">左边选一个场景，或者新增一个。</CardContent></Card>}
       </div>
     </>}
+    {dialog}
   </div>;
 }
 

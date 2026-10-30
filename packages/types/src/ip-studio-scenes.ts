@@ -69,3 +69,17 @@ export interface StudioSceneComposeRequest {
 }
 /** 图片：`text` 是出图描述；视频：`text` 是交给助手的话，`skillKey` 是该场景的方法；编导：`text` 是写脚本的要求。 */
 export interface StudioSceneComposed { text: string; skillKey?: string | null }
+
+/**
+ * Studio 运营后台「场景模板」页（`apps/web-aiavatar/studio-admin` 的 `/scenes`）读的整份目录：
+ * `GET /admin/studio/scenes`。含下架的场景，封面 / 示例带签名预览；source=default 表示还在用随包那份（version=0）。
+ */
+export interface StudioSceneAdminView {
+  catalog: StudioSceneCatalog;
+  source: "default" | "custom";
+  version: number;
+  /** 视频场景能选的方法（技能 key）。 */
+  skills: string[];
+}
+/** `POST /admin/studio/scenes/media`：key 写进目录，url 只用来预览。 */
+export interface StudioSceneUploaded { key: string; url: string; mediaType: "image" | "video" }
