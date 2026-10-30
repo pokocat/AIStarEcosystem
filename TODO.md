@@ -1,5 +1,8 @@
 # 待办与已知问题
 
+- [x] ~~图片返回尺寸与所选不符就判失败~~ **2026-10-30 修复（`fix/image-size-deliver`，待发布 server）**：`JusuanImageClient` 不再因尺寸不符或读不出尺寸拒绝可用图片，照常交付、结算一次、只记 WARN；画布与导演台共用。线上 10-20 至 10-30 共 13 次此类失败，账本核对均为冻结后原数退回、未实扣。10-25 codex `image-size-warning` 工作区的未提交版本（含界面黄色警告）由此取代，未合入。
+- [ ] 图片尺寸与所选不一致时界面是否提示：目前只记服务端日志，画布按真实宽高显示；要提示可参考 codex `image-size-warning` 工作区的 `image-output-warnings.tsx`（未提交）。
+
 - [x] ~~项目列表画布卡片只有小地图，无法识别内容~~ **已生产发布（4ed3ecf9），2026-10-17**：真实内容预览、正文摘要、去重数量、固定／自动封面、二级流程预览；封面归属与失败重试测试、桌面／手机布局验证见 `docs/releases/studio-workspace-refactor-validation.md`。
 
 ## Studio 场景化创作（2026-10-29）

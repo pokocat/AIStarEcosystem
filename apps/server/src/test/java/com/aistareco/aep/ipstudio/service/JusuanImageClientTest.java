@@ -471,7 +471,7 @@ class JusuanImageClientTest {
         });
         return new String(subscriber.getBody().toCompletableFuture().get(),java.nio.charset.StandardCharsets.UTF_8);
     }
-    @Test void completedWrongSizeIsRejectedBeforeSettlementRatherThanParkedAsUnknown() {
+    @Test void completedWrongSizeIsDeliveredAsIsWithoutRepeatingSubmission() {
         var ep=endpoint("gpt-image-2-1k-pic");
         ep.setImageRequestSpecJson("""
                 {"promptMaxChars":32000,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
@@ -484,9 +484,15 @@ class JusuanImageClientTest {
         var reply=json("{\"data\":[{\"b64_json\":\""+image+"\"}]}");
         when(upstream.sendJson(any(),any())).thenReturn(reply);
         var state=new java.util.concurrent.atomic.AtomicReference<com.fasterxml.jackson.databind.node.ObjectNode>();
-        var error=assertThrows(JusuanImageClient.ProviderRejected.class,()->client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,null,state::set));
-        assertTrue(error.getMessage().contains("1x1"));assertTrue(error.getMessage().contains("2048x2048"));
+        assertArrayEquals(Base64.getDecoder().decode(image),client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate","owner",s->{},null,null,null,state::set));
         assertTrue(state.get().path("submitAttempted").asBoolean());
+        verify(upstream,times(1)).sendJson(any(),any());
+        // A WebP has no JDK reader, so its size cannot be read; it is still a usable image and is delivered.
+        reset(upstream);
+        byte[] webp="RIFF$\0\0\0WEBPVP8 \u0018\0\0\0".getBytes(java.nio.charset.StandardCharsets.ISO_8859_1);
+        var webpReply=json("{\"data\":[{\"b64_json\":\""+Base64.getEncoder().encodeToString(webp)+"\"}]}");
+        when(upstream.sendJson(any(),any())).thenReturn(webpReply);
+        assertArrayEquals(webp,client.generate("ep","draw a cat","2048x2048",List.of(),"size-gate-webp","owner",s->{},null,null,null,state::set));
         verify(upstream,times(1)).sendJson(any(),any());
     }
     @Test void urlReferencesAndAsyncUrlResultFollowEndpointModes() throws Exception {

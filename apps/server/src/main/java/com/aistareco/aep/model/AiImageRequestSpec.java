@@ -34,6 +34,7 @@ public record AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int
                        Integer requestTimeoutMillis,
                        String inputMode, String resultMode, String outputPointer,
                        List<String> outputHosts,
+                       // Checks only: a usable image of another size is delivered and logged, never rejected (2026-10-30).
                        String referenceSubmitPath, Boolean requireExactOutputSize) {}
 
     public AiImageRequestSpec(int promptMaxChars, int minReferenceImages, int maxReferenceImages,

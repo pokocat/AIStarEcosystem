@@ -1183,7 +1183,7 @@ POST/PUT/DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用 CanvasCo
 
 图片端点协议支持 `wire.inputMode="multipart"` 和 `referenceSubmitPath`：无参考图沿用 JSON `submitPath`，有参考图以原始文件按顺序提交到编辑路径，多图字段采用 `image[]`。尺寸、提示词、候选数、来源归属及价格继续由原端点规格和场景策略校验；提交前验证文件，未知受理仍保留原检查点，禁止自动重投。`capability.imageSizes` 仅暴露尺寸/比例，Studio 选择后把精确 `size` 保存到请求与草稿，不向客户端暴露供应商参数或密钥。GPT Image 2、Flare、Sunburst 使用稳定系列值 `studio-image:<family>`；服务端按系列和尺寸从 `DAP_IMAGE` 开放候选选择匹配的 1k / 4k 供应商型号（GPT Image 2 带 `-pic` 后缀，Flare / Sunburst 不带），并将端点、供应商模型、规格及价格快照写入执行记录，worker 使用该快照提交，避免后台候选变更使已受理任务改路由。各分辨率只在端点规格明确开放时出现在模型 capability 中。接入与实测记录见 `docs/releases/studio-gpt-image-native-20261020.md`。
 
-`wire.requireExactOutputSize=true` 按原始图片字节校验返回尺寸；不匹配作为供应商已完成但无效的结果在结算前拒绝，不重投、不伪装尺寸。
+`wire.requireExactOutputSize=true` 只用于核对：按原始图片字节读出真实宽高，与所选尺寸不一致（或读不出尺寸，如 WebP）时照常交付原图并按原价结算，服务端日志留 `[studio-jusuan-image] output size differs` WARN（请求号、端点、所选与实际尺寸）供运营核对模型规格；不拉伸、不裁剪、不重投。2026-10-20 至 10-30 曾按尺寸不符判失败，见 `specs/BUSINESS_RULES.md` 同名一条。
 
 
 2026-10-26 大图解析修复（未发布）：`sync-base64` 的响应解析器按该任务端点规格中的 `maxOutputBytes` 换算 Base64 字符数上限（缺省仍为 64MiB 图片），不再先被 Jackson 默认 2000 万字符限制拒绝；只调整本次响应的解析工厂，共享 `ObjectMapper`、异步任务 / 上传回执及其他接口的限制不变。解码后仍校验图片字节上限与实际尺寸，原任务检查点、禁止重复提交及冻结结算规则不变。解析失败使用通用图片接口文案，并在异常链记录解析异常类型、响应字符数与字符位置，不记录解析器可能引用的媒体原文；大图和截断响应的告警脱敏也会先省略 Base64。

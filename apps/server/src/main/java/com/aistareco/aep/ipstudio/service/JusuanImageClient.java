@@ -155,7 +155,7 @@ public class JusuanImageClient {
             if(resultMode.startsWith("sync-")) {
                 try {
                     byte[] bytes=syncResult(endpoint,wire,accepted,resultMode,requestId);
-                    requireOutputSize(spec,size,bytes);
+                    noteOutputSize(spec,size,bytes,endpoint,requestId);
                     recordSuccess(endpoint,owner,requestId,null,body);return bytes;
                 } catch(ProviderRejected error){throw error;}
                 catch(BusinessException error) {
@@ -188,7 +188,7 @@ public class JusuanImageClient {
                     byte[] bytes;
                     if("async-url".equals(resultMode))bytes=resultBytes(endpoint,wire,pointerText(job,wire.outputPointer()),resultMode);
                     else {String asset=wire!=null && wire.outputAssetIdPointer()!=null?pointerText(job,wire.outputAssetIdPointer()):assetId(job);requireId(asset);bytes=download(endpoint,wire,asset);}
-                    requireOutputSize(spec,size,bytes);
+                    noteOutputSize(spec,size,bytes,endpoint,requestId);
                     recordSuccess(endpoint,owner,requestId,id,body);return bytes;
                 }
                 progress.accept("queued".equals(status)?"image.provider.queued":"image.provider.processing");
@@ -371,13 +371,18 @@ public class JusuanImageClient {
         return downloadUrl(endpoint,wire,value,false);
     }
 
-    /** A completed but wrong-size image is a known bad result, never an unknown submission to replay. */
-    private void requireOutputSize(AiImageRequestSpec spec,String size,byte[] bytes) {
+    /**
+     * A completed image of another size is still the user's image: deliver and settle it, and leave the evidence
+     * for operations. 2026-10-30: rejecting it (since 2026-10-20) failed 13 paid supplier results that users wanted;
+     * the canvas and director size the node from the real file, so nothing downstream needs the requested size.
+     */
+    private void noteOutputSize(AiImageRequestSpec spec,String size,byte[] bytes,AiModelEndpoint endpoint,String requestId) {
         if(spec.wire()==null || !Boolean.TRUE.equals(spec.wire().requireExactOutputSize()))return;
         int[] actual=IpProjectService.readDimensions(bytes);
-        if(actual==null)throw new ProviderRejected("图片引擎返回的图片尺寸无法读取，请联系运营核对模型规格");
-        String received=actual[0]+"x"+actual[1];
-        if(!received.equals(size))throw new ProviderRejected("图片引擎返回 "+received+"，与所选 "+size+" 不符，请联系运营核对模型规格");
+        String received=actual==null?"unreadable":actual[0]+"x"+actual[1];
+        if(!received.equals(size))org.slf4j.LoggerFactory.getLogger(getClass()).warn(
+                "[studio-jusuan-image] output size differs, delivered as is request={} endpoint={} model={} requested={} received={}",
+                requestId,endpoint.getId(),endpoint.getModel(),size,received);
     }
 
     /** A fallback URL is not configured, so without an explicit outputHosts list any public HTTPS host is accepted. */

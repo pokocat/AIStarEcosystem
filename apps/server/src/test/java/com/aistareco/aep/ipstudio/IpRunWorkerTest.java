@@ -570,6 +570,41 @@ class IpRunWorkerTest {
         verify(credits,times(1)).releaseHold(eq("ip-run"),eq(RID),anyString());
         verify(credits,never()).commitHold(anyString(),anyString(),anyLong(),anyString(),org.mockito.ArgumentMatchers.any());
     }
+    /** 2026-10-30 production: 768x1024 was asked for and 1448x1086 came back; the user gets that image, charged once. */
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"1448,1086", "768,1024", "1536,2048"})
+    void usableNativeImageOfAnotherSizeIsDeliveredWithItsRealSizeAndSettledOnce(int width,int height) throws Exception {
+        var models=mock(com.aistareco.aep.service.AiModelInvocationService.class);
+        var upstream=mock(com.aistareco.aep.service.ai.UpstreamModelHttp.class);
+        var spec=com.aistareco.aep.model.AiImageRequestSpec.read("""
+                {"promptMaxChars":2048,"minReferenceImages":0,"maxReferenceImages":0,"referenceField":"none",
+                 "outputs":[{"canvasSize":"768x1024","aspectRatio":"3:4","providerFields":{"size":"768x1024"}}],
+                 "wire":{"submitPath":"/images/generations","resultMode":"sync-base64","outputPointer":"/data/0/b64_json","requireExactOutputSize":true}}
+                """);
+        var endpoint=com.aistareco.aep.model.AiModelEndpoint.builder().id("native").name("image")
+                .baseUrl("https://image.example/v1").model("image").enabled(true).imageRequestSpecJson(spec.json())
+                .upstreamApiKeyEncrypted(com.aistareco.common.AepCryptoUtil.encrypt("test-key")).build();
+        when(models.resolveEndpoint(com.aistareco.aep.model.AiModelPurpose.DAP_IMAGE,"native","studio"))
+                .thenReturn(java.util.Optional.of(new com.aistareco.aep.service.AiModelInvocationService.ResolvedEndpoint(endpoint,null,true)));
+        var nativeImages=new com.aistareco.aep.ipstudio.service.JusuanImageClient(models,storage,upstream,OM);
+        org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
+        var run=seedGenerateRun(1,30L,30L);ObjectNode input=(ObjectNode)OM.readTree(run.getInputJson());
+        ((ObjectNode)input.path("_exec")).put("endpointId","native");run.setInputJson(input.toString());runs.repo.save(run);
+        var image=new java.awt.image.BufferedImage(width,height,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        var bytes=new java.io.ByteArrayOutputStream();javax.imageio.ImageIO.write(image,"png",bytes);
+        String reply="{\"data\":[{\"b64_json\":\""+java.util.Base64.getEncoder().encodeToString(bytes.toByteArray())+"\"}]}";
+        java.net.http.HttpResponse<String> response=mock(java.net.http.HttpResponse.class);
+        when(response.statusCode()).thenReturn(200);when(response.body()).thenReturn(reply);
+        when(upstream.sendJson(any(),any())).thenReturn(response);
+        worker.runBlocking(RID);
+        var done=reload();assertEquals(IpRun.STATUS_DONE,done.getStatus());assertEquals(30,done.getCost());assertNull(done.getErrorCode());
+        var candidate=candidates(done).get(0);
+        assertEquals(width,candidate.path("width").asInt());assertEquals(height,candidate.path("height").asInt());
+        worker.runBlocking(RID); // A finished run is not generated or charged again.
+        verify(upstream,times(1)).sendJson(any(),any());
+        verify(credits,times(1)).commitHold(eq(IpRunService.REF_TYPE),eq(RID),eq(30L),anyString(),org.mockito.ArgumentMatchers.any());
+        verify(credits,never()).releaseHold(anyString(),anyString(),anyString());
+    }
     @Test void nativeAcceptedSecondImageRecoversOriginalCheckpointWithoutRepeatingFirstSpend() throws Exception {
         var nativeImages=mock(com.aistareco.aep.ipstudio.service.JusuanImageClient.class);
         org.springframework.test.util.ReflectionTestUtils.setField(worker,"jusuanImages",nativeImages);
