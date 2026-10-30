@@ -1658,9 +1658,11 @@ Studio 对话模型只影响之后受理的对话，按现有 script 场景白�
 
 真源 `docs/studio-scene-creation.md` §7–§9。
 
-1. **场景目录只有一份**：运营在后台「Studio 场景模板」（`/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR）改过就用平台配置 `studio.scene-catalog`，否则用随包的 `ipstudio/scenes.json`；经 `GET /v1/ip-studio/scenes` 下发，只下发上架的场景，封面 / 示例是签名地址（key 与上下架标记不下发）。前端不得另写一份场景数据。
+1. **场景目录只有一份**：运营在 Studio 运营后台「运营配置 · 场景模板」（`studio-admin` 的 `/scenes`，接口 `/api/admin/studio/scenes`，SUPER_ADMIN / OPERATOR）改过就用平台配置 `studio.scene-catalog`，否则用随包的 `ipstudio/scenes.json`；经 `GET /v1/ip-studio/scenes` 下发，只下发上架的场景，封面 / 示例是签名地址（key 与上下架标记不下发）。前端不得另写一份场景数据。
    - 随包目录写错启动即失败；后台整份保存时同一套校验（编号小写字母数字横线且唯一、分组存在、描述不留【…】、「图N」不越界、图1 必填、视频方法只能是 `video-generation` / `reference-video-recreation`、封面和示例只能是 `ipstudio_scene/catalog/` 下后台上传的 key），不合格 400 `STUDIO_SCENE_CATALOG_INVALID`；带读到的版本号，别人先存过 409 `STUDIO_SCENE_CATALOG_STALE`，不覆盖。通用平台配置接口改这个 key 也过同一道校验。库里那份万一读不出来，用随包那份并打 ERROR。
    - 下架的场景用户端不出现，旧草稿照常打开；存过的场景编号后台不让改（草稿按它记场景）。
+   - **选项组**：每个场景最多 4 组、每组 2–8 个选项、默认值必须在选项里；`compose` 的 `options` 是组 key → 选项 value，没给的组取默认，每组拼一句「{组名}：{选项那句话}」；不认识的组或选项 400 `STUDIO_SCENE_INPUT_INVALID`「这个选项已经下架，请刷新后重选」。
+   - **首页卡片**（`homeGoals`，最多 12 张）：落点场景和封面场景必须在目录里；`GET /api/v1/ip-studio/scenes/home` 公开只读（安全配置放行 + `ProductRouteTable.PUBLIC_GETS`），只回标题、说明、落点场景、类型、封面签名地址，落点场景下架的卡片不下发。后台存过的目录是整份快照，随包目录后加的内容不会自动合进去。
 2. **拼话只在服务端**：`POST /v1/ip-studio/scenes/compose`，纯计算、不扣积分、不建任务。
    - image：发出去的描述 = 场景描述（或用户改过的完整描述）+ `\n补充要求：…`；自由出图只用用户那句。必填参考图位没放 → 400「先放{位名}」。
    - video：交给助手的第一句 + 该场景的 `skillKey`。必有素材 / 剧情等场景的那句话没给 → 400；时长须在场景可选时长里、横竖屏只认 9:16 / 16:9。拼出的话固定要求「没写的价格、优惠、地址、功效数据不要自己编」和「要成片不只要脚本」；除「爆款复刻」外不得出现会让画布暂停自动发送的复刻类字眼。

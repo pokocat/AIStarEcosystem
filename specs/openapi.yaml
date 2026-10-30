@@ -5168,6 +5168,39 @@ components:
       type: object
       required: [label, required]
       properties: { label: { type: string }, required: { type: boolean }, max: { type: integer, nullable: true } }
+    StudioSceneOptionGroup:
+      type: object
+      description: '场景选项组（照参考站）：用户点选，选中项那句话由 compose 拼进描述 / 要求。每个场景最多 4 组。'
+      required: [key, label, choices, defaultValue]
+      properties:
+        key: { type: string, example: presenter }
+        label: { type: string, example: 出镜方式 }
+        defaultValue: { type: string, example: person }
+        choices:
+          type: array
+          minItems: 2
+          maxItems: 8
+          items: { type: object, required: [value, label, prompt], properties: { value: { type: string }, label: { type: string }, prompt: { type: string, description: '选中后拼进描述的话' } } }
+    StudioSceneHomeGoal:
+      type: object
+      required: [id, title, description, sceneId]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        sceneId: { type: string, description: '点进去落到的场景' }
+        covers: { type: array, nullable: true, maxItems: 2, items: { type: string }, description: '两张封面取这两个场景的封面' }
+    StudioSceneHomeCard:
+      type: object
+      description: '首页卡片对外的样子（公开只读）：只有显示用的字段。'
+      required: [id, title, description, sceneId, kind, covers]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+        sceneId: { type: string }
+        kind: { type: string, enum: [image, video] }
+        covers: { type: array, items: { type: object, required: [sceneId], properties: { sceneId: { type: string }, coverUrl: { type: string, nullable: true } } } }
     StudioSceneMedia:
       type: object
       required: [url, mediaType]
@@ -5181,6 +5214,7 @@ components:
         exampleKeys: { type: array, nullable: true, items: { type: string }, description: '后台：参考示例 key，最多 6 个；用户端不下发' }
         coverUrl: { type: string, nullable: true, description: '封面签名地址；为空时前端用随包封面（按编号）' }
         examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
+        options: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneOptionGroup' } }
         id: { type: string, example: face-turnaround }
         group: { type: string }
         title: { type: string }
@@ -5198,6 +5232,7 @@ components:
         exampleKeys: { type: array, nullable: true, items: { type: string } }
         coverUrl: { type: string, nullable: true }
         examples: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneMedia' } }
+        options: { type: array, nullable: true, items: { $ref: '#/components/schemas/StudioSceneOptionGroup' } }
         id: { type: string, example: ecom-talking }
         group: { type: string }
         title: { type: string }
@@ -5223,6 +5258,7 @@ components:
         videoGroups: { type: array, items: { $ref: '#/components/schemas/StudioSceneGroup' } }
         image: { type: array, items: { $ref: '#/components/schemas/StudioImageScene' } }
         video: { type: array, items: { $ref: '#/components/schemas/StudioVideoScene' } }
+        homeGoals: { type: array, nullable: true, maxItems: 12, items: { $ref: '#/components/schemas/StudioSceneHomeGoal' }, description: '首页「你想做什么？」卡片；用户端只下发落点场景还上架的' }
     StudioSceneComposeRequest:
       type: object
       required: [kind, sceneId]
@@ -5240,6 +5276,7 @@ components:
         ratio: { type: string }
         language: { type: string, description: 'video-script：台词语言，默认中文' }
         revision: { type: string, description: 'video-script：对上一版脚本的修改意见；有它时剧情类场景可以不写 text' }
+        options: { type: object, additionalProperties: { type: string }, description: '选项组：组 key → 选项 value；没给的组取默认；不认识的 400' }
     StudioSceneComposed:
       type: object
       required: [text]
@@ -11601,7 +11638,7 @@ paths:
     get:
       tags: [admin]
       operationId: adminStudioScenes
-      description: 'Studio 场景模板（SUPER_ADMIN / OPERATOR）：当前生效的整份目录（含下架的），封面 / 示例带签名地址预览。source=default 表示还在用随包的那份（version=0）；skills 是视频场景可选的方法。'
+      description: 'Studio 场景模板（SUPER_ADMIN / OPERATOR；页面在 Studio 运营后台 studio-admin 的 /scenes）：当前生效的整份目录（含下架的），封面 / 示例带签名地址预览。source=default 表示还在用随包的那份（version=0）；skills 是视频场景可选的方法。'
       responses: { '200': { description: 'ApiResponse<{catalog: StudioSceneCatalog, source: default|custom, version: integer, skills: string[]}>' } }
     put:
       tags: [admin]
@@ -14305,6 +14342,14 @@ paths:
       description: '场景目录唯一真源：运营在后台「Studio 场景模板」改过就用平台配置 studio.scene-catalog，否则用随包的 resources/ipstudio/scenes.json。只下发上架的场景；封面与示例是签名地址，key 与上下架标记不下发。前端只读它，不另写一份。不扣积分。'
       responses:
         '200': { description: 'ApiResponse<StudioSceneCatalog>', content: { application/json: { schema: { $ref: '#/components/schemas/StudioSceneCatalog' } } } }
+  /v1/ip-studio/scenes/home:
+    get:
+      tags: [ipstudio]
+      operationId: studioSceneHomeCards
+      security: []
+      description: '首页「你想做什么？」卡片，公开只读（公开落地页对没登录的访客也显示）。只有标题、说明、落点场景、类型和封面签名地址，不带场景描述与拍法；落点场景下架的不下发。场景目录与拼话仍要登录。'
+      responses:
+        '200': { description: 'ApiResponse<StudioSceneHomeCard[]>', content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/StudioSceneHomeCard' } } } } }
   /v1/ip-studio/scenes/compose:
     post:
       tags: [ipstudio]
