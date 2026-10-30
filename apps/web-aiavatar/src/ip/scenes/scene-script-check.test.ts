@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { chineseNumber, missingFigures, scriptMissing, scriptPlaceholders } from "./scene-script-check";
+import { chineseNumber, classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
 
 test("the director's 还缺 line is split off from the script", () => {
   expect(scriptMissing("还缺：团购价、怎么买。\n第1镜（0–5 秒）：门头。")).toEqual({ missing: "团购价、怎么买", body: "第1镜（0–5 秒）：门头。" });
@@ -26,4 +26,18 @@ test("figures the user gave but the script left out are reported, whether the sc
   expect(missingFigures(given, "双人餐 99 元，两个人吃")).toEqual(["158"]);
   // 一位数且后面没有单位的不算（「第1镜」里的 1 也不会被要求出现在别处）。
   expect(missingFigures(["第 1 天想去"], "随便")).toEqual([]);
+});
+
+test("blanks for facts marked 有就写 are optional; anything else must be filled", () => {
+  const facts = [{ label: "团购价", required: true }, { label: "怎么买", required: true }, { label: "原价", required: false }, { label: "使用限制", required: false }];
+  expect(classifyBlanks(["团购价", "原价", "购买入口", "使用限制", "团购价"], facts)).toEqual({ required: ["团购价", "购买入口"], optional: ["原价", "使用限制"] });
+});
+
+test("blanks are split out for highlighting", () => {
+  expect(splitBlanks("点【待补：入口】下单")).toEqual([{ text: "点", blank: false }, { text: "【待补：入口】", blank: true }, { text: "下单", blank: false }]);
+});
+
+test("shot numbers and timecodes do not count as the user's figures", () => {
+  expect(missingFigures(["2 人用"], "第2镜（2–4 秒）：牛肉一份")).toEqual(["2"]);
+  expect(missingFigures(["2 人用"], "第1镜（0–2 秒）：两人吃")).toEqual([]);
 });

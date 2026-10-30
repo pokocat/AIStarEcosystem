@@ -407,7 +407,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "卖什么、给谁用、最想突出哪一点，例如：玻尿酸保湿精华，给干皮用，一抹就吸收。有优惠和购买方式也写上",
+      "placeholder": "例如：玻尿酸保湿精华，给干皮用，一抹就吸收。有优惠和购买方式也写上",
       "textRequired": false,
       "durations": [
         15,
@@ -510,7 +510,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "卖什么、现在多少钱、怎么个优惠法，例如：保湿精华，原价 199，这周第二瓶半价，店铺首页下单",
+      "placeholder": "例如：保湿精华，原价 199，这周第二瓶半价，店铺首页下单",
       "textRequired": false,
       "durations": [
         15,
@@ -571,7 +571,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "卖什么、通常在什么时候用，例如：便携咖啡杯，早上通勤路上用，单手能开",
+      "placeholder": "例如：便携咖啡杯，早上通勤路上用，单手能开",
       "textRequired": false,
       "durations": [
         15,
@@ -641,7 +641,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "卖什么、解决哪个烦恼，例如：防雾眼镜布，冬天戴口罩眼镜起雾，擦一下就清楚",
+      "placeholder": "例如：防雾眼镜布，冬天戴口罩眼镜起雾，擦一下就清楚",
       "textRequired": false,
       "durations": [
         15,
@@ -697,7 +697,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "卖什么、要演示哪几个功能，例如：折叠收纳箱，三秒展开、能叠放、侧面开门",
+      "placeholder": "例如：折叠收纳箱，三秒展开、能叠放、侧面开门",
       "textRequired": false,
       "durations": [
         15,
@@ -749,7 +749,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "店名、在哪、最值得来的理由，例如：巷里火锅，万达东门旁边，牛油锅底现炒",
+      "placeholder": "例如：巷里火锅，万达东门旁边，牛油锅底现炒",
       "textRequired": false,
       "durations": [
         15,
@@ -829,7 +829,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "店名、在哪、这次体验了什么，例如：巷里火锅，点了双人餐，牛肉现切，服务员会帮忙涮",
+      "placeholder": "例如：巷里火锅，点了双人餐，牛肉现切，服务员会帮忙涮",
       "textRequired": false,
       "durations": [
         15,
@@ -885,7 +885,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "店名、招牌是什么、好在哪，例如：巷里火锅，招牌是现炒牛油锅底，每天早上现炒",
+      "placeholder": "例如：巷里火锅，招牌是现炒牛油锅底，每天早上现炒",
       "textRequired": false,
       "durations": [
         15,
@@ -940,7 +940,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "写清店名和位置、套餐包含什么、几个人用、团购多少钱、怎么买；有原价、活动日期或预约限制也写上，例如：巷里火锅，万达东门，双人牛肉套餐 99，原价 158，本视频团购下单，周末要预约",
+      "placeholder": "例如：巷里火锅，万达东门，双人牛肉套餐 99，原价 158，本视频团购下单，周末要预约",
       "textRequired": false,
       "durations": [
         15,
@@ -1006,7 +1006,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "品牌名和想让人记住的那句话，例如：山野户外，每个周末都值得出发",
+      "placeholder": "例如：山野户外，每个周末都值得出发",
       "textRequired": true,
       "durations": [
         15,
@@ -1129,7 +1129,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "品牌名、给谁、想呈现哪种日子，例如：山野户外，城市上班族，周末去郊外露营",
+      "placeholder": "例如：山野户外，城市上班族，周末去郊外露营",
       "textRequired": true,
       "durations": [
         15,
@@ -1180,7 +1180,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "品牌名、想表达什么、产品是什么，例如：山野户外，想表达帐篷就是移动的家",
+      "placeholder": "例如：山野户外，想表达帐篷就是移动的家",
       "textRequired": true,
       "durations": [
         15,
@@ -1231,7 +1231,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "谁和谁、为什么说起来、最后怎样，例如：室友俩为谁洗碗吵起来，最后发现是同一件事在较劲",
+      "placeholder": "例如：室友俩为谁洗碗吵起来，最后发现是同一件事在较劲",
       "textRequired": true,
       "durations": [
         30,
@@ -1280,7 +1280,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "一两句话说清楚谁、遇到什么事、结果怎样，例如：刚毕业的女主被老板刁难，最后发现老板是她失散的哥哥",
+      "placeholder": "例如：刚毕业的女主被老板刁难，最后发现老板是她失散的哥哥",
       "textRequired": true,
       "durations": [
         30,
@@ -1349,7 +1349,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "谜团是什么、谁在查、这一条要不要揭晓，例如：深夜外卖总是多一份，女主想弄清是谁点的，结尾揭晓",
+      "placeholder": "例如：深夜外卖总是多一份，女主想弄清是谁点的，结尾揭晓",
       "textRequired": true,
       "durations": [
         30,
@@ -1398,7 +1398,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "什么关系、因为一件什么小事、想让人有什么感觉，例如：外婆学用手机给我发语音，发了十几条才成功",
+      "placeholder": "例如：外婆学用手机给我发语音，发了十几条才成功",
       "textRequired": true,
       "durations": [
         30,
@@ -1443,7 +1443,7 @@
       "video": null,
       "character": true,
       "voice": true,
-      "placeholder": "说说故事和要植入的商品，例如：闺蜜吵架后和好，随身小风扇在关键时刻帮上忙",
+      "placeholder": "例如：闺蜜吵架后和好，随身小风扇在关键时刻帮上忙",
       "textRequired": true,
       "durations": [
         30,
@@ -1494,7 +1494,7 @@
       "video": null,
       "character": false,
       "voice": true,
-      "placeholder": "讲什么、给谁听、用什么语气，例如：三个让皮肤变好的小习惯，给熬夜党，像朋友聊天一样",
+      "placeholder": "例如：三个让皮肤变好的小习惯，给熬夜党，像朋友聊天一样",
       "textRequired": true,
       "durations": [
         15,
@@ -1545,7 +1545,7 @@
       "video": null,
       "character": false,
       "voice": true,
-      "placeholder": "说说这一天做什么，例如：早起做早餐、去公园跑步、下午在咖啡馆工作",
+      "placeholder": "例如：早起做早餐、去公园跑步、下午在咖啡馆工作",
       "textRequired": true,
       "durations": [
         15,

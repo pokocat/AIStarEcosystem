@@ -344,6 +344,7 @@ function BriefEditor({ brief, onChange }: { brief: StudioSceneBrief | null; onCh
   const setFact = (i: number, p: Partial<StudioSceneBrief["facts"][number]>) => set({ facts: b.facts.map((f, j) => j === i ? { ...f, ...p } : f) });
   const required = b.facts.filter(f => f.required).length;
   return <div className="space-y-3 rounded-md border p-3" role="group" aria-label="这条要做到什么">
+    <div><h3 className="text-sm font-medium">这一条要做到什么</h3><p className="text-xs text-muted-foreground">编导和助手都按它写；信息在用户的输入框上方是一排可点的标签。</p></div>
     <div className="grid gap-4 md:grid-cols-2">
       <Field label="这一条要做到" hint="一句话，看的人看完要做什么。例如：让附近的人买下套餐，到店来用。">
         <Input aria-label="这一条要做到" value={b.goal} maxLength={60} onChange={e => set({ goal: e.target.value })}/></Field>
@@ -356,7 +357,7 @@ function BriefEditor({ brief, onChange }: { brief: StudioSceneBrief | null; onCh
     <Field label="要用户给的信息" hint="最多 6 条、必填最多 4 条。不要写数字或「真实评价」这类会引着模型编的词。">
       <div className="space-y-2">{b.facts.map((f, i) => <div key={i} className="flex flex-wrap items-center gap-2">
         <Input aria-label={`信息 ${i + 1} 名称`} className="w-44" placeholder="如：团购价" value={f.label} maxLength={16} onChange={e => setFact(i, { label: e.target.value })}/>
-        <Input aria-label={`信息 ${i + 1} 怎么用`} className="min-w-[160px] flex-1" placeholder="怎么用（可选），如：有原价才做对比" value={f.use ?? ""} maxLength={24} onChange={e => setFact(i, { use: e.target.value || null })}/>
+        <Input aria-label={`信息 ${i + 1} 给编导的说明`} className="min-w-[160px] flex-1" placeholder="给编导的说明（可选，用户看不到），如：有原价才做对比" value={f.use ?? ""} maxLength={24} onChange={e => setFact(i, { use: e.target.value || null })}/>
         <label className="flex items-center gap-1.5 text-sm"><Switch checked={f.required} disabled={!f.required && required >= 4} onCheckedChange={v => setFact(i, { required: v })} aria-label={`信息 ${i + 1} 必填`}/>必填</label>
         <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除信息 ${i + 1}`} onClick={() => set({ facts: b.facts.filter((_, j) => j !== i) })}><X className="h-4 w-4"/></Button>
       </div>)}

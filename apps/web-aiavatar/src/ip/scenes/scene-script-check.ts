@@ -19,6 +19,30 @@ export function scriptMissing(content: string): { missing?: string; body: string
 /** 脚本里还没填的【待补：……】。 */
 export const scriptPlaceholders = (content: string) => [...content.matchAll(/【待补[:：]?([^】]*)】/g)].map(m => m[1].trim() || "待补");
 
+/**
+ * 留空的地方分成必须补的和可以不补的：对得上场景里「有就写」的那几条（原价、使用限制）算可以不补，其余都算必须补。
+ * 场景要求里写了「选填的不要写待补」，真模型（2026-10-31 本地 Agnes）照样写，所以页面自己分（2026-10-30 界面评审）。
+ */
+export function classifyBlanks(blanks: string[], facts: { label: string; required: boolean }[] = []) {
+  const optional = facts.filter(f => !f.required).map(f => f.label);
+  const isOptional = (b: string) => optional.some(l => b.includes(l) || l.includes(b));
+  const unique = [...new Set(blanks)];
+  return { required: unique.filter(b => !isOptional(b)), optional: unique.filter(isOptional) };
+}
+
+/** 脚本里用 <mark> 标出【待补】，好找。 */
+export function splitBlanks(content: string): { text: string; blank: boolean }[] {
+  const out: { text: string; blank: boolean }[] = [];
+  let at = 0;
+  for (const m of content.matchAll(/【待补[^】]*】/g)) {
+    if (m.index! > at) out.push({ text: content.slice(at, m.index), blank: false });
+    out.push({ text: m[0], blank: true });
+    at = m.index! + m[0].length;
+  }
+  if (at < content.length) out.push({ text: content.slice(at), blank: false });
+  return out;
+}
+
 const DIGIT: Record<string, number> = { 零: 0, 〇: 0, 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9 };
 const UNIT: Record<string, number> = { 十: 10, 百: 100, 千: 1000, 万: 10000 };
 
@@ -48,7 +72,7 @@ const FIGURE = /\d+(?:\.\d+)?/g;
 function figuresIn(text: string): string[] {
   const out: string[] = [];
   for (const m of text.matchAll(FIGURE)) {
-    const after = text.slice(m.index! + m[0].length, m.index! + m[0].length + 1);
+    const after = text.slice(m.index! + m[0].length).trimStart().charAt(0);
     if (m[0].replace(".", "").length >= 2 || /[折人份位元块]/.test(after)) out.push(String(Number(m[0])));
   }
   return [...new Set(out)];
@@ -56,6 +80,8 @@ function figuresIn(text: string): string[] {
 
 /** 脚本里出现的所有数字（阿拉伯数字和中文数字都算，台词里常写成「九十九」）。 */
 function numbersInScript(script: string): Set<string> {
+  // 镜头编号和时间（「第2镜（2–4 秒）」）不算：不然用户写的「2 人」会被它们顶上（2026-10-30 界面评审）。
+  script = script.replace(/第\s*\d+\s*镜/g, "").replace(/[（(]\s*[\d.]+\s*[–\-~～至到]\s*[\d.]+\s*秒\s*[）)]/g, "");
   const found = new Set<string>();
   for (const m of script.matchAll(FIGURE)) found.add(String(Number(m[0])));
   for (const m of script.matchAll(/[零〇一二两三四五六七八九十百千万]+(?:点[零〇一二两三四五六七八九]+)?/g)) {

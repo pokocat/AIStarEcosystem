@@ -123,10 +123,10 @@ test("video: when the settings no longer match what the script was written for, 
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.click(await screen.findByRole("button", { name: "用这个脚本生成" }));
   // 时长还是 15 秒：不提示。
-  expect(screen.queryByRole("button", { name: "让编导照现在的改一版" })).toBeNull();
+  expect(screen.queryByRole("button", { name: /让编导照现在的改一版/ })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "10 秒" }));
   expect(screen.getByText(/这版脚本是照 15 秒写的，现在要出 10 秒/)).toBeTruthy();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导照现在的改一版" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /让编导照现在的改一版/ })); });
   await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
   expect(api.composeScene.mock.calls[0][0]).toMatchObject({ kind: "video-script", duration: 10, revision: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
   // 回到编导那一列，看得到新的一版在写。
@@ -155,13 +155,15 @@ test("video: the scene's facts are chips that start a line in the input", async 
 test("video: a script that says what is still missing shows it, drops that line when used, and cannot be generated while 【待补】 is left", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("还缺：怎么买。\n第1镜（0–5 秒）：门头。旁白说：「万达东门巷里火锅，双人餐九十九。」\n第2镜（5–10 秒）：套餐。旁白说：「点【待补：购买入口】下单。」") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("还缺怎么买。直接在下面补上，编导会照着改一版。")).toBeTruthy();
+  expect(await screen.findByText("还缺购买入口。在下面写上发给编导，会补进脚本。")).toBeTruthy();
+  // 留空的地方标出来。
+  expect(document.querySelector("mark.scene-script-blank")?.textContent).toBe("【待补：购买入口】");
   // 原价 158 用户写了、脚本里没有：灰字提醒，不拦。
-  expect(screen.getByText("你写的 158 没出现在脚本里，要放进去就说一声。")).toBeTruthy();
+  expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "用这个脚本生成" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
   const go = screen.getByRole("button", { name: "立即生成视频" }) as HTMLButtonElement;
-  await waitFor(() => expect(go.textContent).toContain("脚本里还有【待补】没填：购买入口"));
+  await waitFor(() => expect(go.textContent).toContain("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。"));
   expect(go.disabled).toBe(true);
   fireEvent.change(screen.getByRole("textbox", { name: "视频脚本" }), { target: { value: text("视频脚本").replace("【待补：购买入口】", "本视频团购") } });
   await waitFor(() => expect(go.disabled).toBe(false));
@@ -170,6 +172,15 @@ test("video: a script that says what is still missing shows it, drops that line 
 test("video: a 还缺 line with no 【待补】 left in the script is shown as a soft note, not a blocker", async () => {
   put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「巷里火锅，双人餐九十九，原价一百五十八。」\n\n还缺：火锅店的名字。") });
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
-  expect(await screen.findByText("编导提了一句还缺火锅店的名字，如果已经写了可以不管。")).toBeTruthy();
+  expect(await screen.findByText("编导觉得可能还缺火锅店的名字，写过了就不用管。")).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
+});
+
+test("video: blanks for facts marked 有就写 do not count as missing; after a script only the blank facts are offered as chips", async () => {
+  put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「双人餐九十九，原价【待补：原价】。」") });
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
+  expect(await screen.findByText("原价没有就不用写，出片前把脚本里标着的那几处删掉就行。")).toBeTruthy();
+  expect(document.querySelector(".scene-script-missing")).toBeNull();
+  const chips = within(screen.getByRole("group", { name: "要写清楚的信息" }));
+  expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价有就写"]);
 });
