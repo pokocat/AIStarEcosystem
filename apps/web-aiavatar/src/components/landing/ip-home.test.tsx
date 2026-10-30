@@ -13,7 +13,7 @@ const api = vi.hoisted(() => ({ authed: false, create: vi.fn(), push: vi.fn(), n
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: api.push }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('@/proto/api', () => ({ USE_MOCK: false, auth: { isAuthed: () => api.authed } }));
-vi.mock('@/shell/desktop-top-bar', () => ({ DesktopTopBar: () => null }));
+vi.mock('@/shell/desktop-top-bar', () => ({ DesktopTopBar: () => <header aria-label="公开顶栏"/> }));
 vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects, listTemplates: api.templates, listDemoExamples: api.examples, sceneHomeCards: api.cards } }));
 vi.mock('@/ip/studio-entry', () => ({ createStudioEntry: api.create, studioEntryHref: vi.fn(), startNewCanvas: api.newCanvas }));
 vi.mock('@/ip/studio-template-use', () => ({ StudioTemplateUse: ({ template }: { template: { name: string } }) => <div role="dialog" aria-label={`预览 ${template.name}`}/> }));
@@ -98,4 +98,18 @@ test('灵感 lists templates and examples on Home, filters by content and opens 
   fireEvent.click(screen.getByRole('button', { name: '预览模板 商品主图' }));
   expect(screen.getByRole('dialog', { name: '预览 商品主图' })).toBeTruthy();
   expect(screen.getByRole('link', { name: /更多灵感/ }).getAttribute('href')).toBe('/templates');
+});
+
+// 新版登录后 / 和 /dashboard 同一个首页：导航由外壳给（左侧一列），首页自己不再画公开顶栏；标题是「声量引擎」。
+test('signed in, the home draws no public top bar of its own; signed out it does; the title says 声量引擎', async () => {
+  api.authed = true;
+  const view = render(<IpHome/>);
+  await act(async () => {});
+  expect(screen.queryByRole('banner', { name: '公开顶栏' })).toBeNull();
+  expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('声量引擎');
+  view.unmount();
+  api.authed = false;
+  render(<IpHome/>);
+  await act(async () => {});
+  expect(screen.getByRole('banner', { name: '公开顶栏' })).toBeTruthy();
 });

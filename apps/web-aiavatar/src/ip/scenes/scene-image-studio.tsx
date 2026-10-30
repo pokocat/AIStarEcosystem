@@ -20,7 +20,8 @@ import { studioImageResolution, studioImageSizeLabel } from "../studio-generatio
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
-import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
+import { useSceneDraftStore } from "./scene-draft-store";
+import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -65,12 +66,11 @@ export function SceneImageStudio() {
   const [busy, setBusy] = useState(false);
   // 正在提交（含等用户确认费用）的那一行：这时候还谈不上「结果没确认」。
   const [submitting, setSubmitting] = useState<string>();
-  const [draft, setDraft] = useState<IpProject>();
   const [opening, setOpening] = useState<string>();
   const [live, setLive] = useState<Record<string, IpRun>>({});
   const [viewing, setViewing] = useState<{ url: string; key?: string; name: string }>();
-  const draftRef = useRef<IpProject>(undefined);
-  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
+  const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const imageIds = useMemo(() => new Set(catalog?.image.map(s => s.id) ?? []), [catalog]);
   const loadDrafts = useCallback(() => listSceneDrafts(imageIds), [imageIds]);
   const drafts = useStudioList(loadDrafts, ready && !!catalog);
@@ -89,15 +89,19 @@ export function SceneImageStudio() {
     writeQuery(next.id, draftRef.current?.id);
   }, []);
 
-  const showDraft = useCallback((project: IpProject | undefined) => {
-    draftRef.current = project; setDraft(project); setLive({});
-  }, []);
+  const showDraft = useCallback((project: IpProject | undefined, ticket?: number) => {
+    const shown = show(project, ticket);
+    if (shown) setLive({});
+    return shown;
+  }, [show]);
 
   const openDraft = useCallback(async (id: string) => {
+    const ticket = begin();
     setOpening(id);
     try {
+      await settled(id);
       const project = await IpStudioApi.getProject(id);
-      showDraft(project);
+      if (!showDraft(project, ticket)) return;
       const from = findImageScene(catalogRef.current, project.sceneId);
       const latest = imageRows(project.doc)[0];
       // 接着上次做：场景、比例和那次用的参考图都放回来，再生成一次就是一下的事。
@@ -106,9 +110,9 @@ export function SceneImageStudio() {
         setSlots(from.refs.map((_, i) => used[i])); }
       setSupplement(""); setCustom(undefined); setTab(latest ? "results" : "example");
       writeQuery(from?.id ?? FREE_SCENE_ID, project.id);
-    } catch (e) { showFailure({ action: "打开草稿", error: e }); }
-    finally { setOpening(undefined); }
-  }, [showDraft, showFailure]);
+    } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
+    finally { setOpening(o => o === id ? undefined : o); }
+  }, [begin, settled, showDraft, onPage, showFailure]);
 
   // 地址栏里的场景 / 草稿：首页卡片和「最近」都靠它直达。进页面时读一次存下来 ——
   // 登录状态晚一拍才就绪，先同步场景会把地址里的草稿号写掉，之后就再也读不到了。
@@ -131,19 +135,6 @@ export function SceneImageStudio() {
     return () => { active = false; };
   }, [ready, showFailure]);
 
-  /** 文档一次只存一份：后一次保存基于前一次的结果，不会拿旧版本去覆盖。 */
-  const persist = useCallback((mutate: (doc: IpProject["doc"]) => IpProject["doc"]) => {
-    const job = queue.current.then(async () => {
-      const current = draftRef.current;
-      if (!current) throw new Error("草稿还没准备好");
-      const saved = await saveDraftDoc(current, mutate(current.doc));
-      draftRef.current = saved; setDraft(saved);
-      return saved;
-    });
-    queue.current = job.catch(() => undefined);
-    return job;
-  }, []);
-
   // 接着看已经受理的任务：只读运行记录，绝不重新提交。
   const draftId = draft?.id;
   useEffect(() => {
@@ -152,6 +143,8 @@ export function SceneImageStudio() {
     const tick = async () => {
       if (ticking) return; ticking = true;
       try {
+        // 这一轮读的是哪份草稿就写回哪份：读任务时页面换走了也不会写到别的草稿上。
+        const projectId = draftRef.current?.id;
         const pending = imageRows(draftRef.current?.doc ?? { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } })
           .filter(n => n.metadata?.status === "loading" && n.metadata.studio?.runId);
         for (const row of pending) {
@@ -159,7 +152,7 @@ export function SceneImageStudio() {
           if (!alive) return;
           if (run.status === "running") { setLive(l => ({ ...l, [row.id]: run })); continue; }
           await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata,
-            status: run.status === "done" ? "success" : "error", ...(run.status === "failed" ? { errorDetails: run.errorMessage || "生成失败", errorCode: run.errorCode, errorLogId: run.logId } : { errorDetails: undefined }) } })));
+            status: run.status === "done" ? "success" : "error", ...(run.status === "failed" ? { errorDetails: run.errorMessage || "生成失败", errorCode: run.errorCode, errorLogId: run.logId } : { errorDetails: undefined }) } })), projectId);
           setLive(l => { const next = { ...l }; delete next[row.id]; return next; });
           if (run.status === "done") drafts.reload();
         }
@@ -193,9 +186,11 @@ export function SceneImageStudio() {
     : ownText.length > ownLimit ? `最多 ${ownLimit} 字` : "";
 
   const upload = async (index: number, file: File) => {
+    const ticket = session.current;
     setUploading(index); setHint("");
     try {
       const result = await IpStudioApi.uploadImage(await prepareStudioImageUpload(file));
+      if (!onPage(ticket)) return; // 传图的时候换了草稿：这张图不是给新打开那份的
       setSlots(old => { const next = [...old]; next[index] = { key: result.key, url: result.url, name: result.fileName || file.name }; return next; });
     } catch (e) { showFailure({ action: "上传参考图", error: e, next: "换一张 JPG 或 PNG 图片再试。" }); }
     finally { setUploading(undefined); }
@@ -220,14 +215,18 @@ export function SceneImageStudio() {
   const submitRow = async (input: RowInput | string) => {
     if (busy) return;
     setBusy(true); setHint("");
+    const ticket = session.current;
     let nodeId: string | undefined; let posted = false;
+    // 这一次提交从头到尾只作用于这一份草稿；中途从「最近」换了草稿，它照样做完，只是不再改页面。
+    let projectId = draftRef.current?.id;
     try {
-      if (!draftRef.current) {
-        showDraft(await createSceneDraft(scene!.title, scene!.id));
-        writeQuery(scene!.id, draftRef.current!.id);
+      if (!projectId) {
+        const created = await createSceneDraft(scene!.title, scene!.id);
+        remember(created);
+        if (showDraft(created, ticket)) writeQuery(scene!.id, created.id);
+        projectId = created.id;
         drafts.reload();
       }
-      const project = draftRef.current!;
       let request: Parameters<typeof submitStudioRun>[1] | undefined;
       await persist(doc => {
         if (typeof input === "string") {
@@ -239,16 +238,16 @@ export function SceneImageStudio() {
         const row = addImageRow(doc, input);
         request = row.request; nodeId = row.nodeId;
         return row.doc;
-      });
-      setSubmitting(nodeId);
-      posted = true; setTab("results");
-      const run = await submitStudioRun(project.id, request!);
-      await persist(doc => applyRun(doc, nodeId!, run));
+      }, projectId);
+      if (onPage(ticket, projectId)) { setSubmitting(nodeId); setTab("results"); }
+      posted = true;
+      const run = await submitStudioRun(projectId, request!);
+      await persist(doc => applyRun(doc, nodeId!, run), projectId);
     } catch (e) {
-      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined)).catch(() => undefined); return; }
+      if (nodeId && isStudioBillingCancelled(e)) { await persist(doc => patchNode(doc, nodeId!, () => undefined), projectId).catch(() => undefined); return; }
       const rejected = submissionRejected(e, posted);
       if (nodeId) await persist(doc => patchNode(doc, nodeId!, n => ({ ...n, metadata: { ...n.metadata, ...studioErrorMetadata(e),
-        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } }))).catch(() => undefined);
+        status: rejected ? "error" : "loading", ...(rejected ? {} : { errorDetails: "提交结果没有确认，点「确认原任务」查一下，不会重复扣费" }) } })), projectId).catch(() => undefined);
       showFailure({ action: "生成图片", error: e, next: rejected ? "改一下再试；积分没有扣。" : "这次提交可能已经被受理，点「确认原任务」查一下，不要直接重新生成。" });
     } finally { setBusy(false); setSubmitting(undefined); }
   };
@@ -260,7 +259,7 @@ export function SceneImageStudio() {
     setBusy(true);
     try {
       const run = await submitStudioRun(project.id, request);
-      await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })));
+      await persist(doc => patchNode(applyRun(doc, row.id, run), row.id, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined } })), project.id);
     } catch (e) { showFailure({ action: "确认原任务", error: e }); }
     finally { setBusy(false); }
   };
@@ -291,7 +290,7 @@ export function SceneImageStudio() {
       <header className="scene-composer-head">
         <SceneThumb id={scene.id} title={scene.title} cover={scene.coverUrl} size={52}/>
         <div><strong>{scene.title}</strong><small>{scene.description}</small></div>
-        <button type="button" className="scene-new" onClick={() => { showDraft(undefined); pickScene(scene); writeQuery(scene.id); }}><Plus size={16}/>新建</button>
+        <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={16}/>新建</button>
       </header>
 
       <div className="scene-composer-body">

@@ -21,7 +21,7 @@ import { usePathname } from "next/navigation";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
 import { useLayoutMode } from "./layout-mode";
-import { withoutUiParam } from "./ui-version";
+import { useUiVersion, withoutUiParam } from "./ui-version";
 
 const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback", "/auth/test-login"];
 /** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
@@ -32,9 +32,13 @@ export function AppChrome() {
   // <html data-layout> 跟着改」在每一页都生效（见 shell/layout-mode.ts）。
   useLayoutMode();
   const pathname = usePathname() ?? "";
+  // 新版登录后，根目录 / 就是首页，和 /dashboard 一样挂左侧导航（2026-10-30 用户反馈：从 / 进来左栏不见了）。
+  // 没登录还是落地页自己的顶栏（下面 show 只在登录后才为 true）；旧版不变。
+  const version = useUiVersion();
+  const rootIsHome = pathname === "/" && version === "next";
   const canvasWorkspace = /^\/projects\/[^/]+\/?$/.test(pathname)
     && pathname.replace(/\/$/, "") !== "/projects/demos";
-  const bare = BARE_EXACT.includes(pathname)
+  const bare = (BARE_EXACT.includes(pathname) && !rootIsHome)
     || canvasWorkspace
     || BARE_PREFIXES.some((p) => pathname === p.replace(/\/$/, "") || pathname.startsWith(p));
 

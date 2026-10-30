@@ -39,8 +39,7 @@ public class StudioSceneAdminService {
     }
 
     public View view() {
-        int version = scenes.savedVersion();
-        return new View(StudioSceneCatalog.withMedia(scenes.catalog(), storage::signedUrl), version == 0 ? "default" : "custom", version,
+        return new View(StudioSceneCatalog.withMedia(scenes.catalog(), storage::signedUrl), scenes.usingBuiltIn() ? "default" : "custom", scenes.savedVersion(),
                 StudioSceneCatalog.VIDEO_SKILLS.stream().sorted().toList());
     }
 
@@ -56,12 +55,15 @@ public class StudioSceneAdminService {
         return view();
     }
 
-    /** 回到随包那份：删掉后台存的目录。上传过的文件不删，旧草稿的封面还在用。 */
+    /**
+     * 回到随包那份：配置行不删，写成「用内置」的记录、版本号接着加（见 {@link StudioSceneCatalog#BUILT_IN_FIELD}）。
+     * 上传过的文件不删，旧草稿的封面还在用。
+     */
     @Transactional
     public View reset(Integer baseVersion, String actor) {
         config.lockExisting(StudioSceneCatalog.CONFIG_KEY);
         requireBase(baseVersion);
-        if (scenes.savedVersion() > 0) config.delete(StudioSceneCatalog.CONFIG_KEY);
+        if (!scenes.usingBuiltIn()) config.upsert(StudioSceneCatalog.CONFIG_KEY, StudioSceneCatalog.builtInMarker(), "Studio 场景模板（已恢复内置）", actor);
         return view();
     }
 

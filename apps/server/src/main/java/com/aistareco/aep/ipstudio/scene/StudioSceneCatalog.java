@@ -93,7 +93,19 @@ public class StudioSceneCatalog {
     private final Catalog builtIn;
     private PlatformConfigService config;
     private volatile Cached cached;
-    private record Cached(int version, Catalog catalog) {}
+    /**
+     * 缓存按存下来的内容认，不按版本号：同一个版本号可能对应过两份目录（2026-10-30 复核：
+     * 旧的「恢复内置」删行后再保存又从第 1 版开始，读到的是删行前那份）。
+     */
+    private record Cached(JsonNode raw, Catalog catalog) {}
+
+    /**
+     * 「恢复内置」写进配置行的值：只有这一个字段。行一直留着，版本号接着往上加，
+     * 恢复之前打开的后台页面再保存会被版本号拦下，而不是覆盖别人恢复后新存的那份。
+     */
+    public static final String BUILT_IN_FIELD = "builtIn";
+    public static JsonNode builtInMarker() { return JSON.createObjectNode().put(BUILT_IN_FIELD, true); }
+    static boolean marksBuiltIn(JsonNode value) { return value != null && value.isObject() && value.size() == 1 && value.path(BUILT_IN_FIELD).asBoolean(false); }
 
     public StudioSceneCatalog() { this(load("ipstudio/scenes.json")); }
 
@@ -105,12 +117,13 @@ public class StudioSceneCatalog {
     /** 当前生效的整份目录（含下架的场景）：后台改过用后台的，否则随包那份。 */
     public Catalog catalog() {
         var saved = stored();
-        if (saved.isEmpty()) return builtIn;
+        if (saved.isEmpty() || marksBuiltIn(saved.get().value())) return builtIn;
+        JsonNode raw = saved.get().value();
         var current = cached;
-        if (current != null && current.version() == saved.get().version()) return current.catalog();
+        if (current != null && current.raw().equals(raw)) return current.catalog();
         try {
-            Catalog parsed = validate(JSON.treeToValue(saved.get().value(), Catalog.class));
-            cached = new Cached(saved.get().version(), parsed);
+            Catalog parsed = validate(JSON.treeToValue(raw, Catalog.class));
+            cached = new Cached(raw, parsed);
             return parsed;
         } catch (Exception e) {
             // 保存时已经校验过，走到这里说明有人绕过后台直接改了库。整页不能因此打不开：用随包那份，并大声报出来。
@@ -120,8 +133,10 @@ public class StudioSceneCatalog {
     }
     /** 随包那份（后台「恢复默认」看的就是它）。 */
     public Catalog builtIn() { return builtIn; }
-    /** 后台存过的那份的版本号；没存过是 0。 */
+    /** 配置行的版本号（恢复内置也算一版）；从没存过是 0。保存时拿它判断有没有人先改过。 */
     public int savedVersion() { return stored().map(PlatformConfigDto::version).orElse(0); }
+    /** 现在用的是不是随包那份：从没存过，或者最近一次是「恢复内置」。 */
+    public boolean usingBuiltIn() { return stored().map(d -> marksBuiltIn(d.value())).orElse(true); }
     private Optional<PlatformConfigDto> stored() { return config == null ? Optional.empty() : config.findByKey(CONFIG_KEY); }
 
     /**
@@ -316,6 +331,7 @@ public class StudioSceneCatalog {
 
     /** 后台或别处直接改平台配置时的同一道闸（{@link PlatformConfigService#upsert} 也调它）。 */
     public static void validateJson(JsonNode value) {
+        if (marksBuiltIn(value)) return;
         try { validate(JSON.treeToValue(value, Catalog.class)); }
         catch (IllegalStateException e) { throw BusinessException.badRequest("STUDIO_SCENE_CATALOG_INVALID", e.getMessage()); }
         catch (Exception e) { throw BusinessException.badRequest("STUDIO_SCENE_CATALOG_INVALID", "场景目录格式不对：" + e.getMessage()); }

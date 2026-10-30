@@ -53,7 +53,8 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   const router = useRouter();
   // 「你想做什么？」的卡片由运营在 Studio 后台配，公开接口读，没登录也显示。
   const homeCards = useSceneHomeCards();
-  const [authed, setAuthed] = useState(false);
+  // 首页只在客户端画（/ 和 /dashboard 都先等挂载），这里直接读登录态：登录用户不会先闪一下公开顶栏。
+  const [authed, setAuthed] = useState(() => USE_MOCK || auth.isAuthed());
   const [creating, setCreating] = useState<StudioEntry>();
   const createLock = useRef(false);
   const [templates, setTemplates] = useState<IpTemplate[]>();
@@ -113,11 +114,12 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
   return <div className="ip-brand-surface ip-home studio-scene-home">
-    {header && <><DesktopTopBar publicMode /><header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
+    {/* 登录后电脑上的导航由外壳给（新版是左侧一列，见 shell/app-chrome.tsx），这里只给没登录的访客画公开顶栏。 */}
+    {header && <>{!authed && <DesktopTopBar publicMode />}<header className="ip-home-mobile-header"><Link href="/" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={34} height={34} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link><Link href={authed ? "/dashboard" : "/login"}>{authed ? "工作台" : "登录"}</Link></header></>}
     {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
     <main>
       <section className="home-hero">
-        <h1><span>IP Studio</span>，让灵感成形，让 IP 出圈</h1>
+        <h1><span>声量引擎</span>，让灵感成形，让 IP 出圈</h1>
         <p>商品图、带货视频、IP 形象，选个场景就能做；也可以直接说想做什么。</p>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
       </section>
