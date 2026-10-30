@@ -174,7 +174,7 @@ src/
 
 ### 新版 / 旧版开关（2026-10-30）
 
-场景化改版先不给所有人：正式站默认旧版（改版前那一版），地址加 `?ui=new` 进新版，新版账号菜单和「我的」里能「回到旧版」（或 `?ui=old`）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前由 `layout.tsx` 写好，见 `src/shell/ui-version.ts` 与 `docs/studio-scene-creation.md` §10。分新旧的只有导航、首页、手机首页场景卡片和对话框提示；旧版首页原样留在 `ip-home-classic.tsx`，全部切到新版后删掉。
+场景化改版先不给所有人：正式站默认旧版（改版前那一版），旧版顶栏右侧「体验新版」进新版，新版页面右上角「回到旧版」（手机都在「我的」里；`?ui=new` / `?ui=old` 也行）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前由 `layout.tsx` 写好，见 `src/shell/ui-version.ts` 与 `docs/studio-scene-creation.md` §10。分新旧的只有导航、首页、手机首页场景卡片和对话框提示；旧版首页原样留在 `ip-home-classic.tsx`，全部切到新版后删掉。
 
 ### 场景化首页与 AI 图片 / AI 视频（2026-10-29；后端 2026-10-30 已上线，前端按新版开关发布）
 

@@ -156,20 +156,20 @@ function LayoutSwitchRow() {
   );
 }
 
-/** 新版里才有的「回到旧版」。旧版没有进新版的按钮，入口是隐藏链接 `?ui=new`（见 shell/ui-version.ts）。 */
+/** 新旧版切换（见 shell/ui-version.ts）。电脑上在右上角，手机上没有顶栏，放在这里。 */
 function UiVersionRow() {
-  if (useUiVersion() !== "next") return null;
+  const next = useUiVersion() === "next";
   return (
     <button
-      onClick={() => setUiVersion("classic")}
+      onClick={() => setUiVersion(next ? "classic" : "next")}
       style={{
         width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
         gap: 12, padding: "13px 16px", border: "none", borderTop: "1px solid var(--line)", background: "transparent",
         cursor: "pointer", textAlign: "left", font: "inherit",
       }}
     >
-      <span style={{ fontSize: 14, color: "var(--ink)" }}>回到旧版</span>
-      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>换回原来的首页和导航</span>
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>{next ? "回到旧版" : "体验新版"}</span>
+      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>{next ? "换回原来的首页和导航" : "按场景创作的新首页"}</span>
     </button>
   );
 }

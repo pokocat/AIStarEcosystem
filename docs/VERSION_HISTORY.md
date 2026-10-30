@@ -6,7 +6,7 @@
 
 ### Studio 新版 / 旧版开关 · 2026-10-30（仅 web-aiavatar）
 
-场景化改版的后端已于 2026-10-30 上线（`20261030-studio-scene-backend`）。前端不另开预览域名，改为正式站默认旧版（改版前那一版原样保留），隐藏链接 `?ui=new` 进新版，新版账号菜单 /「我的」里「回到旧版」（或 `?ui=old`）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前写好；分新旧的只有导航、首页、手机首页场景卡片和对话框提示。见 `docs/studio-scene-creation.md` §10。
+场景化改版的后端已于 2026-10-30 上线（`20261030-studio-scene-backend`）。前端不另开预览域名，改为正式站默认旧版（改版前那一版原样保留），旧版顶栏右侧「体验新版」、新版页面右上角「回到旧版」（手机在「我的」；`?ui=new` / `?ui=old` 也行）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前写好；分新旧的只有导航、首页、手机首页场景卡片和对话框提示。见 `docs/studio-scene-creation.md` §10。
 
 ### Studio 场景化首页与 AI 图片 / AI 视频 · 2026-10-29 · 后端 2026-10-30 已上线，前端按新版开关发布（仅 web-aiavatar）
 
