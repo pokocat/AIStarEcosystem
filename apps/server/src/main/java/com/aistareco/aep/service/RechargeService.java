@@ -47,6 +47,9 @@ public class RechargeService {
     /** v2 §6 待支付订单 TTL：超过此时长未支付 → 系统关单（CLOSED）；也是 checkout 幂等复用窗口。 */
     private static final long PENDING_TTL_MINUTES = 30;
 
+    @org.springframework.beans.factory.annotation.Autowired
+    private com.aistareco.aep.service.payment.PaymentGatewayRegistry paymentGateways;
+
     private final RechargePackageRepository pkgRepo;
     private final RechargeOrderRepository orderRepo;
     private final AepUserRepository userRepo;
@@ -215,11 +218,17 @@ public class RechargeService {
     @Transactional
     public RechargeOrder createOrReuseCheckoutOrder(String userId, String packageId, String wayCode, String sourceApp) {
         requireCheckoutablePackage(packageId, sourceApp);
+        userRepo.findByIdForUpdate(userId); // Serialize concurrent first checkouts for the same owner.
         RechargeOrder reusable = orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(userId, packageId)
                 .filter(o -> o.getStatus() == RechargeOrder.Status.PENDING)
-                .filter(o -> Duration.between(o.getCreatedAt(), Instant.now()).toMinutes() < PENDING_TTL_MINUTES)
+                .filter(o -> (o.getWayCode() != null && o.getWayCode().startsWith("WX_"))
+                        || Duration.between(o.getCreatedAt(), Instant.now()).toMinutes() < PENDING_TTL_MINUTES)
                 .orElse(null);
         if (reusable != null) {
+            if (reusable.getWayCode() != null && !java.util.Objects.equals(reusable.getWayCode(), wayCode))
+                throw new BusinessException(HttpStatus.CONFLICT, "PAYMENT_ORDER_CHANNEL_LOCKED", "该套餐已有待支付订单，请先完成或等待原订单关闭");
+            if (Duration.between(reusable.getCreatedAt(), Instant.now()).toMinutes() >= PENDING_TTL_MINUTES)
+                throw new BusinessException(HttpStatus.CONFLICT, "PAYMENT_ORDER_AWAITING_CLOSE", "原支付订单待核对关闭，请稍后重试");
             reusable.setWayCode(wayCode);
             reusable.setSourceApp(sourceApp);
             reusable.setUpdatedAt(Instant.now());
@@ -275,6 +284,8 @@ public class RechargeService {
     /** 超时 / 网关关单：PENDING → CLOSED（条件 UPDATE 幂等闸，避免误关刚 PAID 的单）。 */
     @Transactional
     public RechargeOrderDto closeOrder(String orderId, String reason) {
+        RechargeOrder before = orderRepo.findById(orderId).orElseThrow(() -> BusinessException.notFound("ORDER_NOT_FOUND", "充值订单不存在"));
+        closeWechatBeforeLocal(before);
         int closed = orderRepo.markClosed(orderId, trimToNull(reason, 512), Instant.now());
         RechargeOrder order = orderRepo.findById(orderId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND, "ORDER_NOT_FOUND", "充值订单不存在"));
@@ -290,15 +301,22 @@ public class RechargeService {
         Instant cutoff = Instant.now().minus(Duration.ofMinutes(ttlMinutes));
         int n = 0;
         for (RechargeOrder o : orderRepo.findByStatusOrderByCreatedAtDesc(RechargeOrder.Status.PENDING)) {
-            if (isOnlineOrder(o) && o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)
-                    && orderRepo.markClosed(o.getId(), "支付超时自动关闭（超过 " + ttlMinutes + " 分钟未支付）", Instant.now()) > 0) {
-                n++;
+            if (isOnlineOrder(o) && o.getCreatedAt() != null && o.getCreatedAt().isBefore(cutoff)) {
+                try {
+                    closeWechatBeforeLocal(o);
+                    n += orderRepo.markClosed(o.getId(), "支付超时自动关闭（超过 " + ttlMinutes + " 分钟未支付）", Instant.now());
+                } catch (RuntimeException e) { log.warn("[pay] 关单未确认，保留待支付 orderId={}", o.getId()); }
             }
         }
         if (n > 0) {
             log.info("[recharge] 超时关单 {} 笔（TTL={}min）", n, ttlMinutes);
         }
         return n;
+    }
+
+    private void closeWechatBeforeLocal(RechargeOrder order) {
+        if (order.getStatus() == RechargeOrder.Status.PENDING && order.getWayCode() != null && order.getWayCode().startsWith("WX_"))
+            paymentGateways.require("wechat").closePayOrder(order.getId());
     }
 
     /** v2 §6 待支付订单 TTL（分钟），供 reconcile / 同步逻辑判定超时关单。 */
@@ -322,6 +340,7 @@ public class RechargeService {
         if (order.getStatus() != RechargeOrder.Status.PENDING) {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING", "该订单不是待确认状态，无法取消");
         }
+        closeWechatBeforeLocal(order);
         order.setStatus(RechargeOrder.Status.CANCELLED);
         order.setUpdatedAt(Instant.now());
         orderRepo.save(order);
@@ -513,6 +532,7 @@ public class RechargeService {
             throw new BusinessException(HttpStatus.CONFLICT, "ORDER_NOT_PENDING",
                     "该订单状态为 " + order.getStatus() + "，无法驳回");
         }
+        closeWechatBeforeLocal(order);
         order.setStatus(RechargeOrder.Status.REJECTED);
         order.setReviewerId(reviewerId);
         order.setReviewNote(trimToNull(reason, 512));

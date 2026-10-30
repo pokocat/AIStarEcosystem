@@ -74,10 +74,7 @@ public class PaymentChannelConfigService {
         PaymentChannelCatalog.ChannelMeta meta = PaymentChannelCatalog.of(code);
         if (meta == null) return false;
         Map<String, String> creds = credentials(code);
-        return meta.requiredCreds().stream().allMatch(k -> {
-            String v = creds.get(k);
-            return v != null && !v.isBlank();
-        });
+        return requiredPresent(meta, creds);
     }
 
     public List<PaymentChannelConfig> listEnabled() {
@@ -192,10 +189,11 @@ public class PaymentChannelConfigService {
     // ── 内部 ──────────────────────────────────────────────────────────────────
 
     private boolean requiredPresent(PaymentChannelCatalog.ChannelMeta meta, Map<String, String> creds) {
-        return meta.requiredCreds().stream().allMatch(k -> {
-            String v = creds.get(k);
-            return v != null && !v.isBlank();
-        });
+        boolean basic = meta.requiredCreds().stream().allMatch(k -> creds.get(k) != null && !creds.get(k).isBlank());
+        if (!"wechat".equals(meta.code())) return basic;
+        boolean id = creds.get("publicKeyId") != null && !creds.get("publicKeyId").isBlank();
+        boolean key = creds.get("publicKey") != null && !creds.get("publicKey").isBlank();
+        return basic && id == key; // Both absent: legacy auto-certificate mode. A partial public-key pair is never ready.
     }
 
     private Map<String, String> decryptCreds(PaymentChannelConfig row) {

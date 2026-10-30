@@ -1580,11 +1580,14 @@ export const WalletApi = {
     if (USE_MOCK) return mock(MOCK_WALLET_PACKAGES.slice());
     return meFetch(`/me/wallet/packages?sourceApp=aiavatar`);
   },
-  checkout: (packageId: string): Promise<CheckoutResult> => {
+  channels: (): Promise<import("@ai-star-eco/api-client").PaymentChannel[]> => meFetch('/me/wallet/recharge/channels'),
+  order: (orderId: string): Promise<import("@ai-star-eco/types/wallet").RechargeOrder> => meFetch(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}`),
+  syncOrder: (orderId: string): Promise<import("@ai-star-eco/types/wallet").RechargeOrder> => meFetch(`/me/wallet/recharge/orders/${encodeURIComponent(orderId)}/sync`, { method: "POST" }),
+  checkout: (packageId: string, channel?: string, wayCode?: string): Promise<CheckoutResult> => {
     if (USE_MOCK) return mock({ orderId: `ro-mock-${packageId}`, payDataType: "shadow", payData: "" });
     return meFetch(`/me/wallet/recharge/checkout`, {
       method: "POST",
-      body: JSON.stringify({ packageId, sourceApp: "aiavatar" }),
+      body: JSON.stringify({ packageId, channel, wayCode, sourceApp: "aiavatar" }),
     });
   },
   confirmShadow: (orderId: string, result: "success" | "fail" | "timeout" = "success"): Promise<any> => {

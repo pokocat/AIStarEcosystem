@@ -7,6 +7,7 @@ import { Portrait } from "./portrait";
 import { MShell, MKit } from "./shell";
 import { toast } from "./toast";
 import { ScopedCreditsPanel } from "@/ip/scoped-credits-panel";
+import { StudioRechargeDialog } from "@/ip/studio-recharge-dialog";
 import { StudioBillingSettings } from "@/ip/studio-billing-settings";
 import { useHubData } from "@/components/hub/data";
 
@@ -88,6 +89,12 @@ const PLANS = [
 function MMembership({ ctx }) {
   const [pack, setPack] = useStateMM(0);
   const [paying, setPaying] = useStateMM(false);
+  const [cashier, setCashier] = useStateMM(false);
+  const [resumeOrder, setResumeOrder] = useStateMM<string>();
+  useEffectMM(() => {
+    const id = new URL(window.location.href).searchParams.get('rechargeOrder');
+    if (id) { setResumeOrder(id); setCashier(true); }
+  }, []);
   const [refresh, setRefresh] = useStateMM(0);
   const accountState = useHubData(() => AccountApi.get(), seed.account(), [refresh]);
   const packageState = useHubData(() => WalletApi.packages(), [], [refresh]);
@@ -96,6 +103,10 @@ function MMembership({ ctx }) {
   const sel: any = packages[pack] || packages[0];
   async function payPack() {
     if (!sel || paying) return;
+    if (!USE_MOCK) {
+      setResumeOrder(new URL(window.location.href).searchParams.get('rechargeOrder') || undefined);
+      setCashier(true); return;
+    }
     setPaying(true);
     try {
       const res = await WalletApi.checkout(sel.id);
@@ -121,6 +132,7 @@ function MMembership({ ctx }) {
   }
   return hMM('div', { className: 'm-overlay', 'data-screen-label': '会员与积分' },
     hMM(WxNavMM, { title: '会员与积分', onBack: ctx.back }),
+    cashier && hMM(StudioRechargeDialog, { pack: sel, initialOrderId: resumeOrder, onClose: () => setCashier(false), onPaid: () => { setRefresh(v => v + 1); ctx.reload && ctx.reload(); } }),
     hMM('div', { className: 'm-body', style: { padding: '4px 18px 30px' } },
       accountState.error && hMM('div', { role: 'alert', style: { marginBottom: 16, color: 'var(--err)' } }, '积分信息加载失败。', hMM(UI.Button, { variant: 'soft', size: 'sm', onClick: () => setRefresh(v => v + 1) }, '重新加载')),
       hMM('div', { style: { position: 'relative', overflow: 'hidden', borderRadius: 'var(--r-md)', padding: '18px 20px', background: 'var(--primary)', color: '#fff', boxShadow: 'var(--sh-2)', marginBottom: 22 } },

@@ -295,4 +295,23 @@ class RechargeServiceTest {
         verify(creditService, never())
                 .creditAccount(anyString(), anyLong(), any(), anyString(), anyString(), anyString());
     }
+
+    @Test void pendingWechatOrderCannotSwitchChannel() {
+        when(pkgRepo.findById("pkg-x")).thenReturn(Optional.of(pkg("all")));
+        RechargeOrder existing = pending(1000, 0); existing.setWayCode("WX_NATIVE");
+        when(orderRepo.findFirstByUserIdAndPackageIdOrderByCreatedAtDesc(USER, "pkg-x")).thenReturn(Optional.of(existing));
+        assertThrows(BusinessException.class, () -> svc.createOrReuseCheckoutOrder(USER, "pkg-x", "ALI_PC", "aiavatar"));
+        assertEquals("WX_NATIVE", existing.getWayCode());
+    }
+    @Test void wechatClosureFailurePreservesLocalPendingOrder() {
+        var gateways = mock(com.aistareco.aep.service.payment.PaymentGatewayRegistry.class);
+        var wx = mock(com.aistareco.aep.service.payment.PaymentGateway.class);
+        when(gateways.require("wechat")).thenReturn(wx);
+        org.springframework.test.util.ReflectionTestUtils.setField(svc, "paymentGateways", gateways);
+        RechargeOrder existing = pending(1000, 0); existing.setWayCode("WX_NATIVE");
+        doThrow(new RuntimeException("provider unavailable")).when(wx).closePayOrder(ORDER);
+        assertThrows(RuntimeException.class, () -> svc.closeOrder(ORDER, "timeout"));
+        verify(orderRepo, never()).markClosed(any(), any(), any());
+        assertEquals(RechargeOrder.Status.PENDING, existing.getStatus());
+    }
 }

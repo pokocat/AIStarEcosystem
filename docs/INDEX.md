@@ -197,6 +197,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`.claude/skills/aliyun-deploy/SKILL.md`](../.claude/skills/aliyun-deploy/SKILL.md) | agent 部署技能：本地 artifact / 按应用 / GitHub Actions 三条链路 + 验证排障 |
 | [`infra/rds/README.md`](../infra/rds/README.md) · [`infra/oss/README.md`](../infra/oss/README.md) | RDS 创建 / 白名单 / Flyway baseline；OSS Bucket / CDN / RAM / 生命周期 |
 | `infra/scripts/update-and-deploy.sh` · `install-host-deps.sh` · `check-runtime-env.sh` · `install-cjk-fonts.sh` | ECS 一键更新、宿主依赖、runtime env 预检、中文字体 |
+| [`docs/runbooks/studio-wechat-ai-pilot.md`](runbooks/studio-wechat-ai-pilot.md) | Studio 复用军师商户：配置映射、Native 权限/公钥实查阻塞、上线验收；last-reviewed 2026-10-30 |
 | [`docs/runbooks/alipay-sandbox.md`](runbooks/alipay-sandbox.md) | 支付宝直连沙箱本地联调：拿凭证 → 配置 → 查单兜底 / 公网回调 → 上生产换 4 项 |
 | [`docs/runbooks/impersonation.md`](runbooks/impersonation.md) | 附身登录：管理员以用户身份进五个产品的工作台 |
 | [`docs/runbooks/studio-e2e-cases.md`](runbooks/studio-e2e-cases.md) | Studio 端到端测试用例：发布前按真实路径逐步读 DOM 状态；含待随下次发布一起测的场景（last-reviewed 2026-10-19） |
