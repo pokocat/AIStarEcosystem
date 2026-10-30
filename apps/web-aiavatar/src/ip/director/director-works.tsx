@@ -27,7 +27,7 @@ export function DirectorWorks() {
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState<DirectorWorkSummary>();
   if (auth === "no-platform" || works.notEnrolled) return <PlatformGateScreen/>;
-  return <StudioPage title="AI 导演台" description="从创意到成片" className="director-page"
+  return <StudioPage title="短剧导演台" description="从创意到成片" className="director-page"
     actions={<>
       <Link href="/director/trash" className="ip-brand-secondary director-trash-link"><Trash2 size={16}/>回收站</Link>
       <button type="button" className="ip-brand-button" onClick={() => setCreating(true)}><Plus size={16}/>新建作品</button>

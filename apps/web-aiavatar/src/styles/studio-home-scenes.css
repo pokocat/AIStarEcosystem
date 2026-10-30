@@ -13,9 +13,26 @@
 .home-hero .studio-conversation-start-send:not(:disabled):hover { background: #323e45; }
 
 .home-tools { display: flex; flex-wrap: wrap; justify-content: center; gap: 22px 34px; max-width: 1100px; margin: 0 auto; padding: 34px 24px 4px; }
-.home-tools button { display: flex; flex-direction: column; align-items: center; gap: 10px; width: 86px; padding: 0; border: 0; background: transparent; font-size: 14px; color: var(--ip-ink); }
-.home-tools button>span { display: grid; place-items: center; width: 62px; height: 62px; border-radius: 18px; background: var(--ip-paper); border: 1px solid var(--ip-line); box-shadow: 0 6px 18px rgba(25,34,41,.06); transition: transform 160ms var(--ip-ease), border-color 160ms var(--ip-ease); }
-.home-tools button:not(:disabled):hover>span { transform: translateY(-2px); border-color: #c4cacf; }
+/* 每个入口一种颜色（ip-home.tsx 的 tone）：浅色渐变底 + 同色深一档的图标与投影，悬停浮起一点。 */
+.home-tools button { --tool-from: #eef0ff; --tool-to: #dce1ff; --tool-ink: #4f5bd5; --tool-glow: 79, 91, 213;
+  display: flex; flex-direction: column; align-items: center; gap: 10px; width: 92px; padding: 0; border: 0; background: transparent;
+  font-size: 14px; font-weight: 600; color: var(--ip-ink); cursor: pointer; }
+.home-tools button>span { display: grid; place-items: center; width: 66px; height: 66px; border-radius: 20px;
+  background: linear-gradient(150deg, var(--tool-from), var(--tool-to)); color: var(--tool-ink);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 8px 18px rgba(var(--tool-glow), .16);
+  transition: transform 180ms var(--ip-ease), box-shadow 180ms var(--ip-ease); }
+.home-tools button:not(:disabled):hover>span { transform: translateY(-3px); box-shadow: inset 0 1px 0 rgba(255,255,255,.75), 0 14px 26px rgba(var(--tool-glow), .26); }
+.home-tools button:not(:disabled):hover { color: var(--tool-ink); }
+.home-tools button:focus-visible { outline: none; }
+.home-tools button:focus-visible>span { outline: 2px solid var(--tool-ink); outline-offset: 3px; }
+.home-tools button:disabled { cursor: default; opacity: .6; }
+.home-tools button[data-tone="rose"] { --tool-from: #ffecef; --tool-to: #ffd2da; --tool-ink: #cf3f5b; --tool-glow: 207, 63, 91; }
+.home-tools button[data-tone="teal"] { --tool-from: #e4f7f3; --tool-to: #c6ece4; --tool-ink: #1b8a7a; --tool-glow: 27, 138, 122; }
+.home-tools button[data-tone="amber"] { --tool-from: #fff4dd; --tool-to: #ffe0a8; --tool-ink: #b8700c; --tool-glow: 184, 112, 12; }
+.home-tools button[data-tone="violet"] { --tool-from: #f3ebff; --tool-to: #e0d0ff; --tool-ink: #7446d6; --tool-glow: 116, 70, 214; }
+.home-tools button[data-tone="sky"] { --tool-from: #e6f3ff; --tool-to: #cae4ff; --tool-ink: #2a74c2; --tool-glow: 42, 116, 194; }
+.home-tools button[data-tone="coral"] { --tool-from: #ffefe6; --tool-to: #ffd6c2; --tool-ink: #cc5a24; --tool-glow: 204, 90, 36; }
+.home-tools button[data-tone="green"] { --tool-from: #eaf7e6; --tool-to: #cfeec6; --tool-ink: #3a8a35; --tool-glow: 58, 138, 53; }
 
 .home-section-heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 16px; }
 .home-section-heading h2 { font-size: 22px; font-weight: 700; }

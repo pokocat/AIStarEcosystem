@@ -493,8 +493,8 @@ public class StudioWorkflowService {
         var modelCharge=StudioTokenBilling.plan(textEndpoint==null?null:textEndpoint.endpoint(),chatRate);
         StudioTokenBilling.store(execution,modelCharge,textEndpoint==null?null:textEndpoint.endpoint());
         var billing = enterpriseBilling == null ? null : enterpriseBilling.reserve(userId,billingSelection,IpRunService.REF_TYPE,id,
-                execution.path("endpointId").asText(null),cost,"AI 导演台", modelCharge);
-        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"AI 导演台", modelCharge);
+                execution.path("endpointId").asText(null),cost,"短剧导演台", modelCharge);
+        if(enterpriseBilling == null && cost>0) credits.hold(userId,cost,IpRunService.REF_TYPE,id,"短剧导演台", modelCharge);
         IpRun run=IpRun.builder().id(id).projectId(hostId).hostType(IpRun.HOST_DIRECTOR).ownerUserId(userId).nodeId(nodeId)
                 .kind("studio-director").status(IpRun.STATUS_RUNNING).stage("queued").cost(cost)
                 .clientRequestId(clientRequestId).inputFingerprint(fingerprint).inputJson(write(inputs))

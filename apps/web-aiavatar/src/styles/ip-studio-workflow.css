@@ -1078,7 +1078,7 @@ html[data-layout="desktop"] .ip-surface .studio-assistant-panel .studio-dialogue
 .ip-surface .studio-assistant-panel .studio-assistant-composer>.ant-input { padding:8px 4px; }
 /* ── 画布页按钮配色统一（2026-10-19）：画布页不再用麦黄。
    AI 去做的事（发送、开始制作 / 开始分析、带 AI 记号的「生成…」、和助手开始）= AI 渐变；
-   其它主操作（发布、确认发布、完成、存为个人副本、重新加载、＋）= 深色；次要 = 白底细边；危险 = 红字浅粉边；选中 = 群青。
+   其它主操作（发布、确认发布、完成、做同款、重新加载、＋）= 深色；次要 = 白底细边；危险 = 红字浅粉边；选中 = 群青。
    要花多少积分由卡片上的大数字和按钮旁的价格说清，不再靠黄色。 */
 .ip-surface .studio-assistant .studio-assistant-primary:not(:disabled),
 .ip-surface .studio-assistant-panel .studio-assistant-primary:not(:disabled) { background:var(--ai-gradient); border-color:transparent; color:#fff; box-shadow:none; }

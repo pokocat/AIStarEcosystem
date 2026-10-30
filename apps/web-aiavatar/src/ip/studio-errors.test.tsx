@@ -194,11 +194,11 @@ it('a dialog opened by the click shows its own load failure: no error dialog on 
 
 it('a live StudioErrorNotice right after an action is that action\'s dialog; validation notices stay notifications', async () => {
   render(<StudioNotifications/>);
-  fireEvent.click(button('存为个人副本'));
+  fireEvent.click(button('做同款'));
   render(<StudioErrorNotice error={{code: 'TEMPLATE_GONE', message: '模板已下架'}}/>);
-  await waitFor(() => expect(titles()).toEqual(['「存为个人副本」没有完成']));
+  await waitFor(() => expect(titles()).toEqual(['「做同款」没有完成']));
   fireEvent.click(button('添加参考'));
   render(<StudioErrorNotice error="提示词最多 2000 字，请缩短内容。" background/>);
   await waitFor(() => expect(api.error).toHaveBeenCalledTimes(1));
-  expect(titles()).toEqual(['「存为个人副本」没有完成']);
+  expect(titles()).toEqual(['「做同款」没有完成']);
 });

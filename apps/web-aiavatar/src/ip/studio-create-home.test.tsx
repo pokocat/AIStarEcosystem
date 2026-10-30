@@ -165,7 +165,7 @@ describe("Creation catalogue", () => {
     mocks.works.mockResolvedValue([]);
     render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
-    expect(screen.queryByRole("region", { name: "AI 导演台作品" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "短剧导演台作品" })).toBeNull();
   });
 });
 
