@@ -1,4 +1,4 @@
-# Studio 场景化改版：后端先上线、预览站
+# Studio 场景化改版：后端上线、正式站新旧版开关
 
 2026-10-30，Asia/Shanghai。用户要求先发后端，等服务正常再看前端怎么上。
 
@@ -54,12 +54,43 @@
 
 服务器磁盘根分区已用 94%（剩约 9 GB），预览包 42 MB。
 
+## 前端：正式站新旧版开关（10:41）
+
+预览站登录要动账号中心，用户改为「正式站加隐藏入口切换新版，用户也可以回到旧版」。
+
+| 项目 | 结果 |
+| --- | --- |
+| 合入 main | PR #135 合并为 `beef9f87c` |
+| 服务 / 发布包 | 只发 `web-aiavatar` / `20261030-studio-ui-switch`（`NEXT_PUBLIC_AUTH_MODE=id`、`NEXT_PUBLIC_ID_ISSUER=https://id.aibuzz.cn`、`NEXT_PUBLIC_ENTERPRISE_ENABLED=1`，mock 与开发登录关闭） |
+| Studio tar SHA256 | `a3f9dcc36eea34b03ea4169a1bc5398cea7a9bf4f9dfaf398523e5400644b51f` |
+| Studio BUILD_ID | `5spvIRdC0zyfaxoC91vJR`（线上与本地一致） |
+| 服务启动 | 10:41:56 重启，NRestarts=0，重启后无报错；后端未重启 |
+
+第一次发布在上传那一步 SSH 超时（rsync 没传完，线上没有任何改动），连接恢复后重发成功。10:41–10:43 nginx 记录 20 个 200、1 个 302，没有 502。
+
+- 默认所有人是旧版：顶栏、旧导航（首页 / 项目 / 画布·自由创作 / AI 导演台 / 场景·专项创作 / 灵感 / 资产 / 发行）、带大图的旧首页，与改版前一致。
+- 任意页面加 `?ui=new` 进新版（浏览器记住 `aiavatar_ui`）；新版桌面账号菜单与手机「我的」有「回到旧版」，`?ui=old` 也行。见 `docs/studio-scene-creation.md` §10。
+- 线上浏览器核对：公开首页默认旧版；`/?ui=new` 后地址参数去掉、首页 7 张场景卡与新导航出现；登录后 `/dashboard` 是左侧导航、页面左侧让出 88px、账号菜单有「回到旧版」；`/dashboard?ui=old` 回到旧版顶栏、记录清掉。核对用的浏览器已切回旧版，没有在任何账号上做操作。
+- 本地验证：类型检查、契约门通过；web-aiavatar 全量 1453 条中 1451 过，另 2 条与本改动无关，单独重跑通过（机器负载高时超时）。按用户要求旧版不另加测试。
+
+预览站随后下线：停用并删除 `aistareco-web-aiavatar-preview`、nginx 站点、`/opt/ai-star-eco/web-aiavatar-preview`、预览环境文件与发布目录，账号中心那两份备份（与现行配置一致）一并删除。`aistar-preview.aibuzz.cn` 现在落到 443 默认站（404）。
+
 ## 没有做的
 
-- 正式站 Studio 前端没有发布：新版首页、左侧导航、AI 图片 / AI 视频入口线上还看不到。
-- Studio 后台（studio-admin）没有发布，运营还不能在线上改场景模板。
+- Studio 后台（studio-admin）没有发布，运营还不能在线上改场景模板；线上用的是包里自带的场景目录。
+- CI：main 上 web-drama 那条原有测试的修复（PR #134，已全绿）还没合入，所以 #133 / #135 合并后 main 的 frontend-tests 仍会红在那一条。
 
 ## 回滚
+
+前端（回到改版前的包，开关一起去掉）：
+
+```bash
+DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
+PUBLIC_BASE=http://47.98.162.120 REMOTE_ROOT=/opt/ai-star-eco \
+./infra/scripts/deploy-release.sh ../AIStarEcosystem-release-version-adopt/dist/deploy/20261030-director-version-adopt web-aiavatar
+```
+
+后端：
 
 ```bash
 DEPLOY_HOST=ecs-user@47.98.162.120 SSH_KEY=/Users/donis/dev/aliyun/aiartist.pem \
