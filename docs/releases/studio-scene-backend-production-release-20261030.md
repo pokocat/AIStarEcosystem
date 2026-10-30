@@ -88,7 +88,7 @@
 ## 没有做的
 
 - 运营还没在线上用过场景模板页；线上目前用的是包里自带的场景目录。
-- CI：main 上 web-drama 那条原有测试的修复（PR #134，已全绿）还没合入，所以 #133 / #135 合并后 main 的 frontend-tests 仍会红在那一条。
+- ~~CI：main 上 web-drama 那条原有测试的修复还没合入~~ 已处理：用户确认后合入 PR #134（main `3f013b96f`），在 main 上手动跑 CI（run 40994464471）：backend、frontend-tests、六个 build-and-browser 全部通过。
 
 ## 回滚
 
