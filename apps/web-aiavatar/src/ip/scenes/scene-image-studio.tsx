@@ -21,21 +21,14 @@ import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { useSceneDraftStore } from "./scene-draft-store";
+import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
+import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const POLL_MS = 1500;
 
-function readQuery() {
-  if (typeof window === "undefined") return { scene: undefined, draft: undefined };
-  const q = new URLSearchParams(window.location.search);
-  return { scene: q.get("scene") || undefined, draft: q.get("draft") || undefined };
-}
-function writeQuery(scene: string, draft?: string) {
-  const q = new URLSearchParams({ scene, ...(draft ? { draft } : {}) });
-  window.history.replaceState(window.history.state, "", `/image?${q}`);
-}
+const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/image", scene, draft);
 
 /** 「AI 图片」：选场景 → 放参考图 → 描述已写好 → 生成。草稿是一张普通画布，可以随时去画布里继续。 */
 export function SceneImageStudio() {
@@ -69,6 +62,7 @@ export function SceneImageStudio() {
   const [opening, setOpening] = useState<string>();
   const [live, setLive] = useState<Record<string, IpRun>>({});
   const [viewing, setViewing] = useState<{ url: string; key?: string; name: string }>();
+  const closeViewer = useCallback(() => setViewing(undefined), []);
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
   const imageIds = useMemo(() => new Set(catalog?.image.map(s => s.id) ?? []), [catalog]);
@@ -77,14 +71,27 @@ export function SceneImageStudio() {
   const fileInput = useRef<HTMLInputElement>(null);
   const uploadTarget = useRef(0);
 
+  // 每个场景没提交的输入（补充要求、完整描述、选项、参考图）：换个场景再回来时放回去，不悄悄清空（2026-10-30 复测）。
+  type Unsent = { supplement: string; custom?: string; picked: Record<string, string>; slots: (SceneUpload | undefined)[] };
+  const unsent = useRef(new Map<string, Unsent>());
+  const inputsNow = useRef<Unsent>({ supplement: "", picked: {}, slots: [] });
+  inputsNow.current = { supplement, custom, picked, slots };
+  const sceneNow = useRef<string>(undefined);
   const pickScene = useCallback((next: ImageScene, keepInputs = false) => {
+    const leaving = sceneNow.current, now = inputsNow.current;
+    if (leaving && leaving !== next.id) {
+      if (now.supplement.trim() || now.custom !== undefined || Object.keys(now.picked).length || now.slots.some(Boolean)) unsent.current.set(leaving, now);
+      else unsent.current.delete(leaving);
+    }
+    sceneNow.current = next.id;
     setSceneId(next.id);
     setRatio(next.ratio);
     setHint("");
     if (!keepInputs) {
-      setSupplement(""); setCustom(undefined); setPicked({});
-      // 同一位置的参考图跟着走（换个人物场景时照片不用重放），多出来的位丢掉。
-      setSlots(old => next.refs.map((_, i) => old[i]));
+      const back = unsent.current.get(next.id);
+      setSupplement(back?.supplement ?? ""); setCustom(back?.custom); setPicked(back?.picked ?? {});
+      // 回到填过的场景放回当时的参考图；没填过的，同一位置的参考图跟着走（换个人物场景时照片不用重放），多出来的位丢掉。
+      setSlots(old => back ? next.refs.map((_, i) => back.slots[i]) : next.refs.map((_, i) => old[i]));
     }
     writeQuery(next.id, draftRef.current?.id);
   }, []);
@@ -95,8 +102,10 @@ export function SceneImageStudio() {
     return shown;
   }, [show]);
 
+  const openingId = useRef<string>(undefined);
   const openDraft = useCallback(async (id: string) => {
     const ticket = begin();
+    openingId.current = id;
     setOpening(id);
     try {
       await settled(id);
@@ -105,27 +114,28 @@ export function SceneImageStudio() {
       const from = findImageScene(catalogRef.current, project.sceneId);
       const latest = imageRows(project.doc)[0];
       // 接着上次做：场景、比例和那次用的参考图都放回来，再生成一次就是一下的事。
-      if (from) { setSceneId(from.id); setRatio(latest?.metadata?.studio?.request?.aspectRatio || from.ratio);
+      if (from) { sceneNow.current = from.id; setSceneId(from.id); setRatio(latest?.metadata?.studio?.request?.aspectRatio || from.ratio);
         const used = latest ? rowUploads(project.doc, latest) : [];
         setSlots(from.refs.map((_, i) => used[i])); }
       setSupplement(""); setCustom(undefined); setTab(latest ? "results" : "example");
       writeQuery(from?.id ?? FREE_SCENE_ID, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
-    finally { setOpening(o => o === id ? undefined : o); }
+    finally { setOpening(o => o === id ? undefined : o); if (openingId.current === id) openingId.current = undefined; }
   }, [begin, settled, showDraft, onPage, showFailure]);
 
-  // 地址栏里的场景 / 草稿：首页卡片和「最近」都靠它直达。进页面时读一次存下来 ——
-  // 登录状态晚一拍才就绪，先同步场景会把地址里的草稿号写掉，之后就再也读不到了。
-  const entry = useRef(readQuery());
+  // 地址栏里的场景 / 草稿（首页卡片、「最近」、前进后退都靠它，见 scene-query.ts）。
+  // 带草稿号就打开那份（登录就绪后）；没有草稿号就到那个场景，页面上开着别的草稿时先离开它。
+  const query = useSceneQuery();
   useEffect(() => {
-    if (catalog) pickScene(findImageScene(catalog, entry.current.scene) ?? findImageScene(catalog, FREE_SCENE_ID)!);
-  }, [catalog, pickScene]);
-  useEffect(() => {
-    const id = entry.current.draft;
-    if (!ready || !catalog || !id) return;
-    entry.current = { ...entry.current, draft: undefined };
-    void openDraft(id);
-  }, [ready, catalog, openDraft]);
+    if (!catalog) return;
+    if (query.draft) {
+      if (ready && query.draft !== draftRef.current?.id && query.draft !== openingId.current) void openDraft(query.draft);
+      return;
+    }
+    if (draftRef.current) showDraft(undefined, begin());
+    const next = findImageScene(catalog, query.scene) ?? findImageScene(catalog, FREE_SCENE_ID)!;
+    if (next.id !== sceneNow.current) pickScene(next);
+  }, [catalog, ready, query.scene, query.draft, openDraft, pickScene, showDraft, begin, draftRef]);
 
   useEffect(() => {
     if (!ready) return;
@@ -375,10 +385,7 @@ export function SceneImageStudio() {
         const index = picking;
         setSlots(old => { const next = [...old]; next[index] = { key: image.data.storageKey!, url: image.data.dataUrl, name: image.title }; return next; });
       }}/></div>}
-    {viewing && <div className="scene-viewer" role="dialog" aria-modal="true" aria-label="查看大图" onClick={() => setViewing(undefined)}>
-      <img src={viewing.url} alt={viewing.name} onClick={e => e.stopPropagation()}/>
-      <div onClick={e => e.stopPropagation()}><button type="button" onClick={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}><Download size={16}/>下载</button><button type="button" onClick={() => setViewing(undefined)}><X size={16}/>关闭</button></div>
-    </div>}
+    {viewing && <SceneViewer url={viewing.url} name={viewing.name} onClose={closeViewer} onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
     <HubTabBar/>
   </main>;
 }

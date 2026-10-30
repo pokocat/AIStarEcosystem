@@ -172,6 +172,10 @@ src/
 
 ## 版本日志
 
+### 场景页界面复测修复（2026-10-30）
+
+AI 视频输入栏选视频生成模型（`doc.sceneVideoModel`）、两层布局；场景页地址参数改用 `useSearchParams`（`src/ip/scenes/scene-query.ts`）；看大图用 `src/ip/dialog-focus.ts`；项目卡片回场景继续；手机场景列表「当前」按钮。见 `docs/studio-scene-creation.md` §11。
+
 ### 场景页复核修复（2026-10-30）
 
 `/` 已登录新版也挂左侧导航；导航字重 400；首页标题「声量引擎」；场景页草稿保存按草稿绑定（`src/ip/scenes/scene-draft-store.ts`）；AI 视频素材选中状态记进 `doc.sceneInputs`；编导可选写脚本模型（`doc.sceneDirectorModel`）。见 `docs/studio-scene-creation.md` §11。

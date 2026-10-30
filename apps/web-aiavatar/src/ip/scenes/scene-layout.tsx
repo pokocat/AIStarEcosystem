@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil } from "lucide-react";
+import { ChevronRight, Download, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil, X } from "lucide-react";
+import { dialogFocus } from "../dialog-focus";
 import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import { formatDateTime } from "@/lib/datetime";
 import { sceneCover } from "./scene-catalog";
@@ -30,19 +31,23 @@ export function SceneList({ heading, groups, current, onPick, top }: {
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const body = useRef<HTMLDivElement>(null);
-  // 从首页卡片直达某个场景时，列表里把它滚到看得见的地方（只滚列表自己，不动整页）。
-  useEffect(() => {
+  /** 把当前场景滚到看得见的地方（只滚列表自己，不动整页）。 */
+  const reveal = useCallback(() => {
     const list = body.current, picked = list?.querySelector<HTMLElement>('button[aria-current="true"]');
     if (!list || !picked) return;
     const box = list.getBoundingClientRect(), at = picked.getBoundingClientRect();
     if (at.top < box.top || at.bottom > box.bottom) list.scrollTop += at.top - box.top - 48;
     if (at.left < box.left || at.right > box.right) list.scrollLeft += at.left - box.left - 24;
-  }, [current, collapsed]);
+  }, []);
+  // 从首页卡片直达某个场景、或换了场景时滚过去。
+  useEffect(reveal, [current, collapsed, reveal]);
+  // 手机上列表是横着一排，划走之后靠标题旁的「当前」按钮找回来（2026-10-30 复测）。
+  const currentTitle = [top, ...groups.flatMap(g => g.items)].find(s => s?.id === current)?.title;
   const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} onClick={() => onPick(s.id)} aria-label={s.title} title={s.description}>
     <SceneThumb id={s.id} title={s.title} cover={s.coverUrl}/><span><strong>{s.title}</strong><small>{s.description}</small></span>
   </button></li>;
   return <aside className={`scene-list${collapsed ? " is-collapsed" : ""}`} aria-label={`${heading}场景`}>
-    <header><h1>{heading}</h1><button type="button" className="scene-icon-button" aria-label={collapsed ? "展开场景列表" : "收起场景列表"} onClick={() => setCollapsed(v => !v)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></header>
+    <header><h1>{heading}</h1>{currentTitle && <button type="button" className="scene-list-current" onClick={reveal} aria-label={`回到当前场景：${currentTitle}`}>当前：{currentTitle}</button>}<button type="button" className="scene-icon-button" aria-label={collapsed ? "展开场景列表" : "收起场景列表"} onClick={() => setCollapsed(v => !v)}>{collapsed ? <PanelLeftOpen size={18}/> : <PanelLeftClose size={18}/>}</button></header>
     {!collapsed && <div className="scene-list-body" ref={body}>
       {top && <ul className="scene-list-top">{item(top)}</ul>}
       {groups.map(g => <section key={g.id}><h2>{g.title}</h2><ul>{g.items.map(item)}</ul></section>)}
@@ -134,4 +139,23 @@ export function SceneOptions({ groups, value, onPick }: {
 export function sceneOptionValues(groups: StudioSceneOptionGroup[] | null | undefined, value: Record<string, string>): Record<string, string> | undefined {
   if (!groups?.length) return undefined;
   return Object.fromEntries(groups.map(g => [g.key, value[g.key] ?? g.defaultValue]));
+}
+
+/**
+ * 看大图（2026-10-30 复测：Esc 关不掉，Tab 会跑到后面的页面上）。
+ * 打开时焦点进来、Tab 在里面循环、关掉还给原来的按钮（dialogFocus，和导演台同一份）；Esc 和点暗处都关。
+ */
+export function SceneViewer({ url, name, onDownload, onClose }: { url: string; name: string; onDownload: () => void; onClose: () => void }) {
+  useEffect(() => {
+    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); onClose(); } };
+    document.addEventListener("keydown", escape);
+    return () => document.removeEventListener("keydown", escape);
+  }, [onClose]);
+  return <div className="scene-viewer" role="dialog" aria-modal="true" aria-label="查看大图" ref={dialogFocus} tabIndex={-1} onClick={onClose}>
+    <img src={url} alt={name} onClick={e => e.stopPropagation()}/>
+    <div onClick={e => e.stopPropagation()}>
+      <button type="button" onClick={onDownload}><Download size={16}/>下载</button>
+      <button type="button" onClick={onClose}><X size={16}/>关闭</button>
+    </div>
+  </div>;
 }

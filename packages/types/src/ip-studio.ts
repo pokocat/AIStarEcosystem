@@ -84,8 +84,8 @@ export interface IpProjectDoc {
    * 画布上的素材节点是历史（旧结果还引用它们），选中哪份以这里为准；没有这个字段的老草稿按节点推断。
    */
   sceneInputs?: StudioSceneInputs;
-  /** AI 视频页编导写脚本 / 改稿选的文字模型（接入端点 id）；重开草稿时还原。已受理的任务按各自请求里的模型，不看这里。 */
-  sceneDirectorModel?: string;
+  /** AI 视频页选的视频生成模型（接入端点 id）：时长、清晰度、能用的素材和出片报价都跟着它；重开草稿时还原。已受理的任务按各自请求，不看这里。 */
+  sceneVideoModel?: string;
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;
