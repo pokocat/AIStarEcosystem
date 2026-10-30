@@ -11652,7 +11652,7 @@ paths:
     delete:
       tags: [admin]
       operationId: adminResetStudioScenes
-      description: '恢复随包的默认目录（删除平台配置）。已上传的文件不删。'
+      description: '恢复随包的默认目录：平台配置写成 {"builtIn": true}、版本号加一（不删行，版本号不回到 0，恢复前打开的页面再保存会 409）。已上传的文件不删。'
       parameters: [{ in: query, name: baseVersion, schema: { type: integer } }]
       responses: { '200': { description: 'ApiResponse<同 GET>' }, '409': { description: STUDIO_SCENE_CATALOG_STALE } }
   /admin/studio/scenes/media:

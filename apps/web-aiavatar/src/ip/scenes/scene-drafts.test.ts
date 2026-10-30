@@ -1,8 +1,8 @@
-import { expect, test, vi } from "vitest";
+import { describe, expect, it, test, vi } from "vitest";
 const api = vi.hoisted(() => ({ listProjects: vi.fn() }));
 vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { addImageRow, addScriptNode, addVideoRow, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows } from "./scene-drafts";
+import { addImageRow, addScriptNode, addVideoRow, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -107,4 +107,34 @@ test("按脚本出的视频挂在脚本右边，脚本和参考素材连进来�
   const again = resubmitRow(b.doc, a.nodeId)!;
   expect(again.request).toEqual({ ...a.request, clientRequestId: again.request.clientRequestId });
   expect(again.request.clientRequestId).not.toBe(a.request.clientRequestId);
+});
+
+// 视频页的素材格子（2026-10-30 复核：移除 / 更换只改了页面，重开又是旧素材）。
+describe("scene inputs", () => {
+  const media = (id: string, type: string, title: string, key: string, y = 100) => ({ id, type, title, position: { x: 100, y }, width: 100, height: 100,
+    metadata: { storageKey: key, content: `https://cdn/${key}`, origin: "upload", status: "success" } });
+  const legacy = { nodes: [media("v1", "audio", "声音样本", "old.mp3"), media("v2", "audio", "声音样本", "new.mp3"),
+    media("r1", "video", "参考视频", "first.mp4"), media("r2", "video", "参考视频", "second.mp4"),
+    media("i1", "image", "商品图 1", "a.jpg", 100), media("i2", "image", "商品图 2", "b.jpg", 400)] as never[], connections: [], viewport: { x: 0, y: 0, k: 1 } };
+
+  it("an old draft without a record takes the newest voice and reference video, and the uploaded pictures in order", () => {
+    expect(sceneInputsOf(legacy)).toEqual({ images: ["a.jpg", "b.jpg"], character: null, voice: "new.mp3", video: "second.mp4" });
+  });
+  it("a script written by a model that cannot read pictures recorded none, so the uploaded pictures still come back", () => {
+    const script = addScriptNode(legacy, { ask: "a", revision: false, prompt: "p", materialIds: ["i1"], imageIds: [], duration: 15, ratio: "9:16", language: "中文" });
+    expect(sceneInputsOf(script.doc).images).toEqual(["a.jpg", "b.jpg"]);
+  });
+  it("removing a slot records it as empty, and the record wins over the nodes on the canvas", () => {
+    const removed = withSceneInput(legacy, "voice", "new.mp3", "remove");
+    expect(removed.sceneInputs?.voice).toBeNull();
+    expect(removed.nodes).toHaveLength(legacy.nodes.length);
+    expect(sceneInputsOf(removed).voice).toBeNull();
+    expect(sceneInputsOf(withSceneInput(removed, "voice", "old.mp3", "add")).voice).toBe("old.mp3");
+  });
+  it("pictures are added at the end without duplicates and removed one at a time", () => {
+    const added = withSceneInput(withSceneInput(legacy, "image", "c.jpg", "add"), "image", "a.jpg", "add");
+    expect(added.sceneInputs?.images).toEqual(["b.jpg", "c.jpg", "a.jpg"]);
+    expect(withSceneInput(added, "image", "c.jpg", "remove").sceneInputs?.images).toEqual(["b.jpg", "a.jpg"]);
+    expect(withSceneInput(legacy, "image", "z.jpg", "add", 2).sceneInputs?.images).toEqual(["a.jpg", "b.jpg"]);
+  });
 });

@@ -1,5 +1,5 @@
 import { nanoid } from "nanoid";
-import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun } from "@ai-star-eco/types";
+import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun, StudioSceneInputs } from "@ai-star-eco/types";
 import type { StudioReference, StudioRunRequest, StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRunToDocument, makeStudioNode } from "@/canvas-bridge/studio-nodes";
@@ -162,4 +162,36 @@ export function resubmitRow(doc: IpProjectDoc, nodeId: string): { doc: IpProject
   const next = patchNode(doc, nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "loading", errorDetails: undefined, errorCode: undefined, errorLogId: undefined,
     studio: { ...n.metadata!.studio!, request, runId: undefined, task: undefined } } }));
   return { doc: next, request };
+}
+
+export type SceneInputKind = "image" | "character" | "voice" | "video";
+
+/**
+ * AI 视频页当前选中的素材（文件 key）。存过就用存的（清空的格子是 null）；老草稿没存过，按画布上的素材推断：
+ * 写过脚本按最新一版看过的图，没写过（或那一版的模型不看图）按上传过的图；声音、参考视频取**最新**上传的那份（换过就是换后的）。
+ */
+export function sceneInputsOf(doc: IpProjectDoc): StudioSceneInputs {
+  if (doc.sceneInputs) return doc.sceneInputs;
+  const nodes = doc.nodes as CanvasNodeData[];
+  const latest = scriptNodes(doc).at(-1);
+  // 最近一版脚本看过的图（只有看图的模型才记）；没记就按上传过的图。
+  const seen = (latest?.metadata?.studio?.request?.contextNodeIds ?? []).flatMap(id => nodes.filter(n => n.id === id));
+  const used = seen.length ? seen : nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.origin === "upload").sort((a, b) => a.position.y - b.position.y);
+  const key = (n?: CanvasNodeData) => n?.metadata?.storageKey ?? null;
+  const newest = (type: CanvasNodeType, title: string) => [...nodes].reverse().find(n => n.type === type && n.title === title);
+  return {
+    images: used.filter(n => n.title !== "出镜人物").flatMap(n => key(n) ? [key(n)!] : []),
+    character: key(used.find(n => n.title === "出镜人物")),
+    voice: key(newest(CanvasNodeType.Audio, "声音样本")),
+    video: key(newest(CanvasNodeType.Video, "参考视频")),
+  };
+}
+
+/** 放进 / 移除一格素材，记进草稿文档；画布上的素材节点不删（旧结果还引用它们）。 */
+export function withSceneInput(doc: IpProjectDoc, kind: SceneInputKind, key: string, change: "add" | "remove", maxImages = 6): IpProjectDoc {
+  const now = sceneInputsOf(doc);
+  const next: StudioSceneInputs = { ...now, images: [...now.images] };
+  if (kind === "image") next.images = change === "remove" ? now.images.filter(k => k !== key) : [...now.images.filter(k => k !== key), key].slice(0, maxImages);
+  else next[kind] = change === "remove" ? (now[kind] === key ? null : now[kind]) : key;
+  return { ...doc, sceneInputs: next };
 }

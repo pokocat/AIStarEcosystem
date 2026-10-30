@@ -71,11 +71,21 @@ export interface IpNode {
 export interface IpConnection { id: string; fromNodeId: string; toNodeId: string }
 
 /** 画布文档 —— **客户端拥有**：服务端整存整取、不改内容。 */
+/** AI 视频页的素材格子（见 IpProjectDoc.sceneInputs）。 */
+export interface StudioSceneInputs { images: string[]; character: string | null; voice: string | null; video: string | null }
+
 export interface IpProjectDoc {
   /** Explicit organization preference for newly created assets; never a project identity. */
   libraryFolderId?: string;
   /** Assistant records are project history, never canvas nodes or edges. */
   assistantConversations?: IpNode[];
+  /**
+   * AI 视频页当前选中的素材，按文件存储 key 记；null 是这一格清空了。
+   * 画布上的素材节点是历史（旧结果还引用它们），选中哪份以这里为准；没有这个字段的老草稿按节点推断。
+   */
+  sceneInputs?: StudioSceneInputs;
+  /** AI 视频页编导写脚本 / 改稿选的文字模型（接入端点 id）；重开草稿时还原。已受理的任务按各自请求里的模型，不看这里。 */
+  sceneDirectorModel?: string;
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;
