@@ -9,10 +9,13 @@ vi.mock("@/proto/api", () => ({ USE_MOCK: false, auth: { isAuthed: () => true, l
 vi.mock("./account-workspace", () => ({ useStudioHash: () => state.hash }));
 vi.mock("./layout-mode", () => ({ setLayout: vi.fn() }));
 vi.mock("./wallet-badge", () => ({ WalletBadge: () => null }));
+const ui = vi.hoisted(() => ({ set: vi.fn() }));
+vi.mock("./ui-version", async original => ({ ...await original<typeof import("./ui-version")>(), setUiVersion: ui.set }));
 import { DesktopTopBar } from "./desktop-top-bar";
 
 beforeEach(() => { state.pathname = "/me"; state.hash = ""; });
-afterEach(cleanup);
+afterEach(() => { cleanup(); ui.set.mockClear(); document.documentElement.removeAttribute("data-ui"); });
+const useNext = () => document.documentElement.setAttribute("data-ui", "next");
 function openMenu() {
   const details = screen.getByLabelText("测试账号，打开账号菜单").closest("details")!;
   details.open = true;
@@ -51,7 +54,16 @@ test.each(["pathname", "hash"] as const)("navigation via %s closes an open menu"
   expect(menu.open).toBe(false);
 });
 
-test("the rail leads with the scene pages; 灵感 lives on Home and Projects owns its own state", () => {
+test("new version: 回到旧版 in the account menu switches back", () => {
+  useNext();
+  render(<DesktopTopBar/>);
+  openMenu();
+  fireEvent.click(screen.getByRole("button", {name:"回到旧版"}));
+  expect(ui.set).toHaveBeenCalledWith("classic");
+});
+
+test("new version: the rail leads with the scene pages; 灵感 lives on Home and Projects owns its own state", () => {
+  useNext();
   state.pathname = "/projects";
   const view = render(<DesktopTopBar/>);
   const nav = within(screen.getByRole("navigation", {name:"主导航"}));

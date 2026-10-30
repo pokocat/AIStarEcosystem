@@ -4,7 +4,11 @@
 >
 > 索引参考 `docs/INDEX.md`；操作规则（硬规则 / SOP / 约定 / 文档同步纪律）仍在 [`AGENTS.md`](../AGENTS.md) / `CLAUDE.md`。
 
-### Studio 场景化首页与 AI 图片 / AI 视频 · 2026-10-29 · 本地，未发布（仅 web-aiavatar）
+### Studio 新版 / 旧版开关 · 2026-10-30（仅 web-aiavatar）
+
+场景化改版的后端已于 2026-10-30 上线（`20261030-studio-scene-backend`）。前端不另开预览域名，改为正式站默认旧版（改版前那一版原样保留），隐藏链接 `?ui=new` 进新版，新版账号菜单 /「我的」里「回到旧版」（或 `?ui=old`）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前写好；分新旧的只有导航、首页、手机首页场景卡片和对话框提示。见 `docs/studio-scene-creation.md` §10。
+
+### Studio 场景化首页与 AI 图片 / AI 视频 · 2026-10-29 · 后端 2026-10-30 已上线，前端按新版开关发布（仅 web-aiavatar）
 
 背景：原 Studio 是一排工具，传统老板看不懂。参考茂隆掌柜 AI（对照登录后的页面）的布局与产品逻辑重做入口：
 - 登录后桌面导航从顶栏改为左侧一列图标 + 文字（`DesktopTopBar` 非公开分支 `desktop-rail`）；`body.has-desktop-bar` 改为左侧让位，`--desktop-bar-h` 在 body 上改为 12px，吸顶页面不用改。

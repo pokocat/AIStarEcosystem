@@ -1,9 +1,9 @@
 /* 场景化创作（AI 图片 / AI 视频）与登录后的左侧导航栏。真源 docs/studio-scene-creation.md。 */
 
-/* ── 左侧导航栏：替代登录后的顶栏，页面整体右移 ───────────────────────────── */
+/* ── 左侧导航栏：新版替代登录后的顶栏，页面整体右移（旧版不动，见 shell/ui-version.ts）──────── */
 html[data-layout="desktop"] { --desktop-rail-w: 76px; }
-html[data-layout="desktop"] body.has-desktop-bar { --desktop-bar-h: 12px; padding-top: 12px; padding-left: calc(var(--desktop-rail-w) + 12px); }
-html[data-layout="desktop"] body.has-desktop-bar .app-root { left: calc(var(--desktop-rail-w) + 12px); }
+html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar { --desktop-bar-h: 12px; padding-top: 12px; padding-left: calc(var(--desktop-rail-w) + 12px); }
+html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar .app-root { left: calc(var(--desktop-rail-w) + 12px); }
 html[data-layout="desktop"] .desktop-top-bar.desktop-rail.ip-brand-surface {
   position: fixed; top: 12px; left: 12px; bottom: 12px; right: auto; z-index: 60;
   width: var(--desktop-rail-w); height: auto; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0 12px;

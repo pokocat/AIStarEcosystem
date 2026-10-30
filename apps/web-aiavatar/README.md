@@ -172,7 +172,11 @@ src/
 
 ## 版本日志
 
-### 场景化首页与 AI 图片 / AI 视频（2026-10-29，本地未发布）
+### 新版 / 旧版开关（2026-10-30）
+
+场景化改版先不给所有人：正式站默认旧版（改版前那一版），地址加 `?ui=new` 进新版，新版账号菜单和「我的」里能「回到旧版」（或 `?ui=old`）。选择存浏览器 `aiavatar_ui`，`<html data-ui="next">` 首帧前由 `layout.tsx` 写好，见 `src/shell/ui-version.ts` 与 `docs/studio-scene-creation.md` §10。分新旧的只有导航、首页、手机首页场景卡片和对话框提示；旧版首页原样留在 `ip-home-classic.tsx`，全部切到新版后删掉。
+
+### 场景化首页与 AI 图片 / AI 视频（2026-10-29；后端 2026-10-30 已上线，前端按新版开关发布）
 
 参考茂隆掌柜 AI 的布局：登录后桌面改为左侧导航栏；首页加常用工具、「你想做什么？」目标卡，灵感（模板与案例）搬到首页；场景目录和拼话在服务端（`GET /api/v1/ip-studio/scenes`、`POST /api/v1/ip-studio/scenes/compose`，草稿记 `sceneId`），前端不存场景数据；新增 `/image`（17 个场景一步出图，只显示场景标签和补充要求，草稿即画布）与 `/video`（21 个场景照参考站「超级编导」：编导看素材写分镜脚本、可改稿，「用这个脚本生成」后选模型时长确认出片；复刻和长片交给创作助手）；场景、选项组和首页卡片由 Studio 运营后台（`studio-admin`）「场景模板」配置，封面优先用运营上传的，首页卡片读公开接口 `GET /api/v1/ip-studio/scenes/home`；灵感做成瀑布流图片墙；`/scenes` 转 `/video`。代码在 `src/ip/scenes/`，样式 `studio-scenes.css` / `studio-home-scenes.css`，内置封面 `public/studio/scene-covers/`。真源 `docs/studio-scene-creation.md`。
 

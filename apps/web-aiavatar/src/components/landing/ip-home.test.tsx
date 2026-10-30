@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { IpHome } from './ip-home';
 
 const api = vi.hoisted(() => ({ authed: false, create: vi.fn(), push: vi.fn(), newCanvas: vi.fn(), projects: vi.fn(async (): Promise<unknown[]> => []),
@@ -17,7 +17,9 @@ vi.mock('@/shell/desktop-top-bar', () => ({ DesktopTopBar: () => null }));
 vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects, listTemplates: api.templates, listDemoExamples: api.examples, sceneHomeCards: api.cards } }));
 vi.mock('@/ip/studio-entry', () => ({ createStudioEntry: api.create, studioEntryHref: vi.fn(), startNewCanvas: api.newCanvas }));
 vi.mock('@/ip/studio-template-use', () => ({ StudioTemplateUse: ({ template }: { template: { name: string } }) => <div role="dialog" aria-label={`预览 ${template.name}`}/> }));
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+// 这个文件测新版首页（`?ui=new` 之后）；默认的旧版首页见 ip-home-classic.test.tsx。
+beforeEach(() => { document.documentElement.setAttribute('data-ui', 'next'); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); document.documentElement.removeAttribute('data-ui'); });
 
 test('a signed-out visitor who starts a conversation is sent to sign in; nothing is created', async () => {
   api.authed = false;

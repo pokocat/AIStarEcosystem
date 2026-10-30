@@ -15,6 +15,7 @@
 - [ ] 场景封面（`public/studio/scene-covers/*.webp`）是 AI 生成的示意图，运营有真实作品后按同名文件替换。
 - [x] ~~AI 视频改成参考站「超级编导」的出片方式~~ **2026-10-29 本地实现（未发布）**：本页编导写分镜脚本（普通文字任务，能看图）、可改稿，「用这个脚本生成」选模型时长确认后出片，结果在右侧；复刻和长片仍交给创作助手。真 Qwen 看图写稿、改稿已验，见 `docs/studio-scene-creation.md` §8。
 - [x] ~~两个 AI 入口的场景做成后台可配置~~ **2026-10-29 本地实现（未发布）**：平台配置 `studio.scene-catalog` + Studio 运营后台「运营配置 · 场景模板」（`studio-admin` 的 `/scenes`；按用户要求不放 `apps/admin`；增删改、分组、排序、上下架、封面与示例上传），整份保存带版本号；本地改封面和说明后用户端即时生效已验，见 §9。
+- [ ] **全部切到新版后删掉旧版界面**（2026-10-30 起正式站默认旧版，`?ui=new` 进新版，见 `docs/studio-scene-creation.md` §10）：删 `components/landing/ip-home-classic.tsx`、`studio-navigation.ts` 的旧版列表、`desktop-top-bar.tsx` 的旧版顶栏分支、`studio-conversation-start.tsx` 旧提示，`ui-version.ts` 改成默认新版或整个去掉。
 - [x] ~~**按新出片方式在 H3 上真出一条带参考图的视频**~~ **已验证**，2026-10-29：本地接聚算 H3，新视频页全能参考带 1 张商品图、544p 9:16 5 秒、200 积分，成片里是参考图的商品，从草稿重开显示已完成。见 `docs/releases/studio-scene-creation-local-validation-20261029.md` 末节。
 - [x] ~~场景的「选项组」~~ **2026-10-29 本地实现（未发布）**：目录每个场景可配最多 4 组选项（默认值），场景页点选，`compose` 拼进描述 / 要求；随包给 6 个场景配了；真 Qwen 按「只拍商品」写出无露脸脚本已验，见 §9。
 - [x] ~~首页「你想做什么？」七张卡仍写在前端~~ **2026-10-29 本地实现（未发布）**：卡片进目录 `homeGoals`，Studio 后台「首页卡片」标签编辑，公开只读 `GET /api/v1/ip-studio/scenes/home` 给未登录访客；落点场景下架的卡片不下发。
