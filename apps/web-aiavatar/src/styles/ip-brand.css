@@ -37,6 +37,11 @@
 .ip-brand-button:not(:disabled):hover { background: #323e45; }
 .ip-brand-secondary { background: var(--ip-paper); border: 1px solid var(--ip-line); color: var(--ip-ink); }
 .ip-brand-secondary:hover { background: var(--ip-soft); }
+/* 卡片内的小号次按钮（模型赠款的刷新 / 翻页）。会员页不在 .ip-brand-surface 里，
+   拿不到上面的颜色变量，所以每个颜色都带默认值，禁用态也自己写。 */
+.ip-brand-secondary.is-compact { gap: 6px; min-height: 32px; padding: 5px 12px; font-size: 12px; background: var(--ip-paper, #fff); border: 1px solid var(--ip-line, #e1e4e7); color: var(--ip-ink, #192229); }
+.ip-brand-secondary.is-compact:hover { background: var(--ip-soft, #f6f6f5); }
+.ip-brand-secondary.is-compact:disabled { opacity: .5; cursor: default; background: var(--ip-paper, #fff); }
 .ip-brand-text-button { background: transparent; padding: 4px 0; min-height: 32px; font-size: 13px; }
 .ip-brand-text-button:hover { text-decoration: underline; text-underline-offset: 4px; }
 .ip-loading-icon { animation: ip-brand-spin 1s linear infinite; }

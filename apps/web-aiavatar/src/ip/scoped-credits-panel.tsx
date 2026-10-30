@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RefreshCw } from "lucide-react";
 import { ModelBillingApi } from "@ai-star-eco/api-client";
 import type { ScopedCreditGrant } from "@ai-star-eco/types/model-billing";
 import { useIdentity } from "@/proto/api";
@@ -35,7 +36,7 @@ function ScopedCreditsBody({ enterpriseId }: { enterpriseId?: string }) {
     style={{ margin: "18px 0", padding: 16, border: "1px solid var(--line, #e5e7eb)", borderRadius: 12, background: "var(--surface, #fff)" }}>
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
       <h3 style={{ margin: 0, fontSize: 15 }}>{enterpriseId ? "我的企业模型赠款" : "模型赠款"}</h3>
-      <button type="button" disabled={loading} onClick={() => setRefresh(value => value + 1)} style={{ fontSize: 12 }}>刷新</button>
+      <button type="button" className="ip-brand-secondary is-compact" disabled={loading} onClick={() => setRefresh(value => value + 1)}><RefreshCw size={13} aria-hidden="true" className={loading ? "ip-loading-icon" : undefined} />刷新</button>
     </div>
     <p style={{ color: "var(--ink-3, #666)", fontSize: 12, margin: "8px 0 14px" }}>仅用于指定模型，单独抵扣，不计入上方通用积分。</p>
     {loading ? <p role="status">正在读取额度…</p> : error ? <p role="alert">{error}</p> : rows.length === 0 ? <p style={{ color: "var(--ink-3, #666)", fontSize: 13 }}>还没有模型赠款。</p> :
@@ -54,10 +55,10 @@ function ScopedCreditsBody({ enterpriseId }: { enterpriseId?: string }) {
           </li>;
         })}
       </ul>}
-    {(page > 0 || hasNext) && <nav aria-label="额度分页" style={{ display: "flex", justifyContent: "flex-end", gap: 14, marginTop: 12 }}>
-      <button type="button" disabled={loading || page === 0} onClick={() => setPage(value => value - 1)}>上一页</button>
+    {(page > 0 || hasNext) && <nav aria-label="额度分页" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 12, fontSize: 12 }}>
+      <button type="button" className="ip-brand-secondary is-compact" disabled={loading || page === 0} onClick={() => setPage(value => value - 1)}>上一页</button>
       <span>第 {page + 1} 页</span>
-      <button type="button" disabled={loading || !hasNext} onClick={() => setPage(value => value + 1)}>下一页</button>
+      <button type="button" className="ip-brand-secondary is-compact" disabled={loading || !hasNext} onClick={() => setPage(value => value + 1)}>下一页</button>
     </nav>}
   </section>;
 }
