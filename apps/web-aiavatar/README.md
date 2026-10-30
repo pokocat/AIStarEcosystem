@@ -172,6 +172,10 @@ src/
 
 ## 版本日志
 
+### 场景页创作条件存进草稿（2026-10-31）
+
+AI 图片 / AI 视频的当前条件存进草稿（`doc.sceneImageState` / `doc.sceneVideoState`，`useSceneStateSave`），打开草稿原样放回；每次出图记条件快照（`metadata.studio.sceneImage`），「用这次的设置再做」按快照放回；编导每版记选项；成功视频「按这条再做一版」；换场景只带同名素材位；模型不支持的比例 / 张数 / 时长写明按什么出。见 `docs/studio-scene-creation.md` §15。
+
 ### 场景页界面复测修复（2026-10-30）
 
 AI 视频输入栏选视频生成模型（`doc.sceneVideoModel`）、两层布局；场景页地址参数改用 `useSearchParams`（`src/ip/scenes/scene-query.ts`）；看大图用 `src/ip/dialog-focus.ts`；项目卡片回场景继续；手机场景列表「当前」按钮。见 `docs/studio-scene-creation.md` §11。

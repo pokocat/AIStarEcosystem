@@ -218,6 +218,9 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 | [`docs/audits/face-beauty-research-2026-06.md`](audits/face-beauty-research-2026-06.md) | 形象精调 / 美颜方案调研：浏览器端确定性美颜（已采纳）vs 云 API vs i2i |
 | [`docs/audits/form-control-focus-audit-2026-10.md`](audits/form-control-focus-audit-2026-10.md) | 全仓输入、下拉、文本域与组合控件的重复聚焦框检查：焦点归属修复、74 项组件回归；代码已发布（2026-10-17） |
 | [`docs/audits/ip-studio-ui-audit-2026-10.md`](audits/ip-studio-ui-audit-2026-10.md) | Studio 画布界面与交互审查：区域分离、人物选择统一、三档宽度响应式（2026-10-08，v0.206） |
+| [全部内置生成流程：独立复核与整体方案](audits/studio-built-in-creation-flow-plan-2026-10-30.md) | 对两份 Codex 审查的逐条复核与补充；一份「创作状态」收口、稿件与 H3 对齐、场景目录加 `brief`、接续与验收，按 PR 切好；PR-1 已做（last-reviewed: 2026-10-31） |
+| [全部内置图片与视频生成流程审查](audits/studio-built-in-creation-flow-review-2026-10-30.md) | 全量 38 场景及模板接续的问题清单与 17 个图片场景交付定义；实施顺序以上一份为准（last-reviewed: 2026-10-30） |
+| [场景化创作提示词审查](audits/studio-scene-prompt-review-2026-10-30.md) | 21 个视频场景内容矩阵、团购示例与 H3 格式证据；实施顺序以全量方案为准（last-reviewed: 2026-10-30） |
 | [`docs/audits/studio-commerce-current-page-audit-2026-10.md`](audits/studio-commerce-current-page-audit-2026-10.md) | 线上 Studio 页面与带货分发现状核对，是导航定稿和剧情带货开发任务的依据（2026-10-16） |
 | [`docs/audits/unified-account-referral-astra-review-2026-10.md`](audits/unified-account-referral-astra-review-2026-10.md) | `gpt-6-astra` 对统一账号邀请链 v0.2 方案的独立评审与风险记录；v0.3 未复审（2026-10-17） |
 | [`docs/audits/unified-identity-sop-audit-2026-10.md`](audits/unified-identity-sop-audit-2026-10.md) | 统一认证发布与跨应用 SOP 复核：资料、后台、竞态修复与既有缺口（2026-10-10） |

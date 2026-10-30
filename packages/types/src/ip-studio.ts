@@ -74,6 +74,40 @@ export interface IpConnection { id: string; fromNodeId: string; toNodeId: string
 /** AI 视频页的素材格子（见 IpProjectDoc.sceneInputs）。 */
 export interface StudioSceneInputs { images: string[]; character: string | null; voice: string | null; video: string | null }
 
+/** 场景页一格参考图：只存文件 key 和名字，地址打开时按 key 重签（签名地址会过期，不落库）。 */
+export interface StudioSceneUpload { key: string; name: string }
+
+/**
+ * AI 图片页这份草稿当前的创作条件（还没提交的也在里面）：打开草稿、刷新后按它原样放回去。
+ * 每一次出图另有一份快照（StudioNodeMetadata.sceneImage），「用这次的设置再做」按快照放回。
+ * 想要的比例 / 张数原样记（模型不支持时页面写明实际按什么出），不记被换掉之后的值。
+ */
+export interface StudioSceneImageState {
+  sceneId: string;
+  supplement: string;
+  /** 改过的完整描述；没改为空。不含选项和补充要求，那两样每次由服务端拼。 */
+  custom?: string;
+  options: Record<string, string>;
+  slots: (StudioSceneUpload | null)[];
+  model?: string;
+  ratio?: string;
+  size?: string;
+  count?: number;
+}
+
+/** AI 视频页这份草稿当前的条件：输入框里没发的话、选项、台词语言和出片设置，以及「生成视频」里改了一半的脚本。素材见 sceneInputs，视频模型见 sceneVideoModel。 */
+export interface StudioSceneVideoState {
+  text: string;
+  options: Record<string, string>;
+  language?: string;
+  tier?: string;
+  duration?: number;
+  ratio?: string;
+  optimize?: boolean;
+  /** 停在「生成视频」时：照哪一版脚本、改到了什么样。 */
+  edit?: { scriptId?: string; prompt: string };
+}
+
 export interface IpProjectDoc {
   /** Explicit organization preference for newly created assets; never a project identity. */
   libraryFolderId?: string;
@@ -86,6 +120,10 @@ export interface IpProjectDoc {
   sceneInputs?: StudioSceneInputs;
   /** AI 视频页选的视频生成模型（接入端点 id）：时长、清晰度、能用的素材和出片报价都跟着它；重开草稿时还原。已受理的任务按各自请求，不看这里。 */
   sceneVideoModel?: string;
+  /** AI 图片页的创作条件（见 StudioSceneImageState）。没有这个字段的老草稿按最近一次出图推断。 */
+  sceneImageState?: StudioSceneImageState;
+  /** AI 视频页的创作条件（见 StudioSceneVideoState）。没有这个字段的老草稿按最近一版脚本推断。 */
+  sceneVideoState?: StudioSceneVideoState;
   nodes: IpNode[];
   connections: IpConnection[];
   viewport: IpViewport;

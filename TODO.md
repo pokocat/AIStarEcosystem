@@ -98,6 +98,11 @@
 
 - [ ] **补齐三个系列的正式配置和真实出图验收**（2026-10-25 进展：GPT Image 2 与 GPT Image 2.5〔flare〕的 1K/2K/4K 已配置上线，售价 30/30/40、35/35/45 旧积分，见 `docs/releases/studio-image-tiers-config-20261025.md`；仍缺 sunburst 报价与配置、4K 方图等其他画幅、各档真实出图尺寸验收，界面名「GPT Image 2 / 2.5」在 main `384fb9bb` 待发版）：代码已支持 GPT Image 2 / Flare / Sunburst 按 1K、2K、4K 路由与冻结报价；生产目前只有 GPT Image 2 的 1K/2K、30 积分/张。需核实并配置其余供应商型号、合法输出规格、场景开放及运营确认售价，再逐系列/档位核对前端选择、报价、供应商原图尺寸和唯一积分结算；禁止把代码发布当作真实出图已验收。证据见 `docs/releases/studio-image-resolution-release-20261025.md`。
 
+- [ ] **全部内置图片/视频生成流程顺畅与内容质量**（2026-10-30 审查，未实施）：用户明确同城仅为举例，范围为全部 17 图片/21 视频场景及内置模板接续。**实施顺序与 PR 切分以 [独立复核与整体方案](docs/audits/studio-built-in-creation-flow-plan-2026-10-30.md) 为准**；证据见 [全量流程审查](docs/audits/studio-built-in-creation-flow-review-2026-10-30.md) 与 [提示词证据](docs/audits/studio-scene-prompt-review-2026-10-30.md)。
+  - [x] ~~PR-1 创作条件存进草稿~~ **2026-10-31 本地完成，未发布**：`doc.sceneImageState` / `sceneVideoState` + 出图条件快照 + 编导选项 + 成功视频再做 + 换场景同名带素材 + 比例 / 张数 / 时长不悄悄换；`scene-draft-state.test.tsx` 11 条（10 条在旧代码上红）。见 `docs/studio-scene-creation.md` §15。
+  - [ ] PR-2 结果直接继续（用这张做参考 / 做视频）+ 结果地址过期换签；PR-3 编导按有效素材写、换规格后复核、场景稿接上 H3 镜头与台词格式；PR-4/5 场景目录 `brief` 与 38 场景内容；PR-6 助手接续与配方模板验收。
+  - [ ] 还没有草稿时（第一次生成 / 上传之前）刷新会丢输入；要不要用浏览器本地暂存，等用户决定。
+
 - [ ] **发布模板时区域颜色丢失**（2026-10-25 发现，圈选分组）：画布分组新增 `metadata.groupTone`（`apps/web-aiavatar/src/canvas-bridge/studio-areas.ts`），但服务端 `IpDemoTemplateService` 剥素材时对 group 节点只白名单了 `groupDescription`（约 121 行），存为模板 / 官方内容后区域回到默认色。名字、说明、成员不受影响；要保留颜色需在同处加 `groupTone`（只接受 `slate|blue|teal|green|amber|rose`）。
 
 - [x] ~~视频优化提示文案与控件简化~~ **2026-10-23 完成**：统一「智能优化」开关，沿用已存请求选项与提交映射，输入详情保留结果与缺失状态；定向交互测试随提交记录。
