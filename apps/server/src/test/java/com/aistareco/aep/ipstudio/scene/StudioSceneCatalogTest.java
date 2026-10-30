@@ -4,6 +4,7 @@ import com.aistareco.common.BusinessException;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.stream.Stream;
 import java.util.regex.Pattern;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -87,7 +88,7 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第N镜（起–止 秒）", "旁白说：「", "正好 10 秒", "先看图", "已附图片", StudioSceneCatalog.FACT_RULE);
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第1镜（0–2 秒）：画面……。旁白说：「……」", "括号里只写起止秒数", "正好 10 秒", "先看图", "已附图片", StudioSceneCatalog.FACT_RULE);
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
@@ -117,6 +118,32 @@ class StudioSceneCatalogTest {
         assertThatThrownBy(() -> catalog.compose(onlyPerson)).hasMessage("先放商品图");
     }
 
+    // 2026-10-30 审查 F01–F03：同城团购只有一句拍法，缺价格时还被要求「只引导关注或下单」，团购拍成了探店。
+    @Test
+    void aSceneBriefSaysWhatTheVideoIsForAndWhatToDoWhenRequiredFactsAreMissing() {
+        assertThat(catalog.catalog().video()).allSatisfy(s -> assertThat(s.brief()).as(s.id()).isNotNull());
+        String director = catalog.compose(script("local-groupbuy", "巷里火锅，双人套餐", List.of("门店照片 1"), 15, null)).text();
+        assertThat(director).contains("这一条要做到：让附近的人买下套餐，到店来用", "店名和位置", "团购价", "原价（有原价才做对比）",
+                "正文最前面单独一行写「还缺：……」", "【待补：……】", "结尾：说清怎么买、到哪用").doesNotContain(StudioSceneCatalog.MISSING_DEFAULT);
+        String assistant = catalog.compose(video("local-groupbuy", "巷里火锅", List.of("门店照片 1"), null, 25, "9:16")).text();
+        assertThat(assistant).contains("我没给的先问我").doesNotContain("【待补");
+        // 到店实录不编故事：出镜的人不能写成真实顾客。
+        assertThat(catalog.compose(script("local-visit", "巷里火锅", List.of("门店照片 1"), 15, null)).text()).contains(StudioSceneCatalog.NO_FICTION);
+        assertThat(director).doesNotContain(StudioSceneCatalog.NO_FICTION);
+    }
+
+    @Test
+    void aBriefWithTooManyRequiredFactsIsRefused() {
+        var c = catalog.builtIn();
+        var s = c.video().get(0);
+        var f = new StudioSceneCatalog.Fact("一条", true, null);
+        var tooMany = new StudioSceneCatalog.VideoScene(s.id(), s.group(), s.title(), s.description(), s.images(), s.video(), s.character(), s.voice(), s.placeholder(),
+                s.textRequired(), s.durations(), s.duration(), s.ratio(), s.structure(), s.ideas(), s.skill(), s.options(), s.enabled(), null, null, null, null,
+                new StudioSceneCatalog.Brief("目标", List.of(f, f, f, f, f), null, "story"));
+        var bad = c.with(c.image(), java.util.stream.Stream.concat(Stream.of(tooMany), c.video().stream().skip(1)).toList(), c.goals());
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(bad)).hasMessageContaining("必须给的信息最多 4 条");
+    }
+
     // 2026-10-30 线上验收：品牌故事首稿编了品牌年限、耐用测试次数和测试画面，summary 还说没写功效。
     @Test
     void bothVideoBriefsForbidInventedBrandYearsTestCountsAndSalesButKeepWhatTheUserGave() {
@@ -140,6 +167,11 @@ class StudioSceneCatalogTest {
             List<String> sent = new java.util.ArrayList<>(scene.ideas());
             sent.add(scene.structure());
             scene.optionGroups().forEach(g -> g.choices().forEach(o -> sent.add(o.prompt())));
+            if (scene.brief() != null) {
+                sent.add(scene.brief().goal()); sent.add(scene.brief().ending());
+                scene.brief().factList().forEach(f -> { sent.add(f.label()); sent.add(f.use()); });
+            }
+            sent.removeIf(java.util.Objects::isNull);
             for (String text : sent) assertThat(INVITES_FACTS.matcher(text).find()).as(scene.id() + "：" + text).isFalse();
         }
         assertThat(catalog.video("brand-story").orElseThrow().structure()).contains("没给就讲一位用户的故事");

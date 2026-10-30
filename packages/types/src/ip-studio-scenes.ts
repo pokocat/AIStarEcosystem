@@ -43,6 +43,17 @@ export interface StudioImageScene extends StudioSceneMediaFields {
   ratio: string;
 }
 export interface StudioSceneSlot { label: string; required: boolean; max?: number | null }
+/** 这类视频要做到什么、要用户给哪些信息（服务端拼进编导和助手的要求；场景页把信息做成可点的小标签）。 */
+export interface StudioSceneBrief {
+  /** 这一条要让看的人做什么，一句话。 */
+  goal: string;
+  /** 要用户给的信息；required 的没给，编导先写「还缺：……」并用【待补：……】占位。use 是怎么用（「有原价才做对比」）。 */
+  facts: { label: string; required: boolean; use?: string | null }[];
+  /** 结尾要观众做什么。 */
+  ending?: string | null;
+  /** none = 只用用户给的，不编人物经历；story = 可以编人物和情节，不能编品牌事实（缺省）。 */
+  fiction?: "none" | "story" | null;
+}
 export interface StudioVideoScene extends StudioSceneMediaFields {
   id: string; group: string; title: string; description: string;
   images: StudioSceneSlot; video?: StudioSceneSlot | null; character: boolean; voice: boolean;
@@ -57,6 +68,8 @@ export interface StudioVideoScene extends StudioSceneMediaFields {
   ideas: string[];
   /** 交给助手时用的方法（技能 key）；`reference-video-recreation`（爆款复刻）要先拉片，只走助手。 */
   skill: string;
+  /** 运营后加的老场景可能没有。 */
+  brief?: StudioSceneBrief | null;
 }
 export interface StudioSceneCatalog {
   version: number;

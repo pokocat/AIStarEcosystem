@@ -381,4 +381,22 @@ class H3PromptRewriteTest {
         assertNull(old.request().starts());
         assertFalse(old.request().codeLines());
     }
+
+    // 2026-10-31 本地真 Agnes 2.5 Flash 照场景编导的要求写出的团购脚本（【待补】已按用户补充填上）：镜头和台词都要认得出来。
+    @Test
+    void aRealDirectorScriptFromAgnesIsParsed() {
+        String script = """
+                第1镜（0–1秒）：画面。万达东门旁一条巷子里，巷口招牌亮着「巷里火锅」，镜头切到桌上双人牛肉套餐。旁白说：「万达东门旁边，巷里火锅，双人牛肉套餐，团购价九十九。」
+
+                第2镜（1–2.5秒）：画面。近景拍清套餐里的一样样东西：一份牛肉、两份蔬菜、两杯饮品依次入镜。旁白说：「牛肉一份、蔬菜两份、饮品两杯。」
+
+                第3镜（2.5–4秒）：画面。手机屏幕展示购买页或门店门脸，手指点击，画面指向万达东门方向。旁白说：「点本视频团购，到店用。」
+                """;
+        var built = com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(script, 4,
+                new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v", "720p", null, null, null, List.of(), null), null);
+        assertEquals(List.of(0.0, 1.0, 2.5), built.request().starts());
+        assertTrue(built.request().codeLines());
+        assertEquals(3, built.request().source().lines().size());
+        assertEquals("点本视频团购，到店用。", built.request().source().lines().get(2).text());
+    }
 }

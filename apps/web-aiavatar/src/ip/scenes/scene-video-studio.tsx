@@ -30,6 +30,7 @@ import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
+import { missingFigures, scriptMissing, scriptPlaceholders } from "./scene-script-check";
 
 type Media = StudioMediaImportResult & { title: string };
 type Slot = "image" | "character" | "voice" | "video";
@@ -471,7 +472,14 @@ export function SceneVideoStudio() {
   };
 
   // ── 按脚本出片 ────────────────────────────────────────────────────────
-  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(row.metadata?.content || ""); setMode("generate"); setHint(""); };
+  // 「还缺：……」那一行是编导写给你看的，不是脚本：拿去出片时去掉。
+  const addFact = (label: string) => {
+    const line = `${label}：`;
+    setText(old => old.includes(line) ? old : old.trim() ? `${old.replace(/\s+$/, "")}\n${line}` : line);
+    setHint("");
+    setTimeout(() => { const el = input.current; if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }, 0);
+  };
+  const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(scriptMissing(row.metadata?.content || "").body); setMode("generate"); setHint(""); };
   /**
    * 重新编辑（成功的视频）：成功了但不满意时用。把这条用的脚本（含出片前改过的字）、时长、画面、清晰度、模型和要不要先优化放回「生成视频」，
    * 改一处再出；旧的这条留着。素材用现在放着的（编辑器里列着会用上哪几份）。
@@ -543,7 +551,10 @@ export function SceneVideoStudio() {
     void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`);
   };
 
+  // 编导留了【待补】的地方没填，出出来就是一句「待补」或者模型自己编一个价：先拦下。
+  const blanks = scriptPlaceholders(prompt);
   const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
+    || (blanks.length ? `脚本里还有【待补】没填：${blanks.join("、")}` : "")
     || (settings ? studioVideoError(chosenVideo, settings, prompt, ratio, usedDuration) : "请重新选择清晰度") || "";
 
   const generate = async () => {
@@ -622,7 +633,8 @@ export function SceneVideoStudio() {
             <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea}
               onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
           </div>
-          : scripts.map(row => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+          : scripts.map((row, i) => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
+              given={scripts.slice(0, i + 1).map(s => s.metadata?.studio?.sceneDirector?.ask ?? "")}
               copied={copied === row.id} onUse={() => useScript(row)} onRevise={() => { setMode("talk"); input.current?.focus(); }} onCopy={() => void copy(row)}
               onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
               onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止", error: e })); }}/>)}
@@ -643,6 +655,10 @@ export function SceneVideoStudio() {
           <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
         </div>
         <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
+        {/* 这类视频要写清的信息（场景的 brief）：点一下在输入框里起一行「店名和位置：」，接着写就行，不用填表。 */}
+        {!recreation && !!scene.brief?.facts.length && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息"><span>写清楚</span>
+          {scene.brief.facts.map(f => <button key={f.label} type="button" title={f.use ?? undefined} onClick={() => addFact(f.label)}>
+            {f.label}{!f.required && <small>有就写</small>}</button>)}</div>}
         <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
           placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
@@ -713,11 +729,15 @@ function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "vide
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */
-function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop }: {
+function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevise, onCopy, onRetry, onConfirm, onStop, given }: {
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; latest: boolean; copied: boolean;
   onUse: () => void; onRevise: () => void; onCopy: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+  /** 到这一版为止用户说过的话（第一句和每次修改意见）：核对里面的数字有没有进脚本。 */
+  given: string[];
 }) {
   const meta = row.metadata, turn = meta?.studio?.sceneDirector;
+  const { missing, body } = scriptMissing(meta?.content || "");
+  const absent = meta?.status === "success" ? missingFigures(given, body) : [];
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
   const position = run?.queue?.position;
   const spent = meta?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
@@ -731,7 +751,13 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
       {loading ? <p className="scene-script-state" role="status"><Loader2 size={14} className="studio-gallery-spinner"/>
           {submitting && !accepted ? "正在交给编导" : !accepted ? "提交结果没有确认" : position && position > 0 ? `排队中，前面还有 ${position - 1} 个` : turn?.revision ? "正在改脚本" : "正在看素材、写脚本"}</p>
         : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
-        : <>{summary && <p className="scene-script-summary">{summary}</p>}<pre className="scene-script-text">{meta?.content}</pre></>}
+        : <>{summary && <p className="scene-script-summary">{summary}</p>}
+          {/* 留了【待补】才是真缺（出片会拦）；只说了一句「还缺」、脚本里没留空的，可能是模型看漏了（2026-10-31 本地 Agnes：名字写了还说缺名字）。 */}
+          {missing && (scriptPlaceholders(body).length
+            ? <p className="scene-script-missing" role="status">还缺{missing}。直接在下面补上，编导会照着改一版。</p>
+            : <p className="scene-script-check">编导提了一句还缺{missing}，如果已经写了可以不管。</p>)}
+          <pre className="scene-script-text">{body}</pre>
+          {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 没出现在脚本里，要放进去就说一声。</p>}</>}
       <footer>
         {loading && accepted && <button type="button" onClick={onStop}><Square size={13}/>停止</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}

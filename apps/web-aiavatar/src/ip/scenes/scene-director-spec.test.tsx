@@ -132,3 +132,44 @@ test("video: when the settings no longer match what the script was written for, 
   // 回到编导那一列，看得到新的一版在写。
   expect(screen.queryByRole("textbox", { name: "视频脚本" })).toBeNull();
 });
+
+// 2026-10-30 审查 F01–F05：同城团购缺价格时拍成了探店；脚本成功只验格式。
+const storeNode = { ...productNode, id: "store", title: "门店照片 1", metadata: { ...productNode.metadata, storageKey: "store.jpg", content: "https://cdn/store.jpg" } };
+function withGroupbuyScript(content: string) {
+  const made = addScriptNode({ ...EMPTY, nodes: [storeNode] as never }, { ask: "巷里火锅，双人套餐 99，原价 158", revision: false, prompt: "写脚本",
+    materialIds: ["store"], imageIds: [], duration: 15, ratio: "9:16", language: "中文" });
+  return patchNode(made.doc, made.nodeId, n => ({ ...n, metadata: { ...n.metadata, status: "success", content } }));
+}
+
+test("video: the scene's facts are chips that start a line in the input", async () => {
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy");
+  const chips = within(await screen.findByRole("group", { name: "要写清楚的信息" }));
+  fireEvent.click(chips.getByRole("button", { name: "店名和位置" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "店名和位置：巷里火锅，万达东门" } });
+  fireEvent.click(chips.getByRole("button", { name: "团购价" }));
+  expect(text("想做的视频")).toBe("店名和位置：巷里火锅，万达东门\n团购价：");
+  // 选填的标着「有就写」。
+  expect(chips.getByRole("button", { name: /原价有就写/ })).toBeTruthy();
+});
+
+test("video: a script that says what is still missing shows it, drops that line when used, and cannot be generated while 【待补】 is left", async () => {
+  put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("还缺：怎么买。\n第1镜（0–5 秒）：门头。旁白说：「万达东门巷里火锅，双人餐九十九。」\n第2镜（5–10 秒）：套餐。旁白说：「点【待补：购买入口】下单。」") });
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
+  expect(await screen.findByText("还缺怎么买。直接在下面补上，编导会照着改一版。")).toBeTruthy();
+  // 原价 158 用户写了、脚本里没有：灰字提醒，不拦。
+  expect(screen.getByText("你写的 158 没出现在脚本里，要放进去就说一声。")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "用这个脚本生成" }));
+  expect(text("视频脚本").startsWith("第1镜")).toBe(true);
+  const go = screen.getByRole("button", { name: "立即生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(go.textContent).toContain("脚本里还有【待补】没填：购买入口"));
+  expect(go.disabled).toBe(true);
+  fireEvent.change(screen.getByRole("textbox", { name: "视频脚本" }), { target: { value: text("视频脚本").replace("【待补：购买入口】", "本视频团购") } });
+  await waitFor(() => expect(go.disabled).toBe(false));
+});
+
+test("video: a 还缺 line with no 【待补】 left in the script is shown as a soft note, not a blocker", async () => {
+  put({ id: "IPP-G", name: "g", sceneId: "local-groupbuy", doc: withGroupbuyScript("第1镜（0–2 秒）：门头。旁白说：「巷里火锅，双人餐九十九，原价一百五十八。」\n\n还缺：火锅店的名字。") });
+  await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
+  expect(await screen.findByText("编导提了一句还缺火锅店的名字，如果已经写了可以不管。")).toBeTruthy();
+  expect(document.querySelector(".scene-script-missing")).toBeNull();
+});

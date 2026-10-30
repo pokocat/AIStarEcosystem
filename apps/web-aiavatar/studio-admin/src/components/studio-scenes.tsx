@@ -19,6 +19,7 @@ import {
 } from "@ai-star-eco/ui/ui/alert-dialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
 import type {
+  StudioSceneBrief,
   StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneHomeGoal, StudioSceneMedia, StudioSceneOptionGroup, StudioVideoScene,
 } from "@ai-star-eco/types/ip-studio-scenes";
 import { ApiError, StudioScenesApi } from "@/lib/api";
@@ -316,6 +317,7 @@ function VideoFields({ scene, patch, skills }: { scene: StudioVideoScene; patch:
       <label className="flex items-center gap-2"><Switch checked={scene.textRequired} onCheckedChange={v => patch({ textRequired: v })} aria-label="必须写一句"/>必须写一句要求</label>
     </div>
     <Field label="输入框里的示例"><Input aria-label="输入框示例" value={scene.placeholder} onChange={e => patch({ placeholder: e.target.value })}/></Field>
+    <BriefEditor brief={scene.brief ?? null} onChange={brief => patch({ brief })}/>
     <Field label="拍法" hint="这类视频通常怎么拍。编导写脚本、助手出方案都按它来；用户看不到原文。">
       <Textarea aria-label="拍法" rows={4} value={scene.structure} onChange={e => patch({ structure: e.target.value })}/></Field>
     <Field label="常用开头" hint="一行一个，最多 8 个；用户点一下就填进输入框。">
@@ -330,6 +332,38 @@ function VideoFields({ scene, patch, skills }: { scene: StudioVideoScene; patch:
       <div className="flex flex-wrap gap-2" role="group" aria-label="可选时长">{DURATION_CHOICES.map(d => <Button key={d} size="sm" variant={scene.durations.includes(d) ? "default" : "outline"}
         aria-pressed={scene.durations.includes(d)} onClick={() => toggleDuration(d)}>{d} 秒</Button>)}</div></Field>
   </>;
+}
+
+/**
+ * 这类视频要做到什么、要用户给哪些信息。编导和助手都按它写；信息在场景页上是一排小标签，点一下往输入框里起一行。
+ * 必须给的没给：编导先写「还缺：……」并用【待补】占位（页面上不让出片），助手先问。不填这一块就照原来「只引导关注或下单」。
+ */
+function BriefEditor({ brief, onChange }: { brief: StudioSceneBrief | null; onChange: (b: StudioSceneBrief | null) => void }) {
+  const b: StudioSceneBrief = brief ?? { goal: "", facts: [], ending: "", fiction: "story" };
+  const set = (p: Partial<StudioSceneBrief>) => onChange({ ...b, ...p });
+  const setFact = (i: number, p: Partial<StudioSceneBrief["facts"][number]>) => set({ facts: b.facts.map((f, j) => j === i ? { ...f, ...p } : f) });
+  const required = b.facts.filter(f => f.required).length;
+  return <div className="space-y-3 rounded-md border p-3" role="group" aria-label="这条要做到什么">
+    <div className="grid gap-4 md:grid-cols-2">
+      <Field label="这一条要做到" hint="一句话，看的人看完要做什么。例如：让附近的人买下套餐，到店来用。">
+        <Input aria-label="这一条要做到" value={b.goal} maxLength={60} onChange={e => set({ goal: e.target.value })}/></Field>
+      <Field label="结尾" hint="结尾要观众做什么，可以不填。">
+        <Input aria-label="结尾" value={b.ending ?? ""} maxLength={40} onChange={e => set({ ending: e.target.value || null })}/></Field>
+    </div>
+    <Field label="能不能编" hint="「只用给的」适合到店实录这类：人物也不能写成真实顾客。">
+      <ChoiceSelect label="能不能编" value={b.fiction ?? "story"} options={[["story", "可以编人物和情节，不编品牌事实"], ["none", "只用给的，不编故事"]]}
+        onChange={v => set({ fiction: v as "none" | "story" })}/></Field>
+    <Field label="要用户给的信息" hint="最多 6 条、必填最多 4 条。不要写数字或「真实评价」这类会引着模型编的词。">
+      <div className="space-y-2">{b.facts.map((f, i) => <div key={i} className="flex flex-wrap items-center gap-2">
+        <Input aria-label={`信息 ${i + 1} 名称`} className="w-44" placeholder="如：团购价" value={f.label} maxLength={16} onChange={e => setFact(i, { label: e.target.value })}/>
+        <Input aria-label={`信息 ${i + 1} 怎么用`} className="min-w-[160px] flex-1" placeholder="怎么用（可选），如：有原价才做对比" value={f.use ?? ""} maxLength={24} onChange={e => setFact(i, { use: e.target.value || null })}/>
+        <label className="flex items-center gap-1.5 text-sm"><Switch checked={f.required} disabled={!f.required && required >= 4} onCheckedChange={v => setFact(i, { required: v })} aria-label={`信息 ${i + 1} 必填`}/>必填</label>
+        <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除信息 ${i + 1}`} onClick={() => set({ facts: b.facts.filter((_, j) => j !== i) })}><X className="h-4 w-4"/></Button>
+      </div>)}
+        {b.facts.length < 6 && <Button size="sm" variant="outline" onClick={() => set({ facts: [...b.facts, { label: "", required: false }] })}><Plus className="mr-1 h-3.5 w-3.5"/>加一条</Button>}
+      </div></Field>
+    {brief && <Button size="sm" variant="ghost" onClick={() => onChange(null)}>不要这一块</Button>}
+  </div>;
 }
 
 /** 分组：改名、新增；还有场景在用的分组不能删。 */

@@ -5249,6 +5249,25 @@ components:
         structure: { type: string, description: '拍法：编导写脚本和助手出方案都按它' }
         ideas: { type: array, items: { type: string } }
         skill: { type: string, enum: [video-generation, reference-video-recreation], description: 'reference-video-recreation（爆款复刻）要先拉片，只走创作助手' }
+        brief: { allOf: [{ $ref: '#/components/schemas/StudioSceneBrief' }], nullable: true }
+    StudioSceneBrief:
+      type: object
+      required: [goal, facts]
+      description: 这类视频要做到什么、要用户给哪些信息。编导缺必填信息时正文第一行写「还缺：……」并用【待补：……】占位，助手直接问；没有 brief 的场景照旧「只引导关注或下单」
+      properties:
+        goal: { type: string, maxLength: 60 }
+        facts:
+          type: array
+          maxItems: 6
+          items:
+            type: object
+            required: [label, required]
+            properties:
+              label: { type: string, maxLength: 16 }
+              required: { type: boolean, description: '最多 4 条必填' }
+              use: { type: string, nullable: true, maxLength: 24, description: '怎么用，如「有原价才做对比」' }
+        ending: { type: string, nullable: true, maxLength: 40 }
+        fiction: { type: string, nullable: true, enum: [none, story], description: 'none 只用用户给的、不编人物经历；story（缺省）可以编人物和情节，不能编品牌事实' }
     StudioSceneCatalog:
       type: object
       required: [version, imageGroups, videoGroups, image, video]
