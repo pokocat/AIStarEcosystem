@@ -10,14 +10,14 @@ import { setupRadixSelectDom } from './testing/radix-select-dom';
 
 setupRadixSelectDom();
 
-const mocks = vi.hoisted(() => ({ works: vi.fn(), projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), replace: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none", layout: "mobile" as "mobile" | "desktop" | null }));
+const mocks = vi.hoisted(() => ({ scenes: vi.fn(), works: vi.fn(), projects: vi.fn(), templates: vi.fn(), examples: vi.fn(), get: vi.fn(), create: vi.fn(), remove: vi.fn(), push: vi.fn(), replace: vi.fn(), update: vi.fn(), availability: vi.fn(), selectCover: vi.fn(), resetCover: vi.fn(), identityRole: "none", layout: "mobile" as "mobile" | "desktop" | null }));
 const router = vi.hoisted(() => ({ push: (href: string) => mocks.push(href), replace: (href: string) => mocks.replace(href) }));
 vi.mock("next/navigation", () => ({ useRouter: () => router, usePathname: () => "/create" }));
 vi.mock("@/shell/layout-mode", () => ({ useLayoutMode: () => mocks.layout }));
 vi.mock("next/link", () => ({ default: ({ children, replace, ...props }: any) => <a {...props}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => <p>开通产品</p> }));
 vi.mock("@/proto/api", () => ({ useIdentity: () => ({ operatorRole: mocks.identityRole }), isOperatorRole: () => false }));
-vi.mock("./api", () => ({ DirectorApi: { listWorks: mocks.works }, IpStudioApi: { listProjects: mocks.projects, listTemplates: mocks.templates, listDemoExamples: mocks.examples, getProject: mocks.get, createProject: mocks.create, updateProject: mocks.update, deleteProject: mocks.remove } }));
+vi.mock("./api", () => ({ DirectorApi: { listWorks: mocks.works }, IpStudioApi: { listScenes: mocks.scenes, listProjects: mocks.projects, listTemplates: mocks.templates, listDemoExamples: mocks.examples, getProject: mocks.get, createProject: mocks.create, updateProject: mocks.update, deleteProject: mocks.remove } }));
 vi.mock("./canvas-cover-api", () => ({ selectCanvasCover: mocks.selectCover, resetCanvasCover: mocks.resetCover }));
 vi.mock("@/canvas-bridge/template-api", () => ({ templateAvailability: mocks.availability }));
 vi.mock("./studio-template-use", () => ({ StudioTemplateUse: ({ template, onClose }: any) => <div role="dialog"><p>{template.name} · 只读预览</p><button onClick={onClose}>返回</button></div> }));
@@ -33,6 +33,7 @@ const personal: IpTemplate = { ...official, id: "personal", versionId: "v1", vis
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.identityRole = "none"; mocks.layout = "mobile";
+  mocks.scenes.mockResolvedValue({ version: 1, imageGroups: [], videoGroups: [], image: [{ id: "free" }], video: [{ id: "ecom-talking" }] });
   mocks.works.mockResolvedValue([]); mocks.projects.mockResolvedValue(projects); mocks.templates.mockResolvedValue([official, personal]); mocks.examples.mockResolvedValue([]);
   mocks.get.mockImplementation(async (id: string) => ({ id, docVersion: "v1", ...projects.find(p => p.id === id), doc }));
   mocks.create.mockResolvedValue({ id: "P-new", docVersion: "v1", doc }); mocks.update.mockImplementation(async (id, body) => ({ id, docVersion: "v2", doc: body.doc })); mocks.remove.mockResolvedValue(undefined); mocks.availability.mockResolvedValue({});
@@ -166,6 +167,17 @@ describe("Creation catalogue", () => {
     render(<StudioProjects />);
     await screen.findByRole("link", { name: "打开画布 测试画布 0" });
     expect(screen.queryByRole("region", { name: "短剧导演台作品" })).toBeNull();
+  });
+
+  // 2026-10-30 复测：场景页建的草稿在项目里只能「打开画布」，回不到原来的 AI 图片 / AI 视频继续改。
+  it("a draft made on a scene page offers to go back to that scene; a plain canvas does not", async () => {
+    mocks.projects.mockResolvedValue([{ ...projects[0], id: "P-video", name: "口播草稿", sceneId: "ecom-talking" }, { ...projects[1], id: "P-image", name: "出图草稿", sceneId: "free" }, projects[2]]);
+    render(<StudioProjects />);
+    // 卡片底部一个，「⋯」菜单里一个。
+    const video = await screen.findAllByRole("link", { name: "回到 AI 视频继续" });
+    expect(video.map(l => l.getAttribute("href"))).toEqual(["/video?scene=ecom-talking&draft=P-video", "/video?scene=ecom-talking&draft=P-video"]);
+    expect(screen.getAllByRole("link", { name: "回到 AI 图片继续" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
+    expect(screen.getAllByRole("link", { name: /^回到 AI/ })).toHaveLength(4);
   });
 });
 

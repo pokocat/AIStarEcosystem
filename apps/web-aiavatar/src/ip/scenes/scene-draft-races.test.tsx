@@ -16,7 +16,8 @@ const api = vi.hoisted(() => ({
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(),
 }));
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }) }));
+// 和 Next 一样：地址参数从 useSearchParams 读（页面改地址用 history.replaceState，下次渲染读到新的）。
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: api.push, replace: vi.fn() }), useSearchParams: () => new URLSearchParams(window.location.search) }));
 vi.mock("next/link", () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGateScreen: () => null }));
 vi.mock("@/components/hub/ui", () => ({ HubTabBar: () => null }));
@@ -31,7 +32,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
   <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
-import { addScriptNode } from "./scene-drafts";
+import { addVideoRow } from "./scene-drafts";
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -184,54 +185,103 @@ test("video: after replacing the voice, opening the draft again picks the replac
   expect(used).not.toContain("old.mp3");
 });
 
-// ── 编导写脚本的模型（2026-10-30 用户第七项：对话框里不能换模型）─────────────────────
-const TEXT_MODELS = [
-  { endpointId: "text-a", name: "看图模型", isDefault: true, supportsVision: true, tokenPricing: { maxCost: 21 } },
-  { endpointId: "text-b", name: "便宜模型", isDefault: false, supportsVision: false, tokenPricing: { maxCost: 9 } },
-];
-const twoTextModels = () => api.capabilities.mockResolvedValue({ mock: false, operations: [], imageCost: 8, textCost: 1, videoCost: null, textModelMode: "selectable", textModels: TEXT_MODELS });
-const modelPick = async () => await screen.findByRole("combobox", { name: "写脚本的模型" }) as HTMLSelectElement;
+// ── 输入栏的视频生成模型（2026-10-30 用户纠正：那个位置选的是视频生成模型，不是写脚本的模型）──────────
+const limit = (mediaType: string, maxCount: number) => ({ mediaType, maxCount, maxBytes: 1e8, formats: [], minDurationSec: null, maxDurationSec: null });
+const H3 = { endpointId: "ep-h3", name: "H3", isDefault: true, selectableById: true, supportsPromptOptimization: false, batchCounts: [1],
+  contract: { minSeconds: 5, maxSeconds: 15, promptMaxChars: 7000, seedMax: 100,
+    tiers: [{ tier: "768p", canvases: [{ aspectRatio: "9:16", width: 432, height: 768, outputSizeCode: null }, { aspectRatio: "16:9", width: 768, height: 432, outputSizeCode: null }] }],
+    modes: [{ mode: "t2v", needsFirstFrame: false, needsLastFrame: false, frameImage: null, references: null },
+      { mode: "universal_reference_video", needsFirstFrame: false, needsLastFrame: false, frameImage: null,
+        references: { image: limit("image", 9), video: limit("video", 1), audio: limit("audio", 3), maxImagesWithVideo: 4, maxTotal: 12, minVisual: 1, maxAudioTotalSec: 30 } }] },
+  pricing: { perSecond: { t2v: { "768p": 40 }, universal_reference_video: { "768p": 40 } }, freeRefImages: 9, extraRefImagePerSecond: 0, promptOptimizationPerCall: 0 } };
+/** 只能按文字出、4 秒、只有竖屏：换过去时长、清晰度、画面、能用的素材和报价都该跟着变。 */
+const TEXT_ONLY = { endpointId: "ep-text", name: "文字出片", isDefault: false, selectableById: true, supportsPromptOptimization: false, batchCounts: [1],
+  contract: { minSeconds: 4, maxSeconds: 4, promptMaxChars: 2000, seedMax: 0,
+    tiers: [{ tier: "720p", canvases: [{ aspectRatio: "9:16", width: 720, height: 1280, outputSizeCode: null }] }],
+    modes: [{ mode: "t2v", needsFirstFrame: false, needsLastFrame: false, frameImage: null, references: null }] },
+  pricing: { perSecond: { t2v: { "720p": 3 } }, freeRefImages: 0, extraRefImagePerSecond: 0, promptOptimizationPerCall: 0 } };
+const videoPick = async () => await screen.findByRole("combobox", { name: "视频模型" }) as HTMLSelectElement;
+const spec = () => document.querySelector(".scene-video-settings")!.textContent;
+const hintLine = () => [...document.querySelectorAll(".scene-video-hint")].map(p => p.textContent).join(" | ");
 
-test("video: the script model can be switched; price and picture reading follow it, the next script uses it, and the draft remembers it", async () => {
-  twoTextModels();
+test("video: the input bar picks the video model; duration, clearness, materials and the quote follow it, and the draft remembers it", async () => {
+  api.videoModels.mockResolvedValue([H3, TEXT_ONLY]);
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await openVideoDraft();
-  expect((await modelPick()).value).toBe("text-a");
-  expect(screen.getByText(/写一版脚本最多 21 积分/).textContent).not.toContain("不看图");
+  expect((await videoPick()).value).toBe("ep-h3");
+  await waitFor(() => expect(hintLine()).toContain("用 H3 出片预计"));
+  expect(spec()).toContain("768P");
+  expect(screen.queryByRole("combobox", { name: "写脚本的模型" })).toBeNull();
 
-  fireEvent.change(await modelPick(), { target: { value: "text-b" } });
-  expect(screen.getByText(/写一版脚本最多 9 积分/).textContent).toContain("这个模型不看图");
+  fireEvent.change(await videoPick(), { target: { value: "ep-text" } });
+  expect(spec()).toContain("720P");
+  expect(spec()).toContain("4 秒");
+  expect(hintLine()).toContain("用 文字出片 出片预计 12 积分"); // 3 积分/秒 × 4 秒
+  expect(hintLine()).toContain("这个模型不看参考素材");
   expect(screen.getByRole("button", { name: "移除商品图 1" })).toBeTruthy(); // 换模型不动素材
-  await waitFor(() => expect(store.get("IPP-V")!.doc.sceneDirectorModel).toBe("text-b"));
-
-  api.composeScene.mockResolvedValue({ text: "write script" });
-  fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写脚本" })); });
-  await waitFor(() => expect(api.submit).toHaveBeenCalled());
-  const request = api.submit.mock.calls.at(-1)![1];
-  expect(request.model).toBe("text-b");
-  expect(request.maxCost).toBe(9);
-  expect(request.readVisuals).toBeUndefined();
-  expect(request.contextNodeIds).toEqual([]);
+  await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoModel).toBe("ep-text"));
 
   cleanup();
   await openVideoDraft();
-  expect((await modelPick()).value).toBe("text-b");
-  // 素材也原样回来了（这一版是不看图的模型写的，不能靠读图列表推断）。
-  expect(screen.getByRole("button", { name: "移除商品图 1" })).toBeTruthy();
-  expect(screen.getByText(/写一版脚本最多 9 积分/)).toBeTruthy();
+  expect((await videoPick()).value).toBe("ep-text");
+  expect(spec()).toContain("4 秒");
 });
 
-test("video: 确认原任务 resends the original request with its original model, even after switching", async () => {
-  twoTextModels();
-  const made = addScriptNode({ ...EMPTY, nodes: [productNode] as never }, { ask: "保湿精华", revision: false, prompt: "写脚本", materialIds: ["product"], imageIds: ["product"],
-    duration: 15, ratio: "9:16", language: "中文", model: "text-a", maxCost: 21 });
+test("video: confirming an unconfirmed video resends its original request and model after switching models", async () => {
+  api.videoModels.mockResolvedValue([H3, TEXT_ONLY]);
+  const made = addVideoRow({ ...EMPTY, nodes: [productNode] as never }, { title: "口播带货 · 15 秒", prompt: "镜头1", refIds: ["product"],
+    video: { mode: "universal_reference_video", tier: "768p" } as never, durationSec: 15, aspectRatio: "9:16", model: "ep-h3", maxCost: 600 });
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: made.doc });
   await openVideoDraft();
-  fireEvent.change(await modelPick(), { target: { value: "text-b" } });
+  fireEvent.change(await videoPick(), { target: { value: "ep-text" } });
   await act(async () => { fireEvent.click(await screen.findByRole("button", { name: "确认原任务" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const request = api.submit.mock.calls.at(-1)![1];
   expect(request.clientRequestId).toBe(made.request.clientRequestId);
-  expect(request.model).toBe("text-a");
+  expect(request.model).toBe("ep-h3");
+});
+
+// ── 地址参数（2026-10-30 复测：从首页点「同城到店」进了口播带货，点「商品套图」进了自由出图）──────────
+// 站内跳转时 Next 先渲染新页面、后改地址栏：挂载时读到的还是首页地址，之后地址才变成带场景的。
+test("video: a scene in the address that arrives after mounting is followed, and going to another one switches again", async () => {
+  window.history.replaceState(null, "", "/dashboard");
+  const view = render(<SceneVideoStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("口播带货"));
+  window.history.replaceState(null, "", "/video?scene=local-discovery");
+  view.rerender(<SceneVideoStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("门店发现"));
+  window.history.replaceState(null, "", "/video?scene=brand-story");
+  view.rerender(<SceneVideoStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("品牌故事"));
+});
+
+test("image: a scene in the address that arrives after mounting is followed; leaving a draft for a plain scene address leaves the draft", async () => {
+  put({ id: "IPP-B", name: "draft B", sceneId: "free" });
+  window.history.replaceState(null, "", "/dashboard");
+  const view = render(<SceneImageStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
+  window.history.replaceState(null, "", "/image?scene=white-background");
+  view.rerender(<SceneImageStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
+
+  window.history.replaceState(null, "", "/image?scene=free&draft=IPP-B");
+  view.rerender(<SceneImageStudio/>);
+  await waitFor(() => expect(continueLink()).toBe("/projects/IPP-B"));
+  window.history.replaceState(null, "", "/image?scene=white-background");
+  view.rerender(<SceneImageStudio/>);
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
+  expect(screen.queryByRole("link", { name: "在画布中继续" })).toBeNull();
+});
+
+// 2026-10-30 复测：图片场景写了没提交的要求，换个场景再回来全清空了。
+test("image: unsent inputs come back when returning to a scene; a scene never filled starts empty", async () => {
+  window.history.replaceState(null, "", "/image?scene=free");
+  await act(async () => { render(<SceneImageStudio/>); });
+  fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只橘猫坐在窗台上看雨" } });
+  fireEvent.click(screen.getByRole("button", { name: "商品白底图" }));
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
+  expect((screen.getByRole("textbox", { name: "补充要求" }) as HTMLTextAreaElement).value).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "自由出图" }));
+  await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
+  expect((screen.getByRole("textbox", { name: "想要的画面" }) as HTMLTextAreaElement).value).toBe("一只橘猫坐在窗台上看雨");
 });
