@@ -121,6 +121,8 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
 export function addScriptNode(doc: IpProjectDoc, input: {
   ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];
   duration: number; ratio: string; language: string; model?: string; maxCost?: number; options?: Record<string, string>;
+  /** 按哪个视频模型、交给它哪几张图写的（见 sceneDirector.videoModel / refs）。 */
+  videoModel?: string; refs?: string[];
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
   const previous = scriptNodes(doc).at(-1);
@@ -133,7 +135,7 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   const node: CanvasNodeData = { ...target, title: previous ? "视频脚本 · 修改" : "视频脚本", position: at, width: 480, height: 360,
     metadata: { ...target.metadata, content, status: "loading", studio: { ...target.metadata!.studio!, request,
       sceneDirector: { ask: input.ask, revision: input.revision, duration: input.duration, ratio: input.ratio, language: input.language, at: new Date().toISOString(),
-        ...(input.options ? { options: input.options } : {}) } } } };
+        ...(input.options ? { options: input.options } : {}), ...(input.videoModel ? { videoModel: input.videoModel } : {}), ...(input.refs ? { refs: input.refs } : {}) } } } };
   const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
     ...(previous ? [previous.id] : input.materialIds).map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };

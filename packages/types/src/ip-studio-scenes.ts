@@ -83,6 +83,12 @@ export interface StudioSceneComposeRequest {
   revision?: string;
   /** 选项组：组 key → 选中项 value；没给的组用默认值。 */
   options?: Record<string, string>;
+  /** 编导：放了、但所选视频模型用不上的场景图（只给编导看，脚本里用文字写，不编号）。imageTitles 只放会交给视频模型的。 */
+  seenTitles?: string[];
+  /** 编导：出镜人物这张视频模型也用不上（同上）。 */
+  characterSeen?: boolean;
+  /** 编导：写脚本的模型这次能不能看到图；false 时要求里不说「已附图片」「先看图」。 */
+  visual?: boolean;
 }
 /** 图片：`text` 是出图描述；视频：`text` 是交给助手的话，`skillKey` 是该场景的方法；编导：`text` 是写脚本的要求。 */
 export interface StudioSceneComposed { text: string; skillKey?: string | null }

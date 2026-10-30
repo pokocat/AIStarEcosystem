@@ -5277,6 +5277,9 @@ components:
         language: { type: string, description: 'video-script：台词语言，默认中文' }
         revision: { type: string, description: 'video-script：对上一版脚本的修改意见；有它时剧情类场景可以不写 text' }
         options: { type: object, additionalProperties: { type: string }, description: '选项组：组 key → 选项 value；没给的组取默认；不认识的 400' }
+        seenTitles: { type: array, items: { type: string }, description: 'video-script：放了但所选视频模型用不上的场景图，只给编导看、脚本里用文字写；imageTitles 只放会交给视频模型的（编号图1、图2）。必填检查两者合计' }
+        characterSeen: { type: boolean, description: 'video-script：出镜人物这张视频模型也用不上' }
+        visual: { type: boolean, description: 'video-script：写脚本的模型能否看到图；false 时要求里不说「已附图片」「先看图」。缺省按能看到' }
     StudioSceneComposed:
       type: object
       required: [text]

@@ -364,18 +364,26 @@ export function SceneVideoStudio() {
     : !recreation && !caps ? "正在读取模型…"
     : !recreation && !caps?.mock && !textModel?.tokenPricing ? "编导暂时不可用（文字模型没配置价格）" : "";
 
-  const send = async () => {
+  /** 让编导写或改一版。revisionAsk 是代码替用户说的修改意见（出片时换了规格，「让编导按现在的设置改一版」）。 */
+  const send = async (revisionAsk?: string) => {
     if (busy || uploading || writing) return;
-    if (blocker) { setHint(blocker); return; }
+    if (blocker && !revisionAsk) { setHint(blocker); return; }
     if (recreation) { await handoff(); return; }
     setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
     let nodeId: string | undefined, posted = false, projectId: string | undefined;
     try {
-      const ask = text.trim();
+      const ask = (revisionAsk ?? text).trim();
       const first = scripts[0]?.metadata?.studio?.sceneDirector;
+      // 只给会交给视频模型的图编号（按所选模型算，和出片时同一个函数）：只认首帧的模型只拿第一张、纯文字模型一张都不拿。
+      // 用不上的图编导照样可以看，脚本里用文字写；写脚本的模型看不到图就照实说（2026-10-30 审查 F07）。
+      const handed = new Set((plan?.used ?? []).map(m => m.key));
+      const visual = !!(caps?.mock || textModel?.supportsVision);
       const composed = await IpStudioApi.composeScene({ kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
-        ...(revising ? { revision: ask } : {}), imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title,
+        ...(revising ? { revision: ask } : {}),
+        imageTitles: images.filter(i => handed.has(i.key)).map(i => i.title), seenTitles: images.filter(i => !handed.has(i.key)).map(i => i.title),
+        characterTitle: character?.title, ...(character && !handed.has(character.key) ? { characterSeen: true } : {}),
+        voiceTitle: voice && handed.has(voice.key) ? voice.title : undefined, visual,
         duration: usedDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) });
       projectId = await ensureDraft(ticket);
       const chosen = selection();
@@ -386,12 +394,13 @@ export function SceneVideoStudio() {
         const imageIds = placed.filter(p => p.media.mediaType === "image").map(p => p.node.id);
         const made = addScriptNode({ ...doc, nodes }, {
           ask, revision: revising, prompt: composed.text, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
-          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked) });
+          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked),
+          ...(chosenVideo ? { videoModel: chosenVideo.endpointId } : {}), refs: (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key) });
         request = made.request; nodeId = made.nodeId;
         // 用了哪些素材记进草稿：重开时原样放回（不看图的模型不记读图列表，不能靠它推断）。
         return { ...made.doc, sceneInputs: chosen };
       }, projectId);
-      if (onPage(ticket, projectId)) { setText(""); setSubmitting(nodeId); }
+      if (onPage(ticket, projectId)) { if (!revisionAsk) setText(""); setSubmitting(nodeId); }
       posted = true;
       const run = await submitStudioRun(projectId, request!);
       await persist(doc => applyRun(doc, nodeId!, run), projectId);
@@ -517,6 +526,23 @@ export function SceneVideoStudio() {
         : `写脚本按实际用量扣积分，这一版最多扣 ${scriptCost}（只是上限，短脚本用不了这么多）`) : "",
        chosenVideo ? (videoQuote != null ? `用 ${chosenVideo.name} 出片预计 ${videoQuote} 积分` : planError || "") : "",
        !textModel?.supportsVision && (images.length || character) ? "编导这次不看图，只按文字写" : ""].filter(Boolean).join("；");
+  // 正在出片的这版脚本是按什么写的：时长、横竖屏、交给视频模型的图。现在的设置跟它对不上（换了模型、改了时长或素材），
+  // 就照实说哪里变了，并给一键「让编导按现在的设置改一版」；不拦出片，用户也可能就是想这么出（2026-10-30 审查 F07）。
+  const writtenFor = scripts.find(s => s.id === scriptId)?.metadata?.studio?.sceneDirector;
+  const handedNow = (plan?.used ?? []).filter(m => m.mediaType === "image").map(m => m.key);
+  const staleScript = mode === "generate" && writtenFor ? [
+    writtenFor.duration !== usedDuration ? `这版脚本是照 ${writtenFor.duration} 秒写的，现在要出 ${usedDuration} 秒` : "",
+    writtenFor.ratio !== ratio ? `脚本是照${writtenFor.ratio === "16:9" ? "横屏" : "竖屏"}写的，现在是${ratio === "16:9" ? "横屏" : "竖屏"}` : "",
+    writtenFor.refs && writtenFor.refs.join() !== handedNow.join()
+      ? writtenFor.refs.length && !handedNow.length ? `脚本里用了参考图，这个模型不看图`
+        : `脚本里用了 ${writtenFor.refs.length || "0"} 张参考图，这次交给模型 ${handedNow.length} 张` : "",
+  ].filter(Boolean).join("，") : "";
+  const reviseForNow = () => {
+    if (!staleScript) return;
+    setMode("talk");
+    void send(`${staleScript}。按现在的时长、画面和参考图重新排镜头和台词，内容和卖点不变。`);
+  };
+
   const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
     || (settings ? studioVideoError(chosenVideo, settings, prompt, ratio, usedDuration) : "请重新选择清晰度") || "";
 
@@ -649,7 +675,7 @@ export function SceneVideoStudio() {
       : <GenerateEditor prompt={prompt} onPrompt={p => { setPrompt(p); setHint(""); }} onBack={() => setMode("talk")}
           models={videoModels ?? []} model={chosenVideo} onModel={chooseVideoModel} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
           durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
-          used={plan?.used ?? []} restored={note} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
+          used={plan?.used ?? []} restored={note} stale={staleScript} onReviseForNow={reviseForNow} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
           optimize={optimize} onOptimize={setOptimize} maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
       {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
     </section>
@@ -723,11 +749,11 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
 
 /** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
 function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
-  used, restored, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
+  used, restored, stale, onReviseForNow, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
   prompt: string; onPrompt: (v: string) => void; onBack: () => void;
   models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
   tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
-  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; note?: string; quote: number | null; mock: boolean;
+  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; stale?: string; onReviseForNow: () => void; note?: string; quote: number | null; mock: boolean;
   blocker: string; busy: boolean; optimize: boolean; onOptimize: (on: boolean) => void; maxChars?: number; onGenerate: () => void;
 }) {
   const optimizable = !!model?.supportsPromptOptimization;
@@ -742,6 +768,8 @@ function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tier
     </div>
     {restored && <p className="scene-generate-note is-note" role="status">{restored.text}{restored.undo && <button type="button" onClick={restored.undo}>撤销</button>}</p>}
     {note && <p className="scene-generate-note" role="status">{note}</p>}
+    {stale && <p className="scene-generate-note is-note" role="status">{stale}。
+      <button type="button" disabled={busy} onClick={onReviseForNow}>让编导照现在的改一版</button></p>}
     <div className="scene-generate-settings">
       {models.length > 1 && <div className="scene-gen-row"><span>模型</span>
         <StudioSelect label="视频模型" compact value={model?.endpointId || ""} onChange={onModel} options={models.map(m => ({ value: m.endpointId, label: m.name }))}/></div>}

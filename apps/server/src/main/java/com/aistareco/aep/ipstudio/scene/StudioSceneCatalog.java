@@ -191,18 +191,27 @@ public class StudioSceneCatalog {
      * @param custom   图片：用户改过的完整描述（没改为 null）
      * @param revision 编导：对上一版脚本的修改意见（第一次写为 null）
      * @param options  场景选项组：选项组 key → 选中项 value；没给的组用默认值
+     * @param seenTitles 编导：放了、但所选视频模型用不上的场景图（商品图、门店照片…），脚本里要用文字写清楚，不能写成图几
+     * @param characterSeen 编导：出镜人物这张视频模型也用不上（同上，只给编导看）
+     * @param visual   编导：写脚本的模型这次能不能看到图（false = 看不到，只能按名称写）；null 按能看到算（老前端）
      */
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
-                                 Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options) {
+                                 Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options,
+                                 List<String> seenTitles, Boolean characterSeen, Boolean visual) {
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio) {
-            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null);
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null, null, null, null);
         }
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio,
                               String language, String revision) {
-            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, null);
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, null, null, null, null);
+        }
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio,
+                              String language, String revision, java.util.Map<String, String> options) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, options, null, null, null);
         }
     }
 
@@ -263,8 +272,10 @@ public class StudioSceneCatalog {
         List<String> images = r.imageTitles() == null ? List.of() : r.imageTitles().stream().filter(t -> t != null && !t.isBlank()).toList();
         String text = trim(r.text());
         if (scene.video() != null && scene.video().required() && blank(r.videoTitle())) throw bad("先放" + scene.video().label());
-        if (scene.images().required() && images.isEmpty()) throw bad("先放" + scene.images().label());
-        if (scene.images().max() != null && images.size() > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
+        // 放了几张图看页面上放的全部：所选视频模型用不上的那几张（seenTitles）用户也放了，只是不编号。
+        long placed = images.size() + (r.seenTitles() == null ? 0 : r.seenTitles().stream().filter(t -> !blank(t)).count());
+        if (scene.images().required() && placed == 0) throw bad("先放" + scene.images().label());
+        if (scene.images().max() != null && placed > scene.images().max()) throw bad(scene.images().label() + "最多放 " + scene.images().max() + " 张");
         if (scene.textRequired() && text.isEmpty() && blank(r.revision())) throw bad("先写一句要求");
         int duration = r.duration() == null ? scene.duration() : r.duration();
         // 交给助手时按场景的可选时长；编导一次出片时长由所选视频模型决定，这里只挡明显不对的数。
@@ -298,6 +309,14 @@ public class StudioSceneCatalog {
     /**
      * 编导写脚本（AI 视频页，照参考站「超级编导」）：看素材、按场景拍法写一版能直接交给视频模型一次生成的脚本。
      * 参考图按这里的顺序交给视频模型，脚本里用「图1」「图2」指代；出片前我们的改写会换成模型认的写法。
+     *
+     * <p>只给会交给视频模型的图编号（2026-10-30 审查 F07）：只认首帧的模型只拿第一张、纯文字的模型一张都不拿，
+     * 剩下的图（{@code seenTitles}）编导可以看，但要用文字写进画面，写成「图2」视频模型是看不到的。
+     * 写脚本的模型看不到图时（{@code visual=false}）不说「已附图片」「先看图」，否则它会编图里的内容。
+     *
+     * <p>镜头和台词的写法跟 H3 改写认的一样（{@code H3PromptRewrite.SHOT_HEAD} / {@code LINE}）：「第N镜（起–止 秒）」「某某说：「…」」。
+     * 原来要的是「镜头N（…）；台词：…」，改写一行都认不出，只能交给模型重新分镜、重写台词（审查 F04，零调用探针：三镜 0/3）。
+     * 照这个写，出片前镜头时间固定、台词由代码原样填回，和画布、导演台同一条路。
      */
     private String scriptBrief(ComposeRequest r) {
         VideoInput in = videoInput(r, false);
@@ -308,21 +327,30 @@ public class StudioSceneCatalog {
         lines.add("写一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "「" + scene.title() + "」短视频脚本，交给视频模型一次生成，台词用" + language + "。");
         if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
         lines.addAll(optionLines(scene.optionGroups(), r.options()));
+        boolean visual = !Boolean.FALSE.equals(r.visual());
         List<String> refs = new ArrayList<>();
         int n = 0;
         for (String title : in.images()) refs.add("图" + (++n) + "「" + title.trim() + "」是" + scene.images().label());
-        if (!blank(r.characterTitle())) refs.add("图" + (++n) + "「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着要和图里一致");
-        if (!blank(r.voiceTitle())) refs.add("「" + r.voiceTitle().trim() + "」是说话要用的声音");
-        if (!refs.isEmpty()) lines.add("参考素材（已附图片，按这个编号写）：" + String.join("；", refs) + "。");
-        if (in.text().isEmpty() && !refs.isEmpty()) lines.add("我没写具体要求：先看图，说清楚是什么、卖点在哪，再按下面的拍法写。");
+        boolean characterSeen = Boolean.TRUE.equals(r.characterSeen());
+        if (!blank(r.characterTitle()) && !characterSeen) refs.add("图" + (++n) + "「" + r.characterTitle().trim() + "」是出镜人物，长相和穿着要和图里一致");
+        List<String> seen = new ArrayList<>(r.seenTitles() == null ? List.of() : r.seenTitles().stream().filter(t -> !blank(t)).map(String::trim).toList());
+        if (!blank(r.characterTitle()) && characterSeen) seen.add(r.characterTitle().trim());
+        if (!refs.isEmpty()) lines.add("交给视频模型的参考图（" + (visual ? "已附图片，" : "") + "按这个编号写）：" + String.join("；", refs) + "。");
+        if (!seen.isEmpty()) lines.add(String.join("", seen.stream().map(t -> "「" + t + "」").toList())
+                + "这个视频模型用不上，" + (visual ? "只给你看：" : "") + "画面里要用文字把它写清楚，不要写成图几。");
+        if (!refs.isEmpty() || !seen.isEmpty()) lines.add(visual ? "" : "这次你看不到这些图，只知道名称：按名称和我的要求写，不要编图里有什么。");
+        if (in.text().isEmpty() && (!refs.isEmpty() || !seen.isEmpty()))
+            lines.add(visual ? "我没写具体要求：先看图，说清楚是什么、卖点在哪，再按下面的拍法写。" : "我没写具体要求：按素材名称和下面的拍法写，不要编看不到的细节。");
+        if (!blank(r.voiceTitle())) lines.add("「" + r.voiceTitle().trim() + "」是说话要用的声音。");
         lines.add("拍法：" + scene.structure());
-        lines.add("写法：按时间顺序分镜头，每个镜头单独一行，格式是「镜头N（起–止秒）：画面……；台词：……」，没有台词就不写台词。"
-                + "单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。台词说人话，按每秒 4 个字左右算长度。"
-                + "只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
+        lines.add("写法：按时间顺序分镜头，每个镜头单独一段，开头写「第N镜（起–止 秒）：」，接着写画面；有人说话就另起一句写「旁白说：「……」」，"
+                + "画面里的人开口就把「旁白」换成这个人的称呼（如「店员说：「……」」），没有台词就不写。"
+                + "一句台词一个「」，台词里面不要再用「」。第1镜从 0 秒开始，单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。"
+                + "台词说人话，按每秒 4 个字左右算长度。只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
         lines.add(FACT_RULE);
         // 2026-10-30 线上验收：首稿编了耐用测试次数，summary 却写「没写功效」。它只能说脚本里有什么，不能替脚本作保证。
         lines.add("正文只放脚本本身；summary 用一句话说这一版的思路，只说脚本里实际写了什么，用了虚构的人物或情节就直说，不要写「没写功效」「信息都属实」这类保证。");
-        return limit(String.join("\n", lines));
+        return limit(String.join("\n", lines.stream().filter(l -> !l.isEmpty()).toList()));
     }
 
     private static String orientation(String ratio) { return "16:9".equals(ratio) ? "横屏" : "竖屏"; }

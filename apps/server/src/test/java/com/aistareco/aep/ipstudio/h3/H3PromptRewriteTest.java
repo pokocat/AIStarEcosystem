@@ -358,4 +358,27 @@ class H3PromptRewriteTest {
         assertEquals("English", H3PromptRewrite.languageTag("英文"));
         assertEquals("Chinese", H3PromptRewrite.languageTag(null));
     }
+
+    // 2026-10-30 审查 F04：场景页编导写的脚本原来是「镜头1（0–5秒）：…；台词：…」，H3 改写一行都认不出（零调用探针 0/3），
+    // 只能交给模型重新分镜、重写台词。现在编导按这个格式写，镜头时间固定、台词由代码原样填回。
+    @Test
+    void aSceneDirectorScriptKeepsItsShotsAndItsLinesWordForWord() {
+        String script = """
+                第1镜（0–5 秒）：画面：一只手拿起面霜，指腹轻点膏体。旁白说：「干皮涂它，不紧绷。」
+                第2镜（5–10 秒）：画面：面霜在手背上推开，质地润泽。店员说：「双人套餐九十九，周末能用。」
+                第3镜（10–15 秒）：画面：门头和套餐全景。旁白说：「点本视频团购，提前预约。」
+                """;
+        var built = com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build(script, 15,
+                new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v", "768p", null, null, null, List.of(), null), null);
+        assertEquals(List.of(0.0, 5.0, 10.0), built.request().starts());
+        assertTrue(built.request().codeLines());
+        assertEquals(List.of("干皮涂它，不紧绷。", "双人套餐九十九，周末能用。", "点本视频团购，提前预约。"),
+                built.request().source().lines().stream().map(H3PromptRewrite.Line::text).toList());
+        assertEquals(List.of("旁白", "店员", "旁白"), built.request().source().lines().stream().map(H3PromptRewrite.Line::speaker).toList());
+        // 原来的场景写法：一个镜头、一句台词都认不出来。
+        var old = com.aistareco.aep.ipstudio.h3.H3StudioPrompt.build("镜头1（0–5秒）：画面：拿起面霜；台词：干皮涂它\n镜头2（5–10秒）：画面：推开；台词：好吸收", 10,
+                new com.aistareco.aep.ipstudio.dto.StudioWorkflowDtos.VideoSettings("t2v", "768p", null, null, null, List.of(), null), null);
+        assertNull(old.request().starts());
+        assertFalse(old.request().codeLines());
+    }
 }

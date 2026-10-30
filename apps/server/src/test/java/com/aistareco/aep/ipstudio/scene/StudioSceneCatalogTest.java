@@ -87,7 +87,7 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "镜头N", "正好 10 秒", "先看图", StudioSceneCatalog.FACT_RULE);
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "第N镜（起–止 秒）", "旁白说：「", "正好 10 秒", "先看图", "已附图片", StudioSceneCatalog.FACT_RULE);
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
@@ -96,6 +96,25 @@ class StudioSceneCatalogTest {
         // 剧情类必须写一句，但改稿时有修改意见就够了。
         assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
+    }
+
+    // 2026-10-30 审查 F07：编导按全部素材编号，出片时只认首帧的模型只拿第一张、纯文字模型一张都不拿，脚本里的「图2」视频模型看不到；
+    // 写脚本的模型看不到图时还说「已附图片、先看图」，它就会编图里的东西。
+    @Test
+    void onlyPicturesTheVideoModelGetsAreNumberedAndABlindDirectorIsNotToldToLook() {
+        var req = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "", null, null, List.of("商品图 1"), "出镜人物", null, null, 10, "9:16",
+                null, null, null, List.of("商品图 2"), true, false);
+        String brief = catalog.compose(req).text();
+        assertThat(brief).contains("图1「商品图 1」", "「商品图 2」「出镜人物」这个视频模型用不上", "不要写成图几", "看不到这些图", "不要编看不到的细节")
+                .doesNotContain("图2", "已附图片", "先看图", "只给你看");
+        // 什么图都不交给视频模型（纯文字模型），也不出现编号。
+        var none = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "保湿面霜", null, null, List.of(), null, null, null, 4, "9:16",
+                null, null, null, List.of("商品图 1"), null, true);
+        assertThat(catalog.compose(none).text()).contains("「商品图 1」这个视频模型用不上，只给你看").doesNotContain("图1", "交给视频模型的参考图");
+        // 只放了出镜人物、没放商品图：人物照片不能顶替必填的商品图。
+        var onlyPerson = new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "x", null, null, List.of(), "出镜人物", null, null, 4, "9:16",
+                null, null, null, List.of(), true, true);
+        assertThatThrownBy(() -> catalog.compose(onlyPerson)).hasMessage("先放商品图");
     }
 
     // 2026-10-30 线上验收：品牌故事首稿编了品牌年限、耐用测试次数和测试画面，summary 还说没写功效。
