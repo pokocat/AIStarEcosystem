@@ -223,6 +223,7 @@ export function SceneVideoStudio() {
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
+  const lastScriptSpent = latestScript?.metadata?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
   const writing = scripts.some(s => s.metadata?.status === "loading");
   // 新的一轮出来时滚到底（只滚对话区自己）。
   useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [scripts.length, writing]);
@@ -429,7 +430,11 @@ export function SceneVideoStudio() {
   const specLabel = [language, !recreation && usedTier ? usedTier.toUpperCase() : "", `${shownDuration} 秒`, ratio === "16:9" ? "横屏" : "竖屏"].filter(Boolean).join(" · ");
   const talkCost = recreation ? "交给创作助手：先出方案和报价，确认后才扣积分"
     : caps?.mock ? "测试响应 · 免费"
-    : [scriptCost !== undefined ? `写一版脚本最多 ${scriptCost} 积分（按实际用量扣）` : "",
+    // maxCost 是这一次最多能冻结的数，不是价格（2026-10-30 验收：只写「最多 N 积分」，读起来像一版短脚本就要这么多）。
+    // 写过的给出上一版实际扣了多少，没写过的直说短脚本用不满。授权和结算不变：仍按 maxCost 冻结、按实际用量结算。
+    : [scriptCost !== undefined ? (lastScriptSpent !== undefined
+        ? `写脚本按实际用量扣积分，上一版扣了 ${lastScriptSpent}，这一版最多扣 ${scriptCost}（只是上限）`
+        : `写脚本按实际用量扣积分，这一版最多扣 ${scriptCost}（只是上限，短脚本用不了这么多）`) : "",
        chosenVideo ? (videoQuote != null ? `用 ${chosenVideo.name} 出片预计 ${videoQuote} 积分` : planError || "") : "",
        !textModel?.supportsVision && (images.length || character) ? "编导这次不看图，只按文字写" : ""].filter(Boolean).join("；");
   const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError

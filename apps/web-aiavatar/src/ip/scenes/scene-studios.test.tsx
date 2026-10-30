@@ -100,7 +100,8 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   const script = "镜头1（0–3秒）：图1 的精华放在洗手台上；台词：干皮看过来";
   api.submit.mockImplementation(async (_p: string, r: any) => ({ id: r.operation === "text" ? "IPR-s" : "IPR-v", status: "running", output: {} }));
   api.readRun.mockImplementation(async (id: string) => id === "IPR-s"
-    ? { id, status: "done", kind: "studio-text", inputs: api.submit.mock.calls[0][1], output: { textRevision: { summary: "先讲干皮的烦恼", content: script } } }
+    ? { id, status: "done", kind: "studio-text", inputs: api.submit.mock.calls[0][1], output: { textRevision: { summary: "先讲干皮的烦恼", content: script },
+        billing: { inputTokens: 900, outputTokens: 300, credits: 2, inputCreditsPerK: 1, outputCreditsPerK: 1 } } }
     : { id, status: "running", output: {} });
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "让编导写脚本" }) as HTMLButtonElement;
@@ -117,6 +118,8 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   // 默认 25 秒超过模型上限：一次出片按模型最长 15 秒写，更长的交给助手分段做。
   expect(screen.getByText(/当前模型一条最长 15 秒/)).toBeTruthy();
   await waitFor(() => expect(send().disabled).toBe(false));
+  // 21 是这一次最多冻结的数，不是一版脚本的价格：提示里要说清楚。
+  expect(document.querySelector(".scene-video-hint")?.textContent).toContain("写脚本按实际用量扣积分，这一版最多扣 21（只是上限，短脚本用不了这么多）");
   await act(async () => { fireEvent.click(send()); });
 
   expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script", sceneId: "ecom-talking", text: "保湿精华，不黏腻",
@@ -135,6 +138,10 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
 
   const use = await screen.findByRole("button", { name: "用这个脚本生成" }, { timeout: 4000 });
   expect(screen.getByText(/干皮看过来/)).toBeTruthy();
+  // 写过一版之后再改，提示带上上一版实际扣了多少。
+  fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "口语一点" } });
+  expect(document.querySelector(".scene-video-hint")?.textContent).toContain("上一版扣了 2，这一版最多扣 21（只是上限）");
+  fireEvent.change(screen.getByRole("textbox", { name: "想改哪里" }), { target: { value: "" } });
   await act(async () => { fireEvent.click(use); });
   expect((screen.getByRole("textbox", { name: "视频脚本" }) as HTMLTextAreaElement).value).toBe(script);
   fireEvent.click(screen.getByRole("button", { name: "10 秒" }));

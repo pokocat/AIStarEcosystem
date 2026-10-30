@@ -247,6 +247,15 @@ public class StudioSceneCatalog {
         return limit(extra.isEmpty() ? base : base + "\n补充要求：" + extra);
     }
 
+    /**
+     * 视频两种用法（交给助手、编导写脚本）共用的事实边界。模型最容易顺手编的是能当卖点的「事实」，写进成片就是虚假宣传：
+     * 2026-10-29 本地真 Qwen 在「结尾讲优惠」的拍法下写了「现在下单有优惠」；2026-10-30 线上验收，品牌故事首稿编了品牌年限、
+     * 耐用测试次数和测试画面。所以把不许编的东西一类类列出来；故事可以编，但不能冒充品牌的真实经历。
+     */
+    static final String FACT_RULE = "下面这些我没写就不要出现：价格、优惠、地址；品牌创立年份、有多少年历史；检测、测试、实验的次数和画面；"
+            + "销量、排名、获奖、认证、门店数、用户数；功效和其他数据。也不要写「有优惠」「限时」「十年老店」「经过上千次测试」这类话，"
+            + "拍法里要讲但我没给的，就只引导关注或下单。可以虚构人物和情节来讲故事，但不要写成品牌的真实经历，也不要给编出来的内容配上年份、次数、数量。";
+
     /** 视频两种用法共用的输入检查：素材够不够、时长和画面对不对。 */
     private record VideoInput(VideoScene scene, List<String> images, String text, int duration, String ratio) {}
     private VideoInput videoInput(ComposeRequest r, boolean sceneDurations) {
@@ -280,8 +289,7 @@ public class StudioSceneCatalog {
         if (!materials.isEmpty()) lines.add("画布上的素材：" + String.join("；", materials) + "。");
         if (in.text().isEmpty() && !materials.isEmpty()) lines.add("我没写具体要求，先看素材，再按下面的拍法出方案。");
         lines.add("拍法：" + scene.structure());
-        // 老板没给的价格、优惠、地址，模型最容易顺手编一个，写进成片就是虚假宣传。
-        lines.add("上面没写的信息（价格、优惠、地址、功效数据）不要自己编。");
+        lines.add(FACT_RULE);
         // 只说「先给我分镜方案」时，真模型（2026-10-29 本地聚算 Qwen）只排了一步写脚本，做完也不提出视频。
         lines.add("要的是做好的视频，不只是脚本：把文案、分镜和每段视频一起排进方案，报总共要花的积分，我确认后一次生成。");
         return new Composed(limit(String.join("\n", lines)), scene.skill());
@@ -311,9 +319,9 @@ public class StudioSceneCatalog {
         lines.add("写法：按时间顺序分镜头，每个镜头单独一行，格式是「镜头N（起–止秒）：画面……；台词：……」，没有台词就不写台词。"
                 + "单个镜头 2 到 5 秒，所有镜头加起来正好 " + in.duration() + " 秒。台词说人话，按每秒 4 个字左右算长度。"
                 + "只写镜头里看得见、听得见的东西，不写拍摄建议、不写给人看的解释。");
-        // 2026-10-29 本地真 Qwen：拍法写着「结尾讲优惠」，用户没给优惠，它就写了句「现在下单有优惠」。没给的就不提，只引导下单。
-        lines.add("上面没写的信息（价格、优惠、地址、功效数据）不要自己编，也不要说「有优惠」「限时」这类没给过的话；拍法里要讲但我没给的，就只引导关注或下单。");
-        lines.add("正文只放脚本本身；summary 用一句话说这一版的思路。");
+        lines.add(FACT_RULE);
+        // 2026-10-30 线上验收：首稿编了耐用测试次数，summary 却写「没写功效」。它只能说脚本里有什么，不能替脚本作保证。
+        lines.add("正文只放脚本本身；summary 用一句话说这一版的思路，只说脚本里实际写了什么，用了虚构的人物或情节就直说，不要写「没写功效」「信息都属实」这类保证。");
         return limit(String.join("\n", lines));
     }
 
