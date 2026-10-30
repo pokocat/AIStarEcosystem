@@ -50,8 +50,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+  // 不锁缩放：看不清的人要能放大（2026-10-30 线上复核）。iOS 聚焦小于 16px 的输入框会自动放大，globals.css 末尾把输入框字号兜到 16px。
   viewportFit: "cover",
   themeColor: "#F7F9FB",
 };

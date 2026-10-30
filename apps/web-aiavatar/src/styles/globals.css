@@ -1316,3 +1316,9 @@ html[data-layout="mobile"] .script-assets-bottom>p{flex-basis:100%}
 html[data-layout="mobile"] .script-extraction-controls label{flex:1;min-width:120px}
 html[data-layout="mobile"] .script-extraction-controls .ant-select{width:100%;min-width:0}
 html[data-layout="mobile"] .script-extraction-folder{flex-basis:100%}
+
+/* 页面允许缩放之后（layout.tsx viewport），iOS Safari 聚焦字号小于 16px 的输入框会自动放大页面，只在 iOS 上把输入框兜到 16px。 */
+@supports (-webkit-touch-callout: none) {
+  /* 各页面给输入框写了 13–14px 的类样式，不用 !important 盖不住。 */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea, select { font-size: 16px !important; }
+}

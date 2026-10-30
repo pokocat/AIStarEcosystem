@@ -178,6 +178,9 @@ describe("Creation catalogue", () => {
     expect(video.map(l => l.getAttribute("href"))).toEqual(["/video?scene=ecom-talking&draft=P-video", "/video?scene=ecom-talking&draft=P-video"]);
     expect(screen.getAllByRole("link", { name: "回到 AI 图片继续" }).map(l => l.getAttribute("href"))).toEqual(["/image?scene=free&draft=P-image", "/image?scene=free&draft=P-image"]);
     expect(screen.getAllByRole("link", { name: /^回到 AI/ })).toHaveLength(4);
+    // 继续是主操作，单独一行；查看流程、设置封面另起一行（2026-10-30 线上复核：三个挤一行，次操作断行）。
+    const primary = video.find(l => l.className === "project-card-continue");
+    expect(primary?.parentElement?.querySelector(".project-card-secondary")?.textContent).toBe("查看流程设置封面");
   });
 });
 

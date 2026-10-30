@@ -1,9 +1,10 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronRight, Download, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
+import { StudioErrorNotice } from "../studio-errors";
 import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import { formatDateTime } from "@/lib/datetime";
 import { sceneCover } from "./scene-catalog";
@@ -55,13 +56,62 @@ export function SceneList({ heading, groups, current, onPick, top }: {
   </aside>;
 }
 
+/**
+ * 场景页就地展开的设置面板（图片设置、视频规格）。焦点只在打开那一下进当前选中项：
+ * 关闭函数每次渲染都是新的，放进依赖会让每点一个选项就重新聚焦一次（2026-10-30 线上复核：选 4 张后焦点跳回 3:4）。
+ * 点面板外关闭；Esc 关闭并把焦点还给打开它的按钮（同一个宿主里带 aria-expanded 的那个）。
+ */
+export function useScenePopover(panel: RefObject<HTMLElement | null>, onClose: () => void) {
+  const close = useRef(onClose);
+  useEffect(() => { close.current = onClose; });
+  useEffect(() => {
+    const host = panel.current?.parentElement;
+    const trigger = host?.querySelector<HTMLElement>("[aria-expanded]");
+    const away = (e: PointerEvent) => { if (e.target instanceof Node && !host?.contains(e.target)) close.current(); };
+    const escape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const active = document.activeElement;
+      const ours = !active || active === document.body || !!host?.contains(active);
+      close.current();
+      if (ours) trigger?.focus();
+    };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
+    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
+  }, [panel]);
+}
+
+export type SceneTab = "results" | "example";
+/** 结果区的「生成结果 / 参考示例」：方向键、Home、End 在两个标签间移动并切换，只有当前标签在 Tab 顺序里。 */
+export function SceneResultTabs({ tab, onTab, count, idBase }: { tab: SceneTab; onTab: (tab: SceneTab) => void; count: number; idBase: string }) {
+  const tabs: [SceneTab, ReactNode][] = [["results", <>生成结果{count ? <small>{count}</small> : null}</>], ["example", "参考示例"]];
+  const move = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+    const at = tabs.findIndex(([t]) => t === tab);
+    const next = e.key === "ArrowRight" || e.key === "ArrowDown" ? (at + 1) % tabs.length : e.key === "ArrowLeft" || e.key === "ArrowUp" ? (at + tabs.length - 1) % tabs.length
+      : e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : -1;
+    if (next < 0) return;
+    e.preventDefault();
+    onTab(tabs[next][0]);
+    e.currentTarget.querySelector<HTMLElement>(`#${idBase}-tab-${tabs[next][0]}`)?.focus();
+  };
+  return <div className="scene-tabs" role="tablist" aria-label="结果与示例" onKeyDown={move}>
+    {tabs.map(([t, label]) => <button key={t} id={`${idBase}-tab-${t}`} type="button" role="tab" aria-selected={tab === t} aria-controls={`${idBase}-panel`}
+      tabIndex={tab === t ? 0 : -1} onClick={() => onTab(t)}>{label}</button>)}
+  </div>;
+}
+
 /** 右栏「最近」：本页建过的草稿（就是普通画布），点开接着做。 */
-export function SceneRecent({ drafts, loading, current, onOpen, allHref = "/projects" }: {
-  drafts: IpProjectSummary[]; loading: boolean; current?: string; onOpen: (id: string) => void; allHref?: string;
+export function SceneRecent({ drafts, loading, error, onRetry, current, onOpen, allHref = "/projects" }: {
+  drafts: IpProjectSummary[]; loading: boolean; error?: string; onRetry?: () => void; current?: string; onOpen: (id: string) => void; allHref?: string;
 }) {
+  // 读失败不能显示成「做过的会出现在这里」：用户会以为草稿没了（2026-10-30 线上复核）。
+  const failed = !loading && !!error;
   return <aside className="scene-recent" aria-label="最近的草稿">
     <header><Link href={allHref}>最近<ChevronRight size={15}/></Link></header>
+    {failed && <div className="scene-recent-empty is-error" role="alert"><span>{drafts.length ? "没读到最新的草稿" : "最近的草稿没读到"}</span>
+      {onRetry && <button type="button" onClick={onRetry}>重试</button>}<StudioErrorNotice error={error} label="详情"/></div>}
     {loading && !drafts.length ? <p className="scene-recent-empty"><Loader2 size={15} className="studio-gallery-spinner"/>正在读取</p>
+      : failed && !drafts.length ? null
       : drafts.length ? <ul>{drafts.slice(0, 12).map(d => <li key={d.id}><button type="button" aria-current={d.id === current ? "true" : undefined} onClick={() => onOpen(d.id)} title={d.name}>
         <span className="scene-recent-cover">{d.coverUrl ? <img src={d.coverUrl} alt="" loading="lazy"/> : <Pencil size={20} aria-hidden="true"/>}</span>
         <span><strong>{d.name.replace(/ · AI (图片|视频)$/, "")}</strong><small>{formatDateTime(d.updatedAt)}</small></span>

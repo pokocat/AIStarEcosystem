@@ -23,7 +23,7 @@ import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from 
 import { useSceneDraftStore } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
+import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const POLL_MS = 1500;
@@ -362,10 +362,9 @@ export function SceneImageStudio() {
     </section>
 
     <section className="scene-results" aria-label="生成结果">
-      <header><div className="scene-tabs" role="tablist" aria-label="结果与示例">
-          <button type="button" role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}>生成结果{rows.length ? <small>{rows.length}</small> : null}</button>
-          <button type="button" role="tab" aria-selected={tab === "example"} onClick={() => setTab("example")}>参考示例</button></div>
+      <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
         {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
+      <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? (isFree
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
           : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description} cover={scene.coverUrl} examples={scene.examples}/>)
@@ -374,9 +373,10 @@ export function SceneImageStudio() {
           onView={setViewing} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
+      </div>
     </section>
 
-    <SceneRecent drafts={drafts.data} loading={drafts.loading} current={draft?.id} onOpen={id => void openDraft(id)}/>
+    <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
 
     {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} title="从资产库选一张图" intro="选一张图片做参考，原文件不会被改动。" confirmLabel="用这张"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
@@ -439,13 +439,7 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
   counts: number[]; count: number; onCount: (n: number) => void; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const away = (e: PointerEvent) => { if (e.target instanceof Node && !panel.current?.parentElement?.contains(e.target)) onClose(); };
-    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
-    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
-    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
-  }, [onClose]);
+  useScenePopover(panel, onClose);
   return <div ref={panel} id="scene-image-settings" className="scene-settings-panel" role="group" aria-label="图片设置">
     <h3>图片比例</h3>
     <div className="scene-ratio-grid">{ratios.map(r => { const [w, h] = r.split(":").map(Number), k = 26 / Math.max(w, h);

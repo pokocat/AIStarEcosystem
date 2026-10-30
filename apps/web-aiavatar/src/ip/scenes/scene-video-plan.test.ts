@@ -42,3 +42,16 @@ test("时长按模型范围 5 秒一档，带上两头；场景默认时长放�
   expect(clampSceneDuration(25, contract)).toBe(15);
   expect(clampSceneDuration(2, contract)).toBe(4);
 });
+
+test("能优化描述的模型：默认先改写（另一笔按用量结算的任务）；用户选按原文时不改写，厂商自己的改写也关", () => {
+  const plan = sceneVideoInputs(model([mode("t2v")], { supportsPromptOptimization: true }), []);
+  const h3 = model([mode("t2v")], { supportsPromptOptimization: true });
+  expect(sceneVideoSettings(h3, "720p", plan)).toMatchObject({ rewrite: "auto" });
+  const original = sceneVideoSettings(h3, "720p", plan, false);
+  expect(original.rewrite).toBeUndefined();
+  expect(original.optimizePrompt).toBe(false);
+  // 不支持优化的模型两种选择都一样，不带任何优化字段。
+  const plain = sceneVideoSettings(model([mode("t2v")]), "720p", plan, false);
+  expect(plain.rewrite).toBeUndefined();
+  expect(plain.optimizePrompt).toBeUndefined();
+});
