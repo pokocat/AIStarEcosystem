@@ -7,6 +7,7 @@ import { studioNavigation, studioNavigationCurrent } from '@/shell/studio-naviga
 import { useUiVersion } from '@/shell/ui-version';
 import { Hourglass, Search, X } from 'lucide-react';
 import { HubTabBar } from '@/components/hub/ui';
+import { UiVersionSwitch } from '@/shell/ui-version-switch';
 
 /** The four workspace routes share one paper surface, heading and mobile navigation. */
 export function StudioPage({ title, description, actions, children, className = '', contentRef }: {
@@ -17,7 +18,7 @@ export function StudioPage({ title, description, actions, children, className = 
   const version = useUiVersion();
   return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}`}>
     <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname, version) ? "page" : undefined}>{n.label}</Link>)}</nav>
-    <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{actions && <div className="studio-page-actions">{actions}</div>}</header>
+    <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{(actions || version === 'next') && <div className="studio-page-actions">{version === 'next' && <UiVersionSwitch inline/>}{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>
     <HubTabBar/>
   </main>;

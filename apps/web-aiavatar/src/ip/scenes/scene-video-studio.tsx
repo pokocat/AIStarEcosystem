@@ -24,9 +24,10 @@ import { studioEntryHref } from "../studio-entry";
 import { StudioSelect } from "../studio-select";
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, listSceneDrafts, patchNode, resubmitRow, sceneInputsOf, scriptNodes, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, patchNode, resubmitRow, sceneInputsOf, scriptNodes, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
+import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 
@@ -182,7 +183,7 @@ export function SceneVideoStudio() {
   const ensureDraft = async (ticket: number) => {
     if (!scene) throw new Error("场景还没读出来，请稍等");
     if (draftRef.current) return draftRef.current.id;
-    const subject = text.trim().split(/[，。,.\n]/)[0].slice(0, 14);
+    const subject = draftSubject(text);
     const created = await createSceneDraft(subject ? `${scene.title} · ${subject}` : scene.title, scene.id);
     remember(created);
     if (showDraft(created, ticket)) writeQuery(scene.id, created.id);
@@ -227,7 +228,11 @@ export function SceneVideoStudio() {
   const lastScriptSpent = latestScript?.metadata?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
   const writing = scripts.some(s => s.metadata?.status === "loading");
   // 新的一轮出来时滚到底（只滚对话区自己）。
-  useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [scripts.length, writing]);
+  // 等这一帧排好版再滚：打开草稿时脚本和图片是后到的，立刻滚会停在半路，最新一版的按钮被输入框挡住一半。
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; });
+    return () => cancelAnimationFrame(frame);
+  }, [scripts.length, writing]);
 
   // ── 素材 ──────────────────────────────────────────────────────────────
   const upload = async (kind: Slot, file: File) => {
@@ -571,7 +576,7 @@ export function SceneVideoStudio() {
 
     <section className="scene-results" aria-label="生成结果">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
-        {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
+        <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
           <ol className="scene-steps">

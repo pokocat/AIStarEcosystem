@@ -2,7 +2,7 @@ import { describe, expect, it, test, vi } from "vitest";
 const api = vi.hoisted(() => ({ listProjects: vi.fn() }));
 vi.mock("../api", () => ({ IpStudioApi: { listProjects: api.listProjects } }));
 import type { IpProjectDoc } from "@ai-star-eco/types";
-import { addImageRow, addScriptNode, addVideoRow, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
+import { addImageRow, addScriptNode, addVideoRow, draftSubject, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, scriptNodes, submissionRejected, videoRows, sceneInputsOf, withSceneInput } from "./scene-drafts";
 
 const empty: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const photo = { key: "ipstudio/source/u1/a.jpg", url: "https://cdn/a.jpg", name: "a.jpg" };
@@ -138,3 +138,15 @@ describe("scene inputs", () => {
     expect(withSceneInput(legacy, "image", "z.jpg", "add", 2).sceneInputs?.images).toEqual(["a.jpg", "b.jpg"]);
   });
 });
+
+describe("draftSubject", () => {
+  test("keeps a short first sentence, cuts long ones at 14 characters without leaving a dangling bracket", () => {
+    expect(draftSubject("保湿精华，不黏腻")).toBe("保湿精华");
+    expect(draftSubject("  做一个企业宣传片  ")).toBe("做一个企业宣传片");
+    // 2026-10-30 线上：「品牌故事 · 流程验收：虚构的白瓷杯品牌「」
+    expect(draftSubject("流程验收：虚构的白瓷杯品牌「晨白」讲手作的坚持")).toBe("流程验收：虚构的白瓷杯品牌");
+    expect(draftSubject("帮我做一条「春季新品发布」主题的视频")).toBe("帮我做一条「春季新品发布」主");
+    expect(draftSubject("一二三四五六七八九十一二三：后面")).toBe("一二三四五六七八九十一二三");
+  });
+});
+

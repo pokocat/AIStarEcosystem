@@ -59,8 +59,10 @@ export const viewport: Viewport = {
 // + Noto Sans SC（中文）。新增桌面展示字体 Noto Serif SC 已自托管，见 ip-brand.css。
 // 经 React 19 自动提升到 <head>；浏览器无法访问 Google
 // Fonts 时优雅回退到系统字体（globals.css 的 --font-* 已带 system 回退）。
+// Manrope 与 Noto Sans SC 只要 400 / 500 / 600 三档（2026-10-30 用户：「全站字体太粗」）：原来中文只有 400 / 500 / 700 / 900，
+// 样式里的 600 全被画成 700；现在写 700、800 的地方也落到 600，全站最粗就是半粗。
 const FONTS_HREF =
-  "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;700;900&display=swap";
+  "https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&family=JetBrains+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600&display=swap";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (

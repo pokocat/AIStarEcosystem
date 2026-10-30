@@ -2,7 +2,7 @@
    surfaces it lives on: the landing (--ip-*) and the studio hub (--surface / --ink). Layout follows
    html[data-layout], never width media queries. */
 .studio-conversation-start { display:flex; flex-direction:column; gap:10px; width:100%; max-width:600px; min-width:0; }
-.studio-conversation-start h2 { margin:0 0 2px; font-size:20px; font-weight:700; line-height:1.4; }
+.studio-conversation-start h2 { margin:0 0 2px; font-size:20px; font-weight: 600; line-height:1.4; }
 .studio-conversation-start-box { display:flex; flex-direction:column; gap:10px; padding:14px 14px 12px; background:var(--ip-paper, var(--surface, #fff)); border:1px solid var(--ip-line, var(--line-2, #d3d9e5)); border-radius:16px; box-shadow:0 18px 44px rgb(20 24 40 / 10%); }
 .studio-conversation-start-box { transition:border-color 120ms ease-out, box-shadow 120ms ease-out; }
 /* The box is the field: the textarea has no border of its own, so focus shows on the box's rounded

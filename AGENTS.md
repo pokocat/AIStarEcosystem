@@ -1085,7 +1085,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 
 主导航：`首页 / 项目 / 画布·自由创作 / 场景·专项创作 / 灵感 / 资产 / 发行`。项目为独立大预览画廊，创作页平铺十项能力入口。`/scenes` 前两项引用 `StudioScenePresets` 补缺的普通模板，不新建场景项目；旧 `/ips` 参数兼容到资产默认我的 IP。发行仅共享本人账号域和发布任务 GET；任务写权限不扩大，草稿、画布直发与未接通能力标【待建设】。页面/功能边界及本地验收见 `docs/releases/studio-workspace-refactor-validation.md`；代码 `81778bef` 已部署 server/web-aiavatar，实际版本与验收限制见 `docs/releases/studio-workspace-production-release-20261017.md`。
 
-- **Studio 统一画布封面（2026-10-17，已发布 a4092626）**：项目/灵感共用 ProjectCardPreview 与 CanvasCoverEditor，人工封面 → 自动图片 → 画布缩略图。POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用鉴权与存储生命周期；个人属主/官方 SUPER_ADMIN，封面不改 doc 或不可变模板版本，不触发生成或积分。
+- **Studio 统一画布封面（2026-10-17，已发布 a4092626）**：项目/灵感共用 ProjectCardPreview 与 CanvasCoverEditor，人工封面 → 自动图片 → 画布内容的文字（正文摘录 / 步骤 / 空白画布；2026-10-30 起不再画节点示意图）。POST|PUT|DELETE /api/v1/ip-studio/covers/{project|template}/{id} 共用鉴权与存储生命周期；个人属主/官方 SUPER_ADMIN，封面不改 doc 或不可变模板版本，不触发生成或积分。
 
 内置官方模板的人工封面使用 studio.builtin-cover.{id} 平台配置，仅 SUPER_ADMIN 可修改；目录和按 id 解析共用覆盖，不复制 classpath doc。
 

@@ -14,9 +14,11 @@ import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
 import { ProjectCardPreview } from "@/ip/project-card-preview";
+import { projectPreview } from "@/ip/project-preview";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
 import { useUiVersion } from "@/shell/ui-version";
+import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { IpHomeClassic } from "./ip-home-classic";
 
 /** 一个入口：要么是独立页面，要么是带某个面板打开的新画布。 */
@@ -110,7 +112,9 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     try { const project = await createStudioEntry(target.entry); router.push(studioEntryHref(project.id, target.entry)); }
     catch (e) { showFailure({ action: "新建画布", error: e, next: "可以再点一次；反复失败的话展开「错误详情」复制后发给我们。" }); setCreating(undefined); createLock.current = false; }
   };
-  const feed = useMemo(() => (templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab)), [templates, tab]);
+  // 有成图的排前面：灵感墙先让人看到做出来的东西，只有步骤的模板跟在后面（2026-10-30 线上走查：前几屏大半是没有图的卡）。
+  const feed = useMemo(() => (templates ?? []).filter(t => tab === "all" || (tab === "canvas" ? true : templateKind(t) === tab))
+    .map((t, i) => ({ t, i, pictured: hasPicture(t) })).sort((a, b) => Number(b.pictured) - Number(a.pictured) || a.i - b.i).map(x => x.t), [templates, tab]);
   const scrollGoals = (direction: number) => goals.current?.scrollBy({ left: direction * goals.current.clientWidth * .8, behavior: "smooth" });
 
   return <div className="ip-brand-surface ip-home studio-scene-home">
@@ -119,6 +123,7 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
     {using && <StudioTemplateUse key={using.versionId || using.id} template={using} onClose={() => setUsing(undefined)} onCreated={id => router.push(`/projects/${encodeURIComponent(id)}`)}/>}
     <main>
       <section className="home-hero">
+        {authed && <UiVersionSwitch inline/>}
         <h1><span>声量引擎</span>，让灵感成形，让 IP 出圈</h1>
         <p>商品图、带货视频、IP 形象，选个场景就能做；也可以直接说想做什么。</p>
         <StudioConversationStart creating={creating === "assistant"} onStart={brief => void startConversation(brief)}/>
@@ -161,11 +166,13 @@ export function IpHome(props: { header?: boolean }) {
   return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
 }
 
+const hasPicture = (t: IpTemplate) => !!t.coverUrl || projectPreview(t.doc).images.length > 0;
+
 function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
   const kind = templateKind(template);
   const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;
   return <button type="button" className="home-feed-card" style={{ aspectRatio: FEED_SHAPES[shape % FEED_SHAPES.length] }} aria-label={`预览模板 ${template.name}`} title={template.summary || template.name} onClick={() => onOpen(template)}>
-    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl}/></span>
+    <span className="home-feed-media"><ProjectCardPreview key={template.coverUrl || template.versionId || template.id} doc={template.doc} coverUrl={template.coverUrl} stepsFirst/></span>
     <span className="home-feed-caption"><Icon size={15} aria-hidden="true"/><strong>{template.name}</strong></span>
   </button>;
 }

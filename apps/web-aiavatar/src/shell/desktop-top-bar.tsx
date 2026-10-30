@@ -10,7 +10,8 @@ import { useStudioHash } from "./account-workspace";
 import { WalletBadge } from "./wallet-badge";
 import { studioNavigation, studioNavigationCurrent } from "./studio-navigation";
 import { studioNavigationIcon } from "./studio-navigation-icons";
-import { setUiVersion, useUiVersion } from "./ui-version";
+import { useUiVersion } from "./ui-version";
+import { UiVersionSwitch } from "./ui-version-switch";
 
 /** The canvas keeps its native tools. 新版登录后是左侧一列，旧版和公开落地页是顶栏（见 ui-version.ts）。 */
 export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) {
@@ -52,8 +53,8 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     <button onClick={() => setLayout("mobile")}><Smartphone size={16} />切换到手机版</button>
     <button onClick={() => auth.logout()}><LogOut size={16} />退出登录</button>
   </div></details>;
-  // 新旧版切换放在右上角：旧版在顶栏里，新版没有顶栏，固定在页面右上角的留白里（见 ui-version.ts）。
-  const uiSwitch = <button type="button" className="ip-ui-switch" onClick={() => setUiVersion(version === "next" ? "classic" : "next")}>{version === "next" ? "回到旧版" : "体验新版"}</button>;
+  // 新旧版切换在右上角：旧版在顶栏里；新版在各页标题栏右侧，没有标题栏的页面才悬浮在右上角（ui-version-switch.tsx）。
+  const uiSwitch = <UiVersionSwitch/>;
   // 新版登录后的工作台：左侧一列图标 + 文字（参考 docs/studio-scene-creation.md §2）。旧版和公开落地页仍是顶栏。
   if (!publicMode && version === "next") return <><header className="desktop-top-bar desktop-rail ip-surface ip-brand-surface">
     <Link href={authed ? "/dashboard" : "/"} className="desktop-rail-logo" aria-label="IP Studio · 声量引擎旗下首页" title="IP Studio · 声量引擎旗下"><img src="/brand/ip-studio-logo.png" width={36} height={36} alt="" /></Link>
@@ -65,7 +66,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     <div className="desktop-rail-account">
       {authed ? <><WalletBadge account={identity?.uid ?? null} location={pathname + hash} />{accountMenu}</> : <Link className="ip-brand-button" href="/login?next=%2Fdashboard">登录</Link>}
     </div>
-  </header><div className="ip-ui-switch-corner">{uiSwitch}</div></>;
+  </header><div className="ip-ui-switch-corner ip-surface ip-brand-surface">{uiSwitch}</div></>;
   return <header className={"desktop-top-bar ip-surface ip-brand-surface" + (publicMode ? " ip-public-top-bar" : "")}>
     <Link href={authed ? "/dashboard" : "/"} className="ip-brand-logo" aria-label="IP Studio · 声量引擎旗下首页"><img src="/brand/ip-studio-logo.png" width={38} height={38} alt="" /><strong>IP Studio <small>· 声量引擎旗下</small></strong></Link>
     <nav className="ip-top-navigation" aria-label="主导航">{navigation.map(n => {

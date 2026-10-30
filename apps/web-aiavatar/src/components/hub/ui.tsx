@@ -8,6 +8,7 @@
 import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useUiVersion } from "@/shell/ui-version";
 
 type CSS = React.CSSProperties;
 
@@ -116,13 +117,25 @@ const TABS = [
   { href: "/assets", label: "资产", icon: LayersIcon, match: (p: string) => p.startsWith("/assets") || p === "/ips" },
   { href: "/me", label: "我的", icon: UserIcon, match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") },
 ];
+/**
+ * 新版手机底栏：场景创作（AI 视频 / AI 图片）放到底栏上，和电脑左栏同一批入口；项目、资产在「我的」里。
+ * 2026-10-30 线上走查：新版手机底栏还是旧的那一排，AI 视频、AI 图片从底栏到不了。
+ */
+const NEXT_TABS = [
+  TABS[0],
+  { href: "/video", label: "AI 视频", icon: VideoTabIcon, match: (p: string) => p.startsWith("/video") },
+  TABS[2],
+  { href: "/image", label: "AI 图片", icon: ImageTabIcon, match: (p: string) => p.startsWith("/image") },
+  { ...TABS[4], match: (p: string) => p.startsWith("/me") || p.startsWith("/licenses") || p.startsWith("/projects") || p.startsWith("/assets") },
+];
 
 export function HubTabBar() {
   const pathname = usePathname() || "/";
+  const tabs = useUiVersion() === "next" ? NEXT_TABS : TABS;
   const createOn = pathname.startsWith("/create") || pathname.startsWith("/studio");
   return (
     <nav className="wx-tabbar hub-tabbar">
-      {TABS.map((t) =>
+      {tabs.map((t) =>
         "fab" in t ? (
           <div key="create" className="wx-fab-slot">
             <Link className={"wx-fab" + (createOn ? " on" : "")} href={t.href} replace aria-label="创作">
@@ -489,6 +502,25 @@ function LayersIcon({ strong }: { strong?: boolean }) {
     <svg {...svgProps(strong)}>
       <polygon points="12 2 22 8 12 14 2 8 12 2" />
       <polyline points="2 13 12 19 22 13" />
+    </svg>
+  );
+}
+
+function VideoTabIcon({ strong }: { strong?: boolean }) {
+  return (
+    <svg {...svgProps(strong)}>
+      <rect x="2.5" y="6" width="13.5" height="12" rx="2.5" />
+      <path d="m16 10.5 5.5-3v9l-5.5-3" />
+    </svg>
+  );
+}
+
+function ImageTabIcon({ strong }: { strong?: boolean }) {
+  return (
+    <svg {...svgProps(strong)}>
+      <rect x="3" y="3" width="18" height="18" rx="3" />
+      <circle cx="9" cy="9" r="2" />
+      <path d="m21 15-4.5-4.5L6 21" />
     </svg>
   );
 }

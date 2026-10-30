@@ -18,6 +18,8 @@
 - [ ] **后端待发（用户 2026-10-30 选择先不发，等通知）**：main 上 server 比线上 `20261030-studio-scene-backend`（`80edade0f`）多四处：场景模板「恢复内置」写带版本记录 + 缓存按内容认（`StudioSceneCatalog` / `StudioSceneAdminService`，`StudioSceneResetTest`）、「短剧导演台」积分流水说明与一条报错文字（`StudioWorkflowService` / `DirectorService`）、#134 报错处理（`ProviderErrorMessage` / `HttpModelinkGateway`）、编导与助手的事实边界（`StudioSceneCatalog.FACT_RULE`，不编品牌年份、检测次数、销量等；随包场景文字同步改，`docs/studio-scene-creation.md` §12）。在这之前 Studio 后台点「恢复内置」再保存仍可能读到旧目录。发布前按 AGENTS「生产发布顺序」核对契约改动。
 - [ ] **设置页的通知 / 水印 / 自动归档偏好**（2026-10-30 线上复核后撤下假开关，`src/proto/screen-more.tsx`）：服务端没有用户偏好表，也没有它们要影响的行为（推送、任务完成提醒、导出加水印、定稿自动归档）。要做先定每个开关真正改什么，再加服务端偏好与接口，最后放回界面。
 - [ ] **场景页「优化描述」显示具体上限**：改写那一步按改写模型的上限另外冻结，前端拿不到这个数（`StudioWorkflowService.videoRewriteHold` 只在服务端），界面只能写「按实际用量另扣」。要写出「最多 N 积分」需在视频模型列表或报价接口里带上改写上限。
+- [ ] **项目 / 灵感卡片要缩略图**（2026-10-30 线上走查）：`ProjectCardPreview` 直接加载原图，一张 1728×2304 的出图在 266px 卡片上加载了 18 秒。OSS 签名地址不能在前端追加 `x-oss-process`，要在服务端给图片资产派生缩略图 key（或签名时带处理参数），DTO 另给 `thumbnailUrl`。
+- [ ] **打开画布就会存一版**（2026-10-30 线上走查）：什么都没改，顶栏先显示「未保存」，随即自动保存一次。多半是加载后的文档规整被当成了修改；会让多标签页更容易撞版本，也让用户以为自己改了什么。要查画布加载后哪一步改了文档。
 - [ ] **全部切到新版后删掉旧版界面**（2026-10-30 起正式站默认旧版，`?ui=new` 进新版，见 `docs/studio-scene-creation.md` §10）：删 `components/landing/ip-home-classic.tsx`、`studio-navigation.ts` 的旧版列表、`desktop-top-bar.tsx` 的旧版顶栏分支、`studio-conversation-start.tsx` 旧提示，`ui-version.ts` 改成默认新版或整个去掉。
 - [x] ~~**按新出片方式在 H3 上真出一条带参考图的视频**~~ **已验证**，2026-10-29：本地接聚算 H3，新视频页全能参考带 1 张商品图、544p 9:16 5 秒、200 积分，成片里是参考图的商品，从草稿重开显示已完成。见 `docs/releases/studio-scene-creation-local-validation-20261029.md` 末节。
 - [x] ~~场景的「选项组」~~ **2026-10-29 本地实现（未发布）**：目录每个场景可配最多 4 组选项（默认值），场景页点选，`compose` 拼进描述 / 要求；随包给 6 个场景配了；真 Qwen 按「只拍商品」写出无露脸脚本已验，见 §9。
