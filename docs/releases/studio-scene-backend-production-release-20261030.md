@@ -13,7 +13,7 @@
 | 服务启动 | 09:44:22 重启，09:44:39 启动完成（16.4 秒），NRestarts=0 |
 | 数据库 | V72 `ip_project.scene_id`（可空列）09:44:27 执行成功；线上此前最大 V71 |
 
-发布前线上 server 是 `20261030-director-version-adopt`（main `97ca7fc28`），main 在它之后只有本次 #133 和 studio-admin 看板（`b985992d7`，不在 server 包里改行为），没有带上别的未发布后端改动。
+发布前线上 server 是 `20261030-director-version-adopt`（main `97ca7fc28`），main 在它之后有本次 #133 和 studio-admin 看板（`b985992d7`）。**更正**：`b985992d7` 也改了后端看板接口（`StudioOperationsDashboardService` / DTO：新增消费用户、到账、导演台推进、成功率窗口、供应商异常等，并把 `hourlyOutcomes` 换成 `successWindows` + `outcomeBuckets`），随这次 server 一起上线了；当时写成「不在 server 包里改行为」是错的，见下「Studio 后台」。
 
 ## 兼容性
 
@@ -75,9 +75,19 @@
 
 预览站随后下线：停用并删除 `aistareco-web-aiavatar-preview`、nginx 站点、`/opt/ai-star-eco/web-aiavatar-preview`、预览环境文件与发布目录，账号中心那两份备份（与现行配置一致）一并删除。`aistar-preview.aibuzz.cn` 现在落到 443 默认站（404）。
 
+## Studio 后台（studio-admin，10:46）
+
+**事故**：09:44 的 server 带上了 `b985992d7` 的看板接口改动，其中 `hourlyOutcomes` 被换掉；线上 Studio 后台还是 10-26 版，技术看板对每个模型做 `hourlyOutcomes.map(...)`，接口不再给这个字段后会报错。09:44–10:46 之间技术看板应当打不开（没有线上复现，按代码判断；经营看板与其它页面不读这个字段）。原因是只发 server 前没查 main 上前后端一起改的契约，规约已补进 AGENTS.md「生产发布顺序」。
+
+**处理**：从 main `0cf885c55` 构建并发布 studio-admin `20261030-studio-admin-scenes`（`build-studio-admin-release.sh` 含类型检查与 12 条测试，`deploy-studio-admin-release.sh`），10:46:45 重启，NRestarts=0，无报错；只重启 `aistareco-studio-admin`，没动 server、Studio 前端与 nginx。这一版同时带上看板改版（`b985992d7`）和「运营配置 · 场景模板」页面。
+
+- 线上：`/admin`、`/admin/login`、`/admin/scenes` 200；未登录访问 `/api/admin/studio/scenes`、`/api/admin/studio-operations` 401。
+- 没有用线上管理员账号登录核对看板和场景模板页（不使用线上凭据），需要运营登录看一眼。
+- 发布脚本成功后不保留旧目录；回到 10-26 版要从 `92d74f05d` 重新构建，且那一版和现在的后端对不上，不建议回退。
+
 ## 没有做的
 
-- Studio 后台（studio-admin）没有发布，运营还不能在线上改场景模板；线上用的是包里自带的场景目录。
+- 运营还没在线上用过场景模板页；线上目前用的是包里自带的场景目录。
 - CI：main 上 web-drama 那条原有测试的修复（PR #134，已全绿）还没合入，所以 #133 / #135 合并后 main 的 frontend-tests 仍会红在那一条。
 
 ## 回滚

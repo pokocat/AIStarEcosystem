@@ -176,6 +176,8 @@ pnpm check:api-contract                          # 扫五个子应用 + api-clie
 
 用户要求：改完先合入 `main`，再发布。功能分支完成后合入主线，保留 `main` 已有功能，解决冲突并通过检查；仅从干净的 `main` 构建正式制品。不得从落后于主线的功能分支直接覆盖生产。发布记录须写明构建所用的 `main` 提交、服务范围和线上验收结果。
 
+**只发一部分服务时，先查 main 上的契约改动**（2026-10-30 事故）：从 main 只发 server，会把线上那版之后 main 上所有后端改动一起带上。当天 main 上一次看板提交把 `/api/admin/studio-operations` 的 `hourlyOutcomes` 换成了两个新字段、前后端一起改，而发布只发了 server，线上 Studio 后台（10-26 版）读 `hourlyOutcomes.map` 出错，技术看板约一小时打不开，补发 studio-admin 后恢复。发布前跑 `git diff <线上 GIT_SHA> origin/main -- 'apps/server/**/dto/**' specs/openapi.yaml`，有删除或改名的字段，就把读它的前端（五个 web、admin、studio-admin、小程序）一起发，或者先不发。
+
 ## 3. 三端架构
 
 ### 数据流转

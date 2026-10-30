@@ -228,7 +228,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 ## 7. 发布与验收记录（`docs/releases/`）
 
 - [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
-- [Studio 场景化改版上线（后端 + 新旧版开关）](releases/studio-scene-backend-production-release-20261030.md)：server `80edade0f`（V72）；web-aiavatar `beef9f87c` 正式站默认旧版、`?ui=new` 进新版可回旧版；预览站已下线，账号中心未改（last-reviewed 2026-10-30）。
+- [Studio 场景化改版上线（后端 + 新旧版开关）](releases/studio-scene-backend-production-release-20261030.md)：server `80edade0f`（V72）；web-aiavatar `beef9f87c` 正式站默认旧版、`?ui=new` 进新版可回旧版；studio-admin `0cf885c55` 补发（修看板字段不匹配，并上线场景模板页）；预览站已下线，账号中心未改（last-reviewed 2026-10-30）。
 - [导演台 AI 入口、长文与上传资产生产发布](releases/director-ai-entries-production-release-20261029.md)：main `9ad3603b0`，server + Studio；104,029 字 HTML、超量粘贴、自有资产图及参考图线上验证，含回收站与 V71 声音回执迁移（last-reviewed 2026-10-29）。
 - [导演台正文冻结生产发布与验收](releases/director-script-freeze-production-release-20261029.md)：main `d67841214`，server + Studio；正文冻结、跨页保存拒绝、真实修改建议采用/撤销，13 积分无重复结算，发布窗口短暂 502 已恢复（last-reviewed 2026-10-29）。
 - [导演台作品删除生产发布](releases/director-delete-production-release-20261028.md)：main `cb9190489`，server + web-aiavatar；146 条后端、65 条前端及一次性 MySQL 删除并发 11 条通过，线上确认/取消与不存在状态验收，未删除生产作品（last-reviewed 2026-10-28）。
