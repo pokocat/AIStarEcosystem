@@ -371,6 +371,16 @@ export function SceneImageStudio() {
     if (!image.key) return;
     router.push(`/video?scene=${videoSceneFor(scene?.id, scene?.group)}&ref=${encodeURIComponent(image.key)}`);
   };
+  /**
+   * 改图类场景（换脸、精修、真人感、白底、入景、换装）把原图放在结果前面，一眼对比改了什么（方案 §4.3）。
+   * 原图就是那一次的图1；自由出图、设定图这类生成新图的不放。
+   */
+  const originalOf = (row: CanvasNodeData) => {
+    const sceneId = row.metadata?.studio?.sceneImage?.sceneId ?? scene?.id;
+    if (!sceneId || !COMPARE_SCENES.has(sceneId) || !draftRef.current) return undefined;
+    const first = rowUploads(draftRef.current.doc, row)[0];
+    return first ? { url: first.url, key: first.key, name: `${row.title}-原图` } : undefined;
+  };
   const followUps = (image: { url: string; key?: string; name: string }) => image.key ? <>
     <button type="button" onClick={() => putAsReference(image)}><ImageUp size={16}/>当参考图</button>
     <button type="button" onClick={() => toVideo(image)}><Clapperboard size={16}/>做成视频</button></> : null;
@@ -461,7 +471,7 @@ export function SceneImageStudio() {
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
           : <SceneExample id={scene.id} title={`${scene.title}效果示例`} note={scene.description} cover={scene.coverUrl} examples={scene.examples}/>)
         : opening ? <div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在打开草稿</div>
-        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
+        : rows.length ? <ol className="scene-row-list">{rows.map(row => <ImageRow key={row.id} row={row} original={originalOf(row)} run={live[row.id]} busy={busy} submitting={submitting === row.id}
           onView={setViewing} onUse={putAsReference} onVideo={toVideo} onReuse={() => reuse(row)} onRetry={() => retry(row)} onConfirm={() => void confirmOriginal(row)}
           onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <SceneEmpty title="还没有生成" note={<>放好参考图，点「立即生成图片」，结果会出现在这里。</>} covers={[]}/>}
@@ -483,7 +493,8 @@ export function SceneImageStudio() {
   </main>;
 }
 
-function ImageRow({ row, run, busy, submitting, onView, onUse, onVideo, onReuse, onRetry, onConfirm, onStop }: {
+function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo, onReuse, onRetry, onConfirm, onStop }: {
+  original?: { url: string; key?: string; name: string };
   row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onView: (image: { url: string; key?: string; name: string }) => void;
   onUse: (image: { url: string; key?: string; name: string }) => void; onVideo: (image: { key?: string }) => void;
   onReuse: () => void; onRetry: () => void; onConfirm: () => void; onStop: () => void;
@@ -503,6 +514,8 @@ function ImageRow({ row, run, busy, submitting, onView, onUse, onVideo, onReuse,
       <span className="scene-row-state" role={loading ? "status" : undefined} title={failure && meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{loading && <Loader2 size={14} className="studio-gallery-spinner"/>}{state}</span></div>
     {request?.prompt && <p className="scene-row-prompt" title={request.prompt}>{request.prompt}</p>}
     <div className="scene-row-images">
+      {original && images.length > 0 && <button type="button" className="scene-row-original" onClick={() => onView(original)} aria-label="查看原图">
+        <SignedImage src={original.url} storageKey={original.key} alt="原图" loading="lazy"/><span>原图</span></button>}
       {images.map((image, i) => <button type="button" key={image.id} onClick={() => onView({ url: image.content!, key: image.storageKey, name: `${row.title}-${i + 1}` })} aria-label={`查看第 ${i + 1} 张`}>
         <SignedImage src={image.content} storageKey={image.storageKey} alt={`${row.title}第 ${i + 1} 张`} loading="lazy"/></button>)}
       {loading && Array.from({ length: Math.max(0, (request?.count || 1) - images.length) }, (_, i) => <span key={`wait-${i}`} className="scene-row-placeholder"/>)}
@@ -552,6 +565,8 @@ function ImageSettingsPanel({ ratios, ratio, onRatio, sizes, size, onSize, count
  * 「做成视频」去哪个视频场景：人物类的图去数字人口播（人物照片），其余当商品图去口播带货。
  * 到了视频页可以再换场景，同名的素材位会跟着走。
  */
+const COMPARE_SCENES = new Set(["face-swap", "retouch", "realism", "white-background", "scene-swap", "product-scene", "outfit-on-model", "outfit-restyle"]);
+
 function videoSceneFor(sceneId?: string, group?: string): string {
   if (group === "ip" || group === "person" || sceneId === "realism" || sceneId === "scene-swap") return "ip-talking";
   return "ecom-talking";

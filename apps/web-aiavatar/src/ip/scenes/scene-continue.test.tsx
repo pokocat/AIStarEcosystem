@@ -139,3 +139,20 @@ test("video: a draft handed to the assistant says so before a plan is confirmed,
   await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
   expect(await screen.findByText(/创作助手停下来等你：参考视频里的人物要换成谁/)).toBeTruthy();
 });
+
+test("image: edit-type scenes put the original in front of the result for comparison; free drawing does not", async () => {
+  await oneResult();
+  const original = screen.getByRole("button", { name: "查看原图" });
+  expect((within(original).getByRole("img", { name: "原图" }) as HTMLImageElement).src).toBe("blob:p");
+  fireEvent.click(original);
+  expect(within(screen.getByRole("dialog", { name: "查看大图" })).getByRole("img", { name: /原图/ })).toBeTruthy();
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "Escape" });
+
+  cleanup();
+  await open(SceneImageStudio, "/image?scene=free");
+  fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只猫" } });
+  await act(async () => { upload(refInput()); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
+  await screen.findByRole("img", { name: /自由出图第 1 张/ }, { timeout: 4000 });
+  expect(screen.queryByRole("button", { name: "查看原图" })).toBeNull();
+});
