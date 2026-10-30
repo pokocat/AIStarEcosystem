@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowRight, AudioLines, Boxes, ChevronLeft, ChevronRight, Clapperboard, Image as ImageIcon, LayoutTemplate, LoaderCircle, MicVocal, Scan, Sparkles, SquareDashedMousePointer, SwatchBook, Video } from "lucide-react";
@@ -151,12 +151,33 @@ function IpHomeNext({ header = true }: { header?: boolean }) {
         <div className="home-feed-tabs" role="group" aria-label="灵感分类">{feedTabs.map(t => <button key={t.value} type="button" aria-pressed={tab === t.value} onClick={() => setTab(t.value)}>{t.label}</button>)}</div>
         {templates === undefined ? <div className="ip-brand-state" role="status">正在读取灵感…</div>
           : feedError ? <div className="ip-brand-error" role="alert">灵感暂时没读出来，稍后刷新再看。</div>
-          : feed.length ? <div className="home-feed-wall">{feed.slice(0, 15).map((t, i) => <FeedCard key={t.id} template={t} shape={i} onOpen={setUsing}/>)}</div>
+          : feed.length ? <FeedWall>{feed.slice(0, 15).map((t, i) => <FeedCard key={t.id} template={t} shape={i} onOpen={setUsing}/>)}</FeedWall>
           : <div className="ip-brand-state">这一类还没有内容，先看看别的分类。</div>}
       </section>}
     </main>
     <footer className="ip-home-footer"><span>IP Studio · 声量引擎旗下</span><p>让灵感成形，让 IP 出圈。</p><Link href="/assets?tab=ips">管理我的 IP<ArrowRight size={15} /></Link></footer>
   </div>;
+}
+
+/**
+ * 灵感墙：按行轮流分到各列（第 1 张进第 1 列，第 2 张进第 2 列……），排在前面的就在第一行。
+ * 原来用 CSS columns，是一列从上往下排满再排下一列：有图的排到前面以后，图全挤在左边几列（2026-10-30 线上）。
+ */
+function FeedWall({ children }: { children: ReactNode[] }) {
+  const wall = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(4);
+  useEffect(() => {
+    const el = wall.current;
+    if (!el) return;
+    const fit = () => setColumns(Math.max(2, Math.min(5, Math.floor((el.clientWidth + 14) / (220 + 14)))));
+    fit();
+    if (typeof ResizeObserver === "undefined") return;
+    const watch = new ResizeObserver(fit);
+    watch.observe(el);
+    return () => watch.disconnect();
+  }, []);
+  return <div ref={wall} className="home-feed-wall">{Array.from({ length: columns }, (_, c) =>
+    <div key={c} className="home-feed-column">{children.filter((_, i) => i % columns === c)}</div>)}</div>;
 }
 
 /** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是只读预览，存为副本再改。 */
