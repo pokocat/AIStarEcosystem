@@ -50,7 +50,8 @@ export function useSceneHomeCards() {
   const [cards, setCards] = useState<StudioSceneHomeCard[]>([]);
   useEffect(() => {
     let active = true;
-    void IpStudioApi.sceneHomeCards().then(list => { if (active) setCards(list); }).catch(() => undefined);
+    // 空列表本来就是初始值，不再触发一次重绘。
+    void IpStudioApi.sceneHomeCards().then(list => { if (active && list.length) setCards(list); }).catch(() => undefined);
     return () => { active = false; };
   }, []);
   return cards;
