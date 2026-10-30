@@ -593,7 +593,7 @@ sau-service…），当依赖**未配置**或**调用失败**时，在生产 pro
   请求路径上才落进 `ErrorLog`；`@Async` worker / `@Scheduled` 里抛的异常到不了那儿，
   等于什么都没记（v0.184 就是这么丢的）。
 - **模型错误区分用户可操作原因与平台内部诊断**（2026-10-25 用户修正边界）：素材、尺寸、审核等可操作原因继续明确展示；供应商余额、预扣费、配额、费率/成本、密钥、签名链接与技术堆栈不得透传到客户端（包括错误详情、历史任务、导演作品和事件流）。`ProviderErrorMessage` 在源头过滤，`PublicModelErrorPolicy` / 公共 JSON 出口及前端兜底保护历史错误；原始证据仅留在有权限的后台日志/诊断中。客户真实的积分钱包不足提示和我方追查号保留，不把供应商额度不足引导成客户充值。不得以“脱敏后仍可读”为由保留内部经营信息；也不把全部可操作原因一律覆盖成通用提示。
-  上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。响应体不是 JSON 时不外泄
+  上游 HTTP 状态、明确拒绝 / 受理未知的分类、计费和重试策略仍按既有协议判断，不能因展示了上游消息就改判失败或重复付费提交。**按供应商原话分类（额度 / 配额 / 权益 / 鉴权…）一律读 `ProviderErrorMessage.diagnosticReason` / `diagnostic`，不读 `reason` / `message` / `sanitize`**：对外那份已经把这些词换成通用句，拿它判永远判不中（2026-10-25 起石榴「克隆权益不足」和七牛分组配额的分类就这样失效了四天，单测直接传原话所以没测到，10-29 修复）。响应体不是 JSON 时不外泄
   （别把网关的 HTML 错误页糊到界面上）。范式：`DapMultimodalClient#upstreamMessage`、
   `MaterialVideoModelClient#uploadFailureMessage`。
 - 发出去的**请求体**也要记（`ModelCallCtx.requestBodyJson` → `[upstream-io] REQUEST`）。

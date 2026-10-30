@@ -248,7 +248,10 @@ class EnterpriseLifecycleScenarioTest {
     @Test void scopedGrantHttpFlowEnforcesAdminRolesAndShowsApprovedMemberBalance() throws Exception {
         var e=company();var m=join(e);
         var target=new com.aistareco.aep.billing.service.ModelBillingTarget("aiavatar","image",endpoint,"local","standard","image");
-        Instant now=Instant.now(),until=now.plusSeconds(86400);
+        // 截到毫秒：Linux 上 Instant.now() 带纳秒，存进 TIMESTAMP(6) 会四舍五入，约一半概率入库值比传入值晚一点，
+        // 下面原样回传同一个 until 就被判成「缩短有效期」（CI 上偶发红、macOS 只给到微秒所以本机总是绿）。
+        // 真实前端回传的是服务端返回、已按库精度存过的值。
+        Instant now=Instant.now().truncatedTo(java.time.temporal.ChronoUnit.MILLIS),until=now.plusSeconds(86400);
         var campaign=new com.aistareco.aep.billing.service.ModelBillingConfigService.CampaignInput(
                 "审批验收",List.of(target),100000,100000,java.math.BigDecimal.TEN,java.math.BigDecimal.TEN,3,now.minusSeconds(1),until,true,null);
         var created=mvc.perform(post("/api/admin/model-billing/campaigns").with(user("config-staff").roles("OPERATOR"))

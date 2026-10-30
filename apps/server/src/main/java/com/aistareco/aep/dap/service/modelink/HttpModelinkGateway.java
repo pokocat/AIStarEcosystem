@@ -255,7 +255,8 @@ public class HttpModelinkGateway implements ModelinkGateway {
 
     /** 配额类错误关键词（上游打满账号级 3 分组 / 30 素材上限时未必回 429）。 */
     static boolean isQuotaError(String body) {
-        String m = upstreamMessage(body);
+        // 读供应商原话分类：对外的 reason 已把 quota 这类说法换成通用句，拿它判永远判不出来（2026-10-25 起）。
+        String m = ProviderErrorMessage.diagnosticReason(body);
         String s = (m != null ? m : body == null ? "" : body).toLowerCase(java.util.Locale.ROOT);
         return s.contains("quota") || s.contains("配额") || s.contains("limit")
                 || s.contains("exceed") || s.contains("上限");

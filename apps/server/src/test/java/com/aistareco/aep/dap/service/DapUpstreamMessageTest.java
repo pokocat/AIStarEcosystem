@@ -41,11 +41,17 @@ class DapUpstreamMessageTest {
     }
 
     @Test
-    @DisplayName("5xx：厂商自己出问题，用户做不了什么 —— 保持笼统，细节留在日志")
-    void serverErrorsStayGeneric() throws Exception {
-        String out = call(503, "{\"message\":\"internal shard 7 panic at 0x1f\"}");
+    @DisplayName("5xx：厂商说清了原因也照样给出（2026-10-25 起与 4xx 同一套过滤，不再一律笼统）")
+    void serverErrorsKeepSafeProviderReason() throws Exception {
+        String out = call(503, "{\"message\":\"model is overloaded, please retry later\"}");
+        assertTrue(out.contains("model is overloaded"), out);
+    }
+
+    @Test
+    @DisplayName("5xx：厂商没给原因 → 笼统一句带状态码")
+    void serverErrorsWithoutReasonShowStatus() throws Exception {
+        String out = call(503, "");
         assertTrue(out.contains("503"), out);
-        assertTrue(!out.contains("shard 7"), "5xx 的内部细节不该出现在界面上：" + out);
     }
 
     @Test

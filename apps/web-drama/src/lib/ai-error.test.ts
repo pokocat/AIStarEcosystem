@@ -45,6 +45,14 @@ describe("aiErrorMessage", () => {
     }
   });
 
+  it("堆栈里夹着供应商信息 → 仍走调用方兜底，不透出原文，保留编号", () => {
+    const leaked = "java.lang.IllegalStateException: 供应商账户余额不足 · 追查号 ABCDEF234567";
+    const out = aiErrorMessage(new Error(leaked), "脚本生成失败，请稍后重试");
+    expect(out.startsWith("脚本生成失败，请稍后重试")).toBe(true);
+    expect(out).toContain("ABCDEF234567");
+    expect(out).not.toMatch(/余额|供应商|Exception/);
+  });
+
   // v0.197：用户打不开管理后台，「未配置」类提示不许让用户去后台 / 提端点
   it("未配置类错误不引导用户去后台", () => {
     for (const code of ["AI_NOT_CONFIGURED", "PROMPT_NOT_CONFIGURED", "IMAGE_NOT_CONFIGURED", "VIDEO_NOT_CONFIGURED"]) {

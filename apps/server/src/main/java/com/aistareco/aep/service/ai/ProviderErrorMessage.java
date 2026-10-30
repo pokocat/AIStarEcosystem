@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.List;
+import java.util.function.UnaryOperator;
 import java.util.regex.Pattern;
 
 /** One public-message policy for model HTTP errors, stream errors and asynchronous job failures. */
@@ -30,38 +31,49 @@ public final class ProviderErrorMessage {
         return error.isTextual() && !error.asText().isBlank() || error.isObject() && !error.isEmpty();
     }
 
-    public static String reason(String body) {
+    public static String reason(String body) { return reason(body, ProviderErrorMessage::sanitize); }
+
+    public static String reason(JsonNode body) { return read(body, 0, ProviderErrorMessage::sanitize); }
+
+    /**
+     * Same lookup as {@link #reason}, but keeps the supplier's own wording (quota, balance…) for classification.
+     * Classify on this, never on {@link #reason}: the public text has those words replaced by a generic sentence.
+     * Do not return this value through a customer DTO or exception message.
+     */
+    public static String diagnosticReason(String body) { return reason(body, ProviderErrorMessage::diagnostic); }
+
+    public static String diagnosticReason(JsonNode body) { return read(body, 0, ProviderErrorMessage::diagnostic); }
+
+    private static String reason(String body, UnaryOperator<String> clean) {
         if (body == null || body.isBlank()) return null;
-        try { return reason(JSON.readTree(body)); }
+        try { return read(JSON.readTree(body), 0, clean); }
         catch (Exception invalid) {
             // Preserve the legacy truncated-JSON diagnostic path; never parse text/HTML gateway pages.
             if (!body.stripLeading().startsWith("{") || HTML.matcher(body).find()) return null;
             var match = MESSAGE.matcher(body);
-            if (match.find()) try { return sanitize(JSON.readValue("\"" + match.group(1) + "\"", String.class)); }
+            if (match.find()) try { return clean.apply(JSON.readValue("\"" + match.group(1) + "\"", String.class)); }
             catch (Exception ignored) { /* No complete readable message. */ }
             return null;
         }
     }
 
-    public static String reason(JsonNode body) { return read(body, 0); }
-
-    private static String read(JsonNode node, int depth) {
+    private static String read(JsonNode node, int depth, UnaryOperator<String> clean) {
         if (node == null || !node.isObject() || depth > 4) return null;
         for (String key : List.of("error", "Error", "ResponseMetadata", "responseMetadata")) {
             JsonNode error = node.path(key);
-            String reason = error.isTextual() ? sanitize(error.asText()) : read(error, depth + 1);
+            String reason = error.isTextual() ? clean.apply(error.asText()) : read(error, depth + 1, clean);
             if (reason != null) return reason;
         }
         for (String key : List.of("message", "Message", "msg", "Msg", "error_message", "errorMessage",
                 "fail_reason", "failReason", "reason", "detail", "error_description")) {
             JsonNode value = node.path(key);
             if (value.isTextual()) {
-                String reason = sanitize(value.asText());
+                String reason = clean.apply(value.asText());
                 if (reason != null) return reason;
             }
         }
         for (String key : List.of("data", "result", "ResponseMetadata", "responseMetadata", "response", "metadata")) {
-            String reason = read(node.path(key), depth + 1);
+            String reason = read(node.path(key), depth + 1, clean);
             if (reason != null) return reason;
         }
         return null;

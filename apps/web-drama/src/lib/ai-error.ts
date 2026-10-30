@@ -74,19 +74,22 @@ function stripTrace(s: string): string {
 export function aiErrorMessage(e: unknown, fallback = "AI 生成失败，请稍后重试"): string {
   const code = e && typeof e === "object" && "code" in e ? String((e as { code?: unknown }).code ?? "") : "";
   const raw = (e && typeof e === "object" && "message" in e && typeof e.message === "string" ? e.message : typeof e === "string" ? e : "").trim();
+  const trace = raw.match(/追查号\s*([A-Za-z0-9]+)/)?.[1];
+  const clean = stripTrace(raw);
+  const leakFallback = trace ? `${fallback}（问题编号 ${trace}）` : fallback;
   const protectedMessage = publicModelErrorMessage(raw, code);
-  if (protectedMessage !== raw) return protectedMessage;
+  // 堆栈、异常类名这类技术细节照旧换成调用方的兜底文案（按场景写的，比通用说法具体）；
+  // 供应商余额、密钥这类经营信息才用 publicModelErrorMessage 的统一说法。两条都不透出原文。
+  if (protectedMessage !== raw) return TECHNICAL_LEAK.test(clean) ? leakFallback : protectedMessage;
   if (PROVIDER_FAILURE_CODE.test(code) && raw && !raw.startsWith("{") && !/<\/?html\b/i.test(raw)) return raw;
   if (code && FRIENDLY_BY_CODE[code]) return FRIENDLY_BY_CODE[code];
   if (code && CREDIT_RE.test(code)) return CREDIT_HINT;
 
-  const trace = raw.match(/追查号\s*([A-Za-z0-9]+)/)?.[1];
-  const clean = stripTrace(raw);
   if (!clean) return fallback;
   if (CREDIT_RE.test(clean)) return CREDIT_HINT;
   if (ADMIN_GUIDE_RE.test(clean)) return FEATURE_NOT_READY;
   // 干净的业务/引导文案 → 原样透出（追查号已抹掉）。
   if (!TECHNICAL_LEAK.test(clean)) return clean;
   // 真·技术泄漏 → 兜底，保留编号供报障（界面上统一叫「问题编号」）。
-  return trace ? `${fallback}（问题编号 ${trace}）` : fallback;
+  return leakFallback;
 }
