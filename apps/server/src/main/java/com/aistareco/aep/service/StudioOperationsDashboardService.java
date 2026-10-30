@@ -4,6 +4,8 @@ import com.aistareco.aep.dto.StudioOperationsDashboardDto;
 import com.aistareco.aep.dto.StudioOperationsDashboardDto.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,10 +36,17 @@ public class StudioOperationsDashboardService {
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
+    private final AiModelUsageService usage;
 
     public StudioOperationsDashboardService(JdbcTemplate jdbc, ObjectMapper json) {
+        this(jdbc, json, null);
+    }
+
+    @Autowired
+    public StudioOperationsDashboardService(JdbcTemplate jdbc, ObjectMapper json, AiModelUsageService usage) {
         this.jdbc = jdbc;
         this.json = json;
+        this.usage = usage;
     }
 
     public StudioOperationsDashboardDto dashboard(int requestedDays) {
@@ -50,7 +59,7 @@ public class StudioOperationsDashboardService {
         List<ModelSpend> modelSpend = modelSpend(start);
         Health health = health(generatedAt, modelSpend);
         Business business = business(start, end, days, modelSpend);
-        Technology technology = technology(start, end);
+        Technology technology = technology(start, end, days);
         Integrations integrations = integrations();
         return new StudioOperationsDashboardDto(generatedAt, "Asia/Shanghai",
                 new Window(days, start, end, days == 1 ? "今天" : "近 " + days + " 天"),
@@ -101,7 +110,89 @@ public class StudioOperationsDashboardService {
         long grantAvailable = number(jdbc.queryForObject("select coalesce(sum(available + frozen),0) from aep_credit_grants", Long.class));
         IssuanceSummary issuance = new IssuanceSummary(issued, yuan(issued), walletBalance, grantAvailable,
                 "unavailable", "普通赠送进入混合余额桶，当前账本不能逐笔严谨归因后续消耗；模型赠款可在后续按 grant_id 单独补充。余额与赠款分开列示，未重复相加为收入。" );
-        return new Business(totals, points, models, features, issuance);
+        return new Business(totals, points, models, features, issuance,
+                consumerActivity(start, end), cashFlow(start, end), directorFunnel());
+    }
+
+    private ConsumerActivity consumerActivity(Instant start, Instant end) {
+        String identity = "coalesce(h.actor_user_id,h.user_id)";
+        long active = count("select count(distinct " + identity + ") from aep_credit_holds h " +
+                        "join aep_model_charges c on c.hold_id=h.id where h.completed_at >= ? and h.completed_at < ? " +
+                        "and c.settled_payable_credits > 0 and " + identity + " is not null",
+                Timestamp.from(start), Timestamp.from(end));
+        long first = count("select count(*) from (select " + identity + " uid, min(h.completed_at) first_at " +
+                        "from aep_credit_holds h join aep_model_charges c on c.hold_id=h.id " +
+                        "where h.completed_at is not null and c.settled_payable_credits > 0 and " + identity + " is not null " +
+                        "group by " + identity + ") first_use where first_at >= ? and first_at < ?",
+                Timestamp.from(start), Timestamp.from(end));
+        return new ConsumerActivity(active, first, Math.max(0, active - first), "unavailable",
+                "消费用户按已结算且实际扣费的模型任务去重；首次消费按全历史首笔结算时间判断。普通积分未保留逐次 gift/license/recharge 消耗拆分，暂不伪算充值积分消费者。" );
+    }
+
+    private CashFlow cashFlow(Instant start, Instant end) {
+        String real = "paid_via in ('manual','alipay','wechat')";
+        Map<String, Object> paid = jdbc.queryForMap("select count(distinct user_id) users, count(*) orders, coalesce(sum(price_cents),0) amount " +
+                        "from recharge_order where paid_at >= ? and paid_at < ? and " + real,
+                Timestamp.from(start), Timestamp.from(end));
+        Map<String, Object> refunded = jdbc.queryForMap("select count(distinct user_id) users, count(*) orders, " +
+                        "coalesce(sum(case when refunded_price_cents > 0 then refunded_price_cents else price_cents end),0) amount " +
+                        "from recharge_order where refunded_at >= ? and refunded_at < ? and " + real,
+                Timestamp.from(start), Timestamp.from(end));
+        return new CashFlow(number(paid.get("users")), number(paid.get("orders")), number(paid.get("amount")),
+                number(refunded.get("users")), number(refunded.get("orders")), number(refunded.get("amount")),
+                "只统计人工核准、支付宝和微信的已到账订单；影子支付与来源未知订单不计入。到账金额不是经营收入，退款按已登记现金退款金额统计。" );
+    }
+
+    private DirectorFunnel directorFunnel() {
+        try {
+            List<Map<String, Object>> rows = jdbc.queryForList(
+                    "select id, content_json from director_work where deleted_at is null order by id limit 10001");
+            if (rows.size() > 10_000) return new DirectorFunnel("unavailable", null, null, null, null,
+                    null, null, null, null, "导演台项目超过本次聚合安全上限，未发布截断后的转化率。" );
+            long projects = rows.size(), withEpisodes = 0, withBoards = 0, withVideos = 0;
+            long episodes = 0, clips = 0, boards = 0, videos = 0;
+            for (Map<String, Object> row : rows) {
+                JsonNode content = parse(text(row.get("content_json")));
+                int episodeCount = content.path("episodes").size();
+                Set<String> episodeIds = new HashSet<>();
+                for (JsonNode episode : content.path("episodes")) {
+                    String episodeId = episode.path("id").asText(null);
+                    if (episodeId != null && !episodeId.isBlank()) episodeIds.add(episodeId);
+                }
+                episodes += episodeCount;
+                if (episodeCount > 0) withEpisodes++;
+                boolean projectBoard = false, projectVideo = false;
+                for (JsonNode clip : content.path("clips")) {
+                    clips++;
+                    boolean linkedEpisode = episodeIds.contains(clip.path("episodeId").asText(null));
+                    boolean planned = linkedEpisode && clip.path("shots").isArray() && !clip.path("shots").isEmpty();
+                    boolean board = planned && adoptedAssetKey(clip.path("board")) != null;
+                    boolean video = board && adoptedAssetKey(clip.path("video")) != null;
+                    if (board) { boards++; projectBoard = true; }
+                    if (video) { videos++; projectVideo = true; }
+                }
+                if (projectBoard) withBoards++;
+                if (projectVideo) withVideos++;
+            }
+            return new DirectorFunnel("available", projects, withEpisodes, withBoards, withVideos,
+                    episodes, clips, boards, videos,
+                    "当前快照：分镜须关联项目内有效剧集、有非空镜头计划和可解析的采用图片；视频须在同一片段已有有效分镜和可解析的采用视频。重试候选不重复计数，未冒充历史 cohort 转化。" );
+        } catch (DataAccessException unavailable) {
+            return new DirectorFunnel("unavailable", null, null, null, null, null, null, null, null,
+                    "导演台聚合源暂不可用，不能用 0 代替未知数据。" );
+        }
+    }
+
+    private static String adoptedAssetKey(JsonNode slot) {
+        String adopted = slot.path("adoptedId").asText(null);
+        if (adopted == null) return null;
+        for (JsonNode candidate : slot.path("candidates")) {
+            if (adopted.equals(candidate.path("id").asText())) {
+                String key = candidate.path("key").asText(null);
+                return key == null || key.isBlank() ? null : key;
+            }
+        }
+        return null;
     }
 
     /**
@@ -204,12 +295,14 @@ public class StudioOperationsDashboardService {
         return "其他";
     }
 
-    private Technology technology(Instant start, Instant end) {
-        List<GenerationSample> samples = new ArrayList<>();
-        boundedGenerationRows("select id, kind, status, stage, error_code, error_message, input_json, created_at, started_at, finished_at from ip_run where created_at >= ? and created_at < ?",
-                start, end).forEach(r -> samples.add(ipSample(r)));
-        boundedGenerationRows("select id, status, error_code, error_message, provider_used, model_used, external_task_id, created_at, updated_at, completed_at from material_video_job where created_at >= ? and created_at < ?",
-                start, end).forEach(r -> samples.add(videoSample(r)));
+    private Technology technology(Instant start, Instant end, int days) {
+        Instant historyStart = end.minus(Duration.ofDays(30));
+        List<GenerationSample> history = new ArrayList<>();
+        boundedGenerationRows("select id, kind, status, stage, error_code, error_message, input_json, output_json, created_at, started_at, finished_at from ip_run where created_at >= ? and created_at < ?",
+                historyStart, end).forEach(r -> history.add(ipSample(r)));
+        boundedGenerationRows("select id, status, error_code, error_message, provider_used, model_used, external_task_id, video_url, created_at, updated_at, completed_at from material_video_job where created_at >= ? and created_at < ?",
+                historyStart, end).forEach(r -> history.add(videoSample(r)));
+        List<GenerationSample> samples = history.stream().filter(s -> !s.createdAt().isBefore(start)).toList();
 
         record Mutable(long[] n, List<GenerationSample> samples) {}
         record GroupKey(String mediaType, String supplier, String model) {}
@@ -237,9 +330,11 @@ public class StudioOperationsDashboardService {
         }
         List<GenerationModel> models = grouped.entrySet().stream().map(e -> {
             GroupKey key = e.getKey(); long[] n = e.getValue().n(); long terminal = n[1] + n[2];
+            List<GenerationSample> comparable = history.stream().filter(s -> s.mediaType().equals(key.mediaType())
+                    && s.supplier().equals(key.supplier()) && s.model().equals(key.model())).toList();
             return new GenerationModel(key.model(), key.supplier(), key.mediaType(), n[0], n[1], n[2], n[3],
                     terminal == 0 ? null : (double)n[1] / terminal, "混合",
-                    hourlyOutcomes(e.getValue().samples(), start, end));
+                    successWindows(comparable, end), outcomeBuckets(comparable, start, end));
         }).sorted(Comparator.comparingLong(GenerationModel::jobs).reversed()).toList();
         List<FailureReason> reasons = failures.entrySet().stream().map(e -> {
             String[] key = e.getKey().split(":", 2);
@@ -248,9 +343,31 @@ public class StudioOperationsDashboardService {
         Long avgWait = waits.isEmpty() ? null : Math.round(waits.stream().mapToLong(Long::longValue).average().orElse(0));
         QueueState queue = new QueueState(queued, avgWait, null, "unavailable", pendingReview,
                 "并发余量尚无统一运行时采集源；平均等待只统计有 started_at 的任务，不用更新时间猜测。" );
-        SupplierState supplier = new SupplierState(platformErrors, supplierErrors, unknownErrors,
-                null, null, null, "unavailable");
-        return new Technology(models, reasons, latency("图片", imageDurations), latency("视频", videoDurations), queue, supplier);
+        SupplierState supplier = supplierState(platformErrors, supplierErrors, unknownErrors, days);
+        long imageAssets = samples.stream().filter(s -> "图片".equals(s.mediaType())).mapToLong(GenerationSample::outputAssets).sum();
+        long videoAssets = samples.stream().filter(s -> "视频".equals(s.mediaType())).mapToLong(GenerationSample::outputAssets).sum();
+        OutputSummary outputs = new OutputSummary(samples.size(), samples.stream().filter(GenerationSample::success).count(),
+                samples.stream().filter(GenerationSample::failed).count(), imageAssets, videoAssets,
+                "任务量按提交记录；产物量按成功任务中实际持久化的图片候选和视频地址统计，两者不混作转化率。" );
+        return new Technology(models, reasons, latency("图片", imageDurations), latency("视频", videoDurations), queue, supplier, outputs);
+    }
+
+    private SupplierState supplierState(long platformErrors, long supplierErrors, long unknownErrors, int days) {
+        if (usage == null) return new SupplierState(platformErrors, supplierErrors, unknownErrors,
+                null, null, null, "unavailable", List.of(), List.of());
+        try {
+            var report = usage.report(days);
+            List<SupplierAlert> alerts = report.alerts().stream().map(a -> new SupplierAlert(a.severity(), a.type(),
+                    a.providerId(), a.providerName(), a.title(), a.message(), a.metricValue(), a.threshold(),
+                    "/platform/ai-models?tab=usage&providerId=" + a.providerId())).toList();
+            List<ProviderUsage> ranking = report.byProvider().stream().limit(8).map(x ->
+                    new ProviderUsage(x.key(), x.label(), x.calls(), x.estimatedCostMicros())).toList();
+            return new SupplierState(platformErrors, supplierErrors, unknownErrors,
+                    null, report.totalCalls(), null, "linked", alerts, ranking);
+        } catch (RuntimeException unavailable) {
+            return new SupplierState(platformErrors, supplierErrors, unknownErrors,
+                    null, null, null, "unavailable", List.of(), List.of());
+        }
     }
 
     private List<Map<String, Object>> boundedGenerationRows(String sql, Instant start, Instant end) {
@@ -259,14 +376,14 @@ public class StudioOperationsDashboardService {
         if (rows.size() > MAX_TECH_SAMPLES_PER_SOURCE) {
             // Never publish a silently truncated success rate or latency percentile. The frontend renders this
             // exception as a load error, which is safer than a green dashboard based on partial task rows.
-            throw new IllegalStateException("技术任务样本超过安全上限，请缩短统计窗口");
+            throw new IllegalStateException("技术任务 30 天对比样本超过安全上限，需改用数据库分桶聚合");
         }
         return rows;
     }
 
     private record GenerationSample(String mediaType, String supplier, String model, boolean success, boolean failed, boolean queued,
                                     boolean pendingReconciliation, String errorCode, String errorMessage,
-                                    Long durationSeconds, Long waitSeconds, Instant createdAt) {}
+                                    Long durationSeconds, Long waitSeconds, Instant createdAt, long outputAssets) {}
 
     private GenerationSample ipSample(Map<String, Object> r) {
         String status = text(r.get("status"));
@@ -281,9 +398,12 @@ public class StudioOperationsDashboardService {
         if (supplier == null) supplier = "未记录供应商";
         Instant created = instant(r.get("created_at")), started = instantOrNull(r.get("started_at")), finished = instantOrNull(r.get("finished_at"));
         String code = text(r.get("error_code"));
+        JsonNode output = parse(text(r.get("output_json")));
+        long assets = "done".equals(status) && "图片".equals(media) && output.path("candidates").isArray()
+                ? output.path("candidates").size() : 0;
         return new GenerationSample(media, supplier, model, "done".equals(status), "failed".equals(status),
                 "queued".equals(text(r.get("stage"))), isPendingReconciliation(code), code, masked(text(r.get("error_message"))),
-                seconds(created, finished), seconds(created, started), created);
+                seconds(created, finished), seconds(created, started), created, assets);
     }
 
     private GenerationSample videoSample(Map<String, Object> r) {
@@ -296,24 +416,46 @@ public class StudioOperationsDashboardService {
         Instant created = instant(r.get("created_at")), completed = instantOrNull(r.get("completed_at"));
         String code = text(r.get("error_code"));
         boolean pending = isPendingReconciliation(code) || (("submitting".equals(status) || "generating".equals(status)) && text(r.get("external_task_id")).isBlank());
+        long assets = "succeeded".equals(status) && !text(r.get("video_url")).isBlank() ? 1 : 0;
         return new GenerationSample("视频", supplier, model, "succeeded".equals(status), "failed".equals(status),
-                "queued".equals(status), pending, code, masked(text(r.get("error_message"))), seconds(created, completed), null, created);
+                "queued".equals(status), pending, code, masked(text(r.get("error_message"))),
+                seconds(created, completed), null, created, assets);
     }
 
     /**
-     * Bounded 24-hour outcome buckets for the dashboard. These describe observed task results, not service uptime.
-     * Hours outside the selected query window are explicit {@code missing}; covered hours with no rows are
+     * Success rate comparisons use terminal samples only. Running work is shown separately and never counted as
+     * failure. Sample counts stay visible so a single result cannot masquerade as a stable rate.
+     */
+    private List<SuccessWindow> successWindows(List<GenerationSample> samples, Instant end) {
+        return List.of(
+                successWindow("24 小时", samples, end.minus(Duration.ofHours(24)), end),
+                successWindow("7 天", samples, end.minus(Duration.ofDays(7)), end),
+                successWindow("30 天", samples, end.minus(Duration.ofDays(30)), end)
+        );
+    }
+
+    private SuccessWindow successWindow(String label, List<GenerationSample> samples, Instant start, Instant end) {
+        long succeeded = samples.stream().filter(s -> !s.createdAt().isBefore(start) && s.createdAt().isBefore(end) && s.success()).count();
+        long failed = samples.stream().filter(s -> !s.createdAt().isBefore(start) && s.createdAt().isBefore(end) && s.failed()).count();
+        long terminal = succeeded + failed;
+        return new SuccessWindow(label, terminal, terminal == 0 ? null : (double) succeeded / terminal);
+    }
+
+    /**
+     * Bounded 24-hour half-hour outcome buckets. These describe observed task results, not service uptime.
+     * Buckets outside the selected query window are explicit {@code missing}; covered buckets with no rows are
      * {@code no_calls}, so absent traffic can never be rendered as healthy green.
      */
-    private List<HourlyOutcome> hourlyOutcomes(List<GenerationSample> samples, Instant queryStart, Instant queryEnd) {
-        Instant lastHour = queryEnd.truncatedTo(java.time.temporal.ChronoUnit.HOURS);
-        Instant firstHour = lastHour.minus(Duration.ofHours(23));
-        List<HourlyOutcome> outcomes = new ArrayList<>(24);
-        for (int i = 0; i < 24; i++) {
-            Instant bucketStart = firstHour.plus(Duration.ofHours(i));
-            Instant bucketEnd = bucketStart.plus(Duration.ofHours(1));
+    private List<OutcomeBucket> outcomeBuckets(List<GenerationSample> samples, Instant queryStart, Instant queryEnd) {
+        long halfHourSeconds = Duration.ofMinutes(30).toSeconds();
+        Instant lastBucket = Instant.ofEpochSecond((queryEnd.getEpochSecond() / halfHourSeconds) * halfHourSeconds);
+        Instant firstBucket = lastBucket.minus(Duration.ofMinutes(30L * 47));
+        List<OutcomeBucket> outcomes = new ArrayList<>(48);
+        for (int i = 0; i < 48; i++) {
+            Instant bucketStart = firstBucket.plus(Duration.ofMinutes(30L * i));
+            Instant bucketEnd = bucketStart.plus(Duration.ofMinutes(30));
             if (bucketStart.isAfter(queryEnd) || !bucketEnd.isAfter(queryStart)) {
-                outcomes.add(new HourlyOutcome(bucketStart, 0, 0, 0, "missing"));
+                outcomes.add(new OutcomeBucket(bucketStart, 30, 0, 0, 0, "missing"));
                 continue;
             }
             long succeeded = 0, failed = 0, inFlight = 0;
@@ -325,7 +467,7 @@ public class StudioOperationsDashboardService {
                     : succeeded > 0 ? "ok"
                     : inFlight > 0 ? "active"
                     : "no_calls";
-            outcomes.add(new HourlyOutcome(bucketStart, succeeded, failed, inFlight, status));
+            outcomes.add(new OutcomeBucket(bucketStart, 30, succeeded, failed, inFlight, status));
         }
         return outcomes;
     }

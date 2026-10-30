@@ -11057,7 +11057,7 @@ paths:
       summary: Studio 积分与生成运营看板一期聚合（只读；后台角色）
       parameters:
         - { in: query, name: days, schema: { type: integer, enum: [1, 7, 30], default: 7 } }
-      responses: { '200': { description: "健康、经营消耗、发出积分摘要、生成与供应商技术指标；未接入字段显式标记 unavailable" } }
+      responses: { '200': { description: "健康、经营消耗、发出积分摘要、消费用户与真实到账、导演台推进快照、生成与供应商技术指标（24h/7d/30d 成功率、半小时分桶、产物数、供应商异常）；未接入字段显式标记 unavailable" } }
   /admin/studio-operations/reconciliation-details:
     get:
       tags: [admin-finance]

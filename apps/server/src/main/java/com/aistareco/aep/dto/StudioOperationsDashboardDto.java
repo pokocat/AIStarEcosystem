@@ -42,7 +42,10 @@ public record StudioOperationsDashboardDto(
             List<DailySpend> dailySpend,
             List<ModelSpend> models,
             List<FeatureSpend> features,
-            IssuanceSummary issuance
+            IssuanceSummary issuance,
+            ConsumerActivity consumerActivity,
+            CashFlow cashFlow,
+            DirectorFunnel directorFunnel
     ) {}
 
     public record SpendTotals(long walletCredits, long grantCredits, long totalCredits, double yuanEquivalent) {}
@@ -53,6 +56,15 @@ public record StudioOperationsDashboardDto(
                                long credits) {}
     public record IssuanceSummary(long issuedCredits, double yuanEquivalent, long walletBalance,
                                   long grantAvailable, String usageAttributionStatus, String note) {}
+    public record ConsumerActivity(long activeConsumers, long firstTimeConsumers, long returningConsumers,
+                                   String rechargeConsumerStatus, String note) {}
+    public record CashFlow(long paidUsers, long paidOrders, long paidAmountCents,
+                           long refundedUsers, long refundedOrders, long refundedAmountCents,
+                           String note) {}
+    public record DirectorFunnel(String status, Long projects, Long projectsWithEpisodes,
+                                 Long projectsWithStoryboards, Long projectsWithVideos,
+                                 Long episodes, Long clips, Long storyboards, Long videos,
+                                 String note) {}
 
     public record Technology(
             List<GenerationModel> models,
@@ -60,19 +72,27 @@ public record StudioOperationsDashboardDto(
             Latency imageLatency,
             Latency videoLatency,
             QueueState queue,
-            SupplierState supplier
+            SupplierState supplier,
+            OutputSummary outputs
     ) {}
 
     public record GenerationModel(String key, String supplier, String mediaType, long jobs, long succeeded,
                                   long failed, long inFlight, Double successRate, String ownership,
-                                  List<HourlyOutcome> hourlyOutcomes) {}
-    public record HourlyOutcome(Instant hour, long succeeded, long failed, long inFlight, String status) {}
+                                  List<SuccessWindow> successWindows, List<OutcomeBucket> outcomeBuckets) {}
+    public record SuccessWindow(String label, long samples, Double successRate) {}
+    public record OutcomeBucket(Instant startedAt, int minutes, long succeeded, long failed, long inFlight, String status) {}
     public record FailureReason(String category, String label, long count, String ownership) {}
     public record Latency(String mediaType, Long p50Seconds, Long p95Seconds, long samples, String note) {}
     public record QueueState(long queued, Long averageWaitSeconds, Long concurrencyRemaining,
                              String concurrencyStatus, long pendingReconciliation, String note) {}
     public record SupplierState(long platformRequestErrors, long supplierErrors, long unknownErrors,
-                                Long rateLimited, Long dailyUsage, Long quotaRemaining, String quotaStatus) {}
+                                Long rateLimited, Long dailyUsage, Long quotaRemaining, String quotaStatus,
+                                List<SupplierAlert> alerts, List<ProviderUsage> usageRanking) {}
+    public record SupplierAlert(String severity, String type, String providerId, String providerName,
+                                String title, String message, long metricValue, long threshold, String href) {}
+    public record ProviderUsage(String providerId, String providerName, long calls, long estimatedCostMicros) {}
+    public record OutputSummary(long submittedTasks, long terminalSuccesses, long terminalFailures,
+                                long imageAssets, long videoAssets, String note) {}
 
     public record Integrations(IntegrationState release, IntegrationState feishuAlerts,
                                IntegrationState requestLogs) {}

@@ -9,8 +9,9 @@ export interface StudioIntegrationState {
   href: string | null;
 }
 
-export interface StudioHourlyOutcome {
-  hour: string;
+export interface StudioOutcomeBucket {
+  startedAt: string;
+  minutes: number;
   succeeded: number;
   failed: number;
   inFlight: number;
@@ -34,14 +35,18 @@ export interface StudioOperationsDashboard {
     models: Array<{ endpointId: string; name: string; jobs: number; succeeded: number; refunded: number; inFlight: number; credits: number; walletCredits: number; grantCredits: number }>;
     features: Array<{ feature: string; jobs: number; succeeded: number; refunded: number; inFlight: number; credits: number }>;
     issuance: { issuedCredits: number; yuanEquivalent: number; walletBalance: number; grantAvailable: number; usageAttributionStatus: string; note: string };
+    consumerActivity: { activeConsumers: number; firstTimeConsumers: number; returningConsumers: number; rechargeConsumerStatus: string; note: string };
+    cashFlow: { paidUsers: number; paidOrders: number; paidAmountCents: number; refundedUsers: number; refundedOrders: number; refundedAmountCents: number; note: string };
+    directorFunnel: { status: string; projects: number | null; projectsWithEpisodes: number | null; projectsWithStoryboards: number | null; projectsWithVideos: number | null; episodes: number | null; clips: number | null; storyboards: number | null; videos: number | null; note: string };
   };
   technology: {
-    models: Array<{ key: string; supplier: string; mediaType: string; jobs: number; succeeded: number; failed: number; inFlight: number; successRate: number | null; ownership: string; hourlyOutcomes: StudioHourlyOutcome[] }>;
+    models: Array<{ key: string; supplier: string; mediaType: string; jobs: number; succeeded: number; failed: number; inFlight: number; successRate: number | null; ownership: string; successWindows: Array<{ label: string; samples: number; successRate: number | null }>; outcomeBuckets: StudioOutcomeBucket[] }>;
     failureReasons: Array<{ category: string; label: string; count: number; ownership: string }>;
     imageLatency: StudioLatency;
     videoLatency: StudioLatency;
     queue: { queued: number; averageWaitSeconds: number | null; concurrencyRemaining: number | null; concurrencyStatus: string; pendingReconciliation: number; note: string };
-    supplier: { platformRequestErrors: number; supplierErrors: number; unknownErrors: number; rateLimited: number | null; dailyUsage: number | null; quotaRemaining: number | null; quotaStatus: string };
+    supplier: { platformRequestErrors: number; supplierErrors: number; unknownErrors: number; rateLimited: number | null; dailyUsage: number | null; quotaRemaining: number | null; quotaStatus: string; alerts: Array<{ severity: string; type: string; providerId: string; providerName: string; title: string; message: string; metricValue: number; threshold: number; href: string }>; usageRanking: Array<{ providerId: string; providerName: string; calls: number; estimatedCostMicros: number }> };
+    outputs: { submittedTasks: number; terminalSuccesses: number; terminalFailures: number; imageAssets: number; videoAssets: number; note: string };
   };
   integrations: { release: StudioIntegrationState; feishuAlerts: StudioIntegrationState; requestLogs: StudioIntegrationState };
 }

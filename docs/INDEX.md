@@ -96,6 +96,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 
 | 文档 | 主题 | 内容与状态 |
 |---|---|---|
+| [`studio-operations-dashboard.md`](studio-operations-dashboard.md) | **Studio 运营看板**（`apps/web-aiavatar/studio-admin`）：经营页（积分消耗、发出积分、消费用户与真实到账、导演台推进）与技术页（模型成功率、半小时时间轴、失败与耗时、供应商异常）的口径与只读边界；不做在线人数 | 已合入 main、未发布，last-reviewed 2026-10-30 |
 | [`docs/unified-operations-console-plan.md`](unified-operations-console-plan.md) | **统一运营后台建议** —— Platform 统一入口、复用原业务服务、模型定价/任务排查/模板运营三条首期流程，以及沿用原 admin 风格的紧凑视觉建议 | 建议留档，待确定实施范围（2026-10-10）；非已交付状态 |
 | [统一账号邀请关系方案](unified-account-referral-plan.md) | 账号中心邀请码、一张原始邀请关系表、注册时记录与直接查询；§9 复核后期本体/整体链路视图，不增加当前数据结构 | v0.5；ID/Studio 首版已发布，品牌邀请入口与完整线上验收待完成（last-reviewed 2026-10-17） |
 | [统一账号邀请 · 前端设计](unified-account-referral-frontend.md) | Studio 内邀请视图/链接管理、账号中心落地页与注册提示，含手机和失败状态 | v0.4；首版已发布，Studio 品牌邀请页先行设计（last-reviewed 2026-10-17） |
