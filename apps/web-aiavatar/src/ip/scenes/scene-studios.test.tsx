@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -55,13 +55,17 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   // 一大段场景描述不摆出来：只有场景标签和补充要求输入框。
   expect(screen.queryByRole("textbox", { name: "完整描述" })).toBeNull();
   fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "45 度角" } });
+  // 选项组照参考站：点选，不用写字；默认是「正面」。
+  const angle = within(screen.getByRole("group", { name: "拍摄角度" }));
+  expect(angle.getByRole("button", { name: "正面" }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(angle.getByRole("button", { name: "俯拍" }));
   api.composeScene.mockResolvedValue({ text: "服务端拼好的白底图描述\n补充要求：45 度角" });
 
   await act(async () => { upload(document.querySelector('.scene-ref-row input[type="file"]')!); });
   await waitFor(() => expect(go().textContent).toContain("预计 8 积分"));
   await act(async () => { fireEvent.click(go()); });
   // 描述由服务端按场景拼：只交场景编号、补充要求和放了图的位置。
-  expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", filled: [0] });
+  expect(api.composeScene).toHaveBeenCalledWith({ kind: "image", sceneId: "white-background", text: "45 度角", filled: [0], options: { angle: "top" } });
   expect(api.createProject).toHaveBeenCalledWith({ name: "商品白底图", sceneId: "white-background" });
   const request = api.submit.mock.calls[0][1];
   expect(request).toMatchObject({ operation: "image", aspectRatio: "1:1", count: 1, model: "ep-img", maxCost: 8,
@@ -102,6 +106,11 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await waitFor(() => expect(screen.getByText("先放商品图")).toBeTruthy());
   expect(send().disabled).toBe(true);
   fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华，不黏腻" } });
+  // 连着点两组选项：后一次不能把前一次盖掉。
+  act(() => {
+    fireEvent.click(within(screen.getByRole("group", { name: "出镜方式" })).getByRole("button", { name: "只拍商品" }));
+    fireEvent.click(within(screen.getByRole("group", { name: "语气" })).getByRole("button", { name: "专业讲解" }));
+  });
   await act(async () => { upload(document.querySelector('.scene-media-row input[type="file"]')!); });
   expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华", sceneId: "ecom-talking" });
   // 默认 25 秒超过模型上限：一次出片按模型最长 15 秒写，更长的交给助手分段做。
@@ -110,14 +119,18 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
   await act(async () => { fireEvent.click(send()); });
 
   expect(api.composeScene).toHaveBeenCalledWith(expect.objectContaining({ kind: "video-script", sceneId: "ecom-talking", text: "保湿精华，不黏腻",
-    imageTitles: ["商品图 1"], duration: 15, ratio: "9:16", language: "中文" }));
+    imageTitles: ["商品图 1"], duration: 15, ratio: "9:16", language: "中文", options: { presenter: "product", tone: "expert" } }));
   const textRequest = api.submit.mock.calls[0][1];
   expect(textRequest).toMatchObject({ operation: "text", prompt: "服务端拼好的写脚本要求", textEdit: { content: "" }, readVisuals: true, model: "ep-qwen", maxCost: 21 });
-  const saved = api.updateProject.mock.calls[0][1].doc;
+  // 上传完就存进草稿（刷新后素材还在）；写脚本那次保存里请求已经在节点上，之后才提交。
+  expect(api.updateProject.mock.calls[0][1].doc.nodes.map((n: any) => n.title)).toEqual(["商品图 1"]);
+  const scriptSave = api.updateProject.mock.calls.findIndex((c: any) => c[1].doc.nodes.some((n: any) => n.id === textRequest.nodeId));
+  const saved = api.updateProject.mock.calls[scriptSave][1].doc;
   const image = saved.nodes.find((n: any) => n.title === "商品图 1");
   expect(textRequest.contextNodeIds).toEqual([image.id]);
+  expect(saved.nodes.filter((n: any) => n.title === "商品图 1")).toHaveLength(1);
   expect(saved.nodes.find((n: any) => n.id === textRequest.nodeId)?.metadata?.studio?.request).toEqual(textRequest);
-  expect(api.updateProject.mock.invocationCallOrder[0]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);
+  expect(api.updateProject.mock.invocationCallOrder[scriptSave]).toBeLessThan(api.submit.mock.invocationCallOrder[0]);
 
   const use = await screen.findByRole("button", { name: "用这个脚本生成" }, { timeout: 4000 });
   expect(screen.getByText(/干皮看过来/)).toBeTruthy();

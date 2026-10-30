@@ -14,7 +14,7 @@ import { useStartNewCanvas } from '@/ip/use-start-new-canvas';
 import { useStudioFailure } from '@/ip/studio-errors';
 import { formatDateTime } from '@/lib/datetime';
 import { useHubData } from './data';
-import { homeGoals } from '@/ip/scenes/scene-catalog';
+import { sceneHref, useSceneHomeCards } from '@/ip/scenes/scene-catalog';
 import { SceneThumb } from '@/ip/scenes/scene-layout';
 
 const quickEntries = [
@@ -24,6 +24,7 @@ const quickEntries = [
 
 
 export function StudioHome({ ready }: { ready: boolean }) {
+  const homeCards = useSceneHomeCards();
   const router = useRouter();
   const [creating, setCreating] = useState<string>();
   const [refresh, setRefresh] = useState(0);
@@ -86,11 +87,11 @@ export function StudioHome({ ready }: { ready: boolean }) {
     <StudioConversationStart compact heading="今天想做点什么？" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
     <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
 
-    <section className="studio-home-section" aria-labelledby="home-goals-heading"><div className="studio-home-section-heading"><h2 id="home-goals-heading">你想做什么？</h2><Link href="/video">全部场景 <ArrowRight size={15}/></Link></div>
-      <div className="home-goal-track studio-home-goals">{homeGoals.map(g => <Link key={g.id} href={g.href} className="home-goal">
-        <span className="home-goal-art" aria-hidden="true"><SceneThumb id={g.covers[0]} title={g.title} size={120}/><SceneThumb id={g.covers[1]} title={g.title} size={120}/></span>
+    {homeCards.length > 0 && <section className="studio-home-section" aria-labelledby="home-goals-heading"><div className="studio-home-section-heading"><h2 id="home-goals-heading">你想做什么？</h2><Link href="/video">全部场景 <ArrowRight size={15}/></Link></div>
+      <div className="home-goal-track studio-home-goals">{homeCards.map(g => <Link key={g.id} href={sceneHref(g)} className="home-goal">
+        <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={120}/>)}</span>
         <span className="home-goal-copy"><strong>{g.title}</strong><small>{g.description}</small></span></Link>)}</div>
-    </section>
+    </section>}
 
     <nav className="studio-home-tools" aria-label="主要创作功能">{quickEntries.map(([entry, Icon]) => <button key={entry} type="button" disabled={busy} aria-busy={entry === 'blank' ? newCanvas.creating : creating === entry} onClick={() => entry === 'blank' ? startBlank() : void start(entry)}>
       <Icon size={22}/><span>{studioEntries[entry].title}</span><small>{studioEntries[entry].description}</small></button>)}</nav>

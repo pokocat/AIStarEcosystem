@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ChevronRight, FileImage, Loader2, PanelLeftClose, PanelLeftOpen, Pencil } from "lucide-react";
-import type { IpProjectSummary, StudioSceneMedia } from "@ai-star-eco/types";
+import type { IpProjectSummary, StudioSceneMedia, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import { formatDateTime } from "@/lib/datetime";
 import { sceneCover } from "./scene-catalog";
 
@@ -113,4 +113,25 @@ export function sceneFailureText(code?: string, details?: string, thing = "图")
   if (code && /_429$|RATE_LIMIT|TOO_MANY/.test(code)) return `模型那边请求太多，稍等一分钟再点「重新生成」；没出来的${thing}不扣积分`;
   if (code && /QUEUE_FULL/.test(code)) return `模型那边正在排满，过几分钟再点「重新生成」；没出来的${thing}不扣积分`;
   return details?.replace(/ · 追查号 \S+$/, "") || `生成失败，没出来的${thing}不扣积分`;
+}
+
+/**
+ * 场景的选项组（照参考站）：一组组点选，不用写字。没选的组用默认值；选中项那句话由服务端拼进描述 / 要求。
+ * 只报「哪组选了哪个」，由页面按函数更新合并：连着点两组时，后一次不能拿渲染时的旧值把前一次盖掉。
+ */
+export function SceneOptions({ groups, value, onPick }: {
+  groups?: StudioSceneOptionGroup[] | null; value: Record<string, string>; onPick: (key: string, choice: string) => void;
+}) {
+  if (!groups?.length) return null;
+  return <div className="scene-options">{groups.map(g => <div key={g.key} className="scene-option-group" role="group" aria-label={g.label}>
+    <span>{g.label}</span>
+    {g.choices.map(c => <button key={c.value} type="button" aria-pressed={(value[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
+      onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}
+  </div>)}</div>;
+}
+
+/** 交给拼话接口的选项：每组都给（没选的取默认值），没有选项组的场景不带。 */
+export function sceneOptionValues(groups: StudioSceneOptionGroup[] | null | undefined, value: Record<string, string>): Record<string, string> | undefined {
+  if (!groups?.length) return undefined;
+  return Object.fromEntries(groups.map(g => [g.key, value[g.key] ?? g.defaultValue]));
 }

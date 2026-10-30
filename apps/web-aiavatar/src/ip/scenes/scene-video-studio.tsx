@@ -25,7 +25,7 @@ import { StudioSelect } from "../studio-select";
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
 import { addScriptNode, addVideoRow, applyRun, createSceneDraft, listSceneDrafts, patchNode, resubmitRow, saveDraftDoc, scriptNodes, submissionRejected, videoRows } from "./scene-drafts";
-import { SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb, sceneFailureText, sceneHintText } from "./scene-layout";
+import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 
 type Media = StudioMediaImportResult & { title: string };
@@ -65,6 +65,7 @@ export function SceneVideoStudio() {
   const scene = findVideoScene(catalog, sceneId) ?? catalog?.video[0];
   const [text, setText] = useState("");
   const [language, setLanguage] = useState(LANGUAGES[0]);
+  const [picked, setPicked] = useState<Record<string, string>>({});
   const [duration, setDuration] = useState(15);
   const [ratio, setRatio] = useState<string>("9:16");
   const [images, setImages] = useState<Media[]>([]);
@@ -113,7 +114,7 @@ export function SceneVideoStudio() {
 
   // ── 场景与草稿 ────────────────────────────────────────────────────────
   const pickScene = useCallback((next: VideoScene) => {
-    setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio);
+    setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
     setImages(old => old.slice(0, next.images.max ?? 6));
     if (!next.video) setVideo(undefined);
     writeQuery(next.id, draftRef.current?.id);
@@ -141,7 +142,9 @@ export function SceneVideoStudio() {
       const media = (n: CanvasNodeData | undefined): Media | undefined => n?.metadata?.storageKey && n.metadata.content
         ? { key: n.metadata.storageKey, url: n.metadata.content, title: n.title || "素材", fileName: n.title || "", bytes: 0, mimeType: n.metadata.mimeType || "",
           mediaType: n.type === CanvasNodeType.Audio ? "audio" : n.type === CanvasNodeType.Video ? "video" : "image" } : undefined;
-      const used = (latest?.metadata?.studio?.request?.contextNodeIds ?? []).map(nid => nodes.find(n => n.id === nid));
+      // 写过脚本就按最新一版看过的图放回；还没写过就按草稿里上传过的图（上传时就写进了草稿）。
+      const used = latest ? (latest.metadata?.studio?.request?.contextNodeIds ?? []).map(nid => nodes.find(n => n.id === nid))
+        : nodes.filter(n => n.type === CanvasNodeType.Image && n.metadata?.origin === "upload").sort((a, b) => a.position.y - b.position.y);
       setImages(used.filter(n => n && n.title !== "出镜人物").flatMap(n => media(n) ?? []));
       setCharacter(media(used.find(n => n?.title === "出镜人物")));
       setVoice(media(nodes.find(n => n.type === CanvasNodeType.Audio && n.title === "声音样本")));
@@ -237,10 +240,18 @@ export function SceneVideoStudio() {
     try {
       const project = await ensureDraft();
       const result = await importStudioMedia(project.id, file, type);
-      if (kind === "image") setImages(old => [...old, { ...result, title: `${scene!.images.label} ${old.length + 1}` }].slice(0, scene!.images.max ?? 6));
-      if (kind === "character") setCharacter({ ...result, title: "出镜人物" });
-      if (kind === "voice") setVoice({ ...result, title: "声音样本" });
-      if (kind === "video") setVideo({ ...result, title: "参考视频" });
+      const title = kind === "image" ? `${scene!.images.label} ${images.length + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? "声音样本" : "参考视频";
+      const media: Media = { ...result, title };
+      if (kind === "image") setImages(old => [...old, media].slice(0, scene!.images.max ?? 6));
+      if (kind === "character") setCharacter(media);
+      if (kind === "voice") setVoice(media);
+      if (kind === "video") setVideo(media);
+      // 上传完就写进草稿画布：刷新或从「最近」再打开时素材还在（参考站的草稿也记着输入）。
+      await persist(doc => {
+        const nodes = doc.nodes as CanvasNodeData[];
+        const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
+        return nodes.some(n => n.id === made.id) ? doc : { ...doc, nodes: [...nodes, made] };
+      }).catch(() => undefined);
     } catch (e) { showFailure({ action: "上传素材", error: e, next: "检查一下文件格式和大小，再试一次。" }); }
     finally { setUploading(undefined); }
   };
@@ -259,12 +270,7 @@ export function SceneVideoStudio() {
     let nodes = base;
     const placed: { media: Media; node: CanvasNodeData }[] = [];
     const place = (media: Media, kind: "image" | "video" | "audio") => {
-      const made = attachmentNode(kind === "image" ? { kind, dataUrl: media.url, storageKey: media.key, title: media.title }
-        : { kind, url: media.url, storageKey: media.key, title: media.title, width: media.width, height: media.height, mimeType: media.mimeType }, nodes);
-      const index = placed.length;
-      const node: CanvasNodeData = nodes.some(n => n.id === made.id) ? made : { ...made, position: { x: 100, y: 120 + index * 300 },
-        metadata: { ...made.metadata, origin: "upload", mimeType: media.mimeType, bytes: media.bytes, naturalWidth: media.width, naturalHeight: media.height,
-          durationMs: media.durationSec ? Math.round(media.durationSec * 1000) : undefined } };
+      const node = placeMedia(nodes, media, kind, placed.length);
       if (!nodes.some(n => n.id === node.id)) nodes = [...nodes, node];
       placed.push({ media, node });
     };
@@ -297,7 +303,7 @@ export function SceneVideoStudio() {
       const first = scripts[0]?.metadata?.studio?.sceneDirector;
       const composed = await IpStudioApi.composeScene({ kind: "video-script", sceneId: scene!.id, text: revising ? first?.ask ?? "" : ask,
         ...(revising ? { revision: ask } : {}), imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title,
-        duration: usedDuration, ratio, language });
+        duration: usedDuration, ratio, language, ...(sceneOptionValues(scene!.options, picked) ? { options: sceneOptionValues(scene!.options, picked) } : {}) });
       const project = await ensureDraft();
       const vision = caps?.mock || textModel?.supportsVision;
       let request: Parameters<typeof submitStudioRun>[1] | undefined;
@@ -360,7 +366,8 @@ export function SceneVideoStudio() {
     try {
       const longest = scene.durations.includes(duration) ? duration : scene.duration;
       const composed = await IpStudioApi.composeScene({ kind: "video", sceneId: scene.id, text: text.trim() || scripts[0]?.metadata?.studio?.sceneDirector?.ask || "", duration: longest, ratio,
-        imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title });
+        imageTitles: images.map(i => i.title), characterTitle: character?.title, voiceTitle: voice?.title, videoTitle: video?.title,
+        ...(sceneOptionValues(scene.options, picked) ? { options: sceneOptionValues(scene.options, picked) } : {}) });
       const project = await ensureDraft();
       // 和首页「说一句话开始」同一种起点：这段话存成助手的第一句，画布打开后带着场景的方法自动发出。
       const start = { id: `${project.id}-brief`, type: CanvasNodeType.Text, title: "创作想法", position: { x: 100, y: 120 }, width: 480, height: 260,
@@ -480,6 +487,7 @@ export function SceneVideoStudio() {
           {scene.voice && tile("voice", voice, "声音", Mic, true, () => setVoice(undefined))}
           <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
         </div>
+        <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
         <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
           placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
@@ -528,6 +536,15 @@ export function SceneVideoStudio() {
     <SceneRecent drafts={drafts.data} loading={drafts.loading} current={draft?.id} onOpen={id => void openDraft(id)}/>
     <HubTabBar/>
   </main>;
+}
+
+/** 一份素材在草稿画布上的节点：同一个文件已经在画布上就用原来那个，新放的排在左边一列。 */
+function placeMedia(nodes: CanvasNodeData[], media: Media, kind: "image" | "video" | "audio", index: number): CanvasNodeData {
+  const made = attachmentNode(kind === "image" ? { kind, dataUrl: media.url, storageKey: media.key, title: media.title }
+    : { kind, url: media.url, storageKey: media.key, title: media.title, width: media.width, height: media.height, mimeType: media.mimeType }, nodes);
+  return nodes.some(n => n.id === made.id) ? made : { ...made, position: { x: 100, y: 120 + index * 300 },
+    metadata: { ...made.metadata, origin: "upload", mimeType: media.mimeType, bytes: media.bytes, naturalWidth: media.width, naturalHeight: media.height,
+      durationMs: media.durationSec ? Math.round(media.durationSec * 1000) : undefined } };
 }
 
 /** 编导的一轮：你说的话 + 编导写的脚本（写作中 / 失败 / 写好了）。 */

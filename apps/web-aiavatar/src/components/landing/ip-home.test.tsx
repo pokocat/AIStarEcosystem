@@ -4,12 +4,17 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { IpHome } from './ip-home';
 
 const api = vi.hoisted(() => ({ authed: false, create: vi.fn(), push: vi.fn(), newCanvas: vi.fn(), projects: vi.fn(async (): Promise<unknown[]> => []),
-  templates: vi.fn(async (): Promise<unknown[]> => []), examples: vi.fn(async (): Promise<unknown[]> => []) }));
+  templates: vi.fn(async (): Promise<unknown[]> => []), examples: vi.fn(async (): Promise<unknown[]> => []),
+  // 首页卡片由运营配，公开接口读：这里照接口形状给两张。
+  cards: vi.fn(async () => [
+    { id: 'commerce', title: '电商带货', description: '商品展示和带货短视频', sceneId: 'ecom-talking', kind: 'video', covers: [{ sceneId: 'ecom-talking', coverUrl: 'https://cdn/ops-cover.webp' }, { sceneId: 'ecom-seeding' }] },
+    { id: 'product-set', title: '商品套图', description: '白底图、卖点图一起出', sceneId: 'white-background', kind: 'image', covers: [{ sceneId: 'white-background' }] },
+  ]) }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: api.push }) }));
 vi.mock('next/link', () => ({ default: ({ children, ...p }: any) => <a {...p}>{children}</a> }));
 vi.mock('@/proto/api', () => ({ USE_MOCK: false, auth: { isAuthed: () => api.authed } }));
 vi.mock('@/shell/desktop-top-bar', () => ({ DesktopTopBar: () => null }));
-vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects, listTemplates: api.templates, listDemoExamples: api.examples } }));
+vi.mock('@/ip/api', () => ({ IpStudioApi: { listProjects: api.projects, listTemplates: api.templates, listDemoExamples: api.examples, sceneHomeCards: api.cards } }));
 vi.mock('@/ip/studio-entry', () => ({ createStudioEntry: api.create, studioEntryHref: vi.fn(), startNewCanvas: api.newCanvas }));
 vi.mock('@/ip/studio-template-use', () => ({ StudioTemplateUse: ({ template }: { template: { name: string } }) => <div role="dialog" aria-label={`预览 ${template.name}`}/> }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
@@ -67,6 +72,9 @@ test('tools and goals: 导演台 is a page, 人物配音 opens a canvas with its
   expect(api.create).toHaveBeenCalledWith('speech');
   expect(screen.getByRole('link', { name: /电商带货/ }).getAttribute('href')).toBe('/video?scene=ecom-talking');
   expect(screen.getByRole('link', { name: /商品套图/ }).getAttribute('href')).toBe('/image?scene=white-background');
+  // 运营传了封面就用它，没传的按场景编号用随包封面。
+  const art = screen.getByRole('link', { name: /电商带货/ }).querySelectorAll('img');
+  expect([...art].map(img => img.getAttribute('src'))).toEqual(['https://cdn/ops-cover.webp', '/studio/scene-covers/ecom-seeding.webp']);
 });
 
 // 灵感 moved onto Home: official templates and examples, filtered by what they contain; opening one previews it.

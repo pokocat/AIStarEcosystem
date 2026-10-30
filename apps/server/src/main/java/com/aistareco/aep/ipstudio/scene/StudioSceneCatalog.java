@@ -44,25 +44,44 @@ public class StudioSceneCatalog {
     public record SceneRef(String label, boolean required, String hint) {}
     /** 出 wire 时由 key 签出的地址；目录里只存 key。 */
     public record Media(String url, String mediaType) {}
+    /** 选项组里的一项：value 是接口用的编号，label 给用户看，prompt 是选中后拼进描述 / 要求里的那句话。 */
+    public record OptionChoice(String value, String label, String prompt) {}
+    /** 照参考站的「选项组」：一个场景几组可选项（如拍法、语气），各有默认值；用户点选，不用写字。 */
+    public record OptionGroup(String key, String label, List<OptionChoice> choices, String defaultValue) {}
+    /** 首页「你想做什么？」的一张卡：点进去落到 sceneId，两张封面取 covers 里两个场景的封面。 */
+    public record HomeGoal(String id, String title, String description, String sceneId, List<String> covers) {}
     public record ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio,
-                             Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+                             List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
         public ImageScene(String id, String group, String title, String description, List<SceneRef> refs, String prompt, String hint, String ratio) {
-            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null);
+            this(id, group, title, description, refs, prompt, hint, ratio, null, null, null, null, null, null);
         }
         public boolean on() { return enabled == null || enabled; }
-        ImageScene media(String cover, List<Media> list) { return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, enabled, coverKey, exampleKeys, cover, list); }
+        public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
+        /** 同一个场景，换掉上下架 / 封面 / 示例这几项（出 wire 签名、保存时剥地址都用它）。 */
+        public ImageScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+            return new ImageScene(id, group, title, description, refs, prompt, hint, ratio, options, on, cover, exampleKeys, coverUrl, examples);
+        }
     }
     public record Slot(String label, boolean required, Integer max) {}
     public record VideoScene(String id, String group, String title, String description, Slot images, Slot video, boolean character, boolean voice,
                              String placeholder, boolean textRequired, List<Integer> durations, int duration, String ratio, String structure,
-                             List<String> ideas, String skill, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
+                             List<String> ideas, String skill, List<OptionGroup> options, Boolean enabled, String coverKey, List<String> exampleKeys, String coverUrl, List<Media> examples) {
         public boolean on() { return enabled == null || enabled; }
-        VideoScene media(String cover, List<Media> list) {
+        public List<OptionGroup> optionGroups() { return options == null ? List.of() : options; }
+        public VideoScene withMedia(Boolean on, String cover, List<String> exampleKeys, String coverUrl, List<Media> examples) {
             return new VideoScene(id, group, title, description, images, video, character, voice, placeholder, textRequired, durations, duration, ratio,
-                    structure, ideas, skill, enabled, coverKey, exampleKeys, cover, list);
+                    structure, ideas, skill, options, on, cover, exampleKeys, coverUrl, examples);
         }
     }
-    public record Catalog(int version, List<Group> imageGroups, List<Group> videoGroups, List<ImageScene> image, List<VideoScene> video) {}
+    public record Catalog(int version, List<Group> imageGroups, List<Group> videoGroups, List<ImageScene> image, List<VideoScene> video, List<HomeGoal> homeGoals) {
+        public Catalog(int version, List<Group> imageGroups, List<Group> videoGroups, List<ImageScene> image, List<VideoScene> video) {
+            this(version, imageGroups, videoGroups, image, video, null);
+        }
+        public List<HomeGoal> goals() { return homeGoals == null ? List.of() : homeGoals; }
+        public Catalog with(List<ImageScene> image, List<VideoScene> video, List<HomeGoal> goals) {
+            return new Catalog(version, imageGroups, videoGroups, image, video, goals);
+        }
+    }
 
     /** 自由出图：没有固定描述，只有用户自己写的那句。 */
     public static final String FREE = "free";
@@ -105,21 +124,39 @@ public class StudioSceneCatalog {
     public int savedVersion() { return stored().map(PlatformConfigDto::version).orElse(0); }
     private Optional<PlatformConfigDto> stored() { return config == null ? Optional.empty() : config.findByKey(CONFIG_KEY); }
 
-    /** 用户能看到的：只留上架的场景，key 换成签过名的地址（key 和上下架标记不出 wire）。 */
+    /**
+     * 用户能看到的：只留上架的场景，key 换成签过名的地址（key 和上下架标记不出 wire）；
+     * 首页卡片只留落点场景还上架的。
+     */
     public Catalog published(Function<String, String> sign) {
         Catalog c = catalog();
-        return new Catalog(c.version(), c.imageGroups(), c.videoGroups(),
-                c.image().stream().filter(ImageScene::on).map(s -> new ImageScene(s.id(), s.group(), s.title(), s.description(), s.refs(), s.prompt(), s.hint(), s.ratio(),
-                        null, null, null, url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList(),
-                c.video().stream().filter(VideoScene::on).map(s -> new VideoScene(s.id(), s.group(), s.title(), s.description(), s.images(), s.video(), s.character(), s.voice(),
-                        s.placeholder(), s.textRequired(), s.durations(), s.duration(), s.ratio(), s.structure(), s.ideas(), s.skill(),
-                        null, null, null, url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList());
+        var image = c.image().stream().filter(ImageScene::on).map(s -> s.withMedia(null, null, null, url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList();
+        var video = c.video().stream().filter(VideoScene::on).map(s -> s.withMedia(null, null, null, url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList();
+        Set<String> live = new HashSet<>();
+        image.forEach(s -> live.add(s.id())); video.forEach(s -> live.add(s.id()));
+        return c.with(image, video, c.goals().stream().filter(g -> live.contains(g.sceneId())).toList());
     }
+    public record HomeCover(String sceneId, String coverUrl) {}
+    /** 首页卡片对外的样子：没登录的访客也看得到，所以只有显示用的字段，不带场景描述和拍法。 */
+    public record HomeCard(String id, String title, String description, String sceneId, String kind, List<HomeCover> covers) {}
+
+    /** 首页「你想做什么？」：落点场景上架的卡片，封面取所选场景运营传的图（没传为空，前端用随包封面）。 */
+    public List<HomeCard> homeCards(Function<String, String> sign) {
+        Catalog c = published(sign);
+        java.util.Map<String, String> covers = new java.util.HashMap<>();
+        java.util.Map<String, String> kinds = new java.util.HashMap<>();
+        c.image().forEach(s -> { kinds.put(s.id(), "image"); if (s.coverUrl() != null) covers.put(s.id(), s.coverUrl()); });
+        c.video().forEach(s -> { kinds.put(s.id(), "video"); if (s.coverUrl() != null) covers.put(s.id(), s.coverUrl()); });
+        // 封面场景下架了就不再签它的图，但编号照给（前端按编号找随包封面）。
+        return c.goals().stream().map(g -> new HomeCard(g.id(), g.title(), g.description(), g.sceneId(), kinds.get(g.sceneId()),
+                (g.covers() == null ? List.<String>of() : g.covers()).stream().map(id -> new HomeCover(id, covers.get(id))).toList())).toList();
+    }
+
     /** 给每个场景补上封面和示例的地址（后台预览也用）。 */
     public static Catalog withMedia(Catalog c, Function<String, String> sign) {
-        return new Catalog(c.version(), c.imageGroups(), c.videoGroups(),
-                c.image().stream().map(s -> s.media(url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList(),
-                c.video().stream().map(s -> s.media(url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList());
+        return c.with(c.image().stream().map(s -> s.withMedia(s.enabled(), s.coverKey(), s.exampleKeys(), url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList(),
+                c.video().stream().map(s -> s.withMedia(s.enabled(), s.coverKey(), s.exampleKeys(), url(s.coverKey(), sign), examples(s.exampleKeys(), sign))).toList(),
+                c.homeGoals());
     }
     private static String url(String key, Function<String, String> sign) { return blank(key) ? null : sign.apply(key); }
     private static List<Media> examples(List<String> keys, Function<String, String> sign) {
@@ -138,14 +175,33 @@ public class StudioSceneCatalog {
      * @param text     图片：补充要求；视频：用户写的那句
      * @param custom   图片：用户改过的完整描述（没改为 null）
      * @param revision 编导：对上一版脚本的修改意见（第一次写为 null）
+     * @param options  场景选项组：选项组 key → 选中项 value；没给的组用默认值
      */
     public record ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                                  List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle,
-                                 Integer duration, String ratio, String language, String revision) {
+                                 Integer duration, String ratio, String language, String revision, java.util.Map<String, String> options) {
         public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
                               List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio) {
-            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null);
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, null, null, null);
         }
+        public ComposeRequest(String kind, String sceneId, String text, String custom, List<Integer> filled,
+                              List<String> imageTitles, String characterTitle, String voiceTitle, String videoTitle, Integer duration, String ratio,
+                              String language, String revision) {
+            this(kind, sceneId, text, custom, filled, imageTitles, characterTitle, voiceTitle, videoTitle, duration, ratio, language, revision, null);
+        }
+    }
+
+    /** 选中的选项变成几句话（「拍法：……」），没给的组用默认值；后台下架的选项 400，让页面刷新后重选。 */
+    static List<String> optionLines(List<OptionGroup> groups, java.util.Map<String, String> picked) {
+        java.util.Map<String, String> chosen = picked == null ? java.util.Map.of() : picked;
+        for (String key : chosen.keySet()) if (groups.stream().noneMatch(g -> g.key().equals(key))) throw bad("这个选项已经下架，请刷新后重选");
+        List<String> lines = new ArrayList<>();
+        for (OptionGroup g : groups) {
+            String value = chosen.getOrDefault(g.key(), g.defaultValue());
+            OptionChoice choice = g.choices().stream().filter(c -> c.value().equals(value)).findFirst().orElseThrow(() -> bad("这个选项已经下架，请刷新后重选"));
+            lines.add(g.label() + "：" + choice.prompt());
+        }
+        return lines;
     }
     public record Composed(String text, String skillKey) {}
 
@@ -167,9 +223,12 @@ public class StudioSceneCatalog {
         String extra = trim(r.text());
         if (FREE.equals(scene.id())) {
             if (extra.isEmpty()) throw bad("写一句想要的画面");
-            return limit(extra);
+            List<String> options = optionLines(scene.optionGroups(), r.options());
+            return limit(options.isEmpty() ? extra : extra + "\n" + String.join("\n", options));
         }
         String base = r.custom() != null && !r.custom().isBlank() ? r.custom().trim() : scene.prompt().trim();
+        List<String> options = optionLines(scene.optionGroups(), r.options());
+        if (!options.isEmpty()) base = base + "\n" + String.join("\n", options);
         return limit(extra.isEmpty() ? base : base + "\n补充要求：" + extra);
     }
 
@@ -197,6 +256,7 @@ public class StudioSceneCatalog {
         List<String> lines = new ArrayList<>();
         lines.add("帮我做一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "短视频，类型是「" + scene.title() + "」。");
         if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
+        lines.addAll(optionLines(scene.optionGroups(), r.options()));
         List<String> materials = new ArrayList<>();
         if (!blank(r.videoTitle())) materials.add("「" + r.videoTitle().trim() + "」是要复刻的参考视频");
         if (!in.images().isEmpty()) materials.add(String.join("", in.images().stream().map(t -> "「" + t.trim() + "」").toList()) + "是上传的" + scene.images().label() + "，画面里出现时要和它一致");
@@ -224,6 +284,7 @@ public class StudioSceneCatalog {
         if (!blank(r.revision())) lines.add("按这条修改意见改当前脚本，没提到的地方保持不变：" + r.revision().trim() + "\n\n这条视频原来的要求（仍然有效）：");
         lines.add("写一条 " + in.duration() + " 秒的" + orientation(in.ratio()) + "「" + scene.title() + "」短视频脚本，交给视频模型一次生成，台词用" + language + "。");
         if (!in.text().isEmpty()) lines.add("我的要求：" + in.text());
+        lines.addAll(optionLines(scene.optionGroups(), r.options()));
         List<String> refs = new ArrayList<>();
         int n = 0;
         for (String title : in.images()) refs.add("图" + (++n) + "「" + title.trim() + "」是" + scene.images().label());
@@ -282,6 +343,7 @@ public class StudioSceneCatalog {
             }
             if (!List.of("1:1", "3:4", "4:3", "9:16", "16:9").contains(s.ratio())) throw new IllegalStateException("默认比例不对：" + name);
             media(s.coverKey(), s.exampleKeys(), name);
+            options(s.optionGroups(), name);
         }
         for (VideoScene s : c.video()) {
             String name = blank(s.title()) ? s.id() : s.title();
@@ -298,8 +360,31 @@ public class StudioSceneCatalog {
             if (!List.of("9:16", "16:9").contains(s.ratio())) throw new IllegalStateException("默认画面只能是竖屏或横屏：" + name);
             if (s.ideas() == null || s.ideas().size() > 8) throw new IllegalStateException("常用开头最多 8 个：" + name);
             media(s.coverKey(), s.exampleKeys(), name);
+            options(s.optionGroups(), name);
+        }
+        Set<String> goals = new HashSet<>();
+        if (c.goals().size() > 12) throw new IllegalStateException("首页卡片最多 12 张");
+        for (HomeGoal g : c.goals()) {
+            if (g == null || blank(g.id()) || !g.id().matches("[a-z0-9][a-z0-9-]{0,47}") || !goals.add(g.id())) throw new IllegalStateException("首页卡片编号只能用小写字母、数字和横线，且不能重复");
+            if (blank(g.title()) || blank(g.description())) throw new IllegalStateException("首页卡片要有标题和一句说明：" + g.id());
+            if (!ids.contains(g.sceneId())) throw new IllegalStateException("首页卡片「" + g.title() + "」指向的场景不存在");
+            if (g.covers() != null && (g.covers().size() > 2 || !ids.containsAll(g.covers()))) throw new IllegalStateException("首页卡片「" + g.title() + "」的封面要选已有的场景，最多两个");
         }
         return c;
+    }
+    private static void options(List<OptionGroup> groups, String name) {
+        if (groups.size() > 4) throw new IllegalStateException("选项组最多 4 组：" + name);
+        Set<String> keys = new HashSet<>();
+        for (OptionGroup g : groups) {
+            if (g == null || blank(g.key()) || !g.key().matches("[a-z0-9][a-z0-9-]{0,31}") || !keys.add(g.key())) throw new IllegalStateException("选项组编号只能用小写字母、数字和横线，且不能重复：" + name);
+            if (blank(g.label()) || g.choices() == null || g.choices().size() < 2 || g.choices().size() > 8) throw new IllegalStateException("选项组要有名称和 2 到 8 个选项：" + name);
+            Set<String> values = new HashSet<>();
+            for (OptionChoice o : g.choices()) {
+                if (o == null || blank(o.value()) || !values.add(o.value()) || blank(o.label()) || blank(o.prompt())) throw new IllegalStateException("「" + g.label() + "」的选项要有编号、名称和拼进描述的话，编号不能重复：" + name);
+                if (o.prompt().contains("【") || o.prompt().contains("】")) throw new IllegalStateException("选项的话不能留【…】空位：" + name);
+            }
+            if (!values.contains(g.defaultValue())) throw new IllegalStateException("「" + g.label() + "」的默认选项不在选项里：" + name);
+        }
     }
     private static Set<String> groups(List<Group> list, String kind) {
         Set<String> out = new HashSet<>();

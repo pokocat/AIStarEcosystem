@@ -2,14 +2,14 @@
 import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {afterEach,beforeEach,expect,test,vi} from 'vitest';
 import {StudioHome} from './studio-home';
-const api=vi.hoisted(()=>({createProject:vi.fn(),updateProject:vi.fn(),getProject:vi.fn(),listProjects:vi.fn(),listTemplates:vi.fn(),listDemoExamples:vi.fn(),push:vi.fn()}));
+const api=vi.hoisted(()=>({createProject:vi.fn(),updateProject:vi.fn(),getProject:vi.fn(),listProjects:vi.fn(),listTemplates:vi.fn(),listDemoExamples:vi.fn(),sceneHomeCards:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:api.push})}));
 vi.mock('@/ip/api',()=>({IpStudioApi:api}));
 vi.mock('@/ip/studio-template-use',()=>({StudioTemplateUse:({template}:any)=><div role="dialog">套用 {template.name}</div>}));
 vi.mock('@/ip/canvas-thumb',()=>({CanvasThumb:()=> <div>工作流预览</div>}));
 const empty={id:'p',name:'新画布',status:'draft',docVersion:'v1',doc:{nodes:[],connections:[],viewport:{x:0,y:0,k:1}},runs:{},runsById:{}};
 afterEach(cleanup);
-beforeEach(()=>{vi.clearAllMocks();api.listProjects.mockResolvedValue([]);api.listTemplates.mockResolvedValue([]);api.listDemoExamples.mockResolvedValue([]);api.createProject.mockResolvedValue(empty);api.getProject.mockResolvedValue(empty);api.updateProject.mockImplementation(async(_id,body)=>({...empty,doc:body.doc}));});
+beforeEach(()=>{vi.clearAllMocks();api.listProjects.mockResolvedValue([]);api.listTemplates.mockResolvedValue([]);api.listDemoExamples.mockResolvedValue([]);api.sceneHomeCards.mockResolvedValue([]);api.createProject.mockResolvedValue(empty);api.getProject.mockResolvedValue(empty);api.updateProject.mockImplementation(async(_id,body)=>({...empty,doc:body.doc}));});
 test('the home opens on the conversation box: a brief creates a canvas that sends it as the first message; nothing is created until then',async()=>{
   render(<StudioHome ready/>);
   expect(screen.getByRole('link',{name:/更多创作方式/}).getAttribute('href')).toBe('/create');

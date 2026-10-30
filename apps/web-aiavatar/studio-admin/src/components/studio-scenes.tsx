@@ -18,7 +18,9 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@ai-star-eco/ui/ui/alert-dialog";
 import { cn } from "@ai-star-eco/ui/ui/utils";
-import type { StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneMedia, StudioVideoScene } from "@ai-star-eco/types/ip-studio-scenes";
+import type {
+  StudioImageScene, StudioSceneAdminView, StudioSceneCatalog, StudioSceneGroup, StudioSceneHomeGoal, StudioSceneMedia, StudioSceneOptionGroup, StudioVideoScene,
+} from "@ai-star-eco/types/ip-studio-scenes";
 import { ApiError, StudioScenesApi } from "@/lib/api";
 
 type Kind = "image" | "video";
@@ -56,6 +58,8 @@ export function StudioScenes() {
   const [view, setView] = React.useState<StudioSceneAdminView | null>(null);
   const [catalog, setCatalog] = React.useState<StudioSceneCatalog | null>(null);
   const [kind, setKind] = React.useState<Kind>("video");
+  // 第三个标签「首页卡片」：编辑首页「你想做什么？」那一排，不是某一个场景。
+  const [homeTab, setHomeTab] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -162,10 +166,15 @@ export function StudioScenes() {
     </div>}
 
     {!catalog ? (!error && <p className="text-sm text-muted-foreground">正在加载</p>) : <>
-      <Tabs value={kind} onValueChange={v => { setKind(v as Kind); setActiveId((v === "image" ? catalog.image : catalog.video)[0]?.id ?? null); }}>
-        <TabsList><TabsTrigger value="video">AI 视频（{catalog.video.length}）</TabsTrigger><TabsTrigger value="image">AI 图片（{catalog.image.length}）</TabsTrigger></TabsList>
+      <Tabs value={homeTab ? "home" : kind} onValueChange={v => {
+        if (v === "home") { setHomeTab(true); return; }
+        setHomeTab(false); setKind(v as Kind); setActiveId((v === "image" ? catalog.image : catalog.video)[0]?.id ?? null);
+      }}>
+        <TabsList><TabsTrigger value="video">AI 视频（{catalog.video.length}）</TabsTrigger><TabsTrigger value="image">AI 图片（{catalog.image.length}）</TabsTrigger>
+          <TabsTrigger value="home">首页卡片（{catalog.homeGoals?.length ?? 0}）</TabsTrigger></TabsList>
       </Tabs>
 
+      {homeTab ? <HomeGoalsEditor catalog={catalog} onChange={homeGoals => setCatalog(c => c && { ...c, homeGoals })}/> :
       <div className="grid gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
@@ -211,11 +220,13 @@ export function StudioScenes() {
             <MediaEditor scene={active} mediaOf={mediaOf} onUpload={(f, t) => void upload(f, t)}
               onClearCover={() => patch({ coverKey: null, coverUrl: null })} onRemoveExample={key => patch({ exampleKeys: (active.exampleKeys ?? []).filter(k => k !== key) })}/>
 
+            <OptionsEditor groups={active.options ?? []} onChange={options => patch({ options })}/>
+
             {kind === "image" ? <ImageFields scene={active as StudioImageScene} patch={patch}/>
               : <VideoFields scene={active as StudioVideoScene} patch={patch} skills={view?.skills ?? []}/>}
           </CardContent>
         </Card> : <Card><CardContent className="py-10 text-center text-sm text-muted-foreground">左边选一个场景，或者新增一个。</CardContent></Card>}
-      </div>
+      </div>}
     </>}
     {dialog}
   </div>;
@@ -337,4 +348,78 @@ function GroupsEditor({ groups, used, onChange }: { groups: StudioSceneGroup[]; 
       <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>收起</Button>
     </div>
   </div>;
+}
+
+/**
+ * 选项组（照参考站）：用户点选，不用写字。每组 2 到 8 个选项、一个默认；选中那项的「拼进去的话」由服务端加进描述或编导的要求。
+ */
+function OptionsEditor({ groups, onChange }: { groups: StudioSceneOptionGroup[]; onChange: (g: StudioSceneOptionGroup[]) => void }) {
+  const setGroup = (i: number, next: StudioSceneOptionGroup) => onChange(groups.map((g, j) => j === i ? next : g));
+  const freshKey = () => { let n = 1; while (groups.some(g => g.key === `opt-${n}`)) n++; return `opt-${n}`; };
+  return <Field label="选项组" hint="照参考站：用户在场景页点一下就行，不用写字。选中那项「拼进去的话」会加进出图描述或编导的要求。最多 4 组，每组 2 到 8 个选项。">
+    <div className="space-y-3">
+      {groups.map((g, i) => {
+        const setChoice = (k: number, changes: Partial<StudioSceneOptionGroup["choices"][number]>) => setGroup(i, { ...g, choices: g.choices.map((c, m) => m === k ? { ...c, ...changes } : c) });
+        const freshValue = () => { let n = 1; while (g.choices.some(c => c.value === `c${n}`)) n++; return `c${n}`; };
+        return <div key={i} className="space-y-2 rounded-md border p-3" role="group" aria-label={`选项组 ${i + 1}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input aria-label={`选项组 ${i + 1} 名称`} className="w-40" placeholder="如：拍法" value={g.label} maxLength={10} onChange={e => setGroup(i, { ...g, label: e.target.value })}/>
+            <Input aria-label={`选项组 ${i + 1} 编号`} className="w-32" value={g.key} maxLength={32} onChange={e => setGroup(i, { ...g, key: e.target.value })}/>
+            <Button size="sm" variant="ghost" className="ml-auto" onClick={() => onChange(groups.filter((_, j) => j !== i))}><X className="mr-1 h-4 w-4"/>删掉这组</Button>
+          </div>
+          {g.choices.map((c, k) => <div key={k} className="flex flex-wrap items-center gap-2">
+            <Input aria-label={`${g.label || "选项组"} 选项 ${k + 1} 名称`} className="w-32" placeholder="给用户看的" value={c.label} maxLength={12} onChange={e => setChoice(k, { label: e.target.value })}/>
+            <Input aria-label={`${g.label || "选项组"} 选项 ${k + 1} 拼进去的话`} className="min-w-[200px] flex-1" placeholder="选中后加进描述的话" value={c.prompt} onChange={e => setChoice(k, { prompt: e.target.value })}/>
+            {g.defaultValue === c.value ? <Badge variant="secondary">默认</Badge>
+              : <Button size="sm" variant="outline" onClick={() => setGroup(i, { ...g, defaultValue: c.value })}>设为默认</Button>}
+            <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除${g.label || "选项组"}选项 ${k + 1}`} disabled={g.choices.length <= 2}
+              onClick={() => { const choices = g.choices.filter((_, m) => m !== k); setGroup(i, { ...g, choices, defaultValue: choices.some(x => x.value === g.defaultValue) ? g.defaultValue : choices[0].value }); }}><X className="h-4 w-4"/></Button>
+          </div>)}
+          {g.choices.length < 8 && <Button size="sm" variant="outline" onClick={() => setGroup(i, { ...g, choices: [...g.choices, { value: freshValue(), label: "", prompt: "" }] })}><Plus className="mr-1 h-4 w-4"/>加一个选项</Button>}
+        </div>;
+      })}
+      {groups.length < 4 && <Button size="sm" variant="outline" onClick={() => onChange([...groups, { key: freshKey(), label: "", defaultValue: "c1",
+        choices: [{ value: "c1", label: "", prompt: "" }, { value: "c2", label: "", prompt: "" }] }])}><Plus className="mr-1 h-4 w-4"/>加一组选项</Button>}
+    </div>
+  </Field>;
+}
+
+/** 首页「你想做什么？」那一排：每张卡点进去落到一个场景，两张封面取两个场景的封面。落点场景下架后，这张卡在用户端自动不显示。 */
+function HomeGoalsEditor({ catalog, onChange }: { catalog: StudioSceneCatalog; onChange: (g: StudioSceneHomeGoal[]) => void }) {
+  const goals = catalog.homeGoals ?? [];
+  const scenes = [...catalog.video.map(s => [s.id, `AI 视频 · ${s.title}`]), ...catalog.image.map(s => [s.id, `AI 图片 · ${s.title}`])];
+  const setGoal = (i: number, changes: Partial<StudioSceneHomeGoal>) => onChange(goals.map((g, j) => j === i ? { ...g, ...changes } : g));
+  const move = (i: number, by: -1 | 1) => { const j = i + by; if (j < 0 || j >= goals.length) return; const next = [...goals]; [next[i], next[j]] = [next[j], next[i]]; onChange(next); };
+  const setCover = (i: number, slot: 0 | 1, id: string) => {
+    const covers = [...(goals[i].covers ?? [])]; covers[slot] = id;
+    setGoal(i, { covers: covers.filter(Boolean).slice(0, 2) });
+  };
+  const add = () => { let n = 1; while (goals.some(g => g.id === `goal-${n}`)) n++;
+    const first = catalog.video[0]?.id ?? catalog.image[0]?.id ?? "";
+    onChange([...goals, { id: `goal-${n}`, title: "新卡片", description: "一句话说清能做什么", sceneId: first, covers: first ? [first] : [] }]); };
+  return <Card>
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+      <CardTitle className="text-base">首页「你想做什么？」</CardTitle>
+      <Button size="sm" variant="outline" onClick={add} disabled={goals.length >= 12}><Plus className="mr-1 h-4 w-4"/>加一张卡片</Button>
+    </CardHeader>
+    <CardContent className="space-y-3">
+      <p className="text-xs text-muted-foreground">首页按这里的顺序排。卡片点进去落到选的场景；落点场景下架后，这张卡在首页自动不显示。最多 12 张。</p>
+      {goals.map((g, i) => <div key={g.id} className="grid gap-2 rounded-md border p-3 md:grid-cols-[1fr_1.4fr_1.4fr_auto]" role="group" aria-label={`首页卡片 ${i + 1}`}>
+        <Input aria-label={`卡片 ${i + 1} 标题`} value={g.title} maxLength={10} onChange={e => setGoal(i, { title: e.target.value })}/>
+        <Input aria-label={`卡片 ${i + 1} 说明`} value={g.description} maxLength={24} onChange={e => setGoal(i, { description: e.target.value })}/>
+        <ChoiceSelect label={`卡片 ${i + 1} 落到`} value={g.sceneId} options={scenes} onChange={v => setGoal(i, { sceneId: v })}/>
+        <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`上移卡片 ${i + 1}`} onClick={() => move(i, -1)}><ArrowUp className="h-4 w-4"/></Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`下移卡片 ${i + 1}`} onClick={() => move(i, 1)}><ArrowDown className="h-4 w-4"/></Button>
+          <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={`删除卡片 ${i + 1}`} onClick={() => onChange(goals.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4"/></Button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 md:col-span-4">
+          <span className="text-xs text-muted-foreground">封面取这两个场景的图：</span>
+          <div className="w-56"><ChoiceSelect label={`卡片 ${i + 1} 封面一`} value={g.covers?.[0] ?? g.sceneId} options={scenes} onChange={v => setCover(i, 0, v)}/></div>
+          <div className="w-56"><ChoiceSelect label={`卡片 ${i + 1} 封面二`} value={g.covers?.[1] ?? g.sceneId} options={scenes} onChange={v => setCover(i, 1, v)}/></div>
+        </div>
+      </div>)}
+      {!goals.length && <p className="py-6 text-center text-sm text-muted-foreground">还没有卡片，首页不会显示这一排。</p>}
+    </CardContent>
+  </Card>;
 }

@@ -103,10 +103,9 @@ class StudioSceneCatalogTest {
     void scenesTheOperatorsTookDownDisappearFromThePagesButOldDraftsStillResolve() {
         var c = catalog.catalog();
         var off = c.video().get(0);
-        var edited = new StudioSceneCatalog.Catalog(c.version(), c.imageGroups(), c.videoGroups(), c.image(),
-                c.video().stream().map(s -> s.id().equals(off.id()) ? new StudioSceneCatalog.VideoScene(s.id(), s.group(), s.title(), s.description(), s.images(), s.video(),
-                        s.character(), s.voice(), s.placeholder(), s.textRequired(), s.durations(), s.duration(), s.ratio(), s.structure(), s.ideas(), s.skill(),
-                        false, StudioSceneCatalog.MEDIA_PREFIX + "a.webp", List.of(StudioSceneCatalog.MEDIA_PREFIX + "b.mp4"), null, null) : s).toList());
+        var edited = c.with(c.image(),
+                c.video().stream().map(s -> s.id().equals(off.id()) ? s.withMedia(false, StudioSceneCatalog.MEDIA_PREFIX + "a.webp",
+                        List.of(StudioSceneCatalog.MEDIA_PREFIX + "b.mp4"), null, null) : s).toList(), c.homeGoals());
         var custom = new StudioSceneCatalog(edited);
         var published = custom.published(k -> "signed:" + k);
         assertThat(published.video()).noneMatch(s -> s.id().equals(off.id())).allMatch(s -> s.coverKey() == null && s.enabled() == null);
@@ -120,12 +119,48 @@ class StudioSceneCatalogTest {
     void aCatalogMayOnlyPointAtFilesUploadedForScenes() {
         var c = catalog.catalog();
         var s = c.image().get(1);
-        var foreign = new StudioSceneCatalog.ImageScene(s.id(), s.group(), s.title(), s.description(), s.refs(), s.prompt(), s.hint(), s.ratio(),
-                true, "ipstudio_source/someone/photo.png", null, null, null);
+        var foreign = s.withMedia(true, "ipstudio_source/someone/photo.png", null, null, null);
         assertThatThrownBy(() -> StudioSceneCatalog.validate(new StudioSceneCatalog.Catalog(1, c.imageGroups(), c.videoGroups(), List.of(foreign), List.of())))
                 .hasMessageContaining("后台上传");
         assertThatThrownBy(() -> StudioSceneCatalog.validateJson(new com.fasterxml.jackson.databind.ObjectMapper().createObjectNode().put("version", 1)))
                 .isInstanceOf(BusinessException.class);
+    }
+
+    @Test
+    void pickedOptionsBecomeSentencesAndAMissingGroupUsesItsDefault() {
+        var scene = catalog.video("ecom-talking").orElseThrow();
+        assertThat(scene.optionGroups()).isNotEmpty();
+        String brief = catalog.compose(new StudioSceneCatalog.ComposeRequest("video-script", "ecom-talking", "", null, null, List.of("商品图 1"), null, null, null, 10, "9:16",
+                null, null, java.util.Map.of("presenter", "product"))).text();
+        assertThat(brief).contains("出镜方式：不出现人脸，只拍商品和手部操作", "语气：语气像朋友推荐");
+        String image = catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
+                null, null, java.util.Map.of("angle", "top"))).text();
+        assertThat(image).startsWith(catalog.image("white-background").orElseThrow().prompt()).contains("拍摄角度：从正上方俯拍商品");
+        assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
+                null, null, java.util.Map.of("angle", "gone")))).hasMessage("这个选项已经下架，请刷新后重选");
+        assertThatThrownBy(() -> catalog.compose(new StudioSceneCatalog.ComposeRequest("image", "white-background", "", null, List.of(0), null, null, null, null, null, null,
+                null, null, java.util.Map.of("nope", "x")))).hasMessage("这个选项已经下架，请刷新后重选");
+    }
+
+    @Test
+    void homeCardsPointAtRealScenesAndDisappearWhenTheirSceneIsTakenDown() {
+        var c = catalog.catalog();
+        assertThat(c.goals()).extracting(StudioSceneCatalog.HomeGoal::id).contains("recreation", "commerce", "ip");
+        var off = c.with(c.image(), c.video().stream().map(s -> s.id().equals("ecom-talking") ? s.withMedia(false, null, null, null, null) : s).toList(), c.homeGoals());
+        assertThat(new StudioSceneCatalog(off).published(k -> k).goals()).extracting(StudioSceneCatalog.HomeGoal::sceneId).doesNotContain("ecom-talking");
+        // 公开给首页的卡片只有显示用的字段：类型按落点场景判，封面按编号给（没传图时地址为空）。
+        var cards = catalog.homeCards(k -> "signed:" + k);
+        assertThat(cards).filteredOn(card -> card.id().equals("ip")).singleElement().satisfies(card -> {
+            assertThat(card.kind()).isEqualTo("image");
+            assertThat(card.covers()).extracting(StudioSceneCatalog.HomeCover::sceneId).containsExactly("ip-sheet", "ip-portrait");
+            assertThat(card.covers()).allMatch(cover -> cover.coverUrl() == null);
+        });
+        var dangling = c.with(c.image(), c.video(), List.of(new StudioSceneCatalog.HomeGoal("x", "卡", "说明", "no-such-scene", List.of())));
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(dangling)).hasMessageContaining("指向的场景不存在");
+        var badDefault = c.with(c.image().stream().map(s -> s.id().equals("white-background") ? new StudioSceneCatalog.ImageScene(s.id(), s.group(), s.title(), s.description(), s.refs(),
+                s.prompt(), s.hint(), s.ratio(), List.of(new StudioSceneCatalog.OptionGroup("angle", "角度", List.of(new StudioSceneCatalog.OptionChoice("a", "A", "正面"),
+                new StudioSceneCatalog.OptionChoice("b", "B", "侧面")), "c")), null, null, null, null, null) : s).toList(), c.video(), c.homeGoals());
+        assertThatThrownBy(() -> StudioSceneCatalog.validate(badDefault)).hasMessageContaining("默认选项不在选项里");
     }
 
     @Test

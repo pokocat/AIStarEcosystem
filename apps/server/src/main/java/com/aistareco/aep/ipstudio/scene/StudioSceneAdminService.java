@@ -1,8 +1,6 @@
 package com.aistareco.aep.ipstudio.scene;
 
 import com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.Catalog;
-import com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.ImageScene;
-import com.aistareco.aep.ipstudio.scene.StudioSceneCatalog.VideoScene;
 import com.aistareco.aep.service.PlatformConfigService;
 import com.aistareco.aep.service.storage.FileStorageService;
 import com.aistareco.aep.service.storage.MediaBytes;
@@ -90,10 +88,8 @@ public class StudioSceneAdminService {
 
     /** 地址是派生出来的（会过期），不进库。 */
     private static Catalog strip(Catalog c) {
-        return new Catalog(c.version(), c.imageGroups(), c.videoGroups(),
-                c.image() == null ? null : c.image().stream().map(s -> new ImageScene(s.id(), s.group(), s.title(), s.description(), s.refs(), s.prompt(), s.hint(), s.ratio(),
-                        s.enabled(), s.coverKey(), s.exampleKeys(), null, null)).toList(),
-                c.video() == null ? null : c.video().stream().map(s -> new VideoScene(s.id(), s.group(), s.title(), s.description(), s.images(), s.video(), s.character(), s.voice(),
-                        s.placeholder(), s.textRequired(), s.durations(), s.duration(), s.ratio(), s.structure(), s.ideas(), s.skill(), s.enabled(), s.coverKey(), s.exampleKeys(), null, null)).toList());
+        return c.with(c.image() == null ? null : c.image().stream().map(s -> s.withMedia(s.enabled(), s.coverKey(), s.exampleKeys(), null, null)).toList(),
+                c.video() == null ? null : c.video().stream().map(s -> s.withMedia(s.enabled(), s.coverKey(), s.exampleKeys(), null, null)).toList(),
+                c.homeGoals());
     }
 }

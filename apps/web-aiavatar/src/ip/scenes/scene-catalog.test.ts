@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test } from "vitest";
 import type { StudioSceneCatalog } from "@ai-star-eco/types";
-import { homeGoals, sceneCover } from "./scene-catalog";
+import { sceneCover, sceneHref } from "./scene-catalog";
 import { MOCK_SCENES } from "../mocks/scenes";
 
 // 场景目录的唯一真源在服务端；拼话规则的测试在 StudioSceneCatalogTest（Java）。这里只核前端引用的那几样对得上。
@@ -13,13 +13,15 @@ test("every scene on the server has a cover image shipped with the app", () => {
   for (const s of [...SERVER.image, ...SERVER.video]) if (s.id !== "free") expect(existsSync(join(PUBLIC, sceneCover(s.id))), s.id).toBe(true);
 });
 
-test("every home goal opens a scene the server knows, with covers that exist", () => {
-  for (const goal of homeGoals) {
-    const url = new URL(goal.href, "http://x");
-    const id = url.searchParams.get("scene");
+test("every built-in home card opens a scene the server knows, with covers shipped with the app", () => {
+  const goals = SERVER.homeGoals ?? [];
+  expect(goals.length).toBeGreaterThan(0);
+  for (const goal of goals) {
+    const kind = SERVER.image.some(s => s.id === goal.sceneId) ? "image" : "video";
+    const url = new URL(sceneHref({ kind, sceneId: goal.sceneId }), "http://x");
     const list = url.pathname === "/image" ? SERVER.image : SERVER.video;
-    expect(list.some(s => s.id === id), goal.id).toBe(true);
-    for (const cover of goal.covers) expect(existsSync(join(PUBLIC, sceneCover(cover))), cover).toBe(true);
+    expect(list.some(s => s.id === url.searchParams.get("scene")), goal.id).toBe(true);
+    for (const cover of goal.covers ?? []) expect(existsSync(join(PUBLIC, sceneCover(cover))), cover).toBe(true);
   }
 });
 

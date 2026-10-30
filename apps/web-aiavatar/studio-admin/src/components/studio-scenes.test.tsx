@@ -13,7 +13,9 @@ const builtIn = (): StudioSceneCatalog => ({
     prompt: "把图1中的商品单独放到纯白背景正中。", hint: "可以补充角度", ratio: "1:1" }],
   video: [{ id: "ecom-talking", group: "commerce", title: "口播带货", description: "有人出镜推荐", images: { label: "商品图", required: true, max: 4 }, video: null,
     character: true, voice: true, placeholder: "说说卖什么", textRequired: false, durations: [15, 25], duration: 25, ratio: "9:16",
-    structure: "真人对着镜头讲。", ideas: ["开头抓人"], skill: "video-generation" }],
+    structure: "真人对着镜头讲。", ideas: ["开头抓人"], skill: "video-generation",
+    options: [{ key: "presenter", label: "出镜方式", defaultValue: "person", choices: [{ value: "person", label: "真人讲解", prompt: "真人出镜对着镜头讲" }, { value: "product", label: "只拍商品", prompt: "只拍商品" }] }] }],
+  homeGoals: [{ id: "commerce", title: "电商带货", description: "带货短视频", sceneId: "ecom-talking", covers: ["ecom-talking"] }],
 });
 vi.mock("@/lib/api", async () => {
   class ApiError extends Error { constructor(message: string, public readonly code: string, public readonly status?: number) { super(message); } }
@@ -83,4 +85,37 @@ test("新增的场景先下架、编号可以改；存过的场景编号锁住�
   fireEvent.click(screen.getByRole("button", { name: "删除" }));
   await waitFor(() => expect(screen.queryByText("video-new-1")).toBeNull());
   expect(screen.getAllByRole("button", { name: /口播带货/ }).length).toBeGreaterThan(0);
+});
+
+test("选项组：改选项名、换默认、加一组，保存后整份带上", async () => {
+  await open();
+  fireEvent.change(screen.getByRole("textbox", { name: "出镜方式 选项 2 名称" }), { target: { value: "只拍产品" } });
+  fireEvent.click(screen.getByRole("button", { name: "设为默认" }));
+  fireEvent.click(screen.getByRole("button", { name: /加一组选项/ }));
+  fireEvent.change(screen.getByRole("textbox", { name: "选项组 2 名称" }), { target: { value: "语气" } });
+  for (const [i, label] of [[1, "亲切"], [2, "专业"]] as const) {
+    fireEvent.change(screen.getByRole("textbox", { name: `语气 选项 ${i} 名称` }), { target: { value: label } });
+    fireEvent.change(screen.getByRole("textbox", { name: `语气 选项 ${i} 拼进去的话` }), { target: { value: `语气${label}` } });
+  }
+  await act(async () => { fireEvent.click(saveButton()); });
+  await waitFor(() => expect(store.save).toHaveBeenCalledTimes(1));
+  const options = store.save.mock.calls[0][0].video[0].options;
+  expect(options[0]).toMatchObject({ key: "presenter", defaultValue: "product" });
+  expect(options[0].choices[1].label).toBe("只拍产品");
+  expect(options[1]).toMatchObject({ key: "opt-1", label: "语气", defaultValue: "c1", choices: [{ value: "c1", label: "亲切", prompt: "语气亲切" }, { value: "c2", label: "专业", prompt: "语气专业" }] });
+});
+
+test("首页卡片：改标题、加一张，保存后整份带上", async () => {
+  await open();
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /首页卡片/ }), { button: 0 });
+  fireEvent.click(screen.getByRole("tab", { name: /首页卡片/ }));
+  const title = await screen.findByRole("textbox", { name: "卡片 1 标题" });
+  fireEvent.change(title, { target: { value: "带货视频" } });
+  fireEvent.click(screen.getByRole("button", { name: /加一张卡片/ }));
+  await act(async () => { fireEvent.click(saveButton()); });
+  await waitFor(() => expect(store.save).toHaveBeenCalledTimes(1));
+  const goals = store.save.mock.calls[0][0].homeGoals;
+  expect(goals).toHaveLength(2);
+  expect(goals[0]).toMatchObject({ id: "commerce", title: "带货视频", sceneId: "ecom-talking" });
+  expect(goals[1]).toMatchObject({ id: "goal-1", sceneId: "ecom-talking" });
 });

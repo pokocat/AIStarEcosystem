@@ -14,7 +14,7 @@ import { useStartNewCanvas } from "@/ip/use-start-new-canvas";
 import { useStudioFailure } from "@/ip/studio-errors";
 import { StudioTemplateUse } from "@/ip/studio-template-use";
 import { ProjectCardPreview } from "@/ip/project-card-preview";
-import { homeGoals } from "@/ip/scenes/scene-catalog";
+import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -49,6 +49,8 @@ function templateKind(t: IpTemplate): "video" | "image" | "canvas" {
  */
 export function IpHome({ header = true }: { header?: boolean }) {
   const router = useRouter();
+  // 「你想做什么？」的卡片由运营在 Studio 后台配，公开接口读，没登录也显示。
+  const homeCards = useSceneHomeCards();
   const [authed, setAuthed] = useState(false);
   const [creating, setCreating] = useState<StudioEntry>();
   const createLock = useRef(false);
@@ -140,14 +142,14 @@ export function IpHome({ header = true }: { header?: boolean }) {
         </button>;
       })}</nav>
 
-      <section className="home-goals" aria-labelledby="home-goals-title">
+      {homeCards.length > 0 && <section className="home-goals" aria-labelledby="home-goals-title">
         <div className="home-section-heading"><h2 id="home-goals-title">你想做什么？</h2><p>按目标选一个场景，直接开始</p>
           <span className="home-goals-arrows"><button type="button" aria-label="向左看更多场景" onClick={() => scrollGoals(-1)}><ChevronLeft size={18}/></button><button type="button" aria-label="向右看更多场景" onClick={() => scrollGoals(1)}><ChevronRight size={18}/></button></span></div>
-        <div className="home-goal-track" ref={goals}>{homeGoals.map(g => <Link key={g.id} href={authed ? g.href : `/login?next=${encodeURIComponent(g.href)}`} className="home-goal">
-          <span className="home-goal-art" aria-hidden="true"><SceneThumb id={g.covers[0]} title={g.title} size={180}/><SceneThumb id={g.covers[1]} title={g.title} size={180}/></span>
+        <div className="home-goal-track" ref={goals}>{homeCards.map(g => <Link key={g.id} href={authed ? sceneHref(g) : `/login?next=${encodeURIComponent(sceneHref(g))}`} className="home-goal">
+          <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={180}/>)}</span>
           <span className="home-goal-copy">{g.kind === "video" ? <Video size={16} aria-hidden="true"/> : <ImageIcon size={16} aria-hidden="true"/>}<strong>{g.title}</strong><small>{g.description}</small></span>
         </Link>)}</div>
-      </section>
+      </section>}
 
       {authed && <section className="home-recent">
         <div className="home-section-heading"><h2>继续创作</h2><p>上次停下的地方</p><Link href="/projects">全部画布<ArrowRight size={16} /></Link></div>

@@ -255,7 +255,31 @@
       ],
       "prompt": "把图1中的商品单独放到纯白背景正中，商品完整、居中，约占画面七成。保留原有外观、颜色、文字和标识，加上柔和的接触阴影，影棚布光，边缘干净，适合电商平台主图。",
       "hint": "可以补充角度和摆放，例如：45 度角、平放",
-      "ratio": "1:1"
+      "ratio": "1:1",
+      "options": [
+        {
+          "key": "angle",
+          "label": "拍摄角度",
+          "defaultValue": "front",
+          "choices": [
+            {
+              "value": "front",
+              "label": "正面",
+              "prompt": "商品正面朝向镜头"
+            },
+            {
+              "value": "angle",
+              "label": "斜 45 度",
+              "prompt": "商品斜 45 度摆放，看得出立体感"
+            },
+            {
+              "value": "top",
+              "label": "俯拍",
+              "prompt": "从正上方俯拍商品"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "selling-point",
@@ -400,7 +424,53 @@
         "用前后对比突出效果",
         "结尾明确告诉观众怎么买"
       ],
-      "skill": "video-generation"
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "presenter",
+          "label": "出镜方式",
+          "defaultValue": "person",
+          "choices": [
+            {
+              "value": "person",
+              "label": "真人讲解",
+              "prompt": "真人出镜对着镜头讲，边讲边拿起商品展示"
+            },
+            {
+              "value": "product",
+              "label": "只拍商品",
+              "prompt": "不出现人脸，只拍商品和手部操作，用画外音讲"
+            },
+            {
+              "value": "compare",
+              "label": "前后对比",
+              "prompt": "用使用前后的对比画面说明效果"
+            }
+          ]
+        },
+        {
+          "key": "tone",
+          "label": "语气",
+          "defaultValue": "friendly",
+          "choices": [
+            {
+              "value": "friendly",
+              "label": "像朋友推荐",
+              "prompt": "语气像朋友推荐，亲切自然"
+            },
+            {
+              "value": "expert",
+              "label": "专业讲解",
+              "prompt": "语气专业可信，讲清楚为什么好用"
+            },
+            {
+              "value": "lively",
+              "label": "热情带货",
+              "prompt": "语气热情有感染力，节奏快"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "ecom-promo",
@@ -464,7 +534,26 @@
         "用前后对比突出效果",
         "结尾明确告诉观众怎么买"
       ],
-      "skill": "video-generation"
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "tone",
+          "label": "语气",
+          "defaultValue": "friendly",
+          "choices": [
+            {
+              "value": "friendly",
+              "label": "像朋友分享",
+              "prompt": "像朋友分享自己在用的东西，自然不推销"
+            },
+            {
+              "value": "lively",
+              "label": "活泼",
+              "prompt": "节奏轻快，画面明亮活泼"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "ecom-painpoint",
@@ -560,7 +649,31 @@
         "突出排队和热闹的氛围",
         "结尾说清地址和团购入口"
       ],
-      "skill": "video-generation"
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "shoot",
+          "label": "拍法",
+          "defaultValue": "walk",
+          "choices": [
+            {
+              "value": "walk",
+              "label": "边走边拍",
+              "prompt": "第一人称从门口走进店里，一路拍环境、招牌和招牌菜"
+            },
+            {
+              "value": "dish",
+              "label": "菜品特写",
+              "prompt": "以菜品和制作过程的特写为主"
+            },
+            {
+              "value": "people",
+              "label": "拍顾客反应",
+              "prompt": "多拍顾客吃到、用到时的真实反应"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "local-visit",
@@ -688,7 +801,31 @@
         "画面统一成一种主色调",
         "最后一个镜头落在品牌标识上"
       ],
-      "skill": "video-generation"
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "style",
+          "label": "画面风格",
+          "defaultValue": "cinematic",
+          "choices": [
+            {
+              "value": "cinematic",
+              "label": "电影感",
+              "prompt": "画面有电影质感，光线讲究，节奏舒缓"
+            },
+            {
+              "value": "minimal",
+              "label": "简洁干净",
+              "prompt": "画面干净简洁，留白多，字少"
+            },
+            {
+              "value": "warm",
+              "label": "温暖生活",
+              "prompt": "生活化场景，温暖的自然光"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "brand-story",
@@ -846,7 +983,31 @@
         "台词短，多用动作和表情",
         "结尾来一个出人意料的反转"
       ],
-      "skill": "video-generation"
+      "skill": "video-generation",
+      "options": [
+        {
+          "key": "twist",
+          "label": "反转方式",
+          "defaultValue": "identity",
+          "choices": [
+            {
+              "value": "identity",
+              "label": "身份反转",
+              "prompt": "结尾揭开某个人物的真实身份"
+            },
+            {
+              "value": "truth",
+              "label": "真相反转",
+              "prompt": "结尾揭开事情的真相，和前面看到的相反"
+            },
+            {
+              "value": "ending",
+              "label": "结局反转",
+              "prompt": "眼看要走向一个结局，最后一刻翻转"
+            }
+          ]
+        }
+      ]
     },
     {
       "id": "drama-suspense",
@@ -1037,6 +1198,78 @@
         "人物换成我的 IP"
       ],
       "skill": "reference-video-recreation"
+    }
+  ],
+  "homeGoals": [
+    {
+      "id": "recreation",
+      "title": "爆款复刻",
+      "description": "照着爆款的结构，做自己的版本",
+      "sceneId": "recreation",
+      "covers": [
+        "recreation",
+        "ecom-talking"
+      ]
+    },
+    {
+      "id": "product-set",
+      "title": "商品套图",
+      "description": "白底图、卖点图、模特图一起出",
+      "sceneId": "white-background",
+      "covers": [
+        "white-background",
+        "selling-point"
+      ]
+    },
+    {
+      "id": "commerce",
+      "title": "电商带货",
+      "description": "商品展示和带货短视频",
+      "sceneId": "ecom-talking",
+      "covers": [
+        "ecom-talking",
+        "ecom-seeding"
+      ]
+    },
+    {
+      "id": "local",
+      "title": "同城到店",
+      "description": "探店、团购，拍给附近的人看",
+      "sceneId": "local-discovery",
+      "covers": [
+        "local-discovery",
+        "local-signature"
+      ]
+    },
+    {
+      "id": "brand",
+      "title": "品牌广告",
+      "description": "讲理念、讲故事的品牌片",
+      "sceneId": "brand-proposition",
+      "covers": [
+        "brand-proposition",
+        "brand-lifestyle"
+      ]
+    },
+    {
+      "id": "drama",
+      "title": "剧情短片",
+      "description": "有冲突、有反转的短剧情",
+      "sceneId": "drama-twist",
+      "covers": [
+        "drama-twist",
+        "drama-emotional"
+      ]
+    },
+    {
+      "id": "ip",
+      "title": "IP 形象",
+      "description": "一张照片做出设定图和写真",
+      "sceneId": "ip-sheet",
+      "covers": [
+        "ip-sheet",
+        "ip-portrait"
+      ]
     }
   ]
 }

@@ -152,6 +152,8 @@ public class AepSecurityConfig {
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/card/p/**").permitAll()
                         // Only an explicitly published, revocable text snapshot is public. Copy/manage remain authenticated.
                         .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/ip-studio/shared/conversations/*").permitAll()
+                        // 首页「你想做什么？」卡片：没登录的访客也看得到；只有标题、说明和封面，场景描述与拼话接口仍要登录。
+                        .requestMatchers(org.springframework.http.HttpMethod.GET, "/api/v1/ip-studio/scenes/home").permitAll()
                         // Public read-only preview; invitation token is in the body, never in the URL.
                         .requestMatchers(org.springframework.http.HttpMethod.POST, "/api/v1/ip-studio/enterprise-invitations/preview").permitAll()
                         .requestMatchers("/api/v1/real-auth/callback").permitAll()

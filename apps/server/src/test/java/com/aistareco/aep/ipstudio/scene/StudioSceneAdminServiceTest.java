@@ -42,9 +42,12 @@ class StudioSceneAdminServiceTest {
     void savingStoresKeysOnlyAndTheNextReadServesTheSavedCatalog() {
         var c = scenes.builtIn();
         var first = c.video().get(0);
-        var withUrls = new StudioSceneCatalog.Catalog(c.version(), c.imageGroups(), c.videoGroups(), c.image(), List.of(new StudioSceneCatalog.VideoScene(first.id(), first.group(), "改过的名字",
-                first.description(), first.images(), first.video(), first.character(), first.voice(), first.placeholder(), first.textRequired(), first.durations(), first.duration(),
-                first.ratio(), first.structure(), first.ideas(), first.skill(), true, StudioSceneCatalog.MEDIA_PREFIX + "c.webp", null, "https://cdn/expiring", List.of())));
+        var renamed = new StudioSceneCatalog.VideoScene(first.id(), first.group(), "改过的名字", first.description(), first.images(), first.video(), first.character(), first.voice(),
+                first.placeholder(), first.textRequired(), first.durations(), first.duration(), first.ratio(), first.structure(), first.ideas(), first.skill(), first.options(),
+                true, StudioSceneCatalog.MEDIA_PREFIX + "c.webp", null, "https://cdn/expiring", List.of());
+        // 首页卡片只能指向还在的场景：这份只留了一个视频场景，卡片也只留指向它的。
+        var withUrls = c.with(c.image(), List.of(renamed), c.goals().stream().filter(g -> g.sceneId().equals(first.id()) || c.image().stream().anyMatch(s -> s.id().equals(g.sceneId())))
+                .map(g -> new StudioSceneCatalog.HomeGoal(g.id(), g.title(), g.description(), g.sceneId(), List.of())).toList());
         service.save(new StudioSceneAdminService.SaveRequest(withUrls, 0), "op");
         var body = ArgumentCaptor.forClass(JsonNode.class);
         verify(config).upsert(eq(StudioSceneCatalog.CONFIG_KEY), body.capture(), anyString(), eq("op"));

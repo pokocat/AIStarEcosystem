@@ -6,6 +6,17 @@
 export interface StudioSceneGroup { id: string; title: string }
 /** 参考图位：按顺序是图1、图2…；描述里的「图N」对应这里。 */
 export interface StudioSceneRef { label: string; required: boolean; hint?: string | null }
+/** 选项组里的一项：value 给接口用，label 给用户看，prompt 是选中后服务端拼进描述 / 要求里的那句话。 */
+export interface StudioSceneOptionChoice { value: string; label: string; prompt: string }
+/** 照参考站的「选项组」：一个场景几组可选项（拍法、语气……），各有默认值；用户点选，不用写字。 */
+export interface StudioSceneOptionGroup { key: string; label: string; choices: StudioSceneOptionChoice[]; defaultValue: string }
+/** 首页「你想做什么？」的一张卡（目录里）：点进去落到 sceneId，两张封面取 covers 里两个场景的封面。 */
+export interface StudioSceneHomeGoal { id: string; title: string; description: string; sceneId: string; covers?: string[] | null }
+/** 公开接口 `GET /v1/ip-studio/scenes/home` 的一张卡：没登录的访客也看得到，只有显示用的字段。 */
+export interface StudioSceneHomeCard {
+  id: string; title: string; description: string; sceneId: string; kind: "image" | "video";
+  covers: { sceneId: string; coverUrl?: string | null }[];
+}
 /** 由 key 签出来的地址（会过期，不存）。 */
 export interface StudioSceneMedia { url: string; mediaType: "image" | "video" }
 /** 运营配的封面和参考示例：目录里存 key，下发时签成地址。用户端只拿到地址。 */
@@ -19,6 +30,8 @@ export interface StudioSceneMediaFields {
   coverUrl?: string | null;
   /** 参考示例（图片或视频）。 */
   examples?: StudioSceneMedia[] | null;
+  /** 选项组；没有就不显示。 */
+  options?: StudioSceneOptionGroup[] | null;
 }
 export interface StudioImageScene extends StudioSceneMediaFields {
   id: string; group: string; title: string; description: string;
@@ -49,6 +62,8 @@ export interface StudioSceneCatalog {
   version: number;
   imageGroups: StudioSceneGroup[]; videoGroups: StudioSceneGroup[];
   image: StudioImageScene[]; video: StudioVideoScene[];
+  /** 首页「你想做什么？」的卡片（后台可改；用户端只下发落点场景还上架的）。 */
+  homeGoals?: StudioSceneHomeGoal[] | null;
 }
 export interface StudioSceneComposeRequest {
   /** image = 出图描述；video = 交给画布创作助手的话；video-script = 交给编导写脚本的要求。 */
@@ -66,6 +81,8 @@ export interface StudioSceneComposeRequest {
   language?: string;
   /** 编导：对上一版脚本的修改意见。 */
   revision?: string;
+  /** 选项组：组 key → 选中项 value；没给的组用默认值。 */
+  options?: Record<string, string>;
 }
 /** 图片：`text` 是出图描述；视频：`text` 是交给助手的话，`skillKey` 是该场景的方法；编导：`text` 是写脚本的要求。 */
 export interface StudioSceneComposed { text: string; skillKey?: string | null }

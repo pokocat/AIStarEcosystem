@@ -10,7 +10,7 @@ import { legacyImageBillingDetails, withStudioBilling, invalidateStudioModelQuot
 import type {
   IpCreateProjectRequest, IpDemoAdmin, IpPricing, IpProject, IpProjectDoc, IpProjectSummary,
   IpPublishRequest, IpPublishResult, IpRun, IpStylePreset, IpTemplate, IpUpdateProjectRequest,
-  IpUploadResult, IpPromptGroup, StudioSceneCatalog, StudioSceneComposeRequest, StudioSceneComposed,
+  IpUploadResult, IpPromptGroup, StudioSceneCatalog, StudioSceneComposeRequest, StudioSceneComposed, StudioSceneHomeCard,
 } from "@ai-star-eco/types";
 import { API_BASE_URL, getAuthToken, apiFetchPaginated } from "@ai-star-eco/api-client";
 import { apiFetch, USE_MOCK, mockDelay } from "./_client";
@@ -319,6 +319,12 @@ export async function getProjectRevision(id: string, revisionId: string): Promis
 export async function listScenes(): Promise<StudioSceneCatalog> {
   if (USE_MOCK) return mockDelay((await import("@/ip/mocks/scenes")).MOCK_SCENES);
   return apiFetch<StudioSceneCatalog>("/v1/ip-studio/scenes");
+}
+
+/** 首页「你想做什么？」卡片：公开只读，没登录也能读（运营在 Studio 后台「场景模板」里配）。 */
+export async function sceneHomeCards(): Promise<StudioSceneHomeCard[]> {
+  if (USE_MOCK) return mockDelay((await import("@/ip/mocks/scenes")).mockHomeCards());
+  return apiFetch<StudioSceneHomeCard[]>("/v1/ip-studio/scenes/home");
 }
 
 /** 出图描述 / 交给助手的话。缺必填素材时服务端 400，message 可直接给用户看。 */

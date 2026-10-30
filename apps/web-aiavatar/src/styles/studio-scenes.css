@@ -336,3 +336,12 @@ html:not([data-layout="desktop"]) .scene-idea-grid { grid-template-columns: repe
 .scene-generate-note { margin: 0; color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
 .scene-director-thread[hidden] { display: none; }
 .scene-studio .scene-go>span { white-space: nowrap; }
+
+/* 场景选项组（照参考站）：一组一行，标签 + 几个可点的小按钮 */
+.scene-options { display: flex; flex-direction: column; gap: 8px; }
+.scene-option-group { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.scene-option-group>span { flex: 0 0 auto; min-width: 56px; color: var(--ip-muted); font-size: 12.5px; }
+.scene-option-group button { max-width: 160px; padding: 4px 11px; border: 1px solid var(--ip-line); border-radius: 999px; background: var(--ip-paper); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scene-option-group button:hover { background: var(--ip-soft); }
+.scene-option-group button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-selected); font-weight: 600; }
+.scene-composer-body>.scene-options { margin-top: -2px; }

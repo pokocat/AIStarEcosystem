@@ -21,7 +21,7 @@ import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, saveDraftDoc, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneRecent, SceneThumb, sceneFailureText, sceneHintText } from "./scene-layout";
+import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
 const POLL_MS = 1500;
@@ -50,6 +50,7 @@ export function SceneImageStudio() {
   // 用户写的只是补充要求；场景描述藏在场景标签后面，想改的人点「改完整描述」。
   const [supplement, setSupplement] = useState("");
   const [custom, setCustom] = useState<string>();
+  const [picked, setPicked] = useState<Record<string, string>>({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [tab, setTab] = useState<"results" | "example">("example");
   const [uploading, setUploading] = useState<number>();
@@ -81,7 +82,7 @@ export function SceneImageStudio() {
     setRatio(next.ratio);
     setHint("");
     if (!keepInputs) {
-      setSupplement(""); setCustom(undefined);
+      setSupplement(""); setCustom(undefined); setPicked({});
       // 同一位置的参考图跟着走（换个人物场景时照片不用重放），多出来的位丢掉。
       setSlots(old => next.refs.map((_, i) => old[i]));
     }
@@ -207,8 +208,9 @@ export function SceneImageStudio() {
     // 描述由服务端按场景拼（同一份目录、同一套校验）；缺什么它会直接说，就地显示。
     let prompt: string;
     try {
+      const options = sceneOptionValues(scene.options, picked);
       prompt = (await IpStudioApi.composeScene({ kind: "image", sceneId: scene.id, text: supplement, ...(custom !== undefined ? { custom } : {}),
-        filled: slots.flatMap((s, i) => s ? [i] : []) })).text;
+        filled: slots.flatMap((s, i) => s ? [i] : []), ...(options ? { options } : {}) })).text;
     } catch (e) { setHint(sceneHintText(e, "描述没准备好，请再点一次")); return; }
     const refs = scene.refs.flatMap((r, i) => slots[i] ? [{ upload: slots[i]!, label: r.label }] : []);
     void submitRow({ title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize, model: caps?.mock ? undefined : chosen?.endpointId, maxCost: quote });
@@ -314,6 +316,7 @@ export function SceneImageStudio() {
           <input ref={fileInput} type="file" accept=".jpg,.jpeg,.png" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(uploadTarget.current, file); }}/>
         </div>
 
+        <SceneOptions groups={scene.options} value={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))}/>
         <div className="scene-ask">
           {!isFree && custom === undefined && <span className="scene-skill-chip" title={scene.prompt}><Sparkles size={14}/>{scene.title}</span>}
           {custom !== undefined
