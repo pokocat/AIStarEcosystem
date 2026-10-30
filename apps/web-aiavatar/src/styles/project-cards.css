@@ -13,6 +13,14 @@
 .project-content-document p { margin: 0; color: var(--ip-ink); font-size: 14px; line-height: 1.8; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .project-content-steps { display: flex; flex-wrap: wrap; gap: 6px; max-height: 90px; overflow: hidden; }
 .project-content-steps span { border: 1px solid var(--ip-line); padding: 5px 8px; border-radius: 5px; font-size: 12px; max-width: 100%; white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }
+.project-content-document>svg { color: var(--ip-muted); flex-shrink: 0; }
+.project-content-placeholder.is-plan { gap: 10px; }
+.project-content-placeholder.is-plan strong { font-size: 14px; }
+.project-content-step-list { margin: 0; max-width: 100%; color: var(--ip-muted); font-size: 12.5px; line-height: 1.7; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.project-content-document { text-align: left; }
+/* 卡片封面只有 166px 高：正文从顶部排、最多三行，第四行会被底边切掉一半。 */
+.studio-projects-page .project-content-document { justify-content: flex-start; padding: 18px 20px; gap: 10px; }
+.studio-projects-page .project-content-document p { -webkit-line-clamp: 3; }
 .studio-projects-page .project-card-copy { min-width: 0; padding: 14px 16px 8px; }
 .studio-projects-page .studio-project-open h3 { padding: 0; margin: 0 0 6px; min-height: 26px; }
 .project-card-summary { color: var(--ip-muted); font-size: 12px; line-height: 1.6; margin: 0; overflow-wrap: anywhere; }

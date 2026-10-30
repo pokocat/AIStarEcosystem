@@ -21,6 +21,23 @@ export async function listSceneDrafts(sceneIds: ReadonlySet<string>): Promise<Ip
 
 export const createSceneDraft = (name: string, sceneId: string) => IpStudioApi.createProject({ name, sceneId });
 
+const OPENERS = "「『《（(“‘【[";
+const CLOSERS = "」』》）)”’】]";
+/**
+ * 草稿名里跟在场景名后面的那段话：用户写的第一句，长了截到 14 个字。截断处如果留下没配对的左括号、左引号，
+ * 就截在它前面（2026-10-30 线上：「品牌故事 · 流程验收：虚构的白瓷杯品牌「」），再去掉末尾的标点。
+ */
+export function draftSubject(text: string): string {
+  const first = text.trim().split(/[，。,.!?！？；;\n]/)[0].trim();
+  const chars = Array.from(first);
+  if (chars.length <= 14) return first;
+  let cut = chars.slice(0, 14);
+  const open: number[] = [];
+  cut.forEach((c, i) => { if (OPENERS.includes(c)) open.push(i); else if (CLOSERS.includes(c)) open.pop(); });
+  if (open.length) cut = cut.slice(0, open[0]);
+  return cut.join("").replace(/[\s：:、\-—·]+$/, "");
+}
+
 /** 整存整取：带上读到的版本，别处改过就让服务端拒绝，不覆盖。 */
 export const saveDraftDoc = (project: IpProject, doc: IpProjectDoc) =>
   IpStudioApi.updateProject(project.id, { doc, baseDocVersion: project.docVersion });

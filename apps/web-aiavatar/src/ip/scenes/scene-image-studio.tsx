@@ -22,6 +22,7 @@ import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
 import { useSceneDraftStore } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
+import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 
@@ -363,7 +364,7 @@ export function SceneImageStudio() {
 
     <section className="scene-results" aria-label="生成结果">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
-        {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
+        <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? (isFree
           ? <SceneEmpty title="图片创作" note={<>放参考图，说说想要的画面；不知道怎么写，就从左边选一个场景。</>} covers={sampleCovers}/>
