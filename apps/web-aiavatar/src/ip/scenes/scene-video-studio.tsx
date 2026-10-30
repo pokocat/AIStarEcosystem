@@ -664,8 +664,8 @@ export function SceneVideoStudio() {
         {/* 这类视频要写清的信息（场景的 brief）：点一下在输入框里起一行「店名和位置：」，接着写就行，不用填表。 */}
         {/* 写过一版之后只给脚本里还空着的那几条，没有空着的就不显示（2026-10-30 界面评审：改稿时三行标签挤在中间）。 */}
         {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息"><span>{revising ? "还空着" : "写清楚"}</span>
-          {chipFacts.map(f => <button key={f.label} type="button" onClick={() => addFact(f.label)}>
-            {f.label}{!f.required && <small>有就写</small>}</button>)}</div>}
+          <div>{chipFacts.map(f => <button key={f.label} type="button" onClick={() => addFact(f.label)}>
+            {f.label}{!f.required && <small>有就写</small>}</button>)}</div></div>}
         <textarea ref={input} aria-label={revising ? "想改哪里" : "想做的视频"} rows={3} value={text}
           placeholder={revising ? "想改哪里，直接说。例如：开头再抓人一点，台词口语一点" : scene.placeholder} onChange={e => { setText(e.target.value); setHint(""); }}
           onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); void send(); } }}/>
