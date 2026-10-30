@@ -17,6 +17,8 @@ import { ProjectCardPreview } from "@/ip/project-card-preview";
 import { sceneHref, useSceneHomeCards } from "@/ip/scenes/scene-catalog";
 import { SceneThumb } from "@/ip/scenes/scene-layout";
 import { formatDateTime } from "@/lib/datetime";
+import { useUiVersion } from "@/shell/ui-version";
+import { IpHomeClassic } from "./ip-home-classic";
 
 /** 一个入口：要么是独立页面，要么是带某个面板打开的新画布。 */
 type HomeStart = { entry: StudioEntry } | { href: string } | { blank: true };
@@ -44,10 +46,10 @@ function templateKind(t: IpTemplate): "video" | "image" | "canvas" {
 }
 
 /**
- * 登录后的桌面首页（参考 docs/studio-scene-creation.md §3）：一句话开始、常用工具、按目标选场景、
+ * 新版首页（公开落地页与登录后的桌面首页，参考 docs/studio-scene-creation.md §3）：一句话开始、常用工具、按目标选场景、
  * 接着做上次的画布，再往下是灵感（官方模板与精选案例，原来单独一页，现在放在首页上）。
  */
-export function IpHome({ header = true }: { header?: boolean }) {
+function IpHomeNext({ header = true }: { header?: boolean }) {
   const router = useRouter();
   // 「你想做什么？」的卡片由运营在 Studio 后台配，公开接口读，没登录也显示。
   const homeCards = useSceneHomeCards();
@@ -176,6 +178,11 @@ export function IpHome({ header = true }: { header?: boolean }) {
 
 /** 灵感墙上的一张：图铺满，底下压一行类型和名字（参考站登录后的样子）。点开是只读预览，存为副本再改。 */
 const FEED_SHAPES = ["3 / 4", "4 / 5", "1 / 1", "9 / 13"];
+/** 首页按版本二选一：默认旧版，拿到 `?ui=new` 的人看新版。 */
+export function IpHome(props: { header?: boolean }) {
+  return useUiVersion() === "next" ? <IpHomeNext {...props}/> : <IpHomeClassic {...props}/>;
+}
+
 function FeedCard({ template, shape, onOpen }: { template: IpTemplate; shape: number; onOpen: (t: IpTemplate) => void }) {
   const kind = templateKind(template);
   const Icon = kind === "video" ? Video : kind === "image" ? ImageIcon : LayoutTemplate;

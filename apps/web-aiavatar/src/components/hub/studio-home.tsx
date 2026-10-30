@@ -16,6 +16,7 @@ import { formatDateTime } from '@/lib/datetime';
 import { useHubData } from './data';
 import { sceneHref, useSceneHomeCards } from '@/ip/scenes/scene-catalog';
 import { SceneThumb } from '@/ip/scenes/scene-layout';
+import { useUiVersion } from '@/shell/ui-version';
 
 const quickEntries = [
   ['image', ImagePlus], ['video', Video], ['script', BookOpen], ['director', Clapperboard], ['work', Film],
@@ -24,7 +25,9 @@ const quickEntries = [
 
 
 export function StudioHome({ ready }: { ready: boolean }) {
+  // 场景卡片只在新版首页出现（见 shell/ui-version.ts）。
   const homeCards = useSceneHomeCards();
+  const showGoals = useUiVersion() === 'next' && homeCards.length > 0;
   const router = useRouter();
   const [creating, setCreating] = useState<string>();
   const [refresh, setRefresh] = useState(0);
@@ -87,7 +90,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
     <StudioConversationStart compact heading="今天想做点什么？" creating={creating === 'assistant'} onStart={brief => void startConversation(brief)}/>
     <p className="studio-home-more"><Link href="/create">更多创作方式 <ArrowRight size={15}/></Link></p>
 
-    {homeCards.length > 0 && <section className="studio-home-section" aria-labelledby="home-goals-heading"><div className="studio-home-section-heading"><h2 id="home-goals-heading">你想做什么？</h2><Link href="/video">全部场景 <ArrowRight size={15}/></Link></div>
+    {showGoals && <section className="studio-home-section" aria-labelledby="home-goals-heading"><div className="studio-home-section-heading"><h2 id="home-goals-heading">你想做什么？</h2><Link href="/video">全部场景 <ArrowRight size={15}/></Link></div>
       <div className="home-goal-track studio-home-goals">{homeCards.map(g => <Link key={g.id} href={sceneHref(g)} className="home-goal">
         <span className="home-goal-art" aria-hidden="true">{g.covers.slice(0, 2).map(c => <SceneThumb key={c.sceneId} id={c.sceneId} cover={c.coverUrl} title={g.title} size={120}/>)}</span>
         <span className="home-goal-copy"><strong>{g.title}</strong><small>{g.description}</small></span></Link>)}</div>

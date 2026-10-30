@@ -21,6 +21,7 @@ import { usePathname } from "next/navigation";
 import { auth, USE_MOCK } from "@/proto/api";
 import { DesktopTopBar } from "./desktop-top-bar";
 import { useLayoutMode } from "./layout-mode";
+import { withoutUiParam } from "./ui-version";
 
 const BARE_PREFIXES = ["/enterprise/invite", "/invite/","/card/p/", "/shared/conversations/", "/login", "/auth/callback", "/auth/test-login"];
 /** 精确匹配（不走前缀）：根目录是落地页，它自带一条顶栏，不能再叠一条产品导航。 */
@@ -45,6 +46,13 @@ export function AppChrome() {
   // 不用 useSearchParams 读 `?landing=1`：那个 hook 在根 layout 里会要求 Suspense
   // 边界，否则 `/_not-found` 的静态预渲染直接失败（本次踩过）。反正这段只在挂载后
   // 跑，直接读 window.location.search 更省事。
+  // 隐藏入口 `?ui=new` / `?ui=old` 已由首帧脚本记下（shell/ui-version.ts），这里把参数从地址栏去掉：
+  // 留着的话，用户之后点「回到旧版」再刷新，又会被这个参数切回新版。带上 history.state，Next 的路由状态不丢。
+  React.useEffect(() => {
+    const href = withoutUiParam(window.location.href);
+    if (href !== window.location.href) window.history.replaceState(window.history.state, "", href);
+  }, [pathname]);
+
   const [show, setShow] = React.useState(false);
   React.useEffect(() => {
     const forcedLanding = new URLSearchParams(window.location.search).get("landing") === "1";

@@ -33,6 +33,7 @@ import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
+import { UI_BOOT_SCRIPT } from "@/shell/ui-version";
 
 export const metadata: Metadata = {
   title: "IP Studio · 声量引擎旗下",
@@ -81,6 +82,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             放 <body> 里则干净无报错 —— 我一度被**上一次改动残留在控制台里的旧报错**
             误导，以为放 body 也不行。§8.0.1 ②：先确认信号本身成立，再据它改代码。 */}
         <script dangerouslySetInnerHTML={{ __html: LAYOUT_BOOT_SCRIPT }} />
+        {/* 新版 / 旧版同理：新版的页面边距靠 <html data-ui> 定，首帧之前写好（见 shell/ui-version.ts）。 */}
+        <script dangerouslySetInnerHTML={{ __html: UI_BOOT_SCRIPT }} />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />

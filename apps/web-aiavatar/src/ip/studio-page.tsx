@@ -4,6 +4,7 @@ import type { ReactNode, Ref } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { studioNavigation, studioNavigationCurrent } from '@/shell/studio-navigation';
+import { useUiVersion } from '@/shell/ui-version';
 import { Hourglass, Search, X } from 'lucide-react';
 import { HubTabBar } from '@/components/hub/ui';
 
@@ -13,8 +14,9 @@ export function StudioPage({ title, description, actions, children, className = 
   className?: string; contentRef?: Ref<HTMLDivElement>;
 }) {
   const pathname = usePathname() || '';
+  const version = useUiVersion();
   return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}`}>
-    <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation.filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname) ? "page" : undefined}>{n.label}</Link>)}</nav>
+    <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname, version) ? "page" : undefined}>{n.label}</Link>)}</nav>
     <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{actions && <div className="studio-page-actions">{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>
     <HubTabBar/>

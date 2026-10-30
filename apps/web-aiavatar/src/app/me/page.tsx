@@ -11,6 +11,7 @@ import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { studioHref } from "@/components/hub/data";
 import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
+import { setUiVersion, useUiVersion } from "@/shell/ui-version";
 import { AccountOverview } from "@/shell/account-workspace";
 
 export default function MePage() {
@@ -91,6 +92,7 @@ export default function MePage() {
       <div style={{ margin: "12px 16px 0" }}>
         <Card pad={0}>
           <LayoutSwitchRow />
+          <UiVersionRow />
         </Card>
       </div>
 
@@ -150,6 +152,24 @@ function LayoutSwitchRow() {
       <span style={{ fontSize: 12, color: "var(--ink-3)" }}>
         {next === "desktop" ? "画布和宽表格更好用" : "回到竖排界面"}
       </span>
+    </button>
+  );
+}
+
+/** 新版里才有的「回到旧版」。旧版没有进新版的按钮，入口是隐藏链接 `?ui=new`（见 shell/ui-version.ts）。 */
+function UiVersionRow() {
+  if (useUiVersion() !== "next") return null;
+  return (
+    <button
+      onClick={() => setUiVersion("classic")}
+      style={{
+        width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 12, padding: "13px 16px", border: "none", borderTop: "1px solid var(--line)", background: "transparent",
+        cursor: "pointer", textAlign: "left", font: "inherit",
+      }}
+    >
+      <span style={{ fontSize: 14, color: "var(--ink)" }}>回到旧版</span>
+      <span style={{ fontSize: 12, color: "var(--ink-3)" }}>换回原来的首页和导航</span>
     </button>
   );
 }
