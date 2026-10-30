@@ -24,4 +24,15 @@ export function studioEntryDestination(hash: string, search = ""): string | unde
   return ({ "": "/projects", studio: "/projects", home: "/dashboard", library: "/assets", me: "/me", licenses: "/licenses" } as Record<string, string>)[key];
 }
 
+/**
+ * 从站内别的页面点进旧工作室时带上来源（`/studio?from=…#/voice`），工作室根页的「返回」回到那里，而不是旧工作室自己的首页
+ * （2026-10-30 线上复核：资产 → 声音 → 声音工作室 → 返回，跳到了首页）。只认站内路径。
+ */
+export function studioWithReturn(href: string, from: string): string {
+  return href.replace(/^\/studio(?=#|$)/, `/studio?from=${encodeURIComponent(from)}`);
+}
+export function studioReturnPath(from: string | null): string | undefined {
+  return from && from.startsWith("/") && !from.startsWith("//") && !from.startsWith("/\\") ? from : undefined;
+}
+
 export const STUDIO_NAVIGATION_EVENT = "studio:navigation";

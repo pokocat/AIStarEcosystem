@@ -3,12 +3,14 @@ import { StudioErrorNotice } from './studio-errors';
 
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Button, Input, Select } from 'antd';
 import { ArrowUpRight, AudioLines, Mic, RefreshCw, Search, ShieldCheck, UserRound, Users } from 'lucide-react';
 import type { Avatar, License, StarGrant, VoiceAsset } from '@/proto/data';
 import { STATUS } from '@/proto/data';
 import type { AsyncState } from '@/components/hub/data';
 import { studioHref } from '@/components/hub/data';
+import { studioWithReturn } from '@/shell/account-navigation';
 import { licenseBadge } from '@/components/hub/asset-cards';
 import { LibraryGridMotion } from './library-grid-motion';
 import { LibraryWorkspace } from './library-workspace';
@@ -29,11 +31,20 @@ type CollectionProps = {
 };
 
 function AssetCollection(props: CollectionProps) {
-  const [category, setCategory] = useState('all');
+  // 分类记在地址里：去声音工作室再返回，回到的是同一个分类。
+  const router = useRouter(), pathname = usePathname(), search = useSearchParams();
+  const asked = search.get('category');
+  const [category, setCategory] = useState(asked && props.categories.some(c => c.value === asked) ? asked : 'all');
   const [query, setQuery] = useState('');
   const [type, setType] = useState('all');
   const [page, setPage] = useState(0);
-  const changeCategory = (value: string) => { setCategory(value); setPage(0); };
+  const withCategory = (value: string) => {
+    const params = new URLSearchParams(search.toString());
+    if (value === 'all') params.delete('category'); else params.set('category', value);
+    return `${pathname}${params.size ? `?${params}` : ''}`;
+  };
+  const changeCategory = (value: string) => { setCategory(value); setPage(0); router.replace(withCategory(value), { scroll: false }); };
+  const out = (href: string) => studioWithReturn(href, withCategory(category));
   const loading = props.loadingCategories.some(c => category === 'all' || category === c);
   const errors = props.errors.filter(e => category === 'all' || category === e.category)
     .filter((e, i, all) => all.findIndex(other => other.message === e.message) === i);
@@ -55,7 +66,7 @@ function AssetCollection(props: CollectionProps) {
     <div className="library-mobile-folder"><Select aria-label={`${props.title}分类`} value={category} onChange={changeCategory} options={props.categories.map(c => ({ value: c.value, label: c.label }))}/></div>
     <div className="library-section-heading">
       <div><div className="library-section-title"><h2>{props.title}</h2></div><p>{props.description}</p></div>
-      <div className="library-create-actions"><Link href={props.actionHref} className="ip-brand-button">{props.actionLabel}<ArrowUpRight size={16}/></Link></div>
+      <div className="library-create-actions"><Link href={out(props.actionHref)} className="ip-brand-button">{props.actionLabel}<ArrowUpRight size={16}/></Link></div>
     </div>
     <div className="library-filter-bar">
       <Input prefix={<Search size={16}/>} allowClear aria-label={`搜索${props.title}`} placeholder={props.voice ? '搜索声音名称、语言或音色特点' : '搜索名称、登记号或形象描述'} value={query} onChange={e => { setQuery(e.target.value); setPage(0); }}/>
@@ -65,15 +76,15 @@ function AssetCollection(props: CollectionProps) {
     <div className="library-result-bar"><span aria-live="polite">{loading ? `正在读取${props.title}…` : errors.length ? `已读取 ${matches.length} 项，部分内容暂不可用` : `${matches.length} 项${filtered ? '匹配资产' : '资产'}`}</span><span>{props.voice ? '进入声音工作室管理音色' : '打开形象查看设定、版本与授权'}</span></div>
     {errors.map(e => <div key={e.category} className="library-notice"><StudioErrorNotice error={e.message}/><Button size="small" onClick={props.refresh}>重新读取</Button></div>)}
     {loading ? <div className="library-grid library-loading" aria-label={`正在加载${props.title}`}>{Array.from({ length: 6 }, (_, i) => <div className="library-skeleton" key={i}><div/><span/><span/></div>)}</div>
-      : !matches.length ? <div className="library-empty">{props.voice ? <Mic size={32}/> : <Users size={32}/>}<h3>{errors.length ? `${props.title}暂不可读取` : filtered ? '没有找到匹配资产' : `还没有${props.title}`}</h3><p>{errors.length ? '读取恢复后，这里的资产会重新显示。' : filtered ? '试试其他名称或筛选条件。' : props.emptyDescription}</p>{errors.length ? <Button onClick={props.refresh}>重新读取资产</Button> : filtered ? <Button onClick={clear}>清除筛选</Button> : <Link href={props.actionHref} className="ip-brand-button">{props.actionLabel}<ArrowUpRight size={16}/></Link>}</div>
+      : !matches.length ? <div className="library-empty">{props.voice ? <Mic size={32}/> : <Users size={32}/>}<h3>{errors.length ? `${props.title}暂不可读取` : filtered ? '没有找到匹配资产' : `还没有${props.title}`}</h3><p>{errors.length ? '读取恢复后，这里的资产会重新显示。' : filtered ? '试试其他名称或筛选条件。' : props.emptyDescription}</p>{errors.length ? <Button onClick={props.refresh}>重新读取资产</Button> : filtered ? <Button onClick={clear}>清除筛选</Button> : <Link href={out(props.actionHref)} className="ip-brand-button">{props.actionLabel}<ArrowUpRight size={16}/></Link>}</div>
       : <LibraryGridMotion motionKey={`${props.title}-${category}-${query}-${type}-${currentPage}-${visible.map(i => i.id).join(',')}`}>
         {visible.map(item => <article key={item.id} className={`library-card ${props.voice ? 'library-voice-card' : 'library-avatar-card'}`} aria-label={`${props.title} ${item.name}`}>
-          <Link href={item.href} className="library-card-visual" aria-label={props.voice ? `管理声音 ${item.name}` : `查看形象 ${item.name}`}>
+          <Link href={out(item.href)} className="library-card-visual" aria-label={props.voice ? `管理声音 ${item.name}` : `查看形象 ${item.name}`}>
             {item.image ? <img src={item.image} alt={item.name} loading="lazy"/> : props.voice ? <div className="library-voice-visual"><Mic size={32} strokeWidth={1.2}/>{item.wave?.length ? <div className="library-voice-wave" aria-hidden="true">{item.wave.slice(0, 32).map((height, i) => <span key={i} style={{ height: `${Math.max(4, Math.min(48, height))}px` }}/>)}</div> : <span>专属音色</span>}</div> : <div className="library-object-placeholder library-object-character"><UserRound size={40} strokeWidth={1.1}/><span>尚未设置形象图</span></div>}
             <span className="library-type">{props.categories.find(c => c.value === item.category)?.label}</span>
           </Link>
-          <div className="library-card-body"><Link className="library-card-title" href={item.href}>{item.name}</Link><p className="library-card-description">{item.description || (props.voice ? '尚未填写音色特点' : '尚未填写形象描述')}</p>{item.badge && <div className="library-card-license">{item.badge}</div>}{item.state && <div className="library-card-state"><span className={item.type === 'finalized' || item.type === 'archived' || item.type === 'authorized' ? 'has-image' : ''}>{item.state}</span></div>}<p className="library-card-source" title={item.detail}>{item.detail}</p><p className="library-card-source">{item.id}</p></div>
-          <div className="library-card-actions"><Link href={item.href}>{props.voice ? '管理声音' : '查看形象'}<ArrowUpRight size={16}/></Link></div>
+          <div className="library-card-body"><Link className="library-card-title" href={out(item.href)}>{item.name}</Link><p className="library-card-description">{item.description || (props.voice ? '尚未填写音色特点' : '尚未填写形象描述')}</p>{item.badge && <div className="library-card-license">{item.badge}</div>}{item.state && <div className="library-card-state"><span className={item.type === 'finalized' || item.type === 'archived' || item.type === 'authorized' ? 'has-image' : ''}>{item.state}</span></div>}<p className="library-card-source" title={item.detail}>{item.detail}</p><p className="library-card-source">{item.id}</p></div>
+          <div className="library-card-actions"><Link href={out(item.href)}>{props.voice ? '管理声音' : '查看形象'}<ArrowUpRight size={16}/></Link></div>
         </article>)}
       </LibraryGridMotion>}
     {!loading && matches.length > 0 && <div className="library-pagination"><span>每页 24 项</span><div><Button disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>上一页</Button><span>{currentPage + 1} / {pages}</span><Button disabled={currentPage + 1 >= pages} onClick={() => setPage(currentPage + 1)}>下一页</Button></div></div>}

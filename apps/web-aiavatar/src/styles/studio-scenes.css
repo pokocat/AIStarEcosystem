@@ -133,6 +133,7 @@ html[data-layout="desktop"] .scene-list.is-collapsed { width: 64px; }
 .scene-results>header h2 { font-size: 17px; font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-link { display: inline-flex; align-items: center; gap: 5px; padding: 6px 11px; border: 1px solid var(--ip-line); border-radius: 8px; font-size: 13px; font-weight: 600; white-space: nowrap; }
 .scene-link:hover { background: var(--ip-soft); }
+.scene-results-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .scene-loading { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 80px 0; color: var(--ip-muted); }
 .scene-row-list { list-style: none; margin: 0; padding: 0 20px 20px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1; min-height: 0; }
 .scene-row { padding: 14px; border: 1px solid var(--ip-line); border-radius: 13px; }
@@ -183,6 +184,8 @@ html[data-layout="desktop"] .scene-list.is-collapsed { width: 64px; }
 .scene-recent strong { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .scene-recent small { color: var(--ip-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 .scene-recent-empty { display: flex; align-items: center; gap: 6px; padding: 8px 16px; color: var(--ip-muted); font-size: 12.5px; }
+.scene-recent-empty.is-error { flex-wrap: wrap; color: var(--ip-error); }
+.scene-recent-empty.is-error button:not(.studio-error-link) { min-height: 32px; padding: 0 12px; border: 1px solid var(--ip-line); border-radius: 8px; background: var(--ip-paper); color: var(--ip-ink); font-size: 12.5px; cursor: pointer; }
 
 /* 看大图 */
 .scene-viewer { position: fixed; inset: 0; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; background: rgba(15,20,24,.78); }
@@ -258,7 +261,8 @@ html:not([data-layout="desktop"]) .scene-recent li { flex: 0 0 200px; }
 .scene-video-mark { display: grid; place-items: center; width: 72px; height: 56px; border-radius: 16px; background: linear-gradient(135deg, #f3ece0, #eef1f4); color: #8d96a0; }
 .scene-video-stage h2 { font-size: 19px; font-weight: 700; }
 .scene-idea-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; width: 100%; max-width: 420px; }
-.scene-idea-grid button { min-width: 0; padding: 8px 10px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-paper); font-size: 12.5px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 常用开头是一整句，点了就进输入框：要让人看完整再点，所以换行而不省略（2026-10-30 线上复核）。 */
+.scene-idea-grid button { min-width: 0; padding: 8px 10px; border: 1px solid var(--ip-line); border-radius: 9px; background: var(--ip-paper); font-size: 12.5px; line-height: 1.45; text-align: left; white-space: normal; overflow-wrap: anywhere; }
 .scene-idea-grid button:hover { border-color: #b9c0c5; background: var(--ip-soft); }
 .scene-video-stage .scene-brief { width: 100%; text-align: left; }
 .scene-video-input { display: flex; flex-direction: column; gap: 10px; margin: 0 14px 14px; padding: 12px 12px 10px; border: 1px solid var(--ip-line); border-radius: 16px; background: var(--ip-paper); box-shadow: 0 10px 30px rgba(25,34,41,.06); }
@@ -348,6 +352,7 @@ html:not([data-layout="desktop"]) .scene-idea-grid { grid-template-columns: repe
 .scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: #ccd1d5; transition: width 160ms var(--ip-ease); }
 .scene-example-dots button[aria-current="true"] { width: 20px; background: var(--ip-ink); }
 .scene-generate-note { margin: 0; color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
+.scene-generate-help { margin: 0; color: var(--ip-muted); font-size: 12.5px; line-height: 1.6; }
 .scene-director-thread[hidden] { display: none; }
 .scene-studio .scene-go>span { white-space: nowrap; }
 

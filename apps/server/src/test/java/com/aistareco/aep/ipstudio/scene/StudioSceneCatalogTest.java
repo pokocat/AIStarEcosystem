@@ -53,7 +53,7 @@ class StudioSceneCatalogTest {
         var composed = catalog.compose(video("ecom-talking", "保湿精华，不黏腻", List.of("商品图 1"), null, 25, "9:16"));
         assertThat(composed.skillKey()).isEqualTo("video-generation");
         assertThat(composed.text()).contains("25 秒的竖屏", "我的要求：保湿精华，不黏腻", "「商品图 1」", "「出镜人物」")
-                .containsPattern("没写的信息.*不要自己编").contains("要的是做好的视频");
+                .contains(StudioSceneCatalog.FACT_RULE, "要的是做好的视频");
         var silent = catalog.compose(video("ecom-talking", "", List.of("商品图 1"), null, 25, "9:16")).text();
         assertThat(silent).doesNotContain("我的要求").contains("先看素材");
     }
@@ -87,8 +87,7 @@ class StudioSceneCatalogTest {
     @Test
     void theDirectorBriefNumbersThePicturesInTheOrderTheVideoModelGetsThem() {
         String brief = catalog.compose(script("ecom-talking", "", List.of("商品图 1", "商品图 2"), 10, null)).text();
-        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "镜头N", "正好 10 秒", "先看图")
-                .containsPattern("没写的信息.*不要自己编");
+        assertThat(brief).contains("10 秒", "图1「商品图 1」", "图2「商品图 2」", "图3「出镜人物」", "镜头N", "正好 10 秒", "先看图", StudioSceneCatalog.FACT_RULE);
         // 一次出片的时长由所选模型决定，不受场景给助手用的可选时长限制；明显不对的数照样挡。
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of("商品图 1"), 0, null))).hasMessage("请选择可用的时长");
         assertThatThrownBy(() -> catalog.compose(script("ecom-talking", "", List.of(), 10, null))).hasMessage("先放商品图");
@@ -97,6 +96,34 @@ class StudioSceneCatalogTest {
         // 剧情类必须写一句，但改稿时有修改意见就够了。
         assertThatThrownBy(() -> catalog.compose(script("drama-twist", " ", List.of(), 15, null))).hasMessage("先写一句要求");
         assertThat(catalog.compose(script("drama-twist", " ", List.of(), 15, "结尾再反转一次")).text()).contains("结尾再反转一次");
+    }
+
+    // 2026-10-30 线上验收：品牌故事首稿编了品牌年限、耐用测试次数和测试画面，summary 还说没写功效。
+    @Test
+    void bothVideoBriefsForbidInventedBrandYearsTestCountsAndSalesButKeepWhatTheUserGave() {
+        String given = "山野户外，2009 年创立，帐篷做过 3000 次抗风测试，累计卖出 10 万顶";
+        String script = catalog.compose(script("brand-story", given, List.of(), 30, null)).text();
+        String assistant = catalog.compose(video("brand-story", given, List.of(), null, 30, "16:9")).text();
+        for (String brief : List.of(script, assistant)) {
+            assertThat(brief).contains(StudioSceneCatalog.FACT_RULE, "我的要求：" + given);
+        }
+        assertThat(StudioSceneCatalog.FACT_RULE).contains("价格", "优惠", "品牌创立年份", "多少年历史", "检测、测试、实验的次数和画面",
+                "销量", "排名", "获奖", "认证", "门店数", "用户数", "功效", "不要写成品牌的真实经历", "不要给编出来的内容配上年份、次数、数量");
+        assertThat(script).contains("只说脚本里实际写了什么", "虚构的人物或情节就直说", "不要写「没写功效」");
+    }
+
+    // 场景自己的拍法、思路、选项会原样交给模型，它们本身不能带数字或「真实经历」一类的说法，否则等于在请模型编。
+    private static final Pattern INVITES_FACTS = Pattern.compile("\\d|年|销量|检测|测试|认证|获奖|排名|老店|老字号|历史|真实(人物|评价|经历)");
+
+    @Test
+    void sceneTextsSentToTheModelNameNoNumbersOrBrandClaims() {
+        for (var scene : catalog.catalog().video()) {
+            List<String> sent = new java.util.ArrayList<>(scene.ideas());
+            sent.add(scene.structure());
+            scene.optionGroups().forEach(g -> g.choices().forEach(o -> sent.add(o.prompt())));
+            for (String text : sent) assertThat(INVITES_FACTS.matcher(text).find()).as(scene.id() + "：" + text).isFalse();
+        }
+        assertThat(catalog.video("brand-story").orElseThrow().structure()).contains("没给就讲一位用户的故事");
     }
 
     @Test

@@ -36,9 +36,12 @@ export function sceneVideoInputs(model: VideoStudioModel, materials: SceneVideoM
 }
 
 /** 交给接口的视频设置；会先改写描述的模型（H3）一律由我们先按它的写法优化再出片（同创作助手的 auto）。 */
-export function sceneVideoSettings(model: VideoStudioModel, tier: string, inputs: ReturnType<typeof sceneVideoInputs>): StudioVideoSettings {
+export function sceneVideoSettings(model: VideoStudioModel, tier: string, inputs: ReturnType<typeof sceneVideoInputs>, optimize = true): StudioVideoSettings {
   const settings = studioVideoSettings(inputs.spec.mode, tier, inputs.assets, undefined, inputs.spec);
-  return model.supportsPromptOptimization ? { ...settings, rewrite: "auto" } : settings;
+  if (!model.supportsPromptOptimization) return settings;
+  // 优化描述是另一笔文字任务：服务端先按改写模型的上限另外冻结、按实际用量结算，不含在视频价里；
+  // 用户确认的 maxCost 只是视频价。关掉就按原文出片（厂商自己的改写也关），只扣视频价。
+  return optimize ? { ...settings, rewrite: "auto" } : { ...settings, optimizePrompt: false };
 }
 
 /** 时长选项：模型允许的范围里取 5 秒一档，再带上两头。 */

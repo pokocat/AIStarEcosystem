@@ -27,7 +27,7 @@ import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalo
 import { addScriptNode, addVideoRow, applyRun, createSceneDraft, listSceneDrafts, patchNode, resubmitRow, sceneInputsOf, scriptNodes, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
 import { useSceneDraftStore } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
-import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues } from "./scene-layout";
+import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 
 type Media = StudioMediaImportResult & { title: string };
@@ -78,6 +78,7 @@ export function SceneVideoStudio() {
   const [videoModels, setVideoModels] = useState<VideoStudioModel[]>();
   const [modelId, setModelId] = useState<string>();
   const [tier, setTier] = useState<string>();
+  const [optimize, setOptimize] = useState(true);
   const [hint, setHint] = useState("");
   const [live, setLive] = useState<Record<string, IpRun>>({});
   const [copied, setCopied] = useState<string>();
@@ -223,6 +224,7 @@ export function SceneVideoStudio() {
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
+  const lastScriptSpent = latestScript?.metadata?.studio?.textEditor?.turns?.at(-1)?.billing?.credits;
   const writing = scripts.some(s => s.metadata?.status === "loading");
   // 新的一轮出来时滚到底（只滚对话区自己）。
   useEffect(() => { const el = thread.current; if (el) el.scrollTop = el.scrollHeight; }, [scripts.length, writing]);
@@ -420,7 +422,7 @@ export function SceneVideoStudio() {
   }, [doc.nodes, images, character, voice]);
   const plan = chosenVideo ? sceneVideoInputs(chosenVideo, materials) : undefined;
   let settings: ReturnType<typeof sceneVideoSettings> | undefined, planError = "";
-  try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan) : undefined; }
+  try { settings = chosenVideo && usedTier && plan ? sceneVideoSettings(chosenVideo, usedTier, plan, optimize) : undefined; }
   catch (e) { planError = e instanceof Error ? e.message : "素材和模型对不上"; }
   const videoQuote = chosenVideo && settings ? studioVideoQuote(chosenVideo, settings, usedDuration) : null;
   // 输入栏上的规格和费用：跟着选的视频模型走（画面比例、清晰度都按这个模型实际支持的给）。
@@ -429,7 +431,11 @@ export function SceneVideoStudio() {
   const specLabel = [language, !recreation && usedTier ? usedTier.toUpperCase() : "", `${shownDuration} 秒`, ratio === "16:9" ? "横屏" : "竖屏"].filter(Boolean).join(" · ");
   const talkCost = recreation ? "交给创作助手：先出方案和报价，确认后才扣积分"
     : caps?.mock ? "测试响应 · 免费"
-    : [scriptCost !== undefined ? `写一版脚本最多 ${scriptCost} 积分（按实际用量扣）` : "",
+    // maxCost 是这一次最多能冻结的数，不是价格（2026-10-30 验收：只写「最多 N 积分」，读起来像一版短脚本就要这么多）。
+    // 写过的给出上一版实际扣了多少，没写过的直说短脚本用不满。授权和结算不变：仍按 maxCost 冻结、按实际用量结算。
+    : [scriptCost !== undefined ? (lastScriptSpent !== undefined
+        ? `写脚本按实际用量扣积分，上一版扣了 ${lastScriptSpent}，这一版最多扣 ${scriptCost}（只是上限）`
+        : `写脚本按实际用量扣积分，这一版最多扣 ${scriptCost}（只是上限，短脚本用不了这么多）`) : "",
        chosenVideo ? (videoQuote != null ? `用 ${chosenVideo.name} 出片预计 ${videoQuote} 积分` : planError || "") : "",
        !textModel?.supportsVision && (images.length || character) ? "编导这次不看图，只按文字写" : ""].filter(Boolean).join("；");
   const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : planError
@@ -504,7 +510,7 @@ export function SceneVideoStudio() {
             <span className="scene-video-mark" aria-hidden="true"><Clapperboard size={30} strokeWidth={1.4}/></span>
             <h2>你想做一条什么视频？</h2>
             <p className="scene-director-intro">{recreation ? "放上要复刻的视频，说说换成什么；会交给画布里的创作助手先拉片再做。" : "放素材、说一句，编导先写一版分镜脚本给你看，满意了再出片。"}</p>
-            <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea} title={idea}
+            <div className="scene-idea-grid" role="group" aria-label="常用开头">{scene.ideas.map(idea => <button type="button" key={idea}
               onClick={() => setText(old => old.includes(idea) ? old : old.trim() ? `${old.trim()}；${idea}` : idea)}>{idea}</button>)}</div>
           </div>
           : scripts.map(row => <ScriptTurn key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id} latest={row.id === latestScript?.id}
@@ -559,15 +565,14 @@ export function SceneVideoStudio() {
           models={videoModels ?? []} model={chosenVideo} onModel={chooseVideoModel} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
           durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
           used={plan?.used ?? []} note={plan?.note} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
-          maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
+          optimize={optimize} onOptimize={setOptimize} maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
       {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
     </section>
 
     <section className="scene-results" aria-label="生成结果">
-      <header><div className="scene-tabs" role="tablist" aria-label="结果与示例">
-          <button type="button" role="tab" aria-selected={tab === "results"} onClick={() => setTab("results")}>生成结果{rows.length ? <small>{rows.length}</small> : null}</button>
-          <button type="button" role="tab" aria-selected={tab === "example"} onClick={() => setTab("example")}>参考示例</button></div>
+      <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
         {draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}</header>
+      <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
           <ol className="scene-steps">
             <li><b>1</b><div><strong>放素材、说一句</strong><p>商品图、门店照片或故事，用平时说话的方式写，不写也行。</p></div></li>
@@ -579,9 +584,10 @@ export function SceneVideoStudio() {
             onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <div className="scene-empty"><h2>还没有生成</h2><p>编导写好脚本后，点「用这个脚本生成」，视频会出现在这里。</p></div>}
+      </div>
     </section>
 
-    <SceneRecent drafts={drafts.data} loading={drafts.loading} current={draft?.id} onOpen={id => void openDraft(id)}/>
+    <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
     <HubTabBar/>
   </main>;
 }
@@ -632,13 +638,14 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
 
 /** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
 function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
-  used, note, quote, mock, blocker, busy, maxChars, onGenerate }: {
+  used, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
   prompt: string; onPrompt: (v: string) => void; onBack: () => void;
   models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
   tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
   ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; note?: string; quote: number | null; mock: boolean;
-  blocker: string; busy: boolean; maxChars?: number; onGenerate: () => void;
+  blocker: string; busy: boolean; optimize: boolean; onOptimize: (on: boolean) => void; maxChars?: number; onGenerate: () => void;
 }) {
+  const optimizable = !!model?.supportsPromptOptimization;
   const ratios = model?.contract.tiers.find(t => t.tier === tier)?.canvases.map(c => c.aspectRatio).filter(r => r === "9:16" || r === "16:9") ?? ["9:16", "16:9"];
   let image = 0;
   return <div className="scene-generate">
@@ -655,10 +662,15 @@ function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tier
       {tiers.length > 1 && <ChoiceRow label="清晰度" options={tiers.map(t => [t, t.toUpperCase()])} value={tier} onChange={onTier}/>}
       <ChoiceRow label="时长" options={durations.map(d => [String(d), `${d} 秒`])} value={String(duration)} onChange={v => onDuration(Number(v))}/>
       <ChoiceRow label="画面" options={ratios.map(r => [r, r === "16:9" ? "横屏" : "竖屏"])} value={ratio} onChange={onRatio}/>
+      {optimizable && <ChoiceRow label="描述" options={[["on", "先优化再出片"], ["off", "按原文出片"]]} value={optimize ? "on" : "off"} onChange={v => onOptimize(v === "on")}/>}
     </div>
+    {/* 2026-10-30 线上复核：「优化描述另需少量积分」说不清扣多少、能不能不要。服务端是另起一笔文字任务，按改写模型的上限冻结、按实际用量结算。 */}
+    {optimizable && !mock && <p className="scene-generate-help">{optimize
+      ? "出片前先把脚本改写成这个模型更认的写法。这一步单独按实际用量扣积分，不含在下面的视频价里；不想要可以选「按原文出片」。"
+      : "按你写的原文直接出片，只扣视频价。"}</p>}
     <button type="button" className="scene-go" aria-label="立即生成视频" title={blocker || undefined} disabled={busy || !!blocker} onClick={onGenerate}>
       {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成视频</span>
-      <small>{blocker || (mock ? "测试响应 · 免费" : quote != null ? `预计 ${quote} 积分${model?.supportsPromptOptimization ? "，出片前优化描述另需少量积分" : ""}` : "")}</small>
+      <small>{blocker || (mock ? "测试响应 · 免费" : quote != null ? `视频预计 ${quote} 积分${optimizable && optimize ? "，优化描述按用量另扣" : ""}` : "")}</small>
     </button>
   </div>;
 }
@@ -702,13 +714,7 @@ function VideoSettingsPanel({ durations, duration, onDuration, ratios, ratio, on
   tiers: string[]; tier?: string; onTier: (t: string) => void; language: string; onLanguage: (l: string) => void; onClose: () => void;
 }) {
   const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const away = (e: PointerEvent) => { if (e.target instanceof Node && !panel.current?.parentElement?.contains(e.target)) onClose(); };
-    const escape = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    document.addEventListener("pointerdown", away); document.addEventListener("keydown", escape);
-    panel.current?.querySelector<HTMLElement>('[aria-pressed="true"]')?.focus();
-    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", escape); };
-  }, [onClose]);
+  useScenePopover(panel, onClose);
   return <div ref={panel} className="scene-settings-panel is-left" role="group" aria-label="视频设置">
     {tiers.length > 1 && <><h3>清晰度</h3>
       <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></>}
