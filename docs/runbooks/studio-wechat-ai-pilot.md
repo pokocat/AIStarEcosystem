@@ -1,6 +1,6 @@
 # Studio 复用 AI 军师微信商户接入手册
 
-Last reviewed: 2026-10-30。状态：已合入 main，未部署、未完成真实付款验收。
+Last reviewed: 2026-10-30。状态：代码已生产发布（`20261030-studio-wechat-pay`），线上微信渠道未启用、未完成真实付款验收。
 
 ## 选择与范围
 
@@ -54,7 +54,7 @@ Native 探测金额为 1 分，商户订单号 `stprobe1793350513383462f94`；�
 
 ## 上线与真实验收
 
-2026-10-30 已合入 main：服务端支付测试（含企业充值与 Spring 上下文场景）102 个、前端钱包与计费测试 40 个、web-aiavatar / admin 类型检查、服务端编译与接口契约检查通过。尚未发布。发布时从干净 main 构建 server、admin、web-aiavatar。
+2026-10-30 已合入 main：服务端支付测试（含企业充值与 Spring 上下文场景）102 个、前端钱包与计费测试 40 个、web-aiavatar / admin 类型检查、服务端编译与接口契约检查通过。同日从干净 main 构建并发布 server、admin、web-aiavatar，见 [发布记录](../releases/studio-wechat-pay-release-20261030.md)。
 
 对现有支付宝的影响（生产当前只启用了支付宝，没有微信渠道记录，微信分支在线上不生效）：
 

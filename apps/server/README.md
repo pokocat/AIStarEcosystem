@@ -1330,6 +1330,6 @@ Studio 图片报价为 `POST /api/v1/ip-studio/projects/{id}/{image-quote|studio
 - 建草稿：`POST /api/v1/ip-studio/projects` 可带 `sceneId`（必须在目录里），落 `ip_project.scene_id`（V72；V70 被未合并分支占用）。
 - 生成仍走 `studio-runs` / 画布助手原链路；Studio 分区视频任务到终态发 `MaterialVideoJobEnded`，`StudioVideoJobWake` 提交后叫醒该用户仍在跟踪的制作计划，不再等 60 秒巡检。
 
-## 微信 Native 扫码充值（2026-10-30，已合入 main，未发布）
+## 微信 Native 扫码充值（2026-10-30，已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 
 `PaymentChannelConfigService` 接收成对的 `publicKeyId/publicKey`，`WechatPaymentGateway` 优先使用 SDK 公钥模式，未提供公钥时兼容旧平台证书模式。微信未知下单结果保留关联和原 PENDING 订单，同套餐订单不允许切换渠道；查单补金额/流水验证，微信回调补商户/AppID/渠道验证。微信取消/驳回/超时先关渠道单，失败保留本地状态，过期单仍参加查单。无新 API/迁移；军师商户权限阻塞与资料映射见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。

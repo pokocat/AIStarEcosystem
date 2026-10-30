@@ -1174,6 +1174,6 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 
 批量补充（2026-10-29，本地未发布）：添加表单可切换「单个添加 / 批量添加」，每批最多 100 个手机号，支持换行、逗号、分号粘贴并去重。`POST /api/v1/ip-studio/enterprises/{id}/members/batch` 接收 `{phones}`，逐人独立事务执行单人规则，返回成功/失败及原因，失败项保留可重试，已成功关系幂等。
 
-### 2026-10-30 · Studio 微信 Native 收银台（已合入 main，未发布）
+### 2026-10-30 · Studio 微信 Native 收银台（已生产发布 `20261030-studio-wechat-pay`，微信渠道待商户开通后启用）
 
 会员与积分页真实模式接 `src/ip/studio-recharge-dialog.tsx`：渠道选择、微信二维码、订单查询/主动同步、刷新恢复和已付款余额刷新。订单号放 `rechargeOrder` 查询参数，关闭弹层不取消原订单；只按服务端 `paid` 显示到账。支付宝保留 HTML 收银台跳转。微信使用 ai-pilot 商户，开通 Native、公钥配置及真实付款尚待完成，见 [接入手册](../../docs/runbooks/studio-wechat-ai-pilot.md)。
