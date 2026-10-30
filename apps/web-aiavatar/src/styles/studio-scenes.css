@@ -377,6 +377,10 @@ html:not([data-layout="desktop"]) .scene-fact-chips>span { line-height: 36px; }
 html:not([data-layout="desktop"]) .scene-fact-chips>div { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips>div::-webkit-scrollbar { display: none; }
 html:not([data-layout="desktop"]) .scene-fact-chips button { flex: 0 0 auto; min-height: 36px; }
+/* 交给创作助手之后的进度：结果区顶上一行，等你处理时金色。 */
+.scene-handoff { margin: 0 0 10px !important; padding: 8px 12px; border-radius: 9px; background: var(--ip-soft); color: var(--ip-muted); font-size: 12.5px; line-height: 1.6; }
+.scene-handoff.is-waiting { background: var(--ip-gold-soft); color: var(--ip-gold); }
+.scene-handoff a { margin-left: 8px; color: var(--ip-ink); font-weight: 500; text-decoration: underline; text-underline-offset: 2px; }
 /* 编导说还缺什么：金色，是要用户补的；数字没进脚本：灰字，只是提醒。外边距压过页面对 p 的重置。 */
 .scene-script-missing { margin: 8px 0 0 !important; padding: 7px 10px; border-radius: 8px; background: var(--ip-gold-soft); color: var(--ip-gold); font-size: 12.5px; line-height: 1.6; }
 .scene-script-text mark.scene-script-blank { padding: 0 2px; border-radius: 3px; background: var(--ip-gold-soft); color: var(--ip-gold); }

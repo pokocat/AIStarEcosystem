@@ -13,6 +13,8 @@ import { HubTabBar } from "@/components/hub/ui";
 import { cancelRun, fetchStudioVideoModels, readRun, signKeys } from "@/canvas-bridge/api";
 import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
+import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
+import type { StudioPlanExecution } from "@ai-star-eco/types/ip-studio-workflow";
 import { importStudioMedia, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
@@ -281,6 +283,26 @@ export function SceneVideoStudio() {
   }, [draftId, persist]);
 
   const doc = draft?.doc ?? EMPTY_DOC;
+  // 交给画布里创作助手的那份（爆款复刻、比模型长的片子）：回到这页也看得到做到哪了（2026-10-30 审查 G05 / C2）。
+  // 执行就是画布那一套（ip_plan_execution），这里只读它，不另记一份进度。
+  const handedOff = !!draft?.doc.assistantConversations?.some(n => n.metadata?.studioStart === "assistant");
+  const executionId = [...(doc.nodes as CanvasNodeData[])].reverse().find(n => n.metadata?.studio?.execution?.executionId)?.metadata?.studio?.execution?.executionId;
+  const [execution, setExecution] = useState<StudioPlanExecution>();
+  useEffect(() => {
+    setExecution(undefined);
+    if (!draftId || !executionId) return;
+    let alive = true, timer: ReturnType<typeof setTimeout> | undefined;
+    const read = async () => {
+      try {
+        const next = await getStudioPlanExecution(draftId, executionId);
+        if (!alive) return;
+        setExecution(next);
+        if (next.status === "running") timer = setTimeout(() => void read(), 5000);
+      } catch { if (alive) timer = setTimeout(() => void read(), 15000); }
+    };
+    void read();
+    return () => { alive = false; if (timer) clearTimeout(timer); };
+  }, [draftId, executionId]);
   const scripts = scriptNodes(doc);
   const rows = videoRows(doc);
   const latestScript = [...scripts].reverse().find(s => s.metadata?.status === "success" && s.metadata.content);
@@ -747,6 +769,7 @@ export function SceneVideoStudio() {
     <section className="scene-results" aria-label="生成结果">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-link" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={15}/>在画布中继续</Link>}<UiVersionSwitch inline/></span></header>
+      {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
       {tab === "example" ? <SceneExample id={scene.id} title={`${scene.title}怎么做`} note={scene.structure} cover={scene.coverUrl} examples={scene.examples}>
           <ol className="scene-steps">
@@ -917,4 +940,19 @@ function VideoSettingsPanel({ durations, duration, onDuration, ratios, ratio, on
     <h3>台词语言</h3>
     <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div>
   </div>;
+}
+
+/** 交给创作助手之后做到哪了：一句话加「去画布看」。没有确认方案之前还没开始做，也照实说。 */
+function HandoffStatus({ projectId, execution, waiting }: { projectId: string; execution?: StudioPlanExecution; waiting: boolean }) {
+  const steps = execution?.steps ?? [];
+  const done = steps.filter(s => s.status === "done" || s.status === "skipped").length;
+  const text = waiting ? "在画布里交给创作助手做了，正在读进度…"
+    : !execution ? "交给画布里的创作助手了，去那边确认方案和费用后才开始做。"
+    : execution.status === "running" ? `创作助手在做，第 ${Math.min(done + 1, steps.length)} 步，共 ${steps.length} 步。`
+    : execution.status === "done" ? "创作助手做完了，成片在画布里。"
+    : execution.status === "paused" || execution.status === "needs_user" ? `创作助手停下来等你${execution.needsUserReason ? `：${execution.needsUserReason}` : "，去画布里看一眼"}。`
+    : execution.status === "canceled" ? "这次制作停掉了，做好的部分还在画布里。"
+    : `没全部做完，做好了 ${done} 步，剩下的去画布里看看。`;
+  return <p className={`scene-handoff${execution?.status === "paused" || execution?.status === "needs_user" ? " is-waiting" : ""}`} role="status">{text}
+    <Link href={`/projects/${encodeURIComponent(projectId)}?start=assistant`}>去画布看</Link></p>;
 }

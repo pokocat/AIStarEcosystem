@@ -10,6 +10,7 @@ import type { IpProject, IpProjectDoc } from "@ai-star-eco/types";
 const SCENES = JSON.parse(readFileSync(join(__dirname, "../../../../server/src/main/resources/ipstudio/scenes.json"), "utf8"));
 
 const api = vi.hoisted(() => ({
+  execution: vi.fn(),
   push: vi.fn(), failure: vi.fn(),
   uploadImage: vi.fn(), listProjects: vi.fn(), createProject: vi.fn(), updateProject: vi.fn(), getProject: vi.fn(), listScenes: vi.fn(), composeScene: vi.fn(),
   fetchModels: vi.fn(), readRun: vi.fn(), cancelRun: vi.fn(), capabilities: vi.fn(), submit: vi.fn(), importMedia: vi.fn(), videoModels: vi.fn(), signKeys: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProj
   listScenes: api.listScenes, composeScene: api.composeScene } }));
 vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
+vi.mock("@/canvas-bridge/studio-plan-execution", () => ({ getStudioPlanExecution: api.execution }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
 vi.mock("../library-reference-picker", () => ({ LibraryReferencePicker: () => null }));
@@ -110,4 +112,30 @@ test("video: a picture brought from AI 图片 goes into the scene's pictures and
   expect(window.location.search).not.toContain("ref=");
   await waitFor(() => expect(store.get("IPP-A")!.doc.sceneInputs?.images).toEqual(["ipstudio_gen/u/out.jpg"]));
   expect(screen.getByText(/图带过来了，放在「商品图」/)).toBeTruthy();
+});
+
+// 交给画布里的创作助手之后（爆款复刻、超长片），回到这页要看得到做到哪了（审查 G05 / C2）。
+const handedOff = (withExecution: boolean) => ({ ...EMPTY,
+  assistantConversations: [{ id: "IPP-H-brief", type: "text", title: "创作想法", position: { x: 0, y: 0 }, width: 10, height: 10, metadata: { studioStart: "assistant", content: "x" } }],
+  nodes: withExecution ? [{ id: "out", type: "video", title: "第 1 段", position: { x: 0, y: 0 }, width: 10, height: 10,
+    metadata: { status: "loading", studio: { kind: "shot", execution: { executionId: "EX-1", stepId: "s1" } } } }] : [] } as never);
+const step = (status: string) => ({ id: status, title: "x", operation: "video", stage: "production", dependsOn: [], status, runIds: [], attempt: 0, quotedCost: 0 });
+
+test("video: a draft handed to the assistant says so before a plan is confirmed, then how far it got", async () => {
+  put({ id: "IPP-H", name: "h", sceneId: "recreation", doc: handedOff(false) });
+  await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
+  expect(await screen.findByText(/交给画布里的创作助手了，去那边确认方案和费用后才开始做/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "去画布看" }).getAttribute("href")).toBe("/projects/IPP-H?start=assistant");
+
+  cleanup();
+  api.execution.mockResolvedValue({ id: "EX-1", status: "running", steps: [step("done"), step("running"), step("pending")] });
+  put({ id: "IPP-H", name: "h", sceneId: "recreation", doc: handedOff(true) });
+  await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
+  expect(await screen.findByText(/创作助手在做，第 2 步，共 3 步/)).toBeTruthy();
+  expect(api.execution).toHaveBeenCalledWith("IPP-H", "EX-1");
+
+  cleanup();
+  api.execution.mockResolvedValue({ id: "EX-1", status: "needs_user", needsUserReason: "参考视频里的人物要换成谁", steps: [step("done"), step("needs_user")] });
+  await open(SceneVideoStudio, "/video?scene=recreation&draft=IPP-H");
+  expect(await screen.findByText(/创作助手停下来等你：参考视频里的人物要换成谁/)).toBeTruthy();
 });
