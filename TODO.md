@@ -1,6 +1,6 @@
 # 待办与已知问题
 
-- [x] ~~图片返回尺寸与所选不符就判失败~~ **2026-10-30 修复（`fix/image-size-deliver`，待发布 server）**：`JusuanImageClient` 不再因尺寸不符或读不出尺寸拒绝可用图片，照常交付、结算一次、只记 WARN；画布与导演台共用。线上 10-20 至 10-30 共 13 次此类失败，账本核对均为冻结后原数退回、未实扣。10-25 codex `image-size-warning` 工作区的未提交版本（含界面黄色警告）由此取代，未合入。
+- [x] ~~图片返回尺寸与所选不符就判失败~~ **2026-10-30 已生产发布（server `20261030-studio-image-size-deliver`，main `83f817348`）**：`JusuanImageClient` 不再因尺寸不符或读不出尺寸拒绝可用图片，照常交付、结算一次、只记 WARN；画布与导演台共用。线上 10-20 至 10-30 共 13 次此类失败，账本核对均为冻结后原数退回、未实扣。10-25 codex `image-size-warning` 工作区的未提交版本（含界面黄色警告）由此取代，未合入。
 - [ ] 图片尺寸与所选不一致时界面是否提示：目前只记服务端日志，画布按真实宽高显示；要提示可参考 codex `image-size-warning` 工作区的 `image-output-warnings.tsx`（未提交）。
 
 - [x] ~~项目列表画布卡片只有小地图，无法识别内容~~ **已生产发布（4ed3ecf9），2026-10-17**：真实内容预览、正文摘要、去重数量、固定／自动封面、二级流程预览；封面归属与失败重试测试、桌面／手机布局验证见 `docs/releases/studio-workspace-refactor-validation.md`。
@@ -18,7 +18,7 @@
 - [ ] 场景封面（`public/studio/scene-covers/*.webp`）是 AI 生成的示意图，运营有真实作品后按同名文件替换。
 - [x] ~~AI 视频改成参考站「超级编导」的出片方式~~ **2026-10-29 本地实现（未发布）**：本页编导写分镜脚本（普通文字任务，能看图）、可改稿，「用这个脚本生成」选模型时长确认后出片，结果在右侧；复刻和长片仍交给创作助手。真 Qwen 看图写稿、改稿已验，见 `docs/studio-scene-creation.md` §8。
 - [x] ~~两个 AI 入口的场景做成后台可配置~~ **2026-10-29 本地实现（未发布）**：平台配置 `studio.scene-catalog` + Studio 运营后台「运营配置 · 场景模板」（`studio-admin` 的 `/scenes`；按用户要求不放 `apps/admin`；增删改、分组、排序、上下架、封面与示例上传），整份保存带版本号；本地改封面和说明后用户端即时生效已验，见 §9。
-- [ ] **后端待发（用户 2026-10-30 选择先不发，等通知）**：main 上 server 比线上 `20261030-studio-scene-backend`（`80edade0f`）多四处：场景模板「恢复内置」写带版本记录 + 缓存按内容认（`StudioSceneCatalog` / `StudioSceneAdminService`，`StudioSceneResetTest`）、「短剧导演台」积分流水说明与一条报错文字（`StudioWorkflowService` / `DirectorService`）、#134 报错处理（`ProviderErrorMessage` / `HttpModelinkGateway`）、编导与助手的事实边界（`StudioSceneCatalog.FACT_RULE`，不编品牌年份、检测次数、销量等；随包场景文字同步改，`docs/studio-scene-creation.md` §12）。在这之前 Studio 后台点「恢复内置」再保存仍可能读到旧目录。发布前按 AGENTS「生产发布顺序」核对契约改动。
+- [x] ~~**后端待发（用户 2026-10-30 选择先不发，等通知）**~~ **2026-10-30 19:35 随 `20261030-studio-image-size-deliver` 上线**（main `83f817348`，见 `docs/releases/studio-image-size-deliver-release-20261030.md`）：main 上 server 比线上 `20261030-studio-scene-backend`（`80edade0f`）多四处：场景模板「恢复内置」写带版本记录 + 缓存按内容认（`StudioSceneCatalog` / `StudioSceneAdminService`，`StudioSceneResetTest`）、「短剧导演台」积分流水说明与一条报错文字（`StudioWorkflowService` / `DirectorService`）、#134 报错处理（`ProviderErrorMessage` / `HttpModelinkGateway`）、编导与助手的事实边界（`StudioSceneCatalog.FACT_RULE`，不编品牌年份、检测次数、销量等；随包场景文字同步改，`docs/studio-scene-creation.md` §12）。在这之前 Studio 后台点「恢复内置」再保存仍可能读到旧目录。发布前按 AGENTS「生产发布顺序」核对契约改动。
 - [ ] **设置页的通知 / 水印 / 自动归档偏好**（2026-10-30 线上复核后撤下假开关，`src/proto/screen-more.tsx`）：服务端没有用户偏好表，也没有它们要影响的行为（推送、任务完成提醒、导出加水印、定稿自动归档）。要做先定每个开关真正改什么，再加服务端偏好与接口，最后放回界面。
 - [ ] **场景页「优化描述」显示具体上限**：改写那一步按改写模型的上限另外冻结，前端拿不到这个数（`StudioWorkflowService.videoRewriteHold` 只在服务端），界面只能写「按实际用量另扣」。要写出「最多 N 积分」需在视频模型列表或报价接口里带上改写上限。
 - [ ] **项目 / 灵感卡片要缩略图**（2026-10-30 线上走查）：`ProjectCardPreview` 直接加载原图，一张 1728×2304 的出图在 266px 卡片上加载了 18 秒。OSS 签名地址不能在前端追加 `x-oss-process`，要在服务端给图片资产派生缩略图 key（或签名时带处理参数），DTO 另给 `thumbnailUrl`。

@@ -1020,7 +1020,7 @@ Studio 支持模型开放首尾帧、全能参考、清晰度、六种画幅及�
 用户确定按端点而非 vendor 分组。`concurrencyLimit` 在原后台配置，V48 增列与持久票据；`AiGenerationQueueService` 的端点行锁、FIFO 和派发租约为准入唯一真值。Studio 和通用视频 worker 超限即退出线程并排队，旧同步 chat/images 调用共用同一额度；ThreadLocal Scope 防内部重复占名额，结束必须清理。视频和配音/口型持有到上游终态，未知受理不可释放容量后重提；排队时长不当运行超时/孤儿 hold，停止退回原冻结。原业务任务/账本仍各自真值，票据不能保存密钥、素材或提示词。其他协议及人工容量核对边界见 `docs/ai-endpoint-generation-queue.md`。
 
 
-### 图片尺寸不符照常交付（2026-10-30）
+### 图片尺寸不符照常交付（2026-10-30 已生产发布 `20261030-studio-image-size-deliver`）
 
 供应商返回的图只要是可用图片，就交给用户并按原价结算，尺寸与所选不一致或读不出尺寸只记 WARN（`[studio-jusuan-image] output size differs`），画布、导演台、制作计划共用 `JusuanImageClient` 这一处。不拉伸、不裁剪、不重投。2026-10-20 起按尺寸不符判失败过（10 天 13 次，冻结均已退回），10-25 写过的「改为警告」版本留在 codex `image-size-warning` 工作区从未提交，界面警告那部分仍未做。
 
