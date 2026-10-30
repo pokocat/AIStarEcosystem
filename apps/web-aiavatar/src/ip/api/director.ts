@@ -60,7 +60,7 @@ export function isStaleGone(e: unknown): boolean {
 }
 
 function demoUnavailable(): never {
-  throw new ApiError({ code: "DIRECTOR_DEMO_UNAVAILABLE", message: "演示模式不支持 AI 导演台，请登录后使用。" }, 400);
+  throw new ApiError({ code: "DIRECTOR_DEMO_UNAVAILABLE", message: "演示模式不支持短剧导演台，请登录后使用。" }, 400);
 }
 
 export async function listWorks(): Promise<DirectorWorkSummary[]> {

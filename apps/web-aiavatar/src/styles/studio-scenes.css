@@ -9,6 +9,12 @@ html[data-layout="desktop"] .desktop-top-bar.desktop-rail.ip-brand-surface {
   width: var(--desktop-rail-w); height: auto; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0 12px;
   background: var(--ip-paper); border-radius: 13px; overflow: visible;
 }
+/* 新旧版切换（shell/ui-version.ts）：旧版在顶栏右侧，新版固定在页面右上角的留白里。 */
+.ip-ui-switch { display: inline-flex; align-items: center; min-height: 30px; padding: 0 12px; border: 1px solid var(--ip-line); border-radius: 999px; background: var(--ip-paper); color: var(--ip-ink); font: inherit; font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.ip-ui-switch:hover { background: var(--ip-soft); }
+.ip-ui-switch:focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 2px; }
+html[data-layout="desktop"] .ip-ui-switch-corner { position: fixed; top: 8px; right: 16px; z-index: 61; }
+html:not([data-layout="desktop"]) .ip-ui-switch-corner { display: none; }
 .desktop-rail-logo { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; flex-shrink: 0; }
 .desktop-rail-logo img { display: block; width: 36px; height: 36px; object-fit: contain; }
 .desktop-rail-navigation { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 100%; min-height: 0; flex: 1; margin-top: 6px; overflow-y: auto; scrollbar-width: none; }

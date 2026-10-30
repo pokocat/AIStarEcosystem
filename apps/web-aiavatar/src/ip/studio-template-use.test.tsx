@@ -38,7 +38,7 @@ test('only saving creates a copy; rapid clicks and rerenders deliver exactly one
   vi.mocked(IpStudioApi.createProject).mockReturnValue(new Promise(r => { resolve = r; }));
   const created = vi.fn(), ui = () => <StrictMode><StudioTemplateUse template={template} onClose={() => {}} onCreated={created}/></StrictMode>;
   const view = render(ui()); await screen.findByLabelText('只读模板画布');
-  const save = screen.getByRole('button', { name: '存为个人副本' });
+  const save = screen.getByRole('button', { name: '做同款' });
   fireEvent.click(save); fireEvent.click(save); view.rerender(ui());
   expect(IpStudioApi.createProject).toHaveBeenCalledExactlyOnceWith({ templateId: 'template' });
   resolve({ id: 'one-copy' }); await waitFor(() => expect(created).toHaveBeenCalledExactlyOnceWith('one-copy'));
@@ -46,17 +46,17 @@ test('only saving creates a copy; rapid clicks and rerenders deliver exactly one
 test('copy failure stays in the preview and retries only when explicitly saved again', async () => {
   vi.mocked(IpStudioApi.createProject).mockRejectedValueOnce(new Error('模板已下线'));
   const created = vi.fn(); render(<StudioTemplateUse template={template} onClose={() => {}} onCreated={created}/>);
-  await screen.findByLabelText('只读模板画布'); fireEvent.click(screen.getByRole('button', { name: '存为个人副本' }));
+  await screen.findByLabelText('只读模板画布'); fireEvent.click(screen.getByRole('button', { name: '做同款' }));
   await screen.findByText('模板已下线'); expect(created).not.toHaveBeenCalled();
   expect(IpStudioApi.createProject).toHaveBeenCalledOnce();
-  await waitFor(() => expect((screen.getByRole('button', { name: '存为个人副本' }) as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(screen.getByRole('button', { name: '存为个人副本' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: '做同款' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: '做同款' }));
   await waitFor(() => expect(created).toHaveBeenCalledWith('copy'));
 });
 test('failed preview cannot create a project; reload is a read request', async () => {
   vi.mocked(readTemplateVersion).mockRejectedValueOnce(new Error('读取失败'));
   render(<StudioTemplateUse template={template} onClose={() => {}} onCreated={() => {}}/>);
-  await screen.findByText('读取失败'); expect((screen.getByRole('button', { name: '存为个人副本' }) as HTMLButtonElement).disabled).toBe(true);
+  await screen.findByText('读取失败'); expect((screen.getByRole('button', { name: '做同款' }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(await screen.findByRole('button', { name: '重新加载' })); await screen.findByLabelText('只读模板画布');
   expect(IpStudioApi.createProject).not.toHaveBeenCalled();
 });

@@ -3498,7 +3498,7 @@ public class DirectorService {
         List<String> missing = missingRatios(found.resolved().endpoint());
         if (!missing.isEmpty()) throw new BusinessException(HttpStatus.BAD_REQUEST, "DIRECTOR_IMAGE_MODEL_UNSUPPORTED",
                 "「" + found.resolved().endpoint().publicModelName() + "」不能出 " + ratioNames(missing)
-                        + "，导演台的道具、角色场景和分镜要用方图、横图和竖图。请选择其他图片模型",
+                        + "，短剧导演台的道具、角色场景和分镜要用方图、横图和竖图。请选择其他图片模型",
                 Map.of("missingRatios", missing));
     }
 

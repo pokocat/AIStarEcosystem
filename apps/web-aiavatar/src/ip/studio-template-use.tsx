@@ -45,7 +45,7 @@ export function StudioTemplateUse({ template, onClose, onCreated }: { template: 
       <div className="studio-template-preview">
         <header><Button type="text" icon={<ArrowLeft size={18}/>} disabled={busy} onClick={onClose}>返回</Button>
           <div><strong>{template.name}</strong><span><Lock size={13}/>{template.visibility === 'personal' ? '个人模板' : '官方模板'} · 只读{template.version ? ` · v${template.version}` : ''}</span></div>
-          <Button type="primary" className="studio-template-preview-copy" loading={busy} disabled={!doc || busy} onClick={() => void saveCopy()}>存为个人副本</Button>
+          <Button type="primary" className="studio-template-preview-copy" loading={busy} disabled={!doc || busy} onClick={() => void saveCopy()}>做同款</Button>
         </header>
         {error && <StudioErrorNotice error={error}/>}
         <main>{loadError ? <div className="studio-error-recovery"><StudioErrorNotice error={loadError}/>{<Button onClick={() => setRetry(n => n + 1)}>重新加载</Button>}</div>

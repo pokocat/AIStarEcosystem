@@ -45,7 +45,7 @@ class StudioEnterpriseWorkflowTest {
             var input=json.readTree(saved.get().getInputJson());
             assertEquals(100000,input.path("_exec").path("maxTokens").asInt());
             assertEquals(100000,input.path("_exec").path("tokenPricing").path("maxOutputTokens").asInt());
-            verify(credits).hold(eq("actor"),eq(275L),eq("ip-run"),anyString(),eq("AI 导演台"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
+            verify(credits).hold(eq("actor"),eq(275L),eq("ip-run"),anyString(),eq("短剧导演台"), org.mockito.ArgumentMatchers.any(com.aistareco.aep.billing.service.ModelChargeContext.class));
         } finally {TransactionSynchronizationManager.clearSynchronization();}
     }
 

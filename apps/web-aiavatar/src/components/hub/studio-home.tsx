@@ -112,7 +112,7 @@ export function StudioHome({ ready }: { ready: boolean }) {
       {catalogue.error ? <LoadError message={catalogue.error} retry={() => setRefresh(n => n + 1)}/> : catalogue.loading ? <div className="studio-home-loading" role="status">正在加载模板与画布…</div> : items.length ?
         <div className="studio-home-templates">{items.map(t => <button type="button" className="studio-home-template" key={t.id} disabled={busy} onClick={() => void useTemplate(t)}>
           {t.coverUrl ? <img src={t.coverUrl} alt="" loading="lazy"/> : <CanvasThumb doc={t.doc} height={132}/>}
-          <div><h3>{t.name}</h3><p>{t.summary}</p><span>只读预览 · 存为个人副本后编辑 <ArrowRight size={14}/></span></div></button>)}</div> :
+          <div><h3>{t.name}</h3><p>{t.summary}</p><span>点开预览 · 做同款后编辑 <ArrowRight size={14}/></span></div></button>)}</div> :
         <div className="studio-home-empty"><p>{gallery === 'personal' ? '还没有个人模板。在画布里选择“发布为模板”，以后可以换一个 IP 继续使用。' : gallery === 'examples' ? '精选画布发布后会展示在这里，你可以复制一份继续创作。' : '暂时没有可用的官方模板，可以从空白画布开始。'}</p><Link href="/projects">打开项目 <ArrowRight size={15}/></Link></div>}
     </section>
   </div>;

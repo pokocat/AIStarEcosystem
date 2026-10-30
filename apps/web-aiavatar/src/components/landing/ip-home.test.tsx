@@ -41,23 +41,26 @@ test('a signed-in visitor\'s brief creates one canvas with the assistant start; 
   expect(api.push).toHaveBeenCalledTimes(1);
 });
 
-// docs/ip-studio-new-canvas-and-threads.md §2.2: 「创建空白画布」 is the shared 「新建」; 「全部画布」 goes to the projects page.
-test('「创建空白画布」 goes through the shared new-canvas start, and 「全部画布」 links to the projects page', async () => {
+// docs/ip-studio-new-canvas-and-threads.md §2.2: the 「画布」 tool is the shared 「新建」. 「继续创作」 left the home (2026-10-30).
+test('the 「画布」 tool goes through the shared new-canvas start; the home no longer lists recent canvases', async () => {
   api.authed = true;
   api.newCanvas.mockResolvedValue('/projects/blank?start=assistant');
   await act(async () => { render(<IpHome header={false}/>); });
-  expect(screen.getByRole('link', { name: '全部画布' }).getAttribute('href')).toBe('/projects');
-  await act(async () => { fireEvent.click(screen.getByRole('button', { name: '创建空白画布' })); });
+  expect(screen.queryByRole('heading', { name: '继续创作' })).toBeNull();
+  expect(api.projects).not.toHaveBeenCalled();
+  const tools = within(screen.getByRole('navigation', { name: '常用工具' }));
+  await act(async () => { fireEvent.click(tools.getByRole('button', { name: '画布' })); });
   expect(api.newCanvas).toHaveBeenCalledTimes(1);
   expect(api.create).not.toHaveBeenCalled();
   expect(api.push).toHaveBeenCalledWith('/projects/blank?start=assistant');
 });
 
-test('a signed-out visitor has no blank-canvas start; nothing is created', async () => {
+test('a signed-out visitor who picks 「画布」 is sent to sign in; nothing is created', async () => {
   api.authed = false;
   await act(async () => { render(<IpHome header={false}/>); });
-  // Signed out there is no 「继续创作」 section at all, so the blank-canvas start is unreachable.
-  expect(screen.queryByRole('button', { name: '创建空白画布' })).toBeNull();
+  const tools = within(screen.getByRole('navigation', { name: '常用工具' }));
+  await act(async () => { fireEvent.click(tools.getByRole('button', { name: '画布' })); });
+  expect(api.push).toHaveBeenCalledWith('/login?next=%2Fdashboard');
   expect(api.newCanvas).not.toHaveBeenCalled();
 });
 
@@ -67,7 +70,7 @@ test('tools and goals: 导演台 is a page, 人物配音 opens a canvas with its
   api.create.mockResolvedValue({ id: 'p1' });
   await act(async () => { render(<IpHome header={false}/>); });
   const tools = within(screen.getByRole('navigation', { name: '常用工具' }));
-  await act(async () => { fireEvent.click(tools.getByRole('button', { name: '导演台' })); });
+  await act(async () => { fireEvent.click(tools.getByRole('button', { name: '短剧导演台' })); });
   expect(api.push).toHaveBeenCalledWith('/director');
   expect(api.create).not.toHaveBeenCalled();
   await act(async () => { fireEvent.click(tools.getByRole('button', { name: '人物配音' })); });
