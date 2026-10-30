@@ -144,6 +144,20 @@ class EnterpriseVideoBillingIntegrationTest {
         return jobs.submit(body(cost),context.member().member().userId(),MaterialVideoJobService.APP_IPSTUDIO,selection(context)).get(0).path("id").asText();
     }
     CreditHold hold(String id){return holds.findByReferenceTypeAndReferenceId("material_video_job",id).orElseThrow();}
+    long personal(MemberContext context){return wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance();}
+    /**
+     * 2026-10-22 起拿不到受理回执的提交直接失败并退回剩余冻结（54e161e97），新任务不会再停在「受理待核对」。
+     * 运营核对接口只为那之前留下的旧记录保留：这里照旧版 worker 留下的样子造一条 ——
+     * 路由与真实提交时记下的一致（端点名 / 模型 / 地址 / 空规格快照，已标记派发），原冻结与授权仍在途。
+     */
+    String legacyUnknown(MemberContext context) {
+        String id=submit(context,30);credits.markModelDispatched("material_video_job",id);
+        var job=rows.findById(id).orElseThrow();
+        job.setStatus("submitting");job.setErrorCode("VIDEO_SUBMISSION_UNKNOWN");job.setErrorMessage(MaterialVideoJobService.STILL_PROCESSING);
+        job.setProviderUsed("Deterministic video");job.setModelUsed("deterministic-video");
+        job.setUpstreamBaseUrlSnapshot(base);job.setVideoRequestSpecSnapshotJson("");
+        rows.saveAndFlush(job);return id;
+    }
 
     @Test void supplierSuccessSpendsExactlyOnceFromOriginalEnterpriseWallet() {
         var context=funded(2,100);String id=submit(context,30);var original=hold(id);
@@ -156,20 +170,26 @@ class EnterpriseVideoBillingIntegrationTest {
         assertEquals(1,ledger.findAll().stream().filter(l->id.equals(l.getReferenceId())&&l.getEntryType()==LedgerEntry.LedgerEntryType.SPEND).count());
     }
 
-    @Test void uncertainSupplierAcceptanceRetainsMoneyAndInFlightCapWithoutResubmission() {
+    /** 2026-10-22 起（54e161e97，用户明确调整）：没拿到受理回执就按失败结束，退回原企业钱包，不自动重提。 */
+    @Test void unconfirmedSubmissionFailsAndRefundsOriginalEnterpriseWalletWithoutResubmission() {
         var context=funded(1,100);submitResponse="{}";String id=submit(context,30);worker.generateAsync(id);
-        assertEquals("submitting",rows.findById(id).orElseThrow().getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",rows.findById(id).orElseThrow().getErrorCode());
-        assertEquals(CreditHold.Status.ACTIVE,hold(id).getStatus());assertEquals(30,memberWallet(context).getPendingBalance());
+        var failed=rows.findById(id).orElseThrow();
+        assertEquals("failed",failed.getStatus());assertEquals("VIDEO_SUBMISSION_UNKNOWN",failed.getErrorCode());
+        assertEquals(CreditHold.Status.RELEASED,hold(id).getStatus());
+        assertEquals(0,memberWallet(context).getPendingBalance());assertEquals(100,memberWallet(context).getTotalBalance());
+        assertNotNull(authorizations.findByReferenceTypeAndReferenceId("material_video_job",id).orElseThrow().getTerminalAt());
         worker.generateAsync(id);worker.recoverQueuedGeneration(id);assertEquals(1,submitted.get());
-        assertThrows(BusinessException.class,()->submit(context,30));assertEquals(999,wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance());
+        assertNotNull(submit(context,30));assertEquals(999,personal(context));
     }
 
-    @Test void genericCreateGatewayFailureKeepsOriginalHoldWhileDocumentedQueueRejectionReleases() {
+    @Test void genericCreateGatewayFailureAndDocumentedQueueRejectionBothReleaseOriginalHold() {
         var context=funded(1,100);submitStatus=503;submitResponse="{\"message\":\"gateway unavailable\"}";
         String uncertain=submit(context,30);worker.generateAsync(uncertain);
+        // 网关失败证明不了厂商没受理，所以错误码仍是受理未知；按 54e161e97 的策略照样失败退款。
+        assertEquals("failed",rows.findById(uncertain).orElseThrow().getStatus());
         assertEquals("VIDEO_SUBMISSION_UNKNOWN",rows.findById(uncertain).orElseThrow().getErrorCode());
-        assertEquals(CreditHold.Status.ACTIVE,hold(uncertain).getStatus());assertEquals(30,memberWallet(context).getPendingBalance());
-        assertThrows(BusinessException.class,()->submit(context,30));
+        assertEquals(CreditHold.Status.RELEASED,hold(uncertain).getStatus());assertEquals(100,memberWallet(context).getTotalBalance());
+        assertEquals(0,memberWallet(context).getPendingBalance());
         var other=funded(1,100);submitResponse="{\"code\":\"video_queue_full\",\"message\":\"video queue is full\"}";
         String rejected=submit(other,30);worker.generateAsync(rejected);
         assertEquals("failed",rows.findById(rejected).orElseThrow().getStatus());assertEquals("VIDEO_PROVIDER_QUEUE_FULL",rows.findById(rejected).orElseThrow().getErrorCode());
@@ -179,7 +199,7 @@ class EnterpriseVideoBillingIntegrationTest {
     }
 
     @Test void operatorEvidenceBindsOriginalUnknownTaskAndRecoversItsOriginalRouteWalletAndPrice() throws Exception {
-        var context=funded(1,100);submitResponse="{}";String id=submit(context,30);worker.generateAsync(id);
+        var context=funded(1,100);String id=legacyUnknown(context);
         String path="/api/admin/material-video-jobs/"+id;
         var unknown=rows.findById(id).orElseThrow();assertEquals(base,unknown.getUpstreamBaseUrlSnapshot());
         assertEquals("deterministic-video",unknown.getModelUsed());
@@ -203,9 +223,10 @@ class EnterpriseVideoBillingIntegrationTest {
                 .andExpect(jsonPath("$.data.status").value("rendering"))
                 .andExpect(jsonPath("$.data.external_task_id").value("original-supplier-task"));
         worker.recoverQueuedGeneration(id);
-        assertEquals("succeeded",rows.findById(id).orElseThrow().getStatus());assertEquals(1,submitted.get());
+        // 只查询补录的原任务，不向厂商发新的生成请求
+        assertEquals("succeeded",rows.findById(id).orElseThrow().getStatus());assertEquals(0,submitted.get());
         assertEquals(CreditHold.Status.COMMITTED,hold(id).getStatus());assertEquals(70,memberWallet(context).getTotalBalance());
-        assertEquals(999,wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance());
+        assertEquals(999,personal(context));
         mvc.perform(post(path+"/reconcile").with(user("platform-operator").roles("OPERATOR"))
                 .contentType("application/json").content(mapper.writeValueAsBytes(request))).andExpect(status().isOk());
         assertEquals(1,auditLogs.findAll().stream().filter(a->id.equals(a.getResourceId())&&"admin.video.bind_original_task".equals(a.getAction())
@@ -220,10 +241,14 @@ class EnterpriseVideoBillingIntegrationTest {
         var request=new com.aistareco.aep.dto.MaterialVideoReconcileRequest("original-supplier-task","Supplier evidence receipt #12345");
         assertEquals("VIDEO_JOB_NOT_UNCERTAIN",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(queued,request,"platform-operator")).getCode());
         assertTrue(jobs.cancelBeforeDispatch(queued));
-        String unknown=submit(context,30);submitResponse="{}";worker.generateAsync(unknown);
+        String unknown=legacyUnknown(context);
         credits.releaseHold("material_video_job",unknown,"test operator already released original hold");
         assertEquals("VIDEO_ORIGINAL_HOLD_RELEASED",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(unknown,request,"platform-operator")).getCode());
-        assertNull(rows.findById(unknown).orElseThrow().getExternalTaskId());assertEquals(1,submitted.get());
+        assertNull(rows.findById(unknown).orElseThrow().getExternalTaskId());
+        // 按新策略失败退款的任务不能再补录：补录会让已退回的积分无从结算
+        submitResponse="{}";String refunded=submit(context,30);worker.generateAsync(refunded);
+        assertEquals("VIDEO_JOB_NOT_UNCERTAIN",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(refunded,request,"platform-operator")).getCode());
+        assertNull(rows.findById(refunded).orElseThrow().getExternalTaskId());assertEquals(1,submitted.get());
     }
 
     @Test void acceptedTaskRecoversOriginalSupplierIdAndFrozenPriceAfterPollOutage() {
@@ -312,7 +337,7 @@ class EnterpriseVideoBillingIntegrationTest {
     }
 
     @Test void operatorConfirmationOfNoAcceptedTaskReleasesOriginalFundsWithOneImmutableAudit() throws Exception {
-        var context=funded(1,100);submitResponse="{}";String id=submit(context,30);worker.generateAsync(id);
+        var context=funded(1,100);String id=legacyUnknown(context);
         String path="/api/admin/material-video-jobs/"+id+"/reconcile";
         String evidence="Supplier support receipt #321 explicitly confirms original request was not accepted and no task is in flight";
         var request=new com.aistareco.aep.dto.MaterialVideoReconcileRequest(null,evidence,true);
@@ -335,7 +360,7 @@ class EnterpriseVideoBillingIntegrationTest {
                 &&a.getDetail().contains("receipt #321")&&a.getDetail().contains(memberWallet(context).getId())).count());
         assertEquals("VIDEO_RECOVERY_EVIDENCE_IMMUTABLE",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(id,
                 new com.aistareco.aep.dto.MaterialVideoReconcileRequest(null,"different supplier evidence receipt",true),"platform-operator")).getCode());
-        worker.generateAsync(id);worker.recoverQueuedGeneration(id);assertEquals(1,submitted.get());assertNotNull(submit(context,30));
+        worker.generateAsync(id);worker.recoverQueuedGeneration(id);assertEquals(0,submitted.get());assertNotNull(submit(context,30));
     }
 
     @Test void noAcceptanceConfirmationRejectsQueuedKnownSupplierIdAndSettledFunds() {
@@ -348,13 +373,13 @@ class EnterpriseVideoBillingIntegrationTest {
         assertEquals(CreditHold.Status.ACTIVE,hold(queued).getStatus());pollOutage=false;worker.recoverQueuedGeneration(queued);
         assertEquals(CreditHold.Status.COMMITTED,hold(queued).getStatus());
         assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(queued,request,"platform-operator"));
-        submitResponse="{}";String unknown=submit(context,30);worker.generateAsync(unknown);credits.releaseHold("material_video_job",unknown,"already refunded fixture");
+        String unknown=legacyUnknown(context);credits.releaseHold("material_video_job",unknown,"already refunded fixture");
         assertEquals("VIDEO_ORIGINAL_HOLD_RELEASED",assertThrows(BusinessException.class,()->jobs.bindOriginalSupplierTask(unknown,request,"platform-operator")).getCode());
         assertEquals(70,memberWallet(context).getTotalBalance());assertEquals(999,wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance());
     }
 
     @Test void lateNoAcceptanceEvidenceAfterSuspensionReturnsOriginalMembershipFundsToRoot() {
-        var context=funded(1,100);submitResponse="{}";String id=submit(context,30);worker.generateAsync(id);
+        var context=funded(1,100);String id=legacyUnknown(context);
         String owner=context.company().member().userId(),enterprise=context.company().enterprise().id(),member=context.member().member().id();
         var preview=lifecycle.preview(owner,enterprise,new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.PreviewRequest("suspend",member));
         lifecycle.apply(owner,enterprise,new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.Request("suspend",member,UUID.randomUUID().toString(),preview.confirmationFingerprint()));
@@ -363,6 +388,6 @@ class EnterpriseVideoBillingIntegrationTest {
         jobs.bindOriginalSupplierTask(id,request,"platform-operator");jobs.bindOriginalSupplierTask(id,request,"platform-operator");
         assertEquals(CreditHold.Status.RELEASED,hold(id).getStatus());assertEquals(100,wallets.findByAccountKey("enterprise:"+enterprise).orElseThrow().getTotalBalance());
         assertEquals(0,memberWallet(context).getTotalBalance());assertEquals(0,memberWallet(context).getPendingBalance());
-        assertEquals(999,wallets.findByUserId(context.member().member().userId()).orElseThrow().getTotalBalance());assertEquals(1,submitted.get());
+        assertEquals(999,personal(context));assertEquals(0,submitted.get());
     }
 }

@@ -275,7 +275,8 @@ public class HttpShiliuGateway implements ShiliuGateway {
             JsonNode envelope = OM.readTree(response.body());
             int code = envelope.path("code").asInt(Integer.MIN_VALUE);
             if (code != 0) {
-                String message = ProviderErrorMessage.reason(envelope);
+                // 分类要读供应商原话（「账户权益不足」等）；对外文案在 mappedUpstreamFailure 里再过滤。
+                String message = ProviderErrorMessage.diagnosticReason(envelope);
                 log.warn("[clip-shiliu] upstream rejected path={} code={} msg={}", path, code, message);
                 throw mappedUpstreamFailure(code, message);
             }
@@ -434,7 +435,11 @@ public class HttpShiliuGateway implements ShiliuGateway {
     static BusinessException mappedUpstreamFailure(int code, String message) {
         // Retain the original diagnostic for existing quota/capacity classification, sanitize only public output.
         message = ProviderErrorMessage.diagnostic(message);
-        String suffix = message == null || message.isBlank() ? "" : "：" + message;
+        // 对外只拼过滤后的原因：供应商的额度 / 权益原话不进 message，否则整句（连同已经说清楚的分类文案）
+        // 都会被 PublicModelErrorPolicy 换成通用句。
+        String reason = ProviderErrorMessage.sanitize(message);
+        if (com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE.equals(reason)) reason = null;
+        String suffix = reason == null ? "" : "：" + reason;
         BusinessException mapped = switch (code) {
             case 1002 -> BusinessException.wrapped(HttpStatus.UNPROCESSABLE_ENTITY, "CLIP_ENGINE_INPUT_INVALID", "采集内容不符合数字人引擎要求" + suffix, "code=" + code);
             case 2001 -> BusinessException.wrapped(HttpStatus.SERVICE_UNAVAILABLE, "CLIP_ENGINE_CREDENTIAL_INVALID", "数字人服务鉴权失效，请联系运营处理", "code=" + code);
@@ -448,7 +453,7 @@ public class HttpShiliuGateway implements ShiliuGateway {
             case 3007 -> BusinessException.wrapped(HttpStatus.BAD_GATEWAY, "CLIP_ENGINE_MEDIA_URL_INVALID", "数字人服务暂时无法读取采集文件，请稍后重试", "code=" + code);
             default -> byMessage(code, message, suffix);
         };
-        String publicMessage = message == null || mapped.getMessage().contains(message) ? mapped.getMessage() : mapped.getMessage() + suffix;
+        String publicMessage = reason == null || mapped.getMessage().contains(reason) ? mapped.getMessage() : mapped.getMessage() + suffix;
         return new BusinessException(mapped.getStatus(),mapped.getCode(),
                 com.aistareco.aep.service.ai.PublicModelErrorPolicy.stored(publicMessage,mapped.getCode()),mapped.getDetails(),mapped.getInternalDetail());
     }

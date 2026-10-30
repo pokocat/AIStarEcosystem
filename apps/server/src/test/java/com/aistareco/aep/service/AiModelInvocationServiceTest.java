@@ -416,7 +416,8 @@ class AiModelInvocationServiceTest {
         var error=assertThrows(com.aistareco.aep.service.ai.AiChatHttpException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
                 .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","image request")),null));
         assertTrue(error.isVisualMemoryRejection());assertEquals("AI_CALL_FAILED",error.getCode());
-        assertEquals("visual activation/HBM headroom budget",error.getMessage());assertEquals(1,bad.requests.size());
+        // 恢复信号读的是响应体本身；对外文案归 PublicModelErrorPolicy 管，这里不钉。
+        assertEquals(1,bad.requests.size());
     }
 
     @Test
@@ -439,7 +440,8 @@ class AiModelInvocationServiceTest {
         var ep=endpoint("ep1",bad.baseUrl(),AiModelProviderType.OPENAI,"m1","test-key",true);
         var error=assertThrows(BusinessException.class,()->boundSvc(AiModelPurpose.GENERAL,ep)
                 .invokeChat(AiModelPurpose.GENERAL,List.of(Map.of("role","user","content","hi")),null));
-        assertEquals("AI_CALL_FAILED",error.getCode());assertEquals("provider quota exhausted",error.getMessage());
+        // 2026-10-25 起供应商配额不进对外文案（AGENTS.md §8.0.1 ①）；要验的是它被当成错误而不是空回复。
+        assertEquals("AI_CALL_FAILED",error.getCode());assertEquals(com.aistareco.aep.service.ai.PublicModelErrorPolicy.UNAVAILABLE,error.getMessage());
         assertEquals(1,bad.requests.size());
     }
 

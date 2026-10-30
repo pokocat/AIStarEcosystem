@@ -130,6 +130,16 @@ class EnterpriseStudioBillingIntegrationTest {
                 .contentType("application/json").content(json.writeValueAsBytes(body))).andExpect(status().is(expected)).andReturn().getResponse().getContentAsString();
         return json.readTree(response);
     }
+    /**
+     * 2026-10-22 起拿不到受理回执的图片直接失败并退回剩余冻结（54e161e97），新任务不会再停在「受理待核对」。
+     * 运营补录 / 核实释放只为那之前留下的旧记录保留。造法：模拟供应商先抛「原任务恢复中」（worker 照旧保持运行、
+     * 冻结不动、留下真实的提交凭据），这里再改成旧版 worker 对无任务号回执写下的受理未知。
+     */
+    void legacyUnknown(String id) {
+        var run=runs.findById(id).orElseThrow();assertEquals("STUDIO_IMAGE_RECOVERING",run.getErrorCode());
+        run.setErrorCode("STUDIO_IMAGE_SUBMISSION_UNKNOWN");run.setErrorMessage("图片受理结果尚未确认，请联系运营核对原请求；请勿重新生成");
+        runs.saveAndFlush(run);
+    }
     void settled(Case c,String id,long spent) {
         var row=runs.findById(id).orElseThrow();assertEquals(spent,row.getCost());assertEquals(memberWallet(c).getId(),row.getBillingWalletId());
         assertEquals(0,memberWallet(c).getPendingBalance());assertNotNull(authorizations.findByReferenceTypeAndReferenceId("ip-run",id).orElseThrow().getTerminalAt());
@@ -208,12 +218,12 @@ class EnterpriseStudioBillingIntegrationTest {
             JsonNode previous=inv.getArgument(9);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             if(!previous.path("submitAttempted").asBoolean()) {
                 submissions.incrementAndGet();checkpoint.accept(json.createObjectNode().put("submitAttempted",true).put("requestBody","immutable-body").put("baseUrl",base).put("model","original-model"));
-                throw new JusuanImageClient.Pending(false,new IllegalStateException("submission reply lost"));
+                throw new JusuanImageClient.Pending(true,new IllegalStateException("submission reply lost"));
             }
             assertEquals("original-recovered-job",previous.path("jobId").asText());assertEquals("immutable-body",previous.path("requestBody").asText());return Base64.getDecoder().decode(PNG);
         });
-        String id=submit(c,image(c,1,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);
-        assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",runs.findById(id).orElseThrow().getErrorCode());assertFalse(imageWorker.canResumeNative(runs.findById(id).orElseThrow()));
+        String id=submit(c,image(c,1,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);legacyUnknown(id);
+        assertEquals("running",runs.findById(id).orElseThrow().getStatus());assertFalse(imageWorker.canResumeNative(runs.findById(id).orElseThrow()));
         mvc.perform(get("/api/admin/ip-studio/runs/"+id).with(user(c.actor()))).andExpect(status().isForbidden());
         mvc.perform(get("/api/admin/ip-studio/runs/"+id).with(user("finance").roles("FINANCE_ADMIN"))).andExpect(status().isForbidden());
         var receipt=json.createObjectNode().put("imageIndex",0).put("externalTaskId","original-recovered-job").put("evidence","供应商后台查询原请求回执 2026-10-15");
@@ -231,9 +241,9 @@ class EnterpriseStudioBillingIntegrationTest {
             submissions.incrementAndGet();String key=inv.getArgument(4);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
             var state=json.createObjectNode().put("submitAttempted",true).put("requestBody","original-"+key).put("baseUrl",base).put("model","original-model");
             if(key.endsWith("-image-0")){state.put("jobId","already-successful");checkpoint.accept(state);return Base64.getDecoder().decode(PNG);}
-            checkpoint.accept(state);throw new JusuanImageClient.Pending(false,new IllegalStateException("submission reply lost"));
+            checkpoint.accept(state);throw new JusuanImageClient.Pending(true,new IllegalStateException("submission reply lost"));
         });
-        String id=submit(c,image(c,2,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);
+        String id=submit(c,image(c,2,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);legacyUnknown(id);
         var before=runs.findById(id).orElseThrow();String retained=before.getOutputJson();assertEquals(8,before.getCost());assertEquals(8,memberWallet(c).getPendingBalance());
         var preview=lifecycle.preview(c.company().member().userId(),c.enterprise(),new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.PreviewRequest("remove",c.member().member().id()));
         lifecycle.apply(c.company().member().userId(),c.enterprise(),new com.aistareco.aep.enterprise.dto.EnterpriseLifecycleDtos.Request("remove",c.member().member().id(),UUID.randomUUID().toString(),preview.confirmationFingerprint()));
@@ -247,6 +257,26 @@ class EnterpriseStudioBillingIntegrationTest {
         mvc.perform(post("/api/admin/ip-studio/runs/"+id+"/release-unknown").with(user("operator").roles("OPERATOR")).contentType("application/json").content(receipt.toString())).andExpect(status().isOk());
         assertEquals(2,submissions.get());assertEquals(1,ledger.findAll().stream().filter(l->id.equals(l.getReferenceId())&&l.getEntryType()==LedgerEntry.LedgerEntryType.UNFREEZE).count());
         assertEquals(1,audits.findAll().stream().filter(a->id.equals(a.getResourceId())&&"studio.image.release_confirmed_unknown".equals(a.getAction())).count());
+    }
+    /** 2026-10-22 起（54e161e97，用户明确调整）：无回执即失败，已出的图照扣、照留，剩余冻结退回原企业成员钱包，不自动重提。 */
+    @Test void unconfirmedImageSubmissionFailsKeepsDeliveredImageAndRefundsRemainderToOriginalMember() throws Exception {
+        var c=funded(100,1);var nativeClient=org.mockito.Mockito.mock(JusuanImageClient.class);ReflectionTestUtils.setField(imageWorker,"jusuanImages",nativeClient);
+        org.mockito.Mockito.when(nativeClient.supportsEndpoint(imageEndpoint)).thenReturn(true);var submissions=new AtomicInteger();
+        org.mockito.Mockito.when(nativeClient.generate(org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyList(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.anyString(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any(),org.mockito.ArgumentMatchers.any())).thenAnswer(inv->{
+            submissions.incrementAndGet();String key=inv.getArgument(4);java.util.function.Consumer<ObjectNode> checkpoint=inv.getArgument(10);
+            var state=json.createObjectNode().put("submitAttempted",true).put("requestBody","original-"+key).put("baseUrl",base).put("model","original-model");
+            if(key.endsWith("-image-0")){state.put("jobId","already-successful");checkpoint.accept(state);return Base64.getDecoder().decode(PNG);}
+            checkpoint.accept(state);throw new JusuanImageClient.Pending(false,new IllegalStateException("submission reply lost"));
+        });
+        String id=submit(c,image(c,2,true),200).path("data").path("id").asText();imageWorker.runBlocking(id);
+        var run=runs.findById(id).orElseThrow();
+        assertEquals("failed",run.getStatus());assertEquals("STUDIO_IMAGE_SUBMISSION_UNKNOWN",run.getErrorCode());
+        assertEquals(1,json.readTree(run.getOutputJson()).path("candidates").size());settled(c,id,8);assertEquals(92,memberWallet(c).getTotalBalance());
+        imageWorker.recoverNative(id);assertEquals(2,submissions.get());
+        // 已按新策略结束的任务，旧的核实释放接口不能再动它
+        var receipt=json.createObjectNode().put("imageIndex",1).put("evidence","供应商已核对原请求记录并确认没有受理和上游任务").put("confirmedNoUpstreamTask",true);
+        mvc.perform(post("/api/admin/ip-studio/runs/"+id+"/release-unknown").with(user("operator").roles("OPERATOR")).contentType("application/json").content(receipt.toString())).andExpect(status().isConflict());
+        assertEquals(92,memberWallet(c).getTotalBalance());assertEquals(1,ledger.findAll().stream().filter(l->id.equals(l.getReferenceId())&&l.getEntryType()==LedgerEntry.LedgerEntryType.SPEND).count());
     }
 
 }
