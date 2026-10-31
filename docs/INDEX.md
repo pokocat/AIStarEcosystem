@@ -232,6 +232,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 ## 7. 发布与验收记录（`docs/releases/`）
 
 - [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
+- [场景页创作流程（server + web-aiavatar + studio-admin 发布）](releases/studio-scene-flow-release-20261031.md)：main `fe4a654ce`，创作条件存进草稿、编导接上 H3、21 个视频场景 brief、结果接着用；无迁移（last-reviewed 2026-10-31）。
 - [微信扫码充值（server + admin + web-aiavatar 发布）](releases/studio-wechat-pay-release-20261030.md)：main `ad1075609`，Studio 充值收银台、微信公钥模式与订单核对；线上只有支付宝，微信待商户开通；无迁移（last-reviewed 2026-10-30）。
 - [图片尺寸不符照常交付（server 发布）](releases/studio-image-size-deliver-release-20261030.md)：server `83f817348`，尺寸与所选不一致或读不出尺寸的可用图片照常交付、只结算一次；同包带上场景模板恢复内置、事实边界、短剧导演台文案、报错处理四处既有后端改动；无迁移（last-reviewed 2026-10-30）。
 - [Studio 场景化改版上线（后端 + 新旧版开关）](releases/studio-scene-backend-production-release-20261030.md)：server `80edade0f`（V72）；web-aiavatar `beef9f87c` 正式站默认旧版、`?ui=new` 进新版可回旧版；studio-admin `0cf885c55` 补发（修看板字段不匹配，并上线场景模板页）；预览站已下线，账号中心未改（last-reviewed 2026-10-30）。
