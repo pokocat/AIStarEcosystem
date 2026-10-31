@@ -267,7 +267,11 @@ export interface StudioNodeMetadata {
    * AI 视频页「编导」的一轮（docs/studio-scene-creation.md §8）：用户这句话（没写就是空串）、是不是在改上一版，
    * 以及写这版脚本时的时长 / 画面 / 语言。脚本正文就是节点 content，任务和计费是这个节点上普通的文字任务。
    */
-  sceneDirector?: { ask: string; revision: boolean; duration: number; ratio: string; language: string; at: string };
+  sceneDirector?: { ask: string; revision: boolean; duration: number; ratio: string; language: string; at: string;
+    /** 写这一版时选的场景选项（出镜方式、语气…）：改稿沿用它，不回到默认值。2026-10-30 之前写的版本没有。 */
+    options?: Record<string, string> };
+  /** AI 图片页这一次出图用的条件（场景、补充要求、改过的描述、选项、模型和规格；参考图看请求里的 references）。「用这次的设置再做」按它放回，不把拼好的整段话当描述。 */
+  sceneImage?: { sceneId: string; supplement: string; custom?: string; options: Record<string, string>; model?: string; ratio: string; size?: string; count: number };
   recreation?: { mode?:"segments"; document?:boolean; materializedSegmentNos?:number[]; materializedAudioSourceKey?:string; resumeRunId?:string; study?:StudioFilmStudy; materializedRunId?:string; sourceNodeId: string; sourceStorageKey: string; sourceTitle: string; report?: StudioRecreationReport };
   kind: "recreation" | "text" | "script" | "shot" | "ip" | "work" | "assistant" | "batch" | "audio" | "check";
   /** Stable binding to a plan execution step; status and cost always come from IpRun / ip_plan_execution. */

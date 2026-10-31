@@ -2,11 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Download, ExternalLink, FolderOpen, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
-import type { IpImageAsset, IpProject, IpRun } from "@ai-star-eco/types";
+import { ChevronDown, Download, FolderOpen, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Sparkles, Square, Undo2, Upload, UserRound, X } from "lucide-react";
+import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
-import { cancelRun, fetchModels, readRun, type IpModelOption } from "@/canvas-bridge/api";
+import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { prepareStudioImageUpload } from "@/canvas-bridge/studio-image-file";
@@ -20,10 +20,10 @@ import { studioImageResolution, studioImageSizeLabel } from "../studio-generatio
 import { StudioSelect } from "../studio-select";
 import { HubTabBar } from "@/components/hub/ui";
 import { FREE_SCENE_ID, findImageScene, useSceneCatalog, type ImageScene } from "./scene-catalog";
-import { useSceneDraftStore } from "./scene-draft-store";
+import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, patchNode, resubmitRow, rowUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
+import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
 import { SceneEmpty, SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -57,6 +57,8 @@ export function SceneImageStudio() {
   const [size, setSize] = useState<string>();
   const [count, setCount] = useState(1);
   const [hint, setHint] = useState("");
+  // 说明（不是报错）：换场景时没带过来的参考图、「重新编辑」放回了什么。undo 是点「撤销」要回到的样子。
+  const [note, setNote] = useState<{ text: string; undo?: () => void }>();
   const [busy, setBusy] = useState(false);
   // 正在提交（含等用户确认费用）的那一行：这时候还谈不上「结果没确认」。
   const [submitting, setSubmitting] = useState<string>();
@@ -74,25 +76,34 @@ export function SceneImageStudio() {
 
   // 每个场景没提交的输入（补充要求、完整描述、选项、参考图）：换个场景再回来时放回去，不悄悄清空（2026-10-30 复测）。
   type Unsent = { supplement: string; custom?: string; picked: Record<string, string>; slots: (SceneUpload | undefined)[] };
-  const unsent = useRef(new Map<string, Unsent>());
+  // 离开时开着草稿的，只记草稿号：回来时重新打开那份草稿（条件存在草稿里），和 AI 视频一样（2026-10-30 界面评审）。
+  const unsent = useRef(new Map<string, Unsent | { draftId: string }>());
   const inputsNow = useRef<Unsent>({ supplement: "", picked: {}, slots: [] });
   inputsNow.current = { supplement, custom, picked, slots };
   const sceneNow = useRef<string>(undefined);
   const pickScene = useCallback((next: ImageScene, keepInputs = false) => {
     const leaving = sceneNow.current, now = inputsNow.current;
-    if (leaving && leaving !== next.id) {
-      if (now.supplement.trim() || now.custom !== undefined || Object.keys(now.picked).length || now.slots.some(Boolean)) unsent.current.set(leaving, now);
+    if (leaving && leaving !== next.id && !keepInputs) {
+      if (draftRef.current) unsent.current.set(leaving, { draftId: draftRef.current.id });
+      else if (now.supplement.trim() || now.custom !== undefined || Object.keys(now.picked).length || now.slots.some(Boolean)) unsent.current.set(leaving, now);
       else unsent.current.delete(leaving);
     }
     sceneNow.current = next.id;
     setSceneId(next.id);
     setRatio(next.ratio);
-    setHint("");
+    setHint(""); setNote(undefined);
     if (!keepInputs) {
       const back = unsent.current.get(next.id);
-      setSupplement(back?.supplement ?? ""); setCustom(back?.custom); setPicked(back?.picked ?? {});
-      // 回到填过的场景放回当时的参考图；没填过的，同一位置的参考图跟着走（换个人物场景时照片不用重放），多出来的位丢掉。
-      setSlots(old => back ? next.refs.map((_, i) => back.slots[i]) : next.refs.map((_, i) => old[i]));
+      const sent = back && !("draftId" in back) ? back : undefined;
+      setSupplement(sent?.supplement ?? ""); setCustom(sent?.custom); setPicked(sent?.picked ?? {});
+      // 回到填过的场景放回当时的参考图；没填过的，**同名**的参考图位跟着走（模特图还是模特图、人物照片还是人物照片），
+      // 别的位不带：按位置带会把「新面孔」放进「服装图」（模特换脸 → 服装上身），用途悄悄换了。带不过来的说一句。
+      const from = leaving ? findImageScene(catalogRef.current, leaving) : undefined;
+      const carried = sent ? next.refs.map((_, i) => sent.slots[i])
+        : next.refs.map(r => { const j = from?.refs.findIndex(x => x.label === r.label) ?? -1; return j >= 0 ? now.slots[j] : undefined; });
+      setSlots(carried);
+      const left = !sent && from ? from.refs.filter((r, i) => now.slots[i] && !next.refs.some(x => x.label === r.label)).map(r => `「${r.label}」`) : [];
+      if (left.length) setNote({ text: `${left.join("")}在这里用不上，先收起来了，回「${from!.title}」还在` });
     }
     writeQuery(next.id, draftRef.current?.id);
   }, []);
@@ -103,6 +114,21 @@ export function SceneImageStudio() {
     return shown;
   }, [show]);
 
+  /**
+   * 从左边列表换场景：开着草稿就离开它（草稿属于一个场景，条件也存在里面），回到那个场景时重新打开；
+   * 以前图片页换场景草稿还开着，新场景的条件写进了原来那份草稿，从「最近」打开就对不上了（2026-10-30 界面评审）。
+   */
+  const goToScene = (next: ImageScene) => {
+    const back = unsent.current.get(next.id);
+    if (back && "draftId" in back && back.draftId !== draftRef.current?.id) {
+      if (sceneNow.current && draftRef.current) unsent.current.set(sceneNow.current, { draftId: draftRef.current.id });
+      unsent.current.delete(next.id); void openDraft(back.draftId); return;
+    }
+    const leaving = draftRef.current;
+    pickScene(next);
+    if (leaving) { showDraft(undefined, begin()); writeQuery(next.id); }
+  };
+
   const openingId = useRef<string>(undefined);
   const openDraft = useCallback(async (id: string) => {
     const ticket = begin();
@@ -111,14 +137,17 @@ export function SceneImageStudio() {
     try {
       await settled(id);
       const project = await IpStudioApi.getProject(id);
+      // 接着上次做：离开时的场景、补充要求、改过的描述、选项、参考图、模型和规格都放回来（存在草稿里，见 sceneImageState）。
+      // 老草稿没存过，按最近一次出图推断。参考图地址先换好再摆，免得摆出来一排裂图。
+      const state = openedImageState(project.doc, catalogRef.current, project.sceneId);
+      const from = findImageScene(catalogRef.current, state.sceneId);
+      const restored = from ? await slotUploads(project.doc, state.slots, signKeys) : [];
       if (!showDraft(project, ticket)) return;
-      const from = findImageScene(catalogRef.current, project.sceneId);
       const latest = imageRows(project.doc)[0];
-      // 接着上次做：场景、比例和那次用的参考图都放回来，再生成一次就是一下的事。
-      if (from) { sceneNow.current = from.id; setSceneId(from.id); setRatio(latest?.metadata?.studio?.request?.aspectRatio || from.ratio);
-        const used = latest ? rowUploads(project.doc, latest) : [];
-        setSlots(from.refs.map((_, i) => used[i])); }
-      setSupplement(""); setCustom(undefined); setTab(latest ? "results" : "example");
+      if (from) { sceneNow.current = from.id; setSceneId(from.id); setRatio(state.ratio || from.ratio); setSlots(restored); }
+      setSupplement(state.supplement); setCustom(state.custom); setPicked(state.options);
+      setModelId(state.model); setSize(state.size); setCount(state.count); setNote(undefined);
+      setTab(latest ? "results" : "example");
       writeQuery(from?.id ?? FREE_SCENE_ID, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
     finally { setOpening(o => o === id ? undefined : o); if (openingId.current === id) openingId.current = undefined; }
@@ -196,6 +225,15 @@ export function SceneImageStudio() {
     : missing >= 0 ? `先放${scene.refs[missing].label}` : isFree && !supplement.trim() ? "写一句想要的画面"
     : ownText.length > ownLimit ? `最多 ${ownLimit} 字` : "";
 
+  // 页面上的条件写进草稿（有草稿时），刷新、再打开都还是这些。想要的比例 / 张数原样记，不记被换掉之后的。
+  const imageState = useMemo<StudioSceneImageState>(() => ({ sceneId: scene?.id ?? FREE_SCENE_ID, supplement, ...(custom !== undefined ? { custom } : {}), options: picked,
+    slots: (scene?.refs ?? []).map((_, i) => slots[i] ? { key: slots[i]!.key, name: slots[i]!.name } : null),
+    ...(modelId ? { model: modelId } : {}), ratio, ...(size ? { size } : {}), count }), [scene, supplement, custom, picked, slots, modelId, ratio, size, count]);
+  useSceneStateSave("sceneImageState", draft, imageState, persist, doc => openedImageState(doc, catalogRef.current, draft?.sceneId));
+  // 模型不支持想要的比例 / 张数时照实说按什么出，不悄悄换（AGENTS「生成面板不许静默钳制」）。
+  const specNote = [ratio !== usedRatio ? `这个模型出不了 ${ratio}，会按 ${usedRatio} 出` : "",
+    count !== usedCount ? `一次出不了 ${count} 张，会出 ${usedCount} 张` : ""].filter(Boolean).join("，");
+
   const upload = async (index: number, file: File) => {
     const ticket = session.current;
     setUploading(index); setHint("");
@@ -211,6 +249,7 @@ export function SceneImageStudio() {
   const generate = async () => {
     if (busy || !scene) return;
     if (blocker) { setHint(blocker); return; }
+    setNote(undefined);
     // 描述由服务端按场景拼（同一份目录、同一套校验）；缺什么它会直接说，就地显示。
     let prompt: string;
     try {
@@ -219,7 +258,11 @@ export function SceneImageStudio() {
         filled: slots.flatMap((s, i) => s ? [i] : []), ...(options ? { options } : {}) })).text;
     } catch (e) { setHint(sceneHintText(e, "描述没准备好，请再点一次")); return; }
     const refs = scene.refs.flatMap((r, i) => slots[i] ? [{ upload: slots[i]!, label: r.label }] : []);
-    void submitRow({ title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize, model: caps?.mock ? undefined : chosen?.endpointId, maxCost: quote });
+    const model = caps?.mock ? undefined : chosen?.endpointId;
+    // 这一次的条件另存一份（不是拼好的话）：「重新编辑」照它放回，选项和补充要求不会叠两遍。
+    const snapshot = { sceneId: scene.id, supplement, ...(custom !== undefined ? { custom } : {}), options: sceneOptionValues(scene.options, picked) ?? {},
+      ...(model ? { model } : {}), ratio: usedRatio, ...(usedSize ? { size: usedSize } : {}), count: usedCount };
+    void submitRow({ title: scene.title, prompt, refs, ratio: usedRatio, count: usedCount, size: usedSize, model, maxCost: quote, scene: snapshot });
   };
   /** 失败了（没扣积分）就在原来那一行按原样再来一次：同样的图、描述和设置，新的请求编号。 */
   const retry = (row: CanvasNodeData) => { if (row.metadata?.studio?.request) void submitRow(row.id); };
@@ -275,15 +318,37 @@ export function SceneImageStudio() {
     finally { setBusy(false); }
   };
 
+  /**
+   * 重新编辑：把那一次的场景、补充要求、改过的描述、选项、参考图、模型和规格放回输入区，改一处再生成。
+   * 放回的是**条件**，描述照样由服务端拼一次。以前把拼好的整段话塞进「完整描述」，再生成时选项和补充要求又拼一遍，
+   * 旧的角度和新选的角度同时出现在描述里（2026-10-30 审查 G02）。2026-10-30 之前的出图没有条件快照，只能放回那段话。
+   */
   const reuse = (row: CanvasNodeData) => {
-    const request = row.metadata?.studio?.request;
-    if (!request) return;
-    if (!scene) return;
-    if (draftRef.current) { const used = rowUploads(draftRef.current.doc, row); setSlots(scene.refs.map((_, i) => used[i])); }
-    // 原样再做一次：把那次真正发出去的整段描述放进「完整描述」，补充要求清空。
-    if (scene.id === FREE_SCENE_ID) setSupplement(request.prompt); else { setCustom(request.prompt); setSupplement(""); }
-    if (request.aspectRatio) setRatio(request.aspectRatio);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    const request = row.metadata?.studio?.request, snap = row.metadata?.studio?.sceneImage;
+    if (!request || !scene || !catalog) return;
+    const target = (snap && findImageScene(catalog, snap.sceneId)) || scene;
+    const used = draftRef.current ? rowUploads(draftRef.current.doc, row) : [];
+    // 点之前正在编辑的样子：「撤销」回到这里（放回会覆盖输入框，600ms 后还会存进草稿）。
+    const before = { scene, supplement, custom, picked, slots, modelId, ratio, size, count };
+    const put = (v: typeof before) => {
+      if (v.scene.id !== sceneNow.current) pickScene(v.scene, true);
+      setSlots(v.slots); setSupplement(v.supplement); setCustom(v.custom); setPicked(v.picked);
+      setModelId(v.modelId); setRatio(v.ratio); setSize(v.size); setCount(v.count);
+    };
+    if (snap) put({ scene: target, supplement: snap.supplement, custom: snap.custom, picked: snap.options, slots: target.refs.map((_, i) => used[i]),
+      modelId: snap.model, ratio: snap.ratio, size: snap.size, count: snap.count });
+    else put({ ...before, scene: target, slots: target.refs.map((_, i) => used[i]), ratio: request.aspectRatio || before.ratio,
+      ...(target.id === FREE_SCENE_ID ? { supplement: request.prompt } : { custom: request.prompt, supplement: "" }) });
+    // 当时的模型现在没有了就照实说换成了哪个，不悄悄换（审查「不悄悄钳制」同一条）。
+    const gone = snap?.model && !caps?.mock && candidates.length && !candidates.some(m => m.endpointId === snap.model)
+      ? `当时用的模型现在用不了，这次用「${(candidates.find(m => m.isDefault) ?? candidates[0]).name}」。` : "";
+    setHint("");
+    setNote({ text: `${gone}这次的设置放回来了，改好再生成。`, undo: () => { put(before); setNote(undefined); } });
+    // 输入区在页面上方（手机上在结果下面很远）：滚过去并把光标放进去，不然点了像没反应（2026-10-30 界面评审）。
+    setTimeout(() => {
+      document.querySelector(".scene-image-studio .scene-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+      (document.querySelector<HTMLTextAreaElement>(".scene-image-studio .scene-ask textarea"))?.focus({ preventScroll: true });
+    }, 0);
   };
 
   if (auth === "no-platform" || drafts.notEnrolled) return <PlatformGateScreen/>;
@@ -295,7 +360,7 @@ export function SceneImageStudio() {
   const sampleCovers = ["face-turnaround", "ip-sheet", "scene-swap"].flatMap(id => findImageScene(catalog, id) ?? []);
 
   return <main className="ip-brand-surface scene-studio scene-image-studio" data-studio-overlay-root>
-    <SceneList heading="AI 图片" current={scene.id} onPick={id => { const next = findImageScene(catalog, id); if (next) pickScene(next); }} top={free} groups={listGroups}/>
+    <SceneList heading="AI 图片" current={scene.id} onPick={id => { const next = findImageScene(catalog, id); if (next && (next.id !== scene.id || draft)) goToScene(next); }} top={free} groups={listGroups}/>
 
     <section className="scene-composer" aria-label="图片设置">
       <header className="scene-composer-head">
@@ -354,7 +419,9 @@ export function SceneImageStudio() {
         </div>
       </div>
       {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
-      {hint && <p className="scene-hint" role="status">{hint}</p>}
+      {hint ? <p className="scene-hint" role="status">{hint}</p>
+        : note || specNote ? <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
+          {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p> : null}
       {/* 不能生成时按钮就地写原因（先放什么、先写什么），不让人对着一个灰按钮猜。 */}
       <button type="button" className="scene-go" aria-label="立即生成图片" title={blocker || (caps?.mock ? "测试响应，不扣积分" : `预计 ${quote} 积分`)} disabled={busy || !!blocker} onClick={() => void generate()}>
         {busy ? <Loader2 size={18} className="studio-gallery-spinner"/> : null}<span>立即生成图片</span>
@@ -419,7 +486,7 @@ function ImageRow({ row, run, busy, submitting, onView, onReuse, onRetry, onConf
       {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
       {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
       {images[0] && <button type="button" onClick={() => void downloadMedia(images[0].content!, row.title, undefined, images[0].storageKey)}><Download size={13}/>下载</button>}
-      {request && <button type="button" onClick={onReuse}><ExternalLink size={13}/>用这段描述再做</button>}
+      {request && <button type="button" onClick={onReuse}><PencilLine size={13}/>重新编辑</button>}
     </div>
   </li>;
 }

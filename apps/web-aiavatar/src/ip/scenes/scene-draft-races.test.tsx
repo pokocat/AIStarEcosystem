@@ -23,7 +23,7 @@ vi.mock("@/components/hub/auth", () => ({ useRequireAuth: () => "ok", PlatformGa
 vi.mock("@/components/hub/ui", () => ({ HubTabBar: () => null }));
 vi.mock("../api", () => ({ IpStudioApi: { uploadImage: api.uploadImage, listProjects: api.listProjects, createProject: api.createProject, updateProject: api.updateProject, getProject: api.getProject,
   listScenes: api.listScenes, composeScene: api.composeScene } }));
-vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels }));
+vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: api.readRun, cancelRun: api.cancelRun, fetchStudioVideoModels: api.videoModels, signKeys: api.signKeys }));
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
@@ -88,8 +88,8 @@ test("image: A's save coming back after B was opened finishes A's work and leave
 
   // A 的提交照样做完：任务交给 A，结果也写回 A。
   await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything()));
-  await waitFor(() => expect(saves("IPP-A")).toBe(2));
-  expect(store.get("IPP-A")!.doc.nodes.some(n => n.metadata?.studio?.runId === "run-A")).toBe(true);
+  // 断内容不断次数：换到 B 时，A 还没写出去的创作条件也要补写给 A（见 useSceneStateSave），A 因此可能多存一次。
+  await waitFor(() => expect(store.get("IPP-A")!.doc.nodes.some(n => n.metadata?.studio?.runId === "run-A")).toBe(true));
   // 页面和 B 都没被动过。
   expect(continueLink()).toBe("/projects/IPP-B");
   expect(window.location.search).toContain("IPP-B");

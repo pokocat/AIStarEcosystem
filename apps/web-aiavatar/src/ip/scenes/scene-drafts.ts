@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
-import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun, StudioSceneInputs } from "@ai-star-eco/types";
-import type { StudioReference, StudioRunRequest, StudioVideoSettings } from "@ai-star-eco/types/ip-studio-workflow";
+import type { IpProject, IpProjectDoc, IpProjectSummary, IpRun, StudioSceneCatalog, StudioSceneImageState, StudioSceneInputs, StudioSceneUpload, StudioSceneVideoState } from "@ai-star-eco/types";
+import type { StudioReference, StudioRunRequest, StudioVideoSettings, StudioNodeMetadata } from "@ai-star-eco/types/ip-studio-workflow";
 import { CanvasNodeType, type CanvasConnection, type CanvasNodeData } from "@/canvas/types/canvas";
 import { applyStudioRunToDocument, makeStudioNode } from "@/canvas-bridge/studio-nodes";
 import { IpStudioApi } from "../api";
@@ -59,6 +59,8 @@ function referenceNode(nodes: CanvasNodeData[], upload: SceneUpload, title: stri
 export function addImageRow(doc: IpProjectDoc, input: {
   title: string; prompt: string; refs: { upload: SceneUpload; label: string }[];
   ratio: string; count: number; size?: string; model?: string; maxCost?: number;
+  /** 这一次的创作条件（不是拼好的话）：「重新编辑」按它放回。 */
+  scene?: SceneImageSnapshot;
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
   const y = rowBottom(nodes);
@@ -69,7 +71,8 @@ export function addImageRow(doc: IpProjectDoc, input: {
     aspectRatio: input.ratio, count: input.count, ...(input.size ? { size: input.size } : {}), ...(input.model ? { model: input.model } : {}),
     ...(input.maxCost !== undefined ? { maxCost: input.maxCost } : {}) };
   const node: CanvasNodeData = { ...target, title: input.title, position: { x: refNodes.length ? 460 : 100, y },
-    metadata: { ...target.metadata, prompt: input.prompt, status: "loading", studio: { ...target.metadata!.studio!, request, references } } };
+    metadata: { ...target.metadata, prompt: input.prompt, status: "loading", studio: { ...target.metadata!.studio!, request, references,
+      ...(input.scene ? { sceneImage: input.scene } : {}) } } };
   const fresh = refNodes.filter(r => !nodes.includes(r));
   const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
     ...refNodes.map(r => ({ id: nanoid(), fromNodeId: r.id, toNodeId: node.id }))];
@@ -117,7 +120,7 @@ export function rowUploads(doc: IpProjectDoc, row: CanvasNodeData): (SceneUpload
  */
 export function addScriptNode(doc: IpProjectDoc, input: {
   ask: string; revision: boolean; prompt: string; materialIds: string[]; imageIds: string[];
-  duration: number; ratio: string; language: string; model?: string; maxCost?: number;
+  duration: number; ratio: string; language: string; model?: string; maxCost?: number; options?: Record<string, string>;
 }): { doc: IpProjectDoc; request: StudioRunRequest; nodeId: string } {
   const nodes = doc.nodes as CanvasNodeData[];
   const previous = scriptNodes(doc).at(-1);
@@ -129,7 +132,8 @@ export function addScriptNode(doc: IpProjectDoc, input: {
   const at = previous ? { x: previous.position.x, y: previous.position.y + previous.height + 80 } : { x: 520, y: 120 };
   const node: CanvasNodeData = { ...target, title: previous ? "视频脚本 · 修改" : "视频脚本", position: at, width: 480, height: 360,
     metadata: { ...target.metadata, content, status: "loading", studio: { ...target.metadata!.studio!, request,
-      sceneDirector: { ask: input.ask, revision: input.revision, duration: input.duration, ratio: input.ratio, language: input.language, at: new Date().toISOString() } } } };
+      sceneDirector: { ask: input.ask, revision: input.revision, duration: input.duration, ratio: input.ratio, language: input.language, at: new Date().toISOString(),
+        ...(input.options ? { options: input.options } : {}) } } } };
   const connections: CanvasConnection[] = [...(doc.connections as CanvasConnection[]),
     ...(previous ? [previous.id] : input.materialIds).map(from => ({ id: nanoid(), fromNodeId: from, toNodeId: node.id }))];
   return { doc: { ...doc, nodes: [...nodes, node], connections }, request, nodeId: node.id };
@@ -211,4 +215,91 @@ export function withSceneInput(doc: IpProjectDoc, kind: SceneInputKind, key: str
   if (kind === "image") next.images = change === "remove" ? now.images.filter(k => k !== key) : [...now.images.filter(k => k !== key), key].slice(0, maxImages);
   else next[kind] = change === "remove" ? (now[kind] === key ? null : now[kind]) : key;
   return { ...doc, sceneInputs: next };
+}
+
+export type SceneImageSnapshot = NonNullable<StudioNodeMetadata["sceneImage"]>;
+
+/** 键排好序的 JSON：比较「草稿里存的条件」和「页面上现在的条件」是否一样，不受键顺序和 undefined 影响。 */
+export function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_k, v) => v && typeof v === "object" && !Array.isArray(v)
+    ? Object.fromEntries(Object.keys(v).sort().filter(k => v[k] !== undefined).map(k => [k, v[k]])) : v) ?? "null";
+}
+
+/**
+ * 打开一份 AI 图片草稿时放回哪些条件：存过就用存的；老草稿没存过，按最近一次出图的快照，再没有就只放回场景、比例和那次的参考图。
+ * 返回的参考图只有 key 和名字，地址由调用方按 key 找（画布节点上的地址服务端会重签，找不到再换签）。
+ */
+export function imageStateOf(doc: IpProjectDoc, fallbackScene: string): StudioSceneImageState {
+  if (doc.sceneImageState) return doc.sceneImageState;
+  const latest = imageRows(doc)[0];
+  const snap = latest?.metadata?.studio?.sceneImage;
+  const request = latest?.metadata?.studio?.request;
+  const slots = latest ? rowSlots(doc, latest) : [];
+  if (snap) return { sceneId: snap.sceneId, supplement: snap.supplement, custom: snap.custom, options: snap.options, slots,
+    model: snap.model, ratio: snap.ratio, size: snap.size, count: snap.count };
+  return { sceneId: fallbackScene, supplement: "", options: {}, slots, ratio: request?.aspectRatio, ...(request?.count ? { count: request.count } : {}) };
+}
+
+/** 那一次出图用的参考图（按请求里的顺序），只要 key 和名字。 */
+export function rowSlots(doc: IpProjectDoc, row: CanvasNodeData): StudioSceneUpload[] {
+  const nodes = doc.nodes as CanvasNodeData[];
+  return (row.metadata?.studio?.request?.references ?? []).map(ref => {
+    const node = nodes.find(n => n.metadata?.storageKey === ref.storageKey && n.id !== row.id);
+    return { key: ref.storageKey, name: node?.title || "参考图" };
+  });
+}
+
+/**
+ * 打开一份 AI 视频草稿时放回哪些条件：存过就用存的；老草稿按最近一版脚本记的语言、时长、画面和选项。
+ * 素材另看 sceneInputsOf，视频模型另看 sceneVideoModel。
+ */
+export function videoStateOf(doc: IpProjectDoc): StudioSceneVideoState {
+  if (doc.sceneVideoState) return doc.sceneVideoState;
+  const turn = scriptNodes(doc).at(-1)?.metadata?.studio?.sceneDirector;
+  return { text: "", options: turn?.options ?? {}, ...(turn ? { language: turn.language, duration: turn.duration, ratio: turn.ratio } : {}) };
+}
+
+/** 这条视频照的是哪一版脚本（脚本节点连进视频节点）。 */
+export function scriptOfRow(doc: IpProjectDoc, rowId: string): string | undefined {
+  const scripts = new Set(scriptNodes(doc).map(n => n.id));
+  return (doc.connections as CanvasConnection[]).find(c => c.toNodeId === rowId && scripts.has(c.fromNodeId))?.fromNodeId;
+}
+
+/**
+ * 记下的参考图（只有 key）换成能显示的地址：草稿画布上有这个文件的节点就用节点上的（服务端出 wire 时按 key 重签过），
+ * 没有的（传了还没出过图、从资产库选的）按 key 换一次签。换不到的格子留空，用户重放一张就行，不拿过期地址摆一张裂图。
+ */
+export async function slotUploads(doc: IpProjectDoc, slots: (StudioSceneUpload | null | undefined)[],
+  sign: (keys: string[]) => Promise<Record<string, string>>): Promise<(SceneUpload | undefined)[]> {
+  const nodes = doc.nodes as CanvasNodeData[];
+  const onCanvas = (key: string) => [...nodes].reverse().find(n => n.metadata?.storageKey === key && n.metadata.content)?.metadata?.content as string | undefined;
+  const missing = [...new Set(slots.flatMap(s => s && !onCanvas(s.key) ? [s.key] : []))];
+  let signed: Record<string, string> = {};
+  if (missing.length) { try { signed = await sign(missing); } catch { /* 留空，见上 */ } }
+  return slots.map(s => {
+    const url = s ? onCanvas(s.key) ?? signed[s.key] : undefined;
+    return s && url ? { key: s.key, url, name: s.name } : undefined;
+  });
+}
+
+/**
+ * 打开一份 AI 图片草稿时页面上会摆出的条件（imageStateOf 再按场景补齐参考图位、比例和张数）。
+ * 页面恢复和「页面上的跟草稿里的一样吗」用的是同一份：只是打开一份老草稿不会多存一版（多存会改它的更新时间，「最近」的顺序就乱了）。
+ */
+export function openedImageState(doc: IpProjectDoc, catalog: StudioSceneCatalog | undefined, projectSceneId?: string | null): StudioSceneImageState {
+  const recorded = catalog?.image.find(s => s.id === projectSceneId);
+  const state = imageStateOf(doc, recorded?.id ?? "free");
+  const scene = catalog?.image.find(s => s.id === state.sceneId) ?? recorded;
+  return { ...state, sceneId: scene?.id ?? state.sceneId, slots: (scene?.refs ?? []).map((_, i) => state.slots[i] ?? null),
+    ...(state.ratio || scene?.ratio ? { ratio: state.ratio || scene?.ratio } : {}), count: state.count ?? 1 };
+}
+
+/** 打开一份 AI 视频草稿时页面上会摆出的条件（同上，页面恢复和比较用同一份）。停在「生成视频」的那版脚本已经删了就回到编导。 */
+export function openedVideoState(doc: IpProjectDoc, defaults: { language: string; duration: number; ratio: string }): StudioSceneVideoState {
+  const state = videoStateOf(doc), scripts = scriptNodes(doc);
+  const turn = scripts.at(-1)?.metadata?.studio?.sceneDirector;
+  const edit = state.edit && (!state.edit.scriptId || scripts.some(s => s.id === state.edit!.scriptId)) ? state.edit : undefined;
+  return { text: state.text, options: state.options, language: state.language ?? defaults.language, ...(state.tier ? { tier: state.tier } : {}),
+    duration: state.duration ?? turn?.duration ?? defaults.duration, ratio: state.ratio ?? turn?.ratio ?? defaults.ratio,
+    optimize: state.optimize ?? true, ...(edit ? { edit } : {}) };
 }

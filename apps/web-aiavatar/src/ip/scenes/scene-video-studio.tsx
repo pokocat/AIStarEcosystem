@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowUp, Check, ChevronDown, Clapperboard, Copy, Download, FolderOpen, ImagePlus, Languages, Loader2, Mic, PencilLine, Plus,
   RotateCcw, Sparkles, Square, Upload, UserRound, Video, Wand2, X } from "lucide-react";
-import type { IpProject, IpRun, StudioMediaImportResult, StudioSceneInputs } from "@ai-star-eco/types";
+import type { IpProject, IpRun, StudioMediaImportResult, StudioSceneInputs, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -24,8 +24,8 @@ import { studioEntryHref } from "../studio-entry";
 import { StudioSelect } from "../studio-select";
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
-import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, patchNode, resubmitRow, sceneInputsOf, scriptNodes, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
-import { useSceneDraftStore } from "./scene-draft-store";
+import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
+import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { SceneExample, SceneList, SceneNoModel, SceneOptions, SceneRecent, SceneResultTabs, SceneThumb, sceneFailureText, sceneHintText, sceneOptionValues, useScenePopover } from "./scene-layout";
@@ -40,6 +40,8 @@ const RECREATION = "reference-video-recreation";
 const EMPTY_DOC = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 
 const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/video", scene, draft);
+/** 草稿里没记过的条件按场景默认值。 */
+const videoDefaults = (scene?: VideoScene) => ({ language: LANGUAGES[0], duration: scene?.duration ?? 15, ratio: scene?.ratio ?? "9:16" });
 
 /**
  * 「AI 视频」（照参考站「超级编导」的出片方式，docs/studio-scene-creation.md §8）：
@@ -81,6 +83,8 @@ export function SceneVideoStudio() {
   const [tier, setTier] = useState<string>();
   const [optimize, setOptimize] = useState(true);
   const [hint, setHint] = useState("");
+  // 说明（不是报错，灰字一行）：换场景时没带过来的素材、「重新编辑」放回了什么。undo 是点「撤销」要回到的样子。
+  const [note, setNote] = useState<{ text: string; undo?: () => void }>();
   const [live, setLive] = useState<Record<string, IpRun>>({});
   const [copied, setCopied] = useState<string>();
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
@@ -109,13 +113,19 @@ export function SceneVideoStudio() {
 
   // ── 场景与草稿 ────────────────────────────────────────────────────────
   const sceneNow = useRef<string>(undefined);
+  /** 只管场景本身的默认值（时长、画面）；输入和素材怎么跟着走见 goToScene。 */
   const pickScene = useCallback((next: VideoScene) => {
     sceneNow.current = next.id;
     setSceneId(next.id); setDuration(next.duration); setRatio(next.ratio); setPicked({});
-    setImages(old => old.slice(0, next.images.max ?? 6));
-    if (!next.video) setVideo(undefined);
     writeQuery(next.id, draftRef.current?.id);
   }, []);
+
+  // 每个场景没发出去的东西：一句话、选项、素材。离开时开着草稿就只记草稿号，回来时打开那份草稿（2026-10-30 审查 G03：
+  // 以前开着草稿换场景全清空、没草稿换场景文字和图一起带走，两种做法不一样，而且门店照片会被当成商品图用）。
+  type Unsent = { text: string; picked: Record<string, string>; images: Media[]; character?: Media; voice?: Media; video?: Media };
+  const unsent = useRef(new Map<string, Unsent | { draftId: string }>());
+  const inputsNow = useRef<Unsent>({ text: "", picked: {}, images: [] });
+  inputsNow.current = { text, picked, images, character, voice, video };
 
   const showDraft = useCallback((project: IpProject | undefined, ticket?: number) => {
     const shown = show(project, ticket);
@@ -127,6 +137,38 @@ export function SceneVideoStudio() {
     showDraft(undefined, begin()); setText(""); setImages([]); setCharacter(undefined); setVoice(undefined); setVideo(undefined);
     setMode("talk"); setScriptId(undefined); setPrompt(""); setHint(""); setTab("example");
     if (next) writeQuery(next.id);
+  };
+
+  /**
+   * 换到另一个场景（左边列表、地址栏、前进后退都走这里）：
+   * 回到来过的场景放回当时没发的输入，离开时开着草稿的就重新打开那份草稿；没来过的场景从空的开始，
+   * 只有同名的素材位跟着走（商品图 → 商品图），出镜人物、声音、参考视频看新场景有没有这一格。没带过来的就地说一句。
+   */
+  const goToScene = (next: VideoScene) => {
+    const leaving = sceneNow.current, now = inputsNow.current, open = draftRef.current;
+    if (leaving && leaving !== next.id) {
+      if (open) unsent.current.set(leaving, { draftId: open.id });
+      else if (now.text.trim() || Object.keys(now.picked).length || now.images.length || now.character || now.voice || now.video) unsent.current.set(leaving, now);
+      else unsent.current.delete(leaving);
+    }
+    const back = unsent.current.get(next.id);
+    if (back && "draftId" in back) { unsent.current.delete(next.id); if (back.draftId !== open?.id) { void openDraft(back.draftId); return; } }
+    const from = findVideoScene(catalogRef.current, leaving);
+    if (open) reset(next);
+    pickScene(next);
+    if (back && !("draftId" in back)) {
+      setText(back.text); setPicked(back.picked); setImages(back.images); setCharacter(back.character); setVoice(back.voice); setVideo(back.video);
+      setNote(undefined);
+      return;
+    }
+    const keepImages = !!from && from.images.label === next.images.label;
+    const carried = { images: keepImages ? now.images.slice(0, next.images.max ?? 6) : [],
+      character: next.character ? now.character : undefined, voice: next.voice ? now.voice : undefined, video: next.video ? now.video : undefined };
+    setText(""); setImages(carried.images); setCharacter(carried.character); setVoice(carried.voice); setVideo(carried.video);
+    const dropped = [now.images.length > carried.images.length && from ? from.images.label : "", now.character && !carried.character ? "出镜人物" : "",
+      now.voice && !carried.voice ? "声音" : "", now.video && !carried.video ? "参考视频" : ""].filter(Boolean);
+    // 单独一行灰字，不借用 hint：hint 是卡点（金色），借用会顶掉花费那行（2026-10-30 界面评审）。
+    setNote(dropped.length && from ? { text: `${dropped.join("、")}在「${next.title}」用不上，先收起来了，回「${from.title}」还在` } : undefined);
   };
 
   /** 打开一份草稿：场景、素材、最新脚本都放回来，接着聊或接着出片。 */
@@ -141,7 +183,6 @@ export function SceneVideoStudio() {
       const from = findVideoScene(catalogRef.current, project.sceneId);
       if (from) { sceneNow.current = from.id; setSceneId(from.id); setRatio(from.ratio); }
       const nodes = project.doc.nodes as CanvasNodeData[];
-      const scripts = scriptNodes(project.doc), latest = scripts.at(-1);
       const media = (key: string | null): Media | undefined => {
         // 同一个文件可能放过几次，取最新那个节点
         const n = key ? [...nodes].reverse().find(x => x.metadata?.storageKey === key) : undefined;
@@ -157,8 +198,13 @@ export function SceneVideoStudio() {
       setVideo(media(inputs.video));
       // 选过的视频模型跟着草稿走；老草稿没记过就看最近一条出片用的模型。
       setModelId(project.doc.sceneVideoModel ?? videoRows(project.doc)[0]?.metadata?.studio?.request?.model ?? undefined);
-      if (latest?.metadata?.studio?.sceneDirector) { setDuration(latest.metadata.studio.sceneDirector.duration); setRatio(latest.metadata.studio.sceneDirector.ratio); }
-      setMode("talk"); setScriptId(undefined); setText(""); setTab(videoRows(project.doc).length ? "results" : "example");
+      // 离开时的条件放回来：没发的那句话、选项、台词语言、清晰度、时长、画面、要不要先优化，停在「生成视频」时连改了一半的脚本一起
+      // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
+      const state = openedVideoState(project.doc, videoDefaults(from));
+      setText(state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
+      setDuration(state.duration!); setRatio(state.ratio!);
+      setMode(state.edit ? "generate" : "talk"); setScriptId(state.edit?.scriptId); setPrompt(state.edit?.prompt ?? ""); setNote(undefined);
+      setHint(""); setTab(videoRows(project.doc).length ? "results" : "example");
       writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
     finally { if (openingId.current === id) openingId.current = undefined; }
@@ -174,8 +220,7 @@ export function SceneVideoStudio() {
       return;
     }
     const next = findVideoScene(catalog, query.scene) ?? findVideoScene(catalog, DEFAULT_SCENE) ?? catalog.video[0];
-    if (draftRef.current) { reset(next); pickScene(next); return; }
-    if (next && next.id !== sceneNow.current) pickScene(next);
+    if (next && (draftRef.current || next.id !== sceneNow.current)) goToScene(next);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalog, ready, query.scene, query.draft, openDraft, pickScene]);
 
@@ -323,7 +368,7 @@ export function SceneVideoStudio() {
     if (busy || uploading || writing) return;
     if (blocker) { setHint(blocker); return; }
     if (recreation) { await handoff(); return; }
-    setBusy(true); setHint("");
+    setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
     let nodeId: string | undefined, posted = false, projectId: string | undefined;
     try {
@@ -341,7 +386,7 @@ export function SceneVideoStudio() {
         const imageIds = placed.filter(p => p.media.mediaType === "image").map(p => p.node.id);
         const made = addScriptNode({ ...doc, nodes }, {
           ask, revision: revising, prompt: composed.text, materialIds: placed.map(p => p.node.id), imageIds: vision ? imageIds : [],
-          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost });
+          duration: usedDuration, ratio, language, model: caps?.mock ? undefined : textModel?.endpointId, maxCost: scriptCost, options: sceneOptionValues(scene!.options, picked) });
         request = made.request; nodeId = made.nodeId;
         // 用了哪些素材记进草稿：重开时原样放回（不看图的模型不记读图列表，不能靠它推断）。
         return { ...made.doc, sceneInputs: chosen };
@@ -418,6 +463,35 @@ export function SceneVideoStudio() {
 
   // ── 按脚本出片 ────────────────────────────────────────────────────────
   const useScript = (row: CanvasNodeData) => { setScriptId(row.id); setPrompt(row.metadata?.content || ""); setMode("generate"); setHint(""); };
+  /**
+   * 重新编辑（成功的视频）：成功了但不满意时用。把这条用的脚本（含出片前改过的字）、时长、画面、清晰度、模型和要不要先优化放回「生成视频」，
+   * 改一处再出；旧的这条留着。素材用现在放着的（编辑器里列着会用上哪几份）。
+   */
+  const reuseVideo = (row: CanvasNodeData) => {
+    const request = row.metadata?.studio?.request, doc = draftRef.current?.doc;
+    if (!request) return;
+    // 点之前的样子：「撤销」回到这里（放回会覆盖正在改的脚本）。
+    const before = { mode, scriptId, prompt, duration, ratio, tier, optimize, model: chosenVideo?.endpointId };
+    const put = (v: typeof before) => {
+      setMode(v.mode); setScriptId(v.scriptId); setPrompt(v.prompt); setDuration(v.duration); setRatio(v.ratio); setTier(v.tier); setOptimize(v.optimize);
+      if (v.model && v.model !== chosenVideo?.endpointId && videoModels?.some(m => m.endpointId === v.model)) chooseVideoModel(v.model);
+    };
+    put({ mode: "generate", scriptId: doc ? scriptOfRow(doc, row.id) : undefined, prompt: request.prompt || "", duration: request.durationSec ?? duration,
+      ratio: request.aspectRatio ?? ratio, tier: request.video?.resolutionTier ?? tier, optimize: request.video?.optimizePrompt !== false, model: request.model ?? undefined });
+    const gone = request.model && videoModels && !videoModels.some(m => m.endpointId === request.model) && chosenVideo
+      ? `当时用的模型现在用不了，这次用「${chosenVideo.name}」。` : "";
+    setHint("");
+    setNote({ text: `${gone}这条的脚本和设置放回来了，素材用的是现在放着的。`, undo: () => { put(before); setNote(undefined); } });
+    // 编辑器在页面上方（手机上离结果很远）：滚过去、光标放进脚本，不然点了像没反应（2026-10-30 界面评审）。
+    setTimeout(() => {
+      document.querySelector(".scene-video-studio .scene-video-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+      document.querySelector<HTMLTextAreaElement>('.scene-video-studio textarea[aria-label="视频脚本"]')?.focus({ preventScroll: true });
+    }, 0);
+  };
+  // 页面上的条件写进草稿（有草稿时）：刷新、从「最近」再打开都从离开的地方接着来。素材另记在 sceneInputs、视频模型在 sceneVideoModel。
+  const videoState = useMemo<StudioSceneVideoState>(() => ({ text, options: picked, language, ...(tier ? { tier } : {}), duration, ratio, optimize,
+    ...(mode === "generate" ? { edit: { ...(scriptId ? { scriptId } : {}), prompt } } : {}) }), [text, picked, language, tier, duration, ratio, optimize, mode, scriptId, prompt]);
+  useSceneStateSave("sceneVideoState", draft, videoState, persist, doc => openedVideoState(doc, videoDefaults(findVideoScene(catalogRef.current, draft?.sceneId))));
   const materials: SceneVideoMaterial[] = useMemo(() => {
     const nodes = doc.nodes as CanvasNodeData[];
     const nodeOf = (key: string) => nodes.find(n => n.metadata?.storageKey === key)?.id ?? "";
@@ -449,7 +523,7 @@ export function SceneVideoStudio() {
   const generate = async () => {
     if (busy || !scene || !chosenVideo || !settings) return;
     if (videoBlocker) { setHint(videoBlocker); return; }
-    setBusy(true); setHint("");
+    setBusy(true); setHint(""); setNote(undefined);
     const ticket = session.current;
     let nodeId: string | undefined, posted = false, projectId: string | undefined;
     try {
@@ -489,6 +563,10 @@ export function SceneVideoStudio() {
   if (!catalog || !scene) return <main className="ip-brand-surface scene-studio scene-video-studio"><div className="scene-loading"><Loader2 size={20} className="studio-gallery-spinner"/>正在读取场景</div></main>;
   const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
   const tooLong = !!contract && scene.duration > contract.maxSeconds;
+  // 选的时长这个模型出不了（换了模型之后常见）：照实说按几秒出，不悄悄换。场景默认时长超上限另有下面那句「交给创作助手分段做」。
+  const durationNote = !recreation && contract && usedDuration !== duration && !(tooLong && duration === scene.duration)
+    ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子`
+      : `这个模型只能做 ${contract.minSeconds}–${contract.maxSeconds} 秒，会按 ${usedDuration} 秒出` : "";
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
       <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
@@ -500,7 +578,7 @@ export function SceneVideoStudio() {
     </div>;
 
   return <main className="ip-brand-surface scene-studio scene-video-studio" data-studio-overlay-root>
-    <SceneList heading="AI 视频" current={scene.id} onPick={id => { const next = findVideoScene(catalog, id); if (next) { if (draftRef.current) reset(next); pickScene(next); } }} groups={groups}/>
+    <SceneList heading="AI 视频" current={scene.id} onPick={id => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); }} groups={groups}/>
 
     <section className="scene-composer scene-video-composer" aria-label="编导">
       <header className="scene-composer-head">
@@ -562,6 +640,8 @@ export function SceneVideoStudio() {
             {busy || writing ? <Loader2 size={18} className="studio-gallery-spinner"/> : <ArrowUp size={19}/>}</button>
           <p className={`scene-video-hint${hint || blocker ? " is-blocked" : ""}`} role="status">{hint || blocker || talkCost}</p>
           {!hint && !blocker && !recreation && plan?.note && <p className="scene-video-hint is-note">{plan.note}</p>}
+          {!hint && !blocker && durationNote && <p className="scene-video-hint is-note">{durationNote}</p>}
+          {note && <p className="scene-video-hint is-note" role="status">{note.text}{note.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
         </footer>
         {!recreation && tooLong && <p className="scene-director-long">当前模型一条最长 {contract!.maxSeconds} 秒。想做 {scene.duration} 秒这样更长的片子？
           <button type="button" disabled={busy} onClick={() => void handoff()}>交给创作助手分段做</button></p>}
@@ -569,7 +649,7 @@ export function SceneVideoStudio() {
       : <GenerateEditor prompt={prompt} onPrompt={p => { setPrompt(p); setHint(""); }} onBack={() => setMode("talk")}
           models={videoModels ?? []} model={chosenVideo} onModel={chooseVideoModel} tiers={tiers.map(t => t.tier)} tier={usedTier} onTier={setTier}
           durations={durations} duration={usedDuration} onDuration={setDuration} ratio={ratio} onRatio={setRatio}
-          used={plan?.used ?? []} note={plan?.note} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
+          used={plan?.used ?? []} restored={note} note={[plan?.note, durationNote].filter(Boolean).join("；") || undefined} quote={videoQuote} mock={!!caps?.mock} blocker={hint || videoBlocker} busy={busy}
           optimize={optimize} onOptimize={setOptimize} maxChars={contract?.promptMaxChars} onGenerate={() => void generate()}/>}
       {videoModels && !videoModels.length && !caps?.mock && mode === "generate" && <SceneNoModel kind="视频"/>}
     </section>
@@ -586,7 +666,7 @@ export function SceneVideoStudio() {
           </ol>
         </SceneExample>
         : rows.length ? <ol className="scene-row-list">{rows.map(row => <VideoRow key={row.id} row={row} run={live[row.id]} busy={busy} submitting={submitting === row.id}
-            onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)}
+            onRetry={() => void retry(row)} onConfirm={() => void confirmOriginal(row)} onReuse={() => reuseVideo(row)}
             onStop={() => { const id = row.metadata?.studio?.runId; if (id) void cancelRun(id).catch(e => showFailure({ action: "停止生成", error: e })); }}/>)}</ol>
         : <div className="scene-empty"><h2>还没有生成</h2><p>编导写好脚本后，点「用这个脚本生成」，视频会出现在这里。</p></div>}
       </div>
@@ -643,11 +723,11 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onRevis
 
 /** 生成模式（照参考站「应用脚本」之后）：脚本可以再改，选模型、清晰度、时长、画面，看清价格再生成。 */
 function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tiers, tier, onTier, durations, duration, onDuration, ratio, onRatio,
-  used, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
+  used, restored, note, quote, mock, blocker, busy, optimize, onOptimize, maxChars, onGenerate }: {
   prompt: string; onPrompt: (v: string) => void; onBack: () => void;
   models: VideoStudioModel[]; model?: VideoStudioModel; onModel: (id: string) => void;
   tiers: string[]; tier?: string; onTier: (t: string) => void; durations: number[]; duration: number; onDuration: (n: number) => void;
-  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; note?: string; quote: number | null; mock: boolean;
+  ratio: string; onRatio: (r: string) => void; used: SceneVideoMaterial[]; restored?: { text: string; undo?: () => void }; note?: string; quote: number | null; mock: boolean;
   blocker: string; busy: boolean; optimize: boolean; onOptimize: (on: boolean) => void; maxChars?: number; onGenerate: () => void;
 }) {
   const optimizable = !!model?.supportsPromptOptimization;
@@ -660,6 +740,7 @@ function GenerateEditor({ prompt, onPrompt, onBack, models, model, onModel, tier
       {used.length ? <span className="scene-generate-refs">{used.map(m => <i key={m.key}>{m.mediaType === "image" ? `图${++image}` : "声音"} {m.title}</i>)}</span> : <span>只按脚本生成</span>}
       {maxChars ? <small className={Array.from(prompt).length > maxChars ? "is-over" : undefined}>{Array.from(prompt).length} / {maxChars}</small> : null}
     </div>
+    {restored && <p className="scene-generate-note is-note" role="status">{restored.text}{restored.undo && <button type="button" onClick={restored.undo}>撤销</button>}</p>}
     {note && <p className="scene-generate-note" role="status">{note}</p>}
     <div className="scene-generate-settings">
       {models.length > 1 && <div className="scene-gen-row"><span>模型</span>
@@ -687,8 +768,8 @@ function ChoiceRow({ label, options, value, onChange }: { label: string; options
 }
 
 /** 一条视频：排队 / 生成中 / 失败（说人话）/ 播放器 + 下载。不显示假的百分比。 */
-function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onStop }: {
-  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onRetry: () => void; onConfirm: () => void; onStop: () => void;
+function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onReuse, onStop }: {
+  row: CanvasNodeData; run?: IpRun; busy: boolean; submitting: boolean; onRetry: () => void; onConfirm: () => void; onReuse: () => void; onStop: () => void;
 }) {
   const meta = row.metadata, request = meta?.studio?.request;
   const loading = meta?.status === "loading", accepted = !!meta?.studio?.runId;
@@ -709,6 +790,7 @@ function VideoRow({ row, run, busy, submitting, onRetry, onConfirm, onStop }: {
       {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={13}/>确认原任务</button>}
       {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={13}/>重新生成</button>}
       {url && <button type="button" onClick={() => void downloadMedia(url, row.title, undefined, meta?.storageKey)}><Download size={13}/>下载</button>}
+      {url && request && <button type="button" disabled={busy} onClick={onReuse} title="把这条的脚本和设置放回编辑器，改好再出；这条留着"><PencilLine size={13}/>重新编辑</button>}
     </div>
   </li>;
 }
