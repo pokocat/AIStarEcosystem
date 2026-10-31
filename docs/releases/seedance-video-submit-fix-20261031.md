@@ -29,4 +29,35 @@
 
 首次发布包 `20261031-seedance-submit-fix` 因本地 `target/classes` 留有旧分支的 `V66__material_video_input_asset.sql`，与现行 Java `V66__ip_run_json_capacity` 重号，Flyway 在执行迁移前拒绝启动。已立即恢复上一版 `20261031-studio-assistant-fixes` JAR；未关闭 Flyway 校验、未改迁移历史。构建脚本改为 `clean package`，重新从干净 main 构建。
 
-正式构建提交、制品校验、配置备份、重启与线上验收结果在发布完成后追加。
+## 正式发布与线上验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 正式构建 | 干净 main `3800cc769becc946933044003a2e89542718ebac`（修复代码 `2b90556d6`，清理构建产物 `3800cc769`） |
+| 发布包 / 范围 | `20261031-seedance-submit-fix-clean`，仅 server |
+| JAR SHA256 | `4b7db1fe240b2c131f8a436406447c9c18704dfc932197def1a9dea12ae43e84`，本地与线上一致 |
+| 配置备份 | 生产 root-only `/opt/ai-star-eco/backups/seedance-submit-fix-20261031/ai_model_providers.before.jsonl`；只备份两条端点规格，不含 API Key |
+| 配置变更 | 恰好更新两条 OneToken 端点；`requestFields` 移除 `return_last_frame`，火山 Fast / Mini 的 `true` 保留 |
+| 制品迁移检查 | 正式 JAR 72 个迁移，重复版本 0，旧 `V66__material_video_input_asset.sql` 不在包内 |
+| 生产启动 | 北京时间 15:30:19 重启、15:30:36 启动完成；PID 226913，NRestarts=0 |
+| 数据库 | Flyway 成功校验 72 个迁移，`No migration necessary`；未更改 schema history |
+| 线上制品探针 | 通过正式 JAR 的类加载器执行实际 `buildSubmitBody` 并合并当前 DB 的 requestFields：OneToken 两模型字段 ABSENT、火山 Fast / Mini 为 true；实际错误映射类返回 `VIDEO_REFERENCE_PERSON_RESTRICTED` 和中文原因 |
+| 环境与路由 | env-check、verify ALL GREEN；首页、登录、`/api/config`、`/director`、模型后台入口 200；服务、MySQL、nginx、sau-service 健康 |
+| 契约范围 | 线上基线 `f3092980c` 到正式 main 的 DTO / OpenAPI 没有改动，不需补发前端 |
+| 用户任务 | 四笔原任务仍 failed / externalTaskId NULL；4202 积分全部 RELEASED，remaining=0，各只有一笔 FREEZE / UNFREEZE，无 SPEND；没有重提任何客户任务 |
+| CI | 直接推 main，当前工作流不自动触发 push CI；未把本地检查冒充远端 CI |
+
+## 独立厂商验证的范围
+
+使用生产已保存的凭据在服务器内存解密，分别给 OneToken 2.0 / 2.5 提交一次 4 秒、720p、9:16 的蓝色陶瓷杯无人物文生视频。没有使用客户素材，没有创建客户业务任务或扣客户积分。请求不含 `return_last_frame`，两条均 HTTP 200 受理，已进入 running；**截至记录时成片终态未验证，不将受理当成已成片**。
+
+- 2.0：`sdn_982df3251b4c4f74bcd5565609a398bd`
+- 2.5：`sdn_81e10f2134d747c9bb88ff2f896284f6`
+
+探针有独立幂等键；后续只查询原 ID，不重新提交。请求与状态保存在上述 root-only 备份目录各模型子目录，不含明文密钥。九张参考图保留和真人错误已通过本地请求实包 / 线上制品探针验证；没有在线上重放客户的九张参考图，也没有重新做真人授权接入。
+
+## 发布窗口与回滚
+
+首次错误包导致北京时间 15:27:45–15:29:08 服务不能就绪，已于 15:28:50 安装上一版 JAR 并重启恢复。正式干净包在 15:30:19–15:30:36 正常重启；nginx 在 15:27–15:30 窗口共 47 个 502（含发布探测，首个 15:27:44、末个 15:30:35）。不声称零中断。
+
+上一版归档为 `/opt/ai-star-eco/releases/20261031-studio-assistant-fixes`，JAR SHA256 `82be706634ffac1df5446a6fa3ef37b9da16e16e695cbade1262efacb1cdd53d`。需要回滚时恢复该 JAR，端点规格按 root-only 备份仅回写对应两条记录；不动钱包、用户任务和其他模型配置。
