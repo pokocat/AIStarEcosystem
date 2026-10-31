@@ -4,6 +4,7 @@ import { Icons } from "./icons";
 import * as UI from "./ui";
 import { DATA } from "./api";
 import { Portrait } from "./portrait";
+import { AccountAvatar } from "@/shell/account-avatar";
 
 // ============================================================
 // 移动端 Shell — 真实 H5 应用外层（无手机壳 / 无 chrome 装饰）
@@ -37,9 +38,8 @@ const TABS = [
   { key: 'apps',    icon: Icons.grid,   label: '应用' },
   { key: 'me',      icon: Icons.user,   label: '我的' },
 ];
-// meInitial：当前登录用户名首字（live 模式有真实账号时显示，否则回退为通用头像图标，
-// 不再硬编一个与用户无关的「柯」字）。
-function WxTabBar({ active, onTab, onCreate, meInitial }) {
+// 与「我的账号」共用账号头像；未取得身份时显示通用图标。
+function WxTabBar({ active, onTab, onCreate, identity }) {
   return hM('div', { className: 'wx-tabbar' },
     TABS.map(t => {
       if (t.fab) {
@@ -52,11 +52,7 @@ function WxTabBar({ active, onTab, onCreate, meInitial }) {
             hM('span', { className: 'fab-lbl' }, '创建')));
       }
       const on = active === t.key;
-      const meNode = meInitial
-        ? hM('span', { style: { width: 24, height: 24, borderRadius: 99, display: 'grid', placeItems: 'center',
-            fontSize: 11, fontWeight: 800, fontFamily: 'var(--font-disp)',
-            background: on ? 'var(--primary)' : 'var(--surface-3)', color: on ? '#fff' : 'var(--ink-3)' } }, meInitial)
-        : hM(Icons.user, { size: 24, stroke: on ? 2.1 : 1.85 });
+      const meNode = hM(AccountAvatar, { identity, size: 24 });
       return hM('button', { key: t.key, className: 'wx-tab' + (on ? ' on' : ''), onClick: () => onTab(t.key) },
         t.key === 'me' ? meNode : hM(t.icon, { size: 24, stroke: on ? 2.1 : 1.85 }),
         hM('span', { className: 'lbl' }, t.label));

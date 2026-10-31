@@ -13,6 +13,7 @@ import { Badge, Card, HubScreen, ListRow, NavBar } from "@/components/hub/ui";
 import { setLayout, useLayoutMode } from "@/shell/layout-mode";
 import { setUiVersion, useUiVersion } from "@/shell/ui-version";
 import { AccountOverview } from "@/shell/account-workspace";
+import { EditableAccountAvatar } from "@/shell/account-avatar";
 
 export default function MePage() {
   const router = useRouter();
@@ -27,9 +28,7 @@ export default function MePage() {
   if (!ready) return <HubScreen tabBar={false}>{null}</HubScreen>;
 
   const displayName = identity?.displayName || "我的账号";
-  const initial = String(displayName).trim().slice(0, 1) || "我";
-
-  if (layout === "desktop") return <AccountOverview name={displayName} phone={identity?.phoneMasked} demo={USE_MOCK || identity?.demo} />;
+  if (layout === "desktop") return <AccountOverview name={displayName} phone={identity?.phoneMasked} demo={USE_MOCK || identity?.demo} identity={identity} />;
 
   return (
     <HubScreen tabBar>
@@ -37,23 +36,7 @@ export default function MePage() {
 
       <div style={{ margin: "6px 16px 0" }}>
         <Card radius={22} pad={16} style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div
-            style={{
-              width: 54,
-              height: 54,
-              borderRadius: 999,
-              background: "var(--grad)",
-              display: "grid",
-              placeItems: "center",
-              color: "#fff",
-              fontFamily: "var(--font-serif)",
-              fontSize: 24,
-              fontWeight: 600,
-              flexShrink: 0,
-            }}
-          >
-            {initial}
-          </div>
+          <EditableAccountAvatar identity={identity} />
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 4 }}>
             <span style={{ fontSize: 17, fontWeight: 800, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {displayName}

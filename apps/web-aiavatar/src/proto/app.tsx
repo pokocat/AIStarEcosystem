@@ -476,7 +476,6 @@ export function App({ embedded = false, start, tabBar, onRootBack }: { embedded?
 
   // 「我的」tab 头像：用当前账号名首字（真源 /api/me），拿不到就回退通用图标 ——
   // 不再硬编与用户无关的字，也不读 id 模式下永远为空的本地用户缓存。
-  const meInitial = String(identity?.displayName || "").trim().slice(0, 1);
   // 下拉刷新：临时流程屏（创建向导等）不允许刷新重挂（会丢进度）。
   const canRefresh = !top || FLOW_SCREENS.indexOf(top.screen) < 0;
 
@@ -489,7 +488,7 @@ export function App({ embedded = false, start, tabBar, onRootBack }: { embedded?
         hA(SuspenseA, { fallback: hA(OverlayLoading, { label }) },
           hA(overlayScreen, { ...top.props, ctx }))),
 
-      !hideTabBar && (embedded ? tabBar : hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, meInitial })),
+      !hideTabBar && (embedded ? tabBar : hA(WxTabBar, { active: tab, onTab: ctx.tab, onCreate: ctx.openCreateSheet, identity })),
 
       sheet && hA(AssetCreateSheet, {
         onClose: () => setSheet(false),

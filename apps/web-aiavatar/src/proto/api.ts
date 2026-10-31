@@ -361,6 +361,10 @@ export interface MeIdentity {
   displayName: string;
   /** 展示用 UID：优先统一账号中心 uid，其次本地账号 id。拿不到为 null（不编）。 */
   uid: string | null;
+  /** Full immutable account UID, separate from the shortened display UID. */
+  avatarSeed: string | null;
+  /** Custom picture from ID (or the legacy account profile); null uses the generated default. */
+  avatarUrl: string | null;
   /** 打码手机号，如 138****8888；账号没有手机号时为 null。 */
   phoneMasked: string | null;
   /** 内嵌运营角色（数字人广场后台门禁用）。 */
@@ -382,6 +386,8 @@ export function maskPhone(phone?: string | null): string | null {
 const DEMO_IDENTITY: MeIdentity = {
   displayName: "演示工作室",
   uid: "DEMO0000",
+  avatarSeed: "DEMO0000",
+  avatarUrl: null,
   phoneMasked: "138****0000",
   operatorRole: null,
   demo: true,
@@ -401,6 +407,7 @@ const meListeners = new Set<() => void>();
  * 回来时代次对不上就整份丢弃。
  */
 let meSessionVersion = 0;
+let cancelProfileReturn: (() => void) | undefined;
 
 /**
  * 结果还作不作数：只有代次没变过才算数（纯函数，便于推理与单测）。
@@ -438,6 +445,7 @@ export function loadMe(force = false): Promise<any> {
 
 /** 作废 /api/me 缓存（登录 / 登出 / 令牌失效时调用）。 */
 export function clearMeCache() {
+  cancelProfileReturn?.();
   meCache = undefined;
   meInFlight = null;
   // 代次 +1：在途的旧请求回来时会被 isSameSession 挡掉，不会把上一个人写回缓存。
@@ -457,10 +465,46 @@ export function projectIdentity(me: any): MeIdentity | null {
   return {
     displayName,
     uid: uidRaw ? String(uidRaw).slice(0, 12) : null,
+    avatarSeed: uidRaw ? String(uidRaw) : null,
+    avatarUrl: typeof me.avatarUrl === "string" ? me.avatarUrl.trim() || null : null,
     phoneMasked: maskPhone(me.phone),
     operatorRole: me.operatorRole ?? null,
     demo: false,
   };
+}
+
+/** Refresh ID's profile snapshot once after returning from its editor, then reload /api/me for every consumer. */
+export function prepareIdentityProfileEdit(onError: (error: unknown) => void) {
+  if (!ID_MODE || USE_MOCK || typeof window === "undefined") return;
+  cancelProfileReturn?.();
+  const startedAt = meSessionVersion;
+  let left = false;
+  const leave = () => { left = true; };
+  const cleanup = () => {
+    window.removeEventListener("blur", leave);
+    window.removeEventListener("focus", returned);
+    document.removeEventListener("visibilitychange", visibility);
+    if (cancelProfileReturn === cleanup) cancelProfileReturn = undefined;
+  };
+  const returned = () => {
+    if (!left || document.visibilityState === "hidden") return;
+    cleanup();
+    if (!isSameSession(startedAt)) return;
+    // A new token makes the backend read current /userinfo immediately, rather than waiting for its cache/outbox.
+    void idRefreshToken().then(refreshed => {
+      if (isSameSession(startedAt)) {
+        clearMeCache();
+        if (!refreshed) onError(new Error("暂时无法更新头像，请刷新页面后重试。"));
+      }
+    }).catch(() => {
+      if (isSameSession(startedAt)) onError(new Error("暂时无法更新头像，请刷新页面后重试。"));
+    });
+  };
+  const visibility = () => { if (document.visibilityState === "hidden") leave(); else returned(); };
+  cancelProfileReturn = cleanup;
+  window.addEventListener("blur", leave);
+  window.addEventListener("focus", returned);
+  document.addEventListener("visibilitychange", visibility);
 }
 
 /**

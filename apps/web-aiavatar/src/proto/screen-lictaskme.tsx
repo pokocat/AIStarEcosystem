@@ -7,6 +7,7 @@ import { MShell, MKit } from "./shell";
 import { Portrait } from "./portrait";
 import { LivenessBadge, MaterialSection } from "./material-status";
 import { toast } from "./toast";
+import { EditableAccountAvatar } from "@/shell/account-avatar";
 
 // ============================================================
 // 移动端 · 授权 Licenses + 任务 Tasks + 我的 Me（真数据 / 真操作）
@@ -353,7 +354,7 @@ function MMe({ ctx }) {
 
     hMS('div', { style: { padding: '6px 18px 0' } },
       hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 14 } },
-        hMS('div', { style: { width: 60, height: 60, flex: '0 0 60px', borderRadius: 20, background: 'var(--grad)', display: 'grid', placeItems: 'center', color: '#fff', fontFamily: 'var(--font-disp)', fontWeight: 800, fontSize: 24, boxShadow: '0 8px 18px rgba(18,179,222,.26)' } }, displayName.slice(0, 1)),
+        hMS(EditableAccountAvatar, { identity, size: 60 }),
         hMS('div', { style: { minWidth: 0 } },
           hMS('div', { style: { display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 } },
             hMS('span', { className: 'm-clip1', style: { fontFamily: 'var(--font-disp)', fontWeight: 700, fontSize: 20, minWidth: 0 } }, displayName),

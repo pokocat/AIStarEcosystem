@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 const state = vi.hoisted(() => ({ pathname: "/me", hash: "" }));
 vi.mock("next/navigation", () => ({ usePathname: () => state.pathname }));
 vi.mock("next/link", () => ({ default: ({ children, ...props }: any) => <a {...props}>{children}</a> }));
-vi.mock("@/proto/api", () => ({ USE_MOCK: false, auth: { isAuthed: () => true, logout: vi.fn() }, useIdentity: () => ({ uid: "test", displayName: "测试账号" }) }));
+vi.mock("@/proto/api", () => ({ USE_MOCK: false, auth: { isAuthed: () => true, logout: vi.fn() }, useIdentity: () => ({ uid: "test", avatarSeed: "full-test-account-uid", avatarUrl: null, displayName: "测试账号" }) }));
 vi.mock("./account-workspace", () => ({ useStudioHash: () => state.hash }));
 vi.mock("./layout-mode", () => ({ setLayout: vi.fn() }));
 vi.mock("./wallet-badge", () => ({ WalletBadge: () => null }));
@@ -21,6 +21,11 @@ function openMenu() {
   details.open = true;
   return details;
 }
+
+test("the account menu displays the generated avatar", () => {
+  render(<DesktopTopBar />);
+  expect(screen.getByLabelText("测试账号，打开账号菜单").querySelector('svg[viewBox="0 0 1080 1080"]')).not.toBeNull();
+});
 
 test("outside pointer dismisses the menu, while a pointer inside keeps its links usable", () => {
   render(<DesktopTopBar />);

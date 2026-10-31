@@ -1,5 +1,9 @@
 # AiAvatar · 数字资产平台（web-aiavatar）
 
+### 2026-10-31 · 注册账号默认头像与修改入口（本地实现，未发布）
+
+`AccountAvatar` 使用 `react-notion-avatar` 1.1.12：完整随机 UID 固定生成配置，各设备/重新登录一致；自定义 `/api/me.avatarUrl` 优先，加载失败回退同一默认头像。桌面账号菜单、手机底栏与「我的账号」统一使用。修改入口复用 ID `/account/profile` 的上传保存，返回后刷新 OIDC 与共享身份缓存，切号丢弃旧结果。MIT 运行时原样保留在 `src/vendor/react-notion-avatar`，来源与校验值见该目录 README；不安装上游 demo/React 17 依赖。真源：[账号界面统一](../../docs/aiavatar-account-unification.md)。
+
 画布封面统一（2026-10-17，已发布 a4092626）：项目页与灵感页共用 ProjectCardPreview、projectPreview、CanvasCoverEditor，优先级为人工封面 → 已保存图片（优先采用图）→ 实际画布缩略图。支持独立 JPG/PNG 上传、选图、恢复自动、失败重试；共用 /v1/ip-studio/covers/{project|template}/{id} 的 POST/PUT/DELETE，不改 doc 或模板版本，列表刷新重新签名。个人模板本人可管理，官方模板仅 SUPER_ADMIN；内置官方模板也支持 SUPER_ADMIN 上传，覆盖信息保存在平台配置，不复制模板文档。原项目 PUT 的 coverStorageKey 继续兼容。
 
 本地界面调整（2026-10-16，未发布）：`/create` 只承载新创作与一行推荐模板，个人画布管理独立为 `/projects`「项目」页。「项目」已加入一级导航，紧跟首页；项目页「新建创作」返回。创作能力已平铺为十项图像卡片，首页画布目录和画布编辑器返回也指向项目。当前规格见 `PRODUCT.md`，验证见 `docs/releases/studio-workspace-refactor-validation.md`（仓库根目录）。
