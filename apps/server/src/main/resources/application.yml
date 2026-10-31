@@ -274,7 +274,7 @@ aep:
       submit-path: ${AEP_VIDEO_SUBMIT_PATH:/videos/generations}
       poll-path-template: ${AEP_VIDEO_POLL_PATH:/async-result/{id}}
       poll-interval-seconds: ${AEP_VIDEO_POLL_INTERVAL_SEC:8}
-      max-wait-seconds: ${AEP_VIDEO_MAX_WAIT_SEC:600}
+      max-wait-seconds: ${AEP_VIDEO_MAX_WAIT_SEC:1800}
       max-concurrent: ${AEP_VIDEO_MAX_CONCURRENT:3}
       default-model: ${AEP_VIDEO_DEFAULT_MODEL:cogvideox-flash}
       default-duration-sec: ${AEP_VIDEO_DEFAULT_DURATION_SEC:5}

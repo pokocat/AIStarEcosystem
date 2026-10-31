@@ -31,8 +31,8 @@ public class MaterialVideoProperties {
     /** 服务端轮询间隔（秒）。 */
     private int pollIntervalSeconds = 8;
 
-    /** 单轮最长等待（秒）；已受理任务超时保留原冻结，后台继续查询原任务。默认 10 分钟。 */
-    private int maxWaitSeconds = 600;
+    /** 单轮最长等待（秒）；已受理任务超时保留原冻结，后台继续查询原任务。默认 30 分钟。 */
+    private int maxWaitSeconds = 1800;
 
     /** 并发生成数（worker 线程池大小）。视频生成期间 worker 线程会长时间轮询占用。 */
     private int maxConcurrent = 3;

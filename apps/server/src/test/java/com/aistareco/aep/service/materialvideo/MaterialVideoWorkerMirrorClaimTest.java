@@ -107,6 +107,33 @@ class MaterialVideoWorkerMirrorClaimTest {
     }
 
     @Test
+    void studioWithoutLegacyFlagKeepsOriginalReceiptAndHoldUntilMirrored() {
+        job.setApp(MaterialVideoJobService.APP_IPSTUDIO);
+        worker(new FailingUploader()).generateAsync("mvj_m");
+        assertEquals("generating", job.getStatus());
+        assertEquals("VIDEO_RECONCILIATION_PENDING", job.getErrorCode());
+        assertEquals("task_m", job.getExternalTaskId());
+        assertNull(job.getVideoUrl());
+        verify(creditService, never()).releaseHold(any(), any(), any());
+        verify(creditService, never()).commitHold(any(), any(), anyLong(), any(), any());
+
+        var original = new MaterialVideoModelClient.SubmitResult("task_m", null, "vendor", "model-x", "generic", null);
+        when(modelClient.resumeExistingTask("task_m", null, "vendor", "model-x", "studio", null, null)).thenReturn(original);
+        CdnUploader restored = mock(CdnUploader.class);
+        try {
+            when(restored.upload(any(), any(), any())).thenReturn(new CdnUploader.CdnUploadResult(
+                    "https://cdn.test/stored.mp4", "stored.mp4", 4L, java.time.Instant.now()));
+        } catch (IOException e) { throw new AssertionError(e); }
+        worker(restored).recoverQueuedGeneration("mvj_m");
+        assertEquals("succeeded", job.getStatus());
+        assertEquals("https://cdn.test/stored.mp4", job.getVideoUrl());
+        assertNull(job.getErrorCode());
+        verify(modelClient).submit(any(), anyInt(), any(), any(), any(), any(), any(), any());
+        verify(creditService).commitHold(eq("material_video_job"), eq("mvj_m"), eq(40L), anyString(), any());
+        verify(creditService, never()).releaseHold(any(), any(), any());
+    }
+
+    @Test
     void requireMirror_mirrorFails_jobFailsAndHoldIsReleasedNotCommitted() {
         job.setVariantConfigJson("{\"require_mirror\":true}");
         worker(new FailingUploader()).generateAsync("mvj_m");

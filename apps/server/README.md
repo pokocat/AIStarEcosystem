@@ -19,6 +19,12 @@ Spring Boot 后端服务，承载账户注册、权益管理、许可证（秘�
 
 测试 classpath 的 `LegacyH2SchemaCustomizerFactory` 在 Flyway 前为 H2 设置 MySQL 兼容模式并创建旧 `ai_model_providers` 表骨架；仍执行并验证全部真实迁移，随后由 Hibernate 补齐实体字段。该类与注册文件只属于测试，不改变生产或普通 dev 启动，也不修改已执行的迁移。全局模板发布先校验 demoId 再访问项目与素材，非法 ID 直接返回原业务错误。
 
+## 视频等待与成片恢复（2026-10-31）
+
+视频任务单轮等待默认 30 分钟（`AEP_VIDEO_MAX_WAIT_SEC=1800`，此前 600 秒），超时后继续查询原供应商任务并保留原冻结，不重新生成。媒体下载使用 HTTP/1.1，连接或下载失败最多尝试三次。
+
+Studio 视频按 `app=ipstudio` 强制存入我方存储，即使历史任务没有 `require_mirror` 标记也生效。暂时转存失败时保留原任务和冻结，后台恢复成功后才结算。管理端原有 `POST /api/admin/material-video-jobs/{id}/reconcile` 也可补存已成功但仍为供应商外链的成片，不再扣费，不改原完成时间；已存入我方存储时幂等返回。
+
 ## 版本日志
 
 ### v0.210 · 2026-10-08 · Studio 多候选视频（本地未发布）

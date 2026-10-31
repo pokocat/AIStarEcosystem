@@ -354,6 +354,7 @@ public class IpRunService {
         // 和 worker（真正调哪个端点）只从这里读 endpoint_id。此前模型 id 写在 item 顶层，
         // 没有任何地方读它：画布上选哪个模型，跑的、校验的、计价的都是后台默认那个。
         ObjectNode variantConfig = om.createObjectNode();
+        variantConfig.put("require_mirror", true);
         long seedMax = 2_147_483_647L;
         if (scenePolicies != null) variantConfig.put("endpoint_id", batchEndpointId==null
                 ?scenePolicies.resolveStudioVideo(req.model()).endpoint().getId():batchEndpointId);

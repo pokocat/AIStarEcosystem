@@ -103,6 +103,7 @@ class IpVideoModelChoiceWiringTest {
         JsonNode vc = OM.readTree(saved.getValue().getVariantConfigJson());
         assertEquals("ep-h3", vc.path("endpoint_id").asText());
         assertEquals(ref, vc.path("first_frame_key").asText());
+        assertTrue(vc.path("require_mirror").asBoolean());
     }
 
     @Test

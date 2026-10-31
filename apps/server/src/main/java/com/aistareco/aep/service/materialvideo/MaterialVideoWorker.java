@@ -67,6 +67,7 @@ public class MaterialVideoWorker {
     private final StorageQuotaService storage;
     private final MaterialVideoCover cover;
     private final HttpClient downloadHttp;
+    @org.springframework.beans.factory.annotation.Autowired private com.aistareco.aep.service.storage.FileStorageService files;
 
     public MaterialVideoWorker(MaterialVideoJobRepository jobRepo,
                                MaterialVideoModelClient modelClient,
@@ -84,6 +85,8 @@ public class MaterialVideoWorker {
         this.cdnUploader = cdnUploaderProvider.getIfAvailable();
         this.downloadHttp = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL)
+                // Some video gateways reset HTTP/2 streams midway through a download.
+                .version(HttpClient.Version.HTTP_1_1)
                 .connectTimeout(Duration.ofSeconds(Math.max(5, props.getHttpTimeoutSeconds())))
                 .build();
         if (cdnUploader != null) {
@@ -174,7 +177,10 @@ public class MaterialVideoWorker {
         MaterialVideoJob job = jobRepo.findById(jobId)
                 .orElseThrow(() -> new BusinessException(HttpStatus.NOT_FOUND,
                         "VIDEO_JOB_NOT_FOUND", "视频任务不存在"));
-        if ("succeeded".equals(job.getStatus())) return job;
+        if ("succeeded".equals(job.getStatus())) {
+            if (files == null || files.keyOfStoredUrl(job.getVideoUrl()) != null) return job;
+            return restoreSucceededOutput(job);
+        }
         if (job.getExternalTaskId() == null || job.getExternalTaskId().isBlank()) {
             throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUBMITTED",
                     "该任务没有上游 Job ID，无法对账恢复");
@@ -262,6 +268,38 @@ public class MaterialVideoWorker {
         }
     }
 
+    /** Repair an already charged legacy URL without changing billing or the original completion time. */
+    private MaterialVideoJob restoreSucceededOutput(MaterialVideoJob job) {
+        if (job.getExternalTaskId() == null || job.getExternalTaskId().isBlank())
+            throw new BusinessException(HttpStatus.CONFLICT, "VIDEO_JOB_NOT_SUBMITTED", "该任务没有上游 Job ID，无法恢复成片");
+        var submit = modelClient.resumeExistingTask(job.getExternalTaskId(), extractEndpointId(job.getVariantConfigJson()),
+                job.getProviderUsed(), job.getModelUsed(), appCodeOf(job),
+                job.getUpstreamBaseUrlSnapshot(), job.getVideoRequestSpecSnapshotJson());
+        var poll = modelClient.poll(submit);
+        if (!poll.succeeded()) throw new BusinessException(HttpStatus.CONFLICT,
+                "VIDEO_JOB_NOT_SUCCEEDED_UPSTREAM", "上游任务当前不是成功状态，暂不能恢复");
+        if (!props.isUploadToCdn() || cdnUploader == null) throw new BusinessException(HttpStatus.SERVICE_UNAVAILABLE,
+                "VIDEO_CDN_NOT_CONFIGURED", "当前未配置成片存储");
+        try {
+            var mirror = mirrorToCdn(job.getId(), poll.videoUrl(), poll.thumbnailUrl(), poll.lastFrameUrl(), submit, poll.outputAssetId());
+            inTransaction(() -> {
+                var current = settlementJob(job.getId()).orElseThrow();
+                if (!"succeeded".equals(current.getStatus())) throw new IllegalStateException("video status changed during recovery");
+                current.setVideoUrl(mirror.videoUrl());
+                if (mirror.thumbnailUrl() != null) current.setThumbnailUrl(mirror.thumbnailUrl());
+                if (mirror.lastFrameKey() != null) current.setLastFrameCdnKey(mirror.lastFrameKey());
+                current.setUpdatedAt(OffsetDateTime.now());
+                jobRepo.save(current);
+            });
+            storage.record(appCodeOf(job), job.getOwnerUserId(), storageCategoryOf(job), job.getScriptId(),
+                    mirror.videoKey(), mirror.videoBytes());
+            return jobRepo.findById(job.getId()).orElse(job);
+        } catch (IOException | InterruptedException e) {
+            if (e instanceof InterruptedException) Thread.currentThread().interrupt();
+            throw new BusinessException(HttpStatus.BAD_GATEWAY, "VIDEO_RECOVERY_FAILED", "视频产物恢复失败，请稍后重试");
+        }
+    }
+
     private void runGeneration(MaterialVideoJob job,boolean[] terminal) throws InterruptedException {
         String jobId = job.getId();
         // v0.198 条件认领（queued → submitting，影响 1 行才继续）：与 MaterialVideoJobService.cancelQueued /
@@ -332,7 +370,8 @@ public class MaterialVideoWorker {
                 // v0.198：要求必须存进我方存储的任务（画布只存 key，厂商外链交付不了）—— 镜像不了就不交付、不扣费（§8.0）。
                 // 不带这个标记、且带公网厂商地址的老任务行为不变（镜像失败保留厂商地址、照常结算）；
                 // 受保护产物（poll.videoUrl()==null，只能镜像交付）无论带不带标记都按镜像强制处理，见下方 catch。
-                boolean requireMirror = extractRequireMirror(job.getVariantConfigJson());
+                boolean requireMirror = MaterialVideoJobService.APP_IPSTUDIO.equals(job.getApp())
+                        || extractRequireMirror(job.getVariantConfigJson());
                 if (requireMirror && (!props.isUploadToCdn() || cdnUploader == null)) {
                     log.warn("[material-video] job {} require_mirror 但没配置我方存储镜像，判失败并退回冻结", jobId);
                     markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但当前没配置我方存储，没能存下来");
@@ -356,10 +395,16 @@ public class MaterialVideoWorker {
                         // 且 admin 对账对已 succeeded 的任务早退出、永远修不回来。所以受保护资产等同 require_mirror：镜像失败即
                         // 判失败退款（§8.0 不交付不扣费）。只有「带公网厂商地址」的老协议才保留地址照常结算。
                         if (requireMirror || hasProtectedAsset) {
-                            log.warn("[material-video] job {} {} 镜像失败，判失败并退回冻结 taskId={} err={}",
+                            log.warn("[material-video] job {} {} mirror pending/failed taskId={} err={}",
                                     jobId, hasProtectedAsset ? "受保护产物" : "require_mirror", submit.taskId(), e.toString());
-                            markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
-                                    + truncate(e.getMessage(), 200) + "）");
+                            if (MaterialVideoJobService.APP_IPSTUDIO.equals(job.getApp())) {
+                                // Keep the original receipt and hold while delivery is retried; never regenerate.
+                                terminal[0] = false;
+                                markPending(jobId, "VIDEO_RECONCILIATION_PENDING", e);
+                            } else {
+                                markFailed(jobId, MIRROR_FAILED_CODE + "：视频生成好了，但没能存进我方存储（"
+                                        + truncate(e.getMessage(), 200) + "）");
+                            }
                             return;
                         }
                         log.warn("[material-video] job {} CDN mirror failed (keeping provider URL): {}",
@@ -464,6 +509,19 @@ public class MaterialVideoWorker {
 
     private DownloadedMedia downloadMedia(String url, String tmpPrefix, String defaultExtension, String defaultContentType)
             throws IOException, InterruptedException {
+        IOException last = null;
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            try { return downloadMediaOnce(url, tmpPrefix, defaultExtension, defaultContentType); }
+            catch (IOException error) {
+                last = error;
+                if (attempt < 3) Thread.sleep(attempt * 1000L);
+            }
+        }
+        throw last;
+    }
+
+    private DownloadedMedia downloadMediaOnce(String url, String tmpPrefix, String defaultExtension, String defaultContentType)
+            throws IOException, InterruptedException {
         URI uri = URI.create(url);
         Path tmp = Files.createTempFile(tmpPrefix + "-", defaultExtension);
         try {
@@ -474,7 +532,7 @@ public class MaterialVideoWorker {
             HttpResponse<Path> resp = downloadHttp.send(req, HttpResponse.BodyHandlers.ofFile(tmp));
             int code = resp.statusCode();
             if (code < 200 || code >= 300) {
-                throw new IOException("download HTTP " + code + " for " + url);
+                throw new IOException("download HTTP " + code);
             }
             long size = Files.size(tmp);
             long max = props.getMaxDownloadBytes();

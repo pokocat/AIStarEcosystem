@@ -132,6 +132,47 @@ class MaterialVideoWorkerTest {
         return new MaterialVideoWorker(jobRepo, modelClient, props, creditService, storage, provider, cover);
     }
 
+    @Test void transientVideoDownloadErrorsRetryTheSameOutputWithoutResubmission() throws Exception {
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        http.createContext("/flaky.mp4", ex -> {
+            int attempt = attempts.incrementAndGet();
+            if (attempt < 3) { ex.sendResponseHeaders(503, -1); ex.close(); return; }
+            byte[] bytes = {5, 6, 7, 8};
+            ex.getResponseHeaders().set("Content-Type", "video/mp4");
+            ex.sendResponseHeaders(200, bytes.length);
+            ex.getResponseBody().write(bytes); ex.close();
+        });
+        var instance = worker(new FakeUploader(false));
+        var result = org.springframework.test.util.ReflectionTestUtils.invokeMethod(instance, "downloadMedia",
+                base + "/flaky.mp4", "retry-test", ".mp4", "video/mp4");
+        var pathMethod = result.getClass().getDeclaredMethod("path"); pathMethod.setAccessible(true);
+        Path path = (Path) pathMethod.invoke(result);
+        try { assertArrayEquals(new byte[]{5, 6, 7, 8}, Files.readAllBytes(path)); }
+        finally { Files.deleteIfExists(path); }
+        assertEquals(3, attempts.get());
+        org.mockito.Mockito.verifyNoInteractions(modelClient, creditService);
+    }
+
+    @Test void alreadyChargedExternalOutputCanBeRestoredIdempotentlyWithoutBillingOrTimeChanges() {
+        job.setStatus("succeeded"); job.setApp(MaterialVideoJobService.APP_IPSTUDIO);
+        job.setExternalTaskId("task_existing"); job.setVideoUrl(base + "/temporary.mp4");
+        job.setCreditsHeld(1331L); var completed = OffsetDateTime.now().minusHours(1); job.setCompletedAt(completed);
+        var submit = new MaterialVideoModelClient.SubmitResult("task_existing", null, "vendor", "model-x", "generic", null);
+        when(modelClient.resumeExistingTask("task_existing", null, null, null, "studio", null, null)).thenReturn(submit);
+        when(modelClient.poll(submit)).thenReturn(new MaterialVideoModelClient.PollResult(
+                "succeeded", base + "/video.mp4", null, "succeeded", 100, null, null));
+        var instance = worker(new FakeUploader(false));
+        var files = mock(com.aistareco.aep.service.storage.FileStorageService.class);
+        when(files.keyOfStoredUrl(anyString())).thenAnswer(inv -> inv.<String>getArgument(0).startsWith("https://cdn.test/") ? "stored.mp4" : null);
+        org.springframework.test.util.ReflectionTestUtils.setField(instance, "files", files);
+        instance.reconcileSucceeded(job.getId()); instance.reconcileSucceeded(job.getId());
+        assertEquals("https://cdn.test/material-videos/mvj_test/video.mp4", job.getVideoUrl());
+        assertEquals(completed, job.getCompletedAt()); assertEquals(1331L, job.getCreditsHeld());
+        verify(modelClient).poll(submit);
+        verify(modelClient, never()).submit(any(), anyInt(), any(), any(), any(), any(), any(), any());
+        org.mockito.Mockito.verifyNoInteractions(creditService);
+    }
+
     @Test void terminalProviderFailureRetainsTheCompleteResponseForTheAlert() {
         var evidence=com.aistareco.aep.service.ai.ProviderResponseDiagnostics.capture(200,null,
                 "{\"status\":\"failed\",\"error\":{\"code\":\"content_filter\",\"message\":\"内容审核未通过\"}}");
