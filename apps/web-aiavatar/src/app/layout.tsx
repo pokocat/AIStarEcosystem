@@ -29,6 +29,7 @@ import "../styles/studio-select.css";
 import "../styles/director.css";
 import "../styles/studio-scenes.css";
 import "../styles/studio-home-scenes.css";
+import "../styles/studio-next-pages.css";
 import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";

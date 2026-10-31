@@ -16,7 +16,8 @@ export function StudioPage({ title, description, actions, children, className = 
 }) {
   const pathname = usePathname() || '';
   const version = useUiVersion();
-  return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}`}>
+  // 新版页面换成改版后的设计语言（studio-next-pages.css），旧版保持原样。
+  return <main className={`ip-brand-surface ip-hub-surface studio-page ${className}${version === 'next' ? ' studio-next-page' : ''}`}>
     <nav className="studio-mobile-navigation" aria-label="工作台导航">{studioNavigation(version).filter(n => n.href !== "/dashboard" && n.href !== "/assets").map(n => <Link key={n.href} href={n.href} aria-current={studioNavigationCurrent(n.href, pathname, version) ? "page" : undefined}>{n.label}</Link>)}</nav>
     <header className="studio-page-heading"><div><h1>{title}</h1><p>{description}</p></div>{(actions || version === 'next') && <div className="studio-page-actions">{version === 'next' && <UiVersionSwitch inline/>}{actions}</div>}</header>
     <div ref={contentRef} className="studio-page-body" data-studio-overlay-root>{children}</div>

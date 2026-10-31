@@ -1,0 +1,76 @@
+/* 新版（html[data-ui="next"]）的项目、资产、发行等 StudioPage 页面：2026-10-31 改版，和 AI 视频 / AI 图片、首页同一套设计语言。
+   令牌在 studio-scenes.css 的 .studio-next-page 上；这里只改样子，不改结构。旧版不受影响。 */
+html[data-layout="desktop"] .studio-page.studio-next-page { background: #ffffff; border-radius: 0; box-shadow: none; }
+.studio-page.studio-next-page .studio-page-body { gap: 20px; }
+.studio-page.studio-next-page .studio-page-heading { align-items: flex-end; gap: 16px; padding-bottom: 0; border-bottom: 0; }
+.studio-page.studio-next-page .studio-page-heading h1 { font-family: var(--ip-display); font-size: 26px; font-weight: 500; line-height: 1.3; letter-spacing: 0; }
+.studio-page.studio-next-page .studio-page-heading p { margin-top: 4px !important; color: var(--ip-muted); font-size: 12.5px; }
+.studio-page.studio-next-page .studio-page-actions :is(.ip-brand-button, .ip-brand-secondary) { height: 38px; min-height: 0; padding: 0 16px; border-radius: 12px; font-size: 13px; font-weight: 500; }
+.studio-page.studio-next-page .studio-page-actions .ip-brand-button { border: 0; background: var(--sn-go); box-shadow: var(--sn-go-shadow); color: #fff; }
+.studio-page.studio-next-page .studio-page-actions .ip-brand-button:not(:disabled):hover { filter: brightness(1.05); background: var(--sn-go); }
+.studio-page.studio-next-page .studio-page-actions .ip-brand-secondary { border: 1px solid var(--sn-field); background: #fff; color: var(--ip-ink); box-shadow: none; }
+.studio-page.studio-next-page .ip-brand-button svg, .studio-page.studio-next-page .ip-brand-secondary svg { width: 15px; height: 15px; stroke-width: 1.6; }
+
+/* 筛选、搜索、视图切换：分段控件和细边输入框 */
+.studio-page.studio-next-page .studio-page-toolbar { gap: 10px; }
+.studio-page.studio-next-page .studio-page-search { height: 34px; min-height: 0; padding: 0 12px; border: 1px solid var(--sn-field); border-radius: 10px; background: #fff; color: var(--ip-muted); box-shadow: none; }
+.studio-page.studio-next-page .studio-page-search:focus-within { border-color: #c5cad1; box-shadow: 0 0 0 3px rgba(23, 32, 42, .06); }
+.studio-page.studio-next-page .studio-page-search input { font-size: 12.5px; }
+.studio-page.studio-next-page .studio-page-search svg { width: 15px; height: 15px; stroke-width: 1.5; }
+.studio-page.studio-next-page .studio-page-filters { display: inline-flex; gap: 2px; padding: 3px; border: 0; border-radius: 10px; background: var(--ip-soft); }
+.studio-page.studio-next-page .studio-page-filters>button { height: 28px; min-height: 0; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 400; box-shadow: none; }
+.studio-page.studio-next-page .studio-page-filters>button:hover { background: transparent; color: var(--ip-ink); }
+.studio-page.studio-next-page .studio-page-filters>button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink); font-weight: 500; }
+.studio-page.studio-next-page .studio-page-filters small { background: transparent; color: var(--ip-muted); font-size: 11px; }
+.studio-page.studio-next-page .studio-page-toolbar .studio-select-trigger { height: 34px; min-height: 0; border: 0; border-radius: 10px; background: transparent; color: var(--sn-text-2); font-size: 12.5px; font-weight: 400; }
+.studio-page.studio-next-page .studio-page-toolbar .studio-select-trigger:hover, .studio-page.studio-next-page .studio-page-toolbar .studio-select-trigger[data-state="open"] { background: var(--ip-soft); }
+.studio-page.studio-next-page .studio-gallery-view { gap: 2px; padding: 3px; border: 0; border-radius: 10px; background: var(--ip-soft); }
+.studio-page.studio-next-page .studio-gallery-view button { width: 30px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-muted); box-shadow: none; }
+.studio-page.studio-next-page .studio-gallery-view button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink); }
+.studio-page.studio-next-page .studio-gallery-view svg, .studio-page.studio-next-page .studio-page-refresh svg { width: 15px; height: 15px; stroke-width: 1.5; }
+.studio-page.studio-next-page .studio-page-refresh { width: 32px; height: 32px; border: 0; border-radius: 10px; background: transparent; color: var(--sn-text-2); }
+.studio-page.studio-next-page .studio-page-refresh:not(:disabled):hover { background: var(--ip-soft); }
+.studio-page.studio-next-page .studio-page-result { color: var(--ip-muted); font-size: 12px; }
+.studio-page.studio-next-page .studio-gallery-panel { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.studio-page.studio-next-page .studio-gallery-panel-heading h2 { font-family: inherit; font-size: 15px; font-weight: 500; }
+.studio-page.studio-next-page .studio-gallery-panel-heading p { color: var(--ip-muted); font-size: 12px; }
+
+/* 项目：大预览、无外框的卡片，状态是左上角的小标签 */
+.studio-page.studio-next-page .studio-project-grid:not(.studio-project-list) { gap: 22px 16px; }
+.studio-next-page.studio-projects-page .studio-project-card { gap: 10px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.studio-next-page.studio-projects-page .studio-project-card:hover { box-shadow: none; transform: none; }
+.studio-next-page.studio-projects-page .studio-gallery-preview { aspect-ratio: 4 / 3; height: auto; border: 1px solid var(--ip-line); border-radius: 14px; background: #f7f8fa; overflow: hidden; }
+.studio-next-page.studio-projects-page .studio-project-card:hover .studio-gallery-preview { border-color: var(--sn-field); }
+.studio-next-page.studio-projects-page .project-card-copy { padding: 10px 2px 0; }
+.studio-next-page.studio-projects-page .studio-project-open h3 { font-family: inherit; font-size: 13.5px; font-weight: 500; }
+.studio-next-page .project-card-summary { color: var(--ip-muted); font-size: 11.5px; }
+.studio-next-page.studio-projects-page .studio-project-info { padding: 4px 2px 0; color: var(--ip-muted); font-size: 11.5px; }
+.studio-next-page .studio-project-status { gap: 4px; padding: 0 8px; border-radius: 999px; background: var(--ip-soft); color: var(--sn-text-2); font-size: 11px; line-height: 20px; }
+.studio-next-page .studio-project-status i { display: none; }
+.studio-next-page .studio-project-status.is-published { background: var(--ip-green-soft); color: var(--ip-green); }
+.studio-next-page .project-card-actions { padding: 6px 2px 0; }
+.studio-next-page .project-card-continue { height: 32px; min-height: 0; border-radius: 10px; background: var(--ip-ink); font-size: 12.5px; font-weight: 500; }
+.studio-next-page .project-card-actions :is(button, a):not(.project-card-continue) { color: var(--sn-text-2); font-size: 12px; }
+.studio-next-page .project-content-placeholder strong, .studio-next-page .project-content-document strong { font-weight: 500; }
+.studio-next-page .project-content-document { background: #f7f8fa; }
+.studio-next-page .studio-gallery-pagination button { border: 1px solid var(--ip-line); border-radius: 8px; background: #fff; }
+
+/* 资产：分类是下划线标签，卡片是 3:4 大图加两行字 */
+.studio-next-page.assets-library .studio-page-filters { display: flex; width: 100%; gap: 24px; padding: 0; border-bottom: 1px solid var(--ip-line); border-radius: 0; background: transparent; scrollbar-width: none; }
+.studio-next-page.assets-library .studio-page-filters::-webkit-scrollbar { display: none; }
+.studio-next-page.assets-library .studio-page-filters>button { flex-shrink: 0; height: 38px; padding: 0; border-radius: 0; font-size: 13px; box-shadow: inset 0 -1.5px 0 transparent; }
+.studio-next-page.assets-library .studio-page-filters>button[aria-pressed="true"] { background: transparent; box-shadow: inset 0 -1.5px 0 var(--ip-ink); }
+.studio-next-page.assets-library .ip-management-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.studio-next-page.assets-library .ip-management-card-image { border-radius: 14px; background: #f7f8fa; overflow: hidden; }
+.studio-next-page.assets-library .ip-management-card h2 { font-size: 13.5px; font-weight: 500; }
+
+/* 发行：左列批次、右侧详情一张细边卡；状态是浅底小标签 */
+.studio-next-page.studio-distribution-page .studio-page-filters { display: flex; width: 100%; gap: 24px; padding: 0; border-bottom: 1px solid var(--ip-line); border-radius: 0; background: transparent; scrollbar-width: none; }
+.studio-next-page.studio-distribution-page .studio-page-filters::-webkit-scrollbar { display: none; }
+.studio-next-page.studio-distribution-page .studio-page-filters>button { flex-shrink: 0; height: 38px; padding: 0; border-radius: 0; font-size: 13px; box-shadow: inset 0 -1.5px 0 transparent; }
+.studio-next-page.studio-distribution-page .studio-page-filters>button[aria-pressed="true"] { background: transparent; box-shadow: inset 0 -1.5px 0 var(--ip-ink); }
+.studio-next-page .studio-coming-soon { gap: 4px; padding: 0 7px; border: 0; border-radius: 999px; background: var(--ip-soft); color: var(--ip-muted); font-size: 11px; line-height: 20px; }
+.studio-next-page .studio-coming-soon svg { width: 11px; height: 11px; stroke-width: 1.6; }
+
+/* 手机：页面本身贴边，标题小一号 */
+html:not([data-layout="desktop"]) .studio-page.studio-next-page .studio-page-heading h1 { font-size: 22px; }
