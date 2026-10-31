@@ -249,6 +249,7 @@ AI IP 工作台新版（`apps/web-aiavatar` 的 Studio）的方案与设计。�
 - [Seedance 视频提交故障修复](releases/seedance-video-submit-fix-20261031.md)：OneToken 2.0 / 2.5 移除不支持的末帧输出字段、真人参考图拒绝改为明确中文说明；4 笔冻结全退，两模型独立测试均已出片并通过下载、完整解码及抽帧核验，仅 server（last-reviewed 2026-10-31）。
 - [Studio 10 月 27–29 日更新图](releases/weekly/studio-update-20261027-29.png)：对外更新素材，区分图中已上线与仍在测试的内容；正式制品和验收以发布记录为准（last-reviewed: 2026-10-30）。
 - [导演台切换版本即采用生产发布](releases/director-version-adopt-production-release-20261030.md)：main `97ca7fc28`，server + Studio；视频与分镜图点版本即采用、去掉「采用这一版」，同批上线企业手机号加人与导演台浮动 AI 对话；线上只读核对新界面（last-reviewed 2026-10-30）。
+- [AI 编导带上素材和时长、选择框收尾（web-aiavatar 发布）](releases/studio-director-spec-release-20261101.md)：main `6927fc59b`，编导页素材与规格、声音选择框、全站 antd 主题，同包带账号默认头像；只发前端（last-reviewed 2026-11-01）。
 - [Studio 改版与新版资产页（server + web-aiavatar 发布）](releases/studio-redesign-release-20261031.md)：main `9902d4f63`，AI 视频 / AI 图片改版、新版页面统一设计、新版资产页（按文件类型 + 资产库）；无迁移（last-reviewed 2026-10-31）。
 - [场景页创作流程（server + web-aiavatar + studio-admin 发布）](releases/studio-scene-flow-release-20261031.md)：main `fe4a654ce`，创作条件存进草稿、编导接上 H3、21 个视频场景 brief、结果接着用；无迁移（last-reviewed 2026-10-31）。
 - [创作助手四处修复（server + web-aiavatar 发布）](releases/studio-assistant-fixes-release-20261031.md)：main `f3092980c`，出视频路由认时长画幅、制作中问进度不暂停、只说不做时接着做、厂商存储满不再让用户清回收站；无迁移，提示词 v28（last-reviewed 2026-10-31）。
