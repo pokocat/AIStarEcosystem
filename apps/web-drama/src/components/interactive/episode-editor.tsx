@@ -159,7 +159,6 @@ export function EpisodeEditor({
   onProduce,
 }: Props) {
   const ep = episode;
-  const targets = allEpisodes.filter((e) => e.episodeId !== ep.episodeId);
   const flagNames = Object.keys(flags);
   const hasFlag = (f: string) => Object.prototype.hasOwnProperty.call(flags, f);
   const defaultValueOf = (f: string): FlagValue => {
@@ -214,6 +213,11 @@ export function EpisodeEditor({
   };
 
   const epOptionLabel = (t: InteractiveEpisode) => `第 ${t.no} 集 · ${epDisplayTitle(t)}`;
+  // 跳转目标列全部集：本集也列出来但不能选，免得用户以为「少了一集」，也不会接回自己。
+  const targetOptions = allEpisodes.map((t) => {
+    const self = t.episodeId === ep.episodeId;
+    return <option key={t.episodeId} value={t.episodeId} disabled={self}>{epOptionLabel(t)}{self ? " · 本集" : ""}</option>;
+  });
 
   return (
     <div className="col gap-4 wb-ep-editor" style={{ padding: 18 }}>
@@ -285,9 +289,7 @@ export function EpisodeEditor({
             <span style={LABEL}>播完自动接哪一集（没有互动点时用这个）</span>
             <SelectField value={ep.nextVideoId ?? ""} onChange={(e) => patch({ nextVideoId: e.target.value || null })} style={INPUT}>
               <option value="">不自动接（由互动点决定去哪）</option>
-              {targets.map((t) => (
-                <option key={t.episodeId} value={t.episodeId}>{epOptionLabel(t)}</option>
-              ))}
+              {targetOptions}
             </SelectField>
           </div>
         )}
@@ -457,7 +459,7 @@ export function EpisodeEditor({
                           <GitBranch size={12} style={{ color: "var(--accent)", flex: "none" }} />
                           <SelectField value={o.nextVideoId ?? ""} aria-label="选了之后跳到哪一集" onChange={(e) => setOption(idx, oIdx, { nextVideoId: e.target.value || null })} style={{ ...INPUT, flex: 1 }}>
                             <option value="">选了之后跳到…（还没连）</option>
-                            {targets.map((t) => (<option key={t.episodeId} value={t.episodeId}>{epOptionLabel(t)}</option>))}
+                            {targetOptions}
                           </SelectField>
                         </div>
                         {/* 选了之后记下的剧情状态 */}

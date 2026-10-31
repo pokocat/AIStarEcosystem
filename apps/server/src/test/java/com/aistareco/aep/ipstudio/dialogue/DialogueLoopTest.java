@@ -208,6 +208,47 @@ class DialogueLoopTest {
         assertEquals(0, outcome.toolCalls());
     }
 
+    /** 2026-10-30: 「好的，我来调整第二镜。」 with no action used to be the whole reply; the work now follows in the turn. */
+    @Test void aReplyThatOnlyAnnouncesWorkIsCorrectedOnceAndTheWorkFollows() throws Exception {
+        var budget = budget();
+        var model = new ScriptedModel(budget).reply("好的，我来调整第二镜。").reply("", act("update_nodes")).reply("第二镜改好了");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(List.of("update_nodes"), tools.ran);
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(3, outcome.modelCalls());
+        assertTrue(model.log.contains("user:" + DialogueLoop.ANNOUNCE_CORRECTION));
+    }
+
+    @Test void aPromiseRightAfterItsCorrectionEndsTheTurnInsteadOfLooping() throws Exception {
+        var budget = budget();
+        var model = new ScriptedModel(budget).reply("我来改").reply("马上改").reply("我这就改").reply("我这就改");
+        var outcome = new DialogueLoop(model, new RecordingTools(), new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(DialogueLoop.Reason.COMPLETED, outcome.reason());
+        assertEquals(2, outcome.modelCalls(), "one correction, then the turn ends");
+    }
+
+    @Test void aTurnGetsAtMostTwoCorrectionsEvenWhenWorkHappensInBetween() throws Exception {
+        var budget = budget();
+        var model = new ScriptedModel(budget).reply("我来改第一镜").reply("", act("update_nodes"))
+                .reply("我来改第二镜").reply("", act("create_nodes"))
+                .reply("我来改第三镜").reply("不该被调用");
+        var tools = new RecordingTools();
+        var outcome = new DialogueLoop(model, tools, new Hooks(), budget).run(new ArrayList<>());
+        assertEquals(List.of("update_nodes", "create_nodes"), tools.ran);
+        assertEquals(5, outcome.modelCalls(), "the third announcement is not corrected");
+        assertEquals(2, model.log.stream().filter(l -> l.equals("user:" + DialogueLoop.ANNOUNCE_CORRECTION)).count());
+    }
+
+    @Test void answersQuestionsAndWaitsAreNotAnnouncements() {
+        for (String text : java.util.List.of("好的，我来调整第二镜。", "收到，马上改成横屏", "稍等，我这就重新出一张", "明白了，接下来我把字幕改大一点"))
+            assertTrue(DialogueLoop.announcesWork(text), text);
+        for (String text : java.util.List.of("第二镜改好了，换成了夜景。", "我来改的话，你想要什么风格？", "第二段生成好了我再告诉你",
+                "你确认后我马上开始", "我来帮你分析一下这段文案：开头三秒没有钩子，中间卖点太多，结尾没有引导下单，建议把价格放到第二句，再补一句限时。",
+                "", "你好"))
+            assertFalse(DialogueLoop.announcesWork(text), text);
+    }
+
     @Test void runsToolsInOrderAndFeedsResultsBackBeforeTheNextCall() throws Exception {
         var budget = budget();
         var model = new ScriptedModel(budget).reply("先看画布", act("read_canvas"), act("read_skill")).reply("看完了");

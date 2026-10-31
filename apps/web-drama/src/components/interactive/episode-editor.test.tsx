@@ -99,3 +99,21 @@ describe("EpisodeEditor · 条件用的剧情状态被删了（WB7）", () => {
     expect((onChange.mock.calls.at(-1)![0] as InteractiveEpisode).interactions[0].condition).toBeUndefined();
   });
 });
+
+describe("EpisodeEditor · 跳转目标列全部集", () => {
+  it("本集也在下拉里但不能选，其它集可以选", () => {
+    const ep = episode(undefined);
+    const other: InteractiveEpisode = { ...episode(undefined), episodeId: "ep2", no: 2, title: "走廊", interactions: [] };
+    const onChange = vi.fn();
+    const { getByLabelText } = render(
+      <EpisodeEditor episode={ep} allEpisodes={[ep, other]} flags={{}} isStart onChange={onChange}
+        onSetStart={() => {}} onDelete={() => {}} onDuplicate={() => {}} onProduce={() => {}} />,
+    );
+    const trigger = getByLabelText("选了之后跳到哪一集");
+    const select = document.getElementById(trigger.getAttribute("data-select-native")!) as HTMLSelectElement;
+    const self = select.querySelector('option[value="ep1"]') as HTMLOptionElement | null;
+    expect(self).not.toBeNull();
+    expect(self!.disabled).toBe(true);
+    expect((select.querySelector('option[value="ep2"]') as HTMLOptionElement).disabled).toBe(false);
+  });
+});

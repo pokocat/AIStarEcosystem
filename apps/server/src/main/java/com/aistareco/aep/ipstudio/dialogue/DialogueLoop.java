@@ -101,6 +101,8 @@ public final class DialogueLoop {
 
     /** Consecutive replies whose actions could not be parsed before the turn stops instead of paying for another try. */
     static final int MAX_PROTOCOL_RETRIES = 2;
+    /** Corrections a turn gets for replies that announce work and stop (see {@link #announcesWork}); never two in a row. */
+    static final int MAX_ANNOUNCE_CORRECTIONS = 2;
 
     public Outcome run(List<Map<String, Object>> messages) throws Exception {
         Outcome outcome;
@@ -124,6 +126,10 @@ public final class DialogueLoop {
         String lastBatch = null;
         // The current repeat already got its correction: the next identical batch ends the turn.
         boolean repeatCorrected = false;
+        // 「好的，我来调整第二镜。」 with no action: corrected at most MAX_ANNOUNCE_CORRECTIONS times a turn, and a reply
+        // right after such a correction that still does nothing ends the turn (no loop of promises).
+        int announceCorrections = 0;
+        boolean announceCorrected = false;
         while (true) {
             if (hooks.stopRequested()) return outcome(Reason.INTERRUPTED, null, toolCalls);
             List<Map<String, Object>> view = window(messages);
@@ -145,7 +151,16 @@ public final class DialogueLoop {
             protocolErrors = 0;
             if (reply.actions().isEmpty()) {
                 List<String> steering = canContinue(messages) ? hooks.drainSteering() : List.of();
-                if (steering.isEmpty()) return outcome(Reason.COMPLETED, null, toolCalls);
+                if (steering.isEmpty()) {
+                    if (!announceCorrected && announceCorrections < MAX_ANNOUNCE_CORRECTIONS
+                            && announcesWork(reply.visibleText()) && canContinue(messages)) {
+                        announceCorrections++; announceCorrected = true;
+                        model.appendExchange(messages, reply, List.of());
+                        model.appendUser(messages, ANNOUNCE_CORRECTION);
+                        continue;
+                    }
+                    return outcome(Reason.COMPLETED, null, toolCalls);
+                }
                 model.appendExchange(messages, reply, List.of());
                 model.appendUser(messages, steeringText(steering));
                 lastBatch = null; repeatCorrected = false;
@@ -165,7 +180,7 @@ public final class DialogueLoop {
                 model.appendUser(messages, readsOnly ? READ_REPEAT_CORRECTION : REPEAT_CORRECTION);
                 continue;
             }
-            lastBatch = batch; repeatCorrected = false;
+            lastBatch = batch; repeatCorrected = false; announceCorrected = false;
             List<ToolResult> results = new ArrayList<>();
             Reason end = null;
             boolean interrupted = false;
@@ -267,6 +282,29 @@ public final class DialogueLoop {
                 + "能直接调用工具就直接调用；否则另起一行写 " + DialogueActionProtocol.MARKER + "，下一行写 JSON 数组，例如：\n"
                 + DialogueActionProtocol.MARKER + "\n" + ACTION_EXAMPLE + "\n把 view_images 换成你要调用的工具，args 按该工具的参数写。"
                 + "分隔行 " + DialogueActionProtocol.MARKER + " 只写一次，数组后面不要再写。";
+    }
+
+    /**
+     * The correction after a reply that says it is about to do something and stops there (WIP review 2026-10-23, 2026-10-30):
+     * the sentence was only the opening of the work, so the work follows in this turn instead of the user typing 「改啊」.
+     */
+    static final String ANNOUNCE_CORRECTION = "你刚才说要去做，但没有调用任何工具，这一轮什么都没有改。现在就调用工具把它做完，正文不必重复刚才那句话。"
+            + "如果其实是在等制作完成或等用户确认，就直接说清楚在等什么，不要调用工具。";
+    private static final java.util.regex.Pattern ANNOUNCE = java.util.regex.Pattern.compile(
+            "我来|我这就|这就去|这就为你|马上|立刻|立即|现在就|接下来我|下面我|我先去|我先来|我将|我会为你|稍等|请稍候|正在为你|开始为你");
+    /** Waiting is an honest answer: for a job, a confirmation or the user (「第二段生成好了我再告诉你」「你确认后我就开始」). */
+    private static final java.util.regex.Pattern WAITING = java.util.regex.Pattern.compile(
+            "等.{0,12}(?:好了|完成|出来|确认|生成|结束)|完成后|好了之后|生成好|出来后|确认后|你确认|你点|你选");
+    /** How much of the end of a reply is read: an analysis that opened with 「我来帮你分析」 is an answer, not a promise. */
+    private static final int ANNOUNCE_TAIL = 40;
+
+    /** True when the end of a reply with no action announces work it did not do (and is neither a question nor a wait). */
+    static boolean announcesWork(String text) {
+        if (text == null) return false;
+        String said = text.strip();
+        if (said.isEmpty() || said.endsWith("？") || said.endsWith("?")) return false;
+        String tail = said.length() <= ANNOUNCE_TAIL ? said : said.substring(said.length() - ANNOUNCE_TAIL);
+        return ANNOUNCE.matcher(tail).find() && !WAITING.matcher(tail).find();
     }
 
     static String steeringText(List<String> steering) {

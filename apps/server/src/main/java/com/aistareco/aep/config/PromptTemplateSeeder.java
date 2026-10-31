@@ -56,7 +56,7 @@ public class PromptTemplateSeeder implements CommandLineRunner {
     //      nextOffset 为空），{{steering}} 标题改成「接续信息与待应用的用户调整」（自动接续的任务把整条链的已做操作放在这里）。
     // v26：不锁方法（docs/ip-studio-dialogue-intents.md 「2026-10-23：不锁方法」）：对话提示词「先判断用户要什么」一节改成
     //      有进行中的制作时也按这句话的意图换方法，不再说「没有进行中的制作时才能换」。
-    private static final String SEED_VERSION = "v27-2026-10-24-plan-material-scope";
+    private static final String SEED_VERSION = "v28-2026-10-30-say-it-do-it";
     private static final String CONFIG_KEY = "aep.material.prompt-seed-version";
 
     private final PromptService promptService;
