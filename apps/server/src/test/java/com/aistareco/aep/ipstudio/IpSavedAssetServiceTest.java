@@ -62,4 +62,16 @@ class IpSavedAssetServiceTest {
         assertTrue(saved.path("data").path("url").asText().contains("fresh"));
         verify(projects).requireOwnedAssetKey("u","ipstudio_source/u/voice.wav");
     }
+    @Test void sourceFilterSeparatesGeneratedUploadsAndCanvasSaves() throws Exception {
+        // 资产页「AI 生成」库只列自动收进来的生成结果，上传和画布手动存的不混进去（2026-10-31）。
+        service.saveAutomatic("u",om.readTree("{\"kind\":\"image\",\"title\":\"出图\",\"source\":\"AI 生成\",\"data\":{\"storageKey\":\"ipstudio_gen/u/a.jpg\"}}"));
+        service.saveAutomatic("u",om.readTree("{\"kind\":\"image\",\"title\":\"门头\",\"source\":\"用户上传\",\"data\":{\"storageKey\":\"ipstudio_source/u/b.jpg\"},\"metadata\":{\"folderId\":\"F1\"}}"));
+        service.save("u",image());
+        assertEquals(3,service.page("u","all",null,"all","all",0).total());
+        var generated=service.page("u","unfiled",null,"all","generated",0);
+        assertEquals(1,generated.total());assertEquals("出图",generated.items().get(0).path("title").asText());
+        assertEquals("门头",service.page("u","all",null,"image","upload",0).items().get(0).path("title").asText());
+        assertEquals(1,service.page("u","all",null,"all","canvas",0).total());
+        assertEquals("IP_ASSET_INVALID",assertThrows(BusinessException.class,() -> service.page("u","all",null,"all","elsewhere",0)).getCode());
+    }
 }

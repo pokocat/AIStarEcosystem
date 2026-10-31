@@ -38,12 +38,15 @@ public class IpLibraryService {
         for(var row:rows(user,"object")){var data=json(row);if(id.equals(data.path("folderId").asText())){data.remove("folderId");persist(row,data);}}
         saved.clearFolder(user,id);f.setDeletedAt(Instant.now());records.save(f);
     }
-    public LibraryPage<LibraryObject> objects(String user,String folder,String query,String status,int page,String project,String node) {
+    /** kind=all|character|scene|prop：资产页「人物」只列角色（2026-10-31）。 */
+    public LibraryPage<LibraryObject> objects(String user,String folder,String query,String status,String kind,int page,String project,String node) {
+        if(kind!=null&&!kind.equals("all")&&!kind.equals("character")&&!kind.equals("scene")&&!kind.equals("prop"))throw BusinessException.badRequest("IP_LIBRARY_INVALID","资产类型不正确");
         var names=new HashMap<String,String>();for(var f:folders(user))names.put(f.id(),f.name());
         var list=new ArrayList<IpLibraryRecord>();String needle=query==null?"":query.toLowerCase(Locale.ROOT);
         for(var row:rows(user,"object")){var d=json(row);String f=d.path("folderId").asText();
             if(folder!=null&&!folder.isBlank()&&!folder.equals("all")&&!(folder.equals("unfiled")?f.isBlank():folder.equals(f)))continue;
             if(status!=null&&!status.equals("all")&&(status.equals("pending")?d.hasNonNull("mainVersionId"):!d.hasNonNull("mainVersionId")))continue;
+            if(kind!=null&&!kind.equals("all")&&!kind.equals(d.path("kind").asText()))continue;
             boolean sourceMatch=project==null;var originTitles=new StringBuilder();for(var origin:d.path("sources")){originTitles.append(origin.path("title").asText()).append(' ');if(project!=null&&project.equals(origin.path("projectId").asText())&&(node==null||node.equals(origin.path("nodeId").asText())))sourceMatch=true;}
             if(!sourceMatch)continue;
             String searchable=d.path("name").asText()+" "+d.path("description").asText()+" "+originTitles+" "+names.getOrDefault(f,"未分类");

@@ -9,6 +9,8 @@ import { PersonalAssetLibrary } from '@/ip/personal-asset-library';
 import { AvatarLibrary, VoiceLibrary } from '@/ip/supplementary-asset-library';
 import { IpManagement } from '@/ip/ip-management';
 import { StudioPage, StudioPageFilters } from '@/ip/studio-page';
+import { AssetsHub } from '@/ip/assets-hub';
+import { useUiVersion } from '@/shell/ui-version';
 import { studioOverlayContainer } from '@/ip/studio-overlay';
 import { AssetApi, AvatarApi, LicenseApi, VoiceApi } from '@/proto/api';
 import type { Avatar, License, StarGrant, VoiceAsset } from '@/proto/data';
@@ -19,19 +21,22 @@ const tabs = [{value:'ips',label:'我的 IP'}, {value:'objects',label:'创作素
 export function AssetsLibrary() {
   const router = useRouter(), search = useSearchParams();
   const auth = useRequireAuth();
+  // 新版按文件类型 + 资产库重新分（ip/assets-hub.tsx，2026-10-31）；旧版保持原来五个分类。
+  const nextUi = useUiVersion() === 'next';
   const raw = search.get('tab');
   const tab = tabs.some(t => t.value === raw) ? raw! : 'ips';
   const [revision, setRevision] = useState(0);
-  const avatars = useHubData<Avatar[]>(() => AvatarApi.list('mine'), [], [revision], auth === 'ok' && tab === 'authorized');
-  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [revision], auth === 'ok' && tab === 'authorized');
-  const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [revision], auth === 'ok' && tab === 'authorized');
-  const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [revision], auth === 'ok' && tab === 'voices');
+  const avatars = useHubData<Avatar[]>(() => AvatarApi.list('mine'), [], [revision], !nextUi && auth === 'ok' && tab === 'authorized');
+  const grants = useHubData<StarGrant[]>(() => AssetApi.starGrants(), [], [revision], !nextUi && auth === 'ok' && tab === 'authorized');
+  const licenses = useHubData<License[]>(() => LicenseApi.list(), [], [revision], !nextUi && auth === 'ok' && tab === 'authorized');
+  const voices = useHubData<VoiceAsset[]>(() => VoiceApi.mine(), [], [revision], !nextUi && auth === 'ok' && tab === 'voices');
   const change = (next: string) => {
     const params = new URLSearchParams(search.toString());
     params.set('tab', next); params.delete('focus');
     router.push(`/assets?${params}`);
   };
   if (auth === 'no-platform') return <PlatformGateScreen/>;
+  if (nextUi && auth === 'ok') return <AssetsHub/>;
   return <StudioPage title="资产" description="人物、声音与创作素材，让每一次灵感有所承接。" nextDescription="人物、声音和素材，做什么都能直接拿来用" className="assets-library ip-management-page" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
     {auth !== 'ok' ? <p role="status">正在打开资产…</p> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
       <App className="assets-library-content" data-studio-overlay-root>

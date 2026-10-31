@@ -15764,6 +15764,14 @@ paths:
     get:
       tags: [ip-studio]
       summary: Personal library get library/objects
+      parameters:
+        - { in: query, name: folder, schema: { type: string }, description: 'all（默认）/ unfiled / 资产库 id' }
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string, enum: [all, pending, ready] } }
+        - { in: query, name: kind, schema: { type: string, enum: [all, character, scene, prop] }, description: '2026-10-31：资产页「人物」只列 character；不认的值 400 IP_LIBRARY_INVALID' }
+        - { in: query, name: page, schema: { type: integer, minimum: 0 } }
+        - { in: query, name: projectId, schema: { type: string } }
+        - { in: query, name: nodeId, schema: { type: string } }
       responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
     post:
       tags: [ip-studio]
@@ -15830,7 +15838,13 @@ paths:
     get:
       tags: [ip-studio]
       summary: Personal library get library/materials
-      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
+      parameters:
+        - { in: query, name: folder, schema: { type: string }, description: 'all（默认）/ unfiled / 资产库 id' }
+        - { in: query, name: query, schema: { type: string } }
+        - { in: query, name: kind, schema: { type: string, enum: [all, image, video, audio, text] } }
+        - { in: query, name: source, schema: { type: string, enum: [all, generated, upload, canvas] }, description: '2026-10-31：generated = AI 生成（自动收进来的生成结果），upload = 用户上传，canvas = 画布里手动存的。资产页「AI 生成」库 = folder=unfiled + source=generated。不认的值 400 IP_ASSET_INVALID' }
+        - { in: query, name: page, schema: { type: integer, minimum: 0 } }
+      responses: { '200': { description: 'ApiResponse resource; lists use PageEnvelope data array and pagination with limit 24' }, '400': { description: 'IP_LIBRARY_INVALID / IP_ASSET_INVALID or invalid ownership/input' }, '404': { description: 'IP_LIBRARY_NOT_FOUND' }, '409': { description: 'IP_LIBRARY_CHANGED or changed original request' } }
 
   /v1/ip-studio/library/materials/{id}:
     patch:

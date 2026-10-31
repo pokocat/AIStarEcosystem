@@ -75,12 +75,17 @@ public class IpSavedAssetService {
         row.setDeletedAt(null);row.setPayloadJson(payload.toString());repo.save(row);
         return wire(row,user);
     }
-    public com.aistareco.aep.ipstudio.dto.IpLibraryDtos.LibraryPage<JsonNode> page(String user,String folder,String query,String kind,int page) {
+    /** 来源筛选：generated = AI 生成（各处出图出片自动收进来的），upload = 用户上传，canvas = 从画布手动存的。资产页「AI 生成」库 = generated + 未放进资产库（2026-10-31）。 */
+    static final java.util.Map<String,String> SOURCES=java.util.Map.of("generated","AI 生成","upload","用户上传","canvas","Canvas");
+    public com.aistareco.aep.ipstudio.dto.IpLibraryDtos.LibraryPage<JsonNode> page(String user,String folder,String query,String kind,String source,int page) {
         if(page<0||page>100000)throw invalid();
+        if(source!=null&&!source.equals("all")&&!SOURCES.containsKey(source))throw BusinessException.badRequest("IP_ASSET_INVALID","素材来源不正确");
+        String wanted=source==null||source.equals("all")?null:SOURCES.get(source);
         var rows=repo.findByOwnerUserIdAndDeletedAtIsNullOrderByCreatedAtDesc(user).stream().filter(row->{
             try {var data=om.readTree(row.getPayloadJson());readableTitle((ObjectNode)data);String f=data.path("metadata").path("folderId").asText();
                 return (folder==null||folder.isBlank()||folder.equals("all")||(folder.equals("unfiled")?f.isBlank():folder.equals(f)))
                     &&(kind==null||kind.equals("all")||kind.equals(data.path("kind").asText()))
+                    &&(wanted==null||wanted.equals(data.path("source").asText()))
                     &&(query==null||(data.path("title").asText()+" "+data.path("source").asText()+" "+data.path("metadata").path("prompt").asText()).toLowerCase(java.util.Locale.ROOT).contains(query.toLowerCase(java.util.Locale.ROOT)));
             }catch(Exception e){return false;}
         }).toList();

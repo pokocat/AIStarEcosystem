@@ -30,6 +30,7 @@ import "../styles/director.css";
 import "../styles/studio-scenes.css";
 import "../styles/studio-home-scenes.css";
 import "../styles/studio-next-pages.css";
+import "../styles/assets-hub.css";
 import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
