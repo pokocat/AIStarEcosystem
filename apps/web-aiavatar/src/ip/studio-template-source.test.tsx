@@ -42,6 +42,9 @@ test('an uncertain submit retains its request id for a recovery click',async()=>
   await open();vi.mocked(api.executeTemplateStep).mockRejectedValue(new Error('网络暂不可用'));fireEvent.click(screen.getAllByRole('button',{name:'生成此步骤 · 8 积分'})[0]);await waitFor(()=>expect(screen.getByRole('button',{name:'确认 8 积分并提交'})).toBeDefined());
   fireEvent.click(screen.getByRole('button',{name:'确认 8 积分并提交'}));await waitFor(()=>expect(screen.getAllByText('网络暂不可用').length).toBeGreaterThan(0));const first=vi.mocked(api.executeTemplateStep).mock.calls[0][2];
   expect((screen.getByRole('textbox',{name:'本次图片指令'}) as HTMLTextAreaElement).disabled).toBe(true);
+  // 报错文字在测试的通知根里渲染（studio-notification-harness 是另一个 render），可能比组件解除「提交中」先出来；
+  // 按钮还在 loading（这里的 antd 替身把它画成 disabled）时点击会被吞掉。2026-10-30 CI（#143）就挂在这里，所以先等按钮恢复再点。
+  await waitFor(()=>expect((screen.getByRole('button',{name:'确认 8 积分并提交'}) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button',{name:'确认 8 积分并提交'}));await waitFor(()=>expect(api.executeTemplateStep).toHaveBeenCalledTimes(2));expect(vi.mocked(api.executeTemplateStep).mock.calls[1][2]).toEqual(first);
 });
 test('video results preview and adopt as videos, with no character archive or image-package entry',async()=>{
