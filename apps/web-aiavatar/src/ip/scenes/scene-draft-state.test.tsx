@@ -28,13 +28,16 @@ vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: a
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
-vi.mock("../library-reference-picker", () => ({ LibraryReferencePicker: () => null }));
+vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
   <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
-import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { setLibrarySource } from "./scene-test-picker";
+// 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
+beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -66,8 +69,6 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const upload = (input: Element, name = "p.jpg") => fireEvent.change(input, { target: { files: [new File(["x"], name, { type: "image/jpeg" })] } });
-const refInput = () => document.querySelector('.scene-media-row input[type="file"]')!;
 const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(optionGroup(group)).getByRole("button", { name }).getAttribute("aria-pressed");
@@ -82,7 +83,7 @@ async function open(Page: typeof SceneImageStudio, url: string) {
 // ── AI 图片 ───────────────────────────────────────────────────────────────
 async function generateWhiteBackground() {
   await open(SceneImageStudio, "/image?scene=white-background");
-  await act(async () => { upload(refInput()); });
+  await pickFromLibrary();
   fireEvent.click(within(optionGroup("拍摄角度")).getByRole("button", { name: "俯拍" }));
   fireEvent.change(screen.getByRole("textbox", { name: "补充要求" }), { target: { value: "平放" } });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
@@ -150,16 +151,14 @@ test("image: switching scenes carries a photo only into a slot with the same nam
   api.uploadImage.mockResolvedValueOnce({ key: "model.jpg", url: "blob:model", fileName: "model.jpg" })
     .mockResolvedValueOnce({ key: "face.jpg", url: "blob:face", fileName: "face.jpg" });
   await open(SceneImageStudio, "/image?scene=face-swap");
-  await chooseUpload("模特图");
-  await act(async () => { upload(refInput()); });
-  await chooseUpload("新面孔");
-  await act(async () => { upload(refInput()); });
+  await pickFromLibrary("模特图");
+  await pickFromLibrary("新面孔");
   expect(screen.getByRole("img", { name: "新面孔" })).toBeTruthy();
   pickScene("服装上身");
   await waitFor(() => expect(heading()).toBe("服装上身"));
   // 模特图还是模特图；新面孔不会被当成服装图（以前按位置带）。
   expect((screen.getByRole("img", { name: "模特图" }) as HTMLImageElement).src).toContain("blob:model");
-  expect(screen.getByRole("button", { name: "添加服装图" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "从资产库选服装图" })).toBeTruthy();
 });
 
 test("image: just opening an old draft saves nothing, so it does not jump to the top of 最近", async () => {

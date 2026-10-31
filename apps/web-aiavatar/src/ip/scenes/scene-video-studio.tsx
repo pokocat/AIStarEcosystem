@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowUp, Check, ChevronDown, Copy, Cpu, Download, FolderOpen, Loader2, Mic, PencilLine, Plus,
   RotateCcw, SlidersHorizontal, Square, UserRound, Video, X } from "lucide-react";
-import type { IpProject, IpRun, StudioMediaImportResult, StudioSceneInputs, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
+import type { IpProject, IpRun, IpSavedAsset, StudioMediaImportResult, StudioSceneInputs, StudioSceneOptionGroup, StudioSceneVideoState } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import type { VideoStudioModel } from "@ai-star-eco/types/video-studio";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
@@ -15,7 +15,7 @@ import { SignedImage } from "@/canvas-bridge/signed-image";
 import { SignedVideo } from "@/canvas-bridge/signed-video";
 import { getStudioPlanExecution } from "@/canvas-bridge/studio-plan-execution";
 import type { StudioPlanExecution } from "@ai-star-eco/types/ip-studio-workflow";
-import { importStudioMedia, studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
+import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { attachmentNode } from "@/canvas-bridge/studio-attachments";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
 import { studioChosenTextModel } from "@/canvas-bridge/studio-text-model";
@@ -26,6 +26,7 @@ import { studioErrorMetadata, useStudioFailure } from "../studio-errors";
 import { useStudioList } from "../studio-gallery";
 import { studioEntryHref } from "../studio-entry";
 import { StudioSelect } from "../studio-select";
+import { LibraryReferencePicker } from "../library-reference-picker";
 import { IpStudioApi } from "../api";
 import { findVideoScene, useSceneCatalog, type VideoScene } from "./scene-catalog";
 import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, listSceneDrafts, openedVideoState, patchNode, resubmitRow, sceneInputsOf, scriptNodes, scriptOfRow, submissionRejected, videoRows, withSceneInput, type SceneInputKind } from "./scene-drafts";
@@ -107,8 +108,7 @@ export function SceneVideoStudio() {
   const [copied, setCopied] = useState<string>();
   // 草稿与保存队列（换草稿时旧回包不改这一页，见 scene-draft-store.ts）。
   const { draft, current: draftRef, session, begin, remember, show, onPage, persist, settled } = useSceneDraftStore();
-  const fileInput = useRef<HTMLInputElement>(null);
-  const target = useRef<Slot>("image");
+  const [picking, setPicking] = useState<Slot>();
   const input = useRef<HTMLTextAreaElement>(null);
   const thread = useRef<HTMLDivElement>(null);
 
@@ -333,35 +333,41 @@ export function SceneVideoStudio() {
   }, [scripts.length, writing]);
 
   // ── 素材 ──────────────────────────────────────────────────────────────
-  const upload = async (kind: Slot, file: File) => {
+  /**
+   * 素材只从资产库选（2026-10-31：不在这页直接传文件；新文件在选择框里先传进资产库，传完自动选中）。
+   * 选好就放进这一格并写进草稿：素材节点 + 这一格现在选的是它，刷新或从「最近」再打开时还是这份。第一次放素材时建草稿。
+   */
+  const addFromLibrary = async (kind: Slot, assets: IpSavedAsset[]) => {
+    if (!scene) return;
     const type = kind === "voice" ? "audio" : kind === "video" ? "video" : "image";
-    const wrong = type === "image" && !/\.(jpe?g|png)$/i.test(file.name) ? "请选择 JPG 或 PNG 图片"
-      : type === "video" && !/\.mp4$/i.test(file.name) ? "参考视频请用 MP4 格式"
-      : type === "audio" && !/\.(mp3|wav|m4a)$/i.test(file.name) ? "声音请用 MP3、WAV 或 M4A" : "";
-    if (wrong) { showFailure({ action: "上传素材", error: new Error(wrong) }); return; }
+    const chosen = assets.flatMap((a): Media[] => {
+      if (a.kind !== type) return [];
+      const key = a.data.storageKey, url = a.kind === "image" ? a.data.dataUrl : a.data.url;
+      return key && url ? [{ key, url, title: a.title, fileName: a.title, mediaType: type, mimeType: a.data.mimeType, bytes: a.data.bytes,
+        ...(a.kind !== "audio" ? { width: a.data.width, height: a.data.height } : {}) }] : [];
+    });
+    if (!chosen.length) throw new Error(type === "image" ? "请选一张图片" : type === "video" ? "请选一段视频" : "请选一段声音");
     const ticket = session.current;
     setUploading(kind);
     try {
       const projectId = await ensureDraft(ticket);
-      const result = await importStudioMedia(projectId, file, type);
-      const title = kind === "image" ? `${scene!.images.label} ${images.length + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? "声音样本" : "参考视频";
-      const media: Media = { ...result, title };
-      const max = scene!.images.max ?? 6;
-      // 传的时候换了草稿：素材照样记进它自己那份草稿，只是不放到新打开的这页上。
+      const max = scene.images.max ?? 6;
+      const fresh = kind === "image" ? chosen.filter(m => !images.some(o => o.key === m.key)).slice(0, Math.max(0, max - images.length)) : chosen.slice(0, 1);
+      const titled = fresh.map((m, i) => ({ ...m, title: kind === "image" ? `${scene.images.label} ${images.length + i + 1}` : kind === "character" ? "出镜人物" : kind === "voice" ? "声音样本" : "参考视频" }));
+      // 选的时候换了草稿：素材照样记进它自己那份草稿，只是不放到新打开的这页上。
       if (onPage(ticket, projectId)) {
-        if (kind === "image") setImages(old => [...old, media].slice(0, max));
-        if (kind === "character") setCharacter(media);
-        if (kind === "voice") setVoice(media);
-        if (kind === "video") setVideo(media);
+        if (kind === "image") setImages(old => [...old, ...titled].slice(0, max));
+        if (kind === "character") setCharacter(titled[0]);
+        if (kind === "voice") setVoice(titled[0]);
+        if (kind === "video") setVideo(titled[0]);
       }
-      // 上传完就写进草稿：素材节点 + 这一格现在选的是它。刷新或从「最近」再打开时还是这份（换过就是换后的）。
-      await persist(doc => {
-        const nodes = doc.nodes as CanvasNodeData[];
+      await persist(doc => titled.reduce((next, media) => {
+        const nodes = next.nodes as CanvasNodeData[];
         const made = placeMedia(nodes, media, type, nodes.filter(n => n.metadata?.origin === "upload").length);
-        const placed = nodes.some(n => n.id === made.id) ? doc : { ...doc, nodes: [...nodes, made] };
+        const placed = nodes.some(n => n.id === made.id) ? next : { ...next, nodes: [...nodes, made] };
         return withSceneInput(placed, kind, media.key, "add", max);
-      }, projectId).catch(() => undefined);
-    } catch (e) { showFailure({ action: "上传素材", error: e, next: "检查一下文件格式和大小，再试一次。" }); }
+      }, doc), projectId).catch(() => undefined);
+    } catch (e) { showFailure({ action: "放素材", error: e }); }
     finally { setUploading(undefined); }
   };
   /**
@@ -408,12 +414,7 @@ export function SceneVideoStudio() {
     const projectId = draftRef.current?.id;
     if (projectId) void persist(doc => withSceneInput(doc, kind, key, "remove"), projectId).catch(e => showFailure({ action: "移除素材", error: e }));
   };
-  const choose = (kind: Slot) => {
-    target.current = kind;
-    if (!fileInput.current) return;
-    fileInput.current.accept = kind === "voice" ? ".mp3,.wav,.m4a" : kind === "video" ? ".mp4" : ".jpg,.jpeg,.png";
-    fileInput.current.click();
-  };
+  const choose = (kind: Slot) => setPicking(kind);
 
   /**
    * 素材放进草稿画布（同一个文件只放一次），返回每份素材对应的节点，顺序就是编导写的图1、图2…。
@@ -710,7 +711,7 @@ export function SceneVideoStudio() {
   const onPick = (id: string) => { const next = findVideoScene(catalog, id); if (next && (next.id !== scene.id || draftRef.current)) goToScene(next); };
   const tile = (kind: Exclude<Slot, "image">, media: Media | undefined, label: string, Icon: typeof Video, optional: boolean, clear: () => void) =>
     <div className={`scene-media${media ? " is-filled" : ""}`}>
-      <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `添加${label}`} title={media?.fileName}>
+      <button type="button" disabled={uploading !== undefined} onClick={() => choose(kind)} aria-label={media ? `更换${label}` : `从资产库选${label}`} title={media?.fileName}>
         {uploading === kind ? <Loader2 size={18} className="studio-gallery-spinner"/> : media && kind === "character" ? <SignedImage src={media.url} storageKey={media.key} alt=""/>
           : <Icon size={18} strokeWidth={1.3}/>}
       </button>
@@ -755,13 +756,12 @@ export function SceneVideoStudio() {
             <span className="scene-media-preview"><SignedImage src={m.url} storageKey={m.key} alt={m.title}/>{at >= 0 && <i className="scene-ref-index">图{at + 1}</i>}</span>
             <span>{scene.images.label}</span>
             <button type="button" className="scene-ref-remove" aria-label={`移除${m.title}`} onClick={() => { drop("image", m.key); setImages(old => old.filter((_, j) => j !== i).map((o, j) => ({ ...o, title: `${scene.images.label} ${j + 1}` }))); }}><X size={11} strokeWidth={1.8}/></button></div>; })}
-          {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`添加${scene.images.label}`}>
+          {images.length < (scene.images.max ?? 6) && <div className="scene-media"><button type="button" disabled={uploading !== undefined} onClick={() => choose("image")} aria-label={`从资产库选${scene.images.label}`}>
             {uploading === "image" ? <Loader2 size={18} className="studio-gallery-spinner"/> : <Plus size={18} strokeWidth={1.3}/>}</button>
             <span>{images.length ? "再加一张" : scene.images.label}{!images.length && !scene.images.required && <small>可选</small>}</span></div>}
           {(scene.character || scene.voice) && <i className="scene-media-divider" aria-hidden="true"/>}
           {scene.character && tile("character", character, "角色", UserRound, true, () => { if (character) drop("character", character.key); setCharacter(undefined); })}
           {scene.voice && tile("voice", voice, "声音", Mic, true, () => { if (voice) drop("voice", voice.key); setVoice(undefined); })}
-          <input ref={fileInput} type="file" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(target.current, file); }}/>
         </div>
 
         <div className="scene-box">
@@ -829,6 +829,12 @@ export function SceneVideoStudio() {
         : <SceneEmpty title="还没有作品" note="写好提示词点「生成视频」，做好的视频会出现在这里。"/>}
       </div>
     </section>
+    {picking && <div className="scene-picker-host"><LibraryReferencePicker open upload
+      mediaType={picking === "voice" ? "audio" : picking === "video" ? "video" : "image"}
+      max={picking === "image" ? Math.max(1, (scene.images.max ?? 6) - images.length) : 1}
+      title={`选${picking === "image" ? scene.images.label : picking === "character" ? "出镜人物" : picking === "voice" ? "声音" : scene.video?.label ?? "参考视频"}`}
+      intro="从资产库里选；新文件点「上传到资产库」，传完会自动选中。原文件不会被改动。" confirmLabel="用这个"
+      onClose={() => setPicking(undefined)} onAssets={assets => addFromLibrary(picking, assets)}/></div>}
     <HubTabBar/>
   </main>;
 }

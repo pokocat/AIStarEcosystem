@@ -27,13 +27,16 @@ vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: a
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
-vi.mock("../library-reference-picker", () => ({ LibraryReferencePicker: () => null }));
+vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
   <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addVideoRow } from "./scene-drafts";
-import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { setLibrarySource } from "./scene-test-picker";
+// 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
+beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -110,13 +113,12 @@ test("image: a draft created after the page moved on is kept for its own work, n
   expect(saves("IPP-B")).toBe(0);
 });
 
-test("image: a reference picture that finishes uploading after switching drafts does not land in the new one", async () => {
-  const uploaded = later<{ key: string; url: string; fileName: string }>();
-  api.uploadImage.mockImplementationOnce(() => uploaded.promise);
+test("image: a reference picture chosen from the library after switching drafts does not land in the new one", async () => {
+  api.uploadImage.mockResolvedValueOnce({ key: "ipstudio/source/u/late.jpg", url: "blob:late", fileName: "late.jpg" });
   await startImageInA();
-  fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [new File(["x"], "p.jpg", { type: "image/jpeg" })] } });
+  await openLibrary();
   await openB();
-  await act(async () => { uploaded.release({ key: "ipstudio/source/u/late.jpg", url: "blob:late", fileName: "late.jpg" }); });
+  await confirmLibrary();
   expect(document.querySelector('img[src="blob:late"]')).toBeNull();
 });
 
@@ -155,7 +157,7 @@ test("video: a removed voice stays removed when the draft is opened again; the o
   cleanup(); api.getProject.mockClear();
   await openVideoDraft();
   expect(screen.queryByRole("button", { name: "移除声音" })).toBeNull();
-  expect(screen.getByRole("button", { name: "添加声音" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "从资产库选声音" })).toBeTruthy();
 });
 
 const productNode = { id: "product", type: "image", title: "商品图 1", position: { x: 100, y: 400 }, width: 100, height: 100,
@@ -165,8 +167,7 @@ test("video: after replacing the voice, opening the draft again picks the replac
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [voiceNode("old", "old.mp3"), productNode] as never } });
   api.importMedia.mockResolvedValue({ key: "new.mp3", url: "https://cdn/new.mp3", fileName: "new.mp3", bytes: 3, mimeType: "audio/mpeg", mediaType: "audio" });
   await openVideoDraft();
-  fireEvent.click(await screen.findByRole("button", { name: "更换声音" }));
-  fireEvent.change(document.querySelector('input[type="file"]')!, { target: { files: [new File(["x"], "new.mp3", { type: "audio/mpeg" })] } });
+  await pickFromLibrary("声音");
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneInputs?.voice).toBe("new.mp3"));
   expect(store.get("IPP-V")!.doc.nodes.filter(n => n.type === "audio")).toHaveLength(2);
 

@@ -23,12 +23,15 @@ vi.mock("@/canvas-bridge/api", () => ({ fetchModels: api.fetchModels, readRun: a
 vi.mock("@/canvas-bridge/studio-api", () => ({ studioCapabilities: api.capabilities, submitStudioRun: api.submit, importStudioMedia: api.importMedia }));
 vi.mock("@/canvas-bridge/studio-image-file", () => ({ prepareStudioImageUpload: async (f: File) => f }));
 vi.mock("../studio-errors", async importOriginal => ({ ...(await importOriginal<typeof import("../studio-errors")>()), useStudioFailure: () => api.failure, studioErrorMetadata: () => ({}) }));
-vi.mock("../library-reference-picker", () => ({ LibraryReferencePicker: () => null }));
+vi.mock("../library-reference-picker", () => import("./scene-test-picker"));
 vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, options }: any) =>
   <select aria-label={label} value={value} onChange={e => onChange(e.target.value)}>{options.map((o: any) => <option key={o.value} value={o.value}>{o.label}</option>)}</select> }));
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
-import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
+import { confirmLibrary, openLibrary, openRecent, openSpec, optionGroup, pickFromLibrary, pickScene, setDuration } from "./scene-test-helpers";
+import { setLibrarySource } from "./scene-test-picker";
+// 素材从资产库选：选中的那份按各测试原来设定的上传结果来（视频页设了 importMedia 就用它，否则用 uploadImage）。
+beforeEach(() => { setLibrarySource(async () => (await api.importMedia()) ?? (await api.uploadImage())); });
 
 const doc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 const project = (patch: Partial<IpProject> = {}): IpProject => ({ id: "IPP-1", name: "x", status: "draft", createdAt: "", updatedAt: "", doc, runs: {}, runsById: {}, docVersion: "v1", ...patch });
@@ -46,7 +49,6 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
-const upload = (input: HTMLInputElement, name = "p.jpg") => fireEvent.change(input, { target: { files: [new File(["x"], name, { type: "image/jpeg" })] } });
 
 test("图片：没放必填参考图时按钮直接写缺什么；放好后先把请求写进画布再提交，描述是场景描述加补充要求，结果回到页面", async () => {
   window.history.replaceState(null, "", "/image?scene=white-background");
@@ -63,7 +65,7 @@ test("图片：没放必填参考图时按钮直接写缺什么；放好后先�
   fireEvent.click(angle.getByRole("button", { name: "俯拍" }));
   api.composeScene.mockResolvedValue({ text: "服务端拼好的白底图描述\n补充要求：45 度角" });
 
-  await act(async () => { upload(document.querySelector('.scene-media-row input[type="file"]')!); });
+  await pickFromLibrary();
   await waitFor(() => expect(go().textContent).toContain("8 积分"));
   await act(async () => { fireEvent.click(go()); });
   // 描述由服务端按场景拼：只交场景编号、补充要求和放了图的位置。
@@ -115,7 +117,7 @@ test("视频：编导看商品图写脚本（请求先存进画布、带图）�
     fireEvent.click(within(optionGroup("出镜方式")).getByRole("button", { name: "只拍商品" }));
     fireEvent.click(within(optionGroup("语气")).getByRole("button", { name: "专业讲解" }));
   });
-  await act(async () => { upload(document.querySelector('.scene-media-row input[type="file"]')!); });
+  await pickFromLibrary();
   expect(api.createProject).toHaveBeenCalledWith({ name: "口播带货 · 保湿精华", sceneId: "ecom-talking" });
   // 默认 25 秒超过模型上限：先按模型最长 15 秒出，拖到上限以外才分段交给助手。
   expect(screen.getByRole("button", { name: /^视频规格：/ }).textContent).toContain("15 秒");
@@ -164,8 +166,7 @@ test("视频：爆款复刻要先拉片，仍交给画布里的创作助手（�
   await act(async () => { render(<SceneVideoStudio/>); });
   const send = () => screen.getByRole("button", { name: "交给创作助手" }) as HTMLButtonElement;
   await waitFor(() => expect(screen.getByText("先放参考视频")).toBeTruthy());
-  fireEvent.click(screen.getByRole("button", { name: "添加参考视频" }));
-  await act(async () => { fireEvent.change(document.querySelector('.scene-media-row input[type="file"]')!, { target: { files: [new File(["x"], "v.mp4", { type: "video/mp4" })] } }); });
+  await pickFromLibrary("参考视频");
   fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "换成我的面霜" } });
   await waitFor(() => expect(send().disabled).toBe(false));
   await act(async () => { fireEvent.click(send()); });

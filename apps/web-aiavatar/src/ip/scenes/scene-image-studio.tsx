@@ -1,17 +1,16 @@
 "use client";
 
-import { type CSSProperties, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { SignedImage } from "@/canvas-bridge/signed-image";
-import { ChevronDown, Clapperboard, Cpu, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Square, Undo2, Upload, UserRound, X } from "lucide-react";
+import { ChevronDown, Clapperboard, Cpu, Download, FolderOpen, ImageUp, ImagePlus, Loader2, Mountain, Package, PencilLine, Plus, RotateCcw, Shirt, SlidersHorizontal, Square, Undo2, UserRound, X } from "lucide-react";
 import type { IpImageAsset, IpProject, IpRun, StudioSceneImageState, StudioSceneOptionGroup } from "@ai-star-eco/types";
 import type { StudioCapabilities } from "@ai-star-eco/types/ip-studio-workflow";
 import { PlatformGateScreen, useRequireAuth } from "@/components/hub/auth";
 import { cancelRun, fetchModels, readRun, signKeys, type IpModelOption } from "@/canvas-bridge/api";
 import { studioCapabilities, submitStudioRun } from "@/canvas-bridge/studio-api";
 import { isStudioBillingCancelled } from "@/canvas-bridge/studio-billing-cancel";
-import { prepareStudioImageUpload } from "@/canvas-bridge/studio-image-file";
 import { downloadMedia } from "@/canvas-bridge/download-media";
 import type { CanvasNodeData } from "@/canvas/types/canvas";
 import { IpStudioApi } from "../api";
@@ -55,7 +54,6 @@ export function SceneImageStudio() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [pinned, pin] = useSceneDrawerPin("image");
   const [tab, setTab] = useState<"results" | "example">("example");
-  const [uploading, setUploading] = useState<number>();
   const [picking, setPicking] = useState<number>();
   const [models, setModels] = useState<IpModelOption[]>();
   const [caps, setCaps] = useState<StudioCapabilities>();
@@ -78,8 +76,6 @@ export function SceneImageStudio() {
   const imageIds = useMemo(() => new Set(catalog?.image.map(s => s.id) ?? []), [catalog]);
   const loadDrafts = useCallback(() => listSceneDrafts(imageIds), [imageIds]);
   const drafts = useStudioList(loadDrafts, ready && !!catalog);
-  const fileInput = useRef<HTMLInputElement>(null);
-  const uploadTarget = useRef(0);
 
   // 每个场景没提交的输入（补充要求、完整描述、选项、参考图）：换个场景再回来时放回去，不悄悄清空（2026-10-30 复测）。
   type Unsent = { supplement: string; custom?: string; picked: Record<string, string>; slots: (SceneUpload | undefined)[] };
@@ -241,16 +237,9 @@ export function SceneImageStudio() {
   const specNote = [ratio !== usedRatio ? `这个模型出不了 ${ratio}，会按 ${usedRatio} 出` : "",
     count !== usedCount ? `一次出不了 ${count} 张，会出 ${usedCount} 张` : ""].filter(Boolean).join("，");
 
-  const upload = async (index: number, file: File) => {
-    const ticket = session.current;
-    setUploading(index); setHint("");
-    try {
-      const result = await IpStudioApi.uploadImage(await prepareStudioImageUpload(file));
-      if (!onPage(ticket)) return; // 传图的时候换了草稿：这张图不是给新打开那份的
-      setSlots(old => { const next = [...old]; next[index] = { key: result.key, url: result.url, name: result.fileName || file.name }; return next; });
-    } catch (e) { showFailure({ action: "上传参考图", error: e, next: "换一张 JPG 或 PNG 图片再试。" }); }
-    finally { setUploading(undefined); }
-  };
+  /** 素材位只从资产库选（新文件在选择框里先传进资产库）：打开时记下是哪份草稿，选完时页面换了草稿就不放进来。 */
+  const pickTicket = useRef(0);
+  const openPicker = (index: number) => { pickTicket.current = session.current; setHint(""); setPicking(index); };
 
   type RowInput = Parameters<typeof addImageRow>[1];
   const generate = async () => {
@@ -415,14 +404,12 @@ export function SceneImageStudio() {
             const Icon = refIcon(ref.label);
             return <div key={`${scene.id}-${i}`} className={`scene-media${slot ? " is-filled" : ""}`}>
               {slot ? <span className="scene-media-preview"><SignedImage src={slot.url} storageKey={slot.key} alt={ref.label}/><i className="scene-ref-index">图{i + 1}</i></span>
-                : <ImageSlotAdd uploading={uploading === i} disabled={uploading !== undefined} label={ref.label} hint={ref.hint} Icon={Icon}
-                    onUpload={() => { uploadTarget.current = i; fileInput.current?.click(); }} onLibrary={() => setPicking(i)}
-                    onDrop={file => void upload(i, file)}/>}
+                : <button type="button" className="scene-slot-add" aria-label={`从资产库选${ref.label}`} title={ref.hint ?? undefined} onClick={() => openPicker(i)}>
+                    <Icon size={20} strokeWidth={1.3}/><small>从资产库选</small></button>}
               <span title={ref.hint}>{ref.label}{!slot && !ref.required && <small>可选</small>}</span>
               {slot && <button type="button" className="scene-ref-remove" aria-label={`移除${ref.label}`} onClick={() => setSlots(old => { const next = [...old]; next[i] = undefined; return next; })}><X size={11} strokeWidth={1.8}/></button>}
             </div>;
           })}
-          <input ref={fileInput} type="file" accept=".jpg,.jpeg,.png" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file) void upload(uploadTarget.current, file); }}/>
         </div>
 
         <div className="scene-box">
@@ -479,41 +466,18 @@ export function SceneImageStudio() {
       </div>
     </section>
 
-    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} title="从资产库选一张图" intro="选一张图片做参考，原文件不会被改动。" confirmLabel="用这张"
+    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} mediaType="image" upload title={`选${scene.refs[picking]?.label ?? "参考图"}`} intro="从资产库里选一张；新图点「上传到资产库」，传完会自动选中。原文件不会被改动。" confirmLabel="用这张"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
         const image = assets.find((a): a is IpImageAsset => a.kind === "image" && !!a.data.storageKey);
         if (!image) throw new Error("请选择一张带图片的资产");
         const index = picking;
+        if (!onPage(pickTicket.current)) return; // 选的时候换了草稿：这张图不是给新打开那份的
         setSlots(old => { const next = [...old]; next[index] = { key: image.data.storageKey!, url: image.data.dataUrl, name: image.title }; return next; });
       }}/></div>}
     {viewing && <SceneViewer url={viewing.url} storageKey={viewing.key} name={viewing.name} onClose={closeViewer} actions={followUps(viewing)}
       onDownload={() => void downloadMedia(viewing.url, viewing.name, undefined, viewing.key)}/>}
     <HubTabBar/>
   </main>;
-}
-
-/** 空着的参考图位：点一下选「上传」还是「从资产库选」，也可以直接把图拖进来。 */
-function ImageSlotAdd({ uploading, disabled, label, hint, Icon, onUpload, onLibrary, onDrop }: {
-  uploading: boolean; disabled: boolean; label: string; hint?: string | null; Icon: typeof UserRound;
-  onUpload: () => void; onLibrary: () => void; onDrop: (file: File) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  return <div className="scene-slot-host">
-    <button type="button" className="scene-slot-add" disabled={disabled} aria-label={`添加${label}`} aria-haspopup="menu" aria-expanded={open} title={hint ?? undefined}
-      onClick={() => setOpen(v => !v)} onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); const file = e.dataTransfer.files[0]; if (file) onDrop(file); }}>
-      {uploading ? <Loader2 size={18} className="studio-gallery-spinner"/> : <><Icon size={20} strokeWidth={1.3}/><small>上传或从资产库选</small></>}
-    </button>
-    {open && <SlotMenu onClose={() => setOpen(false)}>
-      <button type="button" role="menuitem" onClick={() => { setOpen(false); onUpload(); }}><Upload size={14} strokeWidth={1.5}/>上传{label}</button>
-      <button type="button" role="menuitem" onClick={() => { setOpen(false); onLibrary(); }}><FolderOpen size={14} strokeWidth={1.5}/>从资产库选</button>
-    </SlotMenu>}
-  </div>;
-}
-function SlotMenu({ children, onClose }: { children: ReactNode; onClose: () => void }) {
-  const panel = useRef<HTMLDivElement>(null);
-  useScenePopover(panel, onClose);
-  useEffect(() => { panel.current?.querySelector<HTMLElement>("button")?.focus(); }, []);
-  return <div ref={panel} className="scene-slot-menu" role="menu">{children}</div>;
 }
 
 function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo, onReuse, onRetry, onConfirm, onStop }: {

@@ -1199,3 +1199,5 @@ Studio 视频费用确认复用图片弹窗，显示整批原价、优惠、赠�
 - **共用部件**（`scene-layout.tsx`）：`SceneSwitch`、`SceneDrawer`（固定状态按浏览器记）、`SceneRecent`（「最近」弹层）、作品 / 示例标签、示例展示（大图 + 场景做法几条）。手机 / 电脑形态读 `<html data-layout>`（`useSceneMobile`）。
 - **新版其他页面**：首页（`studio-home-scenes.css` 末尾）、项目 / 资产 / 发行（`StudioPage` 在新版加 `studio-next-page`，样式在 `studio-next-pages.css`）只改样子；导航栏图标改细、字改小。旧版不受影响。
 - 服务端：交给创作助手的视频时长放宽到 1–60 秒（`StudioSceneCatalog.MAX_HANDOFF_SECONDS`），不再要求是场景预设的那几档。
+- 素材位只从资产库选（`LibraryReferencePicker` 的 `mediaType` / `upload`）：选择框里能把新文件先传进资产库再选中；页面上不再直接上传或拖入文件。
+

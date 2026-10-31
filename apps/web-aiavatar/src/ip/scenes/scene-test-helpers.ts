@@ -1,4 +1,4 @@
-import { fireEvent, screen, within } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 
 /** 换场景：点场景名 →「全部场景」→ 在边栏里点那个场景（和用户的路径一样）。 */
 export function pickScene(title: string) {
@@ -26,10 +26,23 @@ export function setDuration(seconds: number) {
   fireEvent.change(screen.getByLabelText(/^时长/), { target: { value: String(seconds) } });
 }
 
-/** 空着的参考图位：先点「添加…」，再选「上传…」。 */
-export async function chooseUpload(label: string) {
-  fireEvent.click(await screen.findByRole("button", { name: `添加${label}` }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: `上传${label}` }));
+/** 点素材位打开资产库（不给名字就点第一个空位）。 */
+export async function openLibrary(label?: string) {
+  const button = label ? await screen.findByRole("button", { name: new RegExp(`^(从资产库选|更换)${label}$`) })
+    : (await screen.findAllByRole("button", { name: /^从资产库选/ }))[0];
+  await act(async () => { fireEvent.click(button); });
+}
+
+/** 在资产库里点「用这个」（测试替身见 scene-test-picker.tsx）。 */
+export async function confirmLibrary() {
+  const use = await screen.findByRole("button", { name: "用这个" });
+  await act(async () => { fireEvent.click(use); });
+}
+
+/** 从资产库选一份放进素材位：打开、选中、用这个。 */
+export async function pickFromLibrary(label?: string) {
+  await openLibrary(label);
+  await confirmLibrary();
 }
 
 /** 打开「最近」弹层。 */
