@@ -4,7 +4,7 @@
 // 新文件在框里「上传到这个库」，传完自动选中。画布、导演台、创作助手的选择框不走这里（library-reference-picker.tsx 原样）。
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button, ConfigProvider, Input, Modal, Skeleton } from 'antd';
-import { Check, Folder, LayoutGrid, Search, Upload } from 'lucide-react';
+import { AudioLines, Check, Folder, LayoutGrid, Search, Upload } from 'lucide-react';
 import type { IpSavedAsset, LibraryFolder, LibraryObject } from '@ai-star-eco/types';
 import { canvasLibraryFolder, libraryFolders, libraryMaterials, libraryObjects, uploadLibraryMedia } from '@/canvas-bridge/asset-library';
 import { libraryObjectAsset } from '@/canvas-bridge/library-reference';
@@ -26,7 +26,7 @@ export type LibraryMediaPickerProps = {
 const ACCEPT = { image: '.jpg,.jpeg,.png', video: '.mp4', audio: '.mp3,.wav,.m4a' };
 const NOUN = { image: '图片', video: '视频', audio: '音频' };
 
-export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title = '从资产库选', confirmLabel = '用这个', max = 1, mediaType, upload, people = true, library: preferred }: LibraryMediaPickerProps) {
+export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title = '从资产库选', confirmLabel = '使用', max = 1, mediaType, upload, people = true, library: preferred }: LibraryMediaPickerProps) {
   const [folders, setFolders] = useState<LibraryFolder[]>([]);
   const [library, setLibrary] = useState<string>();
   const [last, setLast] = useState('');
@@ -152,11 +152,11 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
               <button type="button" className="lmp-item" aria-pressed={on} aria-label={`选 ${a.title}`} disabled={busy || unavailable || full} onClick={() => choose(a)}>
                 {a.kind === 'image' ? <span className="lmp-thumb"><AssetThumb kind="image" src={a.data.dataUrl} storageKey={a.data.storageKey}/></span>
                   : a.kind === 'video' ? <span className="lmp-thumb"><AssetThumb kind="video" src={a.data.url} storageKey={a.data.storageKey}/></span>
-                  : null}
-                {on && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}
+                  : <span className="lmp-voice-icon">{on ? <Check size={15} strokeWidth={2.4}/> : <AudioLines size={16} strokeWidth={1.6}/>}</span>}
+                {on && a.kind !== 'audio' && <span className="lmp-check"><Check size={11} strokeWidth={2.6}/></span>}
                 <span className="lmp-text"><strong>{a.title}</strong><small>{a.metadata?.libraryReference ? '人物' : sourceLabel(a.source)}</small></span>
               </button>
-              {a.kind === 'audio' && <SignedAudio className="lmp-audio" src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
+              {a.kind === 'audio' && <SignedAudio className="lmp-audio" quiet src={a.data.url} storageKey={a.data.storageKey} controls preload="none"/>}
             </li>;
           })}</ul>}
         {hasMore && <div className="lmp-more"><Button loading={loading} disabled={busy} onClick={() => void loadMore()}>加载更多</Button></div>}
@@ -165,7 +165,7 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
     <footer className="lmp-foot">
       <span>{picked.length === 0 ? '' : picked.length === 1 ? `已选：${picked[0].title}` : `已选 ${picked.length} 个`}</span>
       <Button disabled={busy} onClick={onClose}>取消</Button>
-      <Button type="primary" loading={busy} disabled={!picked.length || uploading} onClick={() => void confirm()}>{confirmLabel}</Button>
+      <Button type="primary" className="lmp-use" loading={busy} disabled={!picked.length || uploading} onClick={() => void confirm()}>{confirmLabel}</Button>
     </footer>
   </Modal></ConfigProvider>;
 }

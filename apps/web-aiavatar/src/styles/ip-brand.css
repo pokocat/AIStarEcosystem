@@ -25,9 +25,12 @@
 .ip-brand-surface *,.ip-management-editor * { box-sizing: border-box; }
 .ip-brand-surface ::selection,.ip-management-editor ::selection { background: #e5dac7; color: var(--ip-ink); }
 .ip-brand-surface :is(button,a,input,select,summary,textarea):focus-visible,.ip-management-editor :is(button,input,textarea):focus-visible { outline: 2px solid var(--ip-ink); outline-offset: 3px; }
-.ip-brand-surface :is(button,input,select,textarea),.ip-management-editor :is(button,input,textarea) { font: inherit; color: inherit; }
+.ip-brand-surface :is(button,input,select,textarea),.ip-management-editor :is(button,input,textarea) { font: inherit; }
+/* antd 的按钮自己管字色和不可点的样子（主题见 shell/antd-theme.tsx）：这里的 inherit 和半透明会压过它，
+   深色主按钮上出深色字、不可点的按钮淡到看不清（2026-10-31 资产选择框「用这个」）。:where 不加权重，原生按钮照旧。 */
+.ip-brand-surface :is(button:where(:not(.ant-btn)),input,select,textarea),.ip-management-editor :is(button:where(:not(.ant-btn)),input,textarea) { color: inherit; }
 .ip-brand-surface button { cursor: pointer; }
-.ip-brand-surface button:disabled,.ip-management-editor button:disabled { opacity: .5; cursor: default; }
+.ip-brand-surface button:where(:not(.ant-btn)):disabled,.ip-management-editor button:where(:not(.ant-btn)):disabled { opacity: .5; cursor: default; }
 .ip-brand-surface input,.ip-brand-surface textarea,.ip-management-editor input,.ip-management-editor textarea { caret-color: var(--ip-ink); }
 .ip-brand-surface input::placeholder,.ip-management-editor input::placeholder { color: var(--ip-muted); }
 .ip-brand-surface a { color: inherit; text-decoration: none; }

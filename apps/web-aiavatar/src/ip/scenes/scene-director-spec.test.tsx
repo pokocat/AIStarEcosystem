@@ -135,6 +135,43 @@ test("video: when the settings no longer match what the script was written for, 
   expect(screen.queryByRole("textbox", { name: "视频脚本" })).toBeNull();
 });
 
+// 2026-10-31 用户反馈：编导页看不到已选素材、没地方加素材；时长在编辑页才改得了，编导不知道要按几秒写。
+test("video: the director page shows the chosen materials and the spec; after changing the length an empty send rewrites for it", async () => {
+  const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never }); // 按 15 秒写的
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
+  api.composeScene.mockResolvedValue({ text: "改脚本" });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  const box = (await screen.findByRole("textbox", { name: "想改哪里" })).closest("form")!;
+  // 素材和规格都在编导的输入框里：放好的商品图、还能再加、时长。
+  expect(within(box).getByRole("button", { name: "移除商品图 1" })).toBeTruthy();
+  expect(within(box).getByRole("button", { name: "从资产库选商品图" })).toBeTruthy();
+  expect(within(box).getByRole("button", { name: /^视频规格：英文，15 秒/ })).toBeTruthy();
+  const sendButton = within(box).getByRole("button", { name: "让编导改" }) as HTMLButtonElement;
+  expect(sendButton.disabled).toBe(true);
+  setDuration(10);
+  expect(within(box).getByRole("button", { name: /^视频规格：英文，10 秒/ })).toBeTruthy();
+  expect(sendButton.disabled).toBe(false);
+  await act(async () => { fireEvent.click(sendButton); });
+  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
+  expect(api.composeScene.mock.calls[0][0]).toMatchObject({ kind: "video-script", duration: 10, revision: expect.stringContaining("这版脚本是照 15 秒写的，现在要出 10 秒") });
+});
+
+test("video: a typed change on the director page also hands over the new length", async () => {
+  const { doc } = withScript({ ...EMPTY, nodes: [productNode] as never });
+  put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
+  api.composeScene.mockResolvedValue({ text: "改脚本" });
+  await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
+  const input = await screen.findByRole("textbox", { name: "想改哪里" });
+  setDuration(10);
+  fireEvent.change(input, { target: { value: "开头更抓人" } });
+  await act(async () => { fireEvent.submit(input.closest("form")!); });
+  await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
+  const sent = api.composeScene.mock.calls[0][0];
+  expect(sent).toMatchObject({ duration: 10, revision: expect.stringMatching(/^开头更抓人\n另外，这版脚本是照 15 秒写的，现在要出 10 秒/) });
+  // 气泡里只显示用户写的那句。
+  await waitFor(() => expect(screen.getAllByText("开头更抓人").length).toBeGreaterThan(0));
+});
+
 // 2026-10-30 审查 F01–F05：同城团购缺价格时拍成了探店；脚本成功只验格式。
 const storeNode = { ...productNode, id: "store", title: "门店照片 1", metadata: { ...productNode.metadata, storageKey: "store.jpg", content: "https://cdn/store.jpg" } };
 function withGroupbuyScript(content: string) {

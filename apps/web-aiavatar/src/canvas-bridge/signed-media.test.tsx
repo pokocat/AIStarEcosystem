@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, test, vi } from 'vitest';
 import { SignedVideo } from './signed-video';
 import { SignedAudio } from './signed-audio';
+import { reportStudioError } from '@/ip/studio-errors';
 
 const defaultSign = async (key: string) => `/signed/${key}`;
 const sign = vi.hoisted(() => vi.fn());
@@ -56,4 +57,16 @@ describe.each([
     await waitFor(() => expect(container.querySelector(tag)?.getAttribute('src')).toBe(`/recovered.${ext}`));
     expect(sign).toHaveBeenCalledTimes(2);
   });
+});
+
+// 2026-10-31：资产选择框里一列声音，读不到的那条就地写一句，不给每条都弹错误框。
+test('a quiet audio that cannot be read says so in place and reports nothing', async () => {
+  vi.mocked(reportStudioError).mockClear();
+  sign.mockResolvedValue('/same.wav');
+  const { container, findByRole } = render(<SignedAudio quiet className="lmp-audio" src="/same.wav" storageKey="owned/a.wav" controls/>);
+  fireEvent.error(container.querySelector('audio')!);
+  const note = await findByRole('status');
+  expect(note.textContent).toBe('读不到这段音频');
+  expect(note.className).toContain('lmp-audio');
+  expect(reportStudioError).not.toHaveBeenCalled();
 });

@@ -50,7 +50,7 @@ test('opens the library used last time, marks it, and remembers the one the user
   fireEvent.click(await screen.findByRole('button', { name: '选 主图' }));
   fireEvent.click(screen.getByRole('button', { name: /巷里火锅/ }));
   await waitFor(() => expect(api.materials).toHaveBeenLastCalledWith(expect.objectContaining({ folder: 'f2' })));
-  fireEvent.click(screen.getByRole('button', { name: '用这个' }));
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
   await waitFor(() => expect(onAssets).toHaveBeenCalledWith([expect.objectContaining({ id: '主图' })]));
   expect(window.localStorage.getItem('aiavatar_library_last')).toBe('f2');
   expect(onClose).toHaveBeenCalled();
@@ -77,7 +77,7 @@ test('the 人物 tab of an image slot lists roles that have a picture, with thei
   await waitFor(() => expect(api.objects).toHaveBeenCalledWith(expect.objectContaining({ kind: 'character', folder: 'all' })));
   fireEvent.click(await screen.findByRole('button', { name: '选 林夏' }));
   expect(screen.queryByRole('button', { name: '选 没图的' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: '用这个' }));
+  fireEvent.click(screen.getByRole('button', { name: '使用' }));
   await waitFor(() => expect(onAssets.mock.calls[0][0][0].metadata.libraryReference).toMatchObject({ objectId: 'o1', versionId: 'v1' }));
 });
 

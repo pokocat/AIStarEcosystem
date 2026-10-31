@@ -798,6 +798,7 @@ v0.197：web-drama 所有弹窗在 375 宽下右边都被裁掉一截，四个�
       用户点名的那一条：**「提示词直出」看不懂**（「直出」是内部说法），现在叫「粘贴写好的脚本」。
       改 drama 界面文字前先查表；要新增叫法，先改表再改代码。
   - Review reject：新增/改动 UI 出现上述任一类 → reject。
+- **web-aiavatar 的 antd 颜色走全站主题**（2026-10-31）：`src/shell/antd-theme.tsx` 在根布局挂一次（主按钮 #202c42 白字、不能点的浅灰底灰字、两字按钮不加空格），新页面不用再包 ConfigProvider 配主色。别写压过 antd 按钮字色的样式（`ip-brand.css` 的 `color: inherit` 已排除 `.ant-btn`），也别用 `.容器 span {}` 这种会命中按钮里文字的后代选择器（资产选择框「使用」灰字蓝底就是这两条叠出来的）。
 - **shadcn 原语**：放在 `packages/ui/src/ui/`（共享包）；不要手改，要扩展用 wrapper
 - **`"use client"`**：新 client 组件保留
 - **新代码 API 形态**：`async function xxx(): Promise<T>`，聚合为 namespace 导出（`MusicApi`, `CelebrityZoneApi`, `MixcutApi`, …）

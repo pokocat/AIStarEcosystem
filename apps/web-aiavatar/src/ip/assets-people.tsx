@@ -203,6 +203,6 @@ export function NewPersonDialog({ open, folderId, onClose, onCreated }: { open: 
       {error && <p className="assets-form-error"><StudioErrorNotice error={error}/></p>}
       <footer><span className="assets-person-missing">{missing}</span><Button onClick={onClose} disabled={busy}>取消</Button><Button type="primary" loading={busy} disabled={!!missing} onClick={() => void create()}>创建人物</Button></footer>
     </div>
-    {picking && <LibraryReferencePicker open mediaType="image" upload people={false} library={folderId} max={1} title={`选${SHOTS.find(s => s.key === picking)?.label}`} intro="从资产库里选一张；新照片点「上传到这个库」。" confirmLabel="用这张" onClose={() => setPicking(undefined)} onAssets={pick}/>}
+    {picking && <LibraryReferencePicker open mediaType="image" upload people={false} library={folderId} max={1} title={`选${SHOTS.find(s => s.key === picking)?.label}`} intro="从资产库里选一张；新照片点「上传到这个库」。" onClose={() => setPicking(undefined)} onAssets={pick}/>}
   </Modal>;
 }

@@ -170,18 +170,27 @@ html[data-layout="desktop"] .lmp-grid { grid-template-columns: repeat(auto-fill,
 .lmp-text { display: flex; flex-direction: column; min-width: 0; padding: 0 2px; }
 .lmp-text strong { overflow: hidden; font-size: 12.5px; font-weight: 500; white-space: nowrap; text-overflow: ellipsis; }
 .lmp-text small { font-size: 11.5px; color: var(--ip-muted, #5b6572); }
-.lmp-grid.is-list { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-.lmp-grid.is-list>li { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-radius: 12px; }
+/* 声音一行一条：图标 + 名字 + 试听。电脑版的图片网格规则（150px 一列）比 .is-list 更具体，这里要写同样的前缀才盖得住。 */
+.lmp-grid.is-list, html[data-layout="desktop"] .lmp-grid.is-list { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+.lmp-grid.is-list>li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 8px 10px; border-radius: 12px; }
+.lmp-grid.is-list>li:hover { background: #f8f9fa; }
 .lmp-grid.is-list>li:has(.lmp-item[aria-pressed="true"]) { background: var(--ip-soft, #f3f4f6); }
-.lmp-grid.is-list .lmp-item { flex: 1; min-width: 0; padding-right: 28px; }
-.lmp-grid.is-list .lmp-check { top: 50%; transform: translateY(-50%); }
-.lmp-audio { flex: 0 1 260px; height: 32px; min-width: 0; }
+.lmp-grid.is-list .lmp-item { flex: 1 1 200px; flex-direction: row; align-items: center; gap: 12px; min-width: 0; }
+.lmp-voice-icon { display: grid; flex-shrink: 0; place-items: center; width: 38px; height: 38px; border-radius: 11px; background: var(--ip-soft, #f3f4f6); color: var(--ip-muted, #5b6572); }
+.lmp-grid.is-list>li:hover .lmp-voice-icon { background: #eceef1; }
+.lmp-item[aria-pressed="true"] .lmp-voice-icon { background: var(--ip-ink, #17202a); color: #fff; }
+.lmp-grid.is-list .lmp-text strong { font-size: 13.5px; }
+.lmp-audio { flex: 1 1 100%; height: 36px; min-width: 0; }
+html[data-layout="desktop"] .lmp-audio { flex: 0 1 340px; }
+.lmp-audio.signed-audio-missing { display: flex; align-items: center; padding: 0 14px; border-radius: 999px; background: #f6f7f9; color: #8a929c; font-size: 12px; }
 .lmp-empty { margin: 0; padding: 40px 12px; text-align: center; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
 .lmp-error { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; font-size: 12.5px; }
 .lmp-more { display: flex; justify-content: center; }
 .lmp-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--sn-line-2, #f0f1f3); }
-.lmp-foot span { flex: 1; min-width: 0; overflow: hidden; font-size: 12.5px; color: var(--sn-text-2, #3d4651); white-space: nowrap; text-overflow: ellipsis; }
+.lmp-foot>span { flex: 1; min-width: 0; overflow: hidden; font-size: 12.5px; color: var(--sn-text-2, #3d4651); white-space: nowrap; text-overflow: ellipsis; }
 .lmp-foot .ant-btn { height: 36px; border-radius: 11px; }
+/* 「使用」的颜色走全站 antd 主题（深墨底白字，shell/antd-theme.tsx），这里只定宽度。 */
+.lmp-foot .ant-btn.lmp-use { min-width: 84px; font-weight: 500; }
 
 /* 缩略图读不到时的占位（ip/asset-thumb.tsx）：不弹错误，只显示一个淡色图标。 */
 .asset-thumb-missing { display: grid; width: 100%; height: 100%; min-height: 64px; place-items: center; color: #b3b9c1; }

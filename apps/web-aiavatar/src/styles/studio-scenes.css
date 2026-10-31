@@ -271,9 +271,25 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-script-card>footer button.is-icon:hover:not(:disabled) { background: rgba(23,32,42,.05); color: var(--ip-ink); }
 .scene-script-card>footer button.is-primary { border: 0; background: var(--ip-ink); color: #fff; }
 .scene-script-card>footer button.is-primary:hover { background: #2a3540; }
-.scene-director-input { display: flex; align-items: center; gap: 8px; margin: 0 18px 16px; padding: 6px 6px 6px 14px; border: 1px solid var(--sn-field); border-radius: 999px; background: var(--ip-paper); }
+/* 编导页的输入框：上面是素材（和编辑页同一份，小一号），中间写改法，下面是规格（时长等，和编辑页同一个设置）和发送。 */
+.scene-director-input { position: relative; display: flex; flex-direction: column; gap: 10px; margin: 0 18px 16px; padding: 12px 12px 10px 14px; border: 1px solid var(--sn-field); border-radius: 16px; background: var(--ip-paper); }
 .scene-director-input:focus-within { border-color: #c5cad1; }
-.scene-director-input input { flex: 1; min-width: 0; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13px; outline: none; }
+.scene-director-input input { width: 100%; min-width: 0; height: 30px; padding: 0; border: 0; background: transparent; color: var(--ip-ink); font: inherit; font-size: 13.5px; outline: none; text-overflow: ellipsis; }
+.scene-director-input>footer { display: flex; align-items: center; gap: 8px; }
+.scene-director-input>footer .scene-setting-panel-host { position: static; flex: 0 1 auto; min-width: 0; }
+.scene-director-input>footer .scene-pill { width: auto; max-width: 100%; }
+.scene-director-input>footer .scene-send { margin-left: auto; width: 32px; height: 32px; }
+/* 规格面板贴着整个输入框往上弹、和输入框一样宽（只贴着胶囊会伸出卡片右边）。 */
+.scene-director-input .scene-settings-panel { right: 0; left: 0; width: auto; }
+.scene-media-row.is-compact { gap: 6px; }
+.scene-media-row.is-compact .scene-media { width: 44px; }
+.scene-media-row.is-compact .scene-media>button:first-child, .scene-media-row.is-compact .scene-media-preview { width: 44px; height: 44px; border-radius: 10px; }
+.scene-media-row.is-compact .scene-media>span:not(.scene-media-preview) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.scene-media-row.is-compact .scene-media-divider { margin: 6px 2px; }
+.scene-media-row.is-compact .scene-slot-badge { right: 3px; bottom: 3px; width: 14px; height: 14px; }
+.scene-media-row.is-compact .scene-media>button:first-child>svg { width: 17px; height: 17px; }
+.scene-media-row.is-compact .scene-ref-index { font-size: 9.5px; }
+.scene-media-row.is-compact .scene-ref-remove { top: -5px; right: -5px; width: 18px; height: 18px; }
 .scene-director-input input::placeholder { color: #7a838d; }
 .scene-studio .scene-send { display: grid; place-items: center; flex-shrink: 0; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 50%; background: var(--sn-go); color: #fff; cursor: pointer; }
 .scene-studio .scene-send:disabled { opacity: .4; cursor: not-allowed; }

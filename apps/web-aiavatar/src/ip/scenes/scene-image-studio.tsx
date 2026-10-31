@@ -466,7 +466,7 @@ export function SceneImageStudio() {
       </div>
     </section>
 
-    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} mediaType="image" upload title={`选${scene.refs[picking]?.label ?? "参考图"}`} intro="从资产库里选一张；新图点「上传到资产库」，传完会自动选中。原文件不会被改动。" confirmLabel="用这张"
+    {picking !== undefined && <div className="scene-picker-host"><LibraryReferencePicker open max={1} mediaType="image" upload title={`选${scene.refs[picking]?.label ?? "参考图"}`} intro="从资产库里选一张；新图点「上传到资产库」，传完会自动选中。原文件不会被改动。"
       onClose={() => setPicking(undefined)} onAssets={async assets => {
         const image = assets.find((a): a is IpImageAsset => a.kind === "image" && !!a.data.storageKey);
         if (!image) throw new Error("请选择一张带图片的资产");

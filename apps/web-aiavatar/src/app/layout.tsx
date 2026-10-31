@@ -34,6 +34,7 @@ import "../styles/assets-hub.css";
 import { StudioNotifications } from '@/ip/studio-errors';
 import { TestAccountBanner } from "@/shell/test-account-banner";
 import { AppChrome } from "@/shell/app-chrome";
+import { AntdTheme } from "@/shell/antd-theme";
 import { LAYOUT_BOOT_SCRIPT } from "@/shell/layout-mode";
 import { UI_BOOT_SCRIPT } from "@/shell/ui-version";
 
@@ -91,13 +92,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONTS_HREF} />
         {/* 桌面顶栏（桌面形态才显示；公开名片页与登录页不挂）—— 见 shell/app-chrome.tsx */}
-        <ImpersonationBridge>
+        <ImpersonationBridge><AntdTheme>
           <StudioNotifications />
           <AppChrome />
           <TestAccountBanner />
           <ImpersonationBar />
           {children}
-        </ImpersonationBridge>
+        </AntdTheme></ImpersonationBridge>
       </body>
     </html>
   );
