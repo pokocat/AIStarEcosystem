@@ -152,7 +152,10 @@ html[data-layout="desktop"] .studio-next-page.studio-scene-home { background: #f
 .studio-next-page .home-section-heading p { color: var(--ip-muted); font-size: 12px; }
 .studio-next-page .home-section-heading>a { color: var(--sn-text-2); font-size: 12.5px; font-weight: 400; }
 .studio-next-page .home-goals-arrows button { width: 30px; height: 30px; border: 1px solid var(--ip-line); background: #ffffff; color: var(--sn-text-2); box-shadow: none; }
-.studio-next-page .home-goal-track { gap: 14px; }
+/* 一屏正好四张，第五张起横着滑：不让第四张被裁掉一截。 */
+.studio-next-page .home-goal-track { gap: 14px; grid-auto-columns: calc((100% - 3 * 14px) / 4); }
+html:not([data-layout="desktop"]) .studio-next-page .home-goal-track { grid-auto-columns: 78%; }
+html:not([data-layout="desktop"]) .studio-next-page .home-tools button { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .studio-next-page .home-goal { gap: 10px; padding: 10px 10px 12px; border: 1px solid var(--ip-line); border-radius: 16px; background: #ffffff; box-shadow: none; }
 .studio-next-page .home-goal:hover { border-color: var(--sn-field); box-shadow: none; transform: none; }
 .studio-next-page .home-goal-art { gap: 4px; height: 128px; border-radius: 10px; }
@@ -163,8 +166,16 @@ html[data-layout="desktop"] .studio-next-page.studio-scene-home { background: #f
 .studio-next-page .home-feed-tabs { gap: 2px; padding: 3px; border-radius: 10px; background: var(--ip-soft); }
 .studio-next-page .home-feed-tabs button { height: 26px; min-height: 0; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-muted); font-size: 12px; font-weight: 400; }
 .studio-next-page .home-feed-tabs button[aria-pressed="true"] { background: #ffffff; box-shadow: 0 1px 2px rgba(23, 32, 42, .08); color: var(--ip-ink); font-weight: 500; }
-.studio-next-page .home-feed-card { border: 0; border-radius: 14px; box-shadow: none; }
+.studio-next-page .home-feed-card { border: 0; border-radius: 14px; }
+.studio-next-page .home-feed-card:has(.project-content-cover) { box-shadow: none; }
+.studio-next-page .home-feed-card:not(:has(.project-content-cover)) { box-shadow: inset 0 0 0 1px var(--ip-line); }
 .studio-next-page .home-feed-caption { left: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(23, 32, 42, .6); color: #fff; font-size: 11.5px; }
 .studio-next-page .home-feed-caption strong { font-weight: 400; }
 .studio-next-page .ip-home-footer { border-top: 1px solid var(--ip-line); background: #ffffff; color: var(--ip-muted); }
 .studio-next-page .home-feed-tabs { display: inline-flex; width: fit-content; }
+
+/* 手机底栏在新版页面上跟着改：当前项和中间的「创作」用墨色，不再是旧的青色渐变（2026-10-31）。 */
+html:not([data-layout="desktop"]) :is(.studio-next-page, .scene-studio) .hub-tabbar { --primary: var(--ip-ink); }
+html:not([data-layout="desktop"]) :is(.studio-next-page, .scene-studio) .hub-tabbar .wx-fab .fab-visual { background: var(--ip-ink); }
+html:not([data-layout="desktop"]) :is(.studio-next-page, .scene-studio) .hub-tabbar .wx-fab :is(.fab-art, .fab-veil) { display: none; }
+html:not([data-layout="desktop"]) :is(.studio-next-page, .scene-studio) .hub-tabbar .wx-fab { color: #fff; box-shadow: none !important; }

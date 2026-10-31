@@ -124,7 +124,9 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-drawer li button { display: flex; align-items: center; gap: 12px; width: 100%; padding: 7px 12px; border: 0; border-radius: 12px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .scene-drawer li button:hover { background: var(--ip-soft); }
 .scene-drawer li button[aria-current="true"] { background: var(--ip-soft); }
+.scene-drawer li button>span { display: flex; flex-direction: column; min-width: 0; }
 .scene-drawer li strong { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 400; line-height: 1.45; text-overflow: ellipsis; white-space: nowrap; }
+.scene-drawer li small { overflow: hidden; color: var(--ip-muted); font-size: 11.5px; line-height: 1.4; text-overflow: ellipsis; white-space: nowrap; }
 .scene-drawer li button[aria-current="true"] strong { font-weight: 500; }
 
 /* 编辑区：素材一排、编辑框、模型和规格、生成 */
@@ -145,7 +147,7 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-media-row.is-large .scene-media>span:not(.scene-media-preview) { font-size: 12px; text-align: left; align-self: flex-start; }
 .scene-slot-host { position: relative; }
 .scene-slot-add { display: flex; flex-direction: column; justify-content: center; gap: 6px; }
-.scene-slot-add small { max-width: 80px; color: var(--ip-muted); font-size: 10.5px; line-height: 1.35; text-align: center; }
+.scene-slot-add small { padding: 0 6px; color: var(--ip-muted); font-size: 11px; line-height: 1.35; text-align: center; word-break: keep-all; }
 .scene-slot-menu { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; display: flex; flex-direction: column; min-width: 150px; padding: 4px; border: 1px solid var(--ip-line); border-radius: 12px; background: var(--ip-paper); box-shadow: 0 12px 32px rgba(23,32,42,.12); }
 .scene-slot-menu button { display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ip-ink); font: inherit; font-size: 12.5px; text-align: left; white-space: nowrap; cursor: pointer; }
 .scene-slot-menu button:hover, .scene-slot-menu button:focus-visible { background: var(--ip-soft); }
@@ -187,9 +189,9 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-setting-row>label b { color: var(--ip-ink); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .scene-setting-row>p { margin: 0; color: var(--ip-muted); font-size: 12px; line-height: 1.6; }
 .scene-choice-row { display: grid; grid-auto-columns: minmax(0, 1fr); grid-auto-flow: column; gap: 6px; }
-.scene-choice-row button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid var(--sn-field); border-radius: 9px; background: var(--ip-paper); color: var(--sn-text-2); font: inherit; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
-.scene-choice-row button:hover { border-color: #cfd4da; color: var(--ip-ink); }
-.scene-choice-row button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-ink); color: #fff; }
+.scene-choice-row button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-width: 0; height: 32px; padding: 0 8px; border: 1px solid transparent; border-radius: 9px; background: var(--ip-soft); color: var(--sn-text-2); font: inherit; font-size: 12.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.scene-choice-row button:hover { background: #eceef1; color: var(--ip-ink); }
+.scene-choice-row button[aria-pressed="true"] { border-color: var(--ip-ink); background: var(--ip-paper); color: var(--ip-ink); font-weight: 500; }
 .scene-range { --p: 100%; -webkit-appearance: none; appearance: none; width: 100%; height: 20px; margin: 0; padding: 0; background: transparent; cursor: pointer; }
 .scene-range::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: linear-gradient(90deg, #4650cf, #6c52dc) 0 0 / var(--p) 100% no-repeat, #e6e8ef; }
 .scene-range::-moz-range-track { height: 4px; border-radius: 999px; background: linear-gradient(90deg, #4650cf, #6c52dc) 0 0 / var(--p) 100% no-repeat, #e6e8ef; }

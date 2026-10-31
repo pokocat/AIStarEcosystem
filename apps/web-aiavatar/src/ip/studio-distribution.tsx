@@ -29,7 +29,7 @@ function Pending({ title, children }: {title:string; children:React.ReactNode}) 
 
 export function StudioDistribution({ view = 'overview' }: { view?: View }) {
   const auth = useRequireAuth();
-  return <StudioPage title="发行" description="让每一份作品，抵达它的观众。" className="studio-distribution-page">
+  return <StudioPage title="发行" description="让每一份作品，抵达它的观众。" nextDescription="绑定账号，把做好的作品发出去" className="studio-distribution-page">
     <nav className="studio-section-navigation" aria-label="发行导航">{nav.map(n => <Link href={n.href} key={n.href} aria-current={view === n.view ? 'page' : undefined}>{n.label}</Link>)}</nav>
     {auth === 'no-platform' ? <PlatformGateScreen/> : auth !== 'ok' ? <GalleryState loading/> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
       {view === 'accounts' ? <DistributionAccounts/> : view === 'records' ? <DistributionRecords/> : <>

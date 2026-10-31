@@ -109,7 +109,7 @@ export function SceneDrawer({ heading, groups, top, current, onPick, pinned, onP
   }, [pinned]);
   const item = (s: SceneListItem) => <li key={s.id}><button type="button" aria-current={s.id === current ? "true" : undefined} title={s.description}
     onClick={() => { onPick(s.id); if (!pinned) onClose(); }}>
-    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={36}/><strong>{s.title}</strong></button></li>;
+    <SceneThumb id={s.id} title={s.title} cover={s.coverUrl} size={36}/><span><strong>{s.title}</strong><small>{s.description}</small></span></button></li>;
   return <aside ref={box} className={`scene-drawer${pinned ? " is-pinned" : ""}`} aria-label={`${heading}场景`} role={pinned ? undefined : "dialog"}>
     <header><h2>全部场景</h2>
       <button type="button" className="scene-icon-button is-pin" aria-pressed={pinned} aria-label={pinned ? "取消固定" : "固定在侧边"} title={pinned ? "取消固定" : "固定在侧边"} onClick={() => onPin(!pinned)}>

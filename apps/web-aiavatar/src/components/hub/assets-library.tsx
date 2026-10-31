@@ -32,7 +32,7 @@ export function AssetsLibrary() {
     router.push(`/assets?${params}`);
   };
   if (auth === 'no-platform') return <PlatformGateScreen/>;
-  return <StudioPage title="资产" description="人物、声音与创作素材，让每一次灵感有所承接。" className="assets-library ip-management-page" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
+  return <StudioPage title="资产" description="人物、声音与创作素材，让每一次灵感有所承接。" nextDescription="人物、声音和素材，做什么都能直接拿来用" className="assets-library ip-management-page" actions={<Link href="/create" className="ip-brand-button">开始创作<ArrowUpRight size={16}/></Link>}>
     {auth !== 'ok' ? <p role="status">正在打开资产…</p> : <ConfigProvider locale={zhCN} getPopupContainer={studioOverlayContainer} theme={{token:{colorPrimary:'#192229',borderRadius:8,fontFamily:'var(--ip-ui)'}}}>
       <App className="assets-library-content" data-studio-overlay-root>
         <StudioPageFilters label="资产分类" items={tabs} value={tab} onChange={change}/>

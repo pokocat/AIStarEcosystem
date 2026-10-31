@@ -70,9 +70,9 @@ export function StudioProjects() {
 
   if (authState === "no-platform" || projects.notEnrolled || newCanvas.notEnrolled) return <PlatformGateScreen/>;
   const newCanvasButton = (className: string, label: ReactNode) => <button type="button" className={className} aria-busy={newCanvas.creating} disabled={newCanvas.creating} onClick={() => void newCanvas.start()}>{label}</button>;
-  if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。"><GalleryState loading/></StudioPage>;
+  if (!ready) return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开接着做"><GalleryState loading/></StudioPage>;
 
-  return <StudioPage title="项目" description="管理画布，接续每一次创作。" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
+  return <StudioPage title="项目" description="管理画布，接续每一次创作。" nextDescription="每张画布都在这里，点开接着做" contentRef={surface} className="studio-gallery-page studio-projects-page" actions={newCanvasButton("ip-brand-button", <>{newCanvas.creating ? <Loader2 size={16} className="studio-gallery-spinner" aria-hidden="true"/> : <Plus size={16} aria-hidden="true"/>}新建创作</>)}>
     {newCanvas.error !== undefined && <div className="studio-gallery-action-error"><StudioErrorNotice error={newCanvas.error}/><span> · 新画布没有创建成功，可以再点一次「新建创作」。</span></div>}
     <section className="studio-gallery-panel studio-canvas-catalogue" aria-label="我的画布">
       <div className="studio-page-toolbar studio-gallery-controls">

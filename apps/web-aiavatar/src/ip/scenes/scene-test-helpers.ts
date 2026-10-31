@@ -4,7 +4,8 @@ import { fireEvent, screen, within } from "@testing-library/react";
 export function pickScene(title: string) {
   fireEvent.click(screen.getByRole("button", { name: /^换场景，当前/ }));
   fireEvent.click(screen.getByRole("button", { name: "全部场景" }));
-  fireEvent.click(within(screen.getByRole("dialog", { name: /^AI (视频|图片)场景$/ })).getByRole("button", { name: title }));
+  const drawer = within(screen.getByRole("dialog", { name: /^AI (视频|图片)场景$/ }));
+  fireEvent.click(drawer.getByText(title, { selector: "strong" }).closest("button")!);
 }
 
 /** 场景的选项组在「视频规格 / 图片设置」面板里：没打开就先打开。 */

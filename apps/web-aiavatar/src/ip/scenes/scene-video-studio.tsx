@@ -796,12 +796,12 @@ export function SceneVideoStudio() {
                 options={scene.options} picked={picked} onPick={(key, choice) => setPicked(old => ({ ...old, [key]: choice }))} onClose={() => setSettingsOpen(false)}/>}
             </div>
           </div>
-          <button type="button" className="scene-go" aria-label={recreation ? "交给创作助手" : "生成视频"} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
+          <button type="button" className="scene-go" aria-label={toAssistant ? "交给创作助手" : "生成视频"} title={goBlocker || (toAssistant ? "交给画布里的创作助手：先出方案和报价，确认后才扣积分" : undefined)}
             disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
-            <span>{recreation ? "交给创作助手" : "生成视频"}</span>
+            <span>{toAssistant ? "交给创作助手" : "生成视频"}</span>
             {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
-            {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
+            {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段 · 先报价` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
           {(hint || goBlocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
@@ -927,7 +927,8 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
   const panel = useRef<HTMLDivElement>(null);
   useScenePopover(panel, onClose);
   const fill = max > min ? ((duration - min) / (max - min)) * 100 : 100;
-  const singleAt = single && max > min ? ((single - min) / (max - min)) * 100 : undefined;
+  // 单段上限的刻度只在「最小值和最大值之间」时才画，等于最小值（如只能做 4 秒的模型）时和左端的字叠在一起。
+  const singleAt = single && single > min && single < max && max > min ? ((single - min) / (max - min)) * 100 : undefined;
   return <div ref={panel} className="scene-settings-panel" role="group" aria-label="视频规格">
     <div className="scene-setting-row"><span>台词语言</span>
       <div className="scene-choice-row">{LANGUAGES.map(l => <button key={l} type="button" aria-pressed={l === language} onClick={() => onLanguage(l)}>{l}</button>)}</div></div>
@@ -935,7 +936,7 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
       <label htmlFor="scene-video-duration">时长<b>{duration} 秒</b></label>
       <input id="scene-video-duration" className="scene-range" type="range" min={min} max={max} step={1} value={duration} style={{ "--p": `${fill}%` } as CSSProperties}
         aria-valuetext={segments.length > 1 ? `${duration} 秒，分 ${segments.length} 段` : `${duration} 秒`} onChange={e => onDuration(Number(e.target.value))}/>
-      <div className="scene-range-scale"><span>{min} 秒</span>{singleAt !== undefined && single! < max && <span style={{ left: `${singleAt}%` }}>单段 {single} 秒</span>}<span>{max} 秒</span></div>
+      <div className="scene-range-scale"><span>{min} 秒</span>{singleAt !== undefined && <span style={{ left: `clamp(32px, ${singleAt}%, calc(100% - 32px))` }}>单段 {single} 秒</span>}<span>{max} 秒</span></div>
       {segments.length > 1 && <p>超过单段上限，分 {segments.length} 段生成后拼成一条：{segments.join(" + ")} 秒。交给创作助手做，先出方案和报价。</p>}
     </div>
     <div className="scene-setting-row"><span>画面比例</span>
