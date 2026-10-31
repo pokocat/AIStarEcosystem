@@ -95,3 +95,16 @@ test('an upload goes into the open library and comes back selected; 新建人物
   await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('true'));
   expect(screen.getByText('已选：新图')).toBeDefined();
 });
+
+test('an upload never pushes the selection past max', async () => {
+  window.localStorage.setItem('aiavatar_library_last', 'f1');
+  api.upload.mockResolvedValue({ key: 'k/新图' });
+  api.materials.mockResolvedValueOnce(page([image('a', 'f1'), image('b', 'f1')])).mockResolvedValue(page([image('a', 'f1'), image('b', 'f1'), image('新图', 'f1')]));
+  render(<LibraryMediaPicker open mediaType="image" upload max={2} onClose={vi.fn()} onAssets={vi.fn()}/>);
+  fireEvent.click(await screen.findByRole('button', { name: '选 a' }));
+  fireEvent.click(screen.getByRole('button', { name: '选 b' }));
+  fireEvent.change(screen.getByLabelText('选择要上传到资产库的文件'), { target: { files: [new File(['x'], '新图.png', { type: 'image/png' })] } });
+  await waitFor(() => expect(screen.getByRole('button', { name: '选 新图' })).toBeDefined());
+  expect(screen.getByRole('button', { name: '选 新图' }).getAttribute('aria-pressed')).toBe('false');
+  expect(screen.getByText('已选 2 个')).toBeDefined();
+});

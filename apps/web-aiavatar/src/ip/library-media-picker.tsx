@@ -76,7 +76,8 @@ export function LibraryMediaPicker({ open, projectId, onClose, onAssets, title =
         setItems(r.items); setPage(0); setHasMore(r.hasMore); setError('');
         // 刚传进资产库的那份：列表读回来后直接选中。
         const fresh = uploadedKey.current && r.items.find(a => 'storageKey' in a.data && a.data.storageKey === uploadedKey.current);
-        if (fresh) { uploadedKey.current = undefined; setSelected(old => max === 1 ? { [fresh.id]: fresh } : { ...old, [fresh.id]: fresh }); }
+        // 已经选满了就不再自动加上（单选时换成刚传的那个），选中的数目不能超过 max。
+        if (fresh) { uploadedKey.current = undefined; setSelected(old => max === 1 ? { [fresh.id]: fresh } : old[fresh.id] || Object.keys(old).length >= max ? old : { ...old, [fresh.id]: fresh }); }
       }).catch(e => id === epoch.current && setError(e)).finally(() => id === epoch.current && setLoading(false));
     }, 150);
     return () => { clearTimeout(timer); epoch.current++; };
