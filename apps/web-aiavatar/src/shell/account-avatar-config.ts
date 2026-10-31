@@ -1,6 +1,6 @@
 import type { AvatarConfig } from "@/vendor/react-notion-avatar";
 
-const BACKGROUNDS = ["#e7e0d6", "#e0e7e3", "#dfe5ec", "#ece1de", "#e5e0ec", "#ece8d9"];
+const BACKGROUND = "#f3f4f6";
 
 /** The random account UID is the seed. Keep v1 stable: refreshes, devices and name changes must not reroll it. */
 export function defaultAccountAvatar(accountId: string): { config: AvatarConfig; bgColor: string } {
@@ -17,7 +17,7 @@ export function defaultAccountAvatar(accountId: string): { config: AvatarConfig;
   // Counts match upstream 1.1.12; optional decoration defaults follow getRandomConfig().
   return {
     config: { face: pick(12), eye: pick(15), eyebrow: pick(17), glass: pick(14), hair: pick(59), mouth: pick(21), nose: pick(15), accessory: 0, beard: 0, detail: 0 },
-    bgColor: BACKGROUNDS[pick(BACKGROUNDS.length)],
+    bgColor: BACKGROUND,
   };
 }
 

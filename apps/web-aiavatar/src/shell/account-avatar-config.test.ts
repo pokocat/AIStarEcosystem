@@ -18,6 +18,7 @@ describe("account default avatars", () => {
   it("assigns varied valid upstream configurations", () => {
     const avatars = Array.from({ length: 100 }, (_, i) => defaultAccountAvatar(`registered-${i}`));
     expect(new Set(avatars.map(avatar => JSON.stringify(avatar))).size).toBe(100);
+    expect([...new Set(avatars.map(avatar => avatar.bgColor))]).toEqual(["#f3f4f6"]);
     for (const { config } of avatars) {
       for (const [key, count] of Object.entries({ face: 12, eye: 15, eyebrow: 17, glass: 14, hair: 59, mouth: 21, nose: 15 })) {
         expect(config[key]).toBeGreaterThanOrEqual(0);

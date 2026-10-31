@@ -45,7 +45,7 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     };
   }, []);
   const name = identity?.displayName || "我的账号";
-  const accountMenu = <details ref={menuRef} className="ip-account-menu"><summary aria-label={name + "，打开账号菜单"} title={name}><AccountAvatar identity={identity} size={34} /></summary><div onClick={closeMenu}>
+  const accountMenu = <details ref={menuRef} className="ip-account-menu"><summary aria-label={name + "，打开账号菜单"} title={name}><AccountAvatar identity={identity} size="100%" /></summary><div onClick={closeMenu}>
     <strong>{name}</strong>
     <Link href="/me"><UserRound size={16} />我的账号</Link>
     {process.env.NEXT_PUBLIC_ENTERPRISE_ENABLED === "1" && <Link href="/enterprise"><Building2 size={16} />企业积分</Link>}

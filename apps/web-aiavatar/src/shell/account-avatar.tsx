@@ -12,15 +12,15 @@ import { accountAvatarUrl, defaultAccountAvatar } from "./account-avatar-config"
 type AvatarIdentity = Pick<MeIdentity, "avatarSeed" | "avatarUrl">;
 
 /** Uploaded account pictures take precedence; a broken picture falls back to the same account default. */
-export function AccountAvatar({ identity, size = 36 }: { identity?: AvatarIdentity | null; size?: number }) {
+export function AccountAvatar({ identity, size = 36 }: { identity?: AvatarIdentity | null; size?: number | "100%" }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const url = accountAvatarUrl(identity?.avatarUrl);
   const generated = identity?.avatarSeed ? defaultAccountAvatar(identity.avatarSeed) : null;
-  return <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, flexShrink: 0, overflow: "hidden", borderRadius: "50%", background: generated?.bgColor || "var(--surface-3, #f6f6f5)", color: "var(--ink-2, #65707e)", verticalAlign: "middle" }}>
+  return <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: size, height: size, minWidth: 0, minHeight: 0, flexShrink: 0, overflow: "hidden", borderRadius: "50%", background: generated?.bgColor || "var(--surface-3, #f3f4f6)", color: "var(--ink-2, #65707e)", verticalAlign: "middle", lineHeight: 0 }}>
     {url && url !== failedUrl
       ? <img src={url} alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} style={{ display: "block", width: "100%", height: "100%", objectFit: "cover" }} />
-      : generated ? <NotionAvatar config={generated.config} bgColor={generated.bgColor} style={{ width: "100%", height: "100%" }} />
-      : <UserRound size={Math.round(size * 0.55)} />}
+      : generated ? <NotionAvatar config={generated.config} bgColor={generated.bgColor} style={{ display: "block", width: "100%", height: "100%", lineHeight: 0 }} />
+      : <UserRound size={size === "100%" ? "55%" : Math.round(size * 0.55)} />}
   </span>;
 }
 

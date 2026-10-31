@@ -80,7 +80,7 @@ html[data-layout="desktop"] .ip-top-account .desktop-credit-link { background: v
 html[data-layout="desktop"] .ip-top-account .desktop-credit-link svg { color: var(--ip-muted); }
 html[data-layout="desktop"] .ip-top-account .desktop-credit-retry { color: var(--ip-muted); }
 .ip-account-menu { position: relative; }
-.ip-account-menu summary { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 50%; background: #e7e0d6; cursor: pointer; list-style: none; border: 2px solid var(--ip-paper); outline: 1px solid var(--ip-line); }
+.ip-account-menu summary { display: flex; align-items: center; justify-content: center; width: 38px; height: 38px; padding: 0; border-radius: 50%; background: var(--ip-paper); cursor: pointer; list-style: none; border: 1px solid var(--ip-line); outline: none; overflow: hidden; }
 .ip-account-menu summary::-webkit-details-marker { display: none; }
 .ip-account-menu summary span { font-size: 15px; font-weight: 700; }
 .ip-account-menu>div { position: absolute; right: 0; top: 48px; width: 210px; max-height: calc(100dvh - var(--desktop-bar-h,84px) - 12px); overflow-y: auto; overscroll-behavior: contain; padding: 8px; background: var(--ip-paper); border: 1px solid var(--ip-line); border-radius: 12px; }

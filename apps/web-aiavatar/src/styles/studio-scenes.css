@@ -39,9 +39,8 @@ html[data-layout="desktop"] .desktop-rail .desktop-credit-link:hover { backgroun
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link strong { max-width: 56px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link span { font-size: 11px; color: var(--ip-muted); }
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link svg { display: none; }
-/* 头像里的字居中（2026-10-31 线上反馈：字挤在左上角）。span 撑满圆，字用 grid 居中。 */
+/* 圆形头像跟随按钮的内容区，内部尺寸和排版由 AccountAvatar 管理。 */
 .desktop-rail .ip-account-menu>summary { width: 34px; height: 34px; }
-.desktop-rail .ip-account-menu>summary>span { display: grid; place-items: center; width: 100%; height: 100%; font-size: 13px; font-weight: 600; line-height: 1; }
 /* 鼠标停在「AI 视频 / AI 图片」上弹出的全部场景（shell/rail-scene-flyout.tsx）。导航那一列会滚动，所以用 fixed 贴着导航栏右边。 */
 .rail-flyout-host { display: flex; justify-content: center; width: 100%; }
 .rail-flyout { position: fixed; top: 12px; bottom: 12px; left: calc(var(--desktop-rail-w, 76px) + 18px); z-index: 70; display: flex; flex-direction: column; width: 360px; padding: 18px 8px 8px; border-radius: 16px; background: #fff; box-shadow: 0 18px 48px rgba(23, 32, 42, .16), 0 0 0 1px rgba(23, 32, 42, .06); color: var(--ip-ink, #17202a); text-align: left; animation: rail-flyout-in 140ms var(--ip-ease, ease-out); }
@@ -331,7 +330,7 @@ button.scene-pill:hover, .scene-pill[aria-expanded="true"], .scene-pill.is-selec
 .scene-example-media>img, .scene-example-media>video, .scene-example-media>.scene-thumb { display: block; width: 100% !important; height: 100% !important; object-fit: cover; border-radius: 0; }
 .scene-example-tag { position: absolute; top: 10px; left: 10px; padding: 1px 9px; border-radius: 999px; background: rgba(23,32,42,.62); color: #fff; font-size: 11px; }
 .scene-example-dots { position: absolute; left: 0; right: 0; bottom: 12px; display: flex; justify-content: center; gap: 6px; }
-.scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: rgba(255,255,255,.6); transition: width 160ms var(--ip-ease); cursor: pointer; }
+.scene-example-dots button { width: 7px; height: 7px; padding: 0; border: 0; border-radius: 999px; background: rgba(255,255,255,.6); transition: background-color 160ms var(--ip-ease); cursor: pointer; }
 .scene-example-dots button[aria-current="true"] { width: 18px; background: #fff; }
 .scene-example-copy { display: flex; flex-direction: column; gap: 10px; max-width: 280px; }
 .scene-example-group { font-size: 11.5px; letter-spacing: .14em; color: var(--ip-muted); }
