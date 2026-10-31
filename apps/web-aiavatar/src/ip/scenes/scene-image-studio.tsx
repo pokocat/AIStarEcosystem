@@ -26,7 +26,7 @@ import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
 import { addImageRow, applyRun, createSceneDraft, imageRows, listSceneDrafts, openedImageState, patchNode, resubmitRow, rowUploads, slotUploads, submissionRejected, type SceneUpload } from "./scene-drafts";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, SceneViewer, sceneFailureText, sceneHintText, sceneOptionValues, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 
 const FALLBACK_RATIOS = ["1:1", "3:4", "4:3", "9:16", "16:9"];
@@ -38,6 +38,7 @@ const writeQuery = (scene: string, draft?: string) => writeSceneQuery("/image", 
 export function SceneImageStudio() {
   const router = useRouter();
   const auth = useRequireAuth();
+  const mobile = useSceneMobile();
   const ready = auth === "ok";
   const showFailure = useStudioFailure();
   // 场景目录在服务端（ipstudio/scenes.json），出图描述也在服务端拼，这一页不再自己写一份。
@@ -353,7 +354,7 @@ export function SceneImageStudio() {
     // 输入区在页面上方（手机上在结果下面很远）：滚过去并把光标放进去，不然点了像没反应（2026-10-30 界面评审）。
     setTimeout(() => {
       document.querySelector(".scene-image-studio .scene-composer")?.scrollIntoView?.({ block: "start", behavior: "smooth" });
-      (document.querySelector<HTMLTextAreaElement>(".scene-image-studio .scene-ask textarea"))?.focus({ preventScroll: true });
+      (document.querySelector<HTMLTextAreaElement>(".scene-image-studio .scene-box textarea"))?.focus({ preventScroll: true });
     }, 0);
   };
 
@@ -403,7 +404,7 @@ export function SceneImageStudio() {
     <section className="scene-card scene-composer" aria-label="出图设置">
       <header className="scene-composer-head">
         <SceneSwitch scene={scene} groups={listGroups} top={free && free.id !== scene.id ? free : undefined} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
-        <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+        {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
         <button type="button" className="scene-new" onClick={() => { showDraft(undefined, begin()); pickScene(scene); writeQuery(scene.id); }}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
 
@@ -451,11 +452,11 @@ export function SceneImageStudio() {
           </div>
           <button type="button" className="scene-go" aria-label="生成图片" title={blocker || undefined} disabled={busy || !!blocker} onClick={() => void generate()}>
             {busy ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}<span>生成图片</span>
-            {!blocker && <small>{caps?.mock ? "免费" : `${quote} 积分`}</small>}
+            {(caps?.mock || (chosen && quote > 0)) && <small>{caps?.mock ? "免费" : `${quote} 积分`}</small>}
           </button>
-          {hint || blocker ? <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>
-            : note || specNote ? <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
-              {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p> : null}
+          {(hint || blocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || blocker}</p>}
+          {(note || specNote) && <p className="scene-hint is-note" role="status">{[note?.text, specNote].filter(Boolean).join(" ")}
+            {note?.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
           {models && !candidates.length && !caps?.mock && <SceneNoModel kind="图片"/>}
         </div>
       </div>
@@ -464,7 +465,7 @@ export function SceneImageStudio() {
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-image"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
-          <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
           <UiVersionSwitch inline/></span></header>
       <div id="scene-image-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-image-tab-${tab}`}>
       {tab === "example" ? (isFree
@@ -541,7 +542,7 @@ function ImageRow({ row, original, run, busy, submitting, onView, onUse, onVideo
         {loading && accepted && <button type="button" onClick={onStop}><Square size={12}/>停止</button>}
         {loading && !accepted && !submitting && <button type="button" disabled={busy} onClick={onConfirm}><RotateCcw size={12}/>确认原任务</button>}
         {meta?.status === "error" && request && <button type="button" className="is-primary" disabled={busy} onClick={onRetry}><RotateCcw size={12}/>重新生成</button>}
-        {!loading && request && <button type="button" onClick={onReuse}><PencilLine size={12} strokeWidth={1.5}/>重新编辑</button>}
+        {request && <button type="button" onClick={onReuse}><PencilLine size={12} strokeWidth={1.5}/>重新编辑</button>}
       </span>
     </header>
     {failure && <p className="scene-row-error" title={meta?.errorDetails !== failure ? `${meta?.errorDetails || ""}${meta?.errorLogId ? `（记录号 ${meta.errorLogId}）` : ""}` : undefined}>{failure}</p>}

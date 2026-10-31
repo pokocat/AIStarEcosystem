@@ -32,6 +32,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
+import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -64,7 +65,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
 const upload = (input: Element, name = "p.jpg") => fireEvent.change(input, { target: { files: [new File(["x"], name, { type: "image/jpeg" })] } });
-const refInput = () => document.querySelector('.scene-ref-row input[type="file"]')!;
+const refInput = () => document.querySelector('.scene-media-row input[type="file"]')!;
 const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
@@ -107,7 +108,7 @@ test("video: with a text-only video model the director gets no numbered pictures
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
   fireEvent.change(await screen.findByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿面霜" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写脚本" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
   await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
   expect(api.composeScene.mock.calls[0][0]).toMatchObject({ imageTitles: [], seenTitles: ["商品图 1"], visual: false });
   // 这一版记下按哪个模型、交给它几张图写的。
@@ -121,10 +122,10 @@ test("video: when the settings no longer match what the script was written for, 
   put({ id: "IPP-V", name: "v", sceneId: "ecom-talking", doc });
   api.composeScene.mockResolvedValue({ text: "改脚本" });
   await open(SceneVideoStudio, "/video?scene=ecom-talking&draft=IPP-V");
-  fireEvent.click(await screen.findByRole("button", { name: "用这个脚本生成" }));
+  fireEvent.click(await screen.findByRole("button", { name: "采用脚本" }));
   // 时长还是 15 秒：不提示。
   expect(screen.queryByRole("button", { name: /让编导照现在的改一版/ })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "10 秒" }));
+  setDuration(10);
   expect(screen.getByText(/这版脚本是照 15 秒写的，现在要出 10 秒/)).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /让编导照现在的改一版/ })); });
   await waitFor(() => expect(api.composeScene).toHaveBeenCalled());
@@ -160,10 +161,10 @@ test("video: a script that says what is still missing shows it, drops that line 
   expect(document.querySelector("mark.scene-script-blank")?.textContent).toBe("【待补：购买入口】");
   // 原价 158 用户写了、脚本里没有：灰字提醒，不拦。
   expect(screen.getByText("你写的 158 脚本里没用上，要加的话跟编导说一声。")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "用这个脚本生成" }));
+  fireEvent.click(screen.getByRole("button", { name: "采用脚本" }));
   expect(text("视频脚本").startsWith("第1镜")).toBe(true);
-  const go = screen.getByRole("button", { name: "立即生成视频" }) as HTMLButtonElement;
-  await waitFor(() => expect(go.textContent).toContain("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。"));
+  const go = screen.getByRole("button", { name: "生成视频" }) as HTMLButtonElement;
+  await waitFor(() => expect(screen.getByText("还有没填的：购买入口。在上面换成实际内容，用不上的直接删掉。")).toBeTruthy());
   expect(go.disabled).toBe(true);
   fireEvent.change(screen.getByRole("textbox", { name: "视频脚本" }), { target: { value: text("视频脚本").replace("【待补：购买入口】", "本视频团购") } });
   await waitFor(() => expect(go.disabled).toBe(false));
@@ -181,6 +182,8 @@ test("video: blanks for facts marked 有就写 do not count as missing; after a 
   await open(SceneVideoStudio, "/video?scene=local-groupbuy&draft=IPP-G");
   expect(await screen.findByText("原价没有就不用写，出片前把脚本里标着的那几处删掉就行。")).toBeTruthy();
   expect(document.querySelector(".scene-script-missing")).toBeNull();
+  // 打开写过脚本的草稿先看到编导写的那版；回到编辑框，只给脚本里还空着的那几条。
+  fireEvent.click(screen.getAllByRole("button", { name: "回到编辑" })[0]);
   const chips = within(screen.getByRole("group", { name: "要写清楚的信息" }));
   expect(chips.getAllByRole("button").map(b => b.textContent)).toEqual(["原价有就写"]);
 });

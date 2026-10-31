@@ -1,7 +1,7 @@
 "use client";
 
 import { SignedImage } from "@/canvas-bridge/signed-image";
-import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject, useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { Check, ChevronDown, ChevronRight, Download, FileImage, History, Loader2, PanelLeft, Pencil, Pin, PinOff, X } from "lucide-react";
 import { dialogFocus } from "../dialog-focus";
@@ -22,6 +22,15 @@ export function SceneThumb({ id, title, cover, size = 44 }: { id: string; title:
   return <span className="scene-thumb" style={{ width: size, height: size }} aria-hidden="true">
     {empty ? <b>{title.slice(0, 1)}</b> : <img key={src} src={src} alt="" loading="lazy" onError={() => setFailed(src)}/>}
   </span>;
+}
+
+/** 是不是手机形态：读 `<html data-layout>`（CSS 和 JS 用同一个真值，见 shell/layout-mode.ts）。 */
+export function useSceneMobile() {
+  return useSyncExternalStore(change => {
+    const watch = new MutationObserver(change);
+    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-layout"] });
+    return () => watch.disconnect();
+  }, () => document.documentElement.getAttribute("data-layout") !== "desktop", () => false);
 }
 
 export type SceneListItem = { id: string; title: string; description: string; coverUrl?: string | null };

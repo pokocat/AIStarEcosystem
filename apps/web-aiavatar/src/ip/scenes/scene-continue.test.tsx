@@ -33,6 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addScriptNode, addVideoRow, patchNode } from "./scene-drafts";
+import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -65,7 +66,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
 const upload = (input: Element, name = "p.jpg") => fireEvent.change(input, { target: { files: [new File(["x"], name, { type: "image/jpeg" })] } });
-const refInput = () => document.querySelector('.scene-ref-row input[type="file"]')!;
+const refInput = () => document.querySelector('.scene-media-row input[type="file"]')!;
 const continueLink = () => screen.queryByRole("link", { name: "在画布中继续" })?.getAttribute("href");
 const heading = () => document.querySelector(".scene-composer-head strong")?.textContent;
 const pressed = (group: string, name: string) => within(screen.getByRole("group", { name: group })).getByRole("button", { name }).getAttribute("aria-pressed");
@@ -81,7 +82,7 @@ async function oneResult() {
   api.readRun.mockResolvedValue(RESULT);
   await open(SceneImageStudio, "/image?scene=white-background");
   await act(async () => { upload(refInput()); });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await screen.findByRole("img", { name: /商品白底图第 1 张/ }, { timeout: 4000 });
 }
 
@@ -152,7 +153,7 @@ test("image: edit-type scenes put the original in front of the result for compar
   await open(SceneImageStudio, "/image?scene=free");
   fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只猫" } });
   await act(async () => { upload(refInput()); });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await screen.findByRole("img", { name: /自由出图第 1 张/ }, { timeout: 4000 });
   expect(screen.queryByRole("button", { name: "查看原图" })).toBeNull();
 });

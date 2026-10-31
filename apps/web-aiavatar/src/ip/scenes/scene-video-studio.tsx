@@ -32,7 +32,7 @@ import { addScriptNode, addVideoRow, applyRun, createSceneDraft, draftSubject, l
 import { useSceneDraftStore, useSceneStateSave } from "./scene-draft-store";
 import { useSceneQuery, writeSceneQuery } from "./scene-query";
 import { UiVersionSwitch } from "@/shell/ui-version-switch";
-import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph } from "./scene-layout";
+import { SceneDrawer, SceneEmpty, SceneExample, SceneNoModel, SceneRecent, SceneResultTabs, SceneSwitch, sceneFailureText, sceneHintText, sceneOptionValues, sceneSteps, useSceneDrawerPin, useScenePopover, RatioGlyph, useSceneMobile } from "./scene-layout";
 import { AiMark } from "../studio-ai-icon";
 import { clampSceneDuration, sceneVideoDurations, sceneVideoInputs, sceneVideoSettings, type SceneVideoMaterial } from "./scene-video-plan";
 import { classifyBlanks, missingFigures, scriptMissing, scriptPlaceholders, splitBlanks } from "./scene-script-check";
@@ -66,6 +66,7 @@ export function SceneVideoStudio() {
   const router = useRouter();
   const auth = useRequireAuth();
   const ready = auth === "ok";
+  const mobile = useSceneMobile();
   const showFailure = useStudioFailure();
   const { catalog, error: catalogError, retry: retryCatalog } = useSceneCatalog(ready);
   const catalogRef = useRef(catalog); catalogRef.current = catalog;
@@ -222,8 +223,10 @@ export function SceneVideoStudio() {
       // （存在草稿里，见 sceneVideoState；老草稿按最近一版脚本记的推断）。改稿因此沿用写那一版时的选项，不会悄悄回到默认值。
       const state = openedVideoState(project.doc, videoDefaults(from));
       setText(state.edit ? state.edit.prompt ?? "" : state.text); setPicked(state.options); setLanguage(state.language!); setTier(state.tier); setOptimize(state.optimize!);
-      setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = true;
-      setView("compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
+      // 草稿里记过时长才算用户定的；没记过的按场景默认值，同样先按模型单段上限出。
+      setDuration(state.duration!); setRatio(state.ratio!); durationTouched.current = !!project.doc.sceneVideoState?.duration;
+      // 写过脚本还没采用：直接看编导写的那几版；采用过就回到编辑框接着改。
+      setView(!state.edit && scriptNodes(project.doc).length ? "director" : "compose"); setScriptId(state.edit?.scriptId); setRevise(""); setNote(undefined);
       setHint(""); setTab(videoRows(project.doc).length ? "results" : "example");
       writeQuery(from?.id ?? DEFAULT_SCENE, project.id);
     } catch (e) { if (onPage(ticket)) showFailure({ action: "打开草稿", error: e }); }
@@ -648,7 +651,9 @@ export function SceneVideoStudio() {
 
   // 编导留了【待补】的地方没填，出出来就是一句「待补」或者模型自己编一个价：先拦下。
   const blanks = scriptPlaceholders(text);
-  const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型" : !text.trim() ? "先写提示词，或点「AI 编导」写一版脚本" : planError
+  const videoBlocker = !videoModels ? "正在读取视频模型…" : !chosenVideo ? "还没有可用的视频模型"
+    : scene?.images.required && !images.length ? `先放${scene.images.label}`
+    : !text.trim() ? "先写提示词，或点「AI 编导」写一版脚本" : planError
     || (blanks.length ? `还有没填的：${[...new Set(blanks)].join("、")}。在上面换成实际内容，用不上的直接删掉。` : "")
     || (settings ? studioVideoError(chosenVideo, settings, text, ratio, usedDuration) : "请重新选择清晰度") || "";
 
@@ -696,7 +701,9 @@ export function SceneVideoStudio() {
   const groups = catalog.videoGroups.map(g => ({ id: g.id, title: g.title, items: catalog.video.filter(s => s.group === g.id) }));
   const groupTitle = catalog.videoGroups.find(g => g.id === scene.group)?.title;
   // 选的时长这个模型出不了（比下限短）：照实说按几秒出，不悄悄换。比上限长的是分段交给创作助手，不在这里说。
-  const durationNote = !toAssistant && contract && usedDuration !== duration
+  // 比单段上限长的照实说会分几段、交给谁做（换了个更短的模型时最常见），不悄悄改时长。
+  const durationNote = long ? `这个模型单段最长 ${contract!.maxSeconds} 秒，${duration} 秒会分 ${segments.length} 段，交给创作助手做`
+    : !toAssistant && contract && usedDuration !== duration
     ? contract.minSeconds === contract.maxSeconds ? `这个模型只做 ${usedDuration} 秒的片子` : `这个模型最短 ${contract.minSeconds} 秒，会按 ${usedDuration} 秒出` : "";
   const pickDuration = (n: number) => { durationTouched.current = true; setDuration(n); setHint(""); };
   const goBlocker = toAssistant ? handoffBlocker : videoBlocker;
@@ -718,7 +725,7 @@ export function SceneVideoStudio() {
     <section className="scene-card scene-video-composer" aria-label={view === "director" ? "AI 编导" : "写一条视频"}>
       <header className="scene-composer-head">
         <SceneSwitch scene={scene} groups={groups} onPick={onPick} onAll={() => { if (!pinned) setDrawerOpen(true); }}/>
-        <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+        {mobile && <SceneRecent icon drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
         <button type="button" className="scene-new" onClick={() => reset()}><Plus size={13} strokeWidth={1.6}/>新建</button>
       </header>
 
@@ -763,10 +770,10 @@ export function SceneVideoStudio() {
             onChange={e => { setText(e.target.value); setHint(""); }}/>
           {/* 这类视频要写清的信息：点一下在框里起一行「店名和位置：」，接着写就行。写过脚本之后只给脚本里还空着的。 */}
           {!recreation && chipFacts.length > 0 && <div className="scene-fact-chips" role="group" aria-label="要写清楚的信息">{chipFacts.map(f =>
-            <button key={f.label} type="button" onClick={() => addFact(f.label)} title={f.required ? undefined : "有就写"}><Plus size={11} strokeWidth={1.6}/>{f.label}</button>)}</div>}
+            <button key={f.label} type="button" onClick={() => addFact(f.label)}><Plus size={11} strokeWidth={1.6}/>{f.label}{!f.required && <small>有就写</small>}</button>)}</div>}
           <footer>
             <small className={contract && Array.from(text).length > contract.promptMaxChars ? "is-over" : undefined}>{Array.from(text).length}{contract && !recreation ? ` / ${contract.promptMaxChars}` : ""}</small>
-            {!recreation && <button type="button" className="scene-ai-button" disabled={busy || writing || uploading !== undefined}
+            {!recreation && <button type="button" className="scene-ai-button" disabled={busy || writing || uploading !== undefined || (!scripts.length && !!scriptBlocker(text))}
               title={scriptBlocker(text) || (scripts.length ? "回到 AI 编导接着改" : "按框里的想法写一版分镜脚本，按实际用量扣积分")} onClick={openDirector}>
               {busy || writing ? <Loader2 size={13} className="studio-gallery-spinner"/> : <AiMark size={12}/>}{scriptId ? "AI 改写" : "AI 编导"}</button>}
           </footer>
@@ -793,13 +800,14 @@ export function SceneVideoStudio() {
             disabled={busy || !!goBlocker || uploading !== undefined} onClick={() => void (toAssistant ? handoff() : generate())}>
             {busy && !writing ? <Loader2 size={16} className="studio-gallery-spinner"/> : null}
             <span>{recreation ? "交给创作助手" : "生成视频"}</span>
-            {!goBlocker && <small>{long ? `分 ${segments.length} 段` : recreation ? "先出方案" : caps?.mock ? "免费" : videoQuote != null ? `${videoQuote} 积分` : ""}</small>}
+            {/* 价格一直摆着（还没写字时也看得到要花多少）；算不出就不显示，不编。 */}
+            {(long || recreation || caps?.mock || videoQuote != null) && <small>{long ? `分 ${segments.length} 段` : recreation ? "先出方案" : caps?.mock ? "免费" : `${videoQuote} 积分`}</small>}
           </button>
           {/* 点了没做成的原因用提醒色；还没动手时只是灰字说一句还差什么。 */}
-          {(hint || goBlocker) ? <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>
-            : <>{!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
-              {durationNote && <p className="scene-hint is-note">{durationNote}</p>}
-              {staleScript && <p className="scene-hint is-note" role="status">{staleScript}。<button type="button" disabled={busy} onClick={reviseForNow}>让编导照现在的改一版</button></p>}</>}
+          {(hint || goBlocker) && <p className={`scene-hint${hint ? "" : " is-note"}`} role="status">{hint || goBlocker}</p>}
+          {!toAssistant && plan?.note && <p className="scene-hint is-note">{plan.note}</p>}
+          {durationNote && <p className="scene-hint is-note">{durationNote}</p>}
+          {staleScript && <p className="scene-hint is-note" role="status">{staleScript}。<button type="button" disabled={busy} onClick={reviseForNow}>让编导照现在的改一版</button></p>}
           {note && <p className="scene-hint is-note" role="status">{note.text}{note.undo && <button type="button" onClick={note.undo}>撤销</button>}</p>}
           {videoModels && !videoModels.length && !caps?.mock && !recreation && <SceneNoModel kind="视频"/>}
         </div>
@@ -809,7 +817,7 @@ export function SceneVideoStudio() {
     <section className="scene-card scene-results" aria-label="作品与示例">
       <header><SceneResultTabs tab={tab} onTab={setTab} count={rows.length} idBase="scene-video"/>
         <span className="scene-results-actions">{draft && <Link className="scene-text-button" href={`/projects/${encodeURIComponent(draft.id)}`}><FolderOpen size={14} strokeWidth={1.4}/>在画布中继续</Link>}
-          <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>
+          {!mobile && <SceneRecent drafts={drafts.data} loading={drafts.loading} error={drafts.error} onRetry={drafts.reload} current={draft?.id} onOpen={id => void openDraft(id)}/>}
           <UiVersionSwitch inline/></span></header>
       {draft && handedOff && <HandoffStatus projectId={draft.id} execution={execution} waiting={!!executionId && !execution}/>}
       <div id="scene-video-panel" className="scene-results-panel" role="tabpanel" aria-labelledby={`scene-video-tab-${tab}`}>
@@ -860,8 +868,8 @@ function ScriptTurn({ row, run, busy, submitting, latest, copied, onUse, onBack,
         : failed ? <p className="scene-script-state is-failed" title={meta?.errorLogId ? `记录号 ${meta.errorLogId}` : undefined}>{sceneFailureText(meta?.errorCode, meta?.errorDetails, "脚本")}</p>
         : <>{summary && <p className="scene-script-summary">{summary}</p>}
           <pre className="scene-script-text">{splitBlanks(body).map((p, i) => p.blank ? <mark key={i} className="scene-script-blank">{p.text}</mark> : p.text)}</pre>
-          {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}，在下面说一声，编导会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
-            : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，采用后把标着的那几处删掉就行。</p>
+          {mustFill.length > 0 ? <p className="scene-script-missing" role="status">还缺{mustFill.join("、")}。在下面写上发给编导，会补进脚本。{mayFill.length ? `${mayFill.join("、")}没有就不用写。` : ""}</p>
+            : mayFill.length > 0 ? <p className="scene-script-check">{mayFill.join("、")}没有就不用写，出片前把脚本里标着的那几处删掉就行。</p>
             : missing ? <p className="scene-script-check">编导觉得可能还缺{missing}，写过了就不用管。</p> : null}
           {absent.length > 0 && <p className="scene-script-check">你写的 {absent.join("、")} 脚本里没用上，要加的话跟编导说一声。</p>}</>}
       <footer>
@@ -934,10 +942,12 @@ function VideoSettingsPanel({ min, max, single, duration, onDuration, segments, 
       <div className="scene-choice-row">{ratios.map(value => <button key={value} type="button" aria-pressed={value === ratio} onClick={() => onRatio(value)}><RatioGlyph ratio={value}/>{value}</button>)}</div></div>
     {tiers.length > 1 && <div className="scene-setting-row"><span>清晰度</span>
       <div className="scene-choice-row">{tiers.map(t => <button key={t} type="button" aria-pressed={t === tier} onClick={() => onTier(t)}>{t.toUpperCase()}</button>)}</div></div>}
-    {optimizable && <div className="scene-setting-row"><span>提示词</span>
-      <div className="scene-choice-row" title="先优化是另一笔文字任务，按实际用量扣积分，不含在视频价里">
+    {optimizable && <div className="scene-setting-row" role="group" aria-label="提示词"><span>提示词</span>
+      <div className="scene-choice-row">
         <button type="button" aria-pressed={optimize} onClick={() => onOptimize(true)}>先优化再生成</button>
-        <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div></div>}
+        <button type="button" aria-pressed={!optimize} onClick={() => onOptimize(false)}>按原文生成</button></div>
+      {/* 2026-10-30 线上复核：先优化是另一笔文字任务，要说清不含在视频价里、可以不要。 */}
+      <p>{optimize ? "先按这个模型更认的写法改写一遍，按实际用量另扣少量积分，不含在视频价里。" : "按你写的原文直接生成，只扣视频价。"}</p></div>}
     {options?.map(g => <div key={g.key} className="scene-setting-row" role="group" aria-label={g.label}><span>{g.label}</span>
       <div className="scene-choice-row">{g.choices.map(c => <button key={c.value} type="button" aria-pressed={(picked[g.key] ?? g.defaultValue) === c.value} title={c.prompt}
         onClick={() => onPick(g.key, c.value)}>{c.label}</button>)}</div></div>)}

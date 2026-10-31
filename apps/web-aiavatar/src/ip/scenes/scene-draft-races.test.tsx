@@ -33,6 +33,7 @@ vi.mock("../studio-select", () => ({ StudioSelect: ({ label, value, onChange, op
 import { SceneImageStudio } from "./scene-image-studio";
 import { SceneVideoStudio } from "./scene-video-studio";
 import { addVideoRow } from "./scene-drafts";
+import { chooseUpload, openRecent, openSpec, optionGroup, pickScene, setDuration } from "./scene-test-helpers";
 
 const EMPTY: IpProjectDoc = { nodes: [], connections: [], viewport: { x: 0, y: 0, k: 1 } };
 /** 内存里的草稿库：版本号每存一次加一，读到的就是最后存的。 */
@@ -73,14 +74,14 @@ async function startImageInA() {
   await act(async () => { render(<SceneImageStudio/>); });
   fireEvent.change(screen.getByRole("textbox", { name: "想要的画面" }), { target: { value: "test image" } });
 }
-const openB = async () => { await act(async () => { fireEvent.click(await screen.findByRole("button", { name: /draft B/ })); }); };
+const openB = async () => { const recent = await openRecent(); await act(async () => { fireEvent.click(recent.getByRole("button", { name: /draft B/ })); }); };
 const continueLink = () => screen.getByRole("link", { name: "在画布中继续" }).getAttribute("href");
 
 test("image: A's save coming back after B was opened finishes A's work and leaves the page on B", async () => {
   const first = later<IpProject>();
   api.updateProject.mockImplementationOnce(async (id: string, { doc }: { doc: IpProjectDoc }) => { await first.promise; return put({ ...store.get(id)!, doc, docVersion: "v2" }); });
   await startImageInA();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await waitFor(() => expect(api.updateProject).toHaveBeenCalledTimes(1));
   await openB();
   expect(window.location.search).toContain("IPP-B");
@@ -100,7 +101,7 @@ test("image: a draft created after the page moved on is kept for its own work, n
   const created = later<IpProject>();
   api.createProject.mockImplementationOnce(async ({ name, sceneId }: { name: string; sceneId?: string }) => { await created.promise; return put({ id: "IPP-A", name, sceneId }); });
   await startImageInA();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "立即生成图片" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "生成图片" })); });
   await openB();
   await act(async () => { created.release(undefined as never); });
   await waitFor(() => expect(api.submit).toHaveBeenCalledWith("IPP-A", expect.anything()));
@@ -175,7 +176,7 @@ test("video: after replacing the voice, opening the draft again picks the replac
   // 再写一版脚本时交出去的声音就是换后的那份。
   api.composeScene.mockResolvedValue({ text: "write script" });
   fireEvent.change(screen.getByRole("textbox", { name: "想做的视频" }), { target: { value: "保湿精华" } });
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "让编导写脚本" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "AI 编导" })); });
   await waitFor(() => expect(api.submit).toHaveBeenCalled());
   const saved = store.get("IPP-V")!.doc;
   const script = saved.nodes.find(n => n.metadata?.studio?.sceneDirector)!;
@@ -201,22 +202,22 @@ const TEXT_ONLY = { endpointId: "ep-text", name: "文字出片", isDefault: fals
     modes: [{ mode: "t2v", needsFirstFrame: false, needsLastFrame: false, frameImage: null, references: null }] },
   pricing: { perSecond: { t2v: { "720p": 3 } }, freeRefImages: 0, extraRefImagePerSecond: 0, promptOptimizationPerCall: 0 } };
 const videoPick = async () => await screen.findByRole("combobox", { name: "视频模型" }) as HTMLSelectElement;
-const spec = () => document.querySelector(".scene-video-settings")!.textContent;
-const hintLine = () => [...document.querySelectorAll(".scene-video-hint")].map(p => p.textContent).join(" | ");
+const spec = () => document.querySelector('button[aria-label^="视频规格"]')!.textContent;
+const hintLine = () => [...document.querySelectorAll(".scene-go, .scene-hint")].map(p => p.textContent).join(" | ");
 
 test("video: the input bar picks the video model; duration, clearness, materials and the quote follow it, and the draft remembers it", async () => {
   api.videoModels.mockResolvedValue([H3, TEXT_ONLY]);
   put({ id: "IPP-V", name: "draft V", sceneId: "ecom-talking", doc: { ...EMPTY, nodes: [productNode] as never } });
   await openVideoDraft();
   expect((await videoPick()).value).toBe("ep-h3");
-  await waitFor(() => expect(hintLine()).toContain("用 H3 出片预计"));
+  await waitFor(() => expect(hintLine()).toMatch(/生成视频\d+ 积分/));
   expect(spec()).toContain("768P");
   expect(screen.queryByRole("combobox", { name: "写脚本的模型" })).toBeNull();
 
   fireEvent.change(await videoPick(), { target: { value: "ep-text" } });
   expect(spec()).toContain("720P");
   expect(spec()).toContain("4 秒");
-  expect(hintLine()).toContain("用 文字出片 出片预计 12 积分"); // 3 积分/秒 × 4 秒
+  expect(hintLine()).toContain("生成视频12 积分"); // 3 积分/秒 × 4 秒
   expect(hintLine()).toContain("这个模型不看参考素材");
   expect(screen.getByRole("button", { name: "移除商品图 1" })).toBeTruthy(); // 换模型不动素材
   await waitFor(() => expect(store.get("IPP-V")!.doc.sceneVideoModel).toBe("ep-text"));
@@ -278,10 +279,10 @@ test("image: unsent inputs come back when returning to a scene; a scene never fi
   window.history.replaceState(null, "", "/image?scene=free");
   await act(async () => { render(<SceneImageStudio/>); });
   fireEvent.change(await screen.findByRole("textbox", { name: "想要的画面" }), { target: { value: "一只橘猫坐在窗台上看雨" } });
-  fireEvent.click(screen.getByRole("button", { name: "商品白底图" }));
+  pickScene("商品白底图");
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("商品白底图"));
   expect((screen.getByRole("textbox", { name: "补充要求" }) as HTMLTextAreaElement).value).toBe("");
-  fireEvent.click(screen.getByRole("button", { name: "自由出图" }));
+  pickScene("自由出图");
   await waitFor(() => expect(document.querySelector(".scene-composer-head strong")?.textContent).toBe("自由出图"));
   expect((screen.getByRole("textbox", { name: "想要的画面" }) as HTMLTextAreaElement).value).toBe("一只橘猫坐在窗台上看雨");
 });

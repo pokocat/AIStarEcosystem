@@ -19,7 +19,7 @@ test('a brief goes out on 「开始对话」 or Enter; Shift+Enter keeps writing
   expect(onStart).toHaveBeenCalledTimes(2);
 });
 
-test('example openers fill the box without sending; in the new version no idea yet points to the AI 视频 / AI 图片 scenes, not an empty canvas', () => {
+test('example openers fill the box without sending; in the new version they sit under the box and there is no charge note (2026-10-31 redesign)', () => {
   document.documentElement.setAttribute('data-ui', 'next');
   try {
     const onStart = vi.fn();
@@ -27,8 +27,10 @@ test('example openers fill the box without sending; in the new version no idea y
     fireEvent.click(screen.getByRole('button', { name: '复刻一条短视频' }));
     expect(box().value).toContain('照这条视频的拍法');
     expect(onStart).not.toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: 'AI 视频' }).getAttribute('href')).toBe('/video');
-    expect(screen.getByRole('link', { name: 'AI 图片' }).getAttribute('href')).toBe('/image');
+    // 新版：常用开头在框外面一排，框里只有输入和发送；花钱的地方会先报价，这里不写扣费说明。
+    expect(document.querySelector('.studio-conversation-start-box .studio-conversation-start-examples')).toBeNull();
+    expect(document.querySelector('.studio-conversation-start > .studio-conversation-start-examples')).not.toBeNull();
+    expect(screen.queryByText(/按实际用量扣少量积分/)).toBeNull();
     expect(screen.queryByRole('button', { name: '先进画布看看' })).toBeNull();
   } finally { document.documentElement.removeAttribute('data-ui'); }
 });

@@ -162,6 +162,7 @@ html[data-layout="desktop"] .scene-composer-head .scene-recent-host { display: n
 .scene-fact-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .scene-fact-chips button { display: inline-flex; align-items: center; gap: 3px; height: 26px; padding: 0 9px 0 7px; border: 0; border-radius: 7px; background: var(--ip-soft); color: var(--sn-text-2); font: inherit; font-size: 12px; white-space: nowrap; cursor: pointer; }
 .scene-fact-chips button:hover { background: #eceef1; color: var(--ip-ink); }
+.scene-fact-chips small { margin-left: 3px; color: var(--ip-muted); font-size: 11px; }
 .scene-ai-button { display: inline-flex; align-items: center; gap: 5px; flex-shrink: 0; height: 30px; padding: 0 12px; border: 1px solid var(--sn-ai-line); border-radius: 999px; background: var(--sn-ai-bg); color: var(--sn-ai-ink); font: inherit; font-size: 12.5px; cursor: pointer; transition: background 140ms var(--ip-ease), border-color 140ms var(--ip-ease); }
 .scene-ai-button svg { color: var(--sn-ai-star); }
 .scene-ai-button:hover:not(:disabled) { background: #e9ebfc; border-color: #c9cef7; }
