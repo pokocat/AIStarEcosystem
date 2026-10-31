@@ -6,7 +6,7 @@ html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar { --desktop-bar
 /* 只给整页的老界面让位；账号区里的老界面已经在左栏右边，再让一次就超出右边（2026-10-30 复测：设置页开关出了屏幕）。 */
 html[data-layout="desktop"][data-ui="next"] body.has-desktop-bar .app-root:not(.account-legacy-content > .app-root) { left: calc(var(--desktop-rail-w) + 12px); }
 html[data-layout="desktop"] .desktop-top-bar.desktop-rail.ip-brand-surface {
-  position: fixed; top: 12px; left: 12px; bottom: 12px; right: auto; z-index: 60;
+  position: fixed; top: 12px; left: 12px; bottom: 12px; right: auto; z-index: 80; /* 高过场景页的「全部场景」（70），弹出的场景列表和账号菜单不被它盖住 */
   width: var(--desktop-rail-w); height: auto; flex-direction: column; align-items: center; gap: 8px; padding: 14px 0 12px;
   background: var(--ip-paper); border-radius: 13px; overflow: visible;
 }
@@ -39,7 +39,28 @@ html[data-layout="desktop"] .desktop-rail .desktop-credit-link:hover { backgroun
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link strong { max-width: 56px; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link span { font-size: 11px; color: var(--ip-muted); }
 html[data-layout="desktop"] .desktop-rail .desktop-credit-link svg { display: none; }
-.desktop-rail .ip-account-menu>summary>span { width: 30px; height: 30px; font-size: 12px; }
+/* 头像里的字居中（2026-10-31 线上反馈：字挤在左上角）。span 撑满圆，字用 grid 居中。 */
+.desktop-rail .ip-account-menu>summary { width: 34px; height: 34px; }
+.desktop-rail .ip-account-menu>summary>span { display: grid; place-items: center; width: 100%; height: 100%; font-size: 13px; font-weight: 600; line-height: 1; }
+/* 鼠标停在「AI 视频 / AI 图片」上弹出的全部场景（shell/rail-scene-flyout.tsx）。导航那一列会滚动，所以用 fixed 贴着导航栏右边。 */
+.rail-flyout-host { display: flex; justify-content: center; width: 100%; }
+.rail-flyout { position: fixed; top: 12px; bottom: 12px; left: calc(var(--desktop-rail-w, 76px) + 18px); z-index: 70; display: flex; flex-direction: column; width: 360px; padding: 18px 8px 8px; border-radius: 16px; background: #fff; box-shadow: 0 18px 48px rgba(23, 32, 42, .16), 0 0 0 1px rgba(23, 32, 42, .06); color: var(--ip-ink, #17202a); text-align: left; animation: rail-flyout-in 140ms var(--ip-ease, ease-out); }
+@keyframes rail-flyout-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rail-flyout { animation: none; } }
+.rail-flyout h2 { margin: 0; padding: 0 14px 10px; font-size: 15px; font-weight: 500; line-height: 1.4; }
+.rail-flyout-body { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.rail-flyout h3 { margin: 12px 14px 4px; font-size: 12px; font-weight: 400; color: var(--ip-muted, #5b6572); }
+.rail-flyout ul { margin: 0; padding: 0; list-style: none; }
+/* 弹层挂在导航那一列里面，导航项的样式（竖排、64px 宽、小字）会带进来，这里逐条改回来。 */
+.desktop-rail-navigation .rail-flyout li a { flex-direction: row; align-items: center; gap: 12px; width: 100%; padding: 7px 10px; border-radius: 12px; color: var(--ip-ink, #17202a); font-size: 13px; font-weight: 400; line-height: 1.4; text-align: left; text-decoration: none; }
+.desktop-rail-navigation .rail-flyout li a:hover { background: #f6f7f9; }
+.desktop-rail-navigation .rail-flyout li a[aria-current="true"] { background: var(--ip-selected, #f1f2f4); }
+.desktop-rail-navigation .rail-flyout li a:focus-visible { outline: 2px solid var(--ip-ink, #17202a); outline-offset: -2px; }
+.desktop-rail-navigation .rail-flyout li a>.scene-thumb, .desktop-rail-navigation .rail-flyout li a:hover>.scene-thumb { border-radius: 10px; background: #eef0f2; }
+.desktop-rail-navigation .rail-flyout li a>span:not(.scene-thumb), .desktop-rail-navigation .rail-flyout li a:hover>span:not(.scene-thumb) { display: flex; flex: 1; flex-direction: column; align-items: flex-start; width: auto; height: auto; min-width: 0; border-radius: 0; background: none; }
+.rail-flyout li strong { font-size: 13.5px; font-weight: 500; line-height: 1.4; }
+.rail-flyout li small { overflow: hidden; font-size: 12px; line-height: 1.5; color: var(--ip-muted, #5b6572); white-space: nowrap; text-overflow: ellipsis; }
+.rail-flyout-state { margin: 0; padding: 16px 14px; font-size: 12.5px; color: var(--ip-muted, #5b6572); }
 .desktop-rail .ip-account-menu>div { top: auto; right: auto; bottom: 0; left: 52px; }
 .desktop-rail .desktop-rail-account .ip-brand-button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 

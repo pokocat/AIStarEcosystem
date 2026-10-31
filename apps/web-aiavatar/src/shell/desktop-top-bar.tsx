@@ -12,6 +12,7 @@ import { studioNavigation, studioNavigationCurrent } from "./studio-navigation";
 import { studioNavigationIcon } from "./studio-navigation-icons";
 import { useUiVersion } from "./ui-version";
 import { UiVersionSwitch } from "./ui-version-switch";
+import { RailSceneFlyout } from "./rail-scene-flyout";
 
 /** The canvas keeps its native tools. 新版登录后是左侧一列，旧版和公开落地页是顶栏（见 ui-version.ts）。 */
 export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) {
@@ -61,7 +62,11 @@ export function DesktopTopBar({ publicMode = false }: { publicMode?: boolean }) 
     <nav className="desktop-rail-navigation" aria-label="主导航">{navigation.map(n => {
       const current = studioNavigationCurrent(n.href, pathname, version);
       const Icon = studioNavigationIcon(n.href);
-      return <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}><span><Icon size={17} strokeWidth={1.4} aria-hidden="true" /></span>{n.label}</Link>;
+      const link = <Link key={n.href} href={n.href} aria-current={current ? "page" : undefined}><span><Icon size={17} strokeWidth={1.4} aria-hidden="true" /></span>{n.label}</Link>;
+      // AI 视频 / AI 图片：鼠标停上去就弹出全部场景（rail-scene-flyout.tsx）。
+      return n.href === "/video" || n.href === "/image"
+        ? <RailSceneFlyout key={n.href} kind={n.href === "/video" ? "video" : "image"} label={n.label} enabled={authed}>{link}</RailSceneFlyout>
+        : link;
     })}</nav>
     <div className="desktop-rail-account">
       {authed ? <><WalletBadge account={identity?.uid ?? null} location={pathname + hash} />{accountMenu}</> : <Link className="ip-brand-button" href="/login?next=%2Fdashboard">登录</Link>}
