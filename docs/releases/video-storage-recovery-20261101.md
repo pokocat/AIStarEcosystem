@@ -35,3 +35,25 @@
 发布前线上 JAR SHA256 为 `0429becb9990f7d75701fa604ab3247553b391e3192c1a944d738d8440333429`，与 `20261031-studio-redesign` 归档一致，对应 main `9902d4f6314a806adb86e618909783f25bdda51a`。该版本至本次主线的 DTO / OpenAPI 没有变更，本次不改数据库 schema、接口字段或前端制品。
 
 修复先进入 main，再从干净 main 构建 server。实际构建提交、制品校验和及发布后的验收追加于下方。
+
+## 正式发布与最终验收
+
+| 项目 | 结果 |
+| --- | --- |
+| 构建主线 | 干净 main `fa72c50e23693ff8544715b9fe3ccc0d069be5bf`，已推送 origin/main |
+| 发布包 | `20261101-video-delivery-recovery`，仅 server |
+| JAR SHA256 | `b15a51a655413ea3d6aeb256355fb5a0d1d91ce7db59776bb12d6723f5ea7002`，本地与线上一致 |
+| 编译检查 | `pnpm typecheck:all`、`pnpm typecheck:admin`、后端离线 compile、`pnpm check:api-contract` 全部通过；devq `124352f40208` exit=0 |
+| 相关回归 | 6 类 46 项全部通过；补充同原任务自动恢复、只结算一次的最终回归 devq `e7897d554b0f` exit=0 |
+| 正式打包 | devq `75e05d77eca9` exit=0；现有发布脚本执行 `clean package -DskipTests`，只做打包，测试已在前述独立任务完成，未用跳过测试代替验证 |
+| 迁移 | 干净包 72 个迁移、重复版本 0；线上 Flyway 校验 72 个迁移，`No migration necessary` |
+| 启动 | 北京时间 01:08:34 重启，01:08:52 启动完成，PID 350589，active/running，NRestarts=0 |
+| 等待配置 | 运行制品 `AEP_VIDEO_MAX_WAIT_SEC:1800`；进程无该变量覆盖，无 SPRING_APPLICATION_JSON 或外部 application.yml/properties 覆盖 |
+| 健康检查 | runtime env-check 与 verify 均 ALL GREEN；公开首页、登录、配置接口、Studio 页面及各既有服务正常 |
+| 发布后视频 | 三笔真实 run 接口均 HTTP 200 / done / 100%，签名视频均 HTTP 206；原完成时间不变 |
+| 发布后结算 | 三笔各仅一条 FREEZE 与 SPEND，1331 积分不变；全部历史成功任务中非 OSS 地址计数为 0 |
+| 线上生成 | 未新建生成任务，未重放客户素材，未新增扣费 |
+
+发布后接口证据保存在同一 root-only 备份目录的 `post-release-validation.json`。本次只验证恢复后的真实接口、文件与签名读取；转存故障和超时后的恢复分支由离线回归覆盖，没有为了验收新建收费任务或人为破坏生产网络。
+
+若需回滚，恢复 `/opt/ai-star-eco/releases/20261031-studio-redesign/server/app.jar` 并重启 server；无需回滚数据库迁移、模型配置或已恢复的 OSS 视频，不动钱包和账本。原工作区已有的前端与文档修改均保留，未纳入本次提交或制品。
